@@ -75,6 +75,26 @@
   .stato-pill { display: inline-block; font-size: 9px; padding: 2px 7px; border-radius: 10px; font-family: 'DM Mono', monospace; }
   .tooltip { position: fixed; background: #0f1117ee; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 11px; pointer-events: none; z-index: 1000; opacity: 0; transition: opacity 0.15s; font-family: 'DM Mono', monospace; }
   #errorBox { display: none; background: #cc333311; border: 1px solid #cc333344; border-radius: 8px; padding: 14px 18px; color: #cc3333; font-size: 13px; }
+  .milestone-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+  .ms-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; display: flex; align-items: center; gap: 14px; position: relative; overflow: hidden; }
+  .ms-card::before { content: ''; position: absolute; top: 0; left: 0; bottom: 0; width: 3px; }
+  .ms-card.ok::before { background: #3a8c5c; }
+  .ms-card.warn::before { background: #c9a227; }
+  .ms-card.danger::before { background: #cc3333; }
+  .ms-card.future::before { background: #4f8ef7; }
+  .ms-num { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--muted); background: var(--surface2); border-radius: 4px; padding: 2px 6px; flex-shrink: 0; }
+  .ms-body { flex: 1; min-width: 0; }
+  .ms-title { font-size: 11px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ms-lotti { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .ms-countdown { text-align: right; flex-shrink: 0; }
+  .ms-days { font-size: 18px; font-weight: 600; font-family: 'DM Mono', monospace; line-height: 1; }
+  .ms-days-label { font-size: 9px; color: var(--muted); margin-top: 2px; }
+  .ms-date { font-size: 10px; color: var(--muted); margin-top: 3px; }
+  .ms-card.ok .ms-days { color: #3a8c5c; }
+  .ms-card.warn .ms-days { color: #c9a227; }
+  .ms-card.danger .ms-days { color: #cc3333; }
+  .ms-card.future .ms-days { color: #4f8ef7; }
+  .section-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 6px; }
 </style>
 </head>
 <body>
@@ -106,6 +126,10 @@
     <div class="kpi inviato"><div class="kpi-label">Inviato</div><div class="kpi-value" id="kpi-inviato">—</div><div class="kpi-sub" id="kpisub-inviato">—</div></div>
     <div class="kpi protocollato"><div class="kpi-label">Protocollato</div><div class="kpi-value" id="kpi-protocollato">—</div><div class="kpi-sub" id="kpisub-protocollato">—</div></div>
     <div class="kpi ottenuto"><div class="kpi-label">Ottenuto</div><div class="kpi-value" id="kpi-ottenuto">—</div><div class="kpi-sub" id="kpisub-ottenuto">—</div></div>
+  </div>
+  <div>
+    <div class="section-label">📅 Milestone di progetto</div>
+    <div class="milestone-grid" id="milestoneGrid"></div>
   </div>
   <div class="grid-main">
     <div class="card">
@@ -280,7 +304,69 @@ function renderDashboard(data) {
   html+='</tbody></table>';
   tableDiv.innerHTML=html;
 }
-window.addEventListener('load', loadData);
+const MILESTONES = [
+  { num:'01', titolo:'Invio tutte le richieste permessi', lotti:'Tutti i lotti', data:'2026-09-30' },
+  { num:'02', titolo:'1° Rilascio — Realizzazione 90%', lotti:'1A · 1B · 2A · 2B', data:'2026-10-31' },
+  { num:'03', titolo:'2° Rilascio — Realizzazione 100%', lotti:'1A · 1B · 2A · 2B', data:'2026-12-31' },
+  { num:'04', titolo:'1° Rilascio — Realizzazione 50%', lotti:'1 · 2 · 3 · 4 · 5', data:'2027-04-30' },
+  { num:'05', titolo:'1° Rilascio — Realizzazione 50%', lotti:'6', data:'2027-05-31' },
+  { num:'06', titolo:'2° Rilascio — Realizzazione 100%', lotti:'1 · 2 · 3 · 4 · 5 · 6', data:'2027-11-15' },
+  { num:'07', titolo:'2° Rilascio — Realizzazione 100%', lotti:'8', data:'2028-03-31' },
+  { num:'08', titolo:'3° Rilascio — Realizzazione 100%', lotti:'7', data:'2028-07-31' },
+];
+
+function renderMilestones() {
+  const grid = document.getElementById('milestoneGrid');
+  const oggi = new Date(); oggi.setHours(0,0,0,0);
+  grid.innerHTML = '';
+  MILESTONES.forEach(ms => {
+    const scad = new Date(ms.data);
+    const diffMs = scad - oggi;
+    const diffGiorni = Math.ceil(diffMs / (1000*60*60*24));
+    const diffMesi = Math.floor(Math.abs(diffGiorni) / 30.44);
+    const diffAnni = Math.floor(Math.abs(diffGiorni) / 365.25);
+
+    let classe, countdownHTML;
+    if (diffGiorni < 0) {
+      classe = 'ok';
+      countdownHTML = `<div class="ms-days">✓</div><div class="ms-days-label">Completata</div>`;
+    } else if (diffGiorni <= 90) {
+      classe = 'danger';
+      countdownHTML = `<div class="ms-days">${diffGiorni}g</div><div class="ms-days-label">rimanenti</div>`;
+    } else if (diffGiorni <= 180) {
+      classe = 'warn';
+      const label = diffMesi > 1 ? `${diffMesi} mesi` : `${diffGiorni}g`;
+      countdownHTML = `<div class="ms-days">${label}</div><div class="ms-days-label">rimanenti</div>`;
+    } else {
+      classe = 'future';
+      let label;
+      if (diffAnni >= 1) {
+        const anniR = Math.floor(diffGiorni/365.25);
+        const mesiR = Math.round((diffGiorni % 365.25) / 30.44);
+        label = mesiR > 0 ? `${anniR}a ${mesiR}m` : `${anniR} anno`;
+      } else {
+        label = `${diffMesi} mesi`;
+      }
+      countdownHTML = `<div class="ms-days">${label}</div><div class="ms-days-label">rimanenti</div>`;
+    }
+
+    const dataFmt = scad.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
+    const card = document.createElement('div');
+    card.className = `ms-card ${classe}`;
+    card.innerHTML = `
+      <span class="ms-num">${ms.num}</span>
+      <div class="ms-body">
+        <div class="ms-title">${ms.titolo}</div>
+        <div class="ms-lotti">Lotti: ${ms.lotti}</div>
+        <div class="ms-date">📅 ${dataFmt}</div>
+      </div>
+      <div class="ms-countdown">${countdownHTML}</div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+window.addEventListener('load', () => { renderMilestones(); loadData(); });
 </script>
 </body>
 </html>
