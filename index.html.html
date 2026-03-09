@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ENRI — Dashboard Avanzamento</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-authentication-library/2.38.3/msal-browser.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3347;
+    --accent: #4f8ef7;
+    --text: #e8eaf0;
+    --muted: #6b7080;
+    --attesa: #4a4f6a;
+    --redazione: #c9a227;
+    --firma: #e07b3a;
+    --inviato: #4f8ef7;
+    --protocollato: #2f5496;
+    --integrazione: #cc3333;
+    --ottenuto: #3a8c5c;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 28px; height: 52px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+  }
+  .topbar-left { display: flex; align-items: center; gap: 16px; }
+  .logo { font-size: 13px; font-weight: 600; letter-spacing: 0.12em; color: var(--accent); text-transform: uppercase; }
+  .divider-v { width: 1px; height: 20px; background: var(--border); }
+  .page-title { font-size: 13px; color: var(--muted); }
+  .topbar-right { display: flex; align-items: center; gap: 12px; }
+  .badge { font-size: 11px; font-family: 'DM Mono', monospace; padding: 3px 10px; border-radius: 4px; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); }
+  #statusBadge { transition: all 0.3s; }
+  .badge.ok { border-color: #3a8c5c44; color: #3a8c5c; background: #3a8c5c11; }
+  .badge.err { border-color: #cc333344; color: #cc3333; background: #cc333311; }
+  .btn { font-size: 11px; padding: 5px 14px; border-radius: 5px; background: var(--accent); color: white; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; font-weight: 500; transition: opacity 0.2s; }
+  .btn:hover { opacity: 0.85; }
+  .btn.secondary { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+
+  .main { padding: 20px 28px; display: flex; flex-direction: column; gap: 18px; }
+
+  /* LOGIN SCREEN */
+  #loginScreen {
+    position: fixed; inset: 0; background: var(--bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+    z-index: 100;
+  }
+  #loginScreen h2 { font-size: 22px; font-weight: 600; }
+  #loginScreen p { font-size: 13px; color: var(--muted); text-align: center; max-width: 340px; line-height: 1.6; }
+  .login-btn { font-size: 13px; padding: 10px 28px; border-radius: 8px; background: var(--accent); color: white; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; font-weight: 500; }
+
+  /* LOADING */
+  #loadingBar {
+    position: fixed; top: 0; left: 0; height: 2px;
+    background: var(--accent); width: 0%; transition: width 0.4s;
+    z-index: 999;
+  }
+
+  /* KPI */
+  .kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; position: relative; overflow: hidden; }
+  .kpi::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; }
+  .kpi.attesa::before { background: var(--attesa); }
+  .kpi.redazione::before { background: var(--redazione); }
+  .kpi.firma::before { background: var(--firma); }
+  .kpi.inviato::before { background: var(--inviato); }
+  .kpi.ottenuto::before { background: var(--ottenuto); }
+  .kpi-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 10px; }
+  .kpi-value { font-size: 28px; font-weight: 600; font-family: 'DM Mono', monospace; line-height: 1; }
+  .kpi-sub { font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .kpi.attesa .kpi-value { color: #6b7090; }
+  .kpi.redazione .kpi-value { color: var(--redazione); }
+  .kpi.firma .kpi-value { color: var(--firma); }
+  .kpi.inviato .kpi-value { color: var(--inviato); }
+  .kpi.ottenuto .kpi-value { color: var(--ottenuto); }
+
+  /* GRID */
+  .grid-main { display: grid; grid-template-columns: 1fr 320px; gap: 18px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .card-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .card-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .card-body { padding: 18px; }
+
+  /* BAR CHART */
+  .chart-wrap { display: flex; flex-direction: column; gap: 10px; }
+  .bar-row { display: flex; align-items: center; gap: 10px; }
+  .bar-lotto { font-size: 11px; font-family: 'DM Mono', monospace; color: var(--muted); width: 28px; text-align: right; flex-shrink: 0; }
+  .bar-track { flex: 1; height: 28px; border-radius: 4px; overflow: hidden; display: flex; background: var(--surface2); }
+  .bar-seg { height: 100%; position: relative; cursor: default; }
+  .bar-pct { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--muted); width: 38px; text-align: right; flex-shrink: 0; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 18px; border-top: 1px solid var(--border); }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+  /* SIDE */
+  .side { display: flex; flex-direction: column; gap: 14px; }
+  .spark-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .spark-bar { flex: 1; height: 4px; border-radius: 2px; background: var(--surface2); overflow: hidden; }
+  .spark-fill { height: 100%; border-radius: 2px; transition: width 1s ease; }
+  .spark-val { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--muted); width: 38px; text-align: right; }
+
+  /* TABLE */
+  .lotti-table { width: 100%; border-collapse: collapse; }
+  .lotti-table th { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  .lotti-table td { font-size: 11px; padding: 8px 10px; border-bottom: 1px solid #2e334722; }
+  .lotti-table tr:last-child td { border-bottom: none; }
+  .lotti-table tr:hover td { background: var(--surface2); }
+  .stato-pill { display: inline-block; font-size: 9px; padding: 2px 7px; border-radius: 10px; font-family: 'DM Mono', monospace; }
+
+  /* TOOLTIP */
+  .tooltip {
+    position: fixed; background: #0f1117ee; border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 10px; font-size: 11px;
+    pointer-events: none; z-index: 1000; opacity: 0; transition: opacity 0.15s;
+    font-family: 'DM Mono', monospace;
+  }
+
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .anim { animation: fadeUp 0.4s ease both; }
+</style>
+</head>
+<body>
+
+<div id="loadingBar"></div>
+<div class="tooltip" id="tooltip"></div>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div style="font-size:32px">📊</div>
+  <h2>ENRI · Dashboard Avanzamento</h2>
+  <p>Accedi con il tuo account Microsoft aziendale per visualizzare i dati aggiornati dal file Excel su OneDrive.</p>
+  <button class="login-btn" onclick="login()">Accedi con Microsoft</button>
+</div>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="topbar-left">
+    <span class="logo">ENRI · Progetto</span>
+    <div class="divider-v"></div>
+    <span class="page-title">Avanzamento Progettazione Autorizzazioni</span>
+  </div>
+  <div class="topbar-right">
+    <span class="badge" id="lastUpdate">—</span>
+    <span class="badge" id="statusBadge">⏳ Caricamento</span>
+    <button class="btn secondary" onclick="logout()">Esci</button>
+    <button class="btn" onclick="loadData()">↻ Aggiorna</button>
+  </div>
+</div>
+
+<div class="main" id="mainContent" style="opacity:0">
+
+  <div class="kpi-row" id="kpiRow">
+    <div class="kpi attesa"><div class="kpi-label">In Attesa</div><div class="kpi-value" id="kpi-attesa">—</div><div class="kpi-sub" id="kpisub-attesa">—</div></div>
+    <div class="kpi redazione"><div class="kpi-label">In Redazione</div><div class="kpi-value" id="kpi-redazione">—</div><div class="kpi-sub" id="kpisub-redazione">—</div></div>
+    <div class="kpi firma"><div class="kpi-label">In Firma RDS</div><div class="kpi-value" id="kpi-firma">—</div><div class="kpi-sub" id="kpisub-firma">—</div></div>
+    <div class="kpi inviato"><div class="kpi-label">Inviato / Prot.</div><div class="kpi-value" id="kpi-inviato">—</div><div class="kpi-sub" id="kpisub-inviato">—</div></div>
+    <div class="kpi ottenuto"><div class="kpi-label">Ottenuto</div><div class="kpi-value" id="kpi-ottenuto">—</div><div class="kpi-sub" id="kpisub-ottenuto">—</div></div>
+  </div>
+
+  <div class="grid-main">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Avanzamento per Lotto — % metri</span>
+        <span style="font-size:10px;color:var(--muted)" id="totaleMetri">—</span>
+      </div>
+      <div class="card-body">
+        <div class="chart-wrap" id="chartWrap"></div>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#4a4f6a"></div>In Attesa</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#c9a227"></div>In Redazione</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#e07b3a"></div>In Firma RDS</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#4f8ef7"></div>Inviato</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#2f5496"></div>Protocollato</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#3a8c5c"></div>Ottenuto</div>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Totale Progetto</span></div>
+        <div class="card-body" id="sparkPanel"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Dettaglio Lotti</span></div>
+        <div style="padding:0" id="lottiTable"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CLIENT_ID = '15394969-b65c-44c5-bd45-0b52040a5bd7';
+const TENANT_ID = 'f5f26bc9-8616-4487-8254-8844ed6d8f39';
+const SHARE_URL = 'https://retelitspa-my.sharepoint.com/:x:/g/personal/andrea_indino_ext_retelit_it/IQBdBiDVUk39T4-x7PDPxsvcAcN0MMZavUhxanhIIhC62Tc?e=TNG6sm';
+
+const STATI = ['IN ATTESA','IN REDAZIONE','IN FIRMA RDS','INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'];
+const COLORS = {
+  'IN ATTESA':'#4a4f6a','IN REDAZIONE':'#c9a227','IN FIRMA RDS':'#e07b3a',
+  'INVIATO':'#4f8ef7','PROTOCOLLATO':'#2f5496','NECESSARIA INTEGRAZIONE':'#cc3333',
+  'PROTOCOLLATO INTEGRAZIONE':'#548235','OTTENUTO':'#3a8c5c'
+};
+
+const msalConfig = {
+  auth: { clientId: CLIENT_ID, authority: `https://login.microsoftonline.com/${TENANT_ID}`, redirectUri: window.location.href.split('?')[0] },
+  cache: { cacheLocation: 'sessionStorage' }
+};
+const msalInstance = new msal.PublicClientApplication(msalConfig);
+
+async function login() {
+  try {
+    await msalInstance.loginPopup({ scopes: ['Files.Read', 'User.Read'] });
+    document.getElementById('loginScreen').style.display = 'none';
+    loadData();
+  } catch(e) {
+    alert('Errore login: ' + e.message);
+  }
+}
+
+function logout() {
+  msalInstance.logoutPopup();
+  document.getElementById('loginScreen').style.display = 'flex';
+}
+
+async function getToken() {
+  const accounts = msalInstance.getAllAccounts();
+  if (!accounts.length) return null;
+  const resp = await msalInstance.acquireTokenSilent({ scopes: ['Files.Read'], account: accounts[0] });
+  return resp.accessToken;
+}
+
+function setLoading(pct) {
+  document.getElementById('loadingBar').style.width = pct + '%';
+}
+
+async function loadData() {
+  setLoading(10);
+  const token = await getToken();
+  if (!token) { document.getElementById('loginScreen').style.display = 'flex'; return; }
+
+  try {
+    setLoading(30);
+    // Encode share URL to get file via Graph
+    const encoded = btoa(SHARE_URL).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+    const shareId = 'u!' + encoded;
+    
+    // Get workbook sessions
+    const baseUrl = `https://graph.microsoft.com/v1.0/shares/${shareId}/driveItem`;
+    
+    setLoading(50);
+    // Read the AVANZAMENTO sheet
+    const resp = await fetch(`${baseUrl}/workbook/worksheets/AVANZAMENTO/usedRange`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+
+    if (!resp.ok) throw new Error('Impossibile leggere il file. Verifica che sia condiviso correttamente.');
+    
+    setLoading(80);
+    const json = await resp.json();
+    const rows = json.values;
+    
+    // Parse data: LOTTO, STATO_AUTORIZZAZIONE, Metri, TotaleMetri, Percentuale
+    const headers = rows[0];
+    const idxLotto = headers.indexOf('LOTTO');
+    const idxStato = headers.indexOf('STATO_AUTORIZZAZIONE');
+    const idxMetri = headers.indexOf('Metri');
+    const idxTotale = headers.indexOf('TotaleMetri');
+
+    const data = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r[idxLotto]) continue;
+      data.push({
+        lotto: String(r[idxLotto]),
+        stato: String(r[idxStato] || 'IN ATTESA').trim(),
+        metri: parseFloat(r[idxMetri]) || 0,
+        totale: parseFloat(r[idxTotale]) || 0
+      });
+    }
+
+    setLoading(100);
+    renderDashboard(data);
+    
+    document.getElementById('lastUpdate').textContent = 'Agg. ' + new Date().toLocaleString('it-IT', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    document.getElementById('statusBadge').textContent = '● Aggiornato';
+    document.getElementById('statusBadge').className = 'badge ok';
+    document.getElementById('mainContent').style.opacity = '1';
+    document.getElementById('mainContent').style.transition = 'opacity 0.4s';
+
+    setTimeout(() => setLoading(0), 600);
+
+  } catch(e) {
+    document.getElementById('statusBadge').textContent = '✕ Errore';
+    document.getElementById('statusBadge').className = 'badge err';
+    setLoading(0);
+    console.error(e);
+    alert('Errore nel caricamento dati: ' + e.message);
+  }
+}
+
+function fmt(n) { return n.toLocaleString('it-IT', {maximumFractionDigits:0}); }
+function fmtPct(n) { return (n*100).toFixed(1) + '%'; }
+
+function renderDashboard(data) {
+  // Build lotto -> stato -> metri
+  const lottiMap = {};
+  const lottiTotale = {};
+  data.forEach(d => {
+    if (!lottiMap[d.lotto]) { lottiMap[d.lotto] = {}; lottiTotale[d.lotto] = d.totale; }
+    lottiMap[d.lotto][d.stato] = (lottiMap[d.lotto][d.stato] || 0) + d.metri;
+  });
+
+  const lotti = Object.keys(lottiMap).sort((a,b) => {
+    const order = ['1','1A','1B','2','2A','2B','3','4','5','6','7','8','P'];
+    return order.indexOf(a) - order.indexOf(b);
+  });
+
+  // Global totals
+  let grandTotal = 0;
+  const globalStati = {};
+  lotti.forEach(l => {
+    grandTotal += lottiTotale[l];
+    Object.entries(lottiMap[l]).forEach(([s, m]) => {
+      globalStati[s] = (globalStati[s] || 0) + m;
+    });
+  });
+
+  // KPI
+  const kpiMap = {
+    'attesa': ['IN ATTESA'],
+    'redazione': ['IN REDAZIONE'],
+    'firma': ['IN FIRMA RDS'],
+    'inviato': ['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE'],
+    'ottenuto': ['OTTENUTO']
+  };
+  Object.entries(kpiMap).forEach(([key, stati]) => {
+    const metri = stati.reduce((s,st) => s + (globalStati[st]||0), 0);
+    const pct = grandTotal > 0 ? metri/grandTotal*100 : 0;
+    document.getElementById('kpi-'+key).textContent = pct.toFixed(1) + '%';
+    document.getElementById('kpisub-'+key).textContent = fmt(metri) + ' m';
+  });
+
+  document.getElementById('totaleMetri').textContent = fmt(grandTotal) + ' m totali';
+
+  // Bar chart
+  const wrap = document.getElementById('chartWrap');
+  wrap.innerHTML = '';
+  const tooltip = document.getElementById('tooltip');
+
+  lotti.forEach(lotto => {
+    const tot = lottiTotale[lotto];
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    
+    const avanzato = tot > 0 ? (1 - (lottiMap[lotto]['IN ATTESA']||0)/tot)*100 : 0;
+    
+    let segsHtml = '';
+    STATI.forEach(stato => {
+      const m = lottiMap[lotto][stato] || 0;
+      if (m <= 0) return;
+      const pct = tot > 0 ? m/tot*100 : 0;
+      segsHtml += `<div class="bar-seg" style="width:${pct}%;background:${COLORS[stato]}" 
+        data-tip="${stato}: ${pct.toFixed(1)}% (${fmt(m)} m)"></div>`;
+    });
+
+    row.innerHTML = `
+      <span class="bar-lotto">${lotto}</span>
+      <div class="bar-track">${segsHtml}</div>
+      <span class="bar-pct">${avanzato > 0 ? avanzato.toFixed(0)+'%' : '—'}</span>
+    `;
+
+    // Tooltip
+    row.querySelectorAll('.bar-seg').forEach(seg => {
+      seg.addEventListener('mousemove', e => {
+        tooltip.textContent = seg.getAttribute('data-tip');
+        tooltip.style.opacity = '1';
+        tooltip.style.left = (e.clientX + 12) + 'px';
+        tooltip.style.top = (e.clientY - 28) + 'px';
+      });
+      seg.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
+    });
+
+    wrap.appendChild(row);
+  });
+
+  // Spark panel
+  const spark = document.getElementById('sparkPanel');
+  spark.innerHTML = '';
+  const avanzStati = STATI.filter(s => s !== 'IN ATTESA');
+  avanzStati.forEach(stato => {
+    const m = globalStati[stato] || 0;
+    if (m === 0) return;
+    const pct = grandTotal > 0 ? m/grandTotal*100 : 0;
+    const div = document.createElement('div');
+    div.className = 'spark-row';
+    div.innerHTML = `
+      <span style="font-size:10px;color:var(--muted);width:110px;flex-shrink:0">${stato.replace('IN ','')}</span>
+      <div class="spark-bar"><div class="spark-fill" style="width:${Math.min(pct*5,100)}%;background:${COLORS[stato]}"></div></div>
+      <span class="spark-val">${pct.toFixed(1)}%</span>
+    `;
+    spark.appendChild(div);
+  });
+
+  // Lotti table — only active lotti (not 100% attesa with no data)
+  const tableDiv = document.getElementById('lottiTable');
+  const activeLotti = lotti.filter(l => {
+    const attesa = lottiMap[l]['IN ATTESA'] || 0;
+    return attesa < lottiTotale[l];
+  });
+
+  if (activeLotti.length === 0) {
+    tableDiv.innerHTML = '<div style="padding:16px;font-size:12px;color:var(--muted);text-align:center">Nessun lotto avanzato</div>';
+    return;
+  }
+
+  let tableHtml = `<table class="lotti-table"><thead><tr><th>Lotto</th><th>Totale</th><th>Stato prevalente</th></tr></thead><tbody>`;
+  activeLotti.forEach(lotto => {
+    const tot = lottiTotale[lotto];
+    // Find dominant non-attesa stato
+    let dominante = 'IN ATTESA';
+    let maxM = 0;
+    Object.entries(lottiMap[lotto]).forEach(([s,m]) => {
+      if (s !== 'IN ATTESA' && m > maxM) { maxM = m; dominante = s; }
+    });
+    const pctDom = tot > 0 ? maxM/tot*100 : 0;
+    const col = COLORS[dominante];
+    tableHtml += `<tr>
+      <td><strong>${lotto}</strong></td>
+      <td style="font-family:'DM Mono',monospace;font-size:10px">${fmt(tot)} m</td>
+      <td><span class="stato-pill" style="background:${col}22;color:${col};border:1px solid ${col}44">${pctDom.toFixed(0)}% ${dominante.replace('IN ','')}</span></td>
+    </tr>`;
+  });
+  tableHtml += '</tbody></table>';
+  tableDiv.innerHTML = tableHtml;
+}
+
+// Check if already logged in
+window.addEventListener('load', async () => {
+  await msalInstance.initialize();
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length > 0) {
+    document.getElementById('loginScreen').style.display = 'none';
+    loadData();
+  }
+});
+</script>
+</body>
+</html>
