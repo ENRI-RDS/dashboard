@@ -215,7 +215,7 @@
   <div class="topbar-right">
     <span class="badge" id="lastUpdate" style="display:flex;flex-direction:column;align-items:flex-end;gap:1px;line-height:1.3">—</span>
     <span class="badge" id="statusBadge">⏳ Caricamento</span>
-    <a href="https://qgiscloud.com/andreaindino14/Progetto_ENRI_WEB2/?l=Punti%20Interesse!%2CInterferenze!%2Cinfrastruttura_ENRI%2CSatellite&t=Progetto_ENRI_WEB2&e=1008597%2C5670702%2C1037949%2C5683983" target="_blank" style="font-size:11px;padding:5px 14px;border-radius:5px;background:var(--surface2);color:var(--text);border:1px solid var(--border);cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;text-decoration:none;transition:opacity 0.2s" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1">🗺 Mappa QGIS</a>
+    <a href="mappa.html" style="font-size:11px;padding:5px 14px;border-radius:5px;background:var(--surface2);color:var(--text);border:1px solid var(--border);cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;text-decoration:none;transition:opacity 0.2s" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1">🗺 Mappa</a>
     <button class="btn" onclick="loadData()">↻ Aggiorna</button>
     <button class="btn" style="background:#2f5496" onclick="exportPDF()">⬇ Esporta PDF</button>
   </div>
@@ -382,7 +382,16 @@ async function loadCluster() {
       const cl = cols[iC]?.trim();
       if (!cl) continue;
       const stato = cols[iS]?.trim() || 'IN ATTESA';
-      const lungh = parseFloat((cols[iL]||'0').replace(/\./g,'').replace(',','.')) || 0;
+      const lunghRaw = (cols[iL]||'0').trim();
+      // Gestisce sia formato italiano (1.365,27) che internazionale (1365.27 o 136.27)
+      let lungh = 0;
+      if (lunghRaw.includes(',')) {
+        // Formato italiano: virgola=decimale, punto=migliaia
+        lungh = parseFloat(lunghRaw.replace(/\./g,'').replace(',','.')) || 0;
+      } else {
+        // Formato internazionale: punto=decimale
+        lungh = parseFloat(lunghRaw.replace(/,/g,'')) || 0;
+      }
       if (!clMap[cl]) { clMap[cl] = {}; clTot[cl] = 0; }
       clMap[cl][stato] = (clMap[cl][stato] || 0) + lungh;
       clTot[cl] += lungh;
