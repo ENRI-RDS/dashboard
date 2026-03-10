@@ -43,8 +43,7 @@
     .kpi { padding: 8px 10px !important; }
     .kpi-value { font-size: 18px !important; }
     .kpi-label { font-size: 8px !important; margin-bottom: 4px !important; }
-    .kpi-sub { font-size: 9px !important; margin-top: 2px !important; }
-    .grid-main { grid-template-columns: 1fr 240px !important; gap: 8px !important; }
+    .kpi-sub { font-size: 9px !important; margin-top: 2px !important; }    .grid-main { grid-template-columns: 1fr 240px !important; gap: 8px !important; }
     .card { break-inside: avoid; }
     .card-body { padding: 6px 10px !important; }
     .bar-row { min-height: 24px !important; margin-bottom: 3px !important; }
@@ -76,7 +75,7 @@
   .kpi.ottenuto::before { background: var(--ottenuto); }
   .kpi-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 10px; }
   .kpi-value { font-size: 28px; font-weight: 600; font-family: 'DM Mono', monospace; line-height: 1; }
-  .kpi-sub { font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .kpi-sub { font-size: 13px; color: var(--text); margin-top: 6px; font-family: 'DM Mono', monospace; }
   .kpi.attesa .kpi-value { color: #6b7090; }
   .kpi.redazione .kpi-value { color: var(--redazione); }
   .kpi.firma .kpi-value { color: var(--firma); }
@@ -248,7 +247,7 @@
     <div class="card">
       <div class="card-header">
         <span class="card-title">Avanzamento per Lotto — % Ottenuto</span>
-        <span style="font-size:10px;color:var(--muted)" id="totaleMetri">—</span>
+        <span style="font-size:14px;font-weight:600;font-family:'DM Mono',monospace;color:var(--text)" id="totaleMetri">—</span>
       </div>
       <div class="card-body">
         <div class="bar-row" style="margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--border)">
@@ -287,10 +286,6 @@
     </div>
     <div class="side">
       <div class="card">
-        <div class="card-header"><span class="card-title">Totale Progetto</span></div>
-        <div class="card-body" id="sparkPanel"></div>
-      </div>
-      <div class="card">
         <div class="card-header"><span class="card-title">Dettaglio Lotti Attivi</span></div>
         <div id="lottiTable"></div>
       </div>
@@ -310,7 +305,7 @@
   <div class="card">
     <div class="card-header">
       <span class="card-title">Avanzamento per Cluster — % Ottenuto</span>
-      <span style="font-size:10px;color:var(--muted)" id="clusterStatus">—</span>
+      <span style="font-size:14px;font-weight:600;font-family:'DM Mono',monospace;color:var(--text)" id="clusterStatus">—</span>
     </div>
     <div class="card-body">
       <div class="chart-wrap" id="clusterWrap"><div style="padding:16px;font-size:12px;color:var(--muted)">Caricamento riepilogo.csv...</div></div>
@@ -734,7 +729,9 @@ function renderDashboard(data, prevSnapshot=null) {
     if (!lottiMap[d.lotto]){lottiMap[d.lotto]={};lottiTotale[d.lotto]=d.totale;}
     lottiMap[d.lotto][d.stato]=(lottiMap[d.lotto][d.stato]||0)+d.metri;
   });
-  const ORDER=['1','1A','1B','2','2A','2B','3','4','5','6','7','8','P'];
+  const ORDER_ATTIVI  = ['1A','1B','2A','2B'];
+  const ORDER_FUTURI  = ['1','2','3','4','5','6','7','8','P'];
+  const ORDER = [...ORDER_ATTIVI, ...ORDER_FUTURI];
   const lotti=Object.keys(lottiMap).sort((a,b)=>{const ia=ORDER.indexOf(a),ib=ORDER.indexOf(b);return(ia<0?99:ia)-(ib<0?99:ib);});
   let grandTotal=0;
   const globalStati={};
@@ -777,7 +774,31 @@ function renderDashboard(data, prevSnapshot=null) {
   const wrap=document.getElementById('chartWrap');
   wrap.innerHTML='';
   const tooltip=document.getElementById('tooltip');
+
+  // Separatore gruppo attivi
+  const sepAttivi = document.createElement('div');
+  sepAttivi.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;margin-top:2px';
+  sepAttivi.innerHTML = `
+    <div style="width:90px;flex-shrink:0"></div>
+    <div style="flex:1;display:flex;align-items:center;gap:8px">
+      <span style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);white-space:nowrap;background:#4f8ef712;border:1px solid #4f8ef733;border-radius:4px;padding:2px 8px">⚡ Lotti Attivi</span>
+      <div style="flex:1;height:1px;background:linear-gradient(to right,#4f8ef755,transparent)"></div>
+    </div>`;
+  wrap.appendChild(sepAttivi);
+
   lotti.forEach(lotto=>{
+    // Separatore prima dei lotti futuri
+    if (lotto === ORDER_FUTURI[0] && lotti.some(l => ORDER_ATTIVI.includes(l))) {
+      const sepFuturi = document.createElement('div');
+      sepFuturi.style.cssText = 'display:flex;align-items:center;gap:10px;margin-top:12px;margin-bottom:8px';
+      sepFuturi.innerHTML = `
+        <div style="width:90px;flex-shrink:0"></div>
+        <div style="flex:1;display:flex;align-items:center;gap:8px">
+          <span style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:var(--muted);white-space:nowrap;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px">🔜 Lotti in Avvio</span>
+          <div style="flex:1;height:1px;background:linear-gradient(to right,#6b708055,transparent)"></div>
+        </div>`;
+      wrap.appendChild(sepFuturi);
+    }
     const tot=lottiTotale[lotto];
     const ottenutoPct=tot>0?(lottiMap[lotto]['OTTENUTO']||0)/tot*100:0;
     const pctLabel = ottenutoPct>0 ? ottenutoPct.toFixed(0)+'%' : '—';
@@ -815,27 +836,6 @@ function renderDashboard(data, prevSnapshot=null) {
 
   // Totale Progetto — metri per stato
   const STATI_INATTIVI = ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'];
-
-  const spark=document.getElementById('sparkPanel');
-  spark.innerHTML='';
-  STATI.filter(s=>!STATI_INATTIVI.includes(s)).forEach(stato=>{
-    const m=globalStati[stato]||0;
-    if(!m)return;
-    const pct=grandTotal>0?m/grandTotal*100:0;
-    const div=document.createElement('div');
-    div.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #2e334722;';
-    div.innerHTML=`
-      <div style="display:flex;align-items:center;gap:8px">
-        <div style="width:8px;height:8px;border-radius:2px;background:${COLORS[stato]};flex-shrink:0"></div>
-        <span style="font-size:11px;color:var(--muted)">${stato.replace('IN ','')}</span>
-      </div>
-      <div style="text-align:right">
-        <div style="font-size:13px;font-weight:600;font-family:'DM Mono',monospace;color:${COLORS[stato]}">${fmt(m)} m</div>
-        <div style="font-size:10px;color:var(--muted)">${pct.toFixed(1)}%</div>
-      </div>
-    `;
-    spark.appendChild(div);
-  });
 
   // Dettaglio lotti attivi — escludi lotti dove tutti i metri sono IN ATTESA/REDAZIONE
   const tableDiv=document.getElementById('lottiTable');
