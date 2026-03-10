@@ -1,403 +1,140 @@
 <!DOCTYPE html>
-<html lang="it" translate="no">
+<html lang="it">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="google" content="notranslate">
-<title>ENRI — Mappa Avanzamento</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<title>Mappa Avanzamento</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
 <style>
-  :root {
-    --bg: #0f1117; --surface: #1a1d27; --surface2: #22263a; --border: #2e3347;
-    --accent: #4f8ef7; --text: #e8eaf0; --muted: #6b7080;
-  }
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; overflow:hidden; }
 
-  /* TOPBAR */
-  .topbar { display:flex; align-items:center; gap:16px; padding:0 24px; height:52px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; z-index:1000; }
-  .logo { font-size:13px; font-weight:600; letter-spacing:0.12em; color:var(--accent); white-space:nowrap; }
-  .divider-v { width:1px; height:20px; background:var(--border); flex-shrink:0; }
-  .page-title { font-size:13px; color:var(--muted); white-space:nowrap; }
-  .topbar-right { margin-left:auto; display:flex; align-items:center; gap:10px; }
-  .btn { font-size:11px; padding:5px 14px; border-radius:5px; background:var(--accent); color:white; border:none; cursor:pointer; font-family:'DM Sans',sans-serif; font-weight:500; transition:opacity 0.2s; white-space:nowrap; text-decoration:none; display:inline-flex; align-items:center; gap:5px; }
-  .btn:hover { opacity:0.85; }
-  .btn.secondary { background:var(--surface2); border:1px solid var(--border); color:var(--muted); }
-  .btn.secondary:hover { color:var(--text); }
-  .badge { font-size:11px; padding:3px 10px; border-radius:4px; background:var(--surface2); border:1px solid var(--border); color:var(--muted); }
-  .badge.ok { border-color:#3a8c5c44; color:#3a8c5c; background:#3a8c5c11; }
+body{
+margin:0;
+font-family:Arial;
+background:#0f1117;
+color:white;
+}
 
-  /* LAYOUT */
-  .wrap { display:flex; flex:1; overflow:hidden; position:relative; }
-  #map { flex:1; }
+#map{
+height:100vh;
+width:100%;
+}
 
-  /* SIDEBAR */
-  .sidebar { width:260px; background:var(--surface); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; flex-shrink:0; transition:transform 0.3s; }
-  .sidebar-head { padding:14px 16px 10px; border-bottom:1px solid var(--border); flex-shrink:0; }
-  .sidebar-title { font-size:10px; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); margin-bottom:10px; }
-  .filter-row { display:flex; flex-wrap:wrap; gap:5px; }
-  .filter-btn { font-size:10px; padding:3px 9px; border-radius:12px; border:1px solid var(--border); background:var(--surface2); color:var(--muted); cursor:pointer; transition:all 0.15s; font-family:'DM Sans',sans-serif; }
-  .filter-btn:hover { border-color:var(--accent); color:var(--text); }
-  .filter-btn.active { background:var(--accent); border-color:var(--accent); color:white; }
-  .sidebar-body { flex:1; overflow-y:auto; }
-  .sidebar-body::-webkit-scrollbar { width:4px; }
-  .sidebar-body::-webkit-scrollbar-track { background:transparent; }
-  .sidebar-body::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+.topbar{
+position:absolute;
+top:10px;
+left:10px;
+z-index:1000;
+background:#1a1d27;
+padding:10px 15px;
+border-radius:8px;
+box-shadow:0 0 10px rgba(0,0,0,0.4);
+}
 
-  /* LOTTO ITEMS */
-  .lotto-item { padding:10px 16px; border-bottom:1px solid #2e334718; cursor:pointer; transition:background 0.15s; display:flex; align-items:center; gap:10px; }
-  .lotto-item:hover { background:var(--surface2); }
-  .lotto-item.active { background:#4f8ef712; border-left:3px solid var(--accent); padding-left:13px; }
-  .lotto-color { width:4px; height:36px; border-radius:2px; flex-shrink:0; }
-  .lotto-info { flex:1; min-width:0; }
-  .lotto-num { font-size:13px; font-weight:600; font-family:'DM Mono',monospace; }
-  .lotto-impresa { font-size:10px; color:var(--accent); }
-  .lotto-sub { font-size:9px; color:var(--muted); margin-top:2px; }
-  .lotto-pct { font-size:13px; font-weight:700; font-family:'DM Mono',monospace; text-align:right; flex-shrink:0; }
-  .lotto-bar { height:3px; background:var(--surface2); border-radius:2px; margin-top:4px; overflow:hidden; }
-  .lotto-bar-fill { height:100%; border-radius:2px; transition:width 0.5s; }
-
-  /* LEGEND */
-  .legend { padding:12px 16px; border-top:1px solid var(--border); flex-shrink:0; }
-  .legend-title { font-size:9px; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); margin-bottom:8px; }
-  .legend-item { display:flex; align-items:center; gap:8px; font-size:10px; color:var(--muted); margin-bottom:5px; }
-  .legend-line { width:20px; height:4px; border-radius:2px; flex-shrink:0; }
-
-  /* POPUP */
-  .leaflet-popup-content-wrapper { background:var(--surface)!important; border:1px solid var(--border)!important; border-radius:10px!important; color:var(--text)!important; box-shadow:0 8px 32px #0008!important; padding:0!important; }
-  .leaflet-popup-content { margin:0!important; }
-  .leaflet-popup-tip-container { display:none; }
-  .leaflet-popup-close-button { color:var(--muted)!important; font-size:18px!important; top:10px!important; right:12px!important; }
-  .popup-inner { padding:16px 18px; min-width:200px; }
-  .popup-header { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--border); }
-  .popup-lotto { font-size:16px; font-weight:700; font-family:'DM Mono',monospace; }
-  .popup-impresa { font-size:11px; color:var(--accent); }
-  .popup-row { display:flex; justify-content:space-between; align-items:center; font-size:11px; margin-bottom:5px; }
-  .popup-row .label { color:var(--muted); }
-  .popup-row .val { font-family:'DM Mono',monospace; font-size:11px; }
-  .popup-stato { display:inline-block; font-size:10px; padding:2px 8px; border-radius:10px; font-family:'DM Mono',monospace; margin-top:6px; }
-  .popup-pct-bar { height:5px; background:var(--surface2); border-radius:3px; margin-top:10px; overflow:hidden; }
-  .popup-pct-fill { height:100%; border-radius:3px; }
-
-  /* LOADING */
-  #loadingOverlay { position:absolute; inset:0; background:var(--bg); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; z-index:2000; }
-  .spinner { width:36px; height:36px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; }
-  @keyframes spin { to { transform:rotate(360deg); } }
-  .loading-text { font-size:13px; color:var(--muted); }
-
-  /* MAP DARK */
-  .leaflet-container { background:#0d0f18!important; }
-  .leaflet-tile { filter:brightness(0.55) saturate(0.3) hue-rotate(190deg); }
-  .leaflet-control-zoom a { background:var(--surface)!important; color:var(--text)!important; border-color:var(--border)!important; }
-  .leaflet-control-zoom a:hover { background:var(--surface2)!important; }
-  .leaflet-control-attribution { background:#0f111788!important; color:var(--muted)!important; font-size:9px!important; }
-  .leaflet-control-attribution a { color:var(--muted)!important; }
-
-  /* STATS BAR */
-  .stats-bar { position:absolute; bottom:16px; left:16px; z-index:500; display:flex; gap:8px; flex-wrap:wrap; }
-  .stat-pill { background:#0f1117cc; backdrop-filter:blur(8px); border:1px solid var(--border); border-radius:20px; padding:5px 14px; font-size:11px; display:flex; align-items:center; gap:6px; }
-  .stat-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
 </style>
 </head>
+
 <body>
 
 <div class="topbar">
-  <span class="logo">PROGETTO · ENRI</span>
-  <div class="divider-v"></div>
-  <span class="page-title">Mappa Avanzamento Autorizzazioni</span>
-  <div class="topbar-right">
-    <span class="badge ok" id="statusBadge">⏳ Caricamento</span>
-    <a href="index.html" class="btn secondary">← Dashboard</a>
-  </div>
+<b>PROGETTO ENRI</b><br>
+Mappa avanzamento autorizzazioni
 </div>
 
-<div class="wrap">
-  <div id="loadingOverlay">
-    <div class="spinner"></div>
-    <div class="loading-text">Caricamento tracciati...</div>
-  </div>
+<div id="map"></div>
 
-  <div id="map"></div>
-
-  <div class="stats-bar" id="statsBar"></div>
-
-  <div class="sidebar">
-    <div class="sidebar-head">
-      <div class="sidebar-title">Filtra per lotto</div>
-      <div class="filter-row" id="filterRow"></div>
-    </div>
-    <div class="sidebar-body" id="lottoList"></div>
-    <div class="legend">
-      <div class="legend-title">Stato autorizzazione</div>
-      <div class="legend-item"><div class="legend-line" style="background:#4a4f6a"></div>In Attesa</div>
-      <div class="legend-item"><div class="legend-line" style="background:#c9a227"></div>In Redazione</div>
-      <div class="legend-item"><div class="legend-line" style="background:#e07b3a"></div>In Firma RDS</div>
-      <div class="legend-item"><div class="legend-line" style="background:#4f8ef7"></div>Inviato</div>
-      <div class="legend-item"><div class="legend-line" style="background:#2f5496"></div>Protocollato</div>
-      <div class="legend-item"><div class="legend-line" style="background:#cc3333"></div>Necessaria Integrazione</div>
-      <div class="legend-item"><div class="legend-line" style="background:#548235"></div>Protocollato Integrazione</div>
-      <div class="legend-item"><div class="legend-line" style="background:#3a8c5c"></div>Ottenuto</div>
-    </div>
-  </div>
-</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-const STATO_COLORS = {
-  'IN ATTESA':                    '#4a4f6a',
-  'IN REDAZIONE':                 '#c9a227',
-  'IN FIRMA RDS':                 '#e07b3a',
-  'INVIATO':                      '#4f8ef7',
-  'PROTOCOLLATO':                 '#2f5496',
-  'NECESSARIA INTEGRAZIONE':      '#cc3333',
-  'IN REDAZIONE INTEGRAZIONE':    '#c9a227',
-  'PROTOCOLLATO INTEGRAZIONE':    '#548235',
-  'OTTENUTO':                     '#3a8c5c',
-};
 
-const IMPRESE = { '1A':'Valtellina', '1B':'Soleto', '2A':'Sielte', '2B':'Telebit' };
+const STATO_COLORI = {
 
-const LOTTO_ORDER = ['1','1A','1B','2','2A','2B','3','4','5','6','7','8'];
+"IN ATTESA":"#4a4f6a",
+"IN REDAZIONE":"#c9a227",
+"IN FIRMA RDS":"#e07b3a",
+"INVIATO":"#4f8ef7",
+"PROTOCOLLATO":"#2f5496",
+"NECESSARIA INTEGRAZIONE":"#cc3333",
+"PROTOCOLLATO INTEGRAZIONE":"#548235",
+"OTTENUTO":"#3a8c5c"
 
-let map, allLayers = [], activeLotto = null, currentFilter = 'TUTTI';
-let lottoStats = {};
-
-// Init map
-map = L.map('map', {
-  center: [45.48, 9.30],
-  zoom: 10,
-  zoomControl: true,
-  attributionControl: true
-});
-
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '© OpenStreetMap'
-}).addTo(map);
-
-function getColor(stato) {
-  return STATO_COLORS[stato] || '#4a4f6a';
 }
 
-function fmtMetri(m) {
-  if (!m) return '—';
-  return (m/1000).toFixed(2).replace('.',',') + ' km';
+function colore(stato){
+return STATO_COLORI[stato] || "#4a4f6a"
 }
 
-function makePopupHtml(props) {
-  const color = getColor(props.STATO_AUTORIZZAZIONE);
-  const impresa = IMPRESE[props.LOTTO] || '—';
-  return `<div class="popup-inner">
-    <div class="popup-header">
-      <span class="popup-lotto">Lotto ${props.LOTTO}</span>
-      ${IMPRESE[props.LOTTO] ? `<span class="popup-impresa">${impresa}</span>` : ''}
-    </div>
-    <div class="popup-row"><span class="label">Tratta</span><span class="val">${props.TRATTA_ID||'—'}</span></div>
-    <div class="popup-row"><span class="label">Comune</span><span class="val">${props.COMUNE||'—'}</span></div>
-    <div class="popup-row"><span class="label">Provincia</span><span class="val">${props.PROVINCIA||'—'}</span></div>
-    <div class="popup-row"><span class="label">Ente</span><span class="val" style="max-width:130px;text-align:right">${props.ENTE||'—'}</span></div>
-    <div class="popup-row"><span class="label">Tipologia</span><span class="val">${props.TIPOLOGIA||'—'}</span></div>
-    <div class="popup-row"><span class="label">Lunghezza</span><span class="val">${fmtMetri(props.LUNGHEZZA)}</span></div>
-    <div class="popup-row"><span class="label">Cluster</span><span class="val">${props.CLUSTER||'—'}</span></div>
-    <div style="margin-top:8px">
-      <span class="popup-stato" style="background:${color}22;color:${color};border:1px solid ${color}44">${props.STATO_AUTORIZZAZIONE||'—'}</span>
-    </div>
-  </div>`;
+const map = L.map('map').setView([45.4,9.2],9)
+
+L.tileLayer(
+'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+{ attribution:'© OpenStreetMap'}
+).addTo(map)
+
+
+function popupHTML(p){
+
+return `
+<b>Lotto:</b> ${p.LOTTO || "-"}<br>
+<b>Comune:</b> ${p.COMUNE || "-"}<br>
+<b>Provincia:</b> ${p.PROVINCIA || "-"}<br>
+<b>Ente:</b> ${p.ENTE || "-"}<br>
+<b>Tipologia:</b> ${p.TIPOLOGIA || "-"}<br>
+<b>Stato:</b> ${p.STATO_AUTORIZZAZIONE || "-"}
+`
+
 }
 
-async function loadGeoJSON() {
-  const resp = await fetch('QGIS.geojson?t=' + Date.now());
-  if (!resp.ok) throw new Error('QGIS.geojson non trovato');
-  return await resp.json();
+async function carica(){
+
+try{
+
+const res = await fetch("QGIS.geojson")
+
+const geo = await res.json()
+
+const layer = L.geoJSON(geo,{
+
+style:function(f){
+
+return{
+color:colore(f.properties.STATO_AUTORIZZAZIONE),
+weight:4
 }
 
-function buildLottoStats(features) {
-  const stats = {};
-  features.forEach(f => {
-    const p = f.properties;
-    const lotto = p.LOTTO;
-    if (!lotto || lotto === 'P') return;
-    if (!stats[lotto]) stats[lotto] = { totale: 0, ottenuto: 0, stati: {} };
-    const l = p.LUNGHEZZA || 0;
-    stats[lotto].totale += l;
-    if (p.STATO_AUTORIZZAZIONE === 'OTTENUTO') stats[lotto].ottenuto += l;
-    const s = p.STATO_AUTORIZZAZIONE || 'IN ATTESA';
-    stats[lotto].stati[s] = (stats[lotto].stati[s] || 0) + l;
-  });
-  // pct
-  Object.keys(stats).forEach(k => {
-    stats[k].pct = stats[k].totale > 0 ? (stats[k].ottenuto / stats[k].totale * 100) : 0;
-    // stato prevalente (escluso IN ATTESA se ci sono altri)
-    const nonAttesa = Object.entries(stats[k].stati).filter(([s]) => s !== 'IN ATTESA');
-    if (nonAttesa.length > 0) {
-      stats[k].statoLabel = nonAttesa.sort((a,b) => b[1]-a[1])[0][0];
-    } else {
-      stats[k].statoLabel = 'IN ATTESA';
-    }
-  });
-  return stats;
+},
+
+onEachFeature:function(feature,layer){
+
+layer.bindPopup(
+popupHTML(feature.properties)
+)
+
 }
 
-function renderSidebar(stats) {
-  // Filtri
-  const filterRow = document.getElementById('filterRow');
-  filterRow.innerHTML = '';
-  const btnTutti = document.createElement('button');
-  btnTutti.className = 'filter-btn active';
-  btnTutti.textContent = 'Tutti';
-  btnTutti.onclick = () => applyFilter('TUTTI');
-  filterRow.appendChild(btnTutti);
+})
 
-  LOTTO_ORDER.forEach(id => {
-    if (!stats[id]) return;
-    const btn = document.createElement('button');
-    btn.className = 'filter-btn';
-    btn.id = 'fbtn-' + id;
-    btn.textContent = id;
-    btn.onclick = () => applyFilter(id);
-    filterRow.appendChild(btn);
-  });
+layer.addTo(map)
 
-  // Lista lotti
-  const list = document.getElementById('lottoList');
-  list.innerHTML = '';
-  LOTTO_ORDER.forEach(id => {
-    const s = stats[id];
-    if (!s) return;
-    const color = getColor(s.statoLabel);
-    const pct = s.pct.toFixed(1);
-    const div = document.createElement('div');
-    div.className = 'lotto-item';
-    div.id = 'li-' + id;
-    div.innerHTML = `
-      <div class="lotto-color" style="background:${color}"></div>
-      <div class="lotto-info">
-        <div class="lotto-num">Lotto ${id}</div>
-        ${IMPRESE[id] ? `<div class="lotto-impresa">${IMPRESE[id]}</div>` : ''}
-        <div class="lotto-sub">${(s.totale/1000).toFixed(1).replace('.',',')} km · ${s.statoLabel}</div>
-        <div class="lotto-bar"><div class="lotto-bar-fill" style="width:${pct}%;background:#3a8c5c"></div></div>
-      </div>
-      <div class="lotto-pct" style="color:#3a8c5c">${pct}%</div>`;
-    div.onclick = () => zoomLotto(id);
-    list.appendChild(div);
-  });
+map.fitBounds(layer.getBounds())
+
 }
 
-function applyFilter(lotto) {
-  currentFilter = lotto;
-  // Aggiorna bottoni
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  if (lotto === 'TUTTI') {
-    document.querySelector('.filter-btn').classList.add('active');
-  } else {
-    const fb = document.getElementById('fbtn-' + lotto);
-    if (fb) fb.classList.add('active');
-  }
-  // Mostra/nascondi layer
-  allLayers.forEach(({layer, lotto: l}) => {
-    if (lotto === 'TUTTI' || l === lotto) {
-      if (!map.hasLayer(layer)) map.addLayer(layer);
-    } else {
-      if (map.hasLayer(layer)) map.removeLayer(layer);
-    }
-  });
-  // Zoom sul lotto
-  if (lotto !== 'TUTTI') {
-    zoomLotto(lotto);
-  } else {
-    const group = L.featureGroup(allLayers.map(x => x.layer));
-    map.fitBounds(group.getBounds(), { padding: [40, 40] });
-  }
+catch(err){
+
+alert("Errore caricamento GeoJSON")
+
+console.error(err)
+
 }
 
-function zoomLotto(id) {
-  // Highlight sidebar
-  document.querySelectorAll('.lotto-item').forEach(el => el.classList.remove('active'));
-  const li = document.getElementById('li-' + id);
-  if (li) { li.classList.add('active'); li.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-
-  // Zoom mappa
-  const layers = allLayers.filter(x => x.lotto === id).map(x => x.layer);
-  if (layers.length > 0) {
-    const group = L.featureGroup(layers);
-    map.fitBounds(group.getBounds(), { padding: [60, 60], maxZoom: 13 });
-  }
 }
 
-function buildStatsBar(stats) {
-  const bar = document.getElementById('statsBar');
-  bar.innerHTML = '';
-  let totTot = 0, totOtt = 0;
-  Object.values(stats).forEach(s => { totTot += s.totale; totOtt += s.ottenuto; });
-  const pct = totTot > 0 ? (totOtt/totTot*100).toFixed(1) : '0.0';
+carica()
 
-  const items = [
-    { color: '#3a8c5c', label: `🏆 ${pct}% Autorizzato` },
-    { color: '#4a4f6a', label: `${(totTot/1000).toFixed(0)} km totali` },
-    { color: '#4f8ef7', label: `${Object.keys(stats).length} lotti attivi` },
-  ];
-  items.forEach(({color, label}) => {
-    const pill = document.createElement('div');
-    pill.className = 'stat-pill';
-    pill.innerHTML = `<div class="stat-dot" style="background:${color}"></div><span style="color:var(--text)">${label}</span>`;
-    bar.appendChild(pill);
-  });
-}
-
-// Main
-(async () => {
-  try {
-    const geojson = await loadGeoJSON();
-    const features = geojson.features.filter(f => f.properties.LOTTO !== 'P');
-    lottoStats = buildLottoStats(features);
-
-    // Raggruppa per lotto e aggiungi layer
-    const lottoGroups = {};
-    features.forEach(f => {
-      const lotto = f.properties.LOTTO;
-      if (!lottoGroups[lotto]) lottoGroups[lotto] = [];
-      lottoGroups[lotto].push(f);
-    });
-
-    Object.entries(lottoGroups).forEach(([lotto, feats]) => {
-      const layer = L.geoJSON({ type:'FeatureCollection', features: feats }, {
-        style: f => ({
-          color: getColor(f.properties.STATO_AUTORIZZAZIONE),
-          weight: 3,
-          opacity: 0.85,
-          smoothFactor: 1.5
-        }),
-        onEachFeature: (f, layer) => {
-          layer.bindPopup(makePopupHtml(f.properties), { maxWidth: 280 });
-          layer.on('mouseover', e => {
-            e.target.setStyle({ weight: 6, opacity: 1 });
-            e.target.bringToFront();
-          });
-          layer.on('mouseout', e => {
-            e.target.setStyle({ weight: 3, opacity: 0.85 });
-          });
-        }
-      }).addTo(map);
-      allLayers.push({ layer, lotto });
-    });
-
-    // Fit bounds
-    const allGroup = L.featureGroup(allLayers.map(x => x.layer));
-    map.fitBounds(allGroup.getBounds(), { padding: [40, 40] });
-
-    renderSidebar(lottoStats);
-    buildStatsBar(lottoStats);
-
-    document.getElementById('statusBadge').textContent = '● ' + features.length + ' tratte caricate';
-    document.getElementById('statusBadge').className = 'badge ok';
-    document.getElementById('loadingOverlay').style.display = 'none';
-
-  } catch(e) {
-    document.getElementById('loadingOverlay').innerHTML = `
-      <div style="color:#cc3333;font-size:14px">⚠ Errore caricamento</div>
-      <div style="color:var(--muted);font-size:12px">${e.message}</div>`;
-  }
-})();
 </script>
+
 </body>
 </html>
