@@ -340,7 +340,7 @@ const COLORS = {
   'OTTENUTO':                   '#3a8c5c'
 };
 const CSV_URL = 'dati.csv';
-const RIEPILOGO_URL = 'Riepilogo.csv';
+const RIEPILOGO_URL = 'riepilogo.csv';
 
 const COMUNI_PER_LOTTO = {
   '1':  'Bergamo · Curno · Dalmine',
@@ -625,16 +625,18 @@ async function loadData(saveSnapshot = false) {
     }
 
     setLoading(100);
-    renderDashboard(data, prevSnapshot);
+    // Confronta dati attuali con snapshot per decidere se mostrare delta
+    const hasDiff = prevSnapshot && dataHash !== prevHash;
+    renderDashboard(data, hasDiff ? prevSnapshot : null);
 
     const oggi = new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
-    const vsLabel = prevSnapshot
+    const vsLabel = hasDiff
       ? new Date(prevSnapshot.ts).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})
       : null;
     const lu = document.getElementById('lastUpdate');
     lu.innerHTML = vsLabel
       ? `<span style="font-size:11px;color:var(--text)">📅 ${oggi}</span><span style="font-size:9px;color:#c9a227">⟳ vs ${vsLabel}</span>`
-      : `<span style="font-size:11px;color:var(--text)">📅 ${oggi}</span><span style="font-size:9px;color:var(--muted)">Primo caricamento</span>`;
+      : `<span style="font-size:11px;color:var(--text)">📅 ${oggi}</span><span style="font-size:9px;color:var(--muted)">Nessuna variazione</span>`;
     document.getElementById('statusBadge').textContent = '● Aggiornato';
     document.getElementById('statusBadge').className = 'badge ok';
     document.getElementById('loadingScreen').style.display = 'none';
