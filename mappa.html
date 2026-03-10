@@ -37,7 +37,7 @@
   .sidebar { width:260px; background:var(--surface); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; flex-shrink:0; transition:transform 0.3s; }
   .sidebar-head { padding:14px 16px 10px; border-bottom:1px solid var(--border); flex-shrink:0; }
   .sidebar-title { font-size:10px; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); margin-bottom:10px; }
-  .filter-row { display:flex; flex-wrap:wrap; gap:5px; }
+  .filter-row { display:flex; flex-wrap:wrap; gap:5px; align-items:center; }
   .filter-btn { font-size:10px; padding:3px 9px; border-radius:12px; border:1px solid var(--border); background:var(--surface2); color:var(--muted); cursor:pointer; transition:all 0.15s; font-family:'DM Sans',sans-serif; }
   .filter-btn:hover { border-color:var(--accent); color:var(--text); }
   .filter-btn.active { background:var(--accent); border-color:var(--accent); color:white; }
@@ -158,7 +158,9 @@ const STATO_COLORS = {
 
 const IMPRESE = { '1A':'Valtellina', '1B':'Soleto', '2A':'Sielte', '2B':'Telebit' };
 
-const LOTTO_ORDER = ['1','1A','1B','2','2A','2B','3','4','5','6','7','8'];
+const LOTTO_ORDER = ['1A','1B','2A','2B','1','2','3','4','5','6','7','8'];
+const LOTTI_ATTIVI = ['1A','1B','2A','2B'];
+const LOTTI_AVVIO  = ['1','2','3','4','5','6','7','8'];
 
 let map, allLayers = [], activeLotto = null, currentFilter = 'TUTTI';
 let lottoStats = {};
@@ -248,7 +250,28 @@ function renderSidebar(stats) {
   btnTutti.onclick = () => applyFilter('TUTTI');
   filterRow.appendChild(btnTutti);
 
-  LOTTO_ORDER.forEach(id => {
+  // Separatore Attivi
+  const lblAttivi = document.createElement('span');
+  lblAttivi.style.cssText = 'font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--accent);align-self:center;margin-left:6px;margin-right:2px;';
+  lblAttivi.textContent = '⚡';
+  filterRow.appendChild(lblAttivi);
+
+  LOTTI_ATTIVI.forEach(id => {
+    if (!stats[id]) return;
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn';
+    btn.id = 'fbtn-' + id;
+    btn.textContent = id;
+    btn.onclick = () => applyFilter(id);
+    filterRow.appendChild(btn);
+  });
+
+  // Separatore Avvio
+  const sep = document.createElement('span');
+  sep.style.cssText = 'width:1px;height:16px;background:var(--border);align-self:center;margin:0 6px;';
+  filterRow.appendChild(sep);
+
+  LOTTI_AVVIO.forEach(id => {
     if (!stats[id]) return;
     const btn = document.createElement('button');
     btn.className = 'filter-btn';
