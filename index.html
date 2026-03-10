@@ -31,38 +31,51 @@
   #loadingScreen { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; z-index: 100; }
   .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
   @media print {
-    @page { size: A4 landscape; margin: 6mm; }
-    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    html, body { height: auto !important; overflow: visible !important; }
-    body { background: #0f1117 !important; color: #e8eaf0 !important; font-size: 10px !important; }
-    .topbar { height: 32px !important; padding: 0 12px !important; flex-shrink: 0; }
-    .topbar img { height: 18px !important; }
-    .topbar-right .btn, .topbar-right a { display: none !important; }
+    @page { size: A4 landscape; margin: 0; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box !important; }
+    html, body { width: 297mm; height: 210mm; overflow: hidden !important; margin: 0; padding: 0; background: #0f1117 !important; }
+    /* Nasconde tutto ciò che causa pagina extra */
+    #clusterSection { display: none !important; }
+    #msLegendBar { display: none !important; }
     #loadingBar, #loadingScreen, #errorBox { display: none !important; }
-    .main { padding: 4px 8px !important; gap: 6px !important; overflow: visible !important; height: auto !important; }
-    .kpi-row { gap: 5px !important; }
-    .kpi { padding: 6px 8px !important; }
-    .kpi-value { font-size: 16px !important; }
-    .kpi-label { font-size: 7px !important; margin-bottom: 2px !important; }
-    .kpi-sub { font-size: 8px !important; margin-top: 1px !important; }
-    .grid-main { grid-template-columns: 1fr 220px !important; gap: 6px !important; }
-    .card { break-inside: avoid !important; overflow: visible !important; }
-    .card-body { padding: 4px 8px !important; max-height: none !important; overflow: visible !important; }
-    .bar-row { min-height: 20px !important; margin-bottom: 2px !important; }
-    .bar-track { height: 14px !important; }
-    .bar-ms { min-width: 48px !important; padding: 1px 3px !important; }
+    .topbar-right .btn, .topbar-right a { display: none !important; }
+    /* Topbar */
+    .topbar { height: 28px !important; padding: 0 10px !important; flex-shrink: 0 !important; }
+    .topbar img { height: 16px !important; }
+    .logo { font-size: 11px !important; }
+    .page-title { font-size: 11px !important; }
+    /* Main */
+    .main { padding: 5px 10px !important; gap: 5px !important; height: calc(210mm - 28px) !important; overflow: hidden !important; }
+    /* KPI */
+    .kpi-row { gap: 4px !important; }
+    .kpi { padding: 5px 8px !important; }
+    .kpi-value { font-size: 15px !important; line-height: 1 !important; }
+    .kpi-label { font-size: 6.5px !important; margin-bottom: 2px !important; }
+    .kpi-sub { font-size: 7.5px !important; margin-top: 1px !important; }
+    /* Grid */
+    .grid-main { grid-template-columns: 1fr 210px !important; gap: 5px !important; overflow: hidden !important; }
+    .card { break-inside: avoid !important; overflow: hidden !important; }
+    .card-header { padding: 5px 10px !important; }
+    .card-title { font-size: 10px !important; }
+    .card-body { padding: 3px 8px !important; overflow: hidden !important; }
+    /* Barre */
+    .bar-row { min-height: 18px !important; margin-bottom: 2px !important; }
+    .bar-track { height: 12px !important; }
+    .bar-lotto-label { font-size: 10px !important; }
+    .bar-lotto-name { font-size: 7px !important; }
+    .bar-lotto-comuni { display: none !important; }
+    .bar-ms-wrap { padding: 2px 4px !important; min-width: 50px !important; }
     .bar-ms-val { font-size: 8px !important; }
     .bar-ms-label { font-size: 6px !important; }
-    .bar-ms-wrap { padding: 2px 4px !important; }
-    .bar-ms-wrap-header { font-size: 6px !important; }
+    .bar-ms-wrap-header { font-size: 6px !important; padding: 2px 6px !important; }
+    .bar-separator { margin: 3px 0 !important; }
+    /* Legenda */
     .legend { padding: 3px 8px !important; gap: 6px !important; flex-wrap: wrap; }
-    .legend-item { font-size: 8px !important; }
-    .side .card { break-inside: avoid !important; }
-    canvas { max-width: 160px !important; max-height: 160px !important; }
-    /* Nasconde sezione cluster per evitare pagina extra */
-    #clusterWrap, #clusterWrap ~ *, .card:has(#clusterWrap) { display: none !important; }
-    /* Forza tutto su una pagina */
-    .grid-main, .kpi-row, .main > * { break-inside: avoid !important; break-before: avoid !important; }
+    .legend-item { font-size: 7.5px !important; }
+    /* Side */
+    .side { gap: 5px !important; }
+    canvas { max-width: 130px !important; max-height: 130px !important; }
+    #donutLegend { font-size: 8px !important; }
   }
   .main { padding: 20px 28px; display: flex; flex-direction: column; gap: 18px; }
   .kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
@@ -278,7 +291,7 @@
         <div class="legend-item"><div class="legend-dot" style="background:#548235"></div>Protocollato Integrazione</div>
         <div class="legend-item"><div class="legend-dot" style="background:#3a8c5c"></div>Ottenuto</div>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:10px;padding:10px 18px;border-top:1px solid var(--border)">
+      <div id="msLegendBar" style="display:flex;flex-wrap:wrap;gap:10px;padding:10px 18px;border-top:1px solid var(--border)">
         <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);align-self:center;margin-right:4px">⏱ Milestone:</span>
         <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted)"><div style="width:10px;height:10px;border-radius:2px;background:#3a7a4a"></div>Invio Permessi</div>
         <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted)"><div style="width:10px;height:10px;border-radius:2px;background:#8a7a20"></div>Parziale (50%/90%)</div>
@@ -305,7 +318,7 @@
 </div>
 
 <!-- Grafico Cluster -->
-<div style="padding:0 18px 18px">
+<div id="clusterSection" style="padding:0 18px 18px">
   <div class="card">
     <div class="card-header">
       <span class="card-title">Avanzamento per Cluster — % Ottenuto</span>
