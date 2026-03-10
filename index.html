@@ -171,19 +171,16 @@
         <div class="legend-item"><div class="legend-dot" style="background:#4f8ef7"></div>Inviato</div>
         <div class="legend-item"><div class="legend-dot" style="background:#2f5496"></div>Protocollato</div>
         <div class="legend-item"><div class="legend-dot" style="background:#cc3333"></div>Necessaria Integrazione</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#a04fc0"></div>In Redazione Integrazione</div>
         <div class="legend-item"><div class="legend-dot" style="background:#548235"></div>Protocollato Integrazione</div>
         <div class="legend-item"><div class="legend-dot" style="background:#3a8c5c"></div>Ottenuto</div>
-          <div style="display:flex;flex-wrap:wrap;gap:10px;padding:10px 18px;border-top:1px solid var(--border);background:#181c2a11">
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;padding:10px 18px;border-top:1px solid var(--border)">
         <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);align-self:center;margin-right:4px">⏱ Milestone:</span>
         <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted)"><div style="width:10px;height:10px;border-radius:2px;background:#3a7a4a"></div>Invio Permessi</div>
         <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted)"><div style="width:10px;height:10px;border-radius:2px;background:#8a7a20"></div>Parziale (50%/90%)</div>
         <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted)"><div style="width:10px;height:10px;border-radius:2px;background:#3a4a8a"></div>Finale (100%)</div>
         <div style="display:flex;align-items:center;gap:14px;margin-left:10px;font-size:10px;color:var(--muted)">
-          <span>🔵 &gt;6 mesi</span>
-          <span>🟡 3-6 mesi</span>
-          <span>🔴 &lt;3 mesi</span>
-          <span>✓ completata</span>
+          <span>🔵 &gt;6 mesi</span><span>🟡 3-6 mesi</span><span>🔴 &lt;3 mesi</span><span>✓ completata</span>
         </div>
       </div>
     </div>
@@ -385,9 +382,11 @@ function renderDashboard(data) {
   });
 
   // Totale Progetto — metri per stato
+  const STATI_INATTIVI = ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'];
+
   const spark=document.getElementById('sparkPanel');
   spark.innerHTML='';
-  STATI.filter(s=>s!=='IN ATTESA').forEach(stato=>{
+  STATI.filter(s=>!STATI_INATTIVI.includes(s)).forEach(stato=>{
     const m=globalStati[stato]||0;
     if(!m)return;
     const pct=grandTotal>0?m/grandTotal*100:0;
@@ -406,16 +405,20 @@ function renderDashboard(data) {
     spark.appendChild(div);
   });
 
-  // Dettaglio lotti attivi
+  // Dettaglio lotti attivi — escludi lotti dove tutti i metri sono IN ATTESA/REDAZIONE
   const tableDiv=document.getElementById('lottiTable');
-  const activeLotti=lotti.filter(l=>(lottiMap[l]['IN ATTESA']||0)<lottiTotale[l]);
+  const activeLotti=lotti.filter(l=>{
+    const totInattivo=STATI_INATTIVI.reduce((s,st)=>s+(lottiMap[l][st]||0),0);
+    return totInattivo < lottiTotale[l];
+  });
   if(!activeLotti.length){tableDiv.innerHTML='<div style="padding:16px;font-size:12px;color:var(--muted);text-align:center">Nessun lotto avanzato</div>';return;}
   let html=`<table class="lotti-table"><thead><tr><th>Lotto</th><th>Tot. (m)</th><th>Avanz. (m)</th><th>Stato prev.</th></tr></thead><tbody>`;
   activeLotti.forEach(lotto=>{
     const tot=lottiTotale[lotto];
-    let dominante='IN ATTESA',maxM=0;
-    Object.entries(lottiMap[lotto]).forEach(([s,m])=>{if(s!=='IN ATTESA'&&m>maxM){maxM=m;dominante=s;}});
-    const avanzMetri=tot-(lottiMap[lotto]['IN ATTESA']||0);
+    let dominante=null,maxM=0;
+    Object.entries(lottiMap[lotto]).forEach(([s,m])=>{if(!STATI_INATTIVI.includes(s)&&m>maxM){maxM=m;dominante=s;}});
+    if(!dominante)return;
+    const avanzMetri=tot-STATI_INATTIVI.reduce((s,st)=>s+(lottiMap[lotto][st]||0),0);
     const col=COLORS[dominante];
     html+=`<tr>
       <td><strong>${lotto}</strong></td>
