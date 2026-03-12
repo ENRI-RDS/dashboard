@@ -206,6 +206,17 @@
     <div class="modal-ms-row" id="modalMs"></div>
   </div>
 </div>
+
+<!-- Modal Riepilogo Gruppo -->
+<div class="modal-overlay" id="modalGruppoOverlay" onclick="closeModalGruppo(event)">
+  <div class="modal" style="width:620px;max-width:95vw">
+    <div class="modal-title">
+      <span id="modalGruppoTitle">—</span>
+      <span class="modal-close" onclick="closeModalGruppo()">×</span>
+    </div>
+    <div id="modalGruppoBody"></div>
+  </div>
+</div>
 <div class="main">
   <div id="errorBox"></div>
   <div id="compareBanner" style="display:none"></div>
@@ -568,7 +579,84 @@ function closeModal(e) {
   if (e && e.target !== document.getElementById('modalOverlay')) return;
   document.getElementById('modalOverlay').classList.remove('open');
 }
-document.addEventListener('keydown', e => { if(e.key==='Escape') document.getElementById('modalOverlay').classList.remove('open'); });
+document.addEventListener('keydown', e => { if(e.key==='Escape') { document.getElementById('modalOverlay').classList.remove('open'); document.getElementById('modalGruppoOverlay').classList.remove('open'); } });
+
+function closeModalGruppo(e) {
+  if (e && e.target !== document.getElementById('modalGruppoOverlay')) return;
+  document.getElementById('modalGruppoOverlay').classList.remove('open');
+}
+
+function openModalGruppo(titolo, lottiGruppo, lottiMap, lottiTotale) {
+  document.getElementById('modalGruppoTitle').textContent = titolo;
+  const body = document.getElementById('modalGruppoBody');
+
+  const totGruppo = lottiGruppo.reduce((s, l) => s + (lottiTotale[l] || 0), 0);
+  const statiAggr = {};
+  lottiGruppo.forEach(l => Object.entries(lottiMap[l] || {}).forEach(([s, m]) => { statiAggr[s] = (statiAggr[s]||0)+m; }));
+  const ottenuto = statiAggr['OTTENUTO'] || 0;
+  const pctOttenuto = totGruppo > 0 ? (ottenuto / totGruppo * 100).toFixed(1) : '0.0';
+
+  // Header: totale + % ottenuto
+  let html = `
+    <div style="display:flex;gap:24px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border);flex-wrap:wrap;align-items:flex-end">
+      <div>
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Totale Metri</div>
+        <div style="font-size:22px;font-weight:700;font-family:'DM Mono',monospace">${fmt(totGruppo)} m</div>
+      </div>
+      <div>
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">🏆 Autorizzati</div>
+        <div style="font-size:22px;font-weight:700;font-family:'DM Mono',monospace;color:#3a8c5c">${fmt(ottenuto)} m <span style="font-size:15px">${pctOttenuto}%</span></div>
+      </div>
+    </div>`;
+
+  // Barre per stato aggregato
+  html += `<div style="margin-bottom:16px">`;
+  STATI_GRUPPI.forEach(g => {
+    const m = g.stati.reduce((s, st) => s + (statiAggr[st]||0), 0);
+    if (!m) return;
+    const pct = totGruppo > 0 ? m/totGruppo*100 : 0;
+    html += `
+      <div class="modal-bar-row">
+        <span class="modal-bar-label">${g.label}</span>
+        <div class="modal-bar-track"><div class="modal-bar-fill" style="width:${pct}%;background:${g.color}"></div></div>
+        <span class="modal-bar-val" style="color:${g.color}">${fmt(m)} m <span style="font-size:9px;color:var(--muted)">${pct.toFixed(1)}%</span></span>
+      </div>`;
+  });
+  html += `</div>`;
+
+  // Comuni più impattati (top 5 aggregati)
+  const comuniMap = {};
+  lottiGruppo.forEach(l => {
+    const c = COMUNI_PER_LOTTO[l];
+    if (c) c.split(' · ').forEach(com => { comuniMap[com] = (comuniMap[com]||0)+1; });
+  });
+  const topComuni = Object.entries(comuniMap).sort((a,b)=>b[1]-a[1]).slice(0,5).map(e=>e[0]);
+  if (topComuni.length) {
+    html += `<div style="margin-bottom:16px;padding:10px 14px;background:var(--surface2);border-radius:8px;border-left:3px solid var(--accent)">
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:8px">📍 Comuni principali</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${topComuni.map((c,i)=>`<span style="display:inline-flex;align-items:center;gap:5px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:11px"><span style="width:16px;height:16px;border-radius:50%;background:${['#4f8ef7','#c9a227','#e07b3a','#4a4f6a','#548235'][i]};display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff">${i+1}</span>${c}</span>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  // Milestone più vicina per ogni lotto del gruppo
+  html += `<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:8px">⏱ Prossima Milestone per Lotto</div>`;
+  html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px">`;
+  lottiGruppo.forEach(l => {
+    const ms = getMilestoneForLotto(l);
+    if (!ms) return;
+    html += `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px">
+      <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:4px">Lotto ${l}</div>
+      <div style="font-size:9px;color:${ms.colore};font-weight:600;margin-bottom:2px">${ms.tooltipText.split('—')[1]?.trim() || ''}</div>
+      <div style="font-size:10px;color:${ms.colore};font-weight:700">${ms.label || ''}</div>
+    </div>`;
+  });
+  html += `</div>`;
+
+  body.innerHTML = html;
+  document.getElementById('modalGruppoOverlay').classList.add('open');
+}
 
 function getDelta(lotto, stato, metriAttuali) {
   const prev = window._compareData;
@@ -969,14 +1057,16 @@ function renderDashboard(data, prevSnapshot=null) {
     if (lotto === ORDER_FUTURI[0] && lottiAttivi.length > 0) {
       // Totale attivi
       const totAttiviRow = document.createElement('div');
-      totAttiviRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin:4px 0 2px;padding:3px 0;border-top:1px solid var(--border)';
+      totAttiviRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin:4px 0 2px;padding:3px 0;border-top:1px solid var(--border);cursor:pointer';
+      totAttiviRow.title = 'Clicca per dettaglio';
       const gruppiAttivi = {};
       lottiAttivi.forEach(l => Object.entries(lottiMap[l]).forEach(([s,m]) => { gruppiAttivi[s] = (gruppiAttivi[s]||0)+m; }));
       const segsAttiviHtml = renderBarre(buildGruppiMap(gruppiAttivi), totAttivi, tooltip);
       totAttiviRow.innerHTML = `
-        <div style="width:90px;flex-shrink:0;font-size:8px;color:var(--muted);text-align:right;padding-right:8px;font-style:italic">Totale attivi</div>
+        <div style="width:90px;flex-shrink:0;font-size:8px;color:var(--muted);text-align:right;padding-right:8px;font-style:italic">Totale attivi ↗</div>
         <div class="bar-track" style="height:8px;flex:1">${segsAttiviHtml}</div>
         <span style="min-width:62px;text-align:right;font-size:9px;color:var(--accent);font-family:'DM Mono',monospace;flex-shrink:0;font-weight:600">${fmt(totAttivi)} m</span>`;
+      totAttiviRow.addEventListener('click', () => openModalGruppo('⚡ Riepilogo Lotti Attivi', lottiAttivi, lottiMap, lottiTotale));
       wrap.appendChild(totAttiviRow);
 
       const sepFuturi = document.createElement('div');
@@ -1022,14 +1112,16 @@ function renderDashboard(data, prevSnapshot=null) {
   // Totale lotti in avvio
   if (lottiFuturi.length > 0) {
     const totFuturiRow = document.createElement('div');
-    totFuturiRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin:4px 0 2px;padding:3px 0;border-top:1px solid var(--border)';
+    totFuturiRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin:4px 0 2px;padding:3px 0;border-top:1px solid var(--border);cursor:pointer';
+    totFuturiRow.title = 'Clicca per dettaglio';
     const gruppiFuturi = {};
     lottiFuturi.forEach(l => Object.entries(lottiMap[l]).forEach(([s,m]) => { gruppiFuturi[s] = (gruppiFuturi[s]||0)+m; }));
     const segsFuturiHtml = renderBarre(buildGruppiMap(gruppiFuturi), totFuturi, tooltip);
     totFuturiRow.innerHTML = `
-      <div style="width:90px;flex-shrink:0;font-size:8px;color:var(--muted);text-align:right;padding-right:8px;font-style:italic">Totale avvio</div>
+      <div style="width:90px;flex-shrink:0;font-size:8px;color:var(--muted);text-align:right;padding-right:8px;font-style:italic">Totale avvio ↗</div>
       <div class="bar-track" style="height:8px;flex:1">${segsFuturiHtml}</div>
       <span style="min-width:62px;text-align:right;font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;flex-shrink:0;font-weight:600">${fmt(totFuturi)} m</span>`;
+    totFuturiRow.addEventListener('click', () => openModalGruppo('🔜 Riepilogo Lotti in Avvio', lottiFuturi, lottiMap, lottiTotale));
     wrap.appendChild(totFuturiRow);
   }
 
