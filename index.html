@@ -412,37 +412,71 @@ async function loadCluster() {
     if (!resp.ok) throw new Error('riepilogo.csv non trovato');
     const text = await resp.text();
     const lines = text.trim().split('\n').map(l => l.replace(/\r/,''));
-    const headers = lines[0].split(';');
-    const iC = headers.indexOf('CLUSTER');
-    const iL = headers.indexOf('LUNGHEZZA');
-    const iS = headers.indexOf('STATO_AUTORIZZAZIONE');
+
+    // Rileva separatore automaticamente dalla prima riga
+    const firstLine = lines[0];
+    const sep = firstLine.includes(';') ? ';' : ',';
+
+    // Split gestendo virgolette (es. "3" per cluster)
+    const splitLine = (line) => {
+      const result = [];
+      let cur = '', inQ = false;
+      for (const ch of line) {
+        if (ch === '"') { inQ = !inQ; }
+        else if (ch === sep && !inQ) { result.push(cur.trim()); cur = ''; }
+        else { cur += ch; }
+      }
+      result.push(cur.trim());
+      return result;
+    };
+
+    const headers = splitLine(lines[0]);
+
+    const findCol = (...names) => {
+      for (const name of names) {
+        const idx = headers.findIndex(h => h.trim().toUpperCase() === name.toUpperCase());
+        if (idx !== -1) return idx;
+      }
+      return -1;
+    };
+
+    const iC = findCol('CLUSTER');
+    const iL = findCol('LUNGHEZZA', 'LENGTH');
+    const iS = findCol('STATO_AUTORIZZAZIONE', 'STATO_AUTORIZZAZIONE_WEB', 'STATO');
+
+    if (iC === -1 || iL === -1) {
+      throw new Error(`Colonne non trovate. Headers: ${headers.join(', ')}`);
+    }
 
     const clMap = {};
     const clTot = {};
     for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(';');
-      const cl = cols[iC]?.trim();
-      if (!cl) continue;
-      const stato = cols[iS]?.trim() || 'IN ATTESA';
+      const cols = splitLine(lines[i]);
+      const cl = cols[iC]?.trim().replace(/"/g,'');
+      if (!cl || cl === '') continue;
+      const stato = (iS !== -1 ? cols[iS]?.trim() : '') || 'IN ATTESA';
       const lunghRaw = (cols[iL]||'0').trim();
-      // Gestisce sia formato italiano (1.365,27) che internazionale (1365.27 o 136.27)
       let lungh = 0;
-      if (lunghRaw.includes(',')) {
-        // Formato italiano: virgola=decimale, punto=migliaia
+      if (lunghRaw.includes(',') && !lunghRaw.includes('.')) {
+        lungh = parseFloat(lunghRaw.replace(',','.')) || 0;
+      } else if (lunghRaw.includes(',')) {
         lungh = parseFloat(lunghRaw.replace(/\./g,'').replace(',','.')) || 0;
       } else {
-        // Formato internazionale: punto=decimale
-        lungh = parseFloat(lunghRaw.replace(/,/g,'')) || 0;
+        lungh = parseFloat(lunghRaw) || 0;
       }
+      if (lungh <= 0) continue;
       if (!clMap[cl]) { clMap[cl] = {}; clTot[cl] = 0; }
       clMap[cl][stato] = (clMap[cl][stato] || 0) + lungh;
       clTot[cl] += lungh;
     }
 
+    if (Object.keys(clMap).length === 0) throw new Error('Nessun cluster trovato nel CSV');
+
     renderCluster(clMap, clTot);
     document.getElementById('clusterStatus').textContent = fmt(Object.values(clTot).reduce((a,b)=>a+b,0)) + ' m totali';
   } catch(e) {
     document.getElementById('clusterWrap').innerHTML = `<div style="padding:16px;font-size:12px;color:#cc3333">⚠ ${e.message}</div>`;
+    document.getElementById('clusterStatus').textContent = 'Errore caricamento';
   }
 }
 
