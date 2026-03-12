@@ -412,6 +412,8 @@ async function loadCluster() {
     const iC = findCol('CLUSTER');
     const iL = findCol('LUNGHEZZA', 'LENGTH');
     const iS = findCol('STATO_AUTORIZZAZIONE', 'STATO_AUTORIZZAZIONE_WEB', 'STATO');
+    const iCOM = findCol('COMUNE');
+    const iLOT = findCol('LOTTO');
 
     if (iC === -1 || iL === -1) {
       throw new Error(`Colonne non trovate. Headers: ${headers.join(', ')}`);
@@ -419,6 +421,9 @@ async function loadCluster() {
 
     const clMap = {};
     const clTot = {};
+    const comuniKm = {};        // { COMUNE: km_totali }
+    const comuniKmPerLotto = {}; // { LOTTO: { COMUNE: km } }
+
     for (let i = 1; i < lines.length; i++) {
       const cols = splitLine(lines[i]);
       const cl = cols[iC]?.trim().replace(/"/g,'');
@@ -437,7 +442,23 @@ async function loadCluster() {
       if (!clMap[cl]) { clMap[cl] = {}; clTot[cl] = 0; }
       clMap[cl][stato] = (clMap[cl][stato] || 0) + lungh;
       clTot[cl] += lungh;
+
+      // Mappa comuni → km
+      if (iCOM !== -1 && iLOT !== -1) {
+        const comune = cols[iCOM]?.trim().replace(/"/g,'');
+        const lotto = cols[iLOT]?.trim().replace(/"/g,'');
+        if (comune) {
+          comuniKm[comune] = (comuniKm[comune] || 0) + lungh;
+          if (lotto) {
+            if (!comuniKmPerLotto[lotto]) comuniKmPerLotto[lotto] = {};
+            comuniKmPerLotto[lotto][comune] = (comuniKmPerLotto[lotto][comune] || 0) + lungh;
+          }
+        }
+      }
     }
+
+    window._comuniKm = comuniKm;
+    window._comuniKmPerLotto = comuniKmPerLotto;
 
     if (Object.keys(clMap).length === 0) throw new Error('Nessun cluster trovato nel CSV');
 
@@ -522,7 +543,7 @@ function openModal(lotto, statiMetri, totale) {
     <div style="margin-bottom:16px;padding:12px 14px;background:var(--surface2);border-radius:8px;border-left:3px solid var(--accent)">
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:8px">📍 Comuni maggiormente impattati</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${comuni.map((c,i) => `<span style="display:inline-flex;align-items:center;gap:5px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:11px;color:var(--text)"><span style="width:16px;height:16px;border-radius:50%;background:${['#4f8ef7','#c9a227','#e07b3a'][i]};display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff">${i+1}</span>${c}</span>`).join('')}
+        ${getComuniHtml(lotto, 3)}
       </div>
     </div>` : ''}
   `;
@@ -631,12 +652,11 @@ function openModalGruppo(titolo, lottiGruppo, lottiMap, lottiTotale) {
     if (c) c.split(' · ').forEach(com => { comuniMap[com] = (comuniMap[com]||0)+1; });
   });
   const topComuni = Object.entries(comuniMap).sort((a,b)=>b[1]-a[1]).slice(0,5).map(e=>e[0]);
-  if (topComuni.length) {
+  if (topComuni.length || window._comuniKmPerLotto) {
+    const comuniHtml = getComuniGruppoHtml(lottiGruppo, 5);
     html += `<div style="margin-bottom:16px;padding:10px 14px;background:var(--surface2);border-radius:8px;border-left:3px solid var(--accent)">
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:8px">📍 Comuni principali</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        ${topComuni.map((c,i)=>`<span style="display:inline-flex;align-items:center;gap:5px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:11px"><span style="width:16px;height:16px;border-radius:50%;background:${['#4f8ef7','#c9a227','#e07b3a','#4a4f6a','#548235'][i]};display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff">${i+1}</span>${c}</span>`).join('')}
-      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${comuniHtml}</div>
     </div>`;
   }
 
@@ -648,8 +668,9 @@ function openModalGruppo(titolo, lottiGruppo, lottiMap, lottiTotale) {
     if (!ms) return;
     html += `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px">
       <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:4px">Lotto ${l}</div>
-      <div style="font-size:9px;color:${ms.colore};font-weight:600;margin-bottom:2px">${ms.tooltipText.split('—')[1]?.trim() || ''}</div>
-      <div style="font-size:10px;color:${ms.colore};font-weight:700">${ms.label || ''}</div>
+      <div style="font-size:9px;color:var(--muted);margin-bottom:3px">${ms.titolo}</div>
+      <div style="font-size:10px;color:${ms.colore};font-weight:700;margin-bottom:2px">${ms.label}</div>
+      <div style="font-size:8px;color:var(--muted)">📅 ${ms.dataFmt}</div>
     </div>`;
   });
   html += `</div>`;
@@ -811,8 +832,20 @@ async function loadData(saveSnapshot = false) {
   document.getElementById('errorBox').style.display = 'none';
   try {
     setLoading(40);
-    const resp = await fetch(CSV_URL + '?t=' + Date.now());
-    if (!resp.ok) throw new Error('File dati.csv non trovato.');
+    // Fetch con timeout 15s
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 15000);
+    let resp;
+    try {
+      resp = await fetch(CSV_URL + '?t=' + Date.now(), { signal: controller.signal });
+      clearTimeout(tid);
+    } catch(fetchErr) {
+      clearTimeout(tid);
+      throw new Error(controller.signal.aborted
+        ? 'Timeout: dati.csv non risponde (carica il file su GitHub Pages)'
+        : 'Impossibile caricare dati.csv — verifica che il file sia su GitHub Pages');
+    }
+    if (!resp.ok) throw new Error('File dati.csv non trovato (HTTP ' + resp.status + ').');
     const text = await resp.text();
     setLoading(70);
     const lines = text.trim().split('\n').map(l => l.replace(/\r/,''));
@@ -892,6 +925,56 @@ async function loadData(saveSnapshot = false) {
   }
 }
 
+function getComuniHtml(lotto, maxN = 3) {
+  // Usa dati da riepilogo.csv se disponibili, altrimenti fallback su COMUNI_PER_LOTTO
+  const kmMap = (window._comuniKmPerLotto || {})[lotto];
+  if (kmMap && Object.keys(kmMap).length > 0) {
+    const sorted = Object.entries(kmMap).sort((a,b) => b[1]-a[1]).slice(0, maxN);
+    return sorted.map(([ comune, km ], i) =>
+      `<span style="display:inline-flex;align-items:center;gap:5px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:11px;color:var(--text)">
+        <span style="width:16px;height:16px;border-radius:50%;background:${['#4f8ef7','#c9a227','#e07b3a'][i]};display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff">${i+1}</span>
+        ${comune}
+        <span style="font-size:9px;color:var(--muted);font-family:'DM Mono',monospace">${(km/1000).toFixed(1)} km</span>
+      </span>`
+    ).join('');
+  }
+  // Fallback: nomi comuni senza km
+  const fallback = COMUNI_PER_LOTTO[lotto] ? COMUNI_PER_LOTTO[lotto].split(' · ').slice(0, maxN) : [];
+  return fallback.map((c, i) =>
+    `<span style="display:inline-flex;align-items:center;gap:5px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:11px;color:var(--text)">
+      <span style="width:16px;height:16px;border-radius:50%;background:${['#4f8ef7','#c9a227','#e07b3a'][i]};display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff">${i+1}</span>
+      ${c}
+    </span>`
+  ).join('');
+}
+
+function getComuniGruppoHtml(lottiGruppo, maxN = 5) {
+  const kmMap = window._comuniKm || {};
+  // Filtra solo comuni appartenenti ai lotti del gruppo
+  const lottiKmMap = window._comuniKmPerLotto || {};
+  const gruppoKm = {};
+  lottiGruppo.forEach(l => {
+    Object.entries(lottiKmMap[l] || {}).forEach(([c, km]) => {
+      gruppoKm[c] = (gruppoKm[c] || 0) + km;
+    });
+  });
+  const sorted = Object.entries(gruppoKm).sort((a,b) => b[1]-a[1]).slice(0, maxN);
+  if (sorted.length === 0) {
+    // fallback
+    const nomi = lottiGruppo.flatMap(l => (COMUNI_PER_LOTTO[l]||'').split(' · ')).filter(Boolean);
+    return [...new Set(nomi)].slice(0, maxN).map((c, i) =>
+      `<span style="display:inline-flex;align-items:center;gap:5px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:11px"><span style="width:16px;height:16px;border-radius:50%;background:${['#4f8ef7','#c9a227','#e07b3a','#4a4f6a','#548235'][i]};display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff">${i+1}</span>${c}</span>`
+    ).join('');
+  }
+  return sorted.map(([c, km], i) =>
+    `<span style="display:inline-flex;align-items:center;gap:5px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:11px;color:var(--text)">
+      <span style="width:16px;height:16px;border-radius:50%;background:${['#4f8ef7','#c9a227','#e07b3a','#4a4f6a','#548235'][i]};display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff">${i+1}</span>
+      ${c}
+      <span style="font-size:9px;color:var(--muted);font-family:'DM Mono',monospace">${(km/1000).toFixed(1)} km</span>
+    </span>`
+  ).join('');
+}
+
 function getMilestoneCountdown(data) {
   const oggi = new Date(); oggi.setHours(0,0,0,0);
   const scad = new Date(data);
@@ -900,14 +983,14 @@ function getMilestoneCountdown(data) {
   if (diffGiorni < 0) {
     colore = '#3a8c5c'; label = '✓';
   } else if (diffGiorni <= 90) {
-    colore = '#cc3333'; label = diffGiorni+'gg';
+    colore = '#cc3333'; label = diffGiorni+' gg';
   } else if (diffGiorni <= 180) {
-    colore = '#c9a227'; label = Math.floor(diffGiorni/30.44)+'m';
+    colore = '#c9a227'; label = Math.floor(diffGiorni/30.44)+' mesi';
   } else {
     colore = '#4f8ef7';
     const anniR = Math.floor(diffGiorni/365.25);
     const mesiR = Math.round((diffGiorni % 365.25) / 30.44);
-    label = anniR >= 1 ? (mesiR > 0 ? `${anniR}a ${mesiR}m` : `${anniR}a`) : Math.floor(diffGiorni/30.44)+'m';
+    label = anniR >= 1 ? (mesiR > 0 ? `${anniR} anni ${mesiR} mesi` : `${anniR} anni`) : Math.floor(diffGiorni/30.44)+' mesi';
   }
   const dataFmt = new Date(data).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'2-digit'});
   return { colore, label, dataFmt };
@@ -947,16 +1030,16 @@ function getMilestoneForLotto(lotto) {
   const scad = new Date(ms.data);
   const diffGiorni = Math.ceil((scad - oggi) / (1000*60*60*24));
   let colore, label;
-  if (diffGiorni < 0) { colore='#3a8c5c'; label='✓'; }
-  else if (diffGiorni<=90) { colore='#cc3333'; label=diffGiorni+'gg'; }
-  else if (diffGiorni<=180) { colore='#c9a227'; label=Math.floor(diffGiorni/30.44)+'m'; }
+  if (diffGiorni < 0) { colore='#3a8c5c'; label='✓ Completata'; }
+  else if (diffGiorni<=90) { colore='#cc3333'; label=diffGiorni+' giorni'; }
+  else if (diffGiorni<=180) { colore='#c9a227'; label=Math.floor(diffGiorni/30.44)+' mesi'; }
   else {
     colore='#4f8ef7';
     const anniR=Math.floor(diffGiorni/365.25), mesiR=Math.round((diffGiorni%365.25)/30.44);
-    label=anniR>=1?(mesiR>0?`${anniR}a ${mesiR}m`:`${anniR}a`):Math.floor(diffGiorni/30.44)+'m';
+    label=anniR>=1?(mesiR>0?`${anniR} ann${anniR>1?'i':'o'} e ${mesiR} mesi`:`${anniR} ann${anniR>1?'i':'o'}`):Math.floor(diffGiorni/30.44)+' mesi';
   }
   const dataFmt=scad.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
-  return { colore, label, tooltipText:`[${ms.num}] ${ms.titolo} — ${dataFmt}` };
+  return { colore, label, titolo: ms.titolo, dataFmt, tooltipText:`[${ms.num}] ${ms.titolo} — ${dataFmt}` };
 }
 
 function getMilestonesHtml(lotto) {
@@ -1297,6 +1380,12 @@ function renderMilestones() {
 }
 
 window.addEventListener('load', () => { loadData(); loadCluster(); });
+window.onerror = function(msg, src, line, col, err) {
+  document.getElementById('loadingScreen').style.display = 'none';
+  const eb = document.getElementById('errorBox');
+  if (eb) { eb.style.display = 'block'; eb.textContent = '⚠ Errore JS: ' + msg + (line ? ' (riga '+line+')' : ''); }
+  console.error('onerror:', msg, src, line, col, err);
+};
 </script>
 </div><!-- /printWrapper -->
 </body>
