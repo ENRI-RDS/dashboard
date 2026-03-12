@@ -530,7 +530,10 @@ function renderCluster(clMap, clTot) {
 }
 
 function setLoading(p) { document.getElementById('loadingBar').style.width = p+'%'; }
-function fmt(n) { return new Intl.NumberFormat('it-IT', {maximumFractionDigits:0}).format(Math.round(n)); }
+function fmt(n) {
+  const r = Math.round(n);
+  return new Intl.NumberFormat('it-IT', {maximumFractionDigits:0}).format(r) || r.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
 function parseNum(s) { if(!s||s.trim()==='') return 0; return parseFloat(s.replace(/\./g,'').replace(',','.')); }
 function parsePct(s) { if(!s||s.trim()==='') return 0; return parseFloat(s.replace('%','').replace(',','.'))/100; }
 
@@ -615,7 +618,7 @@ function openModal(lotto, statiMetri, totale) {
       card.className = 'modal-ms-card';
       if (!ms) { card.innerHTML = `<div class="ms-lbl">${labels[i]}</div><div class="ms-val" style="color:var(--muted)">—</div>`; }
       else {
-        const {colore, label} = getMilestoneCountdown(ms.data);
+        const {colore, label} = getMilestoneCountdownModal(ms.data);
         const dataFmt = new Date(ms.data).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
         card.innerHTML = `<div class="ms-lbl">${labels[i]}</div><div class="ms-val" style="color:${colore}">${label}</div><div class="ms-date">${dataFmt}</div>`;
       }
@@ -798,6 +801,31 @@ function getMilestoneCountdown(data) {
   }
   const dataFmt = new Date(data).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'2-digit'});
   return { colore, label, dataFmt };
+}
+
+// Versione estesa per il modal
+function getMilestoneCountdownModal(data) {
+  const oggi = new Date(); oggi.setHours(0,0,0,0);
+  const scad = new Date(data);
+  const diffGiorni = Math.ceil((scad - oggi) / (1000*60*60*24));
+  let colore, label;
+  if (diffGiorni < 0) {
+    colore = '#3a8c5c'; label = '✓ Completata';
+  } else if (diffGiorni <= 90) {
+    colore = '#cc3333'; label = diffGiorni + ' giorni';
+  } else if (diffGiorni <= 180) {
+    colore = '#c9a227'; label = Math.floor(diffGiorni/30.44) + ' mesi';
+  } else {
+    colore = '#4f8ef7';
+    const anniR = Math.floor(diffGiorni/365.25);
+    const mesiR = Math.round((diffGiorni % 365.25) / 30.44);
+    if (anniR >= 1) {
+      label = mesiR > 0 ? `${anniR} ann${anniR>1?'i':'o'} e ${mesiR} mesi` : `${anniR} ann${anniR>1?'i':'o'}`;
+    } else {
+      label = Math.floor(diffGiorni/30.44) + ' mesi';
+    }
+  }
+  return { colore, label };
 }
 
 function getMilestoneForLotto(lotto) {
