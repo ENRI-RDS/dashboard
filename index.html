@@ -35,8 +35,8 @@
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box !important; }
     html, body { width: 297mm; height: 210mm; overflow: hidden !important; margin: 0; padding: 0; background: #0f1117 !important; }
     /* Nasconde tutto ciò che causa pagina extra */
-    #clusterSection { display: none !important; }
     #msLegendBar { display: none !important; }
+    /* clusterSection viene spostato dentro .main da exportPDF() */
     #loadingBar, #loadingScreen, #errorBox { display: none !important; }
     .topbar-right .btn, .topbar-right a { display: none !important; }
     /* Topbar */
@@ -674,12 +674,21 @@ function exportPDF() {
   const btn = document.querySelector('[onclick="exportPDF()"]');
   btn.textContent = '⏳ Preparazione...';
   btn.disabled = true;
-  // Piccolo delay per render completo del canvas
+
+  // Sposta temporaneamente il cluster dentro .main per la stampa
+  const clusterSection = document.getElementById('clusterSection');
+  const main = document.querySelector('.main');
+  const clusterParent = clusterSection.parentNode;
+  const clusterNext = clusterSection.nextSibling;
+  main.appendChild(clusterSection);
+
   setTimeout(() => {
     window.print();
+    // Ripristina posizione originale
+    clusterParent.insertBefore(clusterSection, clusterNext);
     btn.textContent = '⬇ Esporta PDF';
     btn.disabled = false;
-  }, 300);
+  }, 400);
 }
 
 async function loadData(saveSnapshot = false) {
