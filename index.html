@@ -1479,7 +1479,10 @@ function closeStorico(e) {
 
 function renderStoricoModal() {
   const body = document.getElementById('modalStoricoBody');
-  const storico = window._storicoCompleto || [];
+  // Ordina sempre per timestamp crescente prima di renderizzare
+  const storicoRaw = window._storicoCompleto || [];
+  const storico = [...storicoRaw].sort((a, b) => new Date(a.ts) - new Date(b.ts));
+  window._storicoCompleto = storico;
 
   if (storico.length === 0) {
     body.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px">Nessun dato storico ancora.<br><span style="font-size:11px">Lo storico si accumula ad ogni aggiornamento del CSV.</span></div>';
@@ -1542,6 +1545,9 @@ function renderStoricoModal() {
         <span style="color:var(--muted);font-size:10px">🧪 Test:</span>
         <button onclick="seedDemoData()" style="font-size:10px;padding:4px 12px;border-radius:4px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);cursor:pointer" id="btnSeedDemo">
           Inietta 7 giorni demo in JSONBin
+        </button>
+        <button onclick="svuotaStorico()" style="font-size:10px;padding:4px 12px;border-radius:4px;background:#cc333311;color:#cc3333;border:1px solid #cc333344;cursor:pointer" id="btnSvuotaStorico">
+          🗑 Svuota storico
         </button>
         <span id="seedStatus" style="font-size:10px;color:var(--muted)"></span>
       </div>
@@ -1620,8 +1626,40 @@ window.storicoToggleView = function(mode) {
   const maxVal = Math.max(...allValues, 1);
   const yMax = mode === 'stati' ? 100 : Math.min(100, Math.ceil(maxVal / 10) * 10 + 10);
 
+  // Overlay "nessun dato" se Per lotto è tutto 0
+  const chartWrap = document.getElementById('storicoChart')?.parentElement;
+  const existingOverlay = document.getElementById('storicoZeroOverlay');
+  if (existingOverlay) existingOverlay.remove();
+  if (mode === 'lotti' && allValues.every(v => v === 0)) {
+    const overlay = document.createElement('div');
+    overlay.id = 'storicoZeroOverlay';
+    overlay.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;pointer-events:none';
+    overlay.innerHTML = `<span style="font-size:22px">🏗</span><span style="font-size:12px;color:var(--muted)">Nessun permesso <b style="color:var(--text)">Ottenuto</b> ancora</span><span style="font-size:10px;color:#525870">Il grafico si attiverà con i primi permessi autorizzati</span>`;
+    if (chartWrap) chartWrap.appendChild(overlay);
+  }
+
   _buildStoricoChart(storico, labels, datasets, yMax);
 };
+
+async function svuotaStorico() {
+  const btn = document.getElementById('btnSvuotaStorico');
+  const status = document.getElementById('seedStatus');
+  if (!confirm('Sei sicuro di voler svuotare tutto lo storico da JSONBin? Questa azione non è reversibile.')) return;
+  btn.disabled = true;
+  btn.textContent = '⏳ Pulizia...';
+  if (status) status.textContent = '';
+  try {
+    await jsonbinSave({ storico: [] });
+    window._storicoCompleto = [];
+    if (status) status.textContent = '✅ Storico svuotato';
+    btn.textContent = '✓ Fatto';
+    setTimeout(() => renderStoricoModal(), 400);
+  } catch(e) {
+    if (status) status.textContent = '❌ ' + e.message;
+    btn.disabled = false;
+    btn.textContent = '🗑 Svuota storico';
+  }
+}
 
 function _buildStoricoChart(storico, labels, datasets, yMax) {
   yMax = yMax || 100;
