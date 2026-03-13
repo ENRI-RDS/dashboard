@@ -376,12 +376,21 @@ const JSONBIN_BASE       = 'https://api.jsonbin.io/v3/b';
 const STORICO_MAX_ENTRIES = 104; // ~2 anni di aggiornamenti settimanali
 
 async function jsonbinLoad() {
-  const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_BIN_ID}/latest`, {
-    headers: { 'X-Master-Key': JSONBIN_MASTER_KEY }
-  });
-  if (!res.ok) throw new Error('JSONBin load failed: ' + res.status);
-  const json = await res.json();
-  return json.record || { storico: [] };
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), 5000);
+  try {
+    const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_BIN_ID}/latest`, {
+      headers: { 'X-Master-Key': JSONBIN_MASTER_KEY },
+      signal: controller.signal
+    });
+    clearTimeout(tid);
+    if (!res.ok) throw new Error('JSONBin load failed: ' + res.status);
+    const json = await res.json();
+    return json.record || { storico: [] };
+  } catch(e) {
+    clearTimeout(tid);
+    throw e;
+  }
 }
 
 async function jsonbinSave(record) {
@@ -937,6 +946,18 @@ async function loadData(saveSnapshot = false) {
       }
     } catch(e) {
       console.warn('Storico JSONBin error:', e);
+      // Mostra avviso non bloccante
+      const eb = document.getElementById('errorBox');
+      if (eb) {
+        eb.style.display = 'block';
+        eb.style.background = '#2a2010';
+        eb.style.border = '1px solid #c9a22744';
+        eb.style.color = '#c9a227';
+        eb.style.borderRadius = '6px';
+        eb.style.padding = '8px 14px';
+        eb.style.fontSize = '11px';
+        eb.textContent = '⚠ Storico non disponibile: ' + (e.message || e);
+      }
     }
 
     // Snapshot precedente = penultimo in storico (per delta nel modal)
