@@ -1487,64 +1487,67 @@ function renderStoricoModal() {
     return;
   }
 
-  const GRUPPI = [
-    { label: 'Lotto 1 (1A+1B)', lottos: ['1A','1B'], color: '#4f8ef7' },
-    { label: 'Lotto 2 (2A+2B)', lottos: ['2A','2B'], color: '#e07b3a' },
-    { label: 'Tutti i lotti',   lottos: null,          color: '#3a8c5c' },
+  // Un dataset per ogni gruppo di stati (tutti i lotti aggregati)
+  const STATI_GRAFICI = [
+    { label: 'In Attesa / Red.',  stati: ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'], color: '#4a4f6a' },
+    { label: 'In Firma RDS',      stati: ['IN FIRMA RDS'],                                         color: '#e07b3a' },
+    { label: 'Inviato / Prot.',   stati: ['INVIATO','PROTOCOLLATO'],                               color: '#4f8ef7' },
+    { label: 'Nec. Integraz.',    stati: ['NECESSARIA INTEGRAZIONE'],                              color: '#cc3333' },
+    { label: 'Prot. Integraz.',   stati: ['PROTOCOLLATO INTEGRAZIONE'],                            color: '#548235' },
+    { label: 'Ottenuto',          stati: ['OTTENUTO'],                                             color: '#3a8c5c' },
   ];
-  const STATO_OK = ['OTTENUTO'];
 
   const labels = storico.map(s => {
     const d = new Date(s.ts);
     return d.toLocaleDateString('it-IT', { day:'2-digit', month:'2-digit', year:'2-digit' });
   });
 
-  const datasets = GRUPPI.map(g => {
+  const datasets = STATI_GRAFICI.map(g => {
     const values = storico.map(s => {
-      const rows = g.lottos ? s.data.filter(r => g.lottos.includes(r.lotto)) : s.data;
-      const totale = rows.reduce((acc, r) => acc + r.metri, 0);
-      const ottenuto = rows.filter(r => STATO_OK.includes(r.stato)).reduce((acc, r) => acc + r.metri, 0);
-      return totale > 0 ? Math.round(ottenuto / totale * 1000) / 10 : 0;
+      const totale = s.data.reduce((acc, r) => acc + r.metri, 0);
+      const match  = s.data.filter(r => g.stati.includes(r.stato)).reduce((acc, r) => acc + r.metri, 0);
+      return totale > 0 ? Math.round(match / totale * 1000) / 10 : 0;
     });
     return {
       label: g.label, data: values,
-      borderColor: g.color, backgroundColor: g.color + '22',
+      borderColor: g.color, backgroundColor: g.color + '33',
       tension: 0.3, fill: false,
       pointRadius: storico.length > 20 ? 2 : 4,
       pointHoverRadius: 6, borderWidth: 2
     };
   });
 
-  const ultime = storico.slice(-5).reverse();
+  // Tabella: ultima rilevazione con % per ogni stato
+  const last = storico[storico.length - 1];
+  const totLast = last.data.reduce((a,r) => a + r.metri, 0);
+  const righeStati = STATI_GRAFICI.map(g => {
+    const m = last.data.filter(r=>g.stati.includes(r.stato)).reduce((a,r)=>a+r.metri,0);
+    const pct = totLast > 0 ? (m/totLast*100).toFixed(1) : '0.0';
+    const km  = (m/1000).toFixed(1);
+    return `<tr>
+      <td style="padding:5px 8px;display:flex;align-items:center;gap:6px">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${g.color};flex-shrink:0"></span>
+        ${g.label}
+      </td>
+      <td style="text-align:right;padding:5px 8px;font-family:'DM Mono',monospace">${km} km</td>
+      <td style="text-align:right;padding:5px 8px;font-family:'DM Mono',monospace;color:${g.color};font-weight:600">${pct}%</td>
+    </tr>`;
+  }).join('');
+
   const tabellaHtml = `
     <div style="margin-top:16px;font-size:11px;color:var(--muted);padding:0 4px">
-      <div style="font-weight:600;color:var(--text);margin-bottom:6px">Ultime ${ultime.length} rilevazioni</div>
+      <div style="font-weight:600;color:var(--text);margin-bottom:6px">
+        Situazione attuale — ${new Date(last.ts).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})}
+        <span style="font-weight:400;color:var(--muted);margin-left:8px">${storico.length} rilevazioni nel database</span>
+      </div>
       <table style="width:100%;border-collapse:collapse">
         <thead><tr>
-          <th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border);color:var(--muted)">Data</th>
-          <th style="text-align:right;padding:4px 8px;border-bottom:1px solid var(--border);color:#4f8ef7">Lotto 1</th>
-          <th style="text-align:right;padding:4px 8px;border-bottom:1px solid var(--border);color:#e07b3a">Lotto 2</th>
-          <th style="text-align:right;padding:4px 8px;border-bottom:1px solid var(--border);color:#3a8c5c">Totale</th>
+          <th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)">Stato</th>
+          <th style="text-align:right;padding:4px 8px;border-bottom:1px solid var(--border)">Km</th>
+          <th style="text-align:right;padding:4px 8px;border-bottom:1px solid var(--border)">%</th>
         </tr></thead>
-        <tbody>
-        ${ultime.map((s,i) => {
-          const calcPct = (lottos) => {
-            const rows = lottos ? s.data.filter(r=>lottos.includes(r.lotto)) : s.data;
-            const tot = rows.reduce((a,r)=>a+r.metri,0);
-            const obt = rows.filter(r=>STATO_OK.includes(r.stato)).reduce((a,r)=>a+r.metri,0);
-            return tot>0 ? (obt/tot*100).toFixed(1)+'%' : '—';
-          };
-          const bg = i===0 ? 'background:var(--surface2)' : '';
-          return `<tr style="${bg}">
-            <td style="padding:5px 8px">${new Date(s.ts).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})}</td>
-            <td style="text-align:right;padding:5px 8px;color:#4f8ef7">${calcPct(['1A','1B'])}</td>
-            <td style="text-align:right;padding:5px 8px;color:#e07b3a">${calcPct(['2A','2B'])}</td>
-            <td style="text-align:right;padding:5px 8px;color:#3a8c5c;font-weight:600">${calcPct(null)}</td>
-          </tr>`;
-        }).join('')}
-        </tbody>
+        <tbody>${righeStati}</tbody>
       </table>
-      <div style="margin-top:8px;color:var(--muted);font-size:10px">${storico.length} rilevazioni nel database</div>
     </div>`;
 
   // Wrapper con altezza fissa per il grafico — evita che si espanda infinitamente
