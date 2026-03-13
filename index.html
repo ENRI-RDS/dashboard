@@ -1606,7 +1606,9 @@ window.storicoToggleView = function(mode) {
       label: g.label,
       data: storico.map(s => {
         const rows = s.data.filter(r=>g.lottos.includes(r.lotto));
-        const tot  = rows.reduce((a,r)=>a+r.metri,0);
+        // Usa r.totale (totale lotto dal CSV) invece della somma di r.metri
+        // perché rows potrebbe non contenere tutte le righe di stato
+        const tot  = rows.length > 0 ? Math.max(...rows.map(r=>r.totale||0)) : 0;
         const obt  = rows.filter(r=>r.stato==='OTTENUTO').reduce((a,r)=>a+r.metri,0);
         return tot>0 ? Math.round(obt/tot*1000)/10 : 0;
       })
