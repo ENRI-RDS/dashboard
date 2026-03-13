@@ -1748,11 +1748,9 @@ async function seedDemoData() {
   status.textContent = '';
 
   try {
-    // Usa i dati reali attuali come base
     const record = await jsonbinLoad();
     const storicoEsistente = (record && record.storico) ? record.storico : [];
 
-    // Prendi l'ultimo snapshot reale come punto di partenza
     const baseData = storicoEsistente.length > 0
       ? JSON.parse(JSON.stringify(storicoEsistente[storicoEsistente.length-1].data))
       : (window._storicoCompleto && window._storicoCompleto.length > 0
@@ -1765,58 +1763,122 @@ async function seedDemoData() {
       return;
     }
 
-    // Sequenza stati: simula progressione realistica
-    const PROGRESSIONE = [
-      'IN ATTESA', 'IN REDAZIONE', 'IN FIRMA RDS',
-      'INVIATO', 'PROTOCOLLATO', 'OTTENUTO'
+    const LOTTI = ['1A','1B','2A','2B'];
+    const TUTTI_STATI = [
+      'IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE',
+      'IN FIRMA RDS','INVIATO','PROTOCOLLATO',
+      'NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'
     ];
 
-    // Genera 7 snapshot: ogni giorno sposta ~2% da stati iniziali verso stati avanzati
-    const nuoviEntry = [];
-    for (let g = 6; g >= 0; g--) {
-      const d = new Date();
-      d.setDate(d.getDate() - g);
-      d.setHours(9, 0, 0, 0);
+    // Calcola totale metri reale per lotto
+    const totPerLotto = {};
+    LOTTI.forEach(l => {
+      totPerLotto[l] = baseData.filter(r=>r.lotto===l).reduce((a,r)=>a+r.metri,0);
+    });
+    const totGlobale = Object.values(totPerLotto).reduce((a,v)=>a+v,0);
 
-      // Clona i dati e applica variazione progressiva
-      const snapshotData = JSON.parse(JSON.stringify(baseData));
-      const factor = (7 - g) / 7; // 0→1 nel corso dei 7 giorni
-
-      // Per ogni riga, simula piccole variazioni: sposta km da IN ATTESA verso stati avanzati
-      const attesa = snapshotData.filter(r => r.stato === 'IN ATTESA');
-      const totalMetri = snapshotData.reduce((a,r) => a+r.metri, 0);
-      const shiftPerDay = totalMetri * 0.008 * factor; // ~0.8% al giorno
-
-      attesa.forEach((r, i) => {
-        if (i % 3 === 0 && r.metri > 1000) {
-          const shift = Math.min(shiftPerDay / Math.max(attesa.length,1), r.metri * 0.05);
-          r.metri = Math.max(0, r.metri - shift);
-          // Aggiungi ai protocollati dello stesso lotto
-          const target = snapshotData.find(x => x.lotto === r.lotto && x.stato === 'PROTOCOLLATO');
-          if (target) target.metri += shift;
-          else snapshotData.push({ lotto: r.lotto, stato: 'PROTOCOLLATO', metri: shift, totale: r.totale, pct: 0 });
+    // Funzione helper: costruisce snapshot con distribuzione % definita
+    function buildSnapshot(distribuzione) {
+      // distribuzione = { LOTTO: { STATO: percentuale(0-100) } }
+      const rows = [];
+      LOTTI.forEach(l => {
+        const tot = totPerLotto[l];
+        const dist = distribuzione[l] || {};
+        let somma = 0;
+        TUTTI_STATI.forEach((s, i) => {
+          const pct = dist[s] || 0;
+          const m = i === TUTTI_STATI.length - 1
+            ? Math.max(0, tot - somma) * 0  // sicurezza
+            : tot * pct / 100;
+          if (m > 0 || pct > 0) {
+            rows.push({ lotto: l, stato: s, metri: Math.round(m * 10) / 10, totale: tot, pct: pct });
+            somma += m;
+          }
+        });
+        // Residuo in IN ATTESA
+        const residuo = tot - rows.filter(r=>r.lotto===l).reduce((a,r)=>a+r.metri,0);
+        if (residuo > 0) {
+          const attesa = rows.find(r=>r.lotto===l && r.stato==='IN ATTESA');
+          if (attesa) attesa.metri += residuo;
+          else rows.push({ lotto: l, stato: 'IN ATTESA', metri: residuo, totale: tot, pct: residuo/tot*100 });
         }
       });
-
-      nuoviEntry.push({ data: snapshotData, ts: d.toISOString() });
+      return rows;
     }
 
-    // Combina esistente (senza demo precedenti) + nuovi 7 giorni
-    // Rimuove eventuali entry demo già presenti (ultimi 7 se erano già stati iniettati)
+    // 7 giorni: distribuzione diversa ogni giorno, progressione credibile
+    // Giorno 0 (6 giorni fa): quasi tutto in attesa, pochissimo avanzato
+    // Giorno 6 (oggi): mix realistico con un po' di ottenuto
+    const distribuzioni = [
+      // giorno -6
+      {
+        '1A':{ 'IN ATTESA':72, 'IN REDAZIONE':12, 'IN FIRMA RDS':8, 'INVIATO':5, 'PROTOCOLLATO':3 },
+        '1B':{ 'IN ATTESA':80, 'IN REDAZIONE':10, 'IN FIRMA RDS':5, 'INVIATO':3, 'PROTOCOLLATO':2 },
+        '2A':{ 'IN ATTESA':68, 'IN REDAZIONE':15, 'IN FIRMA RDS':7, 'INVIATO':6, 'PROTOCOLLATO':4 },
+        '2B':{ 'IN ATTESA':75, 'IN REDAZIONE':12, 'IN FIRMA RDS':6, 'INVIATO':4, 'PROTOCOLLATO':3 },
+      },
+      // giorno -5
+      {
+        '1A':{ 'IN ATTESA':68, 'IN REDAZIONE':13, 'IN FIRMA RDS':8, 'INVIATO':6, 'PROTOCOLLATO':4, 'OTTENUTO':1 },
+        '1B':{ 'IN ATTESA':76, 'IN REDAZIONE':11, 'IN FIRMA RDS':5, 'INVIATO':4, 'PROTOCOLLATO':3, 'OTTENUTO':1 },
+        '2A':{ 'IN ATTESA':63, 'IN REDAZIONE':16, 'IN FIRMA RDS':8, 'INVIATO':7, 'PROTOCOLLATO':5, 'OTTENUTO':1 },
+        '2B':{ 'IN ATTESA':70, 'IN REDAZIONE':13, 'IN FIRMA RDS':7, 'INVIATO':5, 'PROTOCOLLATO':3, 'NECESSARIA INTEGRAZIONE':2 },
+      },
+      // giorno -4
+      {
+        '1A':{ 'IN ATTESA':62, 'IN REDAZIONE':14, 'IN FIRMA RDS':9, 'INVIATO':7, 'PROTOCOLLATO':5, 'OTTENUTO':3 },
+        '1B':{ 'IN ATTESA':71, 'IN REDAZIONE':12, 'IN FIRMA RDS':6, 'INVIATO':5, 'PROTOCOLLATO':4, 'OTTENUTO':2 },
+        '2A':{ 'IN ATTESA':58, 'IN REDAZIONE':17, 'IN FIRMA RDS':9, 'INVIATO':7, 'PROTOCOLLATO':6, 'OTTENUTO':3 },
+        '2B':{ 'IN ATTESA':65, 'IN REDAZIONE':14, 'IN FIRMA RDS':7, 'INVIATO':6, 'PROTOCOLLATO':4, 'NECESSARIA INTEGRAZIONE':2, 'OTTENUTO':2 },
+      },
+      // giorno -3
+      {
+        '1A':{ 'IN ATTESA':56, 'IN REDAZIONE':14, 'IN FIRMA RDS':9, 'INVIATO':8, 'PROTOCOLLATO':7, 'PROTOCOLLATO INTEGRAZIONE':2, 'OTTENUTO':4 },
+        '1B':{ 'IN ATTESA':65, 'IN REDAZIONE':13, 'IN FIRMA RDS':7, 'INVIATO':6, 'PROTOCOLLATO':5, 'OTTENUTO':4 },
+        '2A':{ 'IN ATTESA':52, 'IN REDAZIONE':17, 'IN FIRMA RDS':9, 'INVIATO':8, 'PROTOCOLLATO':7, 'OTTENUTO':5, 'NECESSARIA INTEGRAZIONE':2 },
+        '2B':{ 'IN ATTESA':59, 'IN REDAZIONE':15, 'IN FIRMA RDS':8, 'INVIATO':7, 'PROTOCOLLATO':5, 'NECESSARIA INTEGRAZIONE':3, 'OTTENUTO':3 },
+      },
+      // giorno -2
+      {
+        '1A':{ 'IN ATTESA':50, 'IN REDAZIONE':14, 'IN FIRMA RDS':10, 'INVIATO':9, 'PROTOCOLLATO':8, 'PROTOCOLLATO INTEGRAZIONE':3, 'OTTENUTO':6 },
+        '1B':{ 'IN ATTESA':59, 'IN REDAZIONE':14, 'IN FIRMA RDS':8, 'INVIATO':7, 'PROTOCOLLATO':6, 'OTTENUTO':6 },
+        '2A':{ 'IN ATTESA':46, 'IN REDAZIONE':17, 'IN FIRMA RDS':10, 'INVIATO':9, 'PROTOCOLLATO':8, 'OTTENUTO':7, 'NECESSARIA INTEGRAZIONE':3 },
+        '2B':{ 'IN ATTESA':53, 'IN REDAZIONE':15, 'IN FIRMA RDS':9, 'INVIATO':8, 'PROTOCOLLATO':6, 'NECESSARIA INTEGRAZIONE':4, 'OTTENUTO':5 },
+      },
+      // giorno -1
+      {
+        '1A':{ 'IN ATTESA':44, 'IN REDAZIONE':14, 'IN FIRMA RDS':10, 'INVIATO':10, 'PROTOCOLLATO':9, 'PROTOCOLLATO INTEGRAZIONE':4, 'OTTENUTO':9 },
+        '1B':{ 'IN ATTESA':53, 'IN REDAZIONE':14, 'IN FIRMA RDS':9, 'INVIATO':8, 'PROTOCOLLATO':7, 'OTTENUTO':9 },
+        '2A':{ 'IN ATTESA':40, 'IN REDAZIONE':17, 'IN FIRMA RDS':10, 'INVIATO':10, 'PROTOCOLLATO':9, 'OTTENUTO':10, 'NECESSARIA INTEGRAZIONE':4 },
+        '2B':{ 'IN ATTESA':47, 'IN REDAZIONE':15, 'IN FIRMA RDS':9, 'INVIATO':9, 'PROTOCOLLATO':7, 'NECESSARIA INTEGRAZIONE':4, 'OTTENUTO':9 },
+      },
+      // oggi
+      {
+        '1A':{ 'IN ATTESA':38, 'IN REDAZIONE':14, 'IN FIRMA RDS':11, 'INVIATO':11, 'PROTOCOLLATO':10, 'PROTOCOLLATO INTEGRAZIONE':4, 'OTTENUTO':12 },
+        '1B':{ 'IN ATTESA':47, 'IN REDAZIONE':14, 'IN FIRMA RDS':10, 'INVIATO':9, 'PROTOCOLLATO':8, 'OTTENUTO':12 },
+        '2A':{ 'IN ATTESA':34, 'IN REDAZIONE':17, 'IN FIRMA RDS':11, 'INVIATO':11, 'PROTOCOLLATO':10, 'OTTENUTO':13, 'NECESSARIA INTEGRAZIONE':4 },
+        '2B':{ 'IN ATTESA':41, 'IN REDAZIONE':15, 'IN FIRMA RDS':10, 'INVIATO':10, 'PROTOCOLLATO':8, 'NECESSARIA INTEGRAZIONE':4, 'OTTENUTO':12 },
+      },
+    ];
+
+    const nuoviEntry = distribuzioni.map((dist, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      d.setHours(9, 0, 0, 0);
+      return { data: buildSnapshot(dist), ts: d.toISOString() };
+    });
+
     const storicoBase = storicoEsistente.length > 1
-      ? storicoEsistente.slice(0, storicoEsistente.length - 1) // tieni tutto tranne l'ultimo (che diventa il giorno 7)
+      ? storicoEsistente.slice(0, storicoEsistente.length - 1)
       : storicoEsistente;
 
-    const nuovoStorico = [...storicoBase, ...nuoviEntry];
-    // Limita
-    const limitato = nuovoStorico.slice(-STORICO_MAX_ENTRIES);
+    const limitato = [...storicoBase, ...nuoviEntry].slice(-STORICO_MAX_ENTRIES);
 
     await jsonbinSave({ storico: limitato });
     window._storicoCompleto = limitato;
 
     status.textContent = `✅ ${nuoviEntry.length} giorni iniettati`;
     btn.textContent = '✓ Fatto';
-    // Ricarica il grafico
     setTimeout(() => renderStoricoModal(), 300);
 
   } catch(e) {
