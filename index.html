@@ -964,6 +964,7 @@ async function loadData(saveSnapshot = false) {
     const prevForModal = storicoPrev.length >= 2 ? storicoPrev[storicoPrev.length - 2] : null;
     window._prevSnapshotData = prevForModal ? prevForModal.data : null;
     window._storicoCompleto = storageRecord.storico; // per il pannello storico
+    window._currentData = data; // dati reali attuali, usati per snapshot backdatati
     // ────────────────────────────────────────────────────────────────────────
 
     setLoading(100);
@@ -1541,15 +1542,34 @@ function renderStoricoModal() {
           </tr>
         </tbody>
       </table>
-      <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <span style="color:var(--muted);font-size:10px">🧪 Test:</span>
-        <button onclick="seedDemoData()" style="font-size:10px;padding:4px 12px;border-radius:4px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);cursor:pointer" id="btnSeedDemo">
-          Inietta 7 giorni demo in JSONBin
-        </button>
-        <button onclick="svuotaStorico()" style="font-size:10px;padding:4px 12px;border-radius:4px;background:#cc333311;color:#cc3333;border:1px solid #cc333344;cursor:pointer" id="btnSvuotaStorico">
-          🗑 Svuota storico
-        </button>
-        <span id="seedStatus" style="font-size:10px;color:var(--muted)"></span>
+      <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px;">
+        <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">📅 Aggiungi snapshot a data precedente</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5">
+          Usa questa funzione se hai caricato i dati in ritardo rispetto alla data reale di rilevazione.<br>
+          Salva i <b style="color:var(--text)">dati attuali del CSV</b> con la data che scegli tu.
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px">
+            <span style="font-size:10px;color:var(--muted)">Data rilevazione:</span>
+            <input type="date" id="inputDataBackdate" style="background:transparent;border:none;color:var(--text);font-size:11px;font-family:'DM Mono',monospace;outline:none;cursor:pointer"
+              max="${new Date().toISOString().split('T')[0]}"
+              value="${new Date(Date.now()-86400000).toISOString().split('T')[0]}">
+          </div>
+          <button onclick="aggiungiSnapshotBackdate()" id="btnBackdate"
+            style="font-size:11px;padding:6px 16px;border-radius:6px;background:var(--accent);color:white;border:none;cursor:pointer;font-weight:500">
+            ✚ Aggiungi al grafico
+          </button>
+          <span id="backdateStatus" style="font-size:10px;color:var(--muted)"></span>
+        </div>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <button onclick="svuotaStorico()" style="font-size:10px;padding:4px 12px;border-radius:4px;background:#cc333311;color:#cc3333;border:1px solid #cc333344;cursor:pointer" id="btnSvuotaStorico">
+            🗑 Svuota tutto lo storico
+          </button>
+          <button onclick="seedDemoData()" style="font-size:10px;padding:4px 12px;border-radius:4px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);cursor:pointer" id="btnSeedDemo">
+            🧪 Demo 7 giorni
+          </button>
+          <span id="seedStatus" style="font-size:10px;color:var(--muted)"></span>
+        </div>
       </div>
     </div>`;
 
@@ -1656,6 +1676,71 @@ window.storicoToggleView = function(mode) {
 
   _buildStoricoChart(storico, labels, datasets, yMax, mode);
 };
+
+async function aggiungiSnapshotBackdate() {
+  const btn = document.getElementById('btnBackdate');
+  const status = document.getElementById('backdateStatus');
+  const inputData = document.getElementById('inputDataBackdate');
+  if (!btn || !inputData) return;
+
+  const dataScelta = inputData.value; // formato YYYY-MM-DD
+  if (!dataScelta) { status.textContent = '⚠ Scegli una data'; return; }
+
+  const oggi = new Date().toISOString().split('T')[0];
+  if (dataScelta > oggi) { status.textContent = '⚠ La data non può essere futura'; return; }
+
+  // Usa i dati reali attualmente caricati
+  const datiAttuali = window._currentData;
+  if (!datiAttuali || datiAttuali.length === 0) {
+    status.textContent = '❌ Nessun dato CSV caricato';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Salvataggio...';
+  status.textContent = '';
+
+  try {
+    const record = await jsonbinLoad();
+    const storico = (record && record.storico) ? record.storico : [];
+
+    // Controlla se esiste già uno snapshot per questa data
+    const dataGiorno = dataScelta; // YYYY-MM-DD
+    const esistente = storico.find(s => s.ts.startsWith(dataGiorno));
+    if (esistente) {
+      if (!confirm(`Esiste già uno snapshot per il ${new Date(dataScelta).toLocaleDateString('it-IT')}. Vuoi sostituirlo?`)) {
+        btn.disabled = false; btn.textContent = '✚ Aggiungi al grafico';
+        return;
+      }
+      // Rimuovi il vecchio
+      const idx = storico.indexOf(esistente);
+      storico.splice(idx, 1);
+    }
+
+    // Crea il nuovo snapshot con la data scelta (ore 09:00)
+    const tsBackdate = new Date(dataScelta + 'T09:00:00').toISOString();
+    const nuovoEntry = { data: datiAttuali, ts: tsBackdate };
+    storico.push(nuovoEntry);
+
+    // Ordina per data e limita
+    storico.sort((a, b) => new Date(a.ts) - new Date(b.ts));
+    if (storico.length > STORICO_MAX_ENTRIES) storico.splice(0, storico.length - STORICO_MAX_ENTRIES);
+
+    await jsonbinSave({ storico });
+    window._storicoCompleto = storico;
+
+    const dataFmt = new Date(dataScelta).toLocaleDateString('it-IT', {day:'2-digit', month:'2-digit', year:'numeric'});
+    status.textContent = `✅ Snapshot del ${dataFmt} aggiunto`;
+    btn.textContent = '✚ Aggiungi al grafico';
+    btn.disabled = false;
+    setTimeout(() => renderStoricoModal(), 400);
+
+  } catch(e) {
+    status.textContent = '❌ ' + e.message;
+    btn.disabled = false;
+    btn.textContent = '✚ Aggiungi al grafico';
+  }
+}
 
 async function svuotaStorico() {
   const btn = document.getElementById('btnSvuotaStorico');
