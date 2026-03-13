@@ -1455,7 +1455,22 @@ let _storicoChartInstance = null;
 function apriStorico() {
   const overlay = document.getElementById('modalStoricoOverlay');
   overlay.classList.add('open');
-  renderStoricoModal();
+  // Carica sempre fresh da JSONBin al click
+  const body = document.getElementById('modalStoricoBody');
+  body.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:40px">⏳ Caricamento storico...</div>';
+  jsonbinLoad()
+    .then(record => {
+      window._storicoCompleto = (record && record.storico) ? record.storico : [];
+      renderStoricoModal();
+    })
+    .catch(e => {
+      // Usa dati già in memoria se disponibili
+      if (window._storicoCompleto && window._storicoCompleto.length > 0) {
+        renderStoricoModal();
+      } else {
+        body.innerHTML = `<div style="text-align:center;color:#cc3333;font-size:12px;padding:40px">❌ Impossibile caricare lo storico<br><span style="color:var(--muted);font-size:11px">${e.message}</span></div>`;
+      }
+    });
 }
 
 function closeStorico(e) {
@@ -1468,11 +1483,10 @@ function renderStoricoModal() {
   const storico = window._storicoCompleto || [];
 
   if (storico.length === 0) {
-    body.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px">Nessun dato storico disponibile.<br>Lo storico si costruisce ad ogni aggiornamento del CSV.</div>';
+    body.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px">Nessun dato storico ancora.<br><span style="font-size:11px">Lo storico si accumula ad ogni aggiornamento del CSV.</span></div>';
     return;
   }
 
-  // Gruppi da tracciare
   const GRUPPI = [
     { label: 'Lotto 1 (1A+1B)', lottos: ['1A','1B'], color: '#4f8ef7' },
     { label: 'Lotto 2 (2A+2B)', lottos: ['2A','2B'], color: '#e07b3a' },
@@ -1480,7 +1494,6 @@ function renderStoricoModal() {
   ];
   const STATO_OK = ['OTTENUTO'];
 
-  // Calcola % ottenuto per ogni snapshot
   const labels = storico.map(s => {
     const d = new Date(s.ts);
     return d.toLocaleDateString('it-IT', { day:'2-digit', month:'2-digit', year:'2-digit' });
@@ -1488,29 +1501,30 @@ function renderStoricoModal() {
 
   const datasets = GRUPPI.map(g => {
     const values = storico.map(s => {
-      const rows = g.lottos
-        ? s.data.filter(r => g.lottos.includes(r.lotto))
-        : s.data;
+      const rows = g.lottos ? s.data.filter(r => g.lottos.includes(r.lotto)) : s.data;
       const totale = rows.reduce((acc, r) => acc + r.metri, 0);
       const ottenuto = rows.filter(r => STATO_OK.includes(r.stato)).reduce((acc, r) => acc + r.metri, 0);
       return totale > 0 ? Math.round(ottenuto / totale * 1000) / 10 : 0;
     });
-    return { label: g.label, data: values, borderColor: g.color, backgroundColor: g.color + '22',
-             tension: 0.3, fill: false, pointRadius: storico.length > 20 ? 3 : 5,
-             pointHoverRadius: 7, borderWidth: 2 };
+    return {
+      label: g.label, data: values,
+      borderColor: g.color, backgroundColor: g.color + '22',
+      tension: 0.3, fill: false,
+      pointRadius: storico.length > 20 ? 2 : 4,
+      pointHoverRadius: 6, borderWidth: 2
+    };
   });
 
-  // Ultima riga: tabella ultime variazioni
   const ultime = storico.slice(-5).reverse();
   const tabellaHtml = `
-    <div style="margin-top:18px;font-size:11px;color:var(--muted)">
+    <div style="margin-top:16px;font-size:11px;color:var(--muted);padding:0 4px">
       <div style="font-weight:600;color:var(--text);margin-bottom:6px">Ultime ${ultime.length} rilevazioni</div>
       <table style="width:100%;border-collapse:collapse">
         <thead><tr>
-          <th style="text-align:left;padding:3px 8px;border-bottom:1px solid var(--border)">Data</th>
-          <th style="text-align:right;padding:3px 8px;border-bottom:1px solid var(--border)">Lotto 1</th>
-          <th style="text-align:right;padding:3px 8px;border-bottom:1px solid var(--border)">Lotto 2</th>
-          <th style="text-align:right;padding:3px 8px;border-bottom:1px solid var(--border)">Totale</th>
+          <th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border);color:var(--muted)">Data</th>
+          <th style="text-align:right;padding:4px 8px;border-bottom:1px solid var(--border);color:#4f8ef7">Lotto 1</th>
+          <th style="text-align:right;padding:4px 8px;border-bottom:1px solid var(--border);color:#e07b3a">Lotto 2</th>
+          <th style="text-align:right;padding:4px 8px;border-bottom:1px solid var(--border);color:#3a8c5c">Totale</th>
         </tr></thead>
         <tbody>
         ${ultime.map((s,i) => {
@@ -1522,20 +1536,20 @@ function renderStoricoModal() {
           };
           const bg = i===0 ? 'background:var(--surface2)' : '';
           return `<tr style="${bg}">
-            <td style="padding:4px 8px">${new Date(s.ts).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})}</td>
-            <td style="text-align:right;padding:4px 8px;color:#4f8ef7">${calcPct(['1A','1B'])}</td>
-            <td style="text-align:right;padding:4px 8px;color:#e07b3a">${calcPct(['2A','2B'])}</td>
-            <td style="text-align:right;padding:4px 8px;color:#3a8c5c;font-weight:600">${calcPct(null)}</td>
+            <td style="padding:5px 8px">${new Date(s.ts).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})}</td>
+            <td style="text-align:right;padding:5px 8px;color:#4f8ef7">${calcPct(['1A','1B'])}</td>
+            <td style="text-align:right;padding:5px 8px;color:#e07b3a">${calcPct(['2A','2B'])}</td>
+            <td style="text-align:right;padding:5px 8px;color:#3a8c5c;font-weight:600">${calcPct(null)}</td>
           </tr>`;
         }).join('')}
         </tbody>
       </table>
-      <div style="margin-top:8px;color:var(--muted);font-size:10px">${storico.length} rilevazioni totali nel database</div>
+      <div style="margin-top:8px;color:var(--muted);font-size:10px">${storico.length} rilevazioni nel database</div>
     </div>`;
 
-  body.innerHTML = `<canvas id="storicoChart" style="width:100%;height:260px"></canvas>${tabellaHtml}`;
+  // Wrapper con altezza fissa per il grafico — evita che si espanda infinitamente
+  body.innerHTML = `<div style="position:relative;height:240px;width:100%"><canvas id="storicoChart"></canvas></div>${tabellaHtml}`;
 
-  // Distruggi chart precedente se esiste
   if (_storicoChartInstance) { _storicoChartInstance.destroy(); _storicoChartInstance = null; }
 
   const ctx = document.getElementById('storicoChart').getContext('2d');
@@ -1547,14 +1561,19 @@ function renderStoricoModal() {
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { labels: { color: '#e8eaf0', font: { size: 11 } } },
-        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}%` } }
+        legend: { labels: { color: '#e8eaf0', font: { size: 11 }, boxWidth: 12 } },
+        tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y}%` } }
       },
       scales: {
-        x: { ticks: { color: '#6b7080', font: { size: 10 }, maxRotation: 45 },
-             grid: { color: '#2e3347' } },
-        y: { ticks: { color: '#6b7080', callback: v => v+'%' },
-             grid: { color: '#2e3347' }, min: 0, max: 100 }
+        x: {
+          ticks: { color: '#6b7080', font: { size: 10 }, maxRotation: 45, maxTicksLimit: 12 },
+          grid: { color: '#2e334788' }
+        },
+        y: {
+          min: 0, max: 100,
+          ticks: { color: '#6b7080', font: { size: 10 }, stepSize: 20, callback: v => v+'%' },
+          grid: { color: '#2e334788' }
+        }
       }
     }
   });
