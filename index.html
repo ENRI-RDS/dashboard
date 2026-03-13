@@ -936,12 +936,15 @@ async function loadData(saveSnapshot = false) {
       dataChanged = dataHash !== prevHash;
 
       if (dataChanged) {
-        const newEntry = { data: data, ts: new Date().toISOString() };
-        storico.push(newEntry);
-        // Tieni solo gli ultimi STORICO_MAX_ENTRIES
-        if (storico.length > STORICO_MAX_ENTRIES) storico.splice(0, storico.length - STORICO_MAX_ENTRIES);
-        storageRecord.storico = storico;
-        jsonbinSave(storageRecord).catch(e => console.warn('Storico save error:', e));
+        // Non salvare snapshot se il totale è 0 (CSV errato o non caricato)
+        const totaleMetri = data.reduce((a, r) => a + (r.metri || 0), 0);
+        if (totaleMetri > 0) {
+          const newEntry = { data: data, ts: new Date().toISOString() };
+          storico.push(newEntry);
+          if (storico.length > STORICO_MAX_ENTRIES) storico.splice(0, storico.length - STORICO_MAX_ENTRIES);
+          storageRecord.storico = storico;
+          jsonbinSave(storageRecord).catch(e => console.warn('Storico save error:', e));
+        }
       }
     } catch(e) {
       console.warn('Storico JSONBin error:', e);
@@ -1481,8 +1484,11 @@ function closeStorico(e) {
 function renderStoricoModal() {
   const body = document.getElementById('modalStoricoBody');
   // Ordina sempre per timestamp crescente prima di renderizzare
+  // Scarta snapshot con totale = 0 (CSV non trovato o errato in quel momento)
   const storicoRaw = window._storicoCompleto || [];
-  const storico = [...storicoRaw].sort((a, b) => new Date(a.ts) - new Date(b.ts));
+  const storico = [...storicoRaw]
+    .filter(s => s.data && s.data.reduce((a, r) => a + (r.metri || 0), 0) > 0)
+    .sort((a, b) => new Date(a.ts) - new Date(b.ts));
   window._storicoCompleto = storico;
 
   if (storico.length === 0) {
@@ -1866,6 +1872,15 @@ function _buildStoricoChart(storico, labels, datasets, yMax, mode) {
     };
   });
 
+  const STATI_ATTESA_SET = new Set(['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE']);
+  const STATI_DETTAGLIO = [
+    { label: 'In Firma RDS',           stati: ['IN FIRMA RDS'],                    color: '#e07b3a' },
+    { label: 'Inviato / Prot.',        stati: ['INVIATO','PROTOCOLLATO'],           color: '#4f8ef7' },
+    { label: 'Nec. Integraz.',         stati: ['NECESSARIA INTEGRAZIONE'],          color: '#cc3333' },
+    { label: 'Prot. Integraz.',        stati: ['PROTOCOLLATO INTEGRAZIONE'],        color: '#548235' },
+    { label: 'Ottenuto',               stati: ['OTTENUTO'],                         color: '#3a8c5c' },
+  ];
+
   _storicoChartInstance = new Chart(ctx, {
     type: 'line',
     data: { labels, datasets: dsWithGrad },
@@ -1877,7 +1892,8 @@ function _buildStoricoChart(storico, labels, datasets, yMax, mode) {
       layout: { padding: { right: mode === 'lotti' ? 72 : 16 } },
       plugins: {
         legend: { display: false },
-        tooltip: {
+        tooltip: mode === 'stati' ? {
+          // Tooltip standard per modalità Per stato
           backgroundColor: '#1e2235ee',
           borderColor: '#3a4060',
           borderWidth: 1,
@@ -1890,11 +1906,81 @@ function _buildStoricoChart(storico, labels, datasets, yMax, mode) {
           cornerRadius: 8,
           callbacks: {
             title: items => `📅 ${items[0].label}`,
-            afterTitle: () => mode === 'lotti' ? '  avanzamento (uscito da attesa/redaz.)' : '',
             label: c => {
               const bar = '█'.repeat(Math.round(c.parsed.y / 5));
               return ` ${c.dataset.label}: ${c.parsed.y.toFixed(1)}%  ${bar}`;
             }
+          }
+        } : {
+          // Tooltip custom HTML per modalità Per lotto
+          enabled: false,
+          external(context) {
+            let el = document.getElementById('storicoTooltipCustom');
+            if (!el) {
+              el = document.createElement('div');
+              el.id = 'storicoTooltipCustom';
+              el.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;background:#1a1d2eee;border:1px solid #3a4060;border-radius:10px;padding:10px 14px;min-width:220px;font-family:"DM Sans",sans-serif;transition:opacity 0.15s';
+              document.body.appendChild(el);
+            }
+            const { chart, tooltip } = context;
+            if (tooltip.opacity === 0) { el.style.opacity = '0'; return; }
+
+            const idx = tooltip.dataPoints?.[0]?.dataIndex;
+            if (idx == null) { el.style.opacity = '0'; return; }
+            const snap = storico[idx];
+            if (!snap) { el.style.opacity = '0'; return; }
+
+            const dataFmt = new Date(snap.ts).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
+
+            // Costruisci righe per ogni lotto
+            const LOTTI_ORDER = ['1A','1B','2A','2B'];
+            const LOTTI_COLORS = { '1A':'#4f8ef7','1B':'#7ab3f7','2A':'#e07b3a','2B':'#f7a96a' };
+
+            const righe = LOTTI_ORDER.map(lotto => {
+              const rows = snap.data.filter(r => r.lotto === lotto);
+              if (!rows.length) return '';
+              const tot = Math.max(...rows.map(r => r.totale || 0));
+              if (!tot) return '';
+
+              const dettaglio = STATI_DETTAGLIO.map(g => {
+                const m = rows.filter(r => g.stati.includes(r.stato)).reduce((a,r) => a+r.metri, 0);
+                const pct = tot > 0 ? (m/tot*100) : 0;
+                if (pct < 0.05) return '';
+                return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:1px 0">
+                  <span style="display:flex;align-items:center;gap:5px;color:#a0a8c0;font-size:10px">
+                    <span style="width:6px;height:6px;border-radius:50%;background:${g.color};display:inline-block;flex-shrink:0"></span>
+                    ${g.label}
+                  </span>
+                  <span style="font-family:'DM Mono',monospace;font-size:10px;color:${g.color};font-weight:600">${pct.toFixed(1)}%</span>
+                </div>`;
+              }).filter(Boolean).join('');
+
+              const avanz = rows.filter(r => !STATI_ATTESA_SET.has(r.stato)).reduce((a,r) => a+r.metri, 0);
+              const avanzPct = tot > 0 ? (avanz/tot*100).toFixed(1) : '0.0';
+
+              return `<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #2e334744">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+                  <span style="font-size:11px;font-weight:700;color:${LOTTI_COLORS[lotto]}">Lotto ${lotto}</span>
+                  <span style="font-size:10px;font-family:'DM Mono',monospace;color:${LOTTI_COLORS[lotto]}">${avanzPct}% avanz.</span>
+                </div>
+                ${dettaglio || '<span style="font-size:10px;color:#525870;font-style:italic">tutto in attesa/redazione</span>'}
+              </div>`;
+            }).filter(Boolean).join('');
+
+            el.innerHTML = `
+              <div style="font-size:11px;font-weight:600;color:#e8eaf0;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #3a4060">📅 ${dataFmt}</div>
+              ${righe || '<span style="font-size:10px;color:#525870">Nessun dato</span>'}
+            `;
+            el.style.opacity = '1';
+
+            // Posizionamento
+            const rect = chart.canvas.getBoundingClientRect();
+            let left = rect.left + tooltip.caretX + 16;
+            let top  = rect.top  + tooltip.caretY - 20;
+            // Evita uscita destra
+            if (left + 240 > window.innerWidth) left = rect.left + tooltip.caretX - 240;
+            el.style.left = left + 'px';
+            el.style.top  = top  + 'px';
           }
         }
       },
@@ -1947,6 +2033,14 @@ function _buildStoricoChart(storico, labels, datasets, yMax, mode) {
       }
     }] : []
   });
+
+  // Nascondi tooltip custom quando il mouse esce dal canvas
+  if (mode === 'lotti') {
+    canvas.addEventListener('mouseleave', () => {
+      const el = document.getElementById('storicoTooltipCustom');
+      if (el) el.style.opacity = '0';
+    });
+  }
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
