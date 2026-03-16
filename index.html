@@ -805,77 +805,75 @@ function openModalCluster(cl, statiMap, totale) {
     'IN FIRMA RDS':'#e07b3a','INVIATO':'#4f8ef7','PROTOCOLLATO':'#4f8ef7',
     'NECESSARIA INTEGRAZIONE':'#cc3333','PROTOCOLLATO INTEGRAZIONE':'#548235','OTTENUTO':'#3a8c5c'
   };
-
-  const parseDateIT = (s) => {
-    if (!s || !s.trim()) return null;
-    const p = s.trim().split('/');
-    return p.length===3 ? new Date(+p[2],+p[1]-1,+p[0]) : new Date(s.trim());
-  };
-  const fmtDate = (s) => {
-    if (!s || !s.trim()) return '';
-    const p = s.trim().split('/');
-    return p.length===3 ? p[0]+'/'+p[1]+'/'+p[2] : s.trim().substring(0,10);
-  };
+  const parseDateIT = (s) => { if(!s||!s.trim()) return null; const p=s.trim().split('/'); return p.length===3?new Date(+p[2],+p[1]-1,+p[0]):new Date(s.trim()); };
+  const fmtDate = (s) => { if(!s||!s.trim()) return ''; const p=s.trim().split('/'); return p.length===3?p[0]+'/'+p[1]+'/'+p[2]:s.trim().substring(0,10); };
 
   // Pratiche associate alle tratte di questo cluster
   const clPrats = [];
   if (window._clusterTrattaMap && window._masterByTratta) {
-    const tratteCluster = new Set(window._clusterTrattaMap[cl] || []);
     const seen = new Set();
-    tratteCluster.forEach(tratta => {
+    (window._clusterTrattaMap[cl] || []).forEach(tratta => {
       (window._masterByTratta[tratta] || []).forEach(r => {
-        if (!seen.has(r.codice)) { seen.add(r.codice); clPrats.push(r); }
+        if (!seen.has(r.codice)) { seen.add(r.codice); clPrats.push({...r}); }
       });
     });
-    clPrats.sort((a,b) => {
-      const da = parseDateIT(a.dum), db = parseDateIT(b.dum);
-      if (da && db) return db - da;
-      if (da) return -1; if (db) return 1;
-      return a.codice.localeCompare(b.codice);
-    });
+    clPrats.sort((a,b) => { const da=parseDateIT(a.dum),db=parseDateIT(b.dum); if(da&&db) return db-da; return da?-1:db?1:a.codice.localeCompare(b.codice); });
   }
 
-  // Card pratica
   const pratCard = (p) => {
     const col = statiColori[p.stato] || '#6b7080';
-    const dumStr = fmtDate(p.dum);
-    const drStr  = fmtDate(p.dr);
-    const dateStr = [drStr?'Invio: '+drStr:'', dumStr?'Agg.: '+dumStr:''].filter(Boolean).join('  ·  ');
-    return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;margin-bottom:5px">
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap">
+    const dateStr = [p.dr?'Invio: '+fmtDate(p.dr):'', p.dum?'Agg.: '+fmtDate(p.dum):''].filter(Boolean).join(' · ');
+    return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:5px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
         <span style="font-family:'DM Mono',monospace;font-size:10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:1px 7px;flex-shrink:0">${p.codice}</span>
-        <span style="font-size:9px;font-weight:700;color:${col};flex-shrink:0;white-space:nowrap">${p.stato}</span>
+        <span style="font-size:9px;font-weight:700;color:${col};flex-shrink:0">${p.stato}</span>
         <span style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text);margin-left:auto;flex-shrink:0">${fmt(p.metri)} m</span>
       </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+      <div style="display:flex;justify-content:space-between;gap:6px">
         <span style="font-size:9px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente||''}</span>
         ${dateStr?`<span style="font-size:9px;color:var(--muted);white-space:nowrap;flex-shrink:0">${dateStr}</span>`:''}
       </div>
     </div>`;
   };
 
-  // Pannello pratiche a due colonne AUT | NO/ORD
+  // Pannello pratiche a due colonne
   let pratHtml = '';
   if (clPrats.length > 0) {
-    const autPrats = clPrats.filter(p => p.codice.startsWith('AUT/'));
-    const noPrats  = clPrats.filter(p => !p.codice.startsWith('AUT/'));
-    const colTitle = (label, n) =>
-      `<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--border)">${label} (${n})</div>`;
+    const autP = clPrats.filter(p => p.codice.startsWith('AUT/'));
+    const noP  = clPrats.filter(p => !p.codice.startsWith('AUT/'));
+    const colT = (lbl,n) => `<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--border)">${lbl} (${n})</div>`;
     pratHtml = `
-      <div style="flex:1;min-width:0;padding-left:20px;border-left:1px solid var(--border)">
-        <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);font-weight:600">
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);font-weight:600;margin-bottom:12px">
           Dettaglio pratiche (${clPrats.length})
         </div>
-        <div style="display:grid;grid-template-columns:${noPrats.length>0?'1fr 1fr':'1fr'};gap:12px;align-items:start">
-          <div>${autPrats.length?colTitle('Autorizzazioni',autPrats.length):''}${autPrats.map(pratCard).join('')}</div>
-          ${noPrats.length?`<div>${colTitle('Nulla Osta / Ordinanze',noPrats.length)}${noPrats.map(pratCard).join('')}</div>`:''}
+        <div style="display:grid;grid-template-columns:${noP.length?'1fr 1fr':'1fr'};gap:14px;align-items:start">
+          <div>${autP.length?colT('Autorizzazioni',autP.length):''}${autP.map(pratCard).join('')}</div>
+          ${noP.length?`<div>${colT('Nulla Osta / Ordinanze',noP.length)}${noP.map(pratCard).join('')}</div>`:''}
         </div>
       </div>`;
   }
 
-  // HTML finale: header + layout due colonne (barre | pratiche)
+  // Barre stati (full width, sopra le pratiche)
+  let barreHtml = '';
+  STATI_GRUPPI.forEach(g => {
+    const m = g.stati.reduce((s,st) => s+(statiMap[st]||0), 0);
+    if (!m) return;
+    const pct = totale > 0 ? m/totale*100 : 0;
+    const nPG = clPrats.filter(p => g.stati.includes(p.stato)).length;
+    const inside = [pct>=8?pct.toFixed(1)+'%':'', nPG>0?'('+nPG+')':''].filter(Boolean).join(' ');
+    barreHtml += `<div class="modal-bar-row">
+      <span class="modal-bar-label">${g.label}</span>
+      <div class="modal-bar-track">
+        <div class="modal-bar-fill" style="width:${pct}%;background:${g.color}"></div>
+        <span class="modal-bar-pct">${inside}</span>
+      </div>
+      <span class="modal-bar-val" style="color:${g.color}">${fmt(m)} m</span>
+    </div>`;
+  });
+
   body.innerHTML = `
-    <div style="display:flex;gap:24px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border);flex-wrap:wrap;align-items:flex-end">
+    <div style="display:flex;gap:24px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border)">
       <div>
         <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Totale Cluster ${cl}</div>
         <div style="font-size:22px;font-weight:700;font-family:'DM Mono',monospace">${fmt(totale)} m</div>
@@ -885,28 +883,8 @@ function openModalCluster(cl, statiMap, totale) {
         <div style="font-size:22px;font-weight:700;font-family:'DM Mono',monospace;color:#3a8c5c">${fmt(ottenuto)} m <span style="font-size:15px">${pctOtt}%</span></div>
       </div>
     </div>
-    <div style="display:flex;gap:0;align-items:flex-start">
-      <div style="flex:0 0 320px;min-width:0;padding-right:20px">
-        ${STATI_GRUPPI.map(g => {
-          const m = g.stati.reduce((s,st) => s+(statiMap[st]||0), 0);
-          if (!m) return '';
-          const pct = totale > 0 ? m/totale*100 : 0;
-          const nPG = clPrats.filter(p => g.stati.includes(p.stato)).length;
-          const pctStr = pct >= 8 ? pct.toFixed(1)+'%' : '';
-          const nStr = nPG > 0 ? '('+nPG+')' : '';
-          const inside = [pctStr, nStr].filter(Boolean).join(' ');
-          return `<div class="modal-bar-row">
-            <span class="modal-bar-label">${g.label}</span>
-            <div class="modal-bar-track">
-              <div class="modal-bar-fill" style="width:${pct}%;background:${g.color}"></div>
-              <span class="modal-bar-pct">${inside}</span>
-            </div>
-            <span class="modal-bar-val" style="color:${g.color}">${fmt(m)} m</span>
-          </div>`;
-        }).join('')}
-      </div>
-      ${pratHtml}
-    </div>`;
+    ${barreHtml}
+    ${pratHtml}`;
 
   document.getElementById('modalClusterOverlay').classList.add('open');
 }
