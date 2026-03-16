@@ -221,6 +221,15 @@
 </div>
 
 <!-- Modal Storico -->
+<div class="modal-overlay" id="modalClusterOverlay" onclick="closeModalCluster(event)">
+  <div class="modal" style="width:1040px;max-width:96vw">
+    <div class="modal-title">
+      <span id="modalClusterTitle">Cluster —</span>
+      <span class="modal-close" onclick="closeModalCluster()">×</span>
+    </div>
+    <div id="modalClusterBody"></div>
+  </div>
+</div>
 <div class="modal-overlay" id="modalStoricoOverlay" onclick="closeStorico(event)">
   <div class="modal" style="width:820px;max-width:97vw;max-height:88vh;overflow-y:auto">
     <div class="modal-title">
@@ -528,11 +537,24 @@ async function loadCluster() {
         const lotto  = cols[iLOT]?.trim().replace(/"/g,'');
         if (tratta && lotto) trattaLottoMap[tratta] = lotto;
       }
+
+      // Mappa cluster → set tratte
+      if (iTRAT !== -1) {
+        const tratta = cols[iTRAT]?.trim().replace(/"/g,'');
+        if (tratta && cl) {
+          if (!clusterTrattaMap[cl]) clusterTrattaMap[cl] = new Set();
+          clusterTrattaMap[cl].add(tratta);
+        }
+      }
     }
 
     window._comuniKm = comuniKm;
     window._comuniKmPerLotto = comuniKmPerLotto;
     window._trattaLottoMap = trattaLottoMap;
+    window._clusterTrattaMap = {};
+    Object.entries(clusterTrattaMap).forEach(([cl, set]) => {
+      window._clusterTrattaMap[cl] = [...set];
+    });
 
     if (Object.keys(clMap).length === 0) throw new Error('Nessun cluster trovato nel CSV');
 
@@ -558,9 +580,10 @@ function renderCluster(clMap, clTot) {
     const row = document.createElement('div');
     row.className = 'bar-row';
     row.innerHTML = `<span class="bar-lotto">${cl}</span><div class="bar-track">${segsHtml}</div><span class="bar-pct">${pctLabel}</span><span style="min-width:72px;text-align:right;font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;flex-shrink:0">${fmt(tot)} m</span>`;
-    row.style.cursor = 'default';
+    row.style.cursor = 'pointer';
+    row.title = 'Clicca per dettaglio cluster';
+    row.addEventListener('click', () => openModalCluster(cl, clMap[cl], clTot[cl]));
     row.querySelectorAll('.bar-seg').forEach(seg => {
-      seg.style.cursor = 'default';
       seg.addEventListener('mousemove', e => { tooltip.textContent = seg.getAttribute('data-tip'); tooltip.style.opacity = '1'; tooltip.style.left = (e.clientX+12)+'px'; tooltip.style.top = (e.clientY-28)+'px'; });
       seg.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
     });
@@ -681,7 +704,7 @@ function openModal(lotto, statiMetri, totale) {
 
     pratHtml = `<div style="padding-left:20px;border-left:1px solid var(--border);display:flex;flex-direction:column;gap:0;min-width:0;flex:1">
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);font-weight:600">
-        Dettaglio pratiche (${allPrats.length}) · ord. per ultimo aggiornamento
+        Dettaglio pratiche (${allPrats.length})
       </div>
       <div style="display:grid;grid-template-columns:${noPrats.length>0?'1fr 1fr':'1fr'};gap:12px;align-items:start">
         <div>
@@ -720,7 +743,12 @@ function openModal(lotto, statiMetri, totale) {
         <span class="modal-bar-label">${g.label}</span>
         <div class="modal-bar-track">
           <div class="modal-bar-fill" style="width:${pct}%;background:${g.color}"></div>
-          <span class="modal-bar-pct">${pct >= 8 ? pct.toFixed(1)+'%' : ''}</span>
+          <span class="modal-bar-pct">${(() => {
+            const nPG = new Set(allPrats.filter(p => g.stati.includes(p.stato)).map(p => p.codice)).size;
+            const pctStr = pct >= 8 ? pct.toFixed(1)+'%' : '';
+            const nStr = nPG > 0 ? '('+nPG+')' : '';
+            return [pctStr, nStr].filter(Boolean).join(' ');
+          })()}</span>
         </div>
         <span class="modal-bar-val" style="color:${g.color}">${fmt(m)} m ${deltaHtml}</span>
       </div>`;
@@ -757,7 +785,129 @@ function closeModal(e) {
   if (e && e.target !== document.getElementById('modalOverlay')) return;
   document.getElementById('modalOverlay').classList.remove('open');
 }
-document.addEventListener('keydown', e => { if(e.key==='Escape') { document.getElementById('modalOverlay').classList.remove('open'); document.getElementById('modalGruppoOverlay').classList.remove('open'); } });
+document.addEventListener('keydown', e => { if(e.key==='Escape') { document.getElementById('modalOverlay').classList.remove('open'); document.getElementById('modalGruppoOverlay').classList.remove('open'); document.getElementById('modalClusterOverlay').classList.remove('open'); } });
+
+
+function closeModalCluster(e) {
+  if (e && e.target !== document.getElementById('modalClusterOverlay')) return;
+  document.getElementById('modalClusterOverlay').classList.remove('open');
+}
+
+function openModalCluster(cl, statiMap, totale) {
+  document.getElementById('modalClusterTitle').textContent = 'Cluster ' + cl + ' — Dettaglio';
+  const body = document.getElementById('modalClusterBody');
+
+  const ottenuto = statiMap['OTTENUTO'] || 0;
+  const pctOtt   = totale > 0 ? (ottenuto / totale * 100).toFixed(1) : '0.0';
+
+  const statiColori = {
+    'IN ATTESA':'#4a4f6a','IN REDAZIONE':'#4a4f6a','IN REDAZIONE INTEGRAZIONE':'#4a4f6a',
+    'IN FIRMA RDS':'#e07b3a','INVIATO':'#4f8ef7','PROTOCOLLATO':'#4f8ef7',
+    'NECESSARIA INTEGRAZIONE':'#cc3333','PROTOCOLLATO INTEGRAZIONE':'#548235','OTTENUTO':'#3a8c5c'
+  };
+
+  const parseDateIT = (s) => {
+    if (!s || !s.trim()) return null;
+    const p = s.trim().split('/');
+    return p.length===3 ? new Date(+p[2],+p[1]-1,+p[0]) : new Date(s.trim());
+  };
+  const fmtDate = (s) => {
+    if (!s || !s.trim()) return '';
+    const p = s.trim().split('/');
+    return p.length===3 ? p[0]+'/'+p[1]+'/'+p[2] : s.trim().substring(0,10);
+  };
+
+  // Pratiche associate alle tratte di questo cluster
+  const clPrats = [];
+  if (window._praticheDetailPerLotto && window._clusterTrattaMap) {
+    const tratteCluster = new Set(window._clusterTrattaMap[cl] || []);
+    // Cerca in Master.csv le pratiche le cui tratte appartengono a questo cluster
+    if (window._masterByTratta) {
+      const seen = new Set();
+      tratteCluster.forEach(tratta => {
+        const rows = window._masterByTratta[tratta] || [];
+        rows.forEach(r => {
+          if (!seen.has(r.codice)) { seen.add(r.codice); clPrats.push(r); }
+        });
+      });
+      clPrats.sort((a,b) => {
+        const da = parseDateIT(a.dum), db = parseDateIT(b.dum);
+        if (da && db) return db - da;
+        if (da) return -1; if (db) return 1;
+        return a.codice.localeCompare(b.codice);
+      });
+    }
+  }
+
+  // Header
+  let html = `<div style="display:flex;gap:24px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border);flex-wrap:wrap;align-items:flex-end">
+    <div>
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Totale Cluster ${cl}</div>
+      <div style="font-size:22px;font-weight:700;font-family:'DM Mono',monospace">${fmt(totale)} m</div>
+    </div>
+    <div>
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">🏆 Autorizzati</div>
+      <div style="font-size:22px;font-weight:700;font-family:'DM Mono',monospace;color:#3a8c5c">${fmt(ottenuto)} m <span style="font-size:15px">${pctOtt}%</span></div>
+    </div>
+  </div>`;
+
+  // Barre stati con % dentro
+  const gruppiMap = buildGruppiMap(statiMap);
+  html += `<div style="display:flex;gap:0;align-items:flex-start">
+    <div style="flex:0 0 340px;min-width:0;padding-right:20px">`;
+
+  STATI_GRUPPI.forEach(g => {
+    const m = g.stati.reduce((s, st) => s + (statiMap[st]||0), 0);
+    if (!m) return;
+    const pct = totale > 0 ? m/totale*100 : 0;
+    html += `<div class="modal-bar-row">
+      <span class="modal-bar-label">${g.label}</span>
+      <div class="modal-bar-track">
+        <div class="modal-bar-fill" style="width:${pct}%;background:${g.color}"></div>
+        <span class="modal-bar-pct">${pct >= 8 ? pct.toFixed(1)+'%' : ''}</span>
+      </div>
+      <span class="modal-bar-val" style="color:${g.color}">${fmt(m)} m</span>
+    </div>`;
+  });
+
+  html += `</div>`;
+
+  // Pannello pratiche cluster a due colonne
+  if (clPrats.length > 0) {
+    const autPrats = clPrats.filter(p => p.codice.startsWith('AUT/'));
+    const noPrats  = clPrats.filter(p => !p.codice.startsWith('AUT/'));
+    const colTitle = (label, n) =>
+      `<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--border)">${label} (${n})</div>`;
+    const pratCard = (p) => {
+      const col = statiColori[p.stato] || '#6b7080';
+      const drStr  = fmtDate(p.dr);
+      const dumStr = fmtDate(p.dum);
+      const dateStr = [drStr?'Invio: '+drStr:'', dumStr?'Agg.: '+dumStr:''].filter(Boolean).join('  ·  ');
+      return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;margin-bottom:5px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-family:'DM Mono',monospace;font-size:10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:1px 7px;flex-shrink:0">${p.codice}</span>
+          <span style="font-size:9px;font-weight:700;color:${col};flex-shrink:0;white-space:nowrap">${p.stato}</span>
+          <span style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text);margin-left:auto;flex-shrink:0">${fmt(p.metri)} m</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+          <span style="font-size:9px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente||''}</span>
+          ${dateStr?`<span style="font-size:9px;color:var(--muted);white-space:nowrap;flex-shrink:0">${dateStr}</span>`:''}
+        </div>
+      </div>`;
+    };
+    html += `<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:10px;font-weight:600">Dettaglio pratiche (${clPrats.length})</div>
+      <div style="display:grid;grid-template-columns:${noPrats.length>0?'1fr 1fr':'1fr'};gap:12px;align-items:start">
+        <div>${autPrats.length?colTitle('Autorizzazioni',autPrats.length):''}${autPrats.map(pratCard).join('')}</div>
+        ${noPrats.length?`<div>${colTitle('Nulla Osta / Ordinanze',noPrats.length)}${noPrats.map(pratCard).join('')}</div>`:''}
+      </div>
+    </div>`;
+  }
+
+  html += `</div>`;
+  body.innerHTML = html;
+  document.getElementById('modalClusterOverlay').classList.add('open');
+}
 
 function closeModalGruppo(e) {
   if (e && e.target !== document.getElementById('modalGruppoOverlay')) return;
@@ -1340,7 +1490,7 @@ function renderDashboard(data, prevSnapshot=null) {
       totAttiviRow.innerHTML = `
         <div style="width:90px;flex-shrink:0;font-size:8px;color:var(--muted);text-align:right;padding-right:8px;font-style:italic">Totale attivi ↗</div>
         <div class="bar-track" style="height:8px;flex:1">${segsAttiviHtml}</div>
-        <span style="min-width:62px;text-align:right;font-size:9px;color:var(--accent);font-family:'DM Mono',monospace;flex-shrink:0;font-weight:600">${fmt(totAttivi)} m</span>`;
+        <span style="min-width:62px;text-align:right;font-size:9px;color:var(--muted);font-family:'DM Mono',monospace;flex-shrink:0;font-weight:600">${fmt(totAttivi)} m</span>`;
       totAttiviRow.addEventListener('click', () => openModalGruppo('⚡ Riepilogo Lotti Attivi', lottiAttivi, lottiMap, lottiTotale));
       wrap.appendChild(totAttiviRow);
 
@@ -2454,6 +2604,26 @@ async function loadMaster() {
     Object.entries(praticheByLotto).forEach(([lot, map]) => {
       window._praticheDetailPerLotto[lot] = Object.values(map)
         .sort((a,b) => a.codice.localeCompare(b.codice));
+    });
+
+    // Indice per tratta → pratiche (per popup cluster)
+    window._masterByTratta = {};
+    Object.values(permessiMap).forEach(r => {
+      const lotto = r.lotto || (window._trattaLottoMap && window._trattaLottoMap[r.tratta]) || '';
+      if (!lotto) return;
+      const tipoPrefix = r.tipo === 'AUTORIZZAZIONE' ? 'AUT'
+        : r.tipo === 'NULLA OSTA' ? 'NO'
+        : r.tipo === 'ORDINANZA'  ? 'ORD'
+        : r.tipo.substring(0,3);
+      const codice = tipoPrefix + '/' + r.prat + '/' + lotto;
+      if (!window._masterByTratta[r.tratta]) window._masterByTratta[r.tratta] = [];
+      // aggiungi solo se codice non già presente
+      if (!window._masterByTratta[r.tratta].find(x => x.codice === codice)) {
+        window._masterByTratta[r.tratta].push({
+          codice, tipo: r.tipo, stato: r.stato, ente: r.ente,
+          dr: r.dr, dum: r.dum, metri: r.lungh, lotto
+        });
+      }
     });
 
   } catch(e) {
