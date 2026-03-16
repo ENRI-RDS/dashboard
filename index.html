@@ -260,7 +260,7 @@
         <span style="font-size:14px;font-weight:600;font-family:'DM Mono',monospace;color:var(--text)" id="clusterStatus">—</span>
       </div>
       <div class="card-body">
-        <div class="chart-wrap" id="clusterWrap"><div style="padding:16px;font-size:12px;color:var(--muted)">Caricamento riepilogo.csv...</div></div>
+        <div class="chart-wrap" id="clusterWrap"><div style="padding:16px;font-size:12px;color:var(--muted)">Caricamento Riepilogo_progettazione.csv...</div></div>
       </div>
       <div class="legend">
         <div class="legend-item"><div class="legend-dot" style="background:#3a8c5c"></div>Ottenuto</div>
@@ -383,8 +383,72 @@ function renderBarre(gruppiMap, totale, tooltip, onHover) {
   return html;
 }
 const CSV_URL = 'dati.csv';
-const RIEPILOGO_URL = 'riepilogo.csv';
+const RIEPILOGO_URL = 'Riepilogo_progettazione.csv';
 const MASTER_URL = 'Master.csv';
+
+// ── HELPER GLOBALI ────────────────────────────────────────────────────────────
+const STATI_COLORI_MAP = {
+  'IN ATTESA':'#4a4f6a','IN REDAZIONE':'#4a4f6a','IN REDAZIONE INTEGRAZIONE':'#4a4f6a',
+  'IN FIRMA RDS':'#e07b3a','INVIATO':'#4f8ef7','PROTOCOLLATO':'#4f8ef7',
+  'NECESSARIA INTEGRAZIONE':'#cc3333','PROTOCOLLATO INTEGRAZIONE':'#548235','OTTENUTO':'#3a8c5c'
+};
+
+function parseDateIT(s) {
+  if (!s || !s.trim()) return null;
+  const p = s.trim().split('/');
+  return p.length === 3 ? new Date(+p[2], +p[1]-1, +p[0]) : new Date(s.trim());
+}
+
+function fmtDateIT(s) {
+  if (!s || !s.trim()) return '';
+  const p = s.trim().split('/');
+  return p.length === 3 ? p[0]+'/'+p[1]+'/'+p[2] : s.trim().substring(0,10);
+}
+
+function buildPratCard(p) {
+  const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
+  const dateStr = [
+    p.dr  ? 'Invio: ' + fmtDateIT(p.dr)  : '',
+    p.dum ? 'Agg.: '  + fmtDateIT(p.dum) : ''
+  ].filter(Boolean).join(' · ');
+  return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:5px">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:nowrap">
+      <span style="font-family:'DM Mono',monospace;font-size:10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:1px 7px;flex-shrink:0">${p.codice}</span>
+      <span style="font-size:9px;font-weight:700;color:${col};flex-shrink:0;white-space:nowrap">${p.stato}</span>
+      <span style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text);margin-left:auto;flex-shrink:0">${fmt(p.metri)} m</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;gap:6px">
+      <span style="font-size:9px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente||''}</span>
+      ${dateStr ? `<span style="font-size:9px;color:var(--muted);white-space:nowrap;flex-shrink:0">${dateStr}</span>` : ''}
+    </div>
+  </div>`;
+}
+
+function buildPratPanel(allPrats) {
+  if (!allPrats || !allPrats.length) return '';
+  const autP = allPrats.filter(p => p.codice.startsWith('AUT/'));
+  const noP  = allPrats.filter(p => !p.codice.startsWith('AUT/'));
+  const colT = (lbl, n) => `<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--border)">${lbl} (${n})</div>`;
+  return `<div style="flex:1;min-width:0;padding-left:20px;border-left:1px solid var(--border)">
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);font-weight:600;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">
+      Dettaglio pratiche (${allPrats.length})
+    </div>
+    <div style="display:grid;grid-template-columns:${noP.length?'1fr 1fr':'1fr'};gap:12px;align-items:start">
+      <div>${autP.length?colT('Autorizzazioni',autP.length):''}${autP.map(buildPratCard).join('')}</div>
+      ${noP.length?`<div>${colT('Nulla Osta / Ordinanze',noP.length)}${noP.map(buildPratCard).join('')}</div>`:''}
+    </div>
+  </div>`;
+}
+
+function sortPratsByDate(arr) {
+  return arr.slice().sort((a,b) => {
+    const da = parseDateIT(a.dum), db = parseDateIT(b.dum);
+    if (da && db) return db - da;
+    return da ? -1 : db ? 1 : a.codice.localeCompare(b.codice);
+  });
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 
 // ── JSONBin.io — storico condiviso ──────────────────────────────────────────
 // Inserisci qui i tuoi valori da jsonbin.io
@@ -449,7 +513,7 @@ const IMPRESE_PER_LOTTO = {
 async function loadCluster() {
   try {
     const resp = await fetch(RIEPILOGO_URL + '?t=' + Date.now());
-    if (!resp.ok) throw new Error('riepilogo.csv non trovato');
+    if (!resp.ok) throw new Error('Riepilogo_progettazione.csv non trovato');
     const text = await resp.text();
     const lines = text.trim().split('\n').map(l => l.replace(/\r/,''));
 
@@ -645,13 +709,7 @@ function openModal(lotto, statiMetri, totale) {
     </div>` : ''}
   `;
 
-  // Dati pratiche dal Master.csv (se disponibili)
-  // Ordina per data ultima modifica DESC
-  const parseDateIT = (s) => {
-    if (!s || !s.trim()) return null;
-    const p = s.trim().split('/');
-    return p.length===3 ? new Date(+p[2],+p[1]-1,+p[0]) : new Date(s.trim());
-  };
+  // Dati pratiche dal Master.csv — usa parseDateIT globale
   const allPrats = ((window._praticheDetailPerLotto || {})[lotto] || [])
     .slice()
     .sort((a,b) => {
@@ -661,23 +719,13 @@ function openModal(lotto, statiMetri, totale) {
       return a.codice.localeCompare(b.codice);
     });
 
-  const statiColori = {
-    'IN ATTESA':'#4a4f6a','IN REDAZIONE':'#4a4f6a','IN REDAZIONE INTEGRAZIONE':'#4a4f6a',
-    'IN FIRMA RDS':'#e07b3a','INVIATO':'#4f8ef7','PROTOCOLLATO':'#4f8ef7',
-    'NECESSARIA INTEGRAZIONE':'#cc3333','PROTOCOLLATO INTEGRAZIONE':'#548235','OTTENUTO':'#3a8c5c'
-  };
-
-  const fmtDate = (s) => {
-    if (!s || !s.trim()) return '';
-    const p = s.trim().split('/');
-    return p.length===3 ? p[0]+'/'+p[1]+'/'+p[2] : s.trim().substring(0,10);
-  };
+  // usa STATI_COLORI_MAP e fmtDateIT globali
 
   // Costruisce una card pratica
   const pratCard = (p) => {
-    const col = statiColori[p.stato] || '#6b7080';
-    const drStr  = fmtDate(p.dr);
-    const dumStr = fmtDate(p.dum);
+    const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
+    const drStr  = fmtDateIT(p.dr);
+    const dumStr = fmtDateIT(p.dum);
     const dateStr = [drStr ? 'Invio: '+drStr : '', dumStr ? 'Agg.: '+dumStr : '']
       .filter(Boolean).join('  ·  ');
     return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:4px">
@@ -800,13 +848,7 @@ function openModalCluster(cl, statiMap, totale) {
   const ottenuto = statiMap['OTTENUTO'] || 0;
   const pctOtt   = totale > 0 ? (ottenuto / totale * 100).toFixed(1) : '0.0';
 
-  const statiColori = {
-    'IN ATTESA':'#4a4f6a','IN REDAZIONE':'#4a4f6a','IN REDAZIONE INTEGRAZIONE':'#4a4f6a',
-    'IN FIRMA RDS':'#e07b3a','INVIATO':'#4f8ef7','PROTOCOLLATO':'#4f8ef7',
-    'NECESSARIA INTEGRAZIONE':'#cc3333','PROTOCOLLATO INTEGRAZIONE':'#548235','OTTENUTO':'#3a8c5c'
-  };
-  const parseDateIT = (s) => { if(!s||!s.trim()) return null; const p=s.trim().split('/'); return p.length===3?new Date(+p[2],+p[1]-1,+p[0]):new Date(s.trim()); };
-  const fmtDate = (s) => { if(!s||!s.trim()) return ''; const p=s.trim().split('/'); return p.length===3?p[0]+'/'+p[1]+'/'+p[2]:s.trim().substring(0,10); };
+  // usa STATI_COLORI_MAP, parseDateIT, fmtDateIT globali
 
   // Pratiche associate alle tratte di questo cluster
   const clPrats = [];
@@ -821,8 +863,8 @@ function openModalCluster(cl, statiMap, totale) {
   }
 
   const pratCard = (p) => {
-    const col = statiColori[p.stato] || '#6b7080';
-    const dateStr = [p.dr?'Invio: '+fmtDate(p.dr):'', p.dum?'Agg.: '+fmtDate(p.dum):''].filter(Boolean).join(' · ');
+    const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
+    const dateStr = [p.dr?'Invio: '+fmtDateIT(p.dr):'', p.dum?'Agg.: '+fmtDateIT(p.dum):''].filter(Boolean).join(' · ');
     return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:5px">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
         <span style="font-family:'DM Mono',monospace;font-size:10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:1px 7px;flex-shrink:0">${p.codice}</span>
@@ -2505,12 +2547,7 @@ async function loadMaster() {
     // Per ogni TRATTA_ID+PRATICA+TIPO_PERMESSO: tieni solo la riga con DATA_ULTIMA_MODIFICA più recente
     const permessiMap = {}; // key: tratta|pratica|tipo → miglior riga
 
-    const parseDateIT = (s) => {
-      if (!s || !s.trim()) return null;
-      const p = s.trim().split('/');
-      if (p.length === 3) return new Date(+p[2], +p[1]-1, +p[0]);
-      return new Date(s.trim());
-    };
+    // usa parseDateIT globale
 
     for (let i = 1; i < lines.length; i++) {
       const cols = splitLine(lines[i]);
@@ -2612,7 +2649,7 @@ async function loadMaster() {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-window.addEventListener('load', () => { loadData(); loadCluster(); loadMaster(); });
+window.addEventListener('load', () => { loadData(); loadCluster().then(() => loadMaster()).catch(() => loadMaster()); });
 window.onerror = function(msg, src, line, col, err) {
   document.getElementById('loadingScreen').style.display = 'none';
   const eb = document.getElementById('errorBox');
