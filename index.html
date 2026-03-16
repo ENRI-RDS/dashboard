@@ -623,7 +623,21 @@ function openModal(lotto, statiMetri, totale) {
   `;
 
   // Dati pratiche dal Master.csv (se disponibili)
-  const allPrats = (window._praticheDetailPerLotto || {})[lotto] || [];
+  // Ordina per data ultima modifica DESC
+  const parseDateIT = (s) => {
+    if (!s || !s.trim()) return null;
+    const p = s.trim().split('/');
+    return p.length===3 ? new Date(+p[2],+p[1]-1,+p[0]) : new Date(s.trim());
+  };
+  const allPrats = ((window._praticheDetailPerLotto || {})[lotto] || [])
+    .slice()
+    .sort((a,b) => {
+      const da = parseDateIT(a.dum), db = parseDateIT(b.dum);
+      if (da && db) return db - da;
+      if (da) return -1; if (db) return 1;
+      return a.codice.localeCompare(b.codice);
+    });
+
   const statiColori = {
     'IN ATTESA':'#4a4f6a','IN REDAZIONE':'#4a4f6a','IN REDAZIONE INTEGRAZIONE':'#4a4f6a',
     'IN FIRMA RDS':'#e07b3a','INVIATO':'#4f8ef7','PROTOCOLLATO':'#4f8ef7',
@@ -631,56 +645,66 @@ function openModal(lotto, statiMetri, totale) {
   };
 
   const fmtDate = (s) => {
-    if (!s || !s.trim()) return '—';
+    if (!s || !s.trim()) return '';
     const p = s.trim().split('/');
-    if (p.length === 3) return p[0]+'/'+p[1]+'/'+p[2];
-    return s.trim().substring(0,10);
+    return p.length===3 ? p[0]+'/'+p[1]+'/'+p[2] : s.trim().substring(0,10);
   };
 
-  // Pannello pratiche (destra)
+  // Costruisce una card pratica
+  const pratCard = (p) => {
+    const col = statiColori[p.stato] || '#6b7080';
+    const drStr  = fmtDate(p.dr);
+    const dumStr = fmtDate(p.dum);
+    const dateStr = [drStr ? 'Invio: '+drStr : '', dumStr ? 'Agg.: '+dumStr : '']
+      .filter(Boolean).join('  ·  ');
+    return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap">
+        <span style="font-family:'DM Mono',monospace;font-size:10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:1px 7px;flex-shrink:0">${p.codice}</span>
+        <span style="font-size:9px;font-weight:700;color:${col};flex-shrink:0;white-space:nowrap">${p.stato}</span>
+        <span style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text);margin-left:auto;flex-shrink:0;white-space:nowrap">${fmt(p.metri)} m</span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+        <span style="font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.ente || ''}</span>
+        ${dateStr ? `<span style="font-size:9px;color:var(--muted);white-space:nowrap;flex-shrink:0">${dateStr}</span>` : ''}
+      </div>
+    </div>`;
+  };
+
+  // Pannello pratiche — due colonne AUT | NO+ORD
   let pratHtml = '';
   if (allPrats.length > 0) {
-    pratHtml = `<div style="width:360px;flex-shrink:0;padding-left:20px;border-left:1px solid var(--border)">
-      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">
-        Dettaglio pratiche (${allPrats.length})
-      </div>`;
-    allPrats.forEach((p, idx) => {
-      const col = statiColori[p.stato] || '#6b7080';
-      const border = idx < allPrats.length-1 ? 'border-bottom:1px solid #2e334722;' : '';
-      const drStr  = fmtDate(p.dr);
-      const dumStr = fmtDate(p.dum);
-      const dateHtml = (p.dr || p.dum)
-        ? `<div style="font-size:9px;color:var(--muted);margin-top:2px;display:flex;gap:10px;flex-wrap:wrap">
-            ${p.dr  ? `<span>Invio: <span style="color:var(--text)">${drStr}</span></span>` : ''}
-            ${p.dum ? `<span>Agg.: <span style="color:var(--text)">${dumStr}</span></span>` : ''}
-           </div>`
-        : '';
-      pratHtml += `
-        <div style="padding:7px 0;${border}">
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap">
-            <span style="font-family:'DM Mono',monospace;font-size:10px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 7px;flex-shrink:0">${p.codice}</span>
-            <span style="font-size:9px;font-weight:600;color:${col};flex-shrink:0;white-space:nowrap">${p.stato}</span>
-            <span style="font-size:9px;color:var(--muted);flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente || ''}</span>
-            <span style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text);flex-shrink:0;white-space:nowrap">${fmt(p.metri)} m</span>
-          </div>
-          ${dateHtml}
-        </div>`;
-    });
-    pratHtml += `</div>`;
+    const autPrats = allPrats.filter(p => p.codice.startsWith('AUT/'));
+    const noPrats  = allPrats.filter(p => !p.codice.startsWith('AUT/'));
+    const colTitle = (label, n) =>
+      `<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--border)">${label} (${n})</div>`;
+    const colCards = (arr) => arr.map(pratCard).join('<div style="height:5px"></div>');
+
+    pratHtml = `<div style="padding-left:20px;border-left:1px solid var(--border);display:flex;flex-direction:column;gap:0;min-width:0;flex:1">
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);font-weight:600">
+        Dettaglio pratiche (${allPrats.length}) · ord. per ultimo aggiornamento
+      </div>
+      <div style="display:grid;grid-template-columns:${noPrats.length>0?'1fr 1fr':'1fr'};gap:12px;align-items:start">
+        <div>
+          ${autPrats.length ? colTitle('Autorizzazioni',autPrats.length) : ''}
+          ${colCards(autPrats)}
+        </div>
+        ${noPrats.length ? `<div>
+          ${colTitle('Nulla Osta / Ordinanze',noPrats.length)}
+          ${colCards(noPrats)}
+        </div>` : ''}
+      </div>
+    </div>`;
   }
 
-  // Wrapper due colonne: barre | pratiche
-  body.innerHTML += `<div style="display:flex;gap:0;align-items:flex-start;margin-top:4px"><div style="flex:1;min-width:0;padding-right:${allPrats.length?'20px':'0'}">`;
+  // Wrapper: barre | pratiche
+  body.innerHTML += `<div style="display:flex;gap:0;align-items:flex-start;margin-top:4px">
+    <div style="flex:0 0 320px;min-width:0;padding-right:${allPrats.length?'20px':'0'}">`;
 
   // Barre per gruppo con delta (% dentro la barra)
   STATI_GRUPPI.forEach(g => {
     const m = g.stati.reduce((s, st) => s + (statiMetri[st] || 0), 0);
     if (!m) return;
     const pct = totale > 0 ? m/totale*100 : 0;
-    const nPratG = new Set(allPrats.filter(p => g.stati.includes(p.stato)).map(p => p.codice)).size;
-    const nLabel = nPratG > 0
-      ? `<span style="font-size:10px;color:var(--muted);margin-left:8px;font-family:'DM Mono',monospace">· ${nPratG} prat.</span>`
-      : '';
 
     let deltaHtml = '';
     if (prevLotto !== null) {
@@ -698,7 +722,7 @@ function openModal(lotto, statiMetri, totale) {
           <div class="modal-bar-fill" style="width:${pct}%;background:${g.color}"></div>
           <span class="modal-bar-pct">${pct >= 8 ? pct.toFixed(1)+'%' : ''}</span>
         </div>
-        <span class="modal-bar-val" style="color:${g.color}">${fmt(m)} m${nLabel} ${deltaHtml}</span>
+        <span class="modal-bar-val" style="color:${g.color}">${fmt(m)} m ${deltaHtml}</span>
       </div>`;
   });
 
