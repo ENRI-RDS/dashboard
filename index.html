@@ -406,23 +406,31 @@ function fmtDateIT(s) {
   return p.length === 3 ? p[0]+'/'+p[1]+'/'+p[2] : s.trim().substring(0,10);
 }
 
+// Calcola le parti di data per una pratica in modo intelligente
+function buildDateParts(p) {
+  // Priorità invio: dr_invio (data DR dello stato INVIATO preservata) > dr > dum (solo se INVIATO)
+  const invioDate = p.dr_invio || p.dr || (p.stato === 'INVIATO' ? p.dum : '');
+  const parts = [];
+  if (invioDate) parts.push('Invio: ' + fmtDateIT(invioDate));
+
+  if (p.stato === 'PROTOCOLLATO' || p.stato === 'PROTOCOLLATO INTEGRAZIONE') {
+    // dum = data protocollo (diversa dall'invio)
+    if (p.dum && p.dum !== invioDate) parts.push('Prot.: ' + fmtDateIT(p.dum));
+  } else if (p.stato === 'NECESSARIA INTEGRAZIONE') {
+    if (p.dum) parts.push('Agg.: ' + fmtDateIT(p.dum));
+  } else if (p.stato === 'OTTENUTO') {
+    if (p.dum) parts.push('Ott.: ' + fmtDateIT(p.dum));
+  } else if (p.stato !== 'INVIATO') {
+    // IN FIRMA RDS, IN REDAZIONE, ecc. → mostra solo agg. se non è la stessa dell'invio
+    if (p.dum && p.dum !== invioDate) parts.push('Agg.: ' + fmtDateIT(p.dum));
+  }
+  return parts;
+}
+
+
 function buildPratCard(p) {
   const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
-  // Logica date in base allo stato:
-  // INVIATO: solo data invio (dr = DATA_RICHIESTA)
-  // PROTOCOLLATO: data invio (dr_invio o dr) + data protocollo (dum)
-  // altri: data invio + data ultimo aggiornamento
-  let dateParts = [];
-  if (p.stato === 'INVIATO') {
-    if (p.dr) dateParts.push('Invio: ' + fmtDateIT(p.dr));
-  } else if (p.stato === 'PROTOCOLLATO' || p.stato === 'PROTOCOLLATO INTEGRAZIONE') {
-    const invioDate = p.dr_invio || p.dr;
-    if (invioDate) dateParts.push('Invio: ' + fmtDateIT(invioDate));
-    if (p.dum)     dateParts.push('Prot.: ' + fmtDateIT(p.dum));
-  } else {
-    if (p.dr)  dateParts.push('Invio: ' + fmtDateIT(p.dr));
-    if (p.dum) dateParts.push('Agg.: '  + fmtDateIT(p.dum));
-  }
+  const dateParts = buildDateParts(p);
   const dateStr = dateParts.join(' · ');
   return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:5px">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:nowrap">
@@ -738,17 +746,7 @@ function openModal(lotto, statiMetri, totale) {
   // Costruisce una card pratica
   const pratCard = (p) => {
     const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
-    let dateParts = [];
-    if (p.stato === 'INVIATO') {
-      if (p.dr) dateParts.push('Invio: ' + fmtDateIT(p.dr));
-    } else if (p.stato === 'PROTOCOLLATO' || p.stato === 'PROTOCOLLATO INTEGRAZIONE') {
-      const invioDate = p.dr_invio || p.dr;
-      if (invioDate) dateParts.push('Invio: ' + fmtDateIT(invioDate));
-      if (p.dum)     dateParts.push('Prot.: ' + fmtDateIT(p.dum));
-    } else {
-      if (p.dr)  dateParts.push('Invio: ' + fmtDateIT(p.dr));
-      if (p.dum) dateParts.push('Agg.: '  + fmtDateIT(p.dum));
-    }
+    const dateParts = buildDateParts(p);
     const dateStr = dateParts.join('  ·  ');
     return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:4px">
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap">
@@ -886,18 +884,7 @@ function openModalCluster(cl, statiMap, totale) {
 
   const pratCard = (p) => {
     const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
-    let _dp2 = [];
-    if (p.stato === 'INVIATO') {
-      if (p.dr) _dp2.push('Invio: ' + fmtDateIT(p.dr));
-    } else if (p.stato === 'PROTOCOLLATO' || p.stato === 'PROTOCOLLATO INTEGRAZIONE') {
-      const _di = p.dr_invio || p.dr;
-      if (_di)   _dp2.push('Invio: ' + fmtDateIT(_di));
-      if (p.dum) _dp2.push('Prot.: ' + fmtDateIT(p.dum));
-    } else {
-      if (p.dr)  _dp2.push('Invio: ' + fmtDateIT(p.dr));
-      if (p.dum) _dp2.push('Agg.: '  + fmtDateIT(p.dum));
-    }
-    const dateStr = _dp2.join(' · ');
+    const dateStr = buildDateParts(p).join(' · ');
     return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:5px">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
         <span style="font-family:'DM Mono',monospace;font-size:10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:1px 7px;flex-shrink:0">${p.codice}</span>
@@ -2641,15 +2628,16 @@ async function loadMaster() {
 
       if (!existing) {
         // Prima riga: salva tutto incluso dr_invio se è INVIATO
+        // dr_invio = DR della riga INVIATO; se DR è vuoto, usa DUM (stessa data)
         permessiMap[key] = {
           tratta, prat, tipo, stato, ente, dr, dum, lungh, lotto,
-          dr_invio: stato === 'INVIATO' ? dr : ''
+          dr_invio: stato === 'INVIATO' ? (dr || dum) : ''
         };
       } else if (dumDate && (!exDate || dumDate >= exDate)) {
         // Riga più recente: aggiorna stato/ente/dum ma preserva dr_invio se già noto
         const dr_invio = existing.dr_invio
-          || (stato === 'INVIATO' ? dr : '')
-          || (existing.stato === 'INVIATO' ? existing.dr : '');
+          || (stato === 'INVIATO' ? (dr || dum) : '')
+          || (existing.stato === 'INVIATO' ? (existing.dr || existing.dum) : '');
         permessiMap[key] = { tratta, prat, tipo, stato, ente, dr, dum, lungh, lotto, dr_invio };
       } else if (stato === 'INVIATO' && !existing.dr_invio) {
         // Riga più vecchia ma è INVIATO: salva solo dr_invio
