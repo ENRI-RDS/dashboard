@@ -72,10 +72,11 @@
   .modal-close { cursor:pointer;color:var(--muted);font-size:22px;line-height:1; }
   .modal-close:hover { color:var(--text); }
   .modal-bar-row { display:flex;align-items:center;gap:10px;margin-bottom:8px; }
-  .modal-bar-label { width:200px;font-size:11px;color:var(--muted);flex-shrink:0; }
-  .modal-bar-track { flex:1;height:14px;background:var(--surface2);border-radius:4px;overflow:hidden; }
-  .modal-bar-fill { height:100%;border-radius:4px;transition:width 0.5s; }
-  .modal-bar-val { width:90px;text-align:right;font-size:11px;font-family:'DM Mono',monospace;flex-shrink:0; }
+  .modal-bar-label { width:180px;font-size:11px;color:var(--muted);flex-shrink:0; }
+  .modal-bar-track { flex:1;height:20px;background:var(--surface2);border-radius:4px;overflow:hidden;position:relative; }
+  .modal-bar-fill { height:100%;border-radius:4px;transition:width 0.5s;position:relative; }
+  .modal-bar-pct { position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;font-family:'DM Mono',monospace;color:#fff;text-shadow:0 0 4px rgba(0,0,0,0.8);pointer-events:none; }
+  .modal-bar-val { width:120px;text-align:right;font-size:11px;font-family:'DM Mono',monospace;flex-shrink:0; }
   .modal-ms-row { display:flex;gap:8px;margin-top:16px;padding-top:16px;border-top:1px solid var(--border); }
   .modal-ms-card { flex:1;background:var(--surface2);border-radius:8px;padding:10px;text-align:center; }
   .modal-ms-card .ms-lbl { font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:4px; }
@@ -374,6 +375,7 @@ function renderBarre(gruppiMap, totale, tooltip, onHover) {
 }
 const CSV_URL = 'dati.csv';
 const RIEPILOGO_URL = 'riepilogo.csv';
+const MASTER_URL = 'Master.csv';
 
 // ── JSONBin.io — storico condiviso ──────────────────────────────────────────
 // Inserisci qui i tuoi valori da jsonbin.io
@@ -476,6 +478,7 @@ async function loadCluster() {
     const iLOT  = findCol('LOTTO');
     const iPRAT = findCol('PRATICA');
     const iENTE = findCol('ENTE');
+    const iTRAT = findCol('TRATTA_ID');
 
     if (iC === -1 || iL === -1) {
       throw new Error(`Colonne non trovate. Headers: ${headers.join(', ')}`);
@@ -483,9 +486,10 @@ async function loadCluster() {
 
     const clMap = {};
     const clTot = {};
-    const comuniKm = {};         // { COMUNE: km_totali }
-    const comuniKmPerLotto = {}; // { LOTTO: { COMUNE: km } }
-    const praticheDetailPerLotto = {}; // { LOTTO: { codice: { codice, stato, ente, metri } } }
+    const comuniKm = {};
+    const comuniKmPerLotto = {};
+    // TRATTA_ID → { lotto, ente, lunghezza } per join con Master.csv
+    const trattaLottoMap = {};
 
     for (let i = 1; i < lines.length; i++) {
       const cols = splitLine(lines[i]);
@@ -506,7 +510,6 @@ async function loadCluster() {
       clMap[cl][stato] = (clMap[cl][stato] || 0) + lungh;
       clTot[cl] += lungh;
 
-      // Mappa comuni → km
       if (iCOM !== -1 && iLOT !== -1) {
         const comune = cols[iCOM]?.trim().replace(/"/g,'');
         const lotto  = cols[iLOT]?.trim().replace(/"/g,'');
@@ -519,29 +522,17 @@ async function loadCluster() {
         }
       }
 
-      // Mappa pratiche dettaglio per lotto
-      if (iPRAT !== -1 && iLOT !== -1) {
-        const praticaRaw = cols[iPRAT]?.trim();
-        const lotto      = cols[iLOT]?.trim().replace(/"/g,'');
-        const ente       = iENTE !== -1 ? (cols[iENTE]?.trim() || '') : '';
-        if (praticaRaw && praticaRaw !== '' && lotto) {
-          if (!praticheDetailPerLotto[lotto]) praticheDetailPerLotto[lotto] = {};
-          praticaRaw.split('|').map(p => p.trim()).filter(p => p).forEach(codice => {
-            if (!praticheDetailPerLotto[lotto][codice]) {
-              praticheDetailPerLotto[lotto][codice] = { codice, stato, ente, metri: 0 };
-            }
-            praticheDetailPerLotto[lotto][codice].metri += lungh;
-          });
-        }
+      // Mappa TRATTA_ID → lotto per join con Master.csv
+      if (iTRAT !== -1 && iLOT !== -1) {
+        const tratta = cols[iTRAT]?.trim().replace(/"/g,'');
+        const lotto  = cols[iLOT]?.trim().replace(/"/g,'');
+        if (tratta && lotto) trattaLottoMap[tratta] = lotto;
       }
     }
 
     window._comuniKm = comuniKm;
     window._comuniKmPerLotto = comuniKmPerLotto;
-    window._praticheDetailPerLotto = {};
-    Object.entries(praticheDetailPerLotto).forEach(([lot, map]) => {
-      window._praticheDetailPerLotto[lot] = Object.values(map).sort((a,b) => a.codice.localeCompare(b.codice));
-    });
+    window._trattaLottoMap = trattaLottoMap;
 
     if (Object.keys(clMap).length === 0) throw new Error('Nessun cluster trovato nel CSV');
 
@@ -631,7 +622,7 @@ function openModal(lotto, statiMetri, totale) {
     </div>` : ''}
   `;
 
-  // Layout a due colonne: barre sinistra + pratiche destra
+  // Dati pratiche dal Master.csv (se disponibili)
   const allPrats = (window._praticheDetailPerLotto || {})[lotto] || [];
   const statiColori = {
     'IN ATTESA':'#4a4f6a','IN REDAZIONE':'#4a4f6a','IN REDAZIONE INTEGRAZIONE':'#4a4f6a',
@@ -639,37 +630,57 @@ function openModal(lotto, statiMetri, totale) {
     'NECESSARIA INTEGRAZIONE':'#cc3333','PROTOCOLLATO INTEGRAZIONE':'#548235','OTTENUTO':'#3a8c5c'
   };
 
-  // Pannello pratiche HTML
+  const fmtDate = (s) => {
+    if (!s || !s.trim()) return '—';
+    const p = s.trim().split('/');
+    if (p.length === 3) return p[0]+'/'+p[1]+'/'+p[2];
+    return s.trim().substring(0,10);
+  };
+
+  // Pannello pratiche (destra)
   let pratHtml = '';
   if (allPrats.length > 0) {
-    pratHtml = `<div style="width:340px;flex-shrink:0;border-left:1px solid var(--border);padding-left:20px;">
+    pratHtml = `<div style="width:360px;flex-shrink:0;padding-left:20px;border-left:1px solid var(--border)">
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">
         Dettaglio pratiche (${allPrats.length})
-      </div>
-      <div style="display:flex;flex-direction:column;gap:0">`;
+      </div>`;
     allPrats.forEach((p, idx) => {
       const col = statiColori[p.stato] || '#6b7080';
-      const borderB = idx < allPrats.length-1 ? 'border-bottom:1px solid #2e334722;' : '';
-      pratHtml += `<div style="display:flex;align-items:center;gap:6px;padding:5px 0;${borderB}flex-wrap:nowrap;min-width:0">
-        <span style="font-family:'DM Mono',monospace;font-size:10px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 7px;flex-shrink:0">${p.codice}</span>
-        <span style="font-size:9px;font-weight:600;color:${col};flex-shrink:0;white-space:nowrap">${p.stato}</span>
-        <span style="font-size:9px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right">${p.ente ? p.ente+' · ' : ''}${fmt(p.metri)} m</span>
-      </div>`;
+      const border = idx < allPrats.length-1 ? 'border-bottom:1px solid #2e334722;' : '';
+      const drStr  = fmtDate(p.dr);
+      const dumStr = fmtDate(p.dum);
+      const dateHtml = (p.dr || p.dum)
+        ? `<div style="font-size:9px;color:var(--muted);margin-top:2px;display:flex;gap:10px;flex-wrap:wrap">
+            ${p.dr  ? `<span>Invio: <span style="color:var(--text)">${drStr}</span></span>` : ''}
+            ${p.dum ? `<span>Agg.: <span style="color:var(--text)">${dumStr}</span></span>` : ''}
+           </div>`
+        : '';
+      pratHtml += `
+        <div style="padding:7px 0;${border}">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap">
+            <span style="font-family:'DM Mono',monospace;font-size:10px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 7px;flex-shrink:0">${p.codice}</span>
+            <span style="font-size:9px;font-weight:600;color:${col};flex-shrink:0;white-space:nowrap">${p.stato}</span>
+            <span style="font-size:9px;color:var(--muted);flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente || ''}</span>
+            <span style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text);flex-shrink:0;white-space:nowrap">${fmt(p.metri)} m</span>
+          </div>
+          ${dateHtml}
+        </div>`;
     });
-    pratHtml += `</div></div>`;
+    pratHtml += `</div>`;
   }
 
-  // Wrapper due colonne
-  body.innerHTML += `<div style="display:flex;gap:20px;align-items:flex-start;margin-top:4px">
-    <div style="flex:1;min-width:0">`;
+  // Wrapper due colonne: barre | pratiche
+  body.innerHTML += `<div style="display:flex;gap:0;align-items:flex-start;margin-top:4px"><div style="flex:1;min-width:0;padding-right:${allPrats.length?'20px':'0'}">`;
 
-  // Barre per gruppo con delta
+  // Barre per gruppo con delta (% dentro la barra)
   STATI_GRUPPI.forEach(g => {
     const m = g.stati.reduce((s, st) => s + (statiMetri[st] || 0), 0);
     if (!m) return;
     const pct = totale > 0 ? m/totale*100 : 0;
     const nPratG = new Set(allPrats.filter(p => g.stati.includes(p.stato)).map(p => p.codice)).size;
-    const nLabel = nPratG > 0 ? ` <span style="font-size:9px;color:var(--muted)">· ${nPratG} prat.</span>` : '';
+    const nLabel = nPratG > 0
+      ? `<span style="font-size:9px;color:var(--muted);margin-left:6px">· ${nPratG} prat.</span>`
+      : '';
 
     let deltaHtml = '';
     if (prevLotto !== null) {
@@ -683,8 +694,11 @@ function openModal(lotto, statiMetri, totale) {
     body.innerHTML += `
       <div class="modal-bar-row">
         <span class="modal-bar-label">${g.label}</span>
-        <div class="modal-bar-track"><div class="modal-bar-fill" style="width:${pct}%;background:${g.color}"></div></div>
-        <span class="modal-bar-val" style="color:${g.color}">${fmt(m)} m ${pct.toFixed(1)}%${nLabel} ${deltaHtml}</span>
+        <div class="modal-bar-track">
+          <div class="modal-bar-fill" style="width:${pct}%;background:${g.color}"></div>
+          <span class="modal-bar-pct">${pct >= 8 ? pct.toFixed(1)+'%' : ''}</span>
+        </div>
+        <span class="modal-bar-val" style="color:${g.color}">${fmt(m)} m${nLabel} ${deltaHtml}</span>
       </div>`;
   });
 
@@ -1218,7 +1232,7 @@ function renderDashboard(data, prevSnapshot=null) {
     protint:      ['PROTOCOLLATO INTEGRAZIONE'],
     ottenuto:     ['OTTENUTO']
   };
-  // Conta pratiche distinte per stato (da _praticheDetailPerLotto)
+  // Conta pratiche distinte per stato
   const pratichePerStato = {};
   if (window._praticheDetailPerLotto) {
     Object.values(window._praticheDetailPerLotto).forEach(arr => {
@@ -1228,7 +1242,7 @@ function renderDashboard(data, prevSnapshot=null) {
       });
     });
   }
-  const countPratiche = (stati) => {
+  const countPrat = (stati) => {
     const s = new Set();
     stati.forEach(st => { if (pratichePerStato[st]) pratichePerStato[st].forEach(c => s.add(c)); });
     return s.size;
@@ -1240,13 +1254,13 @@ function renderDashboard(data, prevSnapshot=null) {
     document.getElementById('kpi-'+key).textContent=pct.toFixed(1)+'%';
 
     // N° Pratiche nel label
-    const nPrat = countPratiche(stati);
+    const nPrat = countPrat(stati);
     const kpiLabel = document.querySelector('.kpi.'+key+' .kpi-label');
     if (kpiLabel) {
       const baseText = kpiLabel.getAttribute('data-base') || kpiLabel.textContent.replace(/\s*·.*$/, '').trim();
       kpiLabel.setAttribute('data-base', baseText);
       kpiLabel.innerHTML = baseText + (nPrat > 0
-        ? ` <span style="color:var(--text);font-weight:600">· N° Pratiche: ${nPrat}</span>`
+        ? ` <span style="color:var(--text);font-weight:600;font-size:10px"> · N° Pratiche: ${nPrat}</span>`
         : '');
     }
 
@@ -2292,7 +2306,139 @@ async function seedDemoData() {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-window.addEventListener('load', () => { loadData(); loadCluster(); });
+
+// ── CARICAMENTO MASTER.CSV ───────────────────────────────────────────────────
+async function loadMaster() {
+  try {
+    const resp = await fetch(MASTER_URL + '?t=' + Date.now());
+    if (!resp.ok) return; // Master.csv opzionale
+    const text = await resp.text();
+    const lines = text.trim().split('\n').map(l => l.replace(/\r/,''));
+    const sep = lines[0].includes(';') ? ';' : ',';
+
+    const splitLine = (line) => {
+      const result = []; let cur = '', inQ = false;
+      for (const ch of line) {
+        if (ch === '"') { inQ = !inQ; }
+        else if (ch === sep && !inQ) { result.push(cur.trim()); cur = ''; }
+        else { cur += ch; }
+      }
+      result.push(cur.trim());
+      return result;
+    };
+
+    const headers = splitLine(lines[0]);
+    const findCol = (...names) => {
+      for (const n of names) {
+        const idx = headers.findIndex(h => h.trim().toUpperCase() === n.toUpperCase());
+        if (idx !== -1) return idx;
+      }
+      return -1;
+    };
+
+    const iSrc   = findCol('Source.Name', 'SOURCE.NAME');
+    const iTrat  = findCol('TRATTA_ID');
+    const iEnte  = findCol('ENTE');
+    const iTipo  = findCol('TIPO_PERMESSO');
+    const iStato = findCol('STATO_PERMESSO');
+    const iDR    = findCol('DATA_RICHIESTA');
+    const iDUM   = findCol('DATA_ULTIMA_MODIFICA');
+    const iLungh = findCol('LUNGHEZZA');
+    const iPrat  = findCol('PRATICA');
+
+    if (iTrat === -1 || iPrat === -1) return;
+
+    // Per ogni TRATTA_ID+PRATICA+TIPO_PERMESSO: tieni solo la riga con DATA_ULTIMA_MODIFICA più recente
+    const permessiMap = {}; // key: tratta|pratica|tipo → miglior riga
+
+    const parseDateIT = (s) => {
+      if (!s || !s.trim()) return null;
+      const p = s.trim().split('/');
+      if (p.length === 3) return new Date(+p[2], +p[1]-1, +p[0]);
+      return new Date(s.trim());
+    };
+
+    for (let i = 1; i < lines.length; i++) {
+      const cols = splitLine(lines[i]);
+      const tratta = cols[iTrat]?.trim();
+      const prat   = (iPrat !== -1 ? cols[iPrat]?.trim() : '');
+      const tipo   = (iTipo !== -1 ? cols[iTipo]?.trim().toUpperCase() : '');
+      const stato  = (iStato !== -1 ? cols[iStato]?.trim() : '') || '';
+      if (!tratta || !prat || !stato) continue;
+
+      const lunghRaw = (cols[iLungh]||'0').trim();
+      let lungh = 0;
+      if (lunghRaw.includes(',') && !lunghRaw.includes('.')) lungh = parseFloat(lunghRaw.replace(',','.')) || 0;
+      else if (lunghRaw.includes(',')) lungh = parseFloat(lunghRaw.replace(/\./g,'').replace(',','.')) || 0;
+      else lungh = parseFloat(lunghRaw) || 0;
+
+      const ente   = iEnte !== -1 ? (cols[iEnte]?.trim() || '') : '';
+      const dr     = iDR  !== -1 ? (cols[iDR]?.trim() || '')  : '';
+      const dum    = iDUM !== -1 ? (cols[iDUM]?.trim() || '') : '';
+      const src    = iSrc !== -1 ? (cols[iSrc]?.trim() || '') : '';
+
+      // Estrai lotto da Source.Name (es. "Lotto 1A.xlsx" → "1A")
+      const lotto = src ? src.replace(/\.xlsx$/i,'').replace(/^Lotto\s*/i,'').trim().toUpperCase() : '';
+
+      const key = tratta + '|' + prat + '|' + tipo;
+      const existing = permessiMap[key];
+      const dumDate = parseDateIT(dum);
+      const exDate  = existing ? parseDateIT(existing.dum) : null;
+
+      if (!existing || (dumDate && (!exDate || dumDate >= exDate))) {
+        permessiMap[key] = { tratta, prat, tipo, stato, ente, dr, dum, lungh, lotto };
+      }
+    }
+
+    // Raggruppa per lotto → per codice pratica (AUT/N/LOTTO)
+    // Costruisce window._praticheDetailPerLotto
+    const praticheByLotto = {};
+
+    Object.values(permessiMap).forEach(r => {
+      // Determina lotto da Master o da trattaLottoMap
+      const lotto = r.lotto || (window._trattaLottoMap && window._trattaLottoMap[r.tratta]) || '';
+      if (!lotto) return;
+
+      // Costruisci codice pratica tipo AUT/1/1A
+      const tipoPrefix = r.tipo === 'AUTORIZZAZIONE' ? 'AUT'
+        : r.tipo === 'NULLA OSTA' ? 'NO'
+        : r.tipo === 'ORDINANZA'  ? 'ORD'
+        : r.tipo.substring(0,3);
+      const codice = tipoPrefix + '/' + r.prat + '/' + lotto;
+
+      if (!praticheByLotto[lotto]) praticheByLotto[lotto] = {};
+      if (!praticheByLotto[lotto][codice]) {
+        praticheByLotto[lotto][codice] = {
+          codice, tipo: r.tipo, stato: r.stato, ente: r.ente,
+          dr: r.dr, dum: r.dum, metri: 0, lotto
+        };
+      }
+      praticheByLotto[lotto][codice].metri += r.lungh;
+      // Aggiorna con riga più recente
+      const existing = praticheByLotto[lotto][codice];
+      const newDum = parseDateIT(r.dum);
+      const exDum  = parseDateIT(existing.dum);
+      if (!exDum || (newDum && newDum >= exDum)) {
+        existing.stato = r.stato;
+        existing.ente  = r.ente;
+        existing.dr    = r.dr;
+        existing.dum   = r.dum;
+      }
+    });
+
+    window._praticheDetailPerLotto = {};
+    Object.entries(praticheByLotto).forEach(([lot, map]) => {
+      window._praticheDetailPerLotto[lot] = Object.values(map)
+        .sort((a,b) => a.codice.localeCompare(b.codice));
+    });
+
+  } catch(e) {
+    console.warn('Master.csv non caricato:', e.message);
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+window.addEventListener('load', () => { loadData(); loadCluster(); loadMaster(); });
 window.onerror = function(msg, src, line, col, err) {
   document.getElementById('loadingScreen').style.display = 'none';
   const eb = document.getElementById('errorBox');
