@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="it" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ENRI — Executive Summary</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0f1117;--surface:#1a1d27;--surface2:#22263a;--border:#2e3347;--accent:#4f8ef7;--text:#e8eaf0;--muted:#6b7080;--green:#3a8c5c;--yellow:#c9a227;--red:#cc3333;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:52px;background:var(--surface);border-bottom:1px solid var(--border);}
+  .topbar-left{display:flex;align-items:center;gap:14px;}
+  .logo{font-size:13px;font-weight:600;letter-spacing:.12em;color:var(--accent);text-transform:uppercase;}
+  .dv{width:1px;height:20px;background:var(--border);}
+  .page-title{font-size:13px;color:var(--muted);}
+  .topbar-right{display:flex;align-items:center;gap:8px;}
+  .btn{font-size:11px;padding:5px 14px;border-radius:5px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;text-decoration:none;transition:opacity .2s;border:none;}
+  .btn-nav{background:var(--surface2);color:var(--text);border:1px solid var(--border);}
+  .btn-nav:hover{opacity:.8;}
+  .btn-edit{background:#4f8ef722;color:var(--accent);border:1px solid #4f8ef755;}
+  .btn-edit.on{background:var(--accent);color:#fff;}
+  .btn-print{background:#3a8c5c22;color:var(--green);border:1px solid #3a8c5c55;}
+  .btn-print:hover{background:var(--green);color:#fff;}
+  .badge{font-size:11px;font-family:'DM Mono',monospace;padding:3px 10px;border-radius:4px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);}
+  .edit-hint{display:none;font-size:10px;color:var(--accent);padding:3px 10px;background:#4f8ef711;border-radius:4px;}
+  .main{padding:24px 28px;display:flex;flex-direction:column;gap:20px;max-width:1380px;margin:0 auto;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+  .ch{display:flex;align-items:center;justify-content:space-between;padding:10px 18px;border-bottom:1px solid var(--border);}
+  .ct{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);}
+  .cb{padding:18px;}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  .four-col{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;}
+  @media(max-width:900px){.two-col,.four-col{grid-template-columns:1fr;}}
+  /* RAG */
+  .rag{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;font-size:10px;font-weight:700;flex-shrink:0;}
+  .rg{background:var(--green);color:#fff;} .ry{background:var(--yellow);color:#fff;} .rr{background:var(--red);color:#fff;} .rm{background:#4a4f6a;color:#fff;}
+  /* Tables */
+  .dt{width:100%;border-collapse:collapse;font-size:11px;}
+  .dt th{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;}
+  .dt td{padding:8px 10px;border-bottom:1px solid #2e334722;vertical-align:middle;line-height:1.4;}
+  .dt tr:last-child td{border-bottom:none;}
+  .dt tr:hover td{background:var(--surface2);}
+  .cd{color:var(--muted);font-family:'DM Mono',monospace;font-size:10px;white-space:nowrap;}
+  .cf{color:var(--accent);font-family:'DM Mono',monospace;font-size:10px;white-space:nowrap;}
+  .cf.late{color:var(--yellow);}
+  /* Pbar */
+  .pb-wrap{display:flex;align-items:center;gap:8px;}
+  .pb{flex:1;height:5px;background:var(--surface2);border-radius:3px;overflow:hidden;min-width:50px;}
+  .pb-fill{height:100%;border-radius:3px;}
+  .pb-pct{font-size:10px;font-family:'DM Mono',monospace;width:32px;text-align:right;flex-shrink:0;}
+  /* Supplier cards */
+  .sc{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;}
+  .sc-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:11px;}
+  .sc-name{font-size:13px;font-weight:700;}
+  .sc-tot{font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);}
+  .sc-row{display:grid;grid-template-columns:130px 1fr 50px;align-items:center;gap:8px;margin-bottom:6px;font-size:10px;}
+  .sc-row:last-child{margin-bottom:0;}
+  .sc-lbl{color:var(--muted);}
+  .sc-num{font-family:'DM Mono',monospace;color:var(--muted);font-size:9px;text-align:right;white-space:nowrap;}
+  /* Monthly milestone cards */
+  .mc{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;position:relative;}
+  .mc::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:8px 0 0 8px;}
+  .mg::before{background:var(--green);} .my::before{background:var(--yellow);} .mr::before{background:var(--red);} .mm::before{background:#4a4f6a;}
+  .mc-title{font-size:12px;font-weight:600;line-height:1.4;margin-bottom:6px;}
+  .mc-meta{display:flex;gap:14px;font-size:10px;color:var(--muted);flex-wrap:wrap;margin-bottom:7px;align-items:center;}
+  .mc-meta .late{color:var(--yellow);}
+  .mc-comment{font-size:11px;color:var(--muted);line-height:1.6;}
+  /* Editable mode */
+  .em [contenteditable='true']{outline:1px dashed #4f8ef755;border-radius:3px;padding:1px 3px;cursor:text;}
+  .em [contenteditable='true']:focus{outline:2px solid var(--accent);background:#4f8ef711;}
+  .em [contenteditable='true']:hover:not(:focus){outline:1px dashed var(--accent);}
+  .em .edit-hint{display:inline-block;}
+  .rag-sel{display:none;font-size:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:4px;padding:2px 5px;cursor:pointer;}
+  .em .rag-sel{display:inline-block;}
+  .em .rag{display:none;}
+  /* Print */
+  @media print{
+    @page{size:A4;margin:12mm 10mm;}
+    body{background:#fff!important;color:#111!important;}
+    .topbar,.no-print{display:none!important;}
+    .main{padding:0!important;max-width:100%!important;}
+    .card{border:1px solid #ccc!important;background:#fff!important;break-inside:avoid;}
+    .ch{background:#f5f5f5!important;border-bottom:1px solid #ccc!important;}
+    .ct{color:#555!important;}
+    .cb{padding:12px!important;}
+    .two-col,.four-col{gap:10px!important;}
+    .sc{background:#f9f9f9!important;border:1px solid #ccc!important;break-inside:avoid;}
+    .mc{background:#f9f9f9!important;border:1px solid #ccc!important;break-inside:avoid;}
+    .dt td,.dt th,.cd,.cf,.sc-lbl,.sc-num,.mc-meta,.mc-comment{color:#333!important;}
+    .pb{background:#e5e5e5!important;}
+    .rag-sel{display:none!important;} .rag{display:inline-flex!important;}
+    [contenteditable]{outline:none!important;background:transparent!important;padding:0!important;}
+    .edit-hint{display:none!important;}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <span class="logo">PROGETTO · ENRI</span>
+    <div class="dv"></div>
+    <span class="page-title">Executive Summary</span>
+    <span class="edit-hint">✏ Clicca su qualsiasi testo per modificarlo</span>
+  </div>
+  <div class="topbar-right">
+    <span class="badge" id="repDate">—</span>
+    <button class="btn btn-edit no-print" id="btnEdit" onclick="toggleEdit()">✏ Modifica</button>
+    <button class="btn btn-print no-print" onclick="window.print()">🖨 Stampa / PDF</button>
+    <a href="index.html" class="btn btn-nav no-print">← Dashboard</a>
+    <a href="mappa.html" class="btn btn-nav no-print">🗺 Mappa</a>
+  </div>
+</div>
+
+<div class="main" id="main">
+  <div style="text-align:center;padding:40px;color:var(--muted)">⏳ Caricamento dati...</div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// DATI EDITABILI — modifica questa sezione ogni mese
+// I valori [calcolati dai CSV] vengono aggiornati automaticamente
+// ═══════════════════════════════════════════════════════════════════════════
+const R = {
+  data: '13 marzo 2026',
+  stato: 'on-track', // 'on-track' | 'at-risk' | 'delayed'
+
+  keyMilestones: [
+    {d:'Dispatch of RFQ to select suppliers (Valtellina, Soleto, Sielte, Sertori, Circet, Site)', b:'25/02/26', f:'20/03/26', r:'yellow'},
+    {d:'Clusters assignment to suppliers',                                   b:'31/03/26', f:'30/04/26', r:'yellow'},
+    {d:'Permits approval received – Cluster 1 and 2',                        b:'31/10/26', f:'31/10/26', r:'green'},
+    {d:'Start of on-site implementation – Cluster 1 and 2',                  b:'15/06/26', f:'15/06/26', r:'green'},
+    {d:'Permits approval received – Cluster 3',                              b:'31/05/27', f:'31/05/27', r:'green'},
+    {d:'Start of on-site implementation – Cluster 3',                        b:'01/09/26', f:'01/09/26', r:'green'},
+    {d:'Permits approval received – Cluster 4',                              b:'31/05/27', f:'31/05/27', r:'green'},
+    {d:'Start of on-site implementation – Cluster 4',                        b:'01/05/27', f:'01/05/27', r:'green'},
+    {d:'Permits approval received – Cluster 5',                              b:'31/12/27', f:'31/12/27', r:'green'},
+    {d:'Start of on-site implementation – Cluster 5',                        b:'01/11/27', f:'01/11/27', r:'green'},
+    {d:'Permits approval received – Cluster 6 and 7',                        b:'31/12/27', f:'31/12/27', r:'green'},
+    {d:'Start of on-site implementation – Cluster 6 and 7',                  b:'30/11/27', f:'30/11/27', r:'green'},
+  ],
+
+  clusterTimeline: [
+    {c:'Permit\nsubmission', m:null,   b50:'-',b70:'-',b100:'31/12/26', f50:'-',f70:'-',f100:'31/12/26', r:'green'},
+    {c:'1',  m:25416,  b50:'-',    b70:'31/12/26', b100:'30/04/27', f50:'-',    f70:'31/12/26', f100:'30/04/27', r:'green'},
+    {c:'2',  m:26928,  b50:'31/12/26', b70:'-',    b100:'31/05/27', f50:'31/12/26', f70:'-',    f100:'31/05/27', r:'green'},
+    {c:'3',  m:312672, b50:'31/05/27', b70:'-',    b100:'31/03/28', f50:'31/05/27', f70:'-',    f100:'31/03/28', r:'green'},
+    {c:'4',  m:14554,  b50:'-',    b70:'-',    b100:'31/03/28', f50:'-',    f70:'-',    f100:'31/03/28', r:'green'},
+    {c:'5',  m:20610,  b50:'-',    b70:'-',    b100:'30/06/28', f50:'-',    f70:'-',    f100:'30/06/28', r:'green'},
+    {c:'6',  m:20220,  b50:'-',    b70:'-',    b100:'31/12/28', f50:'-',    f70:'-',    f100:'31/12/28', r:'green'},
+    {c:'7',  m:29468,  b50:'-',    b70:'-',    b100:'31/12/28', f50:'-',    f70:'-',    f100:'31/12/28', r:'green'},
+  ],
+
+  monthly: [
+    {t:'PO to suppliers (Cluster 1 & 2) — Permit submission process launched',
+     b:'11/02/26', f:'11/02/26', pct:100, r:'green', note:'Completed.'},
+    {t:'Permit approval – Cluster 1 (Valtellina, Soleto)',
+     b:'31/10/26', f:'31/10/26', pct:57, r:'yellow', note:'Permit submission process ongoing. Authority approval: 0%.'},
+    {t:'Permit approval – Cluster 2 (Telebit, Sielte)',
+     b:'31/10/26 / 10/06/26', f:'31/10/26 / 10/06/26', pct:36, r:'yellow', note:'Permit submission process ongoing. Authority approval: 0%.'},
+    {t:'Dispatch of RFQ to select suppliers (Valtellina, Soleto, Sielte, Sertori, Circet, Site)',
+     b:'25/02/26', f:'20/03/26', pct:90, r:'yellow', note:'NDA submitted to suppliers 02/03/26.'},
+    {t:'Clusters assignment to suppliers',
+     b:'31/03/26', f:'30/04/26', pct:0, r:'yellow', note:'BAFO document expected by 23/04/26. PO to be issued by 30/04/26.'},
+  ],
+
+  note:'(*) Supplier ownership: after the site survey, the supplier is responsible for identifying and preparing all documents required to submit permit applications to the relevant Authorities.',
+};
+
+// State groups — mapped to process stages
+const GROUPS = [
+  {k:'wip',    label:'Work in progress',        stati:['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'], col:'#4a4f6a'},
+  {k:'firma',  label:'Review & sign-off (RDS)',  stati:['IN FIRMA RDS'],                                        col:'#e07b3a'},
+  {k:'inviato',label:'Submitted to Authority',  stati:['INVIATO','PROTOCOLLATO'],                              col:'#4f8ef7'},
+  {k:'integr', label:'Integration required',    stati:['NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE'], col:'#cc3333'},
+  {k:'ok',     label:'Permit approved',         stati:['OTTENUTO'],                                            col:'#3a8c5c'},
+];
+
+const SUPPLIERS = {
+  '1A':{name:'Valtellina', cl:'Cluster 1'},
+  '1B':{name:'Soleto',     cl:'Cluster 1'},
+  '2A':{name:'Sielte',     cl:'Cluster 2'},
+  '2B':{name:'Telebit',    cl:'Cluster 2'},
+};
+
+function fmt(n){return new Intl.NumberFormat('it-IT').format(Math.round(n));}
+function rc(r){return{green:'rg',yellow:'ry',red:'rr',grey:'rm'}[r]||'rm';}
+function mc(r){return{green:'mg',yellow:'my',red:'mr',grey:'mm'}[r]||'mm';}
+
+function ragHtml(r,id){
+  const c={green:'var(--green)',yellow:'var(--yellow)',red:'var(--red)',grey:'#4a4f6a'}[r]||'#4a4f6a';
+  return `<span class="rag ${rc(r)}">●</span><select class="rag-sel" data-id="${id}" onchange="updateRag(this)" style="border-color:${c}">
+    <option value="green" ${r==='green'?'selected':''}>🟢 On track</option>
+    <option value="yellow" ${r==='yellow'?'selected':''}>🟡 At risk</option>
+    <option value="red" ${r==='red'?'selected':''}>🔴 Overdue</option>
+    <option value="grey" ${r==='grey'?'selected':''}>⚫ N/A</option>
+  </select>`;
+}
+
+function pb(pct,col){
+  return `<div class="pb-wrap">
+    <div class="pb"><div class="pb-fill" style="width:${pct}%;background:${col}"></div></div>
+    <span class="pb-pct" style="color:${col}">${pct}%</span>
+  </div>`;
+}
+
+// ── CSV loaders ────────────────────────────────────────────────────────────────
+async function loadRiepilogo(){
+  const r = await fetch('Riepilogo_progettazione.csv?t='+Date.now());
+  if(!r.ok) throw new Error('CSV non trovato');
+  const txt = await r.text();
+  const lines = txt.trim().split('\n').map(l=>l.replace(/\r/,''));
+  const h = lines[0].split(',');
+  const iLot=h.indexOf('LOTTO'), iLun=h.indexOf('LUNGHEZZA');
+  const iLeg=h.findIndex(x=>x.trim().toUpperCase()==='STATO_LEGENDA');
+  const data={};
+  for(let i=1;i<lines.length;i++){
+    const c=lines[i].split(',');
+    const lot=c[iLot]?.trim(), stato=c[iLeg]?.trim();
+    if(!SUPPLIERS[lot]||!stato) continue;
+    const m=parseFloat(c[iLun]?.trim().replace(',','.'))||0;
+    if(!data[lot])data[lot]={};
+    data[lot][stato]=(data[lot][stato]||0)+m;
+  }
+  return data;
+}
+
+async function loadPermitCounts(){
+  const r=await fetch('Master.csv?t='+Date.now());
+  if(!r.ok) return {};
+  const txt=await r.text();
+  const lines=txt.trim().split('\n').map(l=>l.replace(/\r/,''));
+  const parseD=s=>{if(!s?.trim())return null;const p=s.trim().split('/');try{return p.length===3?new Date(+p[2],+p[1]-1,+p[0]):null;}catch{return null;}};
+  const latest={};
+  for(let i=1;i<lines.length;i++){
+    const c=lines[i].split(';');
+    const src=c[0]?.trim(),stato=c[4]?.trim(),dum=c[6]?.trim(),prat=c[14]?.trim();
+    if(!stato||!prat) continue;
+    const lot=src?.replace(/\.xlsx$/i,'').replace(/^Lotto\s*/i,'').trim().toUpperCase();
+    if(!SUPPLIERS[lot]) continue;
+    const key=`${lot}|${c[1]?.trim()}|${c[3]?.trim()}`;
+    const d=parseD(dum);
+    if(!latest[key]||(d&&(!latest[key].d||d>=latest[key].d))) latest[key]={d,stato,lot,prat};
+  }
+  const counts={};
+  Object.values(latest).forEach(({stato,lot,prat})=>{
+    const g=GROUPS.find(x=>x.stati.includes(stato));
+    if(!g) return;
+    if(!counts[lot])counts[lot]={};
+    if(!counts[lot][g.k])counts[lot][g.k]=new Set();
+    counts[lot][g.k].add(prat);
+  });
+  const out={};
+  Object.entries(counts).forEach(([lot,gs])=>{out[lot]={};Object.entries(gs).forEach(([k,s])=>out[lot][k]=s.size);});
+  return out;
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render(csv, counts){
+  document.getElementById('repDate').textContent = R.data;
+
+  const statoPill={
+    'on-track':'<span class="rag rg" style="width:auto;border-radius:20px;padding:4px 12px;font-size:11px">✓ On Track</span>',
+    'at-risk': '<span class="rag ry" style="width:auto;border-radius:20px;padding:4px 12px;font-size:11px">⚠ At Risk</span>',
+    'delayed': '<span class="rag rr" style="width:auto;border-radius:20px;padding:4px 12px;font-size:11px">✕ Delayed</span>',
+  }[R.stato]||'';
+
+  let h='';
+
+  // STATUS HEADER
+  h+=`<div class="card"><div class="cb">
+    <div style="display:grid;grid-template-columns:1fr auto;gap:20px;align-items:center">
+      <div>
+        <div style="font-size:20px;font-weight:700">Project Status Report</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">Progetto ENRI — Permit authorizations · <span contenteditable="false">${R.data}</span></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        ${statoPill}
+        <div style="font-size:10px;color:var(--muted);display:flex;gap:8px;align-items:center">
+          <span class="rag rg">●</span>On track
+          <span class="rag ry" style="margin-left:5px">●</span>At risk
+          <span class="rag rr" style="margin-left:5px">●</span>Overdue
+        </div>
+      </div>
+    </div>
+  </div></div>`;
+
+  // SUPPLIER PROGRESS (live from CSV)
+  h+=`<div class="card">
+    <div class="ch"><span class="ct">Permit Submission Progress — live data from CSV</span>
+    <span style="font-size:9px;color:var(--green)">● Auto-aggiornato</span></div>
+    <div class="cb"><div class="four-col">`;
+
+  ['1A','1B','2A','2B'].forEach(lot=>{
+    const sup=SUPPLIERS[lot];
+    const d=csv[lot]||{};
+    const tot=Object.values(d).reduce((s,v)=>s+v,0);
+    const pc=counts[lot]||{};
+    h+=`<div class="sc">
+      <div class="sc-head">
+        <div>
+          <div class="sc-name">${sup.name}</div>
+          <div style="font-size:9px;color:var(--muted)">${sup.cl} · Lotto ${lot}</div>
+        </div>
+        <div class="sc-tot">${fmt(tot)} m</div>
+      </div>`;
+    GROUPS.forEach(g=>{
+      const m=g.stati.reduce((s,st)=>s+(d[st]||0),0);
+      if(m<=0) return;
+      const pct=tot>0?m/tot*100:0;
+      const cnt=pc[g.k]||0;
+      h+=`<div class="sc-row">
+        <span class="sc-lbl">${g.label}</span>
+        <div class="pb" style="height:5px"><div class="pb-fill" style="width:${pct}%;background:${g.col}"></div></div>
+        <span class="sc-num" style="color:${g.col}">${pct.toFixed(1)}%<br><span style="font-size:8px;color:var(--muted)">${fmt(m)} m${cnt>0?' · '+cnt+' p':''}</span></span>
+      </div>`;
+    });
+    h+=`</div>`;
+  });
+  h+=`</div></div></div>`;
+
+  // TWO COLUMNS
+  h+=`<div class="two-col">`;
+
+  // KEY MILESTONES
+  h+=`<div class="card"><div class="ch"><span class="ct">Key Milestones</span></div>
+  <div style="overflow-x:auto"><table class="dt"><thead><tr>
+    <th style="min-width:200px">Milestone</th><th>Baseline</th><th>Forecast</th><th>RAG</th>
+  </tr></thead><tbody>`;
+  R.keyMilestones.forEach((m,i)=>{
+    h+=`<tr>
+      <td contenteditable="false">${m.d}</td>
+      <td class="cd" contenteditable="false">${m.b}</td>
+      <td class="cf ${m.b!==m.f?'late':''}" contenteditable="false">${m.f}</td>
+      <td>${ragHtml(m.r,'km'+i)}</td>
+    </tr>`;
+  });
+  h+=`</tbody></table></div></div>`;
+
+  // CLUSTER TIMELINE
+  h+=`<div class="card"><div class="ch"><span class="ct">Cluster Timeline — Completion</span></div>
+  <div style="overflow-x:auto"><table class="dt"><thead><tr>
+    <th>Cluster</th><th>50% B</th><th>50% F</th><th>70% B</th><th>70% F</th><th>100% B</th><th>100% F</th><th>RAG</th>
+  </tr></thead><tbody>`;
+  R.clusterTimeline.forEach((c,i)=>{
+    h+=`<tr>
+      <td><span style="font-weight:700;color:var(--accent);font-family:'DM Mono',monospace">${c.c.replace('\n','<br>')}</span>
+      ${c.m?`<div style="font-size:9px;color:var(--muted);font-family:'DM Mono',monospace">${fmt(c.m)} m</div>`:''}</td>
+      <td class="cd" contenteditable="false">${c.b50}</td>
+      <td class="cf ${c.b50!==c.f50&&c.b50!=='-'?'late':''}" contenteditable="false">${c.f50}</td>
+      <td class="cd" contenteditable="false">${c.b70}</td>
+      <td class="cf ${c.b70!==c.f70&&c.b70!=='-'?'late':''}" contenteditable="false">${c.f70}</td>
+      <td class="cd" contenteditable="false">${c.b100}</td>
+      <td class="cf ${c.b100!==c.f100?'late':''}" contenteditable="false">${c.f100}</td>
+      <td>${ragHtml(c.r,'ct'+i)}</td>
+    </tr>`;
+  });
+  h+=`</tbody></table></div></div></div>`;
+
+  // MONTHLY MILESTONES
+  h+=`<div class="card"><div class="ch"><span class="ct">Main Monthly Milestones</span></div>
+  <div class="cb" style="display:flex;flex-direction:column;gap:12px">`;
+  R.monthly.forEach((m,i)=>{
+    const pcolors={green:'var(--green)',yellow:'var(--yellow)',red:'var(--red)',grey:'#4a4f6a'};
+    const pcol=pcolors[m.r]||'var(--accent)';
+    h+=`<div class="mc ${mc(m.r)}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div class="mc-title" contenteditable="false" style="flex:1">${m.t}</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">${ragHtml(m.r,'mm'+i)}</div>
+      </div>
+      <div class="mc-meta">
+        <span>📅 Baseline: <strong contenteditable="false">${m.b}</strong></span>
+        <span class="${m.b!==m.f?'late':''}">📌 Forecast: <strong contenteditable="false">${m.f}</strong></span>
+        <span style="margin-left:auto">${pb(m.pct, pcol)}</span>
+      </div>
+      <div class="mc-comment" contenteditable="false">${m.note}</div>
+    </div>`;
+  });
+  h+=`</div></div>`;
+
+  // NOTES
+  h+=`<div class="card"><div class="ch"><span class="ct">Notes</span></div>
+  <div class="cb"><div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;font-size:11px;color:var(--muted);line-height:1.7" contenteditable="false">${R.note}</div></div></div>`;
+
+  document.getElementById('main').innerHTML = h;
+}
+
+// ── Edit mode ──────────────────────────────────────────────────────────────────
+let editOn=false;
+function toggleEdit(){
+  editOn=!editOn;
+  document.body.classList.toggle('em',editOn);
+  const btn=document.getElementById('btnEdit');
+  btn.classList.toggle('on',editOn);
+  btn.textContent=editOn?'✓ Modifica attiva':'✏ Modifica';
+  document.querySelectorAll('[contenteditable]').forEach(el=>el.contentEditable=editOn?'true':'false');
+}
+
+function updateRag(sel){
+  const r=sel.value;
+  const classMap={green:'rg',yellow:'ry',red:'rr',grey:'rm'};
+  const colMap={green:'var(--green)',yellow:'var(--yellow)',red:'var(--red)',grey:'#4a4f6a'};
+  const prev=sel.previousElementSibling;
+  if(prev?.classList.contains('rag')){ prev.className=`rag ${classMap[r]}`; }
+  sel.style.borderColor=colMap[r];
+  const card=sel.closest('.mc');
+  if(card){const mc_cls={green:'mg',yellow:'my',red:'mr',grey:'mm'}[r]||'mm'; card.className=`mc ${mc_cls}`;}
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init(){
+  try{
+    const [csv,counts]=await Promise.all([
+      loadRiepilogo().catch(()=>({})),
+      loadPermitCounts().catch(()=>({})),
+    ]);
+    render(csv,counts);
+    document.querySelectorAll('[contenteditable]').forEach(el=>el.contentEditable='false');
+  }catch(e){
+    document.getElementById('main').innerHTML=`<div style="text-align:center;padding:40px;color:var(--red)">❌ ${e.message}</div>`;
+  }
+}
+init();
+</script>
+</body>
+</html>
