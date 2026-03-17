@@ -34,7 +34,17 @@
   /* print CSS gestito dinamicamente da stampaLotti() e stampaCluster() */
   .main { padding: 20px 28px; display: flex; flex-direction: column; gap: 18px; }
   .kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
-  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; position: relative; overflow: hidden; }
+  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; position: relative; overflow: hidden; cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s; }
+  .kpi:hover { border-color: #4f8ef755; box-shadow: 0 0 0 1px #4f8ef722; }
+  .kpi-owner { font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; padding: 1px 7px; border-radius: 3px; display: inline-block; margin-bottom: 6px; }
+  .kpi-owner.impresa { background: #e07b3a22; color: #e07b3a; border: 1px solid #e07b3a44; }
+  .kpi-owner.rds     { background: #4f8ef722; color: #4f8ef7; border: 1px solid #4f8ef744; }
+  .kpi-owner.ente    { background: #3a8c5c22; color: #3a8c5c; border: 1px solid #3a8c5c44; }
+  /* Modal KPI pratiche */
+  .modal-kpi-overlay { position:fixed;inset:0;background:#000a;z-index:300;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.2s; }
+  .modal-kpi-overlay.open { opacity:1;pointer-events:all; }
+  .modal-kpi { background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;width:900px;max-width:96vw;max-height:85vh;overflow-y:auto;transform:translateY(20px);transition:transform 0.2s; }
+  .modal-kpi-overlay.open .modal-kpi { transform:translateY(0); }
   .kpi::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; }
   .kpi.attesa::before { background: var(--attesa); }
   .kpi.redazione::before { background: var(--redazione); }
@@ -217,6 +227,16 @@
   </div>
 </div>
 
+<!-- Modal KPI Pratiche per Stato -->
+<div class="modal-kpi-overlay" id="modalKpiOverlay" onclick="closeModalKpi(event)">
+  <div class="modal-kpi">
+    <div class="modal-title">
+      <span id="modalKpiTitle">—</span>
+      <span class="modal-close" onclick="closeModalKpi()">×</span>
+    </div>
+    <div id="modalKpiBody"></div>
+  </div>
+</div>
 <!-- Modal Storico -->
 <div class="modal-overlay" id="modalClusterOverlay" onclick="closeModalCluster(event)">
   <div class="modal" style="width:1040px;max-width:96vw">
@@ -242,12 +262,12 @@
   <div id="errorBox"></div>
 
   <div class="kpi-row">
-    <div class="kpi attesa"><div class="kpi-label">In Attesa / Redazione</div><div class="kpi-value" id="kpi-attesa">—</div><div class="kpi-sub" id="kpisub-attesa">—</div></div>
-    <div class="kpi firma"><div class="kpi-label">In Verifica / In Firma</div><div class="kpi-value" id="kpi-firma">—</div><div class="kpi-sub" id="kpisub-firma">—</div></div>
-    <div class="kpi inviato"><div class="kpi-label">Inviato / Protocollato</div><div class="kpi-value" id="kpi-inviato">—</div><div class="kpi-sub" id="kpisub-inviato">—</div></div>
-    <div class="kpi integrazione"><div class="kpi-label">Necessaria Integrazione</div><div class="kpi-value" id="kpi-integrazione">—</div><div class="kpi-sub" id="kpisub-integrazione">—</div></div>
-    <div class="kpi protint"><div class="kpi-label">Protocollato Integrazione</div><div class="kpi-value" id="kpi-protint">—</div><div class="kpi-sub" id="kpisub-protint">—</div></div>
-    <div class="kpi ottenuto"><div class="kpi-label">🏆 Autorizzati</div><div class="kpi-value" id="kpi-ottenuto">—</div><div class="kpi-sub" id="kpisub-ottenuto">—</div></div>
+    <div class="kpi attesa" onclick="openModalKpi('attesa')"><span class="kpi-owner impresa">Impresa</span><div class="kpi-label">In Attesa / Redazione</div><div class="kpi-value" id="kpi-attesa">—</div><div class="kpi-sub" id="kpisub-attesa">—</div></div>
+    <div class="kpi firma" onclick="openModalKpi('firma')"><span class="kpi-owner rds">RDS</span><div class="kpi-label">In Verifica / In Firma</div><div class="kpi-value" id="kpi-firma">—</div><div class="kpi-sub" id="kpisub-firma">—</div></div>
+    <div class="kpi inviato" onclick="openModalKpi('inviato')"><span class="kpi-owner ente">Ente</span><div class="kpi-label">Inviato / Protocollato</div><div class="kpi-value" id="kpi-inviato">—</div><div class="kpi-sub" id="kpisub-inviato">—</div></div>
+    <div class="kpi integrazione" onclick="openModalKpi('integrazione')"><span class="kpi-owner impresa">Impresa</span><div class="kpi-label">Necessaria Integrazione</div><div class="kpi-value" id="kpi-integrazione">—</div><div class="kpi-sub" id="kpisub-integrazione">—</div></div>
+    <div class="kpi protint" onclick="openModalKpi('protint')"><span class="kpi-owner ente">Ente</span><div class="kpi-label">Protocollato Integrazione</div><div class="kpi-value" id="kpi-protint">—</div><div class="kpi-sub" id="kpisub-protint">—</div></div>
+    <div class="kpi ottenuto" onclick="openModalKpi('ottenuto')"><span class="kpi-owner ente" style="background:#3a8c5c22;color:#3a8c5c">Ente</span><div class="kpi-label">🏆 Autorizzati</div><div class="kpi-value" id="kpi-ottenuto">—</div><div class="kpi-sub" id="kpisub-ottenuto">—</div></div>
   </div>
   <!-- Grafico Cluster -->
   <div id="clusterSection">
@@ -833,7 +853,7 @@ function closeModal(e) {
   if (e && e.target !== document.getElementById('modalOverlay')) return;
   document.getElementById('modalOverlay').classList.remove('open');
 }
-document.addEventListener('keydown', e => { if(e.key==='Escape') { document.getElementById('modalOverlay').classList.remove('open'); document.getElementById('modalGruppoOverlay').classList.remove('open'); document.getElementById('modalClusterOverlay').classList.remove('open'); } });
+document.addEventListener('keydown', e => { if(e.key==='Escape') { document.getElementById('modalOverlay').classList.remove('open'); document.getElementById('modalGruppoOverlay').classList.remove('open'); document.getElementById('modalClusterOverlay').classList.remove('open'); document.getElementById('modalKpiOverlay').classList.remove('open'); } });
 
 
 function closeModalCluster(e) {
@@ -2665,6 +2685,133 @@ async function loadMaster() {
   } catch(e) {
     console.warn('Master.csv non caricato:', e.message);
   }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── MODAL KPI PRATICHE ───────────────────────────────────────────────────────
+const KPI_CONFIG = {
+  attesa:       { label: 'In Attesa / Redazione',       owner: 'Impresa', ownerClass: 'impresa', color: '#4a4f6a',
+                  stati: ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'] },
+  firma:        { label: 'In Verifica / In Firma RDS',  owner: 'RDS',     ownerClass: 'rds',     color: '#e07b3a',
+                  stati: ['IN FIRMA RDS'] },
+  inviato:      { label: 'Inviato / Protocollato',      owner: 'Ente',    ownerClass: 'ente',    color: '#4f8ef7',
+                  stati: ['INVIATO','PROTOCOLLATO'] },
+  integrazione: { label: 'Necessaria Integrazione',     owner: 'Impresa', ownerClass: 'impresa', color: '#cc3333',
+                  stati: ['NECESSARIA INTEGRAZIONE'] },
+  protint:      { label: 'Protocollato Integrazione',   owner: 'Ente',    ownerClass: 'ente',    color: '#548235',
+                  stati: ['PROTOCOLLATO INTEGRAZIONE'] },
+  ottenuto:     { label: '🏆 Autorizzati',               owner: 'Ente',    ownerClass: 'ente',    color: '#3a8c5c',
+                  stati: ['OTTENUTO'] },
+};
+
+function openModalKpi(key) {
+  const cfg = KPI_CONFIG[key];
+  if (!cfg) return;
+
+  // Raccoglie tutte le pratiche in questo stato da tutti i lotti
+  const allPrats = [];
+  const seen = new Set();
+  if (window._praticheDetailPerLotto) {
+    Object.entries(window._praticheDetailPerLotto).forEach(([lotto, arr]) => {
+      arr.forEach(p => {
+        if (cfg.stati.includes(p.stato) && !seen.has(p.codice + '|' + lotto)) {
+          seen.add(p.codice + '|' + lotto);
+          allPrats.push({...p, lotto});
+        }
+      });
+    });
+  }
+
+  // Ordina per data più recente
+  allPrats.sort((a, b) => {
+    const da = parseDateIT(a.dum), db = parseDateIT(b.dum);
+    if (da && db) return db - da;
+    return da ? -1 : db ? 1 : a.codice.localeCompare(b.codice);
+  });
+
+  const totMetri = allPrats.reduce((s, p) => s + (p.metri || 0), 0);
+
+  // Header
+  const ownerColors = { impresa: '#e07b3a', rds: '#4f8ef7', ente: '#3a8c5c' };
+  const ownerCol = ownerColors[cfg.ownerClass] || '#6b7080';
+
+  document.getElementById('modalKpiTitle').innerHTML =
+    `<span style="color:${cfg.color}">${cfg.label}</span>
+     <span style="margin-left:12px;font-size:11px;background:${ownerCol}22;color:${ownerCol};border:1px solid ${ownerCol}44;border-radius:4px;padding:2px 10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase">${cfg.owner}</span>`;
+
+  if (allPrats.length === 0) {
+    document.getElementById('modalKpiBody').innerHTML =
+      '<div style="padding:32px;text-align:center;color:var(--muted);font-size:13px">Nessuna pratica in questo stato</div>';
+    document.getElementById('modalKpiOverlay').classList.add('open');
+    return;
+  }
+
+  // Raggruppa per lotto
+  const byLotto = {};
+  allPrats.forEach(p => {
+    if (!byLotto[p.lotto]) byLotto[p.lotto] = [];
+    byLotto[p.lotto].push(p);
+  });
+
+  const LOTTO_ORDER = ['1A','1B','2A','2B','1','2','3','4','5','6','7','8'];
+  const sortedLotti = Object.keys(byLotto).sort((a,b) =>
+    (LOTTO_ORDER.indexOf(a) + 1 || 99) - (LOTTO_ORDER.indexOf(b) + 1 || 99));
+
+  const IMPRESE = { '1A':'Valtellina','1B':'Soleto','2A':'Sielte','2B':'Telebit' };
+
+  let html = `
+    <div style="display:flex;gap:24px;margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid var(--border);flex-wrap:wrap;align-items:flex-end">
+      <div>
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Pratiche totali</div>
+        <div style="font-size:24px;font-weight:700;font-family:'DM Mono',monospace;color:${cfg.color}">${allPrats.length}</div>
+      </div>
+      <div>
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Metri coinvolti</div>
+        <div style="font-size:24px;font-weight:700;font-family:'DM Mono',monospace">${fmt(totMetri)} m</div>
+      </div>
+    </div>`;
+
+  // Per ogni lotto: header + griglia pratiche
+  sortedLotti.forEach(lotto => {
+    const prats = byLotto[lotto];
+    const totL = prats.reduce((s, p) => s + (p.metri || 0), 0);
+    const impresa = IMPRESE[lotto] || '';
+
+    html += `
+      <div style="margin-bottom:20px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)">
+          <span style="font-size:13px;font-weight:700;color:var(--accent);font-family:'DM Mono',monospace">Lotto ${lotto}</span>
+          ${impresa ? `<span style="font-size:10px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 8px">${impresa}</span>` : ''}
+          <span style="font-size:10px;color:var(--muted);margin-left:auto;font-family:'DM Mono',monospace">${prats.length} pratiche · ${fmt(totL)} m</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px">
+          ${prats.map(p => {
+            const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
+            const dateParts = buildDateParts(p);
+            const dateStr = dateParts.join(' · ');
+            return `<div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid ${col};border-radius:6px;padding:9px 11px">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                <span style="font-family:'DM Mono',monospace;font-size:10px;font-weight:700;color:var(--text)">${p.codice}</span>
+                <span style="font-size:9px;color:${col};font-weight:600;margin-left:auto;white-space:nowrap">${p.stato}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+                <span style="font-size:9px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente || '—'}</span>
+                <span style="font-size:9px;font-family:'DM Mono',monospace;color:var(--text);flex-shrink:0">${fmt(p.metri)} m</span>
+              </div>
+              ${dateStr ? `<div style="font-size:8px;color:var(--muted);margin-top:3px">${dateStr}</div>` : ''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  });
+
+  document.getElementById('modalKpiBody').innerHTML = html;
+  document.getElementById('modalKpiOverlay').classList.add('open');
+}
+
+function closeModalKpi(e) {
+  if (e && e.target !== document.getElementById('modalKpiOverlay')) return;
+  document.getElementById('modalKpiOverlay').classList.remove('open');
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
