@@ -197,8 +197,10 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
   <span class="edit-hint">✏ Clicca su testo per modificare · × per eliminare · + per aggiungere</span>
   <div class="tb-right">
     <span class="badge" id="repDate">—</span>
+    <span id="saveBadge" style="font-size:10px;color:var(--green);opacity:0;transition:opacity .4s;padding:3px 8px;background:#3a8c5c22;border:1px solid #3a8c5c55;border-radius:4px">✓ Salvato</span>
     <button class="btn btn-edit no-print" id="btnEdit" onclick="toggleEdit()">✏ Modifica</button>
     <button class="btn btn-cancel no-print" id="btnCancel" onclick="cancelEdit()">↩ Annulla</button>
+    <button class="btn no-print" onclick="resetStorage()" style="background:#cc333322;color:var(--red);border:1px solid #cc333355;font-size:11px;padding:5px 14px;border-radius:5px;cursor:pointer" title="Ripristina dati originali">↺ Reset</button>
     <button class="btn btn-print no-print" onclick="window.print()">🖨 Stampa / PDF</button>
     <a href="index.html" class="btn btn-nav no-print">← Dashboard</a>
     <a href="mappa.html" class="btn btn-nav no-print">🗺 Mappa</a>
@@ -574,13 +576,96 @@ function mmCard(m,i){
 // ── Edit mode ─────────────────────────────────────────────────────────────────
 let editOn=false, savedHTML='';
 
+// ── Persistenza condivisa via JSONBin ────────────────────────────────────────
+const JSONBIN_BIN_ID    = '69b3d128b7ec241ddc6545cc';
+const JSONBIN_MASTER_KEY = '$2a$10$2kWuCWPZFDiwXDJBkEmituTTW4op2VZF6E52e75IQsMV7FwmXmSsO';
+const EXEC_BIN_KEY = 'exec_summary_v1'; // chiave dentro il bin JSONBin
+
+async function saveToStorage(){
+  setSaveBadge('saving');
+  try {
+    // Legge il bin attuale
+    const getResp = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
+      headers:{ 'X-Master-Key': JSONBIN_MASTER_KEY }
+    });
+    const existing = getResp.ok ? (await getResp.json()).record : {};
+
+    // Salva solo il contenuto HTML modificato (senza i dati live CSV)
+    existing[EXEC_BIN_KEY] = document.getElementById('main').innerHTML;
+
+    await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
+      method:'PUT',
+      headers:{ 'Content-Type':'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
+      body: JSON.stringify(existing)
+    });
+    setSaveBadge('saved');
+  } catch(e){
+    console.warn('Salvataggio JSONBin fallito:', e);
+    setSaveBadge('error');
+  }
+}
+
+async function loadFromStorage(){
+  try {
+    const resp = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
+      headers:{ 'X-Master-Key': JSONBIN_MASTER_KEY }
+    });
+    if(!resp.ok) return false;
+    const data = (await resp.json()).record;
+    if(data && data[EXEC_BIN_KEY]){
+      document.getElementById('main').innerHTML = data[EXEC_BIN_KEY];
+      document.querySelectorAll('[contenteditable]').forEach(el=>el.contentEditable='false');
+      return true;
+    }
+  } catch(e){ console.warn('Caricamento JSONBin fallito:', e); }
+  return false;
+}
+
+async function resetStorage(){
+  if(!confirm('Ripristinare i dati originali per tutti? Le modifiche salvate andranno perse.')) return;
+  try {
+    const getResp = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
+      headers:{ 'X-Master-Key': JSONBIN_MASTER_KEY }
+    });
+    const existing = getResp.ok ? (await getResp.json()).record : {};
+    delete existing[EXEC_BIN_KEY];
+    await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
+      method:'PUT',
+      headers:{ 'Content-Type':'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
+      body: JSON.stringify(existing)
+    });
+  } catch(e){ console.warn('Reset fallito:', e); }
+  location.reload();
+}
+
+function setSaveBadge(state){
+  const b=document.getElementById('saveBadge');
+  if(!b) return;
+  if(state==='saving'){
+    b.textContent='⏳ Salvataggio...';
+    b.style.color='var(--yellow)'; b.style.borderColor='#c9a22755'; b.style.background='#c9a22722';
+    b.style.opacity='1';
+  } else if(state==='saved'){
+    b.textContent='✓ Salvato per tutti';
+    b.style.color='var(--green)'; b.style.borderColor='#3a8c5c55'; b.style.background='#3a8c5c22';
+    b.style.opacity='1';
+    setTimeout(()=>{ b.style.opacity='0'; }, 2500);
+  } else {
+    b.textContent='✕ Errore salvataggio';
+    b.style.color='var(--red)'; b.style.borderColor='#cc333355'; b.style.background='#cc333322';
+    b.style.opacity='1';
+    setTimeout(()=>{ b.style.opacity='0'; }, 3000);
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function toggleEdit(){
   if(!editOn){
     savedHTML = document.getElementById('main').innerHTML;
     editOn=true;
     document.body.classList.add('em');
     document.getElementById('btnEdit').classList.add('on');
-    document.getElementById('btnEdit').textContent='✓ Salva';
+    document.getElementById('btnEdit').textContent='💾 Salva';
     document.getElementById('btnCancel').style.display='inline-flex';
     document.querySelectorAll('[contenteditable]').forEach(el=>el.contentEditable='true');
   } else {
@@ -590,6 +675,7 @@ function toggleEdit(){
     document.getElementById('btnEdit').textContent='✏ Modifica';
     document.getElementById('btnCancel').style.display='none';
     document.querySelectorAll('[contenteditable]').forEach(el=>el.contentEditable='false');
+    saveToStorage(); // ← async: salva su JSONBin condiviso
   }
 }
 
@@ -671,11 +757,12 @@ function addNote(){
 }
 
 async function init(){
-  // Set print date
   const pd=document.getElementById('printDate');
   if(pd) pd.textContent=document.getElementById('repDate')?.textContent||'';
   await loadCSVData();
-  render();
+  const restored = await loadFromStorage();
+  if(!restored){ render(); }
+  else { updateLiveData(); }
   document.querySelectorAll('[contenteditable]').forEach(el=>el.contentEditable='false');
 }
 init();
