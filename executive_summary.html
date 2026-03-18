@@ -246,7 +246,7 @@ async function loadCSVData() {
     const iC  = hdr.findIndex(h=>h.trim().toUpperCase()==='CLUSTER');
     const iL  = hdr.findIndex(h=>h.trim().toUpperCase()==='LUNGHEZZA');
     const iLt = hdr.findIndex(h=>h.trim().toUpperCase()==='LOTTO');
-    const iS  = hdr.findIndex(h=>['STATO_AUTORIZZAZIONE','STATO_AUTORIZZAZIONE_WEB','STATO'].includes(h.trim().toUpperCase()));
+    const iS  = hdr.findIndex(h=>['STATO_AUTORIZZAZIONE_WEB','STATO_AUTORIZZAZIONE','STATO'].includes(h.trim().toUpperCase()));
     if(iC<0||iL<0||iLt<0||iS<0) throw new Error('Colonne non trovate');
 
     const byLot={}, byCluster={};
@@ -555,19 +555,11 @@ function updRag(sel){
     const pf=card.querySelector('.pb-f'); if(pf) pf.style.background=C;
     const pp=card.querySelector('.pb-p'); if(pp) pp.style.color=C;
   }
-  // table row (key milestones) — aggiorna solo colore forecast (.cf)
+  // table row (key milestones) — forecast prende sempre il colore del RAG scelto
   const tr=sel.closest('tr');
   if(tr){
     const cf=tr.querySelector('.cf');
-    if(cf){
-      const cd=tr.querySelector('.cd');
-      // se baseline != forecast rimane giallo, altrimenti prende colore RAG
-      if(cd && cd.textContent.trim()!==cf.textContent.trim()){
-        cf.style.color='var(--yellow)';
-      } else {
-        cf.style.color=C;
-      }
-    }
+    if(cf) cf.style.color=C;
   }
 }
 
