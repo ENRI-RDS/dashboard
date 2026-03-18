@@ -267,16 +267,23 @@ async function loadCSVData() {
     }
 
     // Build CSV_DATA per lotto
+    const GK={
+      wip:   ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'],
+      firma: ['IN FIRMA RDS'],
+      inviato:['INVIATO','PROTOCOLLATO'],
+      integr: ['NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE'],
+      ok:    ['OTTENUTO'],
+    };
     CSV_DATA={};
     Object.entries(SUPPLIER_META).forEach(([lot,meta])=>{
       const d=byLot[lot]||{};
       const tot=Object.values(d).reduce((s,v)=>s+v,0);
       CSV_DATA[lot]={...meta, tot,
-        wip:   GROUPS.find(g=>g.k==='wip').stati.reduce((s,st)=>s+(d[st]||0),0),
-        firma: GROUPS.find(g=>g.k==='firma').stati.reduce((s,st)=>s+(d[st]||0),0),
-        inviato:GROUPS.find(g=>g.k==='inviato').stati.reduce((s,st)=>s+(d[st]||0),0),
-        integr: GROUPS.find(g=>g.k==='integr').stati.reduce((s,st)=>s+(d[st]||0),0),
-        ok:    GROUPS.find(g=>g.k==='ok').stati.reduce((s,st)=>s+(d[st]||0),0),
+        wip:    GK.wip.reduce((s,st)=>s+(d[st]||0),0),
+        firma:  GK.firma.reduce((s,st)=>s+(d[st]||0),0),
+        inviato:GK.inviato.reduce((s,st)=>s+(d[st]||0),0),
+        integr: GK.integr.reduce((s,st)=>s+(d[st]||0),0),
+        ok:     GK.ok.reduce((s,st)=>s+(d[st]||0),0),
       };
     });
 
@@ -548,25 +555,19 @@ function updRag(sel){
     const pf=card.querySelector('.pb-f'); if(pf) pf.style.background=C;
     const pp=card.querySelector('.pb-p'); if(pp) pp.style.color=C;
   }
-  // table row (key milestones) — aggiorna colore delle celle data
+  // table row (key milestones) — aggiorna solo colore forecast (.cf)
   const tr=sel.closest('tr');
   if(tr){
-    tr.querySelectorAll('.cd,.cf').forEach(el=>{
-      // forecast late rimane giallo se le date differiscono, altrimenti colore RAG
-      if(el.classList.contains('cf')){
-        // check if dates differ: compare cd and cf text
-        const cells=[...tr.querySelectorAll('.cd,.cf')];
-        const cd=cells.find(c=>c.classList.contains('cd'));
-        const cf=cells.find(c=>c.classList.contains('cf'));
-        if(cd&&cf&&cd.textContent.trim()!==cf.textContent.trim()){
-          el.style.color='var(--yellow)';
-        } else {
-          el.style.color=C;
-        }
+    const cf=tr.querySelector('.cf');
+    if(cf){
+      const cd=tr.querySelector('.cd');
+      // se baseline != forecast rimane giallo, altrimenti prende colore RAG
+      if(cd && cd.textContent.trim()!==cf.textContent.trim()){
+        cf.style.color='var(--yellow)';
       } else {
-        el.style.color=C;
+        cf.style.color=C;
       }
-    });
+    }
   }
 }
 
