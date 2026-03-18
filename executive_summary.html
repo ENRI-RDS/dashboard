@@ -212,17 +212,85 @@ const R = {
 // ── CSV data (from Riepilogo_progettazione.csv — aggiorna ogni mese) ──────────
 // STATI AVANZATI = da INVIATO in poi (submitted, integration, approved)
 const AVANZATI = ['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'];
-const CSV_DATA = {
-  '1A':{name:'Valtellina',cl:'Cluster 1',tot:16891, wip:8474,firma:8417,inviato:0,integr:0,ok:0},
-  '1B':{name:'Soleto',    cl:'Cluster 1',tot:8524,  wip:2276,firma:0,   inviato:6249,integr:0,ok:0},
-  '2A':{name:'Sielte',    cl:'Cluster 2',tot:11598, wip:7074,firma:4524,inviato:0,integr:0,ok:0},
-  '2B':{name:'Telebit',   cl:'Cluster 2',tot:15330, wip:10049,firma:0,  inviato:5281,integr:0,ok:0},
+// CSV_DATA e CLUSTER_PROGRESS vengono popolati da loadCSVData() al caricamento
+let CSV_DATA = {};
+let CLUSTER_PROGRESS = {};
+
+const SUPPLIER_META = {
+  '1A':{name:'Valtellina',cl:'Cluster 1'},
+  '1B':{name:'Soleto',    cl:'Cluster 1'},
+  '2A':{name:'Sielte',    cl:'Cluster 2'},
+  '2B':{name:'Telebit',   cl:'Cluster 2'},
 };
-// Cluster-level advancement (Submitted to Authority onwards / total)
-const CLUSTER_PROGRESS = {
-  '1': {tot:25415, avanz:6249},  // 24.6%
-  '2': {tot:26928, avanz:5281},  // 19.6%
-};
+
+const AVANZATI_STATI = ['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'];
+
+async function loadCSVData() {
+  try {
+    let resp = await fetch('Riepilogo_progettazione.csv?t='+Date.now());
+    if (!resp.ok) resp = await fetch('riepilogo.csv?t='+Date.now());
+    if (!resp.ok) throw new Error('CSV non trovato');
+    const text = await resp.text();
+    const lines = text.trim().split('\n').map(l=>l.replace(/\r/,''));
+    const sep = lines[0].includes(';') ? ';' : ',';
+    const splitL = line => {
+      const res=[]; let cur='', inQ=false;
+      for(const ch of line){
+        if(ch==='"'){inQ=!inQ;}
+        else if(ch===sep&&!inQ){res.push(cur.trim());cur='';}
+        else{cur+=ch;}
+      }
+      res.push(cur.trim()); return res;
+    };
+    const hdr = splitL(lines[0]);
+    const iC  = hdr.findIndex(h=>h.trim().toUpperCase()==='CLUSTER');
+    const iL  = hdr.findIndex(h=>h.trim().toUpperCase()==='LUNGHEZZA');
+    const iLt = hdr.findIndex(h=>h.trim().toUpperCase()==='LOTTO');
+    const iS  = hdr.findIndex(h=>['STATO_AUTORIZZAZIONE','STATO_AUTORIZZAZIONE_WEB','STATO'].includes(h.trim().toUpperCase()));
+    if(iC<0||iL<0||iLt<0||iS<0) throw new Error('Colonne non trovate');
+
+    const byLot={}, byCluster={};
+    for(let i=1;i<lines.length;i++){
+      const c=splitL(lines[i]);
+      if(c.length<=Math.max(iC,iL,iLt,iS)) continue;
+      const lot=c[iLt].trim(), stato=c[iS].trim(), cl=c[iC].trim().replace(/"/g,'');
+      const m=parseFloat(c[iL].trim().replace(',','.'))||0;
+      if(!stato||m<=0) continue;
+      if(SUPPLIER_META[lot]){
+        if(!byLot[lot])byLot[lot]={};
+        byLot[lot][stato]=(byLot[lot][stato]||0)+m;
+      }
+      if(cl){
+        if(!byCluster[cl])byCluster[cl]={};
+        byCluster[cl][stato]=(byCluster[cl][stato]||0)+m;
+      }
+    }
+
+    // Build CSV_DATA per lotto
+    CSV_DATA={};
+    Object.entries(SUPPLIER_META).forEach(([lot,meta])=>{
+      const d=byLot[lot]||{};
+      const tot=Object.values(d).reduce((s,v)=>s+v,0);
+      CSV_DATA[lot]={...meta, tot,
+        wip:   GROUPS.find(g=>g.k==='wip').stati.reduce((s,st)=>s+(d[st]||0),0),
+        firma: GROUPS.find(g=>g.k==='firma').stati.reduce((s,st)=>s+(d[st]||0),0),
+        inviato:GROUPS.find(g=>g.k==='inviato').stati.reduce((s,st)=>s+(d[st]||0),0),
+        integr: GROUPS.find(g=>g.k==='integr').stati.reduce((s,st)=>s+(d[st]||0),0),
+        ok:    GROUPS.find(g=>g.k==='ok').stati.reduce((s,st)=>s+(d[st]||0),0),
+      };
+    });
+
+    // Build CLUSTER_PROGRESS per cluster
+    CLUSTER_PROGRESS={};
+    Object.entries(byCluster).forEach(([cl,d])=>{
+      const tot=Object.values(d).reduce((s,v)=>s+v,0);
+      const avanz=AVANZATI_STATI.reduce((s,st)=>s+(d[st]||0),0);
+      CLUSTER_PROGRESS[cl]={tot,avanz};
+    });
+  } catch(e) {
+    console.warn('loadCSVData:', e.message);
+  }
+}
 
 const GROUPS=[
   {k:'wip',    label:'Work in progress',       col:'#4a4f6a'},
@@ -472,17 +540,33 @@ function updRag(sel){
   const prev=sel.previousElementSibling;
   if(prev?.classList.contains('rag')) prev.className=`rag ${rcls(r)}`;
   sel.style.borderColor=C;
-  // Update mc card border
+  // mc card (monthly milestone)
   const card=sel.closest('.mc');
-  if(card) card.className=`mc ${mccls(r)}`;
-  // Update date colors in mc-meta
   if(card){
+    card.className=`mc ${mccls(r)}`;
     card.querySelectorAll('.mc-meta strong').forEach(el=>{el.style.color=C;});
-  }
-  // Update pbar color
-  if(card){
     const pf=card.querySelector('.pb-f'); if(pf) pf.style.background=C;
     const pp=card.querySelector('.pb-p'); if(pp) pp.style.color=C;
+  }
+  // table row (key milestones) — aggiorna colore delle celle data
+  const tr=sel.closest('tr');
+  if(tr){
+    tr.querySelectorAll('.cd,.cf').forEach(el=>{
+      // forecast late rimane giallo se le date differiscono, altrimenti colore RAG
+      if(el.classList.contains('cf')){
+        // check if dates differ: compare cd and cf text
+        const cells=[...tr.querySelectorAll('.cd,.cf')];
+        const cd=cells.find(c=>c.classList.contains('cd'));
+        const cf=cells.find(c=>c.classList.contains('cf'));
+        if(cd&&cf&&cd.textContent.trim()!==cf.textContent.trim()){
+          el.style.color='var(--yellow)';
+        } else {
+          el.style.color=C;
+        }
+      } else {
+        el.style.color=C;
+      }
+    });
   }
 }
 
@@ -530,7 +614,12 @@ function addNote(){
   body.appendChild(div);
 }
 
-render();
+async function init(){
+  await loadCSVData();
+  render();
+  document.querySelectorAll('[contenteditable]').forEach(el=>el.contentEditable='false');
+}
+init();
 </script>
 </body>
 </html>
