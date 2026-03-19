@@ -99,8 +99,6 @@
   .modal-ms-card .ms-lbl { font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:4px; }
   .modal-ms-card .ms-val { font-size:14px;font-weight:700;font-family:'DM Mono',monospace; }
   .modal-ms-card .ms-date { font-size:9px;color:var(--muted);margin-top:2px; }
-  /* Confronto CSV */
-  .compare-zone { display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted); }
   .bar-lotto { font-size: 13px; font-family: 'DM Mono', monospace; color: var(--muted); width: 90px; text-align: left; flex-shrink: 0; }
   .bar-lotto-wrap { display: flex; flex-direction: column; align-items: flex-start; width: 90px; flex-shrink: 0; gap: 2px; }
   .bar-lotto-num { font-size: 14px; font-weight: 600; font-family: 'DM Mono', monospace; color: var(--text); }
@@ -112,10 +110,6 @@
   .legend-item { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); }
   .legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
   .side { display: flex; flex-direction: column; gap: 14px; }
-  .spark-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-  .spark-bar { flex: 1; height: 4px; border-radius: 2px; background: var(--surface2); overflow: hidden; }
-  .spark-fill { height: 100%; border-radius: 2px; }
-  .spark-val { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--muted); width: 38px; text-align: right; }
   .lotti-table { width: 100%; border-collapse: collapse; }
   .lotti-table th { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
   .lotti-table td { font-size: 11px; padding: 8px 10px; border-bottom: 1px solid #2e334722; }
@@ -206,10 +200,10 @@
     <a href="mappa.html" style="font-size:11px;padding:5px 14px;border-radius:5px;background:var(--surface2);color:var(--text);border:1px solid var(--border);cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;text-decoration:none;transition:opacity 0.2s" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1">🗺 Mappa</a>
     <a href="executive_summary.html" style="font-size:11px;padding:5px 14px;border-radius:5px;background:var(--surface2);color:var(--text);border:1px solid var(--border);cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;text-decoration:none;transition:opacity 0.2s" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1">📋 Executive</a>
 
-    <button class="btn" style="background:#2f5496" onclick="stampaLotti()">⬇ PDF Lotti</button>
-    <button class="btn" style="background:#1a5c3a" onclick="stampaCluster()">⬇ PDF Cluster</button>
-    <button class="btn" style="background:#5a3a8c" onclick="apriStorico()">📈 Storico</button>
-    <button class="btn" style="background:#1d5c3a;border:1px solid #3a8c5c55" onclick="exportTuttiXlsx()" title="Esporta tutte le pratiche con tutti i dati">📊 Excel Pratiche</button>
+    <button class="btn" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="stampaLotti()">⬇ PDF Lotti</button>
+    <button class="btn" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="stampaCluster()">⬇ PDF Cluster</button>
+    <button class="btn" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="apriStorico()">📈 Storico</button>
+    <button class="btn" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="exportTuttiXlsx()" title="Esporta tutte le pratiche con tutti i dati">📊 Excel Pratiche</button>
   </div>
 </div>
 
@@ -505,48 +499,6 @@ function buildDateParts(p) {
   }
   return parts;
 }
-
-
-function buildPratCard(p) {
-  const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
-  const dateParts = buildDateParts(p);
-  const dateStr = dateParts.join(' · ');
-  return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:5px">
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:nowrap">
-      <span style="font-family:'DM Mono',monospace;font-size:10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:1px 7px;flex-shrink:0">${p.codice}</span>
-      <span style="font-size:9px;font-weight:700;color:${col};flex-shrink:0;white-space:nowrap">${p.stato}</span>
-      <span style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text);margin-left:auto;flex-shrink:0">${fmt(p.metri)} m</span>
-    </div>
-    <div style="display:flex;justify-content:space-between;gap:6px">
-      <span style="font-size:9px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente||''}</span>
-      ${dateStr ? `<span style="font-size:9px;color:var(--muted);white-space:nowrap;flex-shrink:0">${dateStr}</span>` : ''}
-    </div>
-  </div>`;
-}
-
-function buildPratPanel(allPrats) {
-  if (!allPrats || !allPrats.length) return '';
-  const autP = allPrats.filter(p => p.codice.startsWith('AUT/'));
-  const noP  = allPrats.filter(p => !p.codice.startsWith('AUT/'));
-  const colT = (lbl, n) => `<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--border)">${lbl} (${n})</div>`;
-  return `<div style="flex:1;min-width:0;padding-left:20px;border-left:1px solid var(--border)">
-    <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);font-weight:600;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">
-      Dettaglio pratiche (${allPrats.length})
-    </div>
-    <div style="display:grid;grid-template-columns:${noP.length?'1fr 1fr':'1fr'};gap:12px;align-items:start">
-      <div>${autP.length?colT('Autorizzazioni',autP.length):''}${autP.map(buildPratCard).join('')}</div>
-      ${noP.length?`<div>${colT('Nulla Osta / Ordinanze',noP.length)}${noP.map(buildPratCard).join('')}</div>`:''}
-    </div>
-  </div>`;
-}
-
-function sortPratsByDate(arr) {
-  return arr.slice().sort((a,b) => {
-    const da = parseDateIT(a.dum), db = parseDateIT(b.dum);
-    if (da && db) return db - da;
-    return da ? -1 : db ? 1 : a.codice.localeCompare(b.codice);
-  });
-}
 // ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -813,30 +765,19 @@ function openModal(lotto, statiMetri, totale) {
       return a.codice.localeCompare(b.codice);
     });
 
-  // usa STATI_COLORI_MAP e fmtDateIT globali
-
-  // Costruisce una card pratica
-  const pratCard = (p) => {
-    const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
-    const dateParts = buildDateParts(p);
-    const dateStr = dateParts.join('  ·  ');
-    return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:4px">
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap">
-        <span style="font-family:'DM Mono',monospace;font-size:10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:1px 7px;flex-shrink:0">${p.codice}</span>
-        <span style="font-size:9px;font-weight:700;color:${col};flex-shrink:0;white-space:nowrap">${p.stato}</span>
-        <span style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text);margin-left:auto;flex-shrink:0;white-space:nowrap">${fmt(p.metri)} m</span>
-      </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-        <span style="font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.ente || ''}</span>
-        ${dateStr ? `<span style="font-size:9px;color:var(--muted);white-space:nowrap;flex-shrink:0">${dateStr}</span>` : ''}
-      </div>
-    </div>`;
+  // Separazione AUT / NO+ORD, ciascun gruppo per data desc
+  const _byDate = (a, b) => {
+    const da = parseDateIT(a.dum), db = parseDateIT(b.dum);
+    if (da && db) return db - da;
+    return da ? -1 : db ? 1 : a.codice.localeCompare(b.codice);
   };
+  const autPrats = allPrats.filter(p => p.codice.startsWith('AUT/')).sort(_byDate);
+  const noPrats  = allPrats.filter(p => !p.codice.startsWith('AUT/')).sort(_byDate);
 
-  // Pannello pratiche — tabella unica
+  // Pannello pratiche — tabella unica con sezioni AUT / NO+ORD
   let pratHtml = '';
   if (allPrats.length > 0) {
-    const righe = allPrats.map(p => {
+    const makeRighe = (arr) => arr.map(p => {
       const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
       const dateParts = buildDateParts(p);
       const invio = dateParts.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
@@ -851,22 +792,34 @@ function openModal(lotto, statiMetri, totale) {
       </tr>`;
     }).join('');
 
+    const sepRow = (label, badge, n) => `
+      <tr>
+        <td colspan="6" style="padding:8px 10px 4px;background:var(--bg)">
+          <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text)">${label}</span>
+          <span style="margin-left:6px;font-size:9px;color:var(--muted)">(${n})</span>
+          <span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">${badge.includes('3a8c5c') ? 'incide sulle %' : 'non incide sulle %'}</span>
+        </td>
+      </tr>`;
+
+    const colTH = `<tr style="border-bottom:1px solid var(--border)">
+      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Codice</th>
+      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Ente</th>
+      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Stato</th>
+      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Invio</th>
+      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Agg./Prot./Ott.</th>
+      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:right;font-weight:600;background:var(--surface2)">Metri</th>
+    </tr>`;
+
     pratHtml = `<div style="padding-left:20px;border-left:1px solid var(--border);min-width:0;flex:1;overflow-x:auto">
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);font-weight:600">
-        Dettaglio pratiche (${allPrats.length})
+        Dettaglio pratiche (${autPrats.length} AUT${noPrats.length ? ' · ' + noPrats.length + ' NO/ORD' : ''})
       </div>
       <table class="prat-table">
-        <thead>
-          <tr style="border-bottom:1px solid var(--border)">
-            <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Codice</th>
-            <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Ente</th>
-            <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Stato</th>
-            <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Invio</th>
-            <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Agg./Prot./Ott.</th>
-            <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:right;font-weight:600;background:var(--surface2)">Metri</th>
-          </tr>
-        </thead>
-        <tbody>${righe}</tbody>
+        <thead>${colTH}</thead>
+        <tbody>
+          ${autPrats.length ? sepRow('Autorizzazioni', 'background:#3a8c5c22;color:#3a8c5c;border:1px solid #3a8c5c44', autPrats.length) + makeRighe(autPrats) : ''}
+          ${noPrats.length ? sepRow('Nulla Osta / Ordinanze', 'background:#4a4f6a22;color:#8890aa;border:1px solid #4a4f6a44', noPrats.length) + makeRighe(noPrats) : ''}
+        </tbody>
       </table>
     </div>`;
   }
@@ -966,10 +919,15 @@ function openModalCluster(cl, statiMap, totale) {
     clPrats.sort((a,b) => { const da=parseDateIT(a.dum),db=parseDateIT(b.dum); if(da&&db) return db-da; return da?-1:db?1:a.codice.localeCompare(b.codice); });
   }
 
-  // Pannello pratiche — tabella
+  // Separazione AUT / NO+ORD, ciascun gruppo per data desc
+  const _bd = (a,b) => { const da=parseDateIT(a.dum),db=parseDateIT(b.dum); if(da&&db) return db-da; return da?-1:db?1:a.codice.localeCompare(b.codice); };
+  const clAut = clPrats.filter(p => p.codice.startsWith('AUT/')).sort(_bd);
+  const clNo  = clPrats.filter(p => !p.codice.startsWith('AUT/')).sort(_bd);
+
+  // Pannello pratiche — tabella con sezioni AUT / NO+ORD
   let pratHtml = '';
   if (clPrats.length > 0) {
-    const righeCluster = clPrats.map(p => {
+    const mkRow = (p) => {
       const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
       const dateParts = buildDateParts(p);
       const invio = dateParts.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
@@ -982,26 +940,33 @@ function openModalCluster(cl, statiMap, totale) {
         <td style="padding:6px 10px;font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);white-space:nowrap;text-align:center">${agg}</td>
         <td style="padding:6px 10px;font-size:10px;font-family:'DM Mono',monospace;color:var(--text);text-align:right;white-space:nowrap;font-weight:600">${fmt(p.metri)} m</td>
       </tr>`;
-    }).join('');
+    };
+    const sepRow = (label, badge, n) => `<tr><td colspan="6" style="padding:8px 10px 4px;background:var(--bg)">
+      <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text)">${label}</span>
+      <span style="margin-left:6px;font-size:9px;color:var(--muted)">(${n})</span>
+      <span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">${badge.includes('3a8c5c') ? 'incide sulle %' : 'non incide sulle %'}</span>
+    </td></tr>`;
+    const thRow = `<tr style="border-bottom:1px solid var(--border)">
+      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Codice</th>
+      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Ente</th>
+      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Stato</th>
+      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Invio</th>
+      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Agg./Prot./Ott.</th>
+      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:right;font-weight:600;background:var(--surface2)">Metri</th>
+    </tr>`;
 
     pratHtml = `
       <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
         <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);font-weight:600;margin-bottom:10px">
-          Dettaglio pratiche (${clPrats.length})
+          Dettaglio pratiche (${clAut.length} AUT${clNo.length ? ' · ' + clNo.length + ' NO/ORD' : ''})
         </div>
         <div style="overflow-x:auto">
           <table class="prat-table">
-            <thead>
-              <tr style="border-bottom:1px solid var(--border)">
-                <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Codice</th>
-                <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Ente</th>
-                <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Stato</th>
-                <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Invio</th>
-                <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Agg./Prot./Ott.</th>
-                <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:right;font-weight:600;background:var(--surface2)">Metri</th>
-              </tr>
-            </thead>
-            <tbody>${righeCluster}</tbody>
+            <thead>${thRow}</thead>
+            <tbody>
+              ${clAut.length ? sepRow('Autorizzazioni','background:#3a8c5c22;color:#3a8c5c;border:1px solid #3a8c5c44',clAut.length) + clAut.map(mkRow).join('') : ''}
+              ${clNo.length  ? sepRow('Nulla Osta / Ordinanze','background:#4a4f6a22;color:#8890aa;border:1px solid #4a4f6a44',clNo.length) + clNo.map(mkRow).join('') : ''}
+            </tbody>
           </table>
         </div>
       </div>`;
@@ -1130,33 +1095,6 @@ function openModalGruppo(titolo, lottiGruppo, lottiMap, lottiTotale) {
 
 
 
-function loadCompare(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const lines = e.target.result.trim().split('\n').map(l=>l.replace(/\r/,''));
-    const headers = lines[0].split(';');
-    const iL=headers.indexOf('LOTTO'), iS=headers.indexOf('STATO_AUTORIZZAZIONE'), iM=headers.indexOf('Metri');
-    const prevMap = {};
-    for (let i=1;i<lines.length;i++) {
-      const cols = lines[i].split(';');
-      if (!cols[iL]) continue;
-      const lotto=cols[iL].trim(), stato=cols[iS].trim(), metri=parseNum(cols[iM]);
-      if (!prevMap[lotto]) prevMap[lotto]={};
-      prevMap[lotto][stato]=(prevMap[lotto][stato]||0)+metri;
-    }
-    window._compareData = prevMap;
-
-    // Mostra banner confronto
-    const banner = document.getElementById('compareBanner');
-    banner.style.display = 'flex';
-    banner.style.cssText = 'display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;font-size:11px;color:var(--muted)';
-    banner.innerHTML = `📊 Confronto attivo con <strong style="color:var(--text)">${file.name}</strong> — clicca su un lotto per vedere le variazioni <span onclick="window._compareData=null;this.parentElement.style.display='none'" style="margin-left:auto;cursor:pointer;color:var(--muted)">✕ Rimuovi</span>`;
-  };
-  reader.readAsText(file);
-  input.value = '';
-}
 
 function stampaLotti() {
   const style = document.createElement('style');
@@ -1375,8 +1313,6 @@ async function loadData(saveSnapshot = false) {
     }
 
         const storicoPrev = storageRecord.storico;
-    const prevForModal = storicoPrev.length >= 2 ? storicoPrev[storicoPrev.length - 2] : null;
-    window._prevSnapshotData = prevForModal ? prevForModal.data : null;
     window._storicoCompleto = storageRecord.storico; // per il pannello storico
     window._currentData = data; // dati reali attuali, usati per snapshot backdatati
     // ────────────────────────────────────────────────────────────────────────
@@ -2874,47 +2810,57 @@ function openModalKpi(key) {
       </div>
     </div>`;
 
-  // Per ogni lotto: header + tabella pratiche
+  const _kBd = (a,b) => { const da=parseDateIT(a.dum),db=parseDateIT(b.dum); if(da&&db) return db-da; return da?-1:db?1:a.codice.localeCompare(b.codice); };
+  const _kThRow = `<tr style="border-bottom:1px solid var(--border)">
+    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Codice</th>
+    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Ente</th>
+    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Stato</th>
+    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Invio</th>
+    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Agg./Prot./Ott.</th>
+    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:right;font-weight:600;background:var(--surface2)">Metri</th>
+  </tr>`;
+  const _kMkRow = p => {
+    const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
+    const dp = buildDateParts(p);
+    const invio = dp.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
+    const agg   = dp.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
+    return `<tr style="border-bottom:1px solid #2e334722" onmouseover="this.style.background='#ffffff06'" onmouseout="this.style.background=''">
+      <td style="padding:6px 10px;font-family:'DM Mono',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col}">${p.codice}</td>
+      <td style="padding:6px 10px;font-size:9px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente || '—'}</td>
+      <td style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap">${p.stato}</td>
+      <td style="padding:6px 10px;font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);white-space:nowrap;text-align:center">${invio}</td>
+      <td style="padding:6px 10px;font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);white-space:nowrap;text-align:center">${agg}</td>
+      <td style="padding:6px 10px;font-size:10px;font-family:'DM Mono',monospace;color:var(--text);text-align:right;white-space:nowrap;font-weight:600">${fmt(p.metri)} m</td>
+    </tr>`;
+  };
+  const _kSepRow = (label, badge, n) => `<tr><td colspan="6" style="padding:8px 10px 4px;background:var(--bg)">
+    <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text)">${label}</span>
+    <span style="margin-left:6px;font-size:9px;color:var(--muted)">(${n})</span>
+    <span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">${badge.includes('3a8c5c') ? 'incide sulle %' : 'non incide sulle %'}</span>
+  </td></tr>`;
+
+  // Per ogni lotto: header + tabella con sezioni AUT / NO+ORD
   sortedLotti.forEach(lotto => {
     const prats = byLotto[lotto];
     const totL = prats.reduce((s, p) => s + (p.metri || 0), 0);
     const impresa = IMPRESE[lotto] || '';
-
-    const righe = prats.map(p => {
-      const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
-      const dateParts = buildDateParts(p);
-      const invio = dateParts.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
-      const agg   = dateParts.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
-      return `<tr style="border-bottom:1px solid #2e334722">
-        <td style="padding:6px 10px;font-family:'DM Mono',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col}">${p.codice}</td>
-        <td style="padding:6px 10px;font-size:9px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente || '—'}</td>
-        <td style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap">${p.stato}</td>
-        <td style="padding:6px 10px;font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);white-space:nowrap;text-align:center">${invio}</td>
-        <td style="padding:6px 10px;font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);white-space:nowrap;text-align:center">${agg}</td>
-        <td style="padding:6px 10px;font-size:10px;font-family:'DM Mono',monospace;color:var(--text);text-align:right;white-space:nowrap;font-weight:600">${fmt(p.metri)} m</td>
-      </tr>`;
-    }).join('');
+    const autP = prats.filter(p => p.codice.startsWith('AUT/')).sort(_kBd);
+    const noP  = prats.filter(p => !p.codice.startsWith('AUT/')).sort(_kBd);
 
     html += `
       <div style="margin-bottom:22px">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)">
           <span style="font-size:13px;font-weight:700;color:var(--accent);font-family:'DM Mono',monospace">Lotto ${lotto}</span>
           ${impresa ? `<span style="font-size:10px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 8px">${impresa}</span>` : ''}
-          <span style="font-size:10px;color:var(--muted);margin-left:auto;font-family:'DM Mono',monospace">${prats.length} pratiche · ${fmt(totL)} m</span>
+          <span style="font-size:10px;color:var(--muted);margin-left:auto;font-family:'DM Mono',monospace">${autP.length} AUT${noP.length ? ' · ' + noP.length + ' NO/ORD' : ''} · ${fmt(totL)} m</span>
         </div>
         <div style="overflow-x:auto">
           <table class="prat-table">
-            <thead>
-              <tr style="border-bottom:1px solid var(--border)">
-                <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Codice</th>
-                <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Ente</th>
-                <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Stato</th>
-                <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Invio</th>
-                <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Agg./Prot./Ott.</th>
-                <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:right;font-weight:600;background:var(--surface2)">Metri</th>
-              </tr>
-            </thead>
-            <tbody>${righe}</tbody>
+            <thead>${_kThRow}</thead>
+            <tbody>
+              ${autP.length ? _kSepRow('Autorizzazioni','background:#3a8c5c22;color:#3a8c5c;border:1px solid #3a8c5c44',autP.length) + autP.map(_kMkRow).join('') : ''}
+              ${noP.length  ? _kSepRow('Nulla Osta / Ordinanze','background:#4a4f6a22;color:#8890aa;border:1px solid #4a4f6a44',noP.length) + noP.map(_kMkRow).join('') : ''}
+            </tbody>
             <tfoot>
               <tr style="border-top:2px solid var(--border)">
                 <td colspan="5" style="padding:6px 10px;font-size:10px;font-weight:700;color:var(--text)">Totale lotto ${lotto}</td>
