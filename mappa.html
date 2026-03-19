@@ -242,6 +242,7 @@ function getColorForMode(feature, mode) {
 
 function setViewMode(mode) {
   currentViewMode = mode;
+  currentFilter = 'TUTTI';
   ['stato','lotto','cluster'].forEach(m => {
     const btn = document.getElementById('vbtn-'+m);
     if (btn) btn.className = 'view-btn' + (m === mode ? ' active' : '');
@@ -251,8 +252,113 @@ function setViewMode(mode) {
     layer.eachLayer(l => {
       if (l.feature) l.setStyle({ color: getColorForMode(l.feature, mode), weight:4, opacity:0.95 });
     });
+    // Mostra tutti i layer
+    if (!map.hasLayer(layer)) map.addLayer(layer);
   });
   updateLegend(mode);
+  // Ricostruisce il filtro in base alla modalità
+  if (mode === 'cluster') {
+    renderFilterCluster();
+  } else {
+    renderFilterLotto(lottoStats);
+  }
+}
+
+function renderFilterLotto(stats) {
+  const fr = document.getElementById('filterRow');
+  const title = fr.previousElementSibling;
+  if (title) title.textContent = 'Filtra per lotto';
+  fr.innerHTML='';
+  const btnT = document.createElement('button');
+  btnT.className='filter-btn active'; btnT.textContent='Tutti';
+  btnT.onclick=()=>applyFilter('TUTTI');
+  fr.appendChild(btnT);
+
+  const sep0=document.createElement('span');
+  sep0.style.cssText='width:1px;height:16px;background:var(--border);align-self:center;margin:0 4px;';
+  fr.appendChild(sep0);
+
+  LOTTI_ATTIVI.forEach(id=>{
+    if(!stats[id]) return;
+    const b=document.createElement('button');
+    b.className='filter-btn'; b.id='fbtn-'+id; b.textContent=id;
+    b.onclick=()=>applyFilter(id);
+    fr.appendChild(b);
+  });
+
+  const sep1=document.createElement('span');
+  sep1.style.cssText='width:1px;height:16px;background:var(--border);align-self:center;margin:0 4px;';
+  fr.appendChild(sep1);
+
+  LOTTI_AVVIO.forEach(id=>{
+    if(!stats[id]) return;
+    const b=document.createElement('button');
+    b.className='filter-btn'; b.id='fbtn-'+id; b.textContent=id;
+    b.onclick=()=>applyFilter(id);
+    fr.appendChild(b);
+  });
+}
+
+function renderFilterCluster() {
+  const fr = document.getElementById('filterRow');
+  const title = fr.previousElementSibling;
+  if (title) title.textContent = 'Filtra per cluster';
+  fr.innerHTML='';
+
+  // Raccogli cluster unici dal GeoJSON
+  const clusters = new Set();
+  allFeatures.forEach(f => {
+    const cl = f.properties.CLUSTER ?? f.properties.ID_CLUSTER ?? f.properties.cluster;
+    if (cl != null && cl !== '') clusters.add(String(cl));
+  });
+  const clSorted = [...clusters].sort((a,b) => parseInt(a)-parseInt(b) || a.localeCompare(b));
+
+  const btnT = document.createElement('button');
+  btnT.className='filter-btn active'; btnT.textContent='Tutti';
+  btnT.onclick=()=>applyFilterCluster('TUTTI');
+  fr.appendChild(btnT);
+
+  clSorted.forEach(cl => {
+    const color = getClusterColor(cl);
+    const b = document.createElement('button');
+    b.className='filter-btn'; b.id='cbtn-'+cl;
+    b.textContent = 'C'+cl;
+    b.style.cssText = `border-color:${color}44;`;
+    b.onclick=()=>applyFilterCluster(cl);
+    fr.appendChild(b);
+  });
+}
+
+function applyFilterCluster(cl) {
+  currentFilter = cl;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  if (cl === 'TUTTI') {
+    document.querySelector('.filter-btn').classList.add('active');
+    allLayers.forEach(({layer}) => { if(!map.hasLayer(layer)) map.addLayer(layer); });
+    const g=L.featureGroup(allLayers.map(x=>x.layer));
+    map.fitBounds(g.getBounds(),{padding:[40,40]});
+  } else {
+    const fb = document.getElementById('cbtn-'+cl); if(fb) fb.classList.add('active');
+    // Filtra per cluster: mostra/nascondi singole feature
+    const matchLayers = [];
+    allLayers.forEach(({layer}) => {
+      if(!map.hasLayer(layer)) map.addLayer(layer); // assicura visibile
+      layer.eachLayer(l => {
+        if (!l.feature) return;
+        const fcl = String(l.feature.properties.CLUSTER ?? l.feature.properties.ID_CLUSTER ?? l.feature.properties.cluster ?? '');
+        if (fcl === cl) {
+          matchLayers.push(l);
+          l.setStyle({ opacity: 0.95, weight: 4 });
+        } else {
+          l.setStyle({ opacity: 0.08, weight: 2 });
+        }
+      });
+    });
+    if (matchLayers.length > 0) {
+      const g = L.featureGroup(matchLayers);
+      map.fitBounds(g.getBounds(), {padding:[60,60], maxZoom:14});
+    }
+  }
 }
 
 function updateLegend(mode) {
@@ -385,36 +491,7 @@ function buildLottoStats(features) {
 }
 
 function renderSidebar(stats) {
-  const fr = document.getElementById('filterRow');
-  fr.innerHTML='';
-  const btnT = document.createElement('button');
-  btnT.className='filter-btn active'; btnT.textContent='Tutti';
-  btnT.onclick=()=>applyFilter('TUTTI');
-  fr.appendChild(btnT);
-
-  const sep0=document.createElement('span');
-  sep0.style.cssText='width:1px;height:16px;background:var(--border);align-self:center;margin:0 4px;';
-  fr.appendChild(sep0);
-
-  LOTTI_ATTIVI.forEach(id=>{
-    if(!stats[id]) return;
-    const b=document.createElement('button');
-    b.className='filter-btn'; b.id='fbtn-'+id; b.textContent=id;
-    b.onclick=()=>applyFilter(id);
-    fr.appendChild(b);
-  });
-
-  const sep1=document.createElement('span');
-  sep1.style.cssText='width:1px;height:16px;background:var(--border);align-self:center;margin:0 4px;';
-  fr.appendChild(sep1);
-
-  LOTTI_AVVIO.forEach(id=>{
-    if(!stats[id]) return;
-    const b=document.createElement('button');
-    b.className='filter-btn'; b.id='fbtn-'+id; b.textContent=id;
-    b.onclick=()=>applyFilter(id);
-    fr.appendChild(b);
-  });
+  renderFilterLotto(stats);
 
   const list=document.getElementById('lottoList');
   list.innerHTML='';
