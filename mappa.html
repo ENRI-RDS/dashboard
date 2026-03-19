@@ -52,6 +52,10 @@
   .legend-title{font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:8px;}
   .legend-item{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--muted);margin-bottom:5px;}
   .legend-line{width:20px;height:4px;border-radius:2px;flex-shrink:0;}
+  /* View mode toggle */
+  .view-toggle{display:flex;gap:3px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:3px;margin-bottom:10px;}
+  .view-btn{font-size:10px;padding:3px 9px;border-radius:5px;border:none;background:transparent;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;transition:all 0.15s;white-space:nowrap;}
+  .view-btn.active{background:var(--accent);color:white;}
   /* Popup */
   .leaflet-popup-content-wrapper{background:var(--surface)!important;border:1px solid var(--border)!important;border-radius:10px!important;color:var(--text)!important;box-shadow:0 8px 32px #0008!important;padding:0!important;}
   .leaflet-popup-content{margin:0!important;width:auto!important;}
@@ -169,11 +173,17 @@
   <div class="stats-bar" id="statsBar"></div>
   <div class="sidebar">
     <div class="sidebar-head">
+      <div class="sidebar-title">Visualizzazione</div>
+      <div class="view-toggle">
+        <button class="view-btn active" id="vbtn-stato"   onclick="setViewMode('stato')">Per Stato</button>
+        <button class="view-btn"        id="vbtn-lotto"   onclick="setViewMode('lotto')">Per Lotto</button>
+        <button class="view-btn"        id="vbtn-cluster" onclick="setViewMode('cluster')">Per Cluster</button>
+      </div>
       <div class="sidebar-title">Filtra per lotto</div>
       <div class="filter-row" id="filterRow"></div>
     </div>
     <div class="sidebar-body" id="lottoList"></div>
-    <div class="legend">
+    <div class="legend" id="legendContainer">
       <div class="legend-title">Stato</div>
       <div class="legend-item"><div class="legend-line" style="background:#3a8c5c"></div>Ottenuto</div>
       <div class="legend-item"><div class="legend-line" style="background:#548235"></div>Prot. Integrazione</div>
@@ -198,6 +208,75 @@ const LOTTI_ATTIVI = ['1A','1B','2A','2B'];
 const LOTTI_AVVIO  = ['1','2','3','4','5','6','7','8'];
 
 let map, allLayers=[], currentFilter='TUTTI', lottoStats={};
+let currentViewMode = 'stato'; // 'stato' | 'lotto' | 'cluster'
+
+// Colori per lotto
+const LOTTO_COLORS = {
+  '1A':'#4f8ef7','1B':'#89bfff',
+  '2A':'#e07b3a','2B':'#f7a96a',
+  '1':'#3a8c5c','2':'#5cb87a','3':'#c9a227','4':'#e8c050',
+  '5':'#cc3333','6':'#e06868','7':'#a07af7','8':'#c4a8ff'
+};
+
+// Palette colori per cluster (30 colori distinti)
+const _CLUSTER_PALETTE = [
+  '#e05c9a','#f07cbf','#00b4cc','#33d0e8','#f5a623','#f7c060',
+  '#7ed321','#a8e84a','#9b59b6','#c39bd3','#1abc9c','#58d6b9',
+  '#e74c3c','#f1948a','#3498db','#85c1e9','#e67e22','#f0a060',
+  '#27ae60','#82e0aa','#8e44ad','#bb8fcf','#16a085','#4ecdc4',
+  '#c0392b','#e88080','#2980b9','#7fb3d3','#d35400','#f0956a',
+];
+
+function getClusterColor(cl) {
+  if (cl == null || cl === '') return '#6b7080';
+  const idx = Math.abs(parseInt(cl) || 0) % _CLUSTER_PALETTE.length;
+  return _CLUSTER_PALETTE[idx];
+}
+
+function getColorForMode(feature, mode) {
+  const p = feature.properties;
+  if (mode === 'lotto')   return LOTTO_COLORS[p.LOTTO] || '#6b7080';
+  if (mode === 'cluster') return getClusterColor(p.CLUSTER ?? p.ID_CLUSTER ?? p.cluster);
+  return getColor(p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE);
+}
+
+function setViewMode(mode) {
+  currentViewMode = mode;
+  ['stato','lotto','cluster'].forEach(m => {
+    const btn = document.getElementById('vbtn-'+m);
+    if (btn) btn.className = 'view-btn' + (m === mode ? ' active' : '');
+  });
+  // Re-stila tutti i layer
+  allLayers.forEach(({layer}) => {
+    layer.eachLayer(l => {
+      if (l.feature) l.setStyle({ color: getColorForMode(l.feature, mode), weight:4, opacity:0.95 });
+    });
+  });
+  updateLegend(mode);
+}
+
+function updateLegend(mode) {
+  const leg = document.getElementById('legendContainer');
+  if (!leg) return;
+  if (mode === 'stato') {
+    leg.innerHTML = `
+      <div class="legend-title">Stato autorizzazione</div>
+      <div class="legend-item"><div class="legend-line" style="background:#3a8c5c"></div>Ottenuto</div>
+      <div class="legend-item"><div class="legend-line" style="background:#548235"></div>Prot. Integrazione</div>
+      <div class="legend-item"><div class="legend-line" style="background:#cc3333"></div>Nec. Integrazione</div>
+      <div class="legend-item"><div class="legend-line" style="background:#4f8ef7"></div>Inviato / Protocollato</div>
+      <div class="legend-item"><div class="legend-line" style="background:#e07b3a"></div>In Verifica / Firma</div>
+      <div class="legend-item"><div class="legend-line" style="background:#4a4f6a"></div>In Attesa / Redazione</div>`;
+  } else if (mode === 'lotto') {
+    const items = Object.entries(LOTTO_COLORS).map(([l,c]) =>
+      `<div class="legend-item"><div class="legend-line" style="background:${c}"></div>Lotto ${l}</div>`
+    ).join('');
+    leg.innerHTML = `<div class="legend-title">Lotto</div>${items}`;
+  } else {
+    leg.innerHTML = `<div class="legend-title">Cluster</div>
+      <div style="font-size:9px;color:var(--muted);line-height:1.5;padding-top:4px">Ogni cluster ha colore univoco.<br>Passa il mouse sulle tratte per il dettaglio.</div>`;
+  }
+}
 
 map = L.map('map',{center:[45.48,9.30],zoom:10,zoomControl:true,attributionControl:true});
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);
@@ -540,7 +619,7 @@ function zoomToFeature(feature) {
       // Evidenzia la tratta
       const origStyle = { weight: 4, opacity: 0.95 };
       targetLayer.setStyle({ weight: 8, opacity: 1, color: '#fff' });
-      setTimeout(() => targetLayer.setStyle({ ...origStyle, color: (window.STATO_COLORS||{})[feature.properties.STATO_LEGENDA||feature.properties.STATO_AUTORIZZAZIONE]||'#4a4f6a' }), 2000);
+      setTimeout(() => targetLayer.setStyle({ ...origStyle, color: getColorForMode(targetLayer.feature, currentViewMode) }), 2000);
     }
   }
   resultsEl.style.display = 'none';
@@ -585,14 +664,13 @@ document.addEventListener('click', e => {
     Object.entries(lottoGroups).forEach(([lotto,feats])=>{
       const layer=L.geoJSON({type:'FeatureCollection',features:feats},{
         style:f=>({
-          // Usa STATO_LEGENDA se disponibile (considera NullaOsta, Ordinanza) altrimenti STATO_AUTORIZZAZIONE
-          color:getColor(f.properties.STATO_LEGENDA||f.properties.STATO_AUTORIZZAZIONE),
+          color: getColorForMode(f, currentViewMode),
           weight:4, opacity:0.95, smoothFactor:1.5
         }),
         onEachFeature:(f,layer)=>{
           layer.bindPopup(makePopupHtml(f.properties),{maxWidth:340});
           layer.on('mouseover',e=>{e.target.setStyle({weight:7,opacity:1});e.target.bringToFront();});
-          layer.on('mouseout',e=>{e.target.setStyle({weight:4,opacity:0.95});});
+          layer.on('mouseout',e=>{e.target.setStyle({weight:4,opacity:0.95,color:getColorForMode(e.target.feature,currentViewMode)});});
         }
       }).addTo(map);
       allLayers.push({layer,lotto});
