@@ -199,10 +199,16 @@
     <span class="badge" id="statusBadge">⏳ Caricamento</span>
     <span id="lastUpdate" style="font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);display:none"></span>
     <a href="mappa.html" style="font-size:11px;padding:5px 14px;border-radius:5px;background:#1a2a3a;color:#6aabf7;border:1px solid #2a4a6a;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;text-decoration:none;transition:opacity 0.2s" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1">🗺 Mappa</a>
-    <a href="executive_summary.html" style="font-size:11px;padding:5px 14px;border-radius:5px;background:#1f2a1a;color:#7ac87a;border:1px solid #2e4a22;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;text-decoration:none;transition:opacity 0.2s" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1">📋 Executive</a>
+    <a href="executive_summary.html" style="font-size:11px;padding:5px 14px;border-radius:5px;background:#2a1f1a;color:#e0943a;border:1px solid #5a3a1a;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;text-decoration:none;transition:opacity 0.2s" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1">📋 Executive</a>
 
-    <button class="btn" style="background:#2d1a1a;color:#f07a7a;border:1px solid #5a2a2a" onclick="stampaLotti()">⬇ PDF Lotti</button>
-    <button class="btn" style="background:#2d1a1a;color:#f07a7a;border:1px solid #5a2a2a" onclick="stampaCluster()">⬇ PDF Cluster</button>
+    <div style="position:relative;display:inline-block" id="pdfDropWrap">
+      <button class="btn" style="background:#2d1a1a;color:#f07a7a;border:1px solid #5a2a2a" onclick="togglePdfDrop(event)">⬇ PDF ▾</button>
+      <div id="pdfDrop" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;z-index:500;min-width:150px;box-shadow:0 8px 24px #00000066">
+        <button onclick="stampaLotti();closePdfDrop()" style="display:block;width:100%;padding:10px 16px;font-size:12px;font-family:'DM Sans',sans-serif;background:transparent;color:var(--text);border:none;cursor:pointer;text-align:left;font-weight:500" onmouseover="this.style.background='#ffffff0a'" onmouseout="this.style.background='transparent'">📄 Stampa Lotti</button>
+        <div style="height:1px;background:var(--border);margin:0 10px"></div>
+        <button onclick="stampaCluster();closePdfDrop()" style="display:block;width:100%;padding:10px 16px;font-size:12px;font-family:'DM Sans',sans-serif;background:transparent;color:var(--text);border:none;cursor:pointer;text-align:left;font-weight:500" onmouseover="this.style.background='#ffffff0a'" onmouseout="this.style.background='transparent'">📄 Stampa Cluster</button>
+      </div>
+    </div>
     <button class="btn" style="background:#2a1f3a;color:#a07af7;border:1px solid #4a3a6a" onclick="apriStorico()">📈 Storico</button>
     <button class="btn" style="background:#1e2d1e;color:#7ac87a;border:1px solid #2e4d2e" onclick="exportTuttiXlsx()" title="Esporta tutte le pratiche con tutti i dati">📊 Excel Pratiche</button>
   </div>
@@ -338,6 +344,21 @@
   </div>
 </div>
 <script>
+// ── PDF DROPDOWN ──────────────────────────────────────────────────────────────
+function togglePdfDrop(e) {
+  e.stopPropagation();
+  const drop = document.getElementById('pdfDrop');
+  drop.style.display = drop.style.display === 'none' ? 'block' : 'none';
+}
+function closePdfDrop() {
+  document.getElementById('pdfDrop').style.display = 'none';
+}
+document.addEventListener('click', () => {
+  const drop = document.getElementById('pdfDrop');
+  if (drop) drop.style.display = 'none';
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ── EXPORT EXCEL ──────────────────────────────────────────────────────────────
 function exportXlsx(pratiche, filename) {
   if (!pratiche || !pratiche.length) { alert('Nessuna pratica da esportare.'); return; }
