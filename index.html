@@ -99,6 +99,8 @@
   .modal-ms-card .ms-lbl { font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:4px; }
   .modal-ms-card .ms-val { font-size:14px;font-weight:700;font-family:'DM Mono',monospace; }
   .modal-ms-card .ms-date { font-size:9px;color:var(--muted);margin-top:2px; }
+  /* Confronto CSV */
+  .compare-zone { display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted); }
   .bar-lotto { font-size: 13px; font-family: 'DM Mono', monospace; color: var(--muted); width: 90px; text-align: left; flex-shrink: 0; }
   .bar-lotto-wrap { display: flex; flex-direction: column; align-items: flex-start; width: 90px; flex-shrink: 0; gap: 2px; }
   .bar-lotto-num { font-size: 14px; font-weight: 600; font-family: 'DM Mono', monospace; color: var(--text); }
@@ -110,6 +112,10 @@
   .legend-item { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); }
   .legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
   .side { display: flex; flex-direction: column; gap: 14px; }
+  .spark-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .spark-bar { flex: 1; height: 4px; border-radius: 2px; background: var(--surface2); overflow: hidden; }
+  .spark-fill { height: 100%; border-radius: 2px; }
+  .spark-val { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--muted); width: 38px; text-align: right; }
   .lotti-table { width: 100%; border-collapse: collapse; }
   .lotti-table th { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
   .lotti-table td { font-size: 11px; padding: 8px 10px; border-bottom: 1px solid #2e334722; }
@@ -197,18 +203,12 @@
   </div>
   <div class="topbar-right">
     <span class="badge" id="statusBadge">⏳ Caricamento</span>
-    <a href="mappa.html" style="font-size:11px;padding:5px 14px;border-radius:5px;background:#1a2a3a;color:#6aabf7;border:1px solid #2a4a6a;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;text-decoration:none;transition:opacity 0.2s" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1">🗺 Mappa</a>
-    <a href="executive_summary.html" style="font-size:11px;padding:5px 14px;border-radius:5px;background:#2a1f1a;color:#e0943a;border:1px solid #5a3a1a;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;text-decoration:none;transition:opacity 0.2s" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1">📋 Executive</a>
+    <a href="mappa.html" style="font-size:11px;padding:5px 14px;border-radius:5px;background:var(--surface2);color:var(--text);border:1px solid var(--border);cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;text-decoration:none;transition:opacity 0.2s" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1">🗺 Mappa</a>
+    <a href="executive_summary.html" style="font-size:11px;padding:5px 14px;border-radius:5px;background:var(--surface2);color:var(--text);border:1px solid var(--border);cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;text-decoration:none;transition:opacity 0.2s" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1">📋 Executive</a>
 
-    <div style="position:relative;display:inline-block" id="pdfDropWrap">
-      <button class="btn" style="background:#2d1a1a;color:#f07a7a;border:1px solid #5a2a2a" onclick="togglePdfDrop(event)">⬇ PDF ▾</button>
-      <div id="pdfDrop" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;z-index:500;min-width:150px;box-shadow:0 8px 24px #00000066">
-        <button onclick="stampaLotti();closePdfDrop()" style="display:block;width:100%;padding:10px 16px;font-size:12px;font-family:'DM Sans',sans-serif;background:transparent;color:var(--text);border:none;cursor:pointer;text-align:left;font-weight:500" onmouseover="this.style.background='#ffffff0a'" onmouseout="this.style.background='transparent'">📄 Stampa Lotti</button>
-        <div style="height:1px;background:var(--border);margin:0 10px"></div>
-        <button onclick="stampaCluster();closePdfDrop()" style="display:block;width:100%;padding:10px 16px;font-size:12px;font-family:'DM Sans',sans-serif;background:transparent;color:var(--text);border:none;cursor:pointer;text-align:left;font-weight:500" onmouseover="this.style.background='#ffffff0a'" onmouseout="this.style.background='transparent'">📄 Stampa Cluster</button>
-      </div>
-    </div>
-    <button class="btn" style="background:#2a1f3a;color:#a07af7;border:1px solid #4a3a6a" onclick="apriStorico()">📈 Storico</button>
+    <button class="btn" style="background:#2f5496" onclick="stampaLotti()">⬇ PDF Lotti</button>
+    <button class="btn" style="background:#1a5c3a" onclick="stampaCluster()">⬇ PDF Cluster</button>
+    <button class="btn" style="background:#5a3a8c" onclick="apriStorico()">📈 Storico</button>
     <button class="btn" style="background:#1e2d1e;color:#7ac87a;border:1px solid #2e4d2e" onclick="exportTuttiXlsx()" title="Esporta tutte le pratiche con tutti i dati">📊 Excel Pratiche</button>
   </div>
 </div>
@@ -286,7 +286,24 @@
         <span style="font-size:14px;font-weight:600;font-family:'DM Mono',monospace;color:var(--text)" id="clusterStatus">—</span>
       </div>
       <div class="card-body">
-        <div class="chart-wrap" id="clusterWrap"><div style="padding:16px;font-size:12px;color:var(--muted)">Caricamento Riepilogo_progettazione.csv...</div></div>
+        <div style="display:flex;gap:0;align-items:stretch">
+          <div class="chart-wrap" id="clusterWrap" style="flex:1"><div style="padding:16px;font-size:12px;color:var(--muted)">Caricamento Riepilogo_progettazione.csv...</div></div>
+          <div id="prevRilascioCol" style="display:none;flex-shrink:0;border-left:1px solid var(--border);margin-left:12px;padding-left:12px;display:flex;flex-direction:column;gap:4px;justify-content:center">
+            <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:4px;text-align:center">Prev. Rilascio</div>
+            <div id="prevOkCell" onclick="openModalPrev('ok')" style="cursor:pointer;background:#3a8c5c18;border:1px solid #3a8c5c44;border-radius:6px;padding:4px 10px;text-align:center;transition:background 0.15s" onmouseover="this.style.background='#3a8c5c30'" onmouseout="this.style.background='#3a8c5c18'">
+              <div id="prevOkVal" style="font-size:16px;font-weight:700;font-family:'DM Mono',monospace;color:#3a8c5c">0</div>
+              <div style="font-size:8px;color:#3a8c5c">In linea</div>
+            </div>
+            <div id="prevWarnCell" onclick="openModalPrev('warn')" style="cursor:pointer;background:#c9a22718;border:1px solid #c9a22744;border-radius:6px;padding:4px 10px;text-align:center;transition:background 0.15s" onmouseover="this.style.background='#c9a22730'" onmouseout="this.style.background='#c9a22718'">
+              <div id="prevWarnVal" style="font-size:16px;font-weight:700;font-family:'DM Mono',monospace;color:#c9a227">0</div>
+              <div style="font-size:8px;color:#c9a227">In scadenza</div>
+            </div>
+            <div id="prevLateCell" onclick="openModalPrev('late')" style="cursor:pointer;background:#cc333318;border:1px solid #cc333344;border-radius:6px;padding:4px 10px;text-align:center;transition:background 0.15s" onmouseover="this.style.background='#cc333330'" onmouseout="this.style.background='#cc333318'">
+              <div id="prevLateVal" style="font-size:16px;font-weight:700;font-family:'DM Mono',monospace;color:#cc3333">0</div>
+              <div style="font-size:8px;color:#cc3333">Scadute</div>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="legend">
         <div class="legend-item"><div class="legend-dot" style="background:#3a8c5c"></div>Ottenuto</div>
@@ -343,25 +360,9 @@
   </div>
 </div>
 <script>
-// ── PDF DROPDOWN ──────────────────────────────────────────────────────────────
-function togglePdfDrop(e) {
-  e.stopPropagation();
-  const drop = document.getElementById('pdfDrop');
-  drop.style.display = drop.style.display === 'none' ? 'block' : 'none';
-}
-function closePdfDrop() {
-  document.getElementById('pdfDrop').style.display = 'none';
-}
-document.addEventListener('click', () => {
-  const drop = document.getElementById('pdfDrop');
-  if (drop) drop.style.display = 'none';
-});
-// ─────────────────────────────────────────────────────────────────────────────
-
 // ── EXPORT EXCEL ──────────────────────────────────────────────────────────────
 function exportXlsx(pratiche, filename) {
   if (!pratiche || !pratiche.length) { alert('Nessuna pratica da esportare.'); return; }
-
   const header = ['Codice', 'Tipo', 'Lotto', 'Stato', 'Ente', 'Data Invio', 'Data Agg./Prot./Ott.', 'Metri (m)'];
   const rows = pratiche.map(p => {
     const dateParts = buildDateParts(p);
@@ -373,27 +374,13 @@ function exportXlsx(pratiche, filename) {
                 : p.tipo || '';
     return [p.codice, tipo, p.lotto || '', p.stato, p.ente || '', invio, agg, p.metri || 0];
   });
-
   const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-
-  // Larghezze colonne
-  ws['!cols'] = [
-    {wch:20},{wch:18},{wch:8},{wch:30},{wch:30},{wch:14},{wch:14},{wch:12}
-  ];
-
-  // Stile intestazioni (sfondo blu scuro, testo bianco) — xlsx-full supporta minimal style
+  ws['!cols'] = [{wch:20},{wch:18},{wch:8},{wch:30},{wch:30},{wch:14},{wch:14},{wch:12}];
   const headerRange = XLSX.utils.decode_range(ws['!ref']);
   for (let c = headerRange.s.c; c <= headerRange.e.c; c++) {
     const cell = ws[XLSX.utils.encode_cell({r:0, c})];
-    if (cell) {
-      cell.s = {
-        font:    { bold: true, color: { rgb: 'FFFFFF' } },
-        fill:    { fgColor: { rgb: '2F5496' } },
-        alignment: { horizontal: 'center' }
-      };
-    }
+    if (cell) cell.s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '2F5496' } }, alignment: { horizontal: 'center' } };
   }
-
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Pratiche');
   XLSX.writeFile(wb, filename + '.xlsx');
@@ -401,21 +388,17 @@ function exportXlsx(pratiche, filename) {
 
 function exportTuttiXlsx() {
   if (!window._praticheDetailPerLotto) { alert('Nessun dato pratiche disponibile. Carica il Master.csv.'); return; }
-
   const tutte = [];
   const LOTTO_ORDER = ['1A','1B','2A','2B','1','2','3','4','5','6','7','8'];
   LOTTO_ORDER.forEach(lotto => {
     (window._praticheDetailPerLotto[lotto] || []).forEach(p => tutte.push({...p, lotto}));
   });
-  // Aggiungi eventuali lotti non in ordine fisso
   Object.keys(window._praticheDetailPerLotto).forEach(lotto => {
     if (!LOTTO_ORDER.includes(lotto)) {
       (window._praticheDetailPerLotto[lotto] || []).forEach(p => tutte.push({...p, lotto}));
     }
   });
-
   if (!tutte.length) { alert('Nessuna pratica disponibile.'); return; }
-
   const today = new Date().toISOString().split('T')[0];
   exportXlsx(tutte, 'ENRI_Tutte_Pratiche_' + today);
 }
@@ -519,6 +502,48 @@ function buildDateParts(p) {
     if (p.dum && p.dum !== invioDate) parts.push('Agg.: ' + fmtDateIT(p.dum));
   }
   return parts;
+}
+
+
+function buildPratCard(p) {
+  const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
+  const dateParts = buildDateParts(p);
+  const dateStr = dateParts.join(' · ');
+  return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:5px">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:nowrap">
+      <span style="font-family:'DM Mono',monospace;font-size:10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:1px 7px;flex-shrink:0">${p.codice}</span>
+      <span style="font-size:9px;font-weight:700;color:${col};flex-shrink:0;white-space:nowrap">${p.stato}</span>
+      <span style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text);margin-left:auto;flex-shrink:0">${fmt(p.metri)} m</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;gap:6px">
+      <span style="font-size:9px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente||''}</span>
+      ${dateStr ? `<span style="font-size:9px;color:var(--muted);white-space:nowrap;flex-shrink:0">${dateStr}</span>` : ''}
+    </div>
+  </div>`;
+}
+
+function buildPratPanel(allPrats) {
+  if (!allPrats || !allPrats.length) return '';
+  const autP = allPrats.filter(p => p.codice.startsWith('AUT/'));
+  const noP  = allPrats.filter(p => !p.codice.startsWith('AUT/'));
+  const colT = (lbl, n) => `<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--border)">${lbl} (${n})</div>`;
+  return `<div style="flex:1;min-width:0;padding-left:20px;border-left:1px solid var(--border)">
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);font-weight:600;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">
+      Dettaglio pratiche (${allPrats.length})
+    </div>
+    <div style="display:grid;grid-template-columns:${noP.length?'1fr 1fr':'1fr'};gap:12px;align-items:start">
+      <div>${autP.length?colT('Autorizzazioni',autP.length):''}${autP.map(buildPratCard).join('')}</div>
+      ${noP.length?`<div>${colT('Nulla Osta / Ordinanze',noP.length)}${noP.map(buildPratCard).join('')}</div>`:''}
+    </div>
+  </div>`;
+}
+
+function sortPratsByDate(arr) {
+  return arr.slice().sort((a,b) => {
+    const da = parseDateIT(a.dum), db = parseDateIT(b.dum);
+    if (da && db) return db - da;
+    return da ? -1 : db ? 1 : a.codice.localeCompare(b.codice);
+  });
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -750,7 +775,7 @@ function openModal(lotto, statiMetri, totale) {
 
   // Header: Totale + Autorizzati + Impresa
   body.innerHTML = `
-    <div style="display:flex;gap:24px;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border);flex-wrap:wrap;align-items:flex-end">
+    <div style="display:flex;gap:24px;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border);flex-wrap:wrap">
       <div>
         <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Totale</div>
         <div style="font-size:20px;font-weight:700;font-family:'DM Mono',monospace">${fmt(totale)} m</div>
@@ -803,19 +828,21 @@ function openModal(lotto, statiMetri, totale) {
       const dateParts = buildDateParts(p);
       const invio = dateParts.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
       const agg   = dateParts.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
+      const badge = prevBadgeHtml(p);
       return `<tr style="border-bottom:1px solid #2e334722" onmouseover="this.style.background='#ffffff06'" onmouseout="this.style.background=''">
         <td style="padding:6px 10px;font-family:'DM Mono',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col}">${p.codice}</td>
         <td style="padding:6px 10px;font-size:9px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente || '—'}</td>
         <td style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap">${p.stato}</td>
         <td style="padding:6px 10px;font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);white-space:nowrap;text-align:center">${invio}</td>
         <td style="padding:6px 10px;font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);white-space:nowrap;text-align:center">${agg}</td>
+        <td style="padding:6px 10px;font-size:9px;text-align:center;white-space:nowrap">${badge}</td>
         <td style="padding:6px 10px;font-size:10px;font-family:'DM Mono',monospace;color:var(--text);text-align:right;white-space:nowrap;font-weight:600">${fmt(p.metri)} m</td>
       </tr>`;
     }).join('');
 
     const sepRow = (label, badge, n) => `
       <tr>
-        <td colspan="6" style="padding:8px 10px 4px;background:var(--bg)">
+        <td colspan="7" style="padding:8px 10px 4px;background:var(--bg)">
           <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text)">${label}</span>
           <span style="margin-left:6px;font-size:9px;color:var(--muted)">(${n})</span>
           <span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">${badge.includes('3a8c5c') ? 'incide sulle %' : 'non incide sulle %'}</span>
@@ -828,6 +855,7 @@ function openModal(lotto, statiMetri, totale) {
       <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Stato</th>
       <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Invio</th>
       <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Agg./Prot./Ott.</th>
+      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Prev. Rilascio</th>
       <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:right;font-weight:600;background:var(--surface2)">Metri</th>
     </tr>`;
 
@@ -855,8 +883,6 @@ function openModal(lotto, statiMetri, totale) {
     if (!m) return;
     const pct = totale > 0 ? m/totale*100 : 0;
 
-
-
     body.innerHTML += `
       <div class="modal-bar-row">
         <span class="modal-bar-label">${g.label}</span>
@@ -874,6 +900,13 @@ function openModal(lotto, statiMetri, totale) {
   });
 
   body.innerHTML += `</div>${pratHtml}</div>`;
+
+  // Collega bottone scarica Excel
+  const btnDl = document.getElementById('btnDlLotto');
+  if (btnDl) {
+    const _prats = allPrats.map(p => ({...p, lotto}));
+    btnDl.onclick = () => exportXlsx(_prats, 'ENRI_Lotto' + lotto + '_pratiche');
+  }
 
   // Milestone del lotto
   const lista = MILESTONES_PER_LOTTO[lotto];
@@ -898,13 +931,6 @@ function openModal(lotto, statiMetri, totale) {
   }
 
   document.getElementById('modalOverlay').classList.add('open');
-
-  // Collega bottone scarica Excel
-  const btnDl = document.getElementById('btnDlLotto');
-  if (btnDl) {
-    const _prats = allPrats.map(p => ({...p, lotto}));
-    btnDl.onclick = () => exportXlsx(_prats, 'ENRI_Lotto' + lotto + '_pratiche');
-  }
 }
 
 function closeModal(e) {
@@ -940,6 +966,8 @@ function openModalCluster(cl, statiMap, totale) {
     clPrats.sort((a,b) => { const da=parseDateIT(a.dum),db=parseDateIT(b.dum); if(da&&db) return db-da; return da?-1:db?1:a.codice.localeCompare(b.codice); });
   }
 
+  const pratCard_unused = null; // rimosso — ora usa tabella
+
   // Separazione AUT / NO+ORD, ciascun gruppo per data desc
   const _bd = (a,b) => { const da=parseDateIT(a.dum),db=parseDateIT(b.dum); if(da&&db) return db-da; return da?-1:db?1:a.codice.localeCompare(b.codice); };
   const clAut = clPrats.filter(p => p.codice.startsWith('AUT/')).sort(_bd);
@@ -953,16 +981,18 @@ function openModalCluster(cl, statiMap, totale) {
       const dateParts = buildDateParts(p);
       const invio = dateParts.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
       const agg   = dateParts.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
+      const badge = prevBadgeHtml(p);
       return `<tr style="border-bottom:1px solid #2e334722" onmouseover="this.style.background='#ffffff06'" onmouseout="this.style.background=''">
         <td style="padding:6px 10px;font-family:'DM Mono',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col}">${p.codice}</td>
         <td style="padding:6px 10px;font-size:9px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente || '—'}</td>
         <td style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap">${p.stato}</td>
         <td style="padding:6px 10px;font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);white-space:nowrap;text-align:center">${invio}</td>
         <td style="padding:6px 10px;font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);white-space:nowrap;text-align:center">${agg}</td>
+        <td style="padding:6px 10px;font-size:9px;text-align:center;white-space:nowrap">${badge}</td>
         <td style="padding:6px 10px;font-size:10px;font-family:'DM Mono',monospace;color:var(--text);text-align:right;white-space:nowrap;font-weight:600">${fmt(p.metri)} m</td>
       </tr>`;
     };
-    const sepRow = (label, badge, n) => `<tr><td colspan="6" style="padding:8px 10px 4px;background:var(--bg)">
+    const sepRow = (label, badge, n) => `<tr><td colspan="7" style="padding:8px 10px 4px;background:var(--bg)">
       <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text)">${label}</span>
       <span style="margin-left:6px;font-size:9px;color:var(--muted)">(${n})</span>
       <span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">${badge.includes('3a8c5c') ? 'incide sulle %' : 'non incide sulle %'}</span>
@@ -973,6 +1003,7 @@ function openModalCluster(cl, statiMap, totale) {
       <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Stato</th>
       <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Invio</th>
       <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Agg./Prot./Ott.</th>
+      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Prev. Rilascio</th>
       <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:right;font-weight:600;background:var(--surface2)">Metri</th>
     </tr>`;
 
@@ -1030,7 +1061,6 @@ function openModalCluster(cl, statiMap, totale) {
 
   document.getElementById('modalClusterOverlay').classList.add('open');
 
-  // Collega bottone scarica Excel cluster
   const btnDlCl = document.getElementById('btnDlCluster');
   if (btnDlCl) {
     btnDlCl.onclick = () => exportXlsx(clPrats, 'ENRI_Cluster' + cl + '_pratiche');
@@ -1116,6 +1146,33 @@ function openModalGruppo(titolo, lottiGruppo, lottiMap, lottiTotale) {
 
 
 
+function loadCompare(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const lines = e.target.result.trim().split('\n').map(l=>l.replace(/\r/,''));
+    const headers = lines[0].split(';');
+    const iL=headers.indexOf('LOTTO'), iS=headers.indexOf('STATO_AUTORIZZAZIONE'), iM=headers.indexOf('Metri');
+    const prevMap = {};
+    for (let i=1;i<lines.length;i++) {
+      const cols = lines[i].split(';');
+      if (!cols[iL]) continue;
+      const lotto=cols[iL].trim(), stato=cols[iS].trim(), metri=parseNum(cols[iM]);
+      if (!prevMap[lotto]) prevMap[lotto]={};
+      prevMap[lotto][stato]=(prevMap[lotto][stato]||0)+metri;
+    }
+    window._compareData = prevMap;
+
+    // Mostra banner confronto
+    const banner = document.getElementById('compareBanner');
+    banner.style.display = 'flex';
+    banner.style.cssText = 'display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;font-size:11px;color:var(--muted)';
+    banner.innerHTML = `📊 Confronto attivo con <strong style="color:var(--text)">${file.name}</strong> — clicca su un lotto per vedere le variazioni <span onclick="window._compareData=null;this.parentElement.style.display='none'" style="margin-left:auto;cursor:pointer;color:var(--muted)">✕ Rimuovi</span>`;
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
 
 function stampaLotti() {
   const style = document.createElement('style');
@@ -1334,6 +1391,8 @@ async function loadData(saveSnapshot = false) {
     }
 
         const storicoPrev = storageRecord.storico;
+    const prevForModal = storicoPrev.length >= 2 ? storicoPrev[storicoPrev.length - 2] : null;
+    window._prevSnapshotData = prevForModal ? prevForModal.data : null;
     window._storicoCompleto = storageRecord.storico; // per il pannello storico
     window._currentData = data; // dati reali attuali, usati per snapshot backdatati
     // ────────────────────────────────────────────────────────────────────────
@@ -1341,12 +1400,7 @@ async function loadData(saveSnapshot = false) {
     setLoading(100);
     renderDashboard(data);
 
-    const _storico = storageRecord.storico || [];
-    const _lastTs = _storico.length > 0 ? _storico[_storico.length - 1].ts : null;
-    const _dataFmt = _lastTs
-      ? new Date(_lastTs).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})
-      : null;
-    document.getElementById('statusBadge').textContent = _dataFmt ? '● Aggiornato al ' + _dataFmt : '● Aggiornato';
+    document.getElementById('statusBadge').textContent = '● Aggiornato';
     document.getElementById('statusBadge').className = 'badge ok';
     document.getElementById('loadingScreen').style.display = 'none';
     setTimeout(()=>setLoading(0),600);
@@ -2843,6 +2897,7 @@ function openModalKpi(key) {
     <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Stato</th>
     <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Invio</th>
     <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Agg./Prot./Ott.</th>
+    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Prev. Rilascio</th>
     <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:right;font-weight:600;background:var(--surface2)">Metri</th>
   </tr>`;
   const _kMkRow = p => {
@@ -2850,16 +2905,18 @@ function openModalKpi(key) {
     const dp = buildDateParts(p);
     const invio = dp.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
     const agg   = dp.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
+    const badge = prevBadgeHtml(p);
     return `<tr style="border-bottom:1px solid #2e334722" onmouseover="this.style.background='#ffffff06'" onmouseout="this.style.background=''">
       <td style="padding:6px 10px;font-family:'DM Mono',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col}">${p.codice}</td>
       <td style="padding:6px 10px;font-size:9px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente || '—'}</td>
       <td style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap">${p.stato}</td>
       <td style="padding:6px 10px;font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);white-space:nowrap;text-align:center">${invio}</td>
       <td style="padding:6px 10px;font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);white-space:nowrap;text-align:center">${agg}</td>
+      <td style="padding:6px 10px;font-size:9px;text-align:center;white-space:nowrap">${badge}</td>
       <td style="padding:6px 10px;font-size:10px;font-family:'DM Mono',monospace;color:var(--text);text-align:right;white-space:nowrap;font-weight:600">${fmt(p.metri)} m</td>
     </tr>`;
   };
-  const _kSepRow = (label, badge, n) => `<tr><td colspan="6" style="padding:8px 10px 4px;background:var(--bg)">
+  const _kSepRow = (label, badge, n) => `<tr><td colspan="7" style="padding:8px 10px 4px;background:var(--bg)">
     <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text)">${label}</span>
     <span style="margin-left:6px;font-size:9px;color:var(--muted)">(${n})</span>
     <span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">${badge.includes('3a8c5c') ? 'incide sulle %' : 'non incide sulle %'}</span>
@@ -2889,7 +2946,7 @@ function openModalKpi(key) {
             </tbody>
             <tfoot>
               <tr style="border-top:2px solid var(--border)">
-                <td colspan="5" style="padding:6px 10px;font-size:10px;font-weight:700;color:var(--text)">Totale lotto ${lotto}</td>
+                <td colspan="6" style="padding:6px 10px;font-size:10px;font-weight:700;color:var(--text)">Totale lotto ${lotto}</td>
                 <td style="padding:6px 10px;font-size:10px;font-family:'DM Mono',monospace;font-weight:700;color:var(--text);text-align:right">${fmt(totL)} m</td>
               </tr>
             </tfoot>
@@ -2900,7 +2957,7 @@ function openModalKpi(key) {
 
   document.getElementById('modalKpiBody').innerHTML = html;
   document.getElementById('modalKpiOverlay').classList.add('open');
-  window._kpiModalPratiche = allPrats; // per il bottone Scarica Excel
+  window._kpiModalPratiche = allPrats;
 }
 
 function closeModalKpi(e) {
@@ -2909,7 +2966,150 @@ function closeModalKpi(e) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-window.addEventListener('load', () => { loadData(); loadCluster().then(() => loadMaster()).catch(() => loadMaster()); });
+// ── PREVISIONE RILASCIO ───────────────────────────────────────────────────────
+function giorniPerEnte(ente) {
+  if (!ente) return 180;
+  const u = ente.toUpperCase();
+  if (u.includes('COMUNE') || u.includes('MUNICIPALITY')) return 45;
+  if (u.includes('PROVINCIA') || u.includes('PROVINCE')) return 60;
+  if (u.includes('ANAS')) return 90;
+  return 180;
+}
+
+function calcolaPrevisione(p) {
+  const STATI_OK = ['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE'];
+  if (!STATI_OK.includes(p.stato)) return null;
+  const invioDate = p.dr_invio || p.dr || (p.stato === 'INVIATO' ? p.dum : '');
+  if (!invioDate) return null;
+  const d = parseDateIT(invioDate);
+  if (!d) return null;
+  const gg = giorniPerEnte(p.ente);
+  const scad = new Date(d.getTime() + gg * 86400000);
+  const oggi = new Date(); oggi.setHours(0,0,0,0);
+  const diff = Math.ceil((scad - oggi) / 86400000);
+  let status;
+  if (diff < 0) status = 'late';
+  else if (diff <= 7) status = 'warn';
+  else status = 'ok';
+  return { status, diff, scad, label: scad.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) };
+}
+
+function prevBadgeHtml(p) {
+  const r = calcolaPrevisione(p);
+  if (!r) return '';
+  const colors = { ok: '#3a8c5c', warn: '#c9a227', late: '#cc3333' };
+  const bg     = { ok: '#3a8c5c18', warn: '#c9a22718', late: '#cc333318' };
+  const bd     = { ok: '#3a8c5c44', warn: '#c9a22744', late: '#cc333344' };
+  const c = colors[r.status];
+  let txt;
+  if (r.status === 'ok')   txt = `Pril. ${r.label}`;
+  else if (r.status === 'warn') txt = `Scade in ${r.diff}gg`;
+  else txt = `Scad. ${Math.abs(r.diff)}gg fa`;
+  return `<span style="font-size:8px;padding:1px 6px;border-radius:10px;background:${bg[r.status]};color:${c};border:1px solid ${bd[r.status]};white-space:nowrap;font-family:'DM Mono',monospace">${txt}</span>`;
+}
+
+function openModalPrev(status) {
+  const map = { ok: window._prevOkPrats, warn: window._prevWarnPrats, late: window._prevLatePrats };
+  const labels = { ok: '✅ In linea', warn: '⚠️ In scadenza (≤7gg)', late: '❌ Scadute' };
+  const colors = { ok: '#3a8c5c', warn: '#c9a227', late: '#cc3333' };
+  const prats = (map[status] || []).slice().sort((a,b) => {
+    const ra = calcolaPrevisione(a), rb = calcolaPrevisione(b);
+    if (!ra && !rb) return 0; if (!ra) return 1; if (!rb) return -1;
+    return ra.diff - rb.diff;
+  });
+  document.getElementById('modalKpiTitle').innerHTML =
+    `<span style="color:${colors[status]}">${labels[status]}</span> — Previsione Rilascio`;
+  if (prats.length === 0) {
+    document.getElementById('modalKpiBody').innerHTML =
+      '<div style="padding:32px;text-align:center;color:var(--muted);font-size:13px">Nessuna pratica in questa categoria</div>';
+    document.getElementById('modalKpiOverlay').classList.add('open');
+    return;
+  }
+  const byLotto = {};
+  prats.forEach(p => { if (!byLotto[p.lotto]) byLotto[p.lotto] = []; byLotto[p.lotto].push(p); });
+  const LOTTO_ORDER = ['1A','1B','2A','2B','1','2','3','4','5','6','7','8'];
+  const IMPRESE = { '1A':'Valtellina','1B':'Soleto','2A':'Sielte','2B':'Telebit' };
+  const sortedLotti = Object.keys(byLotto).sort((a,b) =>
+    (LOTTO_ORDER.indexOf(a)+1||99)-(LOTTO_ORDER.indexOf(b)+1||99));
+  const thRow = `<tr style="border-bottom:1px solid var(--border)">
+    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Codice</th>
+    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Ente</th>
+    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Stato</th>
+    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Invio</th>
+    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Prev. Rilascio</th>
+    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:right;font-weight:600;background:var(--surface2)">Metri</th>
+  </tr>`;
+  let html = `<div style="margin-bottom:16px;font-size:12px;color:var(--muted)">${prats.length} pratiche · ordinate per urgenza</div>`;
+  sortedLotti.forEach(lotto => {
+    const arr = byLotto[lotto];
+    const totL = arr.reduce((s,p)=>s+(p.metri||0),0);
+    const impresa = IMPRESE[lotto]||'';
+    html += `<div style="margin-bottom:22px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)">
+        <span style="font-size:13px;font-weight:700;color:var(--accent);font-family:'DM Mono',monospace">Lotto ${lotto}</span>
+        ${impresa?`<span style="font-size:10px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 8px">${impresa}</span>`:''}
+        <span style="font-size:10px;color:var(--muted);margin-left:auto;font-family:'DM Mono',monospace">${arr.length} pratiche · ${fmt(totL)} m</span>
+      </div>
+      <div style="overflow-x:auto"><table class="prat-table"><thead>${thRow}</thead><tbody>
+      ${arr.map(p => {
+        const col = STATI_COLORI_MAP[p.stato]||'#6b7080';
+        const dp = buildDateParts(p);
+        const invio = dp.find(d=>d.startsWith('Invio:'))?.replace('Invio: ','')||'';
+        const r = calcolaPrevisione(p);
+        const prevColors = {ok:'#3a8c5c',warn:'#c9a227',late:'#cc3333'};
+        const prevTxt = r ? (r.status==='ok'?`Pril. ${r.label}`:r.status==='warn'?`Scade in ${r.diff}gg`:`Scad. ${Math.abs(r.diff)}gg fa`) : '—';
+        const prevCol = r ? prevColors[r.status] : 'var(--muted)';
+        return `<tr style="border-bottom:1px solid #2e334722" onmouseover="this.style.background='#ffffff06'" onmouseout="this.style.background=''">
+          <td style="padding:6px 10px;font-family:'DM Mono',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col}">${p.codice}</td>
+          <td style="padding:6px 10px;font-size:9px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente||'—'}</td>
+          <td style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap">${p.stato}</td>
+          <td style="padding:6px 10px;font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);white-space:nowrap;text-align:center">${invio}</td>
+          <td style="padding:6px 10px;font-size:9px;font-family:'DM Mono',monospace;color:${prevCol};white-space:nowrap;text-align:center;font-weight:600">${prevTxt}</td>
+          <td style="padding:6px 10px;font-size:10px;font-family:'DM Mono',monospace;color:var(--text);text-align:right;white-space:nowrap;font-weight:600">${fmt(p.metri)} m</td>
+        </tr>`;
+      }).join('')}
+      </tbody></table></div></div>`;
+  });
+  document.getElementById('modalKpiBody').innerHTML = html;
+  document.getElementById('modalKpiOverlay').classList.add('open');
+  window._kpiModalPratiche = prats;
+}
+
+function updatePrevRilascio() {
+  if (!window._praticheDetailPerLotto) return;
+  const okPrats = [], warnPrats = [], latePrats = [];
+  Object.values(window._praticheDetailPerLotto).forEach(arr => {
+    arr.forEach(p => {
+      const r = calcolaPrevisione(p);
+      if (!r) return;
+      if (r.status === 'ok')   okPrats.push(p);
+      else if (r.status === 'warn') warnPrats.push(p);
+      else latePrats.push(p);
+    });
+  });
+  window._prevOkPrats   = okPrats;
+  window._prevWarnPrats = warnPrats;
+  window._prevLatePrats = latePrats;
+
+  const col = document.getElementById('prevRilascioCol');
+  if (!col) return;
+  if (okPrats.length + warnPrats.length + latePrats.length === 0) {
+    col.style.display = 'none'; return;
+  }
+  col.style.display = '';
+  document.getElementById('prevOkVal').textContent   = okPrats.length;
+  document.getElementById('prevWarnVal').textContent = warnPrats.length;
+  document.getElementById('prevLateVal').textContent = latePrats.length;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+window.addEventListener('load', () => {
+  loadData();
+  loadCluster()
+    .then(() => loadMaster())
+    .catch(() => loadMaster())
+    .finally(() => setTimeout(updatePrevRilascio, 600));
+});
 window.onerror = function(msg, src, line, col, err) {
   document.getElementById('loadingScreen').style.display = 'none';
   const eb = document.getElementById('errorBox');
