@@ -34,7 +34,7 @@
   .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
   /* print CSS gestito dinamicamente da stampaLotti() e stampaCluster() */
   .main { padding: 20px 28px; display: flex; flex-direction: column; gap: 18px; }
-  .kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+  .kpi-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; }
   .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; position: relative; overflow: hidden; cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s; }
   .kpi:hover { border-color: #4f8ef755; box-shadow: 0 0 0 1px #4f8ef722; }
   .kpi-owner { font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; padding: 1px 7px; border-radius: 3px; display: inline-block; margin-bottom: 6px; }
@@ -59,6 +59,8 @@
   .kpi.inviato::before { background: var(--inviato); }
   .kpi.protocollato::before { background: var(--protocollato); }
   .kpi.protocollato .kpi-value { color: var(--protocollato); }
+  .kpi.coordinamento::before { background: #9b59b6; }
+  .kpi.coordinamento .kpi-value { color: #9b59b6; }
   .kpi.integrazione::before { background: #cc3333; }
   .kpi.integrazione .kpi-value { color: #cc3333; }
   .kpi.protint::before { background: #548235; }
@@ -295,6 +297,7 @@
   <div class="kpi-row">
     <div class="kpi attesa" onclick="openModalKpi('attesa')"><span class="kpi-owner impresa">Impresa</span><div class="kpi-label">In Attesa / Redazione</div><div class="kpi-value" id="kpi-attesa">—</div><div class="kpi-sub" id="kpisub-attesa">—</div></div>
     <div class="kpi firma" onclick="openModalKpi('firma')"><span class="kpi-owner rds">RDS</span><div class="kpi-label">In Verifica / In Firma</div><div class="kpi-value" id="kpi-firma">—</div><div class="kpi-sub" id="kpisub-firma">—</div></div>
+    <div class="kpi coordinamento" onclick="openModalKpi('coordinamento')"><span class="kpi-owner impresa">Impresa/Enti</span><div class="kpi-label">Coordinamento</div><div class="kpi-value" id="kpi-coordinamento">—</div><div class="kpi-sub" id="kpisub-coordinamento">—</div></div>
     <div class="kpi inviato" onclick="openModalKpi('inviato')"><span class="kpi-owner ente">Ente</span><div class="kpi-label">Inviato / Protocollato</div><div class="kpi-value" id="kpi-inviato">—</div><div class="kpi-sub" id="kpisub-inviato">—</div></div>
     <div class="kpi integrazione" onclick="openModalKpi('integrazione')"><span class="kpi-owner impresa">Impresa</span><div class="kpi-label">Necessaria Integrazione</div><div class="kpi-value" id="kpi-integrazione">—</div><div class="kpi-sub" id="kpisub-integrazione">—</div></div>
     <div class="kpi protint" onclick="openModalKpi('protint')"><span class="kpi-owner ente">Ente</span><div class="kpi-label">Protocollato Integrazione</div><div class="kpi-value" id="kpi-protint">—</div><div class="kpi-sub" id="kpisub-protint">—</div></div>
@@ -331,8 +334,9 @@
         <div class="legend-item"><div class="legend-dot" style="background:#3a8c5c"></div>Ottenuto</div>
         <div class="legend-item"><div class="legend-dot" style="background:#548235"></div>Protocollato Integrazione</div>
         <div class="legend-item"><div class="legend-dot" style="background:#cc3333"></div>Necessaria Integrazione</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#e07b3a"></div>In Verifica / In Firma</div>
         <div class="legend-item"><div class="legend-dot" style="background:#4f8ef7"></div>Inviato / Protocollato</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#9b59b6"></div>Coordinamento</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#e07b3a"></div>In Verifica / In Firma</div>
         <div class="legend-item"><div class="legend-dot" style="background:#4a4f6a"></div>In Attesa / Redazione</div>
       </div>
     </div>
@@ -355,8 +359,9 @@
         <div class="legend-item"><div class="legend-dot" style="background:#3a8c5c"></div>Ottenuto</div>
         <div class="legend-item"><div class="legend-dot" style="background:#548235"></div>Protocollato Integrazione</div>
         <div class="legend-item"><div class="legend-dot" style="background:#cc3333"></div>Necessaria Integrazione</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#e07b3a"></div>In Verifica / In Firma</div>
         <div class="legend-item"><div class="legend-dot" style="background:#4f8ef7"></div>Inviato / Protocollato</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#9b59b6"></div>Coordinamento</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#e07b3a"></div>In Verifica / In Firma</div>
         <div class="legend-item"><div class="legend-dot" style="background:#4a4f6a"></div>In Attesa / Redazione</div>
       </div>
       <div id="msLegendBar" style="display:flex;flex-wrap:wrap;gap:10px;padding:10px 18px;border-top:1px solid var(--border)">
@@ -428,11 +433,12 @@ function exportTuttiXlsx() {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-const STATI = ['IN ATTESA','IN REDAZIONE','IN FIRMA RDS','INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'];
+const STATI = ['IN ATTESA','IN REDAZIONE','IN FIRMA RDS','COORDINAMENTO','INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'];
 const COLORS = {
   'IN ATTESA':                  '#4a4f6a',
   'IN REDAZIONE':               '#4a4f6a',
   'IN FIRMA RDS':               '#e07b3a',
+  'COORDINAMENTO':              '#9b59b6',
   'INVIATO':                    '#4f8ef7',
   'PROTOCOLLATO':               '#4f8ef7',
   'NECESSARIA INTEGRAZIONE':    '#cc3333',
@@ -445,6 +451,7 @@ const COLORS = {
 const STATI_GRUPPI = [
   { label: 'In Attesa / Redazione', stati: ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'], color: '#4a4f6a' },
   { label: 'In Verifica / In Firma', stati: ['IN FIRMA RDS'],                                         color: '#e07b3a' },
+  { label: 'Coordinamento',          stati: ['COORDINAMENTO'],                                         color: '#9b59b6' },
   { label: 'Inviato / Protocollato',stati: ['INVIATO','PROTOCOLLATO'],                               color: '#4f8ef7' },
   { label: 'Necessaria Integrazione',stati: ['NECESSARIA INTEGRAZIONE'],                             color: '#cc3333' },
   { label: 'Protocollato Integrazione',stati: ['PROTOCOLLATO INTEGRAZIONE'],                        color: '#548235' },
@@ -465,6 +472,7 @@ function renderBarre(gruppiMap, totale, tooltip, onHover) {
   // Ordine workflow sinistra→destra, grigio (In Attesa) sempre a destra
   const ORDINE_WORKFLOW = [
     'In Verifica / In Firma',
+    'Coordinamento',
     'Inviato / Protocollato',
     'Necessaria Integrazione',
     'Protocollato Integrazione',
@@ -491,7 +499,7 @@ const MASTER_URL = 'Master.csv';
 // ── HELPER GLOBALI ────────────────────────────────────────────────────────────
 const STATI_COLORI_MAP = {
   'IN ATTESA':'#4a4f6a','IN REDAZIONE':'#4a4f6a','IN REDAZIONE INTEGRAZIONE':'#4a4f6a',
-  'IN FIRMA RDS':'#e07b3a','INVIATO':'#4f8ef7','PROTOCOLLATO':'#4f8ef7',
+  'IN FIRMA RDS':'#e07b3a','COORDINAMENTO':'#9b59b6','INVIATO':'#4f8ef7','PROTOCOLLATO':'#4f8ef7',
   'NECESSARIA INTEGRAZIONE':'#cc3333','PROTOCOLLATO INTEGRAZIONE':'#548235','OTTENUTO':'#3a8c5c'
 };
 
@@ -521,6 +529,8 @@ function buildDateParts(p) {
     if (p.dum) parts.push('Agg.: ' + fmtDateIT(p.dum));
   } else if (p.stato === 'OTTENUTO') {
     if (p.dum) parts.push('Ott.: ' + fmtDateIT(p.dum));
+  } else if (p.stato === 'COORDINAMENTO') {
+    if (p.dum && p.dum !== invioDate) parts.push('Coord.: ' + fmtDateIT(p.dum));
   } else if (p.stato !== 'INVIATO') {
     // IN FIRMA RDS, IN REDAZIONE, ecc. → mostra solo agg. se non è la stessa dell'invio
     if (p.dum && p.dum !== invioDate) parts.push('Agg.: ' + fmtDateIT(p.dum));
@@ -1595,12 +1605,13 @@ function renderDashboard(data) {
 
   // KPI
   const kpiMap={
-    attesa:       ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'],
-    firma:        ['IN FIRMA RDS'],
-    inviato:      ['INVIATO', 'PROTOCOLLATO'],
-    integrazione: ['NECESSARIA INTEGRAZIONE'],
-    protint:      ['PROTOCOLLATO INTEGRAZIONE'],
-    ottenuto:     ['OTTENUTO']
+    attesa:         ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'],
+    firma:          ['IN FIRMA RDS'],
+    coordinamento:  ['COORDINAMENTO'],
+    inviato:        ['INVIATO', 'PROTOCOLLATO'],
+    integrazione:   ['NECESSARIA INTEGRAZIONE'],
+    protint:        ['PROTOCOLLATO INTEGRAZIONE'],
+    ottenuto:       ['OTTENUTO']
   };
   // Conta pratiche distinte per stato
   const pratichePerStato = {};
@@ -1784,13 +1795,14 @@ function renderDonut(globalStati, grandTotal) {
   if (inativoMetri > 0) grouped.push({ label: 'In Attesa / Redazione', metri: inativoMetri, color: '#4a4f6a' });
   const STATO_LABELS = {
     'IN FIRMA RDS':              'In Verifica / In Firma',
+    'COORDINAMENTO':             'Coordinamento',
     'INVIATO':                   'Inviato',
     'PROTOCOLLATO':              'Protocollato',
     'NECESSARIA INTEGRAZIONE':   'Necessaria Integrazione',
     'PROTOCOLLATO INTEGRAZIONE': 'Protocollato Integrazione',
     'OTTENUTO':                  'Ottenuto',
   };
-  ['IN FIRMA RDS','INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'].forEach(s => {
+  ['IN FIRMA RDS','COORDINAMENTO','INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'].forEach(s => {
     const m = globalStati[s] || 0;
     if (m > 0) grouped.push({ label: STATO_LABELS[s] || s, metri: m, color: COLORS[s] });
   });
@@ -1969,6 +1981,7 @@ function renderStoricoModal() {
   const STATI_TABELLA = [
     { label: 'In Attesa / Red.',  stati: ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'], color: '#4a4f6a' },
     { label: 'In Firma RDS',      stati: ['IN FIRMA RDS'],                                         color: '#e07b3a' },
+    { label: 'Coordinamento',     stati: ['COORDINAMENTO'],                                         color: '#9b59b6' },
     { label: 'Inviato / Prot.',   stati: ['INVIATO','PROTOCOLLATO'],                               color: '#4f8ef7' },
     { label: 'Nec. Integraz.',    stati: ['NECESSARIA INTEGRAZIONE'],                              color: '#cc3333' },
     { label: 'Prot. Integraz.',   stati: ['PROTOCOLLATO INTEGRAZIONE'],                            color: '#548235' },
@@ -2115,6 +2128,7 @@ window.storicoToggleView = function(mode) {
   const STATI_G = [
     { label: 'In Attesa / Red.',  stati: ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'], color: '#4a5080' },
     { label: 'In Firma RDS',      stati: ['IN FIRMA RDS'],                                         color: '#e07b3a' },
+    { label: 'Coordinamento',     stati: ['COORDINAMENTO'],                                         color: '#9b59b6' },
     { label: 'Inviato / Prot.',   stati: ['INVIATO','PROTOCOLLATO'],                               color: '#4f8ef7' },
     { label: 'Nec. Integraz.',    stati: ['NECESSARIA INTEGRAZIONE'],                              color: '#cc3333' },
     { label: 'Prot. Integraz.',   stati: ['PROTOCOLLATO INTEGRAZIONE'],                            color: '#548235' },
@@ -2345,6 +2359,7 @@ function _buildStoricoChart(storico, labels, datasets, yMax, mode) {
   const STATI_ATTESA_SET = new Set(['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE']);
   const STATI_DETTAGLIO = [
     { label: 'In Firma RDS',           stati: ['IN FIRMA RDS'],                    color: '#e07b3a' },
+    { label: 'Coordinamento',          stati: ['COORDINAMENTO'],                   color: '#9b59b6' },
     { label: 'Inviato / Prot.',        stati: ['INVIATO','PROTOCOLLATO'],           color: '#4f8ef7' },
     { label: 'Nec. Integraz.',         stati: ['NECESSARIA INTEGRAZIONE'],          color: '#cc3333' },
     { label: 'Prot. Integraz.',        stati: ['PROTOCOLLATO INTEGRAZIONE'],        color: '#548235' },
@@ -2542,7 +2557,7 @@ async function seedDemoData() {
     const LOTTI = ['1A','1B','2A','2B'];
     const TUTTI_STATI = [
       'IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE',
-      'IN FIRMA RDS','INVIATO','PROTOCOLLATO',
+      'IN FIRMA RDS','COORDINAMENTO','INVIATO','PROTOCOLLATO',
       'NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'
     ];
 
@@ -2831,8 +2846,8 @@ async function loadMaster() {
 // ── MODAL PARAMETRI PREVISIONI ────────────────────────────────────────────────
 const PREV_PARAMS_DEFAULT = { comuneMilano:60, comune:45, provincia:60, anas:90, altri:180, warnDays:7 };
 const PREV_PARAMS_LABELS  = [
-  { key:'comuneMilano',label:'Comune di Milano',     desc:'⭐ Regola specifica solo per il Comune di Milano' },
-  { key:'comune',   label:'Comune',              desc:'es. Comune di Settimo Milanese (tutti gli altri comuni)' },
+  { key:'comuneMilano',label:'Comune di Milano',     desc:'' },
+  { key:'comune',   label:'Comune',              desc:'tutti gli altri comuni oltre a Milano' },
   { key:'provincia',label:'Provincie', desc:'es. Provincia di Milano' },
   { key:'anas',     label:'ANAS',                desc:'Strade statali' },
   { key:'altri',    label:'Altri enti',          desc:'Ferrovie, RFI, ecc.' },
@@ -2886,18 +2901,20 @@ function chiudiParamPrev() {
 
 // ── MODAL KPI PRATICHE ───────────────────────────────────────────────────────
 const KPI_CONFIG = {
-  attesa:       { label: 'In Attesa / Redazione',       owner: 'Impresa', ownerClass: 'impresa', color: '#4a4f6a',
-                  stati: ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'] },
-  firma:        { label: 'In Verifica / In Firma RDS',  owner: 'RDS',     ownerClass: 'rds',     color: '#e07b3a',
-                  stati: ['IN FIRMA RDS'] },
-  inviato:      { label: 'Inviato / Protocollato',      owner: 'Ente',    ownerClass: 'ente',    color: '#4f8ef7',
-                  stati: ['INVIATO','PROTOCOLLATO'] },
-  integrazione: { label: 'Necessaria Integrazione',     owner: 'Impresa', ownerClass: 'impresa', color: '#cc3333',
-                  stati: ['NECESSARIA INTEGRAZIONE'] },
-  protint:      { label: 'Protocollato Integrazione',   owner: 'Ente',    ownerClass: 'ente',    color: '#548235',
-                  stati: ['PROTOCOLLATO INTEGRAZIONE'] },
-  ottenuto:     { label: '🏆 Autorizzati',               owner: 'Ente',    ownerClass: 'ente',    color: '#3a8c5c',
-                  stati: ['OTTENUTO'] },
+  attesa:         { label: 'In Attesa / Redazione',       owner: 'Impresa', ownerClass: 'impresa', color: '#4a4f6a',
+                    stati: ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'] },
+  firma:          { label: 'In Verifica / In Firma RDS',  owner: 'RDS',     ownerClass: 'rds',     color: '#e07b3a',
+                    stati: ['IN FIRMA RDS'] },
+  coordinamento:  { label: 'Coordinamento',               owner: 'Milano',  ownerClass: 'rds',     color: '#9b59b6',
+                    stati: ['COORDINAMENTO'] },
+  inviato:        { label: 'Inviato / Protocollato',      owner: 'Ente',    ownerClass: 'ente',    color: '#4f8ef7',
+                    stati: ['INVIATO','PROTOCOLLATO'] },
+  integrazione:   { label: 'Necessaria Integrazione',     owner: 'Impresa', ownerClass: 'impresa', color: '#cc3333',
+                    stati: ['NECESSARIA INTEGRAZIONE'] },
+  protint:        { label: 'Protocollato Integrazione',   owner: 'Ente',    ownerClass: 'ente',    color: '#548235',
+                    stati: ['PROTOCOLLATO INTEGRAZIONE'] },
+  ottenuto:       { label: '🏆 Autorizzati',               owner: 'Ente',    ownerClass: 'ente',    color: '#3a8c5c',
+                    stati: ['OTTENUTO'] },
 };
 
 function openModalKpi(key) {
