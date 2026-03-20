@@ -363,7 +363,7 @@
 // ── EXPORT EXCEL ──────────────────────────────────────────────────────────────
 function exportXlsx(pratiche, filename) {
   if (!pratiche || !pratiche.length) { alert('Nessuna pratica da esportare.'); return; }
-  const header = ['Codice', 'Tipo', 'Lotto', 'Stato', 'Ente', 'Data Invio', 'Data Agg./Prot./Ott.', 'Metri (m)'];
+  const header = ['Codice', 'Tipo', 'Lotto', 'Stato', 'Ente', 'Data Invio', 'Data Agg./Prot./Ott.', 'Prev. Rilascio', 'Giorni Rimanenti', 'Metri (m)'];
   const rows = pratiche.map(p => {
     const dateParts = buildDateParts(p);
     const invio = dateParts.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
@@ -372,10 +372,12 @@ function exportXlsx(pratiche, filename) {
                 : p.codice.startsWith('NO/')  ? 'NULLA OSTA'
                 : p.codice.startsWith('ORD/') ? 'ORDINANZA'
                 : p.tipo || '';
-    return [p.codice, tipo, p.lotto || '', p.stato, p.ente || '', invio, agg, p.metri || 0];
+    const prev = calcolaPrevisione(p);
+    return [p.codice, tipo, p.lotto || '', p.stato, p.ente || '', invio, agg,
+            prev ? prev.label : '', prev ? prev.diff : '', p.metri || 0];
   });
   const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-  ws['!cols'] = [{wch:20},{wch:18},{wch:8},{wch:30},{wch:30},{wch:14},{wch:14},{wch:12}];
+  ws['!cols'] = [{wch:20},{wch:18},{wch:8},{wch:30},{wch:30},{wch:14},{wch:14},{wch:14},{wch:10},{wch:12}];
   const headerRange = XLSX.utils.decode_range(ws['!ref']);
   for (let c = headerRange.s.c; c <= headerRange.e.c; c++) {
     const cell = ws[XLSX.utils.encode_cell({r:0, c})];
@@ -2891,13 +2893,15 @@ function openModalKpi(key) {
     </div>`;
 
   const _kBd = (a,b) => { const da=parseDateIT(a.dum),db=parseDateIT(b.dum); if(da&&db) return db-da; return da?-1:db?1:a.codice.localeCompare(b.codice); };
+  const _showPrev = !['firma','attesa'].includes(key);
+  const _kColspan = _showPrev ? 7 : 6;
   const _kThRow = `<tr style="border-bottom:1px solid var(--border)">
     <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Codice</th>
     <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Ente</th>
     <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Stato</th>
     <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Invio</th>
     <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Agg./Prot./Ott.</th>
-    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Prev. Rilascio</th>
+    ${_showPrev ? `<th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Prev. Rilascio</th>` : ''}
     <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:right;font-weight:600;background:var(--surface2)">Metri</th>
   </tr>`;
   const _kMkRow = p => {
@@ -2905,18 +2909,18 @@ function openModalKpi(key) {
     const dp = buildDateParts(p);
     const invio = dp.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
     const agg   = dp.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
-    const badge = prevBadgeHtml(p);
+    const badge = _showPrev ? prevBadgeHtml(p) : '';
     return `<tr style="border-bottom:1px solid #2e334722" onmouseover="this.style.background='#ffffff06'" onmouseout="this.style.background=''">
       <td style="padding:6px 10px;font-family:'DM Mono',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col}">${p.codice}</td>
       <td style="padding:6px 10px;font-size:9px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente || '—'}</td>
       <td style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap">${p.stato}</td>
       <td style="padding:6px 10px;font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);white-space:nowrap;text-align:center">${invio}</td>
       <td style="padding:6px 10px;font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);white-space:nowrap;text-align:center">${agg}</td>
-      <td style="padding:6px 10px;font-size:9px;text-align:center;white-space:nowrap">${badge}</td>
+      ${_showPrev ? `<td style="padding:6px 10px;font-size:9px;text-align:center;white-space:nowrap">${badge}</td>` : ''}
       <td style="padding:6px 10px;font-size:10px;font-family:'DM Mono',monospace;color:var(--text);text-align:right;white-space:nowrap;font-weight:600">${fmt(p.metri)} m</td>
     </tr>`;
   };
-  const _kSepRow = (label, badge, n) => `<tr><td colspan="7" style="padding:8px 10px 4px;background:var(--bg)">
+  const _kSepRow = (label, badge, n) => `<tr><td colspan="${_kColspan}" style="padding:8px 10px 4px;background:var(--bg)">
     <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text)">${label}</span>
     <span style="margin-left:6px;font-size:9px;color:var(--muted)">(${n})</span>
     <span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">${badge.includes('3a8c5c') ? 'incide sulle %' : 'non incide sulle %'}</span>
@@ -2946,7 +2950,7 @@ function openModalKpi(key) {
             </tbody>
             <tfoot>
               <tr style="border-top:2px solid var(--border)">
-                <td colspan="6" style="padding:6px 10px;font-size:10px;font-weight:700;color:var(--text)">Totale lotto ${lotto}</td>
+                <td colspan="${_kColspan - 1}" style="padding:6px 10px;font-size:10px;font-weight:700;color:var(--text)">Totale lotto ${lotto}</td>
                 <td style="padding:6px 10px;font-size:10px;font-family:'DM Mono',monospace;font-weight:700;color:var(--text);text-align:right">${fmt(totL)} m</td>
               </tr>
             </tfoot>
@@ -2997,15 +3001,13 @@ function calcolaPrevisione(p) {
 function prevBadgeHtml(p) {
   const r = calcolaPrevisione(p);
   if (!r) return '';
-  const colors = { ok: '#3a8c5c', warn: '#c9a227', late: '#cc3333' };
-  const bg     = { ok: '#3a8c5c18', warn: '#c9a22718', late: '#cc333318' };
-  const bd     = { ok: '#3a8c5c44', warn: '#c9a22744', late: '#cc333344' };
-  const c = colors[r.status];
+  const bg = { ok: '#3a8c5c', warn: '#c9a227', late: '#cc3333' };
+  const bd = { ok: '#3a8c5c66', warn: '#c9a22766', late: '#cc333366' };
   let txt;
-  if (r.status === 'ok')   txt = `Pril. ${r.label}`;
+  if (r.status === 'ok')   txt = r.label;
   else if (r.status === 'warn') txt = `Scade in ${r.diff}gg`;
   else txt = `Scad. ${Math.abs(r.diff)}gg fa`;
-  return `<span style="font-size:8px;padding:1px 6px;border-radius:10px;background:${bg[r.status]};color:${c};border:1px solid ${bd[r.status]};white-space:nowrap;font-family:'DM Mono',monospace">${txt}</span>`;
+  return `<span style="font-size:8px;padding:1px 6px;border-radius:10px;background:${bg[r.status]};color:#fff;border:1px solid ${bd[r.status]};white-space:nowrap;font-family:'DM Mono',monospace">${txt}</span>`;
 }
 
 function openModalPrev(status) {
@@ -3039,7 +3041,7 @@ function openModalPrev(status) {
     <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Prev. Rilascio</th>
     <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:right;font-weight:600;background:var(--surface2)">Metri</th>
   </tr>`;
-  let html = `<div style="margin-bottom:16px;font-size:12px;color:var(--muted)">${prats.length} pratiche · ordinate per urgenza</div>`;
+  let html = `<div style="margin-bottom:16px;font-size:12px;color:var(--muted)">${prats.length} pratiche · ordinate per scadenza crescente</div>`;
   sortedLotti.forEach(lotto => {
     const arr = byLotto[lotto];
     const totL = arr.reduce((s,p)=>s+(p.metri||0),0);
@@ -3057,7 +3059,7 @@ function openModalPrev(status) {
         const invio = dp.find(d=>d.startsWith('Invio:'))?.replace('Invio: ','')||'';
         const r = calcolaPrevisione(p);
         const prevColors = {ok:'#3a8c5c',warn:'#c9a227',late:'#cc3333'};
-        const prevTxt = r ? (r.status==='ok'?`Pril. ${r.label}`:r.status==='warn'?`Scade in ${r.diff}gg`:`Scad. ${Math.abs(r.diff)}gg fa`) : '—';
+        const prevTxt = r ? (r.status==='ok'?r.label:r.status==='warn'?`Scade in ${r.diff}gg`:`Scad. ${Math.abs(r.diff)}gg fa`) : '—';
         const prevCol = r ? prevColors[r.status] : 'var(--muted)';
         return `<tr style="border-bottom:1px solid #2e334722" onmouseover="this.style.background='#ffffff06'" onmouseout="this.style.background=''">
           <td style="padding:6px 10px;font-family:'DM Mono',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col}">${p.codice}</td>
