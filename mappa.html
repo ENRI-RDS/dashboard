@@ -337,7 +337,15 @@ function applyFilterCluster(cl) {
     document.querySelector('.filter-btn').classList.add('active');
     allLayers.forEach(({layer,outlineLayer}) => {
       if(!map.hasLayer(layer)) map.addLayer(layer);
-      if(outlineLayer){ if(!map.hasLayer(outlineLayer)) map.addLayer(outlineLayer); outlineLayer.bringToBack(); }
+      // Reset stile di ogni feature al valore normale
+      layer.eachLayer(l => {
+        if(l.feature) l.setStyle({ opacity: 0.95, weight: 4, color: getColorForMode(l.feature, currentViewMode) });
+      });
+      if(outlineLayer){
+        if(!map.hasLayer(outlineLayer)) map.addLayer(outlineLayer);
+        outlineLayer.eachLayer(l => l.setStyle({ opacity: 0.45 }));
+        outlineLayer.bringToBack();
+      }
     });
     const g=L.featureGroup(allLayers.map(x=>x.layer));
     map.fitBounds(g.getBounds(),{padding:[40,40]});
