@@ -241,6 +241,19 @@ function getColorForMode(feature, mode) {
   return getColor(p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE);
 }
 
+// Restituisce lo stile completo: nei modi lotto/cluster aggiunge outline scuro
+function getStyleForMode(feature, mode, overrides) {
+  const color = getColorForMode(feature, mode);
+  const base = mode === 'stato'
+    ? { color, weight: 4, opacity: 0.95, smoothFactor: 1.5 }
+    : { color, weight: 5, opacity: 1, smoothFactor: 1.5,
+        // outline simulato con lineBorder via className non disponibile in Leaflet —
+        // usiamo weight maggiore e colore più saturo; il vero outline lo otteniamo
+        // duplicando il layer (vedi sotto)
+      };
+  return Object.assign(base, overrides || {});
+}
+
 function setViewMode(mode) {
   currentViewMode = mode;
   currentFilter = 'TUTTI';
@@ -248,16 +261,21 @@ function setViewMode(mode) {
     const btn = document.getElementById('vbtn-'+m);
     if (btn) btn.className = 'view-btn' + (m === mode ? ' active' : '');
   });
-  // Re-stila tutti i layer
-  allLayers.forEach(({layer}) => {
+  const useOutline = (mode !== 'stato');
+  allLayers.forEach(({layer, outlineLayer}) => {
     layer.eachLayer(l => {
       if (l.feature) l.setStyle({ color: getColorForMode(l.feature, mode), weight:4, opacity:0.95 });
     });
-    // Mostra tutti i layer
     if (!map.hasLayer(layer)) map.addLayer(layer);
+    // outline visibile solo in lotto/cluster
+    if (outlineLayer) {
+      outlineLayer.eachLayer(l => l.setStyle({ opacity: useOutline ? 0.55 : 0 }));
+      if (!map.hasLayer(outlineLayer)) map.addLayer(outlineLayer);
+      // outline deve stare sotto il layer principale
+      outlineLayer.bringToBack();
+    }
   });
   updateLegend(mode);
-  // Ricostruisce il filtro in base alla modalità
   if (mode === 'cluster') {
     renderFilterCluster();
   } else {
@@ -335,15 +353,17 @@ function applyFilterCluster(cl) {
   document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
   if (cl === 'TUTTI') {
     document.querySelector('.filter-btn').classList.add('active');
-    allLayers.forEach(({layer}) => { if(!map.hasLayer(layer)) map.addLayer(layer); });
+    allLayers.forEach(({layer, outlineLayer}) => {
+      if(!map.hasLayer(layer)) map.addLayer(layer);
+      if(outlineLayer) { outlineLayer.eachLayer(l=>l.setStyle({opacity:0.55})); outlineLayer.bringToBack(); }
+    });
     const g=L.featureGroup(allLayers.map(x=>x.layer));
     map.fitBounds(g.getBounds(),{padding:[40,40]});
   } else {
     const fb = document.getElementById('cbtn-'+cl); if(fb) fb.classList.add('active');
-    // Filtra per cluster: mostra/nascondi singole feature
     const matchLayers = [];
-    allLayers.forEach(({layer}) => {
-      if(!map.hasLayer(layer)) map.addLayer(layer); // assicura visibile
+    allLayers.forEach(({layer, outlineLayer}) => {
+      if(!map.hasLayer(layer)) map.addLayer(layer);
       layer.eachLayer(l => {
         if (!l.feature) return;
         const fcl = String(l.feature.properties.CLUSTER ?? l.feature.properties.ID_CLUSTER ?? l.feature.properties.cluster ?? '');
@@ -354,6 +374,14 @@ function applyFilterCluster(cl) {
           l.setStyle({ opacity: 0.08, weight: 2 });
         }
       });
+      if(outlineLayer) {
+        outlineLayer.eachLayer(l => {
+          if (!l.feature) return;
+          const fcl = String(l.feature.properties.CLUSTER ?? l.feature.properties.ID_CLUSTER ?? l.feature.properties.cluster ?? '');
+          l.setStyle({ opacity: fcl === cl ? 0.5 : 0 });
+        });
+        outlineLayer.bringToBack();
+      }
     });
     if (matchLayers.length > 0) {
       const g = L.featureGroup(matchLayers);
@@ -372,9 +400,9 @@ function updateLegend(mode) {
       <div class="legend-item"><div class="legend-line" style="background:#548235"></div>Prot. Integrazione</div>
       <div class="legend-item"><div class="legend-line" style="background:#cc3333"></div>Nec. Integrazione</div>
       <div class="legend-item"><div class="legend-line" style="background:#4f8ef7"></div>Inviato / Protocollato</div>
-      <div class="legend-item"><div class="legend-line" style="background:#9b59b6"></div>Coordinamento</div>
       <div class="legend-item"><div class="legend-line" style="background:#e07b3a"></div>In Verifica / Firma</div>
-      <div class="legend-item"><div class="legend-line" style="background:#4a4f6a"></div>In Attesa / Redazione</div>`;
+      <div class="legend-item"><div class="legend-line" style="background:#4a4f6a"></div>In Attesa / Redazione</div>
+      <div class="legend-item"><div class="legend-line" style="background:#9b59b6"></div>Coordinamento</div>`;
   } else if (mode === 'lotto') {
     const items = Object.entries(LOTTO_COLORS).map(([l,c]) =>
       `<div class="legend-item"><div class="legend-line" style="background:${c}"></div>Lotto ${l}</div>`
@@ -528,9 +556,14 @@ function applyFilter(lotto) {
   document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
   if(lotto==='TUTTI') document.querySelector('.filter-btn').classList.add('active');
   else { const fb=document.getElementById('fbtn-'+lotto); if(fb) fb.classList.add('active'); }
-  allLayers.forEach(({layer,lotto:l})=>{
-    if(lotto==='TUTTI'||l===lotto){ if(!map.hasLayer(layer)) map.addLayer(layer); }
+  allLayers.forEach(({layer, outlineLayer, lotto:l})=>{
+    const visible = lotto==='TUTTI' || l===lotto;
+    if(visible){ if(!map.hasLayer(layer)) map.addLayer(layer); }
     else { if(map.hasLayer(layer)) map.removeLayer(layer); }
+    if(outlineLayer) {
+      if(visible && currentViewMode !== 'stato'){ if(!map.hasLayer(outlineLayer)) map.addLayer(outlineLayer); outlineLayer.bringToBack(); }
+      else { if(map.hasLayer(outlineLayer)) map.removeLayer(outlineLayer); }
+    }
   });
   if(lotto!=='TUTTI') zoomLotto(lotto);
   else { const g=L.featureGroup(allLayers.map(x=>x.layer)); map.fitBounds(g.getBounds(),{padding:[40,40]}); }
@@ -742,18 +775,39 @@ document.addEventListener('click', e => {
     features.forEach(f=>{ const l=f.properties.LOTTO; if(!lottoGroups[l]) lottoGroups[l]=[]; lottoGroups[l].push(f); });
 
     Object.entries(lottoGroups).forEach(([lotto,feats])=>{
-      const layer=L.geoJSON({type:'FeatureCollection',features:feats},{
+      const geoData = {type:'FeatureCollection',features:feats};
+
+      // Layer outline (nero, weight maggiore) — usato solo nei modi lotto/cluster
+      const outlineLayer = L.geoJSON(geoData,{
+        style: f => ({
+          color: '#111',
+          weight: 7,
+          opacity: 0,        // inizialmente invisibile (modo stato default)
+          smoothFactor: 1.5,
+          interactive: false
+        })
+      }).addTo(map);
+
+      // Layer principale
+      const layer=L.geoJSON(geoData,{
         style:f=>({
           color: getColorForMode(f, currentViewMode),
           weight:4, opacity:0.95, smoothFactor:1.5
         }),
         onEachFeature:(f,layer)=>{
           layer.bindPopup(makePopupHtml(f.properties),{maxWidth:340});
-          layer.on('mouseover',e=>{e.target.setStyle({weight:7,opacity:1});e.target.bringToFront();});
-          layer.on('mouseout',e=>{e.target.setStyle({weight:4,opacity:0.95,color:getColorForMode(e.target.feature,currentViewMode)});});
+          layer.on('mouseover',e=>{
+            e.target.setStyle({weight:6,opacity:1});
+            e.target.bringToFront();
+          });
+          layer.on('mouseout',e=>{
+            const mode = currentViewMode;
+            e.target.setStyle({weight:4,opacity:0.95,color:getColorForMode(e.target.feature,mode)});
+          });
         }
       }).addTo(map);
-      allLayers.push({layer,lotto});
+
+      allLayers.push({layer, outlineLayer, lotto});
     });
 
     const allGroup=L.featureGroup(allLayers.map(x=>x.layer));
