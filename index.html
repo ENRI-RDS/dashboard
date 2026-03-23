@@ -205,6 +205,7 @@
   </div>
   <div class="topbar-right">
     <span class="badge" id="statusBadge">⏳ Caricamento</span>
+    <span id="lastUpdate" style="font-size:10px;color:var(--muted);white-space:nowrap;padding:0 4px"><span></span></span>
     <a href="mappa.html" style="font-size:11px;padding:5px 14px;border-radius:5px;background:var(--surface2);color:var(--text);border:1px solid var(--border);cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;text-decoration:none;transition:opacity 0.2s" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1">🗺 Mappa</a>
     <a href="executive_summary.html" style="font-size:11px;padding:5px 14px;border-radius:5px;background:var(--surface2);color:var(--text);border:1px solid var(--border);cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;text-decoration:none;transition:opacity 0.2s" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1">📋 Executive</a>
 
@@ -591,7 +592,7 @@ const STORICO_MAX_ENTRIES = 104; // ~2 anni di aggiornamenti settimanali
 
 async function jsonbinLoad() {
   const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(), 5000);
+  const tid = setTimeout(() => controller.abort(new DOMException('Timeout connessione a JSONBin', 'TimeoutError')), 15000);
   try {
     const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_BIN_ID}/latest`, {
       headers: { 'X-Master-Key': JSONBIN_MASTER_KEY },
@@ -1420,7 +1421,11 @@ async function loadData(saveSnapshot = false) {
         eb.style.borderRadius = '6px';
         eb.style.padding = '8px 14px';
         eb.style.fontSize = '11px';
-        eb.textContent = '⚠ Storico non disponibile: ' + (e.message || e);
+        const msg = (e.name === 'TimeoutError' || e.name === 'AbortError')
+          ? 'Timeout connessione al server storico — i dati CSV sono stati caricati correttamente'
+          : '⚠ Storico non disponibile: ' + (e.message || e);
+        eb.textContent = msg;
+        setTimeout(() => { eb.style.display = 'none'; }, 6000);
       }
     }
 
@@ -1436,6 +1441,11 @@ async function loadData(saveSnapshot = false) {
 
     document.getElementById('statusBadge').textContent = '● Aggiornato';
     document.getElementById('statusBadge').className = 'badge ok';
+    // Aggiorna data ultimo caricamento
+    const _now = new Date();
+    const _dateStr = _now.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' ' + _now.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+    const _lu = document.getElementById('lastUpdate');
+    if(_lu) _lu.innerHTML = `<span>📅 ${_dateStr}</span>`;
     document.getElementById('loadingScreen').style.display = 'none';
     setTimeout(()=>setLoading(0),600);
   } catch(e) {
