@@ -576,25 +576,10 @@ function exportImage(){
       const ctx = mapCanvas.getContext('2d');
       ctx.drawImage(rawCanvas, 0, 0, mapCanvas.width, mapCanvas.height);
 
-      // ── Legenda ─────────────────────────────────────────────────────────────
+      // ── Legenda reale a schermo ─────────────────────────────────────────────
       const legendEl = document.getElementById('legendContainer');
-      const legPanel = document.createElement('div');
-      legPanel.style.cssText =
-        'position:fixed;top:-9999px;left:-9999px;background:#1a1d27;' +
-        'padding:16px 14px;min-width:170px;max-width:200px;' +
-        'display:flex;flex-direction:column;gap:5px;' +
-        'font-family:"DM Sans",sans-serif;' +
-        'height:' + H + 'px;box-sizing:border-box;';
-      legPanel.innerHTML =
-        '<div style="font-size:13px;font-weight:700;color:#e8eaf0;margin-bottom:10px;' +
-        'padding-bottom:8px;border-bottom:1px solid #2e3347">Legenda</div>' +
-        (legendEl ? legendEl.innerHTML : '') +
-        '<div style="margin-top:auto;padding-top:10px;border-top:1px solid #2e3347;' +
-        'font-size:9px;color:#6b7080;font-family:\'DM Mono\',monospace">' +
-        'ENRI \u2014 ' + new Date().toLocaleDateString('it-IT') + '</div>';
-      document.body.appendChild(legPanel);
+      if (!legendEl) throw new Error('Legenda non trovata');
 
-      // html2canvas sulla legenda (nessun CORS - tutto DOM locale)
       const waitH2C = (attempts) => new Promise((res, rej) => {
         if (typeof html2canvas !== 'undefined') res();
         else if (attempts <= 0) rej(new Error('html2canvas non caricato'));
@@ -602,11 +587,10 @@ function exportImage(){
       });
       await waitH2C(8);
 
-      const legCanvas = await html2canvas(legPanel, {
+      const legCanvas = await html2canvas(legendEl, {
         scale: SCALE, backgroundColor: '#1a1d27', logging: false,
         useCORS: false, allowTaint: false
       });
-      document.body.removeChild(legPanel);
 
       // ── Output finale ────────────────────────────────────────────────────────
       const out = document.createElement('canvas');
