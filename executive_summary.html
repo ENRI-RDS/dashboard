@@ -822,7 +822,17 @@ async function init(){
   if(pd) pd.textContent=document.getElementById('repDate')?.textContent||'';
   await loadCSVData();
   const restored = await loadFromStorage();
-  if(!restored){ render(); } else { updateLiveData(); }
+  if(!restored){
+    render();
+  } else {
+    // Compatibilità: se il layout salvato è vecchio e non contiene il nuovo blocco,
+    // rigenera la pagina con il template aggiornato.
+    if(!document.getElementById('ganttCard')){
+      render();
+    } else {
+      updateLiveData();
+    }
+  }
   document.querySelectorAll('[contenteditable]').forEach(el=>el.contentEditable='false');
 }
 init();
