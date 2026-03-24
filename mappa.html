@@ -7,6 +7,7 @@
 <title>ENRI — Avanzamento Progettazione</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-image@0.4.0/leaflet-image.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -502,67 +503,65 @@ function exportPDF(){
 }
 
 function exportImage(){
-  const btn=document.querySelector('[onclick="exportImage()"]');
+  const btn = document.querySelector('[onclick="exportImage()"]');
   if (!btn) return;
-  btn.textContent='⏳...'; btn.disabled=true;
-  map.invalidateSize();
+  btn.textContent = '⏳...'; btn.disabled = true;
 
-  const doExport = async () => {
-    try {
-      const mapEl = document.getElementById('map');
-      const legendEl = document.getElementById('legendContainer');
-
-      // Cattura mappa (con tile OSM)
-      const mapCanvas = await html2canvas(mapEl, {
-        useCORS: true, allowTaint: true, scale: 2,
-        backgroundColor: '#0f1117', logging: false,
-        ignoreElements: el => el.id === 'loadingOverlay'
-      });
-
-      // Pannello legenda temporaneo fuori schermo
-      const legPanel = document.createElement('div');
-      legPanel.style.cssText = 'position:fixed;top:-9999px;left:-9999px;background:#1a1d27;padding:16px 14px;min-width:160px;max-width:180px;display:flex;flex-direction:column;gap:4px;font-family:DM Sans,sans-serif;height:'+mapEl.offsetHeight+'px;';
-      legPanel.innerHTML = '<div style="font-size:11px;font-weight:700;color:#e8eaf0;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #2e3347">Legenda</div>'
-        + (legendEl ? legendEl.innerHTML : '')
-        + '<div style="margin-top:auto;padding-top:10px;border-top:1px solid #2e3347;font-size:8px;color:#6b7080">ENRI — ' + new Date().toLocaleDateString('it-IT') + '</div>';
-      document.body.appendChild(legPanel);
-
-      const legCanvas = await html2canvas(legPanel, {
-        scale: 2, backgroundColor: '#1a1d27', logging: false
-      });
-      document.body.removeChild(legPanel);
-
-      // Canvas finale: mappa + legenda affiancate
-      const finalCanvas = document.createElement('canvas');
-      finalCanvas.width  = mapCanvas.width + legCanvas.width;
-      finalCanvas.height = Math.max(mapCanvas.height, legCanvas.height);
-      const ctx = finalCanvas.getContext('2d');
-      ctx.fillStyle = '#0f1117';
-      ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-      ctx.drawImage(mapCanvas, 0, 0);
-      ctx.drawImage(legCanvas, mapCanvas.width, 0);
-
-      const link = document.createElement('a');
-      link.download = 'ENRI_Mappa_' + new Date().toISOString().slice(0,10) + '.png';
-      link.href = finalCanvas.toDataURL('image/png');
-      link.click();
-    } catch(e) {
-      alert('Errore durante la generazione dell\'immagine: ' + e.message);
-    }
-    btn.textContent='🖼 Immagine'; btn.disabled=false;
+  // Assicura che leaflet-image sia caricato
+  const waitLib = (name, cb, attempts) => {
+    if (attempts <= 0) { alert('Libreria ' + name + ' non caricata. Riprova.'); btn.textContent='🖼 Immagine'; btn.disabled=false; return; }
+    if (typeof window[name] !== 'undefined') { cb(); }
+    else { setTimeout(() => waitLib(name, cb, attempts - 1), 400); }
   };
 
-  // Attendi render tiles (800ms) poi verifica html2canvas disponibile
-  setTimeout(() => {
-    if (typeof html2canvas !== 'undefined') {
-      doExport();
-    } else {
-      setTimeout(() => {
-        if (typeof html2canvas !== 'undefined') { doExport(); }
-        else { alert('Libreria immagine non ancora caricata. Riprova tra qualche secondo.'); btn.textContent='🖼 Immagine'; btn.disabled=false; }
-      }, 800);
-    }
-  }, 800);
+  waitLib('leafletImage', () => {
+    // leaflet-image cattura la mappa ESATTAMENTE come appare (zoom/pan correnti)
+    leafletImage(map, async (err, mapCanvas) => {
+      if (err) { alert('Errore cattura mappa: ' + err); btn.textContent='🖼 Immagine'; btn.disabled=false; return; }
+
+      try {
+        const legendEl = document.getElementById('legendContainer');
+        const mapH = mapCanvas.height;
+
+        // Pannello legenda fuori schermo
+        const legPanel = document.createElement('div');
+        legPanel.style.cssText = 'position:fixed;top:-9999px;left:-9999px;background:#1a1d27;padding:16px 14px;min-width:170px;max-width:190px;display:flex;flex-direction:column;gap:5px;font-family:DM Sans,sans-serif;height:' + mapCanvas.height + 'px;box-sizing:border-box;';
+        legPanel.innerHTML =
+          '<div style="font-size:13px;font-weight:700;color:#e8eaf0;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #2e3347;letter-spacing:0.05em">Legenda</div>'
+          + (legendEl ? legendEl.innerHTML : '')
+          + '<div style="margin-top:auto;padding-top:10px;border-top:1px solid #2e3347;font-size:9px;color:#6b7080;font-family:DM Mono,monospace">ENRI \u2014 ' + new Date().toLocaleDateString('it-IT') + '</div>';
+        document.body.appendChild(legPanel);
+
+        // Cattura legenda con html2canvas
+        const legCanvas = await html2canvas(legPanel, {
+          scale: 1,
+          backgroundColor: '#1a1d27',
+          logging: false
+        });
+        document.body.removeChild(legPanel);
+
+        // Canvas finale: mappa (dimensione reale) + legenda affiancata
+        const finalCanvas = document.createElement('canvas');
+        finalCanvas.width  = mapCanvas.width + legCanvas.width;
+        finalCanvas.height = Math.max(mapCanvas.height, legCanvas.height);
+        const ctx = finalCanvas.getContext('2d');
+        ctx.fillStyle = '#0f1117';
+        ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+        ctx.drawImage(mapCanvas, 0, 0);
+        ctx.drawImage(legCanvas, mapCanvas.width, 0);
+
+        const link = document.createElement('a');
+        link.download = 'ENRI_Mappa_' + new Date().toISOString().slice(0, 10) + '.png';
+        link.href = finalCanvas.toDataURL('image/png');
+        link.click();
+
+      } catch(e) {
+        alert('Errore composizione immagine: ' + e.message);
+      }
+
+      btn.textContent = '🖼 Immagine'; btn.disabled = false;
+    });
+  }, 10);
 }
 
 function getColor(stato){ return STATO_COLORS[stato]||'#4a4f6a'; }
