@@ -619,6 +619,24 @@ async function jsonbinSave(record) {
   });
   if (!res.ok) throw new Error('JSONBin save failed: ' + res.status);
 }
+
+async function jsonbinGetLastUpdateISO() {
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(new DOMException('Timeout connessione a JSONBin', 'TimeoutError')), 15000);
+  try {
+    const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_BIN_ID}/latest`, {
+      headers: { 'X-Master-Key': JSONBIN_MASTER_KEY },
+      signal: controller.signal
+    });
+    clearTimeout(tid);
+    if (!res.ok) throw new Error('JSONBin metadata load failed: ' + res.status);
+    const json = await res.json();
+    return json?.record?.last_excel_upload_at || json?.metadata?.updatedAt || json?.metadata?.createdAt || null;
+  } catch (e) {
+    clearTimeout(tid);
+    throw e;
+  }
+}
 // ────────────────────────────────────────────────────────────────────────────
 
 const COMUNI_PER_LOTTO = {
@@ -1406,6 +1424,7 @@ async function loadData(saveSnapshot = false) {
           storico.push(newEntry);
           if (storico.length > STORICO_MAX_ENTRIES) storico.splice(0, storico.length - STORICO_MAX_ENTRIES);
           storageRecord.storico = storico;
+          storageRecord.last_excel_upload_at = newEntry.ts;
           jsonbinSave(storageRecord).catch(e => console.warn('Storico save error:', e));
         }
       }
@@ -1441,9 +1460,16 @@ async function loadData(saveSnapshot = false) {
 
     document.getElementById('statusBadge').textContent = '● Aggiornato';
     document.getElementById('statusBadge').className = 'badge ok';
-    // Aggiorna data ultimo caricamento
-    const _now = new Date();
-    const _dateStr = _now.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' ' + _now.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+    // Aggiorna data ultimo caricamento da JSONBin (ultimo update del DB)
+    let _luDate = null;
+    try {
+      const _lastIso = await jsonbinGetLastUpdateISO();
+      if (_lastIso) _luDate = new Date(_lastIso);
+    } catch (e) {
+      console.warn('Impossibile leggere metadata JSONBin:', e);
+    }
+    if (!_luDate || Number.isNaN(_luDate.getTime())) _luDate = new Date();
+    const _dateStr = _luDate.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' ' + _luDate.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
     const _lu = document.getElementById('lastUpdate');
     if(_lu) _lu.innerHTML = `<span>📅 ${_dateStr}</span>`;
     document.getElementById('loadingScreen').style.display = 'none';
@@ -2236,7 +2262,7 @@ async function rinominaUltimoSnapshot() {
 
     // Riscarta e salva
     storico.sort((a,b) => new Date(a.ts)-new Date(b.ts));
-    await jsonbinSave({ storico });
+    await jsonbinSave({ ...record, storico });
     window._storicoCompleto = storico;
 
     const dataFmt = new Date(nuovaData).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
@@ -2300,7 +2326,7 @@ async function aggiungiSnapshotBackdate() {
     storico.sort((a, b) => new Date(a.ts) - new Date(b.ts));
     if (storico.length > STORICO_MAX_ENTRIES) storico.splice(0, storico.length - STORICO_MAX_ENTRIES);
 
-    await jsonbinSave({ storico });
+    await jsonbinSave({ ...record, storico });
     window._storicoCompleto = storico;
 
     const dataFmt = new Date(dataScelta).toLocaleDateString('it-IT', {day:'2-digit', month:'2-digit', year:'numeric'});
@@ -2324,7 +2350,8 @@ async function svuotaStorico() {
   btn.textContent = '⏳ Pulizia...';
   if (status) status.textContent = '';
   try {
-    await jsonbinSave({ storico: [] });
+    const record = await jsonbinLoad();
+    await jsonbinSave({ ...record, storico: [] });
     window._storicoCompleto = [];
     if (status) status.textContent = '✅ Storico svuotato';
     btn.textContent = '✓ Fatto';
@@ -2675,7 +2702,7 @@ async function seedDemoData() {
 
     const limitato = [...storicoBase, ...nuoviEntry].slice(-STORICO_MAX_ENTRIES);
 
-    await jsonbinSave({ storico: limitato });
+    await jsonbinSave({ ...record, storico: limitato });
     window._storicoCompleto = limitato;
 
     status.textContent = `✅ ${nuoviEntry.length} giorni iniettati`;
