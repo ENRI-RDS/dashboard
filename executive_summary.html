@@ -325,6 +325,106 @@ function pbHtml(pct, col, edId){
   </div>`;
 }
 
+const FORECAST_START_DATE = '2026-02-12';
+const FORECAST_TOTAL_DAYS = 365; // previsione lineare semplice su 12 mesi
+
+function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+
+function getTimeForecastPct() {
+  const start = new Date(FORECAST_START_DATE + 'T00:00:00');
+  const today = new Date();
+  const elapsed = Math.floor((today - start) / (1000*60*60*24));
+  return clamp((elapsed / FORECAST_TOTAL_DAYS) * 100, 0, 100);
+}
+
+function lotActualPct(lot, task){
+  const d = CSV_DATA[lot];
+  if(!d || !d.tot) return 0;
+  if(task === 'submission') return ((d.inviato + d.integr + d.ok) / d.tot) * 100;
+  if(task === 'approval') return (d.ok / d.tot) * 100;
+  if(task === 'delivery') return 0;
+  return 0;
+}
+
+function clusterActualPct(lots, task){
+  let done = 0, tot = 0;
+  lots.forEach(lot => {
+    const d = CSV_DATA[lot];
+    if(!d || !d.tot) return;
+    const a = lotActualPct(lot, task);
+    done += (a/100) * d.tot;
+    tot += d.tot;
+  });
+  if(!tot) return 0;
+  return (done / tot) * 100;
+}
+
+function buildExecGanttSection(){
+  const forecast = getTimeForecastPct();
+  const suppliers = [
+    { lot:'1A', name:'Valtellina', cluster:'Cluster 1' },
+    { lot:'1B', name:'Soleto', cluster:'Cluster 1' },
+    { lot:'2B', name:'Telebit', cluster:'Cluster 2' },
+    { lot:'2A', name:'Sielte', cluster:'Cluster 2' },
+  ];
+
+  const rows = [
+    { key:'submission', label:'Design and Permitting submission', c1:clusterActualPct(['1A','1B'],'submission'), c2:clusterActualPct(['2A','2B'],'submission') },
+    { key:'approval',   label:'Permitting approval',              c1:clusterActualPct(['1A','1B'],'approval'),   c2:clusterActualPct(['2A','2B'],'approval') },
+    { key:'delivery',   label:'Delivery on-site implementation',  c1:clusterActualPct(['1A','1B'],'delivery'),   c2:clusterActualPct(['2A','2B'],'delivery') },
+  ];
+
+  const bar = (pct, color) => `
+    <div style="height:14px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;position:relative;overflow:hidden">
+      <div style="position:absolute;inset:0;width:${pct.toFixed(1)}%;background:${color}"></div>
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;font-family:'DM Mono',monospace">${pct.toFixed(1)}%</div>
+    </div>`;
+
+  const tableRows = rows.map(r => `
+    <tr>
+      <td style="padding:7px 10px;border-bottom:1px solid #2e334722;color:var(--text)">${r.label}</td>
+      ${suppliers.map(s => {
+        const a = lotActualPct(s.lot, r.key);
+        return `<td style="padding:7px 10px;border-bottom:1px solid #2e334722;text-align:center;font-family:'DM Mono',monospace">${a.toFixed(0)}% (${forecast.toFixed(0)}%)</td>`;
+      }).join('')}
+    </tr>`).join('');
+
+  return `
+  <div class="card" id="ganttCard">
+    <div class="ch"><span class="ct">Gantt & Supplier Table</span></div>
+    <div class="cb" style="display:grid;grid-template-columns:1.3fr 1fr;gap:14px">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">Cluster progress (attuale)</div>
+        <div style="display:grid;grid-template-columns:180px 1fr 1fr;gap:8px;align-items:center;font-size:10px;color:var(--muted);margin-bottom:5px">
+          <div>Task</div><div style="text-align:center">Cluster 1</div><div style="text-align:center">Cluster 2</div>
+        </div>
+        ${rows.map(r => `
+          <div style="display:grid;grid-template-columns:180px 1fr 1fr;gap:8px;align-items:center;margin-bottom:8px">
+            <div style="font-size:10px;color:var(--text)">${r.label}</div>
+            ${bar(r.c1, '#4f8ef7')}
+            ${bar(r.c2, '#8b5cf6')}
+          </div>
+        `).join('')}
+        <div style="margin-top:8px;font-size:10px;color:var(--muted)">Previsione lineare: dal ${FORECAST_START_DATE.split('-').reverse().join('/')} a oggi → <span style="font-family:'DM Mono',monospace;color:var(--text)">${forecast.toFixed(0)}%</span></div>
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0;overflow:auto">
+        <table class="dt" style="margin:0">
+          <thead>
+            <tr>
+              <th style="padding:7px 10px">Task</th>
+              <th style="padding:7px 10px">Valtellina</th>
+              <th style="padding:7px 10px">Soleto</th>
+              <th style="padding:7px 10px">Telebit</th>
+              <th style="padding:7px 10px">Sielte</th>
+            </tr>
+          </thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+}
+
 function render(){
   document.getElementById('repDate').textContent = R.data;
   const pd=document.getElementById('printDate');
@@ -410,6 +510,8 @@ function render(){
   });
 
   h+=`</div></div>`;
+
+  h += buildExecGanttSection();
 
   h+=`<div class="two-col">`;
 
