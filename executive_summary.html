@@ -369,16 +369,65 @@ function buildExecGanttSection(){
   ];
 
   const rows = [
-    { key:'submission', label:'Design and Permitting submission', c1:clusterActualPct(['1A','1B'],'submission'), c2:clusterActualPct(['2A','2B'],'submission') },
-    { key:'approval',   label:'Permitting approval',              c1:clusterActualPct(['1A','1B'],'approval'),   c2:clusterActualPct(['2A','2B'],'approval') },
-    { key:'delivery',   label:'Delivery on-site implementation',  c1:clusterActualPct(['1A','1B'],'delivery'),   c2:clusterActualPct(['2A','2B'],'delivery') },
+    { key:'submission', label:'Design and Permitting submission', c1:clusterActualPct(['1A','1B'],'submission'), c2:clusterActualPct(['2A','2B'],'submission'), color:'#7cc6ff', start:0, end:5 },
+    { key:'approval',   label:'Permitting approval',              c1:clusterActualPct(['1A','1B'],'approval'),   c2:clusterActualPct(['2A','2B'],'approval'),   color:'#e8f7d8', start:5, end:12 },
+    { key:'delivery',   label:'Delivery on-site implementation',  c1:clusterActualPct(['1A','1B'],'delivery'),   c2:clusterActualPct(['2A','2B'],'delivery'),   color:'#e8f7d8', start:5, end:15 },
   ];
 
-  const bar = (pct, color) => `
-    <div style="height:14px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;position:relative;overflow:hidden">
-      <div style="position:absolute;inset:0;width:${pct.toFixed(1)}%;background:${color}"></div>
-      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;font-family:'DM Mono',monospace">${pct.toFixed(1)}%</div>
+  const months = ['Feb-26','Mar-26','Apr-26','Mag-26','Giu-26','Lug-26','Ago-26','Set-26','Ott-26','Nov-26','Dic-26','Gen-27','Feb-27','Mar-27','Apr-27','Mag-27'];
+  const monthW = 54;
+  const taskW = 230;
+  const ganttW = months.length * monthW;
+  const totalW = taskW + ganttW;
+
+  const timelineHeader = `
+    <div style="display:grid;grid-template-columns:${taskW}px repeat(${months.length}, ${monthW}px);background:#355ea6;color:#eaf0ff;border:1px solid #4f6fa8">
+      <div style="padding:6px 8px;font-size:10px;font-weight:700;border-right:1px solid #5a78b0">Tasks</div>
+      ${months.map(m=>`<div style="padding:6px 0;text-align:center;font-size:10px;border-left:1px solid #5a78b0">${m}</div>`).join('')}
     </div>`;
+
+  function ganttTaskRow(label, actualPct, plannedStart, plannedEnd, color){
+    const s = Math.max(0, Math.min(months.length-1, plannedStart));
+    const e = Math.max(s+1, Math.min(months.length, plannedEnd));
+    const left = s * monthW;
+    const width = (e - s) * monthW;
+    const actualW = Math.max(0, Math.min(width, width * (actualPct/100)));
+    const forecastX = Math.max(0, Math.min(ganttW, ganttW * (forecast/100)));
+    return `
+    <div style="display:grid;grid-template-columns:${taskW}px ${ganttW}px;border-left:1px solid #5f6d86;border-right:1px solid #5f6d86;border-bottom:1px solid #5f6d86;background:#c8cfdd1c">
+      <div style="padding:6px 8px;font-size:10px;color:#dbe3f4;border-right:1px solid #5f6d86">${label}</div>
+      <div style="position:relative;height:28px;background:
+        repeating-linear-gradient(to right, transparent 0, transparent ${monthW-1}px, #5f6d8640 ${monthW-1}px, #5f6d8640 ${monthW}px)">
+        <div style="position:absolute;left:${left}px;top:7px;width:${width}px;height:14px;background:#dde4d1;border:1px solid #7d8c6f"></div>
+        <div style="position:absolute;left:${left}px;top:7px;width:${actualW}px;height:14px;background:${color};border:1px solid #4f6c92"></div>
+        <div style="position:absolute;left:${forecastX}px;top:4px;width:2px;height:20px;background:#f39c12"></div>
+        <div style="position:absolute;left:${left + width - 38}px;top:8px;font-size:9px;color:#111;font-family:'DM Mono',monospace">${actualPct.toFixed(0)}%</div>
+      </div>
+    </div>`;
+  }
+
+  function clusterBlock(name, actuals){
+    return `
+      <div style="display:grid;grid-template-columns:${taskW}px ${ganttW}px;background:#b8c2d6;border-left:1px solid #5f6d86;border-right:1px solid #5f6d86;border-bottom:1px solid #5f6d86">
+        <div style="padding:6px 8px;font-size:10px;font-weight:700;color:#10203d;border-right:1px solid #5f6d86">${name}</div>
+        <div></div>
+      </div>
+      ${ganttTaskRow('Design and Permitting submission', actuals.submission, 0, 5, '#8ec5ff')}
+      ${ganttTaskRow('Permitting approval', actuals.approval, 5, 12, '#dff1c8')}
+      ${ganttTaskRow('Delivery on-site implementation', actuals.delivery, 5, 15, '#dff1c8')}
+    `;
+  }
+
+  const c1 = {
+    submission: rows.find(r=>r.key==='submission').c1,
+    approval: rows.find(r=>r.key==='approval').c1,
+    delivery: rows.find(r=>r.key==='delivery').c1,
+  };
+  const c2 = {
+    submission: rows.find(r=>r.key==='submission').c2,
+    approval: rows.find(r=>r.key==='approval').c2,
+    delivery: rows.find(r=>r.key==='delivery').c2,
+  };
 
   const tableRows = rows.map(r => `
     <tr>
@@ -393,19 +442,14 @@ function buildExecGanttSection(){
   <div class="card" id="ganttCard">
     <div class="ch"><span class="ct">Gantt & Supplier Table</span></div>
     <div class="cb" style="display:grid;grid-template-columns:1.3fr 1fr;gap:14px">
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px">
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">Cluster progress (attuale)</div>
-        <div style="display:grid;grid-template-columns:180px 1fr 1fr;gap:8px;align-items:center;font-size:10px;color:var(--muted);margin-bottom:5px">
-          <div>Task</div><div style="text-align:center">Cluster 1</div><div style="text-align:center">Cluster 2</div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;overflow:auto">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">Gantt timeline</div>
+        <div style="min-width:${totalW}px">
+          ${timelineHeader}
+          ${clusterBlock('CLUSTER 1', c1)}
+          ${clusterBlock('CLUSTER 2', c2)}
         </div>
-        ${rows.map(r => `
-          <div style="display:grid;grid-template-columns:180px 1fr 1fr;gap:8px;align-items:center;margin-bottom:8px">
-            <div style="font-size:10px;color:var(--text)">${r.label}</div>
-            ${bar(r.c1, '#4f8ef7')}
-            ${bar(r.c2, '#8b5cf6')}
-          </div>
-        `).join('')}
-        <div style="margin-top:8px;font-size:10px;color:var(--muted)">Previsione lineare: dal ${FORECAST_START_DATE.split('-').reverse().join('/')} a oggi → <span style="font-family:'DM Mono',monospace;color:var(--text)">${forecast.toFixed(0)}%</span></div>
+        <div style="margin-top:8px;font-size:10px;color:var(--muted)">Linea arancione = previsione lineare dal ${FORECAST_START_DATE.split('-').reverse().join('/')} a oggi: <span style="font-family:'DM Mono',monospace;color:var(--text)">${forecast.toFixed(0)}%</span></div>
       </div>
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0;overflow:auto">
         <table class="dt" style="margin:0">
@@ -423,6 +467,25 @@ function buildExecGanttSection(){
       </div>
     </div>
   </div>`;
+}
+
+function ensureGanttCardInDom() {
+  const main = document.getElementById('main');
+  if (!main) return;
+  const permit = document.getElementById('permitCard');
+  if (!permit) return;
+
+  const tpl = document.createElement('template');
+  tpl.innerHTML = buildExecGanttSection().trim();
+  const fresh = tpl.content.firstElementChild;
+  if (!fresh) return;
+
+  const old = document.getElementById('ganttCard');
+  if (old) {
+    old.replaceWith(fresh);
+  } else {
+    permit.insertAdjacentElement('afterend', fresh);
+  }
 }
 
 function render(){
@@ -815,6 +878,7 @@ function updateLiveData(){
   });
   h+=`</div>`;
   permitCard.innerHTML = h;
+  ensureGanttCardInDom();
 }
 
 async function init(){
@@ -825,13 +889,8 @@ async function init(){
   if(!restored){
     render();
   } else {
-    // Compatibilità: se il layout salvato è vecchio e non contiene il nuovo blocco,
-    // rigenera la pagina con il template aggiornato.
-    if(!document.getElementById('ganttCard')){
-      render();
-    } else {
-      updateLiveData();
-    }
+    updateLiveData();
+    ensureGanttCardInDom();
   }
   document.querySelectorAll('[contenteditable]').forEach(el=>el.contentEditable='false');
 }
