@@ -140,7 +140,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
     <span id="saveBadge" style="font-size:10px;color:var(--green);opacity:0;transition:opacity .4s;padding:3px 8px;background:#3a8c5c22;border:1px solid #3a8c5c55;border-radius:4px">✓ Salvato</span>
     <button class="btn btn-edit no-print" id="btnEdit" onclick="toggleEdit()">✏ Modifica</button>
     <button class="btn btn-cancel no-print" id="btnCancel" onclick="cancelEdit()">↩ Annulla</button>
-    <button class="btn no-print" onclick="resetStorage()" style="background:#fce8e8;color:var(--red);border:1px solid #b8202055;font-size:11px;padding:5px 14px;border-radius:5px;cursor:pointer" title="Ripristina dati originali">↺ Reset</button>
+
     <button class="btn btn-print no-print" onclick="window.print()">🖨 Stampa / PDF</button>
     <a href="index.html" class="btn btn-nav no-print">← Dashboard</a>
     <a href="mappa.html" class="btn btn-nav no-print">🗺 Mappa</a>
@@ -402,24 +402,34 @@ function ganttOpenEdit(taskId){
   modal.id='ganttDateModal';
   modal.style.cssText='position:fixed;inset:0;background:#0007;z-index:600;display:flex;align-items:center;justify-content:center';
   modal.innerHTML=
-    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:360px;box-shadow:0 8px 24px #0002">'
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:400px;box-shadow:0 8px 24px #0002">'
     +'<div style="font-size:13px;font-weight:700;color:var(--accent2);margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">'
-    +'<span>✏ Modifica date task</span>'
+    +'<span>✏ Modifica task</span>'
     +'<span onclick="document.getElementById(\'ganttDateModal\').remove()" style="cursor:pointer;color:var(--muted);font-size:20px;line-height:1">×</span></div>'
-    +'<div style="font-size:11px;color:var(--muted);padding:7px 10px;background:var(--surface2);border-radius:6px;margin-bottom:14px">'+t.label+'</div>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">'
+    +'<div style="margin-bottom:10px"><div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px">Nome task</div>'
+    +'<input type="text" id="gdLabel" value="'+t.label+'" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px;box-sizing:border-box"></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'
     +'<div><div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px">Inizio</div>'
     +'<input type="date" id="gdStart" value="'+t.start+'" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px"></div>'
     +'<div><div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px">Fine</div>'
     +'<input type="date" id="gdEnd" value="'+t.end+'" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px"></div>'
     +'</div>'
-    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">'
-    +'<input type="checkbox" id="gdDone" '+(t.done?'checked':'')+' style="width:14px;height:14px;accent-color:var(--green)">'
-    +'<label for="gdDone" style="font-size:11px;color:var(--text)">Completato ✓</label></div>'
-    +'<div style="display:flex;gap:8px;justify-content:flex-end">'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">'
+    +'<div><div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px">Cluster</div>'
+    +'<select id="gdCluster" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px">'
+    +'<option value=""'+((!t.cluster)?' selected':'')+'>— (nessuno)</option>'
+    +'<option value="1"'+(t.cluster==='1'?' selected':'')+'>Cluster 1</option>'
+    +'<option value="2"'+(t.cluster==='2'?' selected':'')+'>Cluster 2</option>'
+    +'</select></div>'
+    +'<div style="display:flex;align-items:flex-end;padding-bottom:2px"><label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text)">'
+    +'<input type="checkbox" id="gdDone" '+(t.done?'checked':'')+' style="width:14px;height:14px;accent-color:var(--green)"> Completato</label></div>'
+    +'</div>'
+    +'<div style="display:flex;gap:8px;justify-content:space-between">'
+    +'<button onclick="ganttDeleteTask(\''+taskId+'\')" style="font-size:11px;padding:5px 12px;border-radius:5px;border:1px solid #cc333355;background:#fce8e8;color:#cc3333;cursor:pointer">🗑 Elimina</button>'
+    +'<div style="display:flex;gap:8px">'
     +'<button onclick="document.getElementById(\'ganttDateModal\').remove()" style="font-size:11px;padding:5px 14px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:pointer">Annulla</button>'
     +'<button onclick="ganttApplyEdit(\''+taskId+'\')" style="font-size:11px;padding:5px 14px;border-radius:5px;border:none;background:var(--accent2);color:#fff;cursor:pointer;font-weight:600">Salva</button>'
-    +'</div></div>';
+    +'</div></div></div>';
   document.body.appendChild(modal);
   modal.addEventListener('click',function(e){if(e.target===modal)modal.remove();});
 }
@@ -428,14 +438,71 @@ function ganttApplyEdit(taskId){
   var tasks=window._ganttTasks;
   var t=tasks.find(function(x){return x.id===taskId;});
   if(!t) return;
+  var lbl=document.getElementById('gdLabel').value.trim();
   var s=document.getElementById('gdStart').value;
   var e=document.getElementById('gdEnd').value;
   var d=document.getElementById('gdDone').checked;
+  var cl=document.getElementById('gdCluster').value||null;
+  if(lbl) t.label=lbl;
   if(s) t.start=s;
   if(e) t.end=e;
   t.done=!!d;
+  t.cluster=cl;
   ganttSaveTasks(tasks);
   document.getElementById('ganttDateModal').remove();
+  ensureGanttCardInDom();
+}
+
+function ganttOpenAddTask(afterId){
+  if(!editOn) return;
+  var old=document.getElementById('ganttDateModal'); if(old) old.remove();
+  var tasks=window._ganttTasks;
+  // Opzioni posizione
+  var posOptions='<option value="end">— In fondo</option>';
+  tasks.forEach(function(t,i){
+    posOptions+='<option value="after_'+t.id+'"'+(t.id===afterId?' selected':'')+'">Dopo: '+t.label+'</option>';
+  });
+  // Opzioni cluster
+  var clOptions=['<option value="">— (nessuno)</option>','<option value="1">Cluster 1</option>','<option value="2">Cluster 2</option>'].join('');
+  var modal=document.createElement('div');
+  modal.id='ganttDateModal';
+  modal.style.cssText='position:fixed;inset:0;background:#0007;z-index:600;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML=
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:400px;box-shadow:0 8px 24px #0002">'    +'<div style="font-size:13px;font-weight:700;color:var(--accent2);margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">'    +'<span>＋ Nuovo task</span>'    +'<span onclick="document.getElementById(\'ganttDateModal\').remove()" style="cursor:pointer;color:var(--muted);font-size:20px;line-height:1">×</span></div>'    +'<div style="margin-bottom:10px"><div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px">Nome task</div>'    +'<input type="text" id="gdLabel" placeholder="Es. Design approval" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px;box-sizing:border-box"></div>'    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'    +'<div><div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px">Inizio</div>'    +'<input type="date" id="gdStart" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px"></div>'    +'<div><div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px">Fine</div>'    +'<input type="date" id="gdEnd" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px"></div>'    +'</div>'    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'    +'<div><div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px">Cluster</div>'    +'<select id="gdCluster" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px">'+clOptions+'</select></div>'    +'<div style="display:flex;align-items:flex-end;padding-bottom:2px"><label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text)">'    +'<input type="checkbox" id="gdDone" style="width:14px;height:14px;accent-color:var(--green)"> Completato</label></div>'    +'</div>'    +'<div style="margin-bottom:14px"><div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px">Inserisci dopo</div>'    +'<select id="gdPos" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px">'+posOptions+'</select></div>'    +'<div style="display:flex;gap:8px;justify-content:flex-end">'    +'<button onclick="document.getElementById(\'ganttDateModal\').remove()" style="font-size:11px;padding:5px 14px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:pointer">Annulla</button>'    +'<button onclick="ganttAddApply()" style="font-size:11px;padding:5px 14px;border-radius:5px;border:none;background:var(--accent2);color:#fff;cursor:pointer;font-weight:600">Aggiungi</button>'    +'</div></div>';
+  document.body.appendChild(modal);
+  modal.addEventListener('click',function(e){if(e.target===modal)modal.remove();});
+}
+
+function ganttAddApply(){
+  var label=document.getElementById('gdLabel').value.trim();
+  var s=document.getElementById('gdStart').value;
+  var e=document.getElementById('gdEnd').value;
+  var cl=document.getElementById('gdCluster').value||null;
+  var done=document.getElementById('gdDone').checked;
+  var pos=document.getElementById('gdPos').value;
+  if(!label||!s||!e){alert('Compila nome, inizio e fine.');return;}
+  var tasks=window._ganttTasks;
+  var newId='u'+Date.now();
+  var newTask={id:newId,cluster:cl,label:label,start:s,end:e,done:done};
+  if(pos==='end'){
+    tasks.push(newTask);
+  } else {
+    var afterId=pos.replace('after_','');
+    var idx=tasks.findIndex(function(t){return t.id===afterId;});
+    if(idx>=0) tasks.splice(idx+1,0,newTask);
+    else tasks.push(newTask);
+  }
+  ganttSaveTasks(tasks);
+  document.getElementById('ganttDateModal').remove();
+  ensureGanttCardInDom();
+}
+
+function ganttDeleteTask(taskId){
+  if(!confirm('Eliminare questo task?')) return;
+  var tasks=window._ganttTasks;
+  var idx=tasks.findIndex(function(t){return t.id===taskId;});
+  if(idx>=0) tasks.splice(idx,1);
+  ganttSaveTasks(tasks);
   ensureGanttCardInDom();
 }
 
@@ -521,20 +588,31 @@ function buildExecGanttSection(){
     '2':   '<span style="display:inline-block;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700;background:#fff3d0;border:1px solid #b07d1055;color:#8a5c00">C2</span>',
   };
 
-  var labelOrder=['Contract sign off','Dispatch RFQ ai fornitori selezionati','Assegnazione cluster ai fornitori',
-    'PO fornitori — invio permessi','Design & Permitting submission','Permitting approval','Delivery & on-site impl.'];
-  var byLabel={};
-  tasks.forEach(function(t){ if(!byLabel[t.label]) byLabel[t.label]=[]; byLabel[t.label].push(t); });
+  // Ordine: task generici (null), poi tutti C1 nell'ordine, poi tutti C2 nell'ordine, poi altri cluster
   var rowOrder=[];
-  labelOrder.forEach(function(l){ if(byLabel[l]) rowOrder.push(l); });
-  Object.keys(byLabel).forEach(function(l){ if(rowOrder.indexOf(l)<0) rowOrder.push(l); });
+  // Prima i task generici
+  tasks.filter(function(t){ return !t.cluster; }).forEach(function(t){
+    if(rowOrder.indexOf(t.id)<0) rowOrder.push(t.id);
+  });
+  // Poi C1
+  tasks.filter(function(t){ return t.cluster==='1'; }).forEach(function(t){
+    if(rowOrder.indexOf(t.id)<0) rowOrder.push(t.id);
+  });
+  // Poi C2
+  tasks.filter(function(t){ return t.cluster==='2'; }).forEach(function(t){
+    if(rowOrder.indexOf(t.id)<0) rowOrder.push(t.id);
+  });
+  // Poi altri
+  tasks.forEach(function(t){
+    if(rowOrder.indexOf(t.id)<0) rowOrder.push(t.id);
+  });
 
   var CL_W=38, LABEL_W=175, PCT_W=40;
   var gridCols=CL_W+'px '+LABEL_W+'px repeat('+N+', 1fr) '+PCT_W+'px';
 
   var editHint = editOn
-    ? '<span style="font-size:9px;color:var(--accent2);background:#e8f0fd;border:1px solid #2563b033;border-radius:3px;padding:2px 8px;margin-left:8px">✏ Clicca su una barra per modificare le date</span>'
-    : '<button onclick="ganttResetTasks()" title="Ripristina date default" style="font-size:9px;padding:2px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:pointer;margin-left:8px">↺ Reset date</button>';
+    ? '<span style="font-size:9px;color:var(--accent2);background:#e8f0fd;border:1px solid #2563b033;border-radius:3px;padding:2px 8px;margin-left:8px">✏ Clicca barra per modificare · ＋ per aggiungere task</span>'
+    : '';
 
   var ganttHtml = '';
   ganttHtml += '<div style="overflow-x:auto"><div style="min-width:660px">';
@@ -549,59 +627,72 @@ function buildExecGanttSection(){
   ganttHtml += '</div>';
 
   ganttHtml += '<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 6px 6px;overflow:hidden">';
-  rowOrder.forEach(function(label){
-    var group=byLabel[label];
-    group.forEach(function(t, gi){
-      var color      = taskColors[t.id]||'#4a5a7a';
-      var lightColor = taskLightColors[t.id]||'#e8ecf8';
-      var prog       = t.done ? 100 : taskProgress(t.id);
-      var pctLabel   = t.done ? '✓' : (prog>0 ? prog.toFixed(0)+'%' : '0%');
-      var sDate      = parseD(t.start);
-      var eDate      = parseD(t.end);
-      var lPct       = pctPos(sDate).toFixed(3);
-      var wPct       = pctSpan(sDate, eDate).toFixed(3);
-      var fillW      = Math.min(prog,100);
-      var rowBg      = (gi%2===0) ? '#ffffff' : '#f8faff';
-      var isFirst    = (gi===0);
-      var clKey      = String(t.cluster);
-      var editAttr   = editOn ? 'onclick="ganttOpenEdit(\''+t.id+'\')" style="cursor:pointer" title="Clicca per modificare date"' : '';
-      var editBorder = editOn ? 'outline:1px dashed #2563b055;' : '';
-      var pctColor   = prog>=80?'var(--green)':prog>=40?'#b07d10':'var(--accent2)';
+  rowOrder.forEach(function(taskId, gi){
+    var t = tasks.find(function(x){ return x.id===taskId; });
+    if(!t) return;
+    var color      = taskColors[t.id]||'#4a5a7a';
+    var lightColor = taskLightColors[t.id]||'#e8ecf8';
+    var prog       = t.done ? 100 : taskProgress(t.id);
+    var pctLabel   = t.done ? '✓' : (prog>0 ? prog.toFixed(0)+'%' : '0%');
+    var sDate      = parseD(t.start);
+    var eDate      = parseD(t.end);
+    var lPct       = pctPos(sDate).toFixed(3);
+    var wPct       = pctSpan(sDate, eDate).toFixed(3);
+    var fillW      = Math.min(prog,100);
+    var rowBg      = (gi%2===0) ? '#ffffff' : '#f8faff';
+    var clKey      = String(t.cluster);
+    var editAttr   = editOn ? 'onclick="ganttOpenEdit(\''+t.id+'\')" style="cursor:pointer" title="Clicca per modificare date"' : '';
+    var editBorder = editOn ? 'outline:1px dashed #2563b055;' : '';
+    var pctColor   = prog>=80?'var(--green)':prog>=40?'#b07d10':'var(--accent2)';
 
-      ganttHtml += '<div style="display:grid;grid-template-columns:'+gridCols+';min-height:28px;border-top:1px solid #e0e6f0;background:'+rowBg+'">';
-      // Cluster badge
-      ganttHtml += '<div style="display:flex;align-items:center;justify-content:center;padding:3px 2px;border-right:1px solid #e0e6f0">'+(clBadge[clKey]||clBadge['null'])+'</div>';
-      // Label (solo prima riga del gruppo)
-      if(isFirst){
-        ganttHtml += '<div style="display:flex;align-items:center;gap:5px;padding:4px 8px;border-right:1px solid #e0e6f0;font-size:10px;color:var(--text)">';
-        ganttHtml += '<span style="display:inline-block;width:7px;height:7px;border-radius:'+(t.done?'50%':'2px')+';background:'+color+';flex-shrink:0"></span>';
-        ganttHtml += label+'</div>';
-      } else {
-        ganttHtml += '<div style="padding:4px 8px;border-right:1px solid #e0e6f0"></div>';
-      }
-      // Timeline
-      ganttHtml += '<div style="grid-column:span '+N+';position:relative;height:28px;background:repeating-linear-gradient(to right,transparent 0,transparent calc('+COL_W_PCT+'% - 1px),#dde4f0 calc('+COL_W_PCT+'% - 1px),#dde4f0 calc('+COL_W_PCT+'%))" '+editAttr+'>';
-      if(todayPct>0&&todayPct<100){
-        ganttHtml += '<div style="position:absolute;top:0;bottom:0;left:'+todayPct.toFixed(2)+'%;width:1.5px;background:#d44;opacity:.85;z-index:2;pointer-events:none"></div>';
-      }
-      ganttHtml += '<div style="position:absolute;top:5px;left:'+lPct+'%;width:'+wPct+'%;height:18px;background:'+lightColor+';border-radius:3px;border:1px solid '+color+'55;'+editBorder+'" '+editAttr+'>';
-      ganttHtml += '<div style="width:'+fillW+'%;height:100%;background:'+color+';border-radius:2px 0 0 2px;opacity:.9"></div>';
-      if(prog>=5||t.done){
-        ganttHtml += '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;text-shadow:0 1px 2px #0006;pointer-events:none">'+pctLabel+'</div>';
-      }
-      ganttHtml += '</div></div>';
-      // % col
-      ganttHtml += '<div style="display:flex;align-items:center;justify-content:center;border-left:1px solid #e0e6f0">';
-      if(t.done){
-        ganttHtml += '<span style="font-size:10px;font-weight:700;color:var(--green)">✓</span>';
-      } else {
-        ganttHtml += '<span style="font-size:9px;font-weight:700;font-family:\'DM Mono\',monospace;color:'+pctColor+'">'+prog.toFixed(0)+'%</span>';
-      }
+    // Separatore visivo tra sezioni
+    var prevId = gi>0 ? rowOrder[gi-1] : null;
+    var prevT  = prevId ? tasks.find(function(x){ return x.id===prevId; }) : null;
+    var sectionBorder = '';
+    if(prevT && prevT.cluster !== t.cluster){
+      sectionBorder = 'border-top:2px solid #3a5580!important;';
+    }
+
+    ganttHtml += '<div style="display:grid;grid-template-columns:'+gridCols+';min-height:28px;border-top:1px solid #e0e6f0;background:'+rowBg+';'+sectionBorder+'">';
+    // Cluster badge
+    ganttHtml += '<div style="display:flex;align-items:center;justify-content:center;padding:3px 2px;border-right:1px solid #e0e6f0">'+(clBadge[clKey]||clBadge['null'])+'</div>';
+    // Label
+    ganttHtml += '<div style="display:flex;align-items:center;gap:5px;padding:4px 8px;border-right:1px solid #e0e6f0;font-size:10px;color:var(--text)">';
+    ganttHtml += '<span style="display:inline-block;width:7px;height:7px;border-radius:'+(t.done?'50%':'2px')+';background:'+color+';flex-shrink:0"></span>';
+    ganttHtml += t.label+'</div>';
+    // Timeline
+    ganttHtml += '<div style="grid-column:span '+N+';position:relative;height:28px;background:repeating-linear-gradient(to right,transparent 0,transparent calc('+COL_W_PCT+'% - 1px),#dde4f0 calc('+COL_W_PCT+'% - 1px),#dde4f0 calc('+COL_W_PCT+'%))" '+editAttr+'>';
+    if(todayPct>0&&todayPct<100){
+      ganttHtml += '<div style="position:absolute;top:0;bottom:0;left:'+todayPct.toFixed(2)+'%;width:1.5px;background:#d44;opacity:.85;z-index:2;pointer-events:none"></div>';
+    }
+    ganttHtml += '<div style="position:absolute;top:5px;left:'+lPct+'%;width:'+wPct+'%;height:18px;background:'+lightColor+';border-radius:3px;border:1px solid '+color+'55;'+editBorder+'" '+editAttr+'>';
+    ganttHtml += '<div style="width:'+fillW+'%;height:100%;background:'+color+';border-radius:2px 0 0 2px;opacity:.9"></div>';
+    if(prog>=5||t.done){
+      ganttHtml += '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;text-shadow:0 1px 2px #0006;pointer-events:none">'+pctLabel+'</div>';
+    }
+    ganttHtml += '</div></div>';
+    // % col
+    ganttHtml += '<div style="display:flex;align-items:center;justify-content:center;border-left:1px solid #e0e6f0">';
+    if(t.done){
+      ganttHtml += '<span style="font-size:10px;font-weight:700;color:var(--green)">✓</span>';
+    } else {
+      ganttHtml += '<span style="font-size:9px;font-weight:700;font-family:\'DM Mono\',monospace;color:'+pctColor+'">'+prog.toFixed(0)+'%</span>';
+    }
+    ganttHtml += '</div>';
+    // Pulsante aggiungi task (solo in edit mode, dopo ogni riga)
+    if(editOn){
+      ganttHtml += '<div style="display:grid;grid-template-columns:'+gridCols+';min-height:16px" onclick="ganttOpenAddTask(\''+t.id+'\')" title="Aggiungi task dopo questa riga" style="cursor:pointer">';
+      ganttHtml += '<div style="grid-column:1/-1;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .2s;font-size:9px;color:var(--accent2)" onmouseover="this.style.opacity=1;this.parentElement.style.background=\'#f0f4ff\'" onmouseout="this.style.opacity=0;this.parentElement.style.background=\'\'">＋ aggiungi task</div>';
       ganttHtml += '</div>';
-      ganttHtml += '</div>';
-    });
+    }
+    ganttHtml += '</div>';
   });
-  ganttHtml += '</div></div></div>';
+  ganttHtml += '</div>';
+  // Pulsante aggiungi in fondo
+  if(editOn){
+    ganttHtml += '<div onclick="ganttOpenAddTask(\'end\')" title="Aggiungi task in fondo" style="cursor:pointer;padding:6px;text-align:center;border:1px dashed #2563b055;border-top:none;border-radius:0 0 6px 6px;font-size:10px;color:var(--accent2);background:#f8faff" onmouseover="this.style.background=\'#e8f0fd\'" onmouseout="this.style.background=\'#f8faff\'">＋ Aggiungi nuovo task</div>';
+  }
+  ganttHtml += '</div></div>';
 
   var legendHtml = '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:10px;color:var(--muted);align-items:center">';
   [{col:'#1a7a46',label:'Completato'},{col:'#2563b0',label:'D&amp;P Submission'},{col:'#1e3a6e',label:'Permitting approval'},{col:'#7a3a1a',label:'Delivery'},{col:'#b07d10',label:'In corso'}].forEach(function(r){
