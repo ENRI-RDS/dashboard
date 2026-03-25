@@ -390,6 +390,64 @@ function ganttResetTasks(){
   ensureGanttCardInDom();
 }
 
+// Aggiorna % manuale da input inline
+function ganttSetPct(taskId, val){
+  var v = parseFloat(val);
+  if(isNaN(v)) return;
+  v = Math.max(0, Math.min(100, v));
+  var tasks = window._ganttTasks;
+  var t = tasks.find(function(x){ return x.id===taskId; });
+  if(!t) return;
+  t.manualPct = v;
+  t.done = (v >= 100);
+  ganttSaveTasks(tasks);
+  ensureGanttCardInDom();
+}
+
+// % previsione D&P Submission: progressione lineare start→end task
+function ganttForecastSubmission(taskId){
+  var tasks = window._ganttTasks;
+  var t = tasks.find(function(x){ return x.id===taskId; });
+  if(!t) return null;
+  var start = new Date(t.start+'T00:00:00');
+  var end   = new Date(t.end+'T00:00:00');
+  var today = new Date();
+  if(today <= start) return 0;
+  if(today >= end)   return 100;
+  return ((today - start) / (end - start)) * 100;
+}
+
+// % previsione Permitting approval:
+// Usa il milestone "Permits approval received – Cluster 1 and 2"
+// La previsione è: progressione lineare tra start del task e la forecast date del milestone
+function ganttForecastApproval(taskId){
+  var tasks = window._ganttTasks;
+  var t = tasks.find(function(x){ return x.id===taskId; });
+  if(!t) return null;
+  // Cerca il milestone forecast per C1&C2
+  var milestoneF = null;
+  if(typeof R !== 'undefined' && R.keyMilestones){
+    var ms = R.keyMilestones.find(function(m){
+      return m.d && m.d.toLowerCase().indexOf('approval') >= 0 && m.d.toLowerCase().indexOf('cluster 1') >= 0;
+    });
+    if(ms && ms.f && ms.f !== '-'){
+      // ms.f formato dd/mm/yy o dd/mm/yyyy
+      var parts = ms.f.split('/');
+      if(parts.length === 3){
+        var yy = parseInt(parts[2]);
+        if(yy < 100) yy += 2000;
+        milestoneF = new Date(yy, parseInt(parts[1])-1, parseInt(parts[0]));
+      }
+    }
+  }
+  var start = new Date(t.start+'T00:00:00');
+  var end   = milestoneF || new Date(t.end+'T00:00:00');
+  var today = new Date();
+  if(today <= start) return 0;
+  if(today >= end)   return 100;
+  return ((today - start) / (end - start)) * 100;
+}
+
 window._ganttTasks = ganttLoadTasks();
 
 function ganttOpenEdit(taskId){
@@ -424,6 +482,12 @@ function ganttOpenEdit(taskId){
     +'<div style="display:flex;align-items:flex-end;padding-bottom:2px"><label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text)">'
     +'<input type="checkbox" id="gdDone" '+(t.done?'checked':'')+' style="width:14px;height:14px;accent-color:var(--green)"> Completato</label></div>'
     +'</div>'
+    +'<div style="margin-bottom:14px"><div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px">% completamento manuale <span style="font-weight:400;text-transform:none;font-size:8px">(vuoto = auto da dati CSV)</span></div>'
+    +'<div style="display:flex;align-items:center;gap:8px">'
+    +'<input type="number" min="0" max="100" id="gdPct" value="'+(typeof t.manualPct==='number'?t.manualPct:'')+'" placeholder="Auto" style="width:80px;padding:5px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px">'
+    +'<span style="font-size:11px;color:var(--muted)">%</span>'
+    +'<button onclick="document.getElementById(\'gdPct\').value=\'\'" style="font-size:10px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:pointer">↺ Auto</button>'
+    +'</div></div>'
     +'<div style="display:flex;gap:8px;justify-content:space-between">'
     +'<button onclick="ganttDeleteTask(\''+taskId+'\')" style="font-size:11px;padding:5px 12px;border-radius:5px;border:1px solid #cc333355;background:#fce8e8;color:#cc3333;cursor:pointer">🗑 Elimina</button>'
     +'<div style="display:flex;gap:8px">'
@@ -443,11 +507,17 @@ function ganttApplyEdit(taskId){
   var e=document.getElementById('gdEnd').value;
   var d=document.getElementById('gdDone').checked;
   var cl=document.getElementById('gdCluster').value||null;
+  var pctEl=document.getElementById('gdPct');
   if(lbl) t.label=lbl;
   if(s) t.start=s;
   if(e) t.end=e;
   t.done=!!d;
   t.cluster=cl;
+  if(pctEl){
+    var pv=pctEl.value.trim();
+    if(pv===''){ delete t.manualPct; } // torna ad auto
+    else { t.manualPct=Math.max(0,Math.min(100,parseFloat(pv)||0)); }
+  }
   ganttSaveTasks(tasks);
   document.getElementById('ganttDateModal').remove();
   ensureGanttCardInDom();
@@ -575,11 +645,66 @@ function buildExecGanttSection(){
   };
 
   function taskProgress(id){
+    var task = tasks.find(function(x){ return x.id===id; });
+    // % manuale ha priorità assoluta
+    if(task && typeof task.manualPct === 'number') return task.manualPct;
     if(id==='c1b'){ return clPct(['1A','1B'],'submission'); }
     if(id==='c2b'){ return clPct(['2A','2B'],'submission'); }
     if(id==='c1c'){ return clPct(['1A','1B'],'approval'); }
     if(id==='c2c'){ return clPct(['2A','2B'],'approval'); }
     return 0;
+  }
+
+  // % previsione inline (calcolata al momento del render)
+  function taskForecast(id){
+    var task = tasks.find(function(x){ return x.id===id; });
+    if(!task) return null;
+    // Previsione solo per submission e approval
+    var isSubmission = (id==='c1b'||id==='c2b');
+    var isApproval   = (id==='c1c'||id==='c2c');
+    if(!isSubmission && !isApproval) return null;
+    if(task.done) return null;
+
+    if(isSubmission){
+      // Progressione lineare start→end task
+      var start = new Date(task.start+'T00:00:00');
+      var end   = new Date(task.end+'T00:00:00');
+      var now   = new Date();
+      if(now<=start) return 0;
+      if(now>=end)   return 100;
+      return ((now-start)/(end-start))*100;
+    }
+    if(isApproval){
+      // Milestone forecast dal R.keyMilestones
+      var milestoneF = null;
+      if(typeof R !== 'undefined' && R.keyMilestones){
+        var ms = R.keyMilestones.find(function(m){
+          return m.d && m.d.toLowerCase().indexOf('approval') >= 0 &&
+                 m.d.toLowerCase().indexOf('cluster 1') >= 0 &&
+                 m.d.toLowerCase().indexOf('cluster 2') >= 0;
+        });
+        if(!ms) {
+          // fallback: cerca solo "cluster 1 and 2"
+          ms = R.keyMilestones.find(function(m){
+            return m.d && m.d.toLowerCase().indexOf('permits approval') >= 0;
+          });
+        }
+        if(ms && ms.f && ms.f !== '-'){
+          var parts = ms.f.split('/');
+          if(parts.length === 3){
+            var yy = parseInt(parts[2]); if(yy < 100) yy += 2000;
+            milestoneF = new Date(yy, parseInt(parts[1])-1, parseInt(parts[0]));
+          }
+        }
+      }
+      var start2 = new Date(task.start+'T00:00:00');
+      var end2   = milestoneF || new Date(task.end+'T00:00:00');
+      var now2   = new Date();
+      if(now2<=start2) return 0;
+      if(now2>=end2)   return 100;
+      return ((now2-start2)/(end2-start2))*100;
+    }
+    return null;
   }
 
   var clBadge = {
@@ -633,15 +758,17 @@ function buildExecGanttSection(){
     var color      = taskColors[t.id]||'#4a5a7a';
     var lightColor = taskLightColors[t.id]||'#e8ecf8';
     var prog       = t.done ? 100 : taskProgress(t.id);
+    var fcast      = taskForecast(t.id);  // % previsione (null se non applicabile)
     var pctLabel   = t.done ? '✓' : (prog>0 ? prog.toFixed(0)+'%' : '0%');
     var sDate      = parseD(t.start);
     var eDate      = parseD(t.end);
     var lPct       = pctPos(sDate).toFixed(3);
     var wPct       = pctSpan(sDate, eDate).toFixed(3);
     var fillW      = Math.min(prog,100);
+    var fcastW     = fcast !== null ? Math.min(fcast,100).toFixed(1) : null;
     var rowBg      = (gi%2===0) ? '#ffffff' : '#f8faff';
     var clKey      = String(t.cluster);
-    var editAttr   = editOn ? 'onclick="ganttOpenEdit(\''+t.id+'\')" style="cursor:pointer" title="Clicca per modificare date"' : '';
+    var editAttr   = editOn ? 'onclick="ganttOpenEdit(\''+t.id+'\')" style="cursor:pointer" title="Clicca per modificare"' : '';
     var editBorder = editOn ? 'outline:1px dashed #2563b055;' : '';
     var pctColor   = prog>=80?'var(--green)':prog>=40?'#b07d10':'var(--accent2)';
 
@@ -667,16 +794,37 @@ function buildExecGanttSection(){
     }
     ganttHtml += '<div style="position:absolute;top:5px;left:'+lPct+'%;width:'+wPct+'%;height:18px;background:'+lightColor+';border-radius:3px;border:1px solid '+color+'55;'+editBorder+'" '+editAttr+'>';
     ganttHtml += '<div style="width:'+fillW+'%;height:100%;background:'+color+';border-radius:2px 0 0 2px;opacity:.9"></div>';
+    // Linea previsione (triangolino bianco)
+    if(fcastW !== null && !t.done){
+      ganttHtml += '<div style="position:absolute;top:0;bottom:0;left:'+fcastW+'%;width:2px;background:#fff;opacity:.85;z-index:3;pointer-events:none" title="Previsione: '+parseFloat(fcastW).toFixed(0)+'%"></div>';
+    }
     if(prog>=5||t.done){
       ganttHtml += '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;text-shadow:0 1px 2px #0006;pointer-events:none">'+pctLabel+'</div>';
     }
     ganttHtml += '</div></div>';
-    // % col
-    ganttHtml += '<div style="display:flex;align-items:center;justify-content:center;border-left:1px solid #e0e6f0">';
+    // % col — editabile in modalità modifica, con previsione sotto
+    ganttHtml += '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;border-left:1px solid #e0e6f0;padding:2px 0;gap:1px">';
     if(t.done){
       ganttHtml += '<span style="font-size:10px;font-weight:700;color:var(--green)">✓</span>';
+    } else if(editOn){
+      // Input editabile per % manuale
+      var manVal = typeof t.manualPct==='number' ? t.manualPct : prog;
+      ganttHtml += '<input type="number" min="0" max="100" value="'+manVal.toFixed(0)+'"'
+        +' onchange="ganttSetPct(\''+t.id+'\',this.value)"'
+        +' onclick="event.stopPropagation()"'
+        +' style="width:36px;padding:1px 3px;border-radius:3px;border:1px solid #2563b055;background:#e8f0fd;color:var(--accent2);font-size:9px;font-weight:700;font-family:\'DM Mono\',monospace;text-align:center">';
+      if(fcast !== null){
+        var fcParsed = parseFloat(fcastW);
+        var fcColor = fcParsed>=80?'var(--green)':fcParsed>=40?'#b07d10':'#cc3333';
+        ganttHtml += '<span style="font-size:8px;color:'+fcColor+';font-family:\'DM Mono\',monospace" title="% previsione">▶'+fcParsed.toFixed(0)+'%</span>';
+      }
     } else {
       ganttHtml += '<span style="font-size:9px;font-weight:700;font-family:\'DM Mono\',monospace;color:'+pctColor+'">'+prog.toFixed(0)+'%</span>';
+      if(fcast !== null){
+        var fcParsed2 = parseFloat(fcastW);
+        var fcColor2 = fcParsed2>=80?'var(--green)':fcParsed2>=40?'#b07d10':'#cc3333';
+        ganttHtml += '<span style="font-size:7px;color:'+fcColor2+';font-family:\'DM Mono\',monospace" title="% attesa a oggi">▶'+fcParsed2.toFixed(0)+'%</span>';
+      }
     }
     ganttHtml += '</div>';
     // Pulsante aggiungi task (solo in edit mode, dopo ogni riga)
@@ -699,7 +847,8 @@ function buildExecGanttSection(){
     legendHtml += '<span style="display:flex;align-items:center;gap:4px"><span style="width:12px;height:8px;background:'+r.col+';border-radius:2px;display:inline-block"></span>'+r.label+'</span>';
   });
   legendHtml += '<span style="display:flex;align-items:center;gap:4px"><span style="width:2px;height:12px;background:#d44;display:inline-block"></span> Oggi ('+todayStr+')</span>';
-  legendHtml += '<span style="margin-left:auto;font-size:9px">Barra chiara = pianificato · Barra piena = effettivo</span>';
+  legendHtml += '<span style="display:flex;align-items:center;gap:4px"><span style="width:2px;height:12px;background:#fff;border:1px solid #aaa;display:inline-block"></span> Linea bianca = % attesa a oggi (previsione)</span>';
+  legendHtml += '<span style="margin-left:auto;font-size:9px">Barra chiara = pianificato · Barra piena = effettivo · <strong style="color:#555">▶XX%</strong> = % attesa</span>';
   legendHtml += '</div>';
 
   // Supplier table
