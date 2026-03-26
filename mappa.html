@@ -550,6 +550,9 @@ function updateLegend(mode) {
 }
 
 map = L.map('map',{center:[45.48,9.30],zoom:10,zoomControl:true,attributionControl:true,preferCanvas:true});
+// Renderer separati: outlineRenderer NON interattivo, mainRenderer interattivo
+const outlineRenderer = L.canvas({ tolerance: 0 });
+const mainRenderer   = L.canvas({ tolerance: 5 });
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
   attribution:'© OpenStreetMap',
   crossOrigin: true
@@ -1003,12 +1006,12 @@ async function loadQTS() {
     });
 
     qtsOutlineLayer = L.geoJSON(geojson, {
-      renderer: L.canvas(),
+      renderer: outlineRenderer,
       style: () => ({ color:'#0a2030', weight:8, opacity:0.5, smoothFactor:1.5, interactive:false })
     });
 
     qtsLayer = L.geoJSON(geojson, {
-      renderer: L.canvas(),
+      renderer: mainRenderer,
       style: () => ({ color: QTS_COLOR_HEX, weight:4, opacity:0.95, smoothFactor:1.5, dashArray:'8,6' }),
       onEachFeature: (f, layer) => {
         const p = f.properties || {};
@@ -1105,13 +1108,13 @@ function toggleQTS(on) {
       const geoData={type:'FeatureCollection',features:feats};
       // Layer outline (nero sotto) — sempre visibile in tutte le modalità
       const outlineLayer=L.geoJSON(geoData,{
-        renderer: L.canvas(),
+        renderer: outlineRenderer,
         style:()=>({color:'#111',weight:7,opacity:0.45,smoothFactor:1.5,interactive:false})
       }).addTo(map);
       outlineLayer.bringToBack();
       // Layer principale
       const layer=L.geoJSON(geoData,{
-        renderer: L.canvas(),
+        renderer: mainRenderer,
         style:f=>({
           color: getColorForMode(f, currentViewMode),
           weight:4, opacity:0.95, smoothFactor:1.5
