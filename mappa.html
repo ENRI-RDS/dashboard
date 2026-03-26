@@ -155,6 +155,22 @@
     .stat-pill{font-size:8px!important;padding:3px 7px!important;}
     .leaflet-control-zoom{display:none!important;}
   }
+  @keyframes tratta-pulse {
+    0%,100% { opacity: 1; }
+    50%      { opacity: 0.55; }
+  }
+  .btn-back{
+    display:inline-flex;align-items:center;gap:6px;
+    font-size:12px;font-weight:600;padding:6px 14px;
+    border-radius:7px;border:none;cursor:pointer;
+    background:var(--accent);color:#fff;
+    font-family:'DM Sans',sans-serif;
+    text-decoration:none;
+    transition:opacity 0.15s,transform 0.1s;
+    box-shadow:0 1px 4px #2563eb33;
+    flex-shrink:0;
+  }
+  .btn-back:hover{opacity:0.88;transform:translateX(-1px);}
   @media(max-width:768px){
     .page-title,.divider-v{display:none;}
     .sidebar{width:100%!important;height:200px;border-left:none;border-top:1px solid var(--border);}
@@ -226,7 +242,10 @@
     <span class="badge" id="statusBadge">⏳ Caricamento</span>
     <button class="btn" style="background:#2f5496" onclick="exportPDF()">⬇ PDF</button>
     <button class="btn" style="background:#1a5c3a" onclick="exportImage()">🖼 Immagine</button>
-    <a href="index.html" class="btn secondary">← Dashboard</a>
+    <a href="index.html" class="btn-back">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9 2L4 7l5 5" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Dashboard
+    </a>
   </div>
 </div>
 
@@ -703,6 +722,46 @@ function makePopupHtml(p) {
   const enti = [p.ENTE, p['ENTE 2']].filter(Boolean).join(', ') || '—';
   const hasDetail = motivoHtml || noHtml || ordHtml;
 
+  // % avanzamento lotto (da lottoStats globale)
+  const ls = (typeof lottoStats !== 'undefined') ? lottoStats[p.LOTTO] : null;
+  const lottoPct      = ls ? ls.pct.toFixed(1) : null;
+  const lottoSubmPct  = ls && ls.totale > 0
+    ? ((['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO']
+        .reduce((s,st)=>s+(ls.stati[st]||0),0) / ls.totale)*100).toFixed(1)
+    : null;
+  const lottoKm       = ls ? (ls.totale/1000).toFixed(2).replace('.',',') : null;
+  const trattaKm      = p.LUNGHEZZA ? (p.LUNGHEZZA/1000).toFixed(3).replace('.',',') : null;
+  const trattaContrib = ls && ls.totale > 0 && p.LUNGHEZZA
+    ? ((p.LUNGHEZZA/ls.totale)*100).toFixed(1)
+    : null;
+
+  const lottoProgressHtml = ls ? `
+    <div class="popup-section">
+      <div class="popup-section-title">Avanzamento lotto ${p.LOTTO||''}</div>
+      <div style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+          <span style="font-size:10px;color:var(--muted)">Permessi ottenuti</span>
+          <span style="font-size:11px;font-weight:700;font-family:'DM Mono',monospace;color:#2e7d52">${lottoPct}%</span>
+        </div>
+        <div style="height:5px;background:#e8f5ee;border-radius:3px;overflow:hidden">
+          <div style="height:100%;width:${lottoPct}%;background:#3a8c5c;border-radius:3px"></div>
+        </div>
+      </div>
+      <div style="margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+          <span style="font-size:10px;color:var(--muted)">Pratiche inviate+</span>
+          <span style="font-size:11px;font-weight:700;font-family:'DM Mono',monospace;color:${parseFloat(lottoSubmPct)>0?'#2563eb':'var(--muted)'};">${lottoSubmPct}%</span>
+        </div>
+        <div style="height:5px;background:#e8f0fe;border-radius:3px;overflow:hidden">
+          <div style="height:100%;width:${lottoSubmPct}%;background:#2563eb;border-radius:3px"></div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:4px">
+        <span>Questa tratta: <strong style="color:var(--text)">${trattaKm} km</strong>${trattaContrib?` (${trattaContrib}% del lotto)`:''}</span>
+        <span>Tot. lotto: <strong style="color:var(--text)">${lottoKm} km</strong></span>
+      </div>
+    </div>` : '';
+
   return `<div class="popup-inner">
     <div class="popup-head">
       <div class="popup-head-top">
@@ -752,6 +811,7 @@ function makePopupHtml(p) {
         <div class="popup-section-title">Pratiche</div>
         <div>${praticheHtml}</div>
       </div>` : ''}
+      ${lottoProgressHtml}
     </div>
   </div>`;
 }
@@ -984,6 +1044,14 @@ function clearHighlight() {
   }
 }
 
+function applyHighlight(targetLayer) {
+  clearHighlight();
+  targetLayer.setStyle({ weight: 9, opacity: 1, color: '#f59e0b' });
+  targetLayer.bringToFront();
+  _highlightedLayer = targetLayer;
+  targetLayer.once('popupclose', clearHighlight);
+}
+
 function zoomToFeature(feature) {
   let targetLayer = null;
   allLayers.forEach(({layer}) => {
@@ -994,15 +1062,8 @@ function zoomToFeature(feature) {
     const latlng = bounds ? bounds.getCenter() : targetLayer.getLatLng?.();
     if (latlng) {
       map.setView(latlng, 15);
-      // Rimuovi highlight precedente
-      clearHighlight();
-      // Evidenzia in giallo brillante, persistente
-      targetLayer.setStyle({ weight: 7, opacity: 1, color: '#ffe600' });
-      targetLayer.bringToFront();
-      _highlightedLayer = targetLayer;
+      applyHighlight(targetLayer);
       targetLayer.openPopup();
-      // Rimuovi highlight alla chiusura del popup
-      targetLayer.once('popupclose', clearHighlight);
     }
   }
   resultsEl.style.display = 'none';
@@ -1171,7 +1232,11 @@ function toggleQTS(on) {
         onEachFeature:(f,layer)=>{
           layer.bindPopup(makePopupHtml(f.properties),{maxWidth:340});
           layer.on('mouseover',e=>{e.target.setStyle({weight:6,opacity:1});e.target.bringToFront();});
-          layer.on('mouseout',e=>{e.target.setStyle({weight:4,opacity:0.95,color:getColorForMode(e.target.feature,currentViewMode)});});
+          layer.on('mouseout',e=>{
+            if(_highlightedLayer===e.target) return;
+            e.target.setStyle({weight:4,opacity:0.95,color:getColorForMode(e.target.feature,currentViewMode)});
+          });
+          layer.on('click',e=>{ applyHighlight(e.target); });
         }
       }).addTo(map);
       allLayers.push({layer,outlineLayer,lotto});
