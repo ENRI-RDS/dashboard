@@ -758,7 +758,7 @@ function buildExecGanttSection(){
     if(rowOrder.indexOf(t.id)<0) rowOrder.push(t.id);
   });
 
-  var CL_W=38, LABEL_W=175, PCT_W=40;
+  var CL_W=38, LABEL_W=175, PCT_W=56;
   var gridCols=CL_W+'px '+LABEL_W+'px repeat('+N+', 1fr) '+PCT_W+'px';
 
   var editHint = editOn
@@ -774,7 +774,7 @@ function buildExecGanttSection(){
   MONTH_LABELS.forEach(function(m){
     ganttHtml += '<div style="padding:5px 2px;font-size:8px;color:#b8c8e8;text-align:center;border-left:1px solid #3a5580">'+m+'</div>';
   });
-  ganttHtml += '<div style="padding:5px 2px;font-size:9px;font-weight:600;color:#b8c8e8;text-align:center;border-left:1px solid #3a5580">%</div>';
+  ganttHtml += '<div style="padding:5px 2px;font-size:9px;font-weight:600;color:#b8c8e8;text-align:center;border-left:1px solid #3a5580">Previsto</div>';
   ganttHtml += '</div>';
 
   ganttHtml += '<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 6px 6px;overflow:hidden">';
@@ -828,29 +828,48 @@ function buildExecGanttSection(){
       ganttHtml += '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;text-shadow:0 1px 2px #0006;pointer-events:none">'+pctLabel+'</div>';
     }
     ganttHtml += '</div></div>';
-    // % col — editabile in modalità modifica, con previsione sotto
-    ganttHtml += '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;border-left:1px solid #e0e6f0;padding:2px 0;gap:1px">';
+    // % col — mostra SOLO la previsione con indicatore ritardo/anticipo
+    ganttHtml += '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;border-left:1px solid #e0e6f0;padding:3px 2px;gap:2px">';
     if(t.done){
-      ganttHtml += '<span style="font-size:10px;font-weight:700;color:var(--green)">✓</span>';
+      ganttHtml += '<span style="font-size:13px;color:var(--green)">✓</span>';
+      ganttHtml += '<span style="font-size:7px;font-weight:600;color:var(--green)">Chiuso</span>';
+    } else if(fcast !== null){
+      // Confronto: effettivo vs atteso → colore semantico
+      var fp = parseFloat(fcastW);
+      var delta = prog - fp; // + = anticipo, - = ritardo
+      var statusBg, statusBorder, statusColor, statusIcon, statusLabel;
+      if(delta >= 5){
+        statusBg='#dcfce7'; statusBorder='#16a34a44'; statusColor='#15803d';
+        statusIcon='▲'; statusLabel='anticipo';
+      } else if(delta >= -5){
+        statusBg='#f0f4ff'; statusBorder='#2563b044'; statusColor='#1e56a0';
+        statusIcon='●'; statusLabel='in linea';
+      } else {
+        statusBg='#fef2f2'; statusBorder='#dc262644'; statusColor='#dc2626';
+        statusIcon='▼'; statusLabel='ritardo';
+      }
+      if(editOn){
+        var manVal = typeof t.manualPct==='number' ? t.manualPct : prog;
+        ganttHtml += '<input type="number" min="0" max="100" value="'+manVal.toFixed(0)+'"'
+          +' onchange="ganttSetPct(\''+t.id+'\',this.value)"'
+          +' onclick="event.stopPropagation()"'
+          +' style="width:36px;padding:1px 3px;border-radius:3px;border:1px solid #2563b055;background:#e8f0fd;color:var(--accent2);font-size:9px;font-weight:700;text-align:center;margin-bottom:1px">';
+      }
+      // Pill principale: % attesa
+      ganttHtml += '<span style="font-size:10px;font-weight:800;color:'+statusColor+'">'+fp.toFixed(0)+'%</span>';
+      // Badge stato
+      ganttHtml += '<span style="font-size:7px;font-weight:700;color:'+statusColor+';background:'+statusBg+';border:1px solid '+statusBorder+';border-radius:3px;padding:1px 4px;white-space:nowrap">'+statusIcon+' '+statusLabel+'</span>';
     } else if(editOn){
-      // Input editabile per % manuale
-      var manVal = typeof t.manualPct==='number' ? t.manualPct : prog;
-      ganttHtml += '<input type="number" min="0" max="100" value="'+manVal.toFixed(0)+'"'
+      // Task senza previsione: solo input
+      var manVal2 = typeof t.manualPct==='number' ? t.manualPct : prog;
+      ganttHtml += '<input type="number" min="0" max="100" value="'+manVal2.toFixed(0)+'"'
         +' onchange="ganttSetPct(\''+t.id+'\',this.value)"'
         +' onclick="event.stopPropagation()"'
-        +' style="width:36px;padding:1px 3px;border-radius:3px;border:1px solid #2563b055;background:#e8f0fd;color:var(--accent2);font-size:9px;font-weight:700;font-family:\'DM Mono\',monospace;text-align:center">';
-      if(fcast !== null){
-        var fcParsed = parseFloat(fcastW);
-        var fcColor = fcParsed>=80?'var(--green)':fcParsed>=40?'#b07d10':'#cc3333';
-        ganttHtml += '<span style="font-size:8px;font-weight:600;color:#d97706;background:#fef3c7;border:1px solid #f59e0b55;border-radius:3px;padding:1px 5px" title="% atteso a oggi">prev. '+fcParsed.toFixed(0)+'%</span>';
-      }
+        +' style="width:36px;padding:1px 3px;border-radius:3px;border:1px solid #2563b055;background:#e8f0fd;color:var(--accent2);font-size:9px;font-weight:700;text-align:center">';
     } else {
-      ganttHtml += '<span style="font-size:9px;font-weight:700;font-family:\'DM Mono\',monospace;color:'+pctColor+'">'+prog.toFixed(0)+'%</span>';
-      if(fcast !== null){
-        var fcParsed2 = parseFloat(fcastW);
-        var fcColor2 = fcParsed2>=80?'var(--green)':fcParsed2>=40?'#b07d10':'#cc3333';
-        ganttHtml += '<span style="font-size:8px;font-weight:600;color:#d97706;background:#fef3c7;border:1px solid #f59e0b55;border-radius:3px;padding:1px 5px" title="% atteso a oggi">prev. '+fcParsed2.toFixed(0)+'%</span>';
-      }
+      // Task senza previsione: mostra solo %
+      ganttHtml += '<span style="font-size:9px;font-weight:700;color:'+pctColor+'">'+prog.toFixed(0)+'%</span>';
+      ganttHtml += '<span style="font-size:7px;color:var(--muted)">—</span>';
     }
     ganttHtml += '</div>';
     // Pulsante aggiungi task (solo in edit mode, dopo ogni riga)
@@ -868,13 +887,28 @@ function buildExecGanttSection(){
   }
   ganttHtml += '</div></div>';
 
-  var legendHtml = '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:10px;color:var(--muted);align-items:center">';
-  [{col:'#1a7a46',label:'Completato'},{col:'#2563b0',label:'D&amp;P Submission'},{col:'#1e3a6e',label:'Permitting approval'},{col:'#7a3a1a',label:'Delivery'},{col:'#b07d10',label:'In corso'}].forEach(function(r){
-    legendHtml += '<span style="display:flex;align-items:center;gap:4px"><span style="width:12px;height:8px;background:'+r.col+';border-radius:2px;display:inline-block"></span>'+r.label+'</span>';
+  var legendHtml = '<div style="margin-top:10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:10px 14px;display:flex;flex-direction:column;gap:8px">';
+  // Riga 1: stato avanzamento
+  legendHtml += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">';
+  legendHtml += '<span style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:4px">Avanzamento</span>';
+  legendHtml += '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#15803d;background:#dcfce7;border:1px solid #16a34a44;border-radius:4px;padding:2px 7px;font-weight:600">▲ Anticipo<span style="font-size:9px;font-weight:400;color:#15803d"> — effettivo supera il target di periodo</span></span>';
+  legendHtml += '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#1e56a0;background:#f0f4ff;border:1px solid #2563b044;border-radius:4px;padding:2px 7px;font-weight:600">● In linea<span style="font-size:9px;font-weight:400;color:#1e56a0"> — scarto ≤ 5% rispetto al target</span></span>';
+  legendHtml += '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#dc2626;background:#fef2f2;border:1px solid #dc262644;border-radius:4px;padding:2px 7px;font-weight:600">▼ Ritardo<span style="font-size:9px;font-weight:400;color:#dc2626"> — effettivo inferiore al target di oltre 5%</span></span>';
+  legendHtml += '</div>';
+  // Riga 2: elementi grafici
+  legendHtml += '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">';
+  legendHtml += '<span style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:4px">Barra</span>';
+  [{col:'#1a7a46',label:'Chiuso'},{col:'#2563b0',label:'D&amp;P Submission'},{col:'#1e3a6e',label:'Permitting Approval'},{col:'#7a3a1a',label:'Delivery'},{col:'#b07d10',label:'In corso'}].forEach(function(r){
+    legendHtml += '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text)"><span style="width:14px;height:8px;background:'+r.col+';border-radius:2px;display:inline-block"></span>'+r.label+'</span>';
   });
-  legendHtml += '<span style="display:flex;align-items:center;gap:4px"><span style="width:2px;height:12px;background:#d44;display:inline-block"></span> Oggi ('+todayStr+')</span>';
-  legendHtml += '<span style="display:flex;align-items:center;gap:4px"><span style="width:2px;height:12px;background:repeating-linear-gradient(to bottom,#f59e0b 0,#f59e0b 4px,transparent 4px,transparent 7px);display:inline-block"></span><span style="font-size:8px;font-weight:600;color:#d97706;background:#fef3c7;border:1px solid #f59e0b55;border-radius:3px;padding:0 4px">prev. XX%</span> = % attesa a oggi</span>';
-  legendHtml += '<span style="margin-left:auto;font-size:9px">Barra chiara = pianificato · Barra piena = effettivo · <strong style="color:#555">▶XX%</strong> = % attesa</span>';
+  legendHtml += '</div>';
+  // Riga 3: marcatori timeline
+  legendHtml += '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">';
+  legendHtml += '<span style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:4px">Timeline</span>';
+  legendHtml += '<span style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text)"><span style="width:2px;height:14px;background:#d44;display:inline-block"></span> Oggi ('+todayStr+')</span>';
+  legendHtml += '<span style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text)"><span style="width:2px;height:14px;background:repeating-linear-gradient(to bottom,#f59e0b 0,#f59e0b 4px,transparent 4px,transparent 7px);display:inline-block"></span> Target di periodo — dove dovremmo essere a oggi secondo il piano</span>';
+  legendHtml += '<span style="display:flex;align-items:center;gap:5px;font-size:9px;color:var(--muted)">Barra sfumata = pianificato · Barra piena = realizzato</span>';
+  legendHtml += '</div>';
   legendHtml += '</div>';
 
   // Supplier table
