@@ -497,6 +497,27 @@ const RIEPILOGO_URL = 'Riepilogo_progettazione.csv';
 const RIEPILOGO_URL_FALLBACK = 'riepilogo.csv';
 const MASTER_URL = 'Master.csv';
 
+// Cache CSV condivisa tra loadData() e loadCluster() — evita doppio fetch
+let _riepilogoCsvText = null;
+async function fetchRiepilogoCSV(forceFresh = false) {
+  if (_riepilogoCsvText && !forceFresh) return _riepilogoCsvText;
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), 15000);
+  try {
+    let resp = await fetch(RIEPILOGO_URL + '?t=' + Date.now(), { signal: controller.signal });
+    if (!resp.ok) resp = await fetch(RIEPILOGO_URL_FALLBACK + '?t=' + Date.now(), { signal: controller.signal });
+    clearTimeout(tid);
+    if (!resp.ok) throw new Error(controller.signal.aborted
+      ? 'Timeout: file riepilogo non risponde'
+      : 'File riepilogo non trovato — carica Riepilogo_progettazione.csv su GitHub (HTTP ' + resp.status + ').');
+    _riepilogoCsvText = await resp.text();
+    return _riepilogoCsvText;
+  } catch(e) {
+    clearTimeout(tid);
+    throw e;
+  }
+}
+
 // ── HELPER GLOBALI ────────────────────────────────────────────────────────────
 const STATI_COLORI_MAP = {
   'IN ATTESA':'#4a4f6a','IN REDAZIONE':'#4a4f6a','IN REDAZIONE INTEGRAZIONE':'#4a4f6a',
@@ -666,10 +687,8 @@ const IMPRESE_PER_LOTTO = {
 
 async function loadCluster() {
   try {
-    let resp = await fetch(RIEPILOGO_URL + '?t=' + Date.now());
-    if (!resp.ok) resp = await fetch(RIEPILOGO_URL_FALLBACK + '?t=' + Date.now());
-    if (!resp.ok) throw new Error('File riepilogo non trovato — carica Riepilogo_progettazione.csv o riepilogo.csv su GitHub');
-    const text = await resp.text();
+    // Usa la cache condivisa — se loadData() ha già scaricato il file, non rifetch
+    const text = await fetchRiepilogoCSV();
     const lines = text.trim().split('\n').map(l => l.replace(/\r/,''));
 
     // Rileva separatore automaticamente dalla prima riga
@@ -1338,22 +1357,7 @@ async function loadData(saveSnapshot = false) {
   document.getElementById('errorBox').style.display = 'none';
   try {
     setLoading(40);
-    // Fetch con timeout 15s
-    const controller = new AbortController();
-    const tid = setTimeout(() => controller.abort(), 15000);
-    let resp;
-    try {
-      resp = await fetch(RIEPILOGO_URL + '?t=' + Date.now(), { signal: controller.signal });
-      if (!resp.ok) resp = await fetch(RIEPILOGO_URL_FALLBACK + '?t=' + Date.now(), { signal: controller.signal });
-      clearTimeout(tid);
-    } catch(fetchErr) {
-      clearTimeout(tid);
-      throw new Error(controller.signal.aborted
-        ? 'Timeout: file riepilogo non risponde'
-        : 'Impossibile caricare il file riepilogo CSV');
-    }
-    if (!resp.ok) throw new Error('File riepilogo non trovato — carica Riepilogo_progettazione.csv su GitHub (HTTP ' + resp.status + ').');
-    const text = await resp.text();
+    const text = await fetchRiepilogoCSV(true); // forceFresh=true: loadData guida il refresh
     setLoading(70);
     // Aggrega da Riepilogo_progettazione.csv (stessa fonte dei cluster → totali coerenti)
     const lines = text.trim().split('\n').map(l => l.replace(/\r/,''));
@@ -1463,15 +1467,11 @@ async function loadData(saveSnapshot = false) {
 
     document.getElementById('statusBadge').textContent = '● Aggiornato';
     document.getElementById('statusBadge').className = 'badge ok';
-    // Aggiorna data ultimo caricamento da JSONBin (ultimo update del DB)
-    let _luDate = null;
-    try {
-      const _lastIso = await jsonbinGetLastUpdateISO();
-      if (_lastIso) _luDate = new Date(_lastIso);
-    } catch (e) {
-      console.warn('Impossibile leggere metadata JSONBin:', e);
-    }
-    if (!_luDate || Number.isNaN(_luDate.getTime())) _luDate = new Date();
+    // Legge la data dall'ultimo snapshot già caricato — nessuna GET aggiuntiva
+    const _lastIso = storageRecord.last_excel_upload_at
+      || (storageRecord.storico?.length > 0 ? storageRecord.storico[storageRecord.storico.length-1]?.ts : null);
+    const _luDate = (_lastIso && !Number.isNaN(new Date(_lastIso).getTime()))
+      ? new Date(_lastIso) : new Date();
     const _dateStr = _luDate.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
     const _lu = document.getElementById('lastUpdate');
     if(_lu) _lu.innerHTML = `<span>📅 ${_dateStr}</span>`;
@@ -3255,10 +3255,10 @@ function updatePrevRilascio() {
 
 window.addEventListener('load', () => {
   loadData();
-  loadCluster()
-    .then(() => loadMaster())
-    .catch(() => loadMaster())
-    .finally(() => setTimeout(updatePrevRilascio, 600));
+  Promise.all([
+    loadCluster().catch(e => console.warn('loadCluster error:', e)),
+    loadMaster().catch(e => console.warn('loadMaster error:', e))
+  ]).finally(() => setTimeout(updatePrevRilascio, 600));
 });
 window.onerror = function(msg, src, line, col, err) {
   document.getElementById('loadingScreen').style.display = 'none';
