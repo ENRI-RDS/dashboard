@@ -498,8 +498,10 @@
     <span class="page-title">Avanzamento Progettazione</span>
   </div>
   <div class="topbar-right">
-    <span class="badge" id="statusBadge">⏳ Caricamento</span>
-    <span id="lastUpdate" style="font-size:10px;color:var(--muted);white-space:nowrap;padding:0 4px"><span></span></span>
+    <div id="statusWidget" style="display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:3px 10px;border-radius:7px;background:var(--surface2);border:1px solid var(--border2);min-width:72px;line-height:1.15;cursor:default">
+      <span id="statusBadge" style="font-size:10px;font-family:'Fira Code',monospace;color:var(--muted);font-weight:600">⏳ Caricamento</span>
+      <span id="lastUpdate" style="font-size:9px;font-family:'Fira Code',monospace;color:var(--muted);white-space:nowrap"><span></span></span>
+    </div>
     <a href="mappa.html" style="font-size:11px;padding:6px 14px;border-radius:7px;background:var(--surface2);color:var(--text);border:1px solid var(--border);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;text-decoration:none;transition:opacity 0.2s;white-space:nowrap" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1">🗺 Mappa</a>
     <a href="executive_summary.html" style="font-size:11px;padding:6px 14px;border-radius:7px;background:var(--surface2);color:var(--text);border:1px solid var(--border);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;text-decoration:none;transition:opacity 0.2s;white-space:nowrap" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1">📋 Executive</a>
 
@@ -934,7 +936,7 @@ const STORICO_MAX_ENTRIES = 104; // ~2 anni di aggiornamenti settimanali
 
 async function jsonbinLoad() {
   const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(), 5000);
+  const tid = setTimeout(() => controller.abort(new DOMException('Timeout connessione a JSONBin', 'TimeoutError')), 5000);
   try {
     const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_BIN_ID}/latest`, {
       headers: { 'X-Master-Key': JSONBIN_MASTER_KEY },
@@ -964,7 +966,7 @@ async function jsonbinSave(record) {
 
 async function jsonbinGetLastUpdateISO() {
   const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(), 5000);
+  const tid = setTimeout(() => controller.abort(new DOMException('Timeout connessione a JSONBin', 'TimeoutError')), 5000);
   try {
     const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_BIN_ID}/latest`, {
       headers: { 'X-Master-Key': JSONBIN_MASTER_KEY },
@@ -1674,7 +1676,7 @@ function stampaCluster() {
 async function loadData(saveSnapshot = false) {
   setLoading(10);
   document.getElementById('statusBadge').textContent = '⏳ Caricamento';
-  document.getElementById('statusBadge').className = 'badge';
+  document.getElementById('statusBadge').style.cssText='font-size:10px;font-family:\'Fira Code\',monospace;color:var(--muted);font-weight:600'; document.getElementById('statusWidget').style.borderColor='var(--border2)'; document.getElementById('statusWidget').style.background='var(--surface2)';
   document.getElementById('errorBox').style.display = 'none';
   try {
     setLoading(40);
@@ -1762,13 +1764,13 @@ async function loadData(saveSnapshot = false) {
     setLoading(100);
     renderDashboard(data);
     document.getElementById('statusBadge').textContent = '● Aggiornato';
-    document.getElementById('statusBadge').className = 'badge ok';
+    document.getElementById('statusBadge').style.cssText='font-size:10px;font-family:\'Fira Code\',monospace;color:#1F7A4E;font-weight:600'; document.getElementById('statusWidget').style.borderColor='#1F7A4E44'; document.getElementById('statusWidget').style.background='#1F7A4E0D';
     document.getElementById('loadingScreen').style.display = 'none';
     setTimeout(()=>setLoading(0),600);
 
     // Aggiorna il badge lastUpdate con la data di oggi intanto
     const _lu0 = document.getElementById('lastUpdate');
-    if (_lu0) _lu0.innerHTML = `<span>📅 ${new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})}</span>`;
+    if (_lu0) _lu0.innerHTML = `<span>${new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})}</span>`;
 
     // Completa la sincronizzazione JSONBin in background
     _jsonbinPromise.then(async record => {
@@ -1812,7 +1814,7 @@ async function loadData(saveSnapshot = false) {
         || (storicoPrev.length > 0 ? storicoPrev[storicoPrev.length-1]?.ts : null);
       if (_lastIso && !Number.isNaN(new Date(_lastIso).getTime())) {
         const _lu = document.getElementById('lastUpdate');
-        if (_lu) _lu.innerHTML = `<span>📅 ${new Date(_lastIso).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})}</span>`;
+        if (_lu) _lu.innerHTML = `<span>${new Date(_lastIso).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})}</span>`;
       }
 
       // ────────────────────────────────────────────────────────────────────
@@ -1824,7 +1826,7 @@ async function loadData(saveSnapshot = false) {
   } catch(e) {
     setLoading(0);
     document.getElementById('statusBadge').textContent = '✕ Errore';
-    document.getElementById('statusBadge').className = 'badge err';
+    document.getElementById('statusBadge').style.cssText='font-size:10px;font-family:\'Fira Code\',monospace;color:#C23B22;font-weight:600'; document.getElementById('statusWidget').style.borderColor='#C23B2244'; document.getElementById('statusWidget').style.background='#C23B220D';
     document.getElementById('loadingScreen').style.display = 'none';
     const eb = document.getElementById('errorBox');
     eb.style.display = 'block';
