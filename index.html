@@ -114,8 +114,45 @@
   /* ── MAIN ── */
   .main { padding:22px 28px; display:flex; flex-direction:column; gap:20px; }
 
+  /* ── KPI PHASE WRAPPER ── */
+  .kpi-phase-wrapper {
+    display:flex; gap:10px; align-items:stretch;
+  }
+  .phase-panel {
+    flex:1;
+    border-radius:14px;
+    padding:10px 12px 12px;
+  }
+  .phase-panel.phase-submission {
+    background:linear-gradient(135deg,#eef2ff 0%,#f4f6ff 100%);
+    border:1.5px solid #c7d2fe;
+    flex:3;
+  }
+  .phase-panel.phase-approval {
+    background:linear-gradient(135deg,#ecfdf5 0%,#f0fdf7 100%);
+    border:1.5px solid #a7f3d0;
+    flex:4;
+  }
+  .phase-header {
+    display:flex; align-items:center; gap:7px;
+    margin-bottom:9px; padding-bottom:7px;
+    border-bottom:1px dashed;
+    font-size:9px; font-weight:700; text-transform:uppercase;
+    letter-spacing:0.13em; white-space:nowrap;
+  }
+  .phase-submission .phase-header { color:#3730a3; border-color:#c7d2fe; }
+  .phase-approval   .phase-header { color:#065f46; border-color:#6ee7b7; }
+  .phase-header-icon {
+    width:18px; height:18px; border-radius:5px; display:inline-flex;
+    align-items:center; justify-content:center; font-size:11px; flex-shrink:0;
+  }
+  .phase-submission .phase-header-icon { background:#c7d2fe; }
+  .phase-approval   .phase-header-icon { background:#a7f3d0; }
+
   /* ── KPI ROW ── */
-  .kpi-row { display:grid; grid-template-columns:repeat(7, 1fr); gap:12px; }
+  .kpi-row { display:grid; gap:10px; }
+  .phase-submission .kpi-row { grid-template-columns:repeat(3, 1fr); }
+  .phase-approval   .kpi-row { grid-template-columns:repeat(4, 1fr); }
 
   .kpi {
     background:var(--surface);
@@ -139,14 +176,15 @@
     to   { opacity:1; transform:translateY(0); }
   }
 
-  /* stagger */
-  .kpi:nth-child(1) { animation-delay:.05s }
-  .kpi:nth-child(2) { animation-delay:.10s }
-  .kpi:nth-child(3) { animation-delay:.15s }
-  .kpi:nth-child(4) { animation-delay:.20s }
-  .kpi:nth-child(5) { animation-delay:.25s }
-  .kpi:nth-child(6) { animation-delay:.30s }
-  .kpi:nth-child(7) { animation-delay:.35s }
+  /* stagger — submission */
+  .phase-submission .kpi:nth-child(1) { animation-delay:.05s }
+  .phase-submission .kpi:nth-child(2) { animation-delay:.10s }
+  .phase-submission .kpi:nth-child(3) { animation-delay:.15s }
+  /* stagger — approval (continue offset) */
+  .phase-approval .kpi:nth-child(1) { animation-delay:.20s }
+  .phase-approval .kpi:nth-child(2) { animation-delay:.25s }
+  .phase-approval .kpi:nth-child(3) { animation-delay:.30s }
+  .phase-approval .kpi:nth-child(4) { animation-delay:.35s }
 
   /* left accent bar */
   .kpi::before {
@@ -434,7 +472,11 @@
     .topbar-right { gap:6px; flex-wrap:wrap; }
     .topbar-right a, .topbar-right button { font-size:10px; padding:4px 10px; }
     .main { padding:12px 14px; gap:14px; }
-    .kpi-row { grid-template-columns:repeat(2, 1fr); gap:8px; }
+    .kpi-phase-wrapper { flex-direction:column; gap:8px; }
+    .phase-panel.phase-submission,
+    .phase-panel.phase-approval { flex:unset; }
+    .phase-submission .kpi-row { grid-template-columns:repeat(2, 1fr); gap:8px; }
+    .phase-approval   .kpi-row { grid-template-columns:repeat(2, 1fr); gap:8px; }
     .kpi { padding:12px 14px; }
     .kpi-value { font-size:22px; }
     .kpi-label { font-size:9px; margin-bottom:6px; }
@@ -452,7 +494,8 @@
     canvas { width:160px !important; height:160px !important; }
   }
   @media (max-width:480px) {
-    .kpi-row { grid-template-columns:repeat(2, 1fr); }
+    .phase-submission .kpi-row,
+    .phase-approval   .kpi-row { grid-template-columns:repeat(2, 1fr); }
     .kpi-value { font-size:18px; }
     .logo { font-size:11px; }
   }
@@ -592,14 +635,35 @@
 <div class="main">
   <div id="errorBox"></div>
 
-  <div class="kpi-row">
-    <div class="kpi attesa" onclick="openModalKpi('attesa')"><span class="kpi-owner impresa">Impresa</span><div class="kpi-label">In Attesa / Redazione</div><div class="kpi-value" id="kpi-attesa">—</div><div class="kpi-sub" id="kpisub-attesa">—</div></div>
-    <div class="kpi coordinamento" onclick="openModalKpi('coordinamento')"><span class="kpi-owner impresa">Impresa/Enti</span><div class="kpi-label">Coordinamento</div><div class="kpi-value" id="kpi-coordinamento">—</div><div class="kpi-sub" id="kpisub-coordinamento">—</div></div>
-    <div class="kpi firma" onclick="openModalKpi('firma')"><span class="kpi-owner rds">RDS</span><div class="kpi-label">In Verifica / In Firma</div><div class="kpi-value" id="kpi-firma">—</div><div class="kpi-sub" id="kpisub-firma">—</div></div>
-    <div class="kpi inviato" onclick="openModalKpi('inviato')"><span class="kpi-owner ente">Ente</span><div class="kpi-label">Inviato / Protocollato</div><div class="kpi-value" id="kpi-inviato">—</div><div class="kpi-sub" id="kpisub-inviato">—</div></div>
-    <div class="kpi integrazione" onclick="openModalKpi('integrazione')"><span class="kpi-owner impresa">Impresa</span><div class="kpi-label">Necessaria Integrazione</div><div class="kpi-value" id="kpi-integrazione">—</div><div class="kpi-sub" id="kpisub-integrazione">—</div></div>
-    <div class="kpi protint" onclick="openModalKpi('protint')"><span class="kpi-owner ente">Ente</span><div class="kpi-label">Protocollato Integrazione</div><div class="kpi-value" id="kpi-protint">—</div><div class="kpi-sub" id="kpisub-protint">—</div></div>
-    <div class="kpi ottenuto" onclick="openModalKpi('ottenuto')"><span class="kpi-owner ente" style="background:#3a8c5c22;color:#3a8c5c">Ente</span><div class="kpi-label">🏆 Autorizzati</div><div class="kpi-value" id="kpi-ottenuto">—</div><div class="kpi-sub" id="kpisub-ottenuto">—</div></div>
+  <div class="kpi-phase-wrapper">
+
+    <!-- ── FASE 1: Design & Permitting Submission ── -->
+    <div class="phase-panel phase-submission">
+      <div class="phase-header">
+        <span class="phase-header-icon">📐</span>
+        Design &amp; Permitting Submission
+      </div>
+      <div class="kpi-row">
+        <div class="kpi attesa" onclick="openModalKpi('attesa')"><span class="kpi-owner impresa">Impresa</span><div class="kpi-label">In Attesa / Redazione</div><div class="kpi-value" id="kpi-attesa">—</div><div class="kpi-sub" id="kpisub-attesa">—</div></div>
+        <div class="kpi coordinamento" onclick="openModalKpi('coordinamento')"><span class="kpi-owner impresa">Impresa/Enti</span><div class="kpi-label">Coordinamento</div><div class="kpi-value" id="kpi-coordinamento">—</div><div class="kpi-sub" id="kpisub-coordinamento">—</div></div>
+        <div class="kpi firma" onclick="openModalKpi('firma')"><span class="kpi-owner rds">RDS</span><div class="kpi-label">In Verifica / In Firma</div><div class="kpi-value" id="kpi-firma">—</div><div class="kpi-sub" id="kpisub-firma">—</div></div>
+      </div>
+    </div>
+
+    <!-- ── FASE 2: Permitting Approval ── -->
+    <div class="phase-panel phase-approval">
+      <div class="phase-header">
+        <span class="phase-header-icon">✅</span>
+        Permitting Approval
+      </div>
+      <div class="kpi-row">
+        <div class="kpi inviato" onclick="openModalKpi('inviato')"><span class="kpi-owner ente">Ente</span><div class="kpi-label">Inviato / Protocollato</div><div class="kpi-value" id="kpi-inviato">—</div><div class="kpi-sub" id="kpisub-inviato">—</div></div>
+        <div class="kpi integrazione" onclick="openModalKpi('integrazione')"><span class="kpi-owner impresa">Impresa</span><div class="kpi-label">Necessaria Integrazione</div><div class="kpi-value" id="kpi-integrazione">—</div><div class="kpi-sub" id="kpisub-integrazione">—</div></div>
+        <div class="kpi protint" onclick="openModalKpi('protint')"><span class="kpi-owner ente">Ente</span><div class="kpi-label">Protocollato Integrazione</div><div class="kpi-value" id="kpi-protint">—</div><div class="kpi-sub" id="kpisub-protint">—</div></div>
+        <div class="kpi ottenuto" onclick="openModalKpi('ottenuto')"><span class="kpi-owner ente" style="background:#3a8c5c22;color:#3a8c5c">Ente</span><div class="kpi-label">🏆 Autorizzati</div><div class="kpi-value" id="kpi-ottenuto">—</div><div class="kpi-sub" id="kpisub-ottenuto">—</div></div>
+      </div>
+    </div>
+
   </div>
   <!-- Grafico Cluster -->
   <div id="clusterSection">
@@ -1591,7 +1655,7 @@ function stampaLotti() {
       .badge { font-size: 7px !important; }
       #lastUpdate span { font-size: 7px !important; }
       .main { padding: 3px 8px !important; gap: 3px !important; height: calc(210mm - 24px) !important; overflow: hidden !important; display: flex !important; flex-direction: column !important; }
-      .kpi-row { gap: 3px !important; }
+      .kpi-phase-wrapper { gap: 4px !important; } .kpi-row { gap: 3px !important; } .phase-panel { padding: 6px 8px 8px !important; } .phase-header { margin-bottom: 5px !important; padding-bottom: 4px !important; font-size: 7px !important; }
       .kpi { padding: 3px 8px !important; }
       .kpi::before { height: 1px !important; }
       .kpi-value { font-size: 13px !important; line-height: 1 !important; }
@@ -1648,7 +1712,7 @@ function stampaCluster() {
       .main { padding: 3px 8px !important; gap: 4px !important; height: calc(210mm - 24px) !important; overflow: hidden !important; display: flex !important; flex-direction: column !important; }
       /* Nascondi lotti, mostra cluster + KPI */
       .grid-main { display: none !important; }
-      .kpi-row { gap: 3px !important; }
+      .kpi-phase-wrapper { gap: 4px !important; } .kpi-row { gap: 3px !important; } .phase-panel { padding: 6px 8px 8px !important; } .phase-header { margin-bottom: 5px !important; padding-bottom: 4px !important; font-size: 7px !important; }
       .kpi { padding: 3px 8px !important; }
       .kpi::before { height: 1px !important; }
       .kpi-value { font-size: 13px !important; line-height: 1 !important; }
