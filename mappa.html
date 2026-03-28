@@ -731,15 +731,6 @@ const BMAP_META = [
     })
   },
   {
-    key: 'light',
-    label: 'Minimal',
-    thumb: 'https://a.basemaps.cartocdn.com/light_all/10/545/372.png',
-    layer: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution: '© CartoDB',
-      crossOrigin: true
-    })
-  },
-  {
     key: 'catastale',
     label: 'Catastale',
     // miniatura OSM + overlay catastale OpenStreetMap-based (Cadastre FR non disponibile, usiamo OSM standard con sfondo chiaro)
@@ -794,9 +785,14 @@ const BasemapControl = L.Control.extend({
     thumbBtn.id = 'bmapThumbBtn';
     const thumbImg = L.DomUtil.create('img', '', thumbBtn);
     thumbImg.id = 'bmapThumbImg';
-    thumbImg.alt = 'sfondo mappa';
+    // Imposta subito src e label con il layer corrente (prima che il controllo
+    // venga aggiunto al DOM, document.getElementById non funzionerebbe)
+    const _initMeta = _getBmapMeta(_currentBmapKey);
+    thumbImg.src = _initMeta.thumb;
+    thumbImg.alt = _initMeta.label;
     const lbl = L.DomUtil.create('div', 'bmap-label', thumbBtn);
     lbl.id = 'bmapThumbLabel';
+    lbl.textContent = _initMeta.label;
 
     // Dropdown
     const dd = L.DomUtil.create('div', 'bmap-dropdown', wrap);
