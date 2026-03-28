@@ -1062,8 +1062,8 @@ function renderResults(pratiche, addresses, query) {
           clearBtn.style.display = inputEl.value ? 'block' : 'none';
         });
         searchMarker.openPopup();
-        resetMapCursor();
-        map.setView([r.lat, r.lon], r.zoom);
+        map.setView([r.lat, r.lon], r.zoom, {animate: false});
+        setTimeout(() => { map.getContainer().style.cursor = ''; }, 0);
         resultsEl.style.display = 'none';
         clearBtn.style.display = 'block';
       };
@@ -1082,16 +1082,6 @@ function renderResults(pratiche, addresses, query) {
 }
 
 let _highlightedLayer = null;
-
-// Fix cursore: Leaflet aggiunge 'leaflet-dragging' su <html> durante setView()
-// programmatico e non lo rimuove mai se non c'è un vero mouseup.
-function resetMapCursor() {
-  map.once('moveend', () => {
-    document.documentElement.classList.remove('leaflet-dragging');
-    map.getContainer().classList.remove('leaflet-dragging');
-    map.getContainer().style.cursor = '';
-  });
-}
 
 function clearHighlight() {
   if (_highlightedLayer) {
@@ -1120,10 +1110,10 @@ function zoomToFeature(feature) {
     const bounds = targetLayer.getBounds ? targetLayer.getBounds() : null;
     const latlng = bounds ? bounds.getCenter() : targetLayer.getLatLng?.();
     if (latlng) {
-      resetMapCursor();
-      map.setView(latlng, 15);
+      map.setView(latlng, 15, {animate: false});
       applyHighlight(targetLayer);
       targetLayer.openPopup();
+      setTimeout(() => { map.getContainer().style.cursor = ''; }, 0);
     }
   }
   resultsEl.style.display = 'none';
