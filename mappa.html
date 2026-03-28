@@ -215,26 +215,58 @@
   .qts-only-btn:hover{border-color:#5b21b6;background:#ddd6fe;color:#3b0764;}
   .qts-only-btn.active{background:#7c3aed;border-color:#7c3aed;color:#fff;}
 
-  /* Basemap selector */
-  .basemap-row{display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px 0 6px;border-top:1px solid var(--border);}
-  .basemap-label{font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);flex:1;}
-  .basemap-toggle{display:flex;gap:3px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:2px;}
-  .basemap-btn{font-size:10px;padding:3px 8px;border-radius:5px;border:none;background:transparent;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;transition:all 0.15s;white-space:nowrap;}
-  .basemap-btn.active{background:var(--accent);color:white;}
-
-  /* Basemap floating control */
-  .leaflet-basemap-control{background:var(--surface);border:1px solid var(--border);border-radius:6px;box-shadow:0 2px 8px #00000018;overflow:visible;position:relative;}
-  .leaflet-basemap-control .bmap-toggle-btn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;border:none;background:transparent;line-height:1;border-radius:6px;transition:background 0.15s;}
-  .leaflet-basemap-control .bmap-toggle-btn:hover{background:var(--surface2);}
-  .leaflet-basemap-control .bmap-dropdown{display:none;position:absolute;left:36px;top:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px #00000022;min-width:170px;padding:6px;z-index:1000;}
-  .leaflet-basemap-control .bmap-dropdown.open{display:block;}
-  .leaflet-basemap-control .bmap-dropdown-title{font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);padding:2px 6px 6px;font-family:'DM Sans',sans-serif;}
-  .leaflet-basemap-control .bmap-item{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;transition:background 0.12s;border:none;background:transparent;width:100%;text-align:left;font-family:'DM Sans',sans-serif;font-size:11px;color:var(--text);}
-  .leaflet-basemap-control .bmap-item:hover{background:var(--surface2);}
-  .leaflet-basemap-control .bmap-item.active{background:#4f8ef712;color:var(--accent);font-weight:600;}
-  .leaflet-basemap-control .bmap-item .bmap-thumb{width:28px;height:20px;border-radius:3px;object-fit:cover;flex-shrink:0;border:1px solid var(--border);}
-  .leaflet-basemap-control .bmap-item .bmap-check{margin-left:auto;color:var(--accent);font-size:13px;opacity:0;}
-  .leaflet-basemap-control .bmap-item.active .bmap-check{opacity:1;}
+  /* Basemap floating control — Google-style thumbnail button */
+  .leaflet-top.leaflet-left { display:flex; flex-direction:column; align-items:flex-start; }
+  .leaflet-basemap-control {
+    background: transparent !important; border: none !important;
+    box-shadow: none !important; overflow: visible; position: relative;
+    margin-top: 8px !important; margin-left: 10px !important;
+  }
+  .bmap-thumb-btn {
+    width: 56px; height: 56px; border-radius: 10px; overflow: hidden; cursor: pointer;
+    border: 2.5px solid #fff; box-shadow: 0 2px 10px #0005;
+    position: relative; display: block; transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .bmap-thumb-btn:hover { transform: scale(1.06); box-shadow: 0 4px 14px #0007; }
+  .bmap-thumb-btn img { width:100%; height:100%; object-fit:cover; display:block; }
+  .bmap-thumb-btn .bmap-label {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: linear-gradient(transparent, #000b);
+    color: #fff; font-size: 9px; font-weight: 700;
+    font-family: 'DM Sans', sans-serif;
+    text-align: center; padding: 2px 2px 4px;
+    letter-spacing: 0.03em; text-shadow: 0 1px 2px #0008;
+  }
+  .bmap-dropdown {
+    display: none; position: absolute; top: 0; left: 64px;
+    background: #fffffff0; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border: 1px solid #dde1ec; border-radius: 12px;
+    box-shadow: 0 6px 24px #00000028; padding: 10px 8px 8px; z-index: 1100;
+  }
+  .bmap-dropdown.open { display:flex; flex-direction:column; gap:4px; }
+  .bmap-dropdown-title {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em;
+    color: #6b7080; padding: 0 4px 8px;
+    font-family: 'DM Sans', sans-serif; font-weight: 600; white-space: nowrap;
+  }
+  .bmap-grid { display:flex; gap:8px; flex-wrap:nowrap; }
+  .bmap-card {
+    display:flex; flex-direction:column; align-items:center; gap:5px;
+    cursor:pointer; padding:5px; border-radius:10px; border:2.5px solid transparent;
+    transition:border-color 0.15s, background 0.15s;
+    background:transparent; width:68px; flex-shrink:0;
+  }
+  .bmap-card:hover { background:#f0f2f7; }
+  .bmap-card.active { border-color:#2563eb; background:#eff4ff; }
+  .bmap-card img {
+    width:58px; height:40px; border-radius:6px;
+    object-fit:cover; border:1px solid #dde1ec; box-shadow:0 1px 4px #0002; display:block;
+  }
+  .bmap-card span {
+    font-size:10px; font-family:'DM Sans',sans-serif;
+    color:#1a1d27; font-weight:500; text-align:center; line-height:1.2; white-space:nowrap;
+  }
+  .bmap-card.active span { color:#2563eb; font-weight:700; }
 
   /* QTS toggle */
   .qts-toggle-row { display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 0 6px;border-top:1px solid var(--border); }
@@ -247,6 +279,18 @@
   .qts-switch input:checked + .qts-slider:before { transform:translateX(16px);background:#fff; }
   .qts-km { font-size:10px;font-family:'DM Mono',monospace;color:#0aa3c2; }
 
+  /* Position basemap control flush below zoom control, same column */
+  .leaflet-top.leaflet-left {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+  }
+  /* The basemap control sits right under the zoom bar, same left margin */
+  .leaflet-basemap-control {
+    margin-top: 8px !important;
+    margin-left: 10px !important;
+  }
   /* ── HELP MODAL ── */
   #helpOverlay {
     position:fixed;inset:0;background:#0007;display:flex;align-items:center;
@@ -648,116 +692,158 @@ const mainRenderer   = L.canvas({ tolerance: 5 });
 const searchMarkerRenderer = L.svg();
 
 // ── BASEMAP LAYERS ───────────────────────────────────────────────────────────
-const baseLayers = {
-  osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap',
-    crossOrigin: true
-  }),
-  satellite: L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-    attribution: '© Google Maps',
-    crossOrigin: true,
-    maxZoom: 21
-  }),
-  hybrid: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-    attribution: '© Google Maps',
-    crossOrigin: true,
-    maxZoom: 21
-  }),
-  topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenTopoMap',
-    crossOrigin: true,
-    maxZoom: 17
-  }),
-  catastale: L.tileLayer.wms('https://wms.cartografia.agenziaentrate.gov.it/inspire/wms/ows01.php', {
-    layers: 'CP.CadastralParcel',
-    format: 'image/png',
-    transparent: true,
-    attribution: '© Agenzia delle Entrate – Cartografia Catastale',
-    version: '1.3.0',
-    crossOrigin: true
-  })
-};
-
-const basemapMeta = [
-  { key:'osm',        label:'OpenStreetMap',  icon:'🗺',  desc:'Mappa stradale'      },
-  { key:'hybrid',     label:'Ibrida Google',  icon:'🛰',  desc:'Satellite + strade'   },
-  { key:'satellite',  label:'Satellite',      icon:'📡',  desc:'Solo immagini'        },
-  { key:'topo',       label:'Topografica',    icon:'⛰',  desc:'Rilievi e curve'      },
-  { key:'catastale',  label:'Catastale',      icon:'📐',  desc:'Particelle catastali' },
+// Miniature statiche — tile reali centrate sull'Italia (zoom 10, Lombardia)
+const BMAP_META = [
+  {
+    key: 'osm',
+    label: 'Mappa',
+    thumb: 'https://tile.openstreetmap.org/10/545/372.png',
+    layer: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>',
+      crossOrigin: true
+    })
+  },
+  {
+    key: 'hybrid',
+    label: 'Ibrida',
+    thumb: 'https://mt1.google.com/vt/lyrs=y&x=545&y=372&z=10',
+    layer: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+      attribution: '© Google Maps',
+      crossOrigin: true, maxZoom: 21
+    })
+  },
+  {
+    key: 'satellite',
+    label: 'Satellite',
+    thumb: 'https://mt1.google.com/vt/lyrs=s&x=545&y=372&z=10',
+    layer: L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+      attribution: '© Google Maps',
+      crossOrigin: true, maxZoom: 21
+    })
+  },
+  {
+    key: 'topo',
+    label: 'Topografica',
+    thumb: 'https://tile.opentopomap.org/10/545/372.png',
+    layer: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+      attribution: '© <a href="https://opentopomap.org">OpenTopoMap</a>',
+      crossOrigin: true, maxZoom: 17
+    })
+  },
+  {
+    key: 'light',
+    label: 'Minimal',
+    thumb: 'https://a.basemaps.cartocdn.com/light_all/10/545/372.png',
+    layer: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© CartoDB',
+      crossOrigin: true
+    })
+  },
+  {
+    key: 'catastale',
+    label: 'Catastale',
+    // miniatura OSM + overlay catastale OpenStreetMap-based (Cadastre FR non disponibile, usiamo OSM standard con sfondo chiaro)
+    thumb: 'https://a.basemaps.cartocdn.com/light_all/10/545/372.png',
+    // Layer base chiaro + overlay catasto da tile.cadastre.gouv non disponibile in IT
+    // Usiamo OSM con stile chiaro + overlay OpenStreetMap catastale (openmaps)
+    layer: L.layerGroup([
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© CartoDB | © OpenStreetMap',
+        crossOrigin: true
+      }),
+      L.tileLayer('https://tms.cadastre.openstreetmap.fr/*/tout/{z}/{x}/{y}.png', {
+        opacity: 0.85,
+        attribution: '© Cadastre FR via OSM (dati indicativi)',
+        crossOrigin: true,
+        maxZoom: 20
+      })
+    ])
+  }
 ];
 
-let currentBaseLayer = baseLayers.osm;
-currentBaseLayer.addTo(map);
-let currentBaseKey = 'osm';
+let _currentBmapKey = 'osm';
+let _currentBmapLayer = BMAP_META[0].layer;
+_currentBmapLayer.addTo(map);
+
+function _getBmapMeta(key) { return BMAP_META.find(m => m.key === key); }
 
 function setBaseLayer(key) {
-  if (key === 'catastale') {
-    // Catastale è overlay: si attiva/disattiva sopra il layer corrente
-    if (map.hasLayer(baseLayers.catastale)) {
-      map.removeLayer(baseLayers.catastale);
-      currentBaseKey = _prevBaseKey || 'osm';
-    } else {
-      _prevBaseKey = currentBaseKey;
-      baseLayers.catastale.addTo(map);
-      currentBaseKey = 'catastale';
-    }
-  } else {
-    if (map.hasLayer(baseLayers.catastale)) map.removeLayer(baseLayers.catastale);
-    map.removeLayer(currentBaseLayer);
-    currentBaseLayer = baseLayers[key];
-    currentBaseLayer.addTo(map);
-    currentBaseLayer.bringToBack();
-    _prevBaseKey = key;
-    currentBaseKey = key;
-  }
-  _renderBasemapDropdown();
+  if (key === _currentBmapKey) return;
+  // rimuovi layer corrente (layerGroup o tileLayer)
+  if (_currentBmapLayer && _currentBmapLayer.remove) _currentBmapLayer.remove();
+  else if (_currentBmapLayer) map.removeLayer(_currentBmapLayer);
+  const meta = _getBmapMeta(key);
+  meta.layer.addTo(map);
+  if (meta.layer.bringToBack) meta.layer.bringToBack();
+  _currentBmapLayer = meta.layer;
+  _currentBmapKey = key;
+  _updateBasemapControl();
 }
-
-let _prevBaseKey = 'osm';
 
 // ── LEAFLET CUSTOM CONTROL ────────────────────────────────────────────────────
 const BasemapControl = L.Control.extend({
   options: { position: 'topleft' },
   onAdd: function(map) {
-    const div = L.DomUtil.create('div', 'leaflet-bar leaflet-basemap-control');
-    const btn = L.DomUtil.create('button', 'bmap-toggle-btn', div);
-    btn.innerHTML = '🗺';
-    btn.title = 'Cambia sfondo mappa';
+    const wrap = L.DomUtil.create('div', 'leaflet-basemap-control');
+    wrap.style.cssText = 'overflow:visible;background:transparent;border:none;box-shadow:none;';
+    L.DomEvent.disableClickPropagation(wrap);
+    L.DomEvent.disableScrollPropagation(wrap);
 
-    const dd = L.DomUtil.create('div', 'bmap-dropdown', div);
-    dd.innerHTML = '<div class="bmap-dropdown-title">Sfondo mappa</div>';
-    basemapMeta.forEach(m => {
-      const item = L.DomUtil.create('button', 'bmap-item', dd);
-      item.id = 'bmapitem-' + m.key;
-      item.innerHTML = `<span style="font-size:16px">${m.icon}</span><div><div style="font-weight:600">${m.label}</div><div style="font-size:9px;color:var(--muted)">${m.desc}</div></div><span class="bmap-check">✓</span>`;
-      L.DomEvent.on(item, 'click', function(e) {
+    // Thumb button — mostra miniatura del layer ATTIVO (come Google Maps)
+    const thumbBtn = L.DomUtil.create('div', 'bmap-thumb-btn', wrap);
+    thumbBtn.id = 'bmapThumbBtn';
+    const thumbImg = L.DomUtil.create('img', '', thumbBtn);
+    thumbImg.id = 'bmapThumbImg';
+    thumbImg.alt = 'sfondo mappa';
+    const lbl = L.DomUtil.create('div', 'bmap-label', thumbBtn);
+    lbl.id = 'bmapThumbLabel';
+
+    // Dropdown
+    const dd = L.DomUtil.create('div', 'bmap-dropdown', wrap);
+    dd.id = 'bmapDropdown';
+    const title = L.DomUtil.create('div', 'bmap-dropdown-title', dd);
+    title.textContent = 'Tipo di mappa';
+    const grid = L.DomUtil.create('div', 'bmap-grid', dd);
+
+    BMAP_META.forEach(m => {
+      const card = L.DomUtil.create('div', 'bmap-card', grid);
+      card.id = 'bmapcard-' + m.key;
+      const img = L.DomUtil.create('img', '', card);
+      img.src = m.thumb;
+      img.alt = m.label;
+      const sp = L.DomUtil.create('span', '', card);
+      sp.textContent = m.label;
+      L.DomEvent.on(card, 'click', function(e) {
         L.DomEvent.stopPropagation(e);
         setBaseLayer(m.key);
         dd.classList.remove('open');
       });
     });
 
-    L.DomEvent.on(btn, 'click', function(e) {
+    L.DomEvent.on(thumbBtn, 'click', function(e) {
       L.DomEvent.stopPropagation(e);
       dd.classList.toggle('open');
     });
-    L.DomEvent.on(document, 'click', function() { dd.classList.remove('open'); });
-    L.DomEvent.disableClickPropagation(div);
+    document.addEventListener('click', function() { dd.classList.remove('open'); });
 
-    this._dropdown = dd;
-    return div;
+    _updateBasemapControl();
+    return wrap;
   }
 });
 new BasemapControl().addTo(map);
 
-function _renderBasemapDropdown() {
-  basemapMeta.forEach(m => {
-    const el = document.getElementById('bmapitem-' + m.key);
-    if (!el) return;
-    const active = (m.key === 'catastale')
-      ? map.hasLayer(baseLayers.catastale)
-      : (currentBaseKey === m.key && !map.hasLayer(baseLayers.catastale)) || (currentBaseKey === m.key && m.key !== 'catastale' && map.hasLayer(baseLayers.catastale));
-    el.classList.toggle('active', m.key === currentBaseKey);
+function _updateBasemapControl() {
+  const img = document.getElementById('bmapThumbImg');
+  const lbl = document.getElementById('bmapThumbLabel');
+  if (!img) return;
+  // Mostra miniatura del layer ATTIVO (non il prossimo)
+  const current = _getBmapMeta(_currentBmapKey);
+  img.src = current.thumb;
+  lbl.textContent = current.label;
+  // aggiorna stato active nelle card
+  BMAP_META.forEach(m => {
+    const c = document.getElementById('bmapcard-' + m.key);
+    if (c) c.classList.toggle('active', m.key === _currentBmapKey);
   });
 }
 // ─────────────────────────────────────────────────────────────────────────────
