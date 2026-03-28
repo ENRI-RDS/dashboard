@@ -1005,40 +1005,76 @@ function clearSearch() {
   clearHighlight();
 }
 
-// Cerca pratiche nel dataset GeoJSON
-// Gestisce tratte con piu pratiche separate da '|': ogni pratica e un risultato autonomo
+// Cerca pratiche nel dataset GeoJSON.
+// Due modalita distinte:
+//   1) Query corrisponde a un TRATTA_ID  → un risultato per tratta (con label di tutte le pratiche)
+//   2) Query corrisponde a un codice PRATICA → un risultato per singola pratica matchante
 function searchPratiche(query) {
   const q = query.trim().toUpperCase();
-  if (!q) return [];
-  const results = [];
-  const seen = new Set(); // chiave: singola_pratica|tratta_id
+  if (!q || q.length < 2) return [];
+
+  // Splitta il campo PRATICA in array, gestendo separatori | ; ,
+  function splitPratiche(raw) {
+    return (raw || '').split(/[|;,]/).map(s => s.trim()).filter(Boolean);
+  }
+
+  // Fase 1: cerca per TRATTA_ID (dedup per tratta_id — evita duplicati se la stessa
+  // tratta compare piu volte nel GeoJSON come feature separate)
+  const trattaResults = [];
+  const seenTratta = new Set();
   allFeatures.forEach(f => {
     const p = f.properties;
-    const tratta = (p.TRATTA_ID || '').toUpperCase();
-    const pratiche = (p.PRATICA || '').split('|').map(s => s.trim()).filter(Boolean);
-
-    if (pratiche.length === 0) {
-      if (tratta.includes(q)) {
-        const key = '|' + tratta;
-        if (!seen.has(key)) {
-          seen.add(key);
-          results.push({ type: 'pratica', feature: f, pratica: p.TRATTA_ID||'--', tratta: p.TRATTA_ID, lotto: p.LOTTO, stato: p.STATO_LEGENDA||p.STATO_AUTORIZZAZIONE||'', comune: p.COMUNE||'' });
-        }
-      }
-    } else {
-      pratiche.forEach(singola => {
-        const singolaUp = singola.toUpperCase();
-        if (singolaUp.includes(q) || tratta.includes(q)) {
-          const key = singolaUp + '|' + tratta;
-          if (!seen.has(key)) {
-            seen.add(key);
-            results.push({ type: 'pratica', feature: f, pratica: singola, tratta: p.TRATTA_ID, lotto: p.LOTTO, stato: p.STATO_LEGENDA||p.STATO_AUTORIZZAZIONE||'', comune: p.COMUNE||'' });
-          }
-        }
+    const trattaId = (p.TRATTA_ID || '').toUpperCase();
+    if (trattaId.includes(q) && !seenTratta.has(trattaId)) {
+      seenTratta.add(trattaId);
+      const pratiche = splitPratiche(p.PRATICA);
+      const label = pratiche.length > 0
+        ? pratiche.join(' · ')
+        : (p.TRATTA_ID || '—');
+      trattaResults.push({
+        type: 'pratica',
+        feature: f,
+        pratica: label,          // mostra tutte le pratiche della tratta
+        tratta: p.TRATTA_ID,
+        lotto: p.LOTTO,
+        stato: p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE || '',
+        comune: p.COMUNE || ''
       });
     }
   });
-  return results.slice(0, 12);
+
+  // Fase 2: cerca per codice PRATICA singolo (dedup per coppia pratica+tratta)
+  const praticaResults = [];
+  const seenPratica = new Set();
+  allFeatures.forEach(f => {
+    const p = f.properties;
+    const trattaId = p.TRATTA_ID || '';
+    const pratiche = splitPratiche(p.PRATICA);
+    pratiche.forEach(singola => {
+      if (singola.toUpperCase().includes(q)) {
+        const key = singola.toUpperCase() + '||' + trattaId.toUpperCase();
+        if (!seenPratica.has(key)) {
+          seenPratica.add(key);
+          praticaResults.push({
+            type: 'pratica',
+            feature: f,
+            pratica: singola,
+            tratta: p.TRATTA_ID,
+            lotto: p.LOTTO,
+            stato: p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE || '',
+            comune: p.COMUNE || ''
+          });
+        }
+      }
+    });
+  });
+
+  // Unisce: prima tratte, poi pratiche (evita di listare entrambe per la stessa query)
+  // Se ci sono risultati per tratta, non duplicare anche quelli per pratica per le stesse tratte
+  const trattaIds = new Set(trattaResults.map(r => (r.tratta || '').toUpperCase()));
+  const praticaOnly = praticaResults.filter(r => !trattaIds.has((r.tratta || '').toUpperCase()));
+
+  return [...trattaResults, ...praticaOnly].slice(0, 15);
 }
 
 // Geocoding Nominatim
