@@ -952,6 +952,11 @@ const inputEl   = document.getElementById('searchInput');
 const resultsEl = document.getElementById('searchResults');
 const clearBtn  = document.getElementById('clearSearchBtn');
 
+// Fix: impedisce che il mousedown sulla dropdown venga catturato da Leaflet
+// come inizio di un drag, lasciando il cursore bloccato sulla manina
+resultsEl.addEventListener('mousedown', e => e.stopPropagation());
+L.DomEvent.disableClickPropagation(document.getElementById('searchBar'));
+
 function clearSearch() {
   inputEl.value = '';
   resultsEl.style.display = 'none';
@@ -1041,14 +1046,8 @@ function renderResults(pratiche, addresses, query) {
         if (searchMarker) map.removeLayer(searchMarker);
         searchMarker = L.circleMarker([r.lat, r.lon], {
           radius: 8, color: '#4f8ef7', fillColor: '#4f8ef7', fillOpacity: 0.8, weight: 2
-        }).addTo(map).bindPopup(`<div style="font-size:12px;color:#e8eaf0;padding:4px">${r.display}</div>`);
-        // Fix: reset cursore DOPO che tutta la sequenza di movimenti è finita
-        map.once('moveend', () => {
-          map.getContainer().style.cursor = '';
-          map.dragging._draggable._moving = false;
-        });
+        }).addTo(map).bindPopup(`<div style="font-size:12px;color:#e8eaf0;padding:4px">${r.display}</div>`).openPopup();
         map.setView([r.lat, r.lon], r.zoom);
-        searchMarker.openPopup();
         resultsEl.style.display = 'none';
         clearBtn.style.display = 'block';
       };
@@ -1102,8 +1101,6 @@ function zoomToFeature(feature) {
   }
   resultsEl.style.display = 'none';
   clearBtn.style.display = 'block';
-  // Fix: reset cursore dopo setView (Leaflet lascia il cursore in stato "grab")
-  setTimeout(() => { map.getContainer().style.cursor = ''; }, 0);
 }
 
 // Debounced input handler
