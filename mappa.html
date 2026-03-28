@@ -615,6 +615,8 @@ function updateLegend(mode) {
 }
 
 map = L.map('map',{center:[45.48,9.30],zoom:10,zoomControl:true,attributionControl:true,preferCanvas:true});
+// Fix: reset cursore dopo ogni spostamento programmatico (es. ricerca indirizzo/permesso)
+map.on('moveend', () => { map.getContainer().style.cursor = ''; });
 // Renderer separati: outlineRenderer NON interattivo, mainRenderer interattivo
 const outlineRenderer = L.canvas({ tolerance: 0 });
 const mainRenderer   = L.canvas({ tolerance: 5 });
@@ -1045,6 +1047,8 @@ function renderResults(pratiche, addresses, query) {
         }).addTo(map).bindPopup(`<div style="font-size:12px;color:#e8eaf0;padding:4px">${r.display}</div>`).openPopup();
         resultsEl.style.display = 'none';
         clearBtn.style.display = 'block';
+        // Fix: reset cursore dopo setView (Leaflet lascia il cursore in stato "grab")
+        setTimeout(() => { map.getContainer().style.cursor = ''; }, 0);
       };
       resultsEl.appendChild(item);
     });
@@ -1096,6 +1100,8 @@ function zoomToFeature(feature) {
   }
   resultsEl.style.display = 'none';
   clearBtn.style.display = 'block';
+  // Fix: reset cursore dopo setView (Leaflet lascia il cursore in stato "grab")
+  setTimeout(() => { map.getContainer().style.cursor = ''; }, 0);
 }
 
 // Debounced input handler
