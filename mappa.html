@@ -618,6 +618,10 @@ map = L.map('map',{center:[45.48,9.30],zoom:10,zoomControl:true,attributionContr
 // Renderer separati: outlineRenderer NON interattivo, mainRenderer interattivo
 const outlineRenderer = L.canvas({ tolerance: 0 });
 const mainRenderer   = L.canvas({ tolerance: 5 });
+// Renderer SVG dedicato al searchMarker: evita che il canvas di default
+// (creato da circleMarker con preferCanvas:true) si sovrapponga al mainRenderer
+// intercettando tutti i click sulle tratte.
+const searchMarkerRenderer = L.svg();
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
   attribution:'© OpenStreetMap',
   crossOrigin: true
@@ -1054,7 +1058,8 @@ function renderResults(pratiche, addresses, query) {
             <button onclick="clearSearch()" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;line-height:1;padding:0 2px;flex-shrink:0" title="Chiudi">✕</button>
           </div>`;
         searchMarker = L.circleMarker([r.lat, r.lon], {
-          radius: 8, color: '#4f8ef7', fillColor: '#4f8ef7', fillOpacity: 0.8, weight: 2
+          radius: 8, color: '#4f8ef7', fillColor: '#4f8ef7', fillOpacity: 0.8, weight: 2,
+          renderer: searchMarkerRenderer   // SVG: non crea canvas in cima al mainRenderer
         }).addTo(map).bindPopup(popupHtml, {closeButton: false});
         // Quando si chiude il popup rimuove il marker così le tratte tornano cliccabili
         searchMarker.on('popupclose', () => {
