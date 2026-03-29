@@ -735,23 +735,46 @@ const BMAP_META = [
     label: 'Catastale',
     // SVG inline — griglia di particelle catastali stilizzata
     thumb: 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="116" height="80" viewBox="0 0 116 80"><rect width="116" height="80" fill="#f5f0e8"/><rect x="2" y="2" width="54" height="36" fill="none" stroke="#c8a96e" stroke-width="1.2"/><rect x="2" y="42" width="24" height="36" fill="none" stroke="#c8a96e" stroke-width="1.2"/><rect x="30" y="42" width="26" height="18" fill="none" stroke="#c8a96e" stroke-width="1.2"/><rect x="30" y="62" width="26" height="16" fill="none" stroke="#c8a96e" stroke-width="1.2"/><rect x="60" y="2" width="54" height="18" fill="none" stroke="#c8a96e" stroke-width="1.2"/><rect x="60" y="24" width="26" height="54" fill="none" stroke="#c8a96e" stroke-width="1.2"/><rect x="90" y="24" width="24" height="28" fill="none" stroke="#c8a96e" stroke-width="1.2"/><rect x="90" y="56" width="24" height="22" fill="none" stroke="#c8a96e" stroke-width="1.2"/><rect x="18" y="14" width="22" height="16" fill="#e8d9bc" stroke="#c8a96e" stroke-width="0.8"/><rect x="68" y="30" width="14" height="10" fill="#e8d9bc" stroke="#c8a96e" stroke-width="0.8"/><text x="6" y="14" font-family="sans-serif" font-size="5" fill="#8b6914">127</text><text x="32" y="52" font-family="sans-serif" font-size="5" fill="#8b6914">43</text><text x="64" y="12" font-family="sans-serif" font-size="5" fill="#8b6914">88</text><text x="92" y="34" font-family="sans-serif" font-size="5" fill="#8b6914">201</text></svg>`),
-    layer: L.layerGroup([
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '© CartoDB',
-        maxZoom: 21,
-        maxNativeZoom: 19
-      }),
-      L.tileLayer.wms('https://wms.cartografia.agenziaentrate.gov.it/inspire/wms/ows01.php', {
-        layers: 'CP.CadastralZoning,acque,strade,CP.CadastralParcel,fabbricati,vestizioni',
-        format: 'image/png',
-        transparent: true,
-        version: '1.1.1',
-        attribution: '© <a href="https://www.agenziaentrate.gov.it">Agenzia delle Entrate</a> – CC BY 4.0',
-        maxZoom: 21,
-        opacity: 0.95,
-        styles: ''
-      })
-    ])
+    layer: (() => {
+      // Il WMS AdE accetta solo EPSG:4326 — usiamo GridLayer per costruire
+      // manualmente le URL con bbox lat/lon corretto per ogni tile.
+      const AdeCatastale = L.GridLayer.extend({
+        options: {
+          tileSize: 256,
+          opacity: 0.95,
+          attribution: '© <a href="https://www.agenziaentrate.gov.it">Agenzia delle Entrate</a> – CC BY 4.0',
+          pane: 'overlayPane'
+        },
+        createTile: function(coords, done) {
+          const img = document.createElement('img');
+          img.style.cssText = 'width:256px;height:256px;display:block;';
+          const n = Math.pow(2, coords.z);
+          const lon_w = (coords.x / n) * 360 - 180;
+          const lon_e = ((coords.x + 1) / n) * 360 - 180;
+          const lat_n = Math.atan(Math.sinh(Math.PI * (1 - 2 * coords.y / n))) * 180 / Math.PI;
+          const lat_s = Math.atan(Math.sinh(Math.PI * (1 - 2 * (coords.y + 1) / n))) * 180 / Math.PI;
+          const bbox = `${lon_w},${lat_s},${lon_e},${lat_n}`;
+          img.src = 'https://wms.cartografia.agenziaentrate.gov.it/inspire/wms/ows01.php'
+            + '?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap'
+            + '&SRS=EPSG:4326'
+            + '&BBOX=' + bbox
+            + '&WIDTH=256&HEIGHT=256'
+            + '&LAYERS=CP.CadastralZoning,acque,strade,CP.CadastralParcel,fabbricati,vestizioni'
+            + '&STYLES=&FORMAT=image/png&TRANSPARENT=TRUE';
+          img.onload  = () => done(null, img);
+          img.onerror = (e) => done(e, img);
+          return img;
+        }
+      });
+      return L.layerGroup([
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+          attribution: '© CartoDB',
+          maxZoom: 21,
+          maxNativeZoom: 19
+        }),
+        new AdeCatastale()
+      ]);
+    })()
   }
 ];
 
