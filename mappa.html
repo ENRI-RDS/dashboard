@@ -296,11 +296,13 @@
   }
   /* ── SITI PANEL ── */
   .siti-control-btn {
-    width:36px; height:36px; border-radius:8px;
+    padding:0 10px; height:36px; border-radius:8px;
     background:var(--surface); border:1px solid var(--border);
     box-shadow:0 2px 8px #0002;
-    display:flex; align-items:center; justify-content:center;
-    cursor:pointer; font-size:16px;
+    display:flex; align-items:center; justify-content:center; gap:5px;
+    cursor:pointer; font-size:10px; font-weight:700;
+    font-family:'DM Sans',sans-serif; letter-spacing:0.05em;
+    color:var(--text); white-space:nowrap;
     transition:background 0.15s, box-shadow 0.15s;
     user-select:none;
   }
@@ -357,7 +359,7 @@
   }
   .sito-info { flex:1; min-width:0; }
   .sito-name { font-size:12px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .sito-note { font-size:9px; color:var(--muted); margin-top:1px; }
+  .sito-note { font-size:9px; color:#1a1d27; font-weight:500; margin-top:1px; }
   .sito-arrow { color:var(--muted); font-size:13px; flex-shrink:0; }
   .sito-empty { padding:18px 13px; font-size:11px; color:var(--muted); text-align:center; }
   /* ── HELP MODAL ── */
@@ -1782,7 +1784,7 @@ const SitiControl = L.Control.extend({
     const btn = L.DomUtil.create('div', 'siti-control-btn', wrap);
     btn.id = 'sitiBtn';
     btn.title = 'Siti di interesse';
-    btn.textContent = '📍';
+    btn.innerHTML = '📍 SITI ENRI';
 
     // Pannello
     const panel = L.DomUtil.create('div', 'siti-panel', wrap);
@@ -1867,8 +1869,37 @@ function filterSiti(query) {
   ) : SITI);
 }
 
+let _sitoMarker = null;
+
 function goToSito(s) {
   map.setView([s.lat, s.lon], 16, { animate: true });
+
+  // Rimuovi marker precedente
+  if (_sitoMarker) { map.removeLayer(_sitoMarker); _sitoMarker = null; }
+
+  // Cerchietto con popup
+  _sitoMarker = L.circleMarker([s.lat, s.lon], {
+    radius: 10,
+    color: '#2563eb',
+    fillColor: '#2563eb',
+    fillOpacity: 0.25,
+    weight: 2.5,
+    renderer: searchMarkerRenderer
+  }).addTo(map);
+
+  _sitoMarker.bindPopup(`
+    <div style="padding:6px 4px;min-width:130px">
+      <div style="font-size:13px;font-weight:700;color:var(--text)">${s.name}</div>
+      <div style="font-size:11px;color:#1a1d27;margin-top:2px">${s.note}</div>
+    </div>`, { closeButton: false }
+  ).openPopup();
+
+  // Rimuovi marker alla chiusura del popup
+  _sitoMarker.on('popupclose', () => {
+    if (_sitoMarker) { map.removeLayer(_sitoMarker); _sitoMarker = null; }
+  });
+
+  // Chiudi pannello
   _sitiPanelOpen = false;
   document.getElementById('sitiPanel').classList.remove('open');
   document.getElementById('sitiBtn').classList.remove('active');
