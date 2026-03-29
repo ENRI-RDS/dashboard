@@ -2,14 +2,6 @@
 <html lang="it" translate="no">
 <head>
 <meta charset="UTF-8">
-<!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-GRF3Y3KX16"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', 'G-GRF3Y3KX16');
-</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="google" content="notranslate">
 <meta http-equiv="Content-Language" content="it">
@@ -1006,81 +998,176 @@ const JSONBIN_BIN_ID     = '69b3d128b7ec241ddc6545cc';
 const JSONBIN_MASTER_KEY = '$2a$10$2kWuCWPZFDiwXDJBkEmituTTW4op2VZF6E52e75IQsMV7FwmXmSsO';
 const JSONBIN_BASE       = 'https://api.jsonbin.io/v3/b';
 const STORICO_MAX_ENTRIES = 104; // ~2 anni di aggiornamenti settimanali
-// ── REGISTRO ACCESSI ──────────────────────────────────────────────────────────
+// ── REGISTRO ACCESSI CON USERNAME ────────────────────────────────────────────
 const JSONBIN_LOG_BIN_ID = '69c8fbdced015c742bc8e978';
-const ACCESSI_MAX        = 500; // voci massime conservate (~1 anno di accessi quotidiani)
+const ACCESSI_MAX        = 500;
+const ADMIN_USERNAME     = 'enri_admin'; // ← cambia con il tuo username admin
 
-async function logAccesso() {
-  // Evita log doppio nella stessa sessione di navigazione
-  if (sessionStorage.getItem('_acc_logged')) return;
+async function _logGetData() {
+  const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}/latest`, {
+    headers: { 'X-Master-Key': JSONBIN_MASTER_KEY }
+  });
+  const json = await res.json();
+  return {
+    utenti:  Array.isArray(json.record?.utenti)  ? json.record.utenti  : [],
+    accessi: Array.isArray(json.record?.accessi) ? json.record.accessi : []
+  };
+}
+
+async function _logSaveData(data) {
+  await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
+    body: JSON.stringify(data)
+  });
+}
+
+async function _getIP() {
+  try {
+    const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
+    const d = await r.json();
+    return d.ip || null;
+  } catch(_) { return null; }
+}
+
+function _formatDate(isoStr) {
+  const d = new Date(isoStr);
+  return d.toLocaleDateString('it-IT') + ' ' + d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+}
+
+// ── LOGIN MODAL ───────────────────────────────────────────────────────────────
+function _buildLoginModal() {
+  const overlay = document.createElement('div');
+  overlay.id = 'loginOverlay';
+  overlay.style.cssText = `
+    position:fixed;inset:0;background:rgba(28,28,46,.6);backdrop-filter:blur(6px);
+    z-index:9999;display:flex;align-items:center;justify-content:center;
+  `;
+  const savedUser = localStorage.getItem('_enri_user');
+  const isReturning = !!savedUser;
+
+  overlay.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:18px;
+      padding:36px 40px;width:380px;max-width:94vw;box-shadow:0 24px 60px rgba(11,49,130,.18);">
+      <div style="font-family:'Bricolage Grotesque',sans-serif;font-size:22px;font-weight:700;
+        color:var(--accent);letter-spacing:-0.02em;margin-bottom:4px">ENRI Dashboard</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:28px">
+        ${isReturning ? `Bentornato, <strong>${savedUser}</strong>. Conferma il tuo nome per accedere.` : 'Inserisci il tuo nome per accedere alla dashboard.'}
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;
+          color:var(--muted);display:block;margin-bottom:6px">Nome utente</label>
+        <input id="loginInput" type="text" placeholder="${isReturning ? savedUser : 'Es. Mario Rossi'}"
+          value="${isReturning ? savedUser : ''}"
+          style="width:100%;padding:10px 14px;border:1.5px solid var(--border2);border-radius:8px;
+            font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--text);
+            background:var(--surface);outline:none;transition:border-color .2s;"
+          onfocus="this.style.borderColor='var(--accent)'"
+          onblur="this.style.borderColor='var(--border2)'"
+          onkeydown="if(event.key==='Enter')document.getElementById('loginBtn').click()"
+        />
+        <div id="loginError" style="font-size:11px;color:#C23B22;margin-top:6px;display:none"></div>
+      </div>
+      <button id="loginBtn" style="width:100%;padding:11px;border-radius:8px;background:var(--accent);
+        color:#fff;border:none;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;
+        font-size:13px;font-weight:700;letter-spacing:0.02em;transition:all .18s;"
+        onmouseover="this.style.opacity='.88'" onmouseout="this.style.opacity='1'">
+        Accedi →
+      </button>
+      <div style="margin-top:14px;font-size:10px;color:var(--muted2);text-align:center">
+        Il tuo nome viene registrato nel log accessi
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  // Focus automatico
+  setTimeout(() => {
+    const inp = document.getElementById('loginInput');
+    if (inp) { inp.focus(); if (inp.value) inp.select(); }
+  }, 100);
+
+  document.getElementById('loginBtn').addEventListener('click', () => _handleLogin());
+}
+
+async function _handleLogin() {
+  const input = document.getElementById('loginInput');
+  const errEl = document.getElementById('loginError');
+  const btn   = document.getElementById('loginBtn');
+  const nome  = (input?.value || '').trim();
+
+  if (!nome || nome.length < 2) {
+    errEl.textContent = 'Inserisci almeno 2 caratteri.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.textContent = 'Accesso in corso…';
+  btn.disabled = true;
+  errEl.style.display = 'none';
 
   try {
-    // 1. IP pubblico (ipify: gratuito, no auth, no CORS issues)
-    const ipRes  = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
-    const { ip } = await ipRes.json();
+    const data = await _logGetData();
 
-    // 2. Geolocalizzazione approssimativa (ipapi.co: gratuito, 1000 req/giorno)
-    let geo = { citta: null, paese: null, isp: null };
-    try {
-      const geoRes  = await fetch(`https://ipapi.co/${ip}/json/`);
-      const geoData = await geoRes.json();
-      if (!geoData.error) {
-        geo.citta  = geoData.city           || null;
-        geo.paese  = geoData.country_name   || null;
-        geo.isp    = geoData.org            || null;
-        geo.regione= geoData.region         || null;
-      }
-    } catch(_) { /* geo non disponibile, continua comunque */ }
+    // Controlla se è un utente già registrato
+    const savedUser = localStorage.getItem('_enri_user');
+    const isReturning = !!savedUser;
 
-    // 3. Costruisce il record di accesso
-    const sessId = sessionStorage.getItem('_sid') || (() => {
-      const s = Date.now().toString(36) + Math.random().toString(36).slice(2);
-      sessionStorage.setItem('_sid', s);
-      return s;
-    })();
+    if (isReturning && nome.toLowerCase() !== savedUser.toLowerCase()) {
+      // Nome non corrisponde a quello salvato
+      errEl.textContent = `Nome non riconosciuto. Hai usato "${savedUser}" in precedenza.`;
+      errEl.style.display = 'block';
+      btn.textContent = 'Accedi →';
+      btn.disabled = false;
+      return;
+    }
 
+    // Registra utente se nuovo
+    if (!data.utenti.includes(nome)) {
+      data.utenti.push(nome);
+    }
+
+    // Log accesso
+    const ip = await _getIP();
     const accesso = {
-      ts:      new Date().toISOString(),
-      ip,
-      citta:   geo.citta,
-      regione: geo.regione,
-      paese:   geo.paese,
-      isp:     geo.isp,
-      pagina:  window.location.pathname || '/',
-      referrer: document.referrer || null,
-      ua:      navigator.userAgent.substring(0, 200),
-      lingua:  navigator.language,
-      schermo: `${screen.width}×${screen.height}`,
-      sessione: sessId
+      ts:       new Date().toISOString(),
+      utente:   nome,
+      ip:       ip,
+      ua:       navigator.userAgent.substring(0, 120),
+      schermo:  `${screen.width}×${screen.height}`
     };
+    data.accessi.push(accesso);
+    if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
 
-    // 4. Carica il log attuale, appendi, salva (con cap)
-    const resLoad = await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}/latest`, {
-      headers: { 'X-Master-Key': JSONBIN_MASTER_KEY }
-    });
-    const jsonLoad  = await resLoad.json();
-    const accessi   = Array.isArray(jsonLoad.record?.accessi) ? jsonLoad.record.accessi : [];
+    await _logSaveData(data);
 
-    accessi.push(accesso);
-    if (accessi.length > ACCESSI_MAX) accessi.splice(0, accessi.length - ACCESSI_MAX);
+    // Salva in localStorage per i prossimi accessi
+    localStorage.setItem('_enri_user', nome);
 
-    await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
-      body: JSON.stringify({ accessi })
-    });
+    // Rimuovi overlay e mostra dashboard
+    document.getElementById('loginOverlay').remove();
 
-    // 5. Segna sessione come già loggata (evita duplicati su navigazione interna)
-    sessionStorage.setItem('_acc_logged', '1');
+    // Mostra il badge utente in topbar
+    const topbarRight = document.querySelector('.topbar-right');
+    if (topbarRight) {
+      const badge = document.createElement('span');
+      badge.className = 'badge ok';
+      badge.textContent = '👤 ' + nome;
+      topbarRight.prepend(badge);
+    }
 
   } catch(e) {
-    // Fallimento silenzioso: non compromette la dashboard
-    console.warn('[AccessLog]', e.message);
+    console.warn('[Login]', e.message);
+    // In caso di errore di rete, lascia entrare comunque
+    localStorage.setItem('_enri_user', nome);
+    document.getElementById('loginOverlay').remove();
+    btn.textContent = 'Accedi →';
+    btn.disabled = false;
   }
 }
 
-// Avvia il log in background — non blocca il rendering
-setTimeout(logAccesso, 2000); // attende 2s per non competere con il caricamento dati
+// Avvia il login al caricamento della pagina
+document.addEventListener('DOMContentLoaded', () => _buildLoginModal());
 // ─────────────────────────────────────────────────────────────────────────────
 async function jsonbinLoad() {
   const controller = new AbortController();
@@ -3836,6 +3923,161 @@ function openHelp() { document.getElementById("helpOverlay").classList.add("open
     </div>
   </div>
 </div>
+
+<!-- ── SEZIONE ADMIN ACCESSI ─────────────────────────────────────────────── -->
+<div id="adminSection" style="display:none;padding:28px;border-top:2px solid var(--border);
+  background:var(--surface2);margin-top:32px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div style="font-family:'Bricolage Grotesque',sans-serif;font-size:16px;font-weight:700;
+        color:var(--accent);letter-spacing:-0.01em">🔐 Registro Accessi</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">Visibile solo a te — sezione admin</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span id="adminUtentiCount" class="badge"></span>
+      <span id="adminAccessiCount" class="badge"></span>
+      <button onclick="document.getElementById('adminSection').style.display='none'"
+        style="font-size:11px;padding:6px 14px;border-radius:6px;background:var(--surface);
+          color:var(--muted);border:1px solid var(--border2);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">
+        Nascondi
+      </button>
+      <button onclick="_adminClearUser()" 
+        style="font-size:11px;padding:6px 14px;border-radius:6px;background:#C23B220D;
+          color:#C23B22;border:1px solid #C23B2244;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">
+        Reset mio login
+      </button>
+    </div>
+  </div>
+
+  <!-- Utenti registrati -->
+  <div style="margin-bottom:24px">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;
+      color:var(--muted);margin-bottom:10px">Utenti Registrati</div>
+    <div id="adminUtentiList" style="display:flex;flex-wrap:wrap;gap:8px">
+      <span style="font-size:12px;color:var(--muted)">Caricamento…</span>
+    </div>
+  </div>
+
+  <!-- Tabella accessi -->
+  <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;
+    color:var(--muted);margin-bottom:10px">Ultimi Accessi</div>
+  <div style="overflow-x:auto;border-radius:10px;border:1px solid var(--border)">
+    <table style="width:100%;border-collapse:collapse;background:var(--surface)">
+      <thead>
+        <tr style="background:var(--surface2)">
+          <th style="padding:8px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;
+            color:var(--muted);text-align:left;font-weight:700;border-bottom:1px solid var(--border)">Data / Ora</th>
+          <th style="padding:8px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;
+            color:var(--muted);text-align:left;font-weight:700;border-bottom:1px solid var(--border)">Utente</th>
+          <th style="padding:8px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;
+            color:var(--muted);text-align:left;font-weight:700;border-bottom:1px solid var(--border)">IP</th>
+          <th style="padding:8px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;
+            color:var(--muted);text-align:left;font-weight:700;border-bottom:1px solid var(--border)">Schermo</th>
+        </tr>
+      </thead>
+      <tbody id="adminAccessiBody">
+        <tr><td colspan="4" style="padding:20px;text-align:center;color:var(--muted);font-size:12px">Caricamento…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Pulsante admin nascosto in fondo alla pagina -->
+<div style="text-align:center;padding:18px 0 10px;background:var(--bg)">
+  <button onclick="_adminOpen()"
+    style="font-size:10px;padding:5px 14px;border-radius:6px;background:transparent;
+      color:var(--border2);border:1px solid var(--border);cursor:pointer;
+      font-family:'Fira Code',monospace;letter-spacing:0.08em;transition:all .2s;"
+    onmouseover="this.style.color='var(--muted)';this.style.borderColor='var(--border2)'"
+    onmouseout="this.style.color='var(--border2)';this.style.borderColor='var(--border)'">
+    ···
+  </button>
+</div>
+
+<script>
+function _adminOpen() {
+  const user = localStorage.getItem('_enri_user');
+  if (!user || user.toLowerCase() !== ADMIN_USERNAME.toLowerCase()) {
+    alert('Accesso admin non autorizzato.');
+    return;
+  }
+  const section = document.getElementById('adminSection');
+  section.style.display = 'block';
+  section.scrollIntoView({ behavior: 'smooth' });
+  _adminLoad();
+}
+
+async function _adminLoad() {
+  try {
+    const data = await _logGetData();
+
+    // Badge contatori
+    document.getElementById('adminUtentiCount').textContent  = `👥 ${data.utenti.length} utenti`;
+    document.getElementById('adminAccessiCount').textContent = `📋 ${data.accessi.length} accessi`;
+
+    // Lista utenti
+    const utentiEl = document.getElementById('adminUtentiList');
+    if (data.utenti.length === 0) {
+      utentiEl.innerHTML = '<span style="font-size:12px;color:var(--muted)">Nessun utente ancora</span>';
+    } else {
+      utentiEl.innerHTML = data.utenti.map(u => `
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;
+          border-radius:20px;background:var(--surface);border:1px solid var(--border2);
+          font-size:11px;color:var(--text2);font-weight:500;">
+          👤 ${u}
+          <span onclick="_adminRemoveUser('${u.replace(/'/g,"\\'")}', this)" 
+            style="cursor:pointer;color:var(--muted2);font-size:13px;line-height:1;margin-left:2px"
+            title="Rimuovi utente">×</span>
+        </span>
+      `).join('');
+    }
+
+    // Tabella accessi (ultimi prima)
+    const tbody = document.getElementById('adminAccessiBody');
+    const reversed = [...data.accessi].reverse();
+    if (reversed.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--muted);font-size:12px">Nessun accesso registrato</td></tr>';
+    } else {
+      tbody.innerHTML = reversed.map((a, i) => `
+        <tr style="border-bottom:1px solid var(--border);${i%2===1?'background:var(--surface2)':''}">
+          <td style="padding:7px 14px;font-size:11px;font-family:'Fira Code',monospace;color:var(--text2);white-space:nowrap">
+            ${_formatDate(a.ts)}
+          </td>
+          <td style="padding:7px 14px;font-size:12px;font-weight:600;color:var(--accent);white-space:nowrap">
+            ${a.utente || '—'}
+          </td>
+          <td style="padding:7px 14px;font-size:11px;font-family:'Fira Code',monospace;color:var(--muted);white-space:nowrap">
+            ${a.ip || '—'}
+          </td>
+          <td style="padding:7px 14px;font-size:11px;font-family:'Fira Code',monospace;color:var(--muted);white-space:nowrap">
+            ${a.schermo || '—'}
+          </td>
+        </tr>
+      `).join('');
+    }
+  } catch(e) {
+    document.getElementById('adminAccessiBody').innerHTML =
+      `<tr><td colspan="4" style="padding:20px;text-align:center;color:#C23B22;font-size:12px">Errore caricamento: ${e.message}</td></tr>`;
+  }
+}
+
+async function _adminRemoveUser(nome, el) {
+  if (!confirm(`Rimuovere l'utente "${nome}"? Potrà ri-registrarsi liberamente.`)) return;
+  try {
+    const data = await _logGetData();
+    data.utenti = data.utenti.filter(u => u !== nome);
+    await _logSaveData(data);
+    el.closest('span').remove();
+    document.getElementById('adminUtentiCount').textContent = `👥 ${data.utenti.length} utenti`;
+  } catch(e) { alert('Errore: ' + e.message); }
+}
+
+function _adminClearUser() {
+  if (!confirm('Questo ti disconnetterà e dovrai reinserire il nome al prossimo accesso. Continuare?')) return;
+  localStorage.removeItem('_enri_user');
+  location.reload();
+}
+</script>
 
 </body>
 </html>
