@@ -362,6 +362,80 @@
   .sito-note { font-size:9px; color:#1a1d27; font-weight:500; margin-top:1px; }
   .sito-arrow { color:var(--muted); font-size:13px; flex-shrink:0; }
   .sito-empty { padding:18px 13px; font-size:11px; color:var(--muted); text-align:center; }
+  /* ── MISURATORE DI DISTANZA ── */
+  .measure-control-btn {
+    padding:0 10px; height:36px; border-radius:8px;
+    background:var(--surface); border:1px solid var(--border);
+    box-shadow:0 2px 8px #0002;
+    display:flex; align-items:center; justify-content:center; gap:5px;
+    cursor:pointer; font-size:10px; font-weight:700;
+    font-family:'DM Sans',sans-serif; letter-spacing:0.05em;
+    color:var(--text); white-space:nowrap;
+    transition:background 0.15s, box-shadow 0.15s;
+    user-select:none; margin-top:6px;
+  }
+  .measure-control-btn:hover { background:var(--surface2); box-shadow:0 3px 12px #0003; }
+  .measure-control-btn.active { background:#fff7ed; border-color:#e07b3a; color:#e07b3a; }
+  .measure-badge {
+    position:absolute; bottom:90px; left:50%; transform:translateX(-50%);
+    z-index:900; background:#1a1d27ee; color:#fff;
+    font-size:12px; font-weight:700; font-family:'DM Mono',monospace;
+    padding:7px 18px; border-radius:20px;
+    box-shadow:0 2px 12px #0005; white-space:nowrap;
+    display:none; align-items:center; gap:8px;
+    backdrop-filter:blur(8px);
+  }
+  .measure-badge.visible { display:flex; }
+  .measure-badge-clear {
+    font-size:14px; cursor:pointer; opacity:0.7;
+    transition:opacity 0.15s; line-height:1;
+  }
+  .measure-badge-clear:hover { opacity:1; }
+  .measure-hint {
+    position:absolute; top:64px; left:50%; transform:translateX(-50%);
+    z-index:900; background:#1a1d27cc; color:#fff;
+    font-size:11px; font-family:'DM Sans',sans-serif;
+    padding:5px 14px; border-radius:12px;
+    pointer-events:none; white-space:nowrap;
+    display:none;
+  }
+  .measure-hint.visible { display:block; }
+  /* ── TOOLTIP TRATTE ── */
+  .leaflet-tooltip.tratta-tip {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:7px; color:var(--text);
+    font-family:'DM Sans',sans-serif; font-size:11px;
+    padding:5px 10px; box-shadow:0 3px 12px #00000018;
+    pointer-events:none;
+  }
+  .leaflet-tooltip.tratta-tip::before { display:none; }
+  /* ── CATASTALE LOADER ── */
+  .catastale-loader {
+    position:absolute; bottom:90px; right:56px; z-index:900;
+    background:#ffffffee; border:1px solid var(--border);
+    border-radius:8px; padding:5px 10px;
+    display:none; align-items:center; gap:6px;
+    font-size:10px; color:var(--muted);
+    font-family:'DM Sans',sans-serif;
+    box-shadow:0 2px 8px #0002;
+  }
+  .catastale-loader.visible { display:flex; }
+  .catastale-loader-spin {
+    width:12px; height:12px; border:2px solid var(--border);
+    border-top-color:#b45309; border-radius:50%;
+    animation:spin 0.7s linear infinite; flex-shrink:0;
+  }
+  /* ── GOOGLE MAPS BTN nel popup ── */
+  .popup-gmaps-btn {
+    display:inline-flex; align-items:center; gap:5px;
+    font-size:10px; font-weight:600; padding:4px 10px;
+    border-radius:6px; border:1px solid #dde1ec;
+    background:#f8f9ff; color:#2563eb;
+    cursor:pointer; text-decoration:none;
+    transition:background 0.15s; font-family:'DM Sans',sans-serif;
+    margin-top:8px;
+  }
+  .popup-gmaps-btn:hover { background:#eff4ff; }
   /* ── HELP MODAL ── */
   #helpOverlay {
     position:fixed;inset:0;background:#0007;display:flex;align-items:center;
@@ -443,6 +517,15 @@
       </div>
 
     <div class="sidebar-body" id="lottoList"></div>
+  </div>
+  <div id="measureBadge" class="measure-badge">
+    <span id="measureDist">0.00 km</span>
+    <span class="measure-badge-clear" onclick="clearMeasure()" title="Cancella misura">✕</span>
+  </div>
+  <div id="measureHint" class="measure-hint">📏 Clicca per aggiungere punti · Doppio click per terminare</div>
+  <div id="catastaleLoader" class="catastale-loader">
+    <div class="catastale-loader-spin"></div>
+    <span>Caricamento catasto…</span>
   </div>
   <div id="statsBar" class="stats-bar"></div>
   <div class="legend map-legend" id="legendContainer">
@@ -816,6 +899,11 @@ const BMAP_META = [
       // Il WMS AdE accetta SOLO EPSG:4258 e WMS 1.3.0 (assi invertiti rispetto 1.1.1)
       const AdeCatastale = L.GridLayer.extend({
         options: { tileSize: 256, opacity: 1 },
+        _pendingTiles: 0,
+        _updateLoader: function() {
+          const el = document.getElementById('catastaleLoader');
+          if (el) el.classList.toggle('visible', this._pendingTiles > 0);
+        },
         createTile: function(coords, done) {
           // AdE non serve particelle sotto zoom 15 — tile trasparente, zero richieste HTTP
           if (coords.z < 14) {
@@ -844,8 +932,12 @@ const BMAP_META = [
             + '&WIDTH=256&HEIGHT=256'
             + '&LAYERS=CP.CadastralZoning,acque,strade,CP.CadastralParcel,fabbricati,vestizioni'
             + '&STYLES=default&FORMAT=image/png&TRANSPARENT=TRUE';
-          img.onload  = () => done(null, img);
+          this._pendingTiles++;
+          this._updateLoader();
+          const self = this;
+          img.onload  = () => { self._pendingTiles = Math.max(0, self._pendingTiles-1); self._updateLoader(); done(null, img); };
           img.onerror = () => {
+            self._pendingTiles = Math.max(0, self._pendingTiles-1); self._updateLoader();
             // WMS ha restituito errore: placeholder trasparente, nessuna icona "immagine rotta"
             const c = document.createElement('canvas');
             c.width = c.height = 256;
@@ -1064,7 +1156,7 @@ function getColor(stato){ return STATO_COLORS[stato]||'#4a4f6a'; }
 function fmtM(m){ return m?(m/1000).toFixed(2).replace('.',',')+' km':'—'; }
 
 // Popola il popup con TUTTI i campi disponibili inclusi i nuovi
-function makePopupHtml(p) {
+function makePopupHtml(p, gmapsUrl) {
   const stato = p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE || 'IN ATTESA';
   const color = getColor(stato);
 
@@ -1223,6 +1315,12 @@ function makePopupHtml(p) {
       </div>
       ${ls ? `<div class="popup-body-right">${lottoProgressRightHtml}</div>` : ''}
     </div>
+    ${gmapsUrl ? `<div style="padding:0 16px 12px">
+      <a class="popup-gmaps-btn" href="${gmapsUrl}" target="_blank" rel="noopener">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#2563eb"/></svg>
+        Apri in Google Maps
+      </a>
+    </div>` : ''}
   </div>`;
 }
 
@@ -1726,7 +1824,31 @@ function toggleQTS(on) {
           weight:4, opacity:0.95, smoothFactor:1.5
         }),
         onEachFeature:(f,layer)=>{
-          layer.bindPopup(makePopupHtml(f.properties),{maxWidth:640});
+          // Coordinate centroide per Google Maps
+          const coords = f.geometry.type === 'MultiLineString'
+            ? f.geometry.coordinates.flat()
+            : f.geometry.coordinates;
+          const mid = coords[Math.floor(coords.length/2)];
+          const gmapsUrl = mid
+            ? `https://www.google.com/maps?q=${mid[1].toFixed(6)},${mid[0].toFixed(6)}`
+            : null;
+
+          layer.bindPopup(makePopupHtml(f.properties, gmapsUrl),{maxWidth:640});
+
+          // Tooltip al passaggio del mouse
+          const stato = f.properties.STATO_LEGENDA || f.properties.STATO_AUTORIZZAZIONE || 'IN ATTESA';
+          const comune = f.properties.COMUNE || '';
+          const col = getColor(stato);
+          layer.bindTooltip(`
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0"></span>
+              <strong>Lotto ${f.properties.LOTTO||'—'}</strong>
+              <span style="color:var(--muted)">·</span>
+              <span>${stato.charAt(0)+stato.slice(1).toLowerCase()}</span>
+            </div>
+            ${comune ? `<div style="font-size:10px;color:#6b7080;margin-top:2px">${comune}</div>` : ''}
+          `, { className:'tratta-tip', sticky:true, direction:'top', offset:[0,-4] });
+
           layer.on('mouseover',e=>{e.target.setStyle({weight:6,opacity:1});e.target.bringToFront();});
           layer.on('mouseout',e=>{
             if(_highlightedLayer===e.target) return;
@@ -1754,6 +1876,120 @@ function toggleQTS(on) {
       <div style="color:var(--muted);font-size:12px">${e.message}</div>`;
   }
 })();
+
+// ── MISURATORE DI DISTANZA ──────────────────────────────────────────────────
+let _measureActive = false;
+let _measurePoints = [];
+let _measureLayers = []; // polyline + markers
+
+const MeasureControl = L.Control.extend({
+  options: { position: 'topright' },
+  onAdd: function() {
+    const btn = L.DomUtil.create('div', 'measure-control-btn');
+    btn.id = 'measureBtn';
+    btn.innerHTML = '📏 Misura';
+    btn.title = 'Misuratore di distanza';
+    L.DomEvent.disableClickPropagation(btn);
+    L.DomEvent.on(btn, 'click', toggleMeasure);
+    return btn;
+  }
+});
+new MeasureControl().addTo(map);
+
+function toggleMeasure() {
+  _measureActive = !_measureActive;
+  const btn = document.getElementById('measureBtn');
+  if (btn) btn.classList.toggle('active', _measureActive);
+  if (_measureActive) {
+    map.getContainer().style.cursor = 'crosshair';
+    map.on('click', _measureAddPoint);
+    map.on('dblclick', _measureFinish);
+    document.addEventListener('keydown', _measureKeyDown);
+    document.getElementById('measureHint').classList.add('visible');
+  } else {
+    clearMeasure();
+  }
+}
+
+function _measureAddPoint(e) {
+  _measurePoints.push(e.latlng);
+
+  // Marker punto
+  const dot = L.circleMarker(e.latlng, {
+    radius:5, color:'#e07b3a', fillColor:'#e07b3a',
+    fillOpacity:1, weight:2, renderer:searchMarkerRenderer
+  }).addTo(map);
+  _measureLayers.push(dot);
+
+  if (_measurePoints.length > 1) {
+    // Segmento
+    const seg = L.polyline(
+      [_measurePoints[_measurePoints.length-2], e.latlng],
+      { color:'#e07b3a', weight:2.5, dashArray:'7,5', renderer:searchMarkerRenderer }
+    ).addTo(map);
+    _measureLayers.push(seg);
+
+    // Label distanza segmento
+    const segDist = _measurePoints[_measurePoints.length-2].distanceTo(e.latlng);
+    const midLat = (_measurePoints[_measurePoints.length-2].lat + e.latlng.lat) / 2;
+    const midLon = (_measurePoints[_measurePoints.length-2].lng + e.latlng.lng) / 2;
+    const segLabel = L.tooltip({ permanent:true, direction:'top', className:'tratta-tip', offset:[0,-4] })
+      .setLatLng([midLat, midLon])
+      .setContent(`<span style="font-size:10px;font-family:'DM Mono',monospace">${_fmtDist(segDist)}</span>`)
+      .addTo(map);
+    _measureLayers.push(segLabel);
+  }
+
+  // Totale
+  let total = 0;
+  for (let i=1; i<_measurePoints.length; i++)
+    total += _measurePoints[i-1].distanceTo(_measurePoints[i]);
+
+  const badge = document.getElementById('measureBadge');
+  document.getElementById('measureDist').textContent = _fmtDist(total);
+  badge.classList.add('visible');
+}
+
+function _measureFinish(e) {
+  // il dblclick genera 2 click + 1 dblclick: rimuovi l'ultimo punto duplicato
+  if (_measurePoints.length > 0) {
+    const last = _measureLayers[_measureLayers.length-1];
+    // rimuovi label e segmento dell'ultimo click spurio (i due layer aggiunti)
+    // solo se il punto è identico all'ultimo
+  }
+  _measureActive = false;
+  const btn = document.getElementById('measureBtn');
+  if (btn) btn.classList.remove('active');
+  map.getContainer().style.cursor = '';
+  map.off('click', _measureAddPoint);
+  map.off('dblclick', _measureFinish);
+  document.removeEventListener('keydown', _measureKeyDown);
+  document.getElementById('measureHint').classList.remove('visible');
+}
+
+function clearMeasure() {
+  _measureActive = false;
+  const btn = document.getElementById('measureBtn');
+  if (btn) btn.classList.remove('active');
+  map.getContainer().style.cursor = '';
+  map.off('click', _measureAddPoint);
+  map.off('dblclick', _measureFinish);
+  document.removeEventListener('keydown', _measureKeyDown);
+  _measureLayers.forEach(l => { try { map.removeLayer(l); } catch(_){} });
+  _measureLayers = [];
+  _measurePoints = [];
+  document.getElementById('measureBadge').classList.remove('visible');
+  document.getElementById('measureHint').classList.remove('visible');
+}
+
+function _measureKeyDown(e) { if (e.key === 'Escape') clearMeasure(); }
+
+function _fmtDist(m) {
+  return m >= 1000
+    ? (m/1000).toFixed(2).replace('.',',') + ' km'
+    : Math.round(m) + ' m';
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ── SITI DI INTERESSE ───────────────────────────────────────────────────────
 const SITI = [
