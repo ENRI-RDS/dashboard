@@ -372,7 +372,7 @@
     font-family:'DM Sans',sans-serif; letter-spacing:0.05em;
     color:var(--text); white-space:nowrap;
     transition:background 0.15s, box-shadow 0.15s;
-    user-select:none; margin-top:6px;
+    user-select:none; margin-top:8px; margin-left:10px;
   }
   .measure-control-btn:hover { background:var(--surface2); box-shadow:0 3px 12px #0003; }
   .measure-control-btn.active { background:#fff7ed; border-color:#e07b3a; color:#e07b3a; }
@@ -1883,7 +1883,7 @@ let _measurePoints = [];
 let _measureLayers = []; // polyline + markers
 
 const MeasureControl = L.Control.extend({
-  options: { position: 'topright' },
+  options: { position: 'topleft' },
   onAdd: function() {
     const btn = L.DomUtil.create('div', 'measure-control-btn');
     btn.id = 'measureBtn';
@@ -2158,45 +2158,60 @@ function openHelp() { document.getElementById("helpOverlay").classList.add("open
       <span onclick="document.getElementById('helpOverlay').classList.remove('open')"
         style="cursor:pointer;color:var(--muted);font-size:22px;line-height:1">×</span>
     </div>
-    <div style="font-size:11px;color:var(--muted)">Come usare la mappa interattiva</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Panoramica delle funzionalità disponibili</div>
 
     <div class="help-section">
-      <h4>🎨 Modalità Visualizzazione</h4>
-      <p>Usa i pulsanti <strong>Per Stato · Per Lotto · Per Cluster</strong> per colorare le tratte in base allo stato autorizzativo, al lotto di appartenenza o al cluster. Ogni colore corrisponde a un valore nella legenda in basso a sinistra.</p>
+      <h4>🎨 Modalità di Visualizzazione</h4>
+      <p>I pulsanti <strong>Per Stato · Per Lotto · Per Cluster</strong> nella barra laterale cambiano il criterio di colorazione delle tratte. <em>Per Stato</em> mostra l'avanzamento autorizzativo con colori che vanno dal grigio (in attesa) al verde (ottenuto). <em>Per Lotto</em> distingue i quattro lotti attivi (1A, 1B, 2A, 2B) e quelli in avvio (1–8). <em>Per Cluster</em> raggruppa le tratte per area geografica con una tavolozza di 30 colori distinti. La legenda in basso a sinistra si aggiorna automaticamente al cambio di modalità.</p>
     </div>
 
     <div class="help-section">
-      <h4>🔍 Filtro per Lotto</h4>
-      <p>Clicca sui badge lotto nella barra di filtro per mostrare/nascondere singoli lotti sulla mappa. Utile per concentrarsi su una specifica area di lavoro.</p>
+      <h4>🔍 Filtri Multi-selezione</h4>
+      <p>In modalità <em>Per Stato</em> e <em>Per Lotto</em> puoi cliccare su più badge lotto nella barra di filtro per combinarli: la mappa mostra solo i lotti selezionati e fa zoom automatico sull'area risultante. Clicca <strong>Tutti</strong> per tornare alla vista completa. In modalità <em>Per Cluster</em> funziona allo stesso modo con i cluster: le tratte non selezionate diventano semi-trasparenti per agevolare il confronto.</p>
     </div>
 
     <div class="help-section">
-      <h4>📍 Dettaglio Tratta</h4>
-      <p>Clicca su qualsiasi tratta sulla mappa per aprire il popup con i dettagli: codice pratica, ente destinatario, stato autorizzativo, data di invio/aggiornamento e l'avanzamento percentuale del lotto con barre grafiche.</p>
+      <h4>📍 Popup Dettaglio Tratta</h4>
+      <p>Clicca su qualsiasi tratta per aprire il pannello di dettaglio. Trovi: comune, cluster, tipologia, lunghezza, ente destinatario (fino a due enti), stato autorizzativo con badge colorato, stato lavorabilità e motivo di eventuale blocco, nulla osta e ordinanza se presenti, codici pratica associati. La colonna destra mostra l'avanzamento del lotto con due barre grafiche (permessi ottenuti e pratiche inviate+) e il contributo della tratta sul totale del lotto. Un link apre la posizione direttamente in Google Maps.</p>
     </div>
 
     <div class="help-section">
       <h4>🟣 Tracciato QTS</h4>
-      <p>Attiva il toggle <strong>Tracciato QTS</strong> nella barra laterale per sovrapporre il tracciato QTS alla mappa. Usa <strong>Solo QTS</strong> per visualizzare esclusivamente le tratte del tracciato QTS.</p>
+      <p>Il toggle <strong>Tracciato QTS</strong> nella barra laterale sovrappone il tracciato di riferimento QTS alla mappa corrente, visualizzato in viola tratteggiato. Il pulsante <strong>Solo QTS</strong> nasconde tutti gli altri layer e centra la vista sul tracciato QTS, utile per confronti rapidi. La lunghezza totale del QTS compare a fianco del toggle una volta caricato il file.</p>
     </div>
 
     <div class="help-section">
-      <h4>🔎 Ricerca Comune</h4>
-      <p>La barra di ricerca in cima alla sidebar permette di cercare un comune e centrare la mappa su di esso usando il geocoding OpenStreetMap.</p>
+      <h4>🗺 Tipi di Mappa (Basemap)</h4>
+      <p>Il controllo in basso a sinistra (miniatura della mappa corrente) permette di cambiare il layer di sfondo tra cinque opzioni: <strong>Mappa</strong> (OpenStreetMap), <strong>Ibrida</strong> e <strong>Satellite</strong> (Google Maps), <strong>Topografica</strong> (OpenTopoMap) e <strong>Catastale</strong> (WMS Agenzia delle Entrate). Il layer catastale si attiva automaticamente a partire dallo zoom 14 e richiede una connessione all'esterno; un avviso compare se serve fare zoom in.</p>
+    </div>
+
+    <div class="help-section">
+      <h4>🔎 Ricerca Pratiche e Indirizzi</h4>
+      <p>La barra di ricerca nella topbar cerca contemporaneamente tra le pratiche del dataset (per codice pratica o ID tratta) e tra gli indirizzi italiani via geocoding OpenStreetMap. I risultati sono divisi in due sezioni: <em>Pratiche e Tratte</em> mostra il codice, il lotto e il comune; <em>Indirizzi</em> permette di centrare la mappa su qualsiasi luogo. Selezionando una tratta, questa viene evidenziata in giallo e si apre il popup di dettaglio.</p>
+    </div>
+
+    <div class="help-section">
+      <h4>📍 Siti di Interesse</h4>
+      <p>Il pulsante <strong>Siti</strong> in alto a destra apre un pannello con i principali siti tecnici (data center, nodi di rete, ecc.) localizzati lungo il tracciato. Usa la barra di ricerca interna per filtrare per nome o descrizione. Cliccando su un sito la mappa si centra sulla posizione con un marker temporaneo e un popup identificativo.</p>
+    </div>
+
+    <div class="help-section">
+      <h4>📏 Misuratore di Distanza</h4>
+      <p>Il pulsante <strong>📏 Misura</strong>, posizionato sotto il selettore di mappa in alto a sinistra, attiva la modalità di misurazione. Clicca sulla mappa per aggiungere punti: ogni segmento mostra la distanza parziale con un'etichetta, il badge in basso al centro aggiorna la distanza totale. Doppio click per terminare la misurazione; il tasto <strong>✕</strong> nel badge o il tasto <kbd>Esc</kbd> cancellano tutto. La misura viene espressa in metri sotto il chilometro, in km sopra.</p>
     </div>
 
     <div class="help-section">
       <h4>📊 Barra Statistiche</h4>
-      <p>La barra in fondo alla mappa mostra il conteggio delle pratiche per stato (Ottenuto, Inviato, In Redazione, ecc.) in tempo reale in base ai filtri attivi.</p>
+      <p>La barra in basso a sinistra mostra in tempo reale: percentuale complessiva dei permessi ottenuti, chilometri totali, numero di tratte e tratte lavorabili. I valori si aggiornano all'avvio in base a tutti i dati caricati.</p>
     </div>
 
     <div class="help-section">
       <h4>📤 Esportazioni</h4>
-      <p><strong>⬇ PDF</strong> — stampa la vista corrente della mappa in PDF · <strong>🖼 Immagine</strong> — salva uno screenshot PNG della mappa con legenda.</p>
+      <p><strong>⬇ PDF</strong> — invia la vista corrente alla stampa in formato A4 orizzontale, ottimizzando automaticamente i controlli visibili. <strong>🖼 Immagine</strong> — genera uno screenshot PNG ad alta risoluzione (2×) della mappa con la legenda sovrapposta nell'angolo in basso a destra; il file viene scaricato con la data odierna nel nome.</p>
     </div>
 
     <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);font-size:10px;color:var(--muted)">
-      💡 I dati della mappa vengono aggiornati automaticamente ogni volta che carichi un nuovo Excel nella <strong>Dashboard principale</strong>.
+      💡 I dati si aggiornano ricaricando un nuovo file <strong>QGIS.geojson</strong> nella stessa cartella. Il layer QTS si aggiorna allo stesso modo con <strong>QTS.geojson</strong>.
     </div>
   </div>
 </div>
