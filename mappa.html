@@ -1872,7 +1872,11 @@ function filterSiti(query) {
 let _sitoMarker = null;
 
 function goToSito(s) {
-  map.setView([s.lat, s.lon], 16, { animate: true });
+  // Offset verticale: sposta il centro leggermente verso il basso
+  // così il marker resta visivamente al centro anche con il popup aperto sopra
+  const targetPoint = map.project([s.lat, s.lon], 16).subtract([0, 60]);
+  const targetLatLng = map.unproject(targetPoint, 16);
+  map.setView(targetLatLng, 16, { animate: true });
 
   // Rimuovi marker precedente
   if (_sitoMarker) { map.removeLayer(_sitoMarker); _sitoMarker = null; }
@@ -1891,7 +1895,7 @@ function goToSito(s) {
     <div style="padding:6px 4px;min-width:130px">
       <div style="font-size:13px;font-weight:700;color:var(--text)">${s.name}</div>
       <div style="font-size:11px;color:#1a1d27;margin-top:2px">${s.note}</div>
-    </div>`, { closeButton: false }
+    </div>`, { closeButton: false, autoPan: false }
   ).openPopup();
 
   // Rimuovi marker alla chiusura del popup
