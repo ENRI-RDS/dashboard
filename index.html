@@ -1062,6 +1062,17 @@ function _formatDate(isoStr) {
 }
 
 // ── LOGIN MODAL ───────────────────────────────────────────────────────────────
+function _showUserBadge(nome) {
+  const topbarLeft = document.querySelector('.topbar-left');
+  if (topbarLeft && !topbarLeft.querySelector('.badge.ok')) {
+    const badge = document.createElement('span');
+    badge.className = 'badge ok';
+    badge.style.cssText = 'font-size:11px;padding:3px 10px;cursor:default';
+    badge.textContent = '👤 ' + nome;
+    topbarLeft.appendChild(badge);
+  }
+}
+
 function _buildLoginModal() {
   const overlay = document.createElement('div');
   overlay.id = 'loginOverlay';
@@ -1174,27 +1185,29 @@ async function _handleLogin() {
     document.getElementById('loginOverlay').remove();
 
     // Mostra il badge utente in topbar-left
-    const topbarLeft = document.querySelector('.topbar-left');
-    if (topbarLeft) {
-      const badge = document.createElement('span');
-      badge.className = 'badge ok';
-      badge.style.cssText = 'font-size:11px;padding:3px 10px;cursor:default';
-      badge.textContent = '👤 ' + nome;
-      topbarLeft.appendChild(badge);
-    }
+    _showUserBadge(nome);
 
   } catch(e) {
     console.warn('[Login]', e.message);
     // In caso di errore di rete, lascia entrare comunque
     localStorage.setItem('_enri_user', nome);
     document.getElementById('loginOverlay').remove();
+    _showUserBadge(nome);
     btn.textContent = 'Accedi →';
     btn.disabled = false;
   }
 }
 
 // Avvia il login al caricamento della pagina
-document.addEventListener('DOMContentLoaded', () => _buildLoginModal());
+document.addEventListener('DOMContentLoaded', () => {
+  const savedUser = localStorage.getItem('_enri_user');
+  if (savedUser) {
+    // Già loggato: mostra badge e avvia direttamente senza modal
+    _showUserBadge(savedUser);
+  } else {
+    _buildLoginModal();
+  }
+});
 // ─────────────────────────────────────────────────────────────────────────────
 async function jsonbinLoad() {
   const controller = new AbortController();
