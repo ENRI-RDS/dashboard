@@ -1476,6 +1476,28 @@ document.addEventListener('DOMContentLoaded', () => {
   if (savedUser) {
     // Già loggato: mostra badge e applica ruolo senza modal
     _showUserBadge(savedUser);
+    // Log accesso (non bloccante) — identico al flusso delle altre pagine
+    const ruolo = localStorage.getItem('_enri_role') || 'user';
+    _logGetData().then(data => {
+      _getIP().then(ip => {
+        const entry = {
+          ts: new Date().toISOString(),
+          utente: savedUser,
+          ruolo: ruolo,
+          ip: ip,
+          ua: navigator.userAgent.substring(0, 120),
+          durata: 0,
+          lotti: [],
+          nAperture: 0,
+          pagina: 'dashboard'
+        };
+        data.accessi.push(entry);
+        if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
+        _sessionLogIdx = data.accessi.length - 1;
+        _sessionStart  = Date.now();
+        _logSaveData(data).catch(() => {});
+      }).catch(() => {});
+    }).catch(() => {});
   } else {
     _buildLoginModal();
   }
