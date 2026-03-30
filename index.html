@@ -1063,6 +1063,7 @@ let _sessionLotti   = [];   // lotti aperti in questa sessione
 let _sessionAperture = 0;   // totale aperture modal
 let _sessionLogIdx  = -1;   // indice dell'accesso corrente nel log (settato al login) — deprecato
 let _sessionTs      = null; // timestamp univoco dell'entry corrente (robusto a inserimenti concorrenti)
+let _sessionSaving  = false; // flag anti-concorrenza per salvataggio periodico
 
 function _trackLotto(lotto) {
   _sessionAperture++;
@@ -1070,7 +1071,8 @@ function _trackLotto(lotto) {
 }
 
 async function _saveSessionData() {
-  if (!_sessionTs) return;
+  if (!_sessionTs || _sessionSaving) return;
+  _sessionSaving = true;
   try {
     const data = await _logGetData();
     const entry = data.accessi.find(a => a.ts === _sessionTs);
@@ -1080,15 +1082,46 @@ async function _saveSessionData() {
     entry.nAperture = _sessionAperture;
     await _logSaveData(data);
   } catch(_) {}
+  finally { _sessionSaving = false; }
 }
 
+// Salvataggio periodico ogni 5 minuti (copre crash di browser/tab che non triggerano beforeunload)
+setInterval(() => { _saveSessionData(); }, 5 * 60 * 1000);
+
+// visibilitychange: più affidabile di beforeunload su mobile/Safari
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') _saveSessionData();
+});
+
+// Cache locale dell'ultimo record log — usata da beforeunload per evitare fetch GET
+// (il browser può killare fetch normali durante beforeunload, solo keepalive è affidabile)
+let _logCache = null;
+
 window.addEventListener('beforeunload', () => {
-  // best-effort con keepalive
   if (!_sessionTs) return;
+  const durataMin = Math.round((Date.now() - _sessionStart) / 60000);
+
+  // Prova con cache locale (nessun fetch GET necessario — più affidabile)
+  if (_logCache) {
+    const entry = _logCache.accessi.find(a => a.ts === _sessionTs);
+    if (entry) {
+      entry.durata    = durataMin;
+      entry.lotti     = [..._sessionLotti];
+      entry.nAperture = _sessionAperture;
+      fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}`, {
+        method: 'PUT', keepalive: true,
+        headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
+        body: JSON.stringify(_logCache)
+      });
+      return;
+    }
+  }
+
+  // Fallback: fetch GET + PUT keepalive (meno affidabile ma copre il caso senza cache)
   _logGetData().then(data => {
     const entry = data.accessi.find(a => a.ts === _sessionTs);
     if (!entry) return;
-    entry.durata    = Math.round((Date.now() - _sessionStart) / 60000);
+    entry.durata    = durataMin;
     entry.lotti     = [..._sessionLotti];
     entry.nAperture = _sessionAperture;
     fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}`, {
@@ -1100,22 +1133,35 @@ window.addEventListener('beforeunload', () => {
 });
 
 async function _logGetData() {
-  const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}/latest`, {
-    headers: { 'X-Master-Key': JSONBIN_MASTER_KEY }
-  });
-  const json = await res.json();
-  return {
-    utenti:  Array.isArray(json.record?.utenti)  ? json.record.utenti  : [],
-    accessi: Array.isArray(json.record?.accessi) ? json.record.accessi : []
-  };
+  const ctrl = new AbortController();
+  const tid  = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}/latest`, {
+      headers: { 'X-Master-Key': JSONBIN_MASTER_KEY },
+      signal: ctrl.signal
+    });
+    clearTimeout(tid);
+    if (!res.ok) throw new Error('_logGetData HTTP ' + res.status);
+    const json = await res.json();
+    return {
+      utenti:  Array.isArray(json.record?.utenti)  ? json.record.utenti  : [],
+      accessi: Array.isArray(json.record?.accessi) ? json.record.accessi : []
+    };
+  } catch(e) {
+    clearTimeout(tid);
+    throw e;
+  }
 }
 
 async function _logSaveData(data) {
-  await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}`, {
+  const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
     body: JSON.stringify(data)
   });
+  if (!res.ok) throw new Error('_logSaveData HTTP ' + res.status);
+  // Aggiorna cache locale — usata da beforeunload per evitare fetch GET non affidabile
+  _logCache = JSON.parse(JSON.stringify(data));
 }
 async function _getIP() {
   try {
@@ -1434,10 +1480,8 @@ async function _handleLogin() {
     localStorage.setItem('_enri_user', nome);
     localStorage.setItem('_enri_role', ruolo);
 
-    // Log accesso (non bloccante)
-    _logGetData().then(data => {
-      const ip_p = _getIP();
-      ip_p.then(ip => {
+    // Log accesso (non bloccante) — _getIP e _logGetData in parallelo per evitare dati stale
+    Promise.all([_logGetData(), _getIP()]).then(([data, ip]) => {
         const entry = {
           ts: new Date().toISOString(),
           utente: nome,
@@ -1456,7 +1500,6 @@ async function _handleLogin() {
         _sessionLogIdx = data.accessi.length - 1; // mantenuto per compatibilità
         _sessionStart  = Date.now();
         _logSaveData(data).catch(() => {});
-      }).catch(() => {});
     }).catch(() => {});
 
     document.getElementById('loginOverlay').remove();
@@ -1480,8 +1523,7 @@ document.addEventListener('DOMContentLoaded', () => {
     _showUserBadge(savedUser);
     // Log accesso (non bloccante) — identico al flusso delle altre pagine
     const ruolo = localStorage.getItem('_enri_role') || 'user';
-    _logGetData().then(data => {
-      _getIP().then(ip => {
+    Promise.all([_logGetData(), _getIP()]).then(([data, ip]) => {
         const entry = {
           ts: new Date().toISOString(),
           utente: savedUser,
@@ -1499,7 +1541,6 @@ document.addEventListener('DOMContentLoaded', () => {
         _sessionLogIdx = data.accessi.length - 1; // mantenuto per compatibilità
         _sessionStart  = Date.now();
         _logSaveData(data).catch(() => {});
-      }).catch(() => {});
     }).catch(() => {});
   } else {
     _buildLoginModal();
@@ -2123,13 +2164,22 @@ function loadCompare(input) {
   const reader = new FileReader();
   reader.onload = e => {
     const lines = e.target.result.trim().split('\n').map(l=>l.replace(/\r/,''));
-    const headers = lines[0].split(';');
-    const iL=headers.indexOf('LOTTO'), iS=headers.indexOf('STATO_AUTORIZZAZIONE'), iM=headers.indexOf('Metri');
+    // Auto-detect separatore (coerente con loadData)
+    const sep = lines[0].includes(';') ? ';' : ',';
+    const headers = lines[0].split(sep);
+    const iL = headers.findIndex(h => h.trim().toUpperCase() === 'LOTTO');
+    const iS = headers.findIndex(h => h.trim().toUpperCase() === 'STATO_AUTORIZZAZIONE' || h.trim().toUpperCase() === 'STATO_LEGENDA');
+    const iM = headers.findIndex(h => h.trim().toUpperCase() === 'METRI' || h.trim().toUpperCase() === 'LUNGHEZZA' || h.trim().toUpperCase() === 'LENGTH');
+    if (iL < 0 || iS < 0 || iM < 0) {
+      alert('Colonne non trovate nel file CSV di confronto.\nAttese: LOTTO, STATO_AUTORIZZAZIONE (o STATO_LEGENDA), Metri (o LUNGHEZZA).');
+      input.value = '';
+      return;
+    }
     const prevMap = {};
     for (let i=1;i<lines.length;i++) {
-      const cols = lines[i].split(';');
+      const cols = lines[i].split(sep);
       if (!cols[iL]) continue;
-      const lotto=cols[iL].trim(), stato=cols[iS].trim(), metri=parseNum(cols[iM]);
+      const lotto=cols[iL].trim(), stato=cols[iS]?.trim()||'', metri=parseNum(cols[iM]);
       if (!prevMap[lotto]) prevMap[lotto]={};
       prevMap[lotto][stato]=(prevMap[lotto][stato]||0)+metri;
     }
