@@ -1116,7 +1116,6 @@ async function _logSaveData(data) {
     body: JSON.stringify(data)
   });
 }
-
 async function _getIP() {
   try {
     const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
@@ -1446,7 +1445,8 @@ async function _handleLogin() {
           ua: navigator.userAgent.substring(0, 120),
           durata: 0,
           lotti: [],
-          nAperture: 0
+          nAperture: 0,
+          pagina: 'dashboard'
         };
         data.accessi.push(entry);
         if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
@@ -4323,6 +4323,8 @@ function openHelp() { document.getElementById("helpOverlay").classList.add("open
           <th style="padding:8px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;
             color:var(--muted);text-align:left;font-weight:700;border-bottom:1px solid var(--border)">Durata</th>
           <th style="padding:8px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;
+            color:var(--muted);text-align:left;font-weight:700;border-bottom:1px solid var(--border)">Pagina</th>
+          <th style="padding:8px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;
             color:var(--muted);text-align:left;font-weight:700;border-bottom:1px solid var(--border)">Lotti aperti</th>
         </tr>
       </thead>
@@ -4453,7 +4455,7 @@ async function _adminLoad() {
     const tbody = document.getElementById('adminAccessiBody');
     const reversed = [...data.accessi].reverse();
     if (reversed.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted);font-size:12px">Nessun accesso registrato</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--muted);font-size:12px">Nessun accesso registrato</td></tr>';
     } else {
       tbody.innerHTML = reversed.map((a, i) => {
         const ua = a.ua || '';
@@ -4472,6 +4474,9 @@ async function _adminLoad() {
 
         const durata = a.durata > 0 ? `${a.durata} min` : '—';
         const lotti  = (a.lotti && a.lotti.length) ? a.lotti.map(l => `<span style="display:inline-block;padding:1px 6px;border-radius:4px;background:var(--surface2);border:1px solid var(--border);font-size:9px;margin:1px">${l}</span>`).join('') : '—';
+        const paginaMap = { dashboard: ['🏠','var(--accent)','#0B31820D'], mappa: ['🗺','#2D6B1A','#2D6B1A0D'], executive: ['📋','#7A3DAA','#7A3DAA0D'] };
+        const [pIcon, pColor, pBg] = paginaMap[a.pagina] || ['·','var(--muted)','transparent'];
+        const paginaHtml = `<span style="font-size:10px;padding:1px 7px;border-radius:4px;background:${pBg};color:${pColor};border:1px solid ${pColor}33;font-weight:600;font-family:'Fira Code',monospace">${pIcon} ${a.pagina||'dashboard'}</span>`;
 
         return `
         <tr style="border-bottom:1px solid var(--border);${i%2===1?'background:var(--surface2)':''}">
@@ -4481,13 +4486,14 @@ async function _adminLoad() {
           <td style="padding:7px 14px;font-size:11px;font-family:'Fira Code',monospace;color:var(--muted);white-space:nowrap">${a.ip || '—'}</td>
           <td style="padding:7px 14px;font-size:11px;color:var(--muted);white-space:nowrap">${browser}${os}</td>
           <td style="padding:7px 14px;font-size:11px;font-family:'Fira Code',monospace;color:var(--muted);white-space:nowrap">${durata}</td>
+          <td style="padding:7px 14px;font-size:11px;white-space:nowrap">${paginaHtml}</td>
           <td style="padding:7px 14px;font-size:11px">${lotti}</td>
         </tr>`;
       }).join('');
     }
   } catch(e) {
     document.getElementById('adminAccessiBody').innerHTML =
-      `<tr><td colspan="7" style="padding:20px;text-align:center;color:#C23B22;font-size:12px">Errore caricamento: ${e.message}</td></tr>`;
+      `<tr><td colspan="8" style="padding:20px;text-align:center;color:#C23B22;font-size:12px">Errore caricamento: ${e.message}</td></tr>`;
   }
 }
 
