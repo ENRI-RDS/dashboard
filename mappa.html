@@ -2216,5 +2216,85 @@ function openHelp() { document.getElementById("helpOverlay").classList.add("open
   </div>
 </div>
 
+<!-- ── TRACKING ACCESSI (mappa) ─────────────────────────────────────────── -->
+<script>
+(function(){
+  const JSONBIN_BASE        = 'https://api.jsonbin.io/v3/b';
+  const JSONBIN_LOG_BIN_ID  = '69c8fbdced015c742bc8e978';
+  const JSONBIN_MASTER_KEY  = '$2a$10$2kWuCWPZFDiwXDJBkEmituTTW4op2VZF6E52e75IQsMV7FwmXmSsO';
+  const ACCESSI_MAX         = 500;
+
+  const utente = localStorage.getItem('_enri_user');
+  const ruolo  = localStorage.getItem('_enri_role') || 'user';
+  if (!utente) return; // non loggato, non tracciare
+
+  let _sessionStart  = Date.now();
+  let _sessionLogIdx = -1;
+
+  async function _getData() {
+    const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}/latest`, {
+      headers: { 'X-Master-Key': JSONBIN_MASTER_KEY }
+    });
+    const json = await res.json();
+    return {
+      utenti:  Array.isArray(json.record?.utenti)  ? json.record.utenti  : [],
+      accessi: Array.isArray(json.record?.accessi) ? json.record.accessi : []
+    };
+  }
+
+  async function _saveData(data) {
+    await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
+      body: JSON.stringify(data)
+    });
+  }
+
+  async function _getIP() {
+    try {
+      const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
+      return (await r.json()).ip || null;
+    } catch(_) { return null; }
+  }
+
+  // Registra accesso
+  _getData().then(data => {
+    _getIP().then(ip => {
+      const entry = {
+        ts: new Date().toISOString(),
+        utente: utente,
+        ruolo: ruolo,
+        ip: ip,
+        ua: navigator.userAgent.substring(0, 120),
+        durata: 0,
+        lotti: [],
+        nAperture: 0,
+        pagina: 'mappa'
+      };
+      data.accessi.push(entry);
+      if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
+      if (!data.utenti.includes(utente)) data.utenti.push(utente);
+      _sessionLogIdx = data.accessi.length - 1;
+      _saveData(data).catch(() => {});
+    }).catch(() => {});
+  }).catch(() => {});
+
+  // Aggiorna durata all'uscita
+  window.addEventListener('beforeunload', () => {
+    if (_sessionLogIdx < 0) return;
+    _getData().then(data => {
+      const entry = data.accessi[_sessionLogIdx];
+      if (!entry) return;
+      entry.durata = Math.round((Date.now() - _sessionStart) / 60000);
+      fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}`, {
+        method: 'PUT', keepalive: true,
+        headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
+        body: JSON.stringify(data)
+      });
+    }).catch(() => {});
+  });
+})();
+</script>
+
 </body>
 </html>
