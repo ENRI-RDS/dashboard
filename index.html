@@ -1061,7 +1061,8 @@ async function _fetchUtenti() {
 let _sessionStart   = Date.now();
 let _sessionLotti   = [];   // lotti aperti in questa sessione
 let _sessionAperture = 0;   // totale aperture modal
-let _sessionLogIdx  = -1;   // indice dell'accesso corrente nel log (settato al login)
+let _sessionLogIdx  = -1;   // indice dell'accesso corrente nel log (settato al login) — deprecato
+let _sessionTs      = null; // timestamp univoco dell'entry corrente (robusto a inserimenti concorrenti)
 
 function _trackLotto(lotto) {
   _sessionAperture++;
@@ -1069,10 +1070,10 @@ function _trackLotto(lotto) {
 }
 
 async function _saveSessionData() {
-  if (_sessionLogIdx < 0) return;
+  if (!_sessionTs) return;
   try {
     const data = await _logGetData();
-    const entry = data.accessi[_sessionLogIdx];
+    const entry = data.accessi.find(a => a.ts === _sessionTs);
     if (!entry) return;
     entry.durata  = Math.round((Date.now() - _sessionStart) / 60000); // minuti
     entry.lotti   = [..._sessionLotti];
@@ -1083,9 +1084,9 @@ async function _saveSessionData() {
 
 window.addEventListener('beforeunload', () => {
   // best-effort con keepalive
-  if (_sessionLogIdx < 0) return;
+  if (!_sessionTs) return;
   _logGetData().then(data => {
-    const entry = data.accessi[_sessionLogIdx];
+    const entry = data.accessi.find(a => a.ts === _sessionTs);
     if (!entry) return;
     entry.durata    = Math.round((Date.now() - _sessionStart) / 60000);
     entry.lotti     = [..._sessionLotti];
@@ -1451,7 +1452,8 @@ async function _handleLogin() {
         data.accessi.push(entry);
         if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
         if (!data.utenti.includes(nome)) data.utenti.push(nome);
-        _sessionLogIdx = data.accessi.length - 1;
+        _sessionTs     = entry.ts;
+        _sessionLogIdx = data.accessi.length - 1; // mantenuto per compatibilità
         _sessionStart  = Date.now();
         _logSaveData(data).catch(() => {});
       }).catch(() => {});
@@ -1493,7 +1495,8 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         data.accessi.push(entry);
         if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
-        _sessionLogIdx = data.accessi.length - 1;
+        _sessionTs     = entry.ts;
+        _sessionLogIdx = data.accessi.length - 1; // mantenuto per compatibilità
         _sessionStart  = Date.now();
         _logSaveData(data).catch(() => {});
       }).catch(() => {});
