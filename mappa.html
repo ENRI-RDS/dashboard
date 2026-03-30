@@ -247,8 +247,10 @@
       transform:translateY(100%);
       transition:transform .3s cubic-bezier(.32,.72,0,1);
       overflow:hidden;
+      display:none;
     }
     .sidebar.drawer-open {
+      display:flex;
       transform:translateY(0);
     }
     /* Handle grasp bar in cima al drawer */
@@ -2353,11 +2355,20 @@ function toggleDrawer() {
     if (overlay) overlay.classList.remove('open');
     if (label)   label.textContent = 'Lotti e filtri';
     if (icon)    icon.textContent  = '☰';
+    // Nasconde dopo la transizione
+    setTimeout(() => {
+      if (!sidebar.classList.contains('drawer-open')) sidebar.style.display = 'none';
+    }, 320);
   } else {
-    sidebar.classList.add('drawer-open');
-    if (overlay) overlay.classList.add('open');
-    if (label)   label.textContent = 'Chiudi';
-    if (icon)    icon.textContent  = '✕';
+    sidebar.style.display = 'flex'; // mostra prima della transizione
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        sidebar.classList.add('drawer-open');
+        if (overlay) overlay.classList.add('open');
+        if (label)   label.textContent = 'Chiudi';
+        if (icon)    icon.textContent  = '✕';
+      });
+    });
   }
 }
 
@@ -2371,6 +2382,9 @@ function closeDrawer() {
   if (overlay) overlay.classList.remove('open');
   if (label)   label.textContent = 'Lotti e filtri';
   if (icon)    icon.textContent  = '☰';
+  setTimeout(() => {
+    if (!sidebar.classList.contains('drawer-open')) sidebar.style.display = 'none';
+  }, 320);
 }
 
 function _positionLegendMobile() {
@@ -2383,7 +2397,13 @@ function _positionLegendMobile() {
 }
 
 window.addEventListener('resize', () => {
-  if (!_isMobile()) closeDrawer();
+  const sidebar = document.querySelector('.sidebar');
+  if (!_isMobile()) {
+    // Desktop: sidebar sempre visibile, rimuovi stili inline
+    if (sidebar) { sidebar.style.display = ''; sidebar.classList.remove('drawer-open'); }
+    const overlay = document.getElementById('drawerOverlay');
+    if (overlay) overlay.classList.remove('open');
+  }
   _positionLegendMobile();
 });
 window.addEventListener('load', _positionLegendMobile);
