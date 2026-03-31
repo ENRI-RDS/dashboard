@@ -1949,7 +1949,7 @@ function closeModal(e) {
   if (e && e.target !== document.getElementById('modalOverlay')) return;
   document.getElementById('modalOverlay').classList.remove('open');
 }
-document.addEventListener('keydown', e => { if(e.key==='Escape') { document.getElementById('modalOverlay').classList.remove('open'); document.getElementById('modalGruppoOverlay').classList.remove('open'); document.getElementById('modalClusterOverlay').classList.remove('open'); document.getElementById('modalKpiOverlay').classList.remove('open'); } });
+document.addEventListener('keydown', e => { if(e.key==='Escape') { document.getElementById('modalOverlay').classList.remove('open'); document.getElementById('modalGruppoOverlay').classList.remove('open'); document.getElementById('modalClusterOverlay').classList.remove('open'); document.getElementById('modalKpiOverlay').classList.remove('open'); document.getElementById('modalStoricoOverlay').classList.remove('open'); document.getElementById('modalParamPrevOverlay').classList.remove('open'); const helpOv = document.getElementById('helpOverlay'); if (helpOv) helpOv.classList.remove('open'); } });
 
 
 function closeModalCluster(e) {
@@ -2984,6 +2984,9 @@ function apriStorico() {
 function closeStorico(e) {
   if (e && e.target !== document.getElementById('modalStoricoOverlay')) return;
   document.getElementById('modalStoricoOverlay').classList.remove('open');
+  // Rimuovi il tooltip custom dal DOM per evitare memory leak
+  const tip = document.getElementById('storicoTooltipCustom');
+  if (tip) tip.remove();
 }
 
 function renderStoricoModal() {
@@ -2991,10 +2994,11 @@ function renderStoricoModal() {
   // Ordina sempre per timestamp crescente prima di renderizzare
   // Scarta snapshot con totale = 0 (CSV non trovato o errato in quel momento)
   const storicoRaw = window._storicoCompleto || [];
+  // Usa una variabile locale per il rendering: non sovrascrivere _storicoCompleto
+  // altrimenti gli snapshot a zero vengono persi permanentemente alla riapertura
   const storico = [...storicoRaw]
     .filter(s => s.data && s.data.reduce((a, r) => a + (r.metri || 0), 0) > 0)
     .sort((a, b) => new Date(a.ts) - new Date(b.ts));
-  window._storicoCompleto = storico;
 
   if (storico.length === 0) {
     body.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px">Nessun dato storico ancora.<br><span style="font-size:11px">Lo storico si accumula ad ogni aggiornamento del CSV.</span></div>';
@@ -3544,7 +3548,9 @@ function _buildStoricoChart(storico, labels, datasets, yMax, mode) {
   });
 
   // Nascondi tooltip custom quando il mouse esce dal canvas
-  if (mode === 'lotti') {
+  // Usa una sola registrazione per evitare listener multipli ad ogni switch
+  if (mode === 'lotti' && !canvas._storicoMouseleaveAttached) {
+    canvas._storicoMouseleaveAttached = true;
     canvas.addEventListener('mouseleave', () => {
       const el = document.getElementById('storicoTooltipCustom');
       if (el) el.style.opacity = '0';
@@ -4435,6 +4441,17 @@ function _adminOpen() {
   _adminLoad();
 }
 
+// Sanitizza stringhe prima di inserirle in innerHTML — previene XSS
+function _escHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 async function _adminLoad() {
   try {
     const data = await _logGetData();
@@ -4477,8 +4494,8 @@ async function _adminLoad() {
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
         ${[
           ['⏱', 'Durata media sessione', durataMedia ? durataMedia + ' min' : '—'],
-          ['👤', 'Utente più attivo',     topUtente ? `${topUtente[0]} (${topUtente[1]})` : '—'],
-          ['🕐', 'Ora di punta',          countOra[oraMax] > 0 ? `${oraMax}:00 – ${oraMax+1}:00` : '—'],
+          ['👤', 'Utente più attivo',     topUtente ? `${_escHtml(topUtente[0])} (${topUtente[1]})` : '—'],
+          ['🕐', 'Ora di punta',          countOra[oraMax] > 0 ? `${oraMax}:00 – ${oraMax < 23 ? oraMax+1 : 0}:00` : '—'],
           ['🏆', 'Lotto più visto',       topLotti[0] ? `${topLotti[0][0]} (${topLotti[0][1]}×)` : '—'],
         ].map(([icon, label, val]) => `
           <div style="flex:1;min-width:160px;background:var(--surface);border:1px solid var(--border);
@@ -4518,8 +4535,8 @@ async function _adminLoad() {
         <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;
           border-radius:20px;background:var(--surface);border:1px solid var(--border2);
           font-size:11px;color:var(--text2);font-weight:500;">
-          👤 ${u}
-          <span onclick="_adminRemoveUser('${u.replace(/'/g,"\\'")}', this)"
+          👤 ${_escHtml(u)}
+          <span onclick="_adminRemoveUser('${_escHtml(u.replace(/'/g,"\\'"))}', this)"
             style="cursor:pointer;color:var(--muted2);font-size:13px;line-height:1;margin-left:2px"
             title="Rimuovi utente">×</span>
         </span>
@@ -4556,9 +4573,9 @@ async function _adminLoad() {
         return `
         <tr style="border-bottom:1px solid var(--border);${i%2===1?'background:var(--surface2)':''}">
           <td style="padding:7px 14px;font-size:11px;font-family:'Fira Code',monospace;color:var(--text2);white-space:nowrap">${_formatDate(a.ts)}</td>
-          <td style="padding:7px 14px;font-size:12px;font-weight:600;color:var(--accent);white-space:nowrap">${a.utente || '—'}</td>
-          <td style="padding:7px 14px;font-size:11px;color:var(--muted);white-space:nowrap">${a.ruolo || 'user'}</td>
-          <td style="padding:7px 14px;font-size:11px;font-family:'Fira Code',monospace;color:var(--muted);white-space:nowrap">${a.ip || '—'}</td>
+          <td style="padding:7px 14px;font-size:12px;font-weight:600;color:var(--accent);white-space:nowrap">${_escHtml(a.utente) || '—'}</td>
+          <td style="padding:7px 14px;font-size:11px;color:var(--muted);white-space:nowrap">${_escHtml(a.ruolo) || 'user'}</td>
+          <td style="padding:7px 14px;font-size:11px;font-family:'Fira Code',monospace;color:var(--muted);white-space:nowrap">${_escHtml(a.ip) || '—'}</td>
           <td style="padding:7px 14px;font-size:11px;color:var(--muted);white-space:nowrap">${browser}${os}</td>
           <td style="padding:7px 14px;font-size:11px;font-family:'Fira Code',monospace;color:var(--muted);white-space:nowrap">${durata}</td>
           <td style="padding:7px 14px;font-size:11px;white-space:nowrap">${paginaHtml}</td>
