@@ -1567,14 +1567,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 async function jsonbinLoad() {
   const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(new DOMException('Timeout connessione a JSONBin', 'TimeoutError')), 5000);
-  try {
-    const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_BIN_ID}/latest`, {
-      headers: { 'X-Master-Key': JSONBIN_MASTER_KEY },
-      signal: controller.signal
-    });
-    clearTimeout(tid);
-    if (!res.ok) throw new Error('JSONBin load failed: ' + res.status);
+  const tid = setTimeout(() => controller.abort(new DOMException('Timeout connessione a JSONBin', 'TimeoutError')), 10000);
     const json = await res.json();
     return json.record || { storico: [] };
   } catch(e) {
@@ -1597,7 +1590,7 @@ async function jsonbinSave(record) {
 
 async function jsonbinGetLastUpdateISO() {
   const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(new DOMException('Timeout connessione a JSONBin', 'TimeoutError')), 5000);
+  const tid = setTimeout(() => controller.abort(new DOMException('Timeout connessione a JSONBin', 'TimeoutError')), 10000);
   try {
     const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_BIN_ID}/latest`, {
       headers: { 'X-Master-Key': JSONBIN_MASTER_KEY },
