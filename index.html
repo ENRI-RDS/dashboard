@@ -1132,9 +1132,17 @@ window.addEventListener('beforeunload', () => {
   }).catch(() => {});
 });
 
+let _logDataCache = null;
+let _logDataCacheTs = 0;
+const _LOG_CACHE_TTL = 30_000; // 30s — evita fetch ripetute ad apertura rapida del pannello
+
 async function _logGetData() {
+  const now = Date.now();
+  if (_logDataCache && (now - _logDataCacheTs) < _LOG_CACHE_TTL) {
+    return JSON.parse(JSON.stringify(_logDataCache));
+  }
   const ctrl = new AbortController();
-  const tid  = setTimeout(() => ctrl.abort(), 8000);
+  const tid  = setTimeout(() => ctrl.abort(), 5000);
   try {
     const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}/latest`, {
       headers: { 'X-Master-Key': JSONBIN_MASTER_KEY },
@@ -1143,10 +1151,13 @@ async function _logGetData() {
     clearTimeout(tid);
     if (!res.ok) throw new Error('_logGetData HTTP ' + res.status);
     const json = await res.json();
-    return {
+    const result = {
       utenti:  Array.isArray(json.record?.utenti)  ? json.record.utenti  : [],
       accessi: Array.isArray(json.record?.accessi) ? json.record.accessi : []
     };
+    _logDataCache = result;
+    _logDataCacheTs = Date.now();
+    return JSON.parse(JSON.stringify(result));
   } catch(e) {
     clearTimeout(tid);
     throw e;
@@ -1162,6 +1173,9 @@ async function _logSaveData(data) {
   if (!res.ok) throw new Error('_logSaveData HTTP ' + res.status);
   // Aggiorna cache locale — usata da beforeunload per evitare fetch GET non affidabile
   _logCache = JSON.parse(JSON.stringify(data));
+  // Invalida anche la cache di _logGetData così la prossima apertura admin è fresca
+  _logDataCache = null;
+  _logDataCacheTs = 0;
 }
 async function _getIP() {
   try {
@@ -4453,6 +4467,21 @@ function _escHtml(s) {
 }
 
 async function _adminLoad() {
+  // Mostra stato di caricamento immediato prima della fetch
+  const statsEl = document.getElementById('adminStats');
+  const utentiEl = document.getElementById('adminUtentiList');
+  const tbody = document.getElementById('adminAccessiBody');
+  const spinnerRow = `<tr><td colspan="8" style="padding:28px;text-align:center">
+    <div style="display:inline-flex;flex-direction:column;align-items:center;gap:10px">
+      <div style="width:24px;height:24px;border:2px solid var(--border2);border-top-color:var(--accent);
+        border-radius:50%;animation:spin 0.8s linear infinite"></div>
+      <span style="font-size:11px;color:var(--muted)">Connessione a JSONBin…</span>
+    </div>
+  </td></tr>`;
+  statsEl.innerHTML = '';
+  utentiEl.innerHTML = '<span style="font-size:12px;color:var(--muted)">Caricamento…</span>';
+  tbody.innerHTML = spinnerRow;
+
   try {
     const data = await _logGetData();
 
@@ -4462,7 +4491,6 @@ async function _adminLoad() {
 
     // ── STATISTICHE ──────────────────────────────────────────────────────────
     const accessi = data.accessi;
-    const statsEl = document.getElementById('adminStats');
 
     // Durata media (solo sessioni con durata > 0)
     const sessioni = accessi.filter(a => a.durata > 0);
@@ -4527,7 +4555,6 @@ async function _adminLoad() {
     `;
 
     // ── LISTA UTENTI ─────────────────────────────────────────────────────────
-    const utentiEl = document.getElementById('adminUtentiList');
     if (data.utenti.length === 0) {
       utentiEl.innerHTML = '<span style="font-size:12px;color:var(--muted)">Nessun utente ancora</span>';
     } else {
@@ -4544,7 +4571,6 @@ async function _adminLoad() {
     }
 
     // ── TABELLA ACCESSI ───────────────────────────────────────────────────────
-    const tbody = document.getElementById('adminAccessiBody');
     const reversed = [...data.accessi].reverse();
     if (reversed.length === 0) {
       tbody.innerHTML = '<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--muted);font-size:12px">Nessun accesso registrato</td></tr>';
