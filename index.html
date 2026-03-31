@@ -1142,7 +1142,7 @@ async function _logGetData() {
     return JSON.parse(JSON.stringify(_logDataCache));
   }
   const ctrl = new AbortController();
-  const tid  = setTimeout(() => ctrl.abort(), 5000);
+  const tid  = setTimeout(() => ctrl.abort(), 10000);
   try {
     const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}/latest`, {
       headers: { 'X-Master-Key': JSONBIN_MASTER_KEY },
@@ -1160,7 +1160,7 @@ async function _logGetData() {
     return JSON.parse(JSON.stringify(result));
   } catch(e) {
     clearTimeout(tid);
-    throw e;
+    throw e.name === 'AbortError' ? new Error('Timeout connessione JSONBin (>10s) — riprova tra qualche secondo') : e;
   }
 }
 
@@ -4614,8 +4614,14 @@ async function _adminLoad() {
       }).join('');
     }
   } catch(e) {
-    document.getElementById('adminAccessiBody').innerHTML =
-      `<tr><td colspan="8" style="padding:20px;text-align:center;color:#C23B22;font-size:12px">Errore caricamento: ${e.message}</td></tr>`;
+    tbody.innerHTML =
+      `<tr><td colspan="8" style="padding:24px;text-align:center">
+        <div style="color:#C23B22;font-size:12px;margin-bottom:12px">⚠ ${_escHtml(e.message)}</div>
+        <button onclick="_adminLoad()" style="font-size:12px;padding:7px 18px;border-radius:7px;
+          background:var(--accent);color:#fff;border:none;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-weight:600">
+          ↺ Riprova
+        </button>
+      </td></tr>`;
   }
 }
 
