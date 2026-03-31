@@ -125,6 +125,22 @@
   .loading-text{font-size:13px;color:var(--muted);}
   /* Map */
   .leaflet-container{background:#f0f0f0!important;touch-action:none;}
+  /* ── SAFE AREA (iPhone notch / Dynamic Island) ── */
+  @supports (padding: env(safe-area-inset-bottom)) {
+    .drawer-toggle { bottom: calc(20px + env(safe-area-inset-bottom)); }
+    .stats-bar { margin-bottom: env(safe-area-inset-bottom); }
+  }
+  @media(max-width:768px) {
+    @supports (padding: env(safe-area-inset-bottom)) {
+      .sidebar { padding-bottom: env(safe-area-inset-bottom); }
+      .measure-badge { bottom: calc(80px + env(safe-area-inset-bottom)); }
+    }
+  }
+  /* ── TOUCH: rimuove il ritardo 300ms su tutti i pulsanti ── */
+  button, a, .filter-btn, .lotto-item, .bmap-thumb-btn, .bmap-card,
+  .search-result-item, .sito-item, .drawer-toggle { touch-action: manipulation; }
+  /* ── OVERSCROLL: previene navigazione accidentale su Android ── */
+  body { overscroll-behavior: contain; }
   .leaflet-control-zoom a{background:var(--surface)!important;color:var(--text)!important;border-color:var(--border)!important;}
   .leaflet-control-zoom a:hover{background:var(--surface2)!important;}
   .leaflet-control-attribution{background:#ffffffcc!important;color:var(--muted)!important;font-size:9px!important;}
@@ -221,7 +237,7 @@
       order:10; flex:0 0 100%;
       max-width:none; margin:0; width:100%;
     }
-    .search-input{ font-size:16px; padding:8px 12px; border-radius:8px; }
+    .search-input{ font-size:16px !important; padding:8px 12px; border-radius:8px; }
     .search-results{ max-height:200px; }
     /* Pulsanti touch-friendly */
     .btn{ font-size:11px; padding:7px 12px; min-height:40px; border-radius:8px; }
@@ -256,10 +272,11 @@
     /* Handle grasp bar in cima al drawer */
     .sidebar::before{
       content:'';
-      display:block; width:36px; height:4px;
-      background:var(--border2); border-radius:2px;
-      margin:10px auto 0;
+      display:block; width:40px; height:5px;
+      background:#c5c8d4; border-radius:3px;
+      margin:8px auto 0;
       flex-shrink:0;
+      cursor:grab;
     }
     .sidebar-head{ padding:10px 14px 8px; }
     .sidebar-title{ font-size:10px; margin-bottom:8px; }
@@ -1033,6 +1050,8 @@ function updateLegend(mode) {
 }
 
 map = L.map('map',{center:[45.48,9.30],zoom:10,zoomControl:true,attributionControl:true,preferCanvas:true});
+// Chiudi il drawer mobile quando si apre un popup
+map.on('popupopen', () => { if (_isMobile()) closeDrawer(); });
 // Renderer separati: outlineRenderer NON interattivo, mainRenderer interattivo
 const outlineRenderer = L.canvas({ tolerance: 0 });
 const mainRenderer   = L.canvas({ tolerance: 5 });
@@ -2403,10 +2422,40 @@ window.addEventListener('resize', () => {
     if (sidebar) { sidebar.style.display = ''; sidebar.classList.remove('drawer-open'); }
     const overlay = document.getElementById('drawerOverlay');
     if (overlay) overlay.classList.remove('open');
+  } else {
+    // Mobile: assicura che la sidebar parta nascosta se non è già aperta
+    if (sidebar && !sidebar.classList.contains('drawer-open')) {
+      sidebar.style.display = 'none';
+    }
   }
   _positionLegendMobile();
 });
-window.addEventListener('load', _positionLegendMobile);
+window.addEventListener('load', () => {
+  _positionLegendMobile();
+  // ── Inizializzazione sicura sidebar su mobile ──
+  const sidebar = document.querySelector('.sidebar');
+  if (sidebar && _isMobile()) {
+    sidebar.style.display = 'none';
+    sidebar.classList.remove('drawer-open');
+    const overlay = document.getElementById('drawerOverlay');
+    if (overlay) overlay.classList.remove('open');
+  }
+  // ── Swipe verso il basso per chiudere il drawer ──
+  if (sidebar) {
+    let _touchStartY = 0;
+    let _touchStartX = 0;
+    sidebar.addEventListener('touchstart', e => {
+      _touchStartY = e.touches[0].clientY;
+      _touchStartX = e.touches[0].clientX;
+    }, { passive: true });
+    sidebar.addEventListener('touchend', e => {
+      const dy = e.changedTouches[0].clientY - _touchStartY;
+      const dx = Math.abs(e.changedTouches[0].clientX - _touchStartX);
+      // Swipe verso il basso di almeno 60px e più verticale che orizzontale
+      if (dy > 60 && dy > dx) closeDrawer();
+    }, { passive: true });
+  }
+});
 // ────────────────────────────────────────────────────────────────────────────
 </script>
 
