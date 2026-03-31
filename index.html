@@ -2423,9 +2423,12 @@ async function loadData(saveSnapshot = false) {
     document.getElementById('loadingScreen').style.display = 'none';
     setTimeout(()=>setLoading(0),600);
 
-    // Aggiorna il badge lastUpdate con la data di oggi intanto
+    // Mostra subito l'ultima data nota da localStorage (se disponibile), senza usare "oggi" come placeholder
     const _lu0 = document.getElementById('lastUpdate');
-    if (_lu0) _lu0.innerHTML = `<span>${new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})}</span>`;
+    const _cachedDate = localStorage.getItem('enri_last_upload_date');
+    if (_lu0) _lu0.innerHTML = _cachedDate
+      ? `<span>${_cachedDate}</span>`
+      : `<span style="color:var(--muted2)">—</span>`;
 
     // Completa la sincronizzazione JSONBin in background
     _jsonbinPromise.then(async record => {
@@ -2469,7 +2472,9 @@ async function loadData(saveSnapshot = false) {
         || (storicoPrev.length > 0 ? storicoPrev[storicoPrev.length-1]?.ts : null);
       if (_lastIso && !Number.isNaN(new Date(_lastIso).getTime())) {
         const _lu = document.getElementById('lastUpdate');
-        if (_lu) _lu.innerHTML = `<span>${new Date(_lastIso).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})}</span>`;
+        const _dateStr = new Date(_lastIso).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
+        if (_lu) _lu.innerHTML = `<span>${_dateStr}</span>`;
+        localStorage.setItem('enri_last_upload_date', _dateStr); // cache per prossimo caricamento
       }
 
       // ────────────────────────────────────────────────────────────────────
