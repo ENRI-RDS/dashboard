@@ -2423,12 +2423,14 @@ async function loadData(saveSnapshot = false) {
     document.getElementById('loadingScreen').style.display = 'none';
     setTimeout(()=>setLoading(0),600);
 
-    // Mostra subito l'ultima data nota da localStorage (se disponibile), senza usare "oggi" come placeholder
+    // Mostra subito l'ultima data nota da localStorage (se disponibile)
     const _lu0 = document.getElementById('lastUpdate');
-    const _cachedDate = localStorage.getItem('enri_last_upload_date');
-    if (_lu0) _lu0.innerHTML = _cachedDate
-      ? `<span>${_cachedDate}</span>`
-      : `<span style="color:var(--muted2)">—</span>`;
+    const _cachedIso = localStorage.getItem('enri_last_upload_iso');
+    if (_lu0 && _cachedIso) {
+      const _d = new Date(_cachedIso);
+      if (!Number.isNaN(_d.getTime()))
+        _lu0.innerHTML = `<span>${_d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})}</span>`;
+    }
 
     // Completa la sincronizzazione JSONBin in background
     _jsonbinPromise.then(async record => {
@@ -2474,7 +2476,8 @@ async function loadData(saveSnapshot = false) {
         const _lu = document.getElementById('lastUpdate');
         const _dateStr = new Date(_lastIso).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
         if (_lu) _lu.innerHTML = `<span>${_dateStr}</span>`;
-        localStorage.setItem('enri_last_upload_date', _dateStr); // cache per prossimo caricamento
+        localStorage.setItem('enri_last_upload_iso', _lastIso);    // ISO raw — sopravvive tra sessioni
+        localStorage.setItem('enri_last_upload_date', _dateStr);   // formatted — retrocompatibilità
       }
 
       // ────────────────────────────────────────────────────────────────────
@@ -4287,16 +4290,12 @@ function updatePrevRilascio() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 window.addEventListener('load', () => {
-  // loadData per prima — riempie _riepilogoCsvText in memoria.
-  // loadCluster parte solo dopo che loadData ha finito il fetch CSV
-  // (usa la cache in memoria, zero fetch aggiuntivi).
-  // loadMaster è completamente indipendente, parte subito in parallelo.
+  // loadData e loadCluster partono in parallelo.
+  // loadCluster usa la cache in memoria se loadData ha già scaricato il CSV;
+  // altrimenti fa fetch autonomamente (stesso URL, stesso TTL sessionStorage).
   loadMaster().catch(e => console.warn('loadMaster error:', e));
-  loadData().then(() => {
-    loadCluster().catch(e => console.warn('loadCluster error:', e));
-  }).catch(() => {
-    loadCluster().catch(e => console.warn('loadCluster error:', e));
-  }).finally(() => setTimeout(updatePrevRilascio, 600));
+  loadData().catch(() => {}).finally(() => setTimeout(updatePrevRilascio, 600));
+  loadCluster().catch(e => console.warn('loadCluster error:', e));
 });
 window.onerror = function(msg, src, line, col, err) {
   document.getElementById('loadingScreen').style.display = 'none';
