@@ -13,6 +13,23 @@
 <script src="https://cdn.jsdelivr.net/npm/leaflet-image@0.4.0/leaflet-image.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- Anti-FOUC: nasconde la sidebar su mobile PRIMA del primo disegno -->
+<script>
+(function(){
+  var w = window.innerWidth || document.documentElement.clientWidth || screen.width;
+  if(w <= 768){
+    document.addEventListener('DOMContentLoaded', function(){
+      var s = document.getElementById('sidebarEl');
+      if(s){ s.style.display = 'none'; s.style.visibility = 'hidden'; }
+    });
+    // Aggiunge subito la regola tramite style inline globale per massima velocità
+    var st = document.createElement('style');
+    st.textContent = '#sidebarEl { display: none !important; }';
+    st.id = '_antifouc';
+    document.head.appendChild(st);
+  }
+})();
+</script>
 <style>
   :root {
     --bg:#f4f6fa; --surface:#ffffff; --surface2:#f0f2f7; --border:#dde1ec;
@@ -696,7 +713,7 @@
        title="Clicca per zoomare al livello 14">
     🗺 Zoom in per il catasto
   </div>
-  <div class="sidebar">
+  <div class="sidebar" id="sidebarEl">
     <div class="sidebar-head">
       <div class="sidebar-title">Visualizzazione</div>
       <div class="view-toggle">
@@ -2363,7 +2380,7 @@ function openHelp() { document.getElementById("helpOverlay").classList.add("open
 function _isMobile() { return window.innerWidth <= 768; }
 
 function toggleDrawer() {
-  const sidebar = document.querySelector('.sidebar');
+  const sidebar = document.getElementById('sidebarEl');
   const overlay = document.getElementById('drawerOverlay');
   const label   = document.getElementById('drawerToggleLabel');
   const icon    = document.querySelector('.drawer-toggle-icon');
@@ -2376,9 +2393,16 @@ function toggleDrawer() {
     if (icon)    icon.textContent  = '☰';
     // Nasconde dopo la transizione
     setTimeout(() => {
-      if (!sidebar.classList.contains('drawer-open')) sidebar.style.display = 'none';
+      if (!sidebar.classList.contains('drawer-open')) {
+        sidebar.style.display = 'none';
+        sidebar.style.visibility = 'hidden';
+      }
     }, 320);
   } else {
+    // Rimuovi regola anti-FOUC e mostra la sidebar
+    const antifouc = document.getElementById('_antifouc');
+    if (antifouc) antifouc.remove();
+    sidebar.style.visibility = '';
     sidebar.style.display = 'flex'; // mostra prima della transizione
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -2392,7 +2416,7 @@ function toggleDrawer() {
 }
 
 function closeDrawer() {
-  const sidebar = document.querySelector('.sidebar');
+  const sidebar = document.getElementById('sidebarEl');
   const overlay = document.getElementById('drawerOverlay');
   const label   = document.getElementById('drawerToggleLabel');
   const icon    = document.querySelector('.drawer-toggle-icon');
@@ -2402,7 +2426,10 @@ function closeDrawer() {
   if (label)   label.textContent = 'Lotti e filtri';
   if (icon)    icon.textContent  = '☰';
   setTimeout(() => {
-    if (!sidebar.classList.contains('drawer-open')) sidebar.style.display = 'none';
+    if (!sidebar.classList.contains('drawer-open')) {
+      sidebar.style.display = 'none';
+      sidebar.style.visibility = 'hidden';
+    }
   }, 320);
 }
 
@@ -2416,16 +2443,19 @@ function _positionLegendMobile() {
 }
 
 window.addEventListener('resize', () => {
-  const sidebar = document.querySelector('.sidebar');
+  const sidebar = document.getElementById('sidebarEl');
   if (!_isMobile()) {
-    // Desktop: sidebar sempre visibile, rimuovi stili inline
-    if (sidebar) { sidebar.style.display = ''; sidebar.classList.remove('drawer-open'); }
+    // Desktop: sidebar sempre visibile, rimuovi stili inline e regola anti-FOUC
+    const antifouc = document.getElementById('_antifouc');
+    if (antifouc) antifouc.remove();
+    if (sidebar) { sidebar.style.display = ''; sidebar.style.visibility = ''; sidebar.classList.remove('drawer-open'); }
     const overlay = document.getElementById('drawerOverlay');
     if (overlay) overlay.classList.remove('open');
   } else {
     // Mobile: assicura che la sidebar parta nascosta se non è già aperta
     if (sidebar && !sidebar.classList.contains('drawer-open')) {
       sidebar.style.display = 'none';
+      sidebar.style.visibility = 'hidden';
     }
   }
   _positionLegendMobile();
@@ -2433,12 +2463,19 @@ window.addEventListener('resize', () => {
 window.addEventListener('load', () => {
   _positionLegendMobile();
   // ── Inizializzazione sicura sidebar su mobile ──
-  const sidebar = document.querySelector('.sidebar');
+  const sidebar = document.getElementById('sidebarEl');
   if (sidebar && _isMobile()) {
     sidebar.style.display = 'none';
+    sidebar.style.visibility = 'hidden';
     sidebar.classList.remove('drawer-open');
     const overlay = document.getElementById('drawerOverlay');
     if (overlay) overlay.classList.remove('open');
+  } else if (sidebar && !_isMobile()) {
+    // Desktop: assicura visibilità
+    const antifouc = document.getElementById('_antifouc');
+    if (antifouc) antifouc.remove();
+    sidebar.style.display = '';
+    sidebar.style.visibility = '';
   }
   // ── Swipe verso il basso per chiudere il drawer ──
   if (sidebar) {
