@@ -2565,20 +2565,22 @@ window.addEventListener('load', () => {
 <!-- ── TRACKING ACCESSI (mappa) ─────────────────────────────────────────── -->
 <script>
 (function(){
-  const JSONBIN_BASE        = 'https://api.jsonbin.io/v3/b';
-  const JSONBIN_LOG_BIN_ID  = '69c8fbdced015c742bc8e978';
-  const JSONBIN_MASTER_KEY  = '$2a$10$2kWuCWPZFDiwXDJBkEmituTTW4op2VZF6E52e75IQsMV7FwmXmSsO';
-  const ACCESSI_MAX         = 500;
+  const JSONBIN_BASE       = 'https://api.jsonbin.io/v3/b';
+  const JSONBIN_LOG_BIN_ID = '69c8fbdced015c742bc8e978';
+  const JSONBIN_MASTER_KEY = '$2a$10$2kWuCWPZFDiwXDJBkEmituTTW4op2VZF6E52e75IQsMV7FwmXmSsO';
+  const ACCESSI_MAX        = 500;
+  const SAVE_INTERVAL_MS   = 60_000; // salva durata ogni 60s (fallback attivo)
 
   const utente = localStorage.getItem('_enri_user');
   const ruolo  = localStorage.getItem('_enri_role') || 'user';
-  if (!utente) return; // non loggato, non tracciare
+  if (!utente) return;
 
-  let _sessionStart  = Date.now();
-  let _sessionLogIdx = -1;
+  const _sessionStart = Date.now();
+  let _sessionLogIdx  = -1;
+  let _cachedData     = null; // cache locale: evita GET al momento dell'uscita
 
   async function _getData() {
-    const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}/latest`, {
+    const res  = await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}/latest`, {
       headers: { 'X-Master-Key': JSONBIN_MASTER_KEY }
     });
     const json = await res.json();
@@ -2588,9 +2590,10 @@ window.addEventListener('load', () => {
     };
   }
 
-  async function _saveData(data) {
-    await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}`, {
-      method: 'PUT',
+  // Salva sempre con keepalive:true così funziona anche durante pagehide/unload
+  function _saveData(data) {
+    return fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}`, {
+      method: 'PUT', keepalive: true,
       headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
       body: JSON.stringify(data)
     });
@@ -2603,14 +2606,24 @@ window.addEventListener('load', () => {
     } catch(_) { return null; }
   }
 
-  // Registra accesso
+  // Aggiorna durata nella cache locale e salva — usato da tutti i trigger di uscita
+  function _flushDurata() {
+    if (_sessionLogIdx < 0 || !_cachedData) return;
+    const entry = _cachedData.accessi[_sessionLogIdx];
+    if (!entry) return;
+    const durata = Math.round((Date.now() - _sessionStart) / 60_000);
+    if (entry.durata === durata) return; // nessuna variazione, evita write inutili
+    entry.durata = durata;
+    _saveData(_cachedData).catch(() => {});
+  }
+
+  // ── Registra accesso all'avvio ──────────────────────────────────────────
   _getData().then(data => {
     _getIP().then(ip => {
       const entry = {
         ts: new Date().toISOString(),
-        utente: utente,
-        ruolo: ruolo,
-        ip: ip,
+        utente, ruolo,
+        ip,
         ua: navigator.userAgent.substring(0, 120),
         durata: 0,
         lotti: [],
@@ -2618,27 +2631,30 @@ window.addEventListener('load', () => {
         pagina: 'mappa'
       };
       data.accessi.push(entry);
-      if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
+      if (data.accessi.length > ACCESSI_MAX)
+        data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
       if (!data.utenti.includes(utente)) data.utenti.push(utente);
       _sessionLogIdx = data.accessi.length - 1;
+      _cachedData    = data; // salva in cache locale
       _saveData(data).catch(() => {});
+
+      // Salva durata ogni minuto (utile se mobile non spara eventi di uscita)
+      setInterval(_flushDurata, SAVE_INTERVAL_MS);
     }).catch(() => {});
   }).catch(() => {});
 
-  // Aggiorna durata all'uscita
-  window.addEventListener('beforeunload', () => {
-    if (_sessionLogIdx < 0) return;
-    _getData().then(data => {
-      const entry = data.accessi[_sessionLogIdx];
-      if (!entry) return;
-      entry.durata = Math.round((Date.now() - _sessionStart) / 60000);
-      fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}`, {
-        method: 'PUT', keepalive: true,
-        headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
-        body: JSON.stringify(data)
-      });
-    }).catch(() => {});
+  // ── Trigger di uscita — tre eventi per massima copertura mobile/desktop ──
+
+  // 1. visibilitychange: scatta quando l'utente switcha app o scheda (Android/iOS)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') _flushDurata();
   });
+
+  // 2. pagehide: più affidabile di beforeunload su mobile (iOS Safari, Chrome Android)
+  window.addEventListener('pagehide', _flushDurata);
+
+  // 3. beforeunload: fallback per desktop
+  window.addEventListener('beforeunload', _flushDurata);
 })();
 </script>
 
