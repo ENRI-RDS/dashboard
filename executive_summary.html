@@ -256,83 +256,15 @@ let CSV_DATA = {};
 let CLUSTER_PROGRESS = {};
 
 async function loadCSVData() {
+  // I dati CSV vengono letti dallo storico JSONBin (già caricato da loadFromStorage)
+  // invece di fare un fetch locale che darebbe sempre 404.
+  // Questa funzione viene chiamata DOPO loadFromStorage, quindi window._storicoCompleto è già popolato.
   try {
-    let resp = await fetch('Riepilogo_progettazione.csv?t='+Date.now());
-    if (!resp.ok) resp = await fetch('riepilogo.csv?t='+Date.now());
-    if (!resp.ok) throw new Error('CSV non trovato');
-    const text = await resp.text();
-    const lines = text.trim().split('\n').map(l=>l.replace(/\r/,''));
-    const sep = lines[0].includes(';') ? ';' : ',';
-    const splitL = line => {
-      const res=[]; let cur='', inQ=false;
-      for(const ch of line){
-        if(ch==='"'){inQ=!inQ;}
-        else if(ch===sep&&!inQ){res.push(cur.trim());cur='';}
-        else{cur+=ch;}
-      }
-      res.push(cur.trim()); return res;
-    };
-
-    // FIX #1: findCol con fallback multipli — allineato a index.html
-    const hdr = splitL(lines[0]);
-    const findCol = (...names) => {
-      for(const n of names){
-        const i = hdr.findIndex(h => h.trim().toUpperCase() === n.toUpperCase());
-        if(i >= 0) return i;
-      }
-      return -1;
-    };
-    const iC  = findCol('CLUSTER');
-    const iL  = findCol('LUNGHEZZA','LENGTH');
-    const iLt = findCol('LOTTO');
-    // FIX #1: cerca STATO_LEGENDA prima, poi fallback su STATO_AUTORIZZAZIONE — identico a loadData in index.html
-    const iS  = findCol('STATO_LEGENDA','STATO_AUTORIZZAZIONE','STATO');
-
-    // FIX #4: guard meno rigido — blocca solo su colonne realmente indispensabili
-    if(iL<0||iLt<0) throw new Error('Colonne LUNGHEZZA o LOTTO non trovate nel CSV');
-
-    const iE = findCol('ENTE','ENTE_DESTINATARIO','DESTINATARIO');
-    const iDr = findCol('DR_INVIO','DATA_INVIO','DR','DATA_SPEDIZIONE');
-    const iDum = findCol('DUM','DATA_ULTIMO_MOV','DATA_AGGIORNAMENTO','DATA_MODIFICA');
-
-    PRATICHE_FORECAST = [];
-    const byLot={}, byCluster={};
-    for(let i=1;i<lines.length;i++){
-      const cols=splitL(lines[i]);
-      const lot=(cols[iLt]||'').trim().replace(/"/g,'');
-      if(!lot) continue;
-
-      // FIX #3: stato sicuro con fallback 'IN ATTESA' se colonna assente o valore vuoto
-      const stato = (iS>=0 ? (cols[iS]||'').trim() : '') || 'IN ATTESA';
-
-      // FIX #2: parsing lunghezza robusto — identico a index.html
-      const lunghRaw = (cols[iL]||'0').trim();
-      let m = 0;
-      if(lunghRaw.includes(',') && !lunghRaw.includes('.')){
-        m = parseFloat(lunghRaw.replace(',','.')) || 0;
-      } else if(lunghRaw.includes(',')){
-        m = parseFloat(lunghRaw.replace(/\./g,'').replace(',','.')) || 0;
-      } else {
-        m = parseFloat(lunghRaw) || 0;
-      }
-      if(m<=0) continue;
-
-      // Salva dati per forecast per-pratica
-      if(SUPPLIER_META[lot]){
-        var ente  = iE  >= 0 ? (cols[iE] ||'').trim() : '';
-        var drRaw = iDr >= 0 ? (cols[iDr]||'').trim() : '';
-        if(!drRaw && iDum>=0) drRaw = (cols[iDum]||'').trim();
-        PRATICHE_FORECAST.push({lot:lot, stato:stato, ente:ente, invioRaw:drRaw});
-        if(!byLot[lot])byLot[lot]={};
-        byLot[lot][stato]=(byLot[lot][stato]||0)+m;
-      }
-      // FIX #4: accumula per cluster solo se la colonna esiste
-      const cl = iC>=0 ? (cols[iC]||'').trim().replace(/"/g,'') : '';
-      if(cl){
-        if(!byCluster[cl])byCluster[cl]={};
-        byCluster[cl][stato]=(byCluster[cl][stato]||0)+m;
-      }
-    }
+    const storico = window._storicoCompleto || [];
+    if (!storico.length) return; // nessun dato disponibile
+    const lastSnapshot = storico[storico.length - 1];
+    if (!lastSnapshot || !Array.isArray(lastSnapshot.data)) return;
+    const rows = lastSnapshot.data; // [{lotto, stato, metri, totale}]
 
     const GK={
       wip:          ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'],
@@ -342,6 +274,25 @@ async function loadCSVData() {
       integr:       ['NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE'],
       ok:           ['OTTENUTO'],
     };
+
+    // Ricostruisce byLot e byCluster dal formato aggregato dello storico
+    const byLot={}, byCluster={};
+    PRATICHE_FORECAST = [];
+    rows.forEach(r => {
+      const lot = r.lotto||''; const stato = r.stato||'IN ATTESA'; const m = r.metri||0;
+      if(!lot||m<=0) return;
+      if(SUPPLIER_META[lot]){
+        if(!byLot[lot]) byLot[lot]={};
+        byLot[lot][stato]=(byLot[lot][stato]||0)+m;
+        PRATICHE_FORECAST.push({lot, stato, ente:'', invioRaw:''});
+      }
+      // Cluster dal SUPPLIER_META
+      const cl = SUPPLIER_META[lot] ? (lot.charAt(0)) : '';
+      if(cl){
+        if(!byCluster[cl]) byCluster[cl]={};
+        byCluster[cl][stato]=(byCluster[cl][stato]||0)+m;
+      }
+    });
 
     CSV_DATA={};
     Object.entries(SUPPLIER_META).forEach(([lot,meta])=>{
@@ -1799,13 +1750,37 @@ function updateLiveData(){
 }
 
 async function init(){
-  await loadCSVData();
+  // ── CACHE ISTANTANEA: mostra subito i dati dell'ultima visita da localStorage ──
+  const CACHE_KEY = 'enri_exec_cache_v1';
+  const cached = (() => { try { return JSON.parse(localStorage.getItem(CACHE_KEY)); } catch(_){ return null; } })();
+  if (cached && cached.html) {
+    document.getElementById('main').innerHTML = cached.html;
+    document.querySelectorAll('[contenteditable]').forEach(el=>el.contentEditable='false');
+    window._storicoCompleto = cached.storico || [];
+    // Carica i dati CSV dallo storico in cache per Gantt/Permit
+    await loadCSVData();
+    ensureGanttCardInDom();
+  }
+
+  // ── UNA SOLA CHIAMATA JSONBin per tutto ──
+  // loadFromStorage fa già GET del bin e popola _storicoCompleto + chiama updateLiveData()
   const restored = await loadFromStorage();
-  if(!restored){
+  if (!restored) {
     render();
   }
-  // se restored=true, loadFromStorage chiama già updateLiveData() + ensureGanttCardInDom()
-  // Aggiorna printDate con il valore finale di repDate (dopo storage/render)
+
+  // Aggiorna cache localStorage con i dati freschi
+  try {
+    const mainClone = document.getElementById('main').cloneNode(true);
+    const gc = mainClone.querySelector('#ganttCard');
+    if (gc) gc.remove();
+    localStorage.setItem(CACHE_KEY, JSON.stringify({
+      html: mainClone.innerHTML,
+      storico: window._storicoCompleto || [],
+      ts: Date.now()
+    }));
+  } catch(_) {}
+
   const pd=document.getElementById('printDate');
   if(pd) pd.textContent=document.getElementById('repDate')?.textContent||'';
   document.querySelectorAll('[contenteditable]').forEach(el=>el.contentEditable='false');
@@ -1878,6 +1853,7 @@ function openHelp() {
   if (!utente) return;
 
   let _sessionStart  = Date.now();
+  let _savedData     = null; // copia locale dell'ultimo stato del bin log
   let _sessionLogIdx = -1;
 
   async function _getData() {
@@ -1906,39 +1882,38 @@ function openHelp() {
     } catch(_) { return null; }
   }
 
-  _getData().then(data => {
-    _getIP().then(ip => {
-      const entry = {
-        ts: new Date().toISOString(),
-        utente: utente,
-        ruolo: ruolo,
-        ip: ip,
-        ua: navigator.userAgent.substring(0, 120),
-        durata: 0,
-        lotti: [],
-        nAperture: 0,
-        pagina: 'executive'
-      };
-      data.accessi.push(entry);
-      if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
-      if (!data.utenti.includes(utente)) data.utenti.push(utente);
-      _sessionLogIdx = data.accessi.length - 1;
-      _saveData(data).catch(() => {});
-    }).catch(() => {});
+  // Avvia getData e getIP in PARALLELO — dimezza il tempo di attesa
+  Promise.all([_getData(), _getIP()]).then(([data, ip]) => {
+    const entry = {
+      ts: new Date().toISOString(),
+      utente: utente,
+      ruolo: ruolo,
+      ip: ip,
+      ua: navigator.userAgent.substring(0, 120),
+      durata: 0,
+      lotti: [],
+      nAperture: 0,
+      pagina: 'executive'
+    };
+    data.accessi.push(entry);
+    if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
+    if (!data.utenti.includes(utente)) data.utenti.push(utente);
+    _sessionLogIdx = data.accessi.length - 1;
+    _savedData = data; // salva copia locale
+    _saveData(data).catch(() => {});
   }).catch(() => {});
 
+  // beforeunload: usa _savedData locale invece di fare un altro GET
   window.addEventListener('beforeunload', () => {
-    if (_sessionLogIdx < 0) return;
-    _getData().then(data => {
-      const entry = data.accessi[_sessionLogIdx];
-      if (!entry) return;
-      entry.durata = Math.round((Date.now() - _sessionStart) / 60000);
-      fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}`, {
-        method: 'PUT', keepalive: true,
-        headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
-        body: JSON.stringify(data)
-      });
-    }).catch(() => {});
+    if (_sessionLogIdx < 0 || !_savedData) return;
+    const entry = _savedData.accessi[_sessionLogIdx];
+    if (!entry) return;
+    entry.durata = Math.round((Date.now() - _sessionStart) / 60000);
+    fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}`, {
+      method: 'PUT', keepalive: true,
+      headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
+      body: JSON.stringify(_savedData)
+    });
   });
 })();
 </script>
