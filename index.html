@@ -1533,8 +1533,27 @@ async function _handleLogin() {
   }
 }
 
-// Avvia il login al caricamento della pagina
+// ── LOGIN BYPASS (temporaneo) — imposta false per riattivare ──────────────
+const BYPASS_LOGIN = true;
+const BYPASS_USER  = 'Demo User';   // nome che appare nel badge
+const BYPASS_ROLE  = 'admin';       // 'admin' o 'user'
+// ─────────────────────────────────────────────────────────────────────────
+
 document.addEventListener('DOMContentLoaded', () => {
+  if (BYPASS_LOGIN) {
+    _showUserBadge(BYPASS_USER);
+    // Log accesso silenzioso senza bloccare il rendering
+    _getIP().then(ip => {
+      _logGetData().then(data => {
+        const entry = { ts: new Date().toISOString(), utente: BYPASS_USER, ruolo: BYPASS_ROLE,
+          ip, ua: navigator.userAgent.substring(0,120), durata:0, lotti:[], nAperture:0, pagina:'dashboard' };
+        data.accessi.push(entry);
+        _sessionTs = entry.ts; _sessionStart = Date.now();
+        _logSaveData(data).catch(()=>{});
+      }).catch(()=>{});
+    });
+    return;
+  }
   const savedUser = localStorage.getItem('_enri_user');
   if (savedUser) {
     // Già loggato: mostra badge e applica ruolo senza modal
