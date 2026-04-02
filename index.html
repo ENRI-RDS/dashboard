@@ -2431,6 +2431,7 @@ async function loadData(saveSnapshot = false) {
     });
 
     // Render immediato con solo i dati CSV (storico vuoto per ora)
+    window._csvOriginalData = data;  // copia immutabile del CSV — usata per il ripristino
     window._currentData = data;
     window._prevSnapshotData = null;
     window._storicoCompleto = [];
@@ -2458,6 +2459,17 @@ async function loadData(saveSnapshot = false) {
       if (!storageRecord.storico) storageRecord.storico = [];
 
       try {
+
+      // ── Applica override manuale se presente ────────────────────────────
+      if (storageRecord.manual_override && Array.isArray(storageRecord.manual_override.data) && storageRecord.manual_override.data.length > 0) {
+        const mo = storageRecord.manual_override;
+        window._currentData  = mo.data;
+        window._lastDashData = mo.data;
+        renderDashboard(mo.data);
+        _emAggiornaClusters(mo.data);
+        _emShowManualBadge(mo.ts);
+      }
+      // ────────────────────────────────────────────────────────────────────
 
       const storico = storageRecord.storico;
       prevSnapshot = storico.length > 0 ? storico[storico.length - 1] : null;
@@ -4751,6 +4763,295 @@ function _adminClearUser() {
   localStorage.removeItem('_enri_user');
   localStorage.removeItem('_enri_role');
   location.reload();
+}
+</script>
+
+<!-- ── TASTO MODIFICA MANUALE (nascosto) ──────────────────────────────────── -->
+<button id="btnEditManuale"
+  onclick="apriEditManuale()"
+  title="Modifica manuale dati"
+  style="position:fixed;bottom:14px;right:18px;z-index:300;
+    background:none;border:none;cursor:pointer;
+    font-size:11px;color:var(--border2);opacity:0.25;
+    font-family:'Fira Code',monospace;letter-spacing:0.04em;
+    padding:4px 7px;border-radius:5px;
+    transition:opacity 0.2s,color 0.2s;">✎</button>
+<style>
+  #btnEditManuale:hover { opacity:0.9 !important; color:var(--accent) !important; background:var(--surface2) !important; }
+  /* ── MODALE EDIT MANUALE ── */
+  #overlayEditManuale {
+    display:none;position:fixed;inset:0;
+    background:rgba(11,25,70,.55);backdrop-filter:blur(6px);
+    z-index:2000;align-items:center;justify-content:center;
+  }
+  #overlayEditManuale.open { display:flex; }
+  #modalEditManuale {
+    background:var(--surface);border:1px solid var(--border2);
+    border-radius:16px;width:92vw;max-width:1100px;
+    max-height:88vh;display:flex;flex-direction:column;
+    box-shadow:0 20px 60px rgba(11,49,130,.25);overflow:hidden;
+  }
+  #modalEditManuale .em-head {
+    display:flex;align-items:center;gap:12px;
+    padding:18px 24px 14px;border-bottom:1px solid var(--border);
+    flex-shrink:0;
+  }
+  #modalEditManuale .em-body {
+    overflow-y:auto;overflow-x:auto;padding:18px 24px;flex:1;
+  }
+  #modalEditManuale .em-foot {
+    display:flex;gap:10px;justify-content:flex-end;
+    padding:14px 24px;border-top:1px solid var(--border);flex-shrink:0;
+  }
+  .em-table { border-collapse:collapse;width:100%;font-size:11px; }
+  .em-table th {
+    position:sticky;top:0;background:var(--surface2);
+    padding:7px 10px;text-align:center;white-space:nowrap;
+    font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
+    color:var(--muted);border-bottom:2px solid var(--border2);
+  }
+  .em-table th.th-lotto { text-align:left;min-width:60px; }
+  .em-table td { padding:5px 6px;border-bottom:1px solid var(--border);vertical-align:middle; }
+  .em-table td.td-lotto {
+    font-family:'Fira Code',monospace;font-size:11px;font-weight:700;
+    color:var(--accent);white-space:nowrap;padding-right:10px;
+  }
+  .em-table td .em-grp {
+    display:flex;flex-direction:column;gap:3px;
+  }
+  .em-inp {
+    width:88px;padding:4px 7px;border:1px solid var(--border2);
+    border-radius:5px;font-size:11px;font-family:'Fira Code',monospace;
+    background:var(--surface2);color:var(--text);text-align:right;
+    transition:border-color .15s,background .15s;
+  }
+  .em-inp:focus { outline:none;border-color:var(--accent);background:#fff; }
+  .em-inp-lbl { font-size:8px;color:var(--muted);text-align:center;
+    font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap; }
+  .em-sep-row td { background:var(--bg);padding:5px 10px;
+    font-size:9px;font-weight:700;text-transform:uppercase;
+    letter-spacing:.12em;color:var(--muted);border-top:2px solid var(--border2); }
+</style>
+
+<!-- Modale -->
+<div id="overlayEditManuale" onclick="if(event.target===this)chiudiEditManuale()">
+  <div id="modalEditManuale">
+    <div class="em-head">
+      <span style="font-family:'Bricolage Grotesque',sans-serif;font-size:16px;font-weight:700;color:var(--text)">✎ Modifica Manuale Dati</span>
+      <span style="font-size:11px;color:var(--muted);font-weight:400">— Inserisci i metri per lotto e stato, poi premi Applica.</span>
+      <button onclick="chiudiEditManuale()" style="margin-left:auto;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1">×</button>
+    </div>
+    <div class="em-body">
+      <div id="emTableWrap"></div>
+    </div>
+    <div class="em-foot">
+      <div style="flex:1;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">
+        <span id="emSaveBadge" style="display:none;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600"></span>
+      </div>
+      <button id="btnRipristinaCSV" onclick="ripristinaCSV()" style="display:none;padding:8px 18px;border-radius:7px;border:1px solid #C23B2244;background:#fce8e8;color:#C23B22;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:600">↺ Ripristina CSV</button>
+      <button onclick="chiudiEditManuale()" style="padding:8px 20px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--muted);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px">Annulla</button>
+      <button onclick="applicaEditManuale()" style="padding:8px 22px;border-radius:7px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:700">✓ Applica e salva</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── MODIFICA MANUALE — persistente su JSONBin ─────────────────────────────────
+const EM_GRUPPI = [
+  { key:'attesa',        label:'In Attesa / Redazione',       stati:['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'], color:'#4a4f6a' },
+  { key:'coordinamento', label:'Coordinamento',               stati:['COORDINAMENTO'],                                        color:'#9b59b6' },
+  { key:'firma',         label:'In Verifica / In Firma',      stati:['IN FIRMA RDS'],                                        color:'#e07b3a' },
+  { key:'inviato',       label:'Inviato / Protocollato',      stati:['INVIATO','PROTOCOLLATO'],                              color:'#4f8ef7' },
+  { key:'integrazione',  label:'Necessaria Integrazione',     stati:['NECESSARIA INTEGRAZIONE'],                             color:'#cc3333' },
+  { key:'protint',       label:'Protocollato Integrazione',   stati:['PROTOCOLLATO INTEGRAZIONE'],                           color:'#548235' },
+  { key:'ottenuto',      label:'🏆 Autorizzati',              stati:['OTTENUTO'],                                            color:'#3a8c5c' },
+];
+
+function emBuildMap(data) {
+  const map = {};
+  (data || []).forEach(r => {
+    if (!map[r.lotto]) map[r.lotto] = {};
+    map[r.lotto][r.stato] = (map[r.lotto][r.stato] || 0) + r.metri;
+  });
+  return map;
+}
+
+// ── Badge "Dati manuali attivi" nella topbar ──────────────────────────────────
+function _emShowManualBadge(ts) {
+  if (document.getElementById('emManualBadge')) return;
+  const d = ts ? new Date(ts).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
+  const badge = document.createElement('div');
+  badge.id = 'emManualBadge';
+  badge.title = 'Dati inseriti manualmente — clicca ✎ per modificare o ripristinare il CSV';
+  badge.style.cssText = 'display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:5px;'+
+    'background:#7A3DAA18;border:1px solid #7A3DAA55;font-size:10px;font-family:\'Fira Code\',monospace;'+
+    'color:#7A3DAA;font-weight:600;white-space:nowrap;cursor:default';
+  badge.innerHTML = `✎ Dati manuali${d ? ' · '+d : ''}`;
+  const topRight = document.querySelector('.topbar-right');
+  if (topRight) topRight.insertBefore(badge, topRight.firstChild);
+}
+
+function _emRemoveManualBadge() {
+  const b = document.getElementById('emManualBadge');
+  if (b) b.remove();
+}
+
+// ── Apri modale ───────────────────────────────────────────────────────────────
+function apriEditManuale() {
+  const data = window._currentData || window._lastDashData;
+  if (!data || !data.length) { alert('Nessun dato disponibile. Carica prima un file CSV.'); return; }
+  const map = emBuildMap(data);
+  const ORDER_ATTIVI = ['1A','1B','2A','2B'];
+  const ORDER_FUTURI = ['1','2','3','4','5','6','7','8'];
+  const ORDER = [...ORDER_ATTIVI, ...ORDER_FUTURI];
+  const lotti = Object.keys(map).sort((a,b) => {
+    const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+
+  let th = `<th class="th-lotto">Lotto</th>`;
+  EM_GRUPPI.forEach(g => { th += `<th style="color:${g.color}">${g.label}</th>`; });
+
+  let rows = '';
+  lotti.forEach(lotto => {
+    const isAttivo = ORDER_ATTIVI.includes(lotto);
+    if (lotto === ORDER_FUTURI[0] && lotti.some(l => ORDER_ATTIVI.includes(l))) {
+      rows += `<tr class="em-sep-row"><td colspan="${EM_GRUPPI.length+1}">🔜 Lotti in Avvio</td></tr>`;
+    }
+    rows += `<tr><td class="td-lotto">${lotto}${isAttivo ? ' <span style="font-size:8px;color:#4f8ef7">⚡</span>' : ''}</td>`;
+    EM_GRUPPI.forEach(g => {
+      const val = g.stati.reduce((s,st) => s+(map[lotto][st]||0), 0);
+      const subLabels = g.stati.length > 1
+        ? `<span class="em-inp-lbl">${g.stati.map(s=>s.replace('IN ','')).join(' + ')}</span>` : '';
+      rows += `<td><div class="em-grp">
+        <input class="em-inp" type="number" min="0" step="1"
+          data-lotto="${lotto}" data-gkey="${g.key}"
+          value="${val > 0 ? Math.round(val) : ''}">
+        ${subLabels}</div></td>`;
+    });
+    rows += `</tr>`;
+  });
+
+  document.getElementById('emTableWrap').innerHTML = `
+    <table class="em-table"><thead><tr>${th}</tr></thead><tbody>${rows}</tbody></table>`;
+  document.getElementById('emSaveBadge').style.display = 'none';
+  const isManual = !!(window._currentData !== window._csvOriginalData);
+  document.getElementById('btnRipristinaCSV').style.display = isManual ? 'inline-flex' : 'none';
+  document.getElementById('overlayEditManuale').classList.add('open');
+}
+
+function chiudiEditManuale() {
+  document.getElementById('overlayEditManuale').classList.remove('open');
+}
+
+// ── Applica e salva su JSONBin ────────────────────────────────────────────────
+async function applicaEditManuale() {
+  const inputs = document.querySelectorAll('#emTableWrap .em-inp');
+  const totPerLotto = {};
+  inputs.forEach(inp => {
+    totPerLotto[inp.dataset.lotto] = (totPerLotto[inp.dataset.lotto]||0) + (parseFloat(inp.value)||0);
+  });
+
+  const lottoGruppoVal = {};
+  inputs.forEach(inp => {
+    if (!lottoGruppoVal[inp.dataset.lotto]) lottoGruppoVal[inp.dataset.lotto] = {};
+    lottoGruppoVal[inp.dataset.lotto][inp.dataset.gkey] = parseFloat(inp.value)||0;
+  });
+
+  const origMap = emBuildMap(window._csvOriginalData || window._currentData || window._lastDashData);
+  const newData = [];
+
+  Object.entries(lottoGruppoVal).forEach(([lotto, gruppi]) => {
+    const totale = totPerLotto[lotto]||0;
+    Object.entries(gruppi).forEach(([gkey, valGruppo]) => {
+      if (valGruppo <= 0) return;
+      const grp = EM_GRUPPI.find(g=>g.key===gkey);
+      if (!grp) return;
+      const origVals = grp.stati.map(st => (origMap[lotto]?.[st]||0));
+      const origTot  = origVals.reduce((a,b)=>a+b,0);
+      grp.stati.forEach((st, i) => {
+        const proportion = origTot > 0 ? origVals[i]/origTot : 1/grp.stati.length;
+        const metri = valGruppo * proportion;
+        if (metri > 0) newData.push({ lotto, stato:st, metri, totale, pct: totale>0?metri/totale:0 });
+      });
+    });
+  });
+
+  if (!newData.length) { alert('Nessun dato valido inserito.'); return; }
+
+  // Badge salvataggio
+  const badge = document.getElementById('emSaveBadge');
+  badge.textContent = '⏳ Salvataggio…';
+  badge.style.cssText = 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#fef3cd;color:#b07d10;border:1px solid #b07d1055';
+
+  try {
+    const record = await jsonbinLoad();
+    record.manual_override = { data: newData, ts: new Date().toISOString() };
+    await jsonbinSave(record);
+
+    window._currentData  = newData;
+    window._lastDashData = newData;
+    window._prevSnapshotData = null;
+    renderDashboard(newData);
+    _emAggiornaClusters(newData);
+    _emRemoveManualBadge();
+    _emShowManualBadge(record.manual_override.ts);
+
+    badge.textContent = '✓ Salvato su DB';
+    badge.style.cssText = 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#d0f0e0;color:#1F7A4E;border:1px solid #1F7A4E44';
+    setTimeout(() => chiudiEditManuale(), 1200);
+  } catch(e) {
+    badge.textContent = '✕ Errore salvataggio: ' + e.message;
+    badge.style.cssText = 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#fce8e8;color:#C23B22;border:1px solid #C23B2244';
+  }
+}
+
+// ── Ripristina dati CSV originali ─────────────────────────────────────────────
+async function ripristinaCSV() {
+  if (!confirm('Ripristinare i dati dal CSV originale? I dati manuali salvati verranno eliminati dal database.')) return;
+
+  const badge = document.getElementById('emSaveBadge');
+  badge.textContent = '⏳ Ripristino…';
+  badge.style.cssText = 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#fef3cd;color:#b07d10;border:1px solid #b07d1055';
+
+  try {
+    const record = await jsonbinLoad();
+    delete record.manual_override;
+    await jsonbinSave(record);
+
+    const csvData = window._csvOriginalData;
+    if (!csvData || !csvData.length) { location.reload(); return; }
+
+    window._currentData  = csvData;
+    window._lastDashData = csvData;
+    window._prevSnapshotData = null;
+    renderDashboard(csvData);
+    _emAggiornaClusters(csvData);
+    _emRemoveManualBadge();
+
+    badge.textContent = '✓ CSV ripristinato';
+    badge.style.cssText = 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#d0f0e0;color:#1F7A4E;border:1px solid #1F7A4E44';
+    setTimeout(() => chiudiEditManuale(), 1200);
+  } catch(e) {
+    badge.textContent = '✕ Errore: ' + e.message;
+    badge.style.cssText = 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#fce8e8;color:#C23B22;border:1px solid #C23B2244';
+  }
+}
+
+// ── Aggiorna grafico cluster ──────────────────────────────────────────────────
+function _emAggiornaClusters(data) {
+  try {
+    const CLUSTER_MAP = { '1A':'1','1B':'1','2A':'2','2B':'2',
+      '1':'1','2':'2','3':'3','4':'4','5':'5','6':'6','7':'7','8':'8' };
+    const clMap = {}, clTot = {};
+    data.forEach(r => {
+      const cl = CLUSTER_MAP[r.lotto]||r.lotto;
+      if (!clMap[cl]) { clMap[cl]={}; clTot[cl]=0; }
+      clMap[cl][r.stato] = (clMap[cl][r.stato]||0)+r.metri;
+      clTot[cl] += r.metri;
+    });
+    if (Object.keys(clMap).length > 0) renderCluster(clMap, clTot);
+  } catch(e) { console.warn('Cluster update error:', e); }
 }
 </script>
 
