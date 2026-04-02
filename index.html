@@ -4066,33 +4066,102 @@ function openModalKpi(key) {
     return;
   }
 
-  // Raggruppa per lotto
-  const byLotto = {};
-  allPrats.forEach(p => {
-    if (!byLotto[p.lotto]) byLotto[p.lotto] = [];
-    byLotto[p.lotto].push(p);
-  });
+  // Memorizza per filtro
+  window._kpiModalKey = key;
+  window._kpiModalCfg = cfg;
+  window._kpiModalAllPrats = allPrats;
+  window._kpiModalTotMetri = totMetri;
+  window._kpiFilterLotto = 'all';
+  window._kpiFilterSearch = '';
 
   const LOTTO_ORDER = ['1A','1B','2A','2B','1','2','3','4','5','6','7','8'];
-  const sortedLotti = Object.keys(byLotto).sort((a,b) =>
-    (LOTTO_ORDER.indexOf(a) + 1 || 99) - (LOTTO_ORDER.indexOf(b) + 1 || 99));
+  const lottiDisponibili = [...new Set(allPrats.map(p => p.lotto))]
+    .sort((a,b) => (LOTTO_ORDER.indexOf(a)+1||99)-(LOTTO_ORDER.indexOf(b)+1||99));
 
+  // Riquadro sommario + filtri
   const IMPRESE = { '1A':'Valtellina','1B':'Soleto','2A':'Sielte','2B':'Telebit' };
-
-  let html = `
-    <div style="display:flex;gap:24px;margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid var(--border);flex-wrap:wrap;align-items:flex-end">
+  const filterBar = `
+    <div style="display:flex;gap:24px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);flex-wrap:wrap;align-items:flex-end">
       <div>
         <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Pratiche totali</div>
-        <div style="font-size:26px;font-weight:700;font-family:'Bricolage Grotesque',sans-serif;color:${cfg.color};letter-spacing:-0.02em">${allPrats.length}</div>
+        <div style="font-size:26px;font-weight:700;font-family:'Bricolage Grotesque',sans-serif;color:${cfg.color};letter-spacing:-0.02em" id="kpiCountDisplay">${allPrats.length}</div>
       </div>
       <div>
         <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)">Metri coinvolti</div>
-        <div style="font-size:26px;font-weight:700;font-family:'Bricolage Grotesque',sans-serif;letter-spacing:-0.02em">${fmt(totMetri)} m</div>
+        <div style="font-size:26px;font-weight:700;font-family:'Bricolage Grotesque',sans-serif;letter-spacing:-0.02em" id="kpiMetriDisplay">${fmt(totMetri)} m</div>
       </div>
       <div style="margin-left:auto">
         <button onclick="exportXlsx(window._kpiModalPratiche,'ENRI_${key}_pratiche')" style="font-size:11px;padding:6px 14px;border-radius:6px;background:#1d5c3a;color:white;border:1px solid #3a8c5c55;cursor:pointer;font-weight:500">📥 Scarica Excel</button>
       </div>
-    </div>`;
+    </div>
+    <div class="kpi-filter-bar">
+      <input class="kpi-filter-search" id="kpiSearchInput" placeholder="🔍 Cerca codice o ente…"
+        oninput="window._kpiFilterSearch=this.value;_kpiApplyFilter()" value="">
+      <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+        <button class="kpi-filt-btn active" id="kpiFiltAll" onclick="_kpiSetLotto('all')">Tutti</button>
+        ${lottiDisponibili.map(l => `<button class="kpi-filt-btn" id="kpiFilt_${l}" onclick="_kpiSetLotto('${l}')">${l}${IMPRESE[l]?' <span style=\'font-size:8px;font-weight:400\'>'+IMPRESE[l]+'</span>':''}</button>`).join('')}
+      </div>
+      <span class="kpi-filter-count" id="kpiFilterCount"></span>
+    </div>
+    <div id="kpiFilteredBody"></div>`;
+
+  document.getElementById('modalKpiBody').innerHTML = filterBar;
+  document.getElementById('modalKpiOverlay').classList.add('open');
+  window._kpiModalPratiche = allPrats;
+  _kpiApplyFilter();
+}
+
+// ── Imposta filtro lotto ──────────────────────────────────────────────────────
+function _kpiSetLotto(lotto) {
+  window._kpiFilterLotto = lotto;
+  document.querySelectorAll('.kpi-filt-btn').forEach(b => b.classList.remove('active'));
+  const target = document.getElementById(lotto === 'all' ? 'kpiFiltAll' : `kpiFilt_${lotto}`);
+  if (target) target.classList.add('active');
+  _kpiApplyFilter();
+}
+
+// ── Applica filtro e ri-renderizza il body ────────────────────────────────────
+function _kpiApplyFilter() {
+  const allPrats = window._kpiModalAllPrats || [];
+  const key      = window._kpiModalKey;
+  const cfg      = window._kpiModalCfg;
+  const lotto    = window._kpiFilterLotto || 'all';
+  const search   = (window._kpiFilterSearch || '').trim().toLowerCase();
+
+  let prats = allPrats;
+  if (lotto !== 'all') prats = prats.filter(p => p.lotto === lotto);
+  if (search) prats = prats.filter(p =>
+    (p.codice||'').toLowerCase().includes(search) ||
+    (p.ente||'').toLowerCase().includes(search)
+  );
+
+  // Aggiorna contatori
+  const totF = prats.reduce((s,p) => s+(p.metri||0), 0);
+  const cntEl = document.getElementById('kpiCountDisplay');
+  const mtrEl = document.getElementById('kpiMetriDisplay');
+  const cntFil = document.getElementById('kpiFilterCount');
+  if (cntEl) cntEl.textContent = prats.length;
+  if (mtrEl) mtrEl.textContent = fmt(totF) + ' m';
+  if (cntFil) cntFil.textContent = (search || lotto !== 'all') ? `${prats.length} / ${allPrats.length} pratiche` : '';
+
+  // Aggiorna il riferimento per l'export Excel
+  window._kpiModalPratiche = prats;
+
+  const body = document.getElementById('kpiFilteredBody');
+  if (!body) return;
+
+  if (prats.length === 0) {
+    body.innerHTML = '<div style="padding:32px;text-align:center;color:var(--muted);font-size:13px">Nessuna pratica corrisponde al filtro</div>';
+    return;
+  }
+
+  const LOTTO_ORDER = ['1A','1B','2A','2B','1','2','3','4','5','6','7','8'];
+  const IMPRESE = { '1A':'Valtellina','1B':'Soleto','2A':'Sielte','2B':'Telebit' };
+
+  const byLotto = {};
+  prats.forEach(p => { if (!byLotto[p.lotto]) byLotto[p.lotto] = []; byLotto[p.lotto].push(p); });
+  const sortedLotti = Object.keys(byLotto).sort((a,b) =>
+    (LOTTO_ORDER.indexOf(a) + 1 || 99) - (LOTTO_ORDER.indexOf(b) + 1 || 99));
 
   const _kBd = (a,b) => { const da=parseDateIT(a.dum),db=parseDateIT(b.dum); if(da&&db) return db-da; return da?-1:db?1:a.codice.localeCompare(b.codice); };
   const _showPrev = !['firma','attesa'].includes(key);
@@ -4128,13 +4197,13 @@ function openModalKpi(key) {
     <span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">${badge.includes('3a8c5c') ? 'incide sulle %' : 'non incide sulle %'}</span>
   </td></tr>`;
 
-  // Per ogni lotto: header + tabella con sezioni AUT / NO+ORD
+  let html = '';
   sortedLotti.forEach(lotto => {
-    const prats = byLotto[lotto];
-    const totL = prats.reduce((s, p) => s + (p.metri || 0), 0);
+    const pratLotto = byLotto[lotto];
+    const totL = pratLotto.reduce((s, p) => s + (p.metri || 0), 0);
     const impresa = IMPRESE[lotto] || '';
-    const autP = prats.filter(p => p.codice.startsWith('AUT/')).sort(_kBd);
-    const noP  = prats.filter(p => !p.codice.startsWith('AUT/')).sort(_kBd);
+    const autP = pratLotto.filter(p => p.codice.startsWith('AUT/')).sort(_kBd);
+    const noP  = pratLotto.filter(p => !p.codice.startsWith('AUT/')).sort(_kBd);
 
     html += `
       <div style="margin-bottom:22px">
@@ -4161,10 +4230,9 @@ function openModalKpi(key) {
       </div>`;
   });
 
-  document.getElementById('modalKpiBody').innerHTML = html;
-  document.getElementById('modalKpiOverlay').classList.add('open');
-  window._kpiModalPratiche = allPrats;
+  body.innerHTML = html;
 }
+
 
 function closeModalKpi(e) {
   if (e && e.target !== document.getElementById('modalKpiOverlay')) return;
@@ -4242,12 +4310,73 @@ function openModalPrev(status) {
     document.getElementById('modalKpiOverlay').classList.add('open');
     return;
   }
-  const byLotto = {};
-  prats.forEach(p => { if (!byLotto[p.lotto]) byLotto[p.lotto] = []; byLotto[p.lotto].push(p); });
   const LOTTO_ORDER = ['1A','1B','2A','2B','1','2','3','4','5','6','7','8'];
   const IMPRESE = { '1A':'Valtellina','1B':'Soleto','2A':'Sielte','2B':'Telebit' };
-  const sortedLotti = Object.keys(byLotto).sort((a,b) =>
-    (LOTTO_ORDER.indexOf(a)+1||99)-(LOTTO_ORDER.indexOf(b)+1||99));
+  // Store per filtro
+  window._prevModalStatus = status;
+  window._prevModalAllPrats = prats;
+  window._prevFilterLotto = 'all';
+  window._prevFilterSearch = '';
+
+  const prevLottiDisp = [...new Set(prats.map(p=>p.lotto))].sort((a,b)=>(LOTTO_ORDER.indexOf(a)+1||99)-(LOTTO_ORDER.indexOf(b)+1||99));
+  const prevFilterHtml = `
+    <div class="kpi-filter-bar">
+      <input class="kpi-filter-search" id="prevSearchInput" placeholder="🔍 Cerca codice o ente…"
+        oninput="window._prevFilterSearch=this.value;_prevApplyFilter()">
+      <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+        <button class="kpi-filt-btn active" id="prevFiltAll" onclick="_prevSetLotto('all')">Tutti</button>
+        ${prevLottiDisp.map(l=>`<button class="kpi-filt-btn" id="prevFilt_${l}" onclick="_prevSetLotto('${l}')">${l}${IMPRESE[l]?' <span style=\'font-size:8px;font-weight:400\'>'+IMPRESE[l]+'</span>':''}</button>`).join('')}
+      </div>
+      <span class="kpi-filter-count" id="prevFilterCount"></span>
+    </div>
+    <div id="prevFilteredBody"></div>`;
+
+  document.getElementById('modalKpiBody').innerHTML = prevFilterHtml;
+  document.getElementById('modalKpiOverlay').classList.add('open');
+  window._kpiModalPratiche = prats;
+  _prevApplyFilter();
+}
+
+function _prevSetLotto(lotto) {
+  window._prevFilterLotto = lotto;
+  document.querySelectorAll('.kpi-filt-btn').forEach(b => b.classList.remove('active'));
+  const t = document.getElementById(lotto==='all'?'prevFiltAll':`prevFilt_${lotto}`);
+  if (t) t.classList.add('active');
+  _prevApplyFilter();
+}
+
+function _prevApplyFilter() {
+  const allPrats = window._prevModalAllPrats || [];
+  const lotto    = window._prevFilterLotto || 'all';
+  const search   = (window._prevFilterSearch || '').trim().toLowerCase();
+  const status   = window._prevModalStatus;
+  const colors   = { ok: '#3a8c5c', warn: '#c9a227', late: '#cc3333' };
+  const LOTTO_ORDER = ['1A','1B','2A','2B','1','2','3','4','5','6','7','8'];
+  const IMPRESE = { '1A':'Valtellina','1B':'Soleto','2A':'Sielte','2B':'Telebit' };
+
+  let prats = allPrats;
+  if (lotto !== 'all') prats = prats.filter(p => p.lotto === lotto);
+  if (search) prats = prats.filter(p =>
+    (p.codice||'').toLowerCase().includes(search) ||
+    (p.ente||'').toLowerCase().includes(search)
+  );
+
+  const cntFil = document.getElementById('prevFilterCount');
+  if (cntFil) cntFil.textContent = (search||lotto!=='all') ? `${prats.length} / ${allPrats.length} pratiche` : '';
+  window._kpiModalPratiche = prats;
+
+  const body = document.getElementById('prevFilteredBody');
+  if (!body) return;
+
+  if (prats.length === 0) {
+    body.innerHTML = '<div style="padding:32px;text-align:center;color:var(--muted);font-size:13px">Nessuna pratica corrisponde al filtro</div>';
+    return;
+  }
+
+  const byLotto = {};
+  prats.forEach(p => { if (!byLotto[p.lotto]) byLotto[p.lotto] = []; byLotto[p.lotto].push(p); });
+  const sortedLotti2 = Object.keys(byLotto).sort((a,b)=>(LOTTO_ORDER.indexOf(a)+1||99)-(LOTTO_ORDER.indexOf(b)+1||99));
+
   const thRow = `<tr style="border-bottom:1px solid var(--border)">
     <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Codice</th>
     <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Ente</th>
@@ -4256,8 +4385,9 @@ function openModalPrev(status) {
     <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Prev. Rilascio</th>
     <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:right;font-weight:600;background:var(--surface2)">Metri</th>
   </tr>`;
-  let html = `<div style="margin-bottom:16px;font-size:12px;color:var(--muted)">${prats.length} pratiche · ordinate per scadenza crescente</div>`;
-  sortedLotti.forEach(lotto => {
+
+  let html = `<div style="margin-bottom:12px;font-size:11px;color:var(--muted)">${prats.length} pratiche · ordinate per scadenza crescente</div>`;
+  sortedLotti2.forEach(lotto => {
     const arr = byLotto[lotto];
     const totL = arr.reduce((s,p)=>s+(p.metri||0),0);
     const impresa = IMPRESE[lotto]||'';
@@ -4287,10 +4417,9 @@ function openModalPrev(status) {
       }).join('')}
       </tbody></table></div></div>`;
   });
-  document.getElementById('modalKpiBody').innerHTML = html;
-  document.getElementById('modalKpiOverlay').classList.add('open');
-  window._kpiModalPratiche = prats;
+  body.innerHTML = html;
 }
+
 
 function updatePrevRilascio() {
   if (!window._praticheDetailPerLotto) return;
@@ -4831,6 +4960,35 @@ function _adminClearUser() {
   .em-sep-row td { background:var(--bg);padding:5px 10px;
     font-size:9px;font-weight:700;text-transform:uppercase;
     letter-spacing:.12em;color:var(--muted);border-top:2px solid var(--border2); }
+
+  /* ── FILTER BAR nel modal pratiche ── */
+  .kpi-filter-bar {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    padding:10px 0 14px; border-bottom:1px solid var(--border); margin-bottom:14px;
+  }
+  .kpi-filter-search {
+    flex:1; min-width:160px; max-width:260px;
+    padding:6px 10px; border-radius:7px;
+    border:1px solid var(--border2); background:var(--surface2);
+    font-family:'Plus Jakarta Sans',sans-serif; font-size:11px; color:var(--text);
+    outline:none; transition:border-color .15s;
+  }
+  .kpi-filter-search:focus { border-color:var(--accent); background:#fff; }
+  .kpi-filter-search::placeholder { color:var(--muted2); }
+  .kpi-filt-btn {
+    font-size:10px; padding:3px 11px; border-radius:20px;
+    cursor:pointer; transition:all .18s;
+    border:1px solid var(--border2); background:transparent;
+    color:var(--muted); font-family:'Plus Jakarta Sans',sans-serif; font-weight:600;
+  }
+  .kpi-filt-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .kpi-filt-btn.active {
+    background:var(--accent); border-color:var(--accent); color:#fff;
+  }
+  .kpi-filter-count {
+    font-size:10px; color:var(--muted); margin-left:auto;
+    font-family:'Fira Code',monospace;
+  }
 </style>
 
 <!-- Modale -->
@@ -4880,15 +5038,24 @@ function emBuildMap(data) {
 function _emShowManualBadge(ts) {
   if (document.getElementById('emManualBadge')) return;
   const d = ts ? new Date(ts).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
-  const badge = document.createElement('div');
-  badge.id = 'emManualBadge';
-  badge.title = 'Dati inseriti manualmente — clicca ✎ per modificare o ripristinare il CSV';
-  badge.style.cssText = 'display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:5px;'+
-    'background:#7A3DAA18;border:1px solid #7A3DAA55;font-size:10px;font-family:\'Fira Code\',monospace;'+
-    'color:#7A3DAA;font-weight:600;white-space:nowrap;cursor:default';
-  badge.innerHTML = `✎ Dati manuali${d ? ' · '+d : ''}`;
+  const wrap = document.createElement('div');
+  wrap.id = 'emManualBadge';
+  wrap.style.cssText = 'display:inline-flex;align-items:center;gap:4px;';
+  wrap.innerHTML =
+    `<span title="Dati inseriti manualmente — clicca ✎ per modificare" onclick="apriEditManuale()"
+      style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:5px;
+      background:#7A3DAA18;border:1px solid #7A3DAA55;font-size:10px;font-family:'Fira Code',monospace;
+      color:#7A3DAA;font-weight:600;white-space:nowrap;cursor:pointer">
+      ✎ Dati manuali${d ? ' · '+d : ''}
+    </span>
+    <button onclick="ripristinaCSV()" title="Ripristina dati CSV originali"
+      style="display:inline-flex;align-items:center;padding:3px 8px;border-radius:5px;
+      background:#fce8e8;border:1px solid #C23B2244;color:#C23B22;font-size:10px;
+      font-family:'Fira Code',monospace;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1">
+      ↺ Reset
+    </button>`;
   const topRight = document.querySelector('.topbar-right');
-  if (topRight) topRight.insertBefore(badge, topRight.firstChild);
+  if (topRight) topRight.insertBefore(wrap, topRight.firstChild);
 }
 
 function _emRemoveManualBadge() {
