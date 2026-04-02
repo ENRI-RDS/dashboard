@@ -2009,7 +2009,13 @@ function openModalCluster(cl, statiMap, totale) {
     const seen = new Set();
     (window._clusterTrattaMap[cl] || []).forEach(tratta => {
       (window._masterByTratta[tratta] || []).forEach(r => {
-        if (!seen.has(r.codice)) { seen.add(r.codice); clPrats.push({...r}); }
+        if (!seen.has(r.codice)) {
+          seen.add(r.codice);
+          clPrats.push({...r});
+        } else {
+          const existing = clPrats.find(p => p.codice === r.codice);
+          if (existing) existing.metri += r.metri;
+        }
       });
     });
     clPrats.sort((a,b) => { const da=parseDateIT(a.dum),db=parseDateIT(b.dum); if(da&&db) return db-da; return da?-1:db?1:a.codice.localeCompare(b.codice); });
