@@ -1410,11 +1410,7 @@ function render(){
 
 
 
-  h+=`<div class="card" id="mmCard"><div class="ch"><span class="ct">Main Monthly Milestones</span></div>
-  <div class="cb" style="display:flex;flex-direction:column;gap:10px" id="mmBody">`;
-  R.monthly.forEach((m,i)=>{ h+=mmCard(m,i); });
-  h+=`</div>
-  <button class="add-btn no-print" onclick="addMm()" style="margin:0 18px 14px">+ Add monthly milestone</button></div>`;
+
 
   h+=`<div class="card" id="notesCard"><div class="ch"><span class="ct">Notes</span></div>
   <div class="cb" style="display:flex;flex-direction:column;gap:8px" id="notesBody">`;
@@ -1520,6 +1516,17 @@ async function loadFromStorage(){
       // Salva storico per velocity-based forecast
       window._storicoCompleto = Array.isArray(data.storico) ? data.storico : [];
       document.getElementById('main').innerHTML = data[EXEC_BIN_KEY];
+      // Rimuove Key Milestones e Cluster Timeline anche se presenti nel salvataggio JSONBin
+      document.querySelectorAll('#main .card').forEach(card => {
+        const ct = card.querySelector('.ct');
+        if(ct && (ct.textContent.trim() === 'Key Milestones' || ct.textContent.trim() === 'Cluster Timeline — Completion' || ct.textContent.trim() === 'Main Monthly Milestones')){
+          const parent = card.parentElement;
+          parent.removeChild(card);
+          if(parent.classList.contains('two-col') && parent.children.length === 0){
+            parent.parentElement.removeChild(parent);
+          }
+        }
+      });
       document.querySelectorAll('[contenteditable]').forEach(el=>el.contentEditable='false');
       // Aggiorna la data con l'ultimo caricamento Excel da index.html
       if(data.last_excel_upload_at){
