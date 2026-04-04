@@ -543,6 +543,14 @@ function ganttOpenEdit(taskId){
     +'<div style="display:flex;align-items:flex-end;padding-bottom:2px"><label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text)">'
     +'<input type="checkbox" id="gdDone" '+(t.done?'checked':'')+' style="width:14px;height:14px;accent-color:var(--green)"> Completato</label></div>'
     +'</div>'
+    +'<div id="gdMsWrap" style="margin-bottom:10px"><div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px">Stato milestone <span style="font-weight:400;text-transform:none;font-size:8px">(solo quando inizio = fine)</span></div>'
+    +'<select id="gdRag" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px">'
+    +'<option value="auto"'+((!t.rag||t.rag==='auto')?' selected':'')+'>Auto (da date)</option>'
+    +'<option value="completed"'+(t.rag==="completed"?' selected':'')+'>✓ Completed</option>'
+    +'<option value="green"'+(t.rag==="green"?' selected':'')+'>🟢 On track</option>'
+    +'<option value="yellow"'+(t.rag==="yellow"?' selected':'')+'>🟡 Overdue</option>'
+    +'<option value="red"'+(t.rag==="red"?' selected':'')+'>🔴 Critical</option>'
+    +'</select></div>'
     +'<div style="margin-bottom:14px"><div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px">% completamento manuale <span style="font-weight:400;text-transform:none;font-size:8px">(vuoto = auto da dati CSV)</span></div>'
     +'<div style="display:flex;align-items:center;gap:8px">'
     +'<input type="number" min="0" max="100" id="gdPct" value="'+(typeof t.manualPct==='number'?t.manualPct:'')+'" placeholder="Auto" style="width:80px;padding:5px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px">'
@@ -578,6 +586,11 @@ function ganttApplyEdit(taskId){
     var pv=pctEl.value.trim();
     if(pv===''){ delete t.manualPct; } // torna ad auto
     else { t.manualPct=Math.max(0,Math.min(100,parseFloat(pv)||0)); }
+  }
+  var ragEl=document.getElementById('gdRag');
+  if(ragEl){
+    var rv=ragEl.value;
+    if(rv==='auto'){ delete t.rag; } else { t.rag=rv; }
   }
   ganttSaveTasks(tasks);
   document.getElementById('ganttDateModal').remove();
@@ -774,6 +787,34 @@ function buildExecGanttSection(){
     '2':   '<span style="display:inline-block;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700;background:#fff3d0;border:1px solid #b07d1055;color:#8a5c00">C2</span>',
   };
 
+  // Helper: stato di un milestone (usato quando start===end)
+  function getMilestoneStatus(t) {
+    if (t.done) return 'completed';
+    if (t.rag && t.rag !== 'auto') return t.rag;
+    var end = parseD(t.end);
+    var now = new Date(); now.setHours(0,0,0,0);
+    if (end < now) return 'red';
+    var warn = new Date(now.getTime() + 30*86400000);
+    if (end < warn) return 'yellow';
+    return 'green';
+  }
+  function msIconHtml(status) {
+    // Returns HTML for the milestone status icon matching the legend image
+    if (status === 'completed') return '<span title="Completed" style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#15803d;font-weight:700"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7.5L5.5 10.5L11.5 4" stroke="#15803d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+    if (status === 'green')     return '<span title="On track"  style="display:inline-flex;align-items:center;font-size:14px;color:#15803d">●</span>';
+    if (status === 'yellow')    return '<span title="Overdue"   style="display:inline-flex;align-items:center;font-size:14px;color:#b07d10">●</span>';
+    if (status === 'red')       return '<span title="Critical"  style="display:inline-flex;align-items:center;font-size:14px;color:#dc2626">●</span>';
+    return '<span style="font-size:14px;color:#6b7080">●</span>';
+  }
+  function msLabelHtml(status) {
+    var map = { completed:{c:'#15803d',bg:'#dcfce7',b:'#16a34a44',t:'Completed'},
+                green:    {c:'#15803d',bg:'#dcfce7',b:'#16a34a44',t:'On track'},
+                yellow:   {c:'#b07d10',bg:'#fef3c7',b:'#ca8a0444',t:'Overdue'},
+                red:      {c:'#dc2626',bg:'#fef2f2',b:'#dc262644',t:'Critical'} };
+    var s = map[status] || map.red;
+    return '<span style="font-size:7px;font-weight:700;color:'+s.c+';background:'+s.bg+';border:1px solid '+s.b+';border-radius:3px;padding:1px 4px;white-space:nowrap">'+s.t+'</span>';
+  }
+
   // Ordine: task generici (null), poi tutti C1 nell'ordine, poi tutti C2 nell'ordine, poi altri cluster
   var rowOrder=[];
   // Prima i task generici
@@ -797,7 +838,7 @@ function buildExecGanttSection(){
   var gridCols=CL_W+'px '+LABEL_W+'px repeat('+N+', 1fr) '+PCT_W+'px';
 
   var editHint = editOn
-    ? '<span style="font-size:9px;color:var(--accent2);background:#e8f0fd;border:1px solid #2563b033;border-radius:3px;padding:2px 8px;margin-left:8px">✏ Clicca barra per modificare · ＋ per aggiungere task</span>'
+    ? '<span style="font-size:9px;color:var(--accent2);background:#e8f0fd;border:1px solid #2563b033;border-radius:3px;padding:2px 8px;margin-left:8px">✏ Clicca barra per modificare</span>'
     : '';
 
   var ganttHtml = '';
@@ -832,6 +873,8 @@ function buildExecGanttSection(){
     var editAttr   = editOn ? 'onclick="ganttOpenEdit(\''+t.id+'\')" style="cursor:pointer" title="Clicca per modificare"' : '';
     var editBorder = editOn ? 'outline:1px dashed #2563b055;' : '';
     var pctColor   = prog>=80?'var(--green)':prog>=40?'#b07d10':'var(--accent2)';
+    var isMilestone = (t.start === t.end);
+    var msStatus    = isMilestone ? getMilestoneStatus(t) : null;
 
     // Separatore visivo tra sezioni
     var prevId = gi>0 ? rowOrder[gi-1] : null;
@@ -846,26 +889,51 @@ function buildExecGanttSection(){
     ganttHtml += '<div style="display:flex;align-items:center;justify-content:center;padding:3px 2px;border-right:1px solid #e0e6f0">'+(clBadge[clKey]||clBadge['null'])+'</div>';
     // Label
     ganttHtml += '<div style="display:flex;align-items:center;gap:5px;padding:4px 8px;border-right:1px solid #e0e6f0;font-size:10px;color:var(--text)">';
-    ganttHtml += '<span style="display:inline-block;width:7px;height:7px;border-radius:'+(t.done?'50%':'2px')+';background:'+color+';flex-shrink:0"></span>';
+    if (isMilestone) {
+      var msCol = msStatus==='completed'?'#15803d':msStatus==='green'?'#15803d':msStatus==='yellow'?'#b07d10':'#dc2626';
+      ganttHtml += '<span style="display:inline-block;width:10px;height:10px;transform:rotate(45deg);background:'+msCol+';flex-shrink:0"></span>';
+    } else {
+      ganttHtml += '<span style="display:inline-block;width:7px;height:7px;border-radius:'+(t.done?'50%':'2px')+';background:'+color+';flex-shrink:0"></span>';
+    }
     ganttHtml += t.label+'</div>';
     // Timeline
     ganttHtml += '<div style="grid-column:span '+N+';position:relative;height:28px;background:repeating-linear-gradient(to right,transparent 0,transparent calc('+COL_W_PCT+'% - 1px),#dde4f0 calc('+COL_W_PCT+'% - 1px),#dde4f0 calc('+COL_W_PCT+'%))" '+editAttr+'>';
     if(todayPct>0&&todayPct<100){
       ganttHtml += '<div style="position:absolute;top:0;bottom:0;left:'+todayPct.toFixed(2)+'%;width:1.5px;background:#d44;opacity:.85;z-index:2;pointer-events:none"></div>';
     }
-    ganttHtml += '<div style="position:absolute;top:5px;left:'+lPct+'%;width:'+wPct+'%;height:18px;background:'+lightColor+';border-radius:3px;border:1px solid '+color+'55;'+editBorder+'" '+editAttr+'>';
-    ganttHtml += '<div style="width:'+fillW+'%;height:100%;background:'+color+';border-radius:2px 0 0 2px;opacity:.9"></div>';
-    // Linea previsione (triangolino bianco)
-    if(fcastW !== null && !t.done){
-      ganttHtml += '<div style="position:absolute;top:0;bottom:0;left:'+fcastW+'%;width:2px;background:repeating-linear-gradient(to bottom,#f59e0b 0,#f59e0b 4px,transparent 4px,transparent 7px);z-index:3;pointer-events:none" title="Atteso a oggi: '+parseFloat(fcastW).toFixed(0)+'%"><div style="position:absolute;top:-5px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid #f59e0b"></div></div>';
+    if (isMilestone) {
+      // Milestone: diamond marker + vertical line at date position
+      var msDotCol = msStatus==='completed'?'#15803d':msStatus==='green'?'#15803d':msStatus==='yellow'?'#b07d10':'#dc2626';
+      var msLinePct = pctPos(sDate).toFixed(3);
+      // vertical line
+      ganttHtml += '<div style="position:absolute;top:2px;bottom:2px;left:calc('+msLinePct+'% - 0.75px);width:1.5px;background:'+msDotCol+';opacity:.7;z-index:2"></div>';
+      // diamond shape
+      ganttHtml += '<div style="position:absolute;top:50%;left:'+msLinePct+'%;transform:translate(-50%,-50%) rotate(45deg);width:14px;height:14px;background:'+msDotCol+';border:2px solid #fff;box-shadow:0 0 0 1px '+msDotCol+';z-index:3" '+editAttr+'></div>';
+      // icon overlay (checkmark or circle)
+      var msIconSvg = msStatus==="completed" ? "<svg width=\"10\" height=\"10\" viewBox=\"0 0 10 10\" fill=\"none\"><path d=\"M1.5 5.5L4 8L8.5 2\" stroke=\"#fff\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>" : "";
+      if (msIconSvg) {
+        ganttHtml += '<div style="position:absolute;top:50%;left:'+msLinePct+'%;transform:translate(-50%,-50%);z-index:4;pointer-events:none">'+msIconSvg+'</div>';
+      }
+    } else {
+      ganttHtml += '<div style="position:absolute;top:5px;left:'+lPct+'%;width:'+wPct+'%;height:18px;background:'+lightColor+';border-radius:3px;border:1px solid '+color+'55;'+editBorder+'" '+editAttr+'>';
+      ganttHtml += '<div style="width:'+fillW+'%;height:100%;background:'+color+';border-radius:2px 0 0 2px;opacity:.9"></div>';
+      // Linea previsione (triangolino bianco)
+      if(fcastW !== null && !t.done){
+        ganttHtml += '<div style="position:absolute;top:0;bottom:0;left:'+fcastW+'%;width:2px;background:repeating-linear-gradient(to bottom,#f59e0b 0,#f59e0b 4px,transparent 4px,transparent 7px);z-index:3;pointer-events:none" title="Atteso a oggi: '+parseFloat(fcastW).toFixed(0)+'%"><div style="position:absolute;top:-5px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid #f59e0b"></div></div>';
+      }
+      if(prog>=5||t.done){
+        ganttHtml += '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;text-shadow:0 1px 2px #0006;pointer-events:none">'+pctLabel+'</div>';
+      }
+      ganttHtml += '</div>';
     }
-    if(prog>=5||t.done){
-      ganttHtml += '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;text-shadow:0 1px 2px #0006;pointer-events:none">'+pctLabel+'</div>';
-    }
-    ganttHtml += '</div></div>';
+    ganttHtml += '</div>';
     // % col — mostra SOLO la previsione con indicatore ritardo/anticipo
     ganttHtml += '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;border-left:1px solid #e0e6f0;padding:3px 2px;gap:2px">';
-    if(t.done){
+    if(isMilestone){
+      // Milestone: show status icon from the legend
+      ganttHtml += msIconHtml(msStatus);
+      ganttHtml += msLabelHtml(msStatus);
+    } else if(t.done){
       ganttHtml += '<span style="font-size:13px;color:var(--green)">✓</span>';
       ganttHtml += '<span style="font-size:7px;font-weight:600;color:var(--green)">Chiuso</span>';
     } else if(fcast !== null){
@@ -907,19 +975,9 @@ function buildExecGanttSection(){
       ganttHtml += '<span style="font-size:7px;color:var(--muted)">—</span>';
     }
     ganttHtml += '</div>';
-    // Pulsante aggiungi task (solo in edit mode, dopo ogni riga)
-    if(editOn){
-      ganttHtml += '<div style="display:grid;grid-template-columns:'+gridCols+';min-height:16px" onclick="ganttOpenAddTask(\''+t.id+'\')" title="Aggiungi task dopo questa riga" style="cursor:pointer">';
-      ganttHtml += '<div style="grid-column:1/-1;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .2s;font-size:9px;color:var(--accent2)" onmouseover="this.style.opacity=1;this.parentElement.style.background=\'#f0f4ff\'" onmouseout="this.style.opacity=0;this.parentElement.style.background=\'\'">＋ aggiungi task</div>';
-      ganttHtml += '</div>';
-    }
     ganttHtml += '</div>';
   });
   ganttHtml += '</div>';
-  // Pulsante aggiungi in fondo
-  if(editOn){
-    ganttHtml += '<div onclick="ganttOpenAddTask(\'end\')" title="Aggiungi task in fondo" style="cursor:pointer;padding:6px;text-align:center;border:1px dashed #2563b055;border-top:none;border-radius:0 0 6px 6px;font-size:10px;color:var(--accent2);background:#f8faff" onmouseover="this.style.background=\'#e8f0fd\'" onmouseout="this.style.background=\'#f8faff\'">＋ Aggiungi nuovo task</div>';
-  }
   ganttHtml += '</div></div>';
 
   var legendHtml = '<div style="margin-top:10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:10px 14px;display:flex;flex-direction:column;gap:8px">';
@@ -929,6 +987,14 @@ function buildExecGanttSection(){
   legendHtml += '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#15803d;background:#dcfce7;border:1px solid #16a34a44;border-radius:4px;padding:2px 7px;font-weight:600">▲ Anticipo<span style="font-size:9px;font-weight:400;color:#15803d"> — effettivo supera il target di periodo</span></span>';
   legendHtml += '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#1e56a0;background:#f0f4ff;border:1px solid #2563b044;border-radius:4px;padding:2px 7px;font-weight:600">● In linea<span style="font-size:9px;font-weight:400;color:#1e56a0"> — scarto ≤ 5% rispetto al target</span></span>';
   legendHtml += '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#dc2626;background:#fef2f2;border:1px solid #dc262644;border-radius:4px;padding:2px 7px;font-weight:600">▼ Ritardo<span style="font-size:9px;font-weight:400;color:#dc2626"> — effettivo inferiore al target di oltre 5%</span></span>';
+  legendHtml += '</div>';
+  // Riga milestone icons
+  legendHtml += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+  legendHtml += '<span style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:4px">Milestone</span>';
+  legendHtml += '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#15803d;background:#dcfce7;border:1px solid #16a34a44;border-radius:4px;padding:2px 7px;font-weight:600"><svg width=\"11\" height=\"11\" viewBox=\"0 0 11 11\" fill=\"none\"><path d=\"M1.5 6L4 8.5L9.5 2\" stroke=\"#15803d\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg> Completed</span>';
+  legendHtml += '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#15803d;background:#dcfce7;border:1px solid #16a34a44;border-radius:4px;padding:2px 7px;font-weight:600">● On track</span>';
+  legendHtml += '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#b07d10;background:#fef3c7;border:1px solid #ca8a0444;border-radius:4px;padding:2px 7px;font-weight:600">● Overdue</span>';
+  legendHtml += '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#dc2626;background:#fef2f2;border:1px solid #dc262644;border-radius:4px;padding:2px 7px;font-weight:600">● Critical</span>';
   legendHtml += '</div>';
   // Riga 2: elementi grafici
   legendHtml += '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">';
@@ -1294,8 +1360,6 @@ function buildCompletionForecast() {
 function ensureGanttCardInDom() {
   const main = document.getElementById('main');
   if (!main) return;
-  const permit = document.getElementById('permitCard');
-  if (!permit) return;
 
   const tpl = document.createElement('template');
   tpl.innerHTML = buildExecGanttSection().trim();
@@ -1306,7 +1370,8 @@ function ensureGanttCardInDom() {
   if (old) {
     old.replaceWith(fresh);
   } else {
-    permit.insertAdjacentElement('afterend', fresh);
+    // Inserisce il Gantt come primo elemento del main (prima di ogni altra card)
+    main.insertBefore(fresh, main.firstElementChild);
   }
 
   // Aggiorna/inserisce la sezione Previsione Data Completamento
@@ -1334,6 +1399,9 @@ function render(){
     'at-risk':'<span style="background:var(--yellow);color:#fff;border-radius:20px;padding:4px 14px;font-size:11px;font-weight:600">⚠ At Risk</span>',
     'delayed':'<span style="background:var(--red);color:#fff;border-radius:20px;padding:4px 14px;font-size:11px;font-weight:600">✕ Delayed</span>',
   }[R.stato]||'';
+
+  // Gantt è la prima sezione
+  h += buildExecGanttSection();
 
   h+=`<div class="card"><div class="cb">
     <div style="display:grid;grid-template-columns:1fr auto;gap:20px;align-items:center">
@@ -1406,9 +1474,7 @@ function render(){
 
   h+=`</div></div>`;
 
-  h += buildExecGanttSection();
-
-
+  // (Gantt già aggiunto sopra come prima sezione)
 
 
 
