@@ -665,6 +665,15 @@ function buildExecGanttSection(){
     if (task === 'approval')   return Math.min(100, (d.ok / d.tot) * 100);
     return 0;
   }
+  function lotDeliveryPct(lot) {
+    var taskId = (lot === '1A' || lot === '1B') ? 'c1d' : 'c2d';
+    var t = (window._ganttTasks||[]).find(function(x){ return x.id===taskId; });
+    if (!t) return 0;
+    if (t.done) return 100;
+    if (typeof t.manualPct === 'number') return t.manualPct;
+    return 0;
+  }
+
 
   function clPct(lots, task) {
     var done = 0, tot = 0;
@@ -889,13 +898,7 @@ function buildExecGanttSection(){
     ganttHtml += '<div style="display:flex;align-items:center;justify-content:center;padding:3px 2px;border-right:1px solid #e0e6f0">'+(clBadge[clKey]||clBadge['null'])+'</div>';
     // Label
     ganttHtml += '<div style="display:flex;align-items:center;gap:5px;padding:4px 8px;border-right:1px solid #e0e6f0;font-size:10px;color:var(--text)">';
-    if (isMilestone) {
-      var msCol = msStatus==='completed'?'#15803d':msStatus==='green'?'#15803d':msStatus==='yellow'?'#b07d10':'#dc2626';
-      ganttHtml += '<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:'+msCol+';box-shadow:0 0 0 2px #fff,0 0 0 3.5px '+msCol+';flex-shrink:0"></span>';
-    } else {
-      ganttHtml += '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+color+';flex-shrink:0"></span>';
-    }
-    ganttHtml += '<span>'+t.label.replace(/[◆●■▶◉▪•◈⬥⬦]/g,'').trim()+'</span></div>';
+    ganttHtml += t.label.replace(/[◆●■▶◉▪•◈⬥⬦—–]/g,'').trim()+'</div>';
     // Timeline
     ganttHtml += '<div style="grid-column:span '+N+';position:relative;height:28px;background:repeating-linear-gradient(to right,transparent 0,transparent calc('+COL_W_PCT+'% - 1px),#dde4f0 calc('+COL_W_PCT+'% - 1px),#dde4f0 calc('+COL_W_PCT+'%))" '+editAttr+'>';
     if(todayPct>0&&todayPct<100){
@@ -1009,6 +1012,7 @@ function buildExecGanttSection(){
   var taskDefs = [
     { key:'submission', label:'D&amp;P submission<div style="font-size:9px;font-weight:400;color:var(--muted)">INVIATO → OTTENUTO</div>' },
     { key:'approval',   label:'Permit approval<div style="font-size:9px;font-weight:400;color:var(--muted)">Solo OTTENUTO</div>' },
+    { key:'delivery',   label:'Delivery &amp; on-site impl.<div style="font-size:9px;font-weight:400;color:var(--muted)">Da Gantt task</div>' },
   ];
 
   var tableRows = '';
@@ -1016,7 +1020,7 @@ function buildExecGanttSection(){
     tableRows += '<tr style="border-bottom:1px solid var(--border)">';
     tableRows += '<td style="padding:9px 10px;font-size:11px;font-weight:600;color:var(--text);background:var(--surface2)">' + task.label + '</td>';
     suppliers.forEach(function(s) {
-      var pct = lotPct(s.lot, task.key);
+      var pct = task.key === 'delivery' ? lotDeliveryPct(s.lot) : lotPct(s.lot, task.key);
       var col = pct >= 80 ? 'var(--green)' : pct >= 40 ? '#b07d10' : 'var(--accent2)';
       tableRows += '<td style="padding:9px 10px;text-align:center">';
       tableRows += '<div style="font-size:18px;font-weight:800;font-family:\'DM Mono\',monospace;color:' + col + '">' + pct.toFixed(0) + '%</div>';
