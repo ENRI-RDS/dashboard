@@ -891,11 +891,11 @@ function buildExecGanttSection(){
     ganttHtml += '<div style="display:flex;align-items:center;gap:5px;padding:4px 8px;border-right:1px solid #e0e6f0;font-size:10px;color:var(--text)">';
     if (isMilestone) {
       var msCol = msStatus==='completed'?'#15803d':msStatus==='green'?'#15803d':msStatus==='yellow'?'#b07d10':'#dc2626';
-      ganttHtml += '<span style="display:inline-block;width:10px;height:10px;transform:rotate(45deg);background:'+msCol+';flex-shrink:0"></span>';
+      ganttHtml += '<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:'+msCol+';box-shadow:0 0 0 2px #fff,0 0 0 3.5px '+msCol+';flex-shrink:0"></span>';
     } else {
-      ganttHtml += '<span style="display:inline-block;width:7px;height:7px;border-radius:'+(t.done?'50%':'2px')+';background:'+color+';flex-shrink:0"></span>';
+      ganttHtml += '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+color+';flex-shrink:0"></span>';
     }
-    ganttHtml += t.label+'</div>';
+    ganttHtml += '<span>'+t.label.replace(/[◆●■▶◉▪•◈⬥⬦]/g,'').trim()+'</span></div>';
     // Timeline
     ganttHtml += '<div style="grid-column:span '+N+';position:relative;height:28px;background:repeating-linear-gradient(to right,transparent 0,transparent calc('+COL_W_PCT+'% - 1px),#dde4f0 calc('+COL_W_PCT+'% - 1px),#dde4f0 calc('+COL_W_PCT+'%))" '+editAttr+'>';
     if(todayPct>0&&todayPct<100){
@@ -908,7 +908,7 @@ function buildExecGanttSection(){
       // vertical line
       ganttHtml += '<div style="position:absolute;top:2px;bottom:2px;left:calc('+msLinePct+'% - 0.75px);width:1.5px;background:'+msDotCol+';opacity:.7;z-index:2"></div>';
       // diamond shape
-      ganttHtml += '<div style="position:absolute;top:50%;left:'+msLinePct+'%;transform:translate(-50%,-50%) rotate(45deg);width:14px;height:14px;background:'+msDotCol+';border:2px solid #fff;box-shadow:0 0 0 1px '+msDotCol+';z-index:3" '+editAttr+'></div>';
+      ganttHtml += '<div style="position:absolute;top:50%;left:'+msLinePct+'%;transform:translate(-50%,-50%);width:14px;height:14px;border-radius:50%;background:'+msDotCol+';border:2px solid #fff;box-shadow:0 0 0 2px '+msDotCol+',0 2px 6px '+msDotCol+'66;z-index:3" '+editAttr+'></div>';
       // icon overlay (checkmark or circle)
       var msIconSvg = msStatus==="completed" ? "<svg width=\"10\" height=\"10\" viewBox=\"0 0 10 10\" fill=\"none\"><path d=\"M1.5 5.5L4 8L8.5 2\" stroke=\"#fff\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>" : "";
       if (msIconSvg) {
@@ -934,8 +934,8 @@ function buildExecGanttSection(){
       ganttHtml += msIconHtml(msStatus);
       ganttHtml += msLabelHtml(msStatus);
     } else if(t.done){
-      ganttHtml += '<span style="font-size:13px;color:var(--green)">✓</span>';
-      ganttHtml += '<span style="font-size:7px;font-weight:600;color:var(--green)">Chiuso</span>';
+      ganttHtml += '<span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#dcfce7;border:2px solid #16a34a"><svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1.5 5.5L4.5 8.5L9.5 2" stroke="#15803d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+      ganttHtml += '<span style="font-size:7px;font-weight:700;color:#15803d;background:#dcfce7;border:1px solid #16a34a44;border-radius:3px;padding:1px 4px;letter-spacing:.03em">Done</span>';
     } else if(fcast !== null){
       // Confronto: effettivo vs atteso → colore semantico
       var fp = parseFloat(fcastW);
