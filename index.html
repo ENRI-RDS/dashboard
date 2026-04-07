@@ -1957,7 +1957,7 @@ function openModal(lotto, statiMetri, totale) {
   // Inizializza sistema colonne
   window._lottoModalAllPrats = allPrats;
   window._lottoModalLotto    = lotto;
-  _colReset();
+  _colReset('lotto');
 
   // Separazione AUT / NO+ORD, ciascun gruppo per data desc
   const _byDate = (a, b) => {
@@ -2118,7 +2118,7 @@ function openModalCluster(cl, statiMap, totale) {
 
   // Inizializza sistema colonne per cluster modal
   window._clModalAllPrats = clPrats;
-  _colReset();
+  _colReset('cl');
 
   // Pannello pratiche — contenitore dinamico
   let pratHtml = '';
@@ -4134,7 +4134,7 @@ function openModalKpi(key) {
   window._kpiModalTotMetri = totMetri;
   window._kpiFilterLotto = 'all';
   window._kpiFilterSearch = '';
-  _colReset();
+  _colReset('kpi');
 
   const LOTTO_ORDER = ['1A','1B','2A','2B','1','2','3','4','5','6','7','8'];
   const lottiDisponibili = [...new Set(allPrats.map(p => p.lotto))]
@@ -4295,7 +4295,7 @@ function _kpiApplyFilter() {
       </div>`;
   });
 
-  body.innerHTML = _colActiveBar('kpi') + html;
+  body.innerHTML = _colActiveBar() + html;
 }
 
 
@@ -4382,7 +4382,7 @@ function openModalPrev(status) {
   window._prevModalAllPrats = prats;
   window._prevFilterLotto = 'all';
   window._prevFilterSearch = '';
-  _colReset();
+  _colReset('prev');
 
   const prevLottiDisp = [...new Set(prats.map(p=>p.lotto))].sort((a,b)=>(LOTTO_ORDER.indexOf(a)+1||99)-(LOTTO_ORDER.indexOf(b)+1||99));
   const prevFilterHtml = `
@@ -4485,7 +4485,7 @@ function _prevApplyFilter() {
       }).join('')}
       </tbody></table></div></div>`;
   });
-  body.innerHTML = _colActiveBar('prev') + html;
+  body.innerHTML = _colActiveBar() + html;
 }
 
 
@@ -5275,14 +5275,31 @@ async function ripristinaCSV() {
 
 // ── COLUMN SORT / FILTER SYSTEM (Excel-like) ─────────────────────────────────
 window._colSort    = { col: null, dir: 'asc' };
-window._colFilters = {};  // { colKey: Set<string> } — undefined/empty = nessun filtro
+window._colFilters = {};   // { colKey: Set<string> } — Set dei valori ORIGINALI ammessi
+window._colModalType = null; // modalType corrente
 
-/* Estrae il valore di una colonna da una pratica */
-function _colGetVal(p, col) {
+/* Chiave globale per il modal corrente (usata dai chip/reset senza passare modalType) */
+function _colRefreshCurrent() {
+  const t = window._colModalType;
+  if (t === 'kpi')   _kpiApplyFilter();
+  else if (t === 'prev')  _prevApplyFilter();
+  else if (t === 'lotto') _colLottoRefresh();
+  else if (t === 'cl')    _colClRefresh();
+}
+
+/* Reset stato colonne all'apertura di ogni modale */
+function _colReset(modalType) {
+  window._colSort      = { col: null, dir: 'asc' };
+  window._colFilters   = {};
+  window._colModalType = modalType || null;
+}
+
+/* Estrae il valore DISPLAY originale di una colonna (usato per filtro e checkbox) */
+function _colGetDisplay(p, col) {
   switch (col) {
-    case 'codice': return (p.codice || '').toLowerCase();
-    case 'ente':   return (p.ente   || '').toLowerCase();
-    case 'stato':  return (p.stato  || '').toLowerCase();
+    case 'codice': return p.codice || '';
+    case 'ente':   return p.ente   || '';
+    case 'stato':  return p.stato  || '';
     case 'invio': {
       const dp = buildDateParts(p);
       return dp.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
@@ -5290,6 +5307,34 @@ function _colGetVal(p, col) {
     case 'update': {
       const dp = buildDateParts(p);
       return dp.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
+    }
+    case 'prev': {
+      const r = calcolaPrevisione(p);
+      if (!r) return '';
+      if (r.status === 'ok')   return r.label;
+      if (r.status === 'warn') return 'Scade in ' + r.diff + 'gg';
+      return 'Scad. ' + Math.abs(r.diff) + 'gg fa';
+    }
+    case 'metri': return String(Math.round(p.metri || 0));
+    default: return '';
+  }
+}
+
+/* Estrae il valore di ORDINAMENTO (numerico dove possibile) */
+function _colGetSort(p, col) {
+  switch (col) {
+    case 'codice': return (p.codice || '').toLowerCase();
+    case 'ente':   return (p.ente   || '').toLowerCase();
+    case 'stato':  return (p.stato  || '').toLowerCase();
+    case 'invio':
+    case 'update': {
+      // Parsa DD/MM/YYYY → timestamp numerico per ordinamento corretto
+      const dp = buildDateParts(p);
+      const raw = col === 'invio'
+        ? dp.find(d =>  d.startsWith('Invio:'))?.replace('Invio: ','') || ''
+        : dp.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
+      const m = raw.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+      return m ? new Date(+m[3], +m[2]-1, +m[1]).getTime() : 0;
     }
     case 'prev': {
       const r = calcolaPrevisione(p);
@@ -5305,20 +5350,24 @@ function _colSortPrats(prats) {
   const { col, dir } = window._colSort;
   if (!col) return prats;
   return [...prats].sort((a, b) => {
-    const va = _colGetVal(a, col), vb = _colGetVal(b, col);
-    if (typeof va === 'number') return dir === 'asc' ? va - vb : vb - va;
-    const r = String(va).localeCompare(String(vb), 'it');
+    const va = _colGetSort(a, col), vb = _colGetSort(b, col);
+    let r;
+    if (typeof va === 'number' && typeof vb === 'number') {
+      r = va - vb;
+    } else {
+      r = String(va).localeCompare(String(vb), 'it');
+    }
     return dir === 'asc' ? r : -r;
   });
 }
 
-/* Filtra una lista di pratiche secondo _colFilters */
+/* Filtra una lista secondo _colFilters (confronto su valori DISPLAY originali) */
 function _colFilterPrats(prats) {
+  const entries = Object.entries(window._colFilters).filter(([,s]) => s && s.size > 0);
+  if (!entries.length) return prats;
   return prats.filter(p => {
-    for (const [col, allowed] of Object.entries(window._colFilters)) {
-      if (!allowed || allowed.size === 0) continue;
-      const val = String(_colGetVal(p, col));
-      if (!allowed.has(val)) return false;
+    for (const [col, allowed] of entries) {
+      if (!allowed.has(_colGetDisplay(p, col))) return false;
     }
     return true;
   });
@@ -5330,14 +5379,13 @@ function _colApplyAll(prats) {
 }
 
 /* Genera una <th> con bottone sort/filter */
-function _mkTh(label, col, align, modalType, extras) {
-  extras = extras || '';
-  const hasSort = window._colSort.col === col;
-  const hasFilt = !!window._colFilters[col] && window._colFilters[col].size > 0;
-  const icon = hasSort ? (window._colSort.dir === 'asc' ? '▲' : '▼') : '▼';
+function _mkTh(label, col, align, modalType) {
+  const hasSort = window._colSort && window._colSort.col === col;
+  const hasFilt = !!(window._colFilters && window._colFilters[col] && window._colFilters[col].size > 0);
+  const icon = hasSort ? (window._colSort.dir === 'asc' ? '▲' : '▼') : '⊿';
   const cls  = hasSort ? 'active' : hasFilt ? 'filtered' : '';
   const jAlign = align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start';
-  return `<th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:${align};font-weight:600;background:var(--surface2);white-space:nowrap;${extras}">
+  return `<th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:${align};font-weight:600;background:var(--surface2);white-space:nowrap;user-select:none;">
     <div class="col-th-inner" style="justify-content:${jAlign}">
       ${label}
       <button class="col-sort-btn ${cls}" title="Ordina / Filtra ${label}"
@@ -5345,57 +5393,94 @@ function _mkTh(label, col, align, modalType, extras) {
     </div></th>`;
 }
 
-/* Genera la barra degli filtri attivi */
-function _colActiveBar(modalType) {
-  const chips = Object.entries(window._colFilters)
-    .filter(([,s]) => s && s.size > 0)
-    .map(([col, s]) => {
-      const vals = [...s].join(', ');
-      return `<span class="col-filter-chip">${col}: ${vals}
-        <button onclick="window._colFilters['${col}']=new Set();_col${modalType==='kpi'?'KpiRefresh':modalType==='prev'?'PrevRefresh':modalType==='lotto'?'LottoRefresh':'ClRefresh'}()">✕</button>
-      </span>`;
-    }).join('');
-  if (!chips && !window._colSort.col) return '';
-  const sortChip = window._colSort.col
-    ? `<span style="font-size:10px;color:var(--muted)">Ordine: <b>${window._colSort.col}</b> ${window._colSort.dir==='asc'?'▲':'▼'}</span>
-       <button onclick="window._colSort={col:null,dir:'asc'};_col${modalType==='kpi'?'KpiRefresh':modalType==='prev'?'PrevRefresh':modalType==='lotto'?'LottoRefresh':'ClRefresh'}()" style="font-size:9px;background:#fce8e8;border:1px solid #C23B2244;color:#C23B22;border-radius:4px;padding:1px 7px;cursor:pointer">✕ Annulla ordine</button>`
+/* Genera la barra dei filtri attivi */
+function _colActiveBar() {
+  const filters = Object.entries(window._colFilters || {}).filter(([,s]) => s && s.size > 0);
+  const hasSort = window._colSort && window._colSort.col;
+  if (!filters.length && !hasSort) return '';
+
+  const LABEL = { codice:'Codice', ente:'Ente', stato:'Stato', invio:'Invio',
+                  update:'Update', prev:'Prev. Rilascio', metri:'Metri' };
+
+  const chips = filters.map(([col, s]) => {
+    const vals = [...s].slice(0,3).join(', ') + (s.size > 3 ? ` +${s.size-3}` : '');
+    return `<span class="col-filter-chip">${LABEL[col]||col}: ${vals}
+      <button onclick="_colRemoveFilter('${col}')">✕</button>
+    </span>`;
+  }).join('');
+
+  const sortChip = hasSort
+    ? `<span style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:4px">
+         Ord: <b>${LABEL[window._colSort.col]||window._colSort.col}</b>
+         ${window._colSort.dir==='asc'?'▲':'▼'}
+         <button onclick="_colRemoveSort()" style="font-size:9px;background:#fce8e8;border:1px solid #C23B2244;color:#C23B22;border-radius:4px;padding:1px 6px;cursor:pointer">✕</button>
+       </span>`
     : '';
+
   return `<div class="col-filter-active-bar">
-    <span style="font-size:9px;font-weight:700;color:#E55000;text-transform:uppercase;letter-spacing:.06em">Filtri attivi:</span>
+    <span style="font-size:9px;font-weight:700;color:#E55000;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Filtri attivi:</span>
     ${sortChip}${chips}
-    <button onclick="window._colSort={col:null,dir:'asc'};window._colFilters={};_col${modalType==='kpi'?'KpiRefresh':modalType==='prev'?'PrevRefresh':modalType==='lotto'?'LottoRefresh':'ClRefresh'}()" style="margin-left:auto;font-size:9px;background:#fce8e8;border:1px solid #C23B2244;color:#C23B22;border-radius:4px;padding:2px 8px;cursor:pointer;font-weight:700">✕ Resetta tutto</button>
+    <button onclick="_colResetAll()" style="margin-left:auto;font-size:9px;background:#fce8e8;border:1px solid #C23B2244;color:#C23B22;border-radius:4px;padding:2px 8px;cursor:pointer;font-weight:700;white-space:nowrap">✕ Resetta tutto</button>
   </div>`;
+}
+
+function _colRemoveFilter(col) {
+  delete window._colFilters[col];
+  _colRefreshCurrent();
+}
+function _colRemoveSort() {
+  window._colSort = { col: null, dir: 'asc' };
+  _colRefreshCurrent();
+}
+function _colResetAll() {
+  window._colSort    = { col: null, dir: 'asc' };
+  window._colFilters = {};
+  _colRefreshCurrent();
 }
 
 /* Apre il dropdown di sort/filter su una colonna */
 function _openColFilter(btn, col, modalType) {
   document.querySelectorAll('.col-filter-dropdown').forEach(d => d.remove());
+  window._colModalType = modalType;
 
-  const allPrats = modalType === 'kpi'  ? (window._kpiModalAllPrats  || [])
-                 : modalType === 'prev' ? (window._prevModalAllPrats || [])
-                 : modalType === 'lotto'? (window._lottoModalAllPrats|| [])
-                 :                        (window._clModalAllPrats   || []);
+  // Legge tutte le pratiche del modal corrente (lista completa, non filtrata)
+  const allPrats = modalType === 'kpi'   ? (window._kpiModalAllPrats   || [])
+                 : modalType === 'prev'  ? (window._prevModalAllPrats  || [])
+                 : modalType === 'lotto' ? (window._lottoModalAllPrats || [])
+                 :                         (window._clModalAllPrats    || []);
 
-  const vals = [...new Set(allPrats.map(p => String(_colGetVal(p, col))))].sort((a,b)=>a.localeCompare(b,'it'));
+  // Raccoglie valori DISPLAY distinti (originali, non lowercase)
+  const valSet = new Set(allPrats.map(p => _colGetDisplay(p, col)));
+  const vals = [...valSet].filter(v => v !== '').sort((a, b) => {
+    // Per date e numeri prova ordinamento numerico
+    const na = parseFloat(a), nb = parseFloat(b);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    return a.localeCompare(b, 'it');
+  });
+  if (valSet.has('')) vals.push('(vuoto)');
+
   const curFilter = window._colFilters[col] || null;
   const hasSort   = window._colSort.col === col;
-
-  const rect = btn.getBoundingClientRect();
-  const dd = document.createElement('div');
-  dd.className = 'col-filter-dropdown';
-  dd.style.top  = (rect.bottom + 4) + 'px';
-  dd.style.left = Math.min(rect.left, window.innerWidth - 220) + 'px';
-
-  const ascOn  = (hasSort && window._colSort.dir === 'asc')  ? 'on' : '';
-  const descOn = (hasSort && window._colSort.dir === 'desc') ? 'on' : '';
-  const sortClear = hasSort
-    ? `<button class="cfd-sort-clear" onclick="_colClearSort('${modalType}')">✕</button>` : '';
+  const ascOn     = hasSort && window._colSort.dir === 'asc'  ? 'on' : '';
+  const descOn    = hasSort && window._colSort.dir === 'desc' ? 'on' : '';
 
   const checkboxes = vals.map(v => {
-    const safe = v.replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-    const chk  = (!curFilter || curFilter.has(v)) ? 'checked' : '';
-    return `<label class="cfd-item"><input type="checkbox" value="${safe}" ${chk}> ${v||'(vuoto)'}</label>`;
+    const realVal = v === '(vuoto)' ? '' : v;
+    const safe    = realVal.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+    const chk     = (!curFilter || curFilter.has(realVal)) ? 'checked' : '';
+    return `<label class="cfd-item">
+      <input type="checkbox" value="${safe}" ${chk}> ${v}
+    </label>`;
   }).join('');
+
+  const rect = btn.getBoundingClientRect();
+  const dd   = document.createElement('div');
+  dd.className = 'col-filter-dropdown';
+  // Posiziona sotto il bottone, evitando uscita a destra/basso
+  const top  = Math.min(rect.bottom + 4, window.innerHeight - 370);
+  const left = Math.min(rect.left,       window.innerWidth  - 225);
+  dd.style.top  = top  + 'px';
+  dd.style.left = left + 'px';
 
   dd.innerHTML = `
     <div class="cfd-sort-row">
@@ -5403,68 +5488,73 @@ function _openColFilter(btn, col, modalType) {
       <div class="cfd-sort-btns">
         <button class="cfd-sort-btn ${ascOn}"  onclick="_colSetSort('${col}','asc','${modalType}')">▲ Crescente</button>
         <button class="cfd-sort-btn ${descOn}" onclick="_colSetSort('${col}','desc','${modalType}')">▼ Decrescente</button>
-        ${sortClear}
+        ${hasSort ? `<button class="cfd-sort-clear" onclick="_colSetSort(null,null,'${modalType}')">✕</button>` : ''}
       </div>
     </div>
     <div class="cfd-filter-hd">
       <span class="cfd-filter-lbl">Filtra per valore</span>
-      <button class="cfd-selall" onclick="this.closest('.col-filter-dropdown').querySelectorAll('input[type=checkbox]').forEach(c=>c.checked=true)">Seleziona tutto</button>
+      <button class="cfd-selall"
+        onclick="this.closest('.col-filter-dropdown').querySelectorAll('.cfd-list input').forEach(c=>c.checked=true)">
+        Seleziona tutto
+      </button>
     </div>
     <input class="cfd-search" type="text" placeholder="🔍 Cerca…"
-      oninput="const v=this.value.toLowerCase();this.closest('.col-filter-dropdown').querySelectorAll('.cfd-item').forEach(l=>{l.style.display=l.textContent.toLowerCase().includes(v)?'':'none'})">
-    <div class="cfd-list">${checkboxes}</div>
+      oninput="var v=this.value.toLowerCase();this.closest('.col-filter-dropdown').querySelectorAll('.cfd-item').forEach(function(l){l.style.display=l.textContent.toLowerCase().includes(v)?'':'none'})">
+    <div class="cfd-list">${checkboxes || '<div style="padding:10px 12px;font-size:11px;color:var(--muted)">Nessun valore</div>'}</div>
     <div class="cfd-footer">
-      <button class="cfd-apply" onclick="_colApplyCheckbox('${col}','${modalType}',this)">✓ Applica</button>
-      <button class="cfd-reset" onclick="_colClearFilter('${col}','${modalType}')">✕ Reset</button>
+      <button class="cfd-apply" onclick="_colApplyDD('${col}','${modalType}',this)">✓ Applica</button>
+      <button class="cfd-reset" onclick="_colClearFilter('${col}','${modalType}')">✕ Reset colonna</button>
     </div>`;
 
   document.body.appendChild(dd);
 
+  // Chiudi cliccando fuori
   setTimeout(() => {
-    document.addEventListener('click', function h(e) {
-      if (!dd.contains(e.target)) { dd.remove(); document.removeEventListener('click', h); }
-    });
-  }, 10);
+    function _ddClose(e) {
+      if (!dd.contains(e.target) && e.target !== btn) {
+        dd.remove();
+        document.removeEventListener('mousedown', _ddClose);
+      }
+    }
+    document.addEventListener('mousedown', _ddClose);
+  }, 0);
 }
 
 function _colSetSort(col, dir, modalType) {
-  window._colSort = { col, dir };
+  if (!col) { window._colSort = { col: null, dir: 'asc' }; }
+  else       { window._colSort = { col, dir }; }
+  window._colModalType = modalType;
   document.querySelectorAll('.col-filter-dropdown').forEach(d => d.remove());
-  _colDispatch(modalType);
+  _colRefreshCurrent();
 }
-function _colClearSort(modalType) {
-  window._colSort = { col: null, dir: 'asc' };
-  document.querySelectorAll('.col-filter-dropdown').forEach(d => d.remove());
-  _colDispatch(modalType);
-}
-function _colApplyCheckbox(col, modalType, btn) {
-  const dd = btn.closest('.col-filter-dropdown');
-  const all = [...dd.querySelectorAll('.cfd-list input[type=checkbox]')];
-  const checked = all.filter(c => c.checked).map(c => c.value);
-  if (checked.length === all.length) { delete window._colFilters[col]; }
-  else { window._colFilters[col] = new Set(checked); }
+
+function _colApplyDD(col, modalType, btn) {
+  const dd      = btn.closest('.col-filter-dropdown');
+  const boxes   = [...dd.querySelectorAll('.cfd-list input[type=checkbox]')];
+  const allVals = boxes.map(c => c.value);   // tutti i valori disponibili
+  const checked = boxes.filter(c => c.checked).map(c => c.value);
+  // Se tutti selezionati → nessun filtro
+  if (checked.length === 0) {
+    // nessuno → mostra tutto (reset)
+    delete window._colFilters[col];
+  } else if (checked.length === allVals.length) {
+    delete window._colFilters[col];
+  } else {
+    window._colFilters[col] = new Set(checked);
+  }
+  window._colModalType = modalType;
   dd.remove();
-  _colDispatch(modalType);
+  _colRefreshCurrent();
 }
+
 function _colClearFilter(col, modalType) {
   delete window._colFilters[col];
+  window._colModalType = modalType;
   document.querySelectorAll('.col-filter-dropdown').forEach(d => d.remove());
-  _colDispatch(modalType);
+  _colRefreshCurrent();
 }
-function _colDispatch(modalType) {
-  if (modalType === 'kpi')   { _kpiApplyFilter();  }
-  else if (modalType === 'prev')  { _prevApplyFilter(); }
-  else if (modalType === 'lotto') { _colLottoRefresh(); }
-  else if (modalType === 'cl')    { _colClRefresh();    }
-}
-function _colKpiRefresh()   { _kpiApplyFilter(); }
-function _colPrevRefresh()  { _prevApplyFilter(); }
-
-/* Reset stato colonne all'apertura di ogni modale */
-function _colReset() {
-  window._colSort    = { col: null, dir: 'asc' };
-  window._colFilters = {};
-}
+function _colKpiRefresh()  { _kpiApplyFilter(); }
+function _colPrevRefresh() { _prevApplyFilter(); }
 
 /* ── Lotto modal column sort/filter ─────────────────────────────────────────── */
 window._lottoModalAllPrats = [];
@@ -5478,7 +5568,7 @@ function _colLottoRefresh() {
 
   const prats = _colApplyAll(allPrats);
 
-  const activeBar = _colActiveBar('lotto');
+  const activeBar = _colActiveBar();
   const STATI_COLORI_MAP_loc = window.STATI_COLORI_MAP || {};
 
   const makeRighe = (arr) => arr.map(p => {
@@ -5535,7 +5625,7 @@ function _colClRefresh() {
   if (!body) return;
 
   const prats   = _colApplyAll(allPrats);
-  const activeBar = _colActiveBar('cl');
+  const activeBar = _colActiveBar();
   const STATI_COLORI_MAP_loc = window.STATI_COLORI_MAP || {};
 
   const mkRow = (p) => {
