@@ -546,6 +546,100 @@
   }
   .help-btn:hover { background:var(--accent2);color:#fff;border-color:var(--accent2); }
 
+  /* ── COLUMN FILTER / SORT ── */
+  .col-th-inner {
+    display:flex; align-items:center; gap:4px;
+  }
+  .col-sort-btn {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:15px; height:15px; border-radius:3px; flex-shrink:0;
+    border:1px solid var(--border2); background:transparent;
+    color:var(--muted2); font-size:8px; cursor:pointer; line-height:1;
+    padding:0; transition:all .15s;
+  }
+  .col-sort-btn:hover { background:var(--surface2); color:var(--text); }
+  .col-sort-btn.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .col-sort-btn.filtered { background:#E55000; border-color:#E55000; color:#fff; }
+
+  .col-filter-dropdown {
+    position:fixed; z-index:9999;
+    background:var(--surface); border:1px solid var(--border2);
+    border-radius:10px; box-shadow:0 8px 30px rgba(0,0,0,.18);
+    min-width:210px; max-height:360px;
+    display:flex; flex-direction:column;
+    font-family:'Plus Jakarta Sans',sans-serif;
+    overflow:hidden;
+  }
+  .cfd-sort-row {
+    padding:10px 12px 8px; border-bottom:1px solid var(--border);
+  }
+  .cfd-sort-lbl {
+    font-size:9px; font-weight:700; text-transform:uppercase;
+    letter-spacing:.08em; color:var(--muted); margin-bottom:6px;
+  }
+  .cfd-sort-btns { display:flex; gap:5px; }
+  .cfd-sort-btn {
+    flex:1; padding:5px; border-radius:5px; font-size:10px; font-weight:700;
+    cursor:pointer; border:1px solid var(--border2);
+    background:var(--surface2); color:var(--text2); transition:all .12s;
+  }
+  .cfd-sort-btn:hover { background:var(--border2); }
+  .cfd-sort-btn.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .cfd-sort-clear { padding:5px 8px; border-radius:5px; font-size:10px; font-weight:700;
+    cursor:pointer; border:1px solid #E0DDD4; background:#fce8e8; color:#C23B22; }
+  .cfd-filter-hd {
+    padding:8px 12px 4px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+  }
+  .cfd-filter-lbl {
+    font-size:9px; font-weight:700; text-transform:uppercase;
+    letter-spacing:.08em; color:var(--muted); white-space:nowrap;
+  }
+  .cfd-selall {
+    font-size:9px; color:var(--accent); background:none; border:none;
+    cursor:pointer; font-weight:600; white-space:nowrap; font-family:inherit;
+  }
+  .cfd-search {
+    width:calc(100% - 24px); margin:6px 12px 4px;
+    padding:4px 8px; border:1px solid var(--border2); border-radius:5px;
+    font-size:11px; font-family:inherit; color:var(--text);
+  }
+  .cfd-list { overflow-y:auto; max-height:160px; padding:4px 0; }
+  .cfd-item {
+    display:flex; align-items:center; gap:7px;
+    padding:3px 12px; cursor:pointer; font-size:11px; color:var(--text2);
+    transition:background .1s;
+  }
+  .cfd-item:hover { background:var(--surface2); }
+  .cfd-item input[type=checkbox] { cursor:pointer; accent-color:var(--accent); }
+  .cfd-footer {
+    padding:8px 12px; display:flex; gap:6px;
+    border-top:1px solid var(--border);
+  }
+  .cfd-apply {
+    flex:1; padding:6px; border-radius:6px; background:var(--accent); color:#fff;
+    border:none; font-size:11px; font-weight:700; cursor:pointer; font-family:inherit;
+  }
+  .cfd-reset {
+    padding:6px 10px; border-radius:6px; background:var(--surface2);
+    color:var(--muted); border:1px solid var(--border); font-size:11px;
+    cursor:pointer; font-family:inherit;
+  }
+  .col-filter-active-bar {
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    padding:6px 12px; background:#fff8f5; border:1px solid #E5500033;
+    border-radius:7px; margin-bottom:10px; font-size:10px;
+  }
+  .col-filter-chip {
+    display:inline-flex; align-items:center; gap:4px;
+    background:#E550000D; border:1px solid #E5500044; border-radius:4px;
+    padding:2px 8px; color:#E55000; font-weight:600; font-size:9px;
+  }
+  .col-filter-chip button {
+    background:none; border:none; cursor:pointer; color:#E55000;
+    font-size:10px; padding:0; line-height:1; font-weight:700;
+  }
+
 </style>
 </head>
 <body>
@@ -1860,6 +1954,11 @@ function openModal(lotto, statiMetri, totale) {
       return a.codice.localeCompare(b.codice);
     });
 
+  // Inizializza sistema colonne
+  window._lottoModalAllPrats = allPrats;
+  window._lottoModalLotto    = lotto;
+  _colReset();
+
   // Separazione AUT / NO+ORD, ciascun gruppo per data desc
   const _byDate = (a, b) => {
     const da = parseDateIT(a.dum), db = parseDateIT(b.dum);
@@ -1899,26 +1998,20 @@ function openModal(lotto, statiMetri, totale) {
       </tr>`;
 
     const colTH = `<tr style="border-bottom:1px solid var(--border)">
-      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Codice</th>
-      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Ente</th>
-      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Stato</th>
-      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Invio</th>
-      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Update</th>
-      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Prev. Rilascio</th>
-      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:right;font-weight:600;background:var(--surface2)">Metri</th>
+      ${_mkTh('Codice','codice','left','lotto')}
+      ${_mkTh('Ente','ente','left','lotto')}
+      ${_mkTh('Stato','stato','left','lotto')}
+      ${_mkTh('Invio','invio','center','lotto')}
+      ${_mkTh('Update','update','center','lotto')}
+      ${_mkTh('Prev. Rilascio','prev','center','lotto')}
+      ${_mkTh('Metri','metri','right','lotto')}
     </tr>`;
 
     pratHtml = `<div style="padding-left:20px;border-left:1px solid var(--border);min-width:0;flex:1;overflow-x:auto">
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);font-weight:600">
         Dettaglio pratiche (${autPrats.length} AUT${noPrats.length ? ' · ' + noPrats.length + ' NO/ORD' : ''})
       </div>
-      <table class="prat-table">
-        <thead>${colTH}</thead>
-        <tbody>
-          ${autPrats.length ? sepRow('Autorizzazioni', 'background:#3a8c5c22;color:#3a8c5c;border:1px solid #3a8c5c44', autPrats.length) + makeRighe(autPrats) : ''}
-          ${noPrats.length ? sepRow('Nulla Osta / Ordinanze', 'background:#4a4f6a22;color:#8890aa;border:1px solid #4a4f6a44', noPrats.length) + makeRighe(noPrats) : ''}
-        </tbody>
-      </table>
+      <div id="_lottoColBody"></div>
     </div>`;
   }
 
@@ -1980,6 +2073,8 @@ function openModal(lotto, statiMetri, totale) {
   }
 
   document.getElementById('modalOverlay').classList.add('open');
+  // Popola la tabella pratiche con sort/filter colonne
+  setTimeout(_colLottoRefresh, 0);
 }
 
 function closeModal(e) {
@@ -2021,61 +2116,19 @@ function openModalCluster(cl, statiMap, totale) {
     clPrats.sort((a,b) => { const da=parseDateIT(a.dum),db=parseDateIT(b.dum); if(da&&db) return db-da; return da?-1:db?1:a.codice.localeCompare(b.codice); });
   }
 
-  const pratCard_unused = null; // rimosso — ora usa tabella
+  // Inizializza sistema colonne per cluster modal
+  window._clModalAllPrats = clPrats;
+  _colReset();
 
-  // Separazione AUT / NO+ORD, ciascun gruppo per data desc
-  const _bd = (a,b) => { const da=parseDateIT(a.dum),db=parseDateIT(b.dum); if(da&&db) return db-da; return da?-1:db?1:a.codice.localeCompare(b.codice); };
-  const clAut = clPrats.filter(p => p.codice.startsWith('AUT/')).sort(_bd);
-  const clNo  = clPrats.filter(p => !p.codice.startsWith('AUT/')).sort(_bd);
-
-  // Pannello pratiche — tabella con sezioni AUT / NO+ORD
+  // Pannello pratiche — contenitore dinamico
   let pratHtml = '';
   if (clPrats.length > 0) {
-    const mkRow = (p) => {
-      const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
-      const dateParts = buildDateParts(p);
-      const invio = dateParts.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
-      const agg   = dateParts.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
-      const badge = prevBadgeHtml(p);
-      return `<tr style="border-bottom:1px solid #E0DDD4" onmouseover="this.style.background='#F0EEE6'" onmouseout="this.style.background=''">
-        <td style="padding:6px 10px;font-family:'Fira Code',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col}">${p.codice}</td>
-        <td style="padding:6px 10px;font-size:9px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente || '—'}</td>
-        <td style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap">${p.stato}</td>
-        <td style="padding:6px 10px;font-size:9px;font-family:'Fira Code',monospace;color:var(--text2);white-space:nowrap;text-align:center">${invio}</td>
-        <td style="padding:6px 10px;font-size:9px;font-family:'Fira Code',monospace;color:var(--text2);white-space:nowrap;text-align:center">${agg}</td>
-        <td style="padding:6px 10px;font-size:9px;text-align:center;white-space:nowrap">${badge}</td>
-        <td style="padding:6px 10px;font-size:12px;font-family:'Bricolage Grotesque',sans-serif;color:var(--text);text-align:right;white-space:nowrap;font-weight:700;letter-spacing:-0.01em">${fmt(p.metri)} m</td>
-      </tr>`;
-    };
-    const sepRow = (label, badge, n) => `<tr><td colspan="7" style="padding:8px 10px 4px;background:var(--bg)">
-      <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text)">${label}</span>
-      <span style="margin-left:6px;font-size:9px;color:var(--muted)">(${n})</span>
-      <span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">${badge.includes('3a8c5c') ? 'incide sulle %' : 'non incide sulle %'}</span>
-    </td></tr>`;
-    const thRow = `<tr style="border-bottom:1px solid var(--border)">
-      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Codice</th>
-      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Ente</th>
-      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Stato</th>
-      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Invio</th>
-      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Update</th>
-      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Prev. Rilascio</th>
-      <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:right;font-weight:600;background:var(--surface2)">Metri</th>
-    </tr>`;
-
     pratHtml = `
       <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
         <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);font-weight:600;margin-bottom:10px">
-          Dettaglio pratiche (${clAut.length} AUT${clNo.length ? ' · ' + clNo.length + ' NO/ORD' : ''})
+          Dettaglio pratiche (${clPrats.filter(p=>p.codice.startsWith('AUT/')).length} AUT${clPrats.filter(p=>!p.codice.startsWith('AUT/')).length ? ' · ' + clPrats.filter(p=>!p.codice.startsWith('AUT/')).length + ' NO/ORD' : ''})
         </div>
-        <div style="overflow-x:auto">
-          <table class="prat-table">
-            <thead>${thRow}</thead>
-            <tbody>
-              ${clAut.length ? sepRow('Autorizzazioni','background:#3a8c5c22;color:#3a8c5c;border:1px solid #3a8c5c44',clAut.length) + clAut.map(mkRow).join('') : ''}
-              ${clNo.length  ? sepRow('Nulla Osta / Ordinanze','background:#4a4f6a22;color:#8890aa;border:1px solid #4a4f6a44',clNo.length) + clNo.map(mkRow).join('') : ''}
-            </tbody>
-          </table>
-        </div>
+        <div id="_clColBody" style="overflow-x:auto"></div>
       </div>`;
   }
 
@@ -2115,6 +2168,8 @@ function openModalCluster(cl, statiMap, totale) {
     ${pratHtml}`;
 
   document.getElementById('modalClusterOverlay').classList.add('open');
+  // Popola la tabella pratiche con sort/filter colonne
+  if (clPrats.length > 0) setTimeout(_colClRefresh, 0);
 
   const btnDlCl = document.getElementById('btnDlCluster');
   if (btnDlCl) {
@@ -4079,6 +4134,7 @@ function openModalKpi(key) {
   window._kpiModalTotMetri = totMetri;
   window._kpiFilterLotto = 'all';
   window._kpiFilterSearch = '';
+  _colReset();
 
   const LOTTO_ORDER = ['1A','1B','2A','2B','1','2','3','4','5','6','7','8'];
   const lottiDisponibili = [...new Set(allPrats.map(p => p.lotto))]
@@ -4164,8 +4220,11 @@ function _kpiApplyFilter() {
   const LOTTO_ORDER = ['1A','1B','2A','2B','1','2','3','4','5','6','7','8'];
   const IMPRESE = { '1A':'Valtellina','1B':'Soleto','2A':'Sielte','2B':'Telebit' };
 
+  // Applica sort/filter colonne
+  const pratsFiltered = _colApplyAll(prats);
+
   const byLotto = {};
-  prats.forEach(p => { if (!byLotto[p.lotto]) byLotto[p.lotto] = []; byLotto[p.lotto].push(p); });
+  pratsFiltered.forEach(p => { if (!byLotto[p.lotto]) byLotto[p.lotto] = []; byLotto[p.lotto].push(p); });
   const sortedLotti = Object.keys(byLotto).sort((a,b) =>
     (LOTTO_ORDER.indexOf(a) + 1 || 99) - (LOTTO_ORDER.indexOf(b) + 1 || 99));
 
@@ -4173,13 +4232,13 @@ function _kpiApplyFilter() {
   const _showPrev = !['firma','attesa'].includes(key);
   const _kColspan = _showPrev ? 7 : 6;
   const _kThRow = `<tr style="border-bottom:1px solid var(--border)">
-    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Codice</th>
-    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Ente</th>
-    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Stato</th>
-    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Invio</th>
-    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Update</th>
-    ${_showPrev ? `<th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Prev. Rilascio</th>` : ''}
-    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:right;font-weight:600;background:var(--surface2)">Metri</th>
+    ${_mkTh('Codice','codice','left','kpi')}
+    ${_mkTh('Ente','ente','left','kpi')}
+    ${_mkTh('Stato','stato','left','kpi')}
+    ${_mkTh('Invio','invio','center','kpi')}
+    ${_mkTh('Update','update','center','kpi')}
+    ${_showPrev ? _mkTh('Prev. Rilascio','prev','center','kpi') : ''}
+    ${_mkTh('Metri','metri','right','kpi')}
   </tr>`;
   const _kMkRow = p => {
     const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
@@ -4236,7 +4295,7 @@ function _kpiApplyFilter() {
       </div>`;
   });
 
-  body.innerHTML = html;
+  body.innerHTML = _colActiveBar('kpi') + html;
 }
 
 
@@ -4323,6 +4382,7 @@ function openModalPrev(status) {
   window._prevModalAllPrats = prats;
   window._prevFilterLotto = 'all';
   window._prevFilterSearch = '';
+  _colReset();
 
   const prevLottiDisp = [...new Set(prats.map(p=>p.lotto))].sort((a,b)=>(LOTTO_ORDER.indexOf(a)+1||99)-(LOTTO_ORDER.indexOf(b)+1||99));
   const prevFilterHtml = `
@@ -4366,6 +4426,8 @@ function _prevApplyFilter() {
     (p.codice||'').toLowerCase().includes(search) ||
     (p.ente||'').toLowerCase().includes(search)
   );
+  // Applica sort/filter colonne
+  prats = _colApplyAll(prats);
 
   const cntFil = document.getElementById('prevFilterCount');
   if (cntFil) cntFil.textContent = (search||lotto!=='all') ? `${prats.length} / ${allPrats.length} pratiche` : '';
@@ -4384,12 +4446,12 @@ function _prevApplyFilter() {
   const sortedLotti2 = Object.keys(byLotto).sort((a,b)=>(LOTTO_ORDER.indexOf(a)+1||99)-(LOTTO_ORDER.indexOf(b)+1||99));
 
   const thRow = `<tr style="border-bottom:1px solid var(--border)">
-    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Codice</th>
-    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Ente</th>
-    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:left;font-weight:600;background:var(--surface2)">Stato</th>
-    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Invio</th>
-    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2)">Prev. Rilascio</th>
-    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:right;font-weight:600;background:var(--surface2)">Metri</th>
+    ${_mkTh('Codice','codice','left','prev')}
+    ${_mkTh('Ente','ente','left','prev')}
+    ${_mkTh('Stato','stato','left','prev')}
+    ${_mkTh('Invio','invio','center','prev')}
+    ${_mkTh('Prev. Rilascio','prev','center','prev')}
+    ${_mkTh('Metri','metri','right','prev')}
   </tr>`;
 
   let html = `<div style="margin-bottom:12px;font-size:11px;color:var(--muted)">${prats.length} pratiche · ordinate per scadenza crescente</div>`;
@@ -4423,7 +4485,7 @@ function _prevApplyFilter() {
       }).join('')}
       </tbody></table></div></div>`;
   });
-  body.innerHTML = html;
+  body.innerHTML = _colActiveBar('prev') + html;
 }
 
 
@@ -5209,6 +5271,316 @@ async function ripristinaCSV() {
     badge.textContent = '✕ Errore: ' + e.message;
     badge.style.cssText = 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#fce8e8;color:#C23B22;border:1px solid #C23B2244';
   }
+}
+
+// ── COLUMN SORT / FILTER SYSTEM (Excel-like) ─────────────────────────────────
+window._colSort    = { col: null, dir: 'asc' };
+window._colFilters = {};  // { colKey: Set<string> } — undefined/empty = nessun filtro
+
+/* Estrae il valore di una colonna da una pratica */
+function _colGetVal(p, col) {
+  switch (col) {
+    case 'codice': return (p.codice || '').toLowerCase();
+    case 'ente':   return (p.ente   || '').toLowerCase();
+    case 'stato':  return (p.stato  || '').toLowerCase();
+    case 'invio': {
+      const dp = buildDateParts(p);
+      return dp.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
+    }
+    case 'update': {
+      const dp = buildDateParts(p);
+      return dp.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
+    }
+    case 'prev': {
+      const r = calcolaPrevisione(p);
+      return r ? r.diff : 99999;
+    }
+    case 'metri': return p.metri || 0;
+    default: return '';
+  }
+}
+
+/* Ordina una lista di pratiche secondo _colSort */
+function _colSortPrats(prats) {
+  const { col, dir } = window._colSort;
+  if (!col) return prats;
+  return [...prats].sort((a, b) => {
+    const va = _colGetVal(a, col), vb = _colGetVal(b, col);
+    if (typeof va === 'number') return dir === 'asc' ? va - vb : vb - va;
+    const r = String(va).localeCompare(String(vb), 'it');
+    return dir === 'asc' ? r : -r;
+  });
+}
+
+/* Filtra una lista di pratiche secondo _colFilters */
+function _colFilterPrats(prats) {
+  return prats.filter(p => {
+    for (const [col, allowed] of Object.entries(window._colFilters)) {
+      if (!allowed || allowed.size === 0) continue;
+      const val = String(_colGetVal(p, col));
+      if (!allowed.has(val)) return false;
+    }
+    return true;
+  });
+}
+
+/* Applica ordinamento + filtro colonne */
+function _colApplyAll(prats) {
+  return _colSortPrats(_colFilterPrats(prats));
+}
+
+/* Genera una <th> con bottone sort/filter */
+function _mkTh(label, col, align, modalType, extras) {
+  extras = extras || '';
+  const hasSort = window._colSort.col === col;
+  const hasFilt = !!window._colFilters[col] && window._colFilters[col].size > 0;
+  const icon = hasSort ? (window._colSort.dir === 'asc' ? '▲' : '▼') : '▼';
+  const cls  = hasSort ? 'active' : hasFilt ? 'filtered' : '';
+  const jAlign = align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start';
+  return `<th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:${align};font-weight:600;background:var(--surface2);white-space:nowrap;${extras}">
+    <div class="col-th-inner" style="justify-content:${jAlign}">
+      ${label}
+      <button class="col-sort-btn ${cls}" title="Ordina / Filtra ${label}"
+        onclick="event.stopPropagation();_openColFilter(this,'${col}','${modalType}')">${icon}</button>
+    </div></th>`;
+}
+
+/* Genera la barra degli filtri attivi */
+function _colActiveBar(modalType) {
+  const chips = Object.entries(window._colFilters)
+    .filter(([,s]) => s && s.size > 0)
+    .map(([col, s]) => {
+      const vals = [...s].join(', ');
+      return `<span class="col-filter-chip">${col}: ${vals}
+        <button onclick="window._colFilters['${col}']=new Set();_col${modalType==='kpi'?'KpiRefresh':modalType==='prev'?'PrevRefresh':modalType==='lotto'?'LottoRefresh':'ClRefresh'}()">✕</button>
+      </span>`;
+    }).join('');
+  if (!chips && !window._colSort.col) return '';
+  const sortChip = window._colSort.col
+    ? `<span style="font-size:10px;color:var(--muted)">Ordine: <b>${window._colSort.col}</b> ${window._colSort.dir==='asc'?'▲':'▼'}</span>
+       <button onclick="window._colSort={col:null,dir:'asc'};_col${modalType==='kpi'?'KpiRefresh':modalType==='prev'?'PrevRefresh':modalType==='lotto'?'LottoRefresh':'ClRefresh'}()" style="font-size:9px;background:#fce8e8;border:1px solid #C23B2244;color:#C23B22;border-radius:4px;padding:1px 7px;cursor:pointer">✕ Annulla ordine</button>`
+    : '';
+  return `<div class="col-filter-active-bar">
+    <span style="font-size:9px;font-weight:700;color:#E55000;text-transform:uppercase;letter-spacing:.06em">Filtri attivi:</span>
+    ${sortChip}${chips}
+    <button onclick="window._colSort={col:null,dir:'asc'};window._colFilters={};_col${modalType==='kpi'?'KpiRefresh':modalType==='prev'?'PrevRefresh':modalType==='lotto'?'LottoRefresh':'ClRefresh'}()" style="margin-left:auto;font-size:9px;background:#fce8e8;border:1px solid #C23B2244;color:#C23B22;border-radius:4px;padding:2px 8px;cursor:pointer;font-weight:700">✕ Resetta tutto</button>
+  </div>`;
+}
+
+/* Apre il dropdown di sort/filter su una colonna */
+function _openColFilter(btn, col, modalType) {
+  document.querySelectorAll('.col-filter-dropdown').forEach(d => d.remove());
+
+  const allPrats = modalType === 'kpi'  ? (window._kpiModalAllPrats  || [])
+                 : modalType === 'prev' ? (window._prevModalAllPrats || [])
+                 : modalType === 'lotto'? (window._lottoModalAllPrats|| [])
+                 :                        (window._clModalAllPrats   || []);
+
+  const vals = [...new Set(allPrats.map(p => String(_colGetVal(p, col))))].sort((a,b)=>a.localeCompare(b,'it'));
+  const curFilter = window._colFilters[col] || null;
+  const hasSort   = window._colSort.col === col;
+
+  const rect = btn.getBoundingClientRect();
+  const dd = document.createElement('div');
+  dd.className = 'col-filter-dropdown';
+  dd.style.top  = (rect.bottom + 4) + 'px';
+  dd.style.left = Math.min(rect.left, window.innerWidth - 220) + 'px';
+
+  const ascOn  = (hasSort && window._colSort.dir === 'asc')  ? 'on' : '';
+  const descOn = (hasSort && window._colSort.dir === 'desc') ? 'on' : '';
+  const sortClear = hasSort
+    ? `<button class="cfd-sort-clear" onclick="_colClearSort('${modalType}')">✕</button>` : '';
+
+  const checkboxes = vals.map(v => {
+    const safe = v.replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    const chk  = (!curFilter || curFilter.has(v)) ? 'checked' : '';
+    return `<label class="cfd-item"><input type="checkbox" value="${safe}" ${chk}> ${v||'(vuoto)'}</label>`;
+  }).join('');
+
+  dd.innerHTML = `
+    <div class="cfd-sort-row">
+      <div class="cfd-sort-lbl">Ordina</div>
+      <div class="cfd-sort-btns">
+        <button class="cfd-sort-btn ${ascOn}"  onclick="_colSetSort('${col}','asc','${modalType}')">▲ Crescente</button>
+        <button class="cfd-sort-btn ${descOn}" onclick="_colSetSort('${col}','desc','${modalType}')">▼ Decrescente</button>
+        ${sortClear}
+      </div>
+    </div>
+    <div class="cfd-filter-hd">
+      <span class="cfd-filter-lbl">Filtra per valore</span>
+      <button class="cfd-selall" onclick="this.closest('.col-filter-dropdown').querySelectorAll('input[type=checkbox]').forEach(c=>c.checked=true)">Seleziona tutto</button>
+    </div>
+    <input class="cfd-search" type="text" placeholder="🔍 Cerca…"
+      oninput="const v=this.value.toLowerCase();this.closest('.col-filter-dropdown').querySelectorAll('.cfd-item').forEach(l=>{l.style.display=l.textContent.toLowerCase().includes(v)?'':'none'})">
+    <div class="cfd-list">${checkboxes}</div>
+    <div class="cfd-footer">
+      <button class="cfd-apply" onclick="_colApplyCheckbox('${col}','${modalType}',this)">✓ Applica</button>
+      <button class="cfd-reset" onclick="_colClearFilter('${col}','${modalType}')">✕ Reset</button>
+    </div>`;
+
+  document.body.appendChild(dd);
+
+  setTimeout(() => {
+    document.addEventListener('click', function h(e) {
+      if (!dd.contains(e.target)) { dd.remove(); document.removeEventListener('click', h); }
+    });
+  }, 10);
+}
+
+function _colSetSort(col, dir, modalType) {
+  window._colSort = { col, dir };
+  document.querySelectorAll('.col-filter-dropdown').forEach(d => d.remove());
+  _colDispatch(modalType);
+}
+function _colClearSort(modalType) {
+  window._colSort = { col: null, dir: 'asc' };
+  document.querySelectorAll('.col-filter-dropdown').forEach(d => d.remove());
+  _colDispatch(modalType);
+}
+function _colApplyCheckbox(col, modalType, btn) {
+  const dd = btn.closest('.col-filter-dropdown');
+  const all = [...dd.querySelectorAll('.cfd-list input[type=checkbox]')];
+  const checked = all.filter(c => c.checked).map(c => c.value);
+  if (checked.length === all.length) { delete window._colFilters[col]; }
+  else { window._colFilters[col] = new Set(checked); }
+  dd.remove();
+  _colDispatch(modalType);
+}
+function _colClearFilter(col, modalType) {
+  delete window._colFilters[col];
+  document.querySelectorAll('.col-filter-dropdown').forEach(d => d.remove());
+  _colDispatch(modalType);
+}
+function _colDispatch(modalType) {
+  if (modalType === 'kpi')   { _kpiApplyFilter();  }
+  else if (modalType === 'prev')  { _prevApplyFilter(); }
+  else if (modalType === 'lotto') { _colLottoRefresh(); }
+  else if (modalType === 'cl')    { _colClRefresh();    }
+}
+function _colKpiRefresh()   { _kpiApplyFilter(); }
+function _colPrevRefresh()  { _prevApplyFilter(); }
+
+/* Reset stato colonne all'apertura di ogni modale */
+function _colReset() {
+  window._colSort    = { col: null, dir: 'asc' };
+  window._colFilters = {};
+}
+
+/* ── Lotto modal column sort/filter ─────────────────────────────────────────── */
+window._lottoModalAllPrats = [];
+window._lottoModalLotto    = null;
+
+function _colLottoRefresh() {
+  const allPrats = window._lottoModalAllPrats || [];
+  const lotto    = window._lottoModalLotto;
+  const body     = document.getElementById('_lottoColBody');
+  if (!body) return;
+
+  const prats = _colApplyAll(allPrats);
+
+  const activeBar = _colActiveBar('lotto');
+  const STATI_COLORI_MAP_loc = window.STATI_COLORI_MAP || {};
+
+  const makeRighe = (arr) => arr.map(p => {
+    const col = STATI_COLORI_MAP_loc[p.stato] || '#6b7080';
+    const dateParts = buildDateParts(p);
+    const invio = dateParts.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
+    const agg   = dateParts.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
+    const badge = prevBadgeHtml(p);
+    return `<tr style="border-bottom:1px solid #E0DDD4" onmouseover="this.style.background='#F0EEE6'" onmouseout="this.style.background=''">
+      <td style="padding:6px 10px;font-family:'Fira Code',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col}">${p.codice}</td>
+      <td style="padding:6px 10px;font-size:9px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente||'—'}</td>
+      <td style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap">${p.stato}</td>
+      <td style="padding:6px 10px;font-size:9px;font-family:'Fira Code',monospace;color:var(--text2);white-space:nowrap;text-align:center">${invio}</td>
+      <td style="padding:6px 10px;font-size:9px;font-family:'Fira Code',monospace;color:var(--text2);white-space:nowrap;text-align:center">${agg}</td>
+      <td style="padding:6px 10px;font-size:9px;text-align:center;white-space:nowrap">${badge}</td>
+      <td style="padding:6px 10px;font-size:12px;font-family:'Bricolage Grotesque',sans-serif;color:var(--text);text-align:right;white-space:nowrap;font-weight:700;letter-spacing:-0.01em">${fmt(p.metri)} m</td>
+    </tr>`;
+  }).join('');
+
+  const autPrats = prats.filter(p =>  p.codice.startsWith('AUT/'));
+  const noPrats  = prats.filter(p => !p.codice.startsWith('AUT/'));
+  const sepRow = (label, badge, n) => `<tr><td colspan="7" style="padding:8px 10px 4px;background:var(--bg)">
+    <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text)">${label}</span>
+    <span style="margin-left:6px;font-size:9px;color:var(--muted)">(${n})</span>
+    <span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">${badge.includes('3a8c5c')?'incide sulle %':'non incide sulle %'}</span>
+  </td></tr>`;
+
+  const thRow = `<tr style="border-bottom:1px solid var(--border)">
+    ${_mkTh('Codice','codice','left','lotto')}
+    ${_mkTh('Ente','ente','left','lotto')}
+    ${_mkTh('Stato','stato','left','lotto')}
+    ${_mkTh('Invio','invio','center','lotto')}
+    ${_mkTh('Update','update','center','lotto')}
+    ${_mkTh('Prev. Rilascio','prev','center','lotto')}
+    ${_mkTh('Metri','metri','right','lotto')}
+  </tr>`;
+
+  body.innerHTML = `${activeBar}
+    <table class="prat-table">
+      <thead>${thRow}</thead>
+      <tbody>
+        ${autPrats.length ? sepRow('Autorizzazioni','background:#3a8c5c22;color:#3a8c5c;border:1px solid #3a8c5c44',autPrats.length) + makeRighe(autPrats) : ''}
+        ${noPrats.length  ? sepRow('Nulla Osta / Ordinanze','background:#4a4f6a22;color:#8890aa;border:1px solid #4a4f6a44',noPrats.length) + makeRighe(noPrats) : ''}
+      </tbody>
+    </table>`;
+}
+
+/* ── Cluster modal column sort/filter ────────────────────────────────────────── */
+window._clModalAllPrats = [];
+
+function _colClRefresh() {
+  const allPrats = window._clModalAllPrats || [];
+  const body     = document.getElementById('_clColBody');
+  if (!body) return;
+
+  const prats   = _colApplyAll(allPrats);
+  const activeBar = _colActiveBar('cl');
+  const STATI_COLORI_MAP_loc = window.STATI_COLORI_MAP || {};
+
+  const mkRow = (p) => {
+    const col = STATI_COLORI_MAP_loc[p.stato] || '#6b7080';
+    const dateParts = buildDateParts(p);
+    const invio = dateParts.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
+    const agg   = dateParts.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
+    const badge = prevBadgeHtml(p);
+    return `<tr style="border-bottom:1px solid #E0DDD4" onmouseover="this.style.background='#F0EEE6'" onmouseout="this.style.background=''">
+      <td style="padding:6px 10px;font-family:'Fira Code',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col}">${p.codice}</td>
+      <td style="padding:6px 10px;font-size:9px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente||'—'}</td>
+      <td style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap">${p.stato}</td>
+      <td style="padding:6px 10px;font-size:9px;font-family:'Fira Code',monospace;color:var(--text2);white-space:nowrap;text-align:center">${invio}</td>
+      <td style="padding:6px 10px;font-size:9px;font-family:'Fira Code',monospace;color:var(--text2);white-space:nowrap;text-align:center">${agg}</td>
+      <td style="padding:6px 10px;font-size:9px;text-align:center;white-space:nowrap">${badge}</td>
+      <td style="padding:6px 10px;font-size:12px;font-family:'Bricolage Grotesque',sans-serif;color:var(--text);text-align:right;white-space:nowrap;font-weight:700;letter-spacing:-0.01em">${fmt(p.metri)} m</td>
+    </tr>`;
+  };
+
+  const clAut = prats.filter(p =>  p.codice.startsWith('AUT/'));
+  const clNo  = prats.filter(p => !p.codice.startsWith('AUT/'));
+  const sepRow = (label, badge, n) => `<tr><td colspan="7" style="padding:8px 10px 4px;background:var(--bg)">
+    <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text)">${label}</span>
+    <span style="margin-left:6px;font-size:9px;color:var(--muted)">(${n})</span>
+    <span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">${badge.includes('3a8c5c')?'incide sulle %':'non incide sulle %'}</span>
+  </td></tr>`;
+
+  const thRow = `<tr style="border-bottom:1px solid var(--border)">
+    ${_mkTh('Codice','codice','left','cl')}
+    ${_mkTh('Ente','ente','left','cl')}
+    ${_mkTh('Stato','stato','left','cl')}
+    ${_mkTh('Invio','invio','center','cl')}
+    ${_mkTh('Update','update','center','cl')}
+    ${_mkTh('Prev. Rilascio','prev','center','cl')}
+    ${_mkTh('Metri','metri','right','cl')}
+  </tr>`;
+
+  body.innerHTML = `${activeBar}
+    <table class="prat-table">
+      <thead>${thRow}</thead>
+      <tbody>
+        ${clAut.length ? sepRow('Autorizzazioni','background:#3a8c5c22;color:#3a8c5c;border:1px solid #3a8c5c44',clAut.length) + clAut.map(mkRow).join('') : ''}
+        ${clNo.length  ? sepRow('Nulla Osta / Ordinanze','background:#4a4f6a22;color:#8890aa;border:1px solid #4a4f6a44',clNo.length) + clNo.map(mkRow).join('') : ''}
+      </tbody>
+    </table>`;
 }
 
 // ── Aggiorna grafico cluster ──────────────────────────────────────────────────
