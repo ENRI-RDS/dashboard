@@ -4197,31 +4197,33 @@ function _kpiApplyFilter() {
     (p.ente||'').toLowerCase().includes(search)
   );
 
-  // Aggiorna contatori
-  const totF = prats.reduce((s,p) => s+(p.metri||0), 0);
+  // Applica sort/filter colonne PRIMA di aggiornare contatori e display
+  const pratsFiltered = _colApplyAll(prats);
+
+  // Aggiorna contatori usando la lista definitiva (filtrata anche per colonna)
+  const totF = pratsFiltered.reduce((s,p) => s+(p.metri||0), 0);
   const cntEl = document.getElementById('kpiCountDisplay');
   const mtrEl = document.getElementById('kpiMetriDisplay');
   const cntFil = document.getElementById('kpiFilterCount');
-  if (cntEl) cntEl.textContent = prats.length;
+  if (cntEl) cntEl.textContent = pratsFiltered.length;
   if (mtrEl) mtrEl.textContent = fmt(totF) + ' m';
-  if (cntFil) cntFil.textContent = (search || lotto !== 'all') ? `${prats.length} / ${allPrats.length} pratiche` : '';
+  const _hasColFilt = Object.values(window._colFilters||{}).some(s => s && s.size > 0);
+  if (cntFil) cntFil.textContent = (search || lotto !== 'all' || _hasColFilt)
+    ? `${pratsFiltered.length} / ${allPrats.length} pratiche` : '';
 
-  // Aggiorna il riferimento per l'export Excel
-  window._kpiModalPratiche = prats;
+  // Aggiorna il riferimento per l'export Excel (già filtrato per colonna)
+  window._kpiModalPratiche = pratsFiltered;
 
   const body = document.getElementById('kpiFilteredBody');
   if (!body) return;
 
-  if (prats.length === 0) {
+  if (pratsFiltered.length === 0) {
     body.innerHTML = '<div style="padding:32px;text-align:center;color:var(--muted);font-size:13px">Nessuna pratica corrisponde al filtro</div>';
     return;
   }
 
   const LOTTO_ORDER = ['1A','1B','2A','2B','1','2','3','4','5','6','7','8'];
   const IMPRESE = { '1A':'Valtellina','1B':'Soleto','2A':'Sielte','2B':'Telebit' };
-
-  // Applica sort/filter colonne
-  const pratsFiltered = _colApplyAll(prats);
 
   const byLotto = {};
   pratsFiltered.forEach(p => { if (!byLotto[p.lotto]) byLotto[p.lotto] = []; byLotto[p.lotto].push(p); });
@@ -4267,8 +4269,10 @@ function _kpiApplyFilter() {
     const pratLotto = byLotto[lotto];
     const totL = pratLotto.reduce((s, p) => s + (p.metri || 0), 0);
     const impresa = IMPRESE[lotto] || '';
-    const autP = pratLotto.filter(p => p.codice.startsWith('AUT/')).sort(_kBd);
-    const noP  = pratLotto.filter(p => !p.codice.startsWith('AUT/')).sort(_kBd);
+    const autP = pratLotto.filter(p =>  p.codice.startsWith('AUT/'));
+    const noP  = pratLotto.filter(p => !p.codice.startsWith('AUT/'));
+    // Ordina per data solo se non è attivo un ordinamento colonna
+    if (!window._colSort?.col) { autP.sort(_kBd); noP.sort(_kBd); }
 
     html += `
       <div style="margin-bottom:22px">
@@ -4429,8 +4433,9 @@ function _prevApplyFilter() {
   // Applica sort/filter colonne
   prats = _colApplyAll(prats);
 
-  const cntFil = document.getElementById('prevFilterCount');
-  if (cntFil) cntFil.textContent = (search||lotto!=='all') ? `${prats.length} / ${allPrats.length} pratiche` : '';
+  const cntFil2 = document.getElementById('prevFilterCount');
+  const _hasColFilt2 = Object.values(window._colFilters||{}).some(s => s && s.size > 0);
+  if (cntFil2) cntFil2.textContent = (search||lotto!=='all'||_hasColFilt2) ? `${prats.length} / ${allPrats.length} pratiche` : '';
   window._kpiModalPratiche = prats;
 
   const body = document.getElementById('prevFilteredBody');
@@ -5493,10 +5498,16 @@ function _openColFilter(btn, col, modalType) {
     </div>
     <div class="cfd-filter-hd">
       <span class="cfd-filter-lbl">Filtra per valore</span>
-      <button class="cfd-selall"
-        onclick="this.closest('.col-filter-dropdown').querySelectorAll('.cfd-list input').forEach(c=>c.checked=true)">
-        Seleziona tutto
-      </button>
+      <div style="display:flex;gap:4px;align-items:center">
+        <button class="cfd-selall"
+          onclick="this.closest('.col-filter-dropdown').querySelectorAll('.cfd-list input').forEach(c=>c.checked=true)">
+          Seleziona tutto
+        </button>
+        <button class="cfd-selall" style="background:#fce8e8;border-color:#C23B2244;color:#C23B22"
+          onclick="this.closest('.col-filter-dropdown').querySelectorAll('.cfd-list input').forEach(c=>c.checked=false)">
+          Deseleziona tutto
+        </button>
+      </div>
     </div>
     <input class="cfd-search" type="text" placeholder="🔍 Cerca…"
       oninput="var v=this.value.toLowerCase();this.closest('.col-filter-dropdown').querySelectorAll('.cfd-item').forEach(function(l){l.style.display=l.textContent.toLowerCase().includes(v)?'':'none'})">
