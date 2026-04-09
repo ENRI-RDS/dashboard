@@ -1873,6 +1873,7 @@ async function loadCluster() {
     const comuniKm = {};
     const comuniKmPerLotto = {};
     const trattaLottoMap = {};       // TRATTA_ID → lotto
+    const trattaComuneMap = {};       // TRATTA_ID → comune
     const clusterTrattaMap = {};     // CLUSTER → Set<TRATTA_ID>
 
     for (let i = 1; i < lines.length; i++) {
@@ -1911,6 +1912,11 @@ async function loadCluster() {
         const tratta = cols[iTRAT]?.trim().replace(/"/g,'');
         const lotto  = cols[iLOT]?.trim().replace(/"/g,'');
         if (tratta && lotto) trattaLottoMap[tratta] = lotto;
+        // Mappa TRATTA_ID → comune
+        if (tratta && iCOM !== -1) {
+          const comune = cols[iCOM]?.trim().replace(/"/g,'');
+          if (comune) trattaComuneMap[tratta] = comune;
+        }
       }
 
       // Mappa cluster → set tratte
@@ -1926,6 +1932,7 @@ async function loadCluster() {
     window._comuniKm = comuniKm;
     window._comuniKmPerLotto = comuniKmPerLotto;
     window._trattaLottoMap = trattaLottoMap;
+    window._trattaComuneMap = trattaComuneMap;
     window._clusterTrattaMap = {};
     Object.entries(clusterTrattaMap).forEach(([cl, set]) => {
       window._clusterTrattaMap[cl] = [...set];
@@ -3952,6 +3959,7 @@ async function loadMaster() {
     const iDUM   = findCol('DATA_ULTIMA_MODIFICA');
     const iLungh = findCol('LUNGHEZZA');
     const iPrat  = findCol('PRATICA');
+    const iComM  = findCol('COMUNE');
 
     if (iTrat === -1 || iPrat === -1) return;
 
@@ -3978,6 +3986,7 @@ async function loadMaster() {
       const dr     = iDR  !== -1 ? (cols[iDR]?.trim() || '')  : '';
       const dum    = iDUM !== -1 ? (cols[iDUM]?.trim() || '') : '';
       const src    = iSrc !== -1 ? (cols[iSrc]?.trim() || '') : '';
+      const comune = iComM !== -1 ? (cols[iComM]?.trim() || '') : '';
 
       // Estrai lotto da Source.Name (es. "Lotto 1A.xlsx" → "1A")
       const lotto = src ? src.replace(/\.xlsx$/i,'').replace(/^Lotto\s*/i,'').trim().toUpperCase() : '';
@@ -3991,7 +4000,7 @@ async function loadMaster() {
         // Prima riga: salva tutto incluso dr_invio se è INVIATO
         // dr_invio = DR della riga INVIATO; se DR è vuoto, usa DUM (stessa data)
         permessiMap[key] = {
-          tratta, prat, tipo, stato, ente, dr, dum, lungh, lotto,
+          tratta, prat, tipo, stato, ente, dr, dum, lungh, lotto, comune,
           dr_invio: stato === 'INVIATO' ? (dr || dum) : ''
         };
       } else if (dumDate && (!exDate || dumDate >= exDate)) {
@@ -3999,7 +4008,7 @@ async function loadMaster() {
         const dr_invio = existing.dr_invio
           || (stato === 'INVIATO' ? (dr || dum) : '')
           || (existing.stato === 'INVIATO' ? (existing.dr || existing.dum) : '');
-        permessiMap[key] = { tratta, prat, tipo, stato, ente, dr, dum, lungh, lotto, dr_invio };
+        permessiMap[key] = { tratta, prat, tipo, stato, ente, dr, dum, lungh, lotto, comune: comune || existing.comune || '', dr_invio };
       } else if (stato === 'INVIATO' && !existing.dr_invio) {
         // Riga più vecchia ma è INVIATO: salva solo dr_invio
         existing.dr_invio = dr;
@@ -4026,10 +4035,13 @@ async function loadMaster() {
       if (!praticheByLotto[lotto][codice]) {
         praticheByLotto[lotto][codice] = {
           codice, tipo: r.tipo, stato: r.stato, ente: r.ente,
-          dr: r.dr, dum: r.dum, dr_invio: r.dr_invio || '', metri: 0, lotto
+          dr: r.dr, dum: r.dum, dr_invio: r.dr_invio || '', metri: 0, lotto,
+          comuni: new Set(r.comune ? [r.comune] : [])
         };
       }
       praticheByLotto[lotto][codice].metri += r.lungh;
+      // Accumula comuni della pratica
+      if (r.comune) praticheByLotto[lotto][codice].comuni.add(r.comune);
       // Aggiorna con riga più recente
       const existing = praticheByLotto[lotto][codice];
       const newDum = parseDateIT(r.dum);
@@ -4046,8 +4058,9 @@ async function loadMaster() {
 
     window._praticheDetailPerLotto = {};
     Object.entries(praticheByLotto).forEach(([lot, map]) => {
-      window._praticheDetailPerLotto[lot] = Object.values(map)
-        .sort((a,b) => a.codice.localeCompare(b.codice));
+      window._praticheDetailPerLotto[lot] = Object.values(map).map(p => ({
+        ...p, comuni: p.comuni instanceof Set ? [...p.comuni].sort() : (p.comuni || [])
+      })).sort((a,b) => a.codice.localeCompare(b.codice));
     });
 
     // Indice per tratta → pratiche (per popup cluster)
@@ -5807,18 +5820,23 @@ function cercaPraticaSearch() {
     (prats || []).forEach(p => tutti.push({ ...p, lotto }));
   });
 
-  const risultati = tutti.filter(p => (p.codice || '').toUpperCase().includes(query));
+  const risultati = tutti.filter(p => {
+    const inCodice = (p.codice || '').toUpperCase().includes(query);
+    const inComuni = (p.comuni || []).some(c => c.toUpperCase().includes(query));
+    const inEnte   = (p.ente || '').toUpperCase().includes(query);
+    return inCodice || inComuni || inEnte;
+  });
 
   if (!risultati.length) {
     container.innerHTML = `<div style="text-align:center;color:var(--muted2);font-size:12px;padding:24px 0">Nessuna pratica trovata per "<strong style="color:var(--text)">${query}</strong>"</div>`;
     return;
   }
 
-  const html = risultati.map(p => buildCercaCard(p)).join('');
-  container.innerHTML = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:10px">${risultati.length} pratica${risultati.length !== 1 ? 'he' : ''} trovata${risultati.length !== 1 ? '' : ''}</div>` + html;
+  const html = risultati.map(p => buildCercaCard(p, query)).join('');
+  container.innerHTML = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted2);margin-bottom:10px">${risultati.length} pratica${risultati.length !== 1 ? 'he' : ''} trovata${risultati.length !== 1 ? '' : ''}</div>` + html;
 }
 
-function buildCercaCard(p) {
+function buildCercaCard(p, query) {
   const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
 
   // ── Tipo pratica ──────────────────────────────────────────────
@@ -5882,6 +5900,28 @@ function buildCercaCard(p) {
     }
   }
 
+  // ── Impresa ───────────────────────────────────────────────────────────────
+  const impresa = IMPRESE_PER_LOTTO[p.lotto] || '';
+  const impresaHtml = impresa ? `<div style="margin-top:7px;display:flex;align-items:center;gap:6px;padding:5px 8px;background:#E550000A;border:1px solid #E5500025;border-radius:5px">
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#E55000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.07em;color:#E55000;font-weight:600">Impresa</span>
+    <span style="font-size:10px;font-weight:700;color:var(--text2)">${impresa}</span>
+  </div>` : '';
+
+  // ── Comuni ──────────────────────────────────────────────────────────────
+  let comuniHtml = '';
+  const comuni = p.comuni || [];
+  if (comuni.length) {
+    const chips = comuni.map(c => {
+      const highlight = query && c.toUpperCase().includes((query||'').toUpperCase());
+      return `<span style="font-size:9px;background:${highlight ? 'var(--accent)' : 'var(--surface)'};color:${highlight ? '#fff' : 'var(--text2)'};border:1px solid ${highlight ? 'var(--accent)' : 'var(--border2)'};border-radius:3px;padding:1px 7px;white-space:nowrap">${c}</span>`;
+    }).join('');
+    comuniHtml = `<div style="margin-top:7px">
+      <div style="font-size:8px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted2);margin-bottom:4px">Comuni (${comuni.length})</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">${chips}</div>
+    </div>`;
+  }
+
   // ── Separatore label data ─────────────────────────────────────
   const labelStato = {
     'PROTOCOLLATO': 'Prot.',
@@ -5930,6 +5970,8 @@ function buildCercaCard(p) {
     ${giorniHtml}
     ${prevHtml}
     ${tratteHtml}
+    ${comuniHtml}
+    ${impresaHtml}
   </div>`;
 }
 // ─────────────────────────────────────────────────────────────────────────────
