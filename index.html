@@ -907,21 +907,59 @@
 // ── EXPORT EXCEL ──────────────────────────────────────────────────────────────
 function exportXlsx(pratiche, filename) {
   if (!pratiche || !pratiche.length) { alert('Nessuna pratica da esportare.'); return; }
-  const header = ['Codice', 'Tipo', 'Lotto', 'Stato', 'Ente', 'Data Invio', 'Data Update', 'Prev. Rilascio', 'Giorni Rimanenti', 'Metri (m)'];
+  const header = ['Codice', 'Tipo', 'Lotto', 'Stato', 'Ente', 'Data Invio', 'Data Aggiornamento', 'Prev. Rilascio', 'Giorni Rimanenti', 'Metri (m)'];
+
+  // Indici colonne data (0-based): 5=Data Invio, 6=Data Agg, 7=Prev. Rilascio
+  const DATE_COLS = [5, 6, 7];
+  const DATE_FMT  = 'dd/mm/yyyy';
+
+  // Converte stringa "dd/mm/yyyy" in oggetto Date (native) per SheetJS
+  function toDateObj(s) {
+    if (!s || !s.trim()) return '';
+    const p = s.trim().split('/');
+    if (p.length === 3) return new Date(+p[2], +p[1]-1, +p[0]);
+    const d = new Date(s.trim());
+    return isNaN(d) ? '' : d;
+  }
+
   const rows = pratiche.map(p => {
     const dateParts = buildDateParts(p);
-    const invio = dateParts.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
-    const agg   = dateParts.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
+    const invioStr = dateParts.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
+    const aggStr   = dateParts.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
     const tipo  = p.codice.startsWith('AUT/') ? 'AUTORIZZAZIONE'
                 : p.codice.startsWith('NO/')  ? 'NULLA OSTA'
                 : p.codice.startsWith('ORD/') ? 'ORDINANZA'
                 : p.tipo || '';
     const prev = calcolaPrevisione(p);
-    return [p.codice, tipo, p.lotto || '', p.stato, p.ente || '', invio, agg,
-            prev ? prev.label : '', prev ? prev.diff : '', p.metri || 0];
+    const prevDate = prev ? prev.scad : '';  // già un oggetto Date da calcolaPrevisione
+    return [
+      p.codice,
+      tipo,
+      p.lotto || '',
+      p.stato,
+      p.ente || '',
+      toDateObj(invioStr),          // col 5 – Data Invio → Date object
+      toDateObj(aggStr),            // col 6 – Data Aggiornamento → Date object
+      prevDate || '',               // col 7 – Prev. Rilascio → Date object
+      prev ? prev.diff : '',        // col 8 – Giorni Rimanenti → numero
+      p.metri ? Number(p.metri) : 0 // col 9 – Metri → numero
+    ];
   });
-  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-  ws['!cols'] = [{wch:20},{wch:18},{wch:8},{wch:30},{wch:30},{wch:14},{wch:14},{wch:14},{wch:10},{wch:12}];
+
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows], { cellDates: true });
+
+  // Applica formato data alle celle delle colonne data (righe 1..N, riga 0 = header)
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let r = 1; r <= range.e.r; r++) {
+    DATE_COLS.forEach(c => {
+      const addr = XLSX.utils.encode_cell({r, c});
+      if (ws[addr] && ws[addr].t === 'd') {
+        ws[addr].z = DATE_FMT;
+      }
+    });
+  }
+
+  ws['!cols'] = [{wch:22},{wch:18},{wch:8},{wch:30},{wch:32},{wch:14},{wch:16},{wch:14},{wch:12},{wch:12}];
   const headerRange = XLSX.utils.decode_range(ws['!ref']);
   for (let c = headerRange.s.c; c <= headerRange.e.c; c++) {
     const cell = ws[XLSX.utils.encode_cell({r:0, c})];
