@@ -891,13 +891,10 @@
     </div>
     <!-- search input -->
     <div style="padding:14px 18px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--surface2)">
-      <div style="display:flex;gap:8px">
-        <input id="cercaInput" type="text" placeholder="Es: AUT/MI/123 o parte del codice…" autocomplete="off" spellcheck="false"
-          style="flex:1;background:var(--surface);border:1.5px solid var(--border2);border-radius:8px;padding:9px 13px;font-family:'Fira Code',monospace;font-size:12px;color:var(--text);outline:none;transition:border-color 0.15s"
-          onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'"
-          oninput="cercaPraticaSearch()" onkeydown="if(event.key==='Escape')closeCercaPratica()">
-        <button onclick="cercaPraticaSearch()" style="background:var(--accent);border:none;border-radius:8px;padding:9px 16px;cursor:pointer;color:#fff;font-size:12px;font-weight:600;font-family:inherit;white-space:nowrap;transition:opacity 0.15s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">Cerca</button>
-      </div>
+      <input id="cercaInput" type="text" placeholder="Es: AUT/MI/123 o parte del codice…" autocomplete="off" spellcheck="false"
+        style="width:100%;box-sizing:border-box;background:var(--surface);border:1.5px solid var(--border2);border-radius:8px;padding:9px 13px;font-family:'Fira Code',monospace;font-size:12px;color:var(--text);outline:none;transition:border-color 0.15s"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'"
+        oninput="cercaPraticaSearch()" onkeydown="if(event.key==='Escape')closeCercaPratica()">
     </div>
     <!-- results -->
     <div id="cercaResults" style="overflow-y:auto;padding:14px 18px;flex:1;min-height:100px;background:var(--surface)"></div>
@@ -5823,40 +5820,116 @@ function cercaPraticaSearch() {
 
 function buildCercaCard(p) {
   const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
-  const dateParts = buildDateParts(p);
-  const dateStr = dateParts.join(' · ');
-  const prev = calcolaPrevisione(p);
-  let prevHtml = '';
-  if (prev) {
-    const bg  = prev.status === 'ok' ? '#2a5c3a' : prev.status === 'warn' ? '#7a5a0a' : '#6a1a1a';
-    const col2 = prev.status === 'ok' ? '#4ecf7a' : prev.status === 'warn' ? '#f0c040' : '#f07070';
-    const ico  = prev.status === 'ok' ? '✓' : prev.status === 'warn' ? '⚠' : '✗';
-    prevHtml = `<span style="font-size:9px;font-weight:700;background:${bg};color:${col2};border-radius:4px;padding:1px 7px;white-space:nowrap">${ico} Prev: ${prev.label}${prev.status !== 'ok' ? ` (${prev.diff}gg)` : ''}</span>`;
-  }
 
+  // ── Tipo pratica ──────────────────────────────────────────────
   const tipoLabel = p.codice.startsWith('AUT/') ? 'AUTORIZZAZIONE'
                   : p.codice.startsWith('NO/')  ? 'NULLA OSTA'
                   : p.codice.startsWith('ORD/') ? 'ORDINANZA'
                   : (p.tipo || '');
 
-  return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px">
-    <!-- riga 1: codice + lotto + stato -->
-    <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:6px">
-      <span style="font-family:'Fira Code',monospace;font-size:11px;font-weight:700;background:var(--surface);border:1.5px solid var(--accent);border-radius:4px;padding:2px 9px;color:var(--accent)">${p.codice}</span>
-      ${p.lotto ? `<span style="font-size:9px;font-weight:700;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:1px 7px;color:var(--muted)">Lotto ${p.lotto}</span>` : ''}
-      <span style="font-size:9px;font-weight:700;color:${col};background:${col}22;border-radius:4px;padding:1px 8px">${p.stato}</span>
-      <span style="font-size:12px;font-weight:700;font-family:'Bricolage Grotesque',sans-serif;color:var(--text);margin-left:auto;letter-spacing:-0.01em">${fmt(p.metri)} m</span>
+  // ── Date ──────────────────────────────────────────────────────
+  const invioStr = p.dr_invio || p.dr || (p.stato === 'INVIATO' ? p.dum : '');
+  const invioDate = parseDateIT(invioStr);
+  const aggStr   = p.dum && p.dum !== invioStr ? p.dum : '';
+  const aggDate  = aggStr ? parseDateIT(aggStr) : null;
+
+  // Giorni trascorsi dall'invio
+  let giorniHtml = '';
+  if (invioDate && ['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'].includes(p.stato)) {
+    const oggi = new Date(); oggi.setHours(0,0,0,0);
+    const gg = Math.ceil((oggi - invioDate) / 86400000);
+    const sla = giorniPerEnte(p.ente);
+    const pct = Math.min(Math.round(gg / sla * 100), 100);
+    const barCol = gg > sla ? '#cc3333' : gg > sla * 0.8 ? '#c9a227' : '#3a8c5c';
+    giorniHtml = `<div style="margin-top:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+        <span style="font-size:9px;color:var(--muted)">Giorni trascorsi dall'invio</span>
+        <span style="font-size:9px;font-weight:700;color:${barCol}">${gg} gg / ${sla} gg SLA</span>
+      </div>
+      <div style="height:5px;border-radius:3px;background:var(--border);overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${barCol};border-radius:3px;transition:width 0.3s"></div>
+      </div>
+    </div>`;
+  }
+
+  // ── Previsione rilascio ───────────────────────────────────────
+  const prev = calcolaPrevisione(p);
+  let prevHtml = '';
+  if (prev) {
+    const bg   = prev.status === 'ok' ? '#eaf7f0' : prev.status === 'warn' ? '#fdf6e3' : '#fdeaea';
+    const tc   = prev.status === 'ok' ? '#1e6b42' : prev.status === 'warn' ? '#7a5500' : '#8b1a1a';
+    const bc   = prev.status === 'ok' ? '#b2e5cc' : prev.status === 'warn' ? '#f5d87a' : '#f5b0b0';
+    const ico  = prev.status === 'ok' ? '✓' : prev.status === 'warn' ? '⚠' : '✗';
+    const label = prev.status === 'ok' ? `Previsto il ${prev.label}` : prev.status === 'warn' ? `Scade in ${prev.diff} gg (${prev.label})` : `Scaduto da ${Math.abs(prev.diff)} gg (${prev.label})`;
+    prevHtml = `<div style="margin-top:6px;padding:6px 10px;background:${bg};border:1px solid ${bc};border-radius:6px;display:flex;align-items:center;gap:6px">
+      <span style="font-size:11px">${ico}</span>
+      <span style="font-size:10px;font-weight:600;color:${tc}">${label}</span>
+    </div>`;
+  }
+
+  // ── Tratte associate (da _masterByTratta) ─────────────────────
+  let tratteHtml = '';
+  if (window._masterByTratta) {
+    const tratte = Object.entries(window._masterByTratta)
+      .filter(([, prats]) => prats.some(x => x.codice === p.codice))
+      .map(([t]) => t);
+    if (tratte.length) {
+      const chips = tratte.map(t => `<span style="font-family:'Fira Code',monospace;font-size:9px;background:var(--surface);border:1px solid var(--border2);border-radius:3px;padding:1px 6px;color:var(--text2)">${t}</span>`).join('');
+      tratteHtml = `<div style="margin-top:7px">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted2);margin-bottom:4px">Tratte (${tratte.length})</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">${chips}</div>
+      </div>`;
+    }
+  }
+
+  // ── Separatore label data ─────────────────────────────────────
+  const labelStato = {
+    'PROTOCOLLATO': 'Prot.',
+    'PROTOCOLLATO INTEGRAZIONE': 'Prot. Int.',
+    'OTTENUTO': 'Ottenuto',
+    'NECESSARIA INTEGRAZIONE': 'Agg.',
+    'COORDINAMENTO': 'Coord.',
+  }[p.stato] || 'Agg.';
+
+  return `<div style="background:var(--surface);border:1.5px solid var(--border2);border-radius:10px;padding:13px 15px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
+
+    <!-- HEADER: codice + metri -->
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <span style="font-family:'Fira Code',monospace;font-size:12px;font-weight:700;color:var(--accent)">${p.codice}</span>
+        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+          <span style="font-size:9px;font-weight:700;color:${col};background:${col}18;border:1px solid ${col}44;border-radius:4px;padding:1px 8px;white-space:nowrap">${p.stato}</span>
+          ${p.lotto ? `<span style="font-size:9px;color:var(--muted2);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 7px">Lotto ${p.lotto}</span>` : ''}
+          ${tipoLabel ? `<span style="font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:0.05em">${tipoLabel}</span>` : ''}
+        </div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:15px;font-weight:800;font-family:'Bricolage Grotesque',sans-serif;color:var(--text);letter-spacing:-0.02em">${fmt(p.metri)} m</div>
+        <div style="font-size:9px;color:var(--muted2)">lunghezza</div>
+      </div>
     </div>
-    <!-- riga 2: tipo + ente -->
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:${(dateStr || prevHtml) ? '6px' : '0'}">
-      ${tipoLabel ? `<span style="font-size:9px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted)">${tipoLabel}</span>` : ''}
-      ${p.ente ? `<span style="font-size:9px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-left:auto;max-width:260px" title="${p.ente}">${p.ente}</span>` : ''}
-    </div>
-    <!-- riga 3: date + previsione -->
-    ${(dateStr || prevHtml) ? `<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
-      ${dateStr ? `<span style="font-size:9px;color:var(--muted)">${dateStr}</span>` : ''}
-      ${prevHtml}
+
+    <!-- ENTE -->
+    ${p.ente ? `<div style="display:flex;align-items:center;gap:5px;margin-bottom:7px;padding:5px 8px;background:var(--surface2);border-radius:5px">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+      <span style="font-size:10px;color:var(--text2);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.ente}">${p.ente}</span>
     </div>` : ''}
+
+    <!-- DATE -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:2px">
+      ${invioStr ? `<div style="padding:5px 8px;background:var(--surface2);border-radius:5px">
+        <div style="font-size:8px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted2);margin-bottom:2px">Data Invio</div>
+        <div style="font-size:10px;font-weight:600;color:var(--text);font-family:'Fira Code',monospace">${fmtDateIT(invioStr)}</div>
+      </div>` : '<div></div>'}
+      ${aggStr ? `<div style="padding:5px 8px;background:var(--surface2);border-radius:5px">
+        <div style="font-size:8px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted2);margin-bottom:2px">${labelStato}</div>
+        <div style="font-size:10px;font-weight:600;color:var(--text);font-family:'Fira Code',monospace">${fmtDateIT(aggStr)}</div>
+      </div>` : ''}
+    </div>
+
+    ${giorniHtml}
+    ${prevHtml}
+    ${tratteHtml}
   </div>`;
 }
 // ─────────────────────────────────────────────────────────────────────────────
