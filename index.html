@@ -874,6 +874,19 @@
           </button>
         </div>
       </div>
+      <!-- SCADENZE SETTIMANA -->
+      <div class="card" style="margin-top:0">
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+          <span class="card-title">⏰ Scadenze</span>
+          <div style="display:flex;gap:4px">
+            <button id="scadBtn7"  onclick="setScadWindow(7)"  style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--accent);color:#fff;cursor:pointer;font-family:inherit">7gg</button>
+            <button id="scadBtn14" onclick="setScadWindow(14)" style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2);color:var(--muted);cursor:pointer;font-family:inherit">14gg</button>
+          </div>
+        </div>
+        <div id="scadenzeBody" class="card-body" style="padding:10px 14px;max-height:280px;overflow-y:auto">
+          <div style="text-align:center;color:var(--muted2);font-size:11px;padding:16px 0">Caricamento dati…</div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1188,7 +1201,8 @@ const JSONBIN_MASTER_KEY = '$2a$10$2kWuCWPZFDiwXDJBkEmituTTW4op2VZF6E52e75IQsMV7
 const JSONBIN_BASE       = 'https://api.jsonbin.io/v3/b';
 const STORICO_MAX_ENTRIES = 104; // ~2 anni di aggiornamenti settimanali
 // ── REGISTRO ACCESSI CON USERNAME ────────────────────────────────────────────
-const JSONBIN_LOG_BIN_ID = '69c8fbdced015c742bc8e978';
+const JSONBIN_LOG_BIN_ID  = '69c8fbdced015c742bc8e978';
+const JSONBIN_NOTE_BIN_ID = ''; // ← crea un nuovo bin su jsonbin.io e incolla l'ID qui
 const ACCESSI_MAX        = 500;
 const ADMIN_USERNAME     = 'enri_admin'; // ← cambia con il tuo username admin
 
@@ -5790,6 +5804,7 @@ function openCercaPratica() {
   document.getElementById('cercaResults').innerHTML = '<div style="text-align:center;color:var(--muted2);font-size:12px;padding:24px 0">Inserisci il codice pratica per cercare</div>';
   document.getElementById('cercaInput').value = '';
   setTimeout(() => document.getElementById('cercaInput').focus(), 80);
+  noteLoad(); // pre-carica note in background
 }
 
 function closeCercaPratica() {
@@ -5922,6 +5937,10 @@ function buildCercaCard(p, query) {
     </div>`;
   }
 
+  // ── Nota pratica ──────────────────────────────────────────────
+  const notaAttuale = (_noteCache || {})[p.codice] || '';
+  const noteHtml = buildNoteHtml(p.codice, notaAttuale);
+
   // ── Separatore label data ─────────────────────────────────────
   const labelStato = {
     'PROTOCOLLATO': 'Prot.',
@@ -5969,11 +5988,189 @@ function buildCercaCard(p, query) {
 
     ${giorniHtml}
     ${prevHtml}
-    ${tratteHtml}
     ${comuniHtml}
     ${impresaHtml}
+    ${tratteHtml}
+    ${noteHtml}
   </div>`;
 }
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ══════════════════════════════════════════════════════════════════════════════
+// NOTE PER PRATICA — JSONBin
+// ══════════════════════════════════════════════════════════════════════════════
+let _noteCache = null;    // { codice: testo }
+let _noteSaving = false;
+
+async function noteLoad() {
+  if (!JSONBIN_NOTE_BIN_ID) return {};
+  if (_noteCache) return _noteCache;
+  try {
+    const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_NOTE_BIN_ID}/latest`, {
+      headers: { 'X-Master-Key': JSONBIN_MASTER_KEY }
+    });
+    if (!res.ok) return {};
+    const data = await res.json();
+    _noteCache = data.record || {};
+    return _noteCache;
+  } catch(e) { return {}; }
+}
+
+async function noteSave(codice, testo) {
+  if (!JSONBIN_NOTE_BIN_ID) return;
+  _noteCache = _noteCache || {};
+  if (testo.trim() === '') {
+    delete _noteCache[codice];
+  } else {
+    _noteCache[codice] = testo.trim();
+  }
+  try {
+    await fetch(`${JSONBIN_BASE}/${JSONBIN_NOTE_BIN_ID}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
+      body: JSON.stringify(_noteCache)
+    });
+  } catch(e) { console.warn('Errore salvataggio nota:', e); }
+}
+
+function buildNoteHtml(codice, notaAttuale) {
+  const id = 'nota_' + codice.replace(/\//g,'_');
+  const hasBin = !!JSONBIN_NOTE_BIN_ID;
+  if (!hasBin) {
+    return `<div style="margin-top:8px;padding:6px 8px;background:var(--surface2);border:1px dashed var(--border2);border-radius:5px;font-size:9px;color:var(--muted2)">
+      ⚙️ Configura <code>JSONBIN_NOTE_BIN_ID</code> per abilitare le note
+    </div>`;
+  }
+  return `<div style="margin-top:8px">
+    <div style="font-size:8px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted2);margin-bottom:4px">📝 Nota</div>
+    <textarea id="${id}" rows="2" placeholder="Aggiungi una nota…"
+      style="width:100%;box-sizing:border-box;background:var(--surface2);border:1.5px solid var(--border2);border-radius:6px;padding:6px 9px;font-family:inherit;font-size:11px;color:var(--text);resize:vertical;outline:none;transition:border-color 0.15s"
+      onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'"
+    >${notaAttuale ? notaAttuale.replace(/</g,'&lt;') : ''}</textarea>
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:4px">
+      <span id="${id}_status" style="font-size:9px;color:var(--muted2)"></span>
+      <button onclick="salvaNotaPratica('${codice}','${id}')"
+        style="font-size:10px;font-weight:600;padding:3px 12px;background:var(--accent);color:#fff;border:none;border-radius:5px;cursor:pointer;font-family:inherit">
+        Salva
+      </button>
+    </div>
+  </div>`;
+}
+
+async function salvaNotaPratica(codice, fieldId) {
+  const el = document.getElementById(fieldId);
+  const status = document.getElementById(fieldId + '_status');
+  if (!el) return;
+  status.textContent = 'Salvataggio…';
+  await noteSave(codice, el.value);
+  status.textContent = '✓ Salvata';
+  setTimeout(() => { status.textContent = ''; }, 2500);
+}
+
+// Inietta le note nelle card già renderizzate dopo l'apertura della modale
+async function injectNote() {
+  const note = await noteLoad();
+  // aggiorna textarea esistenti se già presenti
+  Object.entries(note).forEach(([cod, testo]) => {
+    const id = 'nota_' + cod.replace(/\//g,'_');
+    const el = document.getElementById(id);
+    if (el && !el.value) el.value = testo;
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SCADENZE SETTIMANA
+// ══════════════════════════════════════════════════════════════════════════════
+let _scadWindow = 7; // giorni da mostrare
+
+function setScadWindow(n) {
+  _scadWindow = n;
+  document.getElementById('scadBtn7').style.background  = n === 7  ? 'var(--accent)' : 'var(--surface2)';
+  document.getElementById('scadBtn7').style.color       = n === 7  ? '#fff' : 'var(--muted)';
+  document.getElementById('scadBtn14').style.background = n === 14 ? 'var(--accent)' : 'var(--surface2)';
+  document.getElementById('scadBtn14').style.color      = n === 14 ? '#fff' : 'var(--muted)';
+  renderScadenze();
+}
+
+function renderScadenze() {
+  const container = document.getElementById('scadenzeBody');
+  if (!container) return;
+  if (!window._praticheDetailPerLotto) {
+    container.innerHTML = '<div style="text-align:center;color:var(--muted2);font-size:11px;padding:16px 0">Carica il Master.csv per vedere le scadenze</div>';
+    return;
+  }
+
+  const oggi = new Date(); oggi.setHours(0,0,0,0);
+  const limite = new Date(oggi.getTime() + _scadWindow * 86400000);
+
+  // Raccogli tutte le pratiche con previsione nel range
+  const scadenti = [];
+  Object.entries(window._praticheDetailPerLotto).forEach(([lotto, prats]) => {
+    (prats || []).forEach(p => {
+      const prev = calcolaPrevisione({...p, lotto});
+      if (!prev) return;
+      if (prev.scad >= oggi && prev.scad <= limite) {
+        scadenti.push({ ...p, lotto, prev });
+      }
+    });
+  });
+
+  if (!scadenti.length) {
+    container.innerHTML = `<div style="text-align:center;color:var(--muted2);font-size:11px;padding:16px 0">Nessuna scadenza nei prossimi ${_scadWindow} giorni 🎉</div>`;
+    return;
+  }
+
+  // Ordina per data scadenza
+  scadenti.sort((a, b) => a.prev.scad - b.prev.scad);
+
+  // Raggruppa per giorno
+  const byDay = {};
+  scadenti.forEach(p => {
+    const key = p.prev.scad.toLocaleDateString('it-IT', { weekday:'short', day:'2-digit', month:'2-digit' });
+    if (!byDay[key]) byDay[key] = [];
+    byDay[key].push(p);
+  });
+
+  let html = '';
+  Object.entries(byDay).forEach(([giorno, prats]) => {
+    html += `<div style="margin-bottom:10px">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);padding-bottom:4px;border-bottom:1px solid var(--border);margin-bottom:5px">${giorno}</div>`;
+    prats.forEach(p => {
+      const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
+      const diffTxt = p.prev.diff === 0 ? 'Oggi' : p.prev.diff === 1 ? 'Domani' : `${p.prev.diff} gg`;
+      const dotCol  = p.prev.status === 'warn' ? '#c9a227' : '#3a8c5c';
+      html += `<div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid var(--border)">
+        <div style="width:7px;height:7px;border-radius:50%;background:${dotCol};flex-shrink:0"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-family:'Fira Code',monospace;font-size:10px;font-weight:700;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.codice}</div>
+          <div style="font-size:9px;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${p.ente||''}">${p.ente || '—'}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:10px;font-weight:700;color:${dotCol}">${diffTxt}</div>
+          <div style="font-size:8px;color:var(--muted2)">Lotto ${p.lotto}</div>
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  });
+
+  html += `<div style="text-align:center;font-size:9px;color:var(--muted2);padding-top:4px">${scadenti.length} pratica${scadenti.length!==1?'he':''} in scadenza</div>`;
+  container.innerHTML = html;
+}
+
+// Aggiorna scadenze quando i dati vengono caricati
+const _origRenderAll = window.renderAll;
+// Hook: chiama renderScadenze ogni volta che i dati sono pronti
+function _hookScadenze() {
+  // Prova ogni 2s finché i dati non sono disponibili (max 30s)
+  let attempts = 0;
+  const iv = setInterval(() => {
+    attempts++;
+    if (window._praticheDetailPerLotto) { renderScadenze(); clearInterval(iv); }
+    if (attempts > 15) clearInterval(iv);
+  }, 2000);
+}
+_hookScadenze();
 // ─────────────────────────────────────────────────────────────────────────────
 </script>
 
