@@ -810,19 +810,6 @@
               <div style="font-size:9px;color:#cc3333;font-weight:600;margin-top:3px">✕ Scadute</div>
             </div>
           </div>
-          <!-- SCADENZE — colonna a destra di Prev. Rilascio -->
-          <div id="scadenzeCol" style="flex-shrink:0;border-left:2px solid var(--border2);margin-left:14px;padding-left:14px;display:flex;flex-direction:column;gap:0;min-width:180px;max-width:210px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding:4px 8px;background:var(--surface2);border-radius:6px;border:1px solid var(--border2)">
-              <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.14em;color:var(--text2)">⏰ Scadenze</div>
-              <div style="display:flex;gap:3px">
-                <button id="scadBtn7"  onclick="setScadWindow(7)"  style="font-size:8px;font-weight:700;padding:1px 6px;border-radius:3px;border:1px solid var(--border2);background:var(--accent);color:#fff;cursor:pointer;font-family:inherit">7gg</button>
-                <button id="scadBtn14" onclick="setScadWindow(14)" style="font-size:8px;font-weight:700;padding:1px 6px;border-radius:3px;border:1px solid var(--border2);background:var(--surface2);color:var(--muted);cursor:pointer;font-family:inherit">14gg</button>
-              </div>
-            </div>
-            <div id="scadenzeBody" style="overflow-y:auto;flex:1;max-height:200px;padding-right:2px">
-              <div style="text-align:center;color:var(--muted2);font-size:11px;padding:16px 0">Caricamento dati…</div>
-            </div>
-          </div>
         </div>
       </div>
       <div class="legend">
@@ -887,7 +874,19 @@
           </button>
         </div>
       </div>
-
+      <!-- SCADENZE SETTIMANA -->
+      <div class="card" style="margin-top:0">
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+          <span class="card-title">⏰ Scadenze</span>
+          <div style="display:flex;gap:4px">
+            <button id="scadBtn7"  onclick="setScadWindow(7)"  style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--accent);color:#fff;cursor:pointer;font-family:inherit">7gg</button>
+            <button id="scadBtn14" onclick="setScadWindow(14)" style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2);color:var(--muted);cursor:pointer;font-family:inherit">14gg</button>
+          </div>
+        </div>
+        <div id="scadenzeBody" class="card-body" style="padding:10px 14px;max-height:280px;overflow-y:auto">
+          <div style="text-align:center;color:var(--muted2);font-size:11px;padding:16px 0">Caricamento dati…</div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1203,7 +1202,7 @@ const JSONBIN_BASE       = 'https://api.jsonbin.io/v3/b';
 const STORICO_MAX_ENTRIES = 104; // ~2 anni di aggiornamenti settimanali
 // ── REGISTRO ACCESSI CON USERNAME ────────────────────────────────────────────
 const JSONBIN_LOG_BIN_ID  = '69c8fbdced015c742bc8e978';
-const JSONBIN_NOTE_BIN_ID = '69d7a45c36566621a894ed23'; 
+const JSONBIN_NOTE_BIN_ID = ''; // ← crea un nuovo bin su jsonbin.io e incolla l'ID qui
 const ACCESSI_MAX        = 500;
 const ADMIN_USERNAME     = 'enri_admin'; // ← cambia con il tuo username admin
 
@@ -5802,7 +5801,7 @@ function _emAggiornaClusters(data) {
 function openCercaPratica() {
   const modal = document.getElementById('cercaPraticaModal');
   modal.style.display = 'flex';
-  document.getElementById('cercaResults').innerHTML = '<div style="text-align:center;color:var(--muted2);font-size:12px;padding:24px 0">Cerca per codice, comune, ente, stato o tratta</div>';
+  document.getElementById('cercaResults').innerHTML = '<div style="text-align:center;color:var(--muted2);font-size:12px;padding:24px 0">Inserisci il codice pratica per cercare</div>';
   document.getElementById('cercaInput').value = '';
   setTimeout(() => document.getElementById('cercaInput').focus(), 80);
   noteLoad(); // pre-carica note in background
@@ -5822,7 +5821,7 @@ function cercaPraticaSearch() {
   const container = document.getElementById('cercaResults');
 
   if (!query) {
-    container.innerHTML = '<div style="text-align:center;color:var(--muted2);font-size:12px;padding:24px 0">Cerca per codice, comune, ente, stato o tratta</div>';
+    container.innerHTML = '<div style="text-align:center;color:var(--muted2);font-size:12px;padding:24px 0">Inserisci il codice pratica per cercare</div>';
     return;
   }
   if (!window._praticheDetailPerLotto) {
@@ -5837,14 +5836,10 @@ function cercaPraticaSearch() {
   });
 
   const risultati = tutti.filter(p => {
-    const inCodice  = (p.codice || '').toUpperCase().includes(query);
-    const inComuni  = (p.comuni || []).some(c => c.toUpperCase().includes(query));
-    const inEnte    = (p.ente || '').toUpperCase().includes(query);
-    const inStato   = (p.stato || '').toUpperCase().includes(query);
-    const inTratta  = window._masterByTratta
-      ? Object.entries(window._masterByTratta).some(([t, prats]) => t.toUpperCase().includes(query) && prats.some(x => x.codice === p.codice))
-      : false;
-    return inCodice || inComuni || inEnte || inStato || inTratta;
+    const inCodice = (p.codice || '').toUpperCase().includes(query);
+    const inComuni = (p.comuni || []).some(c => c.toUpperCase().includes(query));
+    const inEnte   = (p.ente || '').toUpperCase().includes(query);
+    return inCodice || inComuni || inEnte;
   });
 
   if (!risultati.length) {
@@ -5854,6 +5849,7 @@ function cercaPraticaSearch() {
 
   const html = risultati.map(p => buildCercaCard(p, query)).join('');
   container.innerHTML = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted2);margin-bottom:10px">${risultati.length} pratica${risultati.length !== 1 ? 'he' : ''} trovata${risultati.length !== 1 ? '' : ''}</div>` + html;
+  injectNote(); // carica le note salvate nelle textarea appena renderizzate
 }
 
 function buildCercaCard(p, query) {
@@ -6144,7 +6140,7 @@ function renderScadenze() {
       const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
       const diffTxt = p.prev.diff === 0 ? 'Oggi' : p.prev.diff === 1 ? 'Domani' : `${p.prev.diff} gg`;
       const dotCol  = p.prev.status === 'warn' ? '#c9a227' : '#3a8c5c';
-      html += `<div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid var(--border);cursor:pointer;border-radius:4px;transition:background 0.12s" onclick="apriDettaglioScadenza('${p.codice}')" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='transparent'">
+      html += `<div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid var(--border)">
         <div style="width:7px;height:7px;border-radius:50%;background:${dotCol};flex-shrink:0"></div>
         <div style="flex:1;min-width:0">
           <div style="font-family:'Fira Code',monospace;font-size:10px;font-weight:700;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.codice}</div>
@@ -6161,15 +6157,6 @@ function renderScadenze() {
 
   html += `<div style="text-align:center;font-size:9px;color:var(--muted2);padding-top:4px">${scadenti.length} pratica${scadenti.length!==1?'he':''} in scadenza</div>`;
   container.innerHTML = html;
-}
-
-// Apre il dettaglio di una pratica dalla sezione Scadenze
-function apriDettaglioScadenza(codice) {
-  openCercaPratica();
-  setTimeout(() => {
-    const input = document.getElementById('cercaInput');
-    if (input) { input.value = codice; cercaPraticaSearch(); }
-  }, 100);
 }
 
 // Aggiorna scadenze quando i dati vengono caricati
