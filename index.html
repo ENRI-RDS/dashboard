@@ -3451,16 +3451,14 @@ window.storicoToggleView = function(mode) {
       })
     }));
   } else {
-    const STATI_ATTESA = ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'];
     datasets = LOTTI_G.map(g => ({
       _color: g.color,
       label: g.label,
       data: storico.map(s => {
-        const rows = s.data.filter(r=>g.lottos.includes(r.lotto));
-        const tot  = rows.length > 0 ? Math.max(...rows.map(r=>r.totale||0)) : 0;
-        // Avanzamento = tutto ciò che NON è In Attesa / In Redazione
-        const avanz = rows.filter(r=>!STATI_ATTESA.includes(r.stato)).reduce((a,r)=>a+r.metri,0);
-        return tot>0 ? Math.round(avanz/tot*1000)/10 : 0;
+        const rows = s.data.filter(r => g.lottos.includes(r.lotto));
+        const tot  = rows.length > 0 ? Math.max(...rows.map(r => r.totale || 0)) : 0;
+        const ott  = rows.filter(r => r.stato === 'OTTENUTO').reduce((a,r) => a + r.metri, 0);
+        return tot > 0 ? Math.round(ott / tot * 1000) / 10 : 0;
       })
     }));
   }
@@ -3493,7 +3491,12 @@ window.storicoToggleView = function(mode) {
         </span>`
       ).join('');
     } else {
-      legEl.innerHTML = `<span style="font-size:10px;color:#A8A8BC;font-style:italic">% avanzamento = tratte uscite da In Attesa / In Redazione — etichette a destra del grafico</span>`;
+      legEl.innerHTML = LOTTI_G.map(g =>
+        `<span style="display:flex;align-items:center;gap:5px;font-size:10px;color:#7A7A96">
+          <span style="width:8px;height:8px;border-radius:50%;background:${g.color};flex-shrink:0;display:inline-block"></span>
+          ${g.label}
+        </span>`
+      ).join('') + `<span style="font-size:10px;color:#A8A8BC;margin-left:8px;font-style:italic">— % metri Ottenuti sul totale lotto</span>`;
     }
   }
 
@@ -3726,28 +3729,23 @@ function _buildStoricoChart(storico, labels, datasets, yMax, mode) {
               const tot = Math.max(...rows.map(r => r.totale || 0));
               if (!tot) return '';
 
-              const dettaglio = STATI_DETTAGLIO.map(g => {
-                const m = rows.filter(r => g.stati.includes(r.stato)).reduce((a,r) => a+r.metri, 0);
-                const pct = tot > 0 ? (m/tot*100) : 0;
-                if (pct < 0.05) return '';
-                return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:1px 0">
-                  <span style="display:flex;align-items:center;gap:5px;color:#7A7A96;font-size:10px">
-                    <span style="width:6px;height:6px;border-radius:50%;background:${g.color};display:inline-block;flex-shrink:0"></span>
-                    ${g.label}
-                  </span>
-                  <span style="font-family:'Bricolage Grotesque',sans-serif;font-size:11px;color:${g.color};font-weight:700">${pct.toFixed(1)}%</span>
-                </div>`;
-              }).filter(Boolean).join('');
-
-              const avanz = rows.filter(r => !STATI_ATTESA_SET.has(r.stato)).reduce((a,r) => a+r.metri, 0);
-              const avanzPct = tot > 0 ? (avanz/tot*100).toFixed(1) : '0.0';
+              const ott    = rows.filter(r => r.stato === 'OTTENUTO').reduce((a,r) => a+r.metri, 0);
+              const ottPct = tot > 0 ? (ott/tot*100).toFixed(1) : '0.0';
+              const ottM   = (ott/1000).toFixed(1);
+              const totM   = (tot/1000).toFixed(1);
 
               return `<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #E0DDD4">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
                   <span style="font-size:11px;font-weight:700;color:${LOTTI_COLORS[lotto]}">Lotto ${lotto}</span>
-                  <span style="font-size:11px;font-family:'Bricolage Grotesque',sans-serif;font-weight:600;color:${LOTTI_COLORS[lotto]}">${avanzPct}% avanz.</span>
+                  <span style="font-size:13px;font-family:'Bricolage Grotesque',sans-serif;font-weight:700;color:#3a8c5c">${ottPct}%</span>
                 </div>
-                ${dettaglio || '<span style="font-size:10px;color:#A8A8BC;font-style:italic">tutto in attesa/redazione</span>'}
+                <div style="display:flex;align-items:center;justify-content:space-between">
+                  <span style="font-size:10px;color:#7A7A96">Ottenuto</span>
+                  <span style="font-size:10px;font-family:'Fira Code',monospace;color:#3a8c5c">${ottM} / ${totM} km</span>
+                </div>
+                <div style="margin-top:5px;height:4px;border-radius:2px;background:#E0DDD4;overflow:hidden">
+                  <div style="height:100%;border-radius:2px;background:#3a8c5c;width:${Math.min(100,parseFloat(ottPct))}%"></div>
+                </div>
               </div>`;
             }).filter(Boolean).join('');
 
