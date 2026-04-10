@@ -2974,8 +2974,7 @@ function renderDashboard(data) {
         <div style="width:90px;flex-shrink:0;font-size:9px;color:var(--text);text-align:right;padding-right:8px;font-weight:700">Totale attivi ↗</div>
         <div class="bar-track" style="height:14px;flex:1;border-radius:4px">${segsAttiviHtml}</div>
         <span class="bar-pct">${ottAttiviPct}</span>
-        <span style="min-width:62px;text-align:right;font-size:12px;color:var(--text);font-family:'Bricolage Grotesque',sans-serif;flex-shrink:0;font-weight:700;letter-spacing:-0.01em">${fmt(totAttivi)} m</span>
-        <div class="bar-ms-wrap" style="visibility:hidden"></div>`;
+        <span style="min-width:62px;text-align:right;font-size:12px;color:var(--text);font-family:'Bricolage Grotesque',sans-serif;flex-shrink:0;font-weight:700;letter-spacing:-0.01em">${fmt(totAttivi)} m</span>`;
       totAttiviRow.addEventListener('click', () => openModalGruppo('⚡ Riepilogo Lotti Attivi', lottiAttivi, lottiMap, lottiTotale));
       wrap.appendChild(totAttiviRow);
 
@@ -6254,15 +6253,17 @@ _hookScadenze();
 (function() {
   const IMPRESE = {'1A':'Valtellina','1B':'Soleto','2A':'Sielte','2B':'Telebit'};
   const COLS = [
-    {k:'codice',   l:'Codice',      w:'140px', mono:true, accent:true},
-    {k:'lotto',    l:'Lotto',       w:'65px'},
-    {k:'impresa',  l:'Impresa',     w:'100px', orange:true},
-    {k:'stato',    l:'Stato',       w:'190px'},
-    {k:'ente',     l:'Ente',        w:'auto', muted:true},
-    {k:'invio',    l:'Data Invio',  w:'95px',  mono:true, muted:true},
-    {k:'agg',      l:'Data Agg.',   w:'95px',  mono:true, muted:true},
-    {k:'metri',    l:'Metri (m)',   w:'95px',  right:true},
-    {k:'scad',     l:'Scadenza',    w:'110px'},
+    {k:'codice',   l:'Codice',         w:'130px', mono:true, accent:true},
+    {k:'lotto',    l:'Lotto',          w:'60px'},
+    {k:'impresa',  l:'Impresa',        w:'95px',  orange:true},
+    {k:'tipo',     l:'Tipo',           w:'80px'},
+    {k:'stato',    l:'Stato',          w:'180px'},
+    {k:'ente',     l:'Ente',           w:'auto',  muted:true},
+    {k:'invio',    l:'Data Invio',     w:'90px',  mono:true, muted:true},
+    {k:'agg',      l:'Data Agg.',      w:'90px',  mono:true, muted:true},
+    {k:'scad',     l:'Scadenza',       w:'100px'},
+    {k:'prev',     l:'Prev. Rilascio', w:'110px', mono:true},
+    {k:'metri',    l:'Metri (m)',      w:'90px',  right:true},
   ];
 
   const PAGE_SIZE = 100;
@@ -6371,6 +6372,7 @@ _hookScadenze();
       if (_sortK==='invio'||_sortK==='agg') { va=parseDateIT(va)||new Date(0); vb=parseDateIT(vb)||new Date(0); }
       if (_sortK==='metri')  { va=+va||0; vb=+vb||0; }
       if (_sortK==='scad')   { va=a.scad_gg??9999; vb=b.scad_gg??9999; }
+      if (_sortK==='prev')   { va=a.prev?a.prev.diff:9999; vb=b.prev?b.prev.diff:9999; }
       if (va<vb) return -_sortD; if (va>vb) return _sortD; return 0;
     });
 
@@ -6395,16 +6397,24 @@ _hookScadenze();
     tbody.innerHTML = rows.map(r => {
       const col = SC[r.stato]||'#6b7080';
       const lottoChip = r.lotto ? `<span style="font-family:'Fira Code',monospace;font-size:10px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 7px;color:var(--text2)">${r.lotto}</span>` : '—';
+      const tipoShort = r.tipo === 'AUTORIZZAZIONE' ? 'AUT' : r.tipo === 'NULLA OSTA' ? 'NO' : r.tipo === 'ORDINANZA' ? 'ORD' : (r.tipo||'').substring(0,4);
+      const tipoColor = r.tipo === 'AUTORIZZAZIONE' ? '#0B3182' : r.tipo === 'NULLA OSTA' ? '#7A3DAA' : r.tipo === 'ORDINANZA' ? '#C23B22' : '#6b7080';
+      const prevHtml = r.prev ? (() => {
+        const bg = r.prev.status==='ok' ? '#1F7A4E' : r.prev.status==='warn' ? '#c9a227' : '#cc3333';
+        return `<span style="font-size:9px;font-family:'Fira Code',monospace;font-weight:600;padding:2px 7px;border-radius:4px;background:${bg}18;color:${bg};border:1px solid ${bg}44;white-space:nowrap">${r.prev.label}</span>`;
+      })() : '<span style="color:var(--muted2);font-size:11px">—</span>';
       return `<tr style="border-bottom:1px solid var(--border);transition:background .1s" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'\'">
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="font-family:\'Fira Code\',monospace;font-size:11px;font-weight:600;color:var(--accent)">${r.codice}</span></td>
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${lottoChip}</td>
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:600;color:var(--accent2)">${r.impresa||'—'}</td>
+        <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;background:${tipoColor}18;color:${tipoColor};border:1px solid ${tipoColor}44;white-space:nowrap">${tipoShort||'—'}</span></td>
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;background:${col}18;color:${col};border:1px solid ${col}44;white-space:nowrap">${r.stato}</span></td>
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted)" title="${r.ente||''}">${r.ente||'—'}</td>
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:\'Fira Code\',monospace;font-size:10px;color:var(--muted)">${r.invio?fmtDateIT(r.invio):'—'}</td>
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:\'Fira Code\',monospace;font-size:10px;color:var(--muted)">${r.agg?fmtDateIT(r.agg):'—'}</td>
-        <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;font-family:\'Bricolage Grotesque\',sans-serif;font-size:12px;font-weight:700;color:var(--text);letter-spacing:-.01em">${fmt(r.metri)}</td>
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${scadHtml(r.scad_gg)}</td>
+        <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${prevHtml}</td>
+        <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;font-family:\'Bricolage Grotesque\',sans-serif;font-size:12px;font-weight:700;color:var(--text);letter-spacing:-.01em">${fmt(r.metri)}</td>
       </tr>`;
     }).join('');
 
