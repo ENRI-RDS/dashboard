@@ -2963,7 +2963,8 @@ function renderDashboard(data) {
     if (lotto === ORDER_FUTURI[0] && lottiAttivi.length > 0) {
       // Totale attivi
       const totAttiviRow = document.createElement('div');
-      totAttiviRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin:4px 0 2px;padding:3px 0;border-top:1px solid var(--border);cursor:pointer';
+      totAttiviRow.className = 'bar-row';
+      totAttiviRow.style.cssText = 'margin:4px 0 2px;padding:3px 4px;border-top:1px solid var(--border);cursor:pointer;opacity:0.85';
       totAttiviRow.title = 'Clicca per dettaglio';
       const gruppiAttivi = {};
       lottiAttivi.forEach(l => Object.entries(lottiMap[l]).forEach(([s,m]) => { gruppiAttivi[s] = (gruppiAttivi[s]||0)+m; }));
@@ -2971,8 +2972,8 @@ function renderDashboard(data) {
       const ottAttiviMetri = lottiAttivi.reduce((s,l) => s + (lottiMap[l]['OTTENUTO']||0), 0);
       const ottAttiviPct = totAttivi > 0 ? (ottAttiviMetri / totAttivi * 100).toFixed(0) + '%' : '';
       totAttiviRow.innerHTML = `
-        <div style="width:90px;flex-shrink:0;font-size:9px;color:var(--text);text-align:right;padding-right:8px;font-weight:700">Totale attivi ↗</div>
-        <div class="bar-track" style="height:14px;flex:1;border-radius:4px">${segsAttiviHtml}</div>
+        <div class="bar-lotto-wrap" style="width:90px;flex-shrink:0"><span class="bar-lotto-num" style="font-size:9px;color:var(--muted)">Totale attivi ↗</span></div>
+        <div class="bar-track">${segsAttiviHtml}</div>
         <span class="bar-pct">${ottAttiviPct}</span>
         <span style="min-width:62px;text-align:right;font-size:12px;color:var(--text);font-family:'Bricolage Grotesque',sans-serif;flex-shrink:0;font-weight:700;letter-spacing:-0.01em">${fmt(totAttivi)} m</span>`;
       totAttiviRow.addEventListener('click', () => openModalGruppo('⚡ Riepilogo Lotti Attivi', lottiAttivi, lottiMap, lottiTotale));
@@ -3027,7 +3028,8 @@ function renderDashboard(data) {
   // Totale lotti in avvio
   if (lottiFuturi.length > 0) {
     const totFuturiRow = document.createElement('div');
-    totFuturiRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin:4px 0 2px;padding:3px 0;border-top:1px solid var(--border);cursor:pointer';
+    totFuturiRow.className = 'bar-row';
+    totFuturiRow.style.cssText = 'margin:4px 0 2px;padding:3px 4px;border-top:1px solid var(--border);cursor:pointer;opacity:0.85';
     totFuturiRow.title = 'Clicca per dettaglio';
     const gruppiFuturi = {};
     lottiFuturi.forEach(l => Object.entries(lottiMap[l]).forEach(([s,m]) => { gruppiFuturi[s] = (gruppiFuturi[s]||0)+m; }));
@@ -3035,8 +3037,8 @@ function renderDashboard(data) {
     const ottFuturiMetri = lottiFuturi.reduce((s,l) => s + (lottiMap[l]['OTTENUTO']||0), 0);
     const ottFuturiPct = totFuturi > 0 ? (ottFuturiMetri / totFuturi * 100).toFixed(0) + '%' : '';
     totFuturiRow.innerHTML = `
-      <div style="width:90px;flex-shrink:0;font-size:9px;color:var(--text);text-align:right;padding-right:8px;font-weight:700">Totale avvio ↗</div>
-      <div class="bar-track" style="height:14px;flex:1;border-radius:4px">${segsFuturiHtml}</div>
+      <div class="bar-lotto-wrap" style="width:90px;flex-shrink:0"><span class="bar-lotto-num" style="font-size:9px;color:var(--muted)">Totale avvio ↗</span></div>
+      <div class="bar-track">${segsFuturiHtml}</div>
       <span class="bar-pct">${ottFuturiPct}</span>
       <span style="min-width:62px;text-align:right;font-size:12px;color:var(--text);font-family:'Bricolage Grotesque',sans-serif;flex-shrink:0;font-weight:700;letter-spacing:-0.01em">${fmt(totFuturi)} m</span>
       <div class="bar-ms-wrap" style="visibility:hidden"></div>`;
@@ -6261,6 +6263,7 @@ _hookScadenze();
     {k:'ente',     l:'Ente',           w:'auto',  muted:true},
     {k:'invio',    l:'Data Invio',     w:'90px',  mono:true, muted:true},
     {k:'agg',      l:'Data Agg.',      w:'90px',  mono:true, muted:true},
+    {k:'data_ott', l:'Data Ott.',      w:'90px',  mono:true},
     {k:'scad',     l:'Scadenza',       w:'100px'},
     {k:'prev',     l:'Prev. Rilascio', w:'110px', mono:true},
     {k:'metri',    l:'Metri (m)',      w:'90px',  right:true},
@@ -6275,7 +6278,9 @@ _hookScadenze();
   // ── Costruisci thead ──────────────────────────────────────────────────────
   function buildThead() {
     const tr = document.getElementById('tabellaThead');
-    if (!tr || tr.children.length) return;
+    if (!tr) return;
+    if (tr.children.length !== COLS.length) tr.innerHTML = ''; // rebuild se colonne cambiate
+    if (tr.children.length) return;
     COLS.forEach(col => {
       const th = document.createElement('th');
       th.style.cssText = `width:${col.w};padding:8px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);text-align:${col.right?'right':'left'};cursor:pointer;user-select:none;border-bottom:1px solid var(--border);white-space:nowrap;background:var(--surface2)`;
@@ -6321,6 +6326,7 @@ _hookScadenze();
           invio: invioStr,
           agg:   aggStr,
           comuni: p.comuni || [],
+          data_ott: p.stato === 'OTTENUTO' ? (p.dum || '') : '',
           prev,
           scad_gg: prev ? prev.diff : null,
         });
@@ -6369,7 +6375,7 @@ _hookScadenze();
     rows.sort((a,b) => {
       let va=a[_sortK], vb=b[_sortK];
       if (_sortK==='comuni') { va=(va||[]).join(','); vb=(vb||[]).join(','); }
-      if (_sortK==='invio'||_sortK==='agg') { va=parseDateIT(va)||new Date(0); vb=parseDateIT(vb)||new Date(0); }
+      if (_sortK==='invio'||_sortK==='agg'||_sortK==='data_ott') { va=parseDateIT(va)||new Date(0); vb=parseDateIT(vb)||new Date(0); }
       if (_sortK==='metri')  { va=+va||0; vb=+vb||0; }
       if (_sortK==='scad')   { va=a.scad_gg??9999; vb=b.scad_gg??9999; }
       if (_sortK==='prev')   { va=a.prev?a.prev.diff:9999; vb=b.prev?b.prev.diff:9999; }
@@ -6412,6 +6418,7 @@ _hookScadenze();
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted)" title="${r.ente||''}">${r.ente||'—'}</td>
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:\'Fira Code\',monospace;font-size:10px;color:var(--muted)">${r.invio?fmtDateIT(r.invio):'—'}</td>
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:\'Fira Code\',monospace;font-size:10px;color:var(--muted)">${r.agg?fmtDateIT(r.agg):'—'}</td>
+        <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:\'Fira Code\',monospace;font-size:10px;color:var(--ottenuto);font-weight:600">${r.data_ott?fmtDateIT(r.data_ott):'—'}</td>
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${scadHtml(r.scad_gg)}</td>
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${prevHtml}</td>
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;font-family:\'Bricolage Grotesque\',sans-serif;font-size:12px;font-weight:700;color:var(--text);letter-spacing:-.01em">${fmt(r.metri)}</td>
