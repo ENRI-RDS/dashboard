@@ -672,7 +672,7 @@
       </div>
     </div>
     <button class="btn" style="font-size:12px;padding:8px 16px;background:#5a3a8c" onclick="apriStorico()">📈 Storico</button>
-    <button class="btn" style="font-size:12px;padding:8px 16px;background:#1e6b1e;color:#c8f0c8;border:1px solid #2e8c2e" onclick="exportTuttiXlsx()" title="Esporta tutte le pratiche con tutti i dati">📊 Excel Pratiche</button>
+
     <button class="help-btn" onclick="openHelp()" title="Guida alla Dashboard">?</button>
   </div>
 </div>
@@ -900,6 +900,14 @@
     <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <span class="card-title">Tutte le Pratiche</span>
       <span id="tabellaSub" style="font-size:11px;color:var(--muted)"></span>
+      <!-- Excel dropdown -->
+      <div class="pdf-dropdown" id="xlsDropdown" style="margin-left:auto">
+        <button class="btn" style="font-size:11px;padding:6px 13px;background:#1e6b1e;color:#c8f0c8;border:1px solid #2e8c2e" onclick="toggleXlsDropdown(event)">📊 Scarica Excel ▾</button>
+        <div class="pdf-dropdown-menu">
+          <button onclick="exportTuttiXlsx();closeXlsDropdown()">📋 Tutte le pratiche</button>
+          <button onclick="exportVistaCorrente();closeXlsDropdown()">🔍 Vista corrente</button>
+        </div>
+      </div>
     </div>
 
     <!-- TOOLBAR FILTRI -->
@@ -1031,6 +1039,52 @@ function exportXlsx(pratiche, filename) {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Pratiche');
   XLSX.writeFile(wb, filename + '.xlsx');
+}
+
+function toggleXlsDropdown(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('xlsDropdown');
+  dd.classList.toggle('open');
+  // chiudi pdf dropdown se aperto
+  document.getElementById('pdfDropdown')?.classList.remove('open');
+}
+function closeXlsDropdown() {
+  document.getElementById('xlsDropdown')?.classList.remove('open');
+}
+document.addEventListener('click', function(e) {
+  if (!document.getElementById('xlsDropdown')?.contains(e.target)) closeXlsDropdown();
+});
+
+function exportVistaCorrente() {
+  // Raccoglie le righe attualmente visibili nel tbody della tabella
+  const tbody = document.getElementById('tabellaTbody');
+  if (!tbody || !tbody.rows.length) { alert('Nessuna pratica visibile da esportare.'); return; }
+
+  // Ricostruisce le pratiche filtrate/ordinate leggendo dalla stessa logica di renderTabella
+  const all = window.getAllPrats ? window.getAllPrats() : [];
+  if (!all.length) { alert('Nessun dato disponibile.'); return; }
+
+  const q        = (document.getElementById('tblQ')?.value||'').toLowerCase();
+  const fStato   = document.getElementById('tblStato')?.value||'';
+  const fLotto   = document.getElementById('tblLotto')?.value||'';
+  const fImpresa = document.getElementById('tblImpresa')?.value||'';
+  const scadW    = window._tblScadW !== undefined ? window._tblScadW : 0;
+
+  let rows = all.filter(r => {
+    if (fStato   && r.stato   !== fStato)   return false;
+    if (fLotto   && r.lotto   !== fLotto)   return false;
+    if (fImpresa && r.impresa !== fImpresa) return false;
+    if (scadW > 0 && (r.scad_gg===null || r.scad_gg<0 || r.scad_gg>scadW)) return false;
+    if (q) {
+      const hay = [r.codice,r.stato,r.ente,...(r.comuni||[]),r.impresa].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  if (!rows.length) { alert('Nessuna pratica corrisponde ai filtri attivi.'); return; }
+  const today = new Date().toISOString().split('T')[0];
+  exportXlsx(rows, 'ENRI_Vista_' + today);
 }
 
 function exportTuttiXlsx() {
@@ -6309,7 +6363,7 @@ _hookScadenze();
   }
 
   // ── Raccoglie tutte le pratiche ───────────────────────────────────────────
-  function getAllPrats() {
+  window.getAllPrats = function getAllPrats() {
     if (!window._praticheDetailPerLotto) return [];
     const out = [];
     Object.entries(window._praticheDetailPerLotto).forEach(([lotto, prats]) => {
@@ -6344,7 +6398,7 @@ _hookScadenze();
   // ── Render ────────────────────────────────────────────────────────────────
   window.renderTabella = function() {
     buildThead();
-    const all = getAllPrats();
+    const all = window.getAllPrats();
     if (!all.length) return;
     if (!_inited) { buildFilters(all); _inited = true; }
 
@@ -6449,7 +6503,7 @@ _hookScadenze();
   window._tblPage = function(n) { _page = n; renderTabella(); };
 
   window.tblSetScad = function(n) {
-    _scadW = n;
+    _scadW = n; window._tblScadW = n;
     [['tblBtnAll',0],['tblBtn7',7],['tblBtn14',14]].forEach(([id,v]) => {
       const btn = document.getElementById(id);
       if (!btn) return;
