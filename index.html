@@ -895,7 +895,7 @@
 <!-- ══════════════════════════════════════════════════════════════════════════
      TABELLA TUTTE LE PRATICHE
 ══════════════════════════════════════════════════════════════════════════════ -->
-<div id="tabellaSection" style="max-width:1400px;margin:18px auto 32px;padding:0 16px">
+<div id="tabellaSection" style="margin:18px 28px 32px;padding:0">
   <div class="card">
     <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <span class="card-title">Tutte le Pratiche</span>
@@ -950,7 +950,7 @@
 
     <!-- TABELLA -->
     <div style="overflow-x:auto">
-      <table id="tabellaMain" style="width:100%;border-collapse:collapse;table-layout:fixed;min-width:900px">
+      <table id="tabellaMain" style="width:100%;border-collapse:collapse;table-layout:fixed">
         <thead>
           <tr id="tabellaThead" style="background:var(--surface2)"></tr>
         </thead>
@@ -2974,7 +2974,8 @@ function renderDashboard(data) {
         <div style="width:90px;flex-shrink:0;font-size:9px;color:var(--text);text-align:right;padding-right:8px;font-weight:700">Totale attivi ↗</div>
         <div class="bar-track" style="height:14px;flex:1;border-radius:4px">${segsAttiviHtml}</div>
         <span class="bar-pct">${ottAttiviPct}</span>
-        <span style="min-width:62px;text-align:right;font-size:12px;color:var(--text);font-family:'Bricolage Grotesque',sans-serif;flex-shrink:0;font-weight:700;letter-spacing:-0.01em">${fmt(totAttivi)} m</span>`;
+        <span style="min-width:62px;text-align:right;font-size:12px;color:var(--text);font-family:'Bricolage Grotesque',sans-serif;flex-shrink:0;font-weight:700;letter-spacing:-0.01em">${fmt(totAttivi)} m</span>
+        <div class="bar-ms-wrap" style="visibility:hidden"></div>`;
       totAttiviRow.addEventListener('click', () => openModalGruppo('⚡ Riepilogo Lotti Attivi', lottiAttivi, lottiMap, lottiTotale));
       wrap.appendChild(totAttiviRow);
 
@@ -3038,7 +3039,8 @@ function renderDashboard(data) {
       <div style="width:90px;flex-shrink:0;font-size:9px;color:var(--text);text-align:right;padding-right:8px;font-weight:700">Totale avvio ↗</div>
       <div class="bar-track" style="height:14px;flex:1;border-radius:4px">${segsFuturiHtml}</div>
       <span class="bar-pct">${ottFuturiPct}</span>
-      <span style="min-width:62px;text-align:right;font-size:12px;color:var(--text);font-family:'Bricolage Grotesque',sans-serif;flex-shrink:0;font-weight:700;letter-spacing:-0.01em">${fmt(totFuturi)} m</span>`;
+      <span style="min-width:62px;text-align:right;font-size:12px;color:var(--text);font-family:'Bricolage Grotesque',sans-serif;flex-shrink:0;font-weight:700;letter-spacing:-0.01em">${fmt(totFuturi)} m</span>
+      <div class="bar-ms-wrap" style="visibility:hidden"></div>`;
     totFuturiRow.addEventListener('click', () => openModalGruppo('🔜 Riepilogo Lotti in Avvio', lottiFuturi, lottiMap, lottiTotale));
     wrap.appendChild(totFuturiRow);
   }
@@ -6252,17 +6254,19 @@ _hookScadenze();
 (function() {
   const IMPRESE = {'1A':'Valtellina','1B':'Soleto','2A':'Sielte','2B':'Telebit'};
   const COLS = [
-    {k:'codice',   l:'Codice',      w:'130px', mono:true, accent:true},
-    {k:'lotto',    l:'Lotto',       w:'60px'},
-    {k:'impresa',  l:'Impresa',     w:'90px',  orange:true},
-    {k:'stato',    l:'Stato',       w:'175px'},
-    {k:'ente',     l:'Ente',        w:'175px', muted:true},
-    {k:'comuni',   l:'Comuni',      w:'130px', muted:true},
-    {k:'invio',    l:'Data Invio',  w:'90px',  mono:true, muted:true},
-    {k:'agg',      l:'Data Agg.',   w:'90px',  mono:true, muted:true},
-    {k:'metri',    l:'Metri (m)',   w:'90px',  right:true},
-    {k:'scad',     l:'Scadenza',    w:'100px'},
+    {k:'codice',   l:'Codice',      w:'140px', mono:true, accent:true},
+    {k:'lotto',    l:'Lotto',       w:'65px'},
+    {k:'impresa',  l:'Impresa',     w:'100px', orange:true},
+    {k:'stato',    l:'Stato',       w:'190px'},
+    {k:'ente',     l:'Ente',        w:'auto', muted:true},
+    {k:'invio',    l:'Data Invio',  w:'95px',  mono:true, muted:true},
+    {k:'agg',      l:'Data Agg.',   w:'95px',  mono:true, muted:true},
+    {k:'metri',    l:'Metri (m)',   w:'95px',  right:true},
+    {k:'scad',     l:'Scadenza',    w:'110px'},
   ];
+
+  const PAGE_SIZE = 100;
+  let _page = 0;
 
   let _sortK = 'codice', _sortD = 1, _scadW = 0;
   let _inited = false;
@@ -6275,14 +6279,19 @@ _hookScadenze();
       const th = document.createElement('th');
       th.style.cssText = `width:${col.w};padding:8px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);text-align:${col.right?'right':'left'};cursor:pointer;user-select:none;border-bottom:1px solid var(--border);white-space:nowrap;background:var(--surface2)`;
       th.innerHTML = col.l + `<span style="margin-left:3px;font-size:9px;opacity:.35" class="sarr-${col.k}">↕</span>`;
-      th.onclick = () => { _sortD = _sortK===col.k ? -_sortD : 1; _sortK=col.k; renderTabella(); };
+      th.onclick = () => { _sortD = _sortK===col.k ? -_sortD : 1; _sortK=col.k; _page=0; renderTabella(); };
       tr.appendChild(th);
     });
   }
 
   // ── Popola select filtri ──────────────────────────────────────────────────
   function buildFilters(rows) {
-    const stati   = [...new Set(rows.map(r=>r.stato))].sort();
+    const STATI_ORDER = ['IN FIRMA RDS','INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'];
+    const allStati = [...new Set(rows.map(r=>r.stato))];
+    const stati = [
+      ...STATI_ORDER.filter(s => allStati.includes(s)),
+      ...allStati.filter(s => !STATI_ORDER.includes(s)).sort()
+    ];
     const lotti   = [...new Set(rows.map(r=>r.lotto).filter(Boolean))].sort();
     const imprese = [...new Set(rows.map(r=>r.impresa).filter(Boolean))].sort();
     function fillSel(id, vals) {
@@ -6339,6 +6348,10 @@ _hookScadenze();
     const fLotto  = document.getElementById('tblLotto')?.value||'';
     const fImpresa= document.getElementById('tblImpresa')?.value||'';
 
+    // reset pagina se i filtri sono cambiati
+    const filterKey = q + '|' + fStato + '|' + fLotto + '|' + fImpresa + '|' + _scadW;
+    if (filterKey !== window._tblLastFilter) { _page = 0; window._tblLastFilter = filterKey; }
+
     let rows = all.filter(r => {
       if (fStato   && r.stato   !== fStato)   return false;
       if (fLotto   && r.lotto   !== fLotto)   return false;
@@ -6369,17 +6382,25 @@ _hookScadenze();
 
     const tbody = document.getElementById('tabellaTbody');
     const SC = STATI_COLORI_MAP || {};
+
+    // paginazione: se nessun filtro attivo, limita a PAGE_SIZE righe per pagina
+    const hasFilter = q || fStato || fLotto || fImpresa || _scadW > 0;
+    const totalRows = rows.length;
+    if (!hasFilter) {
+      // resetta pagina se ordine/filtri cambiano
+      if (_page * PAGE_SIZE >= totalRows) _page = 0;
+      rows = rows.slice(_page * PAGE_SIZE, (_page + 1) * PAGE_SIZE);
+    }
+
     tbody.innerHTML = rows.map(r => {
       const col = SC[r.stato]||'#6b7080';
       const lottoChip = r.lotto ? `<span style="font-family:'Fira Code',monospace;font-size:10px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 7px;color:var(--text2)">${r.lotto}</span>` : '—';
-      const comuniTxt = (r.comuni&&r.comuni.length) ? r.comuni.join(', ') : '—';
       return `<tr style="border-bottom:1px solid var(--border);transition:background .1s" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'\'">
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="font-family:\'Fira Code\',monospace;font-size:11px;font-weight:600;color:var(--accent)">${r.codice}</span></td>
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${lottoChip}</td>
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:600;color:var(--accent2)">${r.impresa||'—'}</td>
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;background:${col}18;color:${col};border:1px solid ${col}44;white-space:nowrap">${r.stato}</span></td>
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted)" title="${r.ente||''}">${r.ente||'—'}</td>
-        <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--muted)" title="${comuniTxt}">${comuniTxt}</td>
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:\'Fira Code\',monospace;font-size:10px;color:var(--muted)">${r.invio?fmtDateIT(r.invio):'—'}</td>
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:\'Fira Code\',monospace;font-size:10px;color:var(--muted)">${r.agg?fmtDateIT(r.agg):'—'}</td>
         <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;font-family:\'Bricolage Grotesque\',sans-serif;font-size:12px;font-weight:700;color:var(--text);letter-spacing:-.01em">${fmt(r.metri)}</td>
@@ -6387,13 +6408,30 @@ _hookScadenze();
       </tr>`;
     }).join('');
 
-    // footer
+    // footer con paginazione
     const tot = rows.reduce((s,r)=>s+(+r.metri||0),0);
     const wLabel = _scadW===0?'tutte le pratiche':`scadenza entro ${_scadW} gg`;
-    document.getElementById('tabellaSub').textContent   = `${rows.length} risultati — ${wLabel}`;
-    document.getElementById('tabellaFootL').innerHTML   = `<b style="color:var(--text)">${rows.length}</b> pratica${rows.length!==1?'he':''}`;
-    document.getElementById('tabellaFootR').innerHTML   = `Totale <b style="color:var(--text)">${fmt(tot)} m</b>`;
+    if (!hasFilter) {
+      const totalPages = Math.ceil(totalRows / PAGE_SIZE);
+      const from = _page * PAGE_SIZE + 1;
+      const to   = Math.min((_page + 1) * PAGE_SIZE, totalRows);
+      document.getElementById('tabellaSub').textContent = `${totalRows} pratiche totali — mostrate ${from}–${to}`;
+      const prevBtn = _page > 0
+        ? `<button onclick="window._tblPage(${_page-1})" style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:5px;border:1px solid var(--border2);background:var(--surface);color:var(--text);cursor:pointer;font-family:inherit">← Prec.</button>`
+        : `<button disabled style="font-size:10px;padding:3px 10px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-family:inherit">← Prec.</button>`;
+      const nextBtn = _page < totalPages - 1
+        ? `<button onclick="window._tblPage(${_page+1})" style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:5px;border:1px solid var(--border2);background:var(--surface);color:var(--text);cursor:pointer;font-family:inherit">Succ. →</button>`
+        : `<button disabled style="font-size:10px;padding:3px 10px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-family:inherit">Succ. →</button>`;
+      document.getElementById('tabellaFootL').innerHTML = `<b style="color:var(--text)">${from}–${to}</b> di <b style="color:var(--text)">${totalRows}</b> pratiche &nbsp; ${prevBtn} &nbsp; <span style="font-size:10px;color:var(--muted)">pag. ${_page+1}/${totalPages}</span> &nbsp; ${nextBtn}`;
+      document.getElementById('tabellaFootR').innerHTML = `Subtotale <b style="color:var(--text)">${fmt(tot)} m</b>`;
+    } else {
+      document.getElementById('tabellaSub').textContent = `${totalRows} risultati — ${wLabel}`;
+      document.getElementById('tabellaFootL').innerHTML = `<b style="color:var(--text)">${totalRows}</b> pratica${totalRows!==1?'he':''}`;
+      document.getElementById('tabellaFootR').innerHTML = `Totale <b style="color:var(--text)">${fmt(tot)} m</b>`;
+    }
   };
+
+  window._tblPage = function(n) { _page = n; renderTabella(); };
 
   window.tblSetScad = function(n) {
     _scadW = n;
