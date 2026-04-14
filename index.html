@@ -672,7 +672,7 @@
       </div>
     </div>
     <button class="btn" style="font-size:12px;padding:8px 16px;background:#5a3a8c" onclick="apriStorico()">📈 Storico</button>
-    <button class="btn" style="font-size:12px;padding:8px 16px;background:#2563b0" onclick="apriParamPrev()">⚙️ Previsioni</button>
+    
 
     <button class="help-btn" onclick="openHelp()" title="Guida alla Dashboard">?</button>
   </div>
@@ -4223,12 +4223,13 @@ async function loadMaster() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── MODAL PARAMETRI PREVISIONI ────────────────────────────────────────────────
-const PREV_PARAMS_DEFAULT = { comuneMilano:60, comune:45, provincia:60, anas:90, altri:180, warnDays:7 };
+const PREV_PARAMS_DEFAULT = { comuneMilano:60, comune:45, provincia:60, anas:90, aipo:90, altri:180, warnDays:7 };
 const PREV_PARAMS_LABELS  = [
   { key:'comuneMilano',label:'Comune di Milano',     desc:'' },
   { key:'comune',   label:'Comune',              desc:'tutti gli altri comuni oltre a Milano' },
   { key:'provincia',label:'Provincie', desc:'es. Provincia di Milano' },
   { key:'anas',     label:'ANAS',                desc:'Strade statali' },
+  { key:'aipo',     label:'AIPO',                desc:'Agenzia Interregionale per il fiume Po' },
   { key:'altri',    label:'Altri enti',          desc:'Ferrovie, RFI, ecc.' },
   { key:'warnDays', label:'Soglia "In scadenza"',desc:'Giorni prima della scadenza con avviso arancione' },
 ];
@@ -4522,7 +4523,7 @@ function closeModalKpi(e) {
 
 // ── PREVISIONE RILASCIO ───────────────────────────────────────────────────────
 function giorniPerEnte(ente) {
-  const p = window.PREV_PARAMS || { comuneMilano:60, comune:45, provincia:60, anas:90, altri:180 };
+  const p = window.PREV_PARAMS || { comuneMilano:60, comune:45, provincia:60, anas:90, aipo:90, altri:180 };
   if (!ente) return p.altri;
   const u = ente.toUpperCase();
   if (u.includes('COMUNE') || u.includes('MUNICIPALITY')) {
@@ -4534,6 +4535,7 @@ function giorniPerEnte(ente) {
   }
   if (u.includes('PROVINCIA') || u.includes('PROVINCE')) return p.provincia;
   if (u.includes('ANAS')) return p.anas;
+  if (u.includes('AIPO')) return p.aipo ?? 90;
   return p.altri;
 }
 
@@ -4558,7 +4560,7 @@ function calcolaPrevisione(p) {
 
 // Parametri previsione (modificabili dall'utente)
 window.PREV_PARAMS = JSON.parse(localStorage.getItem('ENRI_PREV_PARAMS') || 'null') || {
-  comuneMilano: 60, comune: 45, provincia: 60, anas: 90, altri: 180, warnDays: 7
+  comuneMilano: 60, comune: 45, provincia: 60, anas: 90, aipo: 90, altri: 180, warnDays: 7
 };
 
 function prevBadgeHtml(p) {
@@ -5188,6 +5190,18 @@ function _adminClearUser() {
     padding:4px 10px;border-radius:5px;
     transition:opacity 0.2s,color 0.2s;">···</button>
 
+<!-- Tasto Previsioni nascosto in basso a sinistra -->
+<button
+  id="btnPrevParam"
+  onclick="apriParamPrev()"
+  title="Parametri Previsioni"
+  style="position:fixed;bottom:14px;left:14px;z-index:300;
+         background:none;border:none;cursor:pointer;
+         font-size:11px;color:var(--muted2);opacity:0.28;
+         font-family:'Fira Code',monospace;letter-spacing:0.06em;
+         padding:4px 8px;border-radius:5px;
+         transition:opacity 0.2s,color 0.2s;">⚙ prev</button>
+
 <script>
 // Mostra i tre punti admin solo se l'utente è admin
 (function() {
@@ -5204,6 +5218,7 @@ function _adminClearUser() {
 <style>
   #btnEditManuale:hover { opacity:0.9 !important; color:var(--accent) !important; background:var(--surface2) !important; }
   #btnAdminDots:hover { opacity:0.9 !important; color:var(--accent) !important; background:var(--surface2) !important; }
+  #btnPrevParam:hover { opacity:0.85 !important; color:var(--accent) !important; background:var(--surface2) !important; }
   /* ── MODALE EDIT MANUALE ── */
   #overlayEditManuale {
     display:none;position:fixed;inset:0;
