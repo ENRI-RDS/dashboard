@@ -1780,6 +1780,7 @@ async function _handleLogin() {
     const nomeCanonical = trovato.nome.trim(); // nome esatto dal CSV master — evita duplicati per case
     localStorage.setItem('_enri_user', nomeCanonical);
     localStorage.setItem('_enri_role', ruolo);
+    window._enriValidatedRole = ruolo; // ruolo validato in memoria — non manipolabile da localStorage
 
     // Log accesso (non bloccante) — _getIP e _logGetData in parallelo per evitare dati stale
     Promise.all([_logGetData(), _getIP()]).then(([data, ip]) => {
@@ -1821,7 +1822,7 @@ async function _handleLogin() {
 }
 
 // ── LOGIN BYPASS (temporaneo) — imposta false per riattivare ──────────────
-const BYPASS_LOGIN = true;
+const BYPASS_LOGIN = false;
 const BYPASS_USER  = 'Demo User';   // nome che appare nel badge
 const BYPASS_ROLE  = 'admin';       // 'admin' o 'user'
 // ─────────────────────────────────────────────────────────────────────────
@@ -1848,6 +1849,32 @@ document.addEventListener('DOMContentLoaded', () => {
     // Già loggato: mostra badge e applica ruolo senza modal
     _showUserBadge(savedUser);
     window.dispatchEvent(new Event('_enri_role_changed'));
+
+    // ── Rivalidazione silenziosa dal Google Sheet ─────────────────────────
+    // Aggiorna ruolo dalla fonte canonica e forza logout se utente rimosso
+    _fetchUtenti().then(utenti => {
+      const trovato = utenti.find(u =>
+        u.nome?.toLowerCase().trim() === savedUser.toLowerCase().trim()
+      );
+      if (!trovato) {
+        // Utente non più presente nel foglio → logout forzato
+        localStorage.removeItem('_enri_user');
+        localStorage.removeItem('_enri_role');
+        alert('La tua utenza non è più attiva. Contatta l\'amministratore.');
+        location.reload();
+        return;
+      }
+      const ruoloAggiornato = (trovato.ruolo || 'user').toLowerCase();
+      localStorage.setItem('_enri_role', ruoloAggiornato);
+      window._enriValidatedRole = ruoloAggiornato; // aggiorna ruolo validato in memoria
+      window.dispatchEvent(new Event('_enri_role_changed')); // aggiorna UI (es. tre punti)
+    }).catch(() => {
+      // Google Sheet non raggiungibile: usa ruolo cached ma lo segna come non validato
+      // Sicurezza degraded-mode: i tre punti non appaiono finché non si valida
+      window._enriValidatedRole = localStorage.getItem('_enri_role') || 'user';
+      window.dispatchEvent(new Event('_enri_role_changed'));
+    });
+    // ─────────────────────────────────────────────────────────────────────
     // Log accesso (non bloccante) — identico al flusso delle altre pagine
     const ruolo = localStorage.getItem('_enri_role') || 'user';
     Promise.all([_logGetData(), _getIP()]).then(([data, ip]) => {
@@ -4884,7 +4911,9 @@ function openHelp() { document.getElementById("helpOverlay").classList.add("open
 
 <script>
 function _adminOpen() {
-  const role = localStorage.getItem('_enri_role');
+  // Usa il ruolo validato in memoria (impostato dopo fetch Google Sheet)
+  // — non leggere da localStorage per evitare elevation tramite DevTools
+  const role = window._enriValidatedRole;
   if (role !== 'admin') {
     alert('Accesso admin non autorizzato.');
     return;
@@ -5206,7 +5235,8 @@ function _adminClearUser() {
 // Mostra i tre punti admin solo se l'utente è admin
 (function() {
   function _checkAdminDots() {
-    const role = localStorage.getItem('_enri_role');
+    // Usa ruolo validato in memoria — non localStorage (manipolabile da DevTools)
+    const role = window._enriValidatedRole;
     const btn = document.getElementById('btnAdminDots');
     if (btn) btn.style.display = (role === 'admin') ? 'block' : 'none';
   }
