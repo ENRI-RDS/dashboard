@@ -1829,6 +1829,7 @@ const BYPASS_ROLE  = 'admin';       // 'admin' o 'user'
 
 document.addEventListener('DOMContentLoaded', () => {
   if (BYPASS_LOGIN) {
+    window._enriValidatedRole = BYPASS_ROLE; // FIX: imposta il ruolo validato in memoria (non solo localStorage)
     localStorage.setItem('_enri_role', BYPASS_ROLE);
     _showUserBadge(BYPASS_USER);
     window.dispatchEvent(new Event('_enri_role_changed'));
@@ -1869,19 +1870,23 @@ document.addEventListener('DOMContentLoaded', () => {
       window._enriValidatedRole = ruoloAggiornato; // aggiorna ruolo validato in memoria
       window.dispatchEvent(new Event('_enri_role_changed')); // aggiorna UI (es. tre punti)
     }).catch(() => {
-      // Google Sheet non raggiungibile: usa ruolo cached ma lo segna come non validato
-      // Sicurezza degraded-mode: i tre punti non appaiono finché non si valida
-      window._enriValidatedRole = localStorage.getItem('_enri_role') || 'user';
+      // Google Sheet non raggiungibile: degraded mode.
+      // FIX SICUREZZA: il ruolo admin NON viene mai ripristinato da localStorage
+      // (manipolabile via DevTools). Solo 'user' può sopravvivere al degraded mode,
+      // bloccando l'attacco: localStorage.setItem('_enri_role','admin') + offline.
+      const cachedRole = localStorage.getItem('_enri_role') || 'user';
+      window._enriValidatedRole = (cachedRole === 'admin') ? 'user' : cachedRole;
       window.dispatchEvent(new Event('_enri_role_changed'));
     });
     // ─────────────────────────────────────────────────────────────────────
     // Log accesso (non bloccante) — identico al flusso delle altre pagine
-    const ruolo = localStorage.getItem('_enri_role') || 'user';
+    // FIX: il ruolo nel log viene letto DOPO la rivalidazione (callback asincrona)
+    // per garantire che rispecchi il ruolo effettivo, non quello cached in localStorage.
     Promise.all([_logGetData(), _getIP()]).then(([data, ip]) => {
         const entry = {
           ts: new Date().toISOString(),
           utente: savedUser,
-          ruolo: ruolo,
+          ruolo: window._enriValidatedRole || localStorage.getItem('_enri_role') || 'user',
           ip: ip,
           ua: navigator.userAgent.substring(0, 120),
           durata: 0,
