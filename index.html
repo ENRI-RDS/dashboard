@@ -1314,34 +1314,10 @@ const JSONBIN_NOTE_BIN_ID = '69d7a45c36566621a894ed23';
 const ACCESSI_MAX        = 500;
 const ADMIN_USERNAME     = 'enri_admin'; // ← cambia con il tuo username admin
 
-// ── GOOGLE SHEETS AUTENTICAZIONE ─────────────────────────────────────────────
-// Incolla qui l'URL CSV del tuo Google Sheet (File → Condividi → Pubblica sul web → CSV)
-const GSHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR7A-W6R8hNYL0ViW7429KtsvfuaOHUxiwrMJNxUb51hQZQW-xlOKjkXkatm8XndTIMkdDYb6A6GICW/pub?gid=0&single=true&output=csv';
-
-function _parseCSV(text) {
-  const lines = text.trim().split('\n');
-  const headers = lines[0].split(',').map(h => h.trim().replace(/"/g,'').toLowerCase());
-  return lines.slice(1).map(line => {
-    const cols = [];
-    let cur = '', inQ = false;
-    for (const ch of line) {
-      if (ch === '"') { inQ = !inQ; }
-      else if (ch === ',' && !inQ) { cols.push(cur.trim().replace(/"/g,'')); cur = ''; }
-      else { cur += ch; }
-    }
-    cols.push(cur.trim().replace(/"/g,''));
-    const obj = {};
-    headers.forEach((h, i) => obj[h] = (cols[i] || '').trim());
-    return obj;
-  }).filter(r => r.nome);
-}
-
-async function _fetchUtenti() {
-  const url = GSHEET_CSV_URL + '&t=' + Date.now();
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('Impossibile raggiungere il foglio utenti.');
-  return _parseCSV(await res.text());
-}
+// ── APPS SCRIPT PROXY AUTENTICAZIONE ─────────────────────────────────────────
+// Il CSV utenti NON è più pubblico. Tutte le verifiche avvengono lato server.
+const APPS_SCRIPT_URL    = 'https://script.google.com/macros/s/AKfycbxSoKwfqsE4c8RORsUqhUVIXJRpd337jxireCf_RwxMf7UL0QJZyw2qE5UR59aaPEN_/exec';
+const APPS_SCRIPT_SECRET = 'enri_login_2024_X9f83KsL21pQ';
 
 // ── SESSION TRACKING ─────────────────────────────────────────────────────────
 let _sessionStart   = Date.now();
@@ -1759,14 +1735,17 @@ async function _handleLogin() {
   btn.disabled = true;
 
   try {
-    const utenti = await _fetchUtenti();
-    const trovato = utenti.find(u =>
-      u.nome?.toLowerCase().trim() === nome.toLowerCase().trim() &&
-      String(u.codice).trim() === String(codice).trim()
-    );
+    // Chiama il proxy Apps Script — il browser non vede mai la lista utenti
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret: APPS_SCRIPT_SECRET, action: 'login', nome, codice })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const risposta = await res.json();
 
-    if (!trovato) {
-      errEl.textContent = 'Nome o codice non riconosciuti. Contatta l\'amministratore.';
+    if (!risposta.ok) {
+      errEl.textContent = risposta.msg || 'Nome o codice non riconosciuti. Contatta l\'amministratore.';
       errEl.style.display = 'block';
       if (btnText) btnText.textContent = 'Accedi';
       if (btnArrow) btnArrow.textContent = '→';
@@ -1776,13 +1755,13 @@ async function _handleLogin() {
       return;
     }
 
-    const ruolo = (trovato.ruolo || 'user').toLowerCase();
-    const nomeCanonical = trovato.nome.trim(); // nome esatto dal CSV master — evita duplicati per case
+    const ruolo = (risposta.ruolo || 'user').toLowerCase();
+    const nomeCanonical = risposta.nome; // nome esatto restituito dal server
     localStorage.setItem('_enri_user', nomeCanonical);
     localStorage.setItem('_enri_role', ruolo);
-    window._enriValidatedRole = ruolo; // ruolo validato in memoria — non manipolabile da localStorage
+    window._enriValidatedRole = ruolo; // ruolo validato lato server — non manipolabile da localStorage
 
-    // Log accesso (non bloccante) — _getIP e _logGetData in parallelo per evitare dati stale
+    // Log accesso (non bloccante) — _getIP e _logGetData in parallelo
     Promise.all([_logGetData(), _getIP()]).then(([data, ip]) => {
         const entry = {
           ts: new Date().toISOString(),
@@ -1797,7 +1776,6 @@ async function _handleLogin() {
         };
         data.accessi.push(entry);
         if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
-        // Dedup case-insensitive: non aggiungere se esiste già con maiuscole diverse
         if (!data.utenti.some(u => u.toLowerCase().trim() === nomeCanonical.toLowerCase().trim())) {
           data.utenti.push(nomeCanonical);
         }
@@ -1808,7 +1786,7 @@ async function _handleLogin() {
     }).catch(() => {});
 
     document.getElementById('loginOverlay').remove();
-    _showUserBadge(nome);
+    _showUserBadge(nomeCanonical);
     window.dispatchEvent(new Event('_enri_role_changed'));
 
   } catch(e) {
@@ -1854,10 +1832,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // solo dopo che la validazione ha stabilito il ruolo effettivo.
 
     // ── Rivalidazione silenziosa + log accesso ────────────────────────────
-    // Le due fetch (Sheet e JSONBin) partono in parallelo per velocità,
+    // Le due fetch (Apps Script e JSONBin) partono in parallelo per velocità,
     // ma il log scrive il ruolo solo dopo che la validazione è conclusa
     // — nessuna race condition, il ruolo nel log è sempre quello certificato.
-    const revalidatePromise = _fetchUtenti();
+    const revalidatePromise = fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret: APPS_SCRIPT_SECRET, action: 'revalidate', nome: savedUser })
+    }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
     const logDataPromise    = Promise.all([_logGetData(), _getIP()]);
 
     function _writeLog(data, ip, ruolo) {
@@ -1877,11 +1859,8 @@ document.addEventListener('DOMContentLoaded', () => {
       _logSaveData(data).catch(() => {});
     }
 
-    revalidatePromise.then(utenti => {
-      const trovato = utenti.find(u =>
-        u.nome?.toLowerCase().trim() === savedUser.toLowerCase().trim()
-      );
-      if (!trovato) {
+    revalidatePromise.then(risposta => {
+      if (!risposta.ok) {
         // Utente non più presente nel foglio → logout forzato
         localStorage.removeItem('_enri_user');
         localStorage.removeItem('_enri_role');
@@ -1889,7 +1868,7 @@ document.addEventListener('DOMContentLoaded', () => {
         location.reload();
         return;
       }
-      const ruoloAggiornato = (trovato.ruolo || 'user').toLowerCase();
+      const ruoloAggiornato = (risposta.ruolo || 'user').toLowerCase();
       localStorage.setItem('_enri_role', ruoloAggiornato);
       window._enriValidatedRole = ruoloAggiornato; // ruolo validato in memoria
       window.dispatchEvent(new Event('_enri_role_changed')); // aggiorna UI (badge admin, tre punti)
@@ -1897,7 +1876,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Log con ruolo certificato — la fetch del log potrebbe già essere pronta
       logDataPromise.then(([data, ip]) => _writeLog(data, ip, ruoloAggiornato)).catch(() => {});
     }).catch(() => {
-      // Google Sheet non raggiungibile: degraded mode.
+      // Apps Script non raggiungibile: degraded mode.
       // SICUREZZA: admin non può sopravvivere al degraded mode — previene
       // l'attacco localStorage.setItem('_enri_role','admin') + rete offline.
       const cachedRole = localStorage.getItem('_enri_role') || 'user';
