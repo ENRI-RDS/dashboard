@@ -1333,25 +1333,29 @@ async function _jbGet(binId, signal) {
     signal
   });
   if (!res.ok) throw new Error('_jbGet HTTP ' + res.status);
-  return res.json();
+  const json = await res.json();
+  // Se il proxy risponde {ok:false} (es. script non re-deployato), lancia errore esplicito
+  if (json && json.ok === false) throw new Error('Proxy error: ' + (json.msg || 'risposta non valida da Apps Script'));
+  return json;
 }
 async function _jbPut(binId, data, keepalive) {
-  const ctrl = new AbortController();
-  const tid  = setTimeout(() => ctrl.abort(), 10000);
+  // keepalive e signal sono mutualmente esclusivi in alcuni browser
+  const ctrl = keepalive ? null : new AbortController();
+  const tid  = ctrl ? setTimeout(() => ctrl.abort(), 20000) : null;
   try {
     const res = await fetch(APPS_SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({ secret: APPS_SCRIPT_SECRET, action: 'jsonbin_put', binId, data }),
-      signal: ctrl.signal,
+      ...(ctrl ? { signal: ctrl.signal } : {}),
       ...(keepalive ? { keepalive: true } : {})
     });
-    clearTimeout(tid);
+    if (tid) clearTimeout(tid);
     if (!res.ok) throw new Error('_jbPut HTTP ' + res.status);
     return res.json();
   } catch(e) {
-    clearTimeout(tid);
-    throw e.name === 'AbortError' ? new Error('Timeout salvataggio JSONBin (>10s)') : e;
+    if (tid) clearTimeout(tid);
+    throw e.name === 'AbortError' ? new Error('Timeout salvataggio JSONBin (>20s)') : e;
   }
 }
 
@@ -1432,7 +1436,7 @@ async function _logGetData() {
     return JSON.parse(JSON.stringify(_logDataCache));
   }
   const ctrl = new AbortController();
-  const tid  = setTimeout(() => ctrl.abort(), 10000);
+  const tid  = setTimeout(() => ctrl.abort(), 20000);
   try {
     const json = await _jbGet(JSONBIN_LOG_BIN_ID, ctrl.signal);
     clearTimeout(tid);
@@ -1445,24 +1449,21 @@ async function _logGetData() {
     return JSON.parse(JSON.stringify(result));
   } catch(e) {
     clearTimeout(tid);
-    throw e.name === 'AbortError' ? new Error('Timeout connessione JSONBin (>10s) — riprova tra qualche secondo') : e;
+    throw e.name === 'AbortError' ? new Error('Timeout connessione JSONBin (>20s) — riprova tra qualche secondo') : e;
   }
 }
 
 async function _logSaveData(data) {
-  const ctrl = new AbortController();
-  const tid  = setTimeout(() => ctrl.abort(), 10000);
   try {
     await _jbPut(JSONBIN_LOG_BIN_ID, data);
-    clearTimeout(tid);
     // Aggiorna cache locale — usata da beforeunload per evitare fetch GET non affidabile
     _logCache = JSON.parse(JSON.stringify(data));
     // Invalida anche la cache di _logGetData così la prossima apertura admin è fresca
     _logDataCache = null;
     _logDataCacheTs = 0;
   } catch(e) {
-    clearTimeout(tid);
-    throw e.name === 'AbortError' ? new Error('Timeout salvataggio log (>10s)') : e;
+    throw e;
+  }
   }
 }
 async function _getIP() {
@@ -1935,7 +1936,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 async function jsonbinLoad() {
   const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(new DOMException('Timeout connessione a JSONBin', 'TimeoutError')), 10000);
+  const tid = setTimeout(() => controller.abort(new DOMException('Timeout connessione a JSONBin', 'TimeoutError')), 20000);
   try {
     const json = await _jbGet(JSONBIN_BIN_ID, controller.signal);
     clearTimeout(tid);
@@ -1952,7 +1953,7 @@ async function jsonbinSave(record) {
 
 async function jsonbinGetLastUpdateISO() {
   const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(new DOMException('Timeout connessione a JSONBin', 'TimeoutError')), 10000);
+  const tid = setTimeout(() => controller.abort(new DOMException('Timeout connessione a JSONBin', 'TimeoutError')), 20000);
   try {
     const json = await _jbGet(JSONBIN_BIN_ID, controller.signal);
     clearTimeout(tid);
