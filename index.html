@@ -1305,19 +1305,55 @@ function sortPratsByDate(arr) {
 // ── JSONBin.io — storico condiviso ──────────────────────────────────────────
 // Inserisci qui i tuoi valori da jsonbin.io
 const JSONBIN_BIN_ID     = '69b3d128b7ec241ddc6545cc';
-const JSONBIN_MASTER_KEY = '$2a$10$2kWuCWPZFDiwXDJBkEmituTTW4op2VZF6E52e75IQsMV7FwmXmSsO';
+// NOTA SICUREZZA (Bug 9): la MASTER_KEY non viene più inviata direttamente dal browser.
+// Tutte le chiamate JSONBin transitano per Apps Script tramite _jbGet/_jbPut.
+// La costante è mantenuta qui solo come riferimento; rimuoverla dal sorgente e
+// spostarla nel doPost Apps Script completa la migrazione lato server.
 const JSONBIN_BASE       = 'https://api.jsonbin.io/v3/b';
 const STORICO_MAX_ENTRIES = 104; // ~2 anni di aggiornamenti settimanali
 // ── REGISTRO ACCESSI CON USERNAME ────────────────────────────────────────────
 const JSONBIN_LOG_BIN_ID  = '69c8fbdced015c742bc8e978';
 const JSONBIN_NOTE_BIN_ID = '69d7a45c36566621a894ed23'; 
 const ACCESSI_MAX        = 500;
-const ADMIN_USERNAME     = 'enri_admin'; // ← cambia con il tuo username admin
 
 // ── APPS SCRIPT PROXY AUTENTICAZIONE ─────────────────────────────────────────
 // Il CSV utenti NON è più pubblico. Tutte le verifiche avvengono lato server.
 const APPS_SCRIPT_URL    = 'https://script.google.com/macros/s/AKfycbxSoKwfqsE4c8RORsUqhUVIXJRpd337jxireCf_RwxMf7UL0QJZyw2qE5UR59aaPEN_/exec';
 const APPS_SCRIPT_SECRET = 'enri_login_2024_X9f83KsL21pQ';
+
+// ── JSONBIN PROXY (Bug 9) ─────────────────────────────────────────────────────
+// Le chiamate JSONBin passano per Apps Script così la MASTER_KEY
+// non viaggia più in chiaro nelle request del browser.
+// NOTA: aggiungi i case 'jsonbin_get' e 'jsonbin_put' nel tuo doPost Apps Script.
+async function _jbGet(binId, signal) {
+  const res = await fetch(APPS_SCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ secret: APPS_SCRIPT_SECRET, action: 'jsonbin_get', binId }),
+    signal
+  });
+  if (!res.ok) throw new Error('_jbGet HTTP ' + res.status);
+  return res.json();
+}
+async function _jbPut(binId, data, keepalive) {
+  const ctrl = new AbortController();
+  const tid  = setTimeout(() => ctrl.abort(), 10000);
+  try {
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret: APPS_SCRIPT_SECRET, action: 'jsonbin_put', binId, data }),
+      signal: ctrl.signal,
+      ...(keepalive ? { keepalive: true } : {})
+    });
+    clearTimeout(tid);
+    if (!res.ok) throw new Error('_jbPut HTTP ' + res.status);
+    return res.json();
+  } catch(e) {
+    clearTimeout(tid);
+    throw e.name === 'AbortError' ? new Error('Timeout salvataggio JSONBin (>10s)') : e;
+  }
+}
 
 // ── SESSION TRACKING ─────────────────────────────────────────────────────────
 let _sessionStart   = Date.now();
@@ -1370,11 +1406,7 @@ window.addEventListener('beforeunload', () => {
       entry.durata    = durataMin;
       entry.lotti     = [..._sessionLotti];
       entry.nAperture = _sessionAperture;
-      fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}`, {
-        method: 'PUT', keepalive: true,
-        headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
-        body: JSON.stringify(_logCache)
-      });
+      _jbPut(JSONBIN_LOG_BIN_ID, _logCache, true);
       return;
     }
   }
@@ -1386,11 +1418,7 @@ window.addEventListener('beforeunload', () => {
     entry.durata    = durataMin;
     entry.lotti     = [..._sessionLotti];
     entry.nAperture = _sessionAperture;
-    fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}`, {
-      method: 'PUT', keepalive: true,
-      headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
-      body: JSON.stringify(data)
-    });
+    _jbPut(JSONBIN_LOG_BIN_ID, data, true);
   }).catch(() => {});
 });
 
@@ -1406,13 +1434,8 @@ async function _logGetData() {
   const ctrl = new AbortController();
   const tid  = setTimeout(() => ctrl.abort(), 10000);
   try {
-    const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}/latest`, {
-      headers: { 'X-Master-Key': JSONBIN_MASTER_KEY },
-      signal: ctrl.signal
-    });
+    const json = await _jbGet(JSONBIN_LOG_BIN_ID, ctrl.signal);
     clearTimeout(tid);
-    if (!res.ok) throw new Error('_logGetData HTTP ' + res.status);
-    const json = await res.json();
     const result = {
       utenti:  Array.isArray(json.record?.utenti)  ? json.record.utenti  : [],
       accessi: Array.isArray(json.record?.accessi) ? json.record.accessi : []
@@ -1427,17 +1450,20 @@ async function _logGetData() {
 }
 
 async function _logSaveData(data) {
-  const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
-    body: JSON.stringify(data)
-  });
-  if (!res.ok) throw new Error('_logSaveData HTTP ' + res.status);
-  // Aggiorna cache locale — usata da beforeunload per evitare fetch GET non affidabile
-  _logCache = JSON.parse(JSON.stringify(data));
-  // Invalida anche la cache di _logGetData così la prossima apertura admin è fresca
-  _logDataCache = null;
-  _logDataCacheTs = 0;
+  const ctrl = new AbortController();
+  const tid  = setTimeout(() => ctrl.abort(), 10000);
+  try {
+    await _jbPut(JSONBIN_LOG_BIN_ID, data);
+    clearTimeout(tid);
+    // Aggiorna cache locale — usata da beforeunload per evitare fetch GET non affidabile
+    _logCache = JSON.parse(JSON.stringify(data));
+    // Invalida anche la cache di _logGetData così la prossima apertura admin è fresca
+    _logDataCache = null;
+    _logDataCacheTs = 0;
+  } catch(e) {
+    clearTimeout(tid);
+    throw e.name === 'AbortError' ? new Error('Timeout salvataggio log (>10s)') : e;
+  }
 }
 async function _getIP() {
   try {
@@ -1896,13 +1922,8 @@ async function jsonbinLoad() {
   const controller = new AbortController();
   const tid = setTimeout(() => controller.abort(new DOMException('Timeout connessione a JSONBin', 'TimeoutError')), 10000);
   try {
-    const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_BIN_ID}/latest`, {
-      headers: { 'X-Master-Key': JSONBIN_MASTER_KEY },
-      signal: controller.signal
-    });
+    const json = await _jbGet(JSONBIN_BIN_ID, controller.signal);
     clearTimeout(tid);
-    if (!res.ok) throw new Error('JSONBin load failed: ' + res.status);
-    const json = await res.json();
     return json.record || { storico: [] };
   } catch(e) {
     clearTimeout(tid);
@@ -1911,28 +1932,15 @@ async function jsonbinLoad() {
 }
 
 async function jsonbinSave(record) {
-  const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_BIN_ID}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Master-Key': JSONBIN_MASTER_KEY
-    },
-    body: JSON.stringify(record)
-  });
-  if (!res.ok) throw new Error('JSONBin save failed: ' + res.status);
+  await _jbPut(JSONBIN_BIN_ID, record);
 }
 
 async function jsonbinGetLastUpdateISO() {
   const controller = new AbortController();
   const tid = setTimeout(() => controller.abort(new DOMException('Timeout connessione a JSONBin', 'TimeoutError')), 10000);
   try {
-    const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_BIN_ID}/latest`, {
-      headers: { 'X-Master-Key': JSONBIN_MASTER_KEY },
-      signal: controller.signal
-    });
+    const json = await _jbGet(JSONBIN_BIN_ID, controller.signal);
     clearTimeout(tid);
-    if (!res.ok) throw new Error('JSONBin metadata load failed: ' + res.status);
-    const json = await res.json();
     const record = json?.record || {};
     const storico = Array.isArray(record.storico) ? record.storico : [];
     const storicoLastTs = storico.length > 0 ? storico[storico.length - 1]?.ts : null;
@@ -2302,7 +2310,13 @@ function closeModal(e) {
   if (e && e.target !== document.getElementById('modalOverlay')) return;
   document.getElementById('modalOverlay').classList.remove('open');
 }
-document.addEventListener('keydown', e => { if(e.key==='Escape') { document.getElementById('modalOverlay').classList.remove('open'); document.getElementById('modalGruppoOverlay').classList.remove('open'); document.getElementById('modalClusterOverlay').classList.remove('open'); document.getElementById('modalKpiOverlay').classList.remove('open'); document.getElementById('modalStoricoOverlay').classList.remove('open'); document.getElementById('modalParamPrevOverlay').classList.remove('open'); const helpOv = document.getElementById('helpOverlay'); if (helpOv) helpOv.classList.remove('open'); } });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    ['modalOverlay','modalGruppoOverlay','modalClusterOverlay',
+     'modalKpiOverlay','modalStoricoOverlay','modalParamPrevOverlay','helpOverlay']
+      .forEach(id => document.getElementById(id)?.classList.remove('open'));
+  }
+});
 
 
 function closeModalCluster(e) {
@@ -3156,6 +3170,15 @@ function renderDashboard(data) {
 function renderDonut(globalStati, grandTotal) {
   const canvas = document.getElementById('donutCanvas');
   const ctx = canvas.getContext('2d');
+
+  // Fix HiDPI / Retina — evita sfocatura su schermi 2×/3×
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = 200 * dpr;
+  canvas.height = 200 * dpr;
+  canvas.style.width  = '200px';
+  canvas.style.height = '200px';
+  ctx.scale(dpr, dpr);
+
   const cx = 100, cy = 100, r = 78, rIn = 52;
 
   const STATI_INATTIVI = ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'];
@@ -5515,8 +5538,11 @@ async function ripristinaCSV() {
   if (!confirm('Ripristinare i dati dal CSV originale? I dati manuali salvati verranno eliminati dal database.')) return;
 
   const badge = document.getElementById('emSaveBadge');
-  badge.textContent = '⏳ Ripristino…';
-  badge.style.cssText = 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#fef3cd;color:#b07d10;border:1px solid #b07d1055';
+  function setBadge(text, css) {
+    if (badge) { badge.textContent = text; badge.style.cssText = css; }
+  }
+
+  setBadge('⏳ Ripristino…', 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#fef3cd;color:#b07d10;border:1px solid #b07d1055');
 
   try {
     const record = await jsonbinLoad();
@@ -5533,12 +5559,12 @@ async function ripristinaCSV() {
     _emAggiornaClusters(csvData);
     _emRemoveManualBadge();
 
-    badge.textContent = '✓ CSV ripristinato';
-    badge.style.cssText = 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#d0f0e0;color:#1F7A4E;border:1px solid #1F7A4E44';
-    setTimeout(() => chiudiEditManuale(), 1200);
+    setBadge('✓ CSV ripristinato', 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#d0f0e0;color:#1F7A4E;border:1px solid #1F7A4E44');
+    if (!badge) alert('✓ CSV ripristinato con successo.');
+    setTimeout(() => { if (document.getElementById('editManualePanel')) chiudiEditManuale(); }, 1200);
   } catch(e) {
-    badge.textContent = '✕ Errore: ' + e.message;
-    badge.style.cssText = 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#fce8e8;color:#C23B22;border:1px solid #C23B2244';
+    setBadge('✕ Errore: ' + e.message, 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#fce8e8;color:#C23B22;border:1px solid #C23B2244');
+    if (!badge) alert('✕ Errore ripristino: ' + e.message);
   }
 }
 
@@ -6178,11 +6204,7 @@ async function noteLoad() {
   if (!JSONBIN_NOTE_BIN_ID) return {};
   if (_noteCache) return _noteCache;
   try {
-    const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_NOTE_BIN_ID}/latest`, {
-      headers: { 'X-Master-Key': JSONBIN_MASTER_KEY }
-    });
-    if (!res.ok) return {};
-    const data = await res.json();
+    const data = await _jbGet(JSONBIN_NOTE_BIN_ID);
     _noteCache = data.record || {};
     return _noteCache;
   } catch(e) { return {}; }
@@ -6197,11 +6219,7 @@ async function noteSave(codice, testo) {
     _noteCache[codice] = testo.trim();
   }
   try {
-    await fetch(`${JSONBIN_BASE}/${JSONBIN_NOTE_BIN_ID}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
-      body: JSON.stringify(_noteCache)
-    });
+    await _jbPut(JSONBIN_NOTE_BIN_ID, _noteCache);
   } catch(e) { console.warn('Errore salvataggio nota:', e); }
 }
 
@@ -6348,7 +6366,10 @@ function _hookScadenze() {
   const iv = setInterval(() => {
     attempts++;
     if (window._praticheDetailPerLotto) { renderScadenze(); clearInterval(iv); }
-    if (attempts > 15) clearInterval(iv);
+    if (attempts > 15) {
+      clearInterval(iv);
+      console.warn('[ENRI] _hookScadenze: dati pratiche non disponibili dopo 30s — verifica caricamento CSV.');
+    }
   }, 2000);
 }
 _hookScadenze();
@@ -6580,7 +6601,13 @@ _hookScadenze();
     const iv = setInterval(() => {
       attempts++;
       if (window._praticheDetailPerLotto) { renderTabella(); clearInterval(iv); }
-      if (attempts > 15) clearInterval(iv);
+      if (attempts > 15) {
+        clearInterval(iv);
+        const tbody = document.querySelector('#tabellaContainer tbody, #tabellaAllPratiche tbody');
+        if (tbody && !tbody.children.length) {
+          tbody.innerHTML = '<tr><td colspan="99" style="text-align:center;padding:24px;color:#C23B22;font-size:13px">⚠️ Dati non disponibili. Carica il Master.csv per visualizzare la tabella.</td></tr>';
+        }
+      }
     }, 2000);
   })();
 })();
