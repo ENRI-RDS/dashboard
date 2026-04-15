@@ -1352,7 +1352,9 @@ async function _jbPut(binId, data, keepalive) {
     });
     if (tid) clearTimeout(tid);
     if (!res.ok) throw new Error('_jbPut HTTP ' + res.status);
-    return res.json();
+    const jbPutJson = await res.json();
+    if (jbPutJson && jbPutJson.ok === false) throw new Error('Proxy error: ' + (jbPutJson.msg || 'risposta non valida da Apps Script'));
+    return jbPutJson;
   } catch(e) {
     if (tid) clearTimeout(tid);
     throw e.name === 'AbortError' ? new Error('Timeout salvataggio JSONBin (>20s)') : e;
