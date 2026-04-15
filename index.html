@@ -1738,7 +1738,7 @@ async function _handleLogin() {
     // Chiama il proxy Apps Script — il browser non vede mai la lista utenti
     const res = await fetch(APPS_SCRIPT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({ secret: APPS_SCRIPT_SECRET, action: 'login', nome, codice })
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -1837,7 +1837,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // — nessuna race condition, il ruolo nel log è sempre quello certificato.
     const revalidatePromise = fetch(APPS_SCRIPT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({ secret: APPS_SCRIPT_SECRET, action: 'revalidate', nome: savedUser })
     }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
     const logDataPromise    = Promise.all([_logGetData(), _getIP()]);
