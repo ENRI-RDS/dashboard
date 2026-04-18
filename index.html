@@ -1827,30 +1827,7 @@ async function _handleLogin() {
   }
 }
 
-// ── LOGIN BYPASS (temporaneo) — imposta false per riattivare ──────────────
-const BYPASS_LOGIN = false;
-const BYPASS_USER  = 'Demo User';   // nome che appare nel badge
-const BYPASS_ROLE  = 'admin';       // 'admin' o 'user'
-// ─────────────────────────────────────────────────────────────────────────
-
 document.addEventListener('DOMContentLoaded', () => {
-  if (BYPASS_LOGIN) {
-    window._enriValidatedRole = BYPASS_ROLE; // FIX: imposta il ruolo validato in memoria (non solo localStorage)
-    localStorage.setItem('_enri_role', BYPASS_ROLE);
-    _showUserBadge(BYPASS_USER);
-    window.dispatchEvent(new Event('_enri_role_changed'));
-    // Log accesso silenzioso senza bloccare il rendering
-    _getIP().then(ip => {
-      _logGetData().then(data => {
-        const entry = { ts: new Date().toISOString(), utente: BYPASS_USER, ruolo: BYPASS_ROLE,
-          ip, ua: navigator.userAgent.substring(0,120), durata:0, lotti:[], nAperture:0, pagina:'dashboard' };
-        data.accessi.push(entry);
-        _sessionTs = entry.ts; _sessionStart = Date.now();
-        _logSaveData(data).catch(()=>{});
-      }).catch(()=>{});
-    });
-    return;
-  }
   const savedUser = localStorage.getItem('_enri_user');
   if (savedUser) {
     // Già loggato: mostra badge subito (non dipende dal ruolo)
@@ -6063,7 +6040,9 @@ function cercaPraticaSearch() {
 
   const html = risultati.map(p => buildCercaCard(p, query)).join('');
   container.innerHTML = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted2);margin-bottom:10px">${risultati.length} pratica${risultati.length !== 1 ? 'he' : ''} trovata${risultati.length !== 1 ? '' : ''}</div>` + html;
-  injectNote(); // carica le note salvate nelle textarea appena renderizzate
+  // Inietta note salvate e aggancia i bottoni Salva (listener sicuri via _bindNoteBtn)
+  injectNote();
+  risultati.forEach(p => _bindNoteBtn(p.codice));
 }
 
 function buildCercaCard(p, query) {
@@ -6256,7 +6235,7 @@ function buildNoteHtml(codice, notaAttuale) {
     >${notaAttuale ? notaAttuale.replace(/</g,'&lt;') : ''}</textarea>
     <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:4px">
       <span id="${id}_status" style="font-size:9px;color:var(--muted2)"></span>
-      <button onclick="salvaNotaPratica('${codice}','${id}')"
+      <button id="${id}_btn"
         style="font-size:10px;font-weight:600;padding:3px 12px;background:var(--accent);color:#fff;border:none;border-radius:5px;cursor:pointer;font-family:inherit">
         Salva
       </button>
@@ -6265,23 +6244,38 @@ function buildNoteHtml(codice, notaAttuale) {
 }
 
 async function salvaNotaPratica(codice, fieldId) {
-  const el = document.getElementById(fieldId);
+  const el     = document.getElementById(fieldId);
   const status = document.getElementById(fieldId + '_status');
   if (!el) return;
-  status.textContent = 'Salvataggio…';
-  await noteSave(codice, el.value);
-  status.textContent = '✓ Salvata';
-  setTimeout(() => { status.textContent = ''; }, 2500);
+  if (status) { status.textContent = 'Salvataggio…'; status.style.color = 'var(--muted2)'; }
+  try {
+    await noteSave(codice, el.value);
+    if (status) { status.textContent = '✓ Salvata'; status.style.color = '#1F7A4E'; }
+    setTimeout(() => { if (status) status.textContent = ''; }, 2500);
+  } catch(e) {
+    if (status) { status.textContent = '✕ Errore salvataggio'; status.style.color = '#C23B22'; }
+  }
+}
+
+// Aggancia il listener sul bottone nota dopo che l'HTML è stato iniettato nel DOM
+function _bindNoteBtn(codice) {
+  const id  = 'nota_' + codice.replace(/\//g,'_');
+  const btn = document.getElementById(id + '_btn');
+  if (btn && !btn._noteBound) {
+    btn._noteBound = true;
+    btn.addEventListener('click', () => salvaNotaPratica(codice, id));
+  }
 }
 
 // Inietta le note nelle card già renderizzate dopo l'apertura della modale
 async function injectNote() {
   const note = await noteLoad();
-  // aggiorna textarea esistenti se già presenti
+  // aggiorna textarea esistenti e aggancia bottoni Salva
   Object.entries(note).forEach(([cod, testo]) => {
     const id = 'nota_' + cod.replace(/\//g,'_');
     const el = document.getElementById(id);
     if (el && !el.value) el.value = testo;
+    _bindNoteBtn(cod); // aggancia bottone se non ancora bound
   });
 }
 
@@ -6338,31 +6332,57 @@ function renderScadenze() {
     byDay[key].push(p);
   });
 
-  let html = '';
+  // SICUREZZA: costruiamo il DOM programmaticamente per evitare XSS sui codici pratica
+  container.innerHTML = '';
   Object.entries(byDay).forEach(([giorno, prats]) => {
-    html += `<div style="margin-bottom:10px">
-      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);padding-bottom:4px;border-bottom:1px solid var(--border);margin-bottom:5px">${giorno}</div>`;
+    const group = document.createElement('div');
+    group.style.marginBottom = '10px';
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);padding-bottom:4px;border-bottom:1px solid var(--border);margin-bottom:5px';
+    hdr.textContent = giorno;
+    group.appendChild(hdr);
     prats.forEach(p => {
-      const col = STATI_COLORI_MAP[p.stato] || '#6b7080';
       const diffTxt = p.prev.diff === 0 ? 'Oggi' : p.prev.diff === 1 ? 'Domani' : `${p.prev.diff} gg`;
       const dotCol  = p.prev.status === 'warn' ? '#c9a227' : '#3a8c5c';
-      html += `<div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid var(--border);cursor:pointer;border-radius:4px;transition:background 0.12s" onclick="apriDettaglioScadenza('${p.codice}')" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='transparent'">
-        <div style="width:7px;height:7px;border-radius:50%;background:${dotCol};flex-shrink:0"></div>
-        <div style="flex:1;min-width:0">
-          <div style="font-family:'Fira Code',monospace;font-size:10px;font-weight:700;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.codice}</div>
-          <div style="font-size:9px;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${p.ente||''}">${p.ente || '—'}</div>
-        </div>
-        <div style="text-align:right;flex-shrink:0">
-          <div style="font-size:10px;font-weight:700;color:${dotCol}">${diffTxt}</div>
-          <div style="font-size:8px;color:var(--muted2)">Lotto ${p.lotto}</div>
-        </div>
-      </div>`;
+      // SICUREZZA: usiamo addEventListener + dataset, mai onclick="...${codice}..."
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid var(--border);cursor:pointer;border-radius:4px;transition:background 0.12s';
+      row.addEventListener('click',    () => apriDettaglioScadenza(p.codice));
+      row.addEventListener('mouseover',() => { row.style.background = 'var(--surface2)'; });
+      row.addEventListener('mouseout', () => { row.style.background = 'transparent'; });
+      // Dot
+      const dot = document.createElement('div');
+      dot.style.cssText = `width:7px;height:7px;border-radius:50%;background:${dotCol};flex-shrink:0`;
+      // Info
+      const info = document.createElement('div');
+      info.style.cssText = 'flex:1;min-width:0';
+      const codEl = document.createElement('div');
+      codEl.style.cssText = "font-family:'Fira Code',monospace;font-size:10px;font-weight:700;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+      codEl.textContent = p.codice;
+      const entEl = document.createElement('div');
+      entEl.style.cssText = 'font-size:9px;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      entEl.title = p.ente || '';
+      entEl.textContent = p.ente || '—';
+      info.appendChild(codEl); info.appendChild(entEl);
+      // Date
+      const dateDiv = document.createElement('div');
+      dateDiv.style.cssText = 'text-align:right;flex-shrink:0';
+      const diffEl = document.createElement('div');
+      diffEl.style.cssText = `font-size:10px;font-weight:700;color:${dotCol}`;
+      diffEl.textContent = diffTxt;
+      const lotEl = document.createElement('div');
+      lotEl.style.cssText = 'font-size:8px;color:var(--muted2)';
+      lotEl.textContent = `Lotto ${p.lotto}`;
+      dateDiv.appendChild(diffEl); dateDiv.appendChild(lotEl);
+      row.appendChild(dot); row.appendChild(info); row.appendChild(dateDiv);
+      group.appendChild(row);
     });
-    html += '</div>';
+    container.appendChild(group);
   });
-
-  html += `<div style="text-align:center;font-size:9px;color:var(--muted2);padding-top:4px">${scadenti.length} pratica${scadenti.length!==1?'he':''} in scadenza</div>`;
-  container.innerHTML = html;
+  const foot = document.createElement('div');
+  foot.style.cssText = 'text-align:center;font-size:9px;color:var(--muted2);padding-top:4px';
+  foot.textContent = `${scadenti.length} pratica${scadenti.length!==1?'he':''} in scadenza`;
+  container.appendChild(foot);
 }
 
 // Apre il dettaglio di una pratica dalla sezione Scadenze
@@ -6386,6 +6406,10 @@ function _hookScadenze() {
     if (attempts > 15) {
       clearInterval(iv);
       console.warn('[ENRI] _hookScadenze: dati pratiche non disponibili dopo 30s — verifica caricamento CSV.');
+      const c = document.getElementById('scadenzeBody');
+      if (c && !c.children.length) {
+        c.innerHTML = '<div style="text-align:center;color:#C23B22;font-size:11px;padding:16px 0">⚠️ Dati non disponibili. Verifica il caricamento del Master.csv.</div>';
+      }
     }
   }, 2000);
 }
