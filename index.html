@@ -332,13 +332,14 @@
   .tooltip {
     position:fixed;
     background:var(--surface);
-    border:1px solid var(--border);
-    border-radius:8px; padding:7px 12px;
+    border:1px solid var(--border2);
+    border-radius:10px; padding:0;
     font-size:11px; pointer-events:none; z-index:1000;
-    opacity:0; transition:opacity 0.15s;
-    font-family:'Fira Code', monospace;
+    opacity:0; transition:opacity 0.12s;
+    font-family:'Plus Jakarta Sans', sans-serif;
     color:var(--text);
     box-shadow: var(--sh-md);
+    min-width:160px; overflow:hidden;
   }
 
   /* ── ERROR BOX ── */
@@ -1120,6 +1121,38 @@ const COLORS = {
   'OTTENUTO':                   '#3a8c5c'
 };
 
+// ── Rich tooltip helper ───────────────────────────────────────────────────────
+let _donutSegments = [];
+function _showBarTip(tooltip, seg, e) {
+  let d;
+  try { d = JSON.parse(seg.getAttribute('data-tip')); } catch(_) {
+    tooltip.innerHTML = `<div style="padding:7px 12px">${seg.getAttribute('data-tip')}</div>`;
+    tooltip.style.opacity = '1';
+    tooltip.style.left = (e.clientX+14)+'px';
+    tooltip.style.top = (e.clientY-28)+'px';
+    return;
+  }
+  const barW = Math.min(100, Math.max(1, d.pct));
+  tooltip.innerHTML = `
+    <div style="padding:5px 12px 4px;background:${d.color}18;border-bottom:1px solid ${d.color}33">
+      <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:${d.color}">${d.label}</span>
+    </div>
+    <div style="padding:8px 12px">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin-bottom:6px">
+        <span style="font-size:22px;font-weight:700;font-family:'Bricolage Grotesque',sans-serif;color:${d.color};letter-spacing:-0.02em">${d.pct.toFixed(1)}%</span>
+        <span style="font-size:11px;font-family:'Fira Code',monospace;color:var(--text2);font-weight:600;white-space:nowrap">${fmt(d.m)} m</span>
+      </div>
+      <div style="height:4px;border-radius:2px;background:var(--border);overflow:hidden">
+        <div style="height:100%;border-radius:2px;background:${d.color};width:${barW}%"></div>
+      </div>
+    </div>`;
+  const tw = 180;
+  const left = e.clientX + 14 + tw > window.innerWidth ? e.clientX - tw - 4 : e.clientX + 14;
+  tooltip.style.opacity = '1';
+  tooltip.style.left = left + 'px';
+  tooltip.style.top = Math.max(4, e.clientY - 30) + 'px';
+}
+
 // Gruppi visivi per le barre — gli stati vengono accorpati prima del rendering
 const STATI_GRUPPI = [
   { label: 'In Attesa / Redazione', stati: ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'], color: '#4a4f6a' },
@@ -1160,7 +1193,7 @@ function renderBarre(gruppiMap, totale, tooltip, onHover) {
     if (m <= 0) return;
     const pct = totale > 0 ? m / totale * 100 : 0;
     const labelHtml = pct >= 5 ? `<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;text-shadow:0 0 4px rgba(0,0,0,1),0 1px 3px rgba(0,0,0,0.9);pointer-events:none;font-family:'Bricolage Grotesque',sans-serif;letter-spacing:0">${pct.toFixed(1)}%</span>` : '';
-    html += `<div class="bar-seg" style="width:${pct}%;background:${g.color};position:relative" data-tip="${g.label}: ${pct.toFixed(1)}% (${fmt(m)} m)">${labelHtml}</div>`;
+    html += `<div class="bar-seg" style="width:${pct}%;background:${g.color};position:relative" data-tip='${JSON.stringify({label:g.label,color:g.color,pct,m})}'>${labelHtml}</div>`;
   });
   return html;
 }
@@ -3095,7 +3128,7 @@ function renderDashboard(data) {
       : `<div class="bar-lotto-wrap"><span class="bar-lotto-num">${lotto}</span></div>`;
     row.innerHTML=`${lottoHtml}<div class="bar-track">${segsHtml}</div><span class="bar-pct">${pctLabel}</span><span style="min-width:62px;text-align:right;font-size:12px;color:var(--text2);font-family:'Bricolage Grotesque',sans-serif;flex-shrink:0;font-weight:700;letter-spacing:-0.01em">${fmt(lottiTotale[lotto])} m</span>${msHtml}`;
     row.querySelectorAll('.bar-seg').forEach(seg=>{
-      seg.addEventListener('mousemove',e=>{tooltip.textContent=seg.getAttribute('data-tip');tooltip.style.opacity='1';tooltip.style.left=(e.clientX+12)+'px';tooltip.style.top=(e.clientY-28)+'px';});
+      seg.addEventListener('mousemove',e=>{ _showBarTip(tooltip,seg,e); });
       seg.addEventListener('mouseleave',()=>{tooltip.style.opacity='0';});
     });
     row.querySelectorAll('.bar-ms[data-ms-tip]').forEach(el=>{
