@@ -257,9 +257,14 @@ let CLUSTER_PROGRESS = {};
 
 async function loadCSVData() {
   try {
-    let resp = await fetch('Riepilogo_progettazione.csv?t='+Date.now());
-    if (!resp.ok) resp = await fetch('riepilogo.csv?t='+Date.now());
-    if (!resp.ok) throw new Error('CSV non trovato');
+    const _ctrl = new AbortController();
+    const _tid  = setTimeout(() => _ctrl.abort(), 8000);
+    let resp;
+    try {
+      resp = await fetch('Riepilogo_progettazione.csv?t='+Date.now(), { signal: _ctrl.signal });
+      if (!resp.ok) resp = await fetch('riepilogo.csv?t='+Date.now(), { signal: _ctrl.signal });
+    } finally { clearTimeout(_tid); }
+    if (!resp || !resp.ok) throw new Error('CSV non trovato (timeout o HTTP error)');
     const text = await resp.text();
     const lines = text.trim().split('\n').map(l=>l.replace(/\r/,''));
     const sep = lines[0].includes(';') ? ';' : ',';
@@ -285,8 +290,8 @@ async function loadCSVData() {
     const iC  = findCol('CLUSTER');
     const iL  = findCol('LUNGHEZZA','LENGTH');
     const iLt = findCol('LOTTO');
-    // FIX #1: cerca STATO_LEGENDA prima, poi fallback su STATO_AUTORIZZAZIONE — identico a loadData in index.html
-    const iS  = findCol('STATO_LEGENDA','STATO_AUTORIZZAZIONE','STATO');
+    // STATO_AUTORIZZAZIONE prioritario su STATO_LEGENDA (allineato a index.html fix)
+    const iS  = findCol('STATO_AUTORIZZAZIONE','STATO_LEGENDA','STATO');
 
     // FIX #4: guard meno rigido — blocca solo su colonne realmente indispensabili
     if(iL<0||iLt<0) throw new Error('Colonne LUNGHEZZA o LOTTO non trovate nel CSV');
@@ -1521,30 +1526,48 @@ function mmCard(m,i){
 
 let editOn=false, savedHTML='';
 
-const JSONBIN_BIN_ID    = '69b3d128b7ec241ddc6545cc';
-const JSONBIN_MASTER_KEY = '$2a$10$2kWuCWPZFDiwXDJBkEmituTTW4op2VZF6E52e75IQsMV7FwmXmSsO';
-const EXEC_BIN_KEY = 'exec_summary_v1';
+const JSONBIN_BIN_ID = '69b3d128b7ec241ddc6545cc';
+const EXEC_BIN_KEY   = 'exec_summary_v1';
+// Proxy Apps Script — stessa costante di index.html
+const APPS_SCRIPT_URL    = 'https://script.google.com/macros/s/AKfycbxSoKwfqsE4c8RORsUqhUVIXJRpd337jxireCf_RwxMf7UL0QJZyw2qE5UR59aaPEN_/exec';
+const APPS_SCRIPT_SECRET = 'enri_login_2024_X9f83KsL21pQ';
+
+// Wrapper proxy — Content-Type text/plain evita preflight CORS
+async function _jbGet(binId) {
+  const res = await fetch(APPS_SCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ secret: APPS_SCRIPT_SECRET, action: 'jsonbin_get', binId })
+  });
+  if (!res.ok) throw new Error('_jbGet HTTP ' + res.status);
+  const json = await res.json();
+  if (json && json.ok === false) throw new Error('Proxy error: ' + (json.msg || 'risposta non valida'));
+  return json;
+}
+async function _jbPut(binId, data) {
+  const res = await fetch(APPS_SCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ secret: APPS_SCRIPT_SECRET, action: 'jsonbin_put', binId, data })
+  });
+  if (!res.ok) throw new Error('_jbPut HTTP ' + res.status);
+  const json = await res.json();
+  if (json && json.ok === false) throw new Error('Proxy error: ' + (json.msg || 'risposta non valida'));
+  return json;
+}
 
 async function saveToStorage(){
   setSaveBadge('saving');
   try {
-    const getResp = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
-      headers:{ 'X-Master-Key': JSONBIN_MASTER_KEY }
-    });
-    const existing = getResp.ok ? (await getResp.json()).record : {};
-    // Clona #main escludendo #ganttCard (rigenerato sempre da CSV fresco al caricamento)
+    const existing = (await _jbGet(JSONBIN_BIN_ID)).record || {};
     const mainClone = document.getElementById('main').cloneNode(true);
     const gcToRemove = mainClone.querySelector('#ganttCard');
     if (gcToRemove) gcToRemove.remove();
     existing[EXEC_BIN_KEY] = mainClone.innerHTML;
-    await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
-      method:'PUT',
-      headers:{ 'Content-Type':'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
-      body: JSON.stringify(existing)
-    });
+    await _jbPut(JSONBIN_BIN_ID, existing);
     setSaveBadge('saved');
   } catch(e){
-    console.warn('Salvataggio JSONBin fallito:', e);
+    console.warn('Salvataggio fallito:', e);
     setSaveBadge('error');
   }
 }
@@ -1577,11 +1600,12 @@ function applyLastUploadDate(dateStr){
 
 async function loadFromStorage(){
   try {
-    const resp = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
-      headers:{ 'X-Master-Key': JSONBIN_MASTER_KEY }
-    });
-    if(!resp.ok) return false;
-    const data = (await resp.json()).record;
+    const ctrl = new AbortController();
+    const tid  = setTimeout(() => ctrl.abort(), 15000);
+    let json;
+    try { json = await _jbGet(JSONBIN_BIN_ID); } finally { clearTimeout(tid); }
+    const data = json?.record;
+    if (!data) return false;
     if(data && data[EXEC_BIN_KEY]){
       // Salva storico per velocity-based forecast
       window._storicoCompleto = Array.isArray(data.storico) ? data.storico : [];
@@ -1614,16 +1638,9 @@ async function loadFromStorage(){
 async function resetStorage(){
   if(!confirm('Ripristinare i dati originali per tutti? Le modifiche salvate andranno perse.')) return;
   try {
-    const getResp = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
-      headers:{ 'X-Master-Key': JSONBIN_MASTER_KEY }
-    });
-    const existing = getResp.ok ? (await getResp.json()).record : {};
+    const existing = (await _jbGet(JSONBIN_BIN_ID)).record || {};
     delete existing[EXEC_BIN_KEY];
-    await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
-      method:'PUT',
-      headers:{ 'Content-Type':'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
-      body: JSON.stringify(existing)
-    });
+    await _jbPut(JSONBIN_BIN_ID, existing);
   } catch(e){ console.warn('Reset fallito:', e); }
   location.reload();
 }
@@ -1901,79 +1918,76 @@ function openHelp() {
   </div>
 </div>
 
-<!-- ── TRACKING ACCESSI (executive) ──────────────────────────────────────── -->
+<!-- ── TRACKING ACCESSI (executive) — usa proxy Apps Script (no MASTER_KEY in chiaro) ──── -->
 <script>
 (function(){
-  const JSONBIN_BASE        = 'https://api.jsonbin.io/v3/b';
-  const JSONBIN_LOG_BIN_ID  = '69c8fbdced015c742bc8e978';
-  const JSONBIN_MASTER_KEY  = '$2a$10$2kWuCWPZFDiwXDJBkEmituTTW4op2VZF6E52e75IQsMV7FwmXmSsO';
-  const ACCESSI_MAX         = 500;
+  const _APPS_URL    = 'https://script.google.com/macros/s/AKfycbxSoKwfqsE4c8RORsUqhUVIXJRpd337jxireCf_RwxMf7UL0QJZyw2qE5UR59aaPEN_/exec';
+  const _APPS_SECRET = 'enri_login_2024_X9f83KsL21pQ';
+  const LOG_BIN_ID   = '69c8fbdced015c742bc8e978';
+  const ACCESSI_MAX  = 500;
 
   const utente = localStorage.getItem('_enri_user');
   const ruolo  = localStorage.getItem('_enri_role') || 'user';
   if (!utente) return;
 
-  let _sessionStart  = Date.now();
-  let _sessionLogIdx = -1;
+  let _sessionStart = Date.now();
+  let _sessionTs    = null;  // usa ts univoco (robusto a inserimenti concorrenti)
+  let _logCache     = null;
 
-  async function _getData() {
-    const res = await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}/latest`, {
-      headers: { 'X-Master-Key': JSONBIN_MASTER_KEY }
+  async function _proxyGet(binId) {
+    const res = await fetch(_APPS_URL, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ secret: _APPS_SECRET, action: 'jsonbin_get', binId })
     });
     const json = await res.json();
-    return {
-      utenti:  Array.isArray(json.record?.utenti)  ? json.record.utenti  : [],
-      accessi: Array.isArray(json.record?.accessi) ? json.record.accessi : []
-    };
+    return { utenti: Array.isArray(json.record?.utenti) ? json.record.utenti : [],
+             accessi: Array.isArray(json.record?.accessi) ? json.record.accessi : [] };
   }
 
-  async function _saveData(data) {
-    await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
-      body: JSON.stringify(data)
+  async function _proxyPut(binId, data, keepalive) {
+    return fetch(_APPS_URL, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ secret: _APPS_SECRET, action: 'jsonbin_put', binId, data }),
+      ...(keepalive ? { keepalive: true } : {})
     });
   }
 
   async function _getIP() {
-    try {
-      const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
-      return (await r.json()).ip || null;
-    } catch(_) { return null; }
+    try { const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
+          return (await r.json()).ip || null; } catch(_) { return null; }
   }
 
-  _getData().then(data => {
-    _getIP().then(ip => {
-      const entry = {
-        ts: new Date().toISOString(),
-        utente: utente,
-        ruolo: ruolo,
-        ip: ip,
-        ua: navigator.userAgent.substring(0, 120),
-        durata: 0,
-        lotti: [],
-        nAperture: 0,
-        pagina: 'executive'
-      };
-      data.accessi.push(entry);
-      if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
-      if (!data.utenti.includes(utente)) data.utenti.push(utente);
-      _sessionLogIdx = data.accessi.length - 1;
-      _saveData(data).catch(() => {});
-    }).catch(() => {});
+  // Log accesso all'apertura
+  Promise.all([_proxyGet(LOG_BIN_ID), _getIP()]).then(([data, ip]) => {
+    const entry = { ts: new Date().toISOString(), utente, ruolo, ip,
+      ua: navigator.userAgent.substring(0, 120),
+      durata: 0, lotti: [], nAperture: 0, pagina: 'executive' };
+    data.accessi.push(entry);
+    if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
+    if (!data.utenti.includes(utente)) data.utenti.push(utente);
+    _sessionTs = entry.ts;
+    _logCache  = data;
+    _proxyPut(LOG_BIN_ID, data).catch(() => {});
   }).catch(() => {});
 
+  // beforeunload: usa cache locale per evitare GET sincrono
   window.addEventListener('beforeunload', () => {
-    if (_sessionLogIdx < 0) return;
-    _getData().then(data => {
-      const entry = data.accessi[_sessionLogIdx];
+    if (!_sessionTs) return;
+    const durataMin = Math.round((Date.now() - _sessionStart) / 60000);
+    if (_logCache) {
+      const entry = _logCache.accessi.find(a => a.ts === _sessionTs);
+      if (entry) {
+        entry.durata = durataMin;
+        _proxyPut(LOG_BIN_ID, _logCache, true);
+        return;
+      }
+    }
+    // fallback senza cache
+    _proxyGet(LOG_BIN_ID).then(data => {
+      const entry = data.accessi.find(a => a.ts === _sessionTs);
       if (!entry) return;
-      entry.durata = Math.round((Date.now() - _sessionStart) / 60000);
-      fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}`, {
-        method: 'PUT', keepalive: true,
-        headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
-        body: JSON.stringify(data)
-      });
+      entry.durata = durataMin;
+      _proxyPut(LOG_BIN_ID, data, true);
     }).catch(() => {});
   });
 })();
