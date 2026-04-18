@@ -3284,6 +3284,59 @@ function renderDonut(globalStati, grandTotal) {
     `;
     legend.appendChild(row);
   });
+
+  // ── Tooltip donut ─────────────────────────────────────────────────────────
+  // Memorizza angoli segmenti per hit-test al mousemove
+  _donutSegments = [];
+  let _dsa = -Math.PI / 2;
+  grouped.forEach(s => {
+    const angle = (s.metri / grandTotal) * 2 * Math.PI;
+    _donutSegments.push({ label: s.label, color: s.color, metri: s.metri, pct: s.metri / grandTotal * 100, startAngle: _dsa, endAngle: _dsa + angle });
+    _dsa += angle;
+  });
+
+  if (!canvas._donutTipAttached) {
+    canvas._donutTipAttached = true;
+    const _tt = document.getElementById('tooltip');
+    canvas.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      // Scala coordinate schermo → coordinate canvas logiche (200×200)
+      const mx = (e.clientX - rect.left) * (200 / rect.width);
+      const my = (e.clientY - rect.top)  * (200 / rect.height);
+      const dx = mx - cx, dy = my - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      // Fuori dalla corona → nascondi
+      if (dist < rIn || dist > r) { _tt.style.opacity = '0'; return; }
+      // Angolo cursore normalizzato nell'intervallo [-π/2, -π/2 + 2π)
+      const base = -Math.PI / 2;
+      let ca = Math.atan2(dy, dx);
+      while (ca < base) ca += 2 * Math.PI;
+      while (ca >= base + 2 * Math.PI) ca -= 2 * Math.PI;
+      const seg = _donutSegments.find(s => ca >= s.startAngle && ca < s.endAngle);
+      if (!seg) { _tt.style.opacity = '0'; return; }
+      const barW = Math.min(100, Math.max(1, seg.pct));
+      _tt.innerHTML = `
+        <div style="padding:5px 12px 4px;background:${seg.color}18;border-bottom:1px solid ${seg.color}33">
+          <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:${seg.color}">${seg.label}</span>
+        </div>
+        <div style="padding:8px 12px">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin-bottom:6px">
+            <span style="font-size:22px;font-weight:700;font-family:'Bricolage Grotesque',sans-serif;color:${seg.color};letter-spacing:-0.02em">${seg.pct.toFixed(1)}%</span>
+            <span style="font-size:11px;font-family:'Fira Code',monospace;color:var(--text2);font-weight:600;white-space:nowrap">${fmt(seg.metri)} m</span>
+          </div>
+          <div style="height:4px;border-radius:2px;background:var(--border);overflow:hidden">
+            <div style="height:100%;border-radius:2px;background:${seg.color};width:${barW}%"></div>
+          </div>
+        </div>`;
+      const tw = 180;
+      const left = e.clientX + 14 + tw > window.innerWidth ? e.clientX - tw - 4 : e.clientX + 14;
+      _tt.style.opacity = '1';
+      _tt.style.left = left + 'px';
+      _tt.style.top  = Math.max(4, e.clientY - 30) + 'px';
+    });
+    canvas.addEventListener('mouseleave', () => { document.getElementById('tooltip').style.opacity = '0'; });
+    canvas.style.cursor = 'crosshair';
+  }
 }
 const MILESTONES = [
   { num:'01', titolo:'Invio tutte le richieste permessi', lotti:'Tutti i lotti', data:'2026-09-30' },
@@ -6478,7 +6531,7 @@ _hookScadenze();
     {k:'metri',    l:'Metri (m)',      w:'90px',  right:true},
   ];
 
-  const PAGE_SIZE = 100;
+  const PAGE_SIZE = 10;
   let _page = 0;
 
   let _sortK = 'codice', _sortD = 1, _scadW = 0;
@@ -6642,13 +6695,14 @@ _hookScadenze();
       const from = _page * PAGE_SIZE + 1;
       const to   = Math.min((_page + 1) * PAGE_SIZE, totalRows);
 
+      const btnBase = `font-size:11px;font-weight:700;padding:4px 12px;border-radius:6px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:4px;transition:all 0.15s`;
       const prevBtn = _page > 0
-        ? `<button onclick="window._tblPage(${_page-1})" style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:5px;border:1px solid var(--border2);background:var(--surface);color:var(--text);cursor:pointer;font-family:inherit">← Prec.</button>`
-        : `<button disabled style="font-size:10px;padding:3px 10px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-family:inherit">← Prec.</button>`;
+        ? `<button onclick="window._tblPage(${_page-1})" style="${btnBase};border:1px solid var(--border2);background:var(--surface);color:var(--text)">‹ Precedente</button>`
+        : `<button disabled style="${btnBase};border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:not-allowed;opacity:0.5">‹ Precedente</button>`;
       const nextBtn = _page < totalPages - 1
-        ? `<button onclick="window._tblPage(${_page+1})" style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:5px;border:1px solid var(--border2);background:var(--surface);color:var(--text);cursor:pointer;font-family:inherit">Succ. →</button>`
-        : `<button disabled style="font-size:10px;padding:3px 10px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-family:inherit">Succ. →</button>`;
-      document.getElementById('tabellaFootL').innerHTML = `<b style="color:var(--text)">${from}–${to}</b> di <b style="color:var(--text)">${totalRows}</b> pratiche &nbsp; ${prevBtn} &nbsp; <span style="font-size:10px;color:var(--muted)">pag. ${_page+1}/${totalPages}</span> &nbsp; ${nextBtn}`;
+        ? `<button onclick="window._tblPage(${_page+1})" style="${btnBase};border:1px solid var(--accent);background:var(--accent);color:#fff">Successiva ›</button>`
+        : `<button disabled style="${btnBase};border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:not-allowed;opacity:0.5">Successiva ›</button>`;
+      document.getElementById('tabellaFootL').innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${prevBtn}<span style="font-size:11px;color:var(--muted)">pag. <b style="color:var(--text)">${_page+1}</b> di <b style="color:var(--text)">${totalPages}</b> &nbsp;·&nbsp; righe <b style="color:var(--text)">${from}–${to}</b> di <b style="color:var(--text)">${totalRows}</b></span>${nextBtn}</div>`;
       document.getElementById('tabellaFootR').innerHTML = `Subtotale <b style="color:var(--text)">${fmt(tot)} m</b>`;
     } else {
 
