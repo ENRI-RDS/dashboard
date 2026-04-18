@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="it" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="google" content="notranslate">
+<meta http-equiv="Content-Language" content="it">
+<title>ENRI — Avanzamento Scavi</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Plus+Jakarta+Sans:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:        #F4F3EE;
+    --surface:   #FFFFFF;
+    --surface2:  #F0EEE6;
+    --border:    #E0DDD4;
+    --border2:   #CCC9BE;
+    --accent:    #0B3182;
+    --accent2:   #E55000;
+    --text:      #1C1C2E;
+    --text2:     #3A3A52;
+    --muted:     #52526E;
+    --muted2:    #7878A0;
+    --sh-xs: 0 1px 3px rgba(11,49,130,.06), 0 1px 2px rgba(0,0,0,.04);
+    --sh-sm: 0 2px 8px rgba(11,49,130,.08), 0 1px 4px rgba(0,0,0,.05);
+    --sh-md: 0 4px 20px rgba(11,49,130,.10), 0 2px 8px rgba(0,0,0,.06);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Plus Jakarta Sans',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+
+  .topbar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 20px; height:52px; background:var(--surface);
+    border-bottom:1px solid var(--border); box-shadow:var(--sh-xs);
+    position:sticky; top:0; z-index:50;
+  }
+  .topbar-left  { display:flex; align-items:center; gap:12px; flex-shrink:0; }
+  .topbar-right { display:flex; align-items:center; gap:6px; }
+  .logo { font-family:'Bricolage Grotesque',sans-serif; font-size:13px; font-weight:700; letter-spacing:.14em; color:var(--accent); text-transform:uppercase; }
+  .divider-v { width:1px; height:20px; background:var(--border2); }
+  .page-title { font-size:12px; color:var(--muted); font-weight:500; }
+  .btn-nav {
+    font-size:12px; padding:7px 14px; border-radius:7px; background:var(--surface2); color:var(--text);
+    border:1px solid var(--border); cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif;
+    font-weight:600; text-decoration:none; transition:opacity .2s; white-space:nowrap;
+    display:inline-flex; align-items:center; gap:5px;
+  }
+  .btn-nav:hover { opacity:.75; }
+  .btn-nav.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+
+  .main { padding:22px 28px; display:flex; flex-direction:column; gap:20px; }
+
+  .page-eyebrow { font-family:'Fira Code',monospace; font-size:9px; font-weight:500; letter-spacing:.2em; text-transform:uppercase; color:var(--accent2); }
+  .page-h1 { font-family:'Bricolage Grotesque',sans-serif; font-size:22px; font-weight:700; letter-spacing:-.025em; color:var(--text); line-height:1.2; margin-top:2px; }
+  .page-sub { font-size:12px; color:var(--muted); margin-top:3px; line-height:1.5; }
+  .demo-badge {
+    display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:20px;
+    background:#E550000A; border:1px solid #E5500030; font-size:11px; color:#E55000; font-weight:600; white-space:nowrap; flex-shrink:0;
+  }
+
+  .alert-banner {
+    display:flex; align-items:flex-start; gap:12px; background:#E550000A;
+    border:1px solid #E5500030; border-radius:10px; padding:12px 18px;
+    font-size:12px; color:#7A2800; line-height:1.6;
+  }
+
+  .kpi-row-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
+  @media(max-width:900px){ .kpi-row-grid{ grid-template-columns:repeat(3,1fr); } }
+
+  .kpi {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:12px; padding:16px 18px; position:relative; overflow:hidden;
+    box-shadow:var(--sh-xs); animation:fadeUp .4s ease both;
+  }
+  @keyframes fadeUp{ from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+  .kpi:nth-child(1){animation-delay:.05s}.kpi:nth-child(2){animation-delay:.10s}
+  .kpi:nth-child(3){animation-delay:.15s}.kpi:nth-child(4){animation-delay:.20s}.kpi:nth-child(5){animation-delay:.25s}
+  .kpi::before { content:''; position:absolute; top:0; left:0; bottom:0; width:3px; border-radius:12px 0 0 12px; }
+  .kpi.tot::before        { background:linear-gradient(180deg,#0B3182,#E55000); }
+  .kpi.k-nav::before      { background:#8A91B4; }
+  .kpi.k-all::before      { background:#C08A14; }
+  .kpi.k-cor::before      { background:#0B3182; }
+  .kpi.k-com::before      { background:#1F7A4E; }
+  .kpi-label { font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin-bottom:10px; font-weight:600; }
+  .kpi-value { font-size:30px; font-weight:700; font-family:'Bricolage Grotesque',sans-serif; line-height:1; letter-spacing:-.02em; color:var(--text); }
+  .kpi-sub   { font-size:11px; color:var(--text2); margin-top:6px; font-weight:500; }
+  .kpi.k-nav .kpi-value { color:#8A91B4; }
+  .kpi.k-all .kpi-value { color:#C08A14; }
+  .kpi.k-cor .kpi-value { color:#0B3182; }
+  .kpi.k-com .kpi-value { color:#1F7A4E; }
+
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:var(--sh-xs); }
+  .card-header { display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid var(--border); }
+  .card-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); font-family:'Bricolage Grotesque',sans-serif; }
+  .card-body  { padding:20px; }
+
+  .grid-main { display:grid; grid-template-columns:1fr 290px; gap:18px; }
+  @media(max-width:900px){ .grid-main{ grid-template-columns:1fr; } }
+  .side { display:flex; flex-direction:column; gap:14px; }
+
+  /* BAR ROWS */
+  .bar-row { display:flex; align-items:center; gap:10px; border-radius:6px; padding:5px 6px; margin-bottom:2px; transition:background .15s; }
+  .bar-row:hover { background:var(--surface2); }
+  .bar-lotto-wrap { width:80px; flex-shrink:0; display:flex; flex-direction:column; gap:2px; }
+  .bar-lotto-id   { font-size:15px; font-weight:700; font-family:'Bricolage Grotesque',sans-serif; color:var(--text); }
+  .bar-lotto-meta { font-size:9px; font-weight:600; color:var(--muted2); text-transform:uppercase; letter-spacing:.07em; }
+  .bar-middle     { flex:1; display:flex; flex-direction:column; gap:3px; }
+  .bar-track      { height:20px; border-radius:5px; overflow:hidden; display:flex; background:var(--surface2); border:1px solid var(--border); }
+  .bar-seg        { height:100%; }
+  .bar-info       { display:flex; justify-content:space-between; font-size:9px; color:var(--muted2); }
+  .bar-pct        { font-size:12px; font-weight:700; font-family:'Bricolage Grotesque',sans-serif; color:var(--text2); width:36px; text-align:right; flex-shrink:0; }
+
+  .cluster-header {
+    display:flex; align-items:center; gap:8px; padding:6px 6px 3px;
+    font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.12em; color:var(--muted2);
+    border-bottom:1px dashed var(--border2); margin-bottom:4px; margin-top:10px;
+  }
+  .cluster-header:first-child { margin-top:0; }
+
+  .legend { display:flex; flex-wrap:wrap; gap:10px; padding:12px 20px; border-top:1px solid var(--border); background:var(--surface2); }
+  .legend-item { display:flex; align-items:center; gap:6px; font-size:10px; color:var(--muted); font-weight:500; }
+  .legend-dot { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
+
+  .chip { font-size:9px; font-weight:700; padding:2px 8px; border-radius:4px; white-space:nowrap; display:inline-block; text-transform:uppercase; letter-spacing:.04em; }
+  .chip.non-avviato  { background:#8A91B418; color:#4A5078; border:1px solid #8A91B440; }
+  .chip.allestimento { background:#C08A1418; color:#7A5500; border:1px solid #C08A1440; }
+  .chip.in-corso     { background:#0B318218; color:#0B3182; border:1px solid #0B318240; }
+  .chip.sospeso      { background:#C23B2218; color:#8B1A1A; border:1px solid #C23B2240; }
+  .chip.completato   { background:#1F7A4E18; color:#1F7A4E; border:1px solid #1F7A4E40; }
+
+  .cant-table { width:100%; border-collapse:collapse; }
+  .cant-table thead th {
+    background:var(--surface2); font-size:9px; font-weight:700; text-transform:uppercase;
+    letter-spacing:.08em; color:var(--muted); padding:9px 12px; border-bottom:1px solid var(--border);
+    font-family:'Bricolage Grotesque',sans-serif; text-align:left; white-space:nowrap;
+  }
+  .cant-table tbody tr { transition:background .1s; }
+  .cant-table tbody tr:hover td { background:var(--surface2); }
+  .cant-table td { font-size:11px; padding:9px 12px; border-bottom:1px solid var(--border); color:var(--text2); vertical-align:middle; }
+
+  .prog-wrap  { display:flex; align-items:center; gap:7px; }
+  .prog-track { flex:1; height:5px; border-radius:3px; background:var(--surface2); border:1px solid var(--border); overflow:hidden; min-width:50px; }
+  .prog-fill  { height:100%; border-radius:3px; }
+  .prog-val   { font-size:10px; font-weight:700; font-family:'Fira Code',monospace; color:var(--text2); width:34px; text-align:right; }
+
+  .stat-row { display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border); }
+  .stat-row:last-child { border-bottom:none; }
+  .stat-label { font-size:11px; color:var(--muted); }
+  .stat-val   { font-size:14px; font-weight:700; font-family:'Bricolage Grotesque',sans-serif; color:var(--text); letter-spacing:-.01em; }
+
+  .placeholder-section {
+    background:var(--surface); border:1px dashed var(--border2); border-radius:12px;
+    padding:28px 20px; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:8px; text-align:center; min-height:130px;
+  }
+  .placeholder-icon  { font-size:26px; opacity:.35; }
+  .placeholder-title { font-size:12px; font-weight:600; color:var(--muted); }
+  .placeholder-sub   { font-size:11px; color:var(--muted2); max-width:230px; line-height:1.6; }
+
+  .prov-pill {
+    display:inline-block; font-size:9px; font-weight:700; font-family:'Fira Code',monospace;
+    padding:1px 6px; border-radius:4px; background:var(--surface2);
+    border:1px solid var(--border2); color:var(--muted); margin-right:2px;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <span class="logo">PROGETTO · ENRI</span>
+    <div class="divider-v"></div>
+    <span class="page-title">Avanzamento Scavi</span>
+  </div>
+  <div class="topbar-right">
+    <a href="index.html"             class="btn-nav">📋 Progettazione</a>
+    <a href="executive_summary.html" class="btn-nav">📊 Executive</a>
+    <a href="mappa.html"             class="btn-nav">🗺 Mappa</a>
+    <a href="hub.html"               class="btn-nav primary">← Hub</a>
+  </div>
+</div>
+
+<div class="main">
+
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+    <div>
+      <div class="page-eyebrow">Fase 2 · Esecuzione</div>
+      <div class="page-h1">Avanzamento Scavi</div>
+      <div class="page-sub">
+        12 lotti · cluster 1, 2, 3, 5, 7 · province BG, MI, MB, PV, CR<br>
+        Ogni lotto attraversa più comuni e più enti — il dettaglio autorizzativo è in Progettazione
+      </div>
+    </div>
+    <div class="demo-badge">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+      Struttura reale · avanzamento di esempio
+    </div>
+  </div>
+
+  <div class="alert-banner">
+    <div style="font-size:18px;flex-shrink:0">⚠️</div>
+    <div>
+      <strong>Pagina in sviluppo.</strong> La struttura per lotti, cluster, province e numero di comuni è quella reale del progetto. Le percentuali di avanzamento e lo stato dei cantieri sono dati fittizi a scopo illustrativo, e saranno sostituiti dai dati operativi di campo.
+    </div>
+  </div>
+
+  <!-- KPI -->
+  <div class="kpi-row-grid">
+    <div class="kpi tot">
+      <div class="kpi-label">Lotti Totali</div>
+      <div class="kpi-value">12</div>
+      <div class="kpi-sub">407.273 m di tracciato</div>
+    </div>
+    <div class="kpi k-nav">
+      <div class="kpi-label">Non Avviati</div>
+      <div class="kpi-value">6</div>
+      <div class="kpi-sub">in attesa di autorizzazioni</div>
+    </div>
+    <div class="kpi k-all">
+      <div class="kpi-label">In Allestimento</div>
+      <div class="kpi-value">3</div>
+      <div class="kpi-sub">cantieri in preparazione</div>
+    </div>
+    <div class="kpi k-cor">
+      <div class="kpi-label">In Corso</div>
+      <div class="kpi-value">3</div>
+      <div class="kpi-sub">lotti con scavo attivo</div>
+    </div>
+    <div class="kpi k-com">
+      <div class="kpi-label">Completati</div>
+      <div class="kpi-value">0</div>
+      <div class="kpi-sub">nessun lotto ultimato</div>
+    </div>
+  </div>
+
+  <div class="grid-main">
+
+    <!-- LEFT -->
+    <div style="display:flex;flex-direction:column;gap:14px;">
+
+      <!-- Barre avanzamento -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Avanzamento per Lotto</span>
+          <span style="font-size:10px;color:var(--muted);font-family:'Fira Code',monospace">% metri scavati · per cluster</span>
+        </div>
+        <div class="card-body" style="display:flex;flex-direction:column;" id="barContainer">
+        </div>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#0B3182"></div>In corso</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#C08A14"></div>In allestimento</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#8A91B4"></div>Non avviato</div>
+          <div class="legend-item" style="opacity:.5;font-style:italic">Barre in grigio = lotto non ancora avviato</div>
+        </div>
+      </div>
+
+      <!-- Tabella -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Registro Lotti · Stato Cantiere</span>
+          <span style="font-size:10px;color:var(--muted);font-family:'Fira Code',monospace">12 lotti · struttura reale · avanzamento di esempio</span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="cant-table">
+            <thead>
+              <tr>
+                <th>Lotto</th>
+                <th>Cluster</th>
+                <th>Province</th>
+                <th>Comuni</th>
+                <th>Stato Cantiere</th>
+                <th>Avanzamento</th>
+                <th style="text-align:right">Metri Tot.</th>
+              </tr>
+            </thead>
+            <tbody id="tablebody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT sidebar -->
+    <div class="side">
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">Riepilogo Operativo</span></div>
+        <div class="card-body">
+          <div class="stat-row">
+            <span class="stat-label">Tracciato totale</span>
+            <span class="stat-val">~407 km</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Metri scavati (es.)</span>
+            <span class="stat-val" style="color:#0B3182">~16 km</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Avanzamento globale</span>
+            <span class="stat-val" style="color:#0B3182">~4%</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Lotti attivi</span>
+            <span class="stat-val">3</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Comuni attraversati</span>
+            <span class="stat-val">~120</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Province coinvolte</span>
+            <span class="stat-val" style="font-size:12px">
+              <span class="prov-pill">BG</span><span class="prov-pill">MI</span><span class="prov-pill">MB</span><span class="prov-pill">PV</span><span class="prov-pill">CR</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">Distribuzione Stati</span></div>
+        <div class="card-body" style="display:flex;flex-direction:column;align-items:center;gap:16px;">
+          <canvas id="donutChart" width="160" height="160"></canvas>
+          <div style="display:flex;flex-direction:column;gap:7px;width:100%">
+            <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="display:flex;align-items:center;gap:6px;color:var(--muted)"><span style="width:8px;height:8px;border-radius:2px;background:#8A91B4;display:inline-block"></span>Non avviati</span><strong>6 lotti</strong></div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="display:flex;align-items:center;gap:6px;color:var(--muted)"><span style="width:8px;height:8px;border-radius:2px;background:#C08A14;display:inline-block"></span>In allestimento</span><strong>3 lotti</strong></div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="display:flex;align-items:center;gap:6px;color:var(--muted)"><span style="width:8px;height:8px;border-radius:2px;background:#0B3182;display:inline-block"></span>In corso</span><strong>3 lotti</strong></div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="display:flex;align-items:center;gap:6px;color:var(--muted)"><span style="width:8px;height:8px;border-radius:2px;background:#1F7A4E;display:inline-block"></span>Completati</span><strong>0 lotti</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="placeholder-section">
+        <div class="placeholder-icon">📸</div>
+        <div class="placeholder-title">Documentazione Fotografica</div>
+        <div class="placeholder-sub">Foto georeferenziate per tratta e data — in sviluppo</div>
+      </div>
+
+      <div class="placeholder-section">
+        <div class="placeholder-icon">⚡</div>
+        <div class="placeholder-title">Criticità in Campo</div>
+        <div class="placeholder-sub">Segnalazioni operative per lotto — in sviluppo</div>
+      </div>
+
+    </div>
+
+  </div><!-- /grid -->
+
+</div><!-- /main -->
+
+<script>
+// ── DATI LOTTI (struttura reale, avanzamento fittizio) ─────────────────────
+const LOTTI = [
+  // cluster, id, province, comuni, stato, pct_scavato, metri_tot
+  { cl:'1', id:'1B',  prov:['MI'],               comuni:3,  stato:'in-corso',     pct:38, metri:8524  },
+  { cl:'2', id:'2A',  prov:['MI','PV'],           comuni:5,  stato:'in-corso',     pct:22, metri:11611 },
+  { cl:'2', id:'2B',  prov:['MI'],               comuni:4,  stato:'allestimento', pct:9,  metri:15330 },
+  { cl:'3', id:'1A',  prov:['MI'],               comuni:3,  stato:'in-corso',     pct:54, metri:16933 },
+  { cl:'3', id:'1',   prov:['BG','MI'],           comuni:20, stato:'non-avviato',  pct:0,  metri:50924 },
+  { cl:'3', id:'2',   prov:['MB','MI'],           comuni:16, stato:'non-avviato',  pct:0,  metri:48530 },
+  { cl:'3', id:'3',   prov:['BG','MI'],           comuni:13, stato:'allestimento', pct:0,  metri:46252 },
+  { cl:'3', id:'4',   prov:['BG','CR','MI','PV'], comuni:19, stato:'non-avviato',  pct:0,  metri:56003 },
+  { cl:'3', id:'5',   prov:['MI','PV'],           comuni:9,  stato:'non-avviato',  pct:0,  metri:48333 },
+  { cl:'3', id:'6',   prov:['MI'],               comuni:13, stato:'non-avviato',  pct:0,  metri:58050 },
+  { cl:'5', id:'8',   prov:['MI','PV'],           comuni:5,  stato:'allestimento', pct:0,  metri:19617 },
+  { cl:'7', id:'7',   prov:['BG'],               comuni:15, stato:'non-avviato',  pct:0,  metri:47184 },
+];
+
+const CLUSTER_LABEL = {
+  '1':'Milano urbano', '2':'Sud Milano / Pavia',
+  '3':'Dorsale principale', '5':'Pavese', '7':'Bergamo est'
+};
+const CLUSTER_COLOR = {
+  '1':'#0B3182','2':'#1F7A4E','3':'#6B3FA0','5':'#C08A14','7':'#C23B22'
+};
+const STATO_LABEL = { 'non-avviato':'Non avviato','allestimento':'Allestimento','in-corso':'In Corso','completato':'Completato' };
+const STATO_COLOR = { 'non-avviato':'#8A91B4','allestimento':'#C08A14','in-corso':'#0B3182','completato':'#1F7A4E' };
+
+function fmt(n){ return n.toLocaleString('it-IT'); }
+
+// ── BAR CHART ──────────────────────────────────────────────────────────────
+const barContainer = document.getElementById('barContainer');
+let lastCluster = null;
+LOTTI.forEach(r => {
+  const col = STATO_COLOR[r.stato];
+  const isInactive = r.pct === 0 && r.stato === 'non-avviato';
+
+  if (r.cl !== lastCluster) {
+    lastCluster = r.cl;
+    const ch = document.createElement('div');
+    ch.className = 'cluster-header';
+    ch.innerHTML = `<span style="background:${CLUSTER_COLOR[r.cl]}20;color:${CLUSTER_COLOR[r.cl]};border:1px solid ${CLUSTER_COLOR[r.cl]}40;border-radius:4px;padding:1px 7px;font-size:9px;font-weight:700">CL ${r.cl}</span>${CLUSTER_LABEL[r.cl]}`;
+    barContainer.appendChild(ch);
+  }
+
+  const row = document.createElement('div');
+  row.className = 'bar-row';
+  if (isInactive) row.style.opacity = '.38';
+  row.innerHTML = `
+    <div class="bar-lotto-wrap">
+      <div class="bar-lotto-id">L${r.id}</div>
+      <div class="bar-lotto-meta">${r.comuni} comuni · ${r.prov.join('/')}</div>
+    </div>
+    <div class="bar-middle">
+      <div class="bar-track">
+        ${r.pct > 0 ? `<div class="bar-seg" style="width:${r.pct}%;background:${col};opacity:.85"></div>` : ''}
+      </div>
+      <div class="bar-info">
+        <span>${fmt(r.metri)} m tot.</span>
+        <span>${r.pct > 0 ? '~' + fmt(Math.round(r.metri * r.pct / 100)) + ' m scavati' : '—'}</span>
+      </div>
+    </div>
+    <div class="bar-pct">${r.pct > 0 ? r.pct + '%' : '—'}</div>
+  `;
+  barContainer.appendChild(row);
+});
+
+// ── TABELLA ────────────────────────────────────────────────────────────────
+const tbody = document.getElementById('tablebody');
+tbody.innerHTML = LOTTI.map(r => {
+  const col   = STATO_COLOR[r.stato];
+  const pills = r.prov.map(p => `<span class="prov-pill">${p}</span>`).join('');
+  const prog  = r.pct > 0
+    ? `<div class="prog-wrap"><div class="prog-track"><div class="prog-fill" style="width:${r.pct}%;background:${col}"></div></div><div class="prog-val">${r.pct}%</div></div>`
+    : `<span style="color:var(--muted2)">—</span>`;
+  return `<tr>
+    <td><span style="font-family:'Fira Code',monospace;font-size:11px;font-weight:700;color:var(--accent)">L${r.id}</span></td>
+    <td><span style="font-family:'Fira Code',monospace;font-size:10px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 7px;color:var(--muted)">CL ${r.cl}</span></td>
+    <td>${pills}</td>
+    <td style="color:var(--muted)">${r.comuni} comuni</td>
+    <td><span class="chip ${r.stato}">${STATO_LABEL[r.stato]}</span></td>
+    <td>${prog}</td>
+    <td style="text-align:right;font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:12px">${fmt(r.metri)}</td>
+  </tr>`;
+}).join('');
+
+// ── DONUT ──────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const ctx = document.getElementById('donutChart').getContext('2d');
+  new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels:['Non avviati','In allestimento','In corso','Completati'],
+      datasets:[{ data:[6,3,3,0], backgroundColor:['#8A91B4','#C08A14','#0B3182','#1F7A4E'], borderWidth:2, borderColor:'#FFF', hoverOffset:4 }]
+    },
+    options:{ cutout:'68%', plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label: c => ` ${c.label}: ${c.parsed} lotti` } } } }
+  });
+});
+</script>
+</body>
+</html>
