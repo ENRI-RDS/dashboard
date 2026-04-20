@@ -915,9 +915,9 @@
     <!-- TOOLBAR FILTRI -->
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface2)">
       <!-- cerca libera -->
-      <div style="position:relative;flex:1;min-width:180px">
+      <div style="position:relative;flex:1;min-width:120px;max-width:260px">
         <svg style="position:absolute;left:9px;top:50%;transform:translateY(-50%);pointer-events:none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input id="tblQ" type="text" placeholder="Cerca codice, ente, comune, impresa…"
+        <input id="tblQ" type="text" placeholder="Cerca codice, ente, comune…"
           style="width:100%;box-sizing:border-box;padding:7px 10px 7px 28px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;font-family:inherit;font-size:12px;color:var(--text);outline:none"
           oninput="renderTabella()" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'">
       </div>
@@ -948,6 +948,8 @@
           style="font-size:10px;font-weight:700;padding:4px 10px;border-radius:4px;border:none;cursor:pointer;font-family:inherit;background:transparent;color:var(--muted);transition:all .15s">Scad. 7gg</button>
         <button id="tblBtn14" onclick="tblSetScad(14)"
           style="font-size:10px;font-weight:700;padding:4px 10px;border-radius:4px;border:none;cursor:pointer;font-family:inherit;background:transparent;color:var(--muted);transition:all .15s">Scad. 14gg</button>
+        <button id="tblBtnScadute" onclick="tblSetScad(-1)"
+          style="font-size:10px;font-weight:700;padding:4px 10px;border-radius:4px;border:none;cursor:pointer;font-family:inherit;background:transparent;color:var(--muted);transition:all .15s">⚠ Scadute</button>
       </div>
 
       <!-- reset -->
@@ -1077,6 +1079,7 @@ function exportVistaCorrente() {
     if (fLotto   && r.lotto   !== fLotto)   return false;
     if (fImpresa && r.impresa !== fImpresa) return false;
     if (scadW > 0 && (r.scad_gg===null || r.scad_gg<0 || r.scad_gg>scadW)) return false;
+    if (scadW === -1 && (r.scad_gg===null || r.scad_gg>=0)) return false;
     if (q) {
       const hay = [r.codice,r.stato,r.ente,...(r.comuni||[]),r.impresa].join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
@@ -6627,6 +6630,7 @@ _hookScadenze();
       if (fLotto   && r.lotto   !== fLotto)   return false;
       if (fImpresa && r.impresa !== fImpresa) return false;
       if (_scadW > 0 && (r.scad_gg===null || r.scad_gg<0 || r.scad_gg>_scadW)) return false;
+      if (_scadW === -1 && (r.scad_gg===null || r.scad_gg>=0)) return false;
       if (q) {
         const hay = [r.codice,r.stato,r.ente,...r.comuni,r.impresa].join(' ').toLowerCase();
         if (!hay.includes(q)) return false;
@@ -6655,7 +6659,7 @@ _hookScadenze();
     const SC = STATI_COLORI_MAP || {};
 
     // paginazione: se nessun filtro attivo, limita a PAGE_SIZE righe per pagina
-    const hasFilter = q || fStato || fLotto || fImpresa || _scadW > 0;
+    const hasFilter = q || fStato || fLotto || fImpresa || _scadW !== 0;
     const totalRows = rows.length;
     if (!hasFilter) {
       // resetta pagina se ordine/filtri cambiano
@@ -6690,7 +6694,7 @@ _hookScadenze();
 
     // footer con paginazione
     const tot = rows.reduce((s,r)=>s+(+r.metri||0),0);
-    const wLabel = _scadW===0?'tutte le pratiche':`scadenza entro ${_scadW} gg`;
+    const wLabel = _scadW===0?'tutte le pratiche':_scadW===-1?'pratiche scadute':`scadenza entro ${_scadW} gg`;
     if (!hasFilter) {
       const totalPages = Math.ceil(totalRows / PAGE_SIZE);
       const from = _page * PAGE_SIZE + 1;
@@ -6716,11 +6720,13 @@ _hookScadenze();
 
   window.tblSetScad = function(n) {
     _scadW = n; window._tblScadW = n;
-    [['tblBtnAll',0],['tblBtn7',7],['tblBtn14',14]].forEach(([id,v]) => {
+    [['tblBtnAll',0],['tblBtn7',7],['tblBtn14',14],['tblBtnScadute',-1]].forEach(([id,v]) => {
       const btn = document.getElementById(id);
       if (!btn) return;
-      btn.style.background = (n===v) ? 'var(--accent)' : 'transparent';
-      btn.style.color      = (n===v) ? '#fff' : 'var(--muted)';
+      const isActive = (n===v);
+      const isRed = (v===-1);
+      btn.style.background = isActive ? (isRed ? '#C23B22' : 'var(--accent)') : 'transparent';
+      btn.style.color      = isActive ? '#fff' : 'var(--muted)';
     });
     renderTabella();
   };
