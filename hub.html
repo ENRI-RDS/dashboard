@@ -185,6 +185,40 @@
   .nav-card:hover .card-arrow { background:var(--accent); border-color:var(--accent); }
   .nav-card:hover .card-arrow svg { color:#fff; }
 
+  /* -- CARD BLOCCATA -------------------------------------------------------- */
+  .nav-card.card-locked {
+    cursor: not-allowed;
+    opacity: .52;
+    filter: grayscale(.5);
+    pointer-events: none;
+    position: relative;
+  }
+  .nav-card.card-locked::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: repeating-linear-gradient(
+      -45deg,
+      transparent, transparent 7px,
+      rgba(0,0,0,.04) 7px, rgba(0,0,0,.04) 8px
+    );
+    pointer-events: none;
+  }
+  .card-lock-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    background: #00000012;
+    color: var(--muted);
+    border: 1px solid var(--border2);
+    letter-spacing: .04em;
+  }
+
   /* badge "in arrivo" */
   .card-badge {
     position:absolute; top:10px; right:46px;
@@ -356,8 +390,8 @@
     </a>
 
     <!-- Avanzamento Lavori -->
-    <a href="scavi.html" class="nav-card card-lav">
-      <div class="card-badge">In arrivo</div>
+    <a id="scaviCard" href="scavi.html" class="nav-card card-lav">
+      <div id="scaviBadge" class="card-badge">In arrivo</div>
       <div class="card-top-row">
         <div class="card-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -439,6 +473,9 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── MOSTRA HUB ──────────────────────────────────────────────────────────────
+// Ruoli che possono accedere alla pagina Scavi
+const SCAVI_ALLOWED_ROLES = ['admin', 'admin2'];
+
 function _showHub(nome) {
   document.getElementById('initSpinner').style.opacity = '0';
   setTimeout(() => { document.getElementById('initSpinner').style.display = 'none'; }, 300);
@@ -448,6 +485,30 @@ function _showHub(nome) {
   document.getElementById('topbarUser').style.display = '';
   document.getElementById('logoutBtn').style.display  = '';
   document.getElementById('hubContent').style.display = '';
+
+  // ── Controllo accesso Scavi ──────────────────────────────────────────────
+  const ruolo = (localStorage.getItem('_enri_role') || '').toLowerCase();
+  const scaviCard  = document.getElementById('scaviCard');
+  const scaviBadge = document.getElementById('scaviBadge');
+
+  if (!SCAVI_ALLOWED_ROLES.includes(ruolo)) {
+    // Blocca navigazione e applica stile "locked"
+    scaviCard.removeAttribute('href');
+    scaviCard.classList.add('card-locked');
+    scaviCard.style.pointerEvents = 'none';
+
+    // Sostituisce il badge "In arrivo" con il lucchetto
+    scaviBadge.innerHTML =
+      '<span class="card-lock-badge">' +
+        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
+          '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
+          '<path d="M7 11V7a5 5 0 0 1 10 0v4"/>' +
+        '</svg>' +
+        'Accesso riservato' +
+      '</span>';
+    scaviBadge.className = '';   // rimuove classe card-badge
+    scaviBadge.style.cssText = 'position:absolute;top:10px;right:10px';
+  }
 }
 
 // ── LOGOUT ──────────────────────────────────────────────────────────────────
