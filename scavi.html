@@ -64,6 +64,7 @@
     font-size:12px; color:#7A2800; line-height:1.6;
   }
 
+  /* ── KPI CARDS ─────────────────────────────────────────────────── */
   .kpi-row-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
   @media(max-width:900px){ .kpi-row-grid{ grid-template-columns:repeat(3,1fr); } }
 
@@ -76,11 +77,11 @@
   .kpi:nth-child(1){animation-delay:.05s}.kpi:nth-child(2){animation-delay:.10s}
   .kpi:nth-child(3){animation-delay:.15s}.kpi:nth-child(4){animation-delay:.20s}.kpi:nth-child(5){animation-delay:.25s}
   .kpi::before { content:''; position:absolute; top:0; left:0; bottom:0; width:3px; border-radius:12px 0 0 12px; }
-  .kpi.tot::before        { background:linear-gradient(180deg,#0B3182,#E55000); }
   .kpi.k-nav::before      { background:#8A91B4; }
   .kpi.k-all::before      { background:#C08A14; }
   .kpi.k-cor::before      { background:#0B3182; }
   .kpi.k-com::before      { background:#1F7A4E; }
+  .kpi.k-sos::before      { background:#C23B22; }
   .kpi-label { font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin-bottom:10px; font-weight:600; }
   .kpi-value { font-size:30px; font-weight:700; font-family:'Bricolage Grotesque',sans-serif; line-height:1; letter-spacing:-.02em; color:var(--text); }
   .kpi-sub   { font-size:11px; color:var(--text2); margin-top:6px; font-weight:500; }
@@ -88,46 +89,55 @@
   .kpi.k-all .kpi-value { color:#C08A14; }
   .kpi.k-cor .kpi-value { color:#0B3182; }
   .kpi.k-com .kpi-value { color:#1F7A4E; }
+  .kpi.k-sos .kpi-value { color:#C23B22; }
 
+  /* ── CARD ─────────────────────────────────────────────────────── */
   .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:var(--sh-xs); }
   .card-header { display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid var(--border); }
   .card-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); font-family:'Bricolage Grotesque',sans-serif; }
   .card-body  { padding:20px; }
 
-  .grid-main { display:grid; grid-template-columns:1fr 290px; gap:18px; }
-  @media(max-width:900px){ .grid-main{ grid-template-columns:1fr; } }
-  .side { display:flex; flex-direction:column; gap:14px; }
+  /* ── CLUSTER BARS (stile index) ──────────────────────────────── */
+  .cluster-section { display:flex; flex-direction:column; gap:4px; }
+  .cluster-sep {
+    display:flex; align-items:center; gap:8px; padding:5px 6px 3px;
+    font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.12em; color:var(--muted2);
+    border-bottom:1px dashed var(--border2); margin-bottom:3px; margin-top:10px;
+  }
+  .cluster-sep:first-child { margin-top:0; }
 
-  /* BAR ROWS */
-  .bar-row { display:flex; align-items:center; gap:10px; border-radius:6px; padding:5px 6px; margin-bottom:2px; transition:background .15s; }
+  /* ── LOTTO BARS ──────────────────────────────────────────────── */
+  .bar-row { display:flex; align-items:center; gap:10px; border-radius:6px; padding:5px 6px; margin-bottom:2px; transition:background .15s; cursor:pointer; }
   .bar-row:hover { background:var(--surface2); }
   .bar-lotto-wrap { width:80px; flex-shrink:0; display:flex; flex-direction:column; gap:2px; }
   .bar-lotto-id   { font-size:15px; font-weight:700; font-family:'Bricolage Grotesque',sans-serif; color:var(--text); }
   .bar-lotto-meta { font-size:9px; font-weight:600; color:var(--muted2); text-transform:uppercase; letter-spacing:.07em; }
   .bar-middle     { flex:1; display:flex; flex-direction:column; gap:3px; }
-  .bar-track      { height:20px; border-radius:5px; overflow:hidden; display:flex; background:var(--surface2); border:1px solid var(--border); }
-  .bar-seg        { height:100%; }
+  .bar-track      { height:22px; border-radius:5px; overflow:hidden; display:flex; background:var(--surface2); border:1px solid var(--border); }
+  .bar-seg        { height:100%; transition:opacity .15s; }
+  .bar-seg:hover  { opacity:.8; }
   .bar-info       { display:flex; justify-content:space-between; font-size:9px; color:var(--muted2); }
   .bar-pct        { font-size:12px; font-weight:700; font-family:'Bricolage Grotesque',sans-serif; color:var(--text2); width:36px; text-align:right; flex-shrink:0; }
+  .bar-meters     { min-width:72px; text-align:right; font-size:12px; font-family:'Bricolage Grotesque',sans-serif; font-weight:700; color:var(--text2); flex-shrink:0; letter-spacing:-.01em; }
 
-  .cluster-header {
-    display:flex; align-items:center; gap:8px; padding:6px 6px 3px;
-    font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.12em; color:var(--muted2);
-    border-bottom:1px dashed var(--border2); margin-bottom:4px; margin-top:10px;
+  /* ── TOOLTIP ──────────────────────────────────────────────────── */
+  .tooltip {
+    position:fixed; background:var(--surface); border:1px solid var(--border);
+    border-radius:8px; padding:7px 12px; font-size:11px; pointer-events:none; z-index:1000;
+    opacity:0; transition:opacity 0.15s; font-family:'Fira Code',monospace;
+    color:var(--text); box-shadow:var(--sh-md);
   }
-  .cluster-header:first-child { margin-top:0; }
 
   .legend { display:flex; flex-wrap:wrap; gap:10px; padding:12px 20px; border-top:1px solid var(--border); background:var(--surface2); }
   .legend-item { display:flex; align-items:center; gap:6px; font-size:10px; color:var(--muted); font-weight:500; }
   .legend-dot { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
 
-  .chip { font-size:9px; font-weight:700; padding:2px 8px; border-radius:4px; white-space:nowrap; display:inline-block; text-transform:uppercase; letter-spacing:.04em; }
-  .chip.non-avviato  { background:#8A91B418; color:#4A5078; border:1px solid #8A91B440; }
-  .chip.allestimento { background:#C08A1418; color:#7A5500; border:1px solid #C08A1440; }
-  .chip.in-corso     { background:#0B318218; color:#0B3182; border:1px solid #0B318240; }
-  .chip.sospeso      { background:#C23B2218; color:#8B1A1A; border:1px solid #C23B2240; }
-  .chip.completato   { background:#1F7A4E18; color:#1F7A4E; border:1px solid #1F7A4E40; }
+  /* ── GRID MAIN ─────────────────────────────────────────────────── */
+  .grid-main { display:grid; grid-template-columns:1fr 290px; gap:18px; }
+  @media(max-width:900px){ .grid-main{ grid-template-columns:1fr; } }
+  .side { display:flex; flex-direction:column; gap:14px; }
 
+  /* ── TABLE ─────────────────────────────────────────────────────── */
   .cant-table { width:100%; border-collapse:collapse; }
   .cant-table thead th {
     background:var(--surface2); font-size:9px; font-weight:700; text-transform:uppercase;
@@ -162,9 +172,18 @@
     padding:1px 6px; border-radius:4px; background:var(--surface2);
     border:1px solid var(--border2); color:var(--muted); margin-right:2px;
   }
+
+  .chip { font-size:9px; font-weight:700; padding:2px 8px; border-radius:4px; white-space:nowrap; display:inline-block; text-transform:uppercase; letter-spacing:.04em; }
+  .chip.non-avviato  { background:#8A91B418; color:#4A5078; border:1px solid #8A91B440; }
+  .chip.allestimento { background:#C08A1418; color:#7A5500; border:1px solid #C08A1440; }
+  .chip.in-corso     { background:#0B318218; color:#0B3182; border:1px solid #0B318240; }
+  .chip.sospeso      { background:#C23B2218; color:#8B1A1A; border:1px solid #C23B2240; }
+  .chip.completato   { background:#1F7A4E18; color:#1F7A4E; border:1px solid #1F7A4E40; }
 </style>
 </head>
 <body>
+
+<div class="tooltip" id="tooltip"></div>
 
 <div class="topbar">
   <div class="topbar-left">
@@ -182,6 +201,7 @@
 
 <div class="main">
 
+  <!-- HEADER -->
   <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
     <div>
       <div class="page-eyebrow">Fase 2 · Esecuzione</div>
@@ -204,51 +224,67 @@
     </div>
   </div>
 
-  <!-- KPI -->
+  <!-- KPI ROW: Non Avviati sinistra · In Sospeso destra -->
   <div class="kpi-row-grid">
-    <div class="kpi tot">
-      <div class="kpi-label">Lotti Totali</div>
-      <div class="kpi-value">12</div>
-      <div class="kpi-sub">407.273 m di tracciato</div>
-    </div>
     <div class="kpi k-nav">
       <div class="kpi-label">Non Avviati</div>
-      <div class="kpi-value">6</div>
+      <div class="kpi-value" id="kpiNav">—</div>
       <div class="kpi-sub">in attesa di autorizzazioni</div>
     </div>
     <div class="kpi k-all">
       <div class="kpi-label">In Allestimento</div>
-      <div class="kpi-value">3</div>
+      <div class="kpi-value" id="kpiAll">—</div>
       <div class="kpi-sub">cantieri in preparazione</div>
     </div>
     <div class="kpi k-cor">
       <div class="kpi-label">In Corso</div>
-      <div class="kpi-value">3</div>
+      <div class="kpi-value" id="kpiCor">—</div>
       <div class="kpi-sub">lotti con scavo attivo</div>
     </div>
     <div class="kpi k-com">
       <div class="kpi-label">Completati</div>
-      <div class="kpi-value">0</div>
-      <div class="kpi-sub">nessun lotto ultimato</div>
+      <div class="kpi-value" id="kpiCom">—</div>
+      <div class="kpi-sub">lotti ultimati</div>
+    </div>
+    <div class="kpi k-sos">
+      <div class="kpi-label">In Sospeso</div>
+      <div class="kpi-value" id="kpiSos">—</div>
+      <div class="kpi-sub">cantieri temporaneamente bloccati</div>
     </div>
   </div>
 
+  <!-- CLUSTER BARS (stile index.html) -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">⚡ Avanzamento per Cluster</span>
+      <span style="font-size:10px;color:var(--muted);font-family:'Fira Code',monospace" id="clusterStatus">— m totali</span>
+    </div>
+    <div class="card-body" style="display:flex;flex-direction:column;gap:2px;" id="clusterContainer"></div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#0B3182"></div>In corso</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#C08A14"></div>In allestimento</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#C23B22"></div>In sospeso</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#1F7A4E"></div>Completato</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#8A91B4"></div>Non avviato</div>
+    </div>
+  </div>
+
+  <!-- GRID: lotti bars + tabella  |  sidebar -->
   <div class="grid-main">
 
-    <!-- LEFT -->
     <div style="display:flex;flex-direction:column;gap:14px;">
 
-      <!-- Barre avanzamento -->
+      <!-- Barre per Lotto -->
       <div class="card">
         <div class="card-header">
           <span class="card-title">Avanzamento per Lotto</span>
           <span style="font-size:10px;color:var(--muted);font-family:'Fira Code',monospace">% metri scavati · per cluster</span>
         </div>
-        <div class="card-body" style="display:flex;flex-direction:column;" id="barContainer">
-        </div>
+        <div class="card-body" style="display:flex;flex-direction:column;" id="barContainer"></div>
         <div class="legend">
           <div class="legend-item"><div class="legend-dot" style="background:#0B3182"></div>In corso</div>
           <div class="legend-item"><div class="legend-dot" style="background:#C08A14"></div>In allestimento</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#C23B22"></div>In sospeso</div>
           <div class="legend-item"><div class="legend-dot" style="background:#8A91B4"></div>Non avviato</div>
           <div class="legend-item" style="opacity:.5;font-style:italic">Barre in grigio = lotto non ancora avviato</div>
         </div>
@@ -319,12 +355,7 @@
         <div class="card-header"><span class="card-title">Distribuzione Stati</span></div>
         <div class="card-body" style="display:flex;flex-direction:column;align-items:center;gap:16px;">
           <canvas id="donutChart" width="160" height="160"></canvas>
-          <div style="display:flex;flex-direction:column;gap:7px;width:100%">
-            <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="display:flex;align-items:center;gap:6px;color:var(--muted)"><span style="width:8px;height:8px;border-radius:2px;background:#8A91B4;display:inline-block"></span>Non avviati</span><strong>6 lotti</strong></div>
-            <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="display:flex;align-items:center;gap:6px;color:var(--muted)"><span style="width:8px;height:8px;border-radius:2px;background:#C08A14;display:inline-block"></span>In allestimento</span><strong>3 lotti</strong></div>
-            <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="display:flex;align-items:center;gap:6px;color:var(--muted)"><span style="width:8px;height:8px;border-radius:2px;background:#0B3182;display:inline-block"></span>In corso</span><strong>3 lotti</strong></div>
-            <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="display:flex;align-items:center;gap:6px;color:var(--muted)"><span style="width:8px;height:8px;border-radius:2px;background:#1F7A4E;display:inline-block"></span>Completati</span><strong>0 lotti</strong></div>
-          </div>
+          <div style="display:flex;flex-direction:column;gap:7px;width:100%" id="donutLegend"></div>
         </div>
       </div>
 
@@ -347,12 +378,11 @@
 </div><!-- /main -->
 
 <script>
-// ── DATI LOTTI (struttura reale, avanzamento fittizio) ─────────────────────
+// ── DATI LOTTI ──────────────────────────────────────────────────────────────
 const LOTTI = [
-  // cluster, id, province, comuni, stato, pct_scavato, metri_tot
   { cl:'1', id:'1B',  prov:['MI'],               comuni:3,  stato:'in-corso',     pct:38, metri:8524  },
   { cl:'2', id:'2A',  prov:['MI','PV'],           comuni:5,  stato:'in-corso',     pct:22, metri:11611 },
-  { cl:'2', id:'2B',  prov:['MI'],               comuni:4,  stato:'allestimento', pct:9,  metri:15330 },
+  { cl:'2', id:'2B',  prov:['MI'],               comuni:4,  stato:'sospeso',      pct:9,  metri:15330 },
   { cl:'3', id:'1A',  prov:['MI'],               comuni:3,  stato:'in-corso',     pct:54, metri:16933 },
   { cl:'3', id:'1',   prov:['BG','MI'],           comuni:20, stato:'non-avviato',  pct:0,  metri:50924 },
   { cl:'3', id:'2',   prov:['MB','MI'],           comuni:16, stato:'non-avviato',  pct:0,  metri:48530 },
@@ -371,32 +401,132 @@ const CLUSTER_LABEL = {
 const CLUSTER_COLOR = {
   '1':'#0B3182','2':'#1F7A4E','3':'#6B3FA0','5':'#C08A14','7':'#C23B22'
 };
-const STATO_LABEL = { 'non-avviato':'Non avviato','allestimento':'Allestimento','in-corso':'In Corso','completato':'Completato' };
-const STATO_COLOR = { 'non-avviato':'#8A91B4','allestimento':'#C08A14','in-corso':'#0B3182','completato':'#1F7A4E' };
+const STATO_LABEL = {
+  'non-avviato':'Non avviato', 'allestimento':'Allestimento',
+  'in-corso':'In Corso', 'sospeso':'In Sospeso', 'completato':'Completato'
+};
+const STATO_COLOR = {
+  'non-avviato':'#8A91B4', 'allestimento':'#C08A14',
+  'in-corso':'#0B3182', 'sospeso':'#C23B22', 'completato':'#1F7A4E'
+};
+// Ordine visivo dei segmenti nelle barre (come STATI_GRUPPI in index)
+const STATO_ORDER = ['in-corso','allestimento','sospeso','completato','non-avviato'];
 
-function fmt(n){ return n.toLocaleString('it-IT'); }
+function fmt(n){ return Math.round(n).toLocaleString('it-IT'); }
 
-// ── BAR CHART ──────────────────────────────────────────────────────────────
+// ── KPI COUNTERS ────────────────────────────────────────────────────────────
+const counts = { 'non-avviato':0, 'allestimento':0, 'in-corso':0, 'completato':0, 'sospeso':0 };
+LOTTI.forEach(r => { if(counts[r.stato]!==undefined) counts[r.stato]++; });
+document.getElementById('kpiNav').textContent = counts['non-avviato'];
+document.getElementById('kpiAll').textContent = counts['allestimento'];
+document.getElementById('kpiCor').textContent = counts['in-corso'];
+document.getElementById('kpiCom').textContent = counts['completato'];
+document.getElementById('kpiSos').textContent = counts['sospeso'];
+
+// ── CLUSTER BARS (stile index.html) ─────────────────────────────────────────
+const tooltip = document.getElementById('tooltip');
+
+// Aggrega per cluster → { stato: metri }
+const clMap = {}, clTot = {};
+LOTTI.forEach(r => {
+  if (!clMap[r.cl]) { clMap[r.cl] = {}; clTot[r.cl] = 0; }
+  clMap[r.cl][r.stato] = (clMap[r.cl][r.stato] || 0) + r.metri;
+  clTot[r.cl] += r.metri;
+});
+
+const clusterContainer = document.getElementById('clusterContainer');
+const totalAll = Object.values(clTot).reduce((a,b)=>a+b,0);
+document.getElementById('clusterStatus').textContent = fmt(totalAll) + ' m totali';
+
+Object.keys(clMap).sort((a,b)=>+a-+b).forEach(cl => {
+  const tot = clTot[cl];
+  const statiMap = clMap[cl];
+
+  const row = document.createElement('div');
+  row.className = 'bar-row';
+
+  // Lotto label
+  const lbl = document.createElement('div');
+  lbl.style.cssText = `width:180px;flex-shrink:0;display:flex;flex-direction:column;gap:2px`;
+  lbl.innerHTML = `
+    <div style="display:flex;align-items:center;gap:6px">
+      <span style="background:${CLUSTER_COLOR[cl]}20;color:${CLUSTER_COLOR[cl]};border:1px solid ${CLUSTER_COLOR[cl]}40;border-radius:4px;padding:1px 7px;font-size:9px;font-weight:700;font-family:'Fira Code',monospace">${cl}</span>
+      <span style="font-size:11px;font-weight:700;color:var(--text)">${CLUSTER_LABEL[cl]}</span>
+    </div>
+    <span style="font-size:9px;color:var(--muted2)">${LOTTI.filter(r=>r.cl===cl).length} lotti</span>`;
+
+  // Bar track con segmenti
+  const track = document.createElement('div');
+  track.className = 'bar-track';
+  track.style.flex = '1';
+
+  STATO_ORDER.forEach(stato => {
+    const m = statiMap[stato] || 0;
+    if (!m) return;
+    const pct = (m / tot * 100);
+    const seg = document.createElement('div');
+    seg.className = 'bar-seg';
+    seg.style.width = pct + '%';
+    seg.style.background = STATO_COLOR[stato];
+    seg.style.opacity = stato === 'non-avviato' ? '0.35' : '0.85';
+    seg.title = `${STATO_LABEL[stato]}: ${fmt(m)} m (${pct.toFixed(1)}%)`;
+    seg.addEventListener('mousemove', e => {
+      tooltip.textContent = `${STATO_LABEL[stato]} · ${fmt(m)} m (${pct.toFixed(1)}%)`;
+      tooltip.style.opacity = '1';
+      tooltip.style.left = (e.clientX + 14) + 'px';
+      tooltip.style.top = (e.clientY - 28) + 'px';
+    });
+    seg.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
+    track.appendChild(seg);
+  });
+
+  // % in corso (avanzamento reale)
+  const inCorsoM = LOTTI.filter(r=>r.cl===cl).reduce((s,r)=>{
+    const scavati = r.pct > 0 ? Math.round(r.metri * r.pct / 100) : 0;
+    return s + scavati;
+  }, 0);
+  const avanzPct = tot > 0 ? (inCorsoM / tot * 100) : 0;
+  const pctLbl = avanzPct > 0 ? avanzPct.toFixed(0) + '%' : '';
+
+  const pctEl = document.createElement('span');
+  pctEl.className = 'bar-pct';
+  pctEl.textContent = pctLbl;
+
+  const metersEl = document.createElement('span');
+  metersEl.className = 'bar-meters';
+  metersEl.textContent = fmt(tot) + ' m';
+
+  row.appendChild(lbl);
+  row.appendChild(track);
+  row.appendChild(pctEl);
+  row.appendChild(metersEl);
+  clusterContainer.appendChild(row);
+});
+
+// ── BARRE PER LOTTO ─────────────────────────────────────────────────────────
 const barContainer = document.getElementById('barContainer');
-let lastCluster = null;
+let lastCl = null;
 LOTTI.forEach(r => {
   const col = STATO_COLOR[r.stato];
-  const isInactive = r.pct === 0 && r.stato === 'non-avviato';
+  const isInactive = r.stato === 'non-avviato';
 
-  if (r.cl !== lastCluster) {
-    lastCluster = r.cl;
+  if (r.cl !== lastCl) {
+    lastCl = r.cl;
     const ch = document.createElement('div');
-    ch.className = 'cluster-header';
-    ch.innerHTML = `<span style="background:${CLUSTER_COLOR[r.cl]}20;color:${CLUSTER_COLOR[r.cl]};border:1px solid ${CLUSTER_COLOR[r.cl]}40;border-radius:4px;padding:1px 7px;font-size:9px;font-weight:700">CL ${r.cl}</span>${CLUSTER_LABEL[r.cl]}`;
+    ch.style.cssText = `display:flex;align-items:center;gap:8px;padding:6px 6px 3px;
+      font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--muted2);
+      border-bottom:1px dashed var(--border2);margin-bottom:4px;margin-top:${barContainer.children.length?'10px':'0'}`;
+    ch.innerHTML = `<span style="background:${CLUSTER_COLOR[r.cl]}20;color:${CLUSTER_COLOR[r.cl]};border:1px solid ${CLUSTER_COLOR[r.cl]}40;border-radius:4px;padding:1px 7px;font-size:9px;font-weight:700">${r.cl}</span>${CLUSTER_LABEL[r.cl]}`;
     barContainer.appendChild(ch);
   }
 
   const row = document.createElement('div');
   row.className = 'bar-row';
   if (isInactive) row.style.opacity = '.38';
+
   row.innerHTML = `
     <div class="bar-lotto-wrap">
-      <div class="bar-lotto-id">L${r.id}</div>
+      <div class="bar-lotto-id">${r.id}</div>
       <div class="bar-lotto-meta">${r.comuni} comuni · ${r.prov.join('/')}</div>
     </div>
     <div class="bar-middle">
@@ -408,12 +538,11 @@ LOTTI.forEach(r => {
         <span>${r.pct > 0 ? '~' + fmt(Math.round(r.metri * r.pct / 100)) + ' m scavati' : '—'}</span>
       </div>
     </div>
-    <div class="bar-pct">${r.pct > 0 ? r.pct + '%' : '—'}</div>
-  `;
+    <div class="bar-pct">${r.pct > 0 ? r.pct + '%' : '—'}</div>`;
   barContainer.appendChild(row);
 });
 
-// ── TABELLA ────────────────────────────────────────────────────────────────
+// ── TABELLA ─────────────────────────────────────────────────────────────────
 const tbody = document.getElementById('tablebody');
 tbody.innerHTML = LOTTI.map(r => {
   const col   = STATO_COLOR[r.stato];
@@ -422,8 +551,8 @@ tbody.innerHTML = LOTTI.map(r => {
     ? `<div class="prog-wrap"><div class="prog-track"><div class="prog-fill" style="width:${r.pct}%;background:${col}"></div></div><div class="prog-val">${r.pct}%</div></div>`
     : `<span style="color:var(--muted2)">—</span>`;
   return `<tr>
-    <td><span style="font-family:'Fira Code',monospace;font-size:11px;font-weight:700;color:var(--accent)">L${r.id}</span></td>
-    <td><span style="font-family:'Fira Code',monospace;font-size:10px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 7px;color:var(--muted)">CL ${r.cl}</span></td>
+    <td><span style="font-family:'Fira Code',monospace;font-size:11px;font-weight:700;color:var(--accent)">${r.id}</span></td>
+    <td><span style="font-family:'Fira Code',monospace;font-size:10px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 7px;color:var(--muted)">${r.cl}</span></td>
     <td>${pills}</td>
     <td style="color:var(--muted)">${r.comuni} comuni</td>
     <td><span class="chip ${r.stato}">${STATO_LABEL[r.stato]}</span></td>
@@ -432,16 +561,36 @@ tbody.innerHTML = LOTTI.map(r => {
   </tr>`;
 }).join('');
 
-// ── DONUT ──────────────────────────────────────────────────────────────────
+// ── DONUT CHART ─────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
+  const statiDonut = [
+    { label:'Non avviati',    color:'#8A91B4', key:'non-avviato'  },
+    { label:'In allestimento',color:'#C08A14', key:'allestimento' },
+    { label:'In corso',       color:'#0B3182', key:'in-corso'     },
+    { label:'In sospeso',     color:'#C23B22', key:'sospeso'      },
+    { label:'Completati',     color:'#1F7A4E', key:'completato'   },
+  ];
+  const data = statiDonut.map(s => counts[s.key]);
   const ctx = document.getElementById('donutChart').getContext('2d');
   new Chart(ctx, {
     type:'doughnut',
     data:{
-      labels:['Non avviati','In allestimento','In corso','Completati'],
-      datasets:[{ data:[6,3,3,0], backgroundColor:['#8A91B4','#C08A14','#0B3182','#1F7A4E'], borderWidth:2, borderColor:'#FFF', hoverOffset:4 }]
+      labels: statiDonut.map(s=>s.label),
+      datasets:[{ data, backgroundColor:statiDonut.map(s=>s.color), borderWidth:2, borderColor:'#FFF', hoverOffset:4 }]
     },
     options:{ cutout:'68%', plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label: c => ` ${c.label}: ${c.parsed} lotti` } } } }
+  });
+
+  // Legenda donut
+  const leg = document.getElementById('donutLegend');
+  statiDonut.forEach(s => {
+    if (!counts[s.key] && s.key !== 'completato') return; // nascondi a 0 tranne completati
+    leg.innerHTML += `<div style="display:flex;justify-content:space-between;font-size:11px;">
+      <span style="display:flex;align-items:center;gap:6px;color:var(--muted)">
+        <span style="width:8px;height:8px;border-radius:2px;background:${s.color};display:inline-block"></span>${s.label}
+      </span>
+      <strong>${counts[s.key]} lotti</strong>
+    </div>`;
   });
 });
 </script>
