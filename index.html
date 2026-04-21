@@ -1873,8 +1873,17 @@ document.addEventListener('DOMContentLoaded', () => {
   const savedUser = localStorage.getItem('_enri_user');
   if (savedUser) {
     // Già loggato: forza sempre il passaggio per hub.html
-    window.location.href = 'hub.html';
-    return;
+    // ECCEZIONE: se si arriva da hub con ?direct=1, mostra direttamente la pagina
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('direct') === '1') {
+      // Rimuovi il parametro dall'URL senza ricaricare la pagina
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, '', cleanUrl);
+      // Lascia caricare normalmente index.html
+    } else {
+      window.location.href = 'hub.html';
+      return;
+    }
     // NON dispatchiamo _enri_role_changed qui: _enriValidatedRole non è ancora impostato
     // e causerebbe un flicker (admin button nascosto poi riappare). Lo dispatch avviene
     // solo dopo che la validazione ha stabilito il ruolo effettivo.
