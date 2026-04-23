@@ -111,9 +111,9 @@
   /* ── LOTTO BARS ──────────────────────────────────────────────── */
   .bar-row { display:flex; align-items:center; gap:10px; border-radius:6px; padding:5px 6px; margin-bottom:2px; transition:background .15s; cursor:pointer; }
   .bar-row:hover { background:var(--surface2); }
-  .bar-lotto-wrap { width:80px; flex-shrink:0; display:flex; flex-direction:column; gap:2px; }
-  .bar-lotto-id   { font-size:15px; font-weight:700; font-family:'Bricolage Grotesque',sans-serif; color:var(--text); }
-  .bar-lotto-meta { font-size:9px; font-weight:600; color:var(--muted2); text-transform:uppercase; letter-spacing:.07em; }
+  .bar-lotto-wrap   { width:90px; flex-shrink:0; display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
+  .bar-lotto-num    { font-size:14px; font-weight:700; font-family:'Bricolage Grotesque',sans-serif; color:var(--text); letter-spacing:-.01em; }
+  .bar-lotto-comuni { font-size:10px; font-weight:600; color:var(--accent); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:90px; }
   .bar-middle     { flex:1; display:flex; flex-direction:column; gap:3px; }
   .bar-track      { height:22px; border-radius:5px; overflow:hidden; display:flex; background:var(--surface2); border:1px solid var(--border); }
   .bar-seg        { height:100%; transition:opacity .15s; }
@@ -280,7 +280,7 @@
       <div class="card">
         <div class="card-header">
           <span class="card-title">Avanzamento per Lotto</span>
-          <span style="font-size:10px;color:var(--muted);font-family:'Fira Code',monospace">% metri scavati · per cluster</span>
+          <span style="font-size:10px;color:var(--muted);font-family:'Fira Code',monospace">% metri scavati</span>
         </div>
         <div class="card-body" style="display:flex;flex-direction:column;" id="barContainer"></div>
         <div class="legend">
@@ -361,17 +361,7 @@
         </div>
       </div>
 
-      <div class="placeholder-section">
-        <div class="placeholder-icon">📸</div>
-        <div class="placeholder-title">Documentazione Fotografica</div>
-        <div class="placeholder-sub">Foto georeferenziate per tratta e data — in sviluppo</div>
-      </div>
 
-      <div class="placeholder-section">
-        <div class="placeholder-icon">⚡</div>
-        <div class="placeholder-title">Criticità in Campo</div>
-        <div class="placeholder-sub">Segnalazioni operative per lotto — in sviluppo</div>
-      </div>
 
     </div>
 
@@ -507,20 +497,9 @@ Object.keys(clMap).sort((a,b)=>+a-+b).forEach(cl => {
 
 // ── BARRE PER LOTTO ─────────────────────────────────────────────────────────
 const barContainer = document.getElementById('barContainer');
-let lastCl = null;
 LOTTI.forEach(r => {
   const col = STATO_COLOR[r.stato];
   const isInactive = r.stato === 'non-avviato';
-
-  if (r.cl !== lastCl) {
-    lastCl = r.cl;
-    const ch = document.createElement('div');
-    ch.style.cssText = `display:flex;align-items:center;gap:8px;padding:6px 6px 3px;
-      font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--muted2);
-      border-bottom:1px dashed var(--border2);margin-bottom:4px;margin-top:${barContainer.children.length?'10px':'0'}`;
-    ch.innerHTML = `<span style="background:${CLUSTER_COLOR[r.cl]}20;color:${CLUSTER_COLOR[r.cl]};border:1px solid ${CLUSTER_COLOR[r.cl]}40;border-radius:4px;padding:1px 7px;font-size:9px;font-weight:700">${r.cl}</span>${CLUSTER_LABEL[r.cl]}`;
-    barContainer.appendChild(ch);
-  }
 
   const row = document.createElement('div');
   row.className = 'bar-row';
@@ -528,19 +507,14 @@ LOTTI.forEach(r => {
 
   row.innerHTML = `
     <div class="bar-lotto-wrap">
-      <div class="bar-lotto-id">${r.id}</div>
-      <div class="bar-lotto-meta">${r.comuni} comuni · ${r.prov.join('/')}</div>
+      <span class="bar-lotto-num">${r.id}</span>
+      <span class="bar-lotto-comuni">${r.comuni} comuni · ${r.prov.join('/')}</span>
     </div>
-    <div class="bar-middle">
-      <div class="bar-track">
-        ${r.pct > 0 ? `<div class="bar-seg" style="width:${r.pct}%;background:${col};opacity:.85"></div>` : ''}
-      </div>
-      <div class="bar-info">
-        <span>${fmt(r.metri)} m tot.</span>
-        <span>${r.pct > 0 ? '~' + fmt(Math.round(r.metri * r.pct / 100)) + ' m scavati' : '—'}</span>
-      </div>
+    <div class="bar-track">
+      ${r.pct > 0 ? `<div class="bar-seg" style="width:${r.pct}%;background:${col};opacity:.85"></div>` : ''}
     </div>
-    <div class="bar-pct">${r.pct > 0 ? r.pct + '%' : '—'}</div>`;
+    <span class="bar-pct">${r.pct > 0 ? r.pct + '%' : '—'}</span>
+    <span style="min-width:72px;text-align:right;font-size:12px;font-family:'Bricolage Grotesque',sans-serif;font-weight:700;color:var(--text2);flex-shrink:0;letter-spacing:-.01em">${fmt(r.metri)} m</span>`;
   barContainer.appendChild(row);
 });
 
