@@ -1644,8 +1644,8 @@ async function loadFromStorage(){
         const dateStr = formatDateIT(data.last_excel_upload_at);
         if(dateStr) applyLastUploadDate(dateStr);
       }
-      // Rigenera sempre Gantt e Permit con dati CSV freschi, ignorando i valori serializzati
-      updateLiveData();
+      // NON chiamare updateLiveData() qui: se CSV_DATA non è ancora pronto (race condition)
+      // viene chiamata in init() dopo Promise.all quando entrambi i fetch sono garantiti completi.
       return true;
     }
   } catch(e){ console.warn('Caricamento JSONBin fallito:', e); }
@@ -1874,11 +1874,10 @@ async function init(){
 
   // ── Fetch paralleli: CSV (dati live) + JSONBin (modifiche salvate) ────────
   const [, restored] = await Promise.all([loadCSVData(), loadFromStorage()]);
-  if(!restored){
-    // JSONBin non ha dati salvati: aggiorna solo le sezioni dinamiche (Gantt + Permit)
-    updateLiveData();
-  }
-  // se restored=true, loadFromStorage chiama già updateLiveData() + ensureGanttCardInDom()
+  // ── [FIX] updateLiveData() sempre dopo Promise.all: garantisce che CSV_DATA sia pronto ──
+  // In precedenza era chiamata dentro loadFromStorage(), ma JSONBin può rispondere prima del
+  // CSV → race condition → Permit Progress e Gantt mostravano 0% anche con dati disponibili.
+  updateLiveData();
   // Aggiorna printDate con il valore finale di repDate (dopo storage/render)
   const pd=document.getElementById('printDate');
   if(pd) pd.textContent=document.getElementById('repDate')?.textContent||'';
