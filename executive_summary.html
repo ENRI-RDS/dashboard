@@ -1566,6 +1566,8 @@ async function saveToStorage(){
     if (gcToRemove) gcToRemove.remove();
     existing[EXEC_BIN_KEY] = mainClone.innerHTML;
     await _jbPut(JSONBIN_BIN_ID, existing);
+    // ── [3] Invalida la cache sessionStorage dopo salvataggio ──
+    try { sessionStorage.removeItem('enri_exec_jsonbin_cache'); } catch(_){}
     setSaveBadge('saved');
   } catch(e){
     console.warn('Salvataggio fallito:', e);
@@ -1600,11 +1602,25 @@ function applyLastUploadDate(dateStr){
 }
 
 async function loadFromStorage(){
+  const SESSION_KEY = 'enri_exec_jsonbin_cache';
   try {
     const ctrl = new AbortController();
-    const tid  = setTimeout(() => ctrl.abort(), 15000);
+    const tid  = setTimeout(() => ctrl.abort(), 8000); // allineato al CSV (era 15s)
     let json;
-    try { json = await _jbGet(JSONBIN_BIN_ID); } finally { clearTimeout(tid); }
+
+    // ── [3] Cache sessionStorage: se stessa sessione, evita il fetch JSONBin ──
+    const cached = sessionStorage.getItem(SESSION_KEY);
+    if(cached){
+      try { json = JSON.parse(cached); } catch(_){}
+    }
+
+    if(!json){
+      try { json = await _jbGet(JSONBIN_BIN_ID); } finally { clearTimeout(tid); }
+      // Aggiorna la cache per i successivi carichi nella sessione
+      if(json) try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(json)); } catch(_){}
+    } else {
+      clearTimeout(tid); // fetch saltato, cancella il timer
+    }
     const data = json?.record;
     if (!data) return false;
     if(data && data[EXEC_BIN_KEY]){
@@ -1853,9 +1869,14 @@ function updateLiveData(){
 }
 
 async function init(){
+  // ── [1] Render immediato con dati statici hardcoded — pagina visibile subito ──
+  render();
+
+  // ── Fetch paralleli: CSV (dati live) + JSONBin (modifiche salvate) ────────
   const [, restored] = await Promise.all([loadCSVData(), loadFromStorage()]);
   if(!restored){
-    render();
+    // JSONBin non ha dati salvati: aggiorna solo le sezioni dinamiche (Gantt + Permit)
+    updateLiveData();
   }
   // se restored=true, loadFromStorage chiama già updateLiveData() + ensureGanttCardInDom()
   // Aggiorna printDate con il valore finale di repDate (dopo storage/render)
