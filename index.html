@@ -265,6 +265,9 @@
     transition:all 0.22s;
     box-shadow: var(--sh-xs);
     animation: fadeUp 0.4s ease both;
+    min-height: 140px;
+    display: flex;
+    flex-direction: column;
   }
   .kpi:hover {
     border-color: var(--border2);
@@ -331,6 +334,7 @@
   .kpi.coordinamento .kpi-value{ color:#7A3DAA; }
   .kpi.integrazione .kpi-value { color:#C23B22; }
   .kpi.protint .kpi-value      { color:#B5657A; }
+  .kpi.protint .kpi-owner      { background:#B5657A0D; color:#B5657A; border-color:#B5657A30; }
   .kpi.ottenuto .kpi-value     { color:var(--ottenuto); }
 
   /* ── CARDS ── */
@@ -1315,7 +1319,7 @@ function _showBarTip(tooltip, seg, e) {
 
 // Gruppi visivi per le barre — gli stati vengono accorpati prima del rendering
 const STATI_GRUPPI = [
-  { label: 'In Attesa / Redazione', stati: ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'], color: '#4a4f6a' },
+  { label: 'In Attesa / Redazione', stati: ['IN ATTESA','IN REDAZIONE'], color: '#4a4f6a' },
   { label: 'Coordinamento',          stati: ['COORDINAMENTO'],                                         color: '#9b59b6' },
   { label: 'In Verifica / In Firma', stati: ['IN FIRMA RDS'],                                         color: '#e07b3a' },
   { label: 'Inviato / Protocollato',stati: ['INVIATO','PROTOCOLLATO'],                               color: '#4f8ef7' },
@@ -1411,9 +1415,9 @@ async function fetchRiepilogoCSV(forceFresh = false) {
 
 // ── HELPER GLOBALI ────────────────────────────────────────────────────────────
 const STATI_COLORI_MAP = {
-  'IN ATTESA':'#4a4f6a','IN REDAZIONE':'#4a4f6a','IN REDAZIONE INTEGRAZIONE':'#4a4f6a',
+  'IN ATTESA':'#4a4f6a','IN REDAZIONE':'#4a4f6a',
   'IN FIRMA RDS':'#e07b3a','COORDINAMENTO':'#9b59b6','INVIATO':'#4f8ef7','PROTOCOLLATO':'#4f8ef7',
-  'NECESSARIA INTEGRAZIONE':'#cc3333','PROTOCOLLATO INTEGRAZIONE':'#B5657A','OTTENUTO':'#3a8c5c'
+  'NECESSARIA INTEGRAZIONE':'#cc3333','IN REDAZIONE INTEGRAZIONE':'#cc3333','PROTOCOLLATO INTEGRAZIONE':'#B5657A','OTTENUTO':'#3a8c5c'
 };
 
 function parseDateIT(s) {
@@ -3227,11 +3231,11 @@ function renderDashboard(data) {
 
   // KPI
   const kpiMap={
-    attesa:         ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'],
+    attesa:         ['IN ATTESA','IN REDAZIONE'],
     firma:          ['IN FIRMA RDS'],
     coordinamento:  ['COORDINAMENTO'],
     inviato:        ['INVIATO', 'PROTOCOLLATO'],
-    integrazione:   ['NECESSARIA INTEGRAZIONE'],
+    integrazione:   ['NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE'],
     protint:        ['PROTOCOLLATO INTEGRAZIONE'],
     ottenuto:       ['OTTENUTO']
   };
@@ -3392,7 +3396,7 @@ function renderDashboard(data) {
   }
 
   // Totale Progetto — metri per stato
-  const STATI_INATTIVI = ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'];
+  const STATI_INATTIVI = ['IN ATTESA','IN REDAZIONE'];
 
   // Dettaglio lotti attivi — escludi lotti dove tutti i metri sono IN ATTESA/REDAZIONE
   const tableDiv=document.getElementById('lottiTable');
@@ -3435,7 +3439,7 @@ function renderDonut(globalStati, grandTotal) {
 
   const cx = 100, cy = 100, r = 78, rIn = 52;
 
-  const STATI_INATTIVI = ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'];
+  const STATI_INATTIVI = ['IN ATTESA','IN REDAZIONE'];
 
   // Raggruppa inattivi + mostra tutti gli altri stati
   const grouped = [];
@@ -3685,11 +3689,11 @@ function renderStoricoModal() {
   }
 
   const STATI_TABELLA = [
-    { label: 'In Attesa / Red.',  stati: ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'], color: '#4a4f6a' },
+    { label: 'In Attesa / Red.',  stati: ['IN ATTESA','IN REDAZIONE'], color: '#4a4f6a' },
     { label: 'Coordinamento',     stati: ['COORDINAMENTO'],                                         color: '#9b59b6' },
     { label: 'In Firma RDS',      stati: ['IN FIRMA RDS'],                                         color: '#e07b3a' },
     { label: 'Inviato / Prot.',   stati: ['INVIATO','PROTOCOLLATO'],                               color: '#4f8ef7' },
-    { label: 'Nec. Integraz.',    stati: ['NECESSARIA INTEGRAZIONE'],                              color: '#cc3333' },
+    { label: 'Nec. Integraz.',    stati: ['NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE'],                              color: '#cc3333' },
     { label: 'Prot. Integraz.',   stati: ['PROTOCOLLATO INTEGRAZIONE'],                            color: '#B5657A' },
     { label: 'Ottenuto',          stati: ['OTTENUTO'],                                             color: '#3a8c5c' },
   ];
@@ -3832,11 +3836,11 @@ window.storicoToggleView = function(mode) {
   const labels  = storico.map(s => new Date(s.ts).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'2-digit'}));
 
   const STATI_G = [
-    { label: 'In Attesa / Red.',  stati: ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'], color: '#4a5080' },
+    { label: 'In Attesa / Red.',  stati: ['IN ATTESA','IN REDAZIONE'], color: '#4a5080' },
     { label: 'Coordinamento',     stati: ['COORDINAMENTO'],                                         color: '#9b59b6' },
     { label: 'In Firma RDS',      stati: ['IN FIRMA RDS'],                                         color: '#e07b3a' },
     { label: 'Inviato / Prot.',   stati: ['INVIATO','PROTOCOLLATO'],                               color: '#4f8ef7' },
-    { label: 'Nec. Integraz.',    stati: ['NECESSARIA INTEGRAZIONE'],                              color: '#cc3333' },
+    { label: 'Nec. Integraz.',    stati: ['NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE'],                              color: '#cc3333' },
     { label: 'Prot. Integraz.',   stati: ['PROTOCOLLATO INTEGRAZIONE'],                            color: '#B5657A' },
     { label: 'Ottenuto',          stati: ['OTTENUTO'],                                             color: '#3a8c5c' },
   ];
@@ -4066,12 +4070,12 @@ function _buildStoricoChart(storico, labels, datasets, yMax, mode) {
     };
   });
 
-  const STATI_ATTESA_SET = new Set(['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE']);
+  const STATI_ATTESA_SET = new Set(['IN ATTESA','IN REDAZIONE']);
   const STATI_DETTAGLIO = [
     { label: 'Coordinamento',          stati: ['COORDINAMENTO'],                   color: '#9b59b6' },
     { label: 'In Firma RDS',           stati: ['IN FIRMA RDS'],                    color: '#e07b3a' },
     { label: 'Inviato / Prot.',        stati: ['INVIATO','PROTOCOLLATO'],           color: '#4f8ef7' },
-    { label: 'Nec. Integraz.',         stati: ['NECESSARIA INTEGRAZIONE'],          color: '#cc3333' },
+    { label: 'Nec. Integraz.',         stati: ['NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE'],          color: '#cc3333' },
     { label: 'Prot. Integraz.',        stati: ['PROTOCOLLATO INTEGRAZIONE'],        color: '#B5657A' },
     { label: 'Ottenuto',               stati: ['OTTENUTO'],                         color: '#3a8c5c' },
   ];
@@ -4263,7 +4267,7 @@ async function seedDemoData() {
 
     const LOTTI = ['1A','1B','2A','2B'];
     const TUTTI_STATI = [
-      'IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE',
+      'IN ATTESA','IN REDAZIONE',
       'IN FIRMA RDS','COORDINAMENTO','INVIATO','PROTOCOLLATO',
       'NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'
     ];
@@ -4631,7 +4635,7 @@ function chiudiParamPrev() {
 // ── MODAL KPI PRATICHE ───────────────────────────────────────────────────────
 const KPI_CONFIG = {
   attesa:         { label: 'In Attesa / Redazione',       owner: 'Impresa', ownerClass: 'impresa', color: '#4a4f6a',
-                    stati: ['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'] },
+                    stati: ['IN ATTESA','IN REDAZIONE'] },
   firma:          { label: 'In Verifica / In Firma RDS',  owner: 'RDS',     ownerClass: 'rds',     color: '#e07b3a',
                     stati: ['IN FIRMA RDS'] },
   coordinamento:  { label: 'Coordinamento',               owner: 'Milano',  ownerClass: 'rds',     color: '#9b59b6',
@@ -4639,7 +4643,7 @@ const KPI_CONFIG = {
   inviato:        { label: 'Inviato / Protocollato',      owner: 'Ente',    ownerClass: 'ente',    color: '#4f8ef7',
                     stati: ['INVIATO','PROTOCOLLATO'] },
   integrazione:   { label: 'Necessaria Integrazione',     owner: 'Impresa', ownerClass: 'impresa', color: '#cc3333',
-                    stati: ['NECESSARIA INTEGRAZIONE'] },
+                    stati: ['NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE'] },
   protint:        { label: 'Protocollato Integrazione',   owner: 'Ente',    ownerClass: 'ente',    color: '#B5657A',
                     stati: ['PROTOCOLLATO INTEGRAZIONE'] },
   ottenuto:       { label: '🏆 Autorizzati',               owner: 'Ente',    ownerClass: 'ente',    color: '#3a8c5c',
@@ -5686,11 +5690,11 @@ function _adminClearUser() {
 <script>
 // ── MODIFICA MANUALE — persistente su JSONBin ─────────────────────────────────
 const EM_GRUPPI = [
-  { key:'attesa',        label:'In Attesa / Redazione',       stati:['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'], color:'#4a4f6a' },
+  { key:'attesa',        label:'In Attesa / Redazione',       stati:['IN ATTESA','IN REDAZIONE'], color:'#4a4f6a' },
   { key:'coordinamento', label:'Coordinamento',               stati:['COORDINAMENTO'],                                        color:'#9b59b6' },
   { key:'firma',         label:'In Verifica / In Firma',      stati:['IN FIRMA RDS'],                                        color:'#e07b3a' },
   { key:'inviato',       label:'Inviato / Protocollato',      stati:['INVIATO','PROTOCOLLATO'],                              color:'#4f8ef7' },
-  { key:'integrazione',  label:'Necessaria Integrazione',     stati:['NECESSARIA INTEGRAZIONE'],                             color:'#cc3333' },
+  { key:'integrazione',  label:'Necessaria Integrazione',     stati:['NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE'],                             color:'#cc3333' },
   { key:'protint',       label:'Protocollato Integrazione',   stati:['PROTOCOLLATO INTEGRAZIONE'],                           color:'#B5657A' },
   { key:'ottenuto',      label:'🏆 Autorizzati',              stati:['OTTENUTO'],                                            color:'#3a8c5c' },
 ];
