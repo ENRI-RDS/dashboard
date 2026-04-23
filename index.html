@@ -719,6 +719,78 @@
     font-size:10px; padding:0; line-height:1; font-weight:700;
   }
 
+  /* ── TABELLA PRATICHE — classi JS (sostituzione inline style) ── */
+
+  /* Riga */
+  .tbl-row { border-bottom:1px solid var(--border); transition:background .1s; }
+  .tbl-row:hover { background:var(--surface2); }
+
+  /* Celle */
+  .tbl-td   { padding:9px 12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tbl-td-r { text-align:right; }
+
+  /* Contenuto celle */
+  .tbl-codice  { font-family:'Fira Code',monospace; font-size:11px; font-weight:600; color:var(--accent); }
+  .tbl-impresa { font-size:11px; font-weight:600; color:var(--accent2); }
+  .tbl-ente    { font-size:12px; color:var(--muted); }
+  .tbl-date    { font-family:'Fira Code',monospace; font-size:10px; color:var(--muted); }
+  .tbl-date-ott{ font-family:'Fira Code',monospace; font-size:10px; color:var(--text); font-weight:700; }
+  .tbl-metri   { font-family:'Bricolage Grotesque',sans-serif; font-size:12px; font-weight:700; color:var(--text); letter-spacing:-.01em; }
+  .tbl-dash    { font-size:11px; color:var(--muted2); }
+
+  /* Lotto chip */
+  .tbl-lotto-chip {
+    font-family:'Fira Code',monospace; font-size:10px;
+    background:var(--surface2); border:1px solid var(--border2);
+    border-radius:4px; padding:1px 7px; color:var(--text2);
+  }
+
+  /* Chip dinamico — colore data-driven via --chip-c */
+  .tbl-chip {
+    display:inline-block;
+    font-size:9px; font-weight:700; padding:2px 8px; border-radius:4px; white-space:nowrap;
+    color:      var(--chip-c, #6b7080);
+    background: color-mix(in srgb, var(--chip-c, #6b7080) 8%, transparent);
+    border:     1px solid color-mix(in srgb, var(--chip-c, #6b7080) 26%, transparent);
+  }
+  .tbl-chip-prev { font-family:'Fira Code',monospace; font-weight:600; padding:2px 7px; }
+
+  /* Tipo — classi fisse mappate ai colori semantici */
+  .tbl-tipo-aut   { --chip-c: var(--accent);  }
+  .tbl-tipo-no    { --chip-c: #7A3DAA;        }
+  .tbl-tipo-ord   { --chip-c: #C23B22;        }
+  .tbl-tipo-other { --chip-c: #6b7080;        }
+
+  /* Previsione */
+  .tbl-prev-ok   { --chip-c: var(--ottenuto);  }
+  .tbl-prev-warn { --chip-c: var(--redazione); }
+  .tbl-prev-ko   { --chip-c: #cc3333;          }
+
+  /* Scadenza */
+  .tbl-scad-ok   { --chip-c: var(--ottenuto);  }
+  .tbl-scad-warn { --chip-c: var(--redazione); }
+  .tbl-scad-over { --chip-c: #cc3333;          }
+
+  /* Paginazione footer */
+  .tbl-pag-wrap { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .tbl-pag-info { font-size:11px; color:var(--muted); }
+  .tbl-pag-info b { color:var(--text); font-weight:700; }
+  .tbl-foot-val b { color:var(--text); font-weight:700; }
+
+  .tbl-pag-btn {
+    font-size:11px; font-weight:700; padding:4px 12px; border-radius:6px;
+    cursor:pointer; font-family:inherit;
+    display:inline-flex; align-items:center; gap:4px; transition:all 0.15s;
+    border:1px solid var(--border); background:var(--surface2); color:var(--muted);
+  }
+  .tbl-pag-btn-prev:not(:disabled) {
+    border-color:var(--border2); background:var(--surface); color:var(--text);
+  }
+  .tbl-pag-btn-next:not(:disabled) {
+    border-color:var(--accent); background:var(--accent); color:#fff;
+  }
+  .tbl-pag-btn:disabled { cursor:not-allowed; opacity:0.5; }
+
 </style>
 </head>
 <body>
@@ -6744,10 +6816,10 @@ _hookScadenze();
 
   // ── Scadenza HTML ─────────────────────────────────────────────────────────
   function scadHtml(pgg) {
-    if (pgg===null||pgg===undefined) return '<span style="color:var(--muted2);font-size:11px">—</span>';
-    if (pgg < 0)  return `<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;background:#cc333312;color:#8b1a1a;border:1px solid #cc333333;white-space:nowrap">Scad. ${Math.abs(pgg)}gg</span>`;
-    if (pgg <= 7) return `<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;background:#c9a22712;color:#7a5500;border:1px solid #c9a22744;white-space:nowrap">${pgg===0?'Oggi':pgg===1?'Domani':pgg+' gg'}</span>`;
-    return `<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;background:#1F7A4E12;color:#1F7A4E;border:1px solid #1F7A4E33;white-space:nowrap">${pgg} gg</span>`;
+    if (pgg===null||pgg===undefined) return '<span class="tbl-dash">—</span>';
+    if (pgg < 0)  return `<span class="tbl-chip tbl-scad-over">Scad. ${Math.abs(pgg)}gg</span>`;
+    if (pgg <= 7) return `<span class="tbl-chip tbl-scad-warn">${pgg===0?'Oggi':pgg===1?'Domani':pgg+' gg'}</span>`;
+    return `<span class="tbl-chip tbl-scad-ok">${pgg} gg</span>`;
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -6810,26 +6882,26 @@ _hookScadenze();
 
     tbody.innerHTML = rows.map(r => {
       const col = SC[r.stato]||'#6b7080';
-      const lottoChip = r.lotto ? `<span style="font-family:'Fira Code',monospace;font-size:10px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 7px;color:var(--text2)">${r.lotto}</span>` : '—';
+      const lottoChip = r.lotto ? `<span class="tbl-lotto-chip">${r.lotto}</span>` : '—';
       const tipoShort = r.tipo === 'AUTORIZZAZIONE' ? 'AUT' : r.tipo === 'NULLA OSTA' ? 'NO' : r.tipo === 'ORDINANZA' ? 'ORD' : (r.tipo||'').substring(0,4);
-      const tipoColor = r.tipo === 'AUTORIZZAZIONE' ? '#0B3182' : r.tipo === 'NULLA OSTA' ? '#7A3DAA' : r.tipo === 'ORDINANZA' ? '#C23B22' : '#6b7080';
+      const tipoClass = r.tipo === 'AUTORIZZAZIONE' ? 'tbl-tipo-aut' : r.tipo === 'NULLA OSTA' ? 'tbl-tipo-no' : r.tipo === 'ORDINANZA' ? 'tbl-tipo-ord' : 'tbl-tipo-other';
       const prevHtml = r.prev ? (() => {
-        const bg = r.prev.status==='ok' ? '#1F7A4E' : r.prev.status==='warn' ? '#c9a227' : '#cc3333';
-        return `<span style="font-size:9px;font-family:'Fira Code',monospace;font-weight:600;padding:2px 7px;border-radius:4px;background:${bg}18;color:${bg};border:1px solid ${bg}44;white-space:nowrap">${r.prev.label}</span>`;
-      })() : '<span style="color:var(--muted2);font-size:11px">—</span>';
-      return `<tr style="border-bottom:1px solid var(--border);transition:background .1s" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'\'">
-        <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="font-family:\'Fira Code\',monospace;font-size:11px;font-weight:600;color:var(--accent)">${r.codice}</span></td>
-        <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${lottoChip}</td>
-        <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:600;color:var(--accent2)">${r.impresa||'—'}</td>
-        <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;background:${tipoColor}18;color:${tipoColor};border:1px solid ${tipoColor}44;white-space:nowrap">${tipoShort||'—'}</span></td>
-        <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;background:${col}18;color:${col};border:1px solid ${col}44;white-space:nowrap">${r.stato}</span></td>
-        <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted)" title="${r.ente||''}">${r.ente||'—'}</td>
-        <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:\'Fira Code\',monospace;font-size:10px;color:var(--muted)">${r.invio?fmtDateIT(r.invio):'—'}</td>
-        <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:\'Fira Code\',monospace;font-size:10px;color:var(--muted)">${r.agg?fmtDateIT(r.agg):'—'}</td>
-        <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:\'Fira Code\',monospace;font-size:10px;color:var(--text);font-weight:700">${r.data_ott?fmtDateIT(r.data_ott):'—'}</td>
-        <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${scadHtml(r.scad_gg)}</td>
-        <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${prevHtml}</td>
-        <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;font-family:\'Bricolage Grotesque\',sans-serif;font-size:12px;font-weight:700;color:var(--text);letter-spacing:-.01em">${fmt(r.metri)}</td>
+        const prevClass = r.prev.status==='ok' ? 'tbl-prev-ok' : r.prev.status==='warn' ? 'tbl-prev-warn' : 'tbl-prev-ko';
+        return `<span class="tbl-chip tbl-chip-prev ${prevClass}">${r.prev.label}</span>`;
+      })() : '<span class="tbl-dash">—</span>';
+      return `<tr class="tbl-row">
+        <td class="tbl-td"><span class="tbl-codice">${r.codice}</span></td>
+        <td class="tbl-td">${lottoChip}</td>
+        <td class="tbl-td tbl-impresa">${r.impresa||'—'}</td>
+        <td class="tbl-td"><span class="tbl-chip ${tipoClass}">${tipoShort||'—'}</span></td>
+        <td class="tbl-td"><span class="tbl-chip" style="--chip-c:${col}">${r.stato}</span></td>
+        <td class="tbl-td tbl-ente" title="${r.ente||''}">${r.ente||'—'}</td>
+        <td class="tbl-td tbl-date">${r.invio?fmtDateIT(r.invio):'—'}</td>
+        <td class="tbl-td tbl-date">${r.agg?fmtDateIT(r.agg):'—'}</td>
+        <td class="tbl-td tbl-date-ott">${r.data_ott?fmtDateIT(r.data_ott):'—'}</td>
+        <td class="tbl-td">${scadHtml(r.scad_gg)}</td>
+        <td class="tbl-td">${prevHtml}</td>
+        <td class="tbl-td tbl-td-r tbl-metri">${fmt(r.metri)}</td>
       </tr>`;
     }).join('');
 
@@ -6841,19 +6913,19 @@ _hookScadenze();
       const from = _page * PAGE_SIZE + 1;
       const to   = Math.min((_page + 1) * PAGE_SIZE, totalRows);
 
-      const btnBase = `font-size:11px;font-weight:700;padding:4px 12px;border-radius:6px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:4px;transition:all 0.15s`;
+      const btnBase = `tbl-pag-btn`;
       const prevBtn = _page > 0
-        ? `<button onclick="window._tblPage(${_page-1})" style="${btnBase};border:1px solid var(--border2);background:var(--surface);color:var(--text)">‹ Precedente</button>`
-        : `<button disabled style="${btnBase};border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:not-allowed;opacity:0.5">‹ Precedente</button>`;
+        ? `<button onclick="window._tblPage(${_page-1})" class="${btnBase} tbl-pag-btn-prev">‹ Precedente</button>`
+        : `<button disabled class="${btnBase} tbl-pag-btn-prev">‹ Precedente</button>`;
       const nextBtn = _page < totalPages - 1
-        ? `<button onclick="window._tblPage(${_page+1})" style="${btnBase};border:1px solid var(--accent);background:var(--accent);color:#fff">Successiva ›</button>`
-        : `<button disabled style="${btnBase};border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:not-allowed;opacity:0.5">Successiva ›</button>`;
-      document.getElementById('tabellaFootL').innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${prevBtn}<span style="font-size:11px;color:var(--muted)">pag. <b style="color:var(--text)">${_page+1}</b> di <b style="color:var(--text)">${totalPages}</b> &nbsp;·&nbsp; righe <b style="color:var(--text)">${from}–${to}</b> di <b style="color:var(--text)">${totalRows}</b></span>${nextBtn}</div>`;
-      document.getElementById('tabellaFootR').innerHTML = `Subtotale <b style="color:var(--text)">${fmt(tot)} m</b>`;
+        ? `<button onclick="window._tblPage(${_page+1})" class="${btnBase} tbl-pag-btn-next">Successiva ›</button>`
+        : `<button disabled class="${btnBase} tbl-pag-btn-next">Successiva ›</button>`;
+      document.getElementById('tabellaFootL').innerHTML = `<div class="tbl-pag-wrap">${prevBtn}<span class="tbl-pag-info">pag. <b>${_page+1}</b> di <b>${totalPages}</b> &nbsp;·&nbsp; righe <b>${from}–${to}</b> di <b>${totalRows}</b></span>${nextBtn}</div>`;
+      document.getElementById('tabellaFootR').innerHTML = `<span class="tbl-foot-val">Subtotale <b>${fmt(tot)} m</b></span>`;
     } else {
 
-      document.getElementById('tabellaFootL').innerHTML = `<b style="color:var(--text)">${totalRows}</b> pratica${totalRows!==1?'he':''}`;
-      document.getElementById('tabellaFootR').innerHTML = `Totale <b style="color:var(--text)">${fmt(tot)} m</b>`;
+      document.getElementById('tabellaFootL').innerHTML = `<span class="tbl-foot-val"><b>${totalRows}</b> pratica${totalRows!==1?'he':''}</span>`;
+      document.getElementById('tabellaFootR').innerHTML = `<span class="tbl-foot-val">Totale <b>${fmt(tot)} m</b></span>`;
     }
   };
 
