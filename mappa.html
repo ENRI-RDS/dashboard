@@ -1292,14 +1292,14 @@ function _updateCatastaleNotice() {
 map.on('zoomend', _updateCatastaleNotice);
 // ─────────────────────────────────────────────────────────────────────────────
 
-const _scaleCtrl = L.control.scale({imperial:false,position:'bottomright',maxWidth:150}).addTo(map);
-// Sostituisce il metodo di arrotondamento di Leaflet con valori intermedi
-// (1.5 km, 750 m, 300 m…) così ogni step di 0.5 zoom cambia la label.
+const _scaleCtrl = L.control.scale({imperial:false,position:'bottomright',maxWidth:200}).addTo(map);
+// Scala con valori intermedi: ogni step di 0.5 zoom cambia la label.
+// maxWidth:200 garantisce che 1.5km e 750m abbiano spazio fisico nel bar.
+// Passi: 1→1.5→2→3→4→5→7.5→10 (rapporto max 1.5×, sempre diverso ad ogni click)
 _scaleCtrl._updateMetric = function(maxMeters) {
-  const mag = Math.pow(10, Math.floor(Math.log10(maxMeters)));
-  const n   = maxMeters / mag;
-  // Passi: 1 → 1.5 → 2 → 3 → 5 → 7.5 → 10  (rapporto max ~1.5×)
-  const steps = [1, 1.5, 2, 3, 5, 7.5, 10];
+  const mag   = Math.pow(10, Math.floor(Math.log10(maxMeters)));
+  const n     = maxMeters / mag;
+  const steps = [1, 1.5, 2, 3, 4, 5, 7.5, 10];
   let best = steps[0];
   for (const s of steps) { if (s <= n) best = s; else break; }
   const meters = best * mag;
