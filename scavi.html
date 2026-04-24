@@ -375,15 +375,15 @@ const LOTTI = [
   { cl:'1', id:'1A',  prov:['MI'],               comuni:3,  stato:'in-corso',     pct:54, metri:16933 },
   { cl:'1', id:'1B',  prov:['MI'],               comuni:3,  stato:'in-corso',     pct:38, metri:8524  },
   { cl:'2', id:'2A',  prov:['MI','PV'],           comuni:5,  stato:'in-corso',     pct:22, metri:11611 },
-  { cl:'2', id:'2B',  prov:['MI'],               comuni:4,  stato:'sospeso',      pct:9,  metri:15330 },
+  { cl:'2', id:'2B',  prov:['MI'],               comuni:4,  stato:'sospeso',      pct:31, metri:15330 },
   { cl:'3', id:'1',   prov:['BG','MI'],           comuni:20, stato:'in-corso',     pct:14, metri:50924 },
-  { cl:'3', id:'2',   prov:['MB','MI'],           comuni:16, stato:'allestimento', pct:7,  metri:48530 },
-  { cl:'3', id:'3',   prov:['BG','MI'],           comuni:13, stato:'allestimento', pct:5,  metri:46252 },
-  { cl:'4', id:'4',   prov:['BG','CR','MI','PV'], comuni:19, stato:'non-avviato',  pct:3,  metri:56003 },
-  { cl:'3', id:'5',   prov:['MI','PV'],           comuni:9,  stato:'non-avviato',  pct:8,  metri:48333 },
-  { cl:'6', id:'6',   prov:['MI'],               comuni:13, stato:'non-avviato',  pct:4,  metri:58050 },
-  { cl:'5', id:'7',   prov:['BG'],               comuni:15, stato:'non-avviato',  pct:6,  metri:47184 },
-  { cl:'7', id:'8',   prov:['MI','PV'],           comuni:5,  stato:'allestimento', pct:17, metri:19617 },
+  { cl:'3', id:'2',   prov:['MB','MI'],           comuni:16, stato:'allestimento', pct:0,  metri:48530 },
+  { cl:'3', id:'3',   prov:['BG','MI'],           comuni:13, stato:'allestimento', pct:0,  metri:46252 },
+  { cl:'4', id:'4',   prov:['BG','CR','MI','PV'], comuni:19, stato:'non-avviato',  pct:0,  metri:56003 },
+  { cl:'3', id:'5',   prov:['MI','PV'],           comuni:9,  stato:'non-avviato',  pct:0,  metri:48333 },
+  { cl:'6', id:'6',   prov:['MI'],               comuni:13, stato:'non-avviato',  pct:0,  metri:58050 },
+  { cl:'5', id:'7',   prov:['BG'],               comuni:15, stato:'non-avviato',  pct:0,  metri:47184 },
+  { cl:'7', id:'8',   prov:['MI','PV'],           comuni:5,  stato:'allestimento', pct:0,  metri:19617 },
 ];
 
 const CLUSTER_LABEL = {
@@ -421,8 +421,48 @@ document.getElementById('kpiCor').textContent = counts['in-corso'];
 document.getElementById('kpiCom').textContent = counts['completato'];
 document.getElementById('kpiSos').textContent = counts['sospeso'];
 
-// ── CLUSTER BARS (stile index.html) ─────────────────────────────────────────
+// ── HELPERS (portati da index.html) ─────────────────────────────────────────
 const tooltip = document.getElementById('tooltip');
+
+function _showBarTip(seg, e) {
+  let d;
+  try { d = JSON.parse(seg.getAttribute('data-tip')); } catch(_) { return; }
+  const barW = Math.min(100, Math.max(1, d.pct));
+  const tw = 180;
+  const left = e.clientX + 14 + tw > window.innerWidth ? e.clientX - tw - 4 : e.clientX + 14;
+  tooltip.innerHTML = `
+    <div style="padding:5px 12px 4px;background:${d.color}18;border-bottom:1px solid ${d.color}33">
+      <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:${d.color}">${d.label}</span>
+    </div>
+    <div style="padding:8px 12px">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin-bottom:6px">
+        <span style="font-size:22px;font-weight:700;font-family:'Bricolage Grotesque',sans-serif;color:${d.color};letter-spacing:-0.02em">${d.pct.toFixed(1)}%</span>
+        <span style="font-size:11px;font-family:'Fira Code',monospace;color:var(--text2);font-weight:600;white-space:nowrap">${fmt(d.m)} m</span>
+      </div>
+      <div style="height:4px;border-radius:2px;background:var(--border);overflow:hidden">
+        <div style="height:100%;border-radius:2px;background:${d.color};width:${barW}%"></div>
+      </div>
+    </div>`;
+  tooltip.style.opacity = '1';
+  tooltip.style.left = left + 'px';
+  tooltip.style.top = Math.max(4, e.clientY - 30) + 'px';
+}
+
+function makeSeg(pct, color, label, metriVal, isGrey) {
+  const seg = document.createElement('div');
+  seg.className = 'bar-seg';
+  seg.style.cssText = `width:${pct}%;background:${color};position:relative;opacity:${isGrey ? '.45' : '.88'}`;
+  const tip = JSON.stringify({ label, color, pct, m: metriVal });
+  seg.setAttribute('data-tip', tip);
+  if (pct >= 6) {
+    seg.innerHTML = `<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;text-shadow:0 0 4px rgba(0,0,0,1),0 1px 3px rgba(0,0,0,.9);pointer-events:none;font-family:'Bricolage Grotesque',sans-serif">${pct.toFixed(0)}%</span>`;
+  }
+  seg.addEventListener('mousemove', e => _showBarTip(seg, e));
+  seg.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
+  return seg;
+}
+
+// ── CLUSTER BARS ─────────────────────────────────────────────────────────────
 
 // Aggrega per cluster → { stato: metri }
 const clMap = {}, clTot = {};
@@ -461,21 +501,8 @@ Object.keys(clMap).sort((a,b)=>+a-+b).forEach(cl => {
   STATO_ORDER.forEach(stato => {
     const m = statiMap[stato] || 0;
     if (!m) return;
-    const pct = (m / tot * 100);
-    const seg = document.createElement('div');
-    seg.className = 'bar-seg';
-    seg.style.width = pct + '%';
-    seg.style.background = STATO_COLOR[stato];
-    seg.style.opacity = stato === 'non-avviato' ? '0.35' : '0.85';
-    seg.title = `${STATO_LABEL[stato]}: ${fmt(m)} m (${pct.toFixed(1)}%)`;
-    seg.addEventListener('mousemove', e => {
-      tooltip.textContent = `${STATO_LABEL[stato]} · ${fmt(m)} m (${pct.toFixed(1)}%)`;
-      tooltip.style.opacity = '1';
-      tooltip.style.left = (e.clientX + 14) + 'px';
-      tooltip.style.top = (e.clientY - 28) + 'px';
-    });
-    seg.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
-    track.appendChild(seg);
+    const pct = m / tot * 100;
+    track.appendChild(makeSeg(pct, STATO_COLOR[stato], STATO_LABEL[stato], m, stato === 'non-avviato'));
   });
 
   // % in corso (avanzamento reale)
@@ -516,11 +543,25 @@ LOTTI.forEach(r => {
       <span class="bar-lotto-num">${r.id}</span>
       <span class="bar-lotto-comuni">${r.comuni} comuni · ${r.prov.join('/')}</span>
     </div>
-    <div class="bar-track" style="flex:1">
-      ${r.pct > 0 ? `<div class="bar-seg" style="width:${r.pct}%;background:${col};opacity:.85"></div>` : ''}
-    </div>
-    <span class="bar-pct">${r.pct > 0 ? r.pct + '%' : '—'}</span>
-    <span style="min-width:72px;text-align:right;font-size:12px;font-family:'Bricolage Grotesque',sans-serif;font-weight:700;color:var(--text2);flex-shrink:0;letter-spacing:-.01em">${fmt(r.metri)} m</span>`;
+`;
+  // Track con segmenti via makeSeg (label interna + rich tooltip)
+  const lottoTrack = document.createElement('div');
+  lottoTrack.className = 'bar-track';
+  lottoTrack.style.flex = '1';
+  if (r.stato !== 'non-avviato' && r.pct > 0) {
+    const metriScavati = Math.round(r.metri * r.pct / 100);
+    lottoTrack.appendChild(makeSeg(r.pct, col, STATO_LABEL[r.stato], metriScavati, false));
+  }
+  const pctRimasto = r.stato === 'non-avviato' ? 100 : (100 - r.pct);
+  const metriRimasti = Math.round(r.metri * pctRimasto / 100);
+  if (pctRimasto > 0) {
+    lottoTrack.appendChild(makeSeg(pctRimasto, STATO_COLOR['non-avviato'], 'Non scavato', metriRimasti, true));
+  }
+  const pctEl  = document.createElement('span'); pctEl.className = 'bar-pct'; pctEl.style.color = col; pctEl.textContent = r.pct + '%';
+  const mEl    = document.createElement('span'); mEl.style.cssText = 'min-width:72px;text-align:right;font-size:12px;font-family:Bricolage Grotesque,sans-serif;font-weight:700;color:var(--text2);flex-shrink:0;letter-spacing:-.01em'; mEl.textContent = fmt(r.metri) + ' m';
+  row.appendChild(lottoTrack);
+  row.appendChild(pctEl);
+  row.appendChild(mEl);
   barContainer.appendChild(row);
 });
 
