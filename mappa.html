@@ -1070,7 +1070,7 @@ function updateLegend(mode) {
   }
 }
 
-map = L.map('map',{center:[45.48,9.30],zoom:10,zoomControl:true,attributionControl:true,preferCanvas:true,zoomSnap:0.5,zoomDelta:0.5,wheelPxPerZoomLevel:120});
+map = L.map('map',{center:[45.48,9.30],zoom:10,zoomControl:true,attributionControl:true,preferCanvas:true,zoomSnap:0.5,zoomDelta:0.5});
 // Chiudi il drawer mobile quando si apre un popup
 map.on('popupopen', () => { if (_isMobile()) closeDrawer(); });
 // Renderer separati: outlineRenderer NON interattivo, mainRenderer interattivo
@@ -1295,7 +1295,10 @@ function _updateCatastaleNotice() {
 map.on('zoomend', _updateCatastaleNotice);
 // ─────────────────────────────────────────────────────────────────────────────
 
-L.control.scale({imperial:false,position:'bottomright'}).addTo(map);
+const _scaleCtrl = L.control.scale({imperial:false,position:'bottomright',maxWidth:150}).addTo(map);
+// Con zoomSnap frazionario il layout canvas non è ancora stabile al primo aggiornamento:
+// forziamo un ricalcolo preciso a ogni fine-zoom con un micro-delay.
+map.on('zoomend', function(){ setTimeout(function(){ _scaleCtrl._update(); }, 50); });
 
 function exportPDF(){
   const btn=document.querySelector('[onclick="exportPDF()"]');
