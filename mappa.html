@@ -10,8 +10,6 @@
 <title>ENRI — Avanzamento Progettazione</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/leaflet-image@0.4.0/leaflet-image.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <!-- Anti-FOUC: nasconde la sidebar su mobile PRIMA del primo disegno -->
 <script>
@@ -385,7 +383,6 @@
   @media(max-width:480px){
     /* Nasconde PDF/Immagine, resta solo Dashboard */
     .topbar-right .btn[onclick*="exportPDF"],
-    .topbar-right .btn[onclick*="exportImage"]{ display:none; }
     .stats-bar{ bottom:68px; }
     .measure-badge{ bottom:76px; }
     .map-legend{ max-width:130px; }
@@ -698,7 +695,7 @@
   <div class="topbar-right">
     <span class="badge" id="statusBadge">⏳ Caricamento</span>
     <button class="btn" style="background:#2f5496" onclick="exportPDF()">⬇ PDF</button>
-    <button class="btn" style="background:#1a5c3a" onclick="exportImage()">🖼 Immagine</button>
+
     <a href="hub.html" class="btn-back" style="background:#9C7A55;">
       Hub
     </a>
@@ -1296,8 +1293,6 @@ map.on('zoomend', _updateCatastaleNotice);
 // ─────────────────────────────────────────────────────────────────────────────
 
 const _scaleCtrl = L.control.scale({imperial:false,position:'bottomright',maxWidth:150}).addTo(map);
-// Con zoomSnap frazionario il layout canvas non è ancora stabile al primo aggiornamento:
-// forziamo un ricalcolo preciso a ogni fine-zoom con un micro-delay.
 map.on('zoomend', function(){ setTimeout(function(){ _scaleCtrl._update(); }, 50); });
 
 function exportPDF(){
@@ -1305,85 +1300,6 @@ function exportPDF(){
   btn.textContent='⏳...'; btn.disabled=true;
   map.invalidateSize();
   setTimeout(()=>{window.print();btn.textContent='⬇ PDF';btn.disabled=false;},500);
-}
-
-function exportImage(){
-  const btn = document.querySelector('[onclick="exportImage()"]');
-  if (!btn) return;
-  btn.textContent = '⏳...'; btn.disabled = true;
-
-  setTimeout(async () => {
-    try {
-      const mapEl   = document.getElementById('map');
-      const mapRect = mapEl.getBoundingClientRect();
-      const W = Math.round(mapRect.width);
-      const H = Math.round(mapRect.height);
-      const SCALE = 2;
-
-      if (typeof leafletImage === 'undefined') throw new Error('leaflet-image non caricato');
-      const rawCanvas = await new Promise((resolve, reject) => {
-        leafletImage(map, function(err, canvas) {
-          if (err || !canvas) reject(err || new Error('render mappa fallito'));
-          else resolve(canvas);
-        });
-      });
-
-      const mapCanvas = document.createElement('canvas');
-      mapCanvas.width = W * SCALE;
-      mapCanvas.height = H * SCALE;
-      const ctx = mapCanvas.getContext('2d');
-      ctx.drawImage(rawCanvas, 0, 0, mapCanvas.width, mapCanvas.height);
-
-      // Overlay robusto: copia i canvas vettoriali reali visibili (tracciati)
-      const overlayCanvases = mapEl.querySelectorAll('.leaflet-overlay-pane canvas');
-      overlayCanvases.forEach((cv) => {
-        const r = cv.getBoundingClientRect();
-        const dw = Math.round(r.width * SCALE);
-        const dh = Math.round(r.height * SCALE);
-        if (dw <= 0 || dh <= 0) return;
-        const dx = Math.round((r.left - mapRect.left) * SCALE);
-        const dy = Math.round((r.top - mapRect.top) * SCALE);
-        try {
-          ctx.drawImage(cv, dx, dy, dw, dh);
-        } catch (_) {
-          // Ignora singoli canvas non disegnabili senza interrompere export
-        }
-      });
-
-      // ── Legenda reale a schermo ─────────────────────────────────────────────
-      const legendEl = document.getElementById('legendContainer');
-      if (!legendEl) throw new Error('Legenda non trovata');
-
-      const waitH2C = (attempts) => new Promise((res, rej) => {
-        if (typeof html2canvas !== 'undefined') res();
-        else if (attempts <= 0) rej(new Error('html2canvas non caricato'));
-        else setTimeout(() => waitH2C(attempts - 1).then(res).catch(rej), 400);
-      });
-      await waitH2C(8);
-
-      const legCanvas = await html2canvas(legendEl, {
-        scale: SCALE, backgroundColor: '#f4f6fa', logging: false,
-        useCORS: false, allowTaint: false
-      });
-
-      // ── Output finale: solo mappa con legenda dentro ───────────────────────
-      const octx = mapCanvas.getContext('2d');
-      const pad = 12 * SCALE;
-      const lx = Math.max(pad, mapCanvas.width - legCanvas.width - pad);
-      const ly = Math.max(pad, mapCanvas.height - legCanvas.height - pad);
-      octx.drawImage(legCanvas, lx, ly);
-      const link = document.createElement('a');
-      link.download = 'ENRI_Mappa_' + new Date().toISOString().slice(0, 10) + '.png';
-      link.href = mapCanvas.toDataURL('image/png');
-      link.click();
-
-    } catch(e) {
-      alert('Errore export: ' + e.message);
-    } finally {
-      btn.textContent = '🖼 Immagine'; btn.disabled = false;
-      map.getContainer().style.cursor = '';
-    }
-  }, 400);
 }
 
 function getColor(stato){ return STATO_COLORS[stato]||'#4a4f6a'; }
