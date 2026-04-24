@@ -1068,14 +1068,6 @@ function updateLegend(mode) {
 }
 
 map = L.map('map',{center:[45.48,9.30],zoom:10,zoomControl:true,attributionControl:true,preferCanvas:true,zoomSnap:0.5,zoomDelta:0.5});
-// Badge temporaneo di verifica versione — sparisce dopo 3s
-(function(){
-  const b = document.createElement('div');
-  b.textContent = '✓ Zoom ×0.5 attivo';
-  b.style.cssText = 'position:absolute;top:60px;left:50%;transform:translateX(-50%);z-index:9999;background:#2563eb;color:#fff;font-family:DM Sans,sans-serif;font-size:12px;font-weight:600;padding:6px 16px;border-radius:20px;box-shadow:0 2px 8px #0004;pointer-events:none;';
-  document.body.appendChild(b);
-  setTimeout(() => b.remove(), 3000);
-})();
 // Chiudi il drawer mobile quando si apre un popup
 map.on('popupopen', () => { if (_isMobile()) closeDrawer(); });
 // Renderer separati: outlineRenderer NON interattivo, mainRenderer interattivo
@@ -1301,6 +1293,25 @@ map.on('zoomend', _updateCatastaleNotice);
 // ─────────────────────────────────────────────────────────────────────────────
 
 const _scaleCtrl = L.control.scale({imperial:false,position:'bottomright',maxWidth:150}).addTo(map);
+// Sostituisce il metodo di arrotondamento di Leaflet con valori intermedi
+// (1.5 km, 750 m, 300 m…) così ogni step di 0.5 zoom cambia la label.
+_scaleCtrl._updateMetric = function(maxMeters) {
+  const mag = Math.pow(10, Math.floor(Math.log10(maxMeters)));
+  const n   = maxMeters / mag;
+  // Passi: 1 → 1.5 → 2 → 3 → 5 → 7.5 → 10  (rapporto max ~1.5×)
+  const steps = [1, 1.5, 2, 3, 5, 7.5, 10];
+  let best = steps[0];
+  for (const s of steps) { if (s <= n) best = s; else break; }
+  const meters = best * mag;
+  let label;
+  if (meters >= 1000) {
+    const km = meters / 1000;
+    label = Number.isInteger(km) ? km + ' km' : km.toFixed(1) + ' km';
+  } else {
+    label = Math.round(meters) + ' m';
+  }
+  this._updateScale(this._mScale, label, meters / maxMeters);
+};
 map.on('zoomend', function(){ setTimeout(function(){ _scaleCtrl._update(); }, 50); });
 
 function exportPDF(){
