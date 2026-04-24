@@ -1292,27 +1292,33 @@ function _updateCatastaleNotice() {
 map.on('zoomend', _updateCatastaleNotice);
 // ─────────────────────────────────────────────────────────────────────────────
 
-const _scaleCtrl = L.control.scale({imperial:false,position:'bottomright',maxWidth:200}).addTo(map);
-// Scala con valori intermedi: ogni step di 0.5 zoom cambia la label.
-// maxWidth:200 garantisce che 1.5km e 750m abbiano spazio fisico nel bar.
-// Passi: 1→1.5→2→3→4→5→7.5→10 (rapporto max 1.5×, sempre diverso ad ogni click)
-_scaleCtrl._updateMetric = function(maxMeters) {
-  const mag   = Math.pow(10, Math.floor(Math.log10(maxMeters)));
-  const n     = maxMeters / mag;
-  const steps = [1, 1.5, 2, 3, 4, 5, 7.5, 10];
-  let best = steps[0];
-  for (const s of steps) { if (s <= n) best = s; else break; }
-  const meters = best * mag;
-  let label;
+L.control.scale({imperial:false,position:'bottomright',maxWidth:200}).addTo(map);
+// Override diretto del DOM: non dipende da nomi di metodi interni (che cambiano nel build minificato).
+function _fixScaleBar() {
+  var mScale = document.querySelector('.leaflet-control-scale-line');
+  if (!mScale) return;
+  var zoom = map.getZoom();
+  var lat  = map.getCenter().lat * Math.PI / 180;
+  var mpp  = 156543.034 * Math.cos(lat) / Math.pow(2, zoom);
+  var maxMeters = 200 * mpp;
+  var mag   = Math.pow(10, Math.floor(Math.log10(maxMeters)));
+  var n     = maxMeters / mag;
+  var steps = [1, 1.5, 2, 3, 4, 5, 7.5, 10];
+  var best  = steps[0];
+  for (var i = 0; i < steps.length; i++) { if (steps[i] <= n) best = steps[i]; else break; }
+  var meters = best * mag;
+  var label;
   if (meters >= 1000) {
-    const km = meters / 1000;
-    label = Number.isInteger(km) ? km + ' km' : km.toFixed(1) + ' km';
+    var km = meters / 1000;
+    label = (km === Math.floor(km)) ? km + ' km' : km.toFixed(1) + ' km';
   } else {
     label = Math.round(meters) + ' m';
   }
-  this._updateScale(this._mScale, label, meters / maxMeters);
-};
-map.on('zoomend', function(){ setTimeout(function(){ _scaleCtrl._update(); }, 50); });
+  mScale.style.width = Math.round(200 * meters / maxMeters) + 'px';
+  mScale.innerHTML   = label;
+}
+map.on('zoomend moveend', function(){ setTimeout(_fixScaleBar, 30); });
+setTimeout(_fixScaleBar, 800);
 
 function exportPDF(){
   const btn=document.querySelector('[onclick="exportPDF()"]');
