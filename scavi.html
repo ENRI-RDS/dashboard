@@ -584,38 +584,127 @@ tbody.innerHTML = LOTTI.map(r => {
   </tr>`;
 }).join('');
 
-// ── DONUT CHART ─────────────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', () => {
-  const statiDonut = [
-    { label:'Non avviati',    color:'#8A91B4', key:'non-avviato'  },
-    { label:'In allestimento',color:'#C08A14', key:'allestimento' },
-    { label:'In corso',       color:'#0B3182', key:'in-corso'     },
-    { label:'In sospeso',     color:'#C23B22', key:'sospeso'      },
-    { label:'Completati',     color:'#1F7A4E', key:'completato'   },
+// ── DONUT CHART (canvas, stile index) ───────────────────────────────────────
+(function renderDonut() {
+  const STATI_DONUT = [
+    { label:'In corso',        key:'in-corso',     color:'#0B3182' },
+    { label:'In allestimento', key:'allestimento',  color:'#C08A14' },
+    { label:'In sospeso',      key:'sospeso',       color:'#C23B22' },
+    { label:'Completati',      key:'completato',    color:'#1F7A4E' },
+    { label:'Non avviati',     key:'non-avviato',   color:'#8A91B4' },
   ];
-  const data = statiDonut.map(s => counts[s.key]);
-  const ctx = document.getElementById('donutChart').getContext('2d');
-  new Chart(ctx, {
-    type:'doughnut',
-    data:{
-      labels: statiDonut.map(s=>s.label),
-      datasets:[{ data, backgroundColor:statiDonut.map(s=>s.color), borderWidth:2, borderColor:'#FFF', hoverOffset:4 }]
-    },
-    options:{ cutout:'68%', plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label: c => ` ${c.label}: ${c.parsed} lotti` } } } }
+
+  // Costruisci dataset: usa metri totali per lotto come peso
+  const pesoPerStato = {};
+  LOTTI.forEach(r => { pesoPerStato[r.stato] = (pesoPerStato[r.stato] || 0) + r.metri; });
+  const grandTotal = Object.values(pesoPerStato).reduce((a,b)=>a+b,0);
+
+  const grouped = STATI_DONUT
+    .map(s => ({ ...s, metri: pesoPerStato[s.key] || 0 }))
+    .filter(s => s.metri > 0);
+
+  const canvas = document.getElementById('donutChart');
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = 200 * dpr;
+  canvas.height = 200 * dpr;
+  canvas.style.width  = '200px';
+  canvas.style.height = '200px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const cx = 100, cy = 100, r = 78, rIn = 52;
+
+  // Disegna segmenti
+  let startAngle = -Math.PI / 2;
+  grouped.forEach(s => {
+    const angle = (s.metri / grandTotal) * 2 * Math.PI;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, startAngle, startAngle + angle);
+    ctx.closePath();
+    ctx.fillStyle = s.color;
+    ctx.fill();
+    startAngle += angle;
   });
 
-  // Legenda donut
-  const leg = document.getElementById('donutLegend');
-  statiDonut.forEach(s => {
-    if (!counts[s.key] && s.key !== 'completato') return; // nascondi a 0 tranne completati
-    leg.innerHTML += `<div style="display:flex;justify-content:space-between;font-size:11px;">
-      <span style="display:flex;align-items:center;gap:6px;color:var(--muted)">
-        <span style="width:8px;height:8px;border-radius:2px;background:${s.color};display:inline-block"></span>${s.label}
-      </span>
-      <strong>${counts[s.key]} lotti</strong>
-    </div>`;
+  // Foro centrale
+  ctx.beginPath();
+  ctx.arc(cx, cy, rIn, 0, 2 * Math.PI);
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#ffffff';
+  ctx.fill();
+
+  // % avanzamento al centro (metri in-corso / totale)
+  const metriAttivi = (pesoPerStato['in-corso'] || 0) + (pesoPerStato['completato'] || 0);
+  const pctAvanz = grandTotal > 0 ? (metriAttivi / grandTotal * 100) : 0;
+  ctx.fillStyle = '#1a1d27';
+  ctx.font = 'bold 20px Bricolage Grotesque, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(pctAvanz.toFixed(1) + '%', cx, cy - 8);
+  ctx.font = '9px Plus Jakarta Sans, sans-serif';
+  ctx.fillStyle = '#4a5070';
+  ctx.fillText('avanzamento', cx, cy + 10);
+
+  // Legenda
+  const legend = document.getElementById('donutLegend');
+  legend.innerHTML = '';
+  grouped.forEach(s => {
+    const pct = (s.metri / grandTotal * 100).toFixed(1);
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;font-size:10px;';
+    row.innerHTML = `
+      <div style="display:flex;align-items:center;gap:6px">
+        <div style="width:8px;height:8px;border-radius:2px;background:${s.color};flex-shrink:0"></div>
+        <span style="color:var(--muted)">${s.label}</span>
+      </div>
+      <span style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;color:${s.color}">${pct}%</span>`;
+    legend.appendChild(row);
   });
-});
+
+  // Tooltip interattivo al mouseover (come index)
+  const _segs = [];
+  let _dsa = -Math.PI / 2;
+  grouped.forEach(s => {
+    const angle = (s.metri / grandTotal) * 2 * Math.PI;
+    _segs.push({ ...s, pct: s.metri / grandTotal * 100, startAngle: _dsa, endAngle: _dsa + angle });
+    _dsa += angle;
+  });
+  canvas.style.cursor = 'crosshair';
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (200 / rect.width);
+    const my = (e.clientY - rect.top)  * (200 / rect.height);
+    const dx = mx - cx, dy = my - cy;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < rIn || dist > r) { tooltip.style.opacity = '0'; return; }
+    const base = -Math.PI / 2;
+    let ca = Math.atan2(dy, dx);
+    while (ca < base) ca += 2 * Math.PI;
+    while (ca >= base + 2 * Math.PI) ca -= 2 * Math.PI;
+    const seg = _segs.find(s => ca >= s.startAngle && ca < s.endAngle);
+    if (!seg) { tooltip.style.opacity = '0'; return; }
+    const barW = Math.min(100, Math.max(1, seg.pct));
+    const tw = 180;
+    const left = e.clientX + 14 + tw > window.innerWidth ? e.clientX - tw - 4 : e.clientX + 14;
+    tooltip.innerHTML = `
+      <div style="padding:5px 12px 4px;background:${seg.color}18;border-bottom:1px solid ${seg.color}33">
+        <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:${seg.color}">${seg.label}</span>
+      </div>
+      <div style="padding:8px 12px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin-bottom:6px">
+          <span style="font-size:22px;font-weight:700;font-family:'Bricolage Grotesque',sans-serif;color:${seg.color};letter-spacing:-0.02em">${seg.pct.toFixed(1)}%</span>
+          <span style="font-size:11px;font-family:'Fira Code',monospace;color:var(--text2);font-weight:600;white-space:nowrap">${fmt(seg.metri)} m</span>
+        </div>
+        <div style="height:4px;border-radius:2px;background:var(--border);overflow:hidden">
+          <div style="height:100%;border-radius:2px;background:${seg.color};width:${barW}%"></div>
+        </div>
+      </div>`;
+    tooltip.style.opacity = '1';
+    tooltip.style.left = left + 'px';
+    tooltip.style.top  = Math.max(4, e.clientY - 30) + 'px';
+  });
+  canvas.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
+})();
 </script>
 </body>
 </html>
