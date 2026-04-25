@@ -2,7 +2,11 @@
 <html lang="it" translate="no">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#F4F3EE">
 <meta name="google" content="notranslate">
 <meta http-equiv="Content-Language" content="it">
 <title>ENRI — Dashboard Avanzamento</title>
@@ -38,83 +42,7 @@
     --sh-lg: 0 12px 40px rgba(11,49,130,.13), 0 4px 16px rgba(0,0,0,.07);
   }
 
-  /* ── DARK MODE ── */
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg:        #0D0E14;
-      --surface:   #161720;
-      --surface2:  #1E1F2C;
-      --border:    #2A2B3A;
-      --border2:   #363748;
-      --accent:    #5B8EF0;
-      --accent2:   #FF6D2E;
-      --text:      #E6E6F0;
-      --text2:     #B4B4CC;
-      --muted:     #7878A0;
-      --muted2:    #5A5A88;
-      /* stato colors – leggermente più luminose su sfondo scuro */
-      --attesa:    #9DA6CC;
-      --redazione: #D4A530;
-      --firma:     #E07245;
-      --inviato:   #5B8EF0;
-      --protocollato: #5B8EF0;
-      --ottenuto:  #2EC87A;
-      /* shadows – più profondi su dark */
-      --sh-xs: 0 1px 3px rgba(0,0,0,.40), 0 1px 2px rgba(0,0,0,.30);
-      --sh-sm: 0 2px 8px rgba(0,0,0,.45), 0 1px 4px rgba(0,0,0,.35);
-      --sh-md: 0 4px 20px rgba(0,0,0,.50), 0 2px 8px rgba(0,0,0,.40);
-      --sh-lg: 0 12px 40px rgba(0,0,0,.60), 0 4px 16px rgba(0,0,0,.45);
-    }
 
-    /* Phase panels */
-    .phase-panel.phase-submission {
-      background: linear-gradient(135deg, #18203A 0%, #1C2442 100%);
-      border-color: #2A3565;
-    }
-    .phase-panel.phase-approval {
-      background: linear-gradient(135deg, #0F2820 0%, #132C24 100%);
-      border-color: #1C4A32;
-    }
-    .phase-submission .phase-header { color: #818cf8; border-color: #2A3565; }
-    .phase-approval   .phase-header { color: #34d399; border-color: #1C4A32; }
-    .phase-submission .phase-header-icon { background: #2A3565; }
-    .phase-approval   .phase-header-icon { background: #1C4A32; }
-
-    /* Righe alternate tabella pratiche */
-    .prat-table tbody tr:nth-child(even) td { background: #1C1D28; }
-
-    /* KPI owner tags – adattati al dark */
-    .kpi-owner.impresa { background:rgba(255,109,46,.14); border-color:rgba(255,109,46,.35); }
-    .kpi-owner.rds     { background:rgba(91,142,240,.14); border-color:rgba(91,142,240,.35); }
-    .kpi-owner.ente    { background:rgba(46,200,122,.14); border-color:rgba(46,200,122,.35); }
-
-    /* Milestone cards – testo colorato su dark */
-    .ms-card.future .ms-days { color: #5B8EF0; }
-
-    /* Milestone bar mini */
-    .bar-ms.ms-finale { border-color:rgba(91,142,240,.30); background:rgba(91,142,240,.07); }
-
-    /* Overlay backdrop più scuro */
-    .modal-overlay,
-    .modal-kpi-overlay,
-    #modalStoricoOverlay { background: rgba(8,8,14,.65); }
-    #helpOverlay         { background: rgba(8,8,14,.75); }
-
-    /* Badge default su dark */
-    .badge { background: var(--surface2); border-color: var(--border2); color: var(--muted); }
-
-    /* Error box */
-    #errorBox { background: rgba(194,59,34,.12); border-color: rgba(194,59,34,.40); }
-
-    /* Sort clear button dropdown */
-    .cfd-sort-clear { border-color: #4A2020; background: #2A1010; color: #E07070; }
-
-    /* Scrollbar sottile su dark (webkit) */
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: var(--bg); }
-    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: var(--muted2); }
-  }
 
   * { margin:0; padding:0; box-sizing:border-box; }
 
@@ -569,39 +497,116 @@
   #modalStoricoOverlay.open { opacity:1; pointer-events:all; }
   #modalStoricoOverlay .modal { width:740px; }
 
-  /* ── RESPONSIVE ── */
+  /* ── TOUCH / iOS / ANDROID GLOBAL ── */
+  /* Evita zoom accidentale su doppio tap e ritardo 300ms */
+  button, a, input, select, .kpi, .bar-row {
+    touch-action: manipulation;
+  }
+  /* Scrolling fluido webkit (iOS Safari) */
+  .modal, .modal-kpi, #helpOverlay .help-modal,
+  .cfd-list, #tabellaContainer { -webkit-overflow-scrolling: touch; }
+
+  /* Safe area per iPhone con notch / Dynamic Island / home bar */
+  .topbar {
+    padding-left: max(20px, env(safe-area-inset-left));
+    padding-right: max(20px, env(safe-area-inset-right));
+  }
+  body { padding-bottom: env(safe-area-inset-bottom); }
+
+  /* Scrollbar leggera su webkit desktop */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted2); }
+
+  /* ── RESPONSIVE 768px ── */
   @media (max-width:768px) {
-    .topbar { padding:0 10px; height:auto; flex-wrap:wrap; gap:6px; padding-top:8px; padding-bottom:8px; }
+    /* Topbar adattivo — scrollabile orizzontalmente su mobile */
+    .topbar {
+      padding: 8px max(10px, env(safe-area-inset-left)) 8px max(10px, env(safe-area-inset-right));
+      height: auto; overflow-x: auto; overflow-y: hidden;
+      flex-wrap: nowrap; gap: 6px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .topbar-left { flex-shrink: 0; }
+    .topbar-right { flex-shrink: 0; gap: 5px; flex-wrap: nowrap; }
     .page-title { display:none; }
-    .topbar-right { gap:4px; flex-wrap:wrap; }
-    .topbar-right a, .topbar-right button { font-size:10px; padding:5px 10px; }
-    .main { padding:12px 14px; gap:14px; }
+    /* Bottoni topbar — target minimo 44px (Apple HIG) */
+    .topbar-right a, .topbar-right button {
+      font-size: 11px; padding: 10px 13px; min-height: 44px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+
+    /* Main */
+    .main { padding: 12px max(12px, env(safe-area-inset-left)) 12px max(12px, env(safe-area-inset-right)); gap:14px; }
+
+    /* KPI panels */
     .kpi-phase-wrapper { flex-direction:column; gap:8px; }
     .phase-panel.phase-submission,
     .phase-panel.phase-approval { flex:unset; }
     .phase-submission .kpi-row { grid-template-columns:repeat(2, 1fr); gap:8px; }
     .phase-approval   .kpi-row { grid-template-columns:repeat(2, 1fr); gap:8px; }
-    .kpi { padding:12px 14px; }
-    .kpi-value { font-size:24px; }
+    .kpi { padding:14px 14px; min-height:80px; }
+    .kpi-value { font-size:26px; }
     .kpi-label { font-size:9px; margin-bottom:6px; }
+
+    /* Grid / sidebar */
     .grid-main { grid-template-columns:1fr; gap:14px; }
     .side { gap:12px; }
     .bar-ms-wrap { display:none; }
     .bar-pct { width:28px; font-size:9px; }
     .bar-lotto { width:22px; font-size:10px; }
     .bar-track { height:22px; }
-    .modal { width:95vw; padding:18px; }
-    .modal-bar-label { width:130px; font-size:10px; }
-    .modal-bar-val { width:70px; font-size:10px; }
+
+    /* Milestones */
+    .milestone-grid { grid-template-columns:repeat(2, 1fr); gap:10px; }
+
+    /* Tabella — scroll orizzontale su mobile */
+    #tabellaContainer { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    #tabellaContainer table { min-width: 700px; }
+
+    /* Modali — full width con safe area */
+    .modal {
+      width: calc(100vw - 16px);
+      max-width: 100%;
+      padding: 18px max(16px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+      border-radius: 16px 16px 0 0;
+      max-height: 88dvh;
+    }
+    .modal-overlay {
+      align-items: flex-end;
+    }
+    .modal-kpi {
+      width: calc(100vw - 16px); max-width: 100%;
+      padding: 18px 16px; border-radius: 16px 16px 0 0;
+      max-height: 88dvh;
+    }
+    .modal-kpi-overlay { align-items: flex-end; }
+    #modalStoricoOverlay .modal { width:100%; border-radius:16px 16px 0 0; }
+    .modal-bar-label { width:120px; font-size:10px; }
+    .modal-bar-val   { width:70px;  font-size:10px; }
     .modal-ms-row { flex-wrap:wrap; }
     .modal-ms-card { min-width:80px; }
+
+    /* Column filter dropdown — full width su mobile */
+    .col-filter-dropdown { min-width:180px; max-width: calc(100vw - 32px); }
+
+    /* Paginazione tabella */
+    .tbl-pag-wrap { gap:6px; }
+    .tbl-pag-btn  { padding:8px 12px; min-height:40px; }
+
     canvas { width:160px !important; height:160px !important; }
   }
+
   @media (max-width:480px) {
     .phase-submission .kpi-row,
     .phase-approval   .kpi-row { grid-template-columns:repeat(2, 1fr); }
-    .kpi-value { font-size:20px; }
+    .kpi-value { font-size:22px; }
     .logo { font-size:11px; }
+    .milestone-grid { grid-template-columns:1fr; }
+    /* Topbar: nascondi etichette testo nei bottoni, mostra solo icone */
+    .topbar-right a[href="mappa.html"]::after          { content: ''; }
+    .topbar-right a[href="executive_summary.html"]::after { content: ''; }
   }
 
   /* ── HELP MODAL ── */
