@@ -978,9 +978,9 @@
         <span style="font-size:15px;font-weight:700;font-family:'Bricolage Grotesque',sans-serif;color:var(--text);letter-spacing:-0.01em" id="clusterStatus">—</span>
       </div>
       <div class="card-body">
-        <div id="clusterBodyFlex" style="display:flex;gap:0;align-items:stretch">
-          <div class="chart-wrap" id="clusterWrap" style="flex:1"><div style="padding:16px;font-size:12px;color:var(--muted)">Caricamento Riepilogo_progettazione.csv...</div></div>
-          <div id="prevRilascioCol" style="display:none;flex-shrink:0;border-left:2px solid var(--border2);margin-left:16px;padding-left:16px;display:flex;flex-direction:column;gap:6px;justify-content:center;min-width:110px">
+        <div id="clusterBodyFlex" style="display:flex;flex-wrap:wrap;gap:0;align-items:stretch">
+          <div class="chart-wrap" id="clusterWrap" style="flex:1;min-width:260px"><div style="padding:16px;font-size:12px;color:var(--muted)">Caricamento Riepilogo_progettazione.csv...</div></div>
+          <div id="prevRilascioCol" style="display:none;flex-shrink:0;border-left:2px solid var(--border2);margin-left:16px;padding-left:16px;flex-direction:column;gap:6px;justify-content:center;min-width:110px">
             <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.14em;color:var(--text2);margin-bottom:2px;text-align:center;padding:4px 8px;background:var(--surface2);border-radius:6px;border:1px solid var(--border2)">📅 Prev. Rilascio</div>
             <div id="prevOkCell" onclick="openModalPrev('ok')" style="cursor:pointer;background:#3a8c5c18;border:1.5px solid #3a8c5c66;border-radius:8px;padding:8px 14px;text-align:center;transition:background 0.15s" onmouseover="this.style.background='#3a8c5c30'" onmouseout="this.style.background='#3a8c5c18'">
               <div id="prevOkVal" style="font-size:24px;font-weight:800;font-family:'Bricolage Grotesque',sans-serif;color:#3a8c5c;line-height:1;letter-spacing:-0.02em">0</div>
@@ -5107,7 +5107,8 @@ function updatePrevRilascio() {
   if (okPrats.length + warnPrats.length + latePrats.length === 0) {
     col.style.display = 'none'; return;
   }
-  col.style.display = '';
+  col.style.display = 'flex';
+  adjustClusterMobile();
   document.getElementById('prevOkVal').textContent   = okPrats.length;
   document.getElementById('prevWarnVal').textContent = warnPrats.length;
   document.getElementById('prevLateVal').textContent = latePrats.length;
@@ -7004,6 +7005,50 @@ _hookScadenze();
   })();
 })();
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLUSTER MOBILE LAYOUT
+// Gestisce il passaggio colonna→riga di #prevRilascioCol su schermi stretti.
+// Usa JS diretto sugli stili per essere immune da specificity CSS e inline style.
+// ─────────────────────────────────────────────────────────────────────────────
+function adjustClusterMobile() {
+  const col = document.getElementById('prevRilascioCol');
+  if (!col || col.style.display === 'none') return;
+  const mobile = window.innerWidth <= 768;
+  if (mobile) {
+    col.style.flexDirection   = 'row';
+    col.style.justifyContent  = 'space-around';
+    col.style.alignItems      = 'stretch';
+    col.style.borderLeft      = 'none';
+    col.style.borderTop       = '2px solid #CCC9BE';
+    col.style.marginLeft      = '0';
+    col.style.paddingLeft     = '0';
+    col.style.paddingTop      = '14px';
+    col.style.marginTop       = '12px';
+    col.style.minWidth        = '0';
+    col.style.width           = '100%';
+    col.style.gap             = '8px';
+    // i 3 figli si dividono la riga
+    Array.from(col.children).forEach(c => { c.style.flex = '1'; c.style.minWidth = '0'; });
+  } else {
+    col.style.flexDirection   = 'column';
+    col.style.justifyContent  = 'center';
+    col.style.alignItems      = '';
+    col.style.borderLeft      = '2px solid #CCC9BE';
+    col.style.borderTop       = '';
+    col.style.marginLeft      = '16px';
+    col.style.paddingLeft     = '16px';
+    col.style.paddingTop      = '';
+    col.style.marginTop       = '';
+    col.style.minWidth        = '110px';
+    col.style.width           = '';
+    col.style.gap             = '6px';
+    Array.from(col.children).forEach(c => { c.style.flex = ''; c.style.minWidth = ''; });
+  }
+}
+window.adjustClusterMobile = adjustClusterMobile;
+window.addEventListener('resize', adjustClusterMobile);
+window.addEventListener('DOMContentLoaded', adjustClusterMobile);
 
 </script>
 
