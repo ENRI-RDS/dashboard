@@ -261,7 +261,11 @@
     /* Pulsanti touch-friendly */
     .btn{ font-size:11px; padding:7px 12px; min-height:40px; border-radius:8px; }
     .btn-back{ font-size:11px; padding:7px 14px; min-height:40px; border-radius:8px; }
-    .help-btn{ display:none; }
+    /* Nasconde su mobile: PDF, Progettazione, Help */
+    .btn-mobile-hidden,
+    button.btn[onclick="exportPDF()"],
+    a.btn-back[href="index.html?direct=1"],
+    .help-btn { display:none !important; }
 
     /* ── Layout: mappa a schermo pieno ── */
     .wrap{ flex-direction:column; }
@@ -710,9 +714,15 @@
   </div>
   <div class="topbar-right">
     <span class="badge" id="statusBadge">⏳ Caricamento</span>
+    <button class="btn" style="background:#2f5496" onclick="exportPDF()">⬇ PDF</button>
+
     <a href="hub.html" class="btn-back" style="background:#9C7A55;">
       Hub
     </a>
+    <a href="index.html?direct=1" class="btn-back">
+      Progettazione
+    </a>
+    <button class="help-btn" onclick="openHelp()" title="Guida alla Mappa">?</button>
   </div>
 </div>
 
@@ -1929,7 +1939,11 @@ async function loadQTS() {
   } catch(e) {
     console.warn('QTS layer:', e.message);
     const tog = document.getElementById('qtsToggle');
-    if (tog) { tog.disabled = true; tog.parentElement.title = 'QTS.geojson non disponibile'; }
+    if (tog) {
+      tog.checked  = false;   // ← resetta lo stato visivo prima di disabilitare
+      tog.disabled = true;
+      tog.parentElement.title = 'QTS.geojson non disponibile';
+    }
   }
 }
 
