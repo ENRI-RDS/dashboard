@@ -215,7 +215,7 @@
   .drawer-toggle {
     display:none; /* nascosto su desktop */
     position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
-    z-index:700;
+    z-index:801;
     background:#fff; border:none; border-radius:24px;
     padding:10px 20px; gap:8px;
     box-shadow:0 4px 16px rgba(0,0,0,.22);
@@ -231,7 +231,7 @@
   /* Overlay scuro quando drawer è aperto */
   .drawer-overlay {
     display:none;
-    position:fixed; inset:0; z-index:690;
+    position:fixed; inset:0; z-index:799;
     background:rgba(0,0,0,.3);
     -webkit-tap-highlight-color:transparent;
   }
@@ -270,12 +270,12 @@
     .sidebar{
       position:fixed; bottom:0; left:0; right:0;
       width:100% !important; height:auto;
-      max-height:70vh;
+      max-height:52vh;
       border-left:none; border-right:none; border-top:1.5px solid var(--border);
       border-radius:18px 18px 0 0;
-      z-index:695;
+      z-index:800;
       background:var(--surface);
-      box-shadow:0 -4px 24px rgba(0,0,0,.12);
+      box-shadow:0 -4px 24px rgba(0,0,0,.18);
       flex-direction:column;
       transform:translateY(100%);
       transition:transform .3s cubic-bezier(.32,.72,0,1);
@@ -286,6 +286,8 @@
       display:flex;
       transform:translateY(0);
     }
+    /* Drawer overlay: copre la mappa sotto il drawer */
+    .drawer-overlay{ background:rgba(0,0,0,.35); }
     /* Handle grasp bar in cima al drawer */
     .sidebar::before{
       content:'';
@@ -295,50 +297,55 @@
       flex-shrink:0;
       cursor:grab;
     }
-    .sidebar-head{ padding:10px 14px 8px; }
-    .sidebar-title{ font-size:10px; margin-bottom:8px; }
-    .view-toggle{ margin-bottom:8px; }
-    .view-btn{ font-size:10px; padding:5px 10px; min-height:34px; }
+    .sidebar-head{ padding:8px 14px 6px; }
+    .sidebar-title{ font-size:10px; margin-bottom:6px; }
+    .view-toggle{ margin-bottom:6px; }
+    .view-btn{ font-size:10px; padding:5px 10px; min-height:32px; }
     .filter-row{ gap:4px; }
-    .filter-btn{ font-size:10px; padding:4px 9px; min-height:30px; }
-    .qts-toggle-row{ margin-top:8px; padding:8px 0 6px; }
+    .filter-btn{ font-size:10px; padding:4px 9px; min-height:28px; }
+    .qts-toggle-row{ margin-top:6px; padding:6px 0 4px; }
     .qts-label{ font-size:10px; }
-    /* Sidebar body: scroll verticale */
+    /* Sidebar body: scroll orizzontale con card lotto */
     .sidebar-body{
       flex-direction:row; overflow-x:auto; overflow-y:hidden;
-      -webkit-overflow-scrolling:touch; padding:4px 8px 12px;
+      -webkit-overflow-scrolling:touch; padding:6px 8px 14px;
+      gap:6px;
     }
     .lotto-item{
-      min-width:140px; max-width:140px; flex-shrink:0;
-      border-bottom:none; border-right:1px solid #dde1ec33;
-      padding:8px 10px;
+      min-width:130px; max-width:130px; flex-shrink:0;
+      border-bottom:none; border-right:none;
+      border-radius:10px; border:1px solid var(--border);
+      padding:8px 10px; background:var(--surface2);
     }
-    .lotto-num{ font-size:12px; }
+    .lotto-num{ font-size:13px; }
     .lotto-impresa{ font-size:9px; }
-    .lotto-sub{ font-size:8px; }
-    .lotto-pct{ font-size:12px; }
+    .lotto-sub{ font-size:8px; line-height:1.3; }
+    .lotto-pct{ font-size:13px; }
 
     /* ── Drawer toggle button visibile ── */
     .drawer-toggle{ display:inline-flex; }
 
-    /* ── Legenda: piccola, angolo top-right ── */
+    /* ── Legenda: angolo TOP-right, sotto topbar (evita overlap stats-bar) ── */
     .map-legend{
-      right:8px; bottom:auto; top:auto;
-      /* verrà posizionata tramite JS o lasciata in basso */
-      max-width:160px; padding:8px 10px !important;
-      max-height:120px; overflow-y:auto;
-      font-size:9px;
+      position:fixed !important;
+      right:8px; top:58px; bottom:auto; left:auto;
+      max-width:148px; padding:7px 9px !important;
+      max-height:calc(45vh); overflow-y:auto;
+      font-size:9px; z-index:600;
     }
     .legend-title{ font-size:8px; margin-bottom:4px; }
     .legend-item{ font-size:9px; margin-bottom:3px; }
-    .legend-line{ width:14px; height:3px; }
+    .legend-line{ width:12px; height:3px; }
 
     /* ── Stats bar ── */
     .stats-bar{
       bottom:72px; left:8px; gap:4px;
-      flex-wrap:wrap; max-width:calc(100vw - 16px);
+      flex-wrap:wrap; max-width:calc(100vw - 170px);
     }
     .stat-pill{ font-size:10px; padding:5px 10px; gap:5px; }
+
+    /* ── Nascondi scala Leaflet su mobile (non c'è spazio, sovrascrive drawer toggle) ── */
+    .leaflet-control-scale{ display:none !important; }
 
     /* ── Badge misura ── */
     .measure-badge{ bottom:80px; }
@@ -381,11 +388,10 @@
 
   /* ── PHONES PICCOLI (≤ 480px) ── */
   @media(max-width:480px){
-    /* Nasconde PDF/Immagine, resta solo Dashboard */
-    .topbar-right .btn[onclick*="exportPDF"],
-    .stats-bar{ bottom:68px; }
+    .stats-bar{ bottom:68px; max-width:calc(100vw - 160px); }
     .measure-badge{ bottom:76px; }
-    .map-legend{ max-width:130px; }
+    .map-legend{ max-width:130px; top:56px; }
+    .sidebar{ max-height:48vh; }
   }
 
   /* ── LANDSCAPE MOBILE ── */
@@ -2385,9 +2391,10 @@ function _positionLegendMobile() {
   if (!_isMobile()) return;
   const legend = document.getElementById('legendContainer');
   if (!legend) return;
+  // Posizione top-right sotto topbar — non toccare bottom per evitare overlap stats-bar
   legend.style.right  = '8px';
-  legend.style.bottom = '80px';
-  legend.style.top    = 'auto';
+  legend.style.top    = '58px';
+  legend.style.bottom = 'auto';
 }
 
 window.addEventListener('resize', () => {
