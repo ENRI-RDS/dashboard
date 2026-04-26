@@ -270,7 +270,7 @@
     .sidebar{
       position:fixed; bottom:0; left:0; right:0;
       width:100% !important; height:auto;
-      max-height:52vh;
+      max-height:36vh;
       border-left:none; border-right:none; border-top:1.5px solid var(--border);
       border-radius:18px 18px 0 0;
       z-index:800;
@@ -305,30 +305,17 @@
     .filter-btn{ font-size:10px; padding:4px 9px; min-height:28px; }
     .qts-toggle-row{ margin-top:6px; padding:6px 0 4px; }
     .qts-label{ font-size:10px; }
-    /* Sidebar body: scroll orizzontale con card lotto */
-    .sidebar-body{
-      flex-direction:row; overflow-x:auto; overflow-y:hidden;
-      -webkit-overflow-scrolling:touch; padding:6px 8px 14px;
-      gap:6px;
-    }
-    .lotto-item{
-      min-width:130px; max-width:130px; flex-shrink:0;
-      border-bottom:none; border-right:none;
-      border-radius:10px; border:1px solid var(--border);
-      padding:8px 10px; background:var(--surface2);
-    }
-    .lotto-num{ font-size:13px; }
-    .lotto-impresa{ font-size:9px; }
-    .lotto-sub{ font-size:8px; line-height:1.3; }
-    .lotto-pct{ font-size:13px; }
+    /* Sidebar body: nascosto su mobile — solo filtri visibili */
+    .sidebar-body{ display:none !important; }
+    .lotto-item{ display:none !important; }
 
     /* ── Drawer toggle button visibile ── */
     .drawer-toggle{ display:inline-flex; }
 
-    /* ── Legenda: angolo TOP-right, sotto topbar (evita overlap stats-bar) ── */
+    /* ── Legenda: angolo TOP-right, sotto topbar+searchbar (evita overlap stats-bar) ── */
     .map-legend{
       position:fixed !important;
-      right:8px; top:58px; bottom:auto; left:auto;
+      right:8px; top:108px; bottom:auto; left:auto;
       max-width:148px; padding:7px 9px !important;
       max-height:calc(45vh); overflow-y:auto;
       font-size:9px; z-index:600;
@@ -1963,14 +1950,17 @@ function toggleQTS(on) {
   if (on) {
     if (!qtsLoaded) {
       loadQTS().then(() => {
-        if (qtsLayer && !map.hasLayer(qtsOutlineLayer)) {
-          qtsOutlineLayer.addTo(map).bringToBack();
-          qtsLayer.addTo(map).bringToFront();
+        // Verifica che il checkbox sia ancora attivo prima di aggiungere i layer
+        const tog = document.getElementById('qtsToggle');
+        if (tog && tog.checked && qtsLayer) {
+          if (!map.hasLayer(qtsOutlineLayer)) qtsOutlineLayer.addTo(map).bringToBack();
+          if (!map.hasLayer(qtsLayer)) qtsLayer.addTo(map).bringToFront();
         }
       });
     } else if (qtsLayer) {
-      if (!map.hasLayer(qtsOutlineLayer)) { qtsOutlineLayer.addTo(map).bringToBack(); }
-      qtsLayer.addTo(map).bringToFront();
+      if (!map.hasLayer(qtsOutlineLayer)) qtsOutlineLayer.addTo(map).bringToBack();
+      if (!map.hasLayer(qtsLayer)) qtsLayer.addTo(map).bringToFront();
+      else qtsLayer.bringToFront();
     }
   } else {
     if (qtsLayer && map.hasLayer(qtsLayer)) map.removeLayer(qtsLayer);
@@ -2391,9 +2381,9 @@ function _positionLegendMobile() {
   if (!_isMobile()) return;
   const legend = document.getElementById('legendContainer');
   if (!legend) return;
-  // Posizione top-right sotto topbar — non toccare bottom per evitare overlap stats-bar
+  // Posizione top-right sotto topbar+searchbar — non toccare bottom per evitare overlap stats-bar
   legend.style.right  = '8px';
-  legend.style.top    = '58px';
+  legend.style.top    = '108px';
   legend.style.bottom = 'auto';
 }
 
