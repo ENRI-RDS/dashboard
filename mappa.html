@@ -347,14 +347,19 @@
     /* ── Popup compatto su mobile ── */
     .leaflet-popup-content-wrapper{
       width:calc(100vw - 40px) !important;
-      max-width:none !important;
-      max-height:42vh !important;
+      max-width:320px !important;
+      max-height:38vh !important;
       overflow:hidden !important;
       border-radius:12px !important;
     }
+    .leaflet-popup-content{
+      margin:0 !important;
+      max-height:38vh !important;
+      overflow-y:auto !important;
+      width:100% !important;
+    }
     .popup-inner{
       min-width:0 !important; width:100%; max-width:none;
-      max-height:42vh; overflow-y:auto;
     }
     .popup-head{ padding:7px 11px 6px; }
     .popup-lotto{ font-size:13px; }
@@ -397,7 +402,7 @@
     /* ── Siti button: position:fixed + a sinistra della legenda, sotto search bar ── */
     .leaflet-top.leaflet-right {
       position: fixed !important;
-      top: 140px !important;
+      top: 120px !important;
       right: calc(8px + 148px + 8px) !important; /* a sinistra della legenda */
     }
     /* Siti panel: fixed e indipendente dalla posizione del bottone ── */
@@ -419,7 +424,7 @@
     /* Siti button allineato alla legenda più piccola */
     .leaflet-top.leaflet-right {
       position: fixed !important;
-      top: 140px !important;
+      top: 120px !important;
       right: calc(8px + 130px + 8px) !important;
     }
     .siti-panel {
@@ -2054,7 +2059,12 @@ function toggleQTS(on) {
             ? `https://www.google.com/maps?q=${mid[1].toFixed(6)},${mid[0].toFixed(6)}`
             : null;
 
-          layer.bindPopup(makePopupHtml(f.properties, gmapsUrl),{maxWidth:640});
+          const isMobile = window.innerWidth <= 768;
+          layer.bindPopup(makePopupHtml(f.properties, gmapsUrl),{
+            maxWidth: isMobile ? Math.min(window.innerWidth - 40, 320) : 640,
+            autoPanPaddingTopLeft:  isMobile ? L.point(10, 180) : L.point(10, 10),
+            autoPanPaddingBottomRight: isMobile ? L.point(10, 160) : L.point(10, 10),
+          });
 
           // Tooltip al passaggio del mouse
           const stato = f.properties.STATO_LEGENDA || f.properties.STATO_AUTORIZZAZIONE || 'IN ATTESA';
