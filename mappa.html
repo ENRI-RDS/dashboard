@@ -1173,10 +1173,21 @@ function updateLegend(mode) {
     leg.innerHTML += `
       <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px">
         <div class="legend-title">Attraversamenti SED</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#e07b3a"></div>Ferroviario</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#2563eb"></div>Autostradale</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#0ea5e9"></div>Idrico</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#6b7080"></div>Altro</div>
+        <div class="legend-item">
+          <div style="width:20px;height:20px;border-radius:50%;background:#fef3c7;border:1.5px solid #b45309;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg viewBox="0 0 20 20" width="12" height="12"><rect x="2" y="4" width="16" height="3" rx="1.5" fill="#b45309"/><rect x="2" y="13" width="16" height="3" rx="1.5" fill="#b45309"/><rect x="4" y="4" width="2" height="12" rx="1" fill="#b45309"/><rect x="9" y="4" width="2" height="12" rx="1" fill="#b45309"/><rect x="14" y="4" width="2" height="12" rx="1" fill="#b45309"/></svg>
+          </div>Ferroviario
+        </div>
+        <div class="legend-item">
+          <div style="width:20px;height:20px;border-radius:50%;background:#eff6ff;border:1.5px solid #1d4ed8;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg viewBox="0 0 20 20" width="12" height="12"><rect x="1" y="8" width="18" height="4" rx="2" fill="#1d4ed8"/><rect x="8" y="9" width="1.5" height="2" rx="0.75" fill="#fff"/><rect x="11" y="9" width="1.5" height="2" rx="0.75" fill="#fff"/><rect x="1" y="7" width="18" height="1.5" rx="0.75" fill="#93c5fd"/><rect x="1" y="11.5" width="18" height="1.5" rx="0.75" fill="#93c5fd"/></svg>
+          </div>Autostradale
+        </div>
+        <div class="legend-item">
+          <div style="width:20px;height:20px;border-radius:50%;background:#e0f2fe;border:1.5px solid #0369a1;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg viewBox="0 0 20 20" width="12" height="12"><path d="M1 10 Q3.5 5 6 10 Q8.5 15 11 10 Q13.5 5 16 10 Q17.5 13 19 10" stroke="#0369a1" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M1 14 Q3.5 9 6 14 Q8.5 19 11 14 Q13.5 9 16 14 Q17.5 17 19 14" stroke="#38bdf8" stroke-width="1.8" fill="none" stroke-linecap="round" opacity="0.7"/></svg>
+          </div>Idrico
+        </div>
       </div>`;
   }
 }
@@ -2095,12 +2106,68 @@ function toggleQTS(on) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── LAYER SED ATTRAVERSAMENTI ───────────────────────────────────────────────
-const SED_COLORS = {
-  'FERROVIARIO': '#e07b3a',
-  'AUTOSTRADALE': '#2563eb',
-  'IDRICO':       '#0ea5e9',
-  'ALTRO':        '#6b7080'
+const SED_META = {
+  'FERROVIARIO': {
+    color: '#b45309',
+    bg:    '#fef3c7',
+    border:'#b4530966',
+    // icona: rotaie stilizzate
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
+      <rect x="2" y="4" width="16" height="3" rx="1.5" fill="#b45309"/>
+      <rect x="2" y="13" width="16" height="3" rx="1.5" fill="#b45309"/>
+      <rect x="4"  y="4" width="2" height="12" rx="1" fill="#b45309"/>
+      <rect x="9"  y="4" width="2" height="12" rx="1" fill="#b45309"/>
+      <rect x="14" y="4" width="2" height="12" rx="1" fill="#b45309"/>
+    </svg>`,
+    label: 'Ferroviario'
+  },
+  'AUTOSTRADALE': {
+    color: '#1d4ed8',
+    bg:    '#eff6ff',
+    border:'#1d4ed866',
+    // icona: strada a due carreggiate con divisore
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
+      <rect x="1" y="8" width="18" height="4" rx="2" fill="#1d4ed8"/>
+      <rect x="8" y="9" width="1.5" height="2" rx="0.75" fill="#fff"/>
+      <rect x="11" y="9" width="1.5" height="2" rx="0.75" fill="#fff"/>
+      <rect x="1" y="7" width="18" height="1.5" rx="0.75" fill="#93c5fd"/>
+      <rect x="1" y="11.5" width="18" height="1.5" rx="0.75" fill="#93c5fd"/>
+    </svg>`,
+    label: 'Autostradale'
+  },
+  'IDRICO': {
+    color: '#0369a1',
+    bg:    '#e0f2fe',
+    border:'#0369a166',
+    // icona: onda acqua
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
+      <path d="M1 10 Q3.5 5 6 10 Q8.5 15 11 10 Q13.5 5 16 10 Q17.5 13 19 10"
+            stroke="#0369a1" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <path d="M1 14 Q3.5 9 6 14 Q8.5 19 11 14 Q13.5 9 16 14 Q17.5 17 19 14"
+            stroke="#38bdf8" stroke-width="1.8" fill="none" stroke-linecap="round" opacity="0.7"/>
+    </svg>`,
+    label: 'Idrico'
+  }
 };
+
+// Genera un L.divIcon con l'SVG del tipo SED
+function sedDivIcon(tipo, scale) {
+  const m = SED_META[tipo] || SED_META['IDRICO'];
+  const s = scale || 1;
+  const size = Math.round(28 * s);
+  return L.divIcon({
+    className: '',
+    html: `<div style="
+      width:${size}px;height:${size}px;border-radius:50%;
+      background:${m.bg};border:2px solid ${m.color};
+      display:flex;align-items:center;justify-content:center;
+      box-shadow:0 2px 6px #00000030;
+      transform:translate(-50%,-50%);
+    ">${m.svg.replace('width="20"',`width="${Math.round(14*s)}"`).replace('height="20"',`height="${Math.round(14*s)}"`)}</div>`,
+    iconSize: [size, size],
+    iconAnchor: [size/2, size/2]
+  });
+}
 
 let sedLayer  = null;
 let sedLoaded = false;
@@ -2114,34 +2181,34 @@ async function loadSED() {
 
     sedLayer = L.geoJSON(geojson, {
       pointToLayer: (feature, latlng) => {
-        const tipo = feature.properties.TIPO_ATTRAVERSAMENTO || 'ALTRO';
-        const color = SED_COLORS[tipo] || '#6b7080';
-        return L.circleMarker(latlng, {
-          radius:      7,
-          color:       '#fff',
-          weight:      1.5,
-          fillColor:   color,
-          fillOpacity: 0.9
-        });
+        const tipo = feature.properties.TIPO_ATTRAVERSAMENTO || 'IDRICO';
+        return L.marker(latlng, { icon: sedDivIcon(tipo, 1) });
       },
       onEachFeature: (f, layer) => {
         const p    = f.properties || {};
-        const tipo = p.TIPO_ATTRAVERSAMENTO || 'ALTRO';
-        const col  = SED_COLORS[tipo] || '#6b7080';
+        const tipo = p.TIPO_ATTRAVERSAMENTO || 'IDRICO';
+        const m    = SED_META[tipo] || SED_META['IDRICO'];
         layer.bindPopup(`
           <div style="font-family:'DM Sans',sans-serif;padding:10px 14px;min-width:220px">
-            <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">
+            <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">
               ${p.name || '—'}
             </div>
-            <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px;
-              background:${col}22;color:${col};border:1px solid ${col}44">
+            <span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:600;
+              padding:3px 10px;border-radius:12px;background:${m.bg};color:${m.color};border:1px solid ${m.border}">
+              ${m.svg.replace('width="20"','width="13"').replace('height="20"','height="13"')}
               ${tipo}
             </span>
             ${p.LOTTO ? `<div style="font-size:10px;color:var(--muted);margin-top:6px">Lotto ${p.LOTTO}</div>` : ''}
           </div>`, { maxWidth: 280 });
 
-        layer.on('mouseover', e => { e.target.setStyle({ radius: 9, weight: 2 }); });
-        layer.on('mouseout',  e => { e.target.setStyle({ radius: 7, weight: 1.5 }); });
+        layer.on('mouseover', () => {
+          const el = layer.getElement();
+          if (el) { el.style.transform += ' scale(1.25)'; el.style.transition = 'transform 0.15s'; }
+        });
+        layer.on('mouseout', () => {
+          const el = layer.getElement();
+          if (el) { el.style.transform = el.style.transform.replace(/ scale\([^)]+\)/, ''); }
+        });
       }
     });
 
