@@ -509,6 +509,22 @@
   .qts-only-btn:hover{border-color:#5b21b6;background:#ddd6fe;color:#3b0764;}
   .qts-only-btn.active{background:#7c3aed;border-color:#7c3aed;color:#fff;}
 
+  /* ── SED ATTRAVERSAMENTI ─────────────────────────────── */
+  .sed-toggle-row {
+    display:flex; align-items:center; gap:8px;
+    margin-top:6px; padding:8px 0 6px;
+    border-top:1px solid var(--border);
+  }
+  .sed-label { font-size:10px; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); flex:1; }
+  .sed-switch { position:relative; width:36px; height:20px; cursor:pointer; flex-shrink:0; }
+  .sed-switch input { opacity:0; width:0; height:0; position:absolute; }
+  .sed-slider { position:absolute; inset:0; background:#c8ccd8; border-radius:20px; transition:background 0.2s; }
+  .sed-slider:before { content:''; position:absolute; height:14px; width:14px; left:3px; top:3px; background:#fff; border-radius:50%; transition:all 0.2s; }
+  .sed-switch input:checked + .sed-slider { background:#e07b3a; }
+  .sed-switch input:checked + .sed-slider:before { transform:translateX(16px); }
+  /* punti nella legenda (cerchio invece di linea) */
+  .legend-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+
   /* Basemap floating control — Google-style thumbnail button */
   .leaflet-top.leaflet-left { display:flex; flex-direction:column; align-items:flex-start; }
   .leaflet-basemap-control {
@@ -810,6 +826,15 @@
           <span class="qts-slider"></span>
         </label>
         <button id="qtsOnlyBtn" class="qts-only-btn" onclick="setQTSOnly(!qtsOnlyMode)">Solo QTS</button>
+      </div>
+
+      <!-- ── SED ATTRAVERSAMENTI ───────────────────── -->
+      <div class="sed-toggle-row">
+        <span class="sed-label">🔶 Attraversamenti SED</span>
+        <label class="sed-switch">
+          <input type="checkbox" id="sedToggle" onchange="toggleSED(this.checked)">
+          <span class="sed-slider"></span>
+        </label>
       </div>
 
     <div class="sidebar-body" id="lottoList"></div>
@@ -1141,6 +1166,18 @@ function updateLegend(mode) {
       return `<div class="legend-item"><div class="legend-line" style="background:${color}"></div>Cluster ${cl}</div>`;
     }).join('');
     leg.innerHTML = `<div class="legend-title">Cluster</div>${items}`;
+  }
+  // ── voci SED (condizionali al toggle) ──
+  const sedOn = document.getElementById('sedToggle')?.checked;
+  if (sedOn) {
+    leg.innerHTML += `
+      <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px">
+        <div class="legend-title">Attraversamenti SED</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#e07b3a"></div>Ferroviario</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#2563eb"></div>Autostradale</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#0ea5e9"></div>Idrico</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#6b7080"></div>Altro</div>
+      </div>`;
   }
 }
 
@@ -2057,7 +2094,88 @@ function toggleQTS(on) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-(async()=>{
+// ── LAYER SED ATTRAVERSAMENTI ───────────────────────────────────────────────
+const SED_COLORS = {
+  'FERROVIARIO': '#e07b3a',
+  'AUTOSTRADALE': '#2563eb',
+  'IDRICO':       '#0ea5e9',
+  'ALTRO':        '#6b7080'
+};
+
+let sedLayer  = null;
+let sedLoaded = false;
+
+async function loadSED() {
+  if (sedLoaded) return;
+  try {
+    const resp = await fetch('SED_classificato.geojson?t=' + Date.now());
+    if (!resp.ok) throw new Error('SED_classificato.geojson non trovato');
+    const geojson = await resp.json();
+
+    sedLayer = L.geoJSON(geojson, {
+      pointToLayer: (feature, latlng) => {
+        const tipo = feature.properties.TIPO_ATTRAVERSAMENTO || 'ALTRO';
+        const color = SED_COLORS[tipo] || '#6b7080';
+        return L.circleMarker(latlng, {
+          radius:      7,
+          color:       '#fff',
+          weight:      1.5,
+          fillColor:   color,
+          fillOpacity: 0.9
+        });
+      },
+      onEachFeature: (f, layer) => {
+        const p    = f.properties || {};
+        const tipo = p.TIPO_ATTRAVERSAMENTO || 'ALTRO';
+        const col  = SED_COLORS[tipo] || '#6b7080';
+        layer.bindPopup(`
+          <div style="font-family:'DM Sans',sans-serif;padding:10px 14px;min-width:220px">
+            <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">
+              ${p.name || '—'}
+            </div>
+            <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px;
+              background:${col}22;color:${col};border:1px solid ${col}44">
+              ${tipo}
+            </span>
+            ${p.LOTTO ? `<div style="font-size:10px;color:var(--muted);margin-top:6px">Lotto ${p.LOTTO}</div>` : ''}
+          </div>`, { maxWidth: 280 });
+
+        layer.on('mouseover', e => { e.target.setStyle({ radius: 9, weight: 2 }); });
+        layer.on('mouseout',  e => { e.target.setStyle({ radius: 7, weight: 1.5 }); });
+      }
+    });
+
+    sedLoaded = true;
+
+  } catch (e) {
+    console.warn('SED layer:', e.message);
+    const tog = document.getElementById('sedToggle');
+    if (tog) {
+      tog.checked  = false;
+      tog.disabled = true;
+      tog.parentElement.title = 'SED_classificato.geojson non disponibile';
+    }
+  }
+}
+
+function toggleSED(on) {
+  if (on) {
+    if (!sedLoaded) {
+      loadSED().then(() => {
+        const tog = document.getElementById('sedToggle');
+        if (tog && tog.checked && sedLayer) sedLayer.addTo(map).bringToFront();
+        updateLegend(currentViewMode);
+      });
+    } else if (sedLayer) {
+      sedLayer.addTo(map).bringToFront();
+      updateLegend(currentViewMode);
+    }
+  } else {
+    if (sedLayer && map.hasLayer(sedLayer)) map.removeLayer(sedLayer);
+    updateLegend(currentViewMode);
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
   try{
     const geojson=await loadGeoJSON();
     const features=geojson.features.filter(f=>f.properties.LOTTO!=='P');
