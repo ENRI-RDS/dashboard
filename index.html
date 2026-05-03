@@ -7327,13 +7327,28 @@ _hookScadenze();
 
   // ── Popola select filtri ──────────────────────────────────────────────────
   function buildFilters(rows) {
-    const STATI_ORDER = ['IN FIRMA RDS','INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'];
+    const STATI_ORDER = [
+      'IN ATTESA','IN REDAZIONE','IN FIRMA RDS','COORDINAMENTO',
+      'INVIATO','PROTOCOLLATO',
+      'NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE',
+      'OTTENUTO'
+    ];
     const allStati = [...new Set(rows.map(r=>r.stato))];
     const stati = [
       ...STATI_ORDER.filter(s => allStati.includes(s)),
       ...allStati.filter(s => !STATI_ORDER.includes(s)).sort()
     ];
-    const lotti   = [...new Set(rows.map(r=>r.lotto).filter(Boolean))].sort();
+    function parseLotto(s) {
+      const m = String(s).match(/^(\d+)([a-zA-Z]*)$/);
+      return m ? [parseInt(m[1],10), m[2].toLowerCase()] : [Infinity, s];
+    }
+    const lotti = [...new Set(rows.map(r=>r.lotto).filter(Boolean))].sort((a,b) => {
+      const pa = parseLotto(a), pb = parseLotto(b);
+      const aL = pa[1]!=='', bL = pb[1]!=='';
+      if (aL !== bL) return aL ? -1 : 1;
+      if (pa[0] !== pb[0]) return pa[0]-pb[0];
+      return pa[1]<pb[1]?-1:pa[1]>pb[1]?1:0;
+    });
     const imprese = [...new Set(rows.map(r=>r.impresa).filter(Boolean))].sort();
     function fillSel(id, vals) {
       const sel = document.getElementById(id);
