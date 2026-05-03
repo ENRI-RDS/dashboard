@@ -1125,8 +1125,14 @@
             <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.09em;color:var(--muted);font-weight:600">Ottenuti</span>
             <span id="sqOttPct" style="font-size:11px;font-weight:700;font-family:'Fira Code',monospace;color:#1f7a4e">0%</span>
           </div>
-          <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:14px">
-            <div id="sqBar" style="height:100%;background:#1f7a4e;border-radius:3px;width:0%;transition:width 0.5s"></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+            <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.09em;color:var(--muted);font-weight:600">Inviati</span>
+            <span id="sqInvPct" style="font-size:11px;font-weight:700;font-family:'Fira Code',monospace;color:#4f8ef7">0%</span>
+          </div>
+          <!-- barra impilata: verde=ottenuti, blu=inviati, grigio=resto -->
+          <div style="height:7px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:14px;display:flex">
+            <div id="sqBarOtt" style="height:100%;background:#1f7a4e;transition:width 0.5s;width:0%"></div>
+            <div id="sqBarInv" style="height:100%;background:#4f8ef7;transition:width 0.5s;width:0%"></div>
           </div>
           <div id="sqRows" style="display:flex;flex-direction:column;gap:8px"></div>
         </div>
@@ -1356,11 +1362,17 @@
     if (!_sedData || !_sedData.length) return;
     var tot  = _sedData.length;
     var ott  = _sedData.filter(function(d){ return getEntry(d.fid).stato === 'OTTENUTO'; }).length;
-    var pct  = tot > 0 ? Math.round(ott / tot * 100) : 0;
+    var inv  = _sedData.filter(function(d){ return ['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE'].indexOf(getEntry(d.fid).stato) !== -1; }).length;
+    var pctOtt = tot > 0 ? Math.round(ott / tot * 100) : 0;
+    var pctInv = tot > 0 ? Math.round(inv / tot * 100) : 0;
     var el;
     el = document.getElementById('sqBadge');  if(el) el.textContent = tot + ' SED';
-    el = document.getElementById('sqOttPct'); if(el) el.textContent = pct + '%';
-    el = document.getElementById('sqBar');    if(el) el.style.width = pct + '%';
+    el = document.getElementById('sqOttPct'); if(el) el.textContent = pctOtt + '%';
+    el = document.getElementById('sqInvPct'); if(el) el.textContent = pctInv + '%';
+    el = document.getElementById('sqBarOtt'); if(el) el.style.width = pctOtt + '%';
+    el = document.getElementById('sqBarInv'); if(el) el.style.width = pctInv + '%';
+    // compatibilità con vecchio sqBar se presente
+    el = document.getElementById('sqBar');    if(el) el.style.width = pctOtt + '%';
 
     var TIPI = [
       { key:'FERROVIARIO',  label:'Ferroviario',  col:'#b45309' },
