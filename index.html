@@ -815,6 +815,62 @@
   .tbl-pag-info b { color:var(--text); font-weight:700; }
   .tbl-foot-val b { color:var(--text); font-weight:700; }
 
+  /* ── SED SECTION ── */
+  .sed-kpi-row { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+  .sed-kpi {
+    flex:1; min-width:90px;
+    background:var(--surface2); border:1px solid var(--border2);
+    border-radius:10px; padding:10px 14px;
+    display:flex; flex-direction:column; gap:3px;
+  }
+  .sed-kpi-label { font-size:9px; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); font-weight:600; }
+  .sed-kpi-val { font-size:22px; font-weight:700; font-family:'Bricolage Grotesque',sans-serif; letter-spacing:-0.02em; line-height:1; }
+  .sed-kpi-sub { font-size:10px; color:var(--muted); margin-top:1px; }
+  .sed-kpi.ferroviario { background:linear-gradient(135deg,#fef9ec,#fffdf5); border-color:#b4530944; }
+  .sed-kpi.ferroviario .sed-kpi-val { color:#b45309; }
+  .sed-kpi.autostradale { background:linear-gradient(135deg,#f0fdf4,#f7fdf9); border-color:#16a34a44; }
+  .sed-kpi.autostradale .sed-kpi-val { color:#16a34a; }
+  .sed-kpi.idrico { background:linear-gradient(135deg,#eff6ff,#f5f9ff); border-color:#0369a144; }
+  .sed-kpi.idrico .sed-kpi-val { color:#0369a1; }
+  .sed-kpi.ottenuto { background:linear-gradient(135deg,#ecfdf5,#f0fef7); border-color:#1f7a4e44; }
+  .sed-kpi.ottenuto .sed-kpi-val { color:#1f7a4e; }
+
+  .sed-tipo-chip {
+    display:inline-flex; align-items:center; gap:4px;
+    font-size:9px; font-weight:700; padding:2px 8px; border-radius:4px;
+    white-space:nowrap;
+  }
+  .sed-tipo-chip.FERROVIARIO { background:#b4530918; color:#b45309; border:1px solid #b4530944; }
+  .sed-tipo-chip.AUTOSTRADALE { background:#16a34a18; color:#16a34a; border:1px solid #16a34a44; }
+  .sed-tipo-chip.IDRICO { background:#0369a118; color:#0369a1; border:1px solid #0369a144; }
+
+  .sed-stato-sel {
+    font-size:11px; font-weight:600; font-family:inherit;
+    border:none; border-radius:5px; padding:3px 6px; cursor:pointer;
+    background: transparent; outline:none;
+    transition:background 0.15s;
+  }
+  .sed-stato-sel:focus { outline:2px solid var(--accent); outline-offset:1px; }
+  .sed-note-input {
+    font-size:11px; font-family:inherit; border:1px solid transparent;
+    border-radius:5px; padding:3px 6px; background:transparent;
+    color:var(--text); width:100%; min-width:80px; outline:none;
+    transition:border-color 0.15s, background 0.15s;
+  }
+  .sed-note-input:focus { border-color:var(--border2); background:var(--surface2); }
+  .sed-note-input:hover { border-color:var(--border); }
+  .sed-date-input {
+    font-size:11px; font-family:'Fira Code',monospace; border:1px solid transparent;
+    border-radius:5px; padding:3px 5px; background:transparent;
+    color:var(--text); width:100px; outline:none;
+    transition:border-color 0.15s, background 0.15s;
+  }
+  .sed-date-input:focus { border-color:var(--border2); background:var(--surface2); }
+  .sed-date-input:hover { border-color:var(--border); }
+
+  .sed-progress-bar { height:6px; background:var(--border); border-radius:3px; overflow:hidden; margin-top:4px; }
+  .sed-progress-fill { height:100%; border-radius:3px; background:#1f7a4e; transition:width 0.4s; }
+
   .tbl-pag-btn {
     font-size:11px; font-weight:700; padding:4px 12px; border-radius:6px;
     cursor:pointer; font-family:inherit;
@@ -1057,6 +1113,35 @@
           <div id="donutLegend" style="width:100%;display:flex;flex-direction:column;gap:5px"></div>
         </div>
       </div>
+
+      <!-- SED QUICK CARD -->
+      <div class="card" id="sedQuickCard">
+        <div class="card-header" style="padding:12px 16px">
+          <span class="card-title">&#128310; SED &mdash; Permessi</span>
+          <span id="sqBadge" style="font-size:10px;font-family:'Fira Code',monospace;color:var(--muted)">&#8212;</span>
+        </div>
+        <div style="padding:12px 16px 4px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.09em;color:var(--muted);font-weight:600">Ottenuti</span>
+            <span id="sqOttPct" style="font-size:11px;font-weight:700;font-family:'Fira Code',monospace;color:#1f7a4e">0%</span>
+          </div>
+          <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:14px">
+            <div id="sqBar" style="height:100%;background:#1f7a4e;border-radius:3px;width:0%;transition:width 0.5s"></div>
+          </div>
+          <div id="sqRows" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding:10px 16px 12px;margin-top:10px">
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.09em;color:var(--muted);font-weight:600;margin-bottom:8px">Per lotto</div>
+          <div id="sqLottoRows" style="display:flex;flex-direction:column;gap:5px"></div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding:8px 14px;background:var(--surface2);display:flex;justify-content:flex-end">
+          <button onclick="document.getElementById('sedSection').scrollIntoView({behavior:'smooth'})"
+            style="font-size:10px;font-weight:600;padding:4px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--accent);cursor:pointer;font-family:inherit;transition:all 0.15s"
+            onmouseover="this.style.background='var(--accent)';this.style.color='#fff'" onmouseout="this.style.background='var(--surface)';this.style.color='var(--accent)'">
+            Vai alla sezione &rarr;
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1169,6 +1254,361 @@
     </div>
   </div>
 </div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     SEZIONE SED — Attraversamenti Speciali
+══════════════════════════════════════════════════════════════════════════════ -->
+<div id="sedSection" style="margin:0 28px 32px;padding:0">
+  <div class="card">
+    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="card-title">🔶 Attraversamenti SED</span>
+        <span id="sedBadge" class="badge" style="font-size:10px">Caricamento...</span>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button onclick="exportSedXlsx()" style="font-size:11px;padding:6px 13px;border-radius:7px;background:#1e6b1e;color:#c8f0c8;border:1px solid #2e8c2e;cursor:pointer;font-family:inherit;font-weight:600;transition:opacity 0.15s" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">&#128202; Scarica Excel</button>
+        <button onclick="sedResetAll()" style="font-size:11px;padding:6px 12px;border-radius:7px;background:transparent;border:1px solid var(--border2);color:var(--muted);cursor:pointer;font-family:inherit;font-weight:600;transition:all 0.15s" onmouseover="this.style.borderColor='var(--accent2)';this.style.color='var(--accent2)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--muted)'">&#8634; Reset stati</button>
+        <button onclick="sedToggleCollapse()" id="sedCollapseBtn" style="font-size:11px;padding:6px 10px;border-radius:7px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);cursor:pointer;font-family:inherit;font-weight:600;transition:all 0.15s">&#9650; Comprimi</button>
+      </div>
+    </div>
+
+    <div id="sedBody">
+      <!-- KPI row -->
+      <div style="padding:14px 18px 0">
+        <div class="sed-kpi-row" id="sedKpiRow">
+          <div class="sed-kpi ferroviario">
+            <span class="sed-kpi-label">Ferroviario</span>
+            <span class="sed-kpi-val" id="sedKpiFerr">—</span>
+            <span class="sed-kpi-sub">attraversamenti</span>
+          </div>
+          <div class="sed-kpi autostradale">
+            <span class="sed-kpi-label">Autostradale</span>
+            <span class="sed-kpi-val" id="sedKpiAuto">—</span>
+            <span class="sed-kpi-sub">attraversamenti</span>
+          </div>
+          <div class="sed-kpi idrico">
+            <span class="sed-kpi-label">Idrico</span>
+            <span class="sed-kpi-val" id="sedKpiIdrico">—</span>
+            <span class="sed-kpi-sub">attraversamenti</span>
+          </div>
+          <div class="sed-kpi ottenuto" style="flex:2">
+            <span class="sed-kpi-label">Permessi Ottenuti</span>
+            <div style="display:flex;align-items:baseline;gap:8px">
+              <span class="sed-kpi-val" id="sedKpiOtt">0</span>
+              <span style="font-size:12px;color:var(--muted);font-weight:500" id="sedKpiOttPct">/ — (0%)</span>
+            </div>
+            <div class="sed-progress-bar"><div class="sed-progress-fill" id="sedProgressFill" style="width:0%"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toolbar filtri -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface2);border-top:1px solid var(--border);margin-top:14px">
+        <div style="position:relative;flex:1;min-width:220px;max-width:400px">
+          <svg style="position:absolute;left:9px;top:50%;transform:translateY(-50%);pointer-events:none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input id="sedQ" type="text" placeholder="Cerca nome, ente, comune…"
+            style="width:100%;box-sizing:border-box;padding:7px 10px 7px 28px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;font-family:inherit;font-size:12px;color:var(--text);outline:none"
+            oninput="renderSed()" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'">
+        </div>
+        <div style="flex:1"></div>
+        <select id="sedFTipo" onchange="renderSed()" style="background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:7px 10px;font-family:inherit;font-size:12px;color:var(--text);outline:none;cursor:pointer">
+          <option value="">Tutti i tipi</option>
+          <option value="FERROVIARIO">Ferroviario</option>
+          <option value="AUTOSTRADALE">Autostradale</option>
+          <option value="IDRICO">Idrico</option>
+        </select>
+        <select id="sedFLotto" onchange="renderSed()" style="background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:7px 10px;font-family:inherit;font-size:12px;color:var(--text);outline:none;cursor:pointer">
+          <option value="">Tutti i lotti</option>
+        </select>
+        <select id="sedFStato" onchange="renderSed()" style="background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:7px 10px;font-family:inherit;font-size:12px;color:var(--text);outline:none;cursor:pointer">
+          <option value="">Tutti gli stati</option>
+          <option value="IN ATTESA">In Attesa</option>
+          <option value="IN REDAZIONE">In Redazione</option>
+          <option value="COORDINAMENTO">Coordinamento</option>
+          <option value="INVIATO">Inviato</option>
+          <option value="PROTOCOLLATO">Protocollato</option>
+          <option value="NECESSARIA INTEGRAZIONE">Necessaria Integrazione</option>
+          <option value="OTTENUTO">Ottenuto</option>
+        </select>
+        <button onclick="sedResetFilters()" style="font-size:10px;font-weight:600;padding:6px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--muted);cursor:pointer;font-family:inherit;transition:all .15s" onmouseover="this.style.borderColor='var(--accent2)';this.style.color='var(--accent2)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--muted)'">&#10005; Reset</button>
+      </div>
+
+      <!-- Tabella -->
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;table-layout:auto;min-width:800px">
+          <thead>
+            <tr style="background:var(--surface2);border-bottom:2px solid var(--border2)">
+              <th style="padding:9px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;white-space:nowrap">Nome</th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700">Tipo</th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700">Lotto</th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700">Comune</th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700">Ente</th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:160px">Stato Permesso</th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:110px">Data Invio</th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:140px">Note</th>
+            </tr>
+          </thead>
+          <tbody id="sedTbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Footer -->
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-top:1px solid var(--border);background:var(--surface2)">
+        <span id="sedFootL" style="font-size:11px;color:var(--muted)"></span>
+        <span style="font-size:11px;color:var(--muted)">&#128190; Le modifiche sono salvate automaticamente nel browser</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var LS_KEY = 'enri_sed_stati_v1';
+  var SED_STATI = ['IN ATTESA','IN REDAZIONE','COORDINAMENTO','INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','OTTENUTO'];
+  var SED_COLORS = {
+    'IN ATTESA':'#4a4f6a','IN REDAZIONE':'#4a4f6a','COORDINAMENTO':'#9b59b6',
+    'INVIATO':'#4f8ef7','PROTOCOLLATO':'#4f8ef7',
+    'NECESSARIA INTEGRAZIONE':'#cc3333','OTTENUTO':'#3a8c5c'
+  };
+
+  var _sedData = [];
+  var _sedStati = {};
+
+  function loadLS() {
+    try { _sedStati = JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch(e) { _sedStati = {}; }
+  }
+  function saveLS() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(_sedStati)); } catch(e) {}
+  }
+  function getEntry(fid) {
+    if (!_sedStati[fid]) _sedStati[fid] = {stato:'IN ATTESA', note:'', data_invio:''};
+    return _sedStati[fid];
+  }
+
+  function updateKpi() {
+    var ferr = _sedData.filter(function(d){return d.tipo==='FERROVIARIO';}).length;
+    var auto = _sedData.filter(function(d){return d.tipo==='AUTOSTRADALE';}).length;
+    var idri = _sedData.filter(function(d){return d.tipo==='IDRICO';}).length;
+    var ott  = _sedData.filter(function(d){return getEntry(d.fid).stato==='OTTENUTO';}).length;
+    var tot  = _sedData.length;
+    var pct  = tot > 0 ? Math.round(ott/tot*100) : 0;
+    var el;
+    el = document.getElementById('sedKpiFerr');   if(el) el.textContent = ferr;
+    el = document.getElementById('sedKpiAuto');   if(el) el.textContent = auto;
+    el = document.getElementById('sedKpiIdrico'); if(el) el.textContent = idri;
+    el = document.getElementById('sedKpiOtt');    if(el) el.textContent = ott;
+    el = document.getElementById('sedKpiOttPct'); if(el) el.textContent = '/ '+tot+' ('+pct+'%)';
+    el = document.getElementById('sedProgressFill'); if(el) el.style.width = pct+'%';
+    el = document.getElementById('sedBadge');
+    if(el){ el.textContent = tot+' SED'; el.className = 'badge'+(ott===tot&&tot>0?' ok':''); }
+  }
+
+  window.renderSed = function() {
+    var q      = (document.getElementById('sedQ') ? document.getElementById('sedQ').value : '').toLowerCase();
+    var fTipo  = document.getElementById('sedFTipo')  ? document.getElementById('sedFTipo').value  : '';
+    var fLotto = document.getElementById('sedFLotto') ? document.getElementById('sedFLotto').value : '';
+    var fStato = document.getElementById('sedFStato') ? document.getElementById('sedFStato').value : '';
+
+    var rows = _sedData.filter(function(d) {
+      if (fTipo  && d.tipo  !== fTipo)  return false;
+      if (fLotto && d.lotto !== fLotto) return false;
+      if (fStato && getEntry(d.fid).stato !== fStato) return false;
+      if (q) {
+        var hay = [d.name, d.ente, d.comune, d.lotto, getEntry(d.fid).note].join(' ').toLowerCase();
+        if (hay.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+
+    var TIPO_LABEL = {FERROVIARIO:'Ferroviario', AUTOSTRADALE:'Autostradale', IDRICO:'Idrico'};
+
+    var tbody = document.getElementById('sedTbody');
+    if (!tbody) return;
+    tbody.innerHTML = rows.map(function(d) {
+      var e     = getEntry(d.fid);
+      var stato = e.stato || 'IN ATTESA';
+      var col   = SED_COLORS[stato] || '#4a4f6a';
+      var optsHtml = SED_STATI.map(function(s) {
+        return '<option value="'+s+'"'+(s===stato?' selected':'')+'>'+s+'</option>';
+      }).join('');
+      var tipoLabel = TIPO_LABEL[d.tipo] || d.tipo;
+      var noteSafe  = (e.note||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+      var nameSafe  = (d.name||'—').replace(/</g,'&lt;');
+      var enteSafe  = (d.ente||'').replace(/</g,'&lt;');
+      return '<tr style="border-bottom:1px solid var(--border)">'
+        +'<td class="tbl-td" style="padding:8px 14px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+nameSafe+'"><span style="font-size:12px;font-weight:600;color:var(--text)">'+nameSafe+'</span></td>'
+        +'<td class="tbl-td" style="padding:8px 10px"><span class="sed-tipo-chip '+d.tipo+'">'+tipoLabel+'</span></td>'
+        +'<td class="tbl-td" style="padding:8px 10px"><span class="tbl-lotto-chip">'+(d.lotto||'—')+'</span></td>'
+        +'<td class="tbl-td" style="padding:8px 10px;font-size:11px;color:var(--text2)">'+(d.comune||'—')+'</td>'
+        +'<td class="tbl-td" style="padding:8px 10px;font-size:11px;color:var(--text2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+enteSafe+'">'+(d.ente||'—')+'</td>'
+        +'<td class="tbl-td" style="padding:6px 10px"><select class="sed-stato-sel" data-fid="'+d.fid+'" style="color:'+col+';background:'+col+'14;border:1px solid '+col+'44;border-radius:5px;padding:4px 7px;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;outline:none" onchange="sedSetStato('+d.fid+',this.value)">'+optsHtml+'</select></td>'
+        +'<td class="tbl-td" style="padding:6px 10px"><input type="date" class="sed-date-input" data-fid="'+d.fid+'" value="'+(e.data_invio||'')+'" onchange="sedSetDate('+d.fid+',this.value)"></td>'
+        +'<td class="tbl-td" style="padding:6px 10px"><input type="text" class="sed-note-input" data-fid="'+d.fid+'" value="'+noteSafe+'" placeholder="aggiungi nota…" maxlength="200" onchange="sedSetNote('+d.fid+',this.value)" oninput="sedSetNote('+d.fid+',this.value)"></td>'
+        +'</tr>';
+    }).join('');
+
+    var footL = document.getElementById('sedFootL');
+    if (footL) footL.innerHTML = '<b>'+rows.length+'</b> attraversament'+(rows.length!==1?'i':'o')+(rows.length<_sedData.length?' <span style="color:var(--accent2)">(su '+_sedData.length+' totali)</span>':'');
+    updateKpi();
+  };
+
+  window.sedSetStato = function(fid, val) { getEntry(fid).stato = val; saveLS(); window.renderSed(); };
+  window.sedSetDate  = function(fid, val) { getEntry(fid).data_invio = val; saveLS(); updateKpi(); };
+  window.sedSetNote  = function(fid, val) { getEntry(fid).note = val; saveLS(); };
+
+  window.sedResetFilters = function() {
+    ['sedQ','sedFTipo','sedFLotto','sedFStato'].forEach(function(id){
+      var el = document.getElementById(id); if(el) el.value='';
+    });
+    window.renderSed();
+  };
+
+  window.sedResetAll = function() {
+    if (!confirm('Sei sicuro di voler azzerare tutti gli stati SED? L\'operazione non è reversibile.')) return;
+    _sedStati = {}; saveLS(); window.renderSed();
+  };
+
+  var _sedCollapsed = false;
+  window.sedToggleCollapse = function() {
+    _sedCollapsed = !_sedCollapsed;
+    var body = document.getElementById('sedBody');
+    var btn  = document.getElementById('sedCollapseBtn');
+    if (body) body.style.display = _sedCollapsed ? 'none' : '';
+    if (btn)  btn.textContent = _sedCollapsed ? '\u25BC Espandi' : '\u25B2 Comprimi';
+  };
+
+  window.exportSedXlsx = function() {
+    if (!_sedData.length) { alert('Nessun dato SED disponibile.'); return; }
+    if (typeof XLSX === 'undefined') { alert('Libreria XLSX non disponibile.'); return; }
+    var header = ['Nome','Tipo','Lotto','Comune','Provincia','Ente','Stato Permesso','Data Invio','Note'];
+    var rows = _sedData.map(function(d) {
+      var e = getEntry(d.fid);
+      return [d.name, d.tipo, d.lotto, d.comune, d.provincia, d.ente, e.stato||'IN ATTESA', e.data_invio||'', e.note||''];
+    });
+    var ws = XLSX.utils.aoa_to_sheet([header].concat(rows));
+    ws['!cols'] = [{wch:30},{wch:16},{wch:8},{wch:20},{wch:8},{wch:28},{wch:28},{wch:14},{wch:40}];
+    var range = XLSX.utils.decode_range(ws['!ref']);
+    for (var c = range.s.c; c <= range.e.c; c++) {
+      var cell = ws[XLSX.utils.encode_cell({r:0,c:c})];
+      if (cell) cell.s = {font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'2F5496'}},alignment:{horizontal:'center'}};
+    }
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'SED Attraversamenti');
+    XLSX.writeFile(wb, 'ENRI_SED_'+new Date().toISOString().split('T')[0]+'.xlsx');
+  };
+
+  async function loadSED() {
+    loadLS();
+    try {
+      var resp = await fetch('SED_classificato.geojson?t='+Date.now());
+      if (!resp.ok) throw new Error('File non trovato');
+      var geojson = await resp.json();
+      _sedData = geojson.features.map(function(f) {
+        return {
+          fid:       f.properties.fid,
+          name:      f.properties.name || '',
+          tipo:      f.properties.TIPO_ATTRAVERSAMENTO || 'IDRICO',
+          lotto:     f.properties.LOTTO || '',
+          comune:    f.properties.COMUNE || '',
+          provincia: f.properties.PROVINCIA || '',
+          ente:      f.properties.ENTE || ''
+        };
+      }).sort(function(a,b) {
+        if (a.lotto < b.lotto) return -1;
+        if (a.lotto > b.lotto) return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      var lotti = [];
+      _sedData.forEach(function(d){ if(d.lotto && lotti.indexOf(d.lotto)===-1) lotti.push(d.lotto); });
+      lotti.sort();
+      var selLotto = document.getElementById('sedFLotto');
+      if (selLotto) lotti.forEach(function(l) {
+        var opt = document.createElement('option');
+        opt.value = l; opt.textContent = 'Lotto '+l;
+        selLotto.appendChild(opt);
+      });
+
+      window.renderSed();
+    } catch(err) {
+      console.warn('SED GeoJSON:', err.message);
+      var badge = document.getElementById('sedBadge');
+      if (badge) { badge.textContent = 'File non trovato'; badge.className = 'badge err'; }
+      var tbody = document.getElementById('sedTbody');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:#C23B22;font-size:13px">&#9888;&#65039; SED_classificato.geojson non trovato nella stessa cartella.</td></tr>';
+    }
+  }
+
+  // ── Quick Card ───────────────────────────────────────────────────────────────
+  function updateQuickCard() {
+    if (!_sedData || !_sedData.length) return;
+    var tot  = _sedData.length;
+    var ott  = _sedData.filter(function(d){ return getEntry(d.fid).stato === 'OTTENUTO'; }).length;
+    var pct  = tot > 0 ? Math.round(ott / tot * 100) : 0;
+    var el;
+    el = document.getElementById('sqBadge');  if(el) el.textContent = tot + ' SED';
+    el = document.getElementById('sqOttPct'); if(el) el.textContent = pct + '%';
+    el = document.getElementById('sqBar');    if(el) el.style.width = pct + '%';
+
+    var TIPI = [
+      { key:'FERROVIARIO',  label:'Ferroviario',  col:'#b45309' },
+      { key:'AUTOSTRADALE', label:'Autostradale', col:'#16a34a' },
+      { key:'IDRICO',       label:'Idrico',       col:'#0369a1' }
+    ];
+    var sqRows = document.getElementById('sqRows');
+    if (sqRows) {
+      sqRows.innerHTML = TIPI.map(function(t) {
+        var n    = _sedData.filter(function(d){ return d.tipo === t.key; }).length;
+        var nOtt = _sedData.filter(function(d){ return d.tipo === t.key && getEntry(d.fid).stato === 'OTTENUTO'; }).length;
+        var tPct = n > 0 ? Math.round(nOtt / n * 100) : 0;
+        return '<div>'
+          +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">'
+          +'<span style="font-size:10px;font-weight:600;color:'+t.col+'">'+t.label+'</span>'
+          +'<span style="font-size:10px;font-family:'Fira Code',monospace;color:var(--muted)"><b style="color:'+t.col+'">'+nOtt+'</b> / '+n+'</span>'
+          +'</div>'
+          +'<div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">'
+          +'<div style="height:100%;background:'+t.col+';border-radius:2px;width:'+tPct+'%"></div>'
+          +'</div></div>';
+      }).join('');
+    }
+
+    var lottiMap = {};
+    _sedData.forEach(function(d) {
+      if (!lottiMap[d.lotto]) lottiMap[d.lotto] = { tot:0, ott:0 };
+      lottiMap[d.lotto].tot++;
+      if (getEntry(d.fid).stato === 'OTTENUTO') lottiMap[d.lotto].ott++;
+    });
+    var lotti = Object.keys(lottiMap).sort();
+    var sqLottoRows = document.getElementById('sqLottoRows');
+    if (sqLottoRows) {
+      sqLottoRows.innerHTML = lotti.map(function(l) {
+        var s    = lottiMap[l];
+        var lPct = s.tot > 0 ? Math.round(s.ott / s.tot * 100) : 0;
+        var col  = lPct === 100 ? '#1f7a4e' : lPct > 0 ? '#c9a227' : 'var(--muted)';
+        return '<div style="display:flex;align-items:center;gap:8px">'
+          +'<span style="font-size:10px;font-family:'Fira Code',monospace;color:var(--muted);width:28px;flex-shrink:0">L'+l+'</span>'
+          +'<div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden">'
+          +'<div style="height:100%;background:'+col+';border-radius:2px;width:'+lPct+'%"></div>'
+          +'</div>'
+          +'<span style="font-size:10px;font-family:'Fira Code',monospace;color:'+col+';width:30px;text-align:right;flex-shrink:0">'+lPct+'%</span>'
+          +'</div>';
+      }).join('');
+    }
+  }
+
+  // Patch renderSed e sedSetStato per aggiornare anche la quick card
+  var _origRenderSed = window.renderSed;
+  window.renderSed = function() { _origRenderSed(); updateQuickCard(); };
+  var _origSetStato = window.sedSetStato;
+  window.sedSetStato = function(fid, val) { getEntry(fid).stato = val; saveLS(); window.renderSed(); };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadSED);
+  } else {
+    loadSED();
+  }
+})();
+</script>
 
 <script>
 // ── EXPORT EXCEL ──────────────────────────────────────────────────────────────
