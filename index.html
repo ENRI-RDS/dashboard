@@ -1134,13 +1134,7 @@
           <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.09em;color:var(--muted);font-weight:600;margin-bottom:8px">Per lotto</div>
           <div id="sqLottoRows" style="display:flex;flex-direction:column;gap:5px"></div>
         </div>
-        <div style="border-top:1px solid var(--border);padding:8px 14px;background:var(--surface2);display:flex;justify-content:flex-end">
-          <button onclick="document.getElementById('sedSection').scrollIntoView({behavior:'smooth'})"
-            style="font-size:10px;font-weight:600;padding:4px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--accent);cursor:pointer;font-family:inherit;transition:all 0.15s"
-            onmouseover="this.style.background='var(--accent)';this.style.color='#fff'" onmouseout="this.style.background='var(--surface)';this.style.color='var(--accent)'">
-            Vai alla sezione &rarr;
-          </button>
-        </div>
+
       </div>
     </div>
   </div>
@@ -1263,6 +1257,8 @@
 
   var _sedData = [];
   var _sedStati = {};
+  var _sedPage = 0;
+  var SED_PAGE_SIZE = 10;
 
   function loadLS() {
     try { _sedStati = JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch(e) { _sedStati = {}; }
@@ -1293,7 +1289,8 @@
     if(el){ el.textContent = tot+' SED'; el.className = 'badge'+(ott===tot&&tot>0?' ok':''); }
   }
 
-  window.renderSed = function() {
+  window.renderSed = function(keepPage) {
+    if (!keepPage) _sedPage = 0;
     var q      = (document.getElementById('sedQ') ? document.getElementById('sedQ').value : '').toLowerCase();
     var fTipo  = document.getElementById('sedFTipo')  ? document.getElementById('sedFTipo').value  : '';
     var fLotto = document.getElementById('sedFLotto') ? document.getElementById('sedFLotto').value : '';
@@ -1312,9 +1309,13 @@
 
     var TIPO_LABEL = {FERROVIARIO:'Ferroviario', AUTOSTRADALE:'Autostradale', IDRICO:'Idrico'};
 
+    var totalRows = rows.length;
+    if (_sedPage * SED_PAGE_SIZE >= totalRows) _sedPage = 0;
+    var pagedRows = rows.slice(_sedPage * SED_PAGE_SIZE, (_sedPage + 1) * SED_PAGE_SIZE);
+
     var tbody = document.getElementById('sedTbody');
     if (!tbody) return;
-    tbody.innerHTML = rows.map(function(d) {
+    tbody.innerHTML = pagedRows.map(function(d) {
       var e     = getEntry(d.fid);
       var stato = e.stato || 'IN ATTESA';
       var col   = SED_COLORS[stato] || '#4a4f6a';
@@ -1337,14 +1338,28 @@
         +'</tr>';
     }).join('');
 
+    // Footer paginazione
     var footL = document.getElementById('sedFootL');
-    if (footL) footL.innerHTML = '<b>'+rows.length+'</b> attraversament'+(rows.length!==1?'i':'o')+(rows.length<_sedData.length?' <span style="color:var(--accent2)">(su '+_sedData.length+' totali)</span>':'');
+    if (footL) {
+      var totalPages = Math.ceil(totalRows / SED_PAGE_SIZE);
+      var from = _sedPage * SED_PAGE_SIZE + 1;
+      var to   = Math.min((_sedPage + 1) * SED_PAGE_SIZE, totalRows);
+      var prevBtn = _sedPage > 0
+        ? '<button onclick="window._sedGo('+(_sedPage-1)+')" class="tbl-pag-btn tbl-pag-btn-prev">&#8249; Precedente</button>'
+        : '<button disabled class="tbl-pag-btn tbl-pag-btn-prev">&#8249; Precedente</button>';
+      var nextBtn = _sedPage < totalPages - 1
+        ? '<button onclick="window._sedGo('+(_sedPage+1)+')" class="tbl-pag-btn tbl-pag-btn-next">Successiva &#8250;</button>'
+        : '<button disabled class="tbl-pag-btn tbl-pag-btn-next">Successiva &#8250;</button>';
+      footL.innerHTML = '<div class="tbl-pag-wrap">'+prevBtn+'<span class="tbl-pag-info">pag. <b>'+(_sedPage+1)+'</b> di <b>'+totalPages+'</b> &nbsp;&middot;&nbsp; righe <b>'+from+'&ndash;'+to+'</b> di <b>'+totalRows+'</b>'+(totalRows<_sedData.length?' &nbsp;<span style="color:var(--accent2)">(su '+_sedData.length+' totali)</span>':'')+'</span>'+nextBtn+'</div>';
+    }
     updateKpi();
   };
 
-  window.sedSetStato = function(fid, val) { getEntry(fid).stato = val; saveLS(); window.renderSed(); };
+  window.sedSetStato = function(fid, val) { getEntry(fid).stato = val; saveLS(); window.renderSed(true); };
   window.sedSetDate  = function(fid, val) { getEntry(fid).data_invio = val; saveLS(); updateKpi(); };
   window.sedSetNote  = function(fid, val) { getEntry(fid).note = val; saveLS(); };
+
+  window._sedGo = function(n) { _sedPage = n; window.renderSed(true); };
 
   window.sedResetFilters = function() {
     ['sedQ','sedFTipo','sedFLotto','sedFStato'].forEach(function(id){
@@ -1478,7 +1493,7 @@
         var lPct = s.tot > 0 ? Math.round(s.ott / s.tot * 100) : 0;
         var col  = lPct === 100 ? '#1f7a4e' : lPct > 0 ? '#c9a227' : 'var(--muted)';
         return '<div style="display:flex;align-items:center;gap:8px">'
-          +'<span style="font-size:10px;font-family:monospace;color:var(--muted);width:28px;flex-shrink:0">L'+l+'</span>'
+          +'<span style="font-size:10px;font-family:monospace;color:var(--muted);width:28px;flex-shrink:0">'+l+'</span>'
           +'<div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden">'
           +'<div style="height:100%;background:'+col+';border-radius:2px;width:'+lPct+'%"></div>'
           +'</div>'
