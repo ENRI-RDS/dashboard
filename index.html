@@ -1122,18 +1122,18 @@
         </div>
         <div style="padding:12px 16px 4px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-            <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.09em;color:var(--muted);font-weight:600">Ottenuti</span>
-            <span id="sqOttPct" style="font-size:11px;font-weight:700;font-family:'Fira Code',monospace;color:#1f7a4e">0%</span>
-          </div>
-          <div style="height:7px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:8px">
-            <div id="sqBarOtt" style="height:100%;background:#1f7a4e;border-radius:3px;transition:width 0.5s;width:0%"></div>
-          </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
             <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.09em;color:var(--muted);font-weight:600">Inviati</span>
             <span id="sqInvPct" style="font-size:11px;font-weight:700;font-family:'Fira Code',monospace;color:#4f8ef7">0%</span>
           </div>
-          <div style="height:7px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:14px">
+          <div style="height:7px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:8px">
             <div id="sqBarInv" style="height:100%;background:#4f8ef7;border-radius:3px;transition:width 0.5s;width:0%"></div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.09em;color:var(--muted);font-weight:600">Ottenuti</span>
+            <span id="sqOttPct" style="font-size:11px;font-weight:700;font-family:'Fira Code',monospace;color:#1f7a4e">0%</span>
+          </div>
+          <div style="height:7px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:14px">
+            <div id="sqBarOtt" style="height:100%;background:#1f7a4e;border-radius:3px;transition:width 0.5s;width:0%"></div>
           </div>
           <div id="sqRows" style="display:flex;flex-direction:column;gap:8px"></div>
         </div>
@@ -1149,11 +1149,17 @@
 <script>
 (function() {
   var LS_KEY = 'enri_sed_stati_v1';
-  var SED_STATI = ['IN ATTESA','IN REDAZIONE','COORDINAMENTO','INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','OTTENUTO'];
+  var SED_STATI = ['IN ATTESA','IN REDAZIONE','COORDINAMENTO','INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE','PROTOCOLLATA INTEGRAZIONE','OTTENUTO'];
   var SED_COLORS = {
-    'IN ATTESA':'#4a4f6a','IN REDAZIONE':'#4a4f6a','COORDINAMENTO':'#9b59b6',
-    'INVIATO':'#4f8ef7','PROTOCOLLATO':'#4f8ef7',
-    'NECESSARIA INTEGRAZIONE':'#cc3333','OTTENUTO':'#3a8c5c'
+    'IN ATTESA':                  '#8A91B4',
+    'IN REDAZIONE':               '#C08A14',
+    'COORDINAMENTO':              '#7A3DAA',
+    'INVIATO':                    '#0B3182',
+    'PROTOCOLLATO':               '#0B3182',
+    'NECESSARIA INTEGRAZIONE':    '#C23B22',
+    'IN REDAZIONE INTEGRAZIONE':  '#B5657A',
+    'PROTOCOLLATA INTEGRAZIONE':  '#B5657A',
+    'OTTENUTO':                   '#1F7A4E'
   };
 
   var _sedData = [];
@@ -1363,7 +1369,7 @@
     if (!_sedData || !_sedData.length) return;
     var tot  = _sedData.length;
     var ott  = _sedData.filter(function(d){ return getEntry(d.fid).stato === 'OTTENUTO'; }).length;
-    var inv  = _sedData.filter(function(d){ return ['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE'].indexOf(getEntry(d.fid).stato) !== -1; }).length;
+    var inv  = _sedData.filter(function(d){ return ['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE','PROTOCOLLATA INTEGRAZIONE','OTTENUTO'].indexOf(getEntry(d.fid).stato) !== -1; }).length;
     var pctOtt = tot > 0 ? Math.round(ott / tot * 100) : 0;
     var pctInv = tot > 0 ? Math.round(inv / tot * 100) : 0;
     var el;
