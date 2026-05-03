@@ -1139,113 +1139,6 @@
     </div>
   </div>
 
-<!-- ══════════════════════════════════════════════════════════════════════════
-     SEZIONE SED — Attraversamenti Speciali
-══════════════════════════════════════════════════════════════════════════════ -->
-<div id="sedSection" style="margin:18px 28px 32px;padding:0">
-  <div class="card">
-    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-      <div style="display:flex;align-items:center;gap:10px">
-        <span class="card-title">🔶 Attraversamenti SED</span>
-        <span id="sedBadge" class="badge" style="font-size:10px">Caricamento...</span>
-      </div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <button onclick="exportSedXlsx()" style="font-size:11px;padding:6px 13px;border-radius:7px;background:#1e6b1e;color:#c8f0c8;border:1px solid #2e8c2e;cursor:pointer;font-family:inherit;font-weight:600;transition:opacity 0.15s" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">&#128202; Scarica Excel</button>
-        <button onclick="sedResetAll()" style="font-size:11px;padding:6px 12px;border-radius:7px;background:transparent;border:1px solid var(--border2);color:var(--muted);cursor:pointer;font-family:inherit;font-weight:600;transition:all 0.15s" onmouseover="this.style.borderColor='var(--accent2)';this.style.color='var(--accent2)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--muted)'">&#8634; Reset stati</button>
-        <button onclick="sedToggleCollapse()" id="sedCollapseBtn" style="font-size:11px;padding:6px 10px;border-radius:7px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);cursor:pointer;font-family:inherit;font-weight:600;transition:all 0.15s">&#9650; Comprimi</button>
-      </div>
-    </div>
-
-    <!-- KPI row — sempre visibile anche quando compresso -->
-    <div style="padding:14px 18px 0">
-      <div class="sed-kpi-row" id="sedKpiRow">
-        <div class="sed-kpi ferroviario">
-          <span class="sed-kpi-label">Ferroviario</span>
-          <span class="sed-kpi-val" id="sedKpiFerr">—</span>
-          <span class="sed-kpi-sub">attraversamenti</span>
-        </div>
-        <div class="sed-kpi autostradale">
-          <span class="sed-kpi-label">Autostradale</span>
-          <span class="sed-kpi-val" id="sedKpiAuto">—</span>
-          <span class="sed-kpi-sub">attraversamenti</span>
-        </div>
-        <div class="sed-kpi idrico">
-          <span class="sed-kpi-label">Idrico</span>
-          <span class="sed-kpi-val" id="sedKpiIdrico">—</span>
-          <span class="sed-kpi-sub">attraversamenti</span>
-        </div>
-        <div class="sed-kpi ottenuto" style="flex:2">
-          <span class="sed-kpi-label">Permessi Ottenuti</span>
-          <div style="display:flex;align-items:baseline;gap:8px">
-            <span class="sed-kpi-val" id="sedKpiOtt">0</span>
-            <span style="font-size:12px;color:var(--muted);font-weight:500" id="sedKpiOttPct">/ — (0%)</span>
-          </div>
-          <div class="sed-progress-bar"><div class="sed-progress-fill" id="sedProgressFill" style="width:0%"></div></div>
-        </div>
-      </div>
-    </div>
-
-    <div id="sedBody">
-
-      <!-- Toolbar filtri -->
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface2);border-top:1px solid var(--border);margin-top:14px">
-        <div style="position:relative;flex:1;min-width:220px;max-width:400px">
-          <svg style="position:absolute;left:9px;top:50%;transform:translateY(-50%);pointer-events:none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-          <input id="sedQ" type="text" placeholder="Cerca nome, ente, comune…"
-            style="width:100%;box-sizing:border-box;padding:7px 10px 7px 28px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;font-family:inherit;font-size:12px;color:var(--text);outline:none"
-            oninput="renderSed()" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'">
-        </div>
-        <div style="flex:1"></div>
-        <select id="sedFTipo" onchange="renderSed()" style="background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:7px 10px;font-family:inherit;font-size:12px;color:var(--text);outline:none;cursor:pointer">
-          <option value="">Tutti i tipi</option>
-          <option value="FERROVIARIO">Ferroviario</option>
-          <option value="AUTOSTRADALE">Autostradale</option>
-          <option value="IDRICO">Idrico</option>
-        </select>
-        <select id="sedFLotto" onchange="renderSed()" style="background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:7px 10px;font-family:inherit;font-size:12px;color:var(--text);outline:none;cursor:pointer">
-          <option value="">Tutti i lotti</option>
-        </select>
-        <select id="sedFStato" onchange="renderSed()" style="background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:7px 10px;font-family:inherit;font-size:12px;color:var(--text);outline:none;cursor:pointer">
-          <option value="">Tutti gli stati</option>
-          <option value="IN ATTESA">In Attesa</option>
-          <option value="IN REDAZIONE">In Redazione</option>
-          <option value="COORDINAMENTO">Coordinamento</option>
-          <option value="INVIATO">Inviato</option>
-          <option value="PROTOCOLLATO">Protocollato</option>
-          <option value="NECESSARIA INTEGRAZIONE">Necessaria Integrazione</option>
-          <option value="OTTENUTO">Ottenuto</option>
-        </select>
-        <button onclick="sedResetFilters()" style="font-size:10px;font-weight:600;padding:6px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--muted);cursor:pointer;font-family:inherit;transition:all .15s" onmouseover="this.style.borderColor='var(--accent2)';this.style.color='var(--accent2)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--muted)'">&#10005; Reset</button>
-      </div>
-
-      <!-- Tabella -->
-      <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse;table-layout:auto;min-width:800px">
-          <thead>
-            <tr style="background:var(--surface2);border-bottom:2px solid var(--border2)">
-              <th style="padding:9px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;white-space:nowrap">Nome</th>
-              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700">Tipo</th>
-              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700">Lotto</th>
-              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700">Comune</th>
-              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700">Ente</th>
-              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:160px">Stato Permesso</th>
-              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:110px">Data Invio</th>
-              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:140px">Note</th>
-            </tr>
-          </thead>
-          <tbody id="sedTbody"></tbody>
-        </table>
-      </div>
-
-      <!-- Footer -->
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-top:1px solid var(--border);background:var(--surface2)">
-        <span id="sedFootL" style="font-size:11px;color:var(--muted)"></span>
-        <span style="font-size:11px;color:var(--muted)">&#128190; Le modifiche sono salvate automaticamente nel browser</span>
-      </div>
-    </div>
-  </div>
-</div>
-
 <script>
 (function() {
   var LS_KEY = 'enri_sed_stati_v1';
@@ -1565,6 +1458,114 @@
   </div>
 </div>
 <!-- ══════════════════════════════════════════════════════════════════════════
+<!-- ══════════════════════════════════════════════════════════════════════════
+     SEZIONE SED — Attraversamenti Speciali
+══════════════════════════════════════════════════════════════════════════════ -->
+<div id="sedSection" style="margin:18px 28px 32px;padding:0">
+  <div class="card">
+    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="card-title">🔶 Attraversamenti SED</span>
+        <span id="sedBadge" class="badge" style="font-size:10px">Caricamento...</span>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button onclick="exportSedXlsx()" style="font-size:11px;padding:6px 13px;border-radius:7px;background:#1e6b1e;color:#c8f0c8;border:1px solid #2e8c2e;cursor:pointer;font-family:inherit;font-weight:600;transition:opacity 0.15s" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">&#128202; Scarica Excel</button>
+        <button onclick="sedResetAll()" style="font-size:11px;padding:6px 12px;border-radius:7px;background:transparent;border:1px solid var(--border2);color:var(--muted);cursor:pointer;font-family:inherit;font-weight:600;transition:all 0.15s" onmouseover="this.style.borderColor='var(--accent2)';this.style.color='var(--accent2)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--muted)'">&#8634; Reset stati</button>
+        <button onclick="sedToggleCollapse()" id="sedCollapseBtn" style="font-size:11px;padding:6px 10px;border-radius:7px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);cursor:pointer;font-family:inherit;font-weight:600;transition:all 0.15s">&#9650; Comprimi</button>
+      </div>
+    </div>
+
+    <!-- KPI row — sempre visibile anche quando compresso -->
+    <div style="padding:14px 18px 0">
+      <div class="sed-kpi-row" id="sedKpiRow">
+        <div class="sed-kpi ferroviario">
+          <span class="sed-kpi-label">Ferroviario</span>
+          <span class="sed-kpi-val" id="sedKpiFerr">—</span>
+          <span class="sed-kpi-sub">attraversamenti</span>
+        </div>
+        <div class="sed-kpi autostradale">
+          <span class="sed-kpi-label">Autostradale</span>
+          <span class="sed-kpi-val" id="sedKpiAuto">—</span>
+          <span class="sed-kpi-sub">attraversamenti</span>
+        </div>
+        <div class="sed-kpi idrico">
+          <span class="sed-kpi-label">Idrico</span>
+          <span class="sed-kpi-val" id="sedKpiIdrico">—</span>
+          <span class="sed-kpi-sub">attraversamenti</span>
+        </div>
+        <div class="sed-kpi ottenuto" style="flex:2">
+          <span class="sed-kpi-label">Permessi Ottenuti</span>
+          <div style="display:flex;align-items:baseline;gap:8px">
+            <span class="sed-kpi-val" id="sedKpiOtt">0</span>
+            <span style="font-size:12px;color:var(--muted);font-weight:500" id="sedKpiOttPct">/ — (0%)</span>
+          </div>
+          <div class="sed-progress-bar"><div class="sed-progress-fill" id="sedProgressFill" style="width:0%"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="sedBody">
+
+      <!-- Toolbar filtri -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface2);border-top:1px solid var(--border);margin-top:14px">
+        <div style="position:relative;flex:1;min-width:220px;max-width:400px">
+          <svg style="position:absolute;left:9px;top:50%;transform:translateY(-50%);pointer-events:none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input id="sedQ" type="text" placeholder="Cerca nome, ente, comune…"
+            style="width:100%;box-sizing:border-box;padding:7px 10px 7px 28px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;font-family:inherit;font-size:12px;color:var(--text);outline:none"
+            oninput="renderSed()" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'">
+        </div>
+        <div style="flex:1"></div>
+        <select id="sedFTipo" onchange="renderSed()" style="background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:7px 10px;font-family:inherit;font-size:12px;color:var(--text);outline:none;cursor:pointer">
+          <option value="">Tutti i tipi</option>
+          <option value="FERROVIARIO">Ferroviario</option>
+          <option value="AUTOSTRADALE">Autostradale</option>
+          <option value="IDRICO">Idrico</option>
+        </select>
+        <select id="sedFLotto" onchange="renderSed()" style="background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:7px 10px;font-family:inherit;font-size:12px;color:var(--text);outline:none;cursor:pointer">
+          <option value="">Tutti i lotti</option>
+        </select>
+        <select id="sedFStato" onchange="renderSed()" style="background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:7px 10px;font-family:inherit;font-size:12px;color:var(--text);outline:none;cursor:pointer">
+          <option value="">Tutti gli stati</option>
+          <option value="IN ATTESA">In Attesa</option>
+          <option value="IN REDAZIONE">In Redazione</option>
+          <option value="COORDINAMENTO">Coordinamento</option>
+          <option value="INVIATO">Inviato</option>
+          <option value="PROTOCOLLATO">Protocollato</option>
+          <option value="NECESSARIA INTEGRAZIONE">Necessaria Integrazione</option>
+          <option value="OTTENUTO">Ottenuto</option>
+        </select>
+        <button onclick="sedResetFilters()" style="font-size:10px;font-weight:600;padding:6px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--muted);cursor:pointer;font-family:inherit;transition:all .15s" onmouseover="this.style.borderColor='var(--accent2)';this.style.color='var(--accent2)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--muted)'">&#10005; Reset</button>
+      </div>
+
+      <!-- Tabella -->
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;table-layout:auto;min-width:800px">
+          <thead>
+            <tr style="background:var(--surface2);border-bottom:2px solid var(--border2)">
+              <th style="padding:9px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;white-space:nowrap">Nome</th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700">Tipo</th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700">Lotto</th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700">Comune</th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700">Ente</th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:160px">Stato Permesso</th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:110px">Data Invio</th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:140px">Note</th>
+            </tr>
+          </thead>
+          <tbody id="sedTbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Footer -->
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-top:1px solid var(--border);background:var(--surface2)">
+        <span id="sedFootL" style="font-size:11px;color:var(--muted)"></span>
+        <span style="font-size:11px;color:var(--muted)">&#128190; Le modifiche sono salvate automaticamente nel browser</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+
      TABELLA TUTTE LE PRATICHE
 ══════════════════════════════════════════════════════════════════════════════ -->
 <div id="tabellaSection" style="margin:18px 28px 32px;padding:0">
