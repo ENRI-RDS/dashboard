@@ -1156,35 +1156,36 @@
       </div>
     </div>
 
-    <div id="sedBody">
-      <!-- KPI row -->
-      <div style="padding:14px 18px 0">
-        <div class="sed-kpi-row" id="sedKpiRow">
-          <div class="sed-kpi ferroviario">
-            <span class="sed-kpi-label">Ferroviario</span>
-            <span class="sed-kpi-val" id="sedKpiFerr">—</span>
-            <span class="sed-kpi-sub">attraversamenti</span>
+    <!-- KPI row — sempre visibile anche quando compresso -->
+    <div style="padding:14px 18px 0">
+      <div class="sed-kpi-row" id="sedKpiRow">
+        <div class="sed-kpi ferroviario">
+          <span class="sed-kpi-label">Ferroviario</span>
+          <span class="sed-kpi-val" id="sedKpiFerr">—</span>
+          <span class="sed-kpi-sub">attraversamenti</span>
+        </div>
+        <div class="sed-kpi autostradale">
+          <span class="sed-kpi-label">Autostradale</span>
+          <span class="sed-kpi-val" id="sedKpiAuto">—</span>
+          <span class="sed-kpi-sub">attraversamenti</span>
+        </div>
+        <div class="sed-kpi idrico">
+          <span class="sed-kpi-label">Idrico</span>
+          <span class="sed-kpi-val" id="sedKpiIdrico">—</span>
+          <span class="sed-kpi-sub">attraversamenti</span>
+        </div>
+        <div class="sed-kpi ottenuto" style="flex:2">
+          <span class="sed-kpi-label">Permessi Ottenuti</span>
+          <div style="display:flex;align-items:baseline;gap:8px">
+            <span class="sed-kpi-val" id="sedKpiOtt">0</span>
+            <span style="font-size:12px;color:var(--muted);font-weight:500" id="sedKpiOttPct">/ — (0%)</span>
           </div>
-          <div class="sed-kpi autostradale">
-            <span class="sed-kpi-label">Autostradale</span>
-            <span class="sed-kpi-val" id="sedKpiAuto">—</span>
-            <span class="sed-kpi-sub">attraversamenti</span>
-          </div>
-          <div class="sed-kpi idrico">
-            <span class="sed-kpi-label">Idrico</span>
-            <span class="sed-kpi-val" id="sedKpiIdrico">—</span>
-            <span class="sed-kpi-sub">attraversamenti</span>
-          </div>
-          <div class="sed-kpi ottenuto" style="flex:2">
-            <span class="sed-kpi-label">Permessi Ottenuti</span>
-            <div style="display:flex;align-items:baseline;gap:8px">
-              <span class="sed-kpi-val" id="sedKpiOtt">0</span>
-              <span style="font-size:12px;color:var(--muted);font-weight:500" id="sedKpiOttPct">/ — (0%)</span>
-            </div>
-            <div class="sed-progress-bar"><div class="sed-progress-fill" id="sedProgressFill" style="width:0%"></div></div>
-          </div>
+          <div class="sed-progress-bar"><div class="sed-progress-fill" id="sedProgressFill" style="width:0%"></div></div>
         </div>
       </div>
+    </div>
+
+    <div id="sedBody">
 
       <!-- Toolbar filtri -->
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface2);border-top:1px solid var(--border);margin-top:14px">
@@ -1526,9 +1527,9 @@
 
   // Patch renderSed e sedSetStato per aggiornare anche la quick card
   var _origRenderSed = window.renderSed;
-  window.renderSed = function() { _origRenderSed(); updateQuickCard(); };
+  window.renderSed = function(keepPage) { _origRenderSed(keepPage); updateQuickCard(); };
   var _origSetStato = window.sedSetStato;
-  window.sedSetStato = function(fid, val) { getEntry(fid).stato = val; saveLS(); window.renderSed(); };
+  window.sedSetStato = function(fid, val) { getEntry(fid).stato = val; saveLS(); window.renderSed(true); };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', loadSED);
