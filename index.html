@@ -1404,14 +1404,16 @@
       if (getEntry(d.fid).stato === 'OTTENUTO') lottiMap[d.lotto].ott++;
     });
     var lotti = Object.keys(lottiMap).sort(function(a, b) {
-      // suffisso vuoto → '{' (viene dopo 'z' in ASCII) così 1a,1b vengono prima di 1
+      // 1a,1b,2a,2b (con lettera) → poi 1,2,3... (numerici puri)
       function parseLotto(s) {
         var m = String(s).match(/^(\d+)([a-zA-Z]*)$/);
-        return m ? [parseInt(m[1], 10), m[2].toLowerCase() || '{'] : [Infinity, s];
+        return m ? [parseInt(m[1], 10), m[2].toLowerCase()] : [Infinity, s];
       }
       var pa = parseLotto(a), pb = parseLotto(b);
+      var aLet = pa[1] !== '', bLet = pb[1] !== '';
+      if (aLet !== bLet) return aLet ? -1 : 1;    // con lettera prima
       if (pa[0] !== pb[0]) return pa[0] - pb[0];  // ordine numerico
-      if (pa[1] < pb[1]) return -1;                // ordine alfabetico suffisso ('{' > 'z' > 'b' > 'a')
+      if (pa[1] < pb[1]) return -1;
       if (pa[1] > pb[1]) return 1;
       return 0;
     });
