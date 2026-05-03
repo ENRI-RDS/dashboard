@@ -1391,7 +1391,7 @@
     loadLS();
     try {
       var resp = await fetch('SED_classificato.geojson?t='+Date.now());
-      if (!resp.ok) throw new Error('File non trovato');
+      if (!resp.ok) throw new Error('HTTP '+resp.status);
       var geojson = await resp.json();
       _sedData = geojson.features.map(function(f) {
         return {
@@ -1421,11 +1421,13 @@
 
       window.renderSed();
     } catch(err) {
-      console.warn('SED GeoJSON:', err.message);
+      console.error('SED loadSED error:', err);
       var badge = document.getElementById('sedBadge');
-      if (badge) { badge.textContent = 'File non trovato'; badge.className = 'badge err'; }
+      if (badge) { badge.textContent = '⚠ Errore caricamento'; badge.className = 'badge err'; }
+      var kpi = document.getElementById('sedKpiRow');
+      if (kpi) kpi.innerHTML = '<div style="padding:12px 4px;color:#C23B22;font-size:12px;font-weight:600">⚠️ Impossibile caricare SED_classificato.geojson — verifica che il file sia presente nel repo GitHub nella stessa cartella di index.html.<br><span style="font-size:10px;color:var(--muted);font-weight:400">Errore: '+err.message+'</span></div>';
       var tbody = document.getElementById('sedTbody');
-      if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:#C23B22;font-size:13px">&#9888;&#65039; SED_classificato.geojson non trovato nella stessa cartella.</td></tr>';
+      if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#C23B22;font-size:12px">⚠️ SED_classificato.geojson non trovato — errore: '+err.message+'</td></tr>';
     }
   }
 
