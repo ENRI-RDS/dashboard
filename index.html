@@ -1195,6 +1195,7 @@
   function SED_COLOR(stato) { return (window.STATI_COLORI_MAP && window.STATI_COLORI_MAP[stato]) || '#4a4f6a'; }
 
   var _sedData = [];
+  window._sedData = _sedData;
   var _sedStati = {};
   var _sedPage = 0;
   var SED_PAGE_SIZE = 10;
@@ -1268,6 +1269,7 @@
 
   // Pratiche CSV per N_SED
   function getSedPratiche(d) {
+    window.getSedPratiche = getSedPratiche;
     var csv = window._sedFromCSV && d.nSed ? window._sedFromCSV[d.nSed] : null;
     return (csv && csv.length) ? csv : null;
   }
@@ -1466,6 +1468,7 @@
         if (a.lotto > b.lotto) return 1;
         return a.name.localeCompare(b.name);
       });
+      window._sedData = _sedData;
 
       var lotti = [];
       _sedData.forEach(function(d){ if(d.lotto && lotti.indexOf(d.lotto)===-1) lotti.push(d.lotto); });
@@ -7848,9 +7851,11 @@ window.addEventListener('DOMContentLoaded', adjustClusterMobile);
 
 <script>
 function openSedModal(tratta) {
-  var sed = (_sedData || []).find(function(d){ return d.tratta === tratta; });
-  if (!sed) return;
-  var pratiche = getSedPratiche(sed);
+  var data = window._sedData || [];
+  var getSP = window.getSedPratiche;
+  var sed = data.find(function(d){ return d.tratta === tratta; });
+  if (!sed) { console.warn('SED non trovato:', tratta); return; }
+  var pratiche = getSP ? getSP(sed) : [];
   var tipoLabel = sed.tipo === 'FERROVIARIO' ? 'Ferroviario'
     : sed.tipo === 'AUTOSTRADALE' ? 'Autostradale'
     : sed.tipo === 'IDRICO' ? 'Idrico' : (sed.tipo||'—');
