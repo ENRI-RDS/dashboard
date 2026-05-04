@@ -1351,7 +1351,12 @@
       // Colonna stato: badge pratiche da CSV, o badge default IN REDAZIONE
       var statoCell;
       if (pratiche) {
-        statoCell = pratiche.map(function(p) {
+        var visti = {};
+        statoCell = pratiche.filter(function(p) {
+          if (visti[p.stato]) return false;
+          visti[p.stato] = true;
+          return true;
+        }).map(function(p) {
           var c = SED_COLOR(p.stato);
           return '<span title="'+p.tipo+' — '+p.ente+'" style="display:inline-block;margin:1px 2px;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;color:'+c+';background:'+c+'18;border:1px solid '+c+'44">'+p.stato+'</span>';
         }).join('');
@@ -2138,6 +2143,7 @@ const STATI_COLORI_MAP = {
   'PROTOCOLLATA INTEGRAZIONE': '#B5657A',
   'OTTENUTO':                  '#1F7A4E'
 };
+window.STATI_COLORI_MAP = STATI_COLORI_MAP;
 
 function parseDateIT(s) {
   if (!s || !s.trim()) return null;
@@ -4209,6 +4215,7 @@ function renderFlussoMese() {
   }
 }
 
+function renderDonut(globalStati, grandTotal) {
   const canvas = document.getElementById('donutCanvas');
   const ctx = canvas.getContext('2d');
 
