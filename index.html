@@ -1401,6 +1401,7 @@
     // compatibilità con vecchio sqBar se presente
     el = document.getElementById('sqBar');    if(el) el.style.width = pctOtt + '%';
 
+    var STATI_INV = ['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE','PROTOCOLLATA INTEGRAZIONE','OTTENUTO'];
     var TIPI = [
       { key:'FERROVIARIO',  label:'Ferroviario',  col:'#b45309' },
       { key:'AUTOSTRADALE', label:'Autostradale', col:'#16a34a' },
@@ -1411,15 +1412,29 @@
       sqRows.innerHTML = TIPI.map(function(t) {
         var n    = _sedData.filter(function(d){ return d.tipo === t.key; }).length;
         var nOtt = _sedData.filter(function(d){ return d.tipo === t.key && getSedStatoPrincipale(d) === 'OTTENUTO'; }).length;
-        var tPct = n > 0 ? Math.round(nOtt / n * 100) : 0;
-        return '<div>'
+        var nInv = _sedData.filter(function(d){ return d.tipo === t.key && STATI_INV.indexOf(getSedStatoPrincipale(d)) !== -1; }).length;
+        var pOtt = n > 0 ? Math.round(nOtt / n * 100) : 0;
+        var pInv = n > 0 ? Math.round(nInv / n * 100) : 0;
+        return '<div style="margin-bottom:2px">'
           +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">'
           +'<span style="font-size:10px;font-weight:600;color:'+t.col+'">'+t.label+'</span>'
-          +'<span style="font-size:10px;font-family:monospace;color:var(--muted)"><b style="color:'+t.col+'">'+nOtt+'</b> / '+n+'</span>'
+          +'<span style="font-size:10px;font-family:monospace;color:var(--muted)"><b style="color:'+t.col+'">'+n+'</b></span>'
           +'</div>'
-          +'<div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">'
-          +'<div style="height:100%;background:'+t.col+';border-radius:2px;width:'+tPct+'%"></div>'
-          +'</div></div>';
+          +'<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">'
+          +'<span style="font-size:9px;color:#0B3182;width:42px;flex-shrink:0;font-weight:600">Inv.</span>'
+          +'<div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden">'
+          +'<div style="height:100%;background:#0B3182;border-radius:2px;width:'+pInv+'%"></div>'
+          +'</div>'
+          +'<span style="font-size:9px;font-family:monospace;color:#0B3182;width:28px;text-align:right;flex-shrink:0">'+pInv+'%</span>'
+          +'</div>'
+          +'<div style="display:flex;align-items:center;gap:4px">'
+          +'<span style="font-size:9px;color:#1f7a4e;width:42px;flex-shrink:0;font-weight:600">Ott.</span>'
+          +'<div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden">'
+          +'<div style="height:100%;background:#1f7a4e;border-radius:2px;width:'+pOtt+'%"></div>'
+          +'</div>'
+          +'<span style="font-size:9px;font-family:monospace;color:#1f7a4e;width:28px;text-align:right;flex-shrink:0">'+pOtt+'%</span>'
+          +'</div>'
+          +'</div>';
       }).join('');
     }
 
