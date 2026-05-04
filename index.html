@@ -1441,11 +1441,11 @@
 
       // Race condition fix: se _sedFromCSV non è ancora pronto (caricamento CSV in corso),
       // aspetta e ri-renderizza appena diventa disponibile
-      if (!window._sedFromCSV) {
+      if (!window._sedFromCSV || Object.keys(window._sedFromCSV).length === 0) {
         var _sedCsvPoll = 0;
         var _sedCsvTimer = setInterval(function() {
           _sedCsvPoll++;
-          if (window._sedFromCSV) {
+          if (window._sedFromCSV && Object.keys(window._sedFromCSV).length > 0) {
             clearInterval(_sedCsvTimer);
             window.renderSed();
           } else if (_sedCsvPoll > 100) { // timeout 20s
@@ -5279,6 +5279,11 @@ async function loadMaster() {
         });
       }
     });
+
+    // _sedFromCSV è ora completamente popolato: se la tabella SED era già stata
+    // renderizzata prima che il CSV fosse pronto (race condition geojson vs CSV),
+    // ri-renderizza adesso per aggiornare stati e percentuali con i dati reali.
+    if (typeof window.renderSed === 'function') window.renderSed();
 
   } catch(e) {
     console.warn('Master.csv non caricato:', e.message);
