@@ -1438,6 +1438,21 @@
       });
 
       window.renderSed();
+
+      // Race condition fix: se _sedFromCSV non è ancora pronto (caricamento CSV in corso),
+      // aspetta e ri-renderizza appena diventa disponibile
+      if (!window._sedFromCSV) {
+        var _sedCsvPoll = 0;
+        var _sedCsvTimer = setInterval(function() {
+          _sedCsvPoll++;
+          if (window._sedFromCSV) {
+            clearInterval(_sedCsvTimer);
+            window.renderSed();
+          } else if (_sedCsvPoll > 100) { // timeout 20s
+            clearInterval(_sedCsvTimer);
+          }
+        }, 200);
+      }
     } catch(err) {
       console.error('SED loadSED error:', err);
       var badge = document.getElementById('sedBadge');
