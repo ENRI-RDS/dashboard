@@ -1124,27 +1124,25 @@
         </div>
       </div>
       <!-- ── FLUSSO ULTIMI 30 GG ── -->
-      <div id="flussoMeseBar" style="display:flex;align-items:center;gap:0;padding:10px 18px 12px;border-top:1px solid var(--border);background:var(--surface)">
-        <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);white-space:nowrap;margin-right:14px;flex-shrink:0">📅 Ultimi 30 gg:</span>
-        <div style="display:flex;gap:8px;flex:1;flex-wrap:wrap">
-          <div class="flusso-chip" id="flussoInviate" style="--fc:#0B3182;background:#0B318210;border-color:#0B318230">
-            <span class="flusso-num" style="color:#0B3182" id="flussoInviateN">—</span>
-            <span class="flusso-lbl">Inviate</span>
-          </div>
-          <div class="flusso-sep"></div>
-          <div class="flusso-chip" id="flussoAggiornate" style="--fc:#9b59b6;background:#9b59b610;border-color:#9b59b630">
-            <span class="flusso-num" style="color:#9b59b6" id="flussoAggiornateN">—</span>
-            <span class="flusso-lbl">Aggiornate</span>
-          </div>
-          <div class="flusso-sep"></div>
-          <div class="flusso-chip" id="flussoOttenute" style="--fc:#1F7A4E;background:#1F7A4E10;border-color:#1F7A4E30">
-            <span class="flusso-num" style="color:#1F7A4E" id="flussoOttenutN">—</span>
-            <span class="flusso-lbl">Ottenute</span>
-          </div>
-          <div style="flex:1;min-width:60px;display:flex;align-items:center;padding-left:6px">
-            <div id="flussoSparkWrap" style="display:flex;align-items:flex-end;gap:2px;height:22px;flex:1"></div>
-          </div>
+      <div id="flussoMeseBar" style="display:flex;align-items:center;gap:16px;padding:11px 20px 13px;border-top:1px solid var(--border);background:var(--surface)">
+        <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted2);white-space:nowrap;flex-shrink:0">📅 Ultimi 30 gg</span>
+        <div style="width:1px;height:18px;background:var(--border2);flex-shrink:0"></div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          <span style="font-size:16px;font-weight:700;font-family:'Bricolage Grotesque',sans-serif;color:#0B3182;line-height:1" id="flussoInviateN">—</span>
+          <span style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">Inviate</span>
         </div>
+        <div style="width:1px;height:14px;background:var(--border);flex-shrink:0"></div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          <span style="font-size:16px;font-weight:700;font-family:'Bricolage Grotesque',sans-serif;color:#7A3DAA;line-height:1" id="flussoAggiornateN">—</span>
+          <span style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">Aggiornate</span>
+        </div>
+        <div style="width:1px;height:14px;background:var(--border);flex-shrink:0"></div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          <span style="font-size:16px;font-weight:700;font-family:'Bricolage Grotesque',sans-serif;color:#1F7A4E;line-height:1" id="flussoOttenutN">—</span>
+          <span style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">Ottenute</span>
+        </div>
+        <div style="flex:1"></div>
+        <span style="font-size:9px;color:var(--muted2);font-style:italic" id="flussoDataRef"></span>
       </div>
     </div>
     <div class="side">
@@ -4169,49 +4167,31 @@ function renderFlussoMese() {
   const el_inv  = document.getElementById('flussoInviateN');
   const el_agg  = document.getElementById('flussoAggiornateN');
   const el_ott  = document.getElementById('flussoOttenutN');
-  const el_spark= document.getElementById('flussoSparkWrap');
+  const el_ref  = document.getElementById('flussoDataRef');
   if (!el_inv || !el_agg || !el_ott) return;
 
-  const prats = (typeof getAllPrats === 'function' ? getAllPrats() : (window.getAllPrats ? window.getAllPrats() : []));
+  const prats = window.getAllPrats ? window.getAllPrats() : [];
   if (!prats.length) return;
 
-  const now   = new Date();
-  const d30   = new Date(now); d30.setDate(d30.getDate() - 30);
+  const now = new Date();
+  const d30 = new Date(now); d30.setDate(d30.getDate() - 30);
   const inRange = d => { const p = parseDateIT(d); return p && p >= d30 && p <= now; };
 
-  let nInv = 0, nAgg = 0, nOtt = 0;
   const seen = { inv: new Set(), agg: new Set(), ott: new Set() };
-
   prats.forEach(r => {
-    if (r.invio && inRange(r.invio) && !seen.inv.has(r.codice))   { nInv++; seen.inv.add(r.codice); }
-    if (r.agg   && inRange(r.agg)   && !seen.agg.has(r.codice))   { nAgg++; seen.agg.add(r.codice); }
-    if (r.data_ott && inRange(r.data_ott) && !seen.ott.has(r.codice)) { nOtt++; seen.ott.add(r.codice); }
+    if (r.invio    && inRange(r.invio)    && !seen.inv.has(r.codice)) seen.inv.add(r.codice);
+    if (r.agg      && inRange(r.agg)      && !seen.agg.has(r.codice)) seen.agg.add(r.codice);
+    if (r.data_ott && inRange(r.data_ott) && !seen.ott.has(r.codice)) seen.ott.add(r.codice);
   });
 
-  el_inv.textContent = nInv;
-  el_agg.textContent = nAgg;
-  el_ott.textContent = nOtt;
+  el_inv.textContent = seen.inv.size;
+  el_agg.textContent = seen.agg.size;
+  el_ott.textContent = seen.ott.size;
 
-  // Sparkline: attività per settimana (ultimi 4 slot da 7gg)
-  const weeks = [0,0,0,0];
-  prats.forEach(r => {
-    [r.invio, r.agg, r.data_ott].forEach(d => {
-      const p = parseDateIT(d);
-      if (!p || p < d30 || p > now) return;
-      const diffDays = Math.floor((now - p) / 86400000);
-      const slot = Math.min(3, Math.floor(diffDays / 7));
-      weeks[3 - slot]++;
-    });
-  });
-  const maxW = Math.max(...weeks, 1);
-  if (el_spark) {
-    el_spark.innerHTML = weeks.map((v, i) => {
-      const h = Math.max(3, Math.round((v / maxW) * 20));
-      const ago = (3 - i) * 7;
-      const lbl = i === 3 ? 'sett. corrente' : `${ago}–${ago+7}gg fa`;
-      const col = i === 3 ? '#0B3182' : '#0B318244';
-      return `<div title="${v} attività · ${lbl}" style="flex:1;height:${h}px;background:${col};border-radius:2px 2px 0 0;transition:height .3s"></div>`;
-    }).join('');
+  if (el_ref) {
+    const from = d30.toLocaleDateString('it-IT', {day:'2-digit', month:'short'});
+    const to   = now.toLocaleDateString('it-IT', {day:'2-digit', month:'short'});
+    el_ref.textContent = from + ' – ' + to;
   }
 }
 
