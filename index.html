@@ -1174,14 +1174,30 @@
   }
 
   function updateKpi() {
+    var STATI_INV = ['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE','PROTOCOLLATA INTEGRAZIONE','OTTENUTO'];
     var ferr = _sedData.filter(function(d){return d.tipo==='FERROVIARIO';}).length;
     var auto = _sedData.filter(function(d){return d.tipo==='AUTOSTRADALE';}).length;
     var idri = _sedData.filter(function(d){return d.tipo==='IDRICO';}).length;
     var ott  = _sedData.filter(function(d){return getSedStatoPrincipale(d)==='OTTENUTO';}).length;
-    var inv  = _sedData.filter(function(d){return ['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE','PROTOCOLLATA INTEGRAZIONE','OTTENUTO'].indexOf(getSedStatoPrincipale(d)) !== -1;}).length;
+    var inv  = _sedData.filter(function(d){return STATI_INV.indexOf(getSedStatoPrincipale(d)) !== -1;}).length;
     var tot  = _sedData.length;
     var pct  = tot > 0 ? Math.round(ott/tot*100) : 0;
     var pctInv = tot > 0 ? Math.round(inv/tot*100) : 0;
+
+    // per-tipo inv/ott
+    var ferrInv = _sedData.filter(function(d){return d.tipo==='FERROVIARIO' && STATI_INV.indexOf(getSedStatoPrincipale(d))!==-1;}).length;
+    var ferrOtt = _sedData.filter(function(d){return d.tipo==='FERROVIARIO' && getSedStatoPrincipale(d)==='OTTENUTO';}).length;
+    var ferrPctInv = ferr>0 ? Math.round(ferrInv/ferr*100) : 0;
+    var ferrPctOtt = ferr>0 ? Math.round(ferrOtt/ferr*100) : 0;
+    var autoInv = _sedData.filter(function(d){return d.tipo==='AUTOSTRADALE' && STATI_INV.indexOf(getSedStatoPrincipale(d))!==-1;}).length;
+    var autoOtt = _sedData.filter(function(d){return d.tipo==='AUTOSTRADALE' && getSedStatoPrincipale(d)==='OTTENUTO';}).length;
+    var autoPctInv = auto>0 ? Math.round(autoInv/auto*100) : 0;
+    var autoPctOtt = auto>0 ? Math.round(autoOtt/auto*100) : 0;
+    var idriInv = _sedData.filter(function(d){return d.tipo==='IDRICO' && STATI_INV.indexOf(getSedStatoPrincipale(d))!==-1;}).length;
+    var idriOtt = _sedData.filter(function(d){return d.tipo==='IDRICO' && getSedStatoPrincipale(d)==='OTTENUTO';}).length;
+    var idriPctInv = idri>0 ? Math.round(idriInv/idri*100) : 0;
+    var idriPctOtt = idri>0 ? Math.round(idriOtt/idri*100) : 0;
+
     var el;
     el = document.getElementById('sedKpiFerr');   if(el) el.textContent = ferr;
     el = document.getElementById('sedKpiAuto');   if(el) el.textContent = auto;
@@ -1194,6 +1210,21 @@
     el = document.getElementById('sedProgressFill'); if(el) el.style.width = pct+'%';
     el = document.getElementById('sedBadge');
     if(el){ el.textContent = tot+' SED'; el.className = 'badge'+(ott===tot&&tot>0?' ok':''); }
+    // ferroviario sub-rows
+    el = document.getElementById('sedSubInvFerr'); if(el) el.textContent = ferrInv+' ('+ferrPctInv+'%)';
+    el = document.getElementById('sedBarInvFerr'); if(el) el.style.width = ferrPctInv+'%';
+    el = document.getElementById('sedSubOttFerr'); if(el) el.textContent = ferrOtt+' ('+ferrPctOtt+'%)';
+    el = document.getElementById('sedBarOttFerr'); if(el) el.style.width = ferrPctOtt+'%';
+    // autostradale sub-rows
+    el = document.getElementById('sedSubInvAuto'); if(el) el.textContent = autoInv+' ('+autoPctInv+'%)';
+    el = document.getElementById('sedBarInvAuto'); if(el) el.style.width = autoPctInv+'%';
+    el = document.getElementById('sedSubOttAuto'); if(el) el.textContent = autoOtt+' ('+autoPctOtt+'%)';
+    el = document.getElementById('sedBarOttAuto'); if(el) el.style.width = autoPctOtt+'%';
+    // idrico sub-rows
+    el = document.getElementById('sedSubInvIdri'); if(el) el.textContent = idriInv+' ('+idriPctInv+'%)';
+    el = document.getElementById('sedBarInvIdri'); if(el) el.style.width = idriPctInv+'%';
+    el = document.getElementById('sedSubOttIdri'); if(el) el.textContent = idriOtt+' ('+idriPctOtt+'%)';
+    el = document.getElementById('sedBarOttIdri'); if(el) el.style.width = idriPctOtt+'%';
   }
 
   // Pratiche CSV per N_SED
@@ -1555,14 +1586,50 @@
         <div class="sed-kpi ferroviario">
           <span class="sed-kpi-label">Ferroviario</span>
           <span class="sed-kpi-val" id="sedKpiFerr">—</span>
+          <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;align-items:center;gap:5px">
+              <span style="font-size:9px;font-weight:700;color:#0B3182;width:26px;flex-shrink:0">Inv.</span>
+              <div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden"><div id="sedBarInvFerr" style="height:100%;background:#0B3182;border-radius:2px;width:0%;transition:width .4s"></div></div>
+              <span id="sedSubInvFerr" style="font-size:10px;font-family:monospace;font-weight:700;color:#0B3182;width:54px;text-align:right;flex-shrink:0">0 (0%)</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:5px">
+              <span style="font-size:9px;font-weight:700;color:#1f7a4e;width:26px;flex-shrink:0">Ott.</span>
+              <div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden"><div id="sedBarOttFerr" style="height:100%;background:#1f7a4e;border-radius:2px;width:0%;transition:width .4s"></div></div>
+              <span id="sedSubOttFerr" style="font-size:10px;font-family:monospace;font-weight:700;color:#1f7a4e;width:54px;text-align:right;flex-shrink:0">0 (0%)</span>
+            </div>
+          </div>
         </div>
         <div class="sed-kpi autostradale">
           <span class="sed-kpi-label">Autostradale</span>
           <span class="sed-kpi-val" id="sedKpiAuto">—</span>
+          <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;align-items:center;gap:5px">
+              <span style="font-size:9px;font-weight:700;color:#0B3182;width:26px;flex-shrink:0">Inv.</span>
+              <div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden"><div id="sedBarInvAuto" style="height:100%;background:#0B3182;border-radius:2px;width:0%;transition:width .4s"></div></div>
+              <span id="sedSubInvAuto" style="font-size:10px;font-family:monospace;font-weight:700;color:#0B3182;width:54px;text-align:right;flex-shrink:0">0 (0%)</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:5px">
+              <span style="font-size:9px;font-weight:700;color:#1f7a4e;width:26px;flex-shrink:0">Ott.</span>
+              <div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden"><div id="sedBarOttAuto" style="height:100%;background:#1f7a4e;border-radius:2px;width:0%;transition:width .4s"></div></div>
+              <span id="sedSubOttAuto" style="font-size:10px;font-family:monospace;font-weight:700;color:#1f7a4e;width:54px;text-align:right;flex-shrink:0">0 (0%)</span>
+            </div>
+          </div>
         </div>
         <div class="sed-kpi idrico">
           <span class="sed-kpi-label">Idrico</span>
           <span class="sed-kpi-val" id="sedKpiIdrico">—</span>
+          <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;align-items:center;gap:5px">
+              <span style="font-size:9px;font-weight:700;color:#0B3182;width:26px;flex-shrink:0">Inv.</span>
+              <div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden"><div id="sedBarInvIdri" style="height:100%;background:#0B3182;border-radius:2px;width:0%;transition:width .4s"></div></div>
+              <span id="sedSubInvIdri" style="font-size:10px;font-family:monospace;font-weight:700;color:#0B3182;width:54px;text-align:right;flex-shrink:0">0 (0%)</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:5px">
+              <span style="font-size:9px;font-weight:700;color:#1f7a4e;width:26px;flex-shrink:0">Ott.</span>
+              <div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden"><div id="sedBarOttIdri" style="height:100%;background:#1f7a4e;border-radius:2px;width:0%;transition:width .4s"></div></div>
+              <span id="sedSubOttIdri" style="font-size:10px;font-family:monospace;font-weight:700;color:#1f7a4e;width:54px;text-align:right;flex-shrink:0">0 (0%)</span>
+            </div>
+          </div>
         </div>
         <div class="sed-kpi inviato">
           <span class="sed-kpi-label">Permessi Inviati</span>
