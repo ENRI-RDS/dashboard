@@ -1159,6 +1159,8 @@
   var _sedStati = {};
   var _sedPage = 0;
   var SED_PAGE_SIZE = 10;
+  var _sedSortKey = '';
+  var _sedSortDir = 1; // 1=asc, -1=desc
 
   function loadLS() {
     try { _sedStati = JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch(e) { _sedStati = {}; }
@@ -1235,6 +1237,33 @@
 
     var totalRows = rows.length;
     if (_sedPage * SED_PAGE_SIZE >= totalRows) _sedPage = 0;
+
+    // sort
+    if (_sedSortKey) {
+      rows.sort(function(a, b) {
+        var va, vb;
+        if (_sedSortKey === 'nome')       { va = (a.name||'').toLowerCase();  vb = (b.name||'').toLowerCase(); }
+        else if (_sedSortKey === 'tipo')  { va = (a.tipo||'').toLowerCase();  vb = (b.tipo||'').toLowerCase(); }
+        else if (_sedSortKey === 'lotto') { va = (a.lotto||'').toLowerCase(); vb = (b.lotto||'').toLowerCase(); }
+        else if (_sedSortKey === 'comune'){ va = (a.comune||'').toLowerCase();vb = (b.comune||'').toLowerCase(); }
+        else if (_sedSortKey === 'ente')  { va = (a.ente||'').toLowerCase();  vb = (b.ente||'').toLowerCase(); }
+        else if (_sedSortKey === 'stato') { va = getSedStatoPrincipale(a).toLowerCase(); vb = getSedStatoPrincipale(b).toLowerCase(); }
+        else if (_sedSortKey === 'data')  { va = getSedPratiche(a) ? (getSedPratiche(a).map(function(p){return p.dr_invio||'';}).filter(Boolean)[0]||'') : ''; vb = getSedPratiche(b) ? (getSedPratiche(b).map(function(p){return p.dr_invio||'';}).filter(Boolean)[0]||'') : ''; }
+        else if (_sedSortKey === 'note')  { va = (getSedPratiche(a) ? getSedPratiche(a).map(function(p){return p.note;}).filter(Boolean).join(' ') : '').toLowerCase(); vb = (getSedPratiche(b) ? getSedPratiche(b).map(function(p){return p.note;}).filter(Boolean).join(' ') : '').toLowerCase(); }
+        else { va = ''; vb = ''; }
+        if (va < vb) return -_sedSortDir;
+        if (va > vb) return  _sedSortDir;
+        return 0;
+      });
+    }
+
+    // aggiorna frecce header
+    var sedCols = ['nome','tipo','lotto','comune','ente','stato','data','note'];
+    sedCols.forEach(function(k) {
+      var el = document.getElementById('sedArr_'+k);
+      if (el) el.textContent = (k === _sedSortKey) ? (_sedSortDir === 1 ? '↑' : '↓') : '↕';
+    });
+
     var pagedRows = rows.slice(_sedPage * SED_PAGE_SIZE, (_sedPage + 1) * SED_PAGE_SIZE);
 
     var tbody = document.getElementById('sedTbody');
@@ -1302,6 +1331,11 @@
   window.sedSetNote  = function(fid, val) { getEntry(fid).note = val; saveLS(); };
 
   window._sedGo = function(n) { _sedPage = n; window.renderSed(true); };
+
+  window.sedSort = function(key) {
+    if (_sedSortKey === key) { _sedSortDir = -_sedSortDir; } else { _sedSortKey = key; _sedSortDir = 1; }
+    window.renderSed(true);
+  };
 
   window.sedResetFilters = function() {
     ['sedQ','sedFTipo','sedFLotto','sedFStato'].forEach(function(id){
@@ -1534,7 +1568,7 @@
           <span class="sed-kpi-label">Permessi Inviati</span>
           <div style="display:flex;align-items:baseline;gap:8px">
             <span class="sed-kpi-val" id="sedKpiInv">0</span>
-            <span style="font-size:12px;color:var(--muted);font-weight:500" id="sedKpiInvPct">/ — (0%)</span>
+            <span style="font-size:13px;color:var(--muted);font-weight:700" id="sedKpiInvPct">/ — (0%)</span>
           </div>
           <div class="sed-progress-bar"><div class="sed-progress-fill" id="sedProgressInvFill" style="width:0%;background:#0B3182"></div></div>
         </div>
@@ -1542,7 +1576,7 @@
           <span class="sed-kpi-label">Permessi Ottenuti</span>
           <div style="display:flex;align-items:baseline;gap:8px">
             <span class="sed-kpi-val" id="sedKpiOtt">0</span>
-            <span style="font-size:12px;color:var(--muted);font-weight:500" id="sedKpiOttPct">/ — (0%)</span>
+            <span style="font-size:13px;color:var(--muted);font-weight:700" id="sedKpiOttPct">/ — (0%)</span>
           </div>
           <div class="sed-progress-bar"><div class="sed-progress-fill" id="sedProgressFill" style="width:0%"></div></div>
         </div>
@@ -1587,14 +1621,14 @@
         <table style="width:100%;border-collapse:collapse;table-layout:auto;min-width:800px">
           <thead>
             <tr style="background:var(--surface2);border-bottom:2px solid var(--border2)">
-              <th style="padding:9px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;white-space:nowrap">Nome</th>
-              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700">Tipo</th>
-              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700">Lotto</th>
-              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700">Comune</th>
-              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700">Ente</th>
-              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:160px">Stato Permesso</th>
-              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:110px">Data Invio</th>
-              <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:140px">Note</th>
+              <th onclick="sedSort('nome')" style="padding:9px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;white-space:nowrap;cursor:pointer;user-select:none" title="Ordina per Nome"><span class="col-th-inner">Nome <span id="sedArr_nome" class="col-sort-btn">↕</span></span></th>
+              <th onclick="sedSort('tipo')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;cursor:pointer;user-select:none" title="Ordina per Tipo"><span class="col-th-inner">Tipo <span id="sedArr_tipo" class="col-sort-btn">↕</span></span></th>
+              <th onclick="sedSort('lotto')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;cursor:pointer;user-select:none" title="Ordina per Lotto"><span class="col-th-inner">Lotto <span id="sedArr_lotto" class="col-sort-btn">↕</span></span></th>
+              <th onclick="sedSort('comune')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;cursor:pointer;user-select:none" title="Ordina per Comune"><span class="col-th-inner">Comune <span id="sedArr_comune" class="col-sort-btn">↕</span></span></th>
+              <th onclick="sedSort('ente')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;cursor:pointer;user-select:none" title="Ordina per Ente"><span class="col-th-inner">Ente <span id="sedArr_ente" class="col-sort-btn">↕</span></span></th>
+              <th onclick="sedSort('stato')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:160px;cursor:pointer;user-select:none" title="Ordina per Stato Permesso"><span class="col-th-inner">Stato Permesso <span id="sedArr_stato" class="col-sort-btn">↕</span></span></th>
+              <th onclick="sedSort('data')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:110px;cursor:pointer;user-select:none" title="Ordina per Data Invio"><span class="col-th-inner">Data Invio <span id="sedArr_data" class="col-sort-btn">↕</span></span></th>
+              <th onclick="sedSort('note')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:140px;cursor:pointer;user-select:none" title="Ordina per Note"><span class="col-th-inner">Note <span id="sedArr_note" class="col-sort-btn">↕</span></span></th>
             </tr>
           </thead>
           <tbody id="sedTbody"></tbody>
