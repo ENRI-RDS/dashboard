@@ -1280,7 +1280,7 @@
         else if (_sedSortKey === 'ente')  { va = (a.ente||'').toLowerCase();  vb = (b.ente||'').toLowerCase(); }
         else if (_sedSortKey === 'stato') { va = getSedStatoPrincipale(a).toLowerCase(); vb = getSedStatoPrincipale(b).toLowerCase(); }
         else if (_sedSortKey === 'data')  { va = getSedPratiche(a) ? (getSedPratiche(a).map(function(p){return p.dr_invio||'';}).filter(Boolean)[0]||'') : ''; vb = getSedPratiche(b) ? (getSedPratiche(b).map(function(p){return p.dr_invio||'';}).filter(Boolean)[0]||'') : ''; }
-        else if (_sedSortKey === 'note')  { va = (getSedPratiche(a) ? getSedPratiche(a).map(function(p){return p.note;}).filter(Boolean).join(' ') : '').toLowerCase(); vb = (getSedPratiche(b) ? getSedPratiche(b).map(function(p){return p.note;}).filter(Boolean).join(' ') : '').toLowerCase(); }
+        else if (_sedSortKey === 'nSed')  { va = (a.nSed||'').toLowerCase(); vb = (b.nSed||'').toLowerCase(); }
         else { va = ''; vb = ''; }
         if (va < vb) return -_sedSortDir;
         if (va > vb) return  _sedSortDir;
@@ -1289,7 +1289,7 @@
     }
 
     // aggiorna frecce header
-    var sedCols = ['nome','tipo','lotto','comune','ente','stato','data','note'];
+    var sedCols = ['nome','tipo','lotto','comune','ente','stato','data','nSed'];
     sedCols.forEach(function(k) {
       var el = document.getElementById('sedArr_'+k);
       if (el) el.textContent = (k === _sedSortKey) ? (_sedSortDir === 1 ? '↑' : '↓') : '↕';
@@ -1312,11 +1312,7 @@
       if (pratiche) {
         statoCell = pratiche.map(function(p) {
           var c = SED_COLOR(p.stato);
-          var label = p.tipo === 'AUTORIZZAZIONE' ? 'AUT'
-            : p.tipo === 'NULLA OSTA' ? 'NO'
-            : p.tipo === 'ORDINANZA'  ? 'ORD'
-            : p.tipo.substring(0,3);
-          return '<span title="'+p.tipo+' — '+p.ente+'" style="display:inline-block;margin:1px 2px;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;color:'+c+';background:'+c+'18;border:1px solid '+c+'44">'+label+': '+p.stato+'</span>';
+          return '<span title="'+p.tipo+' — '+p.ente+'" style="display:inline-block;margin:1px 2px;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;color:'+c+';background:'+c+'18;border:1px solid '+c+'44">'+p.stato+'</span>';
         }).join('');
       } else {
         var c0 = SED_COLOR('IN REDAZIONE');
@@ -1336,7 +1332,7 @@
         +'<td class="tbl-td" style="padding:8px 10px;font-size:11px;color:var(--text2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+enteSafe+'">'+(d.ente||'—')+'</td>'
         +'<td class="tbl-td" style="padding:6px 10px">'+statoCell+'</td>'
         +'<td class="tbl-td" style="padding:6px 10px;font-size:11px;color:var(--text2)">'+(dataInvio||'—')+'</td>'
-        +'<td class="tbl-td" style="padding:6px 10px;font-size:11px;color:var(--text2);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+noteSafe+'">'+(noteVal||'—')+'</td>'
+        +'<td class="tbl-td" style="padding:6px 10px;font-size:11px;font-weight:600;color:var(--text);font-family:\'Fira Code\',monospace">'+(d.nSed||'—')+'</td>'
         +'</tr>';
     }).join('');
 
@@ -1710,7 +1706,7 @@
               <th onclick="sedSort('ente')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;cursor:pointer;user-select:none" title="Ordina per Ente"><span class="col-th-inner">Ente <span id="sedArr_ente" class="col-sort-btn">↕</span></span></th>
               <th onclick="sedSort('stato')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:160px;cursor:pointer;user-select:none" title="Ordina per Stato Permesso"><span class="col-th-inner">Stato Permesso <span id="sedArr_stato" class="col-sort-btn">↕</span></span></th>
               <th onclick="sedSort('data')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:110px;cursor:pointer;user-select:none" title="Ordina per Data Invio"><span class="col-th-inner">Data Invio <span id="sedArr_data" class="col-sort-btn">↕</span></span></th>
-              <th onclick="sedSort('note')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:140px;cursor:pointer;user-select:none" title="Ordina per Note"><span class="col-th-inner">Note <span id="sedArr_note" class="col-sort-btn">↕</span></span></th>
+              <th onclick="sedSort('nSed')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:120px;cursor:pointer;user-select:none" title="Ordina per Numero SED"><span class="col-th-inner">Numero SED <span id="sedArr_nSed" class="col-sort-btn">↕</span></span></th>
             </tr>
           </thead>
           <tbody id="sedTbody"></tbody>
