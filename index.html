@@ -1368,7 +1368,8 @@
       var noteSafe  = noteVal.replace(/"/g,'&quot;').replace(/</g,'&lt;');
       var dataInvio = pratiche ? (pratiche.map(function(p){return p.dr_invio||'';}).filter(Boolean)[0] || '') : '';
 
-      return '<tr style="border-bottom:1px solid var(--border)">'
+      return '<tr style="border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'\'" onclick="openSedModal('+JSON.stringify(d.tratta)+')">'
+        +'<td class="tbl-td" style="padding:6px 14px;font-size:11px;font-weight:700;color:var(--accent);font-family:\'Fira Code\',monospace">'+(d.nSed||'—')+'</td>'
         +'<td class="tbl-td" style="padding:8px 14px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+nameSafe+'"><span style="font-size:12px;font-weight:600;color:var(--text)">'+nameSafe+'</span></td>'
         +'<td class="tbl-td" style="padding:8px 10px"><span class="sed-tipo-chip '+d.tipo+'">'+tipoLabel+'</span></td>'
         +'<td class="tbl-td" style="padding:8px 10px"><span class="tbl-lotto-chip">'+(d.lotto||'—')+'</span></td>'
@@ -1376,7 +1377,6 @@
         +'<td class="tbl-td" style="padding:8px 10px;font-size:11px;color:var(--text2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+enteSafe+'">'+(d.ente||'—')+'</td>'
         +'<td class="tbl-td" style="padding:6px 10px">'+statoCell+'</td>'
         +'<td class="tbl-td" style="padding:6px 10px;font-size:11px;color:var(--text2)">'+(dataInvio||'—')+'</td>'
-        +'<td class="tbl-td" style="padding:6px 10px;font-size:11px;font-weight:600;color:var(--text);font-family:\'Fira Code\',monospace">'+(d.nSed||'—')+'</td>'
         +'</tr>';
     }).join('');
 
@@ -1743,6 +1743,7 @@
         <table style="width:100%;border-collapse:collapse;table-layout:auto;min-width:800px">
           <thead>
             <tr style="background:var(--surface2);border-bottom:2px solid var(--border2)">
+              <th onclick="sedSort('nSed')" style="padding:9px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:110px;cursor:pointer;user-select:none" title="Ordina per Numero SED"><span class="col-th-inner">N° SED <span id="sedArr_nSed" class="col-sort-btn">↕</span></span></th>
               <th onclick="sedSort('nome')" style="padding:9px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;white-space:nowrap;cursor:pointer;user-select:none" title="Ordina per Nome"><span class="col-th-inner">Nome <span id="sedArr_nome" class="col-sort-btn">↕</span></span></th>
               <th onclick="sedSort('tipo')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;cursor:pointer;user-select:none" title="Ordina per Tipo"><span class="col-th-inner">Tipo <span id="sedArr_tipo" class="col-sort-btn">↕</span></span></th>
               <th onclick="sedSort('lotto')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;cursor:pointer;user-select:none" title="Ordina per Lotto"><span class="col-th-inner">Lotto <span id="sedArr_lotto" class="col-sort-btn">↕</span></span></th>
@@ -1750,7 +1751,6 @@
               <th onclick="sedSort('ente')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;cursor:pointer;user-select:none" title="Ordina per Ente"><span class="col-th-inner">Ente <span id="sedArr_ente" class="col-sort-btn">↕</span></span></th>
               <th onclick="sedSort('stato')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:160px;cursor:pointer;user-select:none" title="Ordina per Stato Permesso"><span class="col-th-inner">Stato Permesso <span id="sedArr_stato" class="col-sort-btn">↕</span></span></th>
               <th onclick="sedSort('data')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:110px;cursor:pointer;user-select:none" title="Ordina per Data Invio"><span class="col-th-inner">Data Invio <span id="sedArr_data" class="col-sort-btn">↕</span></span></th>
-              <th onclick="sedSort('nSed')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:120px;cursor:pointer;user-select:none" title="Ordina per Numero SED"><span class="col-th-inner">Numero SED <span id="sedArr_nSed" class="col-sort-btn">↕</span></span></th>
             </tr>
           </thead>
           <tbody id="sedTbody"></tbody>
@@ -7821,6 +7821,125 @@ window.adjustClusterMobile = adjustClusterMobile;
 window.addEventListener('resize', adjustClusterMobile);
 window.addEventListener('DOMContentLoaded', adjustClusterMobile);
 
+</script>
+
+<!-- ═══════════════════════════════════════════════════════ SED MODAL -->
+<div id="sedModal" style="display:none;position:fixed;inset:0;z-index:9999;align-items:center;justify-content:center">
+  <!-- Backdrop -->
+  <div onclick="closeSedModal()" style="position:absolute;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(3px)"></div>
+  <!-- Panel -->
+  <div id="sedModalPanel" style="position:relative;z-index:1;width:min(820px,95vw);max-height:88vh;overflow-y:auto;background:var(--surface);border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.22);display:flex;flex-direction:column;animation:sedModalIn .2s ease">
+    <div id="sedModalContent"></div>
+  </div>
+</div>
+
+<style>
+@keyframes sedModalIn {
+  from { opacity:0; transform:translateY(18px) scale(.97); }
+  to   { opacity:1; transform:translateY(0) scale(1); }
+}
+.sed-modal-section { padding:0 24px 18px; }
+.sed-modal-section + .sed-modal-section { border-top:1px solid var(--border); padding-top:16px; }
+.sed-modal-kv { display:grid; grid-template-columns:140px 1fr; gap:6px 12px; align-items:start; }
+.sed-modal-kv dt { font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600;padding-top:2px; }
+.sed-modal-kv dd { font-size:12px;color:var(--text);font-weight:500;margin:0; }
+.sed-prat-row { display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:center;padding:7px 10px;border-radius:7px;background:var(--surface2);margin-bottom:5px; }
+</style>
+
+<script>
+function openSedModal(tratta) {
+  var sed = (_sedData || []).find(function(d){ return d.tratta === tratta; });
+  if (!sed) return;
+  var pratiche = getSedPratiche(sed);
+  var tipoLabel = sed.tipo === 'FERROVIARIO' ? 'Ferroviario'
+    : sed.tipo === 'AUTOSTRADALE' ? 'Autostradale'
+    : sed.tipo === 'IDRICO' ? 'Idrico' : (sed.tipo||'—');
+  var tipoColor = sed.tipo === 'FERROVIARIO' ? '#e67e22'
+    : sed.tipo === 'AUTOSTRADALE' ? '#27ae60'
+    : sed.tipo === 'IDRICO' ? '#2980b9' : '#888';
+
+  // Raggruppa pratiche per tipo
+  var gruppi = {};
+  (pratiche||[]).forEach(function(p){
+    if (!gruppi[p.tipo]) gruppi[p.tipo] = [];
+    gruppi[p.tipo].push(p);
+  });
+
+  var pratHTML = '';
+  Object.keys(gruppi).forEach(function(tipo){
+    pratHTML += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:10px 0 6px">'+(tipo||'—')+'</div>';
+    gruppi[tipo].forEach(function(p){
+      var c = SED_COLOR(p.stato);
+      pratHTML += '<div class="sed-prat-row">'
+        +'<span style="font-size:11px;font-weight:600;color:var(--text)">'+(p.ente||'—')+'</span>'
+        +'<span style="font-size:10px;color:var(--muted2)">'+(p.dr_invio||p.dr||'—')+'</span>'
+        +'<span style="font-size:10px;color:var(--muted2)">'+(p.dum||'—')+'</span>'
+        +'<span style="padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;color:'+c+';background:'+c+'18;border:1px solid '+c+'44;white-space:nowrap">'+p.stato+'</span>'
+        +(p.note ? '<span style="grid-column:1/-1;font-size:10px;color:var(--muted);font-style:italic;padding-top:2px">📝 '+p.note+'</span>' : '')
+        +'</div>';
+    });
+  });
+
+  var nPrat = (pratiche||[]).length;
+  var stati = {};
+  (pratiche||[]).forEach(function(p){ stati[p.stato] = (stati[p.stato]||0)+1; });
+  var statiHTML = Object.keys(stati).map(function(s){
+    var c = SED_COLOR(s);
+    return '<span style="padding:2px 9px;border-radius:4px;font-size:10px;font-weight:700;color:'+c+';background:'+c+'18;border:1px solid '+c+'44;margin-right:4px">'+stati[s]+' × '+s+'</span>';
+  }).join('');
+
+  var lunghFmt = sed.lungh > 0 ? sed.lungh.toLocaleString('it-IT',{minimumFractionDigits:1,maximumFractionDigits:1})+' m' : '—';
+
+  document.getElementById('sedModalContent').innerHTML =
+    // Header
+    '<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:22px 24px 16px;border-bottom:1px solid var(--border)">'
+      +'<div>'
+        +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
+          +'<span style="font-size:13px;font-weight:700;font-family:\'Fira Code\',monospace;color:var(--accent);letter-spacing:.04em">'+(sed.nSed||'—')+'</span>'
+          +'<span style="padding:3px 10px;border-radius:5px;font-size:10px;font-weight:700;color:'+tipoColor+';background:'+tipoColor+'15;border:1px solid '+tipoColor+'33">'+tipoLabel+'</span>'
+          +'<span class="tbl-lotto-chip">'+(sed.lotto||'—')+'</span>'
+        +'</div>'
+        +'<div style="font-size:17px;font-weight:700;color:var(--text);line-height:1.2">'+(sed.nome||sed.tratta||'—')+'</div>'
+      +'</div>'
+      +'<button onclick="closeSedModal()" style="background:none;border:none;cursor:pointer;padding:4px;color:var(--muted);font-size:20px;line-height:1;margin-top:-2px" title="Chiudi">✕</button>'
+    +'</div>'
+    // Info generali
+    +'<div class="sed-modal-section" style="padding-top:18px">'
+      +'<div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:10px">📍 Informazioni generali</div>'
+      +'<dl class="sed-modal-kv">'
+        +'<dt>Tratta ID</dt><dd style="font-family:\'Fira Code\',monospace;color:var(--accent)">'+(sed.tratta||'—')+'</dd>'
+        +'<dt>Comune</dt><dd>'+(sed.comune||'—')+'</dd>'
+        +'<dt>Lunghezza</dt><dd>'+lunghFmt+'</dd>'
+        +'<dt>Lotto</dt><dd>'+(sed.lotto||'—')+'</dd>'
+        +'<dt>Enti coinvolti</dt><dd>'+(sed.ente||'—')+'</dd>'
+      +'</dl>'
+    +'</div>'
+    // Riepilogo pratiche
+    +'<div class="sed-modal-section">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+        +'<div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">📋 Pratiche ('+nPrat+')</div>'
+        +'<div>'+statiHTML+'</div>'
+      +'</div>'
+      +(pratHTML || '<div style="font-size:12px;color:var(--muted);font-style:italic">Nessuna pratica associata</div>')
+    +'</div>'
+    // Footer
+    +'<div style="padding:12px 24px;border-top:1px solid var(--border);background:var(--surface2);border-radius:0 0 14px 14px;display:flex;gap:8px;align-items:center">'
+      +'<span style="font-size:10px;color:var(--muted2)">Aggiornato al caricamento del Master.csv</span>'
+    +'</div>';
+
+  var modal = document.getElementById('sedModal');
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeSedModal() {
+  document.getElementById('sedModal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape') closeSedModal();
+});
 </script>
 
 </body>
