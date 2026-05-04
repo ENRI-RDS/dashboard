@@ -1152,17 +1152,8 @@
 (function() {
   var LS_KEY = 'enri_sed_stati_v1';
   var SED_STATI = ['IN ATTESA','IN REDAZIONE','COORDINAMENTO','INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE','PROTOCOLLATA INTEGRAZIONE','OTTENUTO'];
-  var SED_COLORS = {
-    'IN ATTESA':                  '#8A91B4',
-    'IN REDAZIONE':               '#C08A14',
-    'COORDINAMENTO':              '#7A3DAA',
-    'INVIATO':                    '#0B3182',
-    'PROTOCOLLATO':               '#0B3182',
-    'NECESSARIA INTEGRAZIONE':    '#C23B22',
-    'IN REDAZIONE INTEGRAZIONE':  '#B5657A',
-    'PROTOCOLLATA INTEGRAZIONE':  '#B5657A',
-    'OTTENUTO':                   '#1F7A4E'
-  };
+  // SED_COLORS risolto a runtime dopo che STATI_COLORI_MAP è definita
+  function SED_COLOR(stato) { return (window.STATI_COLORI_MAP && window.STATI_COLORI_MAP[stato]) || '#4a4f6a'; }
 
   var _sedData = [];
   var _sedStati = {};
@@ -1184,8 +1175,8 @@
     var ferr = _sedData.filter(function(d){return d.tipo==='FERROVIARIO';}).length;
     var auto = _sedData.filter(function(d){return d.tipo==='AUTOSTRADALE';}).length;
     var idri = _sedData.filter(function(d){return d.tipo==='IDRICO';}).length;
-    var ott  = _sedData.filter(function(d){return getEntry(d.fid).stato==='OTTENUTO';}).length;
-    var inv  = _sedData.filter(function(d){return ['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE','PROTOCOLLATA INTEGRAZIONE','OTTENUTO'].indexOf(getEntry(d.fid).stato) !== -1;}).length;
+    var ott  = _sedData.filter(function(d){return getSedStatoPrincipale(d)==='OTTENUTO';}).length;
+    var inv  = _sedData.filter(function(d){return ['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE','PROTOCOLLATA INTEGRAZIONE','OTTENUTO'].indexOf(getSedStatoPrincipale(d)) !== -1;}).length;
     var tot  = _sedData.length;
     var pct  = tot > 0 ? Math.round(ott/tot*100) : 0;
     var pctInv = tot > 0 ? Math.round(inv/tot*100) : 0;
@@ -1203,6 +1194,25 @@
     if(el){ el.textContent = tot+' SED'; el.className = 'badge'+(ott===tot&&tot>0?' ok':''); }
   }
 
+  // Pratiche CSV per N_SED
+  function getSedPratiche(d) {
+    var csv = window._sedFromCSV && d.nSed ? window._sedFromCSV[d.nSed] : null;
+    return (csv && csv.length) ? csv : null;
+  }
+
+  // Stato principale: più avanzato tra le pratiche CSV, default IN REDAZIONE
+  function getSedStatoPrincipale(d) {
+    var pratiche = getSedPratiche(d);
+    if (pratiche) {
+      var ORDER = ['IN ATTESA','IN REDAZIONE','COORDINAMENTO','INVIATO','PROTOCOLLATO',
+        'NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE','PROTOCOLLATA INTEGRAZIONE','OTTENUTO'];
+      return pratiche.reduce(function(acc, p) {
+        return ORDER.indexOf(p.stato) > ORDER.indexOf(acc) ? p.stato : acc;
+      }, 'IN ATTESA');
+    }
+    return 'IN REDAZIONE';
+  }
+
   window.renderSed = function(keepPage) {
     if (!keepPage) _sedPage = 0;
     var q      = (document.getElementById('sedQ') ? document.getElementById('sedQ').value : '').toLowerCase();
@@ -1213,7 +1223,7 @@
     var rows = _sedData.filter(function(d) {
       if (fTipo  && d.tipo  !== fTipo)  return false;
       if (fLotto && d.lotto !== fLotto) return false;
-      if (fStato && getEntry(d.fid).stato !== fStato) return false;
+      if (fStato && getSedStatoPrincipale(d) !== fStato) return false;
       if (q) {
         var hay = [d.name, d.ente, d.comune, d.lotto, getEntry(d.fid).note].join(' ').toLowerCase();
         if (hay.indexOf(q) === -1) return false;
@@ -1230,25 +1240,43 @@
     var tbody = document.getElementById('sedTbody');
     if (!tbody) return;
     tbody.innerHTML = pagedRows.map(function(d) {
-      var e     = getEntry(d.fid);
-      var stato = e.stato || 'IN ATTESA';
-      var col   = SED_COLORS[stato] || '#4a4f6a';
-      var optsHtml = SED_STATI.map(function(s) {
-        return '<option value="'+s+'"'+(s===stato?' selected':'')+'>'+s+'</option>';
-      }).join('');
+      var pratiche  = getSedPratiche(d);
+      var stato     = getSedStatoPrincipale(d);
+      var col       = SED_COLOR(stato);
       var tipoLabel = TIPO_LABEL[d.tipo] || d.tipo;
-      var noteSafe  = (e.note||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');
       var nameSafe  = (d.name||'—').replace(/</g,'&lt;');
       var enteSafe  = (d.ente||'').replace(/</g,'&lt;');
+
+      // Colonna stato: badge pratiche da CSV, o badge default IN REDAZIONE
+      var statoCell;
+      if (pratiche) {
+        statoCell = pratiche.map(function(p) {
+          var c = SED_COLOR(p.stato);
+          var label = p.tipo === 'AUTORIZZAZIONE' ? 'AUT'
+            : p.tipo === 'NULLA OSTA' ? 'NO'
+            : p.tipo === 'ORDINANZA'  ? 'ORD'
+            : p.tipo.substring(0,3);
+          return '<span title="'+p.tipo+' — '+p.ente+'" style="display:inline-block;margin:1px 2px;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;color:'+c+';background:'+c+'18;border:1px solid '+c+'44">'+label+': '+p.stato+'</span>';
+        }).join('');
+      } else {
+        var c0 = SED_COLOR('IN REDAZIONE');
+        statoCell = '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;color:'+c0+';background:'+c0+'18;border:1px solid '+c0+'44">IN REDAZIONE</span>';
+      }
+
+      // Note e data da CSV
+      var noteVal   = pratiche ? pratiche.map(function(p){return p.note;}).filter(Boolean).join(' | ') : '';
+      var noteSafe  = noteVal.replace(/"/g,'&quot;').replace(/</g,'&lt;');
+      var dataInvio = pratiche ? (pratiche.map(function(p){return p.dr_invio||'';}).filter(Boolean)[0] || '') : '';
+
       return '<tr style="border-bottom:1px solid var(--border)">'
         +'<td class="tbl-td" style="padding:8px 14px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+nameSafe+'"><span style="font-size:12px;font-weight:600;color:var(--text)">'+nameSafe+'</span></td>'
         +'<td class="tbl-td" style="padding:8px 10px"><span class="sed-tipo-chip '+d.tipo+'">'+tipoLabel+'</span></td>'
         +'<td class="tbl-td" style="padding:8px 10px"><span class="tbl-lotto-chip">'+(d.lotto||'—')+'</span></td>'
         +'<td class="tbl-td" style="padding:8px 10px;font-size:11px;color:var(--text2)">'+(d.comune||'—')+'</td>'
         +'<td class="tbl-td" style="padding:8px 10px;font-size:11px;color:var(--text2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+enteSafe+'">'+(d.ente||'—')+'</td>'
-        +'<td class="tbl-td" style="padding:6px 10px"><select class="sed-stato-sel" data-fid="'+d.fid+'" style="color:'+col+';background:'+col+'14;border:1px solid '+col+'44;border-radius:5px;padding:4px 7px;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;outline:none" onchange="sedSetStato('+d.fid+',this.value)">'+optsHtml+'</select></td>'
-        +'<td class="tbl-td" style="padding:6px 10px"><input type="date" class="sed-date-input" data-fid="'+d.fid+'" value="'+(e.data_invio||'')+'" onchange="sedSetDate('+d.fid+',this.value)"></td>'
-        +'<td class="tbl-td" style="padding:6px 10px"><input type="text" class="sed-note-input" data-fid="'+d.fid+'" value="'+noteSafe+'" placeholder="aggiungi nota…" maxlength="200" onchange="sedSetNote('+d.fid+',this.value)" oninput="sedSetNote('+d.fid+',this.value)"></td>'
+        +'<td class="tbl-td" style="padding:6px 10px">'+statoCell+'</td>'
+        +'<td class="tbl-td" style="padding:6px 10px;font-size:11px;color:var(--text2)">'+(dataInvio||'—')+'</td>'
+        +'<td class="tbl-td" style="padding:6px 10px;font-size:11px;color:var(--text2);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+noteSafe+'">'+(noteVal||'—')+'</td>'
         +'</tr>';
     }).join('');
 
@@ -1280,11 +1308,6 @@
       var el = document.getElementById(id); if(el) el.value='';
     });
     window.renderSed();
-  };
-
-  window.sedResetAll = function() {
-    if (!confirm('Sei sicuro di voler azzerare tutti gli stati SED? L\'operazione non è reversibile.')) return;
-    _sedStati = {}; saveLS(); window.renderSed();
   };
 
   var _sedCollapsed = false;
@@ -1330,7 +1353,8 @@
           lotto:     f.properties.LOTTO || '',
           comune:    f.properties.COMUNE || '',
           provincia: f.properties.PROVINCIA || '',
-          ente:      f.properties.ENTE || ''
+          ente:      f.properties.ENTE || '',
+          nSed:      f.properties.N_SED || ''
         };
       }).sort(function(a,b) {
         if (a.lotto < b.lotto) return -1;
@@ -1340,18 +1364,7 @@
 
       var lotti = [];
       _sedData.forEach(function(d){ if(d.lotto && lotti.indexOf(d.lotto)===-1) lotti.push(d.lotto); });
-      lotti.sort(function(a, b) {
-        function parseLotto(s) {
-          var m = String(s).match(/^(\d+)([a-zA-Z]*)$/);
-          // suffisso vuoto → '{' (viene dopo 'z' in ASCII) così 1a,1b vengono prima di 1
-          return m ? [parseInt(m[1], 10), m[2].toLowerCase() || '{'] : [Infinity, s];
-        }
-        var pa = parseLotto(a), pb = parseLotto(b);
-        if (pa[0] !== pb[0]) return pa[0] - pb[0];
-        if (pa[1] < pb[1]) return -1;
-        if (pa[1] > pb[1]) return 1;
-        return 0;
-      });
+      lotti.sort(sortLotti);
       var selLotto = document.getElementById('sedFLotto');
       if (selLotto) lotti.forEach(function(l) {
         var opt = document.createElement('option');
@@ -1375,8 +1388,8 @@
   function updateQuickCard() {
     if (!_sedData || !_sedData.length) return;
     var tot  = _sedData.length;
-    var ott  = _sedData.filter(function(d){ return getEntry(d.fid).stato === 'OTTENUTO'; }).length;
-    var inv  = _sedData.filter(function(d){ return ['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE','PROTOCOLLATA INTEGRAZIONE','OTTENUTO'].indexOf(getEntry(d.fid).stato) !== -1; }).length;
+    var ott  = _sedData.filter(function(d){ return getSedStatoPrincipale(d) === 'OTTENUTO'; }).length;
+    var inv  = _sedData.filter(function(d){ return ['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE','PROTOCOLLATA INTEGRAZIONE','OTTENUTO'].indexOf(getSedStatoPrincipale(d)) !== -1; }).length;
     var pctOtt = tot > 0 ? Math.round(ott / tot * 100) : 0;
     var pctInv = tot > 0 ? Math.round(inv / tot * 100) : 0;
     var el;
@@ -1397,7 +1410,7 @@
     if (sqRows) {
       sqRows.innerHTML = TIPI.map(function(t) {
         var n    = _sedData.filter(function(d){ return d.tipo === t.key; }).length;
-        var nOtt = _sedData.filter(function(d){ return d.tipo === t.key && getEntry(d.fid).stato === 'OTTENUTO'; }).length;
+        var nOtt = _sedData.filter(function(d){ return d.tipo === t.key && getSedStatoPrincipale(d) === 'OTTENUTO'; }).length;
         var tPct = n > 0 ? Math.round(nOtt / n * 100) : 0;
         return '<div>'
           +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">'
@@ -1414,22 +1427,9 @@
     _sedData.forEach(function(d) {
       if (!lottiMap[d.lotto]) lottiMap[d.lotto] = { tot:0, ott:0 };
       lottiMap[d.lotto].tot++;
-      if (getEntry(d.fid).stato === 'OTTENUTO') lottiMap[d.lotto].ott++;
+      if (getSedStatoPrincipale(d) === 'OTTENUTO') lottiMap[d.lotto].ott++;
     });
-    var lotti = Object.keys(lottiMap).sort(function(a, b) {
-      // 1a,1b,2a,2b (con lettera) → poi 1,2,3... (numerici puri)
-      function parseLotto(s) {
-        var m = String(s).match(/^(\d+)([a-zA-Z]*)$/);
-        return m ? [parseInt(m[1], 10), m[2].toLowerCase()] : [Infinity, s];
-      }
-      var pa = parseLotto(a), pb = parseLotto(b);
-      var aLet = pa[1] !== '', bLet = pb[1] !== '';
-      if (aLet !== bLet) return aLet ? -1 : 1;    // con lettera prima
-      if (pa[0] !== pb[0]) return pa[0] - pb[0];  // ordine numerico
-      if (pa[1] < pb[1]) return -1;
-      if (pa[1] > pb[1]) return 1;
-      return 0;
-    });
+    var lotti = Object.keys(lottiMap).sort(sortLotti);
     var sqLottoRows = document.getElementById('sqLottoRows');
     if (sqLottoRows) {
       sqLottoRows.innerHTML = lotti.map(function(l) {
@@ -1450,8 +1450,6 @@
   // Patch renderSed e sedSetStato per aggiornare anche la quick card
   var _origRenderSed = window.renderSed;
   window.renderSed = function(keepPage) { _origRenderSed(keepPage); updateQuickCard(); };
-  var _origSetStato = window.sedSetStato;
-  window.sedSetStato = function(fid, val) { getEntry(fid).stato = val; saveLS(); window.renderSed(true); };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', loadSED);
@@ -1498,7 +1496,6 @@
       </div>
       <div style="display:flex;gap:6px;align-items:center">
         <button onclick="exportSedXlsx()" style="font-size:11px;padding:6px 13px;border-radius:7px;background:#1e6b1e;color:#c8f0c8;border:1px solid #2e8c2e;cursor:pointer;font-family:inherit;font-weight:600;transition:opacity 0.15s" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">&#128202; Scarica Excel</button>
-        <button onclick="sedResetAll()" style="font-size:11px;padding:6px 12px;border-radius:7px;background:transparent;border:1px solid var(--border2);color:var(--muted);cursor:pointer;font-family:inherit;font-weight:600;transition:all 0.15s" onmouseover="this.style.borderColor='var(--accent2)';this.style.color='var(--accent2)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--muted)'">&#8634; Reset stati</button>
         <button onclick="sedToggleCollapse()" id="sedCollapseBtn" style="font-size:11px;padding:6px 10px;border-radius:7px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);cursor:pointer;font-family:inherit;font-weight:600;transition:all 0.15s">&#9650; Comprimi</button>
       </div>
     </div>
@@ -1962,15 +1959,35 @@ async function fetchRiepilogoCSV(forceFresh = false) {
 
 // ── HELPER GLOBALI ────────────────────────────────────────────────────────────
 const STATI_COLORI_MAP = {
-  'IN ATTESA':'#4a4f6a','IN REDAZIONE':'#4a4f6a',
-  'IN FIRMA RDS':'#e07b3a','COORDINAMENTO':'#9b59b6','INVIATO':'#4f8ef7','PROTOCOLLATO':'#4f8ef7',
-  'NECESSARIA INTEGRAZIONE':'#cc3333','IN REDAZIONE INTEGRAZIONE':'#cc3333','PROTOCOLLATO INTEGRAZIONE':'#B5657A','OTTENUTO':'#3a8c5c'
+  'IN ATTESA':                 '#8A91B4',
+  'IN REDAZIONE':              '#C08A14',
+  'IN FIRMA RDS':              '#e07b3a',
+  'COORDINAMENTO':             '#7A3DAA',
+  'INVIATO':                   '#0B3182',
+  'PROTOCOLLATO':              '#0B3182',
+  'NECESSARIA INTEGRAZIONE':   '#C23B22',
+  'IN REDAZIONE INTEGRAZIONE': '#B5657A',
+  'PROTOCOLLATA INTEGRAZIONE': '#B5657A',
+  'OTTENUTO':                  '#1F7A4E'
 };
 
 function parseDateIT(s) {
   if (!s || !s.trim()) return null;
   const p = s.trim().split('/');
   return p.length === 3 ? new Date(+p[2], +p[1]-1, +p[0]) : new Date(s.trim());
+}
+
+// Globale — usata in ordinamento lotti ovunque
+function parseLotto(s) {
+  var m = String(s).match(/^(\d+)([a-zA-Z]*)$/);
+  return m ? [parseInt(m[1], 10), m[2].toLowerCase()] : [Infinity, String(s)];
+}
+function sortLotti(a, b) {
+  var pa = parseLotto(a), pb = parseLotto(b);
+  var aL = pa[1] !== '', bL = pb[1] !== '';
+  if (aL !== bL) return aL ? -1 : 1;
+  if (pa[0] !== pb[0]) return pa[0] - pb[0];
+  return pa[1] < pb[1] ? -1 : pa[1] > pb[1] ? 1 : 0;
 }
 
 function fmtDateIT(s) {
@@ -4993,6 +5010,8 @@ async function loadMaster() {
     const iLungh = findCol('LUNGHEZZA');
     const iPrat  = findCol('PRATICA');
     const iComM  = findCol('COMUNE');
+    const iNSed  = findCol('N_SED');
+    const iNote  = findCol('NOTE');
 
     if (iTrat === -1 || iPrat === -1) return;
 
@@ -5020,6 +5039,8 @@ async function loadMaster() {
       const dum    = iDUM !== -1 ? (cols[iDUM]?.trim() || '') : '';
       const src    = iSrc !== -1 ? (cols[iSrc]?.trim() || '') : '';
       const comune = iComM !== -1 ? (cols[iComM]?.trim() || '') : '';
+      const nSed   = iNSed !== -1 ? (cols[iNSed]?.trim() || '') : '';
+      const note   = iNote !== -1 ? (cols[iNote]?.trim() || '') : '';
 
       // Estrai lotto da Source.Name (es. "Lotto 1A.xlsx" → "1A")
       const lotto = src ? src.replace(/\.xlsx$/i,'').replace(/^Lotto\s*/i,'').trim().toUpperCase() : '';
@@ -5030,23 +5051,30 @@ async function loadMaster() {
       const exDate  = existing ? parseDateIT(existing.dum) : null;
 
       if (!existing) {
-        // Prima riga: salva tutto incluso dr_invio se è INVIATO
-        // dr_invio = DR della riga INVIATO; se DR è vuoto, usa DUM (stessa data)
         permessiMap[key] = {
-          tratta, prat, tipo, stato, ente, dr, dum, lungh, lotto, comune,
+          tratta, prat, tipo, stato, ente, dr, dum, lungh, lotto, comune, nSed, note,
           dr_invio: stato === 'INVIATO' ? (dr || dum) : ''
         };
       } else if (dumDate && (!exDate || dumDate >= exDate)) {
-        // Riga più recente: aggiorna stato/ente/dum ma preserva dr_invio se già noto
         const dr_invio = existing.dr_invio
           || (stato === 'INVIATO' ? (dr || dum) : '')
           || (existing.stato === 'INVIATO' ? (existing.dr || existing.dum) : '');
-        permessiMap[key] = { tratta, prat, tipo, stato, ente, dr, dum, lungh, lotto, comune: comune || existing.comune || '', dr_invio };
+        permessiMap[key] = { tratta, prat, tipo, stato, ente, dr, dum, lungh, lotto, comune: comune || existing.comune || '', nSed: existing.nSed || nSed, note: note || existing.note || '', dr_invio };
       } else if (stato === 'INVIATO' && !existing.dr_invio) {
-        // Riga più vecchia ma è INVIATO: salva solo dr_invio
         existing.dr_invio = dr;
       }
     }
+
+    // Indice N_SED → array pratiche (per tabella SED da CSV)
+    window._sedFromCSV = {};
+    Object.values(permessiMap).forEach(r => {
+      if (!r.nSed) return;
+      if (!window._sedFromCSV[r.nSed]) window._sedFromCSV[r.nSed] = [];
+      window._sedFromCSV[r.nSed].push({
+        tipo: r.tipo, stato: r.stato, ente: r.ente,
+        prat: r.prat, dr: r.dr, dum: r.dum, dr_invio: r.dr_invio, note: r.note
+      });
+    });
 
     // Raggruppa per lotto → per codice pratica (AUT/N/LOTTO)
     // Costruisce window._praticheDetailPerLotto
@@ -7338,17 +7366,7 @@ _hookScadenze();
       ...STATI_ORDER.filter(s => allStati.includes(s)),
       ...allStati.filter(s => !STATI_ORDER.includes(s)).sort()
     ];
-    function parseLotto(s) {
-      const m = String(s).match(/^(\d+)([a-zA-Z]*)$/);
-      return m ? [parseInt(m[1],10), m[2].toLowerCase()] : [Infinity, s];
-    }
-    const lotti = [...new Set(rows.map(r=>r.lotto).filter(Boolean))].sort((a,b) => {
-      const pa = parseLotto(a), pb = parseLotto(b);
-      const aL = pa[1]!=='', bL = pb[1]!=='';
-      if (aL !== bL) return aL ? -1 : 1;
-      if (pa[0] !== pb[0]) return pa[0]-pb[0];
-      return pa[1]<pb[1]?-1:pa[1]>pb[1]?1:0;
-    });
+    const lotti = [...new Set(rows.map(r=>r.lotto).filter(Boolean))].sort(sortLotti);
     const imprese = [...new Set(rows.map(r=>r.impresa).filter(Boolean))].sort();
     function fillSel(id, vals) {
       const sel = document.getElementById(id);
