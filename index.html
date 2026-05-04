@@ -5084,10 +5084,14 @@ async function loadMaster() {
     window._sedFromCSV = {};
     Object.values(permessiMap).forEach(r => {
       if (!r.nSed) return;
-      if (!window._sedFromCSV[r.nSed]) window._sedFromCSV[r.nSed] = [];
-      window._sedFromCSV[r.nSed].push({
-        tipo: r.tipo, stato: r.stato, ente: r.ente,
-        prat: r.prat, dr: r.dr, dum: r.dum, dr_invio: r.dr_invio, note: r.note
+      const entry = { tipo: r.tipo, stato: r.stato, ente: r.ente,
+        prat: r.prat, dr: r.dr, dum: r.dum, dr_invio: r.dr_invio, note: r.note };
+      // Supporta più SED separati da ' - ' es. "SED-130 - SED-131"
+      r.nSed.split(/\s*-\s*(?=SED-)/).forEach(key => {
+        key = key.trim();
+        if (!key) return;
+        if (!window._sedFromCSV[key]) window._sedFromCSV[key] = [];
+        window._sedFromCSV[key].push(entry);
       });
     });
 
