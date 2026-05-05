@@ -2198,17 +2198,38 @@ async function loadSED() {
         const iNSed  = idx('N_SED'),    iTipo  = idx('TIPO_PERMESSO');
         const iEnte  = idx('ENTE'),     iStato = idx('STATO_PERMESSO');
         const iInvio = idx('DATA_RICHIESTA'), iNote = idx('NOTE');
-        const iPrat  = idx('PRATICA');
-        const map2 = {};
+        const iPrat  = idx('PRATICA'),  iDum   = idx('DATA_ULTIMA_MODIFICA');
+
+        const permMap = {}; // key: nSed|pratica|tipo → best row
         rows.slice(1).forEach(row => {
           if (!row.trim()) return;
           const cols = row.split(';').map(c => c.trim().replace(/^"|"$/g,''));
           const nSed = cols[iNSed]; if (!nSed) return;
-          if (!map2[nSed]) map2[nSed] = [];
-          map2[nSed].push({
-            tipo: cols[iTipo]||'', ente: cols[iEnte]||'',
-            stato: cols[iStato]||'', dr_invio: cols[iInvio]||'',
-            note: cols[iNote]||'', pratica: cols[iPrat]||''
+          const prat = iPrat >= 0 ? cols[iPrat]||'' : '';
+          const tipo = iTipo >= 0 ? cols[iTipo]||'' : '';
+          const dum  = iDum  >= 0 ? cols[iDum] ||'' : '';
+          const key  = nSed + '|' + prat + '|' + tipo;
+          const existing = permMap[key];
+          const dumDate  = dum ? new Date(dum.split('/').reverse().join('-')) : null;
+          const exDate   = existing?.dum ? new Date(existing.dum.split('/').reverse().join('-')) : null;
+          if (!existing || (dumDate && (!exDate || dumDate >= exDate))) {
+            permMap[key] = {
+              nSed, pratica: prat, tipo,
+              ente:  iEnte  >= 0 ? cols[iEnte] ||'' : '',
+              stato: iStato >= 0 ? cols[iStato]||'' : '',
+              invio: iInvio >= 0 ? cols[iInvio]||'' : '',
+              dum,
+              note:  iNote  >= 0 ? cols[iNote] ||'' : ''
+            };
+          }
+        });
+
+        const map2 = {};
+        Object.values(permMap).forEach(r => {
+          const keys = r.nSed.split(' - ').map(k => k.trim()).filter(Boolean);
+          keys.forEach(k => {
+            if (!map2[k]) map2[k] = [];
+            map2[k].push(r);
           });
         });
         window._sedFromCSV = map2;
@@ -2257,7 +2278,7 @@ async function loadSED() {
             return `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px;border-radius:5px;background:var(--surface2);margin-bottom:3px;gap:8px">
               <span style="font-size:10px;font-weight:700;color:var(--accent);font-family:'DM Mono',monospace;flex-shrink:0">${p2.pratica||'—'}</span>
               <span style="font-size:10px;color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px">${p2.ente||'—'}</span>
-              <span style="font-size:9px;color:var(--muted2);flex-shrink:0">${p2.dr_invio||''}</span>
+              <span style="font-size:9px;color:var(--muted2);flex-shrink:0">${p2.dum||p2.invio||''}</span>
               <span style="padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700;color:${c};background:${c}15;border:1px solid ${c}40;flex-shrink:0">${p2.stato}</span>
             </div>`;
           }).join('');
