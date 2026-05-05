@@ -2194,10 +2194,11 @@ async function loadSED() {
         const csvText = await csvResp.text();
         const rows = csvText.split('\n');
         const headers = rows[0].split(';').map(h => h.trim().replace(/^"|"$/g,''));
-        const idx = n => headers.indexOf(n);
-        const iNSed   = idx('N_SED'), iTipo = idx('TIPO'), iEnte = idx('ENTE');
-        const iStato  = idx('STATO'), iInvio = idx('DR_INVIO'), iNote = idx('NOTE');
-        const iPrat   = idx('PRATICA');
+        const idx = n => headers.findIndex(h => h.toUpperCase() === n.toUpperCase());
+        const iNSed  = idx('N_SED'),    iTipo  = idx('TIPO_PERMESSO');
+        const iEnte  = idx('ENTE'),     iStato = idx('STATO_PERMESSO');
+        const iInvio = idx('DATA_RICHIESTA'), iNote = idx('NOTE');
+        const iPrat  = idx('PRATICA');
         const map2 = {};
         rows.slice(1).forEach(row => {
           if (!row.trim()) return;
