@@ -2197,6 +2197,7 @@ async function loadSED() {
         const idx = n => headers.indexOf(n);
         const iNSed   = idx('N_SED'), iTipo = idx('TIPO'), iEnte = idx('ENTE');
         const iStato  = idx('STATO'), iInvio = idx('DR_INVIO'), iNote = idx('NOTE');
+        const iPrat   = idx('PRATICA');
         const map2 = {};
         rows.slice(1).forEach(row => {
           if (!row.trim()) return;
@@ -2205,7 +2206,8 @@ async function loadSED() {
           if (!map2[nSed]) map2[nSed] = [];
           map2[nSed].push({
             tipo: cols[iTipo]||'', ente: cols[iEnte]||'',
-            stato: cols[iStato]||'', dr_invio: cols[iInvio]||'', note: cols[iNote]||''
+            stato: cols[iStato]||'', dr_invio: cols[iInvio]||'',
+            note: cols[iNote]||'', pratica: cols[iPrat]||''
           });
         });
         window._sedFromCSV = map2;
@@ -2252,8 +2254,9 @@ async function loadSED() {
           const rows = gruppi[tipo].map(p2 => {
             const c = getSC(p2.stato);
             return `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px;border-radius:5px;background:var(--surface2);margin-bottom:3px;gap:8px">
-              <span style="font-size:10px;font-weight:600;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p2.ente||'—'}</span>
-              <span style="font-size:9px;color:var(--muted2);flex-shrink:0">${p2.dr_invio||p2.dr||''}</span>
+              <span style="font-size:10px;font-weight:700;color:var(--accent);font-family:'DM Mono',monospace;flex-shrink:0">${p2.pratica||'—'}</span>
+              <span style="font-size:10px;color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px">${p2.ente||'—'}</span>
+              <span style="font-size:9px;color:var(--muted2);flex-shrink:0">${p2.dr_invio||''}</span>
               <span style="padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700;color:${c};background:${c}15;border:1px solid ${c}40;flex-shrink:0">${p2.stato}</span>
             </div>`;
           }).join('');
@@ -2268,7 +2271,7 @@ async function loadSED() {
           <div class="popup-head">
             <div class="popup-head-top">
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                ${p.N_SED ? `<span style="font-size:13px;font-weight:700;font-family:'DM Mono',monospace;color:var(--accent);letter-spacing:.03em">${p.N_SED}</span>` : ''}
+                ${p.N_SED ? `<span style="font-size:12px;font-weight:700;font-family:'DM Mono',monospace;color:var(--text);background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:2px 8px;letter-spacing:.03em">${p.N_SED}</span>` : ''}
                 <span class="popup-stato" style="background:${m.bg};color:${m.color};border:1.5px solid ${m.border};padding:2px 9px;font-size:10px">
                   <span class="popup-stato-dot" style="background:${m.color}"></span>${m.label || tipo}
                 </span>
@@ -2286,8 +2289,6 @@ async function loadSED() {
               ${p.COMUNE    ? `<div class="popup-field"><span class="popup-field-label">Comune</span><span class="popup-field-val" style="font-size:11px">${p.COMUNE}</span></div>` : ''}
               ${p.PROVINCIA ? `<div class="popup-field"><span class="popup-field-label">Provincia</span><span class="popup-field-val" style="font-size:11px">${p.PROVINCIA}</span></div>` : ''}
               ${p.ENTE      ? `<div class="popup-field" style="grid-column:1/-1"><span class="popup-field-label">Ente</span><span class="popup-field-val" style="font-size:10px;white-space:normal;line-height:1.3">${p.ENTE}</span></div>` : ''}
-              <div class="popup-field"><span class="popup-field-label">Lat</span><span class="popup-field-val" style="font-size:10px">${parseFloat(coordLat).toFixed(5)}</span></div>
-              <div class="popup-field"><span class="popup-field-label">Lng</span><span class="popup-field-val" style="font-size:10px">${parseFloat(coordLng).toFixed(5)}</span></div>
             </div>
           </div>
 
