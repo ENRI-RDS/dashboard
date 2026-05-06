@@ -2199,7 +2199,7 @@ async function loadSED() {
         const iEnte  = idx('ENTE'),     iStato = idx('STATO_PERMESSO');
         const iInvio = idx('DATA_RICHIESTA'), iNote = idx('NOTE');
         const iPrat  = idx('PRATICA'),  iDum   = idx('DATA_ULTIMA_MODIFICA');
-        const iLotto = idx('LOTTO');
+        const iLotto = idx('LOTTO'),    iSrc   = idx('Source.Name');
 
         const permMap = {}; // key: nSed|pratica|tipo → best row
         rows.slice(1).forEach(row => {
@@ -2209,7 +2209,9 @@ async function loadSED() {
           const prat = iPrat >= 0 ? cols[iPrat]||'' : '';
           const tipo = iTipo >= 0 ? cols[iTipo]||'' : '';
           const dum  = iDum  >= 0 ? cols[iDum] ||'' : '';
-          const lotto= iLotto>= 0 ? cols[iLotto]||'' : '';
+          const src  = iSrc  >= 0 ? cols[iSrc] ||'' : '';
+          const lotto= src ? src.replace(/\.xlsx$/i,'').replace(/^Lotto\s*/i,'').trim().toUpperCase()
+                           : (iLotto >= 0 ? cols[iLotto]||'' : '');
           const key  = nSed + '|' + prat + '|' + tipo;
           const existing = permMap[key];
           const dumDate  = dum ? new Date(dum.split('/').reverse().join('-')) : null;
@@ -2262,85 +2264,63 @@ async function loadSED() {
         const gmapsUrlSed = (p.LATITUDINE && p.LONGITUDINE)
           ? `https://www.google.com/maps?q=${p.LATITUDINE},${p.LONGITUDINE}`
           : `https://www.google.com/maps?q=${_coords.lat.toFixed(6)},${_coords.lng.toFixed(6)}`;
-        // Pratiche CSV per questo SED (se disponibile)
+        // Pratiche CSV per questo SED
         const nSedKey = p.N_SED || '';
         const csvPrats = (window._sedFromCSV && nSedKey && window._sedFromCSV[nSedKey]) ? window._sedFromCSV[nSedKey] : [];
-        const STATI_C = window.STATO_COLORS || {};
-        const getSC = s => STATI_C[s] || '#888';
+        const getSC = s => (window.STATO_COLORS||{})[s] || '#888';
 
-        // Riepilogo stati pratiche
-        const statiMap = {};
-        csvPrats.forEach(p2 => { statiMap[p2.stato] = (statiMap[p2.stato]||0)+1; });
-        const statiBadges = Object.keys(statiMap).map(s => {
-          const c = getSC(s);
-          return `<span style="padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700;color:${c};background:${c}18;border:1px solid ${c}44;white-space:nowrap">${statiMap[s]}× ${s}</span>`;
-        }).join(' ');
-
-        // Righe pratiche per tipo
+        // Raggruppa pratiche per tipo permesso
         const gruppi = {};
         csvPrats.forEach(p2 => { if(!gruppi[p2.tipo]) gruppi[p2.tipo]=[]; gruppi[p2.tipo].push(p2); });
+
         const pratHTML = Object.keys(gruppi).map(tipo => {
           const rows = gruppi[tipo].map(p2 => {
             const c = getSC(p2.stato);
-            return `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px;border-radius:5px;background:var(--surface2);margin-bottom:3px;gap:8px">
-              <span style="font-size:10px;font-weight:700;color:var(--accent);font-family:'DM Mono',monospace;flex-shrink:0">${p2.pratica||'—'}</span>
-              <span style="font-size:10px;color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px">${p2.ente||'—'}</span>
-              <span style="font-size:9px;color:var(--muted2);flex-shrink:0">${p2.dum||p2.invio||''}</span>
-              <span style="padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700;color:${c};background:${c}15;border:1px solid ${c}40;flex-shrink:0">${p2.stato}</span>
+            return `<div class="popup-detail-row" style="align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border)">
+              <span style="font-size:10px;font-weight:700;color:var(--accent);font-family:'DM Mono',monospace;min-width:80px">${p2.pratica||'—'}</span>
+              <span style="font-size:10px;color:var(--text2);flex:1">${p2.ente||'—'}</span>
+              <span style="font-size:9px;color:var(--muted2);white-space:nowrap">${p2.dum||p2.invio||''}</span>
+              <span style="padding:1px 7px;border-radius:3px;font-size:9px;font-weight:700;color:${c};background:${c}15;border:1px solid ${c}40;white-space:nowrap">${p2.stato}</span>
             </div>`;
           }).join('');
-          return `<div style="font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700;margin:8px 0 4px">${tipo}</div>${rows}`;
+          return `<div style="font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700;margin:8px 0 4px;padding-bottom:3px;border-bottom:2px solid var(--border2)">${tipo||'—'}</div>${rows}`;
         }).join('');
 
-        const coordLat = p.LATITUDINE || _coords.lat.toFixed(6);
-        const coordLng = p.LONGITUDINE || _coords.lng.toFixed(6);
-
-        layer.bindPopup(`<div class="popup-inner" style="min-width:min(320px,90vw);max-width:min(380px,94vw)">
-          <!-- HEADER -->
+        layer.bindPopup(`<div class="popup-inner">
           <div class="popup-head">
             <div class="popup-head-top">
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                ${p.N_SED ? `<span style="font-size:12px;font-weight:700;font-family:'DM Mono',monospace;color:var(--text);background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:2px 8px;letter-spacing:.03em">${p.N_SED}</span>` : ''}
+              <div style="display:flex;align-items:center;gap:8px">
+                ${p.N_SED ? `<span style="font-size:12px;font-weight:700;font-family:'DM Mono',monospace;color:var(--text);background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:2px 8px">${p.N_SED}</span>` : ''}
                 <span class="popup-stato" style="background:${m.bg};color:${m.color};border:1.5px solid ${m.border};padding:2px 9px;font-size:10px">
-                  <span class="popup-stato-dot" style="background:${m.color}"></span>${m.label || tipo}
+                  <span class="popup-stato-dot" style="background:${m.color}"></span>${m.label||tipo}
                 </span>
-                <span class="popup-lotto" style="font-size:12px;font-weight:600;color:var(--muted)">Lotto ${p.LOTTO || '—'}</span>
+                <span class="popup-impresa" style="font-size:12px;font-weight:600;color:var(--muted)">Lotto ${p.LOTTO||'—'}</span>
               </div>
               <button class="popup-close-btn" onclick="this.closest('.leaflet-popup').querySelector('.leaflet-popup-close-button').click()">✕</button>
             </div>
-            ${p.name ? `<div style="font-size:13px;font-weight:700;color:var(--text);margin-top:6px;line-height:1.3">${p.name}</div>` : ''}
-            <div style="height:3px;width:100%;margin-top:10px;border-radius:2px;background:${m.color}22"><div style="height:100%;width:100%;background:${m.color};opacity:.8"></div></div>
+            ${p.name ? `<div style="font-size:14px;font-weight:700;color:var(--text);margin-top:8px;line-height:1.3">${p.name}</div>` : ''}
+            <div style="height:3px;width:100%;margin-top:10px;border-radius:2px;background:${m.color}33;overflow:hidden"><div style="height:100%;width:100%;background:${m.color};opacity:.8"></div></div>
           </div>
-
-          <!-- INFO GENERALI -->
-          <div style="padding:10px 14px 10px 16px">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 10px">
-              ${p.COMUNE    ? `<div class="popup-field"><span class="popup-field-label">Comune</span><span class="popup-field-val" style="font-size:11px">${p.COMUNE}</span></div>` : ''}
-              ${p.PROVINCIA ? `<div class="popup-field"><span class="popup-field-label">Provincia</span><span class="popup-field-val" style="font-size:11px">${p.PROVINCIA}</span></div>` : ''}
-              ${p.ENTE      ? `<div class="popup-field" style="grid-column:1/-1"><span class="popup-field-label">Ente</span><span class="popup-field-val" style="font-size:10px;white-space:normal;line-height:1.3">${p.ENTE}</span></div>` : ''}
+          <div class="popup-body" style="flex-direction:column">
+            <div class="popup-body-left">
+              <div class="popup-grid">
+                ${p.COMUNE    ? `<div class="popup-field"><span class="popup-field-label">Comune</span><span class="popup-field-val">${p.COMUNE}</span></div>` : ''}
+                ${p.PROVINCIA ? `<div class="popup-field"><span class="popup-field-label">Provincia</span><span class="popup-field-val">${p.PROVINCIA}</span></div>` : ''}
+                ${p.ENTE      ? `<div class="popup-field full"><span class="popup-field-label">Ente</span><span class="popup-field-val" style="font-size:11px">${p.ENTE}</span></div>` : ''}
+              </div>
+              ${csvPrats.length ? `<div class="popup-section">
+                <div class="popup-section-title">Pratiche (${csvPrats.length})</div>
+                ${pratHTML}
+              </div>` : `<div style="font-size:11px;color:var(--muted);font-style:italic;padding:8px 0">Nessuna pratica associata</div>`}
             </div>
           </div>
-
-          <!-- PRATICHE CSV -->
-          ${csvPrats.length > 0 ? `
-          <div style="border-top:1px solid var(--border);padding:10px 14px 10px 16px">
-            <div style="display:flex;align-items:center;margin-bottom:8px">
-              <span style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">📋 Pratiche (${csvPrats.length})</span>
-            </div>
-            ${pratHTML}
-          </div>` : `
-          <div style="border-top:1px solid var(--border);padding:10px 14px;font-size:10px;color:var(--muted);font-style:italic">
-            Nessuna pratica CSV associata
-          </div>`}
-
-          <!-- FOOTER -->
-          <div style="border-top:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;background:var(--surface2);border-radius:0 0 14px 14px">
-            <a class="popup-gmaps-btn" href="${gmapsUrlSed}" target="_blank" rel="noopener" style="font-size:10px;padding:4px 10px;margin:0">
+          <div style="padding:0 16px 12px">
+            <a class="popup-gmaps-btn" href="${gmapsUrlSed}" target="_blank" rel="noopener">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#2563eb"/></svg>
-              Google Maps
+              Apri in Google Maps
             </a>
           </div>
-        </div>`, { maxWidth: 400 });
+        </div>`, { maxWidth: 380 });
 
         layer.on('mouseover', () => {
           const el = layer.getElement();
