@@ -2199,6 +2199,7 @@ async function loadSED() {
         const iEnte  = idx('ENTE'),     iStato = idx('STATO_PERMESSO');
         const iInvio = idx('DATA_RICHIESTA'), iNote = idx('NOTE');
         const iPrat  = idx('PRATICA'),  iDum   = idx('DATA_ULTIMA_MODIFICA');
+        const iLotto = idx('LOTTO');
 
         const permMap = {}; // key: nSed|pratica|tipo → best row
         rows.slice(1).forEach(row => {
@@ -2208,18 +2209,24 @@ async function loadSED() {
           const prat = iPrat >= 0 ? cols[iPrat]||'' : '';
           const tipo = iTipo >= 0 ? cols[iTipo]||'' : '';
           const dum  = iDum  >= 0 ? cols[iDum] ||'' : '';
+          const lotto= iLotto>= 0 ? cols[iLotto]||'' : '';
           const key  = nSed + '|' + prat + '|' + tipo;
           const existing = permMap[key];
           const dumDate  = dum ? new Date(dum.split('/').reverse().join('-')) : null;
           const exDate   = existing?.dum ? new Date(existing.dum.split('/').reverse().join('-')) : null;
+          // Costruisce codice leggibile: NO/5/2B
+          const tipoPrefix = tipo === 'AUTORIZZAZIONE' ? 'AUT'
+            : tipo === 'NULLA OSTA' ? 'NO'
+            : tipo === 'ORDINANZA'  ? 'ORD'
+            : (tipo.substring(0,3)||'?');
+          const codice = tipoPrefix + (prat ? '/'+prat : '') + (lotto ? '/'+lotto : '');
           if (!existing || (dumDate && (!exDate || dumDate >= exDate))) {
             permMap[key] = {
-              nSed, pratica: prat, tipo,
+              nSed, pratica: codice, tipo,
               ente:  iEnte  >= 0 ? cols[iEnte] ||'' : '',
               stato: iStato >= 0 ? cols[iStato]||'' : '',
               invio: iInvio >= 0 ? cols[iInvio]||'' : '',
-              dum,
-              note:  iNote  >= 0 ? cols[iNote] ||'' : ''
+              dum, note: iNote >= 0 ? cols[iNote]||'' : ''
             };
           }
         });
@@ -2317,9 +2324,8 @@ async function loadSED() {
           <!-- PRATICHE CSV -->
           ${csvPrats.length > 0 ? `
           <div style="border-top:1px solid var(--border);padding:10px 14px 10px 16px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="display:flex;align-items:center;margin-bottom:8px">
               <span style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">📋 Pratiche (${csvPrats.length})</span>
-              <div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end">${statiBadges}</div>
             </div>
             ${pratHTML}
           </div>` : `
@@ -2328,12 +2334,11 @@ async function loadSED() {
           </div>`}
 
           <!-- FOOTER -->
-          <div style="border-top:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border-radius:0 0 14px 14px">
+          <div style="border-top:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;background:var(--surface2);border-radius:0 0 14px 14px">
             <a class="popup-gmaps-btn" href="${gmapsUrlSed}" target="_blank" rel="noopener" style="font-size:10px;padding:4px 10px;margin:0">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#2563eb"/></svg>
               Google Maps
             </a>
-            <span style="font-size:9px;color:var(--muted2);font-family:'DM Mono',monospace">${parseFloat(coordLat).toFixed(4)}, ${parseFloat(coordLng).toFixed(4)}</span>
           </div>
         </div>`, { maxWidth: 400 });
 
