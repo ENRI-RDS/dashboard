@@ -1308,6 +1308,7 @@
     var TIPO_LABEL = {FERROVIARIO:'Ferroviario', AUTOSTRADALE:'Autostradale', IDRICO:'Idrico'};
 
     var totalRows = rows.length;
+    window._sedCurrentRows = rows; // per export vista corrente
     if (_sedPage * SED_PAGE_SIZE >= totalRows) _sedPage = 0;
 
     // sort
@@ -1426,44 +1427,57 @@
     if (btn)  btn.textContent = _sedCollapsed ? '\u25BC Espandi' : '\u25B2 Comprimi';
   };
 
-  window.exportSedXlsx = function() {
-    if (!_sedData.length) { alert('Nessun dato SED disponibile.'); return; }
-    if (typeof XLSX === 'undefined') { alert('Libreria XLSX non disponibile.'); return; }
+  function buildSedCodice(p) {
+    var prefix = p.tipo === 'AUTORIZZAZIONE' ? 'AUT'
+      : p.tipo === 'NULLA OSTA' ? 'NO'
+      : p.tipo === 'ORDINANZA'  ? 'ORD'
+      : (p.tipo||'').substring(0,3)||'?';
+    return prefix + (p.prat ? '/'+p.prat : '') + (p.lotto ? '/'+p.lotto : '');
+  }
 
-    var header = ['Numero SED','Nome','Tipo Attraversamento','Lotto','Comune','Provincia','Ente GeoJSON',
-                  'Tipo Permesso','Codice Pratica','Ente Permesso','Stato Permesso','Data Ultima Modifica','Data Richiesta'];
-
+  function buildSedExcelRows(sedList) {
     var rows = [];
-    _sedData.forEach(function(d) {
+    sedList.forEach(function(d) {
       var pratiche = getSedPratiche(d);
       if (pratiche && pratiche.length) {
         pratiche.forEach(function(p) {
-          rows.push([
-            d.nSed||'', d.name||'', d.tipo||'', d.lotto||'', d.comune||'', d.provincia||'', d.ente||'',
-            p.tipo||'', p.prat||'', p.ente||'', p.stato||'', p.dum||'', p.dr||''
-          ]);
+          rows.push([d.nSed||'', d.name||'', d.tipo||'', d.lotto||'', d.comune||'', d.provincia||'', d.ente||'',
+                     p.tipo||'', buildSedCodice(p), p.ente||'', p.stato||'', p.dum||'', p.dr||'']);
         });
       } else {
-        // SED senza pratiche CSV — riga con dati base
         rows.push([d.nSed||'', d.name||'', d.tipo||'', d.lotto||'', d.comune||'', d.provincia||'', d.ente||'',
                    '','','','IN ATTESA','','']);
       }
     });
+    return rows;
+  }
 
+  function writeSedExcel(rows, filename) {
+    if (typeof XLSX === 'undefined') { alert('Libreria XLSX non disponibile.'); return; }
+    var header = ['Numero SED','Nome','Tipo Attraversamento','Lotto','Comune','Provincia','Ente GeoJSON',
+                  'Tipo Permesso','Codice Pratica','Ente Permesso','Stato Permesso','Data Ultima Modifica','Data Richiesta'];
     var ws = XLSX.utils.aoa_to_sheet([header].concat(rows));
     ws['!cols'] = [{wch:12},{wch:30},{wch:16},{wch:8},{wch:18},{wch:8},{wch:24},
-                   {wch:22},{wch:14},{wch:24},{wch:28},{wch:16},{wch:16}];
-
-    // Header styling
+                   {wch:22},{wch:16},{wch:24},{wch:28},{wch:16},{wch:16}];
     var range = XLSX.utils.decode_range(ws['!ref']);
     for (var c = range.s.c; c <= range.e.c; c++) {
       var cell = ws[XLSX.utils.encode_cell({r:0,c:c})];
       if (cell) cell.s = {font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'2F5496'}},alignment:{horizontal:'center'}};
     }
-
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'SED Attraversamenti');
-    XLSX.writeFile(wb, 'ENRI_SED_'+new Date().toISOString().split('T')[0]+'.xlsx');
+    XLSX.writeFile(wb, filename);
+  }
+
+  window.exportSedXlsx = function() {
+    if (!_sedData.length) { alert('Nessun dato SED disponibile.'); return; }
+    writeSedExcel(buildSedExcelRows(_sedData), 'ENRI_SED_tutti_'+new Date().toISOString().split('T')[0]+'.xlsx');
+  };
+
+  window.exportSedXlsxView = function() {
+    var current = window._sedCurrentRows;
+    if (!current || !current.length) { alert('Nessun dato nella vista corrente.'); return; }
+    writeSedExcel(buildSedExcelRows(current), 'ENRI_SED_vista_'+new Date().toISOString().split('T')[0]+'.xlsx');
   };
 
   async function loadSED() {
@@ -1653,7 +1667,8 @@
         <span id="sedBadge" class="badge" style="font-size:10px">Caricamento...</span>
       </div>
       <div style="display:flex;gap:6px;align-items:center">
-        <button onclick="exportSedXlsx()" style="font-size:11px;padding:6px 13px;border-radius:7px;background:#1e6b1e;color:#c8f0c8;border:1px solid #2e8c2e;cursor:pointer;font-family:inherit;font-weight:600;transition:opacity 0.15s" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">&#128202; Scarica Excel</button>
+        <button onclick="exportSedXlsxView()" style="font-size:11px;padding:6px 13px;border-radius:7px;background:#1a5c6e;color:#c8eaf0;border:1px solid #2e7d8c;cursor:pointer;font-family:inherit;font-weight:600;transition:opacity 0.15s" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">&#128202; Scarica Vista</button>
+        <button onclick="exportSedXlsx()" style="font-size:11px;padding:6px 13px;border-radius:7px;background:#1e6b1e;color:#c8f0c8;border:1px solid #2e8c2e;cursor:pointer;font-family:inherit;font-weight:600;transition:opacity 0.15s" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">&#128202; Scarica Tutti</button>
         <button onclick="sedToggleCollapse()" id="sedCollapseBtn" style="font-size:11px;padding:6px 10px;border-radius:7px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);cursor:pointer;font-family:inherit;font-weight:600;transition:all 0.15s">&#9650; Comprimi</button>
       </div>
     </div>
