@@ -1429,18 +1429,38 @@
   window.exportSedXlsx = function() {
     if (!_sedData.length) { alert('Nessun dato SED disponibile.'); return; }
     if (typeof XLSX === 'undefined') { alert('Libreria XLSX non disponibile.'); return; }
-    var header = ['Nome','Tipo','Lotto','Comune','Provincia','Ente','Stato Permesso','Data Invio','Note'];
-    var rows = _sedData.map(function(d) {
-      var e = getEntry(d.fid);
-      return [d.name, d.tipo, d.lotto, d.comune, d.provincia, d.ente, e.stato||'IN ATTESA', e.data_invio||'', e.note||''];
+
+    var header = ['Numero SED','Nome','Tipo Attraversamento','Lotto','Comune','Provincia','Ente GeoJSON',
+                  'Tipo Permesso','Codice Pratica','Ente Permesso','Stato Permesso','Data Ultima Modifica','Data Richiesta'];
+
+    var rows = [];
+    _sedData.forEach(function(d) {
+      var pratiche = getSedPratiche(d);
+      if (pratiche && pratiche.length) {
+        pratiche.forEach(function(p) {
+          rows.push([
+            d.nSed||'', d.name||'', d.tipo||'', d.lotto||'', d.comune||'', d.provincia||'', d.ente||'',
+            p.tipo||'', p.prat||'', p.ente||'', p.stato||'', p.dum||'', p.dr||''
+          ]);
+        });
+      } else {
+        // SED senza pratiche CSV — riga con dati base
+        rows.push([d.nSed||'', d.name||'', d.tipo||'', d.lotto||'', d.comune||'', d.provincia||'', d.ente||'',
+                   '','','','IN ATTESA','','']);
+      }
     });
+
     var ws = XLSX.utils.aoa_to_sheet([header].concat(rows));
-    ws['!cols'] = [{wch:30},{wch:16},{wch:8},{wch:20},{wch:8},{wch:28},{wch:28},{wch:14},{wch:40}];
+    ws['!cols'] = [{wch:12},{wch:30},{wch:16},{wch:8},{wch:18},{wch:8},{wch:24},
+                   {wch:22},{wch:14},{wch:24},{wch:28},{wch:16},{wch:16}];
+
+    // Header styling
     var range = XLSX.utils.decode_range(ws['!ref']);
     for (var c = range.s.c; c <= range.e.c; c++) {
       var cell = ws[XLSX.utils.encode_cell({r:0,c:c})];
       if (cell) cell.s = {font:{bold:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'2F5496'}},alignment:{horizontal:'center'}};
     }
+
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'SED Attraversamenti');
     XLSX.writeFile(wb, 'ENRI_SED_'+new Date().toISOString().split('T')[0]+'.xlsx');
