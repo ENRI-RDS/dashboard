@@ -1507,15 +1507,33 @@
       if (!resp.ok) throw new Error('HTTP '+resp.status);
       var geojson = await resp.json();
       _sedData = geojson.features.map(function(f) {
+        var p = f.properties || {};
+        var g = f.geometry || {};
+        // Coordinate: centroide approssimato dalla geometria
+        var lat = null, lng = null;
+        if (g.type === 'Point') {
+          lng = g.coordinates[0]; lat = g.coordinates[1];
+        } else if (g.type === 'LineString' && g.coordinates && g.coordinates.length) {
+          var mid = g.coordinates[Math.floor(g.coordinates.length/2)];
+          lng = mid[0]; lat = mid[1];
+        } else if (g.type === 'MultiLineString' && g.coordinates && g.coordinates.length) {
+          var seg = g.coordinates[0];
+          var mid2 = seg[Math.floor(seg.length/2)];
+          lng = mid2[0]; lat = mid2[1];
+        }
         return {
-          fid:       f.properties.fid,
-          name:      f.properties.name || '',
-          tipo:      f.properties.TIPO_ATTRAVERSAMENTO || 'IDRICO',
-          lotto:     f.properties.LOTTO || '',
-          comune:    f.properties.COMUNE || '',
-          provincia: f.properties.PROVINCIA || '',
-          ente:      f.properties.ENTE || '',
-          nSed:      f.properties.N_SED || ''
+          fid:       p.fid || '',
+          tratta:    p.N_SED || p.fid || '',
+          name:      p.name || '',
+          tipo:      p.TIPO_ATTRAVERSAMENTO || 'IDRICO',
+          lotto:     p.LOTTO || '',
+          comune:    p.COMUNE || '',
+          provincia: p.PROVINCIA || '',
+          ente:      p.ENTE || '',
+          nSed:      p.N_SED || '',
+          lungh:     p.LUNGHEZZA || p.lunghezza || 0,
+          lat:       lat,
+          lng:       lng
         };
       }).sort(function(a,b) {
         if (a.lotto < b.lotto) return -1;
@@ -7924,15 +7942,21 @@ window.addEventListener('DOMContentLoaded', adjustClusterMobile);
 function openSedModal(tratta) {
   var data = window._sedData || [];
   var getSP = window.getSedPratiche;
-  var sed = data.find(function(d){ return d.tratta === tratta; });
+  var sed = data.find(function(d){ return d.tratta === tratta || d.nSed === tratta; });
   if (!sed) { console.warn('SED non trovato:', tratta); return; }
   var pratiche = getSP ? getSP(sed) : [];
+
   var tipoLabel = sed.tipo === 'FERROVIARIO' ? 'Ferroviario'
     : sed.tipo === 'AUTOSTRADALE' ? 'Autostradale'
     : sed.tipo === 'IDRICO' ? 'Idrico' : (sed.tipo||'—');
   var tipoColor = sed.tipo === 'FERROVIARIO' ? '#e67e22'
     : sed.tipo === 'AUTOSTRADALE' ? '#27ae60'
     : sed.tipo === 'IDRICO' ? '#2980b9' : '#888';
+
+  function buildCodice(p) {
+    var pre = p.tipo==='AUTORIZZAZIONE'?'AUT':p.tipo==='NULLA OSTA'?'NO':p.tipo==='ORDINANZA'?'ORD':(p.tipo||'').substring(0,3)||'?';
+    return pre+(p.prat?'/'+p.prat:'')+(p.lotto?'/'+p.lotto:'');
+  }
 
   // Raggruppa pratiche per tipo
   var gruppi = {};
@@ -7943,68 +7967,65 @@ function openSedModal(tratta) {
 
   var pratHTML = '';
   Object.keys(gruppi).forEach(function(tipo){
-    pratHTML += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:10px 0 6px">'+(tipo||'—')+'</div>';
+    pratHTML += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:10px 0 5px;padding-bottom:3px;border-bottom:1px solid var(--border)">'+(tipo||'—')+'</div>';
     gruppi[tipo].forEach(function(p){
       var c = SED_COLOR(p.stato);
-      pratHTML += '<div class="sed-prat-row">'
-        +'<span style="font-size:11px;font-weight:600;color:var(--text)">'+(p.ente||'—')+'</span>'
-        +'<span style="font-size:10px;color:var(--muted2)">'+(p.dr_invio||p.dr||'—')+'</span>'
-        +'<span style="font-size:10px;color:var(--muted2)">'+(p.dum||'—')+'</span>'
-        +'<span style="padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;color:'+c+';background:'+c+'18;border:1px solid '+c+'44;white-space:nowrap">'+p.stato+'</span>'
-        +(p.note ? '<span style="grid-column:1/-1;font-size:10px;color:var(--muted);font-style:italic;padding-top:2px">📝 '+p.note+'</span>' : '')
+      var codice = buildCodice(p);
+      pratHTML += '<div style="display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border)">'
+        +'<span style="font-size:10px;font-weight:700;color:var(--accent);font-family:\'Fira Code\',monospace">'+codice+'</span>'
+        +'<span style="font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(p.ente||'—')+'</span>'
+        +'<span style="font-size:10px;color:var(--muted2);white-space:nowrap">'+(p.dum||p.dr||'—')+'</span>'
+        +'<span style="padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;color:'+c+';background:'+c+'18;border:1px solid '+c+'44">'+p.stato+'</span>'
+        +(p.note ? '<span style="grid-column:1/-1;font-size:10px;color:var(--muted);font-style:italic">📝 '+p.note+'</span>' : '')
         +'</div>';
     });
   });
 
   var nPrat = (pratiche||[]).length;
-  var stati = {};
-  (pratiche||[]).forEach(function(p){ stati[p.stato] = (stati[p.stato]||0)+1; });
-  var statiHTML = Object.keys(stati).map(function(s){
-    var c = SED_COLOR(s);
-    return '<span style="padding:2px 9px;border-radius:4px;font-size:10px;font-weight:700;color:'+c+';background:'+c+'18;border:1px solid '+c+'44;margin-right:4px">'+stati[s]+' × '+s+'</span>';
-  }).join('');
-
-  var lunghFmt = sed.lungh > 0 ? sed.lungh.toLocaleString('it-IT',{minimumFractionDigits:1,maximumFractionDigits:1})+' m' : '—';
+  var lunghFmt = sed.lungh > 0 ? Number(sed.lungh).toLocaleString('it-IT',{maximumFractionDigits:1})+' m' : '—';
+  var gmapsUrl = (sed.lat && sed.lng)
+    ? 'https://www.google.com/maps?q='+sed.lat.toFixed(6)+','+sed.lng.toFixed(6)
+    : null;
 
   document.getElementById('sedModalContent').innerHTML =
     // Header
-    '<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:22px 24px 16px;border-bottom:1px solid var(--border)">'
+    '<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:20px 24px 14px;border-bottom:1px solid var(--border)">'
       +'<div>'
-        +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
-          +'<span style="font-size:13px;font-weight:700;font-family:\'Fira Code\',monospace;color:var(--accent);letter-spacing:.04em">'+(sed.nSed||'—')+'</span>'
-          +'<span style="padding:3px 10px;border-radius:5px;font-size:10px;font-weight:700;color:'+tipoColor+';background:'+tipoColor+'15;border:1px solid '+tipoColor+'33">'+tipoLabel+'</span>'
+        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">'
+          +'<span style="font-size:13px;font-weight:700;font-family:\'Fira Code\',monospace;color:var(--accent)">'+(sed.nSed||'—')+'</span>'
+          +'<span style="padding:2px 9px;border-radius:5px;font-size:10px;font-weight:700;color:'+tipoColor+';background:'+tipoColor+'15;border:1px solid '+tipoColor+'33">'+tipoLabel+'</span>'
           +'<span class="tbl-lotto-chip">'+(sed.lotto||'—')+'</span>'
         +'</div>'
-        +'<div style="font-size:17px;font-weight:700;color:var(--text);line-height:1.2">'+(sed.nome||sed.tratta||'—')+'</div>'
+        +'<div style="font-size:16px;font-weight:700;color:var(--text);line-height:1.2">'+(sed.name||'—')+'</div>'
       +'</div>'
-      +'<button onclick="closeSedModal()" style="background:none;border:none;cursor:pointer;padding:4px;color:var(--muted);font-size:20px;line-height:1;margin-top:-2px" title="Chiudi">✕</button>'
+      +'<button onclick="closeSedModal()" style="background:none;border:none;cursor:pointer;padding:4px;color:var(--muted);font-size:20px;line-height:1;flex-shrink:0" title="Chiudi">✕</button>'
     +'</div>'
     // Info generali
-    +'<div class="sed-modal-section" style="padding-top:18px">'
+    +'<div class="sed-modal-section" style="padding-top:16px">'
       +'<div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:10px">📍 Informazioni generali</div>'
       +'<dl class="sed-modal-kv">'
-        +'<dt>Tratta ID</dt><dd style="font-family:\'Fira Code\',monospace;color:var(--accent)">'+(sed.tratta||'—')+'</dd>'
         +'<dt>Comune</dt><dd>'+(sed.comune||'—')+'</dd>'
+        +'<dt>Provincia</dt><dd>'+(sed.provincia||'—')+'</dd>'
+        +'<dt>Ente</dt><dd>'+(sed.ente||'—')+'</dd>'
         +'<dt>Lunghezza</dt><dd>'+lunghFmt+'</dd>'
-        +'<dt>Lotto</dt><dd>'+(sed.lotto||'—')+'</dd>'
-        +'<dt>Enti coinvolti</dt><dd>'+(sed.ente||'—')+'</dd>'
       +'</dl>'
     +'</div>'
-    // Riepilogo pratiche
+    // Pratiche
     +'<div class="sed-modal-section">'
-      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
-        +'<div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">📋 Pratiche ('+nPrat+')</div>'
-        +'<div>'+statiHTML+'</div>'
-      +'</div>'
+      +'<div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:8px">📋 Pratiche ('+nPrat+')</div>'
       +(pratHTML || '<div style="font-size:12px;color:var(--muted);font-style:italic">Nessuna pratica associata</div>')
     +'</div>'
     // Footer
-    +'<div style="padding:12px 24px;border-top:1px solid var(--border);background:var(--surface2);border-radius:0 0 14px 14px;display:flex;gap:8px;align-items:center">'
-      +'<span style="font-size:10px;color:var(--muted2)">Aggiornato al caricamento del Master.csv</span>'
+    +'<div style="padding:10px 24px;border-top:1px solid var(--border);background:var(--surface2);border-radius:0 0 14px 14px;display:flex;align-items:center;gap:10px">'
+      +(gmapsUrl
+        ? '<a href="'+gmapsUrl+'" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:5px 12px;border-radius:7px;background:#2563eb;color:#fff;text-decoration:none;transition:opacity .15s" onmouseover="this.style.opacity=\'.8\'" onmouseout="this.style.opacity=\'1\'">'
+          +'<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="white"/></svg>'
+          +'Apri in Google Maps</a>'
+        : '')
+      +'<span style="font-size:10px;color:var(--muted2);margin-left:auto">Aggiornato al caricamento del Master.csv</span>'
     +'</div>';
 
-  var modal = document.getElementById('sedModal');
-  modal.style.display = 'flex';
+  document.getElementById('sedModal').style.display = 'flex';
   document.body.style.overflow = 'hidden';
 }
 
