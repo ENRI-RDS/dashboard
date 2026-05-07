@@ -1293,13 +1293,33 @@
     var fTipo  = document.getElementById('sedFTipo')  ? document.getElementById('sedFTipo').value  : '';
     var fLotto = document.getElementById('sedFLotto') ? document.getElementById('sedFLotto').value : '';
     var fStato = document.getElementById('sedFStato') ? document.getElementById('sedFStato').value : '';
+    var fEnte  = document.getElementById('sedFEnte')  ? document.getElementById('sedFEnte').value  : '';
+
+    // Popola sedFEnte al primo caricamento
+    var selEnte = document.getElementById('sedFEnte');
+    if (selEnte && selEnte.options.length <= 1) {
+      var entiSet = new Set();
+      _sedData.forEach(function(d) {
+        var prats = getSedPratiche(d);
+        if (prats) prats.forEach(function(p){ if (p.ente) entiSet.add(p.ente); });
+        else if (d.ente) entiSet.add(d.ente);
+      });
+      Array.from(entiSet).sort().forEach(function(e) {
+        var o = document.createElement('option'); o.value = o.textContent = e; selEnte.appendChild(o);
+      });
+    }
 
     var rows = _sedData.filter(function(d) {
       if (fTipo  && d.tipo  !== fTipo)  return false;
       if (fLotto && d.lotto !== fLotto) return false;
       if (fStato && getSedStatoPrincipale(d) !== fStato) return false;
+      if (fEnte) {
+        var prats = getSedPratiche(d);
+        var hasEnte = prats && prats.some(function(p){ return p.ente === fEnte; });
+        if (!hasEnte && d.ente !== fEnte) return false;
+      }
       if (q) {
-        var hay = [d.name, d.ente, d.comune, d.lotto, getEntry(d.fid).note].join(' ').toLowerCase();
+        var hay = [d.name, d.ente, d.comune, d.lotto, d.nSed].join(' ').toLowerCase();
         if (hay.indexOf(q) === -1) return false;
       }
       return true;
@@ -1412,7 +1432,7 @@
   };
 
   window.sedResetFilters = function() {
-    ['sedQ','sedFTipo','sedFLotto','sedFStato'].forEach(function(id){
+    ['sedQ','sedFTipo','sedFLotto','sedFStato','sedFEnte'].forEach(function(id){
       var el = document.getElementById(id); if(el) el.value='';
     });
     window.renderSed();
@@ -1773,6 +1793,9 @@
           <option value="NECESSARIA INTEGRAZIONE">Necessaria Integrazione</option>
           <option value="OTTENUTO">Ottenuto</option>
         </select>
+        <select id="sedFEnte" onchange="renderSed()" style="background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:7px 10px;font-family:inherit;font-size:12px;color:var(--text);outline:none;cursor:pointer">
+          <option value="">Tutti gli enti</option>
+        </select>
         <button onclick="sedResetFilters()" style="font-size:10px;font-weight:600;padding:6px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--muted);cursor:pointer;font-family:inherit;transition:all .15s" onmouseover="this.style.borderColor='var(--accent2)';this.style.color='var(--accent2)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--muted)'">&#10005; Reset</button>
       </div>
 
@@ -1851,6 +1874,12 @@
       <select id="tblImpresa" onchange="renderTabella()" aria-label="Filtra per impresa"
         style="background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:7px 10px;font-family:inherit;font-size:12px;color:var(--text);outline:none;cursor:pointer">
         <option value="">Tutte le imprese</option>
+      </select>
+
+      <!-- filtro ente -->
+      <select id="tblEnte" onchange="renderTabella()" aria-label="Filtra per ente"
+        style="background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:7px 10px;font-family:inherit;font-size:12px;color:var(--text);outline:none;cursor:pointer">
+        <option value="">Tutti gli enti</option>
       </select>
 
       <!-- filtro scadenza — Scadute prima di 7gg -->
@@ -1982,15 +2011,17 @@ function exportVistaCorrente() {
   if (!all.length) { alert('Nessun dato disponibile.'); return; }
 
   const q        = (document.getElementById('tblQ')?.value||'').toLowerCase();
-  const fStato   = document.getElementById('tblStato')?.value||'';
-  const fLotto   = document.getElementById('tblLotto')?.value||'';
-  const fImpresa = document.getElementById('tblImpresa')?.value||'';
-  const scadW    = window._tblScadW !== undefined ? window._tblScadW : 0;
+    const fStato   = document.getElementById('tblStato')?.value||'';
+    const fLotto   = document.getElementById('tblLotto')?.value||'';
+    const fImpresa = document.getElementById('tblImpresa')?.value||'';
+    const fEnte    = document.getElementById('tblEnte')?.value||'';
+    const scadW    = window._tblScadW !== undefined ? window._tblScadW : 0;
 
   let rows = all.filter(r => {
     if (fStato   && r.stato   !== fStato)   return false;
     if (fLotto   && r.lotto   !== fLotto)   return false;
     if (fImpresa && r.impresa !== fImpresa) return false;
+    if (fEnte    && r.ente    !== fEnte)    return false;
     if (scadW > 0 && (r.scad_gg===null || r.scad_gg<0 || r.scad_gg>scadW)) return false;
     if (scadW === -1 && (r.scad_gg===null || r.scad_gg>=0)) return false;
     if (q) {
@@ -7623,6 +7654,7 @@ _hookScadenze();
     ];
     const lotti = [...new Set(rows.map(r=>r.lotto).filter(Boolean))].sort(sortLotti);
     const imprese = [...new Set(rows.map(r=>r.impresa).filter(Boolean))].sort();
+    const enti = [...new Set(rows.map(r=>r.ente).filter(Boolean))].sort();
     function fillSel(id, vals) {
       const sel = document.getElementById(id);
       if (!sel || sel.options.length > 1) return;
@@ -7631,6 +7663,7 @@ _hookScadenze();
     fillSel('tblStato',   stati);
     fillSel('tblLotto',   lotti);
     fillSel('tblImpresa', imprese);
+    fillSel('tblEnte',    enti);
   }
 
   // ── Raccoglie tutte le pratiche ───────────────────────────────────────────
@@ -7677,15 +7710,17 @@ _hookScadenze();
     const fStato  = document.getElementById('tblStato')?.value||'';
     const fLotto  = document.getElementById('tblLotto')?.value||'';
     const fImpresa= document.getElementById('tblImpresa')?.value||'';
+    const fEnte   = document.getElementById('tblEnte')?.value||'';
 
     // reset pagina se i filtri sono cambiati
-    const filterKey = q + '|' + fStato + '|' + fLotto + '|' + fImpresa + '|' + _scadW;
+    const filterKey = q + '|' + fStato + '|' + fLotto + '|' + fImpresa + '|' + fEnte + '|' + _scadW;
     if (filterKey !== window._tblLastFilter) { _page = 0; window._tblLastFilter = filterKey; }
 
     let rows = all.filter(r => {
       if (fStato   && r.stato   !== fStato)   return false;
       if (fLotto   && r.lotto   !== fLotto)   return false;
       if (fImpresa && r.impresa !== fImpresa) return false;
+      if (fEnte    && r.ente    !== fEnte)    return false;
       if (_scadW > 0 && (r.scad_gg===null || r.scad_gg<0 || r.scad_gg>_scadW)) return false;
       if (_scadW === -1 && (r.scad_gg===null || r.scad_gg>=0)) return false;
       if (q) {
@@ -7794,6 +7829,7 @@ _hookScadenze();
     document.getElementById('tblStato').value = '';
     document.getElementById('tblLotto').value = '';
     document.getElementById('tblImpresa').value = '';
+    document.getElementById('tblEnte').value = '';
     tblSetScad(0);
   };
 
