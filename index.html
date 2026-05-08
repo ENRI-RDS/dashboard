@@ -1338,7 +1338,8 @@
         var va, vb;
         if (_sedSortKey === 'nome')       { va = (a.name||'').toLowerCase();  vb = (b.name||'').toLowerCase(); }
         else if (_sedSortKey === 'tipo')  { va = (a.tipo||'').toLowerCase();  vb = (b.tipo||'').toLowerCase(); }
-        else if (_sedSortKey === 'lotto') { va = (a.lotto||'').toLowerCase(); vb = (b.lotto||'').toLowerCase(); }
+        else if (_sedSortKey === 'lotto')   { va = (a.lotto||'').toLowerCase(); vb = (b.lotto||'').toLowerCase(); }
+        else if (_sedSortKey === 'cluster') { va = (a.cluster||'').toLowerCase(); vb = (b.cluster||'').toLowerCase(); }
         else if (_sedSortKey === 'comune'){ va = (a.comune||'').toLowerCase();vb = (b.comune||'').toLowerCase(); }
         else if (_sedSortKey === 'ente')  { va = (a.ente||'').toLowerCase();  vb = (b.ente||'').toLowerCase(); }
         else if (_sedSortKey === 'stato') { va = getSedStatoPrincipale(a).toLowerCase(); vb = getSedStatoPrincipale(b).toLowerCase(); }
@@ -1352,7 +1353,7 @@
     }
 
     // aggiorna frecce header
-    var sedCols = ['nome','tipo','lotto','comune','ente','stato','data','nSed'];
+    var sedCols = ['nome','tipo','lotto','cluster','comune','ente','stato','data','nSed'];
     sedCols.forEach(function(k) {
       var el = document.getElementById('sedArr_'+k);
       if (el) el.textContent = (k === _sedSortKey) ? (_sedSortDir === 1 ? '↑' : '↓') : '↕';
@@ -1397,6 +1398,7 @@
         +'<td class="tbl-td" style="padding:8px 14px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+nameSafe+'"><span style="font-size:12px;font-weight:600;color:var(--text)">'+nameSafe+'</span></td>'
         +'<td class="tbl-td" style="padding:8px 10px"><span class="sed-tipo-chip '+d.tipo+'">'+tipoLabel+'</span></td>'
         +'<td class="tbl-td" style="padding:8px 10px"><span class="tbl-lotto-chip">'+(d.lotto||'—')+'</span></td>'
+        +'<td class="tbl-td" style="padding:8px 10px;font-size:11px;font-weight:600;color:var(--text2)">'+( d.cluster ? 'C'+d.cluster : '—')+'</td>'
         +'<td class="tbl-td" style="padding:8px 10px;font-size:11px;color:var(--text2)">'+(d.comune||'—')+'</td>'
         +'<td class="tbl-td" style="padding:8px 10px;font-size:11px;color:var(--text2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+enteSafe+'">'+(d.ente||'—')+'</td>'
         +'<td class="tbl-td" style="padding:6px 10px">'+statoCell+'</td>'
@@ -1462,11 +1464,11 @@
       var pratiche = getSedPratiche(d);
       if (pratiche && pratiche.length) {
         pratiche.forEach(function(p) {
-          rows.push([d.nSed||'', d.name||'', d.tipo||'', d.lotto||'', d.comune||'', d.provincia||'', d.ente||'',
+          rows.push([d.nSed||'', d.name||'', d.tipo||'', d.cluster||'', d.lotto||'', d.comune||'', d.provincia||'', d.ente||'',
                      p.tipo||'', buildSedCodice(p), p.ente||'', p.stato||'', p.dum||'', p.dr||'']);
         });
       } else {
-        rows.push([d.nSed||'', d.name||'', d.tipo||'', d.lotto||'', d.comune||'', d.provincia||'', d.ente||'',
+        rows.push([d.nSed||'', d.name||'', d.tipo||'', d.cluster||'', d.lotto||'', d.comune||'', d.provincia||'', d.ente||'',
                    '','','','IN ATTESA','','']);
       }
     });
@@ -1475,10 +1477,10 @@
 
   function writeSedExcel(rows, filename) {
     if (typeof XLSX === 'undefined') { alert('Libreria XLSX non disponibile.'); return; }
-    var header = ['Numero SED','Nome','Tipo Attraversamento','Lotto','Comune','Provincia','Ente GeoJSON',
+    var header = ['Numero SED','Nome','Tipo Attraversamento','Cluster','Lotto','Comune','Provincia','Ente GeoJSON',
                   'Tipo Permesso','Codice Pratica','Ente Permesso','Stato Permesso','Data Ultima Modifica','Data Richiesta'];
     var ws = XLSX.utils.aoa_to_sheet([header].concat(rows));
-    ws['!cols'] = [{wch:12},{wch:30},{wch:16},{wch:8},{wch:18},{wch:8},{wch:24},
+    ws['!cols'] = [{wch:12},{wch:30},{wch:16},{wch:8},{wch:8},{wch:18},{wch:8},{wch:24},
                    {wch:22},{wch:16},{wch:24},{wch:28},{wch:16},{wch:16}];
     var range = XLSX.utils.decode_range(ws['!ref']);
     for (var c = range.s.c; c <= range.e.c; c++) {
@@ -1538,12 +1540,15 @@
           lines.forEach(function(seg){ for(var i=1;i<seg.length;i++) tot+=haverDist(seg[i-1],seg[i]); });
           return tot;
         }
+        var CLUSTER_MAP = {'1A':'1','1B':'1','2A':'2','2B':'2','1':'1','2':'2','3':'3','4':'4','5':'5','6':'6','7':'7','8':'8'};
+        var cluster = p.CLUSTER || p.cluster || CLUSTER_MAP[p.LOTTO] || '';
         return {
           fid:       p.fid || '',
           tratta:    p.N_SED || p.fid || '',
           name:      p.name || '',
           tipo:      p.TIPO_ATTRAVERSAMENTO || 'IDRICO',
           lotto:     p.LOTTO || '',
+          cluster:   cluster,
           comune:    p.COMUNE || '',
           provincia: p.PROVINCIA || '',
           ente:      p.ENTE || '',
@@ -1843,6 +1848,7 @@
               <th onclick="sedSort('nome')" style="padding:9px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;white-space:nowrap;cursor:pointer;user-select:none" title="Ordina per Nome"><span class="col-th-inner">Nome <span id="sedArr_nome" class="col-sort-btn">↕</span></span></th>
               <th onclick="sedSort('tipo')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;cursor:pointer;user-select:none" title="Ordina per Tipo"><span class="col-th-inner">Tipo <span id="sedArr_tipo" class="col-sort-btn">↕</span></span></th>
               <th onclick="sedSort('lotto')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;cursor:pointer;user-select:none" title="Ordina per Lotto"><span class="col-th-inner">Lotto <span id="sedArr_lotto" class="col-sort-btn">↕</span></span></th>
+              <th onclick="sedSort('cluster')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;cursor:pointer;user-select:none" title="Ordina per Cluster"><span class="col-th-inner">Cluster <span id="sedArr_cluster" class="col-sort-btn">↕</span></span></th>
               <th onclick="sedSort('comune')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;cursor:pointer;user-select:none" title="Ordina per Comune"><span class="col-th-inner">Comune <span id="sedArr_comune" class="col-sort-btn">↕</span></span></th>
               <th onclick="sedSort('ente')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;cursor:pointer;user-select:none" title="Ordina per Ente"><span class="col-th-inner">Ente <span id="sedArr_ente" class="col-sort-btn">↕</span></span></th>
               <th onclick="sedSort('stato')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:160px;cursor:pointer;user-select:none" title="Ordina per Stato Permesso"><span class="col-th-inner">Stato Permesso <span id="sedArr_stato" class="col-sort-btn">↕</span></span></th>
