@@ -131,10 +131,11 @@
     position:absolute; top:0; left:0; bottom:0; width:3px;
     border-radius:14px 0 0 14px;
   }
-  .card-prog::before  { background:linear-gradient(180deg,#0B3182,#2255cc); }
-  .card-lav::before   { background:linear-gradient(180deg,#E55000,#ff7a2e); }
-  .card-exec::before  { background:linear-gradient(180deg,#1F7A4E,#2fa066); }
-  .card-mappa::before { background:linear-gradient(180deg,#6B3FA0,#9060d0); }
+  .card-prog::before   { background:linear-gradient(180deg,#0B3182,#2255cc); }
+  .card-lav::before    { background:linear-gradient(180deg,#E55000,#ff7a2e); }
+  .card-sopr::before   { background:linear-gradient(180deg,#0E7490,#22aac4); }
+  .card-exec::before   { background:linear-gradient(180deg,#1F7A4E,#2fa066); }
+  .card-mappa::before  { background:linear-gradient(180deg,#6B3FA0,#9060d0); }
 
   .card-top-row {
     display:flex; align-items:flex-start; justify-content:space-between; gap:8px;
@@ -146,12 +147,14 @@
   }
   .card-prog  .card-icon { background:#0B31820D; }
   .card-lav   .card-icon { background:#E550000D; }
+  .card-sopr  .card-icon { background:#0E74900D; }
   .card-exec  .card-icon { background:#1F7A4E0D; }
   .card-mappa .card-icon { background:#6B3FA00D; }
 
   .card-icon svg { width:23px; height:23px; }
   .card-prog  .card-icon svg { color:#0B3182; }
   .card-lav   .card-icon svg { color:#E55000; }
+  .card-sopr  .card-icon svg { color:#0E7490; }
   .card-exec  .card-icon svg { color:#1F7A4E; }
   .card-mappa .card-icon svg { color:#6B3FA0; }
 
@@ -164,6 +167,7 @@
   }
   .card-prog  .card-label { color:#0B3182; }
   .card-lav   .card-label { color:#E55000; }
+  .card-sopr  .card-label { color:#0E7490; }
   .card-exec  .card-label { color:#1F7A4E; }
   .card-mappa .card-label { color:#6B3FA0; }
 
@@ -412,6 +416,27 @@
       </div>
     </a>
 
+    <!-- ── SOPRALLUOGHI (NUOVO) ── -->
+    <a id="soprCard" href="sopralluoghi.html" class="nav-card card-sopr">
+      <div class="card-top-row">
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M11 17a6 6 0 1 0 0-12 6 6 0 0 0 0 12z"/>
+            <path d="M11 11V8M11 14h.01"/>
+            <path d="M16.5 16.5 21 21"/>
+          </svg>
+        </div>
+        <div class="card-arrow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-label">Field · Cantieri</div>
+        <div class="card-title">Sopralluoghi</div>
+        <div class="card-desc">Redazione e download del verbale di sopralluogo: identificazione cantiere, segnalazioni, azioni richieste all'impresa e firme. Output in formato .docx pronto alla firma.</div>
+      </div>
+    </a>
+
     <!-- Executive Summary -->
     <a href="executive_summary.html" class="nav-card card-exec">
       <div class="card-top-row">
@@ -458,11 +483,9 @@
 </div><!-- /main -->
 
 <script>
-// ── CONSTANTS (stesse di index.html) ────────────────────────────────────────
 const APPS_SCRIPT_URL    = 'https://script.google.com/macros/s/AKfycbxSoKwfqsE4c8RORsUqhUVIXJRpd337jxireCf_RwxMf7UL0QJZyw2qE5UR59aaPEN_/exec';
 const APPS_SCRIPT_SECRET = 'enri_login_2024_X9f83KsL21pQ';
 
-// ── BOOT: controlla autenticazione ─────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   const savedUser = localStorage.getItem('_enri_user');
   if (savedUser) {
@@ -474,8 +497,6 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// ── MOSTRA HUB ──────────────────────────────────────────────────────────────
-// Ruoli che possono accedere alla pagina Scavi
 const SCAVI_ALLOWED_ROLES = ['admin', 'admin2'];
 
 function _showHub(nome) {
@@ -488,39 +509,33 @@ function _showHub(nome) {
   document.getElementById('logoutBtn').style.display  = '';
   document.getElementById('hubContent').style.display = '';
 
-  // ── Controllo accesso Scavi ──────────────────────────────────────────────
   const ruolo = (localStorage.getItem('_enri_role') || '').toLowerCase();
   const scaviCard  = document.getElementById('scaviCard');
   const scaviBadge = document.getElementById('scaviBadge');
 
   if (!SCAVI_ALLOWED_ROLES.includes(ruolo)) {
-    // Blocca navigazione e applica stile "locked"
     scaviCard.removeAttribute('href');
     scaviCard.classList.add('card-locked');
     scaviCard.style.pointerEvents = 'none';
-
     scaviBadge.innerHTML = 'In arrivo';
     scaviBadge.className = 'card-badge';
   }
 }
 
-// ── LOGOUT ──────────────────────────────────────────────────────────────────
 function _doLogout() {
   localStorage.removeItem('_enri_user');
   localStorage.removeItem('_enri_role');
   location.reload();
 }
 
-// ── LOGIN MODAL ─────────────────────────────────────────────────────────────
 function _buildLoginModal() {
-  const savedUser    = localStorage.getItem('_enri_user');
-  const isReturning  = !!savedUser;
+  const savedUser   = localStorage.getItem('_enri_user');
+  const isReturning = !!savedUser;
 
   const overlay = document.createElement('div');
   overlay.id = 'loginOverlay';
   overlay.innerHTML = `
     <div id="_loginCard">
-      <!-- SINISTRA: branding -->
       <div id="_loginLeft">
         <div style="position:relative;z-index:1">
           <div style="font-family:'Fira Code',monospace;font-size:9px;font-weight:500;
@@ -537,8 +552,6 @@ function _buildLoginModal() {
             color:rgba(255,255,255,.2);font-family:'Fira Code',monospace">&nbsp;</div>
         </div>
       </div>
-
-      <!-- DESTRA: form -->
       <div id="_loginRight">
         <div style="margin-bottom:30px">
           <div style="font-family:'Bricolage Grotesque',sans-serif;font-size:22px;font-weight:700;
@@ -551,7 +564,6 @@ function _buildLoginModal() {
               : 'Inserisci il tuo nome e il codice di accesso.'}
           </div>
         </div>
-
         <div style="margin-bottom:16px">
           <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;
             color:var(--muted);display:block;margin-bottom:8px">Nome e cognome</label>
@@ -561,7 +573,6 @@ function _buildLoginModal() {
             onkeydown="if(event.key==='Enter')document.getElementById('_loginCodice').focus()"
           />
         </div>
-
         <div style="margin-bottom:20px">
           <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;
             color:var(--muted);display:block;margin-bottom:8px">Codice accesso</label>
@@ -571,7 +582,6 @@ function _buildLoginModal() {
           />
           <div id="_loginError"></div>
         </div>
-
         <button id="_loginBtn">
           <span id="_loginBtnText">${isReturning ? 'Conferma e accedi' : 'Accedi'}</span>
           <span id="_loginBtnArrow">→</span>
@@ -581,17 +591,13 @@ function _buildLoginModal() {
   `;
 
   document.body.appendChild(overlay);
-
-  // Focus automatico
   setTimeout(() => {
     const inp = document.getElementById('_loginInput');
     if (inp) { inp.focus(); if (inp.value) inp.select(); }
   }, 200);
-
   document.getElementById('_loginBtn').addEventListener('click', _handleLogin);
 }
 
-// ── GESTIONE LOGIN ───────────────────────────────────────────────────────────
 async function _handleLogin() {
   const input   = document.getElementById('_loginInput');
   const codEl   = document.getElementById('_loginCodice');
@@ -606,15 +612,11 @@ async function _handleLogin() {
 
   if (!nome || nome.length < 2) {
     errEl.textContent = 'Inserisci nome e cognome.';
-    errEl.style.display = 'block';
-    input.focus();
-    return;
+    errEl.style.display = 'block'; input.focus(); return;
   }
   if (!codice) {
     errEl.textContent = 'Inserisci il codice di accesso.';
-    errEl.style.display = 'block';
-    codEl.focus();
-    return;
+    errEl.style.display = 'block'; codEl.focus(); return;
   }
 
   if (btnText) btnText.textContent = 'Verifica in corso…';
@@ -636,17 +638,13 @@ async function _handleLogin() {
       if (btnText) btnText.textContent = 'Accedi';
       if (btnArrow) btnArrow.textContent = '→';
       btn.disabled = false;
-      codEl.value = '';
-      codEl.focus();
-      return;
+      codEl.value = ''; codEl.focus(); return;
     }
 
     const ruolo         = (risposta.ruolo || 'user').toLowerCase();
     const nomeCanonical = risposta.nome;
     localStorage.setItem('_enri_user', nomeCanonical);
     localStorage.setItem('_enri_role', ruolo);
-
-    // Rimuovi overlay e mostra hub
     document.getElementById('loginOverlay').remove();
     _showHub(nomeCanonical);
 
