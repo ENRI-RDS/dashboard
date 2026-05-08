@@ -1522,6 +1522,22 @@
           var mid2 = seg[Math.floor(seg.length/2)];
           lng = mid2[0]; lat = mid2[1];
         }
+        // Calcola lunghezza dalla geometria (Haversine)
+        function haverDist(c1, c2) {
+          var R = 6371000, toR = Math.PI/180;
+          var dLat = (c2[1]-c1[1])*toR, dLng = (c2[0]-c1[0])*toR;
+          var a = Math.sin(dLat/2)*Math.sin(dLat/2)
+                + Math.cos(c1[1]*toR)*Math.cos(c2[1]*toR)*Math.sin(dLng/2)*Math.sin(dLng/2);
+          return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+        }
+        function calcLungh(geom) {
+          if (!geom) return 0;
+          var lines = geom.type==='LineString' ? [geom.coordinates]
+            : geom.type==='MultiLineString'    ? geom.coordinates : [];
+          var tot = 0;
+          lines.forEach(function(seg){ for(var i=1;i<seg.length;i++) tot+=haverDist(seg[i-1],seg[i]); });
+          return tot;
+        }
         return {
           fid:       p.fid || '',
           tratta:    p.N_SED || p.fid || '',
@@ -1532,7 +1548,7 @@
           provincia: p.PROVINCIA || '',
           ente:      p.ENTE || '',
           nSed:      p.N_SED || '',
-          lungh:     p.LUNGHEZZA || p.lunghezza || 0,
+          lungh:     p.LUNGHEZZA || p.lunghezza || calcLungh(g),
           lat:       lat,
           lng:       lng
         };
@@ -5353,7 +5369,7 @@ async function loadMaster() {
         const dr_invio = existing.dr_invio
           || (stato === 'INVIATO' ? (dr || dum) : '')
           || (existing.stato === 'INVIATO' ? (existing.dr || existing.dum) : '');
-        permessiMap[key] = { tratta, prat, tipo, stato, ente, dr, dum, lungh, lotto, comune: comune || existing.comune || '', nSed: existing.nSed || nSed, note: note || existing.note || '', dr_invio };
+        permessiMap[key] = { tratta, prat, tipo, stato, ente, dr, dum, lungh: lungh || existing.lungh || 0, lotto, comune: comune || existing.comune || '', nSed: existing.nSed || nSed, note: note || existing.note || '', dr_invio };
       } else if (stato === 'INVIATO' && !existing.dr_invio) {
         existing.dr_invio = dr;
       }
@@ -5364,7 +5380,7 @@ async function loadMaster() {
     Object.values(permessiMap).forEach(r => {
       if (!r.nSed) return;
       const entry = { tipo: r.tipo, stato: r.stato, ente: r.ente,
-        prat: r.prat, dr: r.dr, dum: r.dum, dr_invio: r.dr_invio, note: r.note, lotto: r.lotto };
+        prat: r.prat, dr: r.dr, dum: r.dum, dr_invio: r.dr_invio, note: r.note, lotto: r.lotto, lungh: r.lungh || 0 };
       // Supporta più SED separati da ' - ' es. "SED-130 - SED-131"
       const keys = String(r.nSed).split(' - ');
       keys.forEach(key => {
@@ -7983,7 +7999,8 @@ function openSedModal(tratta) {
   });
 
   var nPrat = (pratiche||[]).length;
-  var lunghFmt = sed.lungh > 0 ? Number(sed.lungh).toLocaleString('it-IT',{maximumFractionDigits:1})+' m' : '—';
+  var totalLungh = (pratiche||[]).reduce(function(s,p){ return s + (p.lungh||0); }, 0);
+  var lunghFmt = totalLungh > 0 ? totalLungh.toLocaleString('it-IT',{maximumFractionDigits:1})+' m' : '—';
   var gmapsUrl = (sed.lat && sed.lng)
     ? 'https://www.google.com/maps?q='+sed.lat.toFixed(6)+','+sed.lng.toFixed(6)
     : null;
