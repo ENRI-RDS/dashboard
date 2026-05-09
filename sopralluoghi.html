@@ -607,17 +607,26 @@ async function generatePdf(){
   doc.text('Infrastruttura Fibra Ottica',M,y); y+=10;
 
   const f=getF();
-  [['N° Cantiere',f.n_cantiere],['Data',f.data],['Indirizzo',f.indirizzo],
-   ['Lotto',f.lotto],['Impresa',f.impresa],['Ruolo',f.ruolo],
-   ['Redatto da',f.redattore],['N° Foto allegate',f.n_foto],['Gravità',f.gravita]
+  const LBL_W=46, VAL_X=M+LBL_W+2, VAL_W=cW-LBL_W-4;
+  const LINE_H=4.5, PAD_T=3.5, PAD_B=3;
+  [['N° Cantiere',f.n_cantiere],['Data Sopralluogo',f.data],['Indirizzo / Località',f.indirizzo],
+   ['Lotto',f.lotto],['Impresa esecutrice',f.impresa],['Ruolo redattore',f.ruolo],
+   ['Redatto da',f.redattore],['N° Foto allegate',f.n_foto],['Gravità anomalie',f.gravita]
   ].forEach(([label,val],i)=>{
+    doc.setFont('helvetica','normal'); doc.setFontSize(8);
+    const lines=doc.splitTextToSize(val, VAL_W);
+    const rH=Math.max(7, PAD_T + lines.length*LINE_H + PAD_B);
+    if(y+rH>282){doc.addPage();y=M;}
     if(i%2===0) doc.setFillColor(...light); else doc.setFillColor(255,255,255);
-    doc.rect(M,y,cW,7,'F'); doc.setDrawColor(210,210,215); doc.rect(M,y,cW,7,'S');
+    doc.rect(M,y,cW,rH,'F'); doc.setDrawColor(210,210,215); doc.rect(M,y,cW,rH,'S');
+    // label col background
+    doc.setFillColor(204,228,234);
+    doc.rect(M,y,LBL_W,rH,'F'); doc.setDrawColor(210,210,215); doc.rect(M,y,LBL_W,rH,'S');
     doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(...teal);
-    doc.text(label,M+3,y+4.6);
+    doc.text(label,M+3,y+PAD_T+3);
     doc.setFont('helvetica','normal'); doc.setTextColor(...dark);
-    doc.text(val,M+44,y+4.6,{maxWidth:cW-47});
-    y+=7;
+    doc.text(lines,VAL_X,y+PAD_T+3);
+    y+=rH;
   });
   y+=8;
 
