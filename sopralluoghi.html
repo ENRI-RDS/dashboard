@@ -1,6 +1,7 @@
 <!DOCTYPE html> <html lang="it" translate="no"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <meta name="google" content="notranslate"> <title>ENRI — Sopralluoghi</title> <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Plus+Jakarta+Sans:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
   :root {
     --bg:#F4F3EE; --surface:#FFFFFF; --surface2:#F0EEE6;
@@ -586,114 +587,157 @@ async function generateDocx(){
   showToast('✓ Word scaricato');
 }
 
-/* ══ PDF ══ */
+/* ══ PDF via html2canvas (visual snapshot) ══ */
 async function generatePdf(){
-  const {jsPDF}=window.jspdf;
-  const doc=new jsPDF({unit:'mm',format:'a4'});
-  const W=210,M=18,cW=W-M*2; let y=M;
-  const teal=[14,116,144],navy=[11,49,130],dark=[28,28,46],grey=[82,82,110],light=[230,244,247];
+  const f = getF();
+  const nc = f.n_cantiere !== '—' ? f.n_cantiere.replace(/\s/g,'_') : 'cantiere';
 
-  // Header
-  doc.setFillColor(...navy); doc.rect(0,0,W,14,'F');
-  // Logo Retelit top-right
-  doc.addImage('data:image/jpeg;base64,'+RETELIT_B64,'JPEG',W-M-30,1,30,12);
-  doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
-  doc.text('PROGETTO ENRI — VERBALE DI SOPRALLUOGO',M,9);
+  // Build a self-contained print-ready div that mirrors the form card style
+  const printRoot = document.createElement('div');
+  printRoot.id = 'pdf-print-root';
+  printRoot.style.cssText = `
+    position:fixed; left:-9999px; top:0; z-index:-1;
+    width:794px; background:#F4F3EE;
+    font-family:'Plus Jakarta Sans',sans-serif;
+    color:#1C1C2E; padding:0;
+  `;
 
-  y=22;
-  doc.setFontSize(16); doc.setTextColor(...navy); doc.setFont('helvetica','bold');
-  doc.text('Verbale di Sopralluogo',M,y); y+=5;
-  doc.setFontSize(9); doc.setTextColor(...grey); doc.setFont('helvetica','normal');
-  doc.text('Infrastruttura Fibra Ottica',M,y); y+=10;
+  // Collect field values
+  const fields = [
+    ['N° Cantiere', f.n_cantiere],
+    ['Data Sopralluogo', f.data],
+    ['Indirizzo / Località', f.indirizzo],
+    ['Impresa esecutrice', f.impresa],
+    ['Lotto', f.lotto],
+    ['Ruolo redattore', f.ruolo],
+    ['Redatto da', f.redattore],
+    ['Gravità anomalie', f.gravita],
+    ['N° Foto allegate', f.n_foto],
+  ];
+  const sections = [
+    ['Segnalazioni / Anomalie rilevate', f.segnalazioni],
+    ["Azioni richieste all'impresa", f.azioni],
+    ['Scadenza azioni', f.scadenza_azioni],
+    ['Prossimo sopralluogo', f.prossimo_sopr],
+    ['Note libere', f.note],
+  ].filter(([,v]) => v && v !== '—');
 
-  const f=getF();
-  const LBL_W=46, VAL_X=M+LBL_W+2, VAL_W=cW-LBL_W-4;
-  const LINE_H=4.5, PAD_T=3.5, PAD_B=3;
-  [['N° Cantiere',f.n_cantiere],['Data Sopralluogo',f.data],['Indirizzo / Località',f.indirizzo],
-   ['Lotto',f.lotto],['Impresa esecutrice',f.impresa],['Ruolo redattore',f.ruolo],
-   ['Redatto da',f.redattore],['N° Foto allegate',f.n_foto],['Gravità anomalie',f.gravita]
-  ].forEach(([label,val],i)=>{
-    doc.setFont('helvetica','normal'); doc.setFontSize(8);
-    const lines=doc.splitTextToSize(val, VAL_W);
-    const rH=Math.max(7, PAD_T + lines.length*LINE_H + PAD_B);
-    if(y+rH>282){doc.addPage();y=M;}
-    if(i%2===0) doc.setFillColor(...light); else doc.setFillColor(255,255,255);
-    doc.rect(M,y,cW,rH,'F'); doc.setDrawColor(210,210,215); doc.rect(M,y,cW,rH,'S');
-    // label col background
-    doc.setFillColor(204,228,234);
-    doc.rect(M,y,LBL_W,rH,'F'); doc.setDrawColor(210,210,215); doc.rect(M,y,LBL_W,rH,'S');
-    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(...teal);
-    doc.text(label,M+3,y+PAD_T+3);
-    doc.setFont('helvetica','normal'); doc.setTextColor(...dark);
-    doc.text(lines,VAL_X,y+PAD_T+3);
-    y+=rH;
-  });
-  y+=8;
+  const gravColor = f.gravita === 'Anomalia critica' ? '#C23B22' : f.gravita === 'Anomalia media' ? '#B45309' : '#0E7490';
 
-  [['Segnalazioni / Anomalie rilevate',f.segnalazioni],["Azioni richieste all'impresa",f.azioni],
-   ['Scadenza azioni',f.scadenza_azioni],['Prossimo sopralluogo',f.prossimo_sopr],['Note libere',f.note]
-  ].forEach(([title,val])=>{
-    if(val==='—') return;
-    if(y>260){doc.addPage();y=M;}
-    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...teal);
-    doc.text(title,M,y); y+=5;
-    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(...dark);
-    const lines=doc.splitTextToSize(val,cW);
-    doc.text(lines,M,y); y+=lines.length*5+6;
-  });
+  const tableRows = fields.map(([lbl, val], i) => `
+    <tr style="background:${i%2===0?'#E6F4F7':'#ffffff'}">
+      <td style="padding:8px 12px;font-size:11px;font-weight:700;color:#0E7490;width:200px;border:1px solid #d1d5db;">${lbl}</td>
+      <td style="padding:8px 12px;font-size:12px;color:#1C1C2E;border:1px solid #d1d5db;">${val}</td>
+    </tr>`).join('');
 
-  // Firme
-  if(y>240){doc.addPage();y=M;}
-  y+=4;
-  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...teal);
-  doc.text('Firme',M,y); y+=6;
-  [[f.ruolo,f.redattore]].forEach(([role,name])=>{
-    doc.setFillColor(...light);
-    doc.rect(M,y,50,6,'F'); doc.rect(M,y,50,6,'S');
-    doc.rect(M+50,y,60,6,'S'); doc.rect(M+110,y,62,20,'S');
-    doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(...teal);
-    doc.text(role,M+2,y+4);
-    doc.setFont('helvetica','normal'); doc.setTextColor(...dark);
-    if(name) doc.text(name,M+52,y+4);
-    y+=22;
-  });
+  const sectionsHtml = sections.map(([title, val]) => `
+    <div style="margin-bottom:18px;">
+      <div style="font-size:10px;font-weight:700;color:#0E7490;letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px;">${title}</div>
+      <div style="font-size:12px;color:#1C1C2E;line-height:1.7;background:#fff;border:1px solid #E0DDD4;border-radius:8px;padding:10px 14px;white-space:pre-wrap;">${val}</div>
+    </div>`).join('');
 
-  // Foto – stessa griglia DOCX: 1→full, 2→affiancate, 3→2+1, 4→2×2
-  const photos=uploadedPhotos;
-  if(photos.length){
-    doc.addPage(); y=M;
-    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(...navy);
-    doc.text('Foto allegate',M,y); y+=9;
+  const photosHtml = uploadedPhotos.length ? `
+    <div style="margin-top:28px;page-break-before:always;">
+      <div style="font-size:10px;font-weight:700;color:#0E7490;letter-spacing:.14em;text-transform:uppercase;margin-bottom:14px;">FOTO ALLEGATE</div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;">
+        ${uploadedPhotos.map((p,i) => `
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <img src="${p.dataUrl}" style="width:${uploadedPhotos.length===1?'100%':'340px'};max-width:${uploadedPhotos.length===1?'720px':'340px'};height:auto;border-radius:8px;border:1px solid #E0DDD4;object-fit:cover;display:block;">
+            <span style="font-size:10px;color:#7878A0;font-style:italic;">Foto ${i+1}</span>
+          </div>`).join('')}
+      </div>
+    </div>` : '';
 
-    const GAP=4;
-    for(const row of photoRows(photos.length)){
-      const full=row.length===1;
-      const imgW=full?cW:(cW-GAP)/2;
-      const maxH=full?115:100;
+  printRoot.innerHTML = `
+    <div style="background:#0B3182;padding:14px 32px;display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-size:9px;color:rgba(255,255,255,.65);letter-spacing:.18em;text-transform:uppercase;margin-bottom:2px;">Progetto ENRI · Infrastruttura Fibra Ottica</div>
+        <div style="font-size:18px;font-weight:700;color:#fff;letter-spacing:-.02em;">Verbale di Sopralluogo</div>
+      </div>
+      <img src="data:image/jpeg;base64,${RETELIT_B64}" style="height:36px;object-fit:contain;">
+    </div>
 
-      const dims=row.map(idx=>{
-        const p=photos[idx], r=p.nw/p.nh;
-        let w=imgW, h=w/r;
-        if(h>maxH){h=maxH;w=h*r;}
-        return {w,h};
-      });
-      const rowH=Math.max(...dims.map(d=>d.h));
-      if(y+rowH+10>285){doc.addPage();y=M;}
+    <div style="padding:32px 40px;">
 
-      row.forEach((idx,col)=>{
-        const p=photos[idx], {w,h}=dims[col];
-        const x=M+col*(imgW+GAP);
-        doc.addImage(p.dataUrl,p.ext==='png'?'PNG':'JPEG',x,y,w,h);
-        doc.setFont('helvetica','italic'); doc.setFontSize(7.5); doc.setTextColor(...grey);
-        doc.text(`Foto ${idx+1}`,x,y+rowH+5);
-      });
-      y+=rowH+13;
+      <div style="background:#fff;border:1px solid #E0DDD4;border-radius:12px;overflow:hidden;margin-bottom:24px;box-shadow:0 2px 8px rgba(11,49,130,.07);position:relative;">
+        <div style="position:absolute;top:0;left:0;bottom:0;width:3px;background:linear-gradient(180deg,#0E7490,#22aac4);border-radius:12px 0 0 12px;"></div>
+        <div style="padding:18px 22px 10px 28px;">
+          <div style="font-size:9px;font-weight:700;color:#0E7490;letter-spacing:.16em;text-transform:uppercase;margin-bottom:12px;">IDENTIFICAZIONE</div>
+          <table style="width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden;">
+            ${tableRows}
+          </table>
+        </div>
+      </div>
+
+      ${sections.length ? `
+      <div style="background:#fff;border:1px solid #E0DDD4;border-radius:12px;padding:20px 28px;box-shadow:0 2px 8px rgba(11,49,130,.07);position:relative;margin-bottom:24px;">
+        <div style="position:absolute;top:0;left:0;bottom:0;width:3px;background:linear-gradient(180deg,${gravColor},${gravColor}99);border-radius:12px 0 0 12px;"></div>
+        <div style="font-size:9px;font-weight:700;color:#0E7490;letter-spacing:.16em;text-transform:uppercase;margin-bottom:16px;">SEGNALAZIONI</div>
+        ${sectionsHtml}
+      </div>` : ''}
+
+      <div style="background:#fff;border:1px solid #E0DDD4;border-radius:12px;padding:20px 28px;box-shadow:0 2px 8px rgba(11,49,130,.07);">
+        <div style="font-size:9px;font-weight:700;color:#0E7490;letter-spacing:.16em;text-transform:uppercase;margin-bottom:14px;">FIRME</div>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr>
+            <td style="width:33%;padding:8px 12px;font-size:11px;font-weight:700;color:#0E7490;background:#E6F4F7;border:1px solid #d1d5db;">Ruolo</td>
+            <td style="width:33%;padding:8px 12px;font-size:11px;font-weight:700;color:#0E7490;background:#E6F4F7;border:1px solid #d1d5db;">Nome</td>
+            <td style="width:33%;padding:8px 12px;font-size:11px;font-weight:700;color:#0E7490;background:#E6F4F7;border:1px solid #d1d5db;">Firma</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 12px;font-size:12px;border:1px solid #d1d5db;">${f.ruolo}</td>
+            <td style="padding:10px 12px;font-size:12px;border:1px solid #d1d5db;">${f.redattore}</td>
+            <td style="padding:10px 12px;height:48px;border:1px solid #d1d5db;"></td>
+          </tr>
+        </table>
+      </div>
+
+      ${photosHtml}
+
+    </div>
+  `;
+
+  document.body.appendChild(printRoot);
+
+  // Wait for fonts/images
+  await document.fonts.ready;
+  await new Promise(r => setTimeout(r, 300));
+
+  showToast('⏳ Generazione PDF…');
+
+  try {
+    const {jsPDF} = window.jspdf;
+    const canvas = await html2canvas(printRoot, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#F4F3EE',
+      logging: false,
+      width: 794,
+    });
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+    const pdf = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
+    const pW = 210, pH = 297;
+
+    // Scale canvas to A4 width; paginate vertically
+    const mmPerPx = pW / canvas.width;
+    const totalHeightMm = canvas.height * mmPerPx;
+    const totalPages = Math.ceil(totalHeightMm / pH);
+
+    for (let p = 0; p < totalPages; p++) {
+      if (p > 0) pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, -p * pH, pW, totalHeightMm);
     }
-  }
 
-  const nc=f.n_cantiere!=='—'?f.n_cantiere.replace(/\s/g,'_'):'cantiere';
-  doc.save(`Verbale_Sopralluogo_${nc}.pdf`);
-  showToast('✓ PDF scaricato');
+    pdf.save(`Verbale_Sopralluogo_${nc}.pdf`);
+    showToast('✓ PDF scaricato');
+  } catch(e) {
+    console.error(e);
+    showToast('✗ Errore generazione PDF');
+  } finally {
+    document.body.removeChild(printRoot);
+  }
 }
 </script>
 </body>
