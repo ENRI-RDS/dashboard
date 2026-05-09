@@ -1,5 +1,5 @@
 <!DOCTYPE html> <html lang="it" translate="no"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <meta name="google" content="notranslate"> <title>ENRI — Sopralluoghi</title> <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Plus+Jakarta+Sans:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
@@ -157,6 +157,8 @@
   }
   .btn-download:hover{background:#0c6880;transform:translateY(-1px);box-shadow:0 6px 22px rgba(14,116,144,.36);}
   .btn-download:active{transform:translateY(0);}
+  .btn-download.excel{background:#1D6F42;box-shadow:0 3px 14px rgba(29,111,66,.25);}
+  .btn-download.excel:hover{background:#155232;box-shadow:0 6px 22px rgba(29,111,66,.35);}
   .btn-download.pdf{background:var(--accent2);box-shadow:0 3px 14px rgba(229,80,0,.25);}
   .btn-download.pdf:hover{background:#c44400;box-shadow:0 6px 22px rgba(229,80,0,.35);}
   @media(max-width:500px){.btn-row{flex-direction:column;}}
@@ -190,7 +192,7 @@
   <div class="page-header">
     <div class="eyebrow">Cantieri · Field</div>
     <div class="page-h1">Verbale di Sopralluogo</div>
-    <div class="page-sub">Compila i campi e scarica il documento Word pronto alla firma.</div>
+    <div class="page-sub">Compila i campi, scarica il PDF e registra la riga nel file master Excel.</div>
   </div>
 
   <div class="form-card">
@@ -315,9 +317,9 @@
     </div>
 
     <div class="btn-row">
-      <button class="btn-download" onclick="generateDocx()">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Scarica Word
+      <button class="btn-download excel" onclick="generateExcel()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+        Esporta Excel
       </button>
       <button class="btn-download pdf" onclick="generatePdf()">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -403,189 +405,66 @@ function photoRows(n){
   return [[0,1],[2,3]];
 }
 
-/* ══ DOCX ══ */
-function imgDrawingXml(rId, wEmu, hEmu, idx){
-  return `<w:drawing>
-<wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">
-  <wp:extent cx="${wEmu}" cy="${hEmu}"/><wp:docPr id="${idx}" name="Foto ${idx}"/>
-  <wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>
-  <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
-    <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
-      <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
-        <pic:nvPicPr><pic:cNvPr id="${idx}" name="Foto ${idx}"/><pic:cNvPicPr/></pic:nvPicPr>
-        <pic:blipFill>
-          <a:blip r:embed="${rId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>
-          <a:stretch><a:fillRect/></a:stretch>
-        </pic:blipFill>
-        <pic:spPr>
-          <a:xfrm><a:off x="0" y="0"/><a:ext cx="${wEmu}" cy="${hEmu}"/></a:xfrm>
-          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-        </pic:spPr>
-      </pic:pic>
-    </a:graphicData>
-  </a:graphic>
-</wp:inline></w:drawing>`;
-}
 
-function calcEmu(p, maxWmm, maxHmm){
-  const E=36000, r=p.nw/p.nh;
-  let w=maxWmm*E, h=w/r;
-  if(h>maxHmm*E){h=maxHmm*E; w=h*r;}
-  return {w:Math.round(w), h:Math.round(h)};
-}
+/* ══ EXCEL — riga singola da incollare nel master ══ */
+function generateExcel(){
+  const f = getF();
+  const nc = f.n_cantiere !== '—' ? f.n_cantiere.replace(/\s/g,'_') : 'cantiere';
 
-function buildPhotoDocx(photos){
-  if(!photos.length) return '';
-  let xml = `<w:p><w:pPr><w:pageBreakBefore/><w:spacing w:after="120"/></w:pPr>
-    <w:r><w:rPr><w:b/><w:color w:val="0E7490"/><w:sz w:val="22"/></w:rPr><w:t>Foto allegate</w:t></w:r></w:p>`;
+  const HEADERS = [
+    'N° Cantiere','Data Sopralluogo','Indirizzo / Località','Lotto',
+    'Impresa Esecutrice','Ruolo Redattore','Redatto da','Gravità anomalie',
+    'Segnalazioni / Anomalie','Azioni richieste','Scadenza azioni',
+    'Prossimo sopralluogo','Note libere','N° Foto allegate'
+  ];
+  const ROW = [
+    f.n_cantiere, f.data, f.indirizzo, f.lotto,
+    f.impresa, f.ruolo, f.redattore, f.gravita,
+    f.segnalazioni, f.azioni, f.scadenza_azioni,
+    f.prossimo_sopr, f.note, f.n_foto
+  ];
 
-  photoRows(photos.length).forEach(row => {
-    const full = row.length === 1;
-    const maxW = full ? 168 : 81; // mm
-    const maxH = full ? 115 : 100;
-    const colW = full ? 9500 : 4600; // twips
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([HEADERS, ROW]);
 
-    xml += `<w:tbl><w:tblPr>
-      <w:tblW w:w="${full?9500:9200}" w:type="dxa"/>
-      <w:tblBorders><w:top w:val="none"/><w:left w:val="none"/><w:bottom w:val="none"/><w:right w:val="none"/><w:insideH w:val="none"/><w:insideV w:val="none"/></w:tblBorders>
-      <w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="60" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/><w:right w:w="60" w:type="dxa"/></w:tblCellMar>
-    </w:tblPr>
-    <w:tblGrid>${row.map(()=>`<w:gridCol w:w="${colW}"/>`).join('')}</w:tblGrid>
-    <w:tr>`;
+  // Larghezze colonne
+  ws['!cols'] = [
+    {wch:14},{wch:16},{wch:28},{wch:10},
+    {wch:22},{wch:18},{wch:20},{wch:18},
+    {wch:40},{wch:40},{wch:16},
+    {wch:22},{wch:30},{wch:14}
+  ];
 
-    row.forEach(idx => {
-      const {w:wE, h:hE} = calcEmu(photos[idx], maxW, maxH);
-      xml += `<w:tc><w:tcPr><w:tcW w:w="${colW}" w:type="dxa"/></w:tcPr>
-        <w:p><w:r>${imgDrawingXml(`rId${idx+2}`, wE, hE, idx+1)}</w:r></w:p>
-        <w:p><w:pPr><w:spacing w:after="40"/></w:pPr>
-          <w:r><w:rPr><w:i/><w:color w:val="7878A0"/><w:sz w:val="16"/></w:rPr><w:t>Foto ${idx+1}</w:t></w:r>
-        </w:p></w:tc>`;
-    });
-    xml += `</w:tr></w:tbl><w:p><w:pPr><w:spacing w:after="80"/></w:pPr></w:p>`;
+  // Stile intestazioni (sfondo blu ENRI, testo bianco, grassetto)
+  const headerFill  = {patternType:'solid', fgColor:{rgb:'0B3182'}};
+  const headerFont  = {bold:true, color:{rgb:'FFFFFF'}, sz:11};
+  const headerAlign = {horizontal:'center', vertical:'center', wrapText:true};
+  const dataFont    = {sz:11};
+  const dataAlign   = {vertical:'top', wrapText:true};
+
+  HEADERS.forEach((_,c) => {
+    const addr = XLSX.utils.encode_cell({r:0, c});
+    if(!ws[addr]) return;
+    ws[addr].s = {fill:headerFill, font:headerFont, alignment:headerAlign,
+                  border:{bottom:{style:'thin',color:{rgb:'FFFFFF'}}}};
   });
-  return xml;
-}
 
-function tableRow(label,value){
-  return `<w:tr>
-    <w:tc><w:tcPr><w:tcW w:w="2800" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="E6F4F7"/></w:tcPr>
-      <w:p><w:pPr><w:spacing w:after="60"/></w:pPr>
-        <w:r><w:rPr><w:b/><w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="0E7490"/></w:rPr><w:t xml:space="preserve">${esc(label)}</w:t></w:r>
-      </w:p></w:tc>
-    <w:tc><w:tcPr><w:tcW w:w="5200" w:type="dxa"/></w:tcPr>
-      <w:p><w:pPr><w:spacing w:after="60"/></w:pPr>
-        <w:r><w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t xml:space="preserve">${esc(value)}</w:t></w:r>
-      </w:p></w:tc>
-  </w:tr>`;
-}
+  ROW.forEach((_,c) => {
+    const addr = XLSX.utils.encode_cell({r:1, c});
+    if(!ws[addr]) ws[addr] = {t:'s', v:''};
+    // colora riga dati in base a gravità
+    const gravColor = f.gravita === 'Anomalia critica' ? 'FDECEA'
+                    : f.gravita === 'Anomalia media'   ? 'FFF3E0' : 'E6F4F7';
+    ws[addr].s = {fill:{patternType:'solid', fgColor:{rgb:gravColor}},
+                  font:dataFont, alignment:dataAlign};
+  });
 
-function docxSection(title,value){
-  return `<w:p><w:pPr><w:spacing w:before="240" w:after="60"/></w:pPr>
-    <w:r><w:rPr><w:b/><w:color w:val="0E7490"/><w:sz w:val="21"/><w:szCs w:val="21"/></w:rPr><w:t>${esc(title)}</w:t></w:r>
-  </w:p>
-  <w:p><w:pPr><w:spacing w:after="160"/></w:pPr>
-    <w:r><w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t xml:space="preserve">${esc(value)}</w:t></w:r>
-  </w:p>`;
-}
+  // Altezza riga header e dati
+  ws['!rows'] = [{hpt:28},{hpt:60}];
 
-function buildDocumentXml(f, photos){
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-<w:body>
-  <w:p><w:pPr><w:jc w:val="right"/><w:spacing w:after="0"/></w:pPr>
-    <w:r>${imgDrawingXml('rIdLogo', 1440000, 720000, 999)}</w:r>
-  </w:p>
-  <w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="40"/></w:pPr>
-    <w:r><w:rPr><w:b/><w:color w:val="0B3182"/><w:sz w:val="34"/><w:szCs w:val="34"/></w:rPr><w:t>VERBALE DI SOPRALLUOGO</w:t></w:r>
-  </w:p>
-  <w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="320"/></w:pPr>
-    <w:r><w:rPr><w:color w:val="52526E"/><w:sz w:val="19"/><w:szCs w:val="19"/></w:rPr><w:t>Progetto ENRI – Infrastruttura Fibra Ottica</w:t></w:r>
-  </w:p>
-  <w:tbl>
-    <w:tblPr><w:tblW w:w="8000" w:type="dxa"/>
-      <w:tblBorders><w:top w:val="single" w:sz="4" w:color="CCCCCC"/><w:left w:val="single" w:sz="4" w:color="CCCCCC"/>
-        <w:bottom w:val="single" w:sz="4" w:color="CCCCCC"/><w:right w:val="single" w:sz="4" w:color="CCCCCC"/>
-        <w:insideH w:val="single" w:sz="4" w:color="CCCCCC"/><w:insideV w:val="single" w:sz="4" w:color="CCCCCC"/></w:tblBorders>
-      <w:tblCellMar><w:top w:w="80" w:type="dxa"/><w:left w:w="140" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="140" w:type="dxa"/></w:tblCellMar>
-    </w:tblPr>
-    ${tableRow('N° Cantiere',f.n_cantiere)}${tableRow('Data Sopralluogo',f.data)}
-    ${tableRow('Indirizzo / Località',f.indirizzo)}${tableRow('Lotto',f.lotto)}
-    ${tableRow('Impresa Esecutrice',f.impresa)}${tableRow('Ruolo',f.ruolo)}
-    ${tableRow('Redatto da',f.redattore)}${tableRow('N° Foto Allegate',f.n_foto)}
-    ${tableRow('Gravità anomalie',f.gravita)}
-  </w:tbl>
-  <w:p><w:pPr><w:spacing w:before="40" w:after="0"/></w:pPr></w:p>
-  ${docxSection('Segnalazioni / Anomalie rilevate',f.segnalazioni)}
-  ${docxSection("Azioni richieste all'impresa",f.azioni)}
-  ${docxSection('Scadenza azioni',f.scadenza_azioni)}
-  ${docxSection('Prossimo sopralluogo previsto',f.prossimo_sopr)}
-  ${docxSection('Note libere',f.note)}
-  <w:p><w:pPr><w:spacing w:before="400" w:after="80"/></w:pPr>
-    <w:r><w:rPr><w:b/><w:color w:val="0E7490"/><w:sz w:val="21"/></w:rPr><w:t>Firme</w:t></w:r>
-  </w:p>
-  <w:tbl>
-    <w:tblPr><w:tblW w:w="8000" w:type="dxa"/>
-      <w:tblBorders><w:top w:val="single" w:sz="4" w:color="CCCCCC"/><w:left w:val="single" w:sz="4" w:color="CCCCCC"/>
-        <w:bottom w:val="single" w:sz="4" w:color="CCCCCC"/><w:right w:val="single" w:sz="4" w:color="CCCCCC"/>
-        <w:insideH w:val="single" w:sz="4" w:color="CCCCCC"/><w:insideV w:val="single" w:sz="4" w:color="CCCCCC"/></w:tblBorders>
-      <w:tblCellMar><w:top w:w="100" w:type="dxa"/><w:left w:w="140" w:type="dxa"/><w:bottom w:w="100" w:type="dxa"/><w:right w:w="140" w:type="dxa"/></w:tblCellMar>
-    </w:tblPr>
-    <w:tr>
-      <w:tc><w:tcPr><w:tcW w:w="2200" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="E6F4F7"/></w:tcPr>
-        <w:p><w:r><w:rPr><w:b/><w:sz w:val="20"/><w:color w:val="0E7490"/></w:rPr><w:t>Ruolo</w:t></w:r></w:p></w:tc>
-      <w:tc><w:tcPr><w:tcW w:w="2900" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="E6F4F7"/></w:tcPr>
-        <w:p><w:r><w:rPr><w:b/><w:sz w:val="20"/><w:color w:val="0E7490"/></w:rPr><w:t>Nome</w:t></w:r></w:p></w:tc>
-      <w:tc><w:tcPr><w:tcW w:w="2900" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="E6F4F7"/></w:tcPr>
-        <w:p><w:r><w:rPr><w:b/><w:sz w:val="20"/><w:color w:val="0E7490"/></w:rPr><w:t>Firma</w:t></w:r></w:p></w:tc>
-    </w:tr>
-    <w:tr>
-      <w:tc><w:tcPr><w:tcW w:w="2200" w:type="dxa"/></w:tcPr>
-        <w:p><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t>${esc(f.ruolo)}</w:t></w:r></w:p></w:tc>
-      <w:tc><w:tcPr><w:tcW w:w="2900" w:type="dxa"/></w:tcPr>
-        <w:p><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t>${esc(f.redattore)}</w:t></w:r></w:p></w:tc>
-      <w:tc><w:tcPr><w:tcW w:w="2900" w:type="dxa"/></w:tcPr>
-        <w:p><w:pPr><w:spacing w:after="440"/></w:pPr></w:p></w:tc>
-    </w:tr>
-  </w:tbl>
-  ${buildPhotoDocx(photos)}
-  <w:sectPr><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"/></w:sectPr>
-</w:body></w:document>`;
-}
-
-async function generateDocx(){
-  const f=getF(), photos=uploadedPhotos;
-  const zip=new JSZip();
-  const hasJpeg=photos.some(p=>p.ext==='jpeg'), hasPng=photos.some(p=>p.ext==='png');
-  zip.file('[Content_Types].xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Default Extension="jpeg" ContentType="image/jpeg"/>
-  <Default Extension="png" ContentType="image/png"/>
-  ${hasPng?'<Default Extension="png" ContentType="image/png"/>':''}
-  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-</Types>`);
-  zip.file('_rels/.rels',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
-</Relationships>`);
-  const imgRels=photos.map((p,i)=>
-    `<Relationship Id="rId${i+2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image${i+1}.${p.ext}"/>`
-  ).join('\n  ');
-  const logoRel = `<Relationship Id="rIdLogo" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/retelit_logo.png"/>`;
-  zip.file('word/_rels/document.xml.rels',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  ${logoRel}
-  ${imgRels}
-</Relationships>`);
-  zip.file('word/media/retelit_logo.png', RETELIT_B64, {base64:true});
-  photos.forEach((p,i)=>zip.file(`word/media/image${i+1}.${p.ext}`, p.dataUrl.split(',')[1], {base64:true}));
-  zip.file('word/document.xml', buildDocumentXml(f, photos));
-  const blob=await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
-  const nc=f.n_cantiere!=='—'?f.n_cantiere.replace(/\s/g,'_'):'cantiere';
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob); a.download=`Verbale_Sopralluogo_${nc}.docx`; a.click();
-  showToast('✓ Word scaricato');
+  XLSX.utils.book_append_sheet(wb, ws, 'Sopralluogo');
+  XLSX.writeFile(wb, `Sopralluogo_${nc}.xlsx`);
+  showToast('✓ Excel scaricato — incolla la riga nel file master');
 }
 
 /* ══ PDF via html2canvas ══ */
