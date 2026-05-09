@@ -587,140 +587,96 @@ async function generateDocx(){
   showToast('✓ Word scaricato');
 }
 
-/* ══ PDF via html2canvas (visual snapshot) ══ */
+/* ══ PDF via html2canvas — cattura il DOM reale ══ */
 async function generatePdf(){
   const f = getF();
   const nc = f.n_cantiere !== '—' ? f.n_cantiere.replace(/\s/g,'_') : 'cantiere';
 
-  // Build a self-contained print-ready div that mirrors the form card style
-  const printRoot = document.createElement('div');
-  printRoot.id = 'pdf-print-root';
-  printRoot.style.cssText = `
-    position:fixed; left:-9999px; top:0; z-index:-1;
-    width:794px; background:#F4F3EE;
-    font-family:'Plus Jakarta Sans',sans-serif;
-    color:#1C1C2E; padding:0;
-  `;
+  // Elementi da nascondere temporaneamente durante la cattura
+  const hideEls = [
+    document.querySelector('.topbar'),
+    document.querySelector('.page-header'),
+    document.querySelector('.btn-row'),
+    document.querySelector('.foto-upload-area'),
+    document.querySelector('.foto-count'),
+    document.querySelector('#toast'),
+    document.querySelector('.legend-hints'),
+  ].filter(Boolean);
 
-  // Collect field values
-  const fields = [
-    ['N° Cantiere', f.n_cantiere],
-    ['Data Sopralluogo', f.data],
-    ['Indirizzo / Località', f.indirizzo],
-    ['Impresa esecutrice', f.impresa],
-    ['Lotto', f.lotto],
-    ['Ruolo redattore', f.ruolo],
-    ['Redatto da', f.redattore],
-    ['Gravità anomalie', f.gravita],
-    ['N° Foto allegate', f.n_foto],
-  ];
-  const sections = [
-    ['Segnalazioni / Anomalie rilevate', f.segnalazioni],
-    ["Azioni richieste all'impresa", f.azioni],
-    ['Scadenza azioni', f.scadenza_azioni],
-    ['Prossimo sopralluogo', f.prossimo_sopr],
-    ['Note libere', f.note],
-  ].filter(([,v]) => v && v !== '—');
+  // Sostituiamo le anteprime foto con immagini statiche (senza il pulsante ✕)
+  const fotoPreview = document.getElementById('fotoPreview');
+  const fotoPreviewOrigHTML = fotoPreview.innerHTML;
+  if (uploadedPhotos.length) {
+    fotoPreview.innerHTML = uploadedPhotos.map((p,i) =>
+      `<img class="foto-thumb" src="${p.dataUrl}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:2px solid #E0DDD4;">`
+    ).join('');
+  }
 
-  const gravColor = f.gravita === 'Anomalia critica' ? '#C23B22' : f.gravita === 'Anomalia media' ? '#B45309' : '#0E7490';
+  // Aggiunge una sezione firme in fondo alla card
+  const formCard = document.querySelector('.form-card');
+  const firmeDiv = document.createElement('div');
+  firmeDiv.id = '_pdf_firme';
+  firmeDiv.innerHTML = `
+    <hr style="border:none;border-top:1px solid #E0DDD4;margin:20px 0 4px;">
+    <div class="section-label">Firme</div>
+    <table style="width:100%;border-collapse:collapse;margin-top:8px;">
+      <tr>
+        <td style="width:33%;padding:8px 12px;font-size:11px;font-weight:700;color:#0E7490;background:#E6F4F7;border:1px solid #d5d0c5;">Ruolo</td>
+        <td style="width:33%;padding:8px 12px;font-size:11px;font-weight:700;color:#0E7490;background:#E6F4F7;border:1px solid #d5d0c5;">Nome</td>
+        <td style="width:33%;padding:8px 12px;font-size:11px;font-weight:700;color:#0E7490;background:#E6F4F7;border:1px solid #d5d0c5;">Firma</td>
+      </tr>
+      <tr>
+        <td style="padding:10px 12px;font-size:12px;border:1px solid #d5d0c5;">${f.ruolo}</td>
+        <td style="padding:10px 12px;font-size:12px;border:1px solid #d5d0c5;">${f.redattore}</td>
+        <td style="padding:10px 12px;height:52px;border:1px solid #d5d0c5;"></td>
+      </tr>
+    </table>`;
+  formCard.appendChild(firmeDiv);
 
-  const tableRows = fields.map(([lbl, val], i) => `
-    <tr style="background:${i%2===0?'#E6F4F7':'#ffffff'}">
-      <td style="padding:8px 12px;font-size:11px;font-weight:700;color:#0E7490;width:200px;border:1px solid #d1d5db;">${lbl}</td>
-      <td style="padding:8px 12px;font-size:12px;color:#1C1C2E;border:1px solid #d1d5db;">${val}</td>
-    </tr>`).join('');
-
-  const sectionsHtml = sections.map(([title, val]) => `
-    <div style="margin-bottom:18px;">
-      <div style="font-size:10px;font-weight:700;color:#0E7490;letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px;">${title}</div>
-      <div style="font-size:12px;color:#1C1C2E;line-height:1.7;background:#fff;border:1px solid #E0DDD4;border-radius:8px;padding:10px 14px;white-space:pre-wrap;">${val}</div>
-    </div>`).join('');
-
-  const photosHtml = uploadedPhotos.length ? `
-    <div style="margin-top:28px;page-break-before:always;">
-      <div style="font-size:10px;font-weight:700;color:#0E7490;letter-spacing:.14em;text-transform:uppercase;margin-bottom:14px;">FOTO ALLEGATE</div>
-      <div style="display:flex;flex-wrap:wrap;gap:10px;">
-        ${uploadedPhotos.map((p,i) => `
-          <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-            <img src="${p.dataUrl}" style="width:${uploadedPhotos.length===1?'100%':'340px'};max-width:${uploadedPhotos.length===1?'720px':'340px'};height:auto;border-radius:8px;border:1px solid #E0DDD4;object-fit:cover;display:block;">
-            <span style="font-size:10px;color:#7878A0;font-style:italic;">Foto ${i+1}</span>
-          </div>`).join('')}
-      </div>
-    </div>` : '';
-
-  printRoot.innerHTML = `
-    <div style="background:#0B3182;padding:14px 32px;display:flex;align-items:center;justify-content:space-between;">
-      <div>
-        <div style="font-size:9px;color:rgba(255,255,255,.65);letter-spacing:.18em;text-transform:uppercase;margin-bottom:2px;">Progetto ENRI · Infrastruttura Fibra Ottica</div>
-        <div style="font-size:18px;font-weight:700;color:#fff;letter-spacing:-.02em;">Verbale di Sopralluogo</div>
-      </div>
-      <img src="data:image/jpeg;base64,${RETELIT_B64}" style="height:36px;object-fit:contain;">
+  // Aggiunge un header sopra il .main (stile documento)
+  const headerDiv = document.createElement('div');
+  headerDiv.id = '_pdf_header';
+  headerDiv.style.cssText = 'background:#0B3182;padding:14px 32px;display:flex;align-items:center;justify-content:space-between;';
+  headerDiv.innerHTML = `
+    <div>
+      <div style="font-size:9px;color:rgba(255,255,255,.6);letter-spacing:.18em;text-transform:uppercase;margin-bottom:3px;font-family:\'Plus Jakarta Sans\',sans-serif;">Progetto ENRI · Infrastruttura Fibra Ottica</div>
+      <div style="font-size:20px;font-weight:700;color:#fff;font-family:\'Bricolage Grotesque\',sans-serif;letter-spacing:-.025em;">Verbale di Sopralluogo</div>
     </div>
+    <img src="data:image/jpeg;base64,${RETELIT_B64}" style="height:34px;object-fit:contain;">`;
 
-    <div style="padding:32px 40px;">
+  const main = document.querySelector('.main');
+  document.body.insertBefore(headerDiv, main);
 
-      <div style="background:#fff;border:1px solid #E0DDD4;border-radius:12px;overflow:hidden;margin-bottom:24px;box-shadow:0 2px 8px rgba(11,49,130,.07);position:relative;">
-        <div style="position:absolute;top:0;left:0;bottom:0;width:3px;background:linear-gradient(180deg,#0E7490,#22aac4);border-radius:12px 0 0 12px;"></div>
-        <div style="padding:18px 22px 10px 28px;">
-          <div style="font-size:9px;font-weight:700;color:#0E7490;letter-spacing:.16em;text-transform:uppercase;margin-bottom:12px;">IDENTIFICAZIONE</div>
-          <table style="width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden;">
-            ${tableRows}
-          </table>
-        </div>
-      </div>
+  // Nascondi gli elementi interattivi
+  hideEls.forEach(el => { el._oldDisplay = el.style.display; el.style.display = 'none'; });
 
-      ${sections.length ? `
-      <div style="background:#fff;border:1px solid #E0DDD4;border-radius:12px;padding:20px 28px;box-shadow:0 2px 8px rgba(11,49,130,.07);position:relative;margin-bottom:24px;">
-        <div style="position:absolute;top:0;left:0;bottom:0;width:3px;background:linear-gradient(180deg,${gravColor},${gravColor}99);border-radius:12px 0 0 12px;"></div>
-        <div style="font-size:9px;font-weight:700;color:#0E7490;letter-spacing:.16em;text-transform:uppercase;margin-bottom:16px;">SEGNALAZIONI</div>
-        ${sectionsHtml}
-      </div>` : ''}
-
-      <div style="background:#fff;border:1px solid #E0DDD4;border-radius:12px;padding:20px 28px;box-shadow:0 2px 8px rgba(11,49,130,.07);">
-        <div style="font-size:9px;font-weight:700;color:#0E7490;letter-spacing:.16em;text-transform:uppercase;margin-bottom:14px;">FIRME</div>
-        <table style="width:100%;border-collapse:collapse;">
-          <tr>
-            <td style="width:33%;padding:8px 12px;font-size:11px;font-weight:700;color:#0E7490;background:#E6F4F7;border:1px solid #d1d5db;">Ruolo</td>
-            <td style="width:33%;padding:8px 12px;font-size:11px;font-weight:700;color:#0E7490;background:#E6F4F7;border:1px solid #d1d5db;">Nome</td>
-            <td style="width:33%;padding:8px 12px;font-size:11px;font-weight:700;color:#0E7490;background:#E6F4F7;border:1px solid #d1d5db;">Firma</td>
-          </tr>
-          <tr>
-            <td style="padding:10px 12px;font-size:12px;border:1px solid #d1d5db;">${f.ruolo}</td>
-            <td style="padding:10px 12px;font-size:12px;border:1px solid #d1d5db;">${f.redattore}</td>
-            <td style="padding:10px 12px;height:48px;border:1px solid #d1d5db;"></td>
-          </tr>
-        </table>
-      </div>
-
-      ${photosHtml}
-
-    </div>
-  `;
-
-  document.body.appendChild(printRoot);
-
-  // Wait for fonts/images
+  // Aspetta font e layout
   await document.fonts.ready;
-  await new Promise(r => setTimeout(r, 300));
+  await new Promise(r => requestAnimationFrame(r));
+  await new Promise(r => setTimeout(r, 250));
 
   showToast('⏳ Generazione PDF…');
 
   try {
+    const captureTarget = document.body;
     const {jsPDF} = window.jspdf;
-    const canvas = await html2canvas(printRoot, {
+
+    const canvas = await html2canvas(captureTarget, {
       scale: 2,
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#F4F3EE',
       logging: false,
-      width: 794,
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: document.documentElement.scrollWidth,
+      windowHeight: document.documentElement.scrollHeight,
     });
 
-    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+    const imgData = canvas.toDataURL('image/jpeg', 0.93);
     const pdf = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
     const pW = 210, pH = 297;
 
-    // Scale canvas to A4 width; paginate vertically
     const mmPerPx = pW / canvas.width;
     const totalHeightMm = canvas.height * mmPerPx;
     const totalPages = Math.ceil(totalHeightMm / pH);
@@ -736,7 +692,11 @@ async function generatePdf(){
     console.error(e);
     showToast('✗ Errore generazione PDF');
   } finally {
-    document.body.removeChild(printRoot);
+    // Ripristina tutto
+    hideEls.forEach(el => { el.style.display = el._oldDisplay || ''; });
+    fotoPreview.innerHTML = fotoPreviewOrigHTML;
+    if (document.getElementById('_pdf_header')) document.getElementById('_pdf_header').remove();
+    if (document.getElementById('_pdf_firme')) document.getElementById('_pdf_firme').remove();
   }
 }
 </script>
