@@ -587,103 +587,167 @@ async function generateDocx(){
   showToast('✓ Word scaricato');
 }
 
-/* ══ PDF via html2canvas — cattura il DOM reale ══ */
+/* ══ PDF via html2canvas ══ */
 async function generatePdf(){
   const f = getF();
   const nc = f.n_cantiere !== '—' ? f.n_cantiere.replace(/\s/g,'_') : 'cantiere';
+  const photos = uploadedPhotos;
 
-  // Elementi da nascondere temporaneamente durante la cattura
-  const hideEls = [
-    document.querySelector('.topbar'),
-    document.querySelector('.page-header'),
-    document.querySelector('.btn-row'),
-    document.querySelector('.foto-upload-area'),
-    document.querySelector('.foto-count'),
-    document.querySelector('#toast'),
-    document.querySelector('.legend-hints'),
-  ].filter(Boolean);
-
-  // Sostituiamo le anteprime foto con immagini statiche (senza il pulsante ✕)
-  const fotoPreview = document.getElementById('fotoPreview');
-  const fotoPreviewOrigHTML = fotoPreview.innerHTML;
-  if (uploadedPhotos.length) {
-    fotoPreview.innerHTML = uploadedPhotos.map((p,i) =>
-      `<img class="foto-thumb" src="${p.dataUrl}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:2px solid #E0DDD4;">`
-    ).join('');
+  // ── helpers ──────────────────────────────────────────────
+  function makePrintDiv(innerHTML){
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-1;width:794px;background:#F4F3EE;font-family:"Plus Jakarta Sans",sans-serif;color:#1C1C2E;padding:0;';
+    d.innerHTML = innerHTML;
+    document.body.appendChild(d);
+    return d;
   }
 
-  // Aggiunge una sezione firme in fondo alla card
-  const formCard = document.querySelector('.form-card');
-  const firmeDiv = document.createElement('div');
-  firmeDiv.id = '_pdf_firme';
-  firmeDiv.innerHTML = `
-    <hr style="border:none;border-top:1px solid #E0DDD4;margin:20px 0 4px;">
-    <div class="section-label">Firme</div>
-    <table style="width:100%;border-collapse:collapse;margin-top:8px;">
-      <tr>
-        <td style="width:33%;padding:8px 12px;font-size:11px;font-weight:700;color:#0E7490;background:#E6F4F7;border:1px solid #d5d0c5;">Ruolo</td>
-        <td style="width:33%;padding:8px 12px;font-size:11px;font-weight:700;color:#0E7490;background:#E6F4F7;border:1px solid #d5d0c5;">Nome</td>
-        <td style="width:33%;padding:8px 12px;font-size:11px;font-weight:700;color:#0E7490;background:#E6F4F7;border:1px solid #d5d0c5;">Firma</td>
-      </tr>
-      <tr>
-        <td style="padding:10px 12px;font-size:12px;border:1px solid #d5d0c5;">${f.ruolo}</td>
-        <td style="padding:10px 12px;font-size:12px;border:1px solid #d5d0c5;">${f.redattore}</td>
-        <td style="padding:10px 12px;height:52px;border:1px solid #d5d0c5;"></td>
-      </tr>
-    </table>`;
-  formCard.appendChild(firmeDiv);
+  async function capture(el){
+    return html2canvas(el, {
+      scale: 2, useCORS: true, allowTaint: true,
+      backgroundColor: '#F4F3EE', logging: false,
+      width: 794,
+    });
+  }
 
-  // Aggiunge un header sopra il .main (stile documento)
-  const headerDiv = document.createElement('div');
-  headerDiv.id = '_pdf_header';
-  headerDiv.style.cssText = 'background:#0B3182;padding:14px 32px;display:flex;align-items:center;justify-content:space-between;';
-  headerDiv.innerHTML = `
-    <div>
-      <div style="font-size:9px;color:rgba(255,255,255,.6);letter-spacing:.18em;text-transform:uppercase;margin-bottom:3px;font-family:\'Plus Jakarta Sans\',sans-serif;">Progetto ENRI · Infrastruttura Fibra Ottica</div>
-      <div style="font-size:20px;font-weight:700;color:#fff;font-family:\'Bricolage Grotesque\',sans-serif;letter-spacing:-.025em;">Verbale di Sopralluogo</div>
+  function addCanvasToPdf(pdf, canvas, addPage){
+    const pW = 210, pH = 297;
+    const mmPerPx = pW / canvas.width;
+    const totalH = canvas.height * mmPerPx;
+    const pages = Math.ceil(totalH / pH);
+    for (let p = 0; p < pages; p++){
+      if (addPage || p > 0) pdf.addPage();
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.93), 'JPEG', 0, -p * pH, pW, totalH);
+    }
+  }
+
+  // ── campi e sezioni ──────────────────────────────────────
+  const fields = [
+    ['N° Cantiere', f.n_cantiere], ['Data Sopralluogo', f.data],
+    ['Indirizzo / Località', f.indirizzo], ['Impresa esecutrice', f.impresa],
+    ['Lotto', f.lotto], ['Ruolo redattore', f.ruolo],
+    ['Redatto da', f.redattore], ['Gravità anomalie', f.gravita],
+    ['N° Foto allegate', f.n_foto],
+  ];
+  const extraSections = [
+    ['Segnalazioni / Anomalie rilevate', f.segnalazioni],
+    ["Azioni richieste all'impresa", f.azioni],
+    ['Scadenza azioni', f.scadenza_azioni],
+    ['Prossimo sopralluogo', f.prossimo_sopr],
+    ['Note libere', f.note],
+  ].filter(([,v]) => v && v !== '—');
+
+  const gravColor = f.gravita === 'Anomalia critica' ? '#C23B22'
+                  : f.gravita === 'Anomalia media'   ? '#B45309' : '#0E7490';
+
+  const tableRows = fields.map(([lbl, val], i) => `
+    <tr style="background:${i%2===0?'#E6F4F7':'#ffffff'}">
+      <td style="padding:9px 14px;font-size:11px;font-weight:700;color:#0E7490;width:210px;border:1px solid #d5d0c5;">${lbl}</td>
+      <td style="padding:9px 14px;font-size:12.5px;color:#1C1C2E;border:1px solid #d5d0c5;">${val}</td>
+    </tr>`).join('');
+
+  const sectHtml = extraSections.map(([title, val]) => `
+    <div style="margin-bottom:18px;">
+      <div style="font-size:9px;font-weight:700;color:#0E7490;letter-spacing:.14em;text-transform:uppercase;margin-bottom:7px;font-family:'Fira Code',monospace;">${title}</div>
+      <div style="font-size:12.5px;color:#1C1C2E;line-height:1.7;background:#fff;border:1.5px solid #CCC9BE;border-radius:8px;padding:11px 15px;white-space:pre-wrap;">${val}</div>
+    </div>`).join('');
+
+  const cardStyle = 'background:#fff;border:1px solid #E0DDD4;border-radius:14px;padding:24px 28px 20px 32px;box-shadow:0 2px 8px rgba(11,49,130,.07);position:relative;margin-bottom:22px;';
+  const stripeStyle = 'position:absolute;top:0;left:0;bottom:0;width:3px;border-radius:14px 0 0 14px;background:linear-gradient(180deg,#0E7490,#22aac4);';
+  const secLabel = 'font-family:"Fira Code",monospace;font-size:9px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:#0E7490;margin-bottom:14px;';
+
+  // ── pagina 1: form ────────────────────────────────────────
+  const mainHtml = `
+    <div style="background:#0B3182;padding:14px 36px 14px 36px;display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-size:9px;color:rgba(255,255,255,.6);letter-spacing:.18em;text-transform:uppercase;margin-bottom:3px;">Progetto ENRI · Infrastruttura Fibra Ottica</div>
+        <div style="font-size:20px;font-weight:700;color:#fff;letter-spacing:-.025em;">Verbale di Sopralluogo</div>
+      </div>
+      <img src="data:image/jpeg;base64,${RETELIT_B64}" style="height:34px;object-fit:contain;">
     </div>
-    <img src="data:image/jpeg;base64,${RETELIT_B64}" style="height:34px;object-fit:contain;">`;
+    <div style="padding:28px 36px;">
 
-  const main = document.querySelector('.main');
-  document.body.insertBefore(headerDiv, main);
+      <div style="${cardStyle}">
+        <div style="${stripeStyle}"></div>
+        <div style="${secLabel}">Identificazione</div>
+        <table style="width:100%;border-collapse:collapse;">${tableRows}</table>
+      </div>
 
-  // Nascondi gli elementi interattivi
-  hideEls.forEach(el => { el._oldDisplay = el.style.display; el.style.display = 'none'; });
+      ${extraSections.length ? `
+      <div style="${cardStyle.replace('margin-bottom:22px','margin-bottom:22px').replace('#0E7490,#22aac4',gravColor+','+gravColor+'99')}">
+        <div style="position:absolute;top:0;left:0;bottom:0;width:3px;border-radius:14px 0 0 14px;background:linear-gradient(180deg,${gravColor},${gravColor}99);"></div>
+        <div style="${secLabel}">Segnalazioni</div>
+        ${sectHtml}
+      </div>` : ''}
 
-  // Aspetta font e layout
+      <div style="${cardStyle}">
+        <div style="${stripeStyle}"></div>
+        <div style="${secLabel}">Firme</div>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr>
+            <td style="width:33%;padding:8px 12px;font-size:11px;font-weight:700;color:#0E7490;background:#E6F4F7;border:1px solid #d5d0c5;">Ruolo</td>
+            <td style="width:33%;padding:8px 12px;font-size:11px;font-weight:700;color:#0E7490;background:#E6F4F7;border:1px solid #d5d0c5;">Nome</td>
+            <td style="width:33%;padding:8px 12px;font-size:11px;font-weight:700;color:#0E7490;background:#E6F4F7;border:1px solid #d5d0c5;">Firma</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 12px;font-size:12px;border:1px solid #d5d0c5;">${f.ruolo}</td>
+            <td style="padding:10px 12px;font-size:12px;border:1px solid #d5d0c5;">${f.redattore}</td>
+            <td style="padding:10px 12px;height:56px;border:1px solid #d5d0c5;"></td>
+          </tr>
+        </table>
+      </div>
+
+    </div>`;
+
+  // ── pagina foto: una card per immagine, nessun taglio ─────
+  const photoCardHtml = photos.length ? `
+    <div style="padding:28px 36px;">
+      <div style="${cardStyle}">
+        <div style="${stripeStyle}"></div>
+        <div style="${secLabel}">Foto allegate</div>
+        <div style="display:flex;flex-direction:column;gap:20px;">
+          ${photos.map((p,i) => `
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <img src="${p.dataUrl}" style="width:100%;height:auto;border-radius:8px;border:1px solid #E0DDD4;display:block;">
+              <span style="font-size:10px;color:#7878A0;font-family:'Fira Code',monospace;">Foto ${i+1}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>` : '';
+
   await document.fonts.ready;
-  await new Promise(r => requestAnimationFrame(r));
-  await new Promise(r => setTimeout(r, 250));
-
+  await new Promise(r => setTimeout(r, 280));
   showToast('⏳ Generazione PDF…');
 
+  let mainDiv, photoDiv;
   try {
-    const captureTarget = document.body;
     const {jsPDF} = window.jspdf;
-
-    const canvas = await html2canvas(captureTarget, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#F4F3EE',
-      logging: false,
-      scrollX: 0,
-      scrollY: 0,
-      windowWidth: document.documentElement.scrollWidth,
-      windowHeight: document.documentElement.scrollHeight,
-    });
-
-    const imgData = canvas.toDataURL('image/jpeg', 0.93);
     const pdf = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
-    const pW = 210, pH = 297;
 
-    const mmPerPx = pW / canvas.width;
-    const totalHeightMm = canvas.height * mmPerPx;
-    const totalPages = Math.ceil(totalHeightMm / pH);
+    // Cattura pagina 1 (form)
+    mainDiv = makePrintDiv(mainHtml);
+    await new Promise(r => setTimeout(r, 120));
+    const mainCanvas = await capture(mainDiv);
+    addCanvasToPdf(pdf, mainCanvas, false);
 
-    for (let p = 0; p < totalPages; p++) {
-      if (p > 0) pdf.addPage();
-      pdf.addImage(imgData, 'JPEG', 0, -p * pH, pW, totalHeightMm);
+    // Cattura pagina foto (se presenti) — ogni foto su canvas separato
+    if (photos.length) {
+      for (let i = 0; i < photos.length; i++) {
+        const singlePhotoHtml = `
+          <div style="padding:28px 36px;">
+            <div style="${cardStyle}">
+              <div style="${stripeStyle}"></div>
+              <div style="${secLabel}">Foto ${i+1} di ${photos.length}</div>
+              <img src="${photos[i].dataUrl}" style="width:100%;height:auto;border-radius:8px;border:1px solid #E0DDD4;display:block;">
+            </div>
+          </div>`;
+        photoDiv = makePrintDiv(singlePhotoHtml);
+        await new Promise(r => setTimeout(r, 80));
+        const photoCanvas = await capture(photoDiv);
+        addCanvasToPdf(pdf, photoCanvas, true);
+        document.body.removeChild(photoDiv);
+        photoDiv = null;
+      }
     }
 
     pdf.save(`Verbale_Sopralluogo_${nc}.pdf`);
@@ -692,11 +756,8 @@ async function generatePdf(){
     console.error(e);
     showToast('✗ Errore generazione PDF');
   } finally {
-    // Ripristina tutto
-    hideEls.forEach(el => { el.style.display = el._oldDisplay || ''; });
-    fotoPreview.innerHTML = fotoPreviewOrigHTML;
-    if (document.getElementById('_pdf_header')) document.getElementById('_pdf_header').remove();
-    if (document.getElementById('_pdf_firme')) document.getElementById('_pdf_firme').remove();
+    if (mainDiv && mainDiv.parentNode) mainDiv.parentNode.removeChild(mainDiv);
+    if (photoDiv && photoDiv.parentNode) photoDiv.parentNode.removeChild(photoDiv);
   }
 }
 </script>
