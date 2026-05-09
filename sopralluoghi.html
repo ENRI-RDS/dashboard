@@ -1,5 +1,6 @@
 <!DOCTYPE html> <html lang="it" translate="no"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <meta name="google" content="notranslate"> <title>ENRI — Sopralluoghi</title> <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Plus+Jakarta+Sans:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root {
     --bg:#F4F3EE; --surface:#FFFFFF; --surface2:#F0EEE6;
@@ -66,27 +67,15 @@
   .radio-pill.sev-alta input:checked + label{border-color:#C23B22;background:#C23B221A;color:#C23B22;}
   .radio-pill.sev-media input:checked + label{border-color:#B45309;background:#B453091A;color:#B45309;}
 
-  /* GRAVITÀ ROW con leggenda */
-  .gravita-row{display:flex;align-items:flex-start;gap:16px;}
-  .gravita-row .radio-group{flex:0 0 auto;}
-  .legend-box{
-    flex:1;
-    background:var(--surface2);
-    border:1px solid var(--border);
-    border-radius:8px;
-    padding:8px 12px;
-    display:flex;
-    flex-direction:column;
-    gap:4px;
-  }
-  .legend-item{display:flex;align-items:baseline;gap:6px;font-size:11px;}
-  .legend-badge{
-    font-family:'Fira Code',monospace;font-size:9px;font-weight:700;
-    padding:2px 7px;border-radius:10px;white-space:nowrap;flex-shrink:0;
-  }
-  .legend-badge.media{background:#B453091A;color:#B45309;border:1px solid #B45309;}
-  .legend-badge.critica{background:#C23B221A;color:#C23B22;border:1px solid #C23B22;}
-  .legend-desc{color:var(--muted);line-height:1.4;}
+  /* LEGGENDA GRAVITÀ */
+  .legend-hints{margin-top:8px;display:flex;flex-direction:column;gap:3px;}
+  .legend-hint{font-size:11px;color:var(--muted2);display:flex;align-items:baseline;gap:5px;}
+  .legend-hint .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;position:relative;top:0px;}
+  .legend-hint .dot.media{background:#B45309;}
+  .legend-hint .dot.critica{background:#C23B22;}
+  .legend-hint strong{font-weight:600;font-size:11px;}
+  .legend-hint strong.media{color:#B45309;}
+  .legend-hint strong.critica{color:#C23B22;}
 
   /* DOWNLOAD BTN */
   .btn-download{
@@ -127,6 +116,49 @@
     background:var(--accent);color:#fff;text-decoration:none;
     font-size:13px;font-weight:700;
   }
+
+  /* FOTO UPLOAD */
+  .foto-upload-area{
+    border:2px dashed var(--border2);border-radius:10px;
+    padding:18px;text-align:center;cursor:pointer;
+    background:var(--surface2);transition:border-color .2s,background .2s;
+    position:relative;
+  }
+  .foto-upload-area:hover{border-color:var(--teal);background:#0E74900A;}
+  .foto-upload-area input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+  .foto-upload-icon{color:var(--muted2);margin-bottom:6px;}
+  .foto-upload-text{font-size:12px;color:var(--muted);font-weight:500;}
+  .foto-upload-text span{color:var(--teal);font-weight:700;}
+  .foto-preview{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+  .foto-thumb{
+    width:64px;height:64px;border-radius:8px;object-fit:cover;
+    border:2px solid var(--border);position:relative;
+  }
+  .foto-thumb-wrap{position:relative;display:inline-block;}
+  .foto-remove{
+    position:absolute;top:-6px;right:-6px;
+    width:18px;height:18px;border-radius:50%;
+    background:#C23B22;color:#fff;border:none;cursor:pointer;
+    font-size:11px;line-height:18px;text-align:center;font-weight:700;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .foto-count{font-size:11px;color:var(--muted);margin-top:6px;font-family:'Fira Code',monospace;}
+
+  /* BTN ROW */
+  .btn-row{display:flex;gap:10px;margin-top:24px;}
+  .btn-download{
+    flex:1;padding:13px;
+    background:var(--teal);color:#fff;border:none;border-radius:10px;
+    font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:7px;
+    box-shadow:0 3px 14px rgba(14,116,144,.28);
+    transition:background .2s,transform .18s,box-shadow .18s;
+  }
+  .btn-download:hover{background:#0c6880;transform:translateY(-1px);box-shadow:0 6px 22px rgba(14,116,144,.36);}
+  .btn-download:active{transform:translateY(0);}
+  .btn-download.pdf{background:var(--accent2);box-shadow:0 3px 14px rgba(229,80,0,.25);}
+  .btn-download.pdf:hover{background:#c44400;box-shadow:0 6px 22px rgba(229,80,0,.35);}
+  @media(max-width:500px){.btn-row{flex-direction:column;}}
 </style>
 </head>
 <body>
@@ -167,7 +199,7 @@
     <div class="field-row">
       <div class="field-group">
         <label for="n_cantiere">N° Cantiere</label>
-        <input type="text" id="n_cantiere" placeholder="es. C/1/1A">
+        <input type="text" id="n_cantiere" placeholder="es. C-042">
       </div>
       <div class="field-group">
         <label for="data">Data Sopralluogo</label>
@@ -217,9 +249,17 @@
       </div>
     </div>
 
-    <div class="field-group" style="max-width:200px;">
-      <label for="n_foto">N° Foto allegate</label>
-      <input type="number" id="n_foto" placeholder="0" min="0">
+    <div class="field-group">
+      <label>Foto allegate</label>
+      <div class="foto-upload-area" id="fotoArea">
+        <input type="file" id="fotoInput" accept="image/*" multiple onchange="handleFoto(this)">
+        <div class="foto-upload-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        </div>
+        <div class="foto-upload-text">Tocca per aggiungere foto <span>o scatta</span> · max 4</div>
+      </div>
+      <div class="foto-preview" id="fotoPreview"></div>
+      <div class="foto-count" id="fotoCount"></div>
     </div>
 
     <hr class="divider-h">
@@ -227,8 +267,7 @@
 
     <div class="field-group">
       <label>Gravità</label>
-      <div class="gravita-row">
-        <div class="radio-group">
+      <div class="radio-group">
           <div class="radio-pill">
             <input type="radio" name="gravita" id="grav_nessuna" value="Nessuna anomalia" checked>
             <label for="grav_nessuna">✓ Nessuna anomalia</label>
@@ -242,17 +281,10 @@
             <label for="grav_alta">✖ Critica</label>
           </div>
         </div>
-        <div class="legend-box">
-          <div class="legend-item">
-            <span class="legend-badge media">⚠ Media</span>
-            <span class="legend-desc">Metri di scavo difformi da quelli dichiarati dall'impresa</span>
-          </div>
-          <div class="legend-item">
-            <span class="legend-badge critica">✖ Critica</span>
-            <span class="legend-desc">Blocco operativo</span>
-          </div>
+        <div class="legend-hints">
+          <div class="legend-hint"><span class="dot media"></span><strong class="media">Media —</strong> metri di scavo difformi da quelli dichiarati</div>
+          <div class="legend-hint"><span class="dot critica"></span><strong class="critica">Critica —</strong> blocco operativo</div>
         </div>
-      </div>
     </div>
 
     <div class="field-group">
@@ -281,10 +313,16 @@
       <textarea id="note" placeholder="Altre osservazioni..." style="min-height:56px;"></textarea>
     </div>
 
-    <button class="btn-download" onclick="generateDocx()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Scarica Verbale .docx
-    </button>
+    <div class="btn-row">
+      <button class="btn-download" onclick="generateDocx()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Scarica Word
+      </button>
+      <button class="btn-download pdf" onclick="generatePdf()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Scarica PDF
+      </button>
+    </div>
 
   </div>
 </div>
@@ -294,26 +332,139 @@
 <script>
 window.addEventListener('DOMContentLoaded', () => {
   const u = localStorage.getItem('_enri_user');
-  if (!u) {
-    document.getElementById('authGuard').style.display = 'flex';
-    return;
-  }
+  if (!u) { document.getElementById('authGuard').style.display='flex'; return; }
   document.getElementById('topbarUser').textContent = u;
   document.getElementById('redattore').value = u;
   document.getElementById('data').value = new Date().toISOString().split('T')[0];
 });
 
-function v(id) { return document.getElementById(id).value.trim() || '—'; }
-function fmtDate(id) {
-  const val = document.getElementById(id).value;
-  return val ? new Date(val).toLocaleDateString('it-IT') : '—';
-}
-function gravita() {
-  return document.querySelector('input[name="gravita"]:checked')?.value || '—';
-}
-function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function v(id){ return document.getElementById(id).value.trim()||'—'; }
+function fmtDate(id){ const val=document.getElementById(id).value; return val?new Date(val).toLocaleDateString('it-IT'):'—'; }
+function gravita(){ return document.querySelector('input[name="gravita"]:checked')?.value||'—'; }
+function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2800); }
 
-function row(label, value) {
+/* ── FOTO (max 4) ── */
+let uploadedPhotos = []; // {dataUrl, name, ext, nw, nh}
+
+function handleFoto(input) {
+  const remaining = 4 - uploadedPhotos.length;
+  if (remaining <= 0) { input.value=''; return; }
+  Array.from(input.files).slice(0, remaining).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        uploadedPhotos.push({ dataUrl:e.target.result, name:file.name,
+          ext: file.type.includes('png')?'png':'jpeg', nw:img.naturalWidth, nh:img.naturalHeight });
+        renderPreviews();
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value = '';
+}
+
+function removeFoto(idx){ uploadedPhotos.splice(idx,1); renderPreviews(); }
+
+function renderPreviews(){
+  const preview=document.getElementById('fotoPreview');
+  const count=document.getElementById('fotoCount');
+  const input=document.getElementById('fotoInput');
+  const area=document.getElementById('fotoArea');
+  const full = uploadedPhotos.length >= 4;
+  input.disabled=full; area.style.opacity=full?'0.55':'1'; area.style.pointerEvents=full?'none':'auto';
+  preview.innerHTML = uploadedPhotos.map((p,i)=>
+    `<div class="foto-thumb-wrap"><img class="foto-thumb" src="${p.dataUrl}" title="${p.name}">
+     <button class="foto-remove" onclick="removeFoto(${i})">✕</button></div>`).join('');
+  count.textContent = !uploadedPhotos.length ? '' :
+    full ? '4/4 · massimo raggiunto' : `${uploadedPhotos.length}/4 foto`;
+}
+
+/* ── DATI CONDIVISI ── */
+function getF(){
+  return {
+    n_cantiere:v('n_cantiere'), data:fmtDate('data'), indirizzo:v('indirizzo'),
+    lotto:v('lotto'), impresa:v('impresa'), ruolo:v('ruolo'), redattore:v('redattore'),
+    n_foto:String(uploadedPhotos.length), gravita:gravita(),
+    segnalazioni:v('segnalazioni'), azioni:v('azioni'),
+    scadenza_azioni:fmtDate('scadenza_azioni'), prossimo_sopr:fmtDate('prossimo_sopr'), note:v('note'),
+  };
+}
+
+// Griglia foto: 1→full, 2→[0,1], 3→[0,1]+[2], 4→[0,1]+[2,3]
+function photoRows(n){
+  if(n===1) return [[0]];
+  if(n===2) return [[0,1]];
+  if(n===3) return [[0,1],[2]];
+  return [[0,1],[2,3]];
+}
+
+/* ══ DOCX ══ */
+function imgDrawingXml(rId, wEmu, hEmu, idx){
+  return `<w:drawing>
+<wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">
+  <wp:extent cx="${wEmu}" cy="${hEmu}"/><wp:docPr id="${idx}" name="Foto ${idx}"/>
+  <wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>
+  <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+    <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+      <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+        <pic:nvPicPr><pic:cNvPr id="${idx}" name="Foto ${idx}"/><pic:cNvPicPr/></pic:nvPicPr>
+        <pic:blipFill>
+          <a:blip r:embed="${rId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>
+          <a:stretch><a:fillRect/></a:stretch>
+        </pic:blipFill>
+        <pic:spPr>
+          <a:xfrm><a:off x="0" y="0"/><a:ext cx="${wEmu}" cy="${hEmu}"/></a:xfrm>
+          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+        </pic:spPr>
+      </pic:pic>
+    </a:graphicData>
+  </a:graphic>
+</wp:inline></w:drawing>`;
+}
+
+function calcEmu(p, maxWmm, maxHmm){
+  const E=36000, r=p.nw/p.nh;
+  let w=maxWmm*E, h=w/r;
+  if(h>maxHmm*E){h=maxHmm*E; w=h*r;}
+  return {w:Math.round(w), h:Math.round(h)};
+}
+
+function buildPhotoDocx(photos){
+  if(!photos.length) return '';
+  let xml = `<w:p><w:pPr><w:pageBreakBefore/><w:spacing w:after="120"/></w:pPr>
+    <w:r><w:rPr><w:b/><w:color w:val="0E7490"/><w:sz w:val="22"/></w:rPr><w:t>Foto allegate</w:t></w:r></w:p>`;
+
+  photoRows(photos.length).forEach(row => {
+    const full = row.length === 1;
+    const maxW = full ? 168 : 81; // mm
+    const maxH = full ? 115 : 100;
+    const colW = full ? 9500 : 4600; // twips
+
+    xml += `<w:tbl><w:tblPr>
+      <w:tblW w:w="${full?9500:9200}" w:type="dxa"/>
+      <w:tblBorders><w:top w:val="none"/><w:left w:val="none"/><w:bottom w:val="none"/><w:right w:val="none"/><w:insideH w:val="none"/><w:insideV w:val="none"/></w:tblBorders>
+      <w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="60" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/><w:right w:w="60" w:type="dxa"/></w:tblCellMar>
+    </w:tblPr>
+    <w:tblGrid>${row.map(()=>`<w:gridCol w:w="${colW}"/>`).join('')}</w:tblGrid>
+    <w:tr>`;
+
+    row.forEach(idx => {
+      const {w:wE, h:hE} = calcEmu(photos[idx], maxW, maxH);
+      xml += `<w:tc><w:tcPr><w:tcW w:w="${colW}" w:type="dxa"/></w:tcPr>
+        <w:p><w:r>${imgDrawingXml(`rId${idx+2}`, wE, hE, idx+1)}</w:r></w:p>
+        <w:p><w:pPr><w:spacing w:after="40"/></w:pPr>
+          <w:r><w:rPr><w:i/><w:color w:val="7878A0"/><w:sz w:val="16"/></w:rPr><w:t>Foto ${idx+1}</w:t></w:r>
+        </w:p></w:tc>`;
+    });
+    xml += `</w:tr></w:tbl><w:p><w:pPr><w:spacing w:after="80"/></w:pPr></w:p>`;
+  });
+  return xml;
+}
+
+function tableRow(label,value){
   return `<w:tr>
     <w:tc><w:tcPr><w:tcW w:w="2800" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="E6F4F7"/></w:tcPr>
       <w:p><w:pPr><w:spacing w:after="60"/></w:pPr>
@@ -326,9 +477,8 @@ function row(label, value) {
   </w:tr>`;
 }
 
-function section(title, value) {
-  return `
-  <w:p><w:pPr><w:spacing w:before="240" w:after="60"/></w:pPr>
+function docxSection(title,value){
+  return `<w:p><w:pPr><w:spacing w:before="240" w:after="60"/></w:pPr>
     <w:r><w:rPr><w:b/><w:color w:val="0E7490"/><w:sz w:val="21"/><w:szCs w:val="21"/></w:rPr><w:t>${esc(title)}</w:t></w:r>
   </w:p>
   <w:p><w:pPr><w:spacing w:after="160"/></w:pPr>
@@ -336,7 +486,7 @@ function section(title, value) {
   </w:p>`;
 }
 
-function buildDocumentXml(f) {
+function buildDocumentXml(f, photos){
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
 <w:body>
@@ -346,54 +496,33 @@ function buildDocumentXml(f) {
   <w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="320"/></w:pPr>
     <w:r><w:rPr><w:color w:val="52526E"/><w:sz w:val="19"/><w:szCs w:val="19"/></w:rPr><w:t>Progetto ENRI – Infrastruttura Fibra Ottica</w:t></w:r>
   </w:p>
-
   <w:tbl>
-    <w:tblPr>
-      <w:tblW w:w="8000" w:type="dxa"/>
-      <w:tblBorders>
-        <w:top w:val="single" w:sz="4" w:color="CCCCCC"/>
-        <w:left w:val="single" w:sz="4" w:color="CCCCCC"/>
-        <w:bottom w:val="single" w:sz="4" w:color="CCCCCC"/>
-        <w:right w:val="single" w:sz="4" w:color="CCCCCC"/>
-        <w:insideH w:val="single" w:sz="4" w:color="CCCCCC"/>
-        <w:insideV w:val="single" w:sz="4" w:color="CCCCCC"/>
-      </w:tblBorders>
+    <w:tblPr><w:tblW w:w="8000" w:type="dxa"/>
+      <w:tblBorders><w:top w:val="single" w:sz="4" w:color="CCCCCC"/><w:left w:val="single" w:sz="4" w:color="CCCCCC"/>
+        <w:bottom w:val="single" w:sz="4" w:color="CCCCCC"/><w:right w:val="single" w:sz="4" w:color="CCCCCC"/>
+        <w:insideH w:val="single" w:sz="4" w:color="CCCCCC"/><w:insideV w:val="single" w:sz="4" w:color="CCCCCC"/></w:tblBorders>
       <w:tblCellMar><w:top w:w="80" w:type="dxa"/><w:left w:w="140" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="140" w:type="dxa"/></w:tblCellMar>
     </w:tblPr>
-    ${row('N° Cantiere', f.n_cantiere)}
-    ${row('Data Sopralluogo', f.data)}
-    ${row('Indirizzo / Località', f.indirizzo)}
-    ${row('Lotto', f.lotto)}
-    ${row('Impresa Esecutrice', f.impresa)}
-    ${row('Ruolo', f.ruolo)}
-    ${row('Redatto da', f.redattore)}
-    ${row('N° Foto Allegate', f.n_foto)}
-    ${row('Gravità anomalie', f.gravita)}
+    ${tableRow('N° Cantiere',f.n_cantiere)}${tableRow('Data Sopralluogo',f.data)}
+    ${tableRow('Indirizzo / Località',f.indirizzo)}${tableRow('Lotto',f.lotto)}
+    ${tableRow('Impresa Esecutrice',f.impresa)}${tableRow('Ruolo',f.ruolo)}
+    ${tableRow('Redatto da',f.redattore)}${tableRow('N° Foto Allegate',f.n_foto)}
+    ${tableRow('Gravità anomalie',f.gravita)}
   </w:tbl>
-
   <w:p><w:pPr><w:spacing w:before="40" w:after="0"/></w:pPr></w:p>
-
-  ${section('Segnalazioni / Anomalie rilevate', f.segnalazioni)}
-  ${section("Azioni richieste all'impresa", f.azioni)}
-  ${section('Scadenza azioni', f.scadenza_azioni)}
-  ${section('Prossimo sopralluogo previsto', f.prossimo_sopr)}
-  ${section('Note libere', f.note)}
-
+  ${docxSection('Segnalazioni / Anomalie rilevate',f.segnalazioni)}
+  ${docxSection("Azioni richieste all'impresa",f.azioni)}
+  ${docxSection('Scadenza azioni',f.scadenza_azioni)}
+  ${docxSection('Prossimo sopralluogo previsto',f.prossimo_sopr)}
+  ${docxSection('Note libere',f.note)}
   <w:p><w:pPr><w:spacing w:before="400" w:after="80"/></w:pPr>
     <w:r><w:rPr><w:b/><w:color w:val="0E7490"/><w:sz w:val="21"/></w:rPr><w:t>Firme</w:t></w:r>
   </w:p>
-
   <w:tbl>
-    <w:tblPr>
-      <w:tblW w:w="8000" w:type="dxa"/>
-      <w:tblBorders>
-        <w:top w:val="single" w:sz="4" w:color="CCCCCC"/>
-        <w:left w:val="single" w:sz="4" w:color="CCCCCC"/>
-        <w:bottom w:val="single" w:sz="4" w:color="CCCCCC"/>
-        <w:right w:val="single" w:sz="4" w:color="CCCCCC"/>
-        <w:insideH w:val="single" w:sz="4" w:color="CCCCCC"/>
-        <w:insideV w:val="single" w:sz="4" w:color="CCCCCC"/>
-      </w:tblBorders>
+    <w:tblPr><w:tblW w:w="8000" w:type="dxa"/>
+      <w:tblBorders><w:top w:val="single" w:sz="4" w:color="CCCCCC"/><w:left w:val="single" w:sz="4" w:color="CCCCCC"/>
+        <w:bottom w:val="single" w:sz="4" w:color="CCCCCC"/><w:right w:val="single" w:sz="4" w:color="CCCCCC"/>
+        <w:insideH w:val="single" w:sz="4" w:color="CCCCCC"/><w:insideV w:val="single" w:sz="4" w:color="CCCCCC"/></w:tblBorders>
       <w:tblCellMar><w:top w:w="100" w:type="dxa"/><w:left w:w="140" w:type="dxa"/><w:bottom w:w="100" w:type="dxa"/><w:right w:w="140" w:type="dxa"/></w:tblCellMar>
     </w:tblPr>
     <w:tr>
@@ -415,61 +544,144 @@ function buildDocumentXml(f) {
     <w:tr>
       <w:tc><w:tcPr><w:tcW w:w="2200" w:type="dxa"/></w:tcPr>
         <w:p><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t>Impresa (${esc(f.impresa)})</w:t></w:r></w:p></w:tc>
-      <w:tc><w:tcPr><w:tcW w:w="2900" w:type="dxa"/></w:tcPr>
-        <w:p><w:pPr><w:spacing w:after="440"/></w:pPr></w:p></w:tc>
-      <w:tc><w:tcPr><w:tcW w:w="2900" w:type="dxa"/></w:tcPr>
-        <w:p><w:pPr><w:spacing w:after="440"/></w:pPr></w:p></w:tc>
+      <w:tc><w:tcPr><w:tcW w:w="2900" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:spacing w:after="440"/></w:pPr></w:p></w:tc>
+      <w:tc><w:tcPr><w:tcW w:w="2900" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:spacing w:after="440"/></w:pPr></w:p></w:tc>
     </w:tr>
   </w:tbl>
-
+  ${buildPhotoDocx(photos)}
   <w:sectPr><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"/></w:sectPr>
-</w:body>
-</w:document>`;
+</w:body></w:document>`;
 }
 
-async function generateDocx() {
-  const f = {
-    n_cantiere:     v('n_cantiere'),
-    data:           fmtDate('data'),
-    indirizzo:      v('indirizzo'),
-    lotto:          v('lotto'),
-    impresa:        v('impresa'),
-    ruolo:          v('ruolo'),
-    redattore:      v('redattore'),
-    n_foto:         v('n_foto'),
-    gravita:        gravita(),
-    segnalazioni:   v('segnalazioni'),
-    azioni:         v('azioni'),
-    scadenza_azioni:fmtDate('scadenza_azioni'),
-    prossimo_sopr:  fmtDate('prossimo_sopr'),
-    note:           v('note'),
-  };
-
-  const zip = new JSZip();
+async function generateDocx(){
+  const f=getF(), photos=uploadedPhotos;
+  const zip=new JSZip();
+  const hasJpeg=photos.some(p=>p.ext==='jpeg'), hasPng=photos.some(p=>p.ext==='png');
   zip.file('[Content_Types].xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
+  ${hasJpeg?'<Default Extension="jpeg" ContentType="image/jpeg"/>':''}
+  ${hasPng?'<Default Extension="png" ContentType="image/png"/>':''}
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 </Types>`);
   zip.file('_rels/.rels',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
 </Relationships>`);
+  const imgRels=photos.map((p,i)=>
+    `<Relationship Id="rId${i+2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image${i+1}.${p.ext}"/>`
+  ).join('\n  ');
   zip.file('word/_rels/document.xml.rels',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`);
-  zip.file('word/document.xml', buildDocumentXml(f));
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  ${imgRels}
+</Relationships>`);
+  photos.forEach((p,i)=>zip.file(`word/media/image${i+1}.${p.ext}`, p.dataUrl.split(',')[1], {base64:true}));
+  zip.file('word/document.xml', buildDocumentXml(f, photos));
+  const blob=await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+  const nc=f.n_cantiere!=='—'?f.n_cantiere.replace(/\s/g,'_'):'cantiere';
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=`Verbale_Sopralluogo_${nc}.docx`; a.click();
+  showToast('✓ Word scaricato');
+}
 
-  const blob = await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  const nc   = f.n_cantiere !== '—' ? f.n_cantiere.replace(/\s/g,'_') : 'cantiere';
-  a.href = url; a.download = `Verbale_Sopralluogo_${nc}.docx`; a.click();
-  URL.revokeObjectURL(url);
+/* ══ PDF ══ */
+async function generatePdf(){
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4'});
+  const W=210,M=18,cW=W-M*2; let y=M;
+  const teal=[14,116,144],navy=[11,49,130],dark=[28,28,46],grey=[82,82,110],light=[230,244,247];
 
-  const t = document.getElementById('toast');
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2800);
+  // Header
+  doc.setFillColor(...navy); doc.rect(0,0,W,14,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+  doc.text('PROGETTO ENRI — VERBALE DI SOPRALLUOGO',M,9);
+
+  y=22;
+  doc.setFontSize(16); doc.setTextColor(...navy); doc.setFont('helvetica','bold');
+  doc.text('Verbale di Sopralluogo',M,y); y+=5;
+  doc.setFontSize(9); doc.setTextColor(...grey); doc.setFont('helvetica','normal');
+  doc.text('Infrastruttura Fibra Ottica',M,y); y+=10;
+
+  const f=getF();
+  [['N° Cantiere',f.n_cantiere],['Data',f.data],['Indirizzo',f.indirizzo],
+   ['Lotto',f.lotto],['Impresa',f.impresa],['Ruolo',f.ruolo],
+   ['Redatto da',f.redattore],['N° Foto allegate',f.n_foto],['Gravità',f.gravita]
+  ].forEach(([label,val],i)=>{
+    if(i%2===0) doc.setFillColor(...light); else doc.setFillColor(255,255,255);
+    doc.rect(M,y,cW,7,'F'); doc.setDrawColor(210,210,215); doc.rect(M,y,cW,7,'S');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(...teal);
+    doc.text(label,M+3,y+4.6);
+    doc.setFont('helvetica','normal'); doc.setTextColor(...dark);
+    doc.text(val,M+44,y+4.6,{maxWidth:cW-47});
+    y+=7;
+  });
+  y+=8;
+
+  [['Segnalazioni / Anomalie rilevate',f.segnalazioni],["Azioni richieste all'impresa",f.azioni],
+   ['Scadenza azioni',f.scadenza_azioni],['Prossimo sopralluogo',f.prossimo_sopr],['Note libere',f.note]
+  ].forEach(([title,val])=>{
+    if(val==='—') return;
+    if(y>260){doc.addPage();y=M;}
+    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...teal);
+    doc.text(title,M,y); y+=5;
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(...dark);
+    const lines=doc.splitTextToSize(val,cW);
+    doc.text(lines,M,y); y+=lines.length*5+6;
+  });
+
+  // Firme
+  if(y>240){doc.addPage();y=M;}
+  y+=4;
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...teal);
+  doc.text('Firme',M,y); y+=6;
+  [[f.ruolo,f.redattore],[`Impresa (${f.impresa})`,'']].forEach(([role,name])=>{
+    doc.setFillColor(...light);
+    doc.rect(M,y,50,6,'F'); doc.rect(M,y,50,6,'S');
+    doc.rect(M+50,y,60,6,'S'); doc.rect(M+110,y,62,20,'S');
+    doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(...teal);
+    doc.text(role,M+2,y+4);
+    doc.setFont('helvetica','normal'); doc.setTextColor(...dark);
+    if(name) doc.text(name,M+52,y+4);
+    y+=22;
+  });
+
+  // Foto – stessa griglia DOCX: 1→full, 2→affiancate, 3→2+1, 4→2×2
+  const photos=uploadedPhotos;
+  if(photos.length){
+    doc.addPage(); y=M;
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(...navy);
+    doc.text('Foto allegate',M,y); y+=9;
+
+    const GAP=4;
+    for(const row of photoRows(photos.length)){
+      const full=row.length===1;
+      const imgW=full?cW:(cW-GAP)/2;
+      const maxH=full?115:100;
+
+      const dims=row.map(idx=>{
+        const p=photos[idx], r=p.nw/p.nh;
+        let w=imgW, h=w/r;
+        if(h>maxH){h=maxH;w=h*r;}
+        return {w,h};
+      });
+      const rowH=Math.max(...dims.map(d=>d.h));
+      if(y+rowH+10>285){doc.addPage();y=M;}
+
+      row.forEach((idx,col)=>{
+        const p=photos[idx], {w,h}=dims[col];
+        const x=M+col*(imgW+GAP);
+        doc.addImage(p.dataUrl,p.ext==='png'?'PNG':'JPEG',x,y,w,h);
+        doc.setFont('helvetica','italic'); doc.setFontSize(7.5); doc.setTextColor(...grey);
+        doc.text(`Foto ${idx+1}`,x,y+rowH+5);
+      });
+      y+=rowH+13;
+    }
+  }
+
+  const nc=f.n_cantiere!=='—'?f.n_cantiere.replace(/\s/g,'_'):'cantiere';
+  doc.save(`Verbale_Sopralluogo_${nc}.pdf`);
+  showToast('✓ PDF scaricato');
 }
 </script>
 </body>
