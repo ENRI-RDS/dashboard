@@ -222,9 +222,36 @@
   .chip.in-corso     { background:#0B318218; color:#0B3182; border:1px solid #0B318240; }
   .chip.sospeso      { background:#C23B2218; color:#8B1A1A; border:1px solid #C23B2240; }
   .chip.completato   { background:#1F7A4E18; color:#1F7A4E; border:1px solid #1F7A4E40; }
+  #authGuard{
+    position:fixed;inset:0;background:rgba(11,25,70,.55);
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    z-index:9999;display:flex;align-items:center;justify-content:center;
+  }
+  .guard-box{
+    background:var(--surface);border-radius:16px;padding:36px 40px;
+    text-align:center;max-width:340px;
+    box-shadow:0 32px 80px rgba(11,49,130,.22);
+  }
+  .guard-box svg{color:var(--teal, #0E7490);margin-bottom:14px;}
+  .guard-box h2{font-family:'Bricolage Grotesque',sans-serif;font-size:18px;font-weight:700;margin-bottom:8px;}
+  .guard-box p{font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.6;}
+  .guard-box a{
+    display:inline-block;padding:10px 24px;border-radius:8px;
+    background:var(--accent);color:#fff;text-decoration:none;
+    font-size:13px;font-weight:700;
+  }
 </style>
 </head>
 <body>
+
+<div id="authGuard" style="display:none">
+  <div class="guard-box">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    <h2>Accesso richiesto</h2>
+    <p>Devi effettuare l'accesso al portale per utilizzare questa pagina.</p>
+    <a href="hub.html">Vai al portale</a>
+  </div>
+</div>
 
 <div class="tooltip" id="tooltip"></div>
 
@@ -235,6 +262,7 @@
     <span class="page-title">Avanzamento Scavi</span>
   </div>
   <div class="topbar-right">
+    <span id="topbarUser" style="font-size:11px;color:var(--muted);font-family:'Fira Code',monospace;"></span>
     <a href="index.html"             class="btn-nav">📋 Progettazione</a>
     <a href="executive_summary.html" class="btn-nav">📊 Executive</a>
     <a href="mappa.html"             class="btn-nav">🗺 Mappa</a>
@@ -936,5 +964,88 @@ function closeModalCluster(e) {
     <div id="modalClusterBody"></div>
   </div>
 </div>
+
+<script>
+window.addEventListener('DOMContentLoaded', () => {
+  const u = localStorage.getItem('_enri_user');
+  if (!u) { document.getElementById('authGuard').style.display='flex'; return; }
+  document.getElementById('topbarUser').textContent = u;
+});
+</script>
+
+<!-- ── TRACKING ACCESSI (scavi) — usa proxy Apps Script (no MASTER_KEY in chiaro) ── -->
+<script>
+(function(){
+  const _APPS_URL    = 'https://script.google.com/macros/s/AKfycbxSoKwfqsE4c8RORsUqhUVIXJRpd337jxireCf_RwxMf7UL0QJZyw2qE5UR59aaPEN_/exec';
+  const _APPS_SECRET = 'enri_login_2024_X9f83KsL21pQ';
+  const LOG_BIN_ID   = '69c8fbdced015c742bc8e978';
+  const ACCESSI_MAX  = 500;
+
+  const utente = localStorage.getItem('_enri_user');
+  const ruolo  = localStorage.getItem('_enri_role') || 'user';
+  if (!utente) return;
+
+  let _sessionStart = Date.now();
+  let _sessionTs    = null;
+  let _logCache     = null;
+
+  async function _proxyGet(binId) {
+    const res = await fetch(_APPS_URL, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ secret: _APPS_SECRET, action: 'jsonbin_get', binId })
+    });
+    const json = await res.json();
+    return { utenti:  Array.isArray(json.record?.utenti)  ? json.record.utenti  : [],
+             accessi: Array.isArray(json.record?.accessi) ? json.record.accessi : [] };
+  }
+
+  async function _proxyPut(binId, data, keepalive) {
+    return fetch(_APPS_URL, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ secret: _APPS_SECRET, action: 'jsonbin_put', binId, data }),
+      ...(keepalive ? { keepalive: true } : {})
+    });
+  }
+
+  async function _getIP() {
+    try { const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
+          return (await r.json()).ip || null; } catch(_) { return null; }
+  }
+
+  // Log accesso all'apertura
+  Promise.all([_proxyGet(LOG_BIN_ID), _getIP()]).then(([data, ip]) => {
+    const entry = { ts: new Date().toISOString(), utente, ruolo, ip,
+      ua: navigator.userAgent.substring(0, 120),
+      durata: 0, lotti: [], nAperture: 0, pagina: 'scavi' };
+    data.accessi.push(entry);
+    if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
+    if (!data.utenti.includes(utente)) data.utenti.push(utente);
+    _sessionTs = entry.ts;
+    _logCache  = data;
+    _proxyPut(LOG_BIN_ID, data).catch(() => {});
+  }).catch(() => {});
+
+  // beforeunload: aggiorna durata usando cache locale
+  window.addEventListener('beforeunload', () => {
+    if (!_sessionTs) return;
+    const durataMin = Math.round((Date.now() - _sessionStart) / 60000);
+    if (_logCache) {
+      const entry = _logCache.accessi.find(a => a.ts === _sessionTs);
+      if (entry) {
+        entry.durata = durataMin;
+        _proxyPut(LOG_BIN_ID, _logCache, true);
+        return;
+      }
+    }
+    _proxyGet(LOG_BIN_ID).then(data => {
+      const entry = data.accessi.find(a => a.ts === _sessionTs);
+      if (!entry) return;
+      entry.durata = durataMin;
+      _proxyPut(LOG_BIN_ID, data, true);
+    }).catch(() => {});
+  });
+})();
+</script>
+
 </body>
 </html>
