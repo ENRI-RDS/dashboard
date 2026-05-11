@@ -661,5 +661,80 @@ async function generatePdf(){
   }
 }
 </script>
+<!-- ── TRACKING ACCESSI (sopralluoghi) — usa proxy Apps Script (no MASTER_KEY in chiaro) ── -->
+<script>
+(function(){
+  const _APPS_URL    = 'https://script.google.com/macros/s/AKfycbxSoKwfqsE4c8RORsUqhUVIXJRpd337jxireCf_RwxMf7UL0QJZyw2qE5UR59aaPEN_/exec';
+  const _APPS_SECRET = 'enri_login_2024_X9f83KsL21pQ';
+  const LOG_BIN_ID   = '69c8fbdced015c742bc8e978';
+  const ACCESSI_MAX  = 500;
+
+  const utente = localStorage.getItem('_enri_user');
+  const ruolo  = localStorage.getItem('_enri_role') || 'user';
+  if (!utente) return;
+
+  let _sessionStart = Date.now();
+  let _sessionTs    = null;
+  let _logCache     = null;
+
+  async function _proxyGet(binId) {
+    const res = await fetch(_APPS_URL, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ secret: _APPS_SECRET, action: 'jsonbin_get', binId })
+    });
+    const json = await res.json();
+    return { utenti:  Array.isArray(json.record?.utenti)  ? json.record.utenti  : [],
+             accessi: Array.isArray(json.record?.accessi) ? json.record.accessi : [] };
+  }
+
+  async function _proxyPut(binId, data, keepalive) {
+    return fetch(_APPS_URL, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ secret: _APPS_SECRET, action: 'jsonbin_put', binId, data }),
+      ...(keepalive ? { keepalive: true } : {})
+    });
+  }
+
+  async function _getIP() {
+    try { const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
+          return (await r.json()).ip || null; } catch(_) { return null; }
+  }
+
+  // Log accesso all'apertura
+  Promise.all([_proxyGet(LOG_BIN_ID), _getIP()]).then(([data, ip]) => {
+    const entry = { ts: new Date().toISOString(), utente, ruolo, ip,
+      ua: navigator.userAgent.substring(0, 120),
+      durata: 0, lotti: [], nAperture: 0, pagina: 'sopralluoghi' };
+    data.accessi.push(entry);
+    if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
+    if (!data.utenti.includes(utente)) data.utenti.push(utente);
+    _sessionTs = entry.ts;
+    _logCache  = data;
+    _proxyPut(LOG_BIN_ID, data).catch(() => {});
+  }).catch(() => {});
+
+  // beforeunload: aggiorna durata usando cache locale
+  window.addEventListener('beforeunload', () => {
+    if (!_sessionTs) return;
+    const durataMin = Math.round((Date.now() - _sessionStart) / 60000);
+    if (_logCache) {
+      const entry = _logCache.accessi.find(a => a.ts === _sessionTs);
+      if (entry) {
+        entry.durata = durataMin;
+        _proxyPut(LOG_BIN_ID, _logCache, true);
+        return;
+      }
+    }
+    // fallback senza cache
+    _proxyGet(LOG_BIN_ID).then(data => {
+      const entry = data.accessi.find(a => a.ts === _sessionTs);
+      if (!entry) return;
+      entry.durata = durataMin;
+      _proxyPut(LOG_BIN_ID, data, true);
+    }).catch(() => {});
+  });
+})();
+</script>
+
 </body>
 </html>
