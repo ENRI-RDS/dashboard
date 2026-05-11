@@ -2919,98 +2919,82 @@ window.addEventListener('load', () => {
   </div>
 </div>
 
-<!-- ── TRACKING ACCESSI (mappa) ─────────────────────────────────────────── -->
+<!-- ── TRACKING ACCESSI (mappa) — usa proxy Apps Script (no MASTER_KEY in chiaro) ── -->
 <script>
 (function(){
-  const JSONBIN_BASE       = 'https://api.jsonbin.io/v3/b';
-  const JSONBIN_LOG_BIN_ID = '69c8fbdced015c742bc8e978';
-  const JSONBIN_MASTER_KEY = '$2a$10$2kWuCWPZFDiwXDJBkEmituTTW4op2VZF6E52e75IQsMV7FwmXmSsO';
-  const ACCESSI_MAX        = 500;
-  const SAVE_INTERVAL_MS   = 60_000; // salva durata ogni 60s (fallback attivo)
+  const _APPS_URL    = 'https://script.google.com/macros/s/AKfycbxSoKwfqsE4c8RORsUqhUVIXJRpd337jxireCf_RwxMf7UL0QJZyw2qE5UR59aaPEN_/exec';
+  const _APPS_SECRET = 'enri_login_2024_X9f83KsL21pQ';
+  const LOG_BIN_ID   = '69c8fbdced015c742bc8e978';
+  const ACCESSI_MAX  = 500;
+  const SAVE_INTERVAL_MS = 60_000;
 
   const utente = localStorage.getItem('_enri_user');
   const ruolo  = localStorage.getItem('_enri_role') || 'user';
   if (!utente) return;
 
   const _sessionStart = Date.now();
-  let _sessionLogIdx  = -1;
-  let _cachedData     = null; // cache locale: evita GET al momento dell'uscita
+  let _sessionTs      = null;
+  let _cachedData     = null;
 
-  async function _getData() {
-    const res  = await fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}/latest`, {
-      headers: { 'X-Master-Key': JSONBIN_MASTER_KEY }
+  async function _proxyGet(binId) {
+    const res = await fetch(_APPS_URL, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ secret: _APPS_SECRET, action: 'jsonbin_get', binId })
     });
     const json = await res.json();
-    return {
-      utenti:  Array.isArray(json.record?.utenti)  ? json.record.utenti  : [],
-      accessi: Array.isArray(json.record?.accessi) ? json.record.accessi : []
-    };
+    return { utenti:  Array.isArray(json.record?.utenti)  ? json.record.utenti  : [],
+             accessi: Array.isArray(json.record?.accessi) ? json.record.accessi : [] };
   }
 
-  // Salva sempre con keepalive:true così funziona anche durante pagehide/unload
-  function _saveData(data) {
-    return fetch(`${JSONBIN_BASE}/${JSONBIN_LOG_BIN_ID}`, {
-      method: 'PUT', keepalive: true,
-      headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_MASTER_KEY },
-      body: JSON.stringify(data)
+  function _proxyPut(binId, data, keepalive) {
+    return fetch(_APPS_URL, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ secret: _APPS_SECRET, action: 'jsonbin_put', binId, data }),
+      ...(keepalive ? { keepalive: true } : {})
     });
   }
 
   async function _getIP() {
-    try {
-      const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
-      return (await r.json()).ip || null;
-    } catch(_) { return null; }
+    try { const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
+          return (await r.json()).ip || null; } catch(_) { return null; }
   }
 
-  // Aggiorna durata nella cache locale e salva — usato da tutti i trigger di uscita
+  // Aggiorna durata nella cache locale e salva
   function _flushDurata() {
-    if (_sessionLogIdx < 0 || !_cachedData) return;
-    const entry = _cachedData.accessi[_sessionLogIdx];
+    if (!_sessionTs || !_cachedData) return;
+    const entry = _cachedData.accessi.find(a => a.ts === _sessionTs);
     if (!entry) return;
     const durata = Math.round((Date.now() - _sessionStart) / 60_000);
-    if (entry.durata === durata) return; // nessuna variazione, evita write inutili
+    if (entry.durata === durata) return;
     entry.durata = durata;
-    _saveData(_cachedData).catch(() => {});
+    _proxyPut(LOG_BIN_ID, _cachedData, true).catch(() => {});
   }
 
   // ── Registra accesso all'avvio ──────────────────────────────────────────
-  _getData().then(data => {
-    _getIP().then(ip => {
-      const entry = {
-        ts: new Date().toISOString(),
-        utente, ruolo,
-        ip,
-        ua: navigator.userAgent.substring(0, 120),
-        durata: 0,
-        lotti: [],
-        nAperture: 0,
-        pagina: 'mappa'
-      };
-      data.accessi.push(entry);
-      if (data.accessi.length > ACCESSI_MAX)
-        data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
-      if (!data.utenti.includes(utente)) data.utenti.push(utente);
-      _sessionLogIdx = data.accessi.length - 1;
-      _cachedData    = data; // salva in cache locale
-      _saveData(data).catch(() => {});
+  Promise.all([_proxyGet(LOG_BIN_ID), _getIP()]).then(([data, ip]) => {
+    const entry = {
+      ts: new Date().toISOString(),
+      utente, ruolo, ip,
+      ua: navigator.userAgent.substring(0, 120),
+      durata: 0, lotti: [], nAperture: 0, pagina: 'mappa'
+    };
+    data.accessi.push(entry);
+    if (data.accessi.length > ACCESSI_MAX)
+      data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
+    if (!data.utenti.includes(utente)) data.utenti.push(utente);
+    _sessionTs  = entry.ts;
+    _cachedData = data;
+    _proxyPut(LOG_BIN_ID, data).catch(() => {});
 
-      // Salva durata ogni minuto (utile se mobile non spara eventi di uscita)
-      setInterval(_flushDurata, SAVE_INTERVAL_MS);
-    }).catch(() => {});
+    // Salva durata ogni minuto
+    setInterval(_flushDurata, SAVE_INTERVAL_MS);
   }).catch(() => {});
 
   // ── Trigger di uscita — tre eventi per massima copertura mobile/desktop ──
-
-  // 1. visibilitychange: scatta quando l'utente switcha app o scheda (Android/iOS)
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') _flushDurata();
   });
-
-  // 2. pagehide: più affidabile di beforeunload su mobile (iOS Safari, Chrome Android)
   window.addEventListener('pagehide', _flushDurata);
-
-  // 3. beforeunload: fallback per desktop
   window.addEventListener('beforeunload', _flushDurata);
 })();
 </script>
