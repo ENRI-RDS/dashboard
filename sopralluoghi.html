@@ -465,34 +465,7 @@ function generateExcel(){
   XLSX.utils.book_append_sheet(wb, ws, 'Sopralluogo');
   const dt = f.data !== '—' ? f.data.replace(/\//g,'-') : 'data';
   XLSX.writeFile(wb, `Verbale_Sopralluogo_${nc}_${dt}.xlsx`);
-  showToast('✓ Excel scaricato — invio dati al registro...');
-
-  // ── POWER AUTOMATE: salva riga nel file master OneDrive ──
-  const PA_URL = 'https://defaultf5f26bc98616448782548844ed6d8f.39.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/387418c2e1f54acc9a3aedeed3077275/triggers/manual/paths/invoke?api-version=1';
-fetch(PA_URL, {
-  method: 'POST',
-  mode: 'no-cors',
-  headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({
-      timestamp:       new Date().toISOString(),
-      n_cantiere:      f.n_cantiere,
-      data:            f.data,
-      indirizzo:       f.indirizzo,
-      lotto:           f.lotto,
-      impresa:         f.impresa,
-      ruolo:           f.ruolo,
-      redattore:       f.redattore,
-      gravita:         f.gravita,
-      n_foto:          f.n_foto,
-      segnalazioni:    f.segnalazioni,
-      azioni:          f.azioni,
-      scadenza_azioni: f.scadenza_azioni,
-      prossimo_sopr:   f.prossimo_sopr,
-      note:            f.note
-    })
-  })
-  .then(r => { if(r.ok) showToast('✓ Riga salvata nel registro OneDrive'); else showToast('⚠ Registro OneDrive non raggiunto'); })
-  .catch(() => showToast('⚠ Registro OneDrive non raggiunto'));
+  showToast('✓ Excel scaricato — incolla la riga nel file master');
 }
 
 /* ══ PDF via html2canvas ══ */
