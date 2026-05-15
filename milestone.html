@@ -66,10 +66,19 @@
 
   /* ── MAIN ── */
   .main {
-    max-width:1100px; margin:0 auto;
+    max-width:1440px; margin:0 auto;
     padding:28px 24px 48px;
     display:flex; flex-direction:column; gap:28px;
   }
+
+  /* ── SIDE BY SIDE TABLES ── */
+  .tables-row {
+    display:grid;
+    grid-template-columns: 1.6fr 1fr;
+    gap:16px;
+    align-items:start;
+  }
+  @media(max-width:900px) { .tables-row { grid-template-columns:1fr; } }
 
   /* ── PAGE HEADER ── */
   .page-header {
@@ -102,11 +111,9 @@
     font-size:10px; font-weight:600; font-family:'Fira Code', monospace;
     letter-spacing:.04em;
   }
-  .chip-past   { background:#FEE9DC; color:#B63B00; border:1px solid #F5C4A8; }
   .chip-today  { background:#FEF3CD; color:#8A6000; border:1px solid #F0D97A; }
   .chip-soon   { background:#E3EEFF; color:#0B3182; border:1px solid #ADC4F5; }
-  .chip-future { background:#EDFAF2; color:#1F7A4E; border:1px solid #A8E6C0; }
-  .chip-none   { background:var(--surface2); color:var(--muted); border:1px solid var(--border2); }
+  .chip-year   { background:#F0EEFF; color:#5B21B6; border:1px solid #C4B5FD; }
 
   /* ── SECTION BLOCK ── */
   .section-block {
@@ -230,12 +237,12 @@
     font-size:10px; font-weight:500;
     white-space:nowrap;
   }
-  .dp-none    { color:var(--muted2); font-size:13px; }
-  .dp-past    { background:#FEE9DC; color:#B63B00; border:1px solid #F5C4A8; }
+  .dp-none    { color:var(--muted2); }
+  .dp-past    { color:var(--muted2); font-size:11px; }
   .dp-today   { background:#FEF3CD; color:#8A6000; border:1px solid #F0D97A; }
   .dp-soon    { background:#E3EEFF; color:#0B3182;  border:1px solid #ADC4F5; }
-  .dp-mid     { background:#EEF3FF; color:#344899;  border:1px solid #C5D4FA; }
-  .dp-future  { background:#EDFAF2; color:#1F7A4E;  border:1px solid #A8E6C0; }
+  .dp-year    { background:#F0EEFF; color:#5B21B6;  border:1px solid #C4B5FD; }
+  .dp-future  { color:var(--muted2); font-size:11px; }
 
   /* ── TOPBAR user ── */
   #topbarUser { font-size:11px; color:var(--muted); font-family:'Fira Code',monospace; }
@@ -294,13 +301,13 @@
       <div class="page-sub">Scadenze contrattuali e milestone di impresa per lotto e cluster</div>
     </div>
     <div class="legend-row">
-      <div class="legend-chip chip-past">Scaduto</div>
       <div class="legend-chip chip-today">Questo mese</div>
       <div class="legend-chip chip-soon">Entro 6 mesi</div>
-      <div class="legend-chip chip-future">Futuro</div>
-      <div class="legend-chip chip-none">n.d.</div>
+      <div class="legend-chip chip-year">Entro 1 anno</div>
     </div>
   </div>
+
+  <div class="tables-row">
 
   <!-- ══ SEZIONE 1: MILESTONE IMPRESE ══ -->
   <div class="section-block">
@@ -377,6 +384,7 @@
       </table>
     </div>
   </div>
+  </div><!-- /tables-row -->
 
 </div><!-- /main -->
 
@@ -407,11 +415,12 @@ function dateClass(str) {
   const mStart = new Date(today.getFullYear(), today.getMonth(), 1);
   const mEnd   = new Date(today.getFullYear(), today.getMonth() + 1, 0);
   const soon   = new Date(today); soon.setMonth(soon.getMonth() + 6);
+  const year   = new Date(today); year.setFullYear(year.getFullYear() + 1);
 
   if (d < mStart)  return 'dp-past';
   if (d <= mEnd)   return 'dp-today';
   if (d <= soon)   return 'dp-soon';
-  if (d.getFullYear() <= today.getFullYear() + 1) return 'dp-mid';
+  if (d <= year)   return 'dp-year';
   return 'dp-future';
 }
 
