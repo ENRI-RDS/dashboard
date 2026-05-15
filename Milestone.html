@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="it" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="google" content="notranslate">
+<meta http-equiv="Content-Language" content="it">
+<title>ENRI — Milestone di Progetto</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Plus+Jakarta+Sans:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  @view-transition { navigation: auto; }
+
+  :root {
+    --bg:        #F4F3EE;
+    --surface:   #FFFFFF;
+    --surface2:  #F0EEE6;
+    --border:    #E0DDD4;
+    --border2:   #CCC9BE;
+    --accent:    #0B3182;
+    --accent2:   #E55000;
+    --text:      #1C1C2E;
+    --text2:     #3A3A52;
+    --muted:     #52526E;
+    --muted2:    #7878A0;
+    --sh-xs: 0 1px 3px rgba(11,49,130,.06), 0 1px 2px rgba(0,0,0,.04);
+    --sh-sm: 0 2px 8px rgba(11,49,130,.08), 0 1px 4px rgba(0,0,0,.05);
+    --sh-md: 0 4px 20px rgba(11,49,130,.10), 0 2px 8px rgba(0,0,0,.06);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* ── TOPBAR ── */
+  .topbar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 24px; height:52px;
+    background:var(--surface);
+    border-bottom:1px solid var(--border);
+    box-shadow: var(--sh-xs);
+    position:sticky; top:0; z-index:50;
+  }
+  .topbar-left { display:flex; align-items:center; gap:12px; }
+  .topbar-right { display:flex; align-items:center; gap:8px; }
+  .logo {
+    font-family:'Bricolage Grotesque', sans-serif;
+    font-size:13px; font-weight:700;
+    letter-spacing:0.14em; color:var(--accent); text-transform:uppercase;
+  }
+  .divider-v { width:1px; height:20px; background:var(--border2); }
+  .page-title { font-size:12px; color:var(--muted); font-weight:500; }
+
+  .btn-sm {
+    display:inline-flex; align-items:center; gap:5px;
+    font-size:11px; padding:6px 14px; border-radius:6px;
+    background:transparent; color:var(--muted); border:1px solid var(--border2);
+    cursor:pointer; font-family:'Plus Jakarta Sans', sans-serif; font-weight:600;
+    text-decoration:none; transition:all 0.18s;
+  }
+  .btn-sm:hover { background:var(--surface2); color:var(--text); }
+
+  /* ── MAIN ── */
+  .main {
+    max-width:1100px; margin:0 auto;
+    padding:28px 24px 48px;
+    display:flex; flex-direction:column; gap:28px;
+  }
+
+  /* ── PAGE HEADER ── */
+  .page-header {
+    display:flex; align-items:flex-end; justify-content:space-between; gap:12px;
+    flex-wrap:wrap;
+  }
+  .page-header-left { display:flex; flex-direction:column; gap:2px; }
+  .page-eyebrow {
+    font-family:'Fira Code', monospace;
+    font-size:9px; font-weight:500;
+    letter-spacing:.2em; text-transform:uppercase;
+    color:var(--accent2);
+  }
+  .page-h1 {
+    font-family:'Bricolage Grotesque', sans-serif;
+    font-size:22px; font-weight:700;
+    letter-spacing:-.025em; color:var(--text); line-height:1.2;
+  }
+  .page-sub {
+    font-size:12px; color:var(--muted); margin-top:3px;
+  }
+
+  /* ── LEGEND CHIPS ── */
+  .legend-row {
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  }
+  .legend-chip {
+    display:inline-flex; align-items:center; gap:5px;
+    padding:4px 10px; border-radius:20px;
+    font-size:10px; font-weight:600; font-family:'Fira Code', monospace;
+    letter-spacing:.04em;
+  }
+  .chip-past   { background:#FEE9DC; color:#B63B00; border:1px solid #F5C4A8; }
+  .chip-today  { background:#FEF3CD; color:#8A6000; border:1px solid #F0D97A; }
+  .chip-soon   { background:#E3EEFF; color:#0B3182; border:1px solid #ADC4F5; }
+  .chip-future { background:#EDFAF2; color:#1F7A4E; border:1px solid #A8E6C0; }
+  .chip-none   { background:var(--surface2); color:var(--muted); border:1px solid var(--border2); }
+
+  /* ── SECTION BLOCK ── */
+  .section-block {
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:16px;
+    box-shadow:var(--sh-sm);
+    overflow:hidden;
+  }
+  .section-head {
+    display:flex; align-items:center; gap:12px;
+    padding:16px 24px;
+    border-bottom:1px solid var(--border);
+  }
+  .section-icon {
+    width:36px; height:36px; border-radius:10px;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  .section-icon svg { width:18px; height:18px; }
+  .si-imprese  { background:#0B31820D; }
+  .si-imprese svg { color:#0B3182; }
+  .si-contract { background:#1F7A4E0D; }
+  .si-contract svg { color:#1F7A4E; }
+
+  .section-head-text { flex:1; }
+  .section-tag {
+    font-family:'Fira Code', monospace;
+    font-size:8.5px; font-weight:500;
+    letter-spacing:.18em; text-transform:uppercase;
+    margin-bottom:2px;
+  }
+  .si-imprese  ~ .section-head-text .section-tag,
+  .section-head.imprese .section-tag  { color:#0B3182; }
+  .section-head.contract .section-tag { color:#1F7A4E; }
+  .section-title {
+    font-family:'Bricolage Grotesque', sans-serif;
+    font-size:15px; font-weight:700;
+    letter-spacing:-.02em; color:var(--text);
+  }
+  .section-badge {
+    font-size:9px; font-weight:700; font-family:'Fira Code', monospace;
+    letter-spacing:.06em; text-transform:uppercase;
+    padding:3px 9px; border-radius:20px;
+  }
+  .badge-imprese  { background:#0B31820D; color:#0B3182; border:1px solid #0B318230; }
+  .badge-contract { background:#1F7A4E0D; color:#1F7A4E; border:1px solid #1F7A4E30; }
+
+  /* ── TABLE ── */
+  .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+
+  table {
+    width:100%; border-collapse:collapse;
+    font-size:12px;
+  }
+  thead th {
+    padding:10px 14px;
+    text-align:center;
+    font-family:'Fira Code', monospace;
+    font-size:9px; font-weight:500;
+    letter-spacing:.12em; text-transform:uppercase;
+    color:var(--muted);
+    background:var(--surface2);
+    border-bottom:1px solid var(--border);
+    white-space:nowrap;
+  }
+  thead th.col-left { text-align:left; }
+  thead th.col-group {
+    font-size:8px;
+    border-bottom:2px solid var(--border2);
+  }
+  thead tr.subheader th {
+    background:var(--surface);
+    border-bottom:2px solid var(--border2);
+  }
+
+  tbody tr {
+    border-bottom:1px solid var(--border);
+    transition:background .15s;
+  }
+  tbody tr:last-child { border-bottom:none; }
+  tbody tr:hover { background:rgba(11,49,130,.025); }
+
+  tbody td {
+    padding:10px 14px;
+    text-align:center;
+    color:var(--text2);
+    font-size:12px;
+    white-space:nowrap;
+    vertical-align:middle;
+  }
+  tbody td.col-left {
+    text-align:left; font-weight:600; color:var(--text);
+  }
+  tbody td.col-id {
+    font-family:'Fira Code', monospace;
+    font-size:11px; font-weight:600;
+    color:var(--accent); text-align:center;
+  }
+  tbody td.cluster-cell {
+    font-family:'Fira Code', monospace;
+    font-size:11px; color:var(--muted);
+    text-align:center;
+  }
+
+  /* GROUP SEPARATOR ROW */
+  tbody tr.group-row td {
+    background:var(--surface2);
+    font-family:'Fira Code', monospace;
+    font-size:8.5px; font-weight:600;
+    letter-spacing:.14em; text-transform:uppercase;
+    color:var(--muted2); padding:6px 14px;
+    text-align:left; border-top:1px solid var(--border2);
+  }
+
+  /* ── DATE PILLS ── */
+  .date-pill {
+    display:inline-block;
+    padding:3px 9px; border-radius:20px;
+    font-family:'Fira Code', monospace;
+    font-size:10px; font-weight:500;
+    white-space:nowrap;
+  }
+  .dp-none    { color:var(--muted2); font-size:13px; }
+  .dp-past    { background:#FEE9DC; color:#B63B00; border:1px solid #F5C4A8; }
+  .dp-today   { background:#FEF3CD; color:#8A6000; border:1px solid #F0D97A; }
+  .dp-soon    { background:#E3EEFF; color:#0B3182;  border:1px solid #ADC4F5; }
+  .dp-mid     { background:#EEF3FF; color:#344899;  border:1px solid #C5D4FA; }
+  .dp-future  { background:#EDFAF2; color:#1F7A4E;  border:1px solid #A8E6C0; }
+
+  /* ── TOPBAR user ── */
+  #topbarUser { font-size:11px; color:var(--muted); font-family:'Fira Code',monospace; }
+
+  /* FADE IN */
+  @keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+  .main { animation:fadeUp .35s ease both; }
+
+  /* SPINNER */
+  #initSpinner {
+    position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:var(--bg);z-index:200;transition:opacity .3s;
+  }
+  .spinner {
+    width:32px;height:32px;border:3px solid var(--border2);
+    border-top-color:var(--accent);border-radius:50%;
+    animation:spin .8s linear infinite;
+  }
+  @keyframes spin { to{transform:rotate(360deg)} }
+
+  @media(max-width:640px) {
+    .main { padding:20px 12px 40px; }
+    .section-head { padding:12px 16px; }
+    thead th, tbody td { padding:8px 10px; font-size:11px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="initSpinner"><div class="spinner"></div></div>
+
+<!-- ── TOPBAR ── -->
+<div class="topbar">
+  <div class="topbar-left">
+    <span class="logo">PROGETTO · ENRI</span>
+    <div class="divider-v"></div>
+    <span class="page-title">Milestone di Progetto</span>
+  </div>
+  <div class="topbar-right">
+    <span id="topbarUser"></span>
+    <a href="hub.html" class="btn-sm">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+      Hub
+    </a>
+  </div>
+</div>
+
+<!-- ── MAIN ── -->
+<div class="main">
+
+  <!-- PAGE HEADER -->
+  <div class="page-header">
+    <div class="page-header-left">
+      <div class="page-eyebrow">ENRI Platform · Pianificazione</div>
+      <div class="page-h1">Milestone di Progetto</div>
+      <div class="page-sub">Scadenze contrattuali e milestone di impresa per lotto e cluster</div>
+    </div>
+    <div class="legend-row">
+      <div class="legend-chip chip-past">Scaduto</div>
+      <div class="legend-chip chip-today">Questo mese</div>
+      <div class="legend-chip chip-soon">Entro 6 mesi</div>
+      <div class="legend-chip chip-future">Futuro</div>
+      <div class="legend-chip chip-none">n.d.</div>
+    </div>
+  </div>
+
+  <!-- ══ SEZIONE 1: MILESTONE IMPRESE ══ -->
+  <div class="section-block">
+    <div class="section-head imprese" style="border-left:3px solid #0B3182;">
+      <div class="section-icon si-imprese">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <rect x="3" y="4" width="18" height="18" rx="2"/>
+          <path d="M16 2v4M8 2v4M3 10h18"/>
+          <path d="M8 14h2M8 18h2M13 14h3M13 18h3"/>
+        </svg>
+      </div>
+      <div class="section-head-text">
+        <div class="section-tag" style="color:#0B3182;">Scadenze Lotti</div>
+        <div class="section-title">Milestone Imprese</div>
+      </div>
+      <span class="section-badge badge-imprese">12 lotti</span>
+    </div>
+
+    <div class="table-wrap">
+      <table id="tbl-imprese">
+        <thead>
+          <tr>
+            <th class="col-left" rowspan="2" style="text-align:center;">Lotto</th>
+            <th rowspan="2">Cluster</th>
+            <th colspan="2" class="col-group" style="background:#0B31820A; border-bottom:none;">Permitting</th>
+            <th rowspan="2">Avvio</th>
+            <th colspan="3" class="col-group" style="background:#1F7A4E0A; border-bottom:none;">Completamento</th>
+          </tr>
+          <tr class="subheader">
+            <th style="background:#0B31820A;">Invio P.</th>
+            <th style="background:#0B31820A;">Ottenimento P.</th>
+            <th style="background:#1F7A4E0A;">50%</th>
+            <th style="background:#1F7A4E0A;">90%</th>
+            <th style="background:#1F7A4E0A;">100%</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-imprese"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══ SEZIONE 2: CONTRACT MILESTONE ══ -->
+  <div class="section-block">
+    <div class="section-head contract" style="border-left:3px solid #1F7A4E;">
+      <div class="section-icon si-contract">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+          <rect x="9" y="3" width="6" height="4" rx="1"/>
+          <path d="M9 12l2 2 4-4"/>
+        </svg>
+      </div>
+      <div class="section-head-text">
+        <div class="section-tag" style="color:#1F7A4E;">Contratto</div>
+        <div class="section-title">Contract Milestone</div>
+      </div>
+      <span class="section-badge badge-contract">9 milestone</span>
+    </div>
+
+    <div class="table-wrap">
+      <table id="tbl-contract">
+        <thead>
+          <tr>
+            <th class="col-left" style="min-width:200px;">Milestone</th>
+            <th colspan="3" class="col-group" style="background:#1F7A4E0A;">Completamento</th>
+          </tr>
+          <tr class="subheader">
+            <th class="col-left" style="background:var(--surface2);">Descrizione</th>
+            <th style="background:#1F7A4E0A;">50%</th>
+            <th style="background:#1F7A4E0A;">70%</th>
+            <th style="background:#1F7A4E0A;">100%</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-contract"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<script>
+/* ── AUTH ── */
+window.addEventListener('DOMContentLoaded', () => {
+  const spinner = document.getElementById('initSpinner');
+  const user = localStorage.getItem('_enri_user');
+  if (!user) { window.location.href = 'hub.html'; return; }
+  document.getElementById('topbarUser').textContent = user;
+  spinner.style.opacity = '0';
+  setTimeout(() => { spinner.style.display = 'none'; }, 300);
+  buildTables();
+});
+
+/* ── DATE HELPERS ── */
+function parseDate(str) {
+  if (!str || str === '-') return null;
+  const [d, m, y] = str.split('/').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function dateClass(str) {
+  const d = parseDate(str);
+  if (!d) return 'dp-none';
+  const now   = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const mStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const mEnd   = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  const soon   = new Date(today); soon.setMonth(soon.getMonth() + 6);
+
+  if (d < mStart)  return 'dp-past';
+  if (d <= mEnd)   return 'dp-today';
+  if (d <= soon)   return 'dp-soon';
+  if (d.getFullYear() <= today.getFullYear() + 1) return 'dp-mid';
+  return 'dp-future';
+}
+
+function pill(str) {
+  if (!str || str === '-') return '<span class="date-pill dp-none">—</span>';
+  return `<span class="date-pill ${dateClass(str)}">${str}</span>`;
+}
+
+/* ── DATA ── */
+const IMPRESE = [
+  // group: Lotti senza permitting
+  { group: 'Lotti senza iter autorizzativo',
+    rows: [
+      { lotto:'1A', cluster:'1–3',  invio:'-', ottenim:'-', avvio:'31/05/2026', p50:'-',          p90:'31/10/2026', p100:'31/12/2026' },
+      { lotto:'1B', cluster:'1',    invio:'-', ottenim:'-', avvio:'31/05/2026', p50:'-',          p90:'31/10/2026', p100:'31/12/2026' },
+      { lotto:'2A', cluster:'2',    invio:'-', ottenim:'-', avvio:'31/05/2026', p50:'-',          p90:'31/10/2026', p100:'31/12/2026' },
+      { lotto:'2B', cluster:'2',    invio:'-', ottenim:'-', avvio:'31/05/2026', p50:'-',          p90:'31/10/2026', p100:'31/12/2026' },
+    ]
+  },
+  // group: Lotti con permitting
+  { group: 'Lotti con iter autorizzativo',
+    rows: [
+      { lotto:'1',  cluster:'3',    invio:'30/09/2026', ottenim:'30/09/2027', avvio:'31/08/2026', p50:'30/04/2027', p90:'-', p100:'15/11/2027' },
+      { lotto:'2',  cluster:'3',    invio:'30/09/2026', ottenim:'30/09/2027', avvio:'31/08/2026', p50:'30/04/2027', p90:'-', p100:'15/11/2027' },
+      { lotto:'3',  cluster:'3',    invio:'30/09/2026', ottenim:'30/09/2027', avvio:'31/08/2026', p50:'30/04/2027', p90:'-', p100:'15/11/2027' },
+      { lotto:'4',  cluster:'3',    invio:'30/09/2026', ottenim:'30/09/2027', avvio:'31/08/2026', p50:'30/04/2027', p90:'-', p100:'15/11/2027' },
+      { lotto:'5',  cluster:'3',    invio:'30/09/2026', ottenim:'30/09/2027', avvio:'31/08/2026', p50:'30/04/2027', p90:'-', p100:'15/11/2027' },
+      { lotto:'6',  cluster:'3–4',  invio:'30/09/2026', ottenim:'30/09/2027', avvio:'31/10/2026', p50:'31/05/2027', p90:'-', p100:'15/11/2027' },
+      { lotto:'7',  cluster:'6–7',  invio:'30/09/2026', ottenim:'30/09/2027', avvio:'31/01/2027', p50:'30/09/2027', p90:'-', p100:'31/03/2028' },
+      { lotto:'8',  cluster:'5',    invio:'30/09/2026', ottenim:'30/09/2027', avvio:'31/01/2027', p50:'30/09/2027', p90:'-', p100:'31/07/2028' },
+    ]
+  }
+];
+
+const CONTRACT = [
+  { milestone:'Permits submission',     p50:'-',          p70:'-',          p100:'31/12/2026' },
+  { milestone:'Authorizations received',p50:'-',          p70:'-',          p100:'31/12/2027' },
+  { milestone:'Cluster 1',              p50:'-',          p70:'31/12/2026', p100:'30/04/2027' },
+  { milestone:'Cluster 2',              p50:'31/12/2026', p70:'-',          p100:'31/05/2027' },
+  { milestone:'Cluster 3',              p50:'31/05/2027', p70:'-',          p100:'31/03/2028' },
+  { milestone:'Cluster 4',              p50:'-',          p70:'-',          p100:'31/03/2028' },
+  { milestone:'Cluster 5',              p50:'-',          p70:'-',          p100:'30/06/2028' },
+  { milestone:'Cluster 6',              p50:'-',          p70:'-',          p100:'31/12/2028' },
+  { milestone:'Cluster 7',              p50:'-',          p70:'-',          p100:'31/12/2028' },
+];
+
+/* ── BUILD TABLES ── */
+function buildTables() {
+  // TABLE 1 — Imprese
+  const tb1 = document.getElementById('tbody-imprese');
+  IMPRESE.forEach(group => {
+    const gr = document.createElement('tr');
+    gr.className = 'group-row';
+    gr.innerHTML = `<td colspan="8">${group.group}</td>`;
+    tb1.appendChild(gr);
+
+    group.rows.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="col-id">${r.lotto}</td>
+        <td class="cluster-cell">${r.cluster}</td>
+        <td>${pill(r.invio)}</td>
+        <td>${pill(r.ottenim)}</td>
+        <td>${pill(r.avvio)}</td>
+        <td>${pill(r.p50)}</td>
+        <td>${pill(r.p90)}</td>
+        <td>${pill(r.p100)}</td>
+      `;
+      tb1.appendChild(tr);
+    });
+  });
+
+  // TABLE 2 — Contract
+  const tb2 = document.getElementById('tbody-contract');
+  CONTRACT.forEach(c => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="col-left">${c.milestone}</td>
+      <td>${pill(c.p50)}</td>
+      <td>${pill(c.p70)}</td>
+      <td>${pill(c.p100)}</td>
+    `;
+    tb2.appendChild(tr);
+  });
+}
+</script>
+</body>
+</html>
