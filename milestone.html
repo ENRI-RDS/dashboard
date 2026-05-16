@@ -297,7 +297,7 @@ function buildGantt() {
   var HDR = 52;   /* time axis header height */
 
   var T0 = new Date(2026, 0, 1);
-  var T1 = new Date(2029, 0, 1);
+  var T1 = new Date(2029, 3, 1);  /* Apr 2029 — padding per Cluster 6/7 */
   var SPAN = T1 - T0;
   var CW = W - LW; /* chart width */
 
@@ -355,16 +355,22 @@ function buildGantt() {
     ['01/07/2027','Q3',false],   ['01/10/2027','Q4',false],
     ['01/01/2028','2028',true],  ['01/04/2028','Q2',false],
     ['01/07/2028','Q3',false],   ['01/10/2028','Q4',false],
-    ['01/01/2029','',true]
+    ['01/01/2029','2029',true],  ['01/04/2029','Q2',false],
   ];
+  /* labelColor: year label based on which year token is in qDate string */
+  function qLabelColor(qDate) {
+    if (qDate.slice(6) === '2026') return '#8A6000';
+    if (qDate.slice(6) === '2027') return '#0B3182';
+    if (qDate.slice(6) === '2028') return '#5B21B6';
+    return '#9898B8';
+  }
   quarters.forEach(function(q) {
     var qDate = q[0], qLabel = q[1], qIsYear = q[2];
     var qx = xPos(qDate);
     if (qx === null) return;
     parts.push('<line x1="' + qx + '" y1="' + HDR + '" x2="' + qx + '" y2="' + totalH + '" stroke="' + (qIsYear ? '#CCC9BE' : '#E0DDD4') + '" stroke-width="' + (qIsYear ? '1.2' : '0.6') + '" ' + (qIsYear ? '' : 'stroke-dasharray="3,3"') + '/>');
     if (qLabel) {
-      var labelColor = qDate.indexOf('2026') === 6 ? '#8A6000' : qDate.indexOf('2027') === 6 ? '#0B3182' : qDate.indexOf('2028') === 6 ? '#5B21B6' : '#9898B8';
-      parts.push('<text x="' + (qx + 4) + '" y="' + (HDR - 6) + '" font-size="' + (qIsYear ? 10 : 8) + '" font-family="Fira Code,monospace" font-weight="' + (qIsYear ? 700 : 400) + '" fill="' + labelColor + '">' + qLabel + '</text>');
+      parts.push('<text x="' + (qx + 4) + '" y="' + (HDR - 6) + '" font-size="' + (qIsYear ? 10 : 8) + '" font-family="Fira Code,monospace" font-weight="' + (qIsYear ? 700 : 400) + '" fill="' + qLabelColor(qDate) + '">' + qLabel + '</text>');
     }
   });
 
@@ -422,7 +428,8 @@ function buildGantt() {
           if (xm50 !== null) {
             var c50 = colorForDate(row.p50);
             parts.push('<polygon points="' + xm50 + ',' + (cy-7) + ' ' + (xm50+5) + ',' + cy + ' ' + xm50 + ',' + (cy+7) + ' ' + (xm50-5) + ',' + cy + '" fill="' + c50 + '" data-tip="50%: ' + row.p50 + '" style="cursor:default;"/>');
-            parts.push('<text x="' + xm50 + '" y="' + (cy-10) + '" font-size="7" font-family="Fira Code,monospace" fill="' + c50 + '" text-anchor="middle" style="pointer-events:none;">50%</text>');
+            parts.push('<rect x="' + (xm50-12) + '" y="' + (cy-21) + '" width="24" height="11" rx="3" fill="white" opacity="0.9" style="pointer-events:none;"/>');
+            parts.push('<text x="' + xm50 + '" y="' + (cy-12) + '" font-size="8" font-family="Fira Code,monospace" font-weight="600" fill="' + c50 + '" text-anchor="middle" style="pointer-events:none;">50%</text>');
           }
         }
         if (row.p90) {
