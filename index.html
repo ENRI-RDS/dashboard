@@ -2188,7 +2188,6 @@ function renderBarre(gruppiMap, totale, tooltip, onHover) {
 }
 // dati.csv non più necessario — loadData legge da Riepilogo_progettazione.csv
 const RIEPILOGO_URL = 'Riepilogo_progettazione.csv';
-const RIEPILOGO_URL_FALLBACK = 'riepilogo.csv';
 const MASTER_URL = 'Master.csv';
 
 // Cache CSV condivisa tra loadData() e loadCluster() — evita doppio fetch
@@ -2220,7 +2219,6 @@ async function fetchRiepilogoCSV(forceFresh = false) {
     // Cache-bust solo quando forceFresh=true (loadData); loadCluster usa cache in memoria
     const qs = forceFresh ? '?t=' + Date.now() : '';
     let resp = await fetch(RIEPILOGO_URL + qs, { signal: controller.signal });
-    if (!resp.ok) resp = await fetch(RIEPILOGO_URL_FALLBACK + qs, { signal: controller.signal });
     clearTimeout(tid);
     if (!resp.ok) throw new Error(controller.signal.aborted
       ? 'Timeout: file riepilogo non risponde'
@@ -3922,7 +3920,7 @@ async function loadData(saveSnapshot = false) {
 }
 
 function getComuniHtml(lotto, maxN = 3) {
-  // Usa dati da riepilogo.csv se disponibili, altrimenti fallback su COMUNI_PER_LOTTO
+  // Usa dati da Riepilogo_progettazione.csv se disponibili, altrimenti fallback su COMUNI_PER_LOTTO
   const kmMap = (window._comuniKmPerLotto || {})[lotto];
   if (kmMap && Object.keys(kmMap).length > 0) {
     const sorted = Object.entries(kmMap).sort((a,b) => b[1]-a[1]).slice(0, maxN);
