@@ -2420,7 +2420,17 @@ async function _saveSessionData() {
   _sessionSaving = true;
   try {
     const data = await _logGetData();
-    const entry = data.accessi.find(a => a.ts === _sessionTs);
+    let entry = data.accessi.find(a => a.ts === _sessionTs);
+    // Fallback: se il salvataggio iniziale è fallito, l'entry è in _logCache
+    // ma non ancora su JSONBin — la recuperiamo e la reinseriamo.
+    if (!entry && _logCache) {
+      const cached = _logCache.accessi.find(a => a.ts === _sessionTs);
+      if (cached) {
+        data.accessi.push(cached);
+        if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
+        entry = cached;
+      }
+    }
     if (!entry) return;
     entry.durata  = Math.round((Date.now() - _sessionStart) / 60000); // minuti
     entry.lotti   = [..._sessionLotti];
@@ -2497,16 +2507,13 @@ async function _logGetData() {
 }
 
 async function _logSaveData(data) {
-  try {
-    await _jbPut(JSONBIN_LOG_BIN_ID, data);
-    // Aggiorna cache locale — usata da beforeunload per evitare fetch GET non affidabile
-    _logCache = JSON.parse(JSON.stringify(data));
-    // Invalida anche la cache di _logGetData così la prossima apertura admin è fresca
-    _logDataCache = null;
-    _logDataCacheTs = 0;
-  } catch(e) {
-    throw e;
-  }
+  // Aggiorna sempre _logCache in memoria — anche se il PUT fallisce,
+  // beforeunload e _saveSessionData trovano l'entry e possono ritentare.
+  _logCache = JSON.parse(JSON.stringify(data));
+  await _jbPut(JSONBIN_LOG_BIN_ID, data);
+  // Invalida la cache di _logGetData solo a salvataggio confermato
+  _logDataCache = null;
+  _logDataCacheTs = 0;
 }
 async function _getIP() {
   try {
@@ -2916,7 +2923,10 @@ document.addEventListener('DOMContentLoaded', () => {
       _sessionTs     = entry.ts;
       _sessionLogIdx = data.accessi.length - 1; // mantenuto per compatibilità
       _sessionStart  = Date.now();
-      _logSaveData(data).catch(() => {});
+      // Retry automatico dopo 8s se il primo salvataggio fallisce
+      _logSaveData(data).catch(() => {
+        setTimeout(() => _logSaveData(data).catch(() => {}), 8000);
+      });
     }
 
     revalidatePromise.then(risposta => {
