@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="it" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="google" content="notranslate">
+<meta http-equiv="Content-Language" content="it">
+<title>ENRI — AI Alert Predittivi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Plus+Jakarta+Sans:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       #F4F3EE;
+    --surface:  #FFFFFF;
+    --surface2: #F0EEE6;
+    --border:   #E0DDD4;
+    --border2:  #CCC9BE;
+    --accent:   #0B3182;
+    --accent2:  #E55000;
+    --text:     #1C1C2E;
+    --text2:    #3A3A52;
+    --muted:    #52526E;
+    --muted2:   #7878A0;
+    --green:    #1F7A4E;
+    --greenL:   #D4F0E2;
+    --red:      #C23B22;
+    --redL:     #FDECEA;
+    --yellow:   #C08A14;
+    --yellowL:  #FEF8E7;
+    --sh-xs: 0 1px 3px rgba(11,49,130,.06), 0 1px 2px rgba(0,0,0,.04);
+    --sh-sm: 0 2px 8px rgba(11,49,130,.08), 0 1px 4px rgba(0,0,0,.05);
+    --sh-md: 0 4px 20px rgba(11,49,130,.10), 0 2px 8px rgba(0,0,0,.06);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Plus Jakarta Sans',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+
+  /* ── TOPBAR ── */
+  .topbar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 20px; height:52px; background:var(--surface);
+    border-bottom:1px solid var(--border); box-shadow:var(--sh-xs);
+    position:sticky; top:0; z-index:50;
+  }
+  .topbar-left  { display:flex; align-items:center; gap:12px; flex-shrink:0; }
+  .topbar-right { display:flex; align-items:center; gap:6px; }
+  .logo { font-family:'Bricolage Grotesque',sans-serif; font-size:13px; font-weight:700; letter-spacing:.14em; color:var(--accent); text-transform:uppercase; }
+  .divider-v { width:1px; height:20px; background:var(--border2); }
+  .page-title { font-size:12px; color:var(--muted); font-weight:500; }
+  .btn-nav {
+    font-size:12px; padding:7px 14px; border-radius:7px;
+    background:var(--surface2); color:var(--text);
+    border:1px solid var(--border); cursor:pointer;
+    font-family:'Plus Jakarta Sans',sans-serif; font-weight:600;
+    text-decoration:none; transition:opacity .2s; white-space:nowrap;
+    display:inline-flex; align-items:center; gap:5px;
+  }
+  .btn-nav:hover { opacity:.75; }
+  .btn-nav.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .ai-badge {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:4px 10px; border-radius:20px; font-size:10px; font-weight:700;
+    font-family:'Fira Code',monospace; letter-spacing:.05em;
+    background:#E550000A; border:1px solid #E5500030; color:var(--accent2);
+  }
+  .ai-dot {
+    width:7px; height:7px; border-radius:50%; background:var(--accent2);
+    animation:pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.7)} }
+
+  /* ── MAIN ── */
+  .main { padding:22px 28px; display:flex; flex-direction:column; gap:20px; max-width:1400px; }
+
+  .page-eyebrow { font-family:'Fira Code',monospace; font-size:9px; font-weight:500; letter-spacing:.2em; text-transform:uppercase; color:var(--accent2); }
+  .page-h1 { font-family:'Bricolage Grotesque',sans-serif; font-size:22px; font-weight:700; letter-spacing:-.025em; color:var(--text); line-height:1.2; margin-top:2px; }
+  .page-sub { font-size:12px; color:var(--muted); margin-top:3px; line-height:1.5; }
+
+  /* ── KPI ROW ── */
+  .kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  @media(max-width:900px){ .kpi-row{ grid-template-columns:repeat(2,1fr); } }
+  .kpi {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:12px; padding:16px 18px;
+    position:relative; overflow:hidden; box-shadow:var(--sh-xs);
+    animation:fadeUp .4s ease both;
+  }
+  @keyframes fadeUp{ from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+  .kpi:nth-child(1){animation-delay:.05s} .kpi:nth-child(2){animation-delay:.10s}
+  .kpi:nth-child(3){animation-delay:.15s} .kpi:nth-child(4){animation-delay:.20s}
+  .kpi::before { content:''; position:absolute; top:0; left:0; bottom:0; width:3px; border-radius:12px 0 0 12px; }
+  .kpi.k-red::before    { background:var(--red); }
+  .kpi.k-yellow::before { background:var(--yellow); }
+  .kpi.k-green::before  { background:var(--green); }
+  .kpi.k-blue::before   { background:var(--accent); }
+  .kpi-label { font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin-bottom:10px; font-weight:600; }
+  .kpi-value { font-size:30px; font-weight:700; font-family:'Bricolage Grotesque',sans-serif; line-height:1; letter-spacing:-.02em; }
+  .kpi.k-red    .kpi-value { color:var(--red); }
+  .kpi.k-yellow .kpi-value { color:var(--yellow); }
+  .kpi.k-green  .kpi-value { color:var(--green); }
+  .kpi.k-blue   .kpi-value { color:var(--accent); }
+  .kpi-sub { font-size:11px; color:var(--text2); margin-top:6px; font-weight:500; }
+
+  /* ── LAYOUT 2 COLONNE ── */
+  .two-col { display:grid; grid-template-columns:1fr 340px; gap:16px; align-items:start; }
+  @media(max-width:1100px){ .two-col{ grid-template-columns:1fr; } }
+
+  /* ── CARD ── */
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:var(--sh-xs); }
+  .card-header { display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid var(--border); }
+  .card-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); font-family:'Bricolage Grotesque',sans-serif; }
+  .card-body  { padding:20px; }
+
+  /* ── ALERT CARDS ── */
+  .alert-list { display:flex; flex-direction:column; gap:10px; padding:16px; }
+  .alert-card {
+    border-radius:10px; border:1px solid transparent;
+    padding:14px 16px; cursor:pointer;
+    transition:transform .15s, box-shadow .15s;
+    animation:slideIn .3s ease both;
+  }
+  .alert-card:hover { transform:translateY(-2px); box-shadow:var(--sh-md); }
+  @keyframes slideIn{ from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  .alert-card:nth-child(1){animation-delay:.05s} .alert-card:nth-child(2){animation-delay:.10s}
+  .alert-card:nth-child(3){animation-delay:.15s} .alert-card:nth-child(4){animation-delay:.20s}
+  .alert-card:nth-child(5){animation-delay:.25s}
+
+  .alert-card.critico  { background:var(--redL);    border-color:#f5c6bf; }
+  .alert-card.warning  { background:var(--yellowL); border-color:#f5e09a; }
+  .alert-card.info     { background:#EEF4FF;         border-color:#c3d8f7; }
+  .alert-card.ok       { background:var(--greenL);  border-color:#a6dfc3; }
+
+  .alert-header { display:flex; align-items:center; gap:8px; margin-bottom:7px; }
+  .alert-sev {
+    font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.08em;
+    padding:2px 7px; border-radius:4px; font-family:'Fira Code',monospace;
+  }
+  .alert-card.critico  .alert-sev { background:#C23B2220; color:var(--red); }
+  .alert-card.warning  .alert-sev { background:#C08A1420; color:var(--yellow); }
+  .alert-card.info     .alert-sev { background:#0B318220; color:var(--accent); }
+  .alert-card.ok       .alert-sev { background:#1F7A4E20; color:var(--green); }
+
+  .alert-lotto {
+    font-family:'Fira Code',monospace; font-size:11px; font-weight:700;
+    padding:2px 7px; border-radius:4px; background:rgba(0,0,0,.06); color:var(--text);
+  }
+  .alert-title { font-size:13px; font-weight:700; color:var(--text); margin-bottom:5px; line-height:1.35; font-family:'Bricolage Grotesque',sans-serif; }
+  .alert-body  { font-size:11px; color:var(--muted); line-height:1.6; }
+  .alert-body strong { color:var(--text); font-weight:600; }
+  .alert-footer { display:flex; align-items:center; gap:8px; margin-top:10px; padding-top:8px; border-top:1px solid rgba(0,0,0,.07); }
+  .alert-time { font-size:10px; color:var(--muted2); font-family:'Fira Code',monospace; }
+  .alert-spacer { flex:1; }
+  .alert-action { font-size:10px; font-weight:700; color:var(--accent); background:none; border:none; cursor:pointer; padding:0; font-family:'Plus Jakarta Sans',sans-serif; }
+  .alert-action:hover { text-decoration:underline; }
+
+  /* Mini trend bar */
+  .mini-trend { display:flex; align-items:flex-end; gap:2px; height:22px; margin:8px 0 3px; }
+  .mini-bar { flex:1; border-radius:2px 2px 0 0; background:#0B318230; }
+  .mini-bar.now    { background:var(--red); }
+  .mini-bar.target { background:var(--accent); opacity:.3; }
+  .mini-legend { display:flex; gap:12px; }
+  .mini-legend span { font-size:9px; color:var(--muted2); }
+
+  /* ── PANNELLO RIEPILOGO ── */
+  .summary-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; padding:16px; }
+  .summary-item { background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; text-align:center; }
+  .summary-val { font-size:22px; font-weight:700; font-family:'Bricolage Grotesque',sans-serif; line-height:1; }
+  .summary-val.red    { color:var(--red); }
+  .summary-val.yellow { color:var(--yellow); }
+  .summary-val.green  { color:var(--green); }
+  .summary-lbl { font-size:9px; color:var(--muted); margin-top:3px; text-transform:uppercase; letter-spacing:.05em; font-weight:600; }
+
+  /* ── TABS ── */
+  .tabs { display:flex; border-bottom:1px solid var(--border); background:var(--surface2); }
+  .tab {
+    flex:1; padding:11px 0; font-size:11px; font-weight:700;
+    text-align:center; cursor:pointer; color:var(--muted);
+    border:none; background:none; border-bottom:2px solid transparent;
+    transition:all .15s; text-transform:uppercase; letter-spacing:.05em;
+    font-family:'Plus Jakarta Sans',sans-serif;
+  }
+  .tab.active { color:var(--accent); border-bottom-color:var(--accent2); background:var(--surface); }
+  .tab:hover:not(.active){ color:var(--text); background:rgba(11,49,130,.04); }
+  .tab-pane { display:none; }
+  .tab-pane.active { display:block; }
+
+  /* ── AGGIORNA BTN ── */
+  .refresh-btn {
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    width:calc(100% - 32px); margin:0 16px 16px;
+    padding:10px; border-radius:8px;
+    background:var(--accent); color:#fff;
+    border:none; font-family:'Plus Jakarta Sans',sans-serif;
+    font-size:12px; font-weight:700; cursor:pointer;
+    transition:background .15s, transform .1s;
+  }
+  .refresh-btn:hover { background:#1A4DB2; transform:translateY(-1px); }
+  .refresh-btn:active { transform:none; }
+  .refresh-btn.loading { opacity:.65; pointer-events:none; }
+  @keyframes spin{ to{transform:rotate(360deg)} }
+  .spin-icon { display:none; animation:spin .7s linear infinite; }
+  .loading .spin-icon { display:inline; }
+  .loading .static-icon { display:none; }
+
+  /* ── REPORT TAB ── */
+  .report-block { background:var(--surface2); border-radius:8px; padding:14px 16px; margin-bottom:10px; border-left:3px solid var(--accent); }
+  .report-block.danger { border-left-color:var(--red); }
+  .report-block.success { border-left-color:var(--green); }
+  .report-block-title { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--accent); margin-bottom:7px; font-family:'Bricolage Grotesque',sans-serif; }
+  .report-block.danger  .report-block-title { color:var(--red); }
+  .report-block.success .report-block-title { color:var(--green); }
+  .report-block p { font-size:12px; color:var(--muted); line-height:1.65; }
+  .report-block strong { color:var(--text); }
+  .gen-btn {
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    width:100%; padding:10px; border-radius:8px; margin-top:4px;
+    background:var(--accent2); color:#fff;
+    border:none; font-family:'Plus Jakarta Sans',sans-serif;
+    font-size:12px; font-weight:700; cursor:pointer; transition:background .15s;
+  }
+  .gen-btn:hover { background:#c94800; }
+
+  /* ── FLAGGED TABLE ── */
+  .flagged-table { width:100%; border-collapse:collapse; font-size:12px; }
+  .flagged-table th {
+    background:var(--accent); color:#fff; font-size:9px;
+    font-weight:700; text-transform:uppercase; letter-spacing:.08em;
+    padding:8px 12px; text-align:left;
+  }
+  .flagged-table td { padding:9px 12px; border-bottom:1px solid var(--border); }
+  .flagged-table tr:last-child td { border-bottom:none; }
+  .flagged-table tr:hover td { background:var(--surface2); }
+  .flag-badge {
+    display:inline-flex; align-items:center; gap:4px;
+    font-size:9px; font-weight:700; padding:2px 7px;
+    border-radius:4px; font-family:'Fira Code',monospace;
+    text-transform:uppercase; letter-spacing:.05em;
+  }
+  .flag-badge.crit   { background:var(--redL);    color:var(--red);    border:1px solid #f5c6bf; }
+  .flag-badge.warn   { background:var(--yellowL); color:var(--yellow); border:1px solid #f5e09a; }
+  .flag-badge.ok     { background:var(--greenL);  color:var(--green);  border:1px solid #a6dfc3; }
+  .flag-badge.info   { background:#EEF4FF;          color:var(--accent); border:1px solid #c3d8f7; }
+  .flag-badge::before { content:''; width:5px; height:5px; border-radius:50%; background:currentColor; display:inline-block; }
+
+  /* ── PROGRESS BAR ── */
+  .pbar { width:70px; height:6px; background:var(--surface2); border:1px solid var(--border); border-radius:3px; overflow:hidden; display:inline-block; vertical-align:middle; margin-right:5px; }
+  .pbar-fill { height:100%; border-radius:3px; }
+
+  /* ── INFO BANNER ── */
+  .info-banner {
+    display:flex; align-items:flex-start; gap:10px;
+    background:#EEF4FF; border:1px solid #c3d8f7;
+    border-radius:10px; padding:12px 16px; font-size:12px; color:var(--muted);
+  }
+  .info-banner .icon { font-size:16px; flex-shrink:0; margin-top:1px; }
+
+  /* ── LAST RUN ── */
+  .last-run { font-family:'Fira Code',monospace; font-size:10px; color:var(--muted2); }
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="topbar-left">
+    <span class="logo">PROGETTO · ENRI</span>
+    <div class="divider-v"></div>
+    <span class="page-title">AI Alert Predittivi</span>
+  </div>
+  <div class="topbar-right">
+    <span id="topbarUser" style="font-size:11px;color:var(--muted);font-family:'Fira Code',monospace;"></span>
+    <div class="ai-badge"><span class="ai-dot"></span>AI LIVE</div>
+    <a href="index.html"             class="btn-nav">📋 Progettazione</a>
+    <a href="scavi.html"             class="btn-nav">🏗 Scavi</a>
+    <a href="mappa.html"             class="btn-nav">🗺 Mappa</a>
+    <a href="hub.html"               class="btn-nav primary">← Hub</a>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- HEADER -->
+  <div>
+    <div class="page-eyebrow">Beta · Analisi Predittiva</div>
+    <div class="page-h1">AI Alert — Avanzamento Scavi</div>
+    <div class="page-sub">
+      Analisi automatica dell'avanzamento rispetto ai dati storici. Aggiornamento su ogni caricamento CSV.
+      <span class="last-run" id="lastRunLabel"> · ultima analisi: 24/05/2026 09:40</span>
+    </div>
+  </div>
+
+  <!-- KPI ROW -->
+  <div class="kpi-row">
+    <div class="kpi k-red">
+      <div class="kpi-label">Alert Critici</div>
+      <div class="kpi-value">1</div>
+      <div class="kpi-sub">Intervento urgente richiesto</div>
+    </div>
+    <div class="kpi k-yellow">
+      <div class="kpi-label">Warning</div>
+      <div class="kpi-value">2</div>
+      <div class="kpi-sub">Monitoraggio ravvicinato</div>
+    </div>
+    <div class="kpi k-green">
+      <div class="kpi-label">Lotti in linea</div>
+      <div class="kpi-value">6</div>
+      <div class="kpi-sub">Nessuna anomalia rilevata</div>
+    </div>
+    <div class="kpi k-blue">
+      <div class="kpi-label">Lotti analizzati</div>
+      <div class="kpi-value">12</div>
+      <div class="kpi-sub">Su 4 cluster attivi</div>
+    </div>
+  </div>
+
+  <!-- INFO BANNER (mostra solo nella fase beta) -->
+  <div class="info-banner">
+    <span class="icon">ℹ️</span>
+    <span><strong>Pagina di test (Beta).</strong>  Gli alert sono generati confrontando l'avanzamento corrente con i pattern storici dei lotti. Più dati storici vengono caricati, più precise diventano le previsioni. Per attivare l'analisi automatica via API è sufficiente aggiungere la chiamata Claude nel flusso di aggiornamento CSV.</span>
+  </div>
+
+  <!-- LAYOUT 2 COLONNE -->
+  <div class="two-col">
+
+    <!-- COLONNA SX: tabella lotti flaggati + tabs alert -->
+    <div style="display:flex;flex-direction:column;gap:16px;">
+
+      <!-- Tabella lotti flaggati -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Lotti con Flag AI</span>
+          <span class="last-run">analisi del 24/05/2026</span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="flagged-table">
+            <thead>
+              <tr>
+                <th>Lotto</th>
+                <th>Cluster</th>
+                <th>Province</th>
+                <th>Avanzamento</th>
+                <th>Stato</th>
+                <th>Flag AI</th>
+                <th>Segnale</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong style="font-family:'Fira Code',monospace;color:var(--accent)">2B</strong></td>
+                <td>2</td><td>MI</td>
+                <td>
+                  <div class="pbar"><div class="pbar-fill" style="width:31%;background:var(--red)"></div></div>31%
+                </td>
+                <td><span style="background:var(--redL);color:var(--red);border:1px solid #f5c6bf;border-radius:5px;padding:2px 7px;font-size:9px;font-weight:700">sospeso</span></td>
+                <td><span class="flag-badge crit">Critico</span></td>
+                <td style="font-size:11px;color:var(--muted)">Sospeso 18gg → rischio deadline</td>
+              </tr>
+              <tr>
+                <td><strong style="font-family:'Fira Code',monospace;color:var(--accent)">1A</strong></td>
+                <td>1</td><td>MI</td>
+                <td>
+                  <div class="pbar"><div class="pbar-fill" style="width:54%;background:var(--yellow)"></div></div>54%
+                </td>
+                <td><span style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;border-radius:5px;padding:2px 7px;font-size:9px;font-weight:700">in corso</span></td>
+                <td><span class="flag-badge warn">Warning</span></td>
+                <td style="font-size:11px;color:var(--muted)">Velocità −23% vs storico</td>
+              </tr>
+              <tr>
+                <td><strong style="font-family:'Fira Code',monospace;color:var(--accent)">L1</strong></td>
+                <td>3</td><td>BG, MI</td>
+                <td>
+                  <div class="pbar"><div class="pbar-fill" style="width:14%;background:var(--yellow)"></div></div>14%
+                </td>
+                <td><span style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;border-radius:5px;padding:2px 7px;font-size:9px;font-weight:700">in corso</span></td>
+                <td><span class="flag-badge warn">Warning</span></td>
+                <td style="font-size:11px;color:var(--muted)">Sotto piano — area BG critica apr–giu</td>
+              </tr>
+              <tr>
+                <td><strong style="font-family:'Fira Code',monospace;color:var(--accent)">1B</strong></td>
+                <td>1</td><td>MI</td>
+                <td>
+                  <div class="pbar"><div class="pbar-fill" style="width:38%;background:var(--green)"></div></div>38%
+                </td>
+                <td><span style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;border-radius:5px;padding:2px 7px;font-size:9px;font-weight:700">in corso</span></td>
+                <td><span class="flag-badge info">Info</span></td>
+                <td style="font-size:11px;color:var(--muted)">+12% vs storico → anticipo 3 sett.</td>
+              </tr>
+              <tr>
+                <td><strong style="font-family:'Fira Code',monospace;color:var(--accent)">2A</strong></td>
+                <td>2</td><td>MI, PV</td>
+                <td>
+                  <div class="pbar"><div class="pbar-fill" style="width:22%;background:var(--accent)"></div></div>22%
+                </td>
+                <td><span style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;border-radius:5px;padding:2px 7px;font-size:9px;font-weight:700">in corso</span></td>
+                <td><span class="flag-badge ok">OK</span></td>
+                <td style="font-size:11px;color:var(--muted)">In linea con piano storico</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Alert dettaglio con tabs -->
+      <div class="card">
+        <div class="tabs">
+          <button class="tab active" onclick="switchTab('alert',this)">Alert</button>
+          <button class="tab" onclick="switchTab('trend',this)">Tendenze</button>
+          <button class="tab" onclick="switchTab('report',this)">Report</button>
+        </div>
+
+        <!-- TAB ALERT -->
+        <div class="tab-pane active" id="tab-alert">
+          <div class="alert-list">
+
+            <div class="alert-card critico">
+              <div class="alert-header">
+                <span class="alert-sev">Critico</span>
+                <span class="alert-lotto">Lotto 2B</span>
+              </div>
+              <div class="alert-title">Sospensione prolungata — rischio scadenza contrattuale</div>
+              <div class="alert-body">
+                Lotto sospeso da <strong>18 giorni</strong>. Dati storici 2024 mostrano che sospensioni &gt;14gg in area MI hanno causato slittamenti medi di <strong>+34 giorni</strong>.
+                Deadline contrattuale stimata: <strong>15/09/2026</strong>. Margine residuo insufficiente.
+              </div>
+              <div class="alert-footer">
+                <span class="alert-time">rilevato 24/05/2026 09:40</span>
+                <span class="alert-spacer"></span>
+                <button class="alert-action" onclick="alert('In produzione: apre il dettaglio del lotto con timeline storica.')">→ Dettaglio lotto</button>
+              </div>
+            </div>
+
+            <div class="alert-card warning">
+              <div class="alert-header">
+                <span class="alert-sev">Warning</span>
+                <span class="alert-lotto">Lotto 1A</span>
+              </div>
+              <div class="alert-title">Velocità di scavo −23% rispetto alla media storica</div>
+              <div class="alert-body">
+                Negli ultimi <strong>2 aggiornamenti</strong>: avanzamento medio +4%/settimana vs +7% atteso dal modello.
+                Pattern simile rilevato su L1 nel 2023 prima di un ritardo di <strong>3 settimane</strong>.
+              </div>
+              <div class="mini-trend">
+                <div class="mini-bar" style="height:50%"></div>
+                <div class="mini-bar" style="height:62%"></div>
+                <div class="mini-bar" style="height:58%"></div>
+                <div class="mini-bar" style="height:71%"></div>
+                <div class="mini-bar" style="height:67%"></div>
+                <div class="mini-bar now" style="height:40%"></div>
+                <div class="mini-bar target" style="height:71%"></div>
+              </div>
+              <div class="mini-legend">
+                <span>▬ storico</span>
+                <span style="color:var(--red)">▬ attuale</span>
+                <span style="color:var(--accent);opacity:.5">▬ atteso</span>
+              </div>
+              <div class="alert-footer">
+                <span class="alert-time">rilevato 24/05/2026 09:40</span>
+                <span class="alert-spacer"></span>
+                <button class="alert-action" onclick="alert('In produzione: apre grafico comparativo avanzamento vs storico.')">→ Vedi grafico</button>
+              </div>
+            </div>
+
+            <div class="alert-card warning">
+              <div class="alert-header">
+                <span class="alert-sev">Warning</span>
+                <span class="alert-lotto">Lotto L1</span>
+              </div>
+              <div class="alert-title">Avanzamento sotto piano — area BG storicamente critica</div>
+              <div class="alert-body">
+                Avanzamento attuale <strong>14%</strong> vs <strong>18%</strong> previsto a questa data dal piano.
+                La provincia BG mostra ritardi ricorrenti nel periodo <strong>apr–giu</strong> (interferenze meteo e traffico urbano).
+                Raccomandato buffer +15% sulle stime residue.
+              </div>
+              <div class="alert-footer">
+                <span class="alert-time">rilevato 24/05/2026 09:40</span>
+              </div>
+            </div>
+
+            <div class="alert-card info">
+              <div class="alert-header">
+                <span class="alert-sev">Info</span>
+                <span class="alert-lotto">Lotto 1B</span>
+              </div>
+              <div class="alert-title">Previsione completamento 3 settimane in anticipo</div>
+              <div class="alert-body">
+                Velocità attuale <strong>+12%</strong> vs media storica. Se il trend si mantiene, completamento stimato <strong>02/08/2026</strong> vs deadline <strong>25/08/2026</strong>.
+                Performance positiva da monitorare per ridistribuzione risorse.
+              </div>
+              <div class="alert-footer">
+                <span class="alert-time">rilevato 24/05/2026 09:40</span>
+              </div>
+            </div>
+
+            <div class="alert-card ok">
+              <div class="alert-header">
+                <span class="alert-sev">OK</span>
+                <span class="alert-lotto">Lotto 2A</span>
+              </div>
+              <div class="alert-title">In linea con piano — nessuna anomalia rilevata</div>
+              <div class="alert-body">
+                Avanzamento coerente con la media storica per area MI/PV. Nessun pattern di rischio identificato nell'analisi dei dati pregressi.
+              </div>
+              <div class="alert-footer">
+                <span class="alert-time">rilevato 24/05/2026 09:40</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- TAB TENDENZE -->
+        <div class="tab-pane" id="tab-trend">
+          <div class="alert-list">
+
+            <div class="alert-card info">
+              <div class="alert-header">
+                <span class="alert-sev">Stagionale</span>
+                <span class="alert-lotto">Cluster 3 — BG/MI</span>
+              </div>
+              <div class="alert-title">Rallentamento stagionale previsto: giugno–luglio</div>
+              <div class="alert-body">
+                Nelle ultime <strong>3 annualità</strong>, i lotti in area BG/MI registrano una riduzione media del <strong>18%</strong> della produttività tra giugno e luglio (caldo, interferenze estive, ferie cantieri). Si raccomanda di pianificare buffer temporale.
+              </div>
+              <div class="alert-footer">
+                <span class="alert-time">analisi storica 3 anni</span>
+              </div>
+            </div>
+
+            <div class="alert-card info">
+              <div class="alert-header">
+                <span class="alert-sev">Geografico</span>
+                <span class="alert-lotto">Province MI/PV</span>
+              </div>
+              <div class="alert-title">Aree urbane: +28% tempi medi vs extraurbano</div>
+              <div class="alert-body">
+                I lotti con &gt;60% di percorso urbano (1A, 2B, L6) mostrano sistematicamente tempi di scavo superiori alla media. Rivedere le stime contrattuali per i lotti non ancora avviati nelle stesse aree.
+              </div>
+              <div class="alert-footer">
+                <span class="alert-time">analisi su 8 lotti storici</span>
+              </div>
+            </div>
+
+            <div class="alert-card warning">
+              <div class="alert-header">
+                <span class="alert-sev">Proiezione</span>
+                <span class="alert-lotto">Generale</span>
+              </div>
+              <div class="alert-title">5 lotti a rischio sforamento deadline Q3 2026</div>
+              <div class="alert-body">
+                Se la velocità media si mantiene agli attuali livelli, <strong>5 lotti su 12</strong> potrebbero non rispettare le deadline di settembre 2026. Il modello suggerisce un piano di accelerazione concentrato sui lotti 2B, L1 e L4.
+              </div>
+              <div class="alert-footer">
+                <span class="alert-time">proiezione a 90 giorni</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- TAB REPORT -->
+        <div class="tab-pane" id="tab-report">
+          <div class="card-body">
+
+            <div class="report-block">
+              <div class="report-block-title">Sintesi settimanale — 19–24 mag 2026</div>
+              <p>
+                Settimana caratterizzata da <strong>avanzamento difforme</strong> tra i lotti attivi.
+                Lotto 2B ancora sospeso (+18 giorni), con rischio concreto di sforamento della deadline contrattuale.
+                Lotto 1B registra invece performance superiori alle aspettative storiche.
+              </p>
+            </div>
+
+            <div class="report-block danger">
+              <div class="report-block-title">Azioni urgenti</div>
+              <p>
+                • <strong>Lotto 2B</strong>: verificare causa sospensione con l'impresa e stimare data di ripresa.<br>
+                • <strong>Lotto 1A</strong>: contattare il responsabile di cantiere per analisi del rallentamento.<br>
+                • <strong>Cluster 3</strong>: pianificare buffer estivo +15% sulle stime giugno–luglio.
+              </p>
+            </div>
+
+            <div class="report-block success">
+              <div class="report-block-title">Punti positivi</div>
+              <p>
+                Lotto 1B in anticipo di ~3 settimane sul piano contrattuale.
+                Lotti 2A e L2 in allestimento senza anomalie.
+                Cluster 1 complessivamente stabile.
+              </p>
+            </div>
+
+            <button class="gen-btn" onclick="generaReport()">
+              <span class="static-icon">📄</span>
+              <span class="spin-icon">⟳</span>
+              Genera report PDF completo
+            </button>
+
+          </div>
+        </div>
+
+      </div><!-- /card tabs -->
+    </div><!-- /col sx -->
+
+    <!-- COLONNA DX: pannello riepilogo + prossima analisi -->
+    <div style="display:flex;flex-direction:column;gap:16px;">
+
+      <!-- Riepilogo -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Riepilogo Analisi</span>
+          <span class="last-run" id="lastRunShort">09:40</span>
+        </div>
+        <div class="summary-grid">
+          <div class="summary-item">
+            <div class="summary-val red">1</div>
+            <div class="summary-lbl">Critici</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-val yellow">2</div>
+            <div class="summary-lbl">Warning</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-val green">6</div>
+            <div class="summary-lbl">OK / Info</div>
+          </div>
+        </div>
+
+        <div style="padding:0 16px 4px;">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">Copertura analisi</div>
+          <!-- mini bar stacked -->
+          <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;gap:1px;">
+            <div style="flex:1;background:var(--red)" title="Critico"></div>
+            <div style="flex:2;background:var(--yellow)" title="Warning"></div>
+            <div style="flex:6;background:var(--green)" title="OK"></div>
+          </div>
+          <div style="display:flex;gap:12px;margin-top:5px;">
+            <span style="font-size:9px;color:var(--red);font-weight:700">■ Critico (8%)</span>
+            <span style="font-size:9px;color:var(--yellow);font-weight:700">■ Warning (17%)</span>
+            <span style="font-size:9px;color:var(--green);font-weight:700">■ OK (75%)</span>
+          </div>
+        </div>
+
+        <div style="padding:12px 16px 0;border-top:1px solid var(--border);margin-top:12px;">
+          <button class="refresh-btn" id="refreshBtn" onclick="simulaAggiornamento()">
+            <span class="static-icon">↻</span>
+            <span class="spin-icon">↻</span>
+            <span id="refreshLabel">Aggiorna analisi</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Prossima analisi / info -->
+      <div class="card">
+        <div class="card-header"><span class="card-title">Come funziona</span></div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:10px;">
+
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <div style="width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">1</div>
+            <div>
+              <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px;">Lettura CSV</div>
+              <div style="font-size:11px;color:var(--muted)">I file CSV aggiornati dalle imprese vengono caricati su GitHub</div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <div style="width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">2</div>
+            <div>
+              <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px;">Analisi AI</div>
+              <div style="font-size:11px;color:var(--muted)">Claude API confronta i dati attuali con lo storico per lotto, area e stagione</div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <div style="width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">3</div>
+            <div>
+              <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px;">Alert automatici</div>
+              <div style="font-size:11px;color:var(--muted)">Gli alert vengono aggiornati in questa pagina — costo stimato &lt;$0.01 per analisi</div>
+            </div>
+          </div>
+
+          <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;margin-top:4px;">
+            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px;">Stato integrazione</div>
+            <div style="font-size:11px;color:var(--muted);">
+              🟡 <strong>Modalità demo</strong> — dati mockup. Per attivare l'analisi reale: aggiungere API key Claude e collegare il flusso CSV.
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div><!-- /col dx -->
+  </div><!-- /two-col -->
+</div><!-- /main -->
+
+<script>
+// Auth guard
+window.addEventListener('DOMContentLoaded', () => {
+  const u = localStorage.getItem('_enri_user');
+  if (u) document.getElementById('topbarUser').textContent = u;
+});
+
+// Tabs
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+// Simula aggiornamento analisi
+function simulaAggiornamento() {
+  const btn = document.getElementById('refreshBtn');
+  const lbl = document.getElementById('refreshLabel');
+  btn.classList.add('loading');
+  lbl.textContent = 'Analisi in corso…';
+  setTimeout(() => {
+    btn.classList.remove('loading');
+    lbl.textContent = '✓ Completato';
+    const now = new Date();
+    const hm = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+    document.getElementById('lastRunLabel').textContent = ' · ultima analisi: ' + now.toLocaleDateString('it-IT') + ' ' + hm;
+    document.getElementById('lastRunShort').textContent = hm;
+    setTimeout(() => { lbl.textContent = 'Aggiorna analisi'; }, 3000);
+  }, 2200);
+}
+
+// Simula generazione report
+function generaReport() {
+  alert('In produzione: il report narrativo viene generato via API Claude e scaricato come PDF.\n\nCosto stimato per report: < $0.02');
+}
+</script>
+</body>
+</html>
