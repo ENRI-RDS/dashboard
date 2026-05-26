@@ -1624,6 +1624,7 @@ async function loadGeoJSON() {
 }
 
 function buildLottoStats(features) {
+  const _autLS = (() => { try { return JSON.parse(localStorage.getItem('_autPerLotto')||'{}'); } catch(e){ return {}; } })();
   const stats = {};
   features.forEach(f => {
     const p = f.properties;
@@ -1644,7 +1645,7 @@ function buildLottoStats(features) {
     }  });
   Object.keys(stats).forEach(k=>{
     const s = stats[k];
-    s.lavorabili = s.pratiche.size;
+    s.lavorabili = (_autLS[k] !== undefined) ? _autLS[k] : s.pratiche.size;
     s.pct = s.totale>0?(s.ottenuto/s.totale*100):0;
     // Per statoLabel usiamo STATO_LEGENDA aggregato già calcolato (se presente)
     const nonAttesa = Object.entries(s.stati).filter(([st])=>st!=='IN ATTESA'&&st!=='IN REDAZIONE');
