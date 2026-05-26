@@ -5456,6 +5456,15 @@ async function loadMaster() {
       })).sort((a,b) => a.codice.localeCompare(b.codice));
     });
 
+    // Espone conteggio pratiche OTTENUTO per lotto a mappa.html via localStorage
+    try {
+      const _autPerLotto = {};
+      Object.entries(window._praticheDetailPerLotto).forEach(([lotto, arr]) => {
+        _autPerLotto[lotto] = arr.filter(p => p.stato === 'OTTENUTO').length;
+      });
+      localStorage.setItem('_autPerLotto', JSON.stringify(_autPerLotto));
+    } catch(e) {}
+
     // Indice per tratta → pratiche (per popup cluster)
     window._masterByTratta = {};
     Object.values(permessiMap).forEach(r => {
