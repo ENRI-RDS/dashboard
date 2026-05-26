@@ -1635,10 +1635,13 @@ function buildLottoStats(features) {
     const stato = p.STATO_LEGENDA||p.STATO_AUTORIZZAZIONE||'IN ATTESA';
     if (stato==='OTTENUTO') stats[lotto].ottenuto += l;
     stats[lotto].stati[stato]=(stats[lotto].stati[stato]||0)+l;
-    if ((stato==='OTTENUTO' || p.STATO_NULLAOSTA==='OTTENUTO') && p.PRATICA) {
-      p.PRATICA.split('|').map(s=>s.trim()).filter(Boolean).forEach(pr=>stats[lotto].pratiche.add(pr));
-    }
-  });
+    if (p.PRATICA) {
+      const codici = p.PRATICA.split('|').map(s=>s.trim()).filter(Boolean);
+      if (stato==='OTTENUTO')
+        codici.filter(c=>c.startsWith('AUT/')).forEach(c=>stats[lotto].pratiche.add(c));
+      if (p.STATO_NULLAOSTA==='OTTENUTO')
+        codici.filter(c=>c.startsWith('NO/')).forEach(c=>stats[lotto].pratiche.add(c));
+    }  });
   Object.keys(stats).forEach(k=>{
     const s = stats[k];
     s.lavorabili = s.pratiche.size;
