@@ -1629,16 +1629,19 @@ function buildLottoStats(features) {
     const p = f.properties;
     const lotto = p.LOTTO;
     if (!lotto||lotto==='P') return;
-    if (!stats[lotto]) stats[lotto]={totale:0,ottenuto:0,lavorabili:0,stati:{}};
+    if (!stats[lotto]) stats[lotto]={totale:0,ottenuto:0,lavorabili:0,stati:{},pratiche:new Set()};
     const l = p.LUNGHEZZA||0;
     stats[lotto].totale += l;
     const stato = p.STATO_LEGENDA||p.STATO_AUTORIZZAZIONE||'IN ATTESA';
     if (stato==='OTTENUTO') stats[lotto].ottenuto += l;
     stats[lotto].stati[stato]=(stats[lotto].stati[stato]||0)+l;
-    if (p.LAVORABILE==='SI') stats[lotto].lavorabili++;
+    if ((stato==='OTTENUTO' || p.STATO_NULLAOSTA==='OTTENUTO') && p.PRATICA) {
+      p.PRATICA.split('|').map(s=>s.trim()).filter(Boolean).forEach(pr=>stats[lotto].pratiche.add(pr));
+    }
   });
   Object.keys(stats).forEach(k=>{
     const s = stats[k];
+    s.lavorabili = s.pratiche.size;
     s.pct = s.totale>0?(s.ottenuto/s.totale*100):0;
     // Per statoLabel usiamo STATO_LEGENDA aggregato già calcolato (se presente)
     const nonAttesa = Object.entries(s.stati).filter(([st])=>st!=='IN ATTESA'&&st!=='IN REDAZIONE');
@@ -1660,7 +1663,7 @@ function renderSidebar(stats) {
     const color=getColor(s.statoLabel);
     const pct=s.pct.toFixed(1);
     const lavBadge = s.lavorabili>0
-      ? `<span class="lav-badge lav-si">${s.lavorabili} lav.</span>`:'';
+      ? `<span class="lav-badge lav-si">${s.lavorabili} aut.</span>`:'';
     const div=document.createElement('div');
     div.className='lotto-item'; div.id='li-'+id;
     div.innerHTML=`
