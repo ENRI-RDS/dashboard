@@ -72,13 +72,14 @@ body{font-family:var(--font);background:var(--bg);color:var(--t1);font-size:13px
 .bxs{padding:3px 8px;font-size:11px;border-radius:5px;}
 
 /* KPI */
-.kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:0;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--surf);}
-.kpi{padding:14px 20px;border-right:1px solid var(--border);}
+.kpi-row{display:grid;grid-template-columns:repeat(8,1fr);gap:0;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--surf);}
+.kpi{padding:11px 14px;border-right:1px solid var(--border);}
 .kpi:last-child{border-right:none;}
-.klbl{font-size:11px;font-weight:500;color:var(--t2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;}
-.kval{font-size:22px;font-weight:600;font-family:var(--mono);color:var(--t1);line-height:1;}
+.klbl{font-size:10px;font-weight:600;color:var(--t2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.6px;}
+.kval{font-size:20px;font-weight:600;font-family:var(--mono);color:var(--t1);line-height:1;}
 .kval.g{color:var(--green);} .kval.a{color:var(--amber);} .kval.r{color:var(--red);}
-.ksub{font-size:11px;color:var(--t3);margin-top:3px;}
+.kval.p{color:var(--purple);} .kval.t{color:var(--teal);}
+.ksub{font-size:10px;color:var(--t3);margin-top:3px;}
 
 /* TOOLBAR */
 .toolbar{height:48px;background:var(--surf);border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:8px;align-items:center;flex-shrink:0;}
@@ -247,10 +248,6 @@ tr:hover td.stk{background:#f5f7ff;}
       <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 14h12v-1.5H2V14zm6-2.5L4.5 8H7V2h2v6h2.5L8 11.5z"/></svg>
       Importa CSV
     </button>
-    <button class="btn btn-ghost" onclick="openAdd()">
-      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8.5 2h-1v5.5H2v1h5.5V14h1V8.5H14v-1H8.5z"/></svg>
-      Aggiungi
-    </button>
     <button class="btn btn-outline" onclick="exportCSV()">
       <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h12v1.5H2V2zm6 9.5L4.5 8H7V4.5h2V8h2.5L8 11.5zM2 14h12v-1.5H2V14z"/></svg>
       Esporta
@@ -268,10 +265,13 @@ tr:hover td.stk{background:#f5f7ff;}
 <!-- KPI -->
 <div class="kpi-row">
   <div class="kpi"><div class="klbl">Totale Progetti</div><div class="kval" id="k-tot">0</div><div class="ksub" id="k-src">—</div></div>
-  <div class="kpi"><div class="klbl">In Corso</div><div class="kval g" id="k-act">0</div><div class="ksub" id="k-late">—</div></div>
+  <div class="kpi"><div class="klbl">Pianificato</div><div class="kval p" id="k-plan">0</div><div class="ksub">&nbsp;</div></div>
+  <div class="kpi"><div class="klbl">In Corso</div><div class="kval g" id="k-inc">0</div><div class="ksub">&nbsp;</div></div>
   <div class="kpi"><div class="klbl">In Ritardo</div><div class="kval r" id="k-late-v">0</div><div class="ksub">&nbsp;</div></div>
-  <div class="kpi"><div class="klbl">ROS ≤ 30 gg</div><div class="kval a" id="k-ros">0</div><div class="ksub" id="k-ros-sub">&nbsp;</div></div>
-  <div class="kpi"><div class="klbl">Previsioni PM</div><div class="kval" id="k-prev">0</div><div class="ksub">rilascio valorizzato</div></div>
+  <div class="kpi"><div class="klbl">Sospeso</div><div class="kval" style="color:var(--t2)" id="k-sosp">0</div><div class="ksub">&nbsp;</div></div>
+  <div class="kpi"><div class="klbl">Completato</div><div class="kval t" id="k-comp">0</div><div class="ksub">&nbsp;</div></div>
+  <div class="kpi"><div class="klbl">Annullato</div><div class="kval r" id="k-ann">0</div><div class="ksub">&nbsp;</div></div>
+  <div class="kpi"><div class="klbl">ROS ≤ 30 gg</div><div class="kval a" id="k-ros">0</div><div class="ksub">scadenze vicine</div></div>
 </div>
 
 <!-- TOOLBAR -->
@@ -304,7 +304,7 @@ tr:hover td.stk{background:#f5f7ff;}
           <th onclick="sortBy('stato',this)">Stato</th>
           <th onclick="sortBy('dataOrdine',this)">Data Inserimento Ordine</th>
           <th onclick="sortBy('scadenza',this)">ROS Progetto</th>
-          <th class="nosort" style="min-width:205px">Note PM &nbsp;<span style="color:var(--ai);font-size:10px">✦ AI</span></th>
+          <th class="nosort" style="min-width:205px">Note PM</th>
           <th class="nosort" style="min-width:190px">Previsione PM Rilascio</th>
           <th class="nosort" style="width:72px"></th>
         </tr>
@@ -354,7 +354,7 @@ tr:hover td.stk{background:#f5f7ff;}
     <p class="msub">I campi con * sono obbligatori.</p>
     <input type="hidden" id="m-id">
     <div class="fgrid">
-      <div class="fg"><label>Sistema Sorgente *</label><input id="m-src" placeholder="es. SAP, Salesforce, Jira…"></div>
+      <div class="fg"><label>Sistema Sorgente *</label><input id="m-src" placeholder="es. CRM Irideos, CRM Retelit, Brennercom, BT"></div>
       <div class="fg"><label>ID Piattaforma</label><input id="m-idp" placeholder="ID nel sistema di origine"></div>
       <div class="fg"><label>N° Progetto *</label><input id="m-num" placeholder="es. 2024-001"></div>
       <div class="fg"><label>Nome Progetto *</label><input id="m-nome" placeholder="Nome descrittivo"></div>
@@ -391,7 +391,7 @@ tr:hover td.stk{background:#f5f7ff;}
     <p class="msub">Separatore <code>;</code> o <code>,</code> rilevato automaticamente. Trascina il file o clicca per sfogliare.</p>
     <div class="fg" style="margin-bottom:16px">
       <label>Sistema Sorgente (sovrascrive la colonna CSV se presente)</label>
-      <input id="imp-src" placeholder="es. SAP — lascia vuoto per usare il valore nel CSV">
+      <input id="imp-src" placeholder="es. CRM Irideos, CRM Retelit, Brennercom, BT — lascia vuoto per usare il valore nel CSV">
     </div>
     <div class="dropz" id="dropz" onclick="document.getElementById('csvfile').click()" ondragover="dOver(event)" ondragleave="dLeave()" ondrop="dDrop(event)">
       <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#97a0af" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
@@ -437,20 +437,26 @@ const PVC = {
 };
 
 const SAMPLE = [
-  {sistemaOrigine:'Remedy',idPiattaforma:'COMM/2025/23170',numeroProg:'2025-001',nomeProg:'Fibra Ottica Datacenter — Milano Est',cliente:'Amazon Web Services EMEA',pm:'Marco Rossi',stato:'In Corso',dataOrdine:'2025-01-10',scadenza:'2025-09-30'},
-  {sistemaOrigine:'CRM',idPiattaforma:'202504031',numeroProg:'2025-002',nomeProg:'Upgrade Network Core — Roma HQ',cliente:'UniCredit S.p.A.',pm:'Laura Bianchi',stato:'In Corso',dataOrdine:'2025-02-01',scadenza:'2025-11-30'},
-  {sistemaOrigine:'Remedy',idPiattaforma:'COMM/2025/23512',numeroProg:'2025-003',nomeProg:'Connettività MPLS Multi-sede',cliente:'Intesa Sanpaolo S.p.A.',pm:'Andrea Conti',stato:'In Ritardo',dataOrdine:'2025-01-20',scadenza:'2025-07-31'},
-  {sistemaOrigine:'CRM',idPiattaforma:'202504063',numeroProg:'2025-004',nomeProg:'WAN Sicura — Rete Logistica Nazionale',cliente:'BRT — Bartolini S.p.A.',pm:'Laura Bianchi',stato:'Pianificato',dataOrdine:'2025-03-01',scadenza:'2025-12-31'},
-  {sistemaOrigine:'Remedy',idPiattaforma:'COMM/2025/24001',numeroProg:'2025-005',nomeProg:'SD-WAN Banking Infrastructure',cliente:'Mediobanca S.p.A.',pm:'Marco Rossi',stato:'In Corso',dataOrdine:'2025-02-15',scadenza:'2025-10-15'},
-  {sistemaOrigine:'CRM',idPiattaforma:'202506092',numeroProg:'2025-006',nomeProg:'Cloud Connectivity — AI Hub',cliente:'Meta Platforms Ireland Ltd',pm:'Giulia Ferrara',stato:'In Corso',dataOrdine:'2025-03-10',scadenza:'2026-03-10'},
-  {sistemaOrigine:'Remedy',idPiattaforma:'COMM/2025/24200',numeroProg:'2025-007',nomeProg:'Manutenzione Armadi PoP — Nord Italia',cliente:'BNL — BNP Paribas S.p.A.',pm:'Andrea Conti',stato:'Completato',dataOrdine:'2024-11-01',scadenza:'2025-04-30'},
-  {sistemaOrigine:'CRM',idPiattaforma:'202503017',numeroProg:'2025-008',nomeProg:'Dorsale Ottica CDN — 12 PoP Nazionali',cliente:'Amazon Web Services EMEA',pm:'Marco Rossi',stato:'Pianificato',dataOrdine:'2025-04-01',scadenza:'2026-06-30'},
-  {sistemaOrigine:'Remedy',idPiattaforma:'COMM/2025/23800',numeroProg:'2025-009',nomeProg:'Link Dedicato HFT — Borsa Milano',cliente:'Generali Investments S.p.A.',pm:'Giulia Ferrara',stato:'In Corso',dataOrdine:'2025-02-20',scadenza:'2025-08-31'},
-  {sistemaOrigine:'CRM',idPiattaforma:'202505044',numeroProg:'2025-010',nomeProg:'Rete Sicura Logistics Hub — Bologna',cliente:'BRT — Bartolini S.p.A.',pm:'Laura Bianchi',stato:'Sospeso',dataOrdine:'2025-01-15',scadenza:'2025-09-15'},
+  {sistemaOrigine:'CRM Retelit',idPiattaforma:'COMM/2025/23170',numeroProg:'2025-001',nomeProg:'Fibra Ottica Datacenter — Milano Est',cliente:'Amazon Web Services EMEA',pm:'Marco Rossi',stato:'In Corso',dataOrdine:'2025-01-10',scadenza:'2025-09-30'},
+  {sistemaOrigine:'CRM Irideos',idPiattaforma:'202504031',numeroProg:'2025-002',nomeProg:'Upgrade Network Core — Roma HQ',cliente:'UniCredit S.p.A.',pm:'Laura Bianchi',stato:'In Corso',dataOrdine:'2025-02-01',scadenza:'2025-11-30'},
+  {sistemaOrigine:'CRM Retelit',idPiattaforma:'COMM/2025/23512',numeroProg:'2025-003',nomeProg:'Connettività MPLS Multi-sede',cliente:'Intesa Sanpaolo S.p.A.',pm:'Andrea Conti',stato:'In Ritardo',dataOrdine:'2025-01-20',scadenza:'2025-07-31'},
+  {sistemaOrigine:'CRM Irideos',idPiattaforma:'202504063',numeroProg:'2025-004',nomeProg:'WAN Sicura — Rete Logistica Nazionale',cliente:'BRT — Bartolini S.p.A.',pm:'Laura Bianchi',stato:'Pianificato',dataOrdine:'2025-03-01',scadenza:'2025-12-31'},
+  {sistemaOrigine:'CRM Retelit',idPiattaforma:'COMM/2025/24001',numeroProg:'2025-005',nomeProg:'SD-WAN Banking Infrastructure',cliente:'Mediobanca S.p.A.',pm:'Marco Rossi',stato:'In Corso',dataOrdine:'2025-02-15',scadenza:'2025-10-15'},
+  {sistemaOrigine:'CRM Irideos',idPiattaforma:'202506092',numeroProg:'2025-006',nomeProg:'Cloud Connectivity — AI Hub',cliente:'Meta Platforms Ireland Ltd',pm:'Giulia Ferrara',stato:'In Corso',dataOrdine:'2025-03-10',scadenza:'2026-03-10'},
+  {sistemaOrigine:'CRM Retelit',idPiattaforma:'COMM/2025/24200',numeroProg:'2025-007',nomeProg:'Manutenzione Armadi PoP — Nord Italia',cliente:'BNL — BNP Paribas S.p.A.',pm:'Andrea Conti',stato:'Completato',dataOrdine:'2024-11-01',scadenza:'2025-04-30'},
+  {sistemaOrigine:'CRM Irideos',idPiattaforma:'202503017',numeroProg:'2025-008',nomeProg:'Dorsale Ottica CDN — 12 PoP Nazionali',cliente:'Amazon Web Services EMEA',pm:'Marco Rossi',stato:'Pianificato',dataOrdine:'2025-04-01',scadenza:'2026-06-30'},
+  {sistemaOrigine:'CRM Retelit',idPiattaforma:'COMM/2025/23800',numeroProg:'2025-009',nomeProg:'Link Dedicato HFT — Borsa Milano',cliente:'Generali Investments S.p.A.',pm:'Giulia Ferrara',stato:'In Corso',dataOrdine:'2025-02-20',scadenza:'2025-08-31'},
+  {sistemaOrigine:'CRM Irideos',idPiattaforma:'202505044',numeroProg:'2025-010',nomeProg:'Rete Sicura Logistics Hub — Bologna',cliente:'BRT — Bartolini S.p.A.',pm:'Laura Bianchi',stato:'Sospeso',dataOrdine:'2025-01-15',scadenza:'2025-09-15'},
+  {sistemaOrigine:'Brennercom',idPiattaforma:'BRC/2025/0081',numeroProg:'2025-011',nomeProg:'FTTH Last Mile — Alto Adige Nord',cliente:'Provincia Autonoma di Bolzano',pm:'Thomas Hofer',stato:'In Corso',dataOrdine:'2025-02-10',scadenza:'2025-12-15'},
+  {sistemaOrigine:'Brennercom',idPiattaforma:'BRC/2025/0094',numeroProg:'2025-012',nomeProg:'Backbone IP/MPLS — Trento–Bolzano',cliente:'Trentino Digitale S.p.A.',pm:'Thomas Hofer',stato:'Pianificato',dataOrdine:'2025-03-20',scadenza:'2026-02-28'},
+  {sistemaOrigine:'Brennercom',idPiattaforma:'BRC/2025/0112',numeroProg:'2025-013',nomeProg:'Connettività Scuole — Piano Digitale',cliente:'USP Bolzano',pm:'Martina Gruber',stato:'Annullato',dataOrdine:'2025-01-05',scadenza:'2025-06-30'},
+  {sistemaOrigine:'BT',idPiattaforma:'BTW/IT/2025/44182',numeroProg:'2025-014',nomeProg:'Global MPLS Enterprise — Italy Hub',cliente:'Stellantis N.V.',pm:'James Mitchell',stato:'In Corso',dataOrdine:'2025-01-25',scadenza:'2025-11-30'},
+  {sistemaOrigine:'BT',idPiattaforma:'BTW/IT/2025/45903',numeroProg:'2025-015',nomeProg:'Managed SD-WAN — 40 Branch Italy',cliente:'Vodafone Italia S.p.A.',pm:'James Mitchell',stato:'In Ritardo',dataOrdine:'2025-02-05',scadenza:'2025-08-15'},
+  {sistemaOrigine:'BT',idPiattaforma:'BTW/IT/2025/47211',numeroProg:'2025-016',nomeProg:'International DIA — Milano Datacenter',cliente:'JPMorgan Chase Bank N.A.',pm:'Chiara De Luca',stato:'Completato',dataOrdine:'2024-12-01',scadenza:'2025-05-31'},
 ];
 
 function init(){
-  const s=localStorage.getItem('nexus_v4');
+  const s=localStorage.getItem('nexus_v5');
   projects=s?JSON.parse(s):SAMPLE.map(p=>({...p,_id:uid(),notePm:'',prevRilascio:'',prevStato:''}));
   if(!s)saveLS();
   rebuildSels();applyFilters();
@@ -483,7 +489,6 @@ function mkRow(p){
 <td class="dt ${sc}">${fd(p.scadenza)}</td>
 <td><div class="nwrap">
   <textarea class="ea" rows="2" placeholder="Inserisci una nota…" onchange="upd('${p._id}','notePm',this.value)">${x(p.notePm||'')}</textarea>
-  <button class="btn btn-ai bxs" title="Genera nota con AI" onclick="genNote('${p._id}')" style="padding:4px 8px;flex-shrink:0">✦</button>
 </div></td>
 <td><div class="pwrap">
   <input type="date" class="psel" value="${p.prevRilascio||''}" onchange="upd('${p._id}','prevRilascio',this.value)" title="Data rilascio stimata PM">
@@ -515,8 +520,8 @@ function scCls(v,stato){
 
 function updateKPIs(data){
   const tot=data.length;
-  const act=data.filter(p=>p.stato==='In Corso').length;
-  const late=data.filter(p=>p.stato==='In Ritardo').length;
+  const cnts={'Pianificato':0,'In Corso':0,'In Ritardo':0,'Sospeso':0,'Completato':0,'Annullato':0};
+  data.forEach(p=>{if(cnts[p.stato]!==undefined)cnts[p.stato]++;});
   const srcs=new Set(data.map(p=>p.sistemaOrigine).filter(Boolean)).size;
   const now=new Date();
   const ros30=data.filter(p=>{
@@ -524,13 +529,14 @@ function updateKPIs(data){
     const d=(new Date(p.scadenza)-now)/86400000;
     return d>=0&&d<30;
   }).length;
-  const prevVal=data.filter(p=>p.prevRilascio&&p.prevRilascio!=='').length;
   _s('k-tot',tot);_s('k-src',`${srcs} sistem${srcs===1?'a':'i'} sorgente`);
-  _s('k-act',act);_s('k-late',`${late} in ritardo`);
-  document.getElementById('k-act').className='kval '+(late>0?'a':'g');
-  _s('k-late-v',late);
+  _s('k-plan',cnts['Pianificato']);
+  _s('k-inc',cnts['In Corso']);
+  _s('k-late-v',cnts['In Ritardo']);
+  _s('k-sosp',cnts['Sospeso']);
+  _s('k-comp',cnts['Completato']);
+  _s('k-ann',cnts['Annullato']);
   _s('k-ros',ros30);
-  _s('k-prev',prevVal);
 }
 
 function _s(id,v){const e=document.getElementById(id);if(e)e.textContent=v;}
@@ -584,7 +590,7 @@ function saveAll(){
   saveLS();
 }
 function saveLS(){
-  localStorage.setItem('nexus_v4',JSON.stringify(projects));
+  localStorage.setItem('nexus_v5',JSON.stringify(projects));
   const e=document.getElementById('sdot');
   if(e){e.textContent=`✓  Salvato ${new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}`;e.className='sdot saved';}
   toast('Salvato con successo','ok');
