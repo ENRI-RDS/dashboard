@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Nexus PM — Portale Unificato Progetti</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root {
   --bg:#f0f2f5;
@@ -15,6 +16,12 @@
   --t1:#172b4d;
   --t2:#5e6c84;
   --t3:#97a0af;
+  /* Retelit brand */
+  --rl:#E84B1C;
+  --rl-h:#c93a10;
+  --rl-lt:#fef0eb;
+  --rl-mid:#f97048;
+  /* system colors */
   --blue:#0052cc;
   --blue-h:#003d99;
   --blue-lt:#e8f0fb;
@@ -61,8 +68,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--t1);font-size:13px
 .btn-ghost:hover{background:var(--panel);color:var(--t1);border-color:var(--border);}
 .btn-outline{background:var(--surf);color:var(--t1);border-color:var(--border);}
 .btn-outline:hover{background:var(--panel);border-color:#b8bece;}
-.btn-primary{background:var(--blue);color:#fff;border-color:var(--blue);}
-.btn-primary:hover{background:var(--blue-h);border-color:var(--blue-h);}
+.btn-primary{background:var(--rl);color:#fff;border-color:var(--rl);}
+.btn-primary:hover{background:var(--rl-h);border-color:var(--rl-h);}
 .btn-ai{background:var(--ai-lt);color:var(--ai);border-color:rgba(82,67,170,.3);font-weight:600;}
 .btn-ai:hover{background:rgba(82,67,170,.2);}
 .btn-ai.on{background:var(--ai);color:#fff;border-color:var(--ai);}
@@ -71,15 +78,40 @@ body{font-family:var(--font);background:var(--bg);color:var(--t1);font-size:13px
 .btn-del:hover{background:var(--red-lt);border-color:rgba(191,38,0,.2);}
 .bxs{padding:3px 8px;font-size:11px;border-radius:5px;}
 
-/* KPI */
-.kpi-row{display:grid;grid-template-columns:repeat(8,1fr);gap:0;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--surf);}
-.kpi{padding:11px 14px;border-right:1px solid var(--border);}
-.kpi:last-child{border-right:none;}
-.klbl{font-size:10px;font-weight:600;color:var(--t2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.6px;}
-.kval{font-size:20px;font-weight:600;font-family:var(--mono);color:var(--t1);line-height:1;}
-.kval.g{color:var(--green);} .kval.a{color:var(--amber);} .kval.r{color:var(--red);}
-.kval.p{color:var(--purple);} .kval.t{color:var(--teal);}
-.ksub{font-size:10px;color:var(--t3);margin-top:3px;}
+/* TIPO SERVIZIO BADGES */
+.ts-fibra{background:#e0f2fe;color:#0369a1;}
+.ts-mpls{background:#dbeafe;color:#1d4ed8;}
+.ts-sdwan{background:#ede9fe;color:#6d28d9;}
+.ts-cloud{background:#ccfbf1;color:#0f766e;}
+.ts-altro{background:#f1f5f9;color:#475569;}
+
+/* DETAIL MODAL */
+.detail-modal{width:760px;max-width:96vw;}
+.dm-hdr{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:22px;padding-bottom:18px;border-bottom:2px solid var(--border-light);}
+.dm-title{font-size:18px;font-weight:600;color:var(--t1);line-height:1.3;flex:1;}
+.dm-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center;}
+.dm-section{margin-bottom:18px;}
+.dm-section-label{font-size:10px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px;display:flex;align-items:center;gap:6px;}
+.dm-section-label::after{content:'';flex:1;height:1px;background:var(--border-light);}
+.dm-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.dm-grid-2{grid-template-columns:repeat(2,1fr);}
+.dm-field{display:flex;flex-direction:column;gap:3px;}
+.dm-field label{font-size:10px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;}
+.dm-field span{font-size:13px;color:var(--t1);font-weight:500;}
+.dm-field span.mono{font-family:var(--mono);font-size:11.5px;}
+.dm-note{background:var(--panel);border:1px solid var(--border-light);border-radius:8px;padding:12px 14px;font-size:12.5px;color:var(--t1);line-height:1.6;white-space:pre-wrap;min-height:48px;}
+.dm-progress{margin-top:6px;}
+.dm-pbar-track{width:100%;height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-top:5px;}
+.dm-pbar-fill{height:100%;border-radius:4px;transition:width .4s;}
+.dm-alert-banner{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:500;margin-bottom:18px;}
+.dm-alert-red{background:var(--red-lt);color:var(--red);border:1px solid rgba(191,38,0,.2);}
+.dm-alert-amber{background:var(--amber-lt);color:var(--amber);border:1px solid rgba(151,79,12,.2);}
+.dm-alert-ok{background:var(--green-lt);color:var(--green);border:1px solid rgba(0,102,68,.15);}
+/* nome progetto cliccabile */
+.proj-link{cursor:pointer;color:var(--t1);}
+.proj-link:hover{color:var(--rl);text-decoration:underline;text-underline-offset:2px;}
+
+/* KPI — legacy stubs removed */
 
 /* TOOLBAR */
 .toolbar{height:48px;background:var(--surf);border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:8px;align-items:center;flex-shrink:0;}
@@ -226,6 +258,123 @@ tr:hover td.stk{background:#f5f7ff;}
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
 ::-webkit-scrollbar-thumb:hover{background:#b8bece;}
+
+/* ── DARK HEADER ─────────────────────────────────────────── */
+.hdr{background:#0f1923!important;border-bottom:1px solid rgba(255,255,255,.07)!important;box-shadow:0 2px 8px rgba(0,0,0,.25)!important;}
+.brand-name{color:#f1f5f9!important;}
+.brand-sub{color:#64748b!important;}
+.sdot{color:#64748b!important;}
+.sdot.dirty{color:#fbbf24!important;background:rgba(251,191,36,.12)!important;}
+.sdot.saved{color:#4ade80!important;background:rgba(74,222,128,.1)!important;}
+.divider{background:rgba(255,255,255,.1)!important;}
+.hdr .btn-ghost{color:#94a3b8!important;}
+.hdr .btn-ghost:hover{background:rgba(255,255,255,.08)!important;color:#f1f5f9!important;border-color:rgba(255,255,255,.12)!important;}
+.hdr .btn-outline{background:rgba(255,255,255,.06)!important;color:#e2e8f0!important;border-color:rgba(255,255,255,.12)!important;}
+.hdr .btn-outline:hover{background:rgba(255,255,255,.1)!important;}
+.hdr .btn-primary{background:var(--rl)!important;border-color:var(--rl)!important;}
+.hdr .btn-primary:hover{background:var(--rl-h)!important;}
+.hdr .btn-ai{background:rgba(82,67,170,.3)!important;color:#c4b5fd!important;border-color:rgba(139,92,246,.35)!important;}
+.hdr .btn-ai.on{background:var(--ai)!important;color:#fff!important;}
+.alert-chip{font-size:11px;font-family:var(--mono);padding:3px 10px;border-radius:20px;background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.25);}
+.hdr-ts{font-size:10px;font-family:var(--mono);color:#4b5563;}
+
+/* ── KPI EXECUTIVE CARDS ─────────────────────────────────── */
+.kpi-section{background:var(--surf);border-bottom:1px solid var(--border);padding:14px 20px;flex-shrink:0;}
+.kpi-section-label{font-size:10px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;}
+.kpi-exec-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;}
+.kpi-exec{background:var(--panel);border-radius:8px;padding:14px 16px;position:relative;overflow:hidden;border:1px solid var(--border-light);}
+.ke-icon{font-size:17px;margin-bottom:6px;line-height:1;}
+.ke-lbl{font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;}
+.ke-val{font-size:24px;font-weight:600;font-family:var(--mono);color:var(--t1);line-height:1;}
+.ke-delta{font-size:10px;margin-top:5px;display:flex;align-items:center;gap:3px;font-weight:500;}
+.ke-delta.up{color:#16a34a;} .ke-delta.dn{color:#dc2626;} .ke-delta.neu{color:var(--t2);}
+.ke-accent{position:absolute;bottom:0;left:0;right:0;height:3px;}
+.kpi-exec.kc-blue .ke-accent{background:var(--rl);} .kpi-exec.kc-blue .ke-val{color:var(--rl-h);}
+.kpi-exec.kc-red .ke-accent{background:#dc2626;} .kpi-exec.kc-red .ke-val{color:#991b1b;}
+.kpi-exec.kc-amber .ke-accent{background:#d97706;} .kpi-exec.kc-amber .ke-val{color:#92400e;}
+.kpi-exec.kc-green .ke-accent{background:#16a34a;} .kpi-exec.kc-green .ke-val{color:#166534;}
+.kpi-exec.kc-slate .ke-accent{background:#64748b;}
+
+/* ── CHARTS ROW ──────────────────────────────────────────── */
+.charts-row{display:grid;grid-template-columns:200px 1fr 236px;gap:12px;padding:12px 20px;background:var(--surf);border-bottom:1px solid var(--border);flex-shrink:0;}
+.chart-card{background:var(--panel);border-radius:8px;padding:12px 14px;border:1px solid var(--border-light);overflow:hidden;}
+.chart-ttl{font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;}
+
+/* ── PILL FILTERS ────────────────────────────────────────── */
+.pill-row{display:flex;gap:6px;align-items:center;flex-shrink:0;}
+.pill{font-size:11px;padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:var(--surf);color:var(--t2);cursor:pointer;font-family:var(--font);transition:all .13s;white-space:nowrap;}
+.pill:hover{border-color:#b8bece;color:var(--t1);}
+.pill.active{background:var(--blue-lt);color:var(--blue);border-color:rgba(0,82,204,.3);font-weight:500;}
+.pill.pill-red{} .pill.pill-red.active{background:var(--red-lt);color:var(--red);border-color:rgba(191,38,0,.3);}
+.pill.pill-amber.active{background:var(--amber-lt);color:var(--amber);border-color:rgba(151,79,12,.3);}
+
+/* ── NEW TABLE COLUMNS ───────────────────────────────────── */
+.td-prio{white-space:nowrap;}
+.prio-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;flex-shrink:0;}
+.prio-alta{background:#dc2626;} .prio-media{background:#d97706;} .prio-bassa{background:#16a34a;} .prio-nd{background:#94a3b8;}
+.prio-lbl{font-size:11px;font-weight:500;}
+.prio-alta+.prio-lbl{color:#dc2626;} .prio-media+.prio-lbl{color:#d97706;} .prio-bassa+.prio-lbl{color:#16a34a;}
+
+.pbar-wrap{display:flex;align-items:center;gap:6px;min-width:80px;}
+.pbar-track{width:56px;height:5px;background:var(--border);border-radius:3px;overflow:hidden;flex-shrink:0;}
+.pbar-fill{height:100%;border-radius:3px;transition:width .3s;}
+.pbar-pct{font-size:10px;font-weight:500;color:var(--t2);font-family:var(--mono);min-width:24px;}
+.pbar-fill.pb-red{background:#dc2626;} .pbar-fill.pb-amber{background:#d97706;} .pbar-fill.pb-blue{background:#2563eb;} .pbar-fill.pb-green{background:#16a34a;}
+
+.valore-cell{font-family:var(--mono);font-size:11.5px;font-weight:500;white-space:nowrap;color:var(--t1);}
+.valore-cell.v-nd{color:var(--t3);}
+
+.gg-cell{font-family:var(--mono);font-size:11px;font-weight:500;white-space:nowrap;}
+.gg-late{color:#dc2626;} .gg-soon{color:#d97706;} .gg-ok{color:#16a34a;} .gg-nd{color:var(--t3);}
+
+.alert-flag{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;font-size:9px;font-weight:600;cursor:default;}
+.af-red{background:var(--red-lt);color:#dc2626;} .af-amber{background:var(--amber-lt);color:#d97706;} .af-ok{background:var(--green-lt);color:#16a34a;} .af-none{background:transparent;}
+
+tr.row-critical td{background:#fff7f7!important;}
+tr.row-critical:hover td{background:#ffefef!important;}
+tr.row-warn td{background:#fffbf0;}
+tr.row-warn:hover td{background:#fff5e0!important;}
+
+/* ── TOOLBAR OVERRIDE ────────────────────────────────────── */
+.toolbar{height:auto!important;flex-wrap:wrap;gap:0!important;padding:0!important;flex-direction:column;}
+.toolbar-row1{display:flex;align-items:center;gap:7px;padding:7px 24px;border-bottom:1px solid var(--border-light);background:var(--surf);width:100%;}
+.toolbar-row2{display:flex;align-items:center;gap:6px;padding:6px 24px;background:var(--panel);width:100%;}
+.fct{margin-left:auto;font-size:11px;color:var(--t2);font-family:var(--mono);}
+
+/* ── KPI CARD ICON SVG ───────────────────────────────────── */
+.ke-icon{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;margin-bottom:8px;flex-shrink:0;}
+.ke-icon svg{width:14px;height:14px;}
+.kc-blue .ke-icon{background:var(--rl-lt);}  .kc-blue .ke-icon svg{color:var(--rl);}
+.kc-red .ke-icon{background:#fee2e2;}   .kc-red .ke-icon svg{color:#b91c1c;}
+.kc-amber .ke-icon{background:#fef3c7;} .kc-amber .ke-icon svg{color:#b45309;}
+.kc-green .ke-icon{background:#dcfce7;} .kc-green .ke-icon svg{color:#15803d;}
+.kc-slate .ke-icon{background:#f1f5f9;} .kc-slate .ke-icon svg{color:#475569;}
+
+/* ── ROW ACCENT BORDER ───────────────────────────────────── */
+tr.row-critical td{background:#fff7f7!important;}
+tr.row-critical:hover td{background:#ffefef!important;}
+tr.row-critical td:first-child{box-shadow:inset 3px 0 0 #dc2626;}
+tr.row-warn td{background:#fffcf0;}
+tr.row-warn:hover td{background:#fff7e0!important;}
+tr.row-warn td:first-child{box-shadow:inset 3px 0 0 #d97706;}
+
+/* ── CHART CARD REFINEMENTS ──────────────────────────────── */
+.charts-row{grid-template-columns:210px 1fr 250px!important;gap:10px!important;}
+.chart-card{box-shadow:0 1px 2px rgba(0,0,0,.04);}
+.chart-ttl{display:flex;align-items:center;gap:6px;}
+.chart-ttl::before{content:'';width:3px;height:11px;border-radius:2px;background:var(--blue);display:inline-block;flex-shrink:0;}
+
+/* ── KPI VALUE RISK HIGHLIGHT ────────────────────────────── */
+#k-val-risk{color:#dc2626!important;}
+
+/* ── SORT FIX: secondary sort col styling ────────────────── */
+th.col-gg{cursor:default;}
+
+/* ── SUBTLE TABLE ZEBRA ──────────────────────────────────── */
+tbody tr:nth-child(even) td{background:#fafbfd;}
+tbody tr:nth-child(even):hover td{background:#f5f7ff;}
+tr.row-critical:nth-child(even) td{background:#fff7f7!important;}
+tr.row-warn:nth-child(even) td{background:#fffcf0!important;}
 </style>
 </head>
 <body>
@@ -233,24 +382,38 @@ tr:hover td.stk{background:#f5f7ff;}
 <!-- HEADER -->
 <header class="hdr">
   <div class="brand">
-    <div class="brand-logo">
-      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M7 8h2m2 0h6M7 12h4"/></svg>
+    <div class="brand-logo" style="background:transparent;width:auto;padding:0 4px 0 0">
+      <svg height="30" viewBox="0 0 130 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- fiber node icon -->
+        <circle cx="10" cy="15" r="3.5" fill="#E84B1C"/>
+        <circle cx="22" cy="8"  r="2.5" fill="#E84B1C" opacity=".85"/>
+        <circle cx="22" cy="22" r="2.5" fill="#E84B1C" opacity=".85"/>
+        <line x1="13" y1="13.5" x2="20" y2="9.5"  stroke="#E84B1C" stroke-width="1.5" opacity=".7"/>
+        <line x1="13" y1="16.5" x2="20" y2="20.5" stroke="#E84B1C" stroke-width="1.5" opacity=".7"/>
+        <!-- wordmark -->
+        <text x="30" y="21" font-family="Inter,sans-serif" font-size="17" font-weight="700" letter-spacing="-.3" fill="#ffffff">retelit</text>
+      </svg>
     </div>
     <div>
-      <div class="brand-name">Nexus PM</div>
-      <div class="brand-sub">Portale Unificato Progetti TLC</div>
+      <div class="brand-name" style="display:none">Nexus PM</div>
+      <div class="brand-sub" id="hdr-ts">Portale Unificato Progetti TLC</div>
     </div>
   </div>
   <div class="hdr-r">
+    <span class="alert-chip" id="hdr-alert" style="display:none">⚠ <span id="hdr-alert-n">0</span> progetti critici</span>
     <span class="sdot" id="sdot">pronto</span>
     <div class="divider"></div>
     <button class="btn btn-ghost" onclick="openImport()">
       <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 14h12v-1.5H2V14zm6-2.5L4.5 8H7V2h2v6h2.5L8 11.5z"/></svg>
       Importa CSV
     </button>
-    <button class="btn btn-outline" onclick="exportCSV()">
+    <button class="btn btn-outline" onclick="exportXLSX()">
       <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h12v1.5H2V2zm6 9.5L4.5 8H7V4.5h2V8h2.5L8 11.5zM2 14h12v-1.5H2V14z"/></svg>
-      Esporta
+      Esporta Excel
+    </button>
+    <button class="btn btn-primary" onclick="openAdd()">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z"/></svg>
+      Nuovo
     </button>
     <button class="btn btn-primary" onclick="saveAll()">
       <svg viewBox="0 0 16 16" fill="currentColor"><path d="M11.5 2H2v12h12V4.5L11.5 2zm1 11.5h-9v-9h7.8l1.2 1.2v7.8zm-5.5-.5h2v-4H7v4zm-2-7V4H4v2h1zm5 0V4H8v2h1z"/></svg>
@@ -262,31 +425,71 @@ tr:hover td.stk{background:#f5f7ff;}
   </div>
 </header>
 
-<!-- KPI -->
-<div class="kpi-row">
-  <div class="kpi"><div class="klbl">Totale Progetti</div><div class="kval" id="k-tot">0</div><div class="ksub" id="k-src">—</div></div>
-  <div class="kpi"><div class="klbl">Pianificato</div><div class="kval p" id="k-plan">0</div><div class="ksub">&nbsp;</div></div>
-  <div class="kpi"><div class="klbl">In Corso</div><div class="kval g" id="k-inc">0</div><div class="ksub">&nbsp;</div></div>
-  <div class="kpi"><div class="klbl">In Ritardo</div><div class="kval r" id="k-late-v">0</div><div class="ksub">&nbsp;</div></div>
-  <div class="kpi"><div class="klbl">Sospeso</div><div class="kval" style="color:var(--t2)" id="k-sosp">0</div><div class="ksub">&nbsp;</div></div>
-  <div class="kpi"><div class="klbl">Completato</div><div class="kval t" id="k-comp">0</div><div class="ksub">&nbsp;</div></div>
-  <div class="kpi"><div class="klbl">Annullato</div><div class="kval r" id="k-ann">0</div><div class="ksub">&nbsp;</div></div>
-  <div class="kpi"><div class="klbl">ROS ≤ 30 gg</div><div class="kval a" id="k-ros">0</div><div class="ksub">scadenze vicine</div></div>
+<!-- KPI EXECUTIVE -->
+<div class="kpi-section">
+  <div class="kpi-section-label">Metriche portafoglio</div>
+  <div class="kpi-exec-grid" id="kpi-exec-grid">
+    <div class="kpi-exec kc-blue">
+      <div class="ke-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg></div>
+      <div class="ke-lbl">Totale progetti</div><div class="ke-val" id="k-tot">0</div><div class="ke-delta neu" id="k-src">—</div><div class="ke-accent"></div>
+    </div>
+    <div class="kpi-exec kc-red">
+      <div class="ke-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+      <div class="ke-lbl">In ritardo</div><div class="ke-val" id="k-late-v">0</div><div class="ke-delta dn" id="k-late-sub">&nbsp;</div><div class="ke-accent"></div>
+    </div>
+    <div class="kpi-exec kc-amber">
+      <div class="ke-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+      <div class="ke-lbl">ROS ≤ 30 gg</div><div class="ke-val" id="k-ros">0</div><div class="ke-delta neu">scadenze imminenti</div><div class="ke-accent"></div>
+    </div>
+    <div class="kpi-exec kc-green">
+      <div class="ke-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <div class="ke-lbl">Completati</div><div class="ke-val" id="k-comp">0</div><div class="ke-delta up" id="k-comp-sub">&nbsp;</div><div class="ke-accent"></div>
+    </div>
+    <div class="kpi-exec kc-slate">
+      <div class="ke-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
+      <div class="ke-lbl">Valore portafoglio</div><div class="ke-val" id="k-val" style="font-size:18px">—</div><div class="ke-delta dn" id="k-val-risk">&nbsp;</div><div class="ke-accent"></div>
+    </div>
+  </div>
+</div>
+
+<!-- CHARTS ROW -->
+<div class="charts-row" id="charts-row">
+  <div class="chart-card"><div class="chart-ttl">Distribuzione stati</div><div id="ch-donut"></div></div>
+  <div class="chart-card"><div class="chart-ttl">Carico per PM</div><div id="ch-pm"></div></div>
+  <div class="chart-card"><div class="chart-ttl">Prossime scadenze</div><div id="ch-scad"></div></div>
 </div>
 
 <!-- TOOLBAR -->
 <div class="toolbar">
-  <input class="fil fil-q" id="f-q" type="text" placeholder="🔍  Cerca nome, cliente, PM…" oninput="applyFilters()">
-  <div class="sep"></div>
-  <select class="fil fil-s" id="f-src" onchange="applyFilters()"><option value="">Tutti i sistemi</option></select>
-  <select class="fil fil-s" id="f-stato" onchange="applyFilters()">
-    <option value="">Tutti gli stati</option>
-    <option>Pianificato</option><option>In Corso</option><option>In Ritardo</option>
-    <option>Sospeso</option><option>Completato</option><option>Annullato</option>
-  </select>
-  <select class="fil fil-s" id="f-pm" onchange="applyFilters()"><option value="">Tutti i PM</option></select>
-  <button class="btn btn-ghost" style="padding:5px 10px;font-size:11px" onclick="clearFilters()">✕ Reset</button>
-  <span class="fct" id="fct"></span>
+  <div class="toolbar-row1">
+    <input class="fil fil-q" id="f-q" type="text" placeholder="🔍  Cerca nome, cliente, PM, ID…" oninput="applyFilters()">
+    <div class="sep"></div>
+    <select class="fil fil-s" id="f-src" onchange="applyFilters()"><option value="">Tutti i sistemi</option></select>
+    <select class="fil fil-s" id="f-stato" onchange="applyFilters()">
+      <option value="">Tutti gli stati</option>
+      <option>Pianificato</option><option>In Corso</option><option>In Ritardo</option>
+      <option>Sospeso</option><option>Completato</option><option>Annullato</option>
+    </select>
+    <select class="fil fil-s" id="f-pm" onchange="applyFilters()"><option value="">Tutti i PM</option></select>
+    <select class="fil fil-s" id="f-cli" onchange="applyFilters()"><option value="">Tutti i clienti</option></select>
+    <select class="fil fil-s" id="f-tipo" onchange="applyFilters()">
+      <option value="">Tutti i servizi</option>
+      <option>Fibra</option><option>MPLS</option><option>SD-WAN</option><option>Cloud</option><option>Altro</option>
+    </select>
+    <button class="btn btn-ghost" style="padding:5px 10px;font-size:11px" onclick="clearFilters()">✕ Reset</button>
+    <span class="fct" id="fct"></span>
+  </div>
+  <div class="toolbar-row2">
+    <span style="font-size:10px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-right:4px">Vista:</span>
+    <div class="pill-row">
+      <button class="pill active" id="pill-all" onclick="setPill('all')">Tutti</button>
+      <button class="pill pill-red" id="pill-ritardo" onclick="setPill('ritardo')">⚠ In Ritardo</button>
+      <button class="pill pill-amber" id="pill-ros30" onclick="setPill('ros30')">📅 Scad. 30 gg</button>
+      <button class="pill pill-red" id="pill-critici" onclick="setPill('critici')">🔴 Critici</button>
+    </div>
+    <div class="sep" style="margin:0 6px"></div>
+    <span style="font-size:10px;color:var(--t3);font-family:var(--mono)">Ctrl+S salva · N nuovo</span>
+  </div>
 </div>
 
 <!-- MAIN -->
@@ -295,17 +498,24 @@ tr:hover td.stk{background:#f5f7ff;}
     <table>
       <thead>
         <tr>
+          <th class="nosort" style="width:28px"></th>
           <th class="stk nosort">Sistema Sorgente</th>
           <th onclick="sortBy('idPiattaforma',this)">ID Sorgente</th>
           <th onclick="sortBy('numeroProg',this)">N° Prog.</th>
           <th onclick="sortBy('nomeProg',this)" style="min-width:175px">Nome Progetto</th>
-          <th onclick="sortBy('cliente',this)" style="min-width:135px">Cliente</th>
+          <th onclick="sortBy('cliente',this)" style="min-width:130px">Cliente</th>
           <th onclick="sortBy('pm',this)">PM</th>
           <th onclick="sortBy('stato',this)">Stato</th>
-          <th onclick="sortBy('dataOrdine',this)">Data Inserimento Ordine</th>
-          <th onclick="sortBy('scadenza',this)">ROS Progetto</th>
+          <th onclick="sortBy('tipoServizio',this)">Tipo Servizio</th>
+          <th onclick="sortBy('priorita',this)">Priorità</th>
+          <th class="nosort" style="min-width:90px">Avanz.</th>
+          <th onclick="sortBy('valore',this)">Valore</th>
+          <th onclick="sortBy('dataOrdine',this)">Data Ordine</th>
+          <th onclick="sortBy('scadenza',this)">ROS</th>
+          <th class="nosort col-gg" style="min-width:72px">Gg rimasti</th>
           <th class="nosort" style="min-width:205px">Note PM</th>
-          <th class="nosort" style="min-width:190px">Previsione PM Rilascio</th>
+          <th class="nosort" style="min-width:180px">Previsione PM Rilascio</th>
+          <th class="nosort" style="width:36px" title="Alert">!</th>
           <th class="nosort" style="width:72px"></th>
         </tr>
       </thead>
@@ -366,16 +576,27 @@ tr:hover td.stk{background:#f5f7ff;}
           <option>Sospeso</option><option>Completato</option><option>Annullato</option>
         </select>
       </div>
+      <div class="fg"><label>Tipo Servizio</label>
+        <select id="m-tipo"><option value="">— Seleziona —</option>
+          <option>Fibra</option><option>MPLS</option><option>SD-WAN</option><option>Cloud</option><option>Altro</option>
+        </select>
+      </div>
+      <div class="fg"><label>Priorità</label>
+        <select id="m-priorita"><option value="">— Seleziona —</option>
+          <option>Alta</option><option>Media</option><option>Bassa</option>
+        </select>
+      </div>
+      <div class="fg"><label>Valore Contratto (€)</label><input type="number" id="m-valore" placeholder="es. 320000" min="0"></div>
+      <div class="fg"><label>Avanzamento %</label><input type="number" id="m-pct" placeholder="0" min="0" max="100"></div>
       <div class="fg"><label>Data Inserimento Ordine</label><input type="date" id="m-dord"></div>
       <div class="fg"><label>ROS Progetto</label><input type="date" id="m-scad"></div>
       <div class="fg"><label>Previsione PM Rilascio</label><input type="date" id="m-prev-rilascio"></div>
-      <div class="fg ffw"><label>Note PM</label><textarea id="m-note" rows="2" placeholder="Note, criticità, aggiornamenti…"></textarea></div>
-      <div class="fg"><label>Avanzamento %</label><input type="number" id="m-pct" placeholder="0" min="0" max="100"></div>
       <div class="fg"><label>Stato Previsione</label>
         <select id="m-prev"><option value="">— Seleziona —</option>
           <option>On Track</option><option>A Rischio</option><option>In Ritardo</option><option>Bloccato</option><option>Completato</option>
         </select>
       </div>
+      <div class="fg ffw"><label>Note PM</label><textarea id="m-note" rows="2" placeholder="Note, criticità, aggiornamenti…"></textarea></div>
     </div>
     <div class="mftr">
       <button class="btn btn-outline" onclick="closeM('m-add')">Annulla</button>
@@ -414,6 +635,40 @@ tr:hover td.stk{background:#f5f7ff;}
   </div>
 </div>
 
+<!-- MODAL DETAIL -->
+<div class="mbg" id="m-detail">
+  <div class="modal detail-modal">
+    <div class="dm-hdr">
+      <div style="flex:1">
+        <div class="dm-title" id="dm-nome">—</div>
+        <div class="dm-meta" id="dm-meta"></div>
+      </div>
+      <button class="btn btn-ghost" onclick="closeM('m-detail')" style="flex-shrink:0;align-self:flex-start">✕ Chiudi</button>
+    </div>
+    <div id="dm-alert-banner"></div>
+    <div class="dm-section">
+      <div class="dm-section-label">Dati contrattuali</div>
+      <div class="dm-grid" id="dm-contratto"></div>
+    </div>
+    <div class="dm-section">
+      <div class="dm-section-label">Avanzamento</div>
+      <div id="dm-avanz"></div>
+    </div>
+    <div class="dm-section">
+      <div class="dm-section-label">Previsione PM</div>
+      <div class="dm-grid dm-grid-2" id="dm-prev"></div>
+    </div>
+    <div class="dm-section">
+      <div class="dm-section-label">Note PM</div>
+      <div class="dm-note" id="dm-note">—</div>
+    </div>
+    <div class="mftr" style="justify-content:space-between">
+      <button class="btn btn-outline" id="dm-edit-btn">✎ Modifica</button>
+      <button class="btn btn-primary" onclick="closeM('m-detail')">Chiudi</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ═══════════════════════════════════════════
 // STATE
@@ -437,28 +692,31 @@ const PVC = {
 };
 
 const SAMPLE = [
-  {sistemaOrigine:'CRM Irideos',idPiattaforma:'COMM/2025/23170',numeroProg:'2025-001',nomeProg:'Fibra Ottica Datacenter — Milano Est',cliente:'Amazon Web Services EMEA',pm:'Marco Rossi',stato:'In Corso',dataOrdine:'2025-01-10',scadenza:'2025-09-30'},
-  {sistemaOrigine:'CRM Retelit',idPiattaforma:'202504031',numeroProg:'2025-002',nomeProg:'Upgrade Network Core — Roma HQ',cliente:'UniCredit S.p.A.',pm:'Laura Bianchi',stato:'In Corso',dataOrdine:'2025-02-01',scadenza:'2025-11-30'},
-  {sistemaOrigine:'CRM Irideos',idPiattaforma:'COMM/2025/23512',numeroProg:'2025-003',nomeProg:'Connettività MPLS Multi-sede',cliente:'Intesa Sanpaolo S.p.A.',pm:'Andrea Conti',stato:'In Ritardo',dataOrdine:'2025-01-20',scadenza:'2025-07-31'},
-  {sistemaOrigine:'CRM Retelit',idPiattaforma:'202504063',numeroProg:'2025-004',nomeProg:'WAN Sicura — Rete Logistica Nazionale',cliente:'BRT — Bartolini S.p.A.',pm:'Laura Bianchi',stato:'Pianificato',dataOrdine:'2025-03-01',scadenza:'2025-12-31'},
-  {sistemaOrigine:'CRM Irideos',idPiattaforma:'COMM/2025/24001',numeroProg:'2025-005',nomeProg:'SD-WAN Banking Infrastructure',cliente:'Mediobanca S.p.A.',pm:'Marco Rossi',stato:'In Corso',dataOrdine:'2025-02-15',scadenza:'2025-10-15'},
-  {sistemaOrigine:'CRM Retelit',idPiattaforma:'202506092',numeroProg:'2025-006',nomeProg:'Cloud Connectivity — AI Hub',cliente:'Meta Platforms Ireland Ltd',pm:'Giulia Ferrara',stato:'In Corso',dataOrdine:'2025-03-10',scadenza:'2026-03-10'},
-  {sistemaOrigine:'CRM Irideos',idPiattaforma:'COMM/2025/24200',numeroProg:'2025-007',nomeProg:'Manutenzione Armadi PoP — Nord Italia',cliente:'BNL — BNP Paribas S.p.A.',pm:'Andrea Conti',stato:'Completato',dataOrdine:'2024-11-01',scadenza:'2025-04-30'},
-  {sistemaOrigine:'CRM Retelit',idPiattaforma:'202503017',numeroProg:'2025-008',nomeProg:'Dorsale Ottica CDN — 12 PoP Nazionali',cliente:'Amazon Web Services EMEA',pm:'Marco Rossi',stato:'Pianificato',dataOrdine:'2025-04-01',scadenza:'2026-06-30'},
-  {sistemaOrigine:'CRM Irideos',idPiattaforma:'COMM/2025/23800',numeroProg:'2025-009',nomeProg:'Link Dedicato HFT — Borsa Milano',cliente:'Generali Investments S.p.A.',pm:'Giulia Ferrara',stato:'In Corso',dataOrdine:'2025-02-20',scadenza:'2025-08-31'},
-  {sistemaOrigine:'CRM Retelit',idPiattaforma:'202505044',numeroProg:'2025-010',nomeProg:'Rete Sicura Logistics Hub — Bologna',cliente:'BRT — Bartolini S.p.A.',pm:'Laura Bianchi',stato:'Sospeso',dataOrdine:'2025-01-15',scadenza:'2025-09-15'},
-  {sistemaOrigine:'Brennercom',idPiattaforma:'BRC/2025/0081',numeroProg:'2025-011',nomeProg:'FTTH Last Mile — Alto Adige Nord',cliente:'Provincia Autonoma di Bolzano',pm:'Thomas Hofer',stato:'In Corso',dataOrdine:'2025-02-10',scadenza:'2025-12-15'},
-  {sistemaOrigine:'Brennercom',idPiattaforma:'BRC/2025/0094',numeroProg:'2025-012',nomeProg:'Backbone IP/MPLS — Trento–Bolzano',cliente:'Trentino Digitale S.p.A.',pm:'Thomas Hofer',stato:'Pianificato',dataOrdine:'2025-03-20',scadenza:'2026-02-28'},
-  {sistemaOrigine:'Brennercom',idPiattaforma:'BRC/2025/0112',numeroProg:'2025-013',nomeProg:'Connettività Scuole — Piano Digitale',cliente:'USP Bolzano',pm:'Martina Gruber',stato:'Annullato',dataOrdine:'2025-01-05',scadenza:'2025-06-30'},
-  {sistemaOrigine:'BT',idPiattaforma:'BTW/IT/2025/44182',numeroProg:'2025-014',nomeProg:'Global MPLS Enterprise — Italy Hub',cliente:'Stellantis N.V.',pm:'James Mitchell',stato:'In Corso',dataOrdine:'2025-01-25',scadenza:'2025-11-30'},
-  {sistemaOrigine:'BT',idPiattaforma:'BTW/IT/2025/45903',numeroProg:'2025-015',nomeProg:'Managed SD-WAN — 40 Branch Italy',cliente:'Vodafone Italia S.p.A.',pm:'James Mitchell',stato:'In Ritardo',dataOrdine:'2025-02-05',scadenza:'2025-08-15'},
-  {sistemaOrigine:'BT',idPiattaforma:'BTW/IT/2025/47211',numeroProg:'2025-016',nomeProg:'International DIA — Milano Datacenter',cliente:'JPMorgan Chase Bank N.A.',pm:'Chiara De Luca',stato:'Completato',dataOrdine:'2024-12-01',scadenza:'2025-05-31'},
+  {sistemaOrigine:'CRM Irideos',idPiattaforma:'COMM/2025/23170',numeroProg:'2025-001',nomeProg:'Fibra Ottica Datacenter — Milano Est',tipoServizio:'Fibra',cliente:'Amazon Web Services EMEA',pm:'Marco Rossi',stato:'In Corso',dataOrdine:'2025-01-10',scadenza:'2025-09-30',valore:1200000,priorita:'Media',prevPct:75},
+  {sistemaOrigine:'CRM Retelit',idPiattaforma:'202504031',numeroProg:'2025-002',nomeProg:'Upgrade Network Core — Roma HQ',tipoServizio:'Fibra',cliente:'UniCredit S.p.A.',pm:'Laura Bianchi',stato:'In Corso',dataOrdine:'2025-02-01',scadenza:'2025-11-30',valore:480000,priorita:'Bassa',prevPct:45},
+  {sistemaOrigine:'CRM Irideos',idPiattaforma:'COMM/2025/23512',numeroProg:'2025-003',nomeProg:'Connettività MPLS Multi-sede',tipoServizio:'MPLS',cliente:'Intesa Sanpaolo S.p.A.',pm:'Andrea Conti',stato:'In Ritardo',dataOrdine:'2025-01-20',scadenza:'2025-07-31',valore:320000,priorita:'Alta',prevPct:65},
+  {sistemaOrigine:'CRM Retelit',idPiattaforma:'202504063',numeroProg:'2025-004',nomeProg:'WAN Sicura — Rete Logistica Nazionale',tipoServizio:'MPLS',cliente:'BRT — Bartolini S.p.A.',pm:'Laura Bianchi',stato:'Pianificato',dataOrdine:'2025-03-01',scadenza:'2025-12-31',valore:290000,priorita:'Bassa',prevPct:10},
+  {sistemaOrigine:'CRM Irideos',idPiattaforma:'COMM/2025/24001',numeroProg:'2025-005',nomeProg:'SD-WAN Banking Infrastructure',tipoServizio:'SD-WAN',cliente:'Mediobanca S.p.A.',pm:'Marco Rossi',stato:'In Corso',dataOrdine:'2025-02-15',scadenza:'2025-10-15',valore:750000,priorita:'Media',prevPct:60},
+  {sistemaOrigine:'CRM Retelit',idPiattaforma:'202506092',numeroProg:'2025-006',nomeProg:'Cloud Connectivity — AI Hub',tipoServizio:'Cloud',cliente:'Meta Platforms Ireland Ltd',pm:'Giulia Ferrara',stato:'In Corso',dataOrdine:'2025-03-10',scadenza:'2026-03-10',valore:890000,priorita:'Bassa',prevPct:30},
+  {sistemaOrigine:'CRM Irideos',idPiattaforma:'COMM/2025/24200',numeroProg:'2025-007',nomeProg:'Manutenzione Armadi PoP — Nord Italia',tipoServizio:'Altro',cliente:'BNL — BNP Paribas S.p.A.',pm:'Andrea Conti',stato:'Completato',dataOrdine:'2024-11-01',scadenza:'2025-04-30',valore:145000,priorita:'Bassa',prevPct:100},
+  {sistemaOrigine:'CRM Retelit',idPiattaforma:'202503017',numeroProg:'2025-008',nomeProg:'Dorsale Ottica CDN — 12 PoP Nazionali',tipoServizio:'Fibra',cliente:'Amazon Web Services EMEA',pm:'Marco Rossi',stato:'Pianificato',dataOrdine:'2025-04-01',scadenza:'2026-06-30',valore:2100000,priorita:'Media',prevPct:5},
+  {sistemaOrigine:'CRM Irideos',idPiattaforma:'COMM/2025/23800',numeroProg:'2025-009',nomeProg:'Link Dedicato HFT — Borsa Milano',tipoServizio:'Fibra',cliente:'Generali Investments S.p.A.',pm:'Giulia Ferrara',stato:'In Corso',dataOrdine:'2025-02-20',scadenza:'2025-08-31',valore:420000,priorita:'Media',prevPct:55},
+  {sistemaOrigine:'CRM Retelit',idPiattaforma:'202505044',numeroProg:'2025-010',nomeProg:'Rete Sicura Logistics Hub — Bologna',tipoServizio:'MPLS',cliente:'BRT — Bartolini S.p.A.',pm:'Laura Bianchi',stato:'Sospeso',dataOrdine:'2025-01-15',scadenza:'2025-09-15',valore:185000,priorita:'Media',prevPct:40},
+  {sistemaOrigine:'Brennercom',idPiattaforma:'BRC/2025/0081',numeroProg:'2025-011',nomeProg:'FTTH Last Mile — Alto Adige Nord',tipoServizio:'Fibra',cliente:'Provincia Autonoma di Bolzano',pm:'Thomas Hofer',stato:'In Corso',dataOrdine:'2025-02-10',scadenza:'2025-12-15',valore:310000,priorita:'Bassa',prevPct:50},
+  {sistemaOrigine:'Brennercom',idPiattaforma:'BRC/2025/0094',numeroProg:'2025-012',nomeProg:'Backbone IP/MPLS — Trento–Bolzano',tipoServizio:'MPLS',cliente:'Trentino Digitale S.p.A.',pm:'Thomas Hofer',stato:'Pianificato',dataOrdine:'2025-03-20',scadenza:'2026-02-28',valore:560000,priorita:'Bassa',prevPct:0},
+  {sistemaOrigine:'Brennercom',idPiattaforma:'BRC/2025/0112',numeroProg:'2025-013',nomeProg:'Connettività Scuole — Piano Digitale',tipoServizio:'Cloud',cliente:'USP Bolzano',pm:'Martina Gruber',stato:'Annullato',dataOrdine:'2025-01-05',scadenza:'2025-06-30',valore:0,priorita:'Bassa',prevPct:0},
+  {sistemaOrigine:'BT',idPiattaforma:'BTW/IT/2025/44182',numeroProg:'2025-014',nomeProg:'Global MPLS Enterprise — Italy Hub',tipoServizio:'MPLS',cliente:'Stellantis N.V.',pm:'James Mitchell',stato:'In Corso',dataOrdine:'2025-01-25',scadenza:'2025-11-30',valore:950000,priorita:'Media',prevPct:55},
+  {sistemaOrigine:'BT',idPiattaforma:'BTW/IT/2025/45903',numeroProg:'2025-015',nomeProg:'Managed SD-WAN — 40 Branch Italy',tipoServizio:'SD-WAN',cliente:'Vodafone Italia S.p.A.',pm:'James Mitchell',stato:'In Ritardo',dataOrdine:'2025-02-05',scadenza:'2025-08-15',valore:580000,priorita:'Alta',prevPct:50},
+  {sistemaOrigine:'BT',idPiattaforma:'BTW/IT/2025/47211',numeroProg:'2025-016',nomeProg:'International DIA — Milano Datacenter',tipoServizio:'Fibra',cliente:'JPMorgan Chase Bank N.A.',pm:'Chiara De Luca',stato:'Completato',dataOrdine:'2024-12-01',scadenza:'2025-05-31',valore:230000,priorita:'Bassa',prevPct:100},
 ];
 
 function init(){
-  const s=localStorage.getItem('nexus_v6');
-  projects=s?JSON.parse(s):SAMPLE.map(p=>({...p,_id:uid(),notePm:'',prevRilascio:'',prevStato:''}));
+  const s=localStorage.getItem('nexus_v8');
+  projects=s?JSON.parse(s):SAMPLE.map(p=>({...p,_id:uid(),notePm:'',prevRilascio:'',prevStato:'',valore:p.valore||0,priorita:p.priorita||'',prevPct:p.prevPct||0,tipoServizio:p.tipoServizio||''}));
   if(!s)saveLS();
+  // header timestamp
+  const ts=document.getElementById('hdr-ts');
+  if(ts)ts.textContent=`Portale Unificato Progetti TLC · ${new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})} ${new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}`;
   rebuildSels();applyFilters();
 }
 function uid(){return'p'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);}
@@ -477,18 +735,41 @@ function render(data){
 
 function mkRow(p){
   const sc=scCls(p.scadenza,p.stato);
-  return`<tr id="r-${p._id}">
+  const gg=ggRimasti(p.scadenza,p.stato);
+  const ggCls=gg===null?'gg-nd':gg<0?'gg-late':gg<15?'gg-late':gg<30?'gg-soon':'gg-ok';
+  const ggTxt=gg===null?'—':gg<0?`${Math.abs(gg)} gg scad.`:`${gg} gg`;
+  const prio=p.priorita||'';
+  const prioCls={'Alta':'prio-alta','Media':'prio-media','Bassa':'prio-bassa'}[prio]||'prio-nd';
+  const prioLbl=prio||'—';
+  const pct=Number(p.prevPct)||0;
+  const pctCls=p.stato==='Completato'?'pb-green':pct>=70?'pb-green':pct>=40?'pb-blue':p.stato==='In Ritardo'?'pb-red':'pb-amber';
+  const val=Number(p.valore)||0;
+  const valTxt=val>0?fv(val):'—';
+  const valCls=val>0?'valore-cell':'valore-cell v-nd';
+  const alert=alertScore(p);
+  const alertHtml=alert==='red'?`<span class="alert-flag af-red" title="Critico">!</span>`:alert==='amber'?`<span class="alert-flag af-amber" title="Attenzione">~</span>`:`<span class="alert-flag af-ok" title="OK">✓</span>`;
+  const rowCls=alert==='red'?'row-critical':alert==='amber'?'row-warn':'';
+  const tsCls={'Fibra':'ts-fibra','MPLS':'ts-mpls','SD-WAN':'ts-sdwan','Cloud':'ts-cloud','Altro':'ts-altro'}[p.tipoServizio||'']||'ts-altro';
+  const tsLbl=p.tipoServizio||'—';
+  return`<tr id="r-${p._id}" class="${rowCls}">
+<td style="text-align:center">${alertHtml}</td>
 <td class="stk"><span class="badge ${pcls(p.sistemaOrigine||'?')}">${x(p.sistemaOrigine||'—')}</span></td>
 <td class="mn dm">${x(p.idPiattaforma||'—')}</td>
 <td class="mn" style="font-weight:500">${x(p.numeroProg||'—')}</td>
-<td style="font-weight:500;font-size:13px">${x(p.nomeProg||'—')}</td>
-<td class="dm">${x(p.cliente||'—')}</td>
-<td>${x(p.pm||'—')}</td>
+<td style="font-weight:500;font-size:12.5px"><span class="proj-link" onclick="openDetail('${p._id}')">${x(p.nomeProg||'—')}</span></td>
+<td class="dm" style="font-size:11.5px">${x(p.cliente||'—')}</td>
+<td style="font-size:11.5px">${x(p.pm||'—')}</td>
 <td><span class="badge ${SC[p.stato]||'sg'}">${x(p.stato||'—')}</span></td>
+<td><span class="badge ${tsCls}">${x(tsLbl)}</span></td>
+<td class="td-prio"><span class="prio-dot ${prioCls}"></span><span class="prio-lbl">${x(prioLbl)}</span></td>
+<td><div class="pbar-wrap"><div class="pbar-track"><div class="pbar-fill ${pctCls}" style="width:${pct}%"></div></div><span class="pbar-pct">${pct}%</span></div></td>
+<td><span class="${valCls}">${valTxt}</span></td>
 <td class="dt">${fd(p.dataOrdine)}</td>
 <td class="dt ${sc}">${fd(p.scadenza)}</td>
+<td class="gg-cell ${ggCls}">${ggTxt}</td>
 <td><div class="nwrap">
   <textarea class="ea" rows="2" placeholder="Inserisci una nota…" onchange="upd('${p._id}','notePm',this.value)">${x(p.notePm||'')}</textarea>
+  <button class="btn btn-ai bxs" title="Genera con AI" onclick="genNote('${p._id}')" style="padding:3px 6px;font-size:10px;flex-shrink:0">✦</button>
 </div></td>
 <td><div class="pwrap">
   <input type="date" class="psel" value="${p.prevRilascio||''}" onchange="upd('${p._id}','prevRilascio',this.value)" title="Data rilascio stimata PM">
@@ -498,15 +779,73 @@ function mkRow(p){
   </select>
   ${p.prevStato?`<span class="badge ${PVC[p.prevStato]||''}" style="font-size:10px">${p.prevStato}</span>`:''}
 </div></td>
+<td></td>
 <td><div style="display:flex;gap:4px;justify-content:flex-end">
+  <button class="btn btn-ghost bxs" onclick="openDetail('${p._id}')" title="Dettaglio">👁</button>
   <button class="btn btn-ghost bxs" onclick="openEdit('${p._id}')" title="Modifica">✎</button>
   <button class="btn btn-del bxs" onclick="delProj('${p._id}')" title="Elimina">✕</button>
 </div></td>
 </tr>`;
 }
 
+function openDetail(id){
+  const p=projects.find(p=>p._id===id);if(!p)return;
+  const alert=alertScore(p);
+  const gg=ggRimasti(p.scadenza,p.stato);
+  const pct=Number(p.prevPct)||0;
+  const tsCls={'Fibra':'ts-fibra','MPLS':'ts-mpls','SD-WAN':'ts-sdwan','Cloud':'ts-cloud','Altro':'ts-altro'}[p.tipoServizio||'']||'ts-altro';
+
+  _s('dm-nome',p.nomeProg||'—');
+
+  // Meta badges
+  document.getElementById('dm-meta').innerHTML=
+    `<span class="badge ${SC[p.stato]||'sg'}">${x(p.stato||'—')}</span>`+
+    (p.tipoServizio?`<span class="badge ${tsCls}">${x(p.tipoServizio)}</span>`:'')+
+    (p.priorita?`<span class="badge" style="background:${{Alta:'#fee2e2',Media:'#fef3c7',Bassa:'#dcfce7'}[p.priorita]||'#f1f5f9'};color:${{Alta:'#991b1b',Media:'#92400e',Bassa:'#166534'}[p.priorita]||'#475569'}">${x(p.priorita)}</span>`:'')+
+    (p.sistemaOrigine?`<span class="badge ${pcls(p.sistemaOrigine)}" style="opacity:.85">${x(p.sistemaOrigine)}</span>`:'');
+
+  // Alert banner
+  const bannerCls={red:'dm-alert-red',amber:'dm-alert-amber',ok:'dm-alert-ok'}[alert];
+  const bannerMsg={red:'⚠ Progetto critico — richiede attenzione immediata',amber:'~ Progetto a rischio — monitorare con attenzione',ok:'✓ Progetto in linea con le aspettative'}[alert];
+  document.getElementById('dm-alert-banner').innerHTML=`<div class="dm-alert-banner ${bannerCls}">${bannerMsg}</div>`;
+
+  // Contratto
+  const ggTxt=gg===null?'—':gg<0?`Scaduto da ${Math.abs(gg)} gg`:`${gg} giorni al termine`;
+  document.getElementById('dm-contratto').innerHTML=`
+    <div class="dm-field"><label>N° Progetto</label><span class="mono">${x(p.numeroProg||'—')}</span></div>
+    <div class="dm-field"><label>ID Sistema</label><span class="mono">${x(p.idPiattaforma||'—')}</span></div>
+    <div class="dm-field"><label>Sistema Sorgente</label><span>${x(p.sistemaOrigine||'—')}</span></div>
+    <div class="dm-field"><label>Cliente</label><span>${x(p.cliente||'—')}</span></div>
+    <div class="dm-field"><label>Valore Contratto</label><span style="font-size:15px;color:var(--t1)">${p.valore>0?fc(p.valore):'—'}</span></div>
+    <div class="dm-field"><label>PM Assegnato</label><span>${x(p.pm||'—')}</span></div>
+    <div class="dm-field"><label>Data Inserimento Ordine</label><span class="mono">${fd(p.dataOrdine)}</span></div>
+    <div class="dm-field"><label>ROS Progetto</label><span class="mono ${p.scadenza&&gg!==null&&gg<0?'late':p.scadenza&&gg!==null&&gg<30?'soon':''}">${fd(p.scadenza)}</span></div>
+    <div class="dm-field"><label>Giorni Rimasti</label><span class="mono ${gg===null?'':gg<0?'late':gg<30?'soon':''}">${ggTxt}</span></div>`;
+
+  // Avanzamento
+  const pctCls=p.stato==='Completato'?'var(--green)':pct>=70?'var(--green)':pct>=40?'var(--rl)':p.stato==='In Ritardo'?'var(--red)':'var(--amber)';
+  document.getElementById('dm-avanz').innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <span style="font-size:13px;color:var(--t2)">Avanzamento lavori</span>
+      <span style="font-size:20px;font-weight:600;font-family:var(--mono);color:${pctCls}">${pct}%</span>
+    </div>
+    <div class="dm-pbar-track"><div class="dm-pbar-fill" style="width:${pct}%;background:${pctCls}"></div></div>`;
+
+  // Previsione
+  document.getElementById('dm-prev').innerHTML=`
+    <div class="dm-field"><label>Data Rilascio Stimata PM</label><span class="mono">${fd(p.prevRilascio)||'—'}</span></div>
+    <div class="dm-field"><label>Stato Previsione</label><span>${p.prevStato?`<span class="badge ${PVC[p.prevStato]||'sg'}">${x(p.prevStato)}</span>`:'—'}</span></div>`;
+
+  // Note
+  _s('dm-note',p.notePm||'Nessuna nota inserita.');
+
+  // Edit button
+  document.getElementById('dm-edit-btn').onclick=()=>{closeM('m-detail');openEdit(id);};
+  openM('m-detail');
+}
 function x(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function fd(v){if(!v)return'—';const[y,m,d]=v.split('-');return(d&&m&&y)?`${d}/${m}/${y}`:v;}
+function fv(n){if(!n||n===0)return'—';if(n>=1000000)return'€'+Math.round(n/100000)/10+'M';if(n>=1000)return'€'+Math.round(n/1000)+'K';return'€'+n;}
 function fc(v){
   if(v===null||v===undefined||v==='')return'—';
   const n=Number(v);if(isNaN(n))return'—';
@@ -516,6 +855,21 @@ function scCls(v,stato){
   if(!v||stato==='Completato'||stato==='Annullato')return'';
   const d=(new Date(v)-new Date())/86400000;
   return d<0?'late':d<30?'soon':'';
+}
+function ggRimasti(v,stato){
+  if(!v||stato==='Completato'||stato==='Annullato')return null;
+  return Math.ceil((new Date(v)-new Date())/86400000);
+}
+function alertScore(p){
+  if(p.stato==='Completato'||p.stato==='Annullato')return'ok';
+  const gg=ggRimasti(p.scadenza,p.stato);
+  if(p.stato==='In Ritardo')return'red';
+  if(gg!==null&&gg<0)return'red';
+  if(gg!==null&&gg<15)return'red';
+  if(gg!==null&&gg<30)return'amber';
+  if(p.stato==='Sospeso')return'amber';
+  if(p.prevStato==='A Rischio'||p.prevStato==='Bloccato')return'amber';
+  return'ok';
 }
 
 function updateKPIs(data){
@@ -529,33 +883,148 @@ function updateKPIs(data){
     const d=(new Date(p.scadenza)-now)/86400000;
     return d>=0&&d<30;
   }).length;
+  const critici=data.filter(p=>alertScore(p)==='red').length;
+  const totVal=data.reduce((s,p)=>s+(Number(p.valore)||0),0);
+  const riskVal=data.filter(p=>alertScore(p)==='red').reduce((s,p)=>s+(Number(p.valore)||0),0);
+
   _s('k-tot',tot);_s('k-src',`${srcs} sistem${srcs===1?'a':'i'} sorgente`);
-  _s('k-plan',cnts['Pianificato']);
-  _s('k-inc',cnts['In Corso']);
   _s('k-late-v',cnts['In Ritardo']);
-  _s('k-sosp',cnts['Sospeso']);
-  _s('k-comp',cnts['Completato']);
-  _s('k-ann',cnts['Annullato']);
+  _s('k-late-sub',cnts['In Ritardo']>0?`${cnts['In Ritardo']} progett${cnts['In Ritardo']===1?'o':'i'} in ritardo`:'Nessun ritardo');
   _s('k-ros',ros30);
+  _s('k-comp',cnts['Completato']);
+  _s('k-comp-sub',`${cnts['In Corso']} in corso · ${cnts['Pianificato']} pianificati`);
+  _s('k-val',fv(totVal));
+  _s('k-val-risk',riskVal>0?`${fv(riskVal)} a rischio`:'Portafoglio stabile');
+
+  const alertEl=document.getElementById('hdr-alert');
+  const alertN=document.getElementById('hdr-alert-n');
+  if(alertEl){alertEl.style.display=critici>0?'':'none';if(alertN)alertN.textContent=critici;}
+
+  renderDonut(data,cnts);
+  renderPMChart(data);
+  renderScadenze(data);
+}
+
+function renderDonut(data,cnts){
+  const el=document.getElementById('ch-donut');if(!el)return;
+  const stati=[
+    {l:'In Corso',v:cnts['In Corso'],c:'#2563eb'},
+    {l:'Pianificato',v:cnts['Pianificato'],c:'#7c3aed'},
+    {l:'Completato',v:cnts['Completato'],c:'#16a34a'},
+    {l:'In Ritardo',v:cnts['In Ritardo'],c:'#dc2626'},
+    {l:'Sospeso',v:cnts['Sospeso'],c:'#d97706'},
+    {l:'Annullato',v:cnts['Annullato'],c:'#94a3b8'},
+  ].filter(s=>s.v>0);
+  const tot=stati.reduce((a,s)=>a+s.v,0);
+  if(!tot){el.innerHTML='<div style="font-size:11px;color:var(--t3);text-align:center;padding:20px">Nessun dato</div>';return;}
+  const r=34,cx=44,cy=44,circ=2*Math.PI*r;
+  let offset=0;
+  const arcs=stati.map(s=>{const dash=(s.v/tot)*circ;const arc=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${s.c}" stroke-width="11" stroke-dasharray="${dash.toFixed(2)} ${(circ-dash).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"/>`;offset+=dash;return arc;}).join('');
+  const legend=stati.map(s=>`<div style="display:flex;align-items:center;justify-content:space-between;font-size:10.5px;margin-bottom:3px"><span style="display:flex;align-items:center;gap:4px;color:var(--t2)"><span style="width:8px;height:8px;border-radius:50%;background:${s.c};display:inline-block;flex-shrink:0"></span>${s.l}</span><span style="font-weight:500;color:var(--t1)">${s.v}</span></div>`).join('');
+  el.innerHTML=`<div style="display:flex;gap:12px;align-items:center"><svg width="88" height="88" viewBox="0 0 88 88" style="flex-shrink:0">${arcs}<text x="${cx}" y="${cy-4}" text-anchor="middle" font-size="16" font-weight="600" fill="var(--t1)">${tot}</text><text x="${cx}" y="${cy+10}" text-anchor="middle" font-size="9" fill="var(--t3)">progetti</text></svg><div style="flex:1">${legend}</div></div>`;
+}
+
+function renderPMChart(data){
+  const el=document.getElementById('ch-pm');if(!el)return;
+  const pmMap={};
+  data.forEach(p=>{
+    if(!p.pm)return;
+    if(!pmMap[p.pm])pmMap[p.pm]={inc:0,lat:0,alt:0,tot:0,val:0};
+    pmMap[p.pm].tot++;
+    pmMap[p.pm].val+=Number(p.valore)||0;
+    if(p.stato==='In Corso')pmMap[p.pm].inc++;
+    else if(p.stato==='In Ritardo')pmMap[p.pm].lat++;
+    else pmMap[p.pm].alt++;
+  });
+  const pms=Object.entries(pmMap).sort((a,b)=>b[1].val-a[1].val).slice(0,7);
+  const maxTot=Math.max(...pms.map(([,v])=>v.tot),1);
+  const legend=`<div style="display:flex;gap:10px;margin-bottom:8px;font-size:9.5px;color:var(--t2)">${['#2563eb','In corso','#dc2626','In ritardo','#94a3b8','Altro'].reduce((a,_,i,arr)=>i%2===0?a+`<span style="display:flex;align-items:center;gap:3px"><span style="width:7px;height:7px;border-radius:1px;background:${arr[i]};display:inline-block"></span>${arr[i+1]}</span>`:a,'')}</div>`;
+  const rows=pms.map(([pm,v])=>{
+    const incW=Math.round(v.inc/maxTot*100),latW=Math.round(v.lat/maxTot*100),altW=Math.round(v.alt/maxTot*100);
+    const nm=pm.split(' ').map((w,i)=>i===0?w:w[0]+'.').join(' ');
+    const valStr=v.val>=1000000?'€'+(Math.round(v.val/100000)/10)+'M':v.val>=1000?'€'+Math.round(v.val/1000)+'K':'€'+v.val;
+    return`<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+      <div style="width:72px;font-size:10.5px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0" title="${pm}">${nm}</div>
+      <div style="flex:1;height:14px;background:var(--border-light);border-radius:2px;overflow:hidden;display:flex">
+        <div style="width:${incW}%;background:#2563eb;height:100%"></div>
+        <div style="width:${latW}%;background:#dc2626;height:100%"></div>
+        <div style="width:${altW}%;background:#94a3b8;height:100%"></div>
+      </div>
+      <div style="font-size:9.5px;font-weight:500;color:var(--t2);width:36px;text-align:right;font-family:var(--mono)">${valStr}</div>
+    </div>`;
+  }).join('');
+  el.innerHTML=legend+rows;
+}
+
+function renderScadenze(data){
+  const el=document.getElementById('ch-scad');if(!el)return;
+  const now=new Date();
+  const upcoming=data
+    .filter(p=>p.scadenza&&p.stato!=='Completato'&&p.stato!=='Annullato')
+    .map(p=>({...p,gg:Math.ceil((new Date(p.scadenza)-now)/86400000)}))
+    .sort((a,b)=>a.gg-b.gg).slice(0,8);
+  if(!upcoming.length){el.innerHTML='<div style="font-size:11px;color:var(--t3);text-align:center;padding:16px">Nessuna scadenza</div>';return;}
+  el.innerHTML=upcoming.map(p=>{
+    const cls=p.gg<0?'#dc2626':p.gg<15?'#dc2626':p.gg<30?'#d97706':'#16a34a';
+    const bg=p.gg<0?'#fef2f2':p.gg<15?'#fef2f2':p.gg<30?'#fffbeb':'#f0fdf4';
+    const lbl=p.gg<0?`${Math.abs(p.gg)}gg scad.`:`${p.gg}gg`;
+    const nm=p.nomeProg.length>28?p.nomeProg.slice(0,26)+'…':p.nomeProg;
+    return`<div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;font-size:11px">
+      <span style="width:8px;height:8px;border-radius:50%;background:${cls};flex-shrink:0"></span>
+      <span style="flex:1;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${p.nomeProg}">${nm}</span>
+      <span style="font-size:10px;font-weight:500;padding:1px 6px;border-radius:10px;background:${bg};color:${cls};white-space:nowrap">${lbl}</span>
+    </div>`;
+  }).join('');
 }
 
 function _s(id,v){const e=document.getElementById(id);if(e)e.textContent=v;}
+
+let activePill='all';
+function setPill(pill){
+  activePill=pill;
+  ['all','ritardo','ros30','critici'].forEach(p=>{
+    const el=document.getElementById('pill-'+p);
+    if(el)el.classList.toggle('active',p===pill);
+  });
+  applyFilters();
+}
 
 function applyFilters(){
   const q=document.getElementById('f-q').value.toLowerCase();
   const src=document.getElementById('f-src').value;
   const stato=document.getElementById('f-stato').value;
   const pm=document.getElementById('f-pm').value;
+  const cli=document.getElementById('f-cli')?.value||'';
+  const tipo=document.getElementById('f-tipo')?.value||'';
+  const now=new Date();
   let data=projects.filter(p=>{
     if(src&&p.sistemaOrigine!==src)return false;
     if(stato&&p.stato!==stato)return false;
     if(pm&&p.pm!==pm)return false;
+    if(cli&&p.cliente!==cli)return false;
+    if(tipo&&p.tipoServizio!==tipo)return false;
+    if(activePill==='ritardo'&&p.stato!=='In Ritardo')return false;
+    if(activePill==='ros30'){
+      if(!p.scadenza||p.stato==='Completato'||p.stato==='Annullato')return false;
+      const d=(new Date(p.scadenza)-now)/86400000;
+      if(!(d>=0&&d<30))return false;
+    }
+    if(activePill==='critici'&&alertScore(p)!=='red')return false;
     if(q){const h=[p.nomeProg,p.cliente,p.pm,p.numeroProg,p.idPiattaforma,p.notePm].join(' ').toLowerCase();if(!h.includes(q))return false;}
     return true;
   });
+  // Sort by urgency by default, respecting manual sort column
   data=[...data].sort((a,b)=>{
-    let va=a[sortCol]||'';
-    let vb=b[sortCol]||'';
+    if(sortCol==='scadenza'&&sortDir===1){
+      // urgency: critici first, then by days remaining
+      const sa=alertScore(a),sb=alertScore(b);
+      const order={red:0,amber:1,ok:2};
+      if(order[sa]!==order[sb])return order[sa]-order[sb];
+      const da=ggRimasti(a.scadenza,a.stato)??9999;
+      const db=ggRimasti(b.scadenza,b.stato)??9999;
+      return da-db;
+    }
+    let va=a[sortCol]||'';let vb=b[sortCol]||'';
     return(typeof va==='string'?va.localeCompare(vb):va-vb)*sortDir;
   });
   render(data);
@@ -568,14 +1037,15 @@ function sortBy(col,el){
   applyFilters();
 }
 function clearFilters(){
-  ['f-q','f-src','f-stato','f-pm'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  applyFilters();
+  ['f-q','f-src','f-stato','f-pm','f-cli','f-tipo'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  setPill('all');
 }
 function rebuildSels(){
   const srcs=[...new Set(projects.map(p=>p.sistemaOrigine).filter(Boolean))].sort();
   const pms=[...new Set(projects.map(p=>p.pm).filter(Boolean))].sort();
-  const fill=(id,arr)=>{const el=document.getElementById(id);const v=el.value;el.innerHTML=el.options[0].outerHTML+arr.map(a=>`<option>${x(a)}</option>`).join('');el.value=v;};
-  fill('f-src',srcs);fill('f-pm',pms);
+  const clis=[...new Set(projects.map(p=>p.cliente).filter(Boolean))].sort();
+  const fill=(id,arr)=>{const el=document.getElementById(id);if(!el)return;const v=el.value;el.innerHTML=el.options[0].outerHTML+arr.map(a=>`<option>${x(a)}</option>`).join('');el.value=v;};
+  fill('f-src',srcs);fill('f-pm',pms);fill('f-cli',clis);
 }
 
 function upd(id,field,val){const p=projects.find(p=>p._id===id);if(p){p[field]=val;schedSave();}}
@@ -590,7 +1060,7 @@ function saveAll(){
   saveLS();
 }
 function saveLS(){
-  localStorage.setItem('nexus_v6',JSON.stringify(projects));
+  localStorage.setItem('nexus_v8',JSON.stringify(projects));
   const e=document.getElementById('sdot');
   if(e){e.textContent=`✓  Salvato ${new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}`;e.className='sdot saved';}
   toast('Salvato con successo','ok');
@@ -599,15 +1069,16 @@ function saveLS(){
 function openAdd(){
   _s('m-ttl','Aggiungi Progetto');
   document.getElementById('m-id').value='';
-  ['m-src','m-idp','m-num','m-nome','m-cli','m-pm','m-stato','m-dord','m-scad','m-note','m-prev-rilascio','m-prev'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  ['m-src','m-idp','m-num','m-nome','m-cli','m-pm','m-stato','m-tipo','m-dord','m-scad','m-note','m-prev-rilascio','m-prev','m-valore','m-priorita','m-pct'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('m-stato').value='In Corso';
+  document.getElementById('m-priorita').value='Media';
   openM('m-add');
 }
 function openEdit(id){
   const p=projects.find(p=>p._id===id);if(!p)return;
   _s('m-ttl','Modifica Progetto');
   document.getElementById('m-id').value=id;
-  const map={src:'sistemaOrigine',idp:'idPiattaforma',num:'numeroProg',nome:'nomeProg',cli:'cliente',pm:'pm',stato:'stato',dord:'dataOrdine',scad:'scadenza',note:'notePm','prev-rilascio':'prevRilascio',prev:'prevStato'};
+  const map={src:'sistemaOrigine',idp:'idPiattaforma',num:'numeroProg',nome:'nomeProg',cli:'cliente',pm:'pm',stato:'stato',tipo:'tipoServizio',dord:'dataOrdine',scad:'scadenza',note:'notePm','prev-rilascio':'prevRilascio',prev:'prevStato',valore:'valore',priorita:'priorita',pct:'prevPct'};
   Object.entries(map).forEach(([fid,key])=>{const e=document.getElementById('m-'+fid);if(e)e.value=p[key]||'';});
   openM('m-add');
 }
@@ -622,11 +1093,15 @@ function saveProj(){
     cliente:document.getElementById('m-cli').value.trim(),
     pm:document.getElementById('m-pm').value.trim(),
     stato:document.getElementById('m-stato').value,
+    tipoServizio:document.getElementById('m-tipo').value,
     dataOrdine:document.getElementById('m-dord').value,
     scadenza:document.getElementById('m-scad').value,
     notePm:document.getElementById('m-note').value.trim(),
     prevRilascio:document.getElementById('m-prev-rilascio').value,
     prevStato:document.getElementById('m-prev').value,
+    valore:Number(document.getElementById('m-valore').value)||0,
+    priorita:document.getElementById('m-priorita').value,
+    prevPct:Number(document.getElementById('m-pct').value)||0,
   };
   if(!p.sistemaOrigine||!p.numeroProg||!p.nomeProg||!p.cliente){toast('Compila i campi obbligatori (*)','er');return;}
   if(id){const i=projects.findIndex(x=>x._id===id);if(i>=0)projects[i]=p;}
@@ -676,13 +1151,25 @@ function doImport(){
   toast(`${pending.length} progetti importati`,'ok');pending=[];
 }
 
-function exportCSV(){
-  const cols=['sistemaOrigine','idPiattaforma','numeroProg','nomeProg','cliente','pm','stato','dataOrdine','scadenza','notePm','prevRilascio','prevStato'];
-  const hdrs=['Sistema Sorgente','ID Sorgente','N° Progetto','Nome Progetto','Cliente','PM','Stato','Data Inserimento Ordine','ROS Progetto','Note PM','Previsione PM Rilascio','Stato Previsione'];
-  const q=v=>`"${String(v||'').replace(/"/g,'""')}"`;
-  const blob=new Blob(['\ufeff'+[hdrs.map(q).join(';'),...projects.map(p=>cols.map(c=>q(p[c]||'')).join(';'))].join('\r\n')],{type:'text/csv;charset=utf-8'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`nexus_${new Date().toISOString().slice(0,10)}.csv`;a.click();
-  toast('CSV esportato');
+function exportXLSX(){
+  if(typeof XLSX==='undefined'){toast('Libreria Excel non caricata. Controlla la connessione.','er');return;}
+  const cols=['sistemaOrigine','idPiattaforma','numeroProg','nomeProg','cliente','pm','stato','tipoServizio','priorita','valore','prevPct','dataOrdine','scadenza','notePm','prevRilascio','prevStato'];
+  const hdrs=['Sistema Sorgente','ID Sorgente','N° Progetto','Nome Progetto','Cliente','PM','Stato','Tipo Servizio','Priorità','Valore (€)','Avanzamento (%)','Data Ordine','ROS Progetto','Note PM','Previsione PM Rilascio','Stato Previsione'];
+  const rows=projects.map(p=>cols.map(c=>{
+    const v=p[c];
+    if(c==='valore'||c==='prevPct')return Number(v)||0;
+    if((c==='dataOrdine'||c==='scadenza'||c==='prevRilascio')&&v)return v;
+    return v||'';
+  }));
+  const ws=XLSX.utils.aoa_to_sheet([hdrs,...rows]);
+  // column widths
+  ws['!cols']=[{wch:14},{wch:18},{wch:12},{wch:38},{wch:28},{wch:18},{wch:12},{wch:11},{wch:9},{wch:12},{wch:12},{wch:12},{wch:12},{wch:40},{wch:20},{wch:16}];
+  // header style
+  hdrs.forEach((_,i)=>{const ref=XLSX.utils.encode_cell({r:0,c:i});if(ws[ref])ws[ref].s={font:{bold:true},fill:{fgColor:{rgb:'0F1923'}},font:{color:{rgb:'FFFFFF'},bold:true}};});
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,'Portafoglio PM',ws);
+  XLSX.writeFile(wb,`Portafoglio_PM_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('Excel esportato','ok');
 }
 
 let compact=false;
@@ -695,7 +1182,11 @@ function toggleCompact(){
 function openM(id){document.getElementById(id).classList.add('open');}
 function closeM(id){document.getElementById(id).classList.remove('open');}
 document.querySelectorAll('.mbg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)closeM(m.id);}));
-document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.mbg.open').forEach(m=>closeM(m.id));});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape')document.querySelectorAll('.mbg.open').forEach(m=>closeM(m.id));
+  if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();saveAll();}
+  if(e.key==='n'&&!e.ctrlKey&&!e.metaKey&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'){openAdd();}
+});
 window.addEventListener('beforeunload',e=>{if(document.getElementById('sdot').classList.contains('dirty')){e.preventDefault();e.returnValue='';}});
 
 function toast(msg,type=''){
@@ -717,10 +1208,11 @@ function toggleAI(){
 }
 
 function projCtx(){
+  const now=new Date();
   return projects.map(p=>{
-    const mg=(Number(p.ricavi)||0)-(Number(p.costi)||0);
-    const mgP=p.ricavi?Math.round(mg/p.ricavi*100):0;
-    return`[${p.sistemaOrigine}] ${p.numeroProg} "${p.nomeProg}" | Cliente: ${p.cliente} | PM: ${p.pm} | Tipologia: ${p.tipologia} | Stato: ${p.stato} | Scadenza: ${p.scadenza||'N/D'} | Ricavi: €${(p.ricavi||0).toLocaleString('it-IT')} | Costi: €${(p.costi||0).toLocaleString('it-IT')} | Margine: ${mgP}% | Avanz.: ${p.prevPct||0}% | Previsione: ${p.prevStato||'N/D'}`;
+    const gg=p.scadenza&&p.stato!=='Completato'&&p.stato!=='Annullato'?Math.ceil((new Date(p.scadenza)-now)/86400000):null;
+    const ggStr=gg===null?'—':gg<0?`SCADUTO di ${Math.abs(gg)}gg`:`${gg}gg al termine`;
+    return`[${p.sistemaOrigine}] ${p.numeroProg} "${p.nomeProg}" | Cliente: ${p.cliente} | PM: ${p.pm} | Stato: ${p.stato} | Tipo: ${p.tipoServizio||'N/D'} | Priorità: ${p.priorita||'N/D'} | Valore: €${Number(p.valore||0).toLocaleString('it-IT')} | Avanz.: ${p.prevPct||0}% | Scadenza: ${p.scadenza||'N/D'} (${ggStr}) | Prev.PM: ${p.prevStato||'N/D'} | Note: ${p.notePm||'—'}`;
   }).join('\n');
 }
 
@@ -788,7 +1280,7 @@ async function genNote(id){
   const ta=document.querySelector(`#r-${id} textarea.ea`);if(!ta)return;
   const prev=ta.value;
   ta.classList.add('aig');ta.value='Generazione in corso…';ta.disabled=true;
-  const prompt=`Scrivi una nota di stato PM professionale (max 3 frasi) per questo progetto TLC.\nNome: ${p.nomeProg} | Cliente: ${p.cliente}\nStato: ${p.stato} | PM: ${p.pm} | ROS Progetto: ${p.scadenza||'N/D'} | Data Ordine: ${p.dataOrdine||'N/D'}\nPrevisione PM Rilascio: ${p.prevRilascio||'N/D'} | Stato Previsione: ${p.prevStato||'N/D'}\n${prev?'Note precedenti: '+prev:''}\nIncludi: stato attuale, eventuali criticità, prossimo step. Solo testo piano, professionale.`;
+  const prompt=`Scrivi una nota di stato PM professionale (max 3 frasi) per questo progetto TLC.\nNome: ${p.nomeProg} | Cliente: ${p.cliente} | PM: ${p.pm}\nStato: ${p.stato} | Priorità: ${p.priorita||'N/D'} | Avanzamento: ${p.prevPct||0}%\nValore contratto: €${Number(p.valore||0).toLocaleString('it-IT')} | ROS: ${p.scadenza||'N/D'}\nPrevisione PM Rilascio: ${p.prevRilascio||'N/D'} | Stato Previsione: ${p.prevStato||'N/D'}\n${p.notePm?'Note precedenti: '+p.notePm:''}\nIncludi: stato attuale, eventuali criticità, prossimo step. Solo testo piano, professionale.`;
   try{
     const resp=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',headers:{'Content-Type':'application/json'},
