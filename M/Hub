@@ -1,1 +1,662 @@
+<!DOCTYPE html>
+<html lang="it" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="google" content="notranslate">
+<meta http-equiv="Content-Language" content="it">
+<title>Progetto M — Portale</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Plus+Jakarta+Sans:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  @view-transition { navigation: auto; }
 
+  :root {
+    --bg:        #F4F3EE;
+    --surface:   #FFFFFF;
+    --surface2:  #F0EEE6;
+    --border:    #E0DDD4;
+    --border2:   #CCC9BE;
+    --accent:    #0B3182;
+    --accent2:   #E55000;
+    --text:      #1C1C2E;
+    --text2:     #3A3A52;
+    --muted:     #52526E;
+    --muted2:    #7878A0;
+    --sh-xs: 0 1px 3px rgba(11,49,130,.06), 0 1px 2px rgba(0,0,0,.04);
+    --sh-sm: 0 2px 8px rgba(11,49,130,.08), 0 1px 4px rgba(0,0,0,.05);
+    --sh-md: 0 4px 20px rgba(11,49,130,.10), 0 2px 8px rgba(0,0,0,.06);
+    --sh-lg: 0 12px 40px rgba(11,49,130,.13), 0 4px 16px rgba(0,0,0,.07);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* ── TOPBAR ── */
+  .topbar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 24px; height:52px;
+    background:var(--surface);
+    border-bottom:1px solid var(--border);
+    box-shadow: var(--sh-xs);
+    position:sticky; top:0; z-index:50;
+  }
+  .topbar-left { display:flex; align-items:center; gap:12px; }
+  .topbar-right { display:flex; align-items:center; gap:8px; }
+  .logo {
+    font-family:'Bricolage Grotesque', sans-serif;
+    font-size:13px; font-weight:700;
+    letter-spacing:0.14em; color:var(--accent); text-transform:uppercase;
+  }
+  .divider-v { width:1px; height:20px; background:var(--border2); }
+  .page-title { font-size:12px; color:var(--muted); font-weight:500; }
+
+  .btn-sm {
+    font-size:11px; padding:6px 14px; border-radius:6px;
+    background:transparent; color:var(--muted); border:1px solid var(--border2);
+    cursor:pointer; font-family:'Plus Jakarta Sans', sans-serif; font-weight:600;
+    transition:all 0.18s;
+  }
+  .btn-sm:hover { background:var(--surface2); color:var(--text); }
+
+  /* ── MAIN ── */
+  .main {
+    max-width:1260px; margin:0 auto;
+    padding:20px 24px 20px;
+    display:flex; flex-direction:column; gap:20px;
+  }
+
+  /* ── HEADER SECTION ── */
+  .hub-header {
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    flex-wrap:wrap;
+  }
+  .hub-header-left { display:flex; flex-direction:column; gap:2px; }
+  .hub-eyebrow {
+    font-family:'Fira Code', monospace;
+    font-size:9px; font-weight:500;
+    letter-spacing:.2em; text-transform:uppercase;
+    color:var(--accent2);
+  }
+  .hub-title {
+    font-family:'Bricolage Grotesque', sans-serif;
+    font-size:22px; font-weight:700;
+    letter-spacing:-.025em; color:var(--text); line-height:1.2;
+  }
+  .hub-user-chip {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:5px 12px; border-radius:20px;
+    background:var(--surface); border:1px solid var(--border2);
+    box-shadow:var(--sh-xs);
+    font-size:11px; color:var(--text2); font-weight:500; white-space:nowrap;
+  }
+  .hub-user-chip span { color:var(--muted); font-size:10px; }
+
+  /* ── CARDS GRID ── */
+  .cards-grid {
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap:16px;
+    max-width:900px;
+  }
+  @media(max-width:720px) { .cards-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media(max-width:480px) { .cards-grid { grid-template-columns:1fr; } }
+
+  /* ── NAV CARD — vertical layout ── */
+  .nav-card {
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:20px 18px 18px 22px;
+    cursor:pointer;
+    text-decoration:none;
+    display:flex; flex-direction:column; gap:14px;
+    transition:box-shadow .2s, transform .18s, border-color .2s;
+    box-shadow:var(--sh-sm);
+    position:relative; overflow:hidden;
+  }
+  .nav-card:hover {
+    box-shadow:var(--sh-md);
+    transform:translateY(-2px);
+    border-color:var(--border2);
+  }
+  .nav-card:active { transform:translateY(0); }
+
+  /* coloured left stripe */
+  .nav-card::before {
+    content:'';
+    position:absolute; top:0; left:0; bottom:0; width:3px;
+    border-radius:14px 0 0 14px;
+  }
+  .card-prog::before   { background:linear-gradient(180deg,#0B3182,#2255cc); }
+  .card-lav::before    { background:linear-gradient(180deg,#E55000,#ff7a2e); }
+  .card-sopr::before   { background:linear-gradient(180deg,#0E7490,#22aac4); }
+  .card-exec::before   { background:linear-gradient(180deg,#1F7A4E,#2fa066); }
+  .card-mappa::before  { background:linear-gradient(180deg,#6B3FA0,#9060d0); }
+  .card-mile::before   { background:linear-gradient(180deg,#B45309,#d97706); }
+  .card-ai::before     { background:linear-gradient(180deg,#3B0764,#7C3AED); }
+
+  .card-top-row {
+    display:flex; align-items:flex-start; justify-content:space-between; gap:8px;
+  }
+  .card-icon {
+    width:46px; height:46px; border-radius:11px;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  .card-prog  .card-icon { background:#0B31820D; }
+  .card-lav   .card-icon { background:#E550000D; }
+  .card-sopr  .card-icon { background:#0E74900D; }
+  .card-exec  .card-icon { background:#1F7A4E0D; }
+  .card-mappa .card-icon { background:#6B3FA00D; }
+  .card-mile  .card-icon { background:#B453090D; }
+  .card-ai    .card-icon { background:#7C3AED0D; }
+
+  .card-icon svg { width:22px; height:22px; }
+  .card-prog  .card-icon svg { color:#0B3182; }
+  .card-lav   .card-icon svg { color:#E55000; }
+  .card-sopr  .card-icon svg { color:#0E7490; }
+  .card-exec  .card-icon svg { color:#1F7A4E; }
+  .card-mappa .card-icon svg { color:#6B3FA0; }
+  .card-mile  .card-icon svg { color:#B45309; }
+  .card-ai    .card-icon svg { color:#7C3AED; }
+
+  .card-body { flex:1; min-width:0; }
+  .card-label {
+    font-family:'Fira Code', monospace;
+    font-size:9px; font-weight:500;
+    letter-spacing:.18em; text-transform:uppercase;
+    margin-bottom:2px;
+  }
+  .card-prog  .card-label { color:#0B3182; }
+  .card-lav   .card-label { color:#E55000; }
+  .card-sopr  .card-label { color:#0E7490; }
+  .card-exec  .card-label { color:#1F7A4E; }
+  .card-mappa .card-label { color:#6B3FA0; }
+  .card-mile  .card-label { color:#B45309; }
+  .card-ai    .card-label { color:#7C3AED; }
+
+  .card-title {
+    font-family:'Bricolage Grotesque', sans-serif;
+    font-size:16px; font-weight:700;
+    letter-spacing:-.02em; color:var(--text); line-height:1.2;
+    margin-bottom:3px;
+  }
+  .card-desc {
+    font-size:12px; color:var(--muted); line-height:1.6;
+  }
+
+  .card-arrow {
+    width:28px; height:28px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--surface2); border:1px solid var(--border2);
+    transition:all .2s; flex-shrink:0;
+  }
+  .card-arrow svg { width:12px; height:12px; color:var(--muted); transition:color .2s; }
+  .nav-card:hover .card-arrow { background:var(--accent); border-color:var(--accent); }
+  .nav-card:hover .card-arrow svg { color:#fff; }
+
+  /* -- CARD BLOCCATA -------------------------------------------------------- */
+  .nav-card.card-locked {
+    cursor: not-allowed;
+    opacity: .52;
+    filter: grayscale(.5);
+    pointer-events: none;
+    position: relative;
+  }
+  .nav-card.card-locked::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: repeating-linear-gradient(
+      -45deg,
+      transparent, transparent 7px,
+      rgba(0,0,0,.04) 7px, rgba(0,0,0,.04) 8px
+    );
+    pointer-events: none;
+  }
+  .card-lock-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    background: #00000012;
+    color: var(--muted);
+    border: 1px solid var(--border2);
+    letter-spacing: .04em;
+  }
+
+  /* badge "in arrivo" */
+  .card-badge {
+    position:absolute; top:10px; right:46px;
+    font-size:8px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+    padding:2px 7px; border-radius:20px;
+    background:rgba(229,80,0,.1); color:#E55000;
+    border:1px solid rgba(229,80,0,.25);
+  }
+
+  /* ── LOGIN OVERLAY ── */
+  @keyframes _loginFadeIn  { from{opacity:0} to{opacity:1} }
+  @keyframes _loginSlideUp {
+    from{opacity:0;transform:translateY(20px) scale(.975)}
+    to{opacity:1;transform:translateY(0) scale(1)}
+  }
+  @keyframes _loginPulse   { 0%,100%{opacity:.25} 50%{opacity:.55} }
+
+  #loginOverlay {
+    position:fixed;inset:0;
+    background:rgba(11,25,70,.55);
+    backdrop-filter:blur(12px);
+    -webkit-backdrop-filter:blur(12px);
+    z-index:9999;display:flex;align-items:center;justify-content:center;
+    animation:_loginFadeIn .25s ease both;
+  }
+  #_loginCard {
+    display:flex;
+    width:700px;max-width:96vw;
+    background:var(--surface);
+    border-radius:22px;overflow:hidden;
+    box-shadow:0 40px 100px rgba(11,49,130,.28),0 8px 28px rgba(0,0,0,.14);
+    animation:_loginSlideUp .45s cubic-bezier(.22,.68,0,1.15) .08s both;
+  }
+  #_loginLeft {
+    flex:0 0 220px;
+    background:linear-gradient(148deg,#0d3a9a 0%,#0a2874 45%,#071d5a 100%);
+    padding:40px 28px;
+    display:flex;flex-direction:column;justify-content:space-between;
+    position:relative;overflow:hidden;
+  }
+  #_loginLeft::before {
+    content:'';position:absolute;top:-90px;left:-90px;
+    width:280px;height:280px;border-radius:50%;
+    border:1.5px solid rgba(255,255,255,.07);
+  }
+  #_loginLeft::after {
+    content:'';position:absolute;bottom:-70px;right:-70px;
+    width:220px;height:220px;border-radius:50%;
+    border:1.5px solid rgba(229,80,0,.22);
+    animation:_loginPulse 4s ease-in-out infinite;
+  }
+  ._loginAccentLine {
+    width:28px;height:2.5px;border-radius:2px;
+    background:linear-gradient(90deg,#E55000,#ff7533);
+    margin:14px 0 18px;
+  }
+  #_loginRight {
+    flex:1;padding:42px 38px;display:flex;flex-direction:column;justify-content:center;
+  }
+  .login-input {
+    width:100%;padding:11px 16px;
+    border:1.5px solid var(--border2);border-radius:10px;
+    font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--text);
+    background:var(--surface);outline:none;
+    transition:border-color .2s,box-shadow .2s;
+    box-sizing:border-box;
+  }
+  .login-input:focus {
+    border-color:var(--accent);
+    box-shadow:0 0 0 3px rgba(11,49,130,.1);
+  }
+  #_loginBtn {
+    width:100%;padding:12px;border-radius:10px;
+    background:var(--accent);color:#fff;border:none;cursor:pointer;
+    font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:700;
+    letter-spacing:.03em;
+    transition:background .2s,transform .18s,box-shadow .18s;
+    box-shadow:0 3px 14px rgba(11,49,130,.28);
+    display:flex;align-items:center;justify-content:center;gap:8px;
+  }
+  #_loginBtn:hover:not(:disabled) {
+    background:#0a2a80;transform:translateY(-1px);
+    box-shadow:0 6px 22px rgba(11,49,130,.36);
+  }
+  #_loginBtn:active:not(:disabled) { transform:translateY(0); }
+  #_loginBtn:disabled { opacity:.6;cursor:not-allowed;transform:none; }
+  #_loginError {
+    font-size:11px;color:#C23B22;margin-top:8px;display:none;
+    padding:8px 12px;background:#C23B220D;
+    border:1px solid #C23B2230;border-radius:7px;line-height:1.5;
+  }
+  @media(max-width:560px){
+    #_loginLeft { display:none; }
+    #_loginRight { padding:34px 28px; }
+  }
+
+  /* ── SKELETON / FADE-IN for main content ── */
+  @keyframes hubFadeIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+  #hubContent { animation:hubFadeIn .4s ease both; }
+
+  /* ── LOADING SPINNER (only before login check) ── */
+  #initSpinner {
+    position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:var(--bg);z-index:200;transition:opacity .3s;
+  }
+  .spinner {
+    width:32px;height:32px;border:3px solid var(--border2);
+    border-top-color:var(--accent);border-radius:50%;
+    animation:spin .8s linear infinite;
+  }
+  @keyframes spin { to{transform:rotate(360deg)} }
+</style>
+</head>
+<body>
+
+<!-- Loading spinner (shown while checking auth) -->
+<div id="initSpinner"><div class="spinner"></div></div>
+
+<!-- ── TOPBAR ── -->
+<div class="topbar">
+  <div class="topbar-left">
+    <span class="logo">PROGETTO · M</span>
+    <div class="divider-v"></div>
+    <span class="page-title">Portale</span>
+  </div>
+  <div class="topbar-right">
+    <span id="topbarUser" style="font-size:11px;color:var(--muted);font-family:'Fira Code',monospace;display:none"></span>
+    <button class="btn-sm" id="logoutBtn" style="display:none" onclick="_doLogout()">Esci</button>
+  </div>
+</div>
+
+<!-- ── MAIN HUB CONTENT ── -->
+<div class="main" id="hubContent" style="display:none">
+
+  <div class="hub-header">
+    <div class="hub-header-left">
+      <div class="hub-eyebrow">Progetto M · Platform</div>
+      <div class="hub-title">Dove vuoi andare?</div>
+    </div>
+    <div class="hub-user-chip">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="color:var(--accent)"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+      <span>Connesso come</span>
+      <strong id="welcomeName" style="color:var(--text);font-weight:600"></strong>
+    </div>
+  </div>
+
+  <!-- CARDS GRID -->
+  <div class="cards-grid">
+
+    <!-- Progettazione -->
+    <a href="index.html?direct=1" class="nav-card card-prog">
+      <div class="card-top-row">
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+            <rect x="9" y="3" width="6" height="4" rx="1"/>
+            <path d="M9 12h6M9 16h4"/>
+          </svg>
+        </div>
+        <div class="card-arrow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-label">Fase 1</div>
+        <div class="card-title">Progettazione</div>
+        <div class="card-desc">Monitoraggio dell'intero iter autorizzativo: dettaglio delle richieste per cluster e lotto, scadenze, pratiche bloccate e avanzamento verso la cantierizzazione.</div>
+      </div>
+    </a>
+
+    <!-- Avanzamento Lavori -->
+    <a id="scaviCard" href="scavi.html" class="nav-card card-lav">
+      <div id="scaviBadge" class="card-badge">In arrivo</div>
+      <div class="card-top-row">
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+            <!-- triangle -->
+            <path d="M12 2 L22 20 H2 Z" fill="currentColor" opacity="1"/>
+            <!-- white inner triangle cutout via overlay trick — use exclamation instead -->
+            <path d="M12 3.8 L20.6 19.2 H3.4 Z" fill="white" opacity="0.18"/>
+            <!-- exclamation mark in white -->
+            <rect x="11" y="9" width="2" height="6" rx="1" fill="white"/>
+            <circle cx="12" cy="17" r="1.1" fill="white"/>
+          </svg>
+        </div>
+        <div class="card-arrow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-label">Fase 2</div>
+        <div class="card-title">Avanzamento Lavori</div>
+        <div class="card-desc">Supervisione dei cantieri attivi sul territorio: stato delle attività in campo, progresso delle attività in campo per lotto e area di intervento, segnalazioni operative e criticità in corso.</div>
+      </div>
+    </a>
+
+    <!-- Milestone di Progetto -->
+    <a href="https://enri-rds.github.io/dashboard/milestone.html" class="nav-card card-mile">
+      <div class="card-top-row">
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <!-- axes -->
+            <line x1="4" y1="3" x2="4" y2="20"/>
+            <line x1="4" y1="20" x2="21" y2="20"/>
+            <!-- bar 1 -->
+            <rect x="6" y="5" width="7" height="2.5" rx="1" fill="currentColor" stroke="none"/>
+            <!-- bar 2 -->
+            <rect x="10" y="10" width="9" height="2.5" rx="1" fill="currentColor" stroke="none"/>
+            <!-- bar 3 -->
+            <rect x="6" y="15" width="5" height="2.5" rx="1" fill="currentColor" stroke="none"/>
+          </svg>
+        </div>
+        <div class="card-arrow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-label">Pianificazione</div>
+        <div class="card-title">Milestone di Progetto</div>
+        <div class="card-desc">Scadenze contrattuali e milestone di impresa per lotto e cluster: permitting, avvio cantieri e percentuali di completamento.</div>
+      </div>
+    </a>
+
+    <!-- Mappa -->
+    <a href="mappa.html" class="nav-card card-mappa">
+      <div class="card-top-row">
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/>
+            <line x1="9" y1="3" x2="9" y2="18"/>
+            <line x1="15" y1="6" x2="15" y2="21"/>
+          </svg>
+        </div>
+        <div class="card-arrow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-label">Geospaziale</div>
+        <div class="card-title">Mappa</div>
+        <div class="card-desc">Distribuzione territoriale dei lotti su mappa georeferenziata: filtri per area geografica, stato autorizzativo e fase di avanzamento per una lettura visiva e contestuale del progetto.</div>
+      </div>
+    </a>
+
+  </div><!-- /cards-grid -->
+
+</div><!-- /main -->
+
+<script>
+const APPS_SCRIPT_URL    = 'https://script.google.com/macros/s/AKfycbxSoKwfqsE4c8RORsUqhUVIXJRpd337jxireCf_RwxMf7UL0QJZyw2qE5UR59aaPEN_/exec';
+const APPS_SCRIPT_SECRET = 'progettom_login_2024_X9f83KsL21pQ';
+
+window.addEventListener('DOMContentLoaded', () => {
+  const savedUser = localStorage.getItem('_progettom_user');
+  if (savedUser) {
+    _showHub(savedUser);
+  } else {
+    _buildLoginModal();
+    document.getElementById('initSpinner').style.opacity = '0';
+    setTimeout(() => { document.getElementById('initSpinner').style.display = 'none'; }, 300);
+  }
+});
+
+const SCAVI_ALLOWED_ROLES = ['admin', 'admin2'];
+
+function _showHub(nome) {
+  document.getElementById('initSpinner').style.opacity = '0';
+  setTimeout(() => { document.getElementById('initSpinner').style.display = 'none'; }, 300);
+
+  document.getElementById('welcomeName').textContent = nome;
+  document.getElementById('topbarUser').textContent  = nome;
+  document.getElementById('topbarUser').style.display = '';
+  document.getElementById('logoutBtn').style.display  = '';
+  document.getElementById('hubContent').style.display = '';
+
+  const ruolo = (localStorage.getItem('_progettom_role') || '').toLowerCase();
+  const scaviCard  = document.getElementById('scaviCard');
+  const scaviBadge = document.getElementById('scaviBadge');
+
+  if (!SCAVI_ALLOWED_ROLES.includes(ruolo)) {
+    scaviCard.removeAttribute('href');
+    scaviCard.classList.add('card-locked');
+    scaviCard.style.pointerEvents = 'none';
+    scaviBadge.innerHTML = 'In arrivo';
+    scaviBadge.className = 'card-badge';
+  }
+}
+
+function _doLogout() {
+  localStorage.removeItem('_progettom_user');
+  localStorage.removeItem('_progettom_role');
+  location.reload();
+}
+
+function _buildLoginModal() {
+  const savedUser   = localStorage.getItem('_progettom_user');
+  const isReturning = !!savedUser;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'loginOverlay';
+  overlay.innerHTML = `
+    <div id="_loginCard">
+      <div id="_loginLeft">
+        <div style="position:relative;z-index:1">
+          <div style="font-family:'Fira Code',monospace;font-size:9px;font-weight:500;
+            letter-spacing:.2em;text-transform:uppercase;color:rgba(229,80,0,.8);margin-bottom:12px">Progetto M</div>
+          <div style="font-family:'Bricolage Grotesque',sans-serif;font-size:34px;font-weight:700;
+            letter-spacing:-.03em;color:#fff;line-height:1">M</div>
+          <div class="_loginAccentLine"></div>
+          <div style="font-size:11px;color:rgba(255,255,255,.5);line-height:1.8;font-family:'Plus Jakarta Sans',sans-serif">
+            Piattaforma<br>di gestione<br>del progetto
+          </div>
+        </div>
+        <div style="position:relative;z-index:1">
+          <div style="font-size:9px;letter-spacing:.15em;text-transform:uppercase;
+            color:rgba(255,255,255,.2);font-family:'Fira Code',monospace">&nbsp;</div>
+        </div>
+      </div>
+      <div id="_loginRight">
+        <div style="margin-bottom:30px">
+          <div style="font-family:'Bricolage Grotesque',sans-serif;font-size:22px;font-weight:700;
+            color:var(--text);letter-spacing:-.025em;line-height:1.2;margin-bottom:8px">
+            ${isReturning ? 'Bentornato 👋' : 'Accedi alla piattaforma'}
+          </div>
+          <div style="font-size:13px;color:var(--muted);line-height:1.6">
+            ${isReturning
+              ? `Ciao, <strong style="color:var(--text2);font-weight:600">${savedUser}</strong>. Conferma il tuo nome per continuare.`
+              : 'Inserisci il tuo nome e il codice di accesso.'}
+          </div>
+        </div>
+        <div style="margin-bottom:16px">
+          <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;
+            color:var(--muted);display:block;margin-bottom:8px">Nome e cognome</label>
+          <input id="_loginInput" class="login-input" type="text"
+            placeholder="${isReturning ? savedUser : 'Es. Mario Rossi'}"
+            value="${isReturning ? savedUser : ''}"
+            onkeydown="if(event.key==='Enter')document.getElementById('_loginCodice').focus()"
+          />
+        </div>
+        <div style="margin-bottom:20px">
+          <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;
+            color:var(--muted);display:block;margin-bottom:8px">Codice accesso</label>
+          <input id="_loginCodice" class="login-input" type="password"
+            placeholder="Codice personale"
+            onkeydown="if(event.key==='Enter')document.getElementById('_loginBtn').click()"
+          />
+          <div id="_loginError"></div>
+        </div>
+        <button id="_loginBtn">
+          <span id="_loginBtnText">${isReturning ? 'Conferma e accedi' : 'Accedi'}</span>
+          <span id="_loginBtnArrow">→</span>
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+  setTimeout(() => {
+    const inp = document.getElementById('_loginInput');
+    if (inp) { inp.focus(); if (inp.value) inp.select(); }
+  }, 200);
+  document.getElementById('_loginBtn').addEventListener('click', _handleLogin);
+}
+
+async function _handleLogin() {
+  const input   = document.getElementById('_loginInput');
+  const codEl   = document.getElementById('_loginCodice');
+  const errEl   = document.getElementById('_loginError');
+  const btn     = document.getElementById('_loginBtn');
+  const btnText = document.getElementById('_loginBtnText');
+  const btnArrow= document.getElementById('_loginBtnArrow');
+  const nome    = (input?.value || '').trim();
+  const codice  = (codEl?.value  || '').trim();
+
+  errEl.style.display = 'none';
+
+  if (!nome || nome.length < 2) {
+    errEl.textContent = 'Inserisci nome e cognome.';
+    errEl.style.display = 'block'; input.focus(); return;
+  }
+  if (!codice) {
+    errEl.textContent = 'Inserisci il codice di accesso.';
+    errEl.style.display = 'block'; codEl.focus(); return;
+  }
+
+  if (btnText) btnText.textContent = 'Verifica in corso…';
+  if (btnArrow) btnArrow.textContent = '';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ secret: APPS_SCRIPT_SECRET, action: 'login', nome, codice })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const risposta = await res.json();
+
+    if (!risposta.ok) {
+      errEl.textContent = risposta.msg || 'Nome o codice non riconosciuti. Contatta l\'amministratore.';
+      errEl.style.display = 'block';
+      if (btnText) btnText.textContent = 'Accedi';
+      if (btnArrow) btnArrow.textContent = '→';
+      btn.disabled = false;
+      codEl.value = ''; codEl.focus(); return;
+    }
+
+    const ruolo         = (risposta.ruolo || 'user').toLowerCase();
+    const nomeCanonical = risposta.nome;
+    localStorage.setItem('_progettom_user', nomeCanonical);
+    localStorage.setItem('_progettom_role', ruolo);
+    document.getElementById('loginOverlay').remove();
+    _showHub(nomeCanonical);
+
+  } catch(err) {
+    errEl.textContent = 'Errore di connessione. Riprova tra qualche secondo.';
+    errEl.style.display = 'block';
+    if (btnText) btnText.textContent = 'Accedi';
+    if (btnArrow) btnArrow.textContent = '→';
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>
