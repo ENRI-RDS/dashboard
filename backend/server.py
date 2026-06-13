@@ -2,16 +2,6 @@
 ENRI Dashboard — Backend API
 ============================
 FastAPI service for the ENRI-RDS/dashboard project.
-
-Purpose
--------
-- Accept Excel / CSV / GeoJSON uploads from the contractors (no more manual GitHub commits)
-- Parse Excel automatically and convert to CSV
-- Store data in MongoDB (versioned) and on disk
-- Serve the data back to the static frontend (hub.html, mappa.html, milestone.html, ...)
-
-Deployment target: Render (web service) + MongoDB Atlas.
-Frontend stays on GitHub Pages.
 """
 from __future__ import annotations
 
@@ -40,11 +30,9 @@ load_dotenv(ROOT_DIR / ".env")
 MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]
 
-# Where uploaded files are persisted on disk.
 DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT_DIR.parent)).resolve()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-# CORS — allow GitHub Pages + local development by default
 _default_origins = (
     "https://enri-rds.github.io,"
     "http://localhost:3000,"
@@ -55,10 +43,7 @@ ALLOWED_ORIGINS = [
     o.strip() for o in os.environ.get("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()
 ]
 
-# Optional upload protection (set UPLOAD_TOKEN in production)
 UPLOAD_TOKEN = os.environ.get("UPLOAD_TOKEN", "").strip()
-
-# Allowed file extensions and max size
 ALLOWED_EXT = {".csv", ".xlsx", ".xls", ".geojson", ".json"}
 MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "25"))
 
@@ -68,7 +53,7 @@ MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "25"))
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 uploads_col = db["uploads"]
-datasets_col = db["datasets"]  # latest version of each named dataset
+datasets_col = db["datasets"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -88,7 +73,7 @@ class UploadRecord(BaseModel):
     original_name: str
     size: int
     content_type: str
-    project: str = "main"  # "main" | "M" | "pm"
+    project: str = "main"
     rows: int | None = None
     uploaded_at: str
 
@@ -101,7 +86,7 @@ app = FastAPI(title="ENRI Dashboard API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=False,  # bearer token in header, not cookies
+    allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["Content-Disposition"],
@@ -115,7 +100,6 @@ _SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9_\-./]+$")
 
 
 def _safe_relpath(name: str) -> Path:
-    """Return a safe relative path under DATA_DIR."""
     name = name.replace("\\", "/").lstrip("/")
     if ".." in name.split("/") or not _SAFE_NAME_RE.match(name):
         raise HTTPException(400, "Invalid filename")
@@ -156,7 +140,6 @@ async def health():
 
 @app.get("/api/files")
 async def list_files():
-    """List all CSV / GeoJSON files currently available on disk."""
     out = []
     for p in sorted(DATA_DIR.rglob("*")):
         if not p.is_file():
@@ -176,8 +159,6 @@ async def list_files():
 
 @app.get("/api/data/{filename:path}")
 async def get_data_file(filename: str):
-    """Serve a CSV / GeoJSON file. Used by the static frontend as a drop-in
-    replacement for direct file URLs on GitHub Pages."""
     rel = _safe_relpath(filename)
     path = DATA_DIR / rel
     if not path.exists() or not path.is_file():
@@ -188,7 +169,6 @@ async def get_data_file(filename: str):
 
 @app.get("/api/data-text/{filename:path}", response_class=PlainTextResponse)
 async def get_data_text(filename: str):
-    """Serve raw text (CSV). Useful for fetch() consumers that want the body."""
     rel = _safe_relpath(filename)
     path = DATA_DIR / rel
     if not path.exists():
@@ -230,9 +210,6 @@ async def upload_file(
     convert_to_csv: bool = Form(True),
     x_upload_token: Annotated[str | None, Form(alias="token")] = None,
 ):
-    """
-    Upload Excel / CSV / GeoJSON.
-    """
     _check_token(x_upload_token)
 
     raw = await file.read()
@@ -249,7 +226,6 @@ async def upload_file(
     out_name = target.strip() or (file.filename or "uploaded")
     out_bytes = raw
 
-    # Excel → CSV conversion
     if ext in {".xlsx", ".xls"} and convert_to_csv:
         try:
             df = pd.read_excel(io.BytesIO(raw))
@@ -262,20 +238,17 @@ async def upload_file(
         if not target:
             out_name = Path(file.filename).stem + ".csv"
 
-    # CSV → count rows (best effort)
     if out_name.lower().endswith(".csv") and rows is None:
         try:
-            rows = max(0, out_bytes.decode("utf-8", errors["replace"]).count("\n") - 1)
+            rows = max(0, out_bytes.decode("utf-8", errors="replace").count("\n") - 1)
         except Exception:
             rows = None
 
-    # Persist on disk
     rel = _safe_relpath(out_name)
     save_path = DATA_DIR / rel
     save_path.parent.mkdir(parents=True, exist_ok=True)
     save_path.write_bytes(out_bytes)
 
-    # Record in Mongo
     record = {
         "filename": rel.as_posix(),
         "original_name": file.filename,
@@ -287,9 +260,43 @@ async def upload_file(
     }
     res = await uploads_col.insert_one(record)
 
-    # Upsert the "latest" dataset pointer
     await datasets_col.update_one(
         {"name": rel.as_posix()},
         {
             "$set": {
-                "name": rel.
+                "name": rel.as_posix(),
+                "size": len(out_bytes),
+                "rows": rows,
+                "updated_at": _now_iso(),
+                "project": project or "main",
+            }
+        },
+        upsert=True,
+    )
+
+    return JSONResponse({
+        "ok": True,
+        "id": str(res.inserted_id),
+        "filename": rel.as_posix(),
+        "size": len(out_bytes),
+        "rows": rows,
+        "converted_from_excel": ext in {".xlsx", ".xls"} and convert_to_csv,
+    })
+
+
+@app.get("/api/datasets")
+async def list_datasets():
+    cur = datasets_col.find({}).sort("updated_at", -1)
+    out = []
+    async for d in cur:
+        d["_id"] = str(d.get("_id"))
+        out.append(d)
+    return {"datasets": out, "count": len(out)}
+
+
+@app.on_event("startup")
+async def _on_startup():
+    print(f"[enri-dashboard] DATA_DIR = {DATA_DIR}")
+    print(f"[enri-dashboard] DB_NAME  = {DB_NAME}")
+    print(f"[enri-dashboard] CORS     = {ALLOWED_ORIGINS}")
+    print(f"[enri-dashboard] UPLOAD_TOKEN = {'set' if UPLOAD_TOKEN else 'OFF (open)'}")
