@@ -1,254 +1,301 @@
-"<!DOCTYPE html>
-<html lang=\"it\" translate=\"no\">
-<head>
-<meta charset=\"UTF-8\">
-<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
-<meta name=\"google\" content=\"notranslate\">
-<title>ENRI Dashboard — Admin Upload</title>
-<link href=\"https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap\" rel=\"stylesheet\">
 <style>
-  :root{
-    --bg:#F4F3EE;--surface:#FFFFFF;--surface2:#F0EEE6;
-    --border:#E0DDD4;--border2:#CCC9BE;
-    --accent:#0B3182;--accent2:#E55000;--ok:#1F7A4E;--err:#B91C1C;
-    --text:#1C1C2E;--muted:#52526E;
-    --sh-sm:0 2px 8px rgba(11,49,130,.08),0 1px 4px rgba(0,0,0,.05);
-    --sh-md:0 4px 20px rgba(11,49,130,.10),0 2px 8px rgba(0,0,0,.06);
+  :root {
+    --bg: #F8F9FA;
+    --surface: #FFFFFF;
+    --surface-hover: #F1F3F5;
+    --border: #E9ECEF;
+    --border-focus: #0B3182;
+    --text: #212529;
+    --muted: #6C757D;
+    --accent: #0B3182;
+    --accent-light: rgba(11, 49, 130, 0.05);
+    --success: #2B8A3E;
+    --success-light: #EBFBEE;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.1);
+    --shadow-md: 0 10px 15px -3px rgba(0,0,0,0.05), 0 4px 6px -2px rgba(0,0,0,0.05);
   }
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-  .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:52px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50}
-  .logo{font-family:'Bricolage Grotesque',sans-serif;font-size:13px;font-weight:700;letter-spacing:.14em;color:var(--accent);text-transform:uppercase}
-  .topbar-left{display:flex;align-items:center;gap:12px}
-  .divider-v{width:1px;height:20px;background:var(--border2)}
-  .page-title{font-size:12px;color:var(--muted);font-weight:500}
-  .back-link{font-size:12px;color:var(--muted);text-decoration:none;padding:6px 12px;border:1px solid var(--border2);border-radius:6px}
-  .back-link:hover{background:var(--surface2);color:var(--text)}
 
-  .main{max-width:1100px;margin:0 auto;padding:32px 24px;display:flex;flex-direction:column;gap:24px}
-  .hdr{display:flex;flex-direction:column;gap:4px}
-  .eyebrow{font-family:'Fira Code',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent2)}
-  .title{font-family:'Bricolage Grotesque',sans-serif;font-size:24px;font-weight:700;letter-spacing:-.025em}
-
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-  @media(max-width:880px){.grid{grid-template-columns:1fr}}
-
-  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;box-shadow:var(--sh-sm)}
-  .card h2{font-family:'Bricolage Grotesque',sans-serif;font-size:16px;font-weight:700;margin-bottom:4px}
-  .card .sub{font-size:13px;color:var(--muted);margin-bottom:18px}
-
-  label{display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;margin-top:14px}
-  label:first-of-type{margin-top:0}
-  input[type=text],input[type=password],select{
-    width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;
-    background:var(--surface);font-family:inherit;font-size:14px;color:var(--text);
-    transition:border-color .15s,box-shadow .15s;
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background-color: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
   }
-  input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(11,49,130,.12)}
 
-  .dropzone{
-    border:2px dashed var(--border2);border-radius:10px;padding:24px;text-align:center;
-    background:var(--surface2);cursor:pointer;transition:border-color .15s,background .15s;
+  /* Topbar elegante e sottile */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    height: 60px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
   }
-  .dropzone.drag{border-color:var(--accent);background:#0b318210}
-  .dropzone .filename{font-family:'Fira Code',monospace;font-size:12px;color:var(--text);margin-top:8px;word-break:break-all}
-  .dropzone input[type=file]{display:none}
 
-  .btn{
-    display:inline-flex;align-items:center;justify-content:center;gap:8px;
-    padding:11px 20px;border-radius:8px;border:none;cursor:pointer;
-    font-family:inherit;font-weight:600;font-size:14px;
-    background:var(--accent);color:#fff;transition:filter .15s,transform .1s;
-    width:100%;margin-top:18px;
+  .logo {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    color: var(--accent);
   }
-  .btn:hover{filter:brightness(1.08)}
-  .btn:active{transform:translateY(1px)}
-  .btn:disabled{opacity:.6;cursor:not-allowed}
 
-  .msg{margin-top:14px;padding:10px 12px;border-radius:8px;font-size:13px;font-family:'Fira Code',monospace;display:none}
-  .msg.ok{display:block;background:#1f7a4e15;color:var(--ok);border:1px solid #1f7a4e30}
-  .msg.err{display:block;background:#b91c1c15;color:var(--err);border:1px solid #b91c1c30}
+  .back-link {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    text-decoration: none;
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    transition: all 0.2s;
+  }
 
-  table{width:100%;border-collapse:collapse;font-size:13px}
-  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)}
-  th{font-family:'Fira Code',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:500;background:var(--surface2)}
-  td.mono{font-family:'Fira Code',monospace;font-size:12px;color:var(--muted)}
-  .tag{display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;background:var(--surface2);color:var(--muted);border:1px solid var(--border2)}
-  .tag.main{background:#0b318215;color:var(--accent);border-color:#0b318240}
-  .tag.M{background:#e5500015;color:var(--accent2);border-color:#e5500040}
-  .tag.pm{background:#6b3fa015;color:#6B3FA0;border-color:#6b3fa040}
+  .back-link:hover {
+    background: var(--bg);
+    color: var(--text);
+    border-color: var(--muted);
+  }
 
-  .api-pill{font-family:'Fira Code',monospace;font-size:11px;padding:4px 10px;border-radius:20px;background:var(--surface2);border:1px solid var(--border2);color:var(--muted)}
-  .empty{text-align:center;padding:24px;color:var(--muted);font-size:13px;font-style:italic}
+  /* Layout Principale */
+  .main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+
+  .hdr {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 20px;
+  }
+
+  .eyebrow {
+    font-family: 'Fira Code', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .15em;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .title {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -.02em;
+  }
+
+  /* Grid bilanciata */
+  .grid {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 32px;
+    align-items: start;
+  }
+
+  @media(max-width: 960px) { .grid { grid-template-columns: 1fr; } }
+
+  /* Card Premium stile Dashboard moderna */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    box-shadow: var(--shadow-md);
+  }
+
+  .card h2 {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+
+  .card .sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 24px;
+    line-height: 1.5;
+  }
+
+  /* Form pulito e spazioso */
+  label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 8px;
+    margin-top: 20px;
+  }
+  
+  label:first-of-type { margin-top: 0; }
+
+  input[type=text], input[type=password], select {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg);
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--text);
+    transition: all 0.2s ease;
+  }
+
+  input:focus, select:focus {
+    outline: none;
+    border-color: var(--border-focus);
+    background: var(--surface);
+    box-shadow: 0 0 0 4px rgba(11, 49, 130, 0.08);
+  }
+
+  /* Area Dropzone minimale ed esteticamente piacevole */
+  .dropzone {
+    border: 2px dashed #CED4DA;
+    border-radius: 12px;
+    padding: 40px 24px;
+    text-align: center;
+    background: var(--bg);
+    cursor:pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .dropzone:hover, .dropzone.drag {
+    border-color: var(--border-focus);
+    background: var(--accent-light);
+  }
+
+  .dropzone div:first-child {
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .dropzone .filename {
+    font-family: 'Fira Code', monospace;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .dropzone input[type=file] { display: none; }
+
+  /* Bottone con microscatto gradevole */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 14px 24px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 14px;
+    background: var(--accent);
+    color: #fff;
+    transition: all 0.15s ease;
+    width: 100%;
+    margin-top: 24px;
+    box-shadow: 0 4px 12px rgba(11, 49, 130, 0.15);
+  }
+
+  .btn:hover {
+    filter: brightness(1.1);
+    box-shadow: 0 6px 20px rgba(11, 49, 130, 0.25);
+  }
+
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
+
+  /* Messaggi di feedback raffinati */
+  .msg {
+    margin-top: 16px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    display: none;
+  }
+  
+  .msg.ok {
+    display: block;
+    background: var(--success-light);
+    color: var(--success);
+    border: 1px solid rgba(43, 138, 62, 0.2);
+  }
+
+  /* Tabella moderna con righe ariose */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+  }
+
+  th {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--muted);
+    font-weight: 600;
+    padding: 12px 16px;
+    border-bottom: 2px solid var(--border);
+    background: transparent;
+  }
+
+  td {
+    padding: 16px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+
+  tr:hover td {
+    background-color: rgba(0, 0, 0, 0.01);
+  }
+
+  td.mono {
+    font-family: 'Fira Code', monospace;
+    font-size: 12px;
+    color: #495057;
+  }
+
+  /* Badge per i progetti */
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  
+  .tag.main { background: rgba(11, 49, 130, 0.1); color: var(--accent); }
+  .tag.M { background: rgba(229, 80, 0, 0.1); color: #E55000; }
+  .tag.pm { background: rgba(107, 63, 160, 0.1); color: #6B3FA0; }
+
+  .empty {
+    text-align: center;
+    padding: 40px 24px !important;
+    color: var(--muted);
+    font-size: 13px;
+    font-style: italic;
+  }
 </style>
-</head>
-<body>
-
-<div class=\"topbar\">
-  <div class=\"topbar-left\">
-    <span class=\"logo\">ENRI · DASHBOARD</span>
-    <div class=\"divider-v\"></div>
-    <span class=\"page-title\">Admin · Upload</span>
-  </div>
-  <a class=\"back-link\" href=\"hub.html\" data-testid=\"back-to-hub\">← Hub</a>
-</div>
-
-<div class=\"main\">
-
-  <div class=\"hdr\">
-    <div class=\"eyebrow\">Gestione dati</div>
-    <div class=\"title\">Carica i file Excel / CSV / GeoJSON</div>
-  </div>
-
-  <div class=\"grid\">
-    <!-- UPLOAD FORM -->
-    <div class=\"card\">
-      <h2>Nuovo upload</h2>
-      <p class=\"sub\">Excel viene convertito automaticamente in CSV (separatore <code>;</code>). I file vengono salvati su MongoDB e disco.</p>
-
-      <form id=\"uploadForm\" data-testid=\"upload-form\">
-        <label for=\"apiBase\">API endpoint</label>
-        <input type=\"text\" id=\"apiBase\" placeholder=\"https://enri-dashboard-api.onrender.com\" data-testid=\"api-base-input\">
-
-        <label for=\"project\">Progetto</label>
-        <select id=\"project\" data-testid=\"project-select\">
-          <option value=\"main\">main (root)</option>
-          <option value=\"M\">M (Progetto M)</option>
-          <option value=\"pm\">pm (Project Management)</option>
-        </select>
-
-        <label for=\"target\">Nome file di destinazione <span style=\"text-transform:none;color:var(--muted);font-weight:400\">(opzionale)</span></label>
-        <input type=\"text\" id=\"target\" placeholder=\"es. Master.csv  oppure  M/QGIS_3.geojson\" data-testid=\"target-input\">
-
-        <label for=\"token\">Upload token <span style=\"text-transform:none;color:var(--muted);font-weight:400\">(se configurato)</span></label>
-        <input type=\"password\" id=\"token\" placeholder=\"••••••••\" data-testid=\"token-input\">
-
-        <label>File</label>
-        <div class=\"dropzone\" id=\"dropzone\" data-testid=\"dropzone\">
-          <div>Trascina qui un file o <strong>clicca per selezionare</strong></div>
-          <div class=\"filename\" id=\"fileName\">.xlsx, .xls, .csv, .geojson, .json — max 25 MB</div>
-          <input type=\"file\" id=\"file\" accept=\".xlsx,.xls,.csv,.geojson,.json\" data-testid=\"file-input\">
-        </div>
-
-        <button type=\"submit\" class=\"btn\" id=\"submitBtn\" data-testid=\"submit-btn\">Carica</button>
-        <div class=\"msg\" id=\"msg\" data-testid=\"upload-msg\"></div>
-      </form>
-    </div>
-
-    <!-- RECENT UPLOADS -->
-    <div class=\"card\">
-      <h2>Upload recenti</h2>
-      <p class=\"sub\">Storico degli ultimi caricamenti registrati su MongoDB.</p>
-      <table>
-        <thead><tr><th>File</th><th>Progetto</th><th>Righe</th><th>Quando</th></tr></thead>
-        <tbody id=\"uploadsBody\" data-testid=\"uploads-table-body\">
-          <tr><td colspan=\"4\" class=\"empty\">Carica un file per iniziare</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-</div>
-
-<script>
-(() => {
-  const $ = (id) => document.getElementById(id);
-  const apiBaseInput = $('apiBase');
-  const fileInput = $('file');
-  const dz = $('dropzone');
-  const fileName = $('fileName');
-  const msg = $('msg');
-  const form = $('uploadForm');
-  const submitBtn = $('submitBtn');
-  const uploadsBody = $('uploadsBody');
-
-  // remember API base
-  apiBaseInput.value = localStorage.getItem('enri_api_base') || '';
-
-  function setMsg(text, ok){
-    msg.className = 'msg ' + (ok ? 'ok' : 'err');
-    msg.textContent = text;
-  }
-
-  function apiBase(){
-    const v = apiBaseInput.value.trim().replace(/\/$/, '');
-    return v;
-  }
-
-  async function refreshUploads(){
-    const base = apiBase();
-    if(!base){ uploadsBody.innerHTML = '<tr><td colspan=\"4\" class=\"empty\">Imposta l'API endpoint qui sopra per vedere lo storico</td></tr>'; return; }
-    try{
-      const r = await fetch(base + '/api/uploads?limit=20');
-      if(!r.ok) throw new Error('HTTP ' + r.status);
-      const data = await r.json();
-      if(!data.uploads || data.uploads.length === 0){
-        uploadsBody.innerHTML = '<tr><td colspan=\"4\" class=\"empty\">Nessun upload ancora</td></tr>';
-        return;
-      }
-      uploadsBody.innerHTML = data.uploads.map(u => `
-        <tr>
-          <td class=\"mono\">${u.filename}</td>
-          <td><span class=\"tag ${u.project||'main'}\">${u.project||'main'}</span></td>
-          <td>${u.rows ?? '—'}</td>
-          <td class=\"mono\">${new Date(u.uploaded_at).toLocaleString('it-IT')}</td>
-        </tr>`).join('');
-    }catch(e){
-      uploadsBody.innerHTML = `<tr><td colspan=\"4\" class=\"empty\">Errore: ${e.message}</td></tr>`;
-    }
-  }
-
-  apiBaseInput.addEventListener('change', () => {
-    localStorage.setItem('enri_api_base', apiBaseInput.value.trim());
-    refreshUploads();
-  });
-
-  // dropzone wiring
-  dz.addEventListener('click', () => fileInput.click());
-  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
-  dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
-  dz.addEventListener('drop', e => {
-    e.preventDefault(); dz.classList.remove('drag');
-    if(e.dataTransfer.files.length){ fileInput.files = e.dataTransfer.files; updateName(); }
-  });
-  fileInput.addEventListener('change', updateName);
-  function updateName(){
-    const f = fileInput.files[0];
-    fileName.textContent = f ? `${f.name} — ${(f.size/1024).toFixed(1)} KB` : '.xlsx, .xls, .csv, .geojson, .json — max 25 MB';
-  }
-
-  form.addEventListener('submit', async e => {
-    e.preventDefault();
-    msg.className = 'msg';
-    const base = apiBase();
-    if(!base) return setMsg('Inserisci l'API endpoint', false);
-    const f = fileInput.files[0];
-    if(!f) return setMsg('Seleziona un file', false);
-
-    const fd = new FormData();
-    fd.append('file', f);
-    fd.append('project', $('project').value);
-    if($('target').value.trim()) fd.append('target', $('target').value.trim());
-    if($('token').value) fd.append('token', $('token').value);
-
-    submitBtn.disabled = true; submitBtn.textContent = 'Caricamento…';
-    try{
-      const r = await fetch(base + '/api/upload', { method: 'POST', body: fd });
-      const data = await r.json();
-      if(!r.ok) throw new Error(data.detail || ('HTTP ' + r.status));
-      setMsg(`✓ Caricato: ${data.filename} (${data.size} bytes${data.rows ? ', '+data.rows+' righe' : ''}${data.converted_from_excel ? ', Excel→CSV' : ''})`, true);
-      fileInput.value = ''; updateName();
-      refreshUploads();
-    }catch(err){
-      setMsg('Errore: ' + err.message, false);
-    }finally{
-      submitBtn.disabled = false; submitBtn.textContent = 'Carica';
-    }
-  });
-
-  refreshUploads();
-})();
-</script>
-</body>
-</html>
-"
