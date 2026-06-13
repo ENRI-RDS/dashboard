@@ -1,3 +1,11 @@
+<!DOCTYPE html>
+<html lang="it" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="google" content="notranslate">
+<title>ENRI Dashboard — Admin Upload</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #F8F9FA;
@@ -25,7 +33,6 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Topbar elegante e sottile */
   .topbar {
     display: flex;
     align-items: center;
@@ -65,7 +72,6 @@
     border-color: var(--muted);
   }
 
-  /* Layout Principale */
   .main {
     max-width: 1200px;
     margin: 0 auto;
@@ -96,7 +102,6 @@
     letter-spacing: -.02em;
   }
 
-  /* Grid bilanciata */
   .grid {
     display: grid;
     grid-template-columns: 1.1fr 0.9fr;
@@ -106,7 +111,6 @@
 
   @media(max-width: 960px) { .grid { grid-template-columns: 1fr; } }
 
-  /* Card Premium stile Dashboard moderna */
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -129,7 +133,6 @@
     line-height: 1.5;
   }
 
-  /* Form pulito e spazioso */
   label {
     display: block;
     font-size: 11px;
@@ -162,14 +165,13 @@
     box-shadow: 0 0 0 4px rgba(11, 49, 130, 0.08);
   }
 
-  /* Area Dropzone minimale ed esteticamente piacevole */
   .dropzone {
     border: 2px dashed #CED4DA;
     border-radius: 12px;
     padding: 40px 24px;
     text-align: center;
     background: var(--bg);
-    cursor:pointer;
+    cursor: pointer;
     transition: all 0.2s ease;
     display: flex;
     flex-direction: column;
@@ -196,7 +198,6 @@
 
   .dropzone input[type=file] { display: none; }
 
-  /* Bottone con microscatto gradevole */
   .btn {
     display: inline-flex;
     align-items: center;
@@ -224,7 +225,6 @@
   .btn:active { transform: scale(0.98); }
   .btn:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
 
-  /* Messaggi di feedback raffinati */
   .msg {
     margin-top: 16px;
     padding: 12px 16px;
@@ -240,8 +240,13 @@
     color: var(--success);
     border: 1px solid rgba(43, 138, 62, 0.2);
   }
+  .msg.err {
+    display: block;
+    background: #b91c1c15;
+    color: #B91C1C;
+    border: 1px solid rgba(185, 28, 28, 0.2);
+  }
 
-  /* Tabella moderna con righe ariose */
   table {
     width: 100%;
     border-collapse: collapse;
@@ -276,7 +281,6 @@
     color: #495057;
   }
 
-  /* Badge per i progetti */
   .tag {
     display: inline-flex;
     align-items: center;
@@ -299,3 +303,162 @@
     font-style: italic;
   }
 </style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">ENRI · DASHBOARD</div>
+  <a class="back-link" href="index.html">← Dashboard</a>
+</div>
+
+<div class="main">
+  <div class="hdr">
+    <div class="eyebrow">Gestione dati</div>
+    <div class="title">Carica i file Excel / CSV / GeoJSON</div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Nuovo upload</h2>
+      <p class="sub">Excel viene convertito automaticamente in CSV (separatore <code>;</code>). I file vengono salvati su MongoDB e disco.</p>
+
+      <form id="uploadForm">
+        <label for="apiBase">API endpoint</label>
+        <input type="text" id="apiBase" placeholder="https://enri-dashboard-api.onrender.com">
+
+        <label for="project">Progetto</label>
+        <select id="project">
+          <option value="main">main (root)</option>
+          <option value="M">M (Progetto M)</option>
+          <option value="pm">pm (Project Management)</option>
+        </select>
+
+        <label for="target">Nome file di destinazione <span style="text-transform:none;color:var(--muted);font-weight:400">(opzionale)</span></label>
+        <input type="text" id="target" placeholder="es. Master.csv  oppure  M/QGIS_3.geojson">
+
+        <label for="token">Upload token <span style="text-transform:none;color:var(--muted);font-weight:400">(se configurato)</span></label>
+        <input type="password" id="token" placeholder="••••••••">
+
+        <label>File</label>
+        <div class="dropzone" id="dropzone">
+          <div>Trascina qui un file o <strong>clicca per selezionare</strong></div>
+          <div class="filename" id="fileName">.xlsx, .xls, .csv, .geojson, .json — max 25 MB</div>
+          <input type="file" id="file" accept=\".xlsx,.xls,.csv,.geojson,.json\">
+        </div>
+
+        <button type="submit" class="btn" id="submitBtn">Carica</button>
+        <div class="msg" id="msg"></div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Upload recenti</h2>
+      <p class="sub">Storico degli ultimi caricamenti registrati su MongoDB.</p>
+      <table>
+        <thead><tr><th>File</th><th>Progetto</th><th>Righe</th><th>Quando</th></tr></thead>
+        <tbody id="uploadsBody">
+          <tr><td colspan="4" class="empty">Carica un file per iniziare</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const apiBaseInput = $('apiBase');
+  const fileInput = $('file');
+  const dz = $('dropzone');
+  const fileName = $('fileName');
+  const msg = $('msg');
+  const form = $('uploadForm');
+  const submitBtn = $('submitBtn');
+  const uploadsBody = $('uploadsBody');
+
+  apiBaseInput.value = localStorage.getItem('enri_api_base') || '';
+
+  function setMsg(text, ok){
+    msg.className = 'msg ' + (ok ? 'ok' : 'err');
+    msg.textContent = text;
+  }
+
+  function apiBase(){
+    return apiBaseInput.value.trim().replace(/\/$/, '');
+  }
+
+  async function refreshUploads(){
+    const base = apiBase();
+    if(!base){ uploadsBody.innerHTML = '<tr><td colspan="4" class="empty">Imposta l\'API endpoint qui sopra per vedere lo storico</td></tr>'; return; }
+    try{
+      const r = await fetch(base + '/api/uploads?limit=20');
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      if(!data.uploads || data.uploads.length === 0){
+        uploadsBody.innerHTML = '<tr><td colspan="4" class="empty">Nessun upload ancora</td></tr>';
+        return;
+      }
+      uploadsBody.innerHTML = data.uploads.map(u => `
+        <tr>
+          <td class="mono">${u.filename}</td>
+          <td><span class="tag ${u.project||'main'}">${u.project||'main'}</span></td>
+          <td>${u.rows ?? '—'}</td>
+          <td class="mono">${new Date(u.uploaded_at).toLocaleString('it-IT')}</td>
+        </tr>`).join('');
+    }catch(e){
+      uploadsBody.innerHTML = `<tr><td colspan="4" class="empty">Errore: ${e.message}</td></tr>`;
+    }
+  }
+
+  apiBaseInput.addEventListener('change', () => {
+    localStorage.setItem('enri_api_base', apiBaseInput.value.trim());
+    refreshUploads();
+  });
+
+  dz.addEventListener('click', () => fileInput.click());
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.classList.remove('drag');
+    if(e.dataTransfer.files.length){ fileInput.files = e.dataTransfer.files; updateName(); }
+  });
+  fileInput.addEventListener('change', updateName);
+  function updateName(){
+    const f = fileInput.files[0];
+    fileName.textContent = f ? `${f.name} — ${(f.size/1024).toFixed(1)} KB` : '.xlsx, .xls, .csv, .geojson, .json — max 25 MB';
+  }
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    msg.className = 'msg';
+    const base = apiBase();
+    if(!base) return setMsg('Inserisci l\'API endpoint', false);
+    const f = fileInput.files[0];
+    if(!f) return setMsg('Seleziona un file', false);
+
+    const fd = new FormData();
+    fd.append('file', f);
+    fd.append('project', $('project').value);
+    if($('target').value.trim()) fd.append('target', $('target').value.trim());
+    if($('token').value) fd.append('token', $('token').value);
+
+    submitBtn.disabled = true; submitBtn.textContent = 'Caricamento…';
+    try{
+      const r = await fetch(base + '/api/upload', { method: 'POST', body: fd });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.detail || ('HTTP ' + r.status));
+      setMsg(`✓ Caricato: ${data.filename} (${data.size} bytes${data.rows ? ', '+data.rows+' righe' : ''})`, true);
+      fileInput.value = ''; updateName();
+      refreshUploads();
+    }catch(err){
+      setMsg('Errore: ' + err.message, false);
+    }finally{
+      submitBtn.disabled = false; submitBtn.textContent = 'Carica';
+    }
+  });
+
+  refreshUploads();
+})();
+</script>
+</body>
+</html>
