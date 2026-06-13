@@ -244,114 +244,14 @@
     border:1px solid rgba(229,80,0,.25);
   }
 
-  /* ── LOGIN OVERLAY ── */
-  @keyframes _loginFadeIn  { from{opacity:0} to{opacity:1} }
-  @keyframes _loginSlideUp {
-    from{opacity:0;transform:translateY(20px) scale(.975)}
-    to{opacity:1;transform:translateY(0) scale(1)}
-  }
-  @keyframes _loginPulse   { 0%,100%{opacity:.25} 50%{opacity:.55} }
-
-  #loginOverlay {
-    position:fixed;inset:0;
-    background:rgba(11,25,70,.55);
-    backdrop-filter:blur(12px);
-    -webkit-backdrop-filter:blur(12px);
-    z-index:9999;display:flex;align-items:center;justify-content:center;
-    animation:_loginFadeIn .25s ease both;
-  }
-  #_loginCard {
-    display:flex;
-    width:700px;max-width:96vw;
-    background:var(--surface);
-    border-radius:22px;overflow:hidden;
-    box-shadow:0 40px 100px rgba(11,49,130,.28),0 8px 28px rgba(0,0,0,.14);
-    animation:_loginSlideUp .45s cubic-bezier(.22,.68,0,1.15) .08s both;
-  }
-  #_loginLeft {
-    flex:0 0 220px;
-    background:linear-gradient(148deg,#0d3a9a 0%,#0a2874 45%,#071d5a 100%);
-    padding:40px 28px;
-    display:flex;flex-direction:column;justify-content:space-between;
-    position:relative;overflow:hidden;
-  }
-  #_loginLeft::before {
-    content:'';position:absolute;top:-90px;left:-90px;
-    width:280px;height:280px;border-radius:50%;
-    border:1.5px solid rgba(255,255,255,.07);
-  }
-  #_loginLeft::after {
-    content:'';position:absolute;bottom:-70px;right:-70px;
-    width:220px;height:220px;border-radius:50%;
-    border:1.5px solid rgba(229,80,0,.22);
-    animation:_loginPulse 4s ease-in-out infinite;
-  }
-  ._loginAccentLine {
-    width:28px;height:2.5px;border-radius:2px;
-    background:linear-gradient(90deg,#E55000,#ff7533);
-    margin:14px 0 18px;
-  }
-  #_loginRight {
-    flex:1;padding:42px 38px;display:flex;flex-direction:column;justify-content:center;
-  }
-  .login-input {
-    width:100%;padding:11px 16px;
-    border:1.5px solid var(--border2);border-radius:10px;
-    font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--text);
-    background:var(--surface);outline:none;
-    transition:border-color .2s,box-shadow .2s;
-    box-sizing:border-box;
-  }
-  .login-input:focus {
-    border-color:var(--accent);
-    box-shadow:0 0 0 3px rgba(11,49,130,.1);
-  }
-  #_loginBtn {
-    width:100%;padding:12px;border-radius:10px;
-    background:var(--accent);color:#fff;border:none;cursor:pointer;
-    font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:700;
-    letter-spacing:.03em;
-    transition:background .2s,transform .18s,box-shadow .18s;
-    box-shadow:0 3px 14px rgba(11,49,130,.28);
-    display:flex;align-items:center;justify-content:center;gap:8px;
-  }
-  #_loginBtn:hover:not(:disabled) {
-    background:#0a2a80;transform:translateY(-1px);
-    box-shadow:0 6px 22px rgba(11,49,130,.36);
-  }
-  #_loginBtn:active:not(:disabled) { transform:translateY(0); }
-  #_loginBtn:disabled { opacity:.6;cursor:not-allowed;transform:none; }
-  #_loginError {
-    font-size:11px;color:#C23B22;margin-top:8px;display:none;
-    padding:8px 12px;background:#C23B220D;
-    border:1px solid #C23B2230;border-radius:7px;line-height:1.5;
-  }
-  @media(max-width:560px){
-    #_loginLeft { display:none; }
-    #_loginRight { padding:34px 28px; }
-  }
-
   /* ── SKELETON / FADE-IN for main content ── */
   @keyframes hubFadeIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
   #hubContent { animation:hubFadeIn .4s ease both; }
 
-  /* ── LOADING SPINNER (only before login check) ── */
-  #initSpinner {
-    position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
-    background:var(--bg);z-index:200;transition:opacity .3s;
-  }
-  .spinner {
-    width:32px;height:32px;border:3px solid var(--border2);
-    border-top-color:var(--accent);border-radius:50%;
-    animation:spin .8s linear infinite;
-  }
-  @keyframes spin { to{transform:rotate(360deg)} }
+
 </style>
 </head>
 <body>
-
-<!-- Loading spinner (shown while checking auth) -->
-<div id="initSpinner"><div class="spinner"></div></div>
 
 <!-- ── TOPBAR ── -->
 <div class="topbar">
@@ -360,25 +260,18 @@
     <div class="divider-v"></div>
     <span class="page-title">Portale</span>
   </div>
-  <div class="topbar-right">
-    <span id="topbarUser" style="font-size:11px;color:var(--muted);font-family:'Fira Code',monospace;display:none"></span>
-    <button class="btn-sm" id="logoutBtn" style="display:none" onclick="_doLogout()">Esci</button>
-  </div>
+  <div class="topbar-right"></div>
 </div>
 
 <!-- ── MAIN HUB CONTENT ── -->
-<div class="main" id="hubContent" style="display:none">
+<div class="main" id="hubContent">
 
   <div class="hub-header">
     <div class="hub-header-left">
       <div class="hub-eyebrow">Progetto M · Platform</div>
       <div class="hub-title">Dove vuoi andare?</div>
     </div>
-    <div class="hub-user-chip">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="color:var(--accent)"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-      <span>Connesso come</span>
-      <strong id="welcomeName" style="color:var(--text);font-weight:600"></strong>
-    </div>
+
   </div>
 
   <!-- CARDS GRID -->
@@ -484,179 +377,11 @@
 </div><!-- /main -->
 
 <script>
-const APPS_SCRIPT_URL    = 'https://script.google.com/macros/s/AKfycbxSoKwfqsE4c8RORsUqhUVIXJRpd337jxireCf_RwxMf7UL0QJZyw2qE5UR59aaPEN_/exec';
-const APPS_SCRIPT_SECRET = 'progettom_login_2024_X9f83KsL21pQ';
-
+// scaviCard: accessibile a tutti senza login
 window.addEventListener('DOMContentLoaded', () => {
-  const savedUser = localStorage.getItem('_progettom_user');
-  if (savedUser) {
-    _showHub(savedUser);
-  } else {
-    _buildLoginModal();
-    document.getElementById('initSpinner').style.opacity = '0';
-    setTimeout(() => { document.getElementById('initSpinner').style.display = 'none'; }, 300);
-  }
-});
-
-const SCAVI_ALLOWED_ROLES = ['admin', 'admin2'];
-
-function _showHub(nome) {
-  document.getElementById('initSpinner').style.opacity = '0';
-  setTimeout(() => { document.getElementById('initSpinner').style.display = 'none'; }, 300);
-
-  document.getElementById('welcomeName').textContent = nome;
-  document.getElementById('topbarUser').textContent  = nome;
-  document.getElementById('topbarUser').style.display = '';
-  document.getElementById('logoutBtn').style.display  = '';
-  document.getElementById('hubContent').style.display = '';
-
-  const ruolo = (localStorage.getItem('_progettom_role') || '').toLowerCase();
-  const scaviCard  = document.getElementById('scaviCard');
   const scaviBadge = document.getElementById('scaviBadge');
-
-  if (!SCAVI_ALLOWED_ROLES.includes(ruolo)) {
-    scaviCard.removeAttribute('href');
-    scaviCard.classList.add('card-locked');
-    scaviCard.style.pointerEvents = 'none';
-    scaviBadge.innerHTML = 'In arrivo';
-    scaviBadge.className = 'card-badge';
-  }
-}
-
-function _doLogout() {
-  localStorage.removeItem('_progettom_user');
-  localStorage.removeItem('_progettom_role');
-  location.reload();
-}
-
-function _buildLoginModal() {
-  const savedUser   = localStorage.getItem('_progettom_user');
-  const isReturning = !!savedUser;
-
-  const overlay = document.createElement('div');
-  overlay.id = 'loginOverlay';
-  overlay.innerHTML = `
-    <div id="_loginCard">
-      <div id="_loginLeft">
-        <div style="position:relative;z-index:1">
-          <div style="font-family:'Fira Code',monospace;font-size:9px;font-weight:500;
-            letter-spacing:.2em;text-transform:uppercase;color:rgba(229,80,0,.8);margin-bottom:12px">Progetto M</div>
-          <div style="font-family:'Bricolage Grotesque',sans-serif;font-size:34px;font-weight:700;
-            letter-spacing:-.03em;color:#fff;line-height:1">M</div>
-          <div class="_loginAccentLine"></div>
-          <div style="font-size:11px;color:rgba(255,255,255,.5);line-height:1.8;font-family:'Plus Jakarta Sans',sans-serif">
-            Piattaforma<br>di gestione<br>del progetto
-          </div>
-        </div>
-        <div style="position:relative;z-index:1">
-          <div style="font-size:9px;letter-spacing:.15em;text-transform:uppercase;
-            color:rgba(255,255,255,.2);font-family:'Fira Code',monospace">&nbsp;</div>
-        </div>
-      </div>
-      <div id="_loginRight">
-        <div style="margin-bottom:30px">
-          <div style="font-family:'Bricolage Grotesque',sans-serif;font-size:22px;font-weight:700;
-            color:var(--text);letter-spacing:-.025em;line-height:1.2;margin-bottom:8px">
-            ${isReturning ? 'Bentornato 👋' : 'Accedi alla piattaforma'}
-          </div>
-          <div style="font-size:13px;color:var(--muted);line-height:1.6">
-            ${isReturning
-              ? `Ciao, <strong style="color:var(--text2);font-weight:600">${savedUser}</strong>. Conferma il tuo nome per continuare.`
-              : 'Inserisci il tuo nome e il codice di accesso.'}
-          </div>
-        </div>
-        <div style="margin-bottom:16px">
-          <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;
-            color:var(--muted);display:block;margin-bottom:8px">Nome e cognome</label>
-          <input id="_loginInput" class="login-input" type="text"
-            placeholder="${isReturning ? savedUser : 'Es. Mario Rossi'}"
-            value="${isReturning ? savedUser : ''}"
-            onkeydown="if(event.key==='Enter')document.getElementById('_loginCodice').focus()"
-          />
-        </div>
-        <div style="margin-bottom:20px">
-          <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;
-            color:var(--muted);display:block;margin-bottom:8px">Codice accesso</label>
-          <input id="_loginCodice" class="login-input" type="password"
-            placeholder="Codice personale"
-            onkeydown="if(event.key==='Enter')document.getElementById('_loginBtn').click()"
-          />
-          <div id="_loginError"></div>
-        </div>
-        <button id="_loginBtn">
-          <span id="_loginBtnText">${isReturning ? 'Conferma e accedi' : 'Accedi'}</span>
-          <span id="_loginBtnArrow">→</span>
-        </button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(overlay);
-  setTimeout(() => {
-    const inp = document.getElementById('_loginInput');
-    if (inp) { inp.focus(); if (inp.value) inp.select(); }
-  }, 200);
-  document.getElementById('_loginBtn').addEventListener('click', _handleLogin);
-}
-
-async function _handleLogin() {
-  const input   = document.getElementById('_loginInput');
-  const codEl   = document.getElementById('_loginCodice');
-  const errEl   = document.getElementById('_loginError');
-  const btn     = document.getElementById('_loginBtn');
-  const btnText = document.getElementById('_loginBtnText');
-  const btnArrow= document.getElementById('_loginBtnArrow');
-  const nome    = (input?.value || '').trim();
-  const codice  = (codEl?.value  || '').trim();
-
-  errEl.style.display = 'none';
-
-  if (!nome || nome.length < 2) {
-    errEl.textContent = 'Inserisci nome e cognome.';
-    errEl.style.display = 'block'; input.focus(); return;
-  }
-  if (!codice) {
-    errEl.textContent = 'Inserisci il codice di accesso.';
-    errEl.style.display = 'block'; codEl.focus(); return;
-  }
-
-  if (btnText) btnText.textContent = 'Verifica in corso…';
-  if (btnArrow) btnArrow.textContent = '';
-  btn.disabled = true;
-
-  try {
-    const res = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ secret: APPS_SCRIPT_SECRET, action: 'login', nome, codice })
-    });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const risposta = await res.json();
-
-    if (!risposta.ok) {
-      errEl.textContent = risposta.msg || 'Nome o codice non riconosciuti. Contatta l\'amministratore.';
-      errEl.style.display = 'block';
-      if (btnText) btnText.textContent = 'Accedi';
-      if (btnArrow) btnArrow.textContent = '→';
-      btn.disabled = false;
-      codEl.value = ''; codEl.focus(); return;
-    }
-
-    const ruolo         = (risposta.ruolo || 'user').toLowerCase();
-    const nomeCanonical = risposta.nome;
-    localStorage.setItem('_progettom_user', nomeCanonical);
-    localStorage.setItem('_progettom_role', ruolo);
-    document.getElementById('loginOverlay').remove();
-    _showHub(nomeCanonical);
-
-  } catch(err) {
-    errEl.textContent = 'Errore di connessione. Riprova tra qualche secondo.';
-    errEl.style.display = 'block';
-    if (btnText) btnText.textContent = 'Accedi';
-    if (btnArrow) btnArrow.textContent = '→';
-    btn.disabled = false;
-  }
-}
+  if (scaviBadge) scaviBadge.remove();
+});
 </script>
 </body>
 </html>
