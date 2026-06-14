@@ -104,11 +104,11 @@
 
     <!-- AGGIORNA -->
     <div class="panel active" id="panel-aggiorna">
-      <div class="search"><input type="text" id="searchPratiche" placeholder="Cerca per tratta, ente, stato…" data-testid="search-pratiche"></div>
+      <div class="search"><input type="text" id="searchPratiche" placeholder="Cerca per codice, tratta, ente, stato…" data-testid="search-pratiche"></div>
       <div class="scroll">
         <table>
-          <thead><tr><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th><th>Data richiesta</th><th>Data agg.</th></tr></thead>
-          <tbody id="pratBody"><tr><td colspan="6" class="empty">Caricamento…</td></tr></tbody>
+          <thead><tr><th>Codice</th><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th><th>Data richiesta</th><th>Data agg.</th></tr></thead>
+          <tbody id="pratBody"><tr><td colspan="7" class="empty">Caricamento…</td></tr></tbody>
         </table>
       </div>
 
@@ -169,11 +169,11 @@
 
     <!-- NUOVA -->
     <div class="panel" id="panel-nuova">
-      <p style="color:var(--muted);font-size:13px;margin-bottom:14px">Compila i campi della nuova pratica. Dopo l'invio l'amministratore approverà l'inserimento nella dashboard.</p>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:14px">Compila i campi della nuova pratica. Lo stato iniziale è <b>IN REDAZIONE</b> (automatico). Dopo l'invio l'amministratore approverà l'inserimento nella dashboard.</p>
       <form id="newForm">
         <div class="grid2">
           <div>
-            <label>Lotto (Source.Name)</label>
+            <label>Lotto *</label>
             <select id="new-lotto" required data-testid="new-lotto"></select>
           </div>
           <div>
@@ -191,18 +191,11 @@
               <option>AUTORIZZAZIONE</option>
               <option>NULLA OSTA</option>
               <option>ORDINANZA</option>
-              <option>CONVENZIONE</option>
             </select>
           </div>
           <div>
-            <label>Stato</label>
-            <select id="new-stato">
-              <option>IN REDAZIONE</option>
-              <option>IN FIRMA RDS</option>
-              <option>INVIATO</option>
-              <option>PROTOCOLLATO</option>
-              <option>OTTENUTO</option>
-            </select>
+            <label>Codice pratica (PRATICA) *</label>
+            <input type="text" id="new-pratica" required placeholder="es. 24" data-testid="new-pratica">
           </div>
           <div>
             <label>Data richiesta</label>
@@ -213,8 +206,16 @@
             <input type="text" id="new-lunghezza" placeholder="es. 245,80">
           </div>
           <div>
-            <label>Pratica</label>
-            <input type="text" id="new-pratica">
+            <label>N_SED</label>
+            <input type="text" id="new-nsed" placeholder="es. SED-127 oppure 0">
+          </div>
+          <div>
+            <label>Nulla osta necessario</label>
+            <select id="new-no-nec"><option value=""></option><option>SI</option><option>NO</option></select>
+          </div>
+          <div>
+            <label>Ordinanza necessaria</label>
+            <select id="new-ord-nec"><option value=""></option><option>SI</option><option>NO</option></select>
           </div>
           <div style="grid-column:span 2">
             <label>Note</label>
@@ -270,7 +271,7 @@
         ? MY_LOTTI.map(l => `<span class="pill">${escapeHtml(l)}</span>`).join('')
         : '<span class="pill" style="background:#fee;color:#B91C1C">nessun lotto assegnato</span>';
       const sel = $('new-lotto');
-      sel.innerHTML = MY_LOTTI.map(l => `<option>${escapeHtml(l)}.xlsx</option>`).join('');
+      sel.innerHTML = MY_LOTTI.map(l => `<option value="${escapeHtml(l)}.xlsx">${escapeHtml(l)}</option>`).join('');
       $('app').style.display = '';
       loadPratiche();
       loadMine();
@@ -310,20 +311,31 @@
   async function loadPratiche(){
     try {
       const d = await api(`/api/imprese/pratiche?nome=${encodeURIComponent(nome)}`);
-      PRATICHE = d.pratiche || [];
+      PRATICHE = (d.pratiche || []).map(p => ({...p, _codice: buildCodice(p)}));
       renderPratiche('');
     } catch(e){
-      $('pratBody').innerHTML = `<tr><td colspan="6" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
+      $('pratBody').innerHTML = `<tr><td colspan="7" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
     }
   }
   $('searchPratiche').addEventListener('input', e => renderPratiche(e.target.value));
 
+  function buildCodice(p) {
+    const tipoMap = {'AUTORIZZAZIONE':'AUT','NULLA OSTA':'NO','ORDINANZA':'ORD'};
+    const prefix = tipoMap[(p.TIPO_PERMESSO||'').trim()] || (p.TIPO_PERMESSO||'').trim().substring(0,3);
+    const m = String(p['Source.Name']||'').match(/Lotto\s*([\w\d]+)/i);
+    const lotto = m ? m[1] : '';
+    const prat = String(p.PRATICA||'').trim();
+    if (!prefix || !prat) return '';
+    return `${prefix}/${prat}/${lotto}`;
+  }
+
   function renderPratiche(filter){
     const f = (filter || '').toLowerCase().trim();
     const rows = PRATICHE.filter(p => !f || JSON.stringify(p).toLowerCase().includes(f));
-    if (!rows.length){ $('pratBody').innerHTML = '<tr><td colspan="6" class="empty">Nessuna pratica</td></tr>'; return; }
-    $('pratBody').innerHTML = rows.slice(0, 500).map((p, idx) => `
+    if (!rows.length){ $('pratBody').innerHTML = '<tr><td colspan="7" class="empty">Nessuna pratica</td></tr>'; return; }
+    $('pratBody').innerHTML = rows.slice(0, 500).map((p) => `
       <tr data-idx="${PRATICHE.indexOf(p)}">
+        <td class="mono" style="font-weight:700;color:var(--accent);background:#f4f6ff;border-left:3px solid var(--accent)">${escapeHtml(p._codice)}</td>
         <td class="mono">${escapeHtml(p.TRATTA_ID)}</td>
         <td>${escapeHtml(p.ENTE)}</td>
         <td>${escapeHtml(p.TIPO_PERMESSO)}</td>
@@ -339,7 +351,7 @@
     tr.classList.add('selected');
     SELECTED = PRATICHE[+tr.dataset.idx];
     $('editForm').style.display = '';
-    $('editRowSub').textContent = `${SELECTED.TRATTA_ID} · ${SELECTED.ENTE} · ${SELECTED.TIPO_PERMESSO}`;
+    $('editRowSub').textContent = `${SELECTED._codice || ''} · ${SELECTED.TRATTA_ID} · ${SELECTED.ENTE} · ${SELECTED.TIPO_PERMESSO}`;
     $('fld-stato').value = '';
     $('fld-data-rich').value = SELECTED.DATA_RICHIESTA || '';
     $('fld-data-app').value = SELECTED.DATA_APPROVAZIONE || '';
@@ -403,16 +415,22 @@
   // ─── nuova ─────────────────────────────────────────
   $('newForm').addEventListener('submit', async e => {
     e.preventDefault();
+    const pratica = $('new-pratica').value.trim();
+    if (!pratica) return setMsg($('msgNew'), 'Il codice pratica è obbligatorio', false);
     const row = {
       "Source.Name": $('new-lotto').value,
       "TRATTA_ID": $('new-tratta').value.trim(),
       "ENTE": $('new-ente').value.trim(),
       "TIPO_PERMESSO": $('new-tipo').value,
-      "STATO_PERMESSO": $('new-stato').value,
+      "STATO_PERMESSO": "IN REDAZIONE",
       "DATA_RICHIESTA": $('new-data-rich').value.trim(),
       "DATA_ULTIMA_MODIFICA": new Date().toLocaleDateString('it-IT'),
+      "DATA_APPROVAZIONE": "",
+      "NULLA OSTA NECESSARIO": $('new-no-nec').value,
+      "ORDINANZA NECESSARIA": $('new-ord-nec').value,
       "LUNGHEZZA": $('new-lunghezza').value.trim(),
-      "PRATICA": $('new-pratica').value.trim(),
+      "PRATICA": pratica,
+      "N_SED": $('new-nsed').value.trim(),
       "NOTE": $('new-note').value.trim(),
     };
     try {
