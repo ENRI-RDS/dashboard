@@ -10,9 +10,27 @@
 <meta name="google" content="notranslate">
 <meta http-equiv="Content-Language" content="it">
 <title>ENRI — Dashboard Avanzamento</title>
+<script src="js/api-config.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Plus+Jakarta+Sans:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- xlsx caricato lazy on demand (vedi loadXLSX()) — risparmio ~900KB al primo load -->
+<script>
+window.loadXLSX = (function(){
+  let _p = null;
+  return function(){
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    if (_p) return _p;
+    _p = new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload = () => res(window.XLSX);
+      s.onerror = () => { _p = null; rej(new Error('xlsx load failed')); };
+      document.head.appendChild(s);
+    });
+    return _p;
+  };
+})();
+</script>
 <style>
   @view-transition { navigation: auto; }
 
@@ -1475,7 +1493,8 @@
     return rows;
   }
 
-  function writeSedExcel(rows, filename) {
+  async function writeSedExcel(rows, filename) {
+    await window.loadXLSX();
     if (typeof XLSX === 'undefined') { alert('Libreria XLSX non disponibile.'); return; }
     var header = ['Numero SED','Nome','Tipo Attraversamento','Cluster','Lotto','Comune','Provincia','Ente GeoJSON',
                   'Tipo Permesso','Codice Pratica','Ente Permesso','Stato Permesso','Data Ultima Modifica','Data Richiesta'];
@@ -1964,6 +1983,10 @@
 <script>
 // ── EXPORT EXCEL ──────────────────────────────────────────────────────────────
 function exportXlsx(pratiche, filename) {
+  return window.loadXLSX().then(() => _exportXlsxImpl(pratiche, filename));
+}
+
+function _exportXlsxImpl(pratiche, filename) {
   if (!pratiche || !pratiche.length) { alert('Nessuna pratica da esportare.'); return; }
   const header = ['Codice', 'Tipo', 'Lotto', 'Stato', 'Ente', 'Data Invio', 'Data Aggiornamento', 'Prev. Rilascio', 'Giorni Rimanenti', 'Metri (m)'];
 
