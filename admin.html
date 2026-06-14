@@ -308,7 +308,7 @@
 
 <div class="topbar">
   <div class="logo">ENRI · DASHBOARD</div>
-  <a class="back-link" href="hub.html">← Dashboard</a>
+  <a class="back-link" href="index.html">← Dashboard</a>
 </div>
 
 <div class="main">
@@ -375,6 +375,7 @@
   const form = $('uploadForm');
   const submitBtn = $('submitBtn');
   const uploadsBody = $('uploadsBody');
+  let droppedFile = null;
 
   apiBaseInput.value = localStorage.getItem('enri_api_base') || '';
 
@@ -420,11 +421,11 @@
   dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
   dz.addEventListener('drop', e => {
     e.preventDefault(); dz.classList.remove('drag');
-    if(e.dataTransfer.files.length){ fileInput.files = e.dataTransfer.files; updateName(); }
+    if(e.dataTransfer.files.length){ droppedFile = e.dataTransfer.files[0]; updateName(); }
   });
-  fileInput.addEventListener('change', updateName);
+  fileInput.addEventListener('change', () => { droppedFile = null; updateName(); });
   function updateName(){
-    const f = fileInput.files[0];
+    const f = droppedFile || fileInput.files[0];
     fileName.textContent = f ? `${f.name} — ${(f.size/1024).toFixed(1)} KB` : '.xlsx, .xls, .csv, .geojson, .json — max 25 MB';
   }
 
@@ -433,7 +434,7 @@
     msg.className = 'msg';
     const base = apiBase();
     if(!base) return setMsg('Inserisci l\'API endpoint', false);
-    const f = fileInput.files[0];
+    const f = droppedFile || fileInput.files[0];
     if(!f) return setMsg('Seleziona un file', false);
 
     const fd = new FormData();
@@ -448,7 +449,7 @@
       const data = await r.json();
       if(!r.ok) throw new Error(data.detail || ('HTTP ' + r.status));
       setMsg(`✓ Caricato: ${data.filename} (${data.size} bytes${data.rows ? ', '+data.rows+' righe' : ''})`, true);
-      fileInput.value = ''; updateName();
+      fileInput.value = ''; droppedFile = null; updateName();
       refreshUploads();
     }catch(err){
       setMsg('Errore: ' + err.message, false);
