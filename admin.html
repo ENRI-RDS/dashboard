@@ -149,6 +149,8 @@
       <div class="tabbar">
         <button class="tab active" data-tab="files" data-testid="tab-files">File correnti</button>
         <button class="tab" data-tab="uploads" data-testid="tab-uploads">Storico versioni</button>
+        <button class="tab" data-tab="pending" data-testid="tab-pending">Coda imprese <span id="pendingBadge" style="display:none;background:#FEF3C7;color:#B45309;border-radius:999px;padding:1px 7px;font-size:10px;margin-left:5px"></span></button>
+        <button class="tab" data-tab="assign" data-testid="tab-assign">Assegnazioni imprese</button>
       </div>
 
       <div class="panel active" id="panel-files">
@@ -168,6 +170,46 @@
           <thead><tr><th>File</th><th>Progetto</th><th>Righe</th><th>Quando</th><th>Stato</th><th>Azioni</th></tr></thead>
           <tbody id="uploadsBody"><tr><td colspan="6" class="empty">Caricamento…</td></tr></tbody>
         </table>
+      </div>
+
+      <!-- PENDING (impresa submissions awaiting approval) -->
+      <div class="panel" id="panel-pending">
+        <p class="sub">Modifiche &amp; nuove pratiche inviate dalle imprese. Approva per applicare a <code>Master.csv</code> (genera nuova versione in MongoDB).</p>
+        <div class="row" style="margin-bottom:10px;gap:14px;align-items:center">
+          <label style="margin:0">Stato:</label>
+          <select id="pendingFilter" style="width:auto;padding:6px 10px" data-testid="pending-filter">
+            <option value="pending">In attesa</option>
+            <option value="approved">Approvati</option>
+            <option value="rejected">Rifiutati</option>
+            <option value="all">Tutti</option>
+          </select>
+          <button class="btn btn-ghost btn-xs" id="refreshPendingBtn">Aggiorna</button>
+        </div>
+        <table>
+          <thead><tr><th>Quando</th><th>Impresa</th><th>Tipo</th><th>N.</th><th>Anteprima</th><th>Stato</th><th>Azioni</th></tr></thead>
+          <tbody id="pendingBody"><tr><td colspan="7" class="empty">Caricamento…</td></tr></tbody>
+        </table>
+      </div>
+
+      <!-- ASSIGNMENTS -->
+      <div class="panel" id="panel-assign">
+        <p class="sub">Assegna a ciascuna impresa i lotti su cui può inserire/aggiornare pratiche. Il <i>nome</i> deve corrispondere ESATTAMENTE a quello con cui l'impresa accede dal portale (Google Sheet).</p>
+        <div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
+          <div style="flex:1;min-width:200px">
+            <label style="display:block;font-size:11px;margin-bottom:5px">Nome impresa</label>
+            <input type="text" id="newAssignNome" placeholder="es. Costruzioni Alfa Srl" data-testid="assign-nome">
+          </div>
+          <div style="flex:2;min-width:250px">
+            <label style="display:block;font-size:11px;margin-bottom:5px">Lotti (separati da virgola)</label>
+            <input type="text" id="newAssignLotti" placeholder="es. Lotto 1, Lotto 1A, Lotto 2" data-testid="assign-lotti">
+          </div>
+          <button class="btn" id="newAssignBtn" data-testid="assign-save">Salva</button>
+        </div>
+        <table>
+          <thead><tr><th>Nome impresa</th><th>Lotti</th><th>Attivo</th><th>Azioni</th></tr></thead>
+          <tbody id="assignBody"><tr><td colspan="4" class="empty">Caricamento…</td></tr></tbody>
+        </table>
+        <div class="msg" id="assignMsg"></div>
       </div>
     </div>
   </div>
@@ -247,6 +289,13 @@
     const t = token();
     return t ? { 'x-upload-token': t } : {};
   }
+  function withTokenQuery(path){
+    const t = token();
+    if(!t) return path;
+    // also append as query param so it works against the OLD backend signature
+    // (which read x_upload_token as a query parameter, not a header)
+    return path + (path.includes('?') ? '&' : '?') + 'x_upload_token=' + encodeURIComponent(t);
+  }
   async function api(path, opts={}){
     const r = await fetch(apiBase() + path, opts);
     const text = await r.text();
@@ -263,6 +312,8 @@
       document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
       t.classList.add('active');
       $('panel-' + t.dataset.tab).classList.add('active');
+      if (t.dataset.tab === 'pending') refreshPending();
+      if (t.dataset.tab === 'assign') refreshAssignments();
     });
   });
 
@@ -376,18 +427,18 @@
       }
       else if(act === 'delete-file' && name){
         if(!confirm(`Eliminare TUTTE le versioni di "${name}"?\nDopo l'eliminazione verrà servito il file presente nel repo GitHub (se esiste), altrimenti il file non sarà più accessibile.`)) return;
-        const res = await api('/api/files/' + encodeURIComponent(name).replace(/%2F/g,'/'), { method: 'DELETE', headers: authHeaders() });
+        const res = await api(withTokenQuery('/api/files/' + encodeURIComponent(name).replace(/%2F/g,'/')), { method: 'DELETE', headers: authHeaders() });
         toast(`Eliminate ${res.deleted_versions} versioni`);
         refreshAll();
       }
       else if(act === 'delete-upload' && id){
         if(!confirm('Eliminare questa singola versione?')) return;
-        await api('/api/uploads/' + id, { method: 'DELETE', headers: authHeaders() });
+        await api(withTokenQuery('/api/uploads/' + id), { method: 'DELETE', headers: authHeaders() });
         toast('Versione eliminata');
         refreshAll();
       }
       else if(act === 'restore' && id){
-        await api('/api/uploads/' + id + '/restore', { method: 'POST', headers: authHeaders() });
+        await api(withTokenQuery('/api/uploads/' + id + '/restore'), { method: 'POST', headers: authHeaders() });
         toast('Versione ripristinata');
         refreshAll();
       }
@@ -410,7 +461,7 @@
     const newName = $('renameInput').value.trim();
     if(!newName) return setMsg($('renameMsg'), 'Inserisci un nome', false);
     try{
-      await api('/api/files/' + encodeURIComponent(renameTarget).replace(/%2F/g,'/'), {
+      await api(withTokenQuery('/api/files/' + encodeURIComponent(renameTarget).replace(/%2F/g,'/')), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ new_name: newName }),
@@ -472,6 +523,140 @@
   });
 
   // ──────────────────────────────────────────────────────────────────────
+  // Pending submissions (impresa approval queue)
+  async function refreshPending(){
+    if(!apiBase()){ $('pendingBody').innerHTML = '<tr><td colspan="7" class="empty">Imposta API endpoint</td></tr>'; return; }
+    try{
+      const status = $('pendingFilter').value;
+      const d = await api(withTokenQuery('/api/admin/pending-updates?status=' + encodeURIComponent(status)));
+      if(!d.submissions || !d.submissions.length){
+        $('pendingBody').innerHTML = '<tr><td colspan="7" class="empty">Nessuna submission</td></tr>';
+        updatePendingBadge(0);
+        return;
+      }
+      $('pendingBody').innerHTML = d.submissions.map(s => {
+        const preview = (s.changes || []).slice(0, 2).map(c => {
+          if (s.type === 'update') return `${escapeHtml(c.tratta_id||'')} · ${Object.keys(c.fields||{}).join(',')}`;
+          return `${escapeHtml(c.TRATTA_ID||c['TRATTA_ID']||'')}/${escapeHtml(c.ENTE||'')}`;
+        }).join(' ; ') + ((s.changes||[]).length > 2 ? ` (+${s.changes.length - 2})` : '');
+        const statusTag = `<span class="tag" style="background:${s.status==='pending'?'#FEF3C7':s.status==='approved'?'#EBFBEE':'#FEE2E2'};color:${s.status==='pending'?'#B45309':s.status==='approved'?'#2B8A3E':'#B91C1C'};text-transform:uppercase;font-size:10px;font-weight:700;padding:3px 8px;border-radius:5px">${s.status}</span>`;
+        return `
+        <tr>
+          <td class="mono">${new Date(s.submitted_at).toLocaleString('it-IT')}</td>
+          <td>${escapeHtml(s.nome)}</td>
+          <td>${s.type==='update'?'Aggiornamento':'Nuova'}</td>
+          <td>${(s.changes||[]).length}</td>
+          <td class="mono" style="font-size:11px">${preview}</td>
+          <td>${statusTag}</td>
+          <td class="actions">
+            ${s.status === 'pending' ? `
+              <button class="btn btn-xs" data-act="approve" data-id="${s._id}" style="background:var(--ok)" data-testid="approve-${s._id}">Approva</button>
+              <button class="btn btn-danger btn-xs" data-act="reject" data-id="${s._id}" data-testid="reject-${s._id}">Rifiuta</button>
+            ` : ''}
+            <button class="btn btn-ghost btn-xs" data-act="details" data-payload='${escapeHtml(JSON.stringify(s))}'>Dettagli</button>
+          </td>
+        </tr>`;
+      }).join('');
+      if(status === 'pending') updatePendingBadge(d.count);
+    }catch(e){
+      $('pendingBody').innerHTML = `<tr><td colspan="7" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+  function updatePendingBadge(n){
+    const b = $('pendingBadge');
+    if(n > 0){ b.style.display = 'inline-block'; b.textContent = n; }
+    else b.style.display = 'none';
+  }
+  $('pendingFilter').addEventListener('change', refreshPending);
+  $('refreshPendingBtn').addEventListener('click', refreshPending);
+
+  // Pending actions
+  document.body.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-act]');
+    if(!btn) return;
+    const act = btn.dataset.act;
+    if(act === 'approve' && btn.dataset.id){
+      if(!confirm('Approvare e applicare a Master.csv? Verrà creata una nuova versione.')) return;
+      try{
+        const r = await api(withTokenQuery('/api/admin/pending-updates/' + btn.dataset.id + '/approve'), { method: 'POST', headers: authHeaders() });
+        toast(`Approvato: ${r.summary.updated} aggiornate, ${r.summary.added} aggiunte, ${r.summary.not_found} non trovate`);
+        refreshPending(); refreshFiles(); refreshUploads();
+      }catch(err){ toast('Errore: ' + err.message, true); }
+    } else if(act === 'reject' && btn.dataset.id){
+      const note = prompt('Motivo del rifiuto (opzionale):') ?? '';
+      try{
+        await api(withTokenQuery('/api/admin/pending-updates/' + btn.dataset.id + '/reject'), { method: 'POST', headers: { 'Content-Type':'application/json', ...authHeaders() }, body: JSON.stringify({ note }) });
+        toast('Rifiutato'); refreshPending();
+      }catch(err){ toast('Errore: ' + err.message, true); }
+    } else if(act === 'details' && btn.dataset.payload){
+      try { alert(JSON.stringify(JSON.parse(btn.dataset.payload.replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>')), null, 2)); } catch(_){ alert(btn.dataset.payload); }
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Assignments management
+  async function refreshAssignments(){
+    if(!apiBase()){ $('assignBody').innerHTML = '<tr><td colspan="4" class="empty">Imposta API endpoint</td></tr>'; return; }
+    try{
+      const d = await api(withTokenQuery('/api/admin/assignments'));
+      if(!d.assignments || !d.assignments.length){
+        $('assignBody').innerHTML = '<tr><td colspan="4" class="empty">Nessuna impresa assegnata</td></tr>';
+        return;
+      }
+      $('assignBody').innerHTML = d.assignments.map(a => `
+        <tr>
+          <td>${escapeHtml(a.nome)}</td>
+          <td><span class="mono" style="font-size:11px">${(a.lotti||[]).map(escapeHtml).join(' · ')}</span></td>
+          <td>${a.active !== false ? '<span class="tag" style="background:#EBFBEE;color:#2B8A3E;padding:3px 8px;border-radius:5px;font-size:10px;font-weight:700">SÌ</span>' : '<span class="tag" style="background:#FEE2E2;color:#B91C1C;padding:3px 8px;border-radius:5px;font-size:10px;font-weight:700">NO</span>'}</td>
+          <td class="actions">
+            <button class="btn btn-ghost btn-xs" data-act="assign-edit" data-nome="${escapeHtml(a.nome)}" data-lotti="${escapeHtml((a.lotti||[]).join(', '))}" data-active="${a.active !== false}">Modifica</button>
+            <button class="btn btn-danger btn-xs" data-act="assign-del" data-nome="${escapeHtml(a.nome)}" data-testid="del-assign-${cssId(a.nome)}">Elimina</button>
+          </td>
+        </tr>`).join('');
+    }catch(e){
+      $('assignBody').innerHTML = `<tr><td colspan="4" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  $('newAssignBtn').addEventListener('click', async () => {
+    const nome = $('newAssignNome').value.trim();
+    const lottiRaw = $('newAssignLotti').value.trim();
+    if(!nome) return setMsg($('assignMsg'), 'Inserisci il nome impresa', false);
+    const lotti = lottiRaw.split(',').map(s => s.trim()).filter(Boolean);
+    try{
+      await api(withTokenQuery('/api/admin/assignments/' + encodeURIComponent(nome)), {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ lotti, active: true }),
+      });
+      $('newAssignNome').value = ''; $('newAssignLotti').value = '';
+      setMsg($('assignMsg'), 'Assegnazione salvata', true);
+      refreshAssignments();
+    }catch(e){ setMsg($('assignMsg'), 'Errore: ' + e.message, false); }
+  });
+
+  document.body.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-act^="assign-"]');
+    if(!btn) return;
+    if(btn.dataset.act === 'assign-edit'){
+      $('newAssignNome').value = btn.dataset.nome;
+      $('newAssignLotti').value = btn.dataset.lotti;
+      $('newAssignNome').scrollIntoView({behavior:'smooth', block:'center'});
+    } else if(btn.dataset.act === 'assign-del'){
+      if(!confirm(`Eliminare l'assegnazione di "${btn.dataset.nome}"?`)) return;
+      try{
+        await api(withTokenQuery('/api/admin/assignments/' + encodeURIComponent(btn.dataset.nome)), { method: 'DELETE', headers: authHeaders() });
+        toast('Eliminato'); refreshAssignments();
+      }catch(err){ toast('Errore: ' + err.message, true); }
+    }
+  });
+
+  // Auto-refresh pending count every 60s
+  setInterval(() => { if($('apiStatus').textContent.startsWith('OK')) refreshPendingCount(); }, 60000);
+  async function refreshPendingCount(){
+    try{ const d = await api(withTokenQuery('/api/admin/pending-updates?status=pending&limit=1')); updatePendingBadge(d.count); }catch(_){}
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
   // Toast (reusing msg banner)
   function toast(text, isErr){
     setMsg(msg, text, !isErr);
@@ -483,7 +668,7 @@
   function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function cssId(s){ return String(s).replace(/[^a-zA-Z0-9]/g, '-'); }
 
-  function refreshAll(){ refreshStatus(); refreshFiles(); refreshUploads(); }
+  function refreshAll(){ refreshStatus(); refreshFiles(); refreshUploads(); refreshPendingCount(); }
   refreshAll();
 })();
 </script>
