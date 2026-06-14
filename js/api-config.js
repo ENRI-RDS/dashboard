@@ -1,4 +1,4 @@
-"/**
+/**
  * ENRI Dashboard — API config helper
  * ----------------------------------
  * Drop-in helper for the static HTML pages on GitHub Pages.
@@ -9,7 +9,7 @@
  * static file on GitHub Pages.
  *
  * Usage in each HTML page (single line in <head>):
- *   <script src=\"js/api-config.js\"></script>
+ *   <script src="js/api-config.js"></script>
  *
  * Then to point all pages at the backend, run once in the browser console:
  *   localStorage.setItem('enri_api_base', 'https://enri-dashboard-api.onrender.com')
@@ -55,4 +55,3 @@
 
   console.info('[ENRI] API base active →', API_BASE);
 })();
-"

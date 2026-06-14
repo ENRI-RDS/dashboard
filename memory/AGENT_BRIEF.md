@@ -107,21 +107,46 @@ Tutte le pagine fanno guardia: `if (!localStorage.getItem('_enri_user')) → mos
 
 ---
 
-## 5. Backend FastAPI (`backend/server.py`)
+## 5. Backend FastAPI (`backend/server.py` v2)
 
-**Tutte le rotte iniziano con `/api/`** (richiesto dall'ingress Kubernetes della preview e da convenzione del progetto).
+**Modello di storage**: MongoDB GridFS è AUTORITATIVO per i file caricati. I CSV/GeoJSON
+nel repo (`/app/Master.csv`, ecc.) sono usati come SEED FALLBACK quando non esiste
+ancora un upload per quel nome. Questo elimina la perdita dati su Render free tier
+(disco effimero) e mantiene piena retro-compatibilità con GitHub Pages.
+
+**Tutte le rotte iniziano con `/api/`**.
 
 | Metodo | Endpoint | Auth | Descrizione |
 |---|---|---|---|
-| GET  | `/api/`                       | — | Health JSON di servizio |
-| GET  | `/api/health`                 | — | Ping a MongoDB |
-| GET  | `/api/files`                  | — | Elenco dei file dati disponibili su disco (`csv`, `geojson`, `json`), filtrati per escludere `frontend/`, `backend/`, `.git/`, `node_modules/`, `__pycache__/` |
-| GET  | `/api/data/{filename}`        | — | Scarica un file dato (es. `Master.csv`, `M/QGIS_3.geojson`) — usato sia dal browser che da `js/api-config.js` |
-| GET  | `/api/data-text/{filename}`   | — | Idem ma in `text/plain` |
-| GET  | `/api/uploads?limit=&project=`| — | Storico upload (MongoDB) ordinato per data desc |
-| POST | `/api/upload`                 | `UPLOAD_TOKEN` (form field `token` o header `x-upload-token`) | Multipart: `file`, `target` (opz), `project` (`main`/`M`/`pm`), `convert_to_csv` (bool). Salva su disco + MongoDB (`uploads` + `datasets`). Se è `.xlsx`/`.xls` e `convert_to_csv=true` → conversione CSV `;` con `pandas.read_excel` |
-| GET  | `/api/datasets`               | — | Ultima versione di ogni dataset (upsert per `name`) |
-| DELETE | `/api/uploads/{id}`         | `UPLOAD_TOKEN` | Elimina record dalla collection `uploads` |
+| GET  | `/api/`                            | — | Health JSON di servizio |
+| GET  | `/api/health`                      | — | Ping a MongoDB |
+| GET  | `/api/files`                       | — | Lista unificata: file con upload Mongo attivi + seed su disco. Ogni file ha `source: 'mongo'|'disk'`, `versions`, `size`, `modified` |
+| GET  | `/api/data/{path}`                 | — | Scarica file: Mongo se presente, altrimenti disco. Usato da `js/api-config.js` |
+| GET  | `/api/data-text/{path}`            | — | Idem in `text/plain` |
+| GET  | `/api/preview/{path}?max_bytes=N`  | — | Anteprima primi N byte (256–65536, default 8192). Restituisce `{source, size, truncated, content}` |
+| GET  | `/api/uploads?limit=&project=&filename=&include_deleted=` | — | Storico upload (con filtri + audit cancellati) |
+| POST | `/api/upload`                      | `UPLOAD_TOKEN` (form `token` o header `x-upload-token`) | Multipart: `file`, `target` (opz), `project`, `convert_to_csv`. Salva contenuto in **GridFS** e crea record in `uploads`. Excel → CSV `;` se richiesto |
+| DELETE | `/api/uploads/{id}`              | `UPLOAD_TOKEN` | Soft-delete di una singola versione + purge GridFS (libera spazio Atlas) |
+| DELETE | `/api/files/{path}`              | `UPLOAD_TOKEN` | Soft-delete di TUTTE le versioni del file. Se esiste un seed su disco, ritorna a essere servito; altrimenti il file ritorna 404 |
+| PATCH  | `/api/files/{old}`               | `UPLOAD_TOKEN` | Body JSON `{"new_name": "..."}` — rinomina tutte le versioni attive (errore 409 se il nuovo nome è già in uso) |
+| POST   | `/api/uploads/{id}/restore`      | `UPLOAD_TOKEN` | Ripristina una versione cancellata (errore 410 se i byte GridFS sono già stati purgati) |
+
+### Schema `uploads`
+```jsonc
+{
+  "_id": ObjectId,
+  "filename": "Master.csv",
+  "original_name": "Master_v2.xlsx",
+  "size": 192167,
+  "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "project": "main",
+  "rows": 3120,
+  "uploaded_at": "2026-06-14T11:30:00+00:00",
+  "gridfs_id": ObjectId,       // → fs.files (None se cancellato)
+  "deleted_at": null | "ISO"
+}
+```
+File content in `fs.files` / `fs.chunks` (motor `AsyncIOMotorGridFSBucket`).
 
 ### Variabili d'ambiente (`backend/.env`)
 
