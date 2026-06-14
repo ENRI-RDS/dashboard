@@ -202,10 +202,6 @@
             <input type="text" id="new-data-rich" placeholder="gg/mm/aaaa">
           </div>
           <div>
-            <label>Lunghezza (m)</label>
-            <input type="text" id="new-lunghezza" placeholder="es. 245,80">
-          </div>
-          <div>
             <label>N_SED</label>
             <input type="text" id="new-nsed" placeholder="es. SED-127 oppure 0">
           </div>
@@ -329,12 +325,32 @@
     return `${prefix}/${prat}/${lotto}`;
   }
 
+  function parseDate(s){
+    // Supports dd/mm/yyyy or yyyy-mm-dd
+    if (!s) return 0;
+    const p = s.split('/');
+    if (p.length === 3) return new Date(p[2], p[1]-1, p[0]).getTime();
+    return new Date(s).getTime() || 0;
+  }
+
   function renderPratiche(filter){
     const f = (filter || '').toLowerCase().trim();
-    const rows = PRATICHE.filter(p => !f || JSON.stringify(p).toLowerCase().includes(f));
+    // Per ogni TRATTA_ID tieni solo la riga con DATA_ULTIMA_MODIFICA più recente
+    const latestMap = new Map();
+    PRATICHE.forEach(p => {
+      const key = p.TRATTA_ID + '|' + p.ENTE + '|' + p.TIPO_PERMESSO;
+      const existing = latestMap.get(key);
+      if (!existing || parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(existing.DATA_ULTIMA_MODIFICA)) {
+        latestMap.set(key, p);
+      }
+    });
+    const deduplicated = Array.from(latestMap.values());
+    const rows = deduplicated.filter(p => !f || JSON.stringify(p).toLowerCase().includes(f));
     if (!rows.length){ $('pratBody').innerHTML = '<tr><td colspan="7" class="empty">Nessuna pratica</td></tr>'; return; }
-    $('pratBody').innerHTML = rows.slice(0, 500).map((p) => `
-      <tr data-idx="${PRATICHE.indexOf(p)}">
+    // Salva l'array corrente filtrato per recuperare la riga al click
+    renderPratiche._current = rows.slice(0, 500);
+    $('pratBody').innerHTML = renderPratiche._current.map((p, i) => `
+      <tr data-idx="${i}">
         <td class="mono" style="font-weight:700;color:var(--accent);background:#f4f6ff;border-left:3px solid var(--accent)">${escapeHtml(p._codice)}</td>
         <td class="mono">${escapeHtml(p.TRATTA_ID)}</td>
         <td>${escapeHtml(p.ENTE)}</td>
@@ -349,7 +365,7 @@
     if (!tr) return;
     document.querySelectorAll('#pratBody tr.selected').forEach(x => x.classList.remove('selected'));
     tr.classList.add('selected');
-    SELECTED = PRATICHE[+tr.dataset.idx];
+    SELECTED = (renderPratiche._current || [])[+tr.dataset.idx];
     $('editForm').style.display = '';
     $('editRowSub').textContent = `${SELECTED._codice || ''} · ${SELECTED.TRATTA_ID} · ${SELECTED.ENTE} · ${SELECTED.TIPO_PERMESSO}`;
     $('fld-stato').value = '';
@@ -428,7 +444,6 @@
       "DATA_APPROVAZIONE": "",
       "NULLA OSTA NECESSARIO": $('new-no-nec').value,
       "ORDINANZA NECESSARIA": $('new-ord-nec').value,
-      "LUNGHEZZA": $('new-lunghezza').value.trim(),
       "PRATICA": pratica,
       "N_SED": $('new-nsed').value.trim(),
       "NOTE": $('new-note').value.trim(),
