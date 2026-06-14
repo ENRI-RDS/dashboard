@@ -643,7 +643,21 @@ function _showHub(nome) {
     if (apiBase) {
       fetch(apiBase + '/api/imprese/me?nome=' + encodeURIComponent(nome))
         .then(r => r.ok ? r.json() : null)
-        .then(d => { if (d && d.active !== false) impresaCard.style.display = ''; })
+        .then(d => {
+          if (d && d.active !== false) {
+            impresaCard.style.display = '';
+            // Se l'utente è ESCLUSIVAMENTE un'impresa (ruolo non amministrativo),
+            // nascondiamo le altre card e lasciamo SOLO l'Area Impresa.
+            if (!ADMIN_ALLOWED_ROLES.includes(ruolo)) {
+              document.querySelectorAll('.nav-card').forEach(card => {
+                if (card.id !== 'impresaCard') card.style.display = 'none';
+              });
+              // Aggiorna eventuali contatori di card visibili / titoli sezione
+              const sectionTitles = document.querySelectorAll('[data-section-title]');
+              sectionTitles.forEach(s => s.style.display = 'none');
+            }
+          }
+        })
         .catch(() => {});
     }
   }
