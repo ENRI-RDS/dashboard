@@ -3,78 +3,100 @@
 ## Problema originale
 Dashboard project management ENRI servita da GitHub Pages, con backend FastAPI opzionale per aggiornare i dataset senza re-push su git. Esistenza di **due copie** dei file (statici nel repo + caricati dal backend) creava deriva dei dati su Render free tier (disco effimero).
 
-Richiesta utente:
-- Risolvere conflitto file git vs backend (Render gratis + Mongo Atlas gratis)
-- Permettere accesso/cancellazione dei dati caricati
-- NON modificare l'autenticazione attuale (Google Apps Script)
-- Massima efficienza token
+## Richieste utente (progressive)
+1. Risolvere conflitto file git vs backend (Render+Atlas gratis)
+2. Accesso/cancellazione dei dati caricati
+3. NON modificare l'autenticazione attuale (Google Apps Script)
+4. ❌ OneDrive integration (annullata: utente non è admin del tenant M365)
+5. **Ottimizzazioni `index.html`**
+6. **Pagina per le imprese**: aggiornare/inserire pratiche direttamente, login via Google Sheet, vista filtrata per propri lotti, approvazione admin prima della pubblicazione
 
 ## Architettura attuale
 
 ```
 GitHub Pages (HTML statico) ──fetch──▶ Render FastAPI ──GridFS──▶ MongoDB Atlas
-                                            │
-                                            └── DATA_DIR (file del repo) come SEED FALLBACK
+            │                              │
+            │                              └── DATA_DIR (file del repo) come SEED FALLBACK
+            │
+            └── js/api-config.js intercetta fetch('Master.csv') → fetch(API/api/data/Master.csv)
 ```
 
-**Modello di storage (nuovo)**: MongoDB GridFS è autoritativo per i file caricati.
-I file presenti nel repo (`Master.csv`, `QGIS.geojson`, ecc.) sono usati solo come
-**seed iniziale** quando un nome file non ha ancora upload. Questo elimina la
-perdita dati causata dal disco effimero di Render.
+**Modello di storage**: MongoDB GridFS è autoritativo. I file nel repo restano come seed iniziale; servono il fallback se nessun upload esiste.
 
 ## Implementato (14/06/2026)
 
-### Backend (`backend/server.py` v2.0)
-- Storage GridFS (`bucket = files`) per ogni upload
-- `uploads` collection con `gridfs_id`, `deleted_at` per soft-delete + audit
-- Endpoint nuovi/aggiornati:
-  - `GET /api/files` — lista unificata mongo+disk con `source` flag e conteggio versioni
-  - `GET /api/data/{path}` — serve da Mongo se presente, altrimenti fallback al disco
-  - `GET /api/data-text/{path}` — versione plain text
-  - `GET /api/preview/{path}?max_bytes=N` — anteprima primi N byte (default 8KB)
-  - `POST /api/upload` — salva il contenuto in GridFS (non più su disco)
-  - `GET /api/uploads?filename=&include_deleted=` — storico con filtri
-  - `DELETE /api/uploads/{id}` — elimina singola versione (purge GridFS)
-  - `DELETE /api/files/{path}` — elimina tutte le versioni di un file
-  - `PATCH /api/files/{old}` — rinomina file (body JSON `{new_name}`)
-  - `POST /api/uploads/{id}/restore` — ripristino (solo se gridfs intatto)
-- Backfill automatico di `deleted_at=None` su upload preesistenti
-- CORS, token upload, validazione path, dimensione max immutati
+### Backend (`backend/server.py` v2.1)
+- Storage GridFS autoritativo, fallback su disco seed
+- Token accettato via header `x-upload-token` E query `?x_upload_token=...`
+- Encoding-robust: legge Master.csv anche se è CP1252 / Latin-1
+- Endpoint file: `/api/files`, `/api/data/{path}`, `/api/preview/{path}`, `/api/uploads`, `POST /api/upload`, `DELETE /api/uploads/{id}`, `DELETE /api/files/{path}`, `PATCH /api/files/{old}`, `POST /api/uploads/{id}/restore`
+- **Endpoint imprese** (no token):
+  - `GET /api/imprese/me?nome=X` — profilo + lotti assegnati
+  - `GET /api/imprese/pratiche?nome=X` — Master.csv filtrato per i lotti
+  - `POST /api/imprese/submit` — salva submission in `pending_updates`
+  - `GET /api/imprese/my-submissions?nome=X` — storico
+- **Endpoint admin** (richiede `UPLOAD_TOKEN`):
+  - `GET/PUT/DELETE /api/admin/assignments[/{nome}]` — CRUD nome impresa ↔ lotti
+  - `GET /api/admin/pending-updates?status=pending|approved|rejected|all`
+  - `POST /api/admin/pending-updates/{id}/approve` — applica a Master.csv (genera nuova versione GridFS)
+  - `POST /api/admin/pending-updates/{id}/reject` — body `{note}`
 
-### Frontend (`admin.html` redesign)
-- Endpoint API + token salvati in `localStorage` (chiavi `enri_api_base`, `enri_upload_token`)
-- Tab "File correnti": preview, scarica, rinomina, elimina tutte le versioni
-- Tab "Storico versioni": elimina singola versione, filtro `include_deleted`
-- Modal di anteprima (16KB) + modal di rinomina
-- Indicatori `source: disk|mongo` per ogni file
-- Statistiche live: stato API, n. file, n. versioni Mongo
-- Data-testid presenti su tutti gli elementi interattivi
+### Frontend — pagine
+- **`admin.html`**: 4 tabs (File correnti, Storico versioni, **Coda imprese**, **Assegnazioni imprese**). Badge live conteggio pending. Modal anteprima/rinomina. Connection card con localStorage.
+- **`imprese.html`** *(nuova)*: 3 tabs (Aggiorna pratiche, Nuova pratica, Le mie submission). Login implicito via `_enri_user` di localStorage; backend verifica `assignments`. Coda modifiche prima dell'invio. Reload "Le mie" mostra stato approvato/rifiutato.
+- **`hub.html`**: nuova card "Area Impresa" mostrata se backend conferma assegnazione.
+- **Tutte le pagine**: ora include `<script src="js/api-config.js"></script>` → fetch CSV/GeoJSON ridiretti al backend automaticamente.
+
+### Ottimizzazioni `index.html`
+- ✅ Include `js/api-config.js` → finalmente i dati arrivano dal backend live
+- ✅ **Lazy-load `xlsx.full.min.js`** (~900 KB): caricato solo al primo click "Esporta Excel" tramite `window.loadXLSX()`
+- 🟡 Da fare in futuro: estrarre CSS comune in `css/dashboard.css` (cache cross-page)
 
 ### Fix collaterali
-- Riparato `js/api-config.js` (era avvolto in virgolette JSON, JS non parsabile)
-- Creato `backend/.env` con default per ambiente preview
-- Creato `frontend/server.js` minimo per servire il sito statico da `/app/` (slot supervisor Emergent)
+- `js/api-config.js`: era avvolto in virgolette JSON (corrotto), ricostruito
+- `backend/.env`: creato per ambiente preview
+- `frontend/server.js`: static server minimo per slot supervisor Emergent
 
-## Auth (NON toccato per scelta utente)
-- Login via Google Apps Script in `hub.html` rimane invariato
-- `localStorage._enri_user` / `_enri_role` rimangono il meccanismo di autorizzazione
-- Token upload backend resta `UPLOAD_TOKEN` env var
+## Modello dati Mongo (oggi)
+
+```jsonc
+// uploads (storico versioni file)
+{ _id, filename, gridfs_id, deleted_at, uploaded_at, size, rows, source?, note? }
+
+// assignments (mapping impresa → lotti)
+{ _id, nome, lotti: ["Lotto 1", "Lotto 1A"], active: true, created_at, updated_at }
+
+// pending_updates (workflow approvazione)
+{ _id, nome, type: "update"|"new",
+  changes: [{tratta_id, ente, tipo_permesso, fields:{...}} | {row dict}],
+  status: "pending"|"approved"|"rejected",
+  submitted_at, reviewed_at, applied_upload_id, reviewed_note, summary
+}
+```
+
+## Flusso impresa end-to-end
+
+1. Admin → `admin.html` tab "Assegnazioni imprese" → aggiunge `Costruzioni Alfa Srl` con lotti `Lotto 1, Lotto 1A`
+2. L'impresa accede su `hub.html` (Apps Script login) con nome esattamente `Costruzioni Alfa Srl`
+3. Hub mostra card "Area Impresa" (verifica backend `/api/imprese/me`)
+4. Click → `imprese.html` → tab "Aggiorna pratiche" o "Nuova pratica"
+5. Coda modifiche → "Invia per approvazione"
+6. Admin → tab "Coda imprese" (badge mostra conteggio) → Approva
+7. Backend legge Master.csv corrente, applica `changes` con pandas, crea nuova versione GridFS
+8. Dashboard `/api/data/Master.csv` serve immediatamente la nuova versione (no redeploy)
 
 ## Personas
-- **Admin (RDS)**: carica nuovi Master.csv/GeoJSON, cancella vecchie versioni, rinomina file
-- **PM / staff**: consultano la dashboard sulle pagine fase1/fase2/mappa
-- **Direzione**: vista executive summary
+- **Admin RDS**: carica file, gestisce assegnazioni imprese, approva coda
+- **Impresa appaltatrice**: aggiorna pratiche dei propri lotti via `imprese.html`
+- **PM / direzione**: visualizza dashboard (index.html, scavi.html, mappa.html, executive_summary.html)
 
 ## Backlog (P0/P1/P2)
-- P1 — Indicatore "Ultimo upload: …" sulla card Admin in hub.html (richiede 1 fetch `/api/uploads?limit=1`)
-- P1 — Auto-commit dei file uploadati sul repo GitHub (così la copia statica resta in sync con MongoDB)
-- P2 — Notifica Telegram/Slack su nuovo upload
-- P2 — Quota / dashboard storage Atlas free (warn quando ci si avvicina ai 512MB)
-- P2 — Multi-impresa con utenti separati + tokens distinti
-
-## Prossimi passi possibili
-- Aggiungere card "Ultimo upload" in hub.html (vedi P1)
-- Implementare badge "ultimo update" nelle pagine index.html / scavi.html
-- Migrazione dati esistenti: opzionale `POST /api/import-seed` per copiare i CSV/GeoJSON dal disco a GridFS in un colpo solo
+- P1 — Email/Telegram notification quando arriva nuova submission impresa
+- P1 — Estrarre CSS in `css/dashboard.css` condiviso (cache cross-page)
+- P1 — Badge "Ultimo upload: …" su hub.html card Admin
+- P2 — Filtro avanzato impresa: nascondere pratiche già "OTTENUTE" di default
+- P2 — Storico Excel-export per audit modifiche (chi ha cambiato cosa quando)
+- P2 — Auto-commit dei file uploadati sul repo GitHub Pages
+- P3 — Webhook su nuovo upload
 
 _Ultimo aggiornamento: 2026-06-14_
