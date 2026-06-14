@@ -318,8 +318,6 @@
     .view-btn{ font-size:10px; padding:5px 10px; min-height:32px; }
     .filter-row{ gap:4px; }
     .filter-btn{ font-size:10px; padding:4px 9px; min-height:28px; }
-    .qts-toggle-row{ margin-top:6px; padding:6px 0 4px; }
-    .qts-label{ font-size:10px; }
     /* Sidebar body: nascosto su mobile — solo filtri visibili */
     .sidebar-body{ display:none !important; }
     .lotto-item{ display:none !important; }
@@ -495,20 +493,6 @@
   .search-highlight{position:relative;}
 
   @media print{.search-bar{display:none!important;}}
-
-  /* QTS toggle */
-  .qts-toggle-row { display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 0 6px;border-top:1px solid var(--border); }
-  .qts-label { font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);flex:1; }
-  .qts-switch { position:relative;width:36px;height:20px;cursor:pointer;flex-shrink:0; }
-  .qts-switch input { opacity:0;width:0;height:0;position:absolute; }
-  .qts-slider { position:absolute;inset:0;background:#c8ccd8;border-radius:20px;transition:background 0.2s; }
-  .qts-slider:before { content:'';position:absolute;height:14px;width:14px;left:3px;top:3px;background:#fff;border-radius:50%;transition:all 0.2s; }
-  .qts-switch input:checked + .qts-slider { background:#0aa3c2; }
-  .qts-switch input:checked + .qts-slider:before { transform:translateX(16px);background:#fff; }
-  .qts-km { font-size:10px;font-family:'DM Mono',monospace;color:#8b5cf6; }
-  .qts-only-btn{font-size:10px;padding:4px 10px;border-radius:12px;border:1.5px solid #7c3aed;background:#ede9fe;color:#5b21b6;cursor:pointer;transition:all 0.15s;font-family:'DM Sans',sans-serif;font-weight:500;}
-  .qts-only-btn:hover{border-color:#5b21b6;background:#ddd6fe;color:#3b0764;}
-  .qts-only-btn.active{background:#7c3aed;border-color:#7c3aed;color:#fff;}
 
   /* ── SED ATTRAVERSAMENTI ─────────────────────────────── */
   /* punti nella legenda (cerchio invece di linea) */
@@ -815,20 +799,10 @@
       <div class="view-toggle">
         <button class="view-btn active" id="vbtn-stato"   onclick="setViewMode('stato')">Per Stato</button>
         <button class="view-btn"        id="vbtn-lotto"   onclick="setViewMode('lotto')">Per Lotto</button>
-        <button class="view-btn"        id="vbtn-cluster" onclick="setViewMode('cluster')">Per Cluster</button>
       </div>
       <div class="sidebar-title">Filtra per lotto</div>
       <div class="filter-row" id="filterRow"></div>
     </div>
-      <div class="qts-toggle-row">
-        <span class="qts-label">🟣 Tracciato QTS</span>
-        <span class="qts-km" id="qtsKm" style="display:none"></span>
-        <label class="qts-switch">
-          <input type="checkbox" id="qtsToggle" onchange="toggleQTS(this.checked)">
-          <span class="qts-slider"></span>
-        </label>
-        <button id="qtsOnlyBtn" class="qts-only-btn" onclick="setQTSOnly(!qtsOnlyMode)">Solo QTS</button>
-      </div>
 
     <div class="sidebar-body" id="lottoList"></div>
   </div>
@@ -868,14 +842,13 @@ const STATO_COLORS = {
   'NECESSARIA INTEGRAZIONE':'#cc3333','PROTOCOLLATO INTEGRAZIONE':'#B5657A','OTTENUTO':'#3a8c5c'
 };
 window.STATO_COLORS = STATO_COLORS;
-const IMPRESE = {'1A':'Valtellina','1B':'Soleto','2A':'Sielte','2B':'Telebit'};
+const IMPRESE = {'1A':'Impresa 1','1B':'Impresa 2','2A':'Impresa 3','2B':'Impresa 4'};
 const LOTTO_ORDER = ['1A','1B','2A','2B','1','2','3','4','5','6','7','8'];
 const LOTTI_ATTIVI = ['1A','1B','2A','2B'];
 const LOTTI_AVVIO  = ['1','2','3','4','5','6','7','8'];
 
 let map, allLayers=[], currentFilter='TUTTI', lottoStats={};
-let currentViewMode = 'stato'; // 'stato' | 'lotto' | 'cluster'
-let qtsOnlyMode = false;
+let currentViewMode = 'stato'; // 'stato' | 'lotto'
 
 // Colori per lotto
 const LOTTO_COLORS = {
@@ -885,26 +858,9 @@ const LOTTO_COLORS = {
   '5':'#cc3333','6':'#e06868','7':'#a07af7','8':'#ffffff'
 };
 
-// Palette colori per cluster (30 colori distinti)
-const _CLUSTER_PALETTE = [
-  '#e05c9a','#f07cbf','#00b4cc','#33d0e8','#f5a623','#1a6fd4',
-  '#e63946','#a8e84a','#9b59b6','#c39bd3','#1abc9c','#58d6b9',
-  '#e74c3c','#f1948a','#3498db','#85c1e9','#e67e22','#f0a060',
-  '#27ae60','#82e0aa','#8e44ad','#bb8fcf','#16a085','#4ecdc4',
-  '#c0392b','#e88080','#2980b9','#7fb3d3','#d35400','#f0956a',
-];
-
-function getClusterColor(cl) {
-  if (cl == null || cl === '') return '#6b7080';
-  if (String(cl) === '2') return '#8b5cf6';
-  const idx = Math.abs(parseInt(cl) || 0) % _CLUSTER_PALETTE.length;
-  return _CLUSTER_PALETTE[idx];
-}
-
 function getColorForMode(feature, mode) {
   const p = feature.properties;
   if (mode === 'lotto')   return LOTTO_COLORS[p.LOTTO] || '#6b7080';
-  if (mode === 'cluster') return getClusterColor(p.CLUSTER ?? p.ID_CLUSTER ?? p.cluster);
   return getColor(p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE);
 }
 
@@ -913,8 +869,7 @@ function setViewMode(mode) {
   currentFilter = 'TUTTI';
   // Reset multi-selezioni
   if(typeof selectedLotti !== 'undefined') selectedLotti.clear();
-  if(typeof selectedClusters !== 'undefined') selectedClusters.clear();
-  ['stato','lotto','cluster'].forEach(m => {
+  ['stato','lotto'].forEach(m => {
     const btn = document.getElementById('vbtn-'+m);
     if (btn) btn.className = 'view-btn' + (m === mode ? ' active' : '');
   });
@@ -926,18 +881,8 @@ function setViewMode(mode) {
     if (!map.hasLayer(layer)) map.addLayer(layer);
     if(outlineLayer){ if(!map.hasLayer(outlineLayer)) map.addLayer(outlineLayer); outlineLayer.bringToBack(); }
   });
-  if (qtsOnlyMode) {
-    allLayers.forEach(({layer,outlineLayer}) => {
-      if (map.hasLayer(layer)) map.removeLayer(layer);
-      if (outlineLayer && map.hasLayer(outlineLayer)) map.removeLayer(outlineLayer);
-    });
-  }
   updateLegend(mode);
-  if (mode === 'cluster') {
-    renderFilterCluster();
-  } else {
-    renderFilterLotto(lottoStats);
-  }
+  renderFilterLotto(lottoStats);
 }
 
 // Set dei lotti selezionati (multi-selezione)
@@ -995,7 +940,6 @@ function toggleLotto(id) {
 }
 
 function applyFilterMulti() {
-  if (qtsOnlyMode) return;
   // Aggiorna visual dei bottoni
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active','selected'));
   if (selectedLotti.size === 0) {
@@ -1030,103 +974,6 @@ function applyFilterMulti() {
   currentFilter = selectedLotti.size === 1 ? [...selectedLotti][0] : (selectedLotti.size === 0 ? 'TUTTI' : 'MULTI');
 }
 
-// Set dei cluster selezionati (multi-selezione)
-let selectedClusters = new Set();
-
-function renderFilterCluster() {
-  const fr = document.getElementById('filterRow');
-  const title = fr.previousElementSibling;
-  if (title) title.textContent = 'Filtra per cluster';
-  fr.innerHTML='';
-
-  const clusters = new Set();
-  allFeatures.forEach(f => {
-    const cl = f.properties.CLUSTER ?? f.properties.ID_CLUSTER ?? f.properties.cluster;
-    if (cl != null && cl !== '') clusters.add(String(cl));
-  });
-  const clSorted = [...clusters].sort((a,b) => parseInt(a)-parseInt(b) || a.localeCompare(b));
-
-  const btnT = document.createElement('button');
-  btnT.className='filter-btn active'; btnT.textContent='Tutti';
-  btnT.id='cbtn-TUTTI';
-  btnT.onclick=()=>{ selectedClusters.clear(); applyFilterClusterMulti(); };
-  fr.appendChild(btnT);
-
-  clSorted.forEach(cl => {
-    const color = getClusterColor(cl);
-    const b = document.createElement('button');
-    b.className='filter-btn'; b.id='cbtn-'+cl;
-    b.textContent = 'C'+cl;
-    b.style.cssText = `border-color:${color}44;`;
-    b.onclick=()=>toggleCluster(cl);
-    fr.appendChild(b);
-  });
-
-  const hint = document.createElement('span');
-  hint.className = 'filter-multi-hint';
-  hint.textContent = 'Clicca più cluster per combinarli';
-  fr.appendChild(hint);
-}
-
-function toggleCluster(cl) {
-  if (selectedClusters.has(cl)) { selectedClusters.delete(cl); }
-  else { selectedClusters.add(cl); }
-  applyFilterClusterMulti();
-}
-
-function applyFilterClusterMulti() {
-  if (qtsOnlyMode) return;
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active','selected'));
-  if (selectedClusters.size === 0) {
-    const btnT = document.getElementById('cbtn-TUTTI');
-    if (btnT) btnT.classList.add('active');
-    allLayers.forEach(({layer,outlineLayer}) => {
-      if(!map.hasLayer(layer)) map.addLayer(layer);
-      layer.eachLayer(l => {
-        if(l.feature) l.setStyle({ opacity: 0.95, weight: 4, color: getColorForMode(l.feature, currentViewMode) });
-      });
-      if(outlineLayer){
-        if(!map.hasLayer(outlineLayer)) map.addLayer(outlineLayer);
-        outlineLayer.eachLayer(l => l.setStyle({ opacity: 0.45 }));
-        outlineLayer.bringToBack();
-      }
-    });
-    const g=L.featureGroup(allLayers.map(x=>x.layer));
-    map.fitBounds(g.getBounds(),{padding:[40,40]});
-  } else {
-    selectedClusters.forEach(cl => { const fb=document.getElementById('cbtn-'+cl); if(fb) fb.classList.add('selected'); });
-    const matchLayers = [];
-    allLayers.forEach(({layer,outlineLayer}) => {
-      if(!map.hasLayer(layer)) map.addLayer(layer);
-      layer.eachLayer(l => {
-        if (!l.feature) return;
-        const fcl = String(l.feature.properties.CLUSTER ?? l.feature.properties.ID_CLUSTER ?? l.feature.properties.cluster ?? '');
-        if (selectedClusters.has(fcl)) { matchLayers.push(l); l.setStyle({ opacity: 0.95, weight: 4 }); }
-        else { l.setStyle({ opacity: 0.08, weight: 2 }); }
-      });
-      if(outlineLayer){
-        outlineLayer.eachLayer(l => {
-          if(!l.feature) return;
-          const fcl = String(l.feature.properties.CLUSTER ?? l.feature.properties.ID_CLUSTER ?? l.feature.properties.cluster ?? '');
-          l.setStyle({ opacity: selectedClusters.has(fcl) ? 0.4 : 0 });
-        });
-        outlineLayer.bringToBack();
-      }
-    });
-    if (matchLayers.length > 0) {
-      const g = L.featureGroup(matchLayers);
-      map.fitBounds(g.getBounds(), {padding:[60,60], maxZoom:14});
-    }
-  }
-}
-
-// applyFilterCluster mantenuto per compatibilità
-function applyFilterCluster(cl) {
-  if (cl === 'TUTTI') { selectedClusters.clear(); }
-  else { selectedClusters.clear(); selectedClusters.add(cl); }
-  applyFilterClusterMulti();
-}
-
 function updateLegend(mode) {
   const leg = document.getElementById('legendContainer');
   if (!leg) return;
@@ -1139,26 +986,12 @@ function updateLegend(mode) {
       <div class="legend-item"><div class="legend-line" style="background:#4f8ef7"></div>Inviato / Protocollato</div>
       <div class="legend-item"><div class="legend-line" style="background:#e07b3a"></div>In Verifica / Firma</div>
       <div class="legend-item"><div class="legend-line" style="background:#4a4f6a"></div>In Attesa / Redazione</div>
-      <div class="legend-item"><div class="legend-line" style="background:#9b59b6"></div>Coordinamento</div>
-      <div class="legend-item"><div class="legend-line" style="background:#8b5cf6"></div>Tracciato QTS</div>`;
+      <div class="legend-item"><div class="legend-line" style="background:#9b59b6"></div>Coordinamento</div>`;
   } else if (mode === 'lotto') {
     const items = Object.entries(LOTTO_COLORS).map(([l,c]) =>
       `<div class="legend-item"><div class="legend-line" style="background:${c}"></div>Lotto ${l}</div>`
     ).join('');
     leg.innerHTML = `<div class="legend-title">Lotto</div>${items}`;
-  } else {
-    // Cluster: legenda dinamica con i cluster presenti nel GeoJSON
-    const clusters = new Set();
-    allFeatures.forEach(f => {
-      const cl = f.properties.CLUSTER ?? f.properties.ID_CLUSTER ?? f.properties.cluster;
-      if (cl != null && cl !== '') clusters.add(String(cl));
-    });
-    const clSorted = [...clusters].sort((a,b) => parseInt(a)-parseInt(b) || a.localeCompare(b));
-    const items = clSorted.map(cl => {
-      const color = getClusterColor(cl);
-      return `<div class="legend-item"><div class="legend-line" style="background:${color}"></div>Cluster ${cl}</div>`;
-    }).join('');
-    leg.innerHTML = `<div class="legend-title">Cluster</div>${items}`;
   }
   // ── voci SED (condizionali al toggle) ──
   const sedOn = _sedActive;
