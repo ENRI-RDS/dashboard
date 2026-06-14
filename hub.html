@@ -6,6 +6,7 @@
 <meta name="google" content="notranslate">
 <meta http-equiv="Content-Language" content="it">
 <title>ENRI — Portale</title>
+<script src="js/api-config.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Plus+Jakarta+Sans:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
 <style>
   @view-transition { navigation: auto; }
@@ -546,6 +547,27 @@
         </div>
       </a>
 
+      <!-- ── AREA IMPRESA (visibile dopo verifica backend) ── -->
+      <a id="impresaCard" href="imprese.html" class="nav-card card-admin" data-testid="hub-impresa-card"
+         style="display:none;max-width:320px;margin-top:6px;">
+        <div class="card-badge" style="background:#065f46;color:#fff;border-color:#065f46;">Impresa</div>
+        <div class="card-top-row">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 21h18M5 21V8l7-5 7 5v13M9 9h.01M15 9h.01M9 13h.01M15 13h.01M9 17h.01M15 17h.01"/>
+            </svg>
+          </div>
+          <div class="card-arrow">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="card-label">Area impresa</div>
+          <div class="card-title">Aggiorna le tue pratiche</div>
+          <div class="card-desc">Inserisci nuove pratiche o aggiorna lo stato di quelle esistenti per i lotti a te assegnati. Le modifiche entrano in dashboard dopo l'approvazione dell'amministratore.</div>
+        </div>
+      </a>
+
       <!-- ── ADMIN (riservato ai ruoli admin/admin2) ── -->
       <a id="adminCard" href="admin.html" class="nav-card card-admin" data-testid="hub-admin-card"
          style="display:none;max-width:320px;margin-top:6px;">
@@ -613,6 +635,17 @@ function _showHub(nome) {
   const adminCard = document.getElementById('adminCard');
   if (adminCard && ADMIN_ALLOWED_ROLES.includes(ruolo)) {
     adminCard.style.display = '';
+  }
+  // Area Impresa card: visibile se il backend ha un'assegnazione per il nome
+  const impresaCard = document.getElementById('impresaCard');
+  if (impresaCard) {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    if (apiBase) {
+      fetch(apiBase + '/api/imprese/me?nome=' + encodeURIComponent(nome))
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d && d.active !== false) impresaCard.style.display = ''; })
+        .catch(() => {});
+    }
   }
 }
 
