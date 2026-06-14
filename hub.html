@@ -139,6 +139,7 @@
   .card-mappa::before  { background:linear-gradient(180deg,#6B3FA0,#9060d0); }
   .card-mile::before   { background:linear-gradient(180deg,#B45309,#d97706); }
   .card-ai::before     { background:linear-gradient(180deg,#3B0764,#7C3AED); }
+  .card-admin::before  { background:linear-gradient(180deg,#475569,#0f172a); }
 
   .card-top-row {
     display:flex; align-items:flex-start; justify-content:space-between; gap:8px;
@@ -155,6 +156,7 @@
   .card-mappa .card-icon { background:#6B3FA00D; }
   .card-mile  .card-icon { background:#B453090D; }
   .card-ai    .card-icon { background:#7C3AED0D; }
+  .card-admin .card-icon { background:#0f172a0D; }
 
   .card-icon svg { width:22px; height:22px; }
   .card-prog  .card-icon svg { color:#0B3182; }
@@ -164,6 +166,7 @@
   .card-mappa .card-icon svg { color:#6B3FA0; }
   .card-mile  .card-icon svg { color:#B45309; }
   .card-ai    .card-icon svg { color:#7C3AED; }
+  .card-admin .card-icon svg { color:#0f172a; }
 
   .card-body { flex:1; min-width:0; }
   .card-label {
@@ -179,6 +182,7 @@
   .card-mappa .card-label { color:#6B3FA0; }
   .card-mile  .card-label { color:#B45309; }
   .card-ai    .card-label { color:#7C3AED; }
+  .card-admin .card-label { color:#0f172a; }
 
   .card-title {
     font-family:'Bricolage Grotesque', sans-serif;
@@ -542,6 +546,28 @@
         </div>
       </a>
 
+      <!-- ── ADMIN (riservato ai ruoli admin/admin2) ── -->
+      <a id="adminCard" href="admin.html" class="nav-card card-admin" data-testid="hub-admin-card"
+         style="display:none;max-width:320px;margin-top:6px;">
+        <div class="card-badge" style="background:#0f172a;color:#fff;border-color:#0f172a;">Riservato</div>
+        <div class="card-top-row">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2 4 6v6c0 5 3.4 9.4 8 10 4.6-.6 8-5 8-10V6l-8-4z"/>
+              <path d="M9 12l2 2 4-4"/>
+            </svg>
+          </div>
+          <div class="card-arrow">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="card-label">Amministrazione</div>
+          <div class="card-title">Pannello Admin</div>
+          <div class="card-desc">Caricamento file Excel / CSV / GeoJSON sul backend, conversione automatica in CSV e sincronizzazione su MongoDB per aggiornare tutte le pagine della dashboard.</div>
+        </div>
+      </a>
+
 </div><!-- /main -->
 
 <script>
@@ -560,6 +586,7 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 const SCAVI_ALLOWED_ROLES = ['admin', 'admin2'];
+const ADMIN_ALLOWED_ROLES = ['admin', 'admin2'];
 
 function _showHub(nome) {
   document.getElementById('initSpinner').style.opacity = '0';
@@ -581,6 +608,11 @@ function _showHub(nome) {
     scaviCard.style.pointerEvents = 'none';
     scaviBadge.innerHTML = 'In arrivo';
     scaviBadge.className = 'card-badge';
+  }
+  // Admin card: visibile solo per ruoli amministrativi
+  const adminCard = document.getElementById('adminCard');
+  if (adminCard && ADMIN_ALLOWED_ROLES.includes(ruolo)) {
+    adminCard.style.display = '';
   }
 }
 
