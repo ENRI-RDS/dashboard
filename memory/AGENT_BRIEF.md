@@ -251,7 +251,7 @@ In ambiente **Emergent preview**:
 - Backend gestito da supervisor (`/etc/supervisor/conf.d/supervisord.conf`, slot `backend`, porta 8001).
 - Frontend statico gestito da supervisor slot `frontend` (`node /app/frontend/server.js`, porta 3000).
 - MongoDB locale via supervisor slot `mongodb`.
-- URL pubblico: `https://<slug>.preview.emergentagent.com` (ingress mappa `/api/*`→8001, resto→3000).
+- URL pubblico: `https://data-manager-portal.preview.emergentagent.com` (ingress mappa `/api/*`→8001, resto→3000).
 
 ---
 
