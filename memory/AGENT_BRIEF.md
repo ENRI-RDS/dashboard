@@ -1,6 +1,3 @@
-
-Action: file_editor create /app/memory/AGENT_BRIEF.md --file-text "# ENRI Dashboard — Agent Brief
-
 > Documento di onboarding per agenti AI / sviluppatori. Spiega architettura, flussi, file e convenzioni della dashboard ENRI **senza dover leggere tutto il codice**.
 
 ---
