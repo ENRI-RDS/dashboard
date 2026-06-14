@@ -25,7 +25,7 @@ from typing import Annotated, Any
 import pandas as pd
 from bson import ObjectId
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Header
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, Response, FileResponse
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
@@ -63,6 +63,8 @@ MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "25"))
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 uploads_col = db["uploads"]
+assignments_col = db["assignments"]            # impresa nome -> {lotti: [...]}
+pending_col = db["pending_updates"]            # submissions from imprese pending admin review
 gridfs = AsyncIOMotorGridFSBucket(db, bucket_name="files")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -389,9 +391,10 @@ async def upload_file(
 async def delete_upload(
     upload_id: str,
     x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
 ):
     """Soft-delete a single upload version + remove its GridFS blob."""
-    _check_token(x_upload_token)
+    _check_token(x_upload_token or token_q)
     try:
         oid = ObjectId(upload_id)
     except Exception:
@@ -415,11 +418,12 @@ async def delete_upload(
 async def delete_file(
     filename: str,
     x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
 ):
     """Soft-delete ALL upload versions of `filename`. After this call, if
     a disk seed exists, it becomes the served version again; otherwise the
     file returns 404."""
-    _check_token(x_upload_token)
+    _check_token(x_upload_token or token_q)
     rel = _safe_relpath(filename)
     # Collect gridfs ids to remove
     ids: list[ObjectId] = []
@@ -443,10 +447,11 @@ async def rename_file(
     old_name: str,
     payload: dict,
     x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
 ):
     """Rename a file in MongoDB. Disk seed (if any) keeps its original name
     but it's shadowed by the renamed Mongo entry."""
-    _check_token(x_upload_token)
+    _check_token(x_upload_token or token_q)
     new_name = (payload or {}).get("new_name", "")
     if not new_name:
         raise HTTPException(400, "Missing 'new_name'")
@@ -469,11 +474,12 @@ async def rename_file(
 async def restore_upload(
     upload_id: str,
     x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
 ):
     """Make a past (soft-deleted) version current again, by clearing
     `deleted_at` on it. NB: doesn't recover GridFS bytes if they were
     already purged. If gridfs_id is null, this fails."""
-    _check_token(x_upload_token)
+    _check_token(x_upload_token or token_q)
     try:
         oid = ObjectId(upload_id)
     except Exception:
@@ -497,3 +503,297 @@ async def _on_startup():
     await uploads_col.update_many(
         {"deleted_at": {"$exists": False}}, {"$set": {"deleted_at": None}}
     )
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# IMPRESE (contractor) — assignments + pending updates workflow
+# ─────────────────────────────────────────────────────────────────────────────
+# An "impresa" user logs in via the existing Google Apps Script flow (hub.html).
+# We keep a server-side mapping nome → lotti[] in `assignments`. When the user
+# submits updates / new rows, they go in `pending_updates`; the admin approves
+# and the change is applied to Master.csv (a new GridFS version is created).
+# ═════════════════════════════════════════════════════════════════════════════
+
+MASTER_FILENAME = "Master.csv"
+CSV_SEP = ";"
+ROW_KEY_COLS = ("TRATTA_ID", "ENTE", "TIPO_PERMESSO")  # natural key for an update
+
+
+async def _read_master_csv() -> "pd.DataFrame":
+    """Read the current authoritative Master.csv (Mongo first, then disk seed)."""
+    cur = await _current_upload(MASTER_FILENAME)
+    if cur:
+        raw = await _read_gridfs(cur["gridfs_id"])
+    else:
+        path = DATA_DIR / MASTER_FILENAME
+        if not path.exists():
+            raise HTTPException(404, "Master.csv not found")
+        raw = path.read_bytes()
+    # Master.csv may be UTF-8 or Latin-1/CP1252 depending on the Excel export
+    for enc in ("utf-8", "cp1252", "latin-1"):
+        try:
+            return pd.read_csv(io.BytesIO(raw), sep=CSV_SEP, dtype=str, keep_default_na=False, encoding=enc)
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+    # Last resort: replace bad bytes
+    return pd.read_csv(io.BytesIO(raw), sep=CSV_SEP, dtype=str, keep_default_na=False, encoding="utf-8", encoding_errors="replace")
+
+
+async def _write_master_csv(df: "pd.DataFrame", note: str) -> str:
+    """Persist a new Master.csv version in GridFS and return the new upload id."""
+    buf = io.StringIO()
+    df.to_csv(buf, index=False, sep=CSV_SEP)
+    data = buf.getvalue().encode("utf-8")
+    gid = await gridfs.upload_from_stream(
+        MASTER_FILENAME,
+        io.BytesIO(data),
+        metadata={"project": "main", "uploaded_at": _now_iso(), "source": "impresa", "note": note},
+    )
+    record = {
+        "filename": MASTER_FILENAME,
+        "original_name": MASTER_FILENAME,
+        "size": len(data),
+        "content_type": "text/csv",
+        "project": "main",
+        "rows": max(0, len(df)),
+        "uploaded_at": _now_iso(),
+        "gridfs_id": gid,
+        "deleted_at": None,
+        "source": "impresa",
+        "note": note,
+    }
+    res = await uploads_col.insert_one(record)
+    return str(res.inserted_id)
+
+
+def _serialize_assignment(d: dict) -> dict:
+    out = dict(d)
+    out["_id"] = str(out["_id"])
+    return out
+
+
+# ───────── Imprese (no admin token required, identified by their `nome`) ────
+
+@app.get("/api/imprese/me")
+async def impresa_me(nome: str):
+    """Returns the impresa's profile if they are assigned, else 404."""
+    doc = await assignments_col.find_one({"nome": nome})
+    if not doc:
+        raise HTTPException(404, "Impresa non assegnata")
+    return {"nome": doc["nome"], "lotti": doc.get("lotti", []), "active": bool(doc.get("active", True))}
+
+
+@app.get("/api/imprese/pratiche")
+async def impresa_pratiche(nome: str):
+    """Returns Master.csv rows whose Source.Name matches one of the user's lotti."""
+    doc = await assignments_col.find_one({"nome": nome})
+    if not doc or not doc.get("active", True):
+        raise HTTPException(404, "Impresa non autorizzata")
+    lotti = set(doc.get("lotti", []))
+    df = await _read_master_csv()
+    if "Source.Name" not in df.columns:
+        return {"pratiche": [], "lotti": list(lotti), "total": 0}
+    mask = df["Source.Name"].apply(lambda x: any(lot and lot in str(x) for lot in lotti)) if lotti else False
+    sub = df[mask] if hasattr(mask, "__iter__") else df.iloc[0:0]
+    pratiche = sub.fillna("").to_dict(orient="records")
+    return {"pratiche": pratiche, "lotti": sorted(lotti), "total": len(pratiche)}
+
+
+@app.post("/api/imprese/submit")
+async def impresa_submit(payload: dict):
+    """Body: {nome, type: 'update'|'new', changes: [...]}.
+    For 'update': each change has {tratta_id, ente, tipo_permesso, fields:{col:val}}
+    For 'new': each change is a full row dict.
+    Goes into pending_updates with status='pending'."""
+    nome = (payload or {}).get("nome", "").strip()
+    typ = (payload or {}).get("type", "").strip()
+    changes = (payload or {}).get("changes") or []
+    if not nome:
+        raise HTTPException(400, "Missing 'nome'")
+    if typ not in {"update", "new"}:
+        raise HTTPException(400, "type must be 'update' or 'new'")
+    if not isinstance(changes, list) or not changes:
+        raise HTTPException(400, "Empty 'changes' array")
+    doc = await assignments_col.find_one({"nome": nome})
+    if not doc or not doc.get("active", True):
+        raise HTTPException(403, "Impresa non autorizzata")
+
+    record = {
+        "nome": nome,
+        "type": typ,
+        "changes": changes,
+        "status": "pending",
+        "submitted_at": _now_iso(),
+        "reviewed_at": None,
+        "reviewed_by": None,
+        "applied_upload_id": None,
+        "note": (payload or {}).get("note", ""),
+    }
+    res = await pending_col.insert_one(record)
+    return {"ok": True, "id": str(res.inserted_id), "count": len(changes)}
+
+
+@app.get("/api/imprese/my-submissions")
+async def my_submissions(nome: str, limit: int = 50):
+    cur = pending_col.find({"nome": nome}).sort("submitted_at", -1).limit(min(limit, 200))
+    items = []
+    async for d in cur:
+        d["_id"] = str(d["_id"])
+        items.append(d)
+    return {"submissions": items, "count": len(items)}
+
+
+# ───────── Admin: assignments management ────────────────────────────────────
+
+@app.get("/api/admin/assignments")
+async def list_assignments(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    _check_token(x_upload_token or token_q)
+    cur = assignments_col.find({}).sort("nome", 1)
+    items = [_serialize_assignment(d) async for d in cur]
+    return {"assignments": items, "count": len(items)}
+
+
+@app.put("/api/admin/assignments/{nome}")
+async def upsert_assignment(
+    nome: str,
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    _check_token(x_upload_token or token_q)
+    nome = nome.strip()
+    lotti = (payload or {}).get("lotti", [])
+    active = bool((payload or {}).get("active", True))
+    if not nome:
+        raise HTTPException(400, "nome required")
+    if not isinstance(lotti, list):
+        raise HTTPException(400, "lotti must be a list")
+    doc = {"nome": nome, "lotti": [str(x) for x in lotti], "active": active, "updated_at": _now_iso()}
+    await assignments_col.update_one({"nome": nome}, {"$set": doc, "$setOnInsert": {"created_at": _now_iso()}}, upsert=True)
+    out = await assignments_col.find_one({"nome": nome})
+    return _serialize_assignment(out)
+
+
+@app.delete("/api/admin/assignments/{nome}")
+async def delete_assignment(
+    nome: str,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    _check_token(x_upload_token or token_q)
+    res = await assignments_col.delete_one({"nome": nome})
+    return {"deleted": res.deleted_count}
+
+
+# ───────── Admin: pending updates approval queue ────────────────────────────
+
+@app.get("/api/admin/pending-updates")
+async def list_pending(
+    status: str = "pending",
+    limit: int = 100,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    _check_token(x_upload_token or token_q)
+    q: dict = {}
+    if status and status != "all":
+        q["status"] = status
+    cur = pending_col.find(q).sort("submitted_at", -1).limit(min(limit, 500))
+    items = []
+    async for d in cur:
+        d["_id"] = str(d["_id"])
+        items.append(d)
+    return {"submissions": items, "count": len(items)}
+
+
+def _apply_changes_to_df(df, submission: dict) -> tuple:
+    """Returns (new_df, summary). Raises HTTPException on errors."""
+    typ = submission["type"]
+    changes = submission["changes"]
+    summary = {"updated": 0, "added": 0, "not_found": 0}
+    if typ == "update":
+        for ch in changes:
+            tratta = (ch.get("tratta_id") or "").strip()
+            ente = (ch.get("ente") or "").strip()
+            tipo = (ch.get("tipo_permesso") or "").strip()
+            fields = ch.get("fields") or {}
+            if not tratta:
+                continue
+            mask = df["TRATTA_ID"].astype(str).str.strip() == tratta
+            if ente:
+                mask = mask & (df["ENTE"].astype(str).str.strip() == ente)
+            if tipo:
+                mask = mask & (df["TIPO_PERMESSO"].astype(str).str.strip() == tipo)
+            idx = df.index[mask].tolist()
+            if not idx:
+                summary["not_found"] += 1
+                continue
+            # Auto-set DATA_ULTIMA_MODIFICA if not provided
+            if "DATA_ULTIMA_MODIFICA" not in fields and "STATO_PERMESSO" in fields:
+                from datetime import datetime as _dt
+                fields["DATA_ULTIMA_MODIFICA"] = _dt.now().strftime("%d/%m/%Y")
+            for i in idx:
+                for col, val in fields.items():
+                    if col in df.columns:
+                        df.at[i, col] = str(val)
+            summary["updated"] += len(idx)
+    elif typ == "new":
+        for row in changes:
+            if not isinstance(row, dict):
+                continue
+            new_row = {c: str(row.get(c, "")) for c in df.columns}
+            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+            summary["added"] += 1
+    return df, summary
+
+
+@app.post("/api/admin/pending-updates/{sub_id}/approve")
+async def approve_pending(
+    sub_id: str,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    _check_token(x_upload_token or token_q)
+    try:
+        oid = ObjectId(sub_id)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    sub = await pending_col.find_one({"_id": oid})
+    if not sub:
+        raise HTTPException(404, "Submission not found")
+    if sub.get("status") != "pending":
+        raise HTTPException(409, f"Already {sub.get('status')}")
+    df = await _read_master_csv()
+    new_df, summary = _apply_changes_to_df(df, sub)
+    note = f"Submission {sub_id} from {sub['nome']} ({sub['type']})"
+    upload_id = await _write_master_csv(new_df, note=note)
+    await pending_col.update_one(
+        {"_id": oid},
+        {"$set": {"status": "approved", "reviewed_at": _now_iso(), "applied_upload_id": upload_id, "summary": summary}},
+    )
+    return {"ok": True, "summary": summary, "new_upload_id": upload_id}
+
+
+@app.post("/api/admin/pending-updates/{sub_id}/reject")
+async def reject_pending(
+    sub_id: str,
+    payload: dict | None = None,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    _check_token(x_upload_token or token_q)
+    try:
+        oid = ObjectId(sub_id)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    note = ((payload or {}).get("note") or "").strip()
+    res = await pending_col.update_one(
+        {"_id": oid, "status": "pending"},
+        {"$set": {"status": "rejected", "reviewed_at": _now_iso(), "reviewed_note": note}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(404, "Submission not found or not pending")
+    return {"ok": True}
