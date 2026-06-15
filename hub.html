@@ -648,8 +648,11 @@ function _showHub(nome) {
     // Così non c'è mai flash di contenuto non autorizzato.
     function _doImpresaCheck(retryBtn) {
       if (retryBtn) retryBtn.disabled = true;
-      fetch(apiBase + '/api/imprese/me?nome=' + encodeURIComponent(nome))
-        .then(r => r.ok ? r.json() : Promise.reject('not-ok'))
+      // Timeout di 10s: se Render è in sleep non teniamo l'utente ad aspettare
+      const controller = new AbortController();
+      const timeoutId  = setTimeout(() => controller.abort(), 10000);
+      fetch(apiBase + '/api/imprese/me?nome=' + encodeURIComponent(nome), { signal: controller.signal })
+        .then(r => { clearTimeout(timeoutId); return r.ok ? r.json() : Promise.reject('not-ok'); })
         .then(d => {
           const err = document.getElementById('_impresaCheckError');
           if (err) err.remove();
