@@ -2220,11 +2220,26 @@ const _CSV_CACHE_TS  = 'enri_riepilogo_ts';
 const _CSV_CACHE_TTL = 5 * 60 * 1000; // 5 minuti
 
 let _riepilogoCsvText = null;
+
+// URL statico GitHub: assoluto, bypassa il rewrite di api-config.js verso Render
+function _staticCsvUrl() {
+  return window.location.href.replace(/[?#].*$/, '').replace(/[^/]+$/, '') + RIEPILOGO_URL;
+}
+
+// Salva il testo CSV in memoria + sessionStorage
+function _saveCsvCache(text) {
+  _riepilogoCsvText = text;
+  try {
+    sessionStorage.setItem(_CSV_CACHE_KEY, text);
+    sessionStorage.setItem(_CSV_CACHE_TS, Date.now().toString());
+  } catch(e) { /* quota o privacy mode, ignora */ }
+}
+
 async function fetchRiepilogoCSV(forceFresh = false) {
-  // 1. Usa cache in memoria (stessa sessione, già parsato)
+  // 1. Usa cache in memoria (stessa sessione)
   if (_riepilogoCsvText && !forceFresh) return _riepilogoCsvText;
 
-  // 2. Usa sessionStorage se non è scaduta e non è forzato il refresh
+  // 2. Usa sessionStorage se non è scaduta
   if (!forceFresh) {
     try {
       const ts = parseInt(sessionStorage.getItem(_CSV_CACHE_TS) || '0', 10);
@@ -2235,27 +2250,55 @@ async function fetchRiepilogoCSV(forceFresh = false) {
     } catch(e) { /* sessionStorage non disponibile, ignora */ }
   }
 
-  // 3. Fetch da GitHub — timeout ridotto a 8s (era 15s)
-  const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(), 8000);
+  // 3. STALE-WHILE-REVALIDATE
+  //    a) Fetch statico GitHub (assoluto → immediato, no Render)
+  //    b) Fetch Render in parallelo (dati aggiornati, ma lento a svegliarsi)
+  //    → Mostra subito i dati GitHub, aggiorna silenziosamente quando arriva Render
+
+  const qs = forceFresh ? '?t=' + Date.now() : '';
+
+  // Fetch statico — timeout breve 5s (GitHub Pages è sempre sveglio)
+  const staticCtrl = new AbortController();
+  const staticTid  = setTimeout(() => staticCtrl.abort(), 5000);
+  const staticPromise = fetch(_staticCsvUrl(), { signal: staticCtrl.signal })
+    .then(r => { clearTimeout(staticTid); return r.ok ? r.text() : Promise.reject('static-fail'); })
+    .catch(e  => { clearTimeout(staticTid); return Promise.reject(e); });
+
+  // Fetch Render — timeout 30s
+  const renderCtrl = new AbortController();
+  const renderTid  = setTimeout(() => renderCtrl.abort(new DOMException('Timeout', 'TimeoutError')), 30000);
+  const renderPromise = fetch(RIEPILOGO_URL + qs, { signal: renderCtrl.signal })
+    .then(r => { clearTimeout(renderTid); return r.ok ? r.text() : Promise.reject('render-fail'); })
+    .catch(e  => { clearTimeout(renderTid); return Promise.reject(e); });
+
+  // Prova a usare il file statico subito
+  let staticText = null;
   try {
-    // Cache-bust solo quando forceFresh=true (loadData); loadCluster usa cache in memoria
-    const qs = forceFresh ? '?t=' + Date.now() : '';
-    let resp = await fetch(RIEPILOGO_URL + qs, { signal: controller.signal });
-    clearTimeout(tid);
-    if (!resp.ok) throw new Error(controller.signal.aborted
-      ? 'Timeout: file riepilogo non risponde'
-      : 'File riepilogo non trovato — carica Riepilogo_progettazione.csv su GitHub (HTTP ' + resp.status + ').');
-    _riepilogoCsvText = await resp.text();
-    // Salva in sessionStorage per i prossimi cambi pagina
-    try {
-      sessionStorage.setItem(_CSV_CACHE_KEY, _riepilogoCsvText);
-      sessionStorage.setItem(_CSV_CACHE_TS,  Date.now().toString());
-    } catch(e) { /* quota o privacy mode, ignora */ }
+    staticText = await staticPromise;
+    _saveCsvCache(staticText);
+
+    // Aggiorna in background con i dati freschi di Render
+    renderPromise.then(renderText => {
+      if (renderText && renderText !== staticText) {
+        _saveCsvCache(renderText);
+        // Ricarica la dashboard silenziosamente con i dati aggiornati
+        if (typeof loadData === 'function') loadData(false).catch(() => {});
+      }
+    }).catch(() => { /* Render non disponibile — dati GitHub già mostrati, va bene */ });
+
     return _riepilogoCsvText;
-  } catch(e) {
-    clearTimeout(tid);
-    throw e;
+  } catch(_staticErr) {
+    // File statico non disponibile: aspetta Render (fallback classico)
+    try {
+      const renderText = await renderPromise;
+      _saveCsvCache(renderText);
+      return _riepilogoCsvText;
+    } catch(e) {
+      if (e.name === 'AbortError' || e.name === 'TimeoutError') {
+        throw new Error('Il server non risponde. Attendi qualche secondo e ricarica la pagina.');
+      }
+      throw e;
+    }
   }
 }
 
