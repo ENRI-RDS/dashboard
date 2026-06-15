@@ -611,14 +611,11 @@ const SCAVI_ALLOWED_ROLES = ['admin', 'admin2'];
 const ADMIN_ALLOWED_ROLES = ['admin', 'admin2'];
 
 function _showHub(nome) {
-  document.getElementById('initSpinner').style.opacity = '0';
-  setTimeout(() => { document.getElementById('initSpinner').style.display = 'none'; }, 300);
-
   document.getElementById('welcomeName').textContent = nome;
   document.getElementById('topbarUser').textContent  = nome;
   document.getElementById('topbarUser').style.display = '';
   document.getElementById('logoutBtn').style.display  = '';
-  document.getElementById('hubContent').style.display = '';
+  // hubContent rimane nascosto finché non sappiamo cosa mostrare
 
   const ruolo = (localStorage.getItem('_enri_role') || '').toLowerCase();
   const scaviCard  = document.getElementById('scaviCard');
@@ -631,35 +628,72 @@ function _showHub(nome) {
     scaviBadge.innerHTML = 'In arrivo';
     scaviBadge.className = 'card-badge';
   }
-  // Admin card: visibile solo per ruoli amministrativi
-  const adminCard = document.getElementById('adminCard');
-  if (adminCard && ADMIN_ALLOWED_ROLES.includes(ruolo)) {
-    adminCard.style.display = '';
-  }
-  // Area Impresa card: visibile se il backend ha un'assegnazione per il nome
+
+  const adminCard   = document.getElementById('adminCard');
   const impresaCard = document.getElementById('impresaCard');
-  if (impresaCard) {
-    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
-    if (apiBase) {
+  const isAdmin     = ADMIN_ALLOWED_ROLES.includes(ruolo);
+  if (adminCard && isAdmin) adminCard.style.display = '';
+
+  // Rivela il contenuto e rimuove lo spinner
+  function _reveal() {
+    document.getElementById('initSpinner').style.opacity = '0';
+    setTimeout(() => { document.getElementById('initSpinner').style.display = 'none'; }, 300);
+    document.getElementById('hubContent').style.display = '';
+  }
+
+  const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+
+  if (!isAdmin && apiBase) {
+    // Non-admin: aspettiamo la risposta backend prima di mostrare qualsiasi card.
+    // Così non c'è mai flash di contenuto non autorizzato.
+    function _doImpresaCheck(retryBtn) {
+      if (retryBtn) retryBtn.disabled = true;
+      fetch(apiBase + '/api/imprese/me?nome=' + encodeURIComponent(nome))
+        .then(r => r.ok ? r.json() : Promise.reject('not-ok'))
+        .then(d => {
+          const err = document.getElementById('_impresaCheckError');
+          if (err) err.remove();
+          if (d && d.active !== false) {
+            // Impresa: mostra solo la card impresa, nascondi tutto il resto
+            document.querySelectorAll('.nav-card').forEach(card => {
+              card.style.display = card.id === 'impresaCard' ? '' : 'none';
+            });
+            document.querySelectorAll('[data-section-title]').forEach(s => s.style.display = 'none');
+          }
+          _reveal();
+        })
+        .catch(() => {
+          // Backend non raggiungibile (Render in sleep / rete assente):
+          // NON mostrare il contenuto — mostra pannello con tasto Riprova
+          document.getElementById('initSpinner').style.display = 'none';
+          let err = document.getElementById('_impresaCheckError');
+          if (!err) {
+            err = document.createElement('div');
+            err.id = '_impresaCheckError';
+            err.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
+              'background:#fff;border-radius:16px;padding:2rem 2.5rem;box-shadow:0 8px 32px rgba(0,0,0,.15);' +
+              'text-align:center;z-index:9999;font-family:inherit;max-width:340px';
+            err.innerHTML = '<p style="margin:0 0 .5rem;font-size:1.1rem;font-weight:600;color:#1a1a2e">⚠️ Server non raggiungibile</p>' +
+              '<p style="margin:0 0 1.5rem;color:#555;font-size:.9rem">Il server si sta avviando o la connessione non è disponibile. Attendi qualche secondo e riprova.</p>' +
+              '<button id="_impresaRetryBtn" style="background:var(--accent,#4361ee);color:#fff;border:none;border-radius:8px;' +
+              'padding:.6rem 1.6rem;font-size:.95rem;cursor:pointer;font-weight:600">Riprova</button>';
+            document.body.appendChild(err);
+          }
+          const btn = document.getElementById('_impresaRetryBtn');
+          if (btn) btn.addEventListener('click', () => _doImpresaCheck(btn));
+          if (retryBtn) retryBtn.disabled = false;
+        });
+    }
+    _doImpresaCheck(null);
+  } else {
+    // Admin o nessun apiBase: mostra subito
+    if (impresaCard && apiBase) {
       fetch(apiBase + '/api/imprese/me?nome=' + encodeURIComponent(nome))
         .then(r => r.ok ? r.json() : null)
-        .then(d => {
-          if (d && d.active !== false) {
-            impresaCard.style.display = '';
-            // Se l'utente è ESCLUSIVAMENTE un'impresa (ruolo non amministrativo),
-            // nascondiamo le altre card e lasciamo SOLO l'Area Impresa.
-            if (!ADMIN_ALLOWED_ROLES.includes(ruolo)) {
-              document.querySelectorAll('.nav-card').forEach(card => {
-                if (card.id !== 'impresaCard') card.style.display = 'none';
-              });
-              // Aggiorna eventuali contatori di card visibili / titoli sezione
-              const sectionTitles = document.querySelectorAll('[data-section-title]');
-              sectionTitles.forEach(s => s.style.display = 'none');
-            }
-          }
-        })
+        .then(d => { if (d && d.active !== false) impresaCard.style.display = ''; })
         .catch(() => {});
     }
+    _reveal();
   }
 }
 
