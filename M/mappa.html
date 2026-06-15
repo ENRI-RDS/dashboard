@@ -423,7 +423,7 @@
       top: 58px !important;
     }
 
-    /* ── Measure / siti buttons ── */
+    /* ── Measure button ── */
     .measure-control-btn{
       height:44px; min-width:44px; padding:0 12px; font-size:10px;
     }
@@ -681,7 +681,7 @@
     <span class="badge" id="statusBadge">⏳ Caricamento</span>
     <button class="btn" style="background:#2f5496" onclick="exportPDF()">⬇ PDF</button>
 
-    <a href="Hub.html" class="btn-back" style="background:#9C7A55;">
+    <a href="hub.html" class="btn-back" style="background:#9C7A55;">
       Hub
     </a>
     <a href="index.html?direct=1" class="btn-back">
@@ -2325,160 +2325,6 @@ function _fmtDist(m) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── SITI DI INTERESSE ───────────────────────────────────────────────────────
-const SITI = [
-  { name: 'Caldera',      lat: 45.47689122285669, lon: 9.10359279146746,  note: 'Milano' },
-  { name: 'DATA4',        lat: 45.47135760905800, lon: 9.03687356523146,  note: 'Settimo Milanese' },
-  { name: 'MXP102',       lat: 45.52098760536111, lon: 9.06895054960220,  note: 'Rho' },
-  { name: 'MXP109',       lat: 45.36501718096642, lon: 9.12725039655933,  note: 'Zibido' },
-  { name: 'MXP118',       lat: 45.65566806648370, lon: 9.70478595192444,  note: 'Zanica' },
-  { name: 'MXP133',       lat: 45.26589755160440, lon: 9.20841625292800,  note: 'Bornasco' },
-  { name: 'MXP140',       lat: 45.62960454633557, lon: 9.55124048864611,  note: 'MXP140' },
-  { name: 'MXP76',        lat: 45.70599945172991, lon: 9.58922139762394,  note: 'Aruba' },
-  { name: 'MXP81',        lat: 45.32734400342294, lon: 9.21537621502111,  note: 'Siziano' },
-  { name: 'NEW Siziano',  lat: 45.32392028570824, lon: 9.21346802014885,  note: 'Siziano' },
-];
-
-let _sitiPanelOpen = false;
-
-// Controllo Leaflet per il tasto Siti (topright, sotto lo zoom)
-const SitiControl = L.Control.extend({
-  options: { position: 'topright' },
-  onAdd: function() {
-    const wrap = L.DomUtil.create('div', '');
-    wrap.style.cssText = 'position:relative;';
-    L.DomEvent.disableClickPropagation(wrap);
-    L.DomEvent.disableScrollPropagation(wrap);
-
-    // Tasto
-    const btn = L.DomUtil.create('div', 'siti-control-btn', wrap);
-    btn.id = 'sitiBtn';
-    btn.title = 'Siti di interesse';
-    btn.innerHTML = '📍 SITI ENRI';
-
-    // Pannello
-    const panel = L.DomUtil.create('div', 'siti-panel', wrap);
-    panel.id = 'sitiPanel';
-    panel.innerHTML = `
-      <div class="siti-panel-head">
-        <div class="siti-panel-title">📍 Siti di interesse</div>
-        <input class="siti-search" id="sitiSearch" type="text"
-               placeholder="Cerca sito…" autocomplete="off">
-      </div>
-      <div class="siti-list" id="sitiList"></div>`;
-
-    L.DomEvent.on(btn, 'click', toggleSitiPanel);
-
-    // Filtro ricerca
-    setTimeout(() => {
-      const inp = document.getElementById('sitiSearch');
-      if (inp) inp.addEventListener('input', e => filterSiti(e.target.value));
-    }, 0);
-
-    return wrap;
-  }
-});
-new SitiControl().addTo(map);
-
-function toggleSitiPanel() {
-  _sitiPanelOpen = !_sitiPanelOpen;
-  const panel = document.getElementById('sitiPanel');
-  const btn   = document.getElementById('sitiBtn');
-  panel.classList.toggle('open', _sitiPanelOpen);
-  btn.classList.toggle('active', _sitiPanelOpen);
-  if (_sitiPanelOpen) {
-    renderSitiList(SITI);
-    setTimeout(() => {
-      const inp = document.getElementById('sitiSearch');
-      if (inp) { inp.value = ''; inp.focus(); }
-    }, 150);
-    setTimeout(() => document.addEventListener('click', _closeSitiOutside), 0);
-  } else {
-    document.removeEventListener('click', _closeSitiOutside);
-  }
-}
-
-function _closeSitiOutside(e) {
-  const panel = document.getElementById('sitiPanel');
-  const btn   = document.getElementById('sitiBtn');
-  if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) {
-    _sitiPanelOpen = false;
-    panel.classList.remove('open');
-    btn.classList.remove('active');
-    document.removeEventListener('click', _closeSitiOutside);
-  }
-}
-
-function renderSitiList(list) {
-  const el = document.getElementById('sitiList');
-  if (!el) return;
-  el.innerHTML = '';
-  if (!list.length) {
-    el.innerHTML = '<div class="sito-empty">Nessun sito trovato</div>';
-    return;
-  }
-  list.forEach(s => {
-    const item = document.createElement('div');
-    item.className = 'sito-item';
-    item.innerHTML = `
-      <div class="sito-icon">📍</div>
-      <div class="sito-info">
-        <div class="sito-name">${s.name}</div>
-        <div class="sito-note">${s.note}</div>
-      </div>
-      <span class="sito-arrow">›</span>`;
-    item.onclick = () => goToSito(s);
-    el.appendChild(item);
-  });
-}
-
-function filterSiti(query) {
-  const q = query.trim().toLowerCase();
-  renderSitiList(q ? SITI.filter(s =>
-    s.name.toLowerCase().includes(q) || s.note.toLowerCase().includes(q)
-  ) : SITI);
-}
-
-let _sitoMarker = null;
-
-function goToSito(s) {
-  // Offset verticale: sposta il centro leggermente verso il basso
-  // così il marker resta visivamente al centro anche con il popup aperto sopra
-  const targetPoint = map.project([s.lat, s.lon], 16).subtract([0, 60]);
-  const targetLatLng = map.unproject(targetPoint, 16);
-  map.setView(targetLatLng, 16, { animate: true });
-
-  // Rimuovi marker precedente
-  if (_sitoMarker) { map.removeLayer(_sitoMarker); _sitoMarker = null; }
-
-  // Cerchietto con popup
-  _sitoMarker = L.circleMarker([s.lat, s.lon], {
-    radius: 10,
-    color: '#2563eb',
-    fillColor: '#2563eb',
-    fillOpacity: 0.25,
-    weight: 2.5,
-    renderer: searchMarkerRenderer
-  }).addTo(map);
-
-  _sitoMarker.bindPopup(`
-    <div style="padding:6px 4px;min-width:130px">
-      <div style="font-size:13px;font-weight:700;color:var(--text)">${s.name}</div>
-      <div style="font-size:11px;color:#1a1d27;margin-top:2px">${s.note}</div>
-    </div>`, { closeButton: false, autoPan: false }
-  ).openPopup();
-
-  // Rimuovi marker alla chiusura del popup
-  _sitoMarker.on('popupclose', () => {
-    if (_sitoMarker) { map.removeLayer(_sitoMarker); _sitoMarker = null; }
-  });
-
-  // Chiudi pannello
-  _sitiPanelOpen = false;
-  document.getElementById('sitiPanel').classList.remove('open');
-  document.getElementById('sitiBtn').classList.remove('active');
-  document.removeEventListener('click', _closeSitiOutside);
-}
 // ─────────────────────────────────────────────────────────────────────────────
 
 function openHelp() { document.getElementById("helpOverlay").classList.add("open"); }
@@ -2642,12 +2488,7 @@ window.addEventListener('load', () => {
       <p>La barra di ricerca nella topbar cerca contemporaneamente tra le pratiche del dataset (per codice pratica o ID tratta) e tra gli indirizzi italiani via geocoding OpenStreetMap. I risultati sono divisi in due sezioni: <em>Pratiche e Tratte</em> mostra il codice, il lotto e il comune; <em>Indirizzi</em> permette di centrare la mappa su qualsiasi luogo. Selezionando una tratta, questa viene evidenziata in giallo e si apre il popup di dettaglio.</p>
     </div>
 
-    <div class="help-section">
-      <h4>📍 Siti di Interesse</h4>
-      <p>Il pulsante <strong>Siti</strong> in alto a destra apre un pannello con i principali siti tecnici (data center, nodi di rete, ecc.) localizzati lungo il tracciato. Usa la barra di ricerca interna per filtrare per nome o descrizione. Cliccando su un sito la mappa si centra sulla posizione con un marker temporaneo e un popup identificativo.</p>
-    </div>
-
-    <div class="help-section">
+<div class="help-section">
       <h4>📏 Misuratore di Distanza</h4>
       <p>Il pulsante <strong>📏 Misura</strong>, posizionato sotto il selettore di mappa in alto a sinistra, attiva la modalità di misurazione. Clicca sulla mappa per aggiungere punti: ogni segmento mostra la distanza parziale con un'etichetta, il badge in basso al centro aggiorna la distanza totale. Doppio click per terminare la misurazione; il tasto <strong>✕</strong> nel badge o il tasto <kbd>Esc</kbd> cancellano tutto. La misura viene espressa in metri sotto il chilometro, in km sopra.</p>
     </div>
