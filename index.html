@@ -2220,6 +2220,8 @@ const _CSV_CACHE_TS  = 'enri_riepilogo_ts';
 const _CSV_CACHE_TTL = 5 * 60 * 1000; // 5 minuti
 
 let _riepilogoCsvText = null;
+// Flag anti-loop: impedisce che l'aggiornamento SWR rilanci un altro ciclo fetch
+let _swrUpdating = false;
 
 // URL statico GitHub: assoluto, bypassa il rewrite di api-config.js verso Render
 function _staticCsvUrl() {
@@ -2236,8 +2238,10 @@ function _saveCsvCache(text) {
 }
 
 async function fetchRiepilogoCSV(forceFresh = false) {
-  // 1. Usa cache in memoria (stessa sessione)
-  if (_riepilogoCsvText && !forceFresh) return _riepilogoCsvText;
+  // 1. Usa cache in memoria (stessa sessione).
+  //    Se _swrUpdating è attivo, usa sempre la cache anche se forceFresh=true:
+  //    evita che loadData() rilanciato dall'aggiornamento SWR faccia altri fetch.
+  if (_riepilogoCsvText && (!forceFresh || _swrUpdating)) return _riepilogoCsvText;
 
   // 2. Usa sessionStorage se non è scaduta
   if (!forceFresh) {
@@ -2251,13 +2255,13 @@ async function fetchRiepilogoCSV(forceFresh = false) {
   }
 
   // 3. STALE-WHILE-REVALIDATE
-  //    a) Fetch statico GitHub (assoluto → immediato, no Render)
-  //    b) Fetch Render in parallelo (dati aggiornati, ma lento a svegliarsi)
+  //    a) Fetch statico GitHub (assoluto → non passa per Render, risponde subito)
+  //    b) Fetch Render in parallelo (dati aggiornati, ma cold start lento)
   //    → Mostra subito i dati GitHub, aggiorna silenziosamente quando arriva Render
 
   const qs = forceFresh ? '?t=' + Date.now() : '';
 
-  // Fetch statico — timeout breve 5s (GitHub Pages è sempre sveglio)
+  // Fetch statico GitHub — timeout 5s
   const staticCtrl = new AbortController();
   const staticTid  = setTimeout(() => staticCtrl.abort(), 5000);
   const staticPromise = fetch(_staticCsvUrl(), { signal: staticCtrl.signal })
@@ -2279,12 +2283,17 @@ async function fetchRiepilogoCSV(forceFresh = false) {
 
     // Aggiorna in background con i dati freschi di Render
     renderPromise.then(renderText => {
-      if (renderText && renderText !== staticText) {
-        _saveCsvCache(renderText);
-        // Ricarica la dashboard silenziosamente con i dati aggiornati
-        if (typeof loadData === 'function') loadData(false).catch(() => {});
+      if (!renderText || renderText === _riepilogoCsvText) return; // nessuna differenza
+      if (_swrUpdating) return; // già in aggiornamento, evita loop
+      _swrUpdating = true;
+      _saveCsvCache(renderText);
+      // Ricarica la dashboard silenziosamente; _swrUpdating blocca nuovi fetch dentro loadData
+      if (typeof loadData === 'function') {
+        loadData(false).catch(() => {}).finally(() => { _swrUpdating = false; });
+      } else {
+        _swrUpdating = false;
       }
-    }).catch(() => { /* Render non disponibile — dati GitHub già mostrati, va bene */ });
+    }).catch(() => { /* Render non disponibile — dati GitHub già mostrati, ok */ });
 
     return _riepilogoCsvText;
   } catch(_staticErr) {
