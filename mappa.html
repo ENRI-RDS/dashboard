@@ -1619,9 +1619,20 @@ function makePopupHtml(p, gmapsUrl) {
 }
 
 async function loadGeoJSON() {
-  const resp = await fetch('QGIS.geojson?t='+Date.now());
-  if (!resp.ok) throw new Error('QGIS.geojson non trovato');
-  return await resp.json();
+  const ctrl = new AbortController();
+  const tid  = setTimeout(() => ctrl.abort(new DOMException('Timeout', 'TimeoutError')), 30000);
+  try {
+    // Cache breve (5 min): evita di riscaricarlo ad ogni navigazione ma prende aggiornamenti
+    const resp = await fetch('QGIS.geojson?t=' + Math.floor(Date.now() / 300000), { signal: ctrl.signal });
+    clearTimeout(tid);
+    if (!resp.ok) throw new Error('QGIS.geojson non trovato (HTTP ' + resp.status + ')');
+    return await resp.json();
+  } catch(e) {
+    clearTimeout(tid);
+    if (e.name === 'AbortError' || e.name === 'TimeoutError')
+      throw new Error('Il server non risponde. Attendi qualche secondo e ricarica la pagina.');
+    throw e;
+  }
 }
 
 function buildLottoStats(features) {
@@ -1948,9 +1959,11 @@ function applyHighlight(targetLayer) {
 
 function zoomToFeature(feature) {
   let targetLayer = null;
-  allLayers.forEach(({layer}) => {
-    layer.eachLayer(l => { if (l.feature === feature) targetLayer = l; });
-  });
+  // Early exit: smette di cercare non appena trova il layer corretto
+  for (const {layer} of allLayers) {
+    if (targetLayer) break;
+    layer.eachLayer(l => { if (!targetLayer && l.feature === feature) targetLayer = l; });
+  }
   if (targetLayer) {
     const bounds = targetLayer.getBounds ? targetLayer.getBounds() : null;
     const latlng = bounds ? bounds.getCenter() : targetLayer.getLatLng?.();
@@ -2000,7 +2013,17 @@ const QTS_COLOR_HEX = '#8b5cf6';
 async function loadQTS() {
   if (qtsLoaded) return;
   try {
-    const resp = await fetch('QTS.geojson?t=' + Date.now());
+    const ctrl = new AbortController();
+    const tid  = setTimeout(() => ctrl.abort(new DOMException('Timeout', 'TimeoutError')), 30000);
+    let resp;
+    try {
+      resp = await fetch('QTS.geojson?t=' + Math.floor(Date.now() / 300000), { signal: ctrl.signal });
+      clearTimeout(tid);
+    } catch(e) {
+      clearTimeout(tid);
+      throw (e.name === 'AbortError' || e.name === 'TimeoutError')
+        ? new Error('QTS.geojson: server non risponde') : e;
+    }
     if (!resp.ok) throw new Error('QTS.geojson non trovato');
     const geojson = await resp.json();
 
@@ -2191,14 +2214,22 @@ function sedDivIcon(tipo) {
 let sedLayer   = null;
 let sedLoaded  = false;
 let _sedActive = false;
+let _sedLoading = false; // guard anti race-condition
 
 async function loadSED() {
-  if (sedLoaded) return;
+  if (sedLoaded || _sedLoading) return;
+  _sedLoading = true;
+  try { await _loadSEDInner(); } finally { _sedLoading = false; }
+}
 
+async function _loadSEDInner() {
   // Carica Master.csv e indicizza per N_SED (opzionale, non blocca)
   if (!window._sedFromCSV) {
     try {
-      const csvResp = await fetch('Master.csv?t=' + Date.now());
+      const csvCtrl = new AbortController();
+      const csvTid  = setTimeout(() => csvCtrl.abort(), 30000);
+      const csvResp = await fetch('Master.csv?t=' + Math.floor(Date.now() / 300000), { signal: csvCtrl.signal });
+      clearTimeout(csvTid);
       if (csvResp.ok) {
         const csvText = await csvResp.text();
         const rows = csvText.split('\n');
@@ -2254,10 +2285,20 @@ async function loadSED() {
       }
     } catch(e) { /* CSV non disponibile */ }
   }
+  const sedCtrl = new AbortController();
+  const sedTid  = setTimeout(() => sedCtrl.abort(new DOMException('Timeout', 'TimeoutError')), 30000);
   try {
-    const resp = await fetch('SED_classificato.geojson?t=' + Date.now());
-    if (!resp.ok) throw new Error('SED_classificato.geojson non trovato');
-    const geojson = await resp.json();
+    let sedResp;
+    try {
+      sedResp = await fetch('SED_classificato.geojson?t=' + Math.floor(Date.now() / 300000), { signal: sedCtrl.signal });
+      clearTimeout(sedTid);
+    } catch(e) {
+      clearTimeout(sedTid);
+      throw (e.name === 'AbortError' || e.name === 'TimeoutError')
+        ? new Error('SED: server non risponde') : e;
+    }
+    if (!sedResp.ok) throw new Error('SED_classificato.geojson non trovato');
+    const geojson = await sedResp.json();
 
     sedLayer = L.geoJSON(geojson, {
       pointToLayer: (feature, latlng) => {
