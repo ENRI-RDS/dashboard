@@ -426,13 +426,15 @@
         openRename(name);
       }
       else if(act === 'delete-file' && name){
-        if(!confirm(`Eliminare TUTTE le versioni di "${name}"?\nDopo l'eliminazione verrà servito il file presente nel repo GitHub (se esiste), altrimenti il file non sarà più accessibile.`)) return;
+        const okDel = await showConfirm('Elimina tutte le versioni', `Eliminare TUTTE le versioni di "${name}"? Verrà servito il file da GitHub se presente.`, 'Elimina tutto', 'btn btn-danger');
+        if(!okDel) return;
         const res = await api(withTokenQuery('/api/files/' + encodeURIComponent(name).replace(/%2F/g,'/')), { method: 'DELETE', headers: authHeaders() });
         toast(`Eliminate ${res.deleted_versions} versioni`);
         refreshAll();
       }
       else if(act === 'delete-upload' && id){
-        if(!confirm('Eliminare questa singola versione?')) return;
+        const okOne = await showConfirm('Elimina versione', 'Eliminare questa singola versione?', 'Elimina', 'btn btn-danger');
+        if(!okOne) return;
         await api(withTokenQuery('/api/uploads/' + id), { method: 'DELETE', headers: authHeaders() });
         toast('Versione eliminata');
         refreshAll();
@@ -473,6 +475,102 @@
   };
 
   // ──────────────────────────────────────────────────────────────────────
+
+  // ── Modali generici ────────────────────────────────────────────────────────
+
+  // Confirm modal
+  let _confirmResolve = null;
+  function showConfirm(title, msg, okLabel = 'Conferma', okClass = 'btn') {
+    return new Promise(resolve => {
+      _confirmResolve = resolve;
+      $('confirmTitle').textContent = title;
+      $('confirmMsg').textContent   = msg;
+      $('confirmOk').className      = okClass;
+      $('confirmOk').textContent    = okLabel;
+      $('confirmModal').classList.add('open');
+    });
+  }
+  $('confirmOk').addEventListener('click', () => {
+    $('confirmModal').classList.remove('open');
+    if (_confirmResolve) { _confirmResolve(true); _confirmResolve = null; }
+  });
+  ['confirmClose','confirmCancel'].forEach(id => {
+    $(id).addEventListener('click', () => {
+      $('confirmModal').classList.remove('open');
+      if (_confirmResolve) { _confirmResolve(false); _confirmResolve = null; }
+    });
+  });
+
+  // Reject modal
+  let _rejectResolve = null;
+  function showReject(sub) {
+    return new Promise(resolve => {
+      _rejectResolve = resolve;
+      $('rejectSub').textContent = `${sub.nome} · ${new Date(sub.submitted_at).toLocaleString('it-IT')}`;
+      $('rejectNote').value = '';
+      $('rejectModal').classList.add('open');
+      setTimeout(() => $('rejectNote').focus(), 100);
+    });
+  }
+  $('rejectOk').addEventListener('click', () => {
+    const note = $('rejectNote').value.trim();
+    $('rejectModal').classList.remove('open');
+    if (_rejectResolve) { _rejectResolve({ confirmed: true, note }); _rejectResolve = null; }
+  });
+  ['rejectClose','rejectCancel'].forEach(id => {
+    $(id).addEventListener('click', () => {
+      $('rejectModal').classList.remove('open');
+      if (_rejectResolve) { _rejectResolve({ confirmed: false }); _rejectResolve = null; }
+    });
+  });
+
+  // Details modal
+  function showDetails(s) {
+    const typeLabel = s.type === 'update' ? 'Aggiornamento' : 'Nuova pratica';
+    $('detailsTitle').textContent = `${typeLabel} — ${s.nome}`;
+    $('detailsSub').textContent   = `Inviato: ${new Date(s.submitted_at).toLocaleString('it-IT')} · Stato: ${s.status}`;
+    const fieldLabels = {
+      STATO_PERMESSO:'Nuovo stato', DATA_RICHIESTA:'Data richiesta',
+      DATA_APPROVAZIONE:'Data approvazione', PRATICA:'Pratica', NOTE:'Note',
+      DATA_ULTIMA_MODIFICA:'Ultima modifica'
+    };
+    const changesHtml = (s.changes || []).map(c => {
+      const tratta = c.tratta_id || c.TRATTA_ID || '—';
+      const ente   = c.ente   || c.ENTE   || '';
+      const tipo   = c.tipo_permesso || c.TIPO_PERMESSO || '';
+      const fields = c.fields || {};
+      const colonne = Object.entries(fields).map(([k,v]) => `
+        <div class="detail-field">
+          <span class="detail-field-key">${escapeHtml(fieldLabels[k]||k)}</span>
+          <span class="detail-field-val">${escapeHtml(String(v||'—'))}</span>
+        </div>`).join('');
+      return `
+        <div class="detail-change">
+          <div class="detail-change-header">
+            Tratta ${escapeHtml(tratta)}
+            ${ente ? `<span style="font-weight:400;color:var(--muted)"> · ${escapeHtml(ente)}</span>` : ''}
+            ${tipo ? `<span style="font-weight:400;color:var(--muted)"> · ${escapeHtml(tipo)}</span>` : ''}
+          </div>
+          ${colonne||'<span style="color:var(--muted);font-size:11px">Nessun campo modificato</span>'}
+        </div>`;
+    }).join('');
+    let summaryHtml = '';
+    if (s.summary) {
+      summaryHtml = `<div class="detail-section" style="margin-top:12px">
+        <div class="detail-label">Risultato approvazione</div>
+        <div style="font-size:12px;color:#374151">
+          ${s.summary.updated||0} aggiornate · ${s.summary.added||0} aggiunte · ${s.summary.not_found||0} non trovate
+        </div></div>`;
+    }
+    $('detailsBody').innerHTML = `
+      <div class="detail-section">
+        <div class="detail-label">${(s.changes||[]).length} modifica/he</div>
+        ${changesHtml}
+      </div>${summaryHtml}`;
+    $('detailsModal').classList.add('open');
+  }
+  $('detailsClose').addEventListener('click', () => $('detailsModal').classList.remove('open'));
+
   // Preview modal close
   $('previewClose').onclick = () => $('previewModal').classList.remove('open');
   document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => {
@@ -576,20 +674,23 @@
     if(!btn) return;
     const act = btn.dataset.act;
     if(act === 'approve' && btn.dataset.id){
-      if(!confirm('Approvare e applicare a Master.csv? Verrà creata una nuova versione.')) return;
+      const ok = await showConfirm('Approva submission', 'Applicare le modifiche a Master.csv? Verrà creata una nuova versione.', 'Approva', 'btn');
+      if(!ok) return;
       try{
         const r = await api(withTokenQuery('/api/admin/pending-updates/' + btn.dataset.id + '/approve'), { method: 'POST', headers: authHeaders() });
         toast(`Approvato: ${r.summary.updated} aggiornate, ${r.summary.added} aggiunte, ${r.summary.not_found} non trovate`);
         refreshPending(); refreshFiles(); refreshUploads();
       }catch(err){ toast('Errore: ' + err.message, true); }
     } else if(act === 'reject' && btn.dataset.id){
-      const note = prompt('Motivo del rifiuto (opzionale):') ?? '';
+      const sub = JSON.parse(btn.closest('tr').querySelector('[data-act="details"]').dataset.payload.replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>'));
+      const res = await showReject(sub);
+      if(!res.confirmed) return;
       try{
-        await api(withTokenQuery('/api/admin/pending-updates/' + btn.dataset.id + '/reject'), { method: 'POST', headers: { 'Content-Type':'application/json', ...authHeaders() }, body: JSON.stringify({ note }) });
+        await api(withTokenQuery('/api/admin/pending-updates/' + btn.dataset.id + '/reject'), { method: 'POST', headers: { 'Content-Type':'application/json', ...authHeaders() }, body: JSON.stringify({ note: res.note }) });
         toast('Rifiutato'); refreshPending();
       }catch(err){ toast('Errore: ' + err.message, true); }
     } else if(act === 'details' && btn.dataset.payload){
-      try { alert(JSON.stringify(JSON.parse(btn.dataset.payload.replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>')), null, 2)); } catch(_){ alert(btn.dataset.payload); }
+      try { showDetails(JSON.parse(btn.dataset.payload.replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>'))); } catch(_){}
     }
   });
 
