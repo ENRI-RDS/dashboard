@@ -70,6 +70,14 @@
   .modal-title{font-family:'Bricolage Grotesque',sans-serif;font-size:18px;font-weight:700}
   .modal-sub{font-size:12px;color:var(--muted);font-family:'Fira Code',monospace}
   .modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted)}
+  .detail-section{margin-bottom:14px}
+  .detail-label{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+  .detail-change{background:#f8f9fc;border-radius:8px;padding:12px;margin-bottom:8px}
+  .detail-change-header{font-weight:700;font-size:12px;margin-bottom:6px;color:#1a1a2e}
+  .detail-field{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid #f0f0f0}
+  .detail-field:last-child{border-bottom:none}
+  .detail-field-key{color:var(--muted);min-width:160px;font-family:'Fira Code',monospace;font-size:11px}
+  .detail-field-val{color:#1a1a2e;font-family:'Fira Code',monospace;font-size:11px;word-break:break-all}
   pre.preview{background:#0E1116;color:#D6DEEB;padding:14px;border-radius:8px;overflow:auto;font-family:'Fira Code',monospace;font-size:11.5px;max-height:50vh;white-space:pre;line-height:1.5}
   .tabbar{display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid var(--border)}
   .tab{padding:8px 14px;font-size:12.5px;font-weight:600;color:var(--muted);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
@@ -229,6 +237,52 @@
     <div class="row" style="justify-content:flex-end">
       <a class="btn btn-ghost" id="downloadLink" target="_blank">Apri completo</a>
     </div>
+  </div>
+</div>
+
+<!-- Confirm modal generico -->
+<div class="modal" id="confirmModal">
+  <div class="modal-card" style="max-width:420px">
+    <div class="modal-head">
+      <div class="modal-title" id="confirmTitle">Conferma</div>
+      <button class="modal-close" id="confirmClose">&times;</button>
+    </div>
+    <p id="confirmMsg" style="color:#374151;font-size:14px;line-height:1.5;margin:0 0 16px"></p>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-ghost" id="confirmCancel">Annulla</button>
+      <button class="btn" id="confirmOk">Conferma</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="rejectModal">
+  <div class="modal-card" style="max-width:480px">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">Rifiuta submission</div>
+        <div class="modal-sub" id="rejectSub"></div>
+      </div>
+      <button class="modal-close" id="rejectClose">&times;</button>
+    </div>
+    <p style="color:#374151;font-size:13px;margin:0 0 8px">Motivo del rifiuto (opzionale):</p>
+    <textarea id="rejectNote" style="width:100%;min-height:80px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical;box-sizing:border-box" placeholder="es. Dati incompleti, verificare con l'impresa…"></textarea>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+      <button class="btn btn-ghost" id="rejectCancel">Annulla</button>
+      <button class="btn btn-danger" id="rejectOk">Rifiuta</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="detailsModal">
+  <div class="modal-card" style="max-width:680px;max-height:80vh;display:flex;flex-direction:column">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="detailsTitle">Dettagli</div>
+        <div class="modal-sub" id="detailsSub"></div>
+      </div>
+      <button class="modal-close" id="detailsClose">&times;</button>
+    </div>
+    <div style="overflow-y:auto;flex:1;padding-top:4px" id="detailsBody"></div>
   </div>
 </div>
 
@@ -743,7 +797,8 @@
       $('newAssignLotti').value = btn.dataset.lotti;
       $('newAssignNome').scrollIntoView({behavior:'smooth', block:'center'});
     } else if(btn.dataset.act === 'assign-del'){
-      if(!confirm(`Eliminare l'assegnazione di "${btn.dataset.nome}"?`)) return;
+      const okAssign = await showConfirm('Elimina assegnazione', `Eliminare l'assegnazione di "${btn.dataset.nome}"?`, 'Elimina', 'btn btn-danger');
+      if(!okAssign) return;
       try{
         await api(withTokenQuery('/api/admin/assignments/' + encodeURIComponent(btn.dataset.nome)), { method: 'DELETE', headers: authHeaders() });
         toast('Eliminato'); refreshAssignments();
