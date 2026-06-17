@@ -1618,21 +1618,62 @@ function makePopupHtml(p, gmapsUrl) {
   </div>`;
 }
 
-async function loadGeoJSON() {
-  const ctrl = new AbortController();
-  const tid  = setTimeout(() => ctrl.abort(new DOMException('Timeout', 'TimeoutError')), 30000);
+// ── STALE-WHILE-REVALIDATE ──────────────────────────────────────────────────
+// Carica subito il file statico da GitHub Pages (instantaneo),
+// poi aggiorna da Render in background. onUpdate(data) chiamato solo se i dati differiscono.
+function _staticFileUrl(rel) {
+  return window.location.href.replace(/[?#].*$/, '').replace(/[^/]+$/, '') + rel;
+}
+
+async function fetchWithSWR(rel, { onUpdate, isJson = true } = {}) {
+  const qs = '?t=' + Math.floor(Date.now() / 300000); // slot da 5 min
+
+  // Fetch GitHub statico — timeout 5s
+  const sCtrl = new AbortController();
+  const sTid  = setTimeout(() => sCtrl.abort(), 5000);
+  const staticP = fetch(_staticFileUrl(rel), { signal: sCtrl.signal })
+    .then(r => { clearTimeout(sTid); return r.ok ? r.text() : Promise.reject('static-fail'); })
+    .catch(e  => { clearTimeout(sTid); return Promise.reject(e); });
+
+  // Fetch Render — timeout 30s
+  const rCtrl = new AbortController();
+  const rTid  = setTimeout(() => rCtrl.abort(new DOMException('Timeout', 'TimeoutError')), 30000);
+  const renderP = fetch(rel + qs, { signal: rCtrl.signal })
+    .then(r => { clearTimeout(rTid); return r.ok ? r.text() : Promise.reject('render-fail'); })
+    .catch(e  => { clearTimeout(rTid); return Promise.reject(e); });
+
+  const parse = text => isJson ? JSON.parse(text) : text;
+
+  let staticText = null;
   try {
-    // Cache breve (5 min): evita di riscaricarlo ad ogni navigazione ma prende aggiornamenti
-    const resp = await fetch('QGIS.geojson?t=' + Math.floor(Date.now() / 300000), { signal: ctrl.signal });
-    clearTimeout(tid);
-    if (!resp.ok) throw new Error('QGIS.geojson non trovato (HTTP ' + resp.status + ')');
-    return await resp.json();
-  } catch(e) {
-    clearTimeout(tid);
-    if (e.name === 'AbortError' || e.name === 'TimeoutError')
-      throw new Error('Il server non risponde. Attendi qualche secondo e ricarica la pagina.');
-    throw e;
+    staticText = await staticP;
+    const staticData = parse(staticText);
+    // Aggiorna silenziosamente quando Render risponde con dati diversi
+    if (onUpdate) {
+      renderP.then(renderText => {
+        if (renderText && renderText !== staticText) {
+          try { onUpdate(parse(renderText)); } catch(_) {}
+        }
+      }).catch(() => {});
+    } else {
+      renderP.catch(() {}); // drena la promise
+    }
+    return staticData;
+  } catch(_) {
+    // Statico non disponibile: aspetta Render
+    try {
+      const renderText = await renderP;
+      return parse(renderText);
+    } catch(e) {
+      if (e.name === 'AbortError' || e.name === 'TimeoutError')
+        throw new Error('Il server non risponde. Attendi qualche secondo e ricarica la pagina.');
+      throw e;
+    }
   }
+}
+
+async function loadGeoJSON(onUpdate) {
+  return fetchWithSWR('QGIS.geojson', { onUpdate, isJson: true });
 }
 
 function buildLottoStats(features) {
@@ -2013,19 +2054,17 @@ const QTS_COLOR_HEX = '#8b5cf6';
 async function loadQTS() {
   if (qtsLoaded) return;
   try {
-    const ctrl = new AbortController();
-    const tid  = setTimeout(() => ctrl.abort(new DOMException('Timeout', 'TimeoutError')), 30000);
-    let resp;
-    try {
-      resp = await fetch('QTS.geojson?t=' + Math.floor(Date.now() / 300000), { signal: ctrl.signal });
-      clearTimeout(tid);
-    } catch(e) {
-      clearTimeout(tid);
-      throw (e.name === 'AbortError' || e.name === 'TimeoutError')
-        ? new Error('QTS.geojson: server non risponde') : e;
-    }
-    if (!resp.ok) throw new Error('QTS.geojson non trovato');
-    const geojson = await resp.json();
+    const geojson = await fetchWithSWR('QTS.geojson', {
+      isJson: true,
+      onUpdate: (fresh) => {
+        if (!qtsLoaded) return;
+        if (qtsLayer       && map.hasLayer(qtsLayer))        map.removeLayer(qtsLayer);
+        if (qtsOutlineLayer && map.hasLayer(qtsOutlineLayer)) map.removeLayer(qtsOutlineLayer);
+        qtsLoaded = false; qtsLayer = null; qtsOutlineLayer = null;
+        loadQTSFromGeojson(fresh);
+        if (_qtsActive) { qtsOutlineLayer.addTo(map); qtsLayer.addTo(map); }
+      }
+    });
 
     let totM = 0;
     geojson.features.forEach(f => {
@@ -2074,6 +2113,19 @@ async function loadQTS() {
       tog.parentElement.title = 'QTS.geojson non disponibile';
     }
   }
+}
+
+function loadQTSFromGeojson(geojson) {
+  // Ricostruisce i layer QTS da geojson già caricato (usato dall'update SWR)
+  qtsOutlineLayer = L.geoJSON(geojson, {
+    renderer: outlineRenderer,
+    style: () => ({ color:'#5577aa', weight:8, opacity:0.3, smoothFactor:1.5, interactive:false })
+  });
+  qtsLayer = L.geoJSON(geojson, {
+    renderer: mainRenderer,
+    style: () => ({ color: QTS_COLOR_HEX, weight:4, opacity:0.95, smoothFactor:1.5, dashArray:'8,6' })
+  });
+  qtsLoaded = true;
 }
 
 async function setQTSOnly(on) {
@@ -2226,10 +2278,8 @@ async function _loadSEDInner() {
   // Carica Master.csv e indicizza per N_SED (opzionale, non blocca)
   if (!window._sedFromCSV) {
     try {
-      const csvCtrl = new AbortController();
-      const csvTid  = setTimeout(() => csvCtrl.abort(), 30000);
-      const csvResp = await fetch('Master.csv?t=' + Math.floor(Date.now() / 300000), { signal: csvCtrl.signal });
-      clearTimeout(csvTid);
+      const csvResp_text = await fetchWithSWR('Master.csv', { isJson: false }).catch(() => null);
+      const csvResp = csvResp_text ? { ok: true, text: async () => csvResp_text } : { ok: false };
       if (csvResp.ok) {
         const csvText = await csvResp.text();
         const rows = csvText.split('\n');
@@ -2285,20 +2335,17 @@ async function _loadSEDInner() {
       }
     } catch(e) { /* CSV non disponibile */ }
   }
-  const sedCtrl = new AbortController();
-  const sedTid  = setTimeout(() => sedCtrl.abort(new DOMException('Timeout', 'TimeoutError')), 30000);
   try {
-    let sedResp;
-    try {
-      sedResp = await fetch('SED_classificato.geojson?t=' + Math.floor(Date.now() / 300000), { signal: sedCtrl.signal });
-      clearTimeout(sedTid);
-    } catch(e) {
-      clearTimeout(sedTid);
-      throw (e.name === 'AbortError' || e.name === 'TimeoutError')
-        ? new Error('SED: server non risponde') : e;
-    }
-    if (!sedResp.ok) throw new Error('SED_classificato.geojson non trovato');
-    const geojson = await sedResp.json();
+    const geojson = await fetchWithSWR('SED_classificato.geojson', {
+      isJson: true,
+      onUpdate: (freshGeojson) => {
+        if (!sedLoaded) return;
+        const wasVisible = sedLayer && map.hasLayer(sedLayer);
+        if (sedLayer && map.hasLayer(sedLayer)) map.removeLayer(sedLayer);
+        sedLoaded = false; sedLayer = null; _sedLoading = false;
+        loadSED().then(() => { if (wasVisible && sedLayer) sedLayer.addTo(map).bringToFront(); });
+      }
+    });
 
     sedLayer = L.geoJSON(geojson, {
       pointToLayer: (feature, latlng) => {
@@ -2427,82 +2474,95 @@ const SedControl = L.Control.extend({
 new SedControl().addTo(map);
 // ─────────────────────────────────────────────────────────────────────────────
 
+function _buildMapLayers(geojson, isUpdate = false) {
+  const features = geojson.features.filter(f => f.properties.LOTTO !== 'P');
+  allFeatures = features;
+  lottoStats = buildLottoStats(features);
+
+  if (isUpdate) {
+    allLayers.forEach(({layer, outlineLayer}) => {
+      if (map.hasLayer(layer)) map.removeLayer(layer);
+      if (map.hasLayer(outlineLayer)) map.removeLayer(outlineLayer);
+    });
+    allLayers = [];
+    clearHighlight();
+  }
+
+  const lottoGroups = {};
+  features.forEach(f => { const l = f.properties.LOTTO; if (!lottoGroups[l]) lottoGroups[l] = []; lottoGroups[l].push(f); });
+
+  Object.entries(lottoGroups).forEach(([lotto, feats]) => {
+    const geoData = { type: 'FeatureCollection', features: feats };
+    const outlineLayer = L.geoJSON(geoData, {
+      renderer: outlineRenderer,
+      style: () => ({ color:'#8899aa', weight:7, opacity:0.25, smoothFactor:1.5, interactive:false })
+    }).addTo(map);
+    outlineLayer.bringToBack();
+    const layer = L.geoJSON(geoData, {
+      renderer: mainRenderer,
+      style: f => ({ color: getColorForMode(f, currentViewMode), weight:4, opacity:0.95, smoothFactor:1.5 }),
+      onEachFeature: (f, layer) => {
+        const coords = f.geometry.type === 'MultiLineString'
+          ? f.geometry.coordinates.flat() : f.geometry.coordinates;
+        const mid = coords[Math.floor(coords.length / 2)];
+        const gmapsUrl = mid ? `https://www.google.com/maps?q=${mid[1].toFixed(6)},${mid[0].toFixed(6)}` : null;
+        const isMobile = window.innerWidth <= 768;
+        layer.bindPopup(makePopupHtml(f.properties, gmapsUrl), {
+          maxWidth: isMobile ? Math.min(window.innerWidth - 40, 320) : 640,
+          autoPanPaddingTopLeft:  isMobile ? L.point(10, 180) : L.point(10, 10),
+          autoPanPaddingBottomRight: isMobile ? L.point(10, 160) : L.point(10, 10),
+        });
+        const stato = f.properties.STATO_LEGENDA || f.properties.STATO_AUTORIZZAZIONE || 'IN ATTESA';
+        const comune = f.properties.COMUNE || '';
+        const col = getColor(stato);
+        layer.bindTooltip(`
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0"></span>
+            <strong>Lotto ${f.properties.LOTTO||'—'}</strong>
+            <span style="color:var(--muted)">·</span>
+            <span>${stato.charAt(0)+stato.slice(1).toLowerCase()}</span>
+          </div>
+          ${comune ? `<div style="font-size:10px;color:#6b7080;margin-top:2px">${comune}</div>` : ''}
+        `, { className:'tratta-tip', sticky:true, direction:'top', offset:[0,-4] });
+        layer.on('mouseover', e => { e.target.setStyle({ weight:6, opacity:1 }); e.target.bringToFront(); });
+        layer.on('mouseout', e => {
+          if (_highlightedLayer === e.target) return;
+          e.target.setStyle({ weight:4, opacity:0.95, color: getColorForMode(e.target.feature, currentViewMode) });
+        });
+        layer.on('click', e => { applyHighlight(e.target); });
+      }
+    }).addTo(map);
+    allLayers.push({ layer, outlineLayer, lotto });
+  });
+
+  if (!isUpdate) {
+    const allGroup = L.featureGroup(allLayers.map(x => x.layer));
+    map.fitBounds(allGroup.getBounds(), { padding:[40,40] });
+  }
+
+  renderSidebar(lottoStats);
+  buildStatsBar(lottoStats, features);
+  document.getElementById('statusBadge').textContent = '● ' + features.length + ' tratte';
+  document.getElementById('statusBadge').className = 'badge ok';
+  document.getElementById('loadingOverlay').style.display = 'none';
+
+  if (isUpdate && currentFilter !== 'TUTTI') {
+    const saved = currentFilter;
+    currentFilter = 'TUTTI';
+    filterByStato(saved);
+  }
+}
+
 (async()=>{
   try{
-    const geojson=await loadGeoJSON();
+    const geojson = await loadGeoJSON(freshGeojson => {
+      _buildMapLayers(freshGeojson, true);
+    });
     const features=geojson.features.filter(f=>f.properties.LOTTO!=='P');
-    allFeatures = features;  // per ricerca pratiche
+    allFeatures = features;
     lottoStats=buildLottoStats(features);
 
-    const lottoGroups={};
-    features.forEach(f=>{ const l=f.properties.LOTTO; if(!lottoGroups[l]) lottoGroups[l]=[]; lottoGroups[l].push(f); });
-
-    Object.entries(lottoGroups).forEach(([lotto,feats])=>{
-      const geoData={type:'FeatureCollection',features:feats};
-      // Layer outline (nero sotto) — sempre visibile in tutte le modalità
-      const outlineLayer=L.geoJSON(geoData,{
-        renderer: outlineRenderer,
-        style:()=>({color:'#8899aa',weight:7,opacity:0.25,smoothFactor:1.5,interactive:false})
-      }).addTo(map);
-      outlineLayer.bringToBack();
-      // Layer principale
-      const layer=L.geoJSON(geoData,{
-        renderer: mainRenderer,
-        style:f=>({
-          color: getColorForMode(f, currentViewMode),
-          weight:4, opacity:0.95, smoothFactor:1.5
-        }),
-        onEachFeature:(f,layer)=>{
-          // Coordinate centroide per Google Maps
-          const coords = f.geometry.type === 'MultiLineString'
-            ? f.geometry.coordinates.flat()
-            : f.geometry.coordinates;
-          const mid = coords[Math.floor(coords.length/2)];
-          const gmapsUrl = mid
-            ? `https://www.google.com/maps?q=${mid[1].toFixed(6)},${mid[0].toFixed(6)}`
-            : null;
-
-          const isMobile = window.innerWidth <= 768;
-          layer.bindPopup(makePopupHtml(f.properties, gmapsUrl),{
-            maxWidth: isMobile ? Math.min(window.innerWidth - 40, 320) : 640,
-            autoPanPaddingTopLeft:  isMobile ? L.point(10, 180) : L.point(10, 10),
-            autoPanPaddingBottomRight: isMobile ? L.point(10, 160) : L.point(10, 10),
-          });
-
-          // Tooltip al passaggio del mouse
-          const stato = f.properties.STATO_LEGENDA || f.properties.STATO_AUTORIZZAZIONE || 'IN ATTESA';
-          const comune = f.properties.COMUNE || '';
-          const col = getColor(stato);
-          layer.bindTooltip(`
-            <div style="display:flex;align-items:center;gap:6px">
-              <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0"></span>
-              <strong>Lotto ${f.properties.LOTTO||'—'}</strong>
-              <span style="color:var(--muted)">·</span>
-              <span>${stato.charAt(0)+stato.slice(1).toLowerCase()}</span>
-            </div>
-            ${comune ? `<div style="font-size:10px;color:#6b7080;margin-top:2px">${comune}</div>` : ''}
-          `, { className:'tratta-tip', sticky:true, direction:'top', offset:[0,-4] });
-
-          layer.on('mouseover',e=>{e.target.setStyle({weight:6,opacity:1});e.target.bringToFront();});
-          layer.on('mouseout',e=>{
-            if(_highlightedLayer===e.target) return;
-            e.target.setStyle({weight:4,opacity:0.95,color:getColorForMode(e.target.feature,currentViewMode)});
-          });
-          layer.on('click',e=>{ applyHighlight(e.target); });
-        }
-      }).addTo(map);
-      allLayers.push({layer,outlineLayer,lotto});
-    });
-
-    const allGroup=L.featureGroup(allLayers.map(x=>x.layer));
-    map.fitBounds(allGroup.getBounds(),{padding:[40,40]});
-
-    renderSidebar(lottoStats);
-    buildStatsBar(lottoStats, features);
-
-    document.getElementById('statusBadge').textContent='● '+features.length+' tratte';
-    document.getElementById('statusBadge').className='badge ok';
-    document.getElementById('loadingOverlay').style.display='none';
+    _buildMapLayers(geojson);
 
   } catch(e){
     document.getElementById('loadingOverlay').innerHTML=`
