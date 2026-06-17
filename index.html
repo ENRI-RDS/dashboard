@@ -2228,18 +2228,22 @@ function _staticFileUrl(rel) {
 // Alias per compatibilità con il codice esistente
 function _staticCsvUrl() { return _staticFileUrl(RIEPILOGO_URL); }
 
+function _timeout(ms, msg) {
+  return new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(msg || 'Timeout')), ms)
+  );
+}
+
 async function fetchWithSWR(rel, { onUpdate, isJson = false } = {}) {
   const qs = '?t=' + Math.floor(Date.now() / 300000); // slot da 5 min
-  const sCtrl = new AbortController();
-  const sTid  = setTimeout(() => sCtrl.abort(), 5000);
-  const staticP = fetch(_staticFileUrl(rel), { signal: sCtrl.signal })
-    .then(r => { clearTimeout(sTid); return r.ok ? r.text() : Promise.reject('static-fail'); })
-    .catch(e  => { clearTimeout(sTid); return Promise.reject(e); });
-  const rCtrl = new AbortController();
-  const rTid  = setTimeout(() => rCtrl.abort(new DOMException('Timeout', 'TimeoutError')), 30000);
-  const renderP = fetch(rel + qs, { signal: rCtrl.signal })
-    .then(r => { clearTimeout(rTid); return r.ok ? r.text() : Promise.reject('render-fail'); })
-    .catch(e  => { clearTimeout(rTid); return Promise.reject(e); });
+  const staticP = Promise.race([
+    fetch(_staticFileUrl(rel)).then(r => r.ok ? r.text() : Promise.reject('static-fail')),
+    _timeout(5000, 'static-timeout')
+  ]).catch(e => Promise.reject(e));
+  const renderP = Promise.race([
+    fetch(rel + qs).then(r => r.ok ? r.text() : Promise.reject('render-fail')),
+    _timeout(30000, 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.')
+  ]).catch(e => Promise.reject(e));
   const parse = text => isJson ? JSON.parse(text) : text;
   let staticText = null;
   try {
@@ -2254,12 +2258,9 @@ async function fetchWithSWR(rel, { onUpdate, isJson = false } = {}) {
     return parse(staticText);
   } catch(_) {
     try {
-      const renderText = await renderP;
-      return parse(renderText);
+      return parse(await renderP);
     } catch(e) {
-      if (e.name === 'AbortError' || e.name === 'TimeoutError')
-        throw new Error('Il server non risponde. Attendi qualche secondo e ricarica la pagina.');
-      throw e;
+      throw new Error(e.message || 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.');
     }
   }
 }
@@ -2297,19 +2298,17 @@ async function fetchRiepilogoCSV(forceFresh = false) {
 
   const qs = forceFresh ? '?t=' + Date.now() : '';
 
-  // Fetch statico GitHub — timeout 5s
-  const staticCtrl = new AbortController();
-  const staticTid  = setTimeout(() => staticCtrl.abort(), 5000);
-  const staticPromise = fetch(_staticCsvUrl(), { signal: staticCtrl.signal })
-    .then(r => { clearTimeout(staticTid); return r.ok ? r.text() : Promise.reject('static-fail'); })
-    .catch(e  => { clearTimeout(staticTid); return Promise.reject(e); });
+  // Fetch statico GitHub — timeout 5s tramite Promise.race (no AbortSignal)
+  const staticPromise = Promise.race([
+    fetch(_staticCsvUrl()).then(r => r.ok ? r.text() : Promise.reject('static-fail')),
+    _timeout(5000, 'static-timeout')
+  ]).catch(e => Promise.reject(e));
 
-  // Fetch Render — timeout 30s
-  const renderCtrl = new AbortController();
-  const renderTid  = setTimeout(() => renderCtrl.abort(new DOMException('Timeout', 'TimeoutError')), 30000);
-  const renderPromise = fetch(RIEPILOGO_URL + qs, { signal: renderCtrl.signal })
-    .then(r => { clearTimeout(renderTid); return r.ok ? r.text() : Promise.reject('render-fail'); })
-    .catch(e  => { clearTimeout(renderTid); return Promise.reject(e); });
+  // Fetch Render — timeout 30s tramite Promise.race
+  const renderPromise = Promise.race([
+    fetch(RIEPILOGO_URL + qs).then(r => r.ok ? r.text() : Promise.reject('render-fail')),
+    _timeout(30000, 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.')
+  ]).catch(e => Promise.reject(e));
 
   // Prova a usare il file statico subito
   let staticText = null;
@@ -2339,10 +2338,7 @@ async function fetchRiepilogoCSV(forceFresh = false) {
       _saveCsvCache(renderText);
       return _riepilogoCsvText;
     } catch(e) {
-      if (e.name === 'AbortError' || e.name === 'TimeoutError') {
-        throw new Error('Il server non risponde. Attendi qualche secondo e ricarica la pagina.');
-      }
-      throw e;
+      throw new Error(e.message || 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.');
     }
   }
 }
