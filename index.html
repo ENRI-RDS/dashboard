@@ -1525,9 +1525,7 @@ window.loadXLSX = (function(){
   async function loadSED() {
     loadLS();
     try {
-      var resp = await fetch('SED_classificato.geojson?t='+Date.now());
-      if (!resp.ok) throw new Error('HTTP '+resp.status);
-      var geojson = await resp.json();
+      var geojson = await fetchWithSWR('SED_classificato.geojson', { isJson: true });
       _sedData = geojson.features.map(function(f) {
         var p = f.properties || {};
         var g = f.geometry || {};
@@ -2224,8 +2222,46 @@ let _riepilogoCsvText = null;
 let _swrUpdating = false;
 
 // URL statico GitHub: assoluto, bypassa il rewrite di api-config.js verso Render
-function _staticCsvUrl() {
-  return window.location.href.replace(/[?#].*$/, '').replace(/[^/]+$/, '') + RIEPILOGO_URL;
+function _staticFileUrl(rel) {
+  return window.location.href.replace(/[?#].*$/, '').replace(/[^/]+$/, '') + rel;
+}
+// Alias per compatibilità con il codice esistente
+function _staticCsvUrl() { return _staticFileUrl(RIEPILOGO_URL); }
+
+async function fetchWithSWR(rel, { onUpdate, isJson = false } = {}) {
+  const qs = '?t=' + Math.floor(Date.now() / 300000); // slot da 5 min
+  const sCtrl = new AbortController();
+  const sTid  = setTimeout(() => sCtrl.abort(), 5000);
+  const staticP = fetch(_staticFileUrl(rel), { signal: sCtrl.signal })
+    .then(r => { clearTimeout(sTid); return r.ok ? r.text() : Promise.reject('static-fail'); })
+    .catch(e  => { clearTimeout(sTid); return Promise.reject(e); });
+  const rCtrl = new AbortController();
+  const rTid  = setTimeout(() => rCtrl.abort(new DOMException('Timeout', 'TimeoutError')), 30000);
+  const renderP = fetch(rel + qs, { signal: rCtrl.signal })
+    .then(r => { clearTimeout(rTid); return r.ok ? r.text() : Promise.reject('render-fail'); })
+    .catch(e  => { clearTimeout(rTid); return Promise.reject(e); });
+  const parse = text => isJson ? JSON.parse(text) : text;
+  let staticText = null;
+  try {
+    staticText = await staticP;
+    if (onUpdate) {
+      renderP.then(renderText => {
+        if (renderText && renderText !== staticText) {
+          try { onUpdate(parse(renderText)); } catch(_) {}
+        }
+      }).catch(() => {});
+    } else { renderP.catch(() => {}); }
+    return parse(staticText);
+  } catch(_) {
+    try {
+      const renderText = await renderP;
+      return parse(renderText);
+    } catch(e) {
+      if (e.name === 'AbortError' || e.name === 'TimeoutError')
+        throw new Error('Il server non risponde. Attendi qualche secondo e ricarica la pagina.');
+      throw e;
+    }
+  }
 }
 
 // Salva il testo CSV in memoria + sessionStorage
@@ -5371,9 +5407,19 @@ async function loadMaster() {
     } catch(e) {}
 
     if (!text) {
-      const resp = await fetch(MASTER_URL + '?t=' + Date.now());
-      if (!resp.ok) return;
-      text = await resp.text();
+      try {
+        text = await fetchWithSWR(MASTER_URL, {
+          isJson: false,
+          onUpdate: refreshText => {
+            // Invalida la cache e ricarica Master.csv con i dati aggiornati da Render
+            try {
+              sessionStorage.setItem('enri_master_csv', refreshText);
+              sessionStorage.setItem('enri_master_ts', Date.now().toString());
+            } catch(e) {}
+          }
+        });
+      } catch(e) { return; }
+      if (!text) return;
       try {
         sessionStorage.setItem('enri_master_csv', text);
         sessionStorage.setItem('enri_master_ts',  Date.now().toString());
