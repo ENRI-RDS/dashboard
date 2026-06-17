@@ -5,11 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="google" content="notranslate">
 <meta http-equiv="Content-Language" content="it">
-<title>Progetto M — Portale</title>
+<title>Progetto M — Progettazione (Esempio)</title>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Plus+Jakarta+Sans:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  @view-transition { navigation: auto; }
-
   :root {
     --bg:        #F4F3EE;
     --surface:   #FFFFFF;
@@ -25,16 +23,25 @@
     --sh-xs: 0 1px 3px rgba(11,49,130,.06), 0 1px 2px rgba(0,0,0,.04);
     --sh-sm: 0 2px 8px rgba(11,49,130,.08), 0 1px 4px rgba(0,0,0,.05);
     --sh-md: 0 4px 20px rgba(11,49,130,.10), 0 2px 8px rgba(0,0,0,.06);
-    --sh-lg: 0 12px 40px rgba(11,49,130,.13), 0 4px 16px rgba(0,0,0,.07);
+
+    /* stati pratica — stessa palette concettuale della dashboard reale */
+    --attesa:       #8A91B4;
+    --redazione:    #C08A14;
+    --coordinamento:#6B3FA0;
+    --firma:        #D4622A;
+    --inviato:      #0B3182;
+    --protocollato: #2D6CC0;
+    --bloccato:     #C0392B;
+    --ottenuto:     #1F7A4E;
   }
 
   * { margin:0; padding:0; box-sizing:border-box; }
 
   body {
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
+    font-family:'Plus Jakarta Sans', sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    min-height:100vh;
   }
 
   /* ── TOPBAR ── */
@@ -43,7 +50,7 @@
     padding:0 24px; height:52px;
     background:var(--surface);
     border-bottom:1px solid var(--border);
-    box-shadow: var(--sh-xs);
+    box-shadow:var(--sh-xs);
     position:sticky; top:0; z-index:50;
   }
   .topbar-left { display:flex; align-items:center; gap:12px; }
@@ -51,7 +58,7 @@
   .logo {
     font-family:'Bricolage Grotesque', sans-serif;
     font-size:13px; font-weight:700;
-    letter-spacing:0.14em; color:var(--accent); text-transform:uppercase;
+    letter-spacing:.14em; color:var(--accent); text-transform:uppercase;
   }
   .divider-v { width:1px; height:20px; background:var(--border2); }
   .page-title { font-size:12px; color:var(--muted); font-weight:500; }
@@ -60,306 +67,564 @@
     font-size:11px; padding:6px 14px; border-radius:6px;
     background:transparent; color:var(--muted); border:1px solid var(--border2);
     cursor:pointer; font-family:'Plus Jakarta Sans', sans-serif; font-weight:600;
-    transition:all 0.18s;
+    text-decoration:none; transition:all .18s; display:inline-flex; align-items:center;
   }
   .btn-sm:hover { background:var(--surface2); color:var(--text); }
 
+  /* token colore per i bucket KPI */
+  :root { --integrazione:#C23B22; --protint:#B5657A; }
+
   /* ── MAIN ── */
-  .main {
-    max-width:1260px; margin:0 auto;
-    padding:16px 24px;
-    display:flex; flex-direction:column; gap:24px;
-    min-height:calc(100vh - 52px);
-    justify-content:center;
+  .main { max-width:1260px; margin:0 auto; padding:24px 24px 48px; display:flex; flex-direction:column; gap:20px; }
+
+  .page-header { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+  .page-header-left { display:flex; flex-direction:column; gap:3px; max-width:640px; }
+  .eyebrow {
+    font-family:'Fira Code', monospace; font-size:9px; font-weight:500;
+    letter-spacing:.2em; text-transform:uppercase; color:var(--accent2);
+  }
+  .page-title-lg {
+    font-family:'Bricolage Grotesque', sans-serif; font-size:22px; font-weight:700;
+    letter-spacing:-.02em; color:var(--text);
+  }
+  .page-sub { font-size:12.5px; color:var(--muted); line-height:1.5; }
+
+  .pills { display:flex; gap:6px; flex-wrap:wrap; }
+  .pill {
+    font-family:'Plus Jakarta Sans', sans-serif; font-size:11px; font-weight:600;
+    padding:7px 14px; border-radius:20px; border:1px solid var(--border2);
+    background:var(--surface); color:var(--muted); cursor:pointer; transition:all .15s;
+  }
+  .pill:hover { border-color:var(--accent); color:var(--accent); }
+  .pill.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+  /* ── KPI ROW ── */
+  .kpi-row { display:grid; grid-template-columns:repeat(7,1fr); gap:10px; align-items:stretch; }
+  @media(max-width:1100px){ .kpi-row{ grid-template-columns:repeat(4,1fr); } }
+  @media(max-width:640px){ .kpi-row{ grid-template-columns:repeat(2,1fr); } }
+
+  .kpi {
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:14px 16px; position:relative; overflow:hidden; cursor:pointer;
+    transition:all .2s; box-shadow:var(--sh-xs);
+  }
+  .kpi:hover { border-color:var(--border2); box-shadow:var(--sh-sm); transform:translateY(-2px); }
+  .kpi::before { content:''; position:absolute; top:0; left:0; bottom:0; width:3px; border-radius:12px 0 0 12px; }
+  .kpi.attesa::before        { background:var(--attesa); }
+  .kpi.coordinamento::before { background:var(--coordinamento); }
+  .kpi.firma::before         { background:var(--firma); }
+  .kpi.inviato::before       { background:var(--inviato); }
+  .kpi.integrazione::before  { background:var(--integrazione); }
+  .kpi.protint::before       { background:var(--protint); }
+  .kpi.ottenuto::before      { background:var(--ottenuto); }
+
+  .kpi-owner {
+    font-size:8.5px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+    padding:1px 7px; border-radius:3px; display:inline-block; margin-bottom:7px;
+  }
+  .kpi-owner.impresa { background:#E550000D; color:#E55000; border:1px solid #E5500030; }
+  .kpi-owner.rds     { background:#0B31820D; color:#0B3182; border:1px solid #0B318230; }
+  .kpi-owner.ente    { background:#1F7A4E0D; color:#1F7A4E; border:1px solid #1F7A4E30; }
+
+  .kpi-label { font-size:9px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:8px; font-weight:600; }
+  .kpi-value { font-size:24px; font-weight:700; font-family:'Bricolage Grotesque', sans-serif; line-height:1; color:var(--text); letter-spacing:-.02em; }
+  .kpi-sub { font-size:10.5px; color:var(--text2); margin-top:6px; font-weight:500; }
+
+  .kpi.attesa .kpi-value        { color:var(--attesa); }
+  .kpi.coordinamento .kpi-value { color:var(--coordinamento); }
+  .kpi.firma .kpi-value         { color:var(--firma); }
+  .kpi.inviato .kpi-value       { color:var(--inviato); }
+  .kpi.integrazione .kpi-value  { color:var(--integrazione); }
+  .kpi.protint .kpi-value       { color:var(--protint); }
+  .kpi.protint .kpi-owner       { background:#B5657A0D; color:var(--protint); border-color:#B5657A30; }
+  .kpi.ottenuto .kpi-value      { color:var(--ottenuto); }
+
+  /* ── PANELS ── */
+  .panels-row { display:grid; grid-template-columns:1.1fr 1fr; gap:16px; }
+  @media(max-width:900px){ .panels-row{ grid-template-columns:1fr; } }
+
+  .panel { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px 20px; box-shadow:var(--sh-sm); }
+  .panel-title {
+    font-family:'Bricolage Grotesque', sans-serif; font-size:13.5px; font-weight:700;
+    color:var(--text); margin-bottom:14px;
   }
 
-  /* ── HEADER SECTION ── */
-  .hub-header {
-    display:flex; align-items:center; justify-content:space-between; gap:12px;
-    flex-wrap:wrap;
+  .donut-row { display:flex; align-items:center; gap:22px; flex-wrap:wrap; }
+  .donut-wrap { position:relative; width:140px; height:140px; flex-shrink:0; }
+  .donut { width:100%; height:100%; border-radius:50%; }
+  .donut-hole {
+    position:absolute; inset:22px; border-radius:50%; background:var(--surface);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
   }
-  .hub-header-left { display:flex; flex-direction:column; gap:1px; }
-  .hub-eyebrow {
-    font-family:'Fira Code', monospace;
-    font-size:10px; font-weight:500;
-    letter-spacing:.2em; text-transform:uppercase;
-    color:var(--accent2);
-  }
-  .hub-title {
-    font-family:'Bricolage Grotesque', sans-serif;
-    font-size:20px; font-weight:700;
-    letter-spacing:-.025em; color:var(--text); line-height:1.2;
-  }
-  .hub-user-chip {
-    display:inline-flex; align-items:center; gap:6px;
-    padding:5px 12px; border-radius:20px;
-    background:var(--surface); border:1px solid var(--border2);
-    box-shadow:var(--sh-xs);
-    font-size:11px; color:var(--text2); font-weight:500; white-space:nowrap;
-  }
-  .hub-user-chip span { color:var(--muted); font-size:10px; }
+  .donut-hole b { font-family:'Bricolage Grotesque', sans-serif; font-size:20px; color:var(--text); line-height:1; }
+  .donut-hole span { font-size:9px; color:var(--muted2); letter-spacing:.05em; text-transform:uppercase; margin-top:2px; }
 
-  /* ── CARDS GRID ── */
-  .cards-grid {
-    display:grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap:16px;
-  }
-  @media(max-width:900px) { .cards-grid { grid-template-columns:repeat(2,1fr); } }
-  @media(max-width:640px) { .cards-grid { grid-template-columns:1fr; } }
+  .legend { display:flex; flex-direction:column; gap:7px; flex:1; min-width:160px; }
+  .legend-item { display:flex; align-items:center; gap:7px; font-size:11.5px; color:var(--text2); }
+  .legend-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .legend-item b { color:var(--text); margin-left:auto; padding-left:10px; font-weight:700; }
 
-  /* ── NAV CARD — horizontal layout ── */
-  .nav-card {
-    background:var(--surface);
-    border:1px solid var(--border);
-    border-radius:16px;
-    padding:16px 18px 16px 20px;
-    cursor:pointer;
-    text-decoration:none;
-    display:flex;
-    flex-direction:column;
-    gap:9px;
-    min-height:150px;
-    transition:box-shadow .2s, transform .18s, border-color .2s;
-    box-shadow:var(--sh-sm);
-    position:relative; overflow:hidden;
-  }
-  .nav-card:hover {
-    box-shadow:var(--sh-md);
-    transform:translateY(-2px);
-    border-color:var(--border2);
-  }
-  .nav-card:active { transform:translateY(0); }
+  .lotto-bars { display:flex; flex-direction:column; gap:16px; }
+  .lotto-bar-row { display:flex; flex-direction:column; gap:6px; }
+  .lotto-bar-top { display:flex; justify-content:space-between; align-items:baseline; font-size:12px; }
+  .lotto-bar-top .name { font-weight:600; color:var(--text); }
+  .lotto-bar-top .pct { font-family:'Fira Code', monospace; color:var(--muted); font-size:11px; }
+  .lotto-bar-track { height:8px; border-radius:5px; background:var(--surface2); overflow:hidden; }
+  .lotto-bar-fill { height:100%; border-radius:5px; transition:width .3s; }
 
-  /* coloured left stripe */
-  .nav-card::before {
-    content:'';
-    position:absolute; top:0; left:0; bottom:0; width:3px;
-    border-radius:12px 0 0 12px;
+  /* ── TABLE ── */
+  .panel-table { overflow-x:auto; }
+  table.tbl { width:100%; border-collapse:collapse; min-width:680px; }
+  table.tbl th {
+    text-align:left; font-family:'Fira Code', monospace; font-size:9.5px; font-weight:500;
+    letter-spacing:.08em; text-transform:uppercase; color:var(--muted);
+    padding:0 10px 10px; border-bottom:1px solid var(--border2);
   }
-  .card-prog::before   { background:linear-gradient(180deg,#0B3182,#2255cc); }
-  .card-lav::before    { background:linear-gradient(180deg,#E55000,#ff7a2e); }
-  .card-sopr::before   { background:linear-gradient(180deg,#0E7490,#22aac4); }
-  .card-exec::before   { background:linear-gradient(180deg,#1F7A4E,#2fa066); }
-  .card-mappa::before  { background:linear-gradient(180deg,#6B3FA0,#9060d0); }
-  .card-mile::before   { background:linear-gradient(180deg,#B45309,#d97706); }
-  .card-ai::before     { background:linear-gradient(180deg,#3B0764,#7C3AED); }
+  table.tbl td { padding:10px 10px; font-size:12.5px; color:var(--text2); border-bottom:1px solid var(--border); }
+  table.tbl tr:last-child td { border-bottom:none; }
 
-  .card-top-row {
-    display:flex; align-items:center; justify-content:space-between;
+  .chip-lotto {
+    display:inline-flex; align-items:center; padding:2px 9px; border-radius:12px;
+    font-size:10.5px; font-weight:700; color:#fff;
   }
+  .badge-stato {
+    display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:12px;
+    font-size:10.5px; font-weight:600;
+  }
+  .badge-stato .dot { width:6px; height:6px; border-radius:50%; }
 
-  .card-icon {
-    width:36px; height:36px; border-radius:9px;
+  /* ── INTERAZIONI ── */
+  table.tbl tbody tr { cursor:pointer; }
+  table.tbl tbody tr:hover { background:var(--surface2); }
+
+  /* ── MODALI ── */
+  .modal-overlay {
+    position:fixed; inset:0; background:rgba(20,20,35,.45);
     display:flex; align-items:center; justify-content:center;
-    flex-shrink:0;
+    opacity:0; pointer-events:none; transition:opacity .2s; z-index:200; padding:20px;
   }
-  .card-prog  .card-icon { background:#0B31820D; }
-  .card-lav   .card-icon { background:#E550000D; }
-  .card-sopr  .card-icon { background:#0E74900D; }
-  .card-exec  .card-icon { background:#1F7A4E0D; }
-  .card-mappa .card-icon { background:#6B3FA00D; }
-  .card-mile  .card-icon { background:#B453090D; }
-  .card-ai    .card-icon { background:#7C3AED0D; }
-
-  .card-icon svg { width:18px; height:18px; }
-  .card-prog  .card-icon svg { color:#0B3182; }
-  .card-lav   .card-icon svg { color:#E55000; }
-  .card-sopr  .card-icon svg { color:#0E7490; }
-  .card-exec  .card-icon svg { color:#1F7A4E; }
-  .card-mappa .card-icon svg { color:#6B3FA0; }
-  .card-mile  .card-icon svg { color:#B45309; }
-  .card-ai    .card-icon svg { color:#7C3AED; }
-
-  .card-body { min-width:0; }
-  .card-label {
-    font-family:'Fira Code', monospace;
-    font-size:9px; font-weight:500;
-    letter-spacing:.16em; text-transform:uppercase;
-    margin-bottom:4px;
+  .modal-overlay.open { opacity:1; pointer-events:all; }
+  .modal {
+    background:var(--surface); border-radius:16px; width:420px; max-width:100%;
+    max-height:86vh; overflow-y:auto; box-shadow:var(--sh-md);
+    padding:22px 24px; transform:translateY(10px); transition:transform .2s;
   }
-  .card-prog  .card-label { color:#0B3182; }
-  .card-lav   .card-label { color:#E55000; }
-  .card-sopr  .card-label { color:#0E7490; }
-  .card-exec  .card-label { color:#1F7A4E; }
-  .card-mappa .card-label { color:#6B3FA0; }
-  .card-mile  .card-label { color:#B45309; }
-  .card-ai    .card-label { color:#7C3AED; }
+  .modal-overlay.open .modal { transform:translateY(0); }
+  .modal.modal-row { width:660px; }
+  .modal-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:18px; }
+  .modal-title { font-family:'Bricolage Grotesque', sans-serif; font-size:18px; font-weight:700; color:var(--text); }
+  .modal-close { cursor:pointer; color:var(--muted); font-size:20px; line-height:1; background:none; border:none; padding:0; }
+  .modal-close:hover { color:var(--text); }
 
-  .card-title {
-    font-family:'Bricolage Grotesque', sans-serif;
-    font-size:16px; font-weight:700;
-    letter-spacing:-.02em; color:var(--text); line-height:1.2;
-    margin-bottom:5px;
-  }
-  .card-desc {
-    font-size:12px; color:var(--muted); line-height:1.5;
-  }
+  .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px 20px; margin-bottom:8px; }
+  .info-item .lbl { font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:600; margin-bottom:3px; }
+  .info-item .val { font-size:14px; color:var(--text); font-weight:600; }
 
-  .card-arrow {
-    width:24px; height:24px; border-radius:50%;
-    display:flex; align-items:center; justify-content:center;
-    background:var(--surface2); border:1px solid var(--border2);
-    transition:all .2s; flex-shrink:0;
-  }
-  .card-arrow svg { width:11px; height:11px; color:var(--muted); transition:color .2s; }
-  .nav-card:hover .card-arrow { background:var(--accent); border-color:var(--accent); }
-  .nav-card:hover .card-arrow svg { color:#fff; }
+  .stepper { display:flex; align-items:flex-start; justify-content:space-between; margin:26px 0 6px; position:relative; }
+  .stepper::before { content:''; position:absolute; top:8px; left:18px; right:18px; height:2px; background:var(--border2); z-index:0; }
+  .step { position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; gap:7px; flex:1; }
+  .step-dot { width:16px; height:16px; border-radius:50%; background:var(--surface); border:2.5px solid var(--border2); }
+  .step.done .step-dot { background:var(--ottenuto); border-color:var(--ottenuto); }
+  .step.active .step-dot { background:var(--accent); border-color:var(--accent); }
+  .step.blocked .step-dot { background:var(--bloccato); border-color:var(--bloccato); }
+  .step-label { font-size:10px; color:var(--muted); text-align:center; max-width:84px; line-height:1.3; }
+  .step.done .step-label, .step.active .step-label { color:var(--text); font-weight:600; }
+  .step.blocked .step-label { color:var(--bloccato); font-weight:700; }
 
-  /* -- CARD BLOCCATA -------------------------------------------------------- */
-  .nav-card.card-locked {
-    cursor: not-allowed;
-    opacity: .52;
-    filter: grayscale(.5);
-    pointer-events: none;
-    position: relative;
-  }
-  .nav-card.card-locked::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: repeating-linear-gradient(
-      -45deg,
-      transparent, transparent 7px,
-      rgba(0,0,0,.04) 7px, rgba(0,0,0,.04) 8px
-    );
-    pointer-events: none;
-  }
-  .card-lock-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 3px 9px;
-    border-radius: 20px;
-    font-size: 10px;
-    font-weight: 700;
-    background: #00000012;
-    color: var(--muted);
-    border: 1px solid var(--border2);
-    letter-spacing: .04em;
-  }
+  .iter-note { margin-top:16px; padding:9px 12px; border-radius:8px; background:rgba(192,57,43,.08); border:1px solid rgba(192,57,43,.25); color:var(--bloccato); font-size:11.5px; }
 
-  /* badge "in arrivo" */
-  .card-badge {
-    position:absolute; top:20px; right:54px;
-    font-size:9px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
-    padding:3px 9px; border-radius:20px;
-    background:rgba(229,80,0,.1); color:#E55000;
-    border:1px solid rgba(229,80,0,.25);
+  .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; padding-top:16px; border-top:1px solid var(--border); }
+  .btn-map {
+    font-size:12px; padding:8px 16px; border-radius:7px;
+    background:var(--surface2); color:var(--text); border:1px solid var(--border);
+    cursor:pointer; font-family:'Plus Jakarta Sans', sans-serif; font-weight:600;
+    text-decoration:none; transition:opacity .2s; white-space:nowrap;
   }
+  .btn-map:hover { opacity:.75; }
 
-  /* ── SKELETON / FADE-IN for main content ── */
-  @keyframes hubFadeIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
-  #hubContent { animation:hubFadeIn .4s ease both; }
-
-
+  .bar-row { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+  .bar-label { width:90px; font-size:11.5px; color:var(--text2); flex-shrink:0; font-weight:600; }
+  .bar-track { flex:1; height:9px; border-radius:5px; background:var(--surface2); overflow:hidden; }
+  .bar-fill { height:100%; border-radius:5px; }
+  .bar-val { width:60px; text-align:right; font-size:12.5px; font-weight:700; color:var(--text); flex-shrink:0; }
 </style>
 </head>
 <body>
 
-<!-- ── TOPBAR ── -->
 <div class="topbar">
   <div class="topbar-left">
     <span class="logo">PROGETTO · M</span>
     <div class="divider-v"></div>
-    <span class="page-title">Portale</span>
+    <span class="page-title">Progettazione · Iter autorizzativo</span>
   </div>
-  <div class="topbar-right"></div>
+  <div class="topbar-right">
+    <a href="mappa.html" class="btn-sm">Mappa</a>
+    <a href="Hub.html" class="btn-sm">← Hub</a>
+  </div>
 </div>
 
-<!-- ── MAIN HUB CONTENT ── -->
-<div class="main" id="hubContent">
+<div class="main">
 
-  <div class="hub-header">
-    <div class="hub-header-left">
-      <div class="hub-eyebrow">Progetto M · Platform</div>
-      <div class="hub-title">Dove vuoi andare?</div>
+  <div class="page-header">
+    <div class="page-header-left">
+      <div class="eyebrow">Fase 1 · Permitting</div>
+      <div class="page-title-lg">Avanzamento autorizzativo</div>
+      <div class="page-sub">Monitoraggio dell'iter autorizzativo per tratta, lotto ed ente: stato delle pratiche, percentuali di avanzamento e chilometri coperti.</div>
     </div>
-
+    <div class="pills" id="lottoPills">
+      <button class="pill active" data-lotto="all">Tutti</button>
+      <button class="pill" data-lotto="1">Lotto 1</button>
+      <button class="pill" data-lotto="2">Lotto 2</button>
+      <button class="pill" data-lotto="3">Lotto 3</button>
+    </div>
   </div>
 
-  <!-- CARDS GRID -->
-  <div class="cards-grid">
+  <div class="kpi-row" id="kpiRow">
+    <div class="kpi attesa" data-bucket="attesa">
+      <span class="kpi-owner impresa">Impresa</span>
+      <div class="kpi-label">In Attesa / Redazione</div>
+      <div class="kpi-value" id="kpi-attesa">—</div>
+      <div class="kpi-sub" id="kpisub-attesa">—</div>
+    </div>
+    <div class="kpi coordinamento" data-bucket="coordinamento">
+      <span class="kpi-owner impresa">Impresa/Enti</span>
+      <div class="kpi-label">Coordinamento</div>
+      <div class="kpi-value" id="kpi-coordinamento">—</div>
+      <div class="kpi-sub" id="kpisub-coordinamento">—</div>
+    </div>
+    <div class="kpi firma" data-bucket="firma">
+      <span class="kpi-owner rds">RDS</span>
+      <div class="kpi-label">In Verifica / In Firma</div>
+      <div class="kpi-value" id="kpi-firma">—</div>
+      <div class="kpi-sub" id="kpisub-firma">—</div>
+    </div>
+    <div class="kpi inviato" data-bucket="inviato">
+      <span class="kpi-owner ente">Ente</span>
+      <div class="kpi-label">Inviato / Protocollato</div>
+      <div class="kpi-value" id="kpi-inviato">—</div>
+      <div class="kpi-sub" id="kpisub-inviato">—</div>
+    </div>
+    <div class="kpi integrazione" data-bucket="integrazione">
+      <span class="kpi-owner impresa">Impresa</span>
+      <div class="kpi-label">Necessaria Integrazione</div>
+      <div class="kpi-value" id="kpi-integrazione">—</div>
+      <div class="kpi-sub" id="kpisub-integrazione">—</div>
+    </div>
+    <div class="kpi protint" data-bucket="protint">
+      <span class="kpi-owner ente">Ente</span>
+      <div class="kpi-label">Protocollato Integrazione</div>
+      <div class="kpi-value" id="kpi-protint">—</div>
+      <div class="kpi-sub" id="kpisub-protint">—</div>
+    </div>
+    <div class="kpi ottenuto" data-bucket="ottenuto">
+      <span class="kpi-owner ente">Ente</span>
+      <div class="kpi-label">🏆 Autorizzati</div>
+      <div class="kpi-value" id="kpi-ottenuto">—</div>
+      <div class="kpi-sub" id="kpisub-ottenuto">—</div>
+    </div>
+  </div>
 
-    <!-- Progettazione -->
-    <a href="Index.html?direct=1" class="nav-card card-prog">
-      <div class="card-top-row">
-        <div class="card-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
-            <rect x="9" y="3" width="6" height="4" rx="1"/>
-            <path d="M9 12h6M9 16h4"/>
-          </svg>
+  <div class="panels-row">
+    <div class="panel">
+      <div class="panel-title">Stato pratiche</div>
+      <div class="donut-row">
+        <div class="donut-wrap">
+          <div class="donut" id="donut"></div>
+          <div class="donut-hole"><b id="donutTotal">0</b><span>pratiche</span></div>
         </div>
-        <div class="card-arrow">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-        </div>
+        <div class="legend" id="donutLegend"></div>
       </div>
-      <div class="card-body">
-        <div class="card-label">Fase 1</div>
-        <div class="card-title">Progettazione</div>
-        <div class="card-desc">Monitoraggio dell'intero iter autorizzativo: dettaglio delle richieste per cluster e lotto, scadenze, pratiche bloccate e avanzamento verso la cantierizzazione.</div>
-      </div>
-    </a>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Avanzamento per lotto</div>
+      <div class="lotto-bars" id="lottoBars"></div>
+    </div>
+  </div>
 
-    <!-- Avanzamento Lavori -->
-    <a id="scaviCard" href="scavi.html" class="nav-card card-lav">
-      <div id="scaviBadge" class="card-badge">In arrivo</div>
-      <div class="card-top-row">
-        <div class="card-icon">
-          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
-            <!-- triangle -->
-            <path d="M12 2 L22 20 H2 Z" fill="currentColor" opacity="1"/>
-            <!-- white inner triangle cutout via overlay trick — use exclamation instead -->
-            <path d="M12 3.8 L20.6 19.2 H3.4 Z" fill="white" opacity="0.18"/>
-            <!-- exclamation mark in white -->
-            <rect x="11" y="9" width="2" height="6" rx="1" fill="white"/>
-            <circle cx="12" cy="17" r="1.1" fill="white"/>
-          </svg>
-        </div>
-        <div class="card-arrow">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-        </div>
-      </div>
-      <div class="card-body">
-        <div class="card-label">Fase 2</div>
-        <div class="card-title">Avanzamento Lavori</div>
-        <div class="card-desc">Supervisione dei cantieri attivi sul territorio: stato delle attività in campo, progresso delle attività in campo per lotto e area di intervento, segnalazioni operative e criticità in corso.</div>
-      </div>
-    </a>
+  <div class="panel panel-table">
+    <div class="panel-title">Dettaglio tratte</div>
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Tratta</th><th>Comune</th><th>Lotto</th><th>Impresa</th><th>Stato</th>
+          <th>Lunghezza</th><th>Pratica</th><th>Ente</th>
+        </tr>
+      </thead>
+      <tbody id="tblBody"></tbody>
+    </table>
+  </div>
 
-    <!-- Mappa -->
-    <a href="mappa.html" class="nav-card card-mappa">
-      <div class="card-top-row">
-        <div class="card-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/>
-            <line x1="9" y1="3" x2="9" y2="18"/>
-            <line x1="15" y1="6" x2="15" y2="21"/>
-          </svg>
-        </div>
-        <div class="card-arrow">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-        </div>
-      </div>
-      <div class="card-body">
-        <div class="card-label">Geospaziale</div>
-        <div class="card-title">Mappa</div>
-        <div class="card-desc">Distribuzione territoriale dei lotti su mappa georeferenziata: filtri per area geografica, stato autorizzativo e fase di avanzamento per una lettura visiva e contestuale del progetto.</div>
-      </div>
-    </a>
+</div>
 
-  </div><!-- /cards-grid -->
+<div class="modal-overlay" id="rowModalOverlay">
+  <div class="modal modal-row">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="rowModalTitle">—</div>
+        <div id="rowModalSub" style="margin-top:7px;"></div>
+      </div>
+      <button class="modal-close" onclick="closeRowModal()">×</button>
+    </div>
+    <div class="info-grid" id="rowInfoGrid"></div>
+    <div class="stepper" id="rowStepper"></div>
+    <div class="iter-note" id="rowNote" style="display:none;"></div>
+    <div class="modal-actions">
+      <a href="mappa.html" class="btn-map">🗺 Mappa</a>
+    </div>
+  </div>
+</div>
 
-</div><!-- /main -->
+<div class="modal-overlay" id="kpiModalOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="kpiModalTitle">—</div>
+      <button class="modal-close" onclick="closeKpiModal()">×</button>
+    </div>
+    <div id="kpiModalBody"></div>
+  </div>
+</div>
 
 <script>
-// scaviCard: accessibile a tutti senza login
-window.addEventListener('DOMContentLoaded', () => {
-  const scaviBadge = document.getElementById('scaviBadge');
-  if (scaviBadge) scaviBadge.remove();
+const LOTTO_COLORS = { '1':'#2563eb', '2':'#16a34a', '3':'#e8580c' };
+const IMPRESE      = { '1':'Impresa 1', '2':'Impresa 2', '3':'Impresa 3' };
+
+const KPI_BUCKETS = {
+  attesa:        ['IN ATTESA','IN REDAZIONE'],
+  coordinamento: ['COORDINAMENTO'],
+  firma:         ['IN FIRMA RDS'],
+  inviato:       ['INVIATO','PROTOCOLLATO'],
+  integrazione:  ['NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE'],
+  protint:       ['PROTOCOLLATO INTEGRAZIONE'],
+  ottenuto:      ['OTTENUTO']
+};
+
+const STATO_COLORS = {
+  'IN ATTESA':                 'var(--attesa)',
+  'IN REDAZIONE':               'var(--redazione)',
+  'IN REDAZIONE INTEGRAZIONE':  'var(--bloccato)',
+  'COORDINAMENTO':              'var(--coordinamento)',
+  'IN FIRMA RDS':                'var(--firma)',
+  'INVIATO':                    'var(--inviato)',
+  'PROTOCOLLATO':                'var(--protocollato)',
+  'NECESSARIA INTEGRAZIONE':     'var(--bloccato)',
+  'PROTOCOLLATO INTEGRAZIONE':   'var(--bloccato)',
+  'OTTENUTO':                    'var(--ottenuto)'
+};
+// versione hex (per i conic-gradient, che non leggono le var())
+const STATO_HEX = {
+  'IN ATTESA':'#8A91B4', 'IN REDAZIONE':'#C08A14', 'IN REDAZIONE INTEGRAZIONE':'#C0392B',
+  'COORDINAMENTO':'#6B3FA0', 'IN FIRMA RDS':'#D4622A', 'INVIATO':'#0B3182',
+  'PROTOCOLLATO':'#2D6CC0', 'NECESSARIA INTEGRAZIONE':'#C0392B',
+  'PROTOCOLLATO INTEGRAZIONE':'#C0392B', 'OTTENUTO':'#1F7A4E'
+};
+
+const SAMPLE_DATA = [
+  {t:'T-101', comune:'Milano',              lotto:'1', stato:'OTTENUTO',                  m:1450, pratica:'AUT/101/1', ente:'Comune di Milano'},
+  {t:'T-102', comune:'Sesto San Giovanni',   lotto:'1', stato:'PROTOCOLLATO',               m:980,  pratica:'AUT/102/1', ente:'Comune di Sesto San Giovanni'},
+  {t:'T-103', comune:'Cinisello Balsamo',    lotto:'1', stato:'IN FIRMA RDS',                m:1220, pratica:'AUT/103/1', ente:'Comune di Cinisello Balsamo'},
+  {t:'T-104', comune:'Cologno Monzese',      lotto:'1', stato:'IN REDAZIONE',                m:760,  pratica:'AUT/104/1', ente:'Comune di Cologno Monzese'},
+  {t:'T-105', comune:'Bresso',               lotto:'1', stato:'NECESSARIA INTEGRAZIONE',     m:540,  pratica:'AUT/105/1', ente:'Comune di Bresso'},
+  {t:'T-106', comune:'Monza',                lotto:'1', stato:'OTTENUTO',                  m:2100, pratica:'AUT/106/1', ente:'Comune di Monza'},
+  {t:'T-201', comune:'Rho',                  lotto:'2', stato:'OTTENUTO',                  m:1680, pratica:'AUT/201/2', ente:'Comune di Rho'},
+  {t:'T-202', comune:'Pero',                 lotto:'2', stato:'INVIATO',                    m:890,  pratica:'AUT/202/2', ente:'Comune di Pero'},
+  {t:'T-203', comune:'Lainate',               lotto:'2', stato:'COORDINAMENTO',              m:1340, pratica:'AUT/203/2', ente:'Città Metropolitana di Milano'},
+  {t:'T-204', comune:'Garbagnate Milanese',  lotto:'2', stato:'IN ATTESA',                   m:670,  pratica:'AUT/204/2', ente:'Comune di Garbagnate Milanese'},
+  {t:'T-205', comune:'Bollate',              lotto:'2', stato:'PROTOCOLLATO',               m:1050, pratica:'AUT/205/2', ente:'Comune di Bollate'},
+  {t:'T-206', comune:'Novate Milanese',      lotto:'2', stato:'OTTENUTO',                  m:1490, pratica:'AUT/206/2', ente:'ANAS'},
+  {t:'T-301', comune:'Cesano Maderno',       lotto:'3', stato:'IN REDAZIONE INTEGRAZIONE',  m:780,  pratica:'AUT/301/3', ente:'Comune di Cesano Maderno'},
+  {t:'T-302', comune:'Seveso',               lotto:'3', stato:'OTTENUTO',                  m:1610, pratica:'AUT/302/3', ente:'Comune di Seveso'},
+  {t:'T-303', comune:'Paderno Dugnano',      lotto:'3', stato:'IN FIRMA RDS',                m:920,  pratica:'AUT/303/3', ente:'Comune di Paderno Dugnano'},
+  {t:'T-304', comune:'Senago',               lotto:'3', stato:'PROTOCOLLATO INTEGRAZIONE',  m:540,  pratica:'AUT/304/3', ente:'RFI'},
+  {t:'T-305', comune:'Limbiate',             lotto:'3', stato:'OTTENUTO',                  m:1380, pratica:'AUT/305/3', ente:'Comune di Limbiate'},
+  {t:'T-306', comune:'Cesate',               lotto:'3', stato:'IN ATTESA',                   m:610,  pratica:'AUT/306/3', ente:'Comune di Cesate'}
+];
+
+let activeLotto = 'all';
+
+function fmtKm(metri){ return (metri/1000).toFixed(1).replace('.', ','); }
+
+function filtered(){
+  return activeLotto === 'all' ? SAMPLE_DATA : SAMPLE_DATA.filter(d => d.lotto === activeLotto);
+}
+
+function renderKPIs(rows){
+  const totKm = rows.reduce((s,r)=>s+r.m,0);
+  Object.entries(KPI_BUCKETS).forEach(([key, stati]) => {
+    const bucketRows = rows.filter(r => stati.includes(r.stato));
+    const km = bucketRows.reduce((s,r)=>s+r.m,0);
+    const pct = totKm > 0 ? km/totKm*100 : 0;
+    document.getElementById('kpi-'+key).textContent = pct.toFixed(1)+'%';
+    document.getElementById('kpisub-'+key).textContent = bucketRows.length + ' tratte · ' + fmtKm(km) + ' km';
+  });
+}
+
+function renderDonut(rows){
+  const counts = {};
+  rows.forEach(r => counts[r.stato] = (counts[r.stato]||0) + 1);
+  const total = rows.length || 1;
+  let acc = 0;
+  const stops = [];
+  Object.keys(counts).forEach(stato => {
+    const pct = counts[stato] / total * 100;
+    stops.push(`${STATO_HEX[stato]} ${acc}% ${acc+pct}%`);
+    acc += pct;
+  });
+  document.getElementById('donut').style.background = rows.length
+    ? `conic-gradient(${stops.join(', ')})`
+    : 'var(--surface2)';
+  document.getElementById('donutTotal').textContent = rows.length;
+
+  const legend = document.getElementById('donutLegend');
+  legend.innerHTML = '';
+  Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).forEach(stato => {
+    const div = document.createElement('div');
+    div.className = 'legend-item';
+    div.innerHTML = `<span class="legend-dot" style="background:${STATO_HEX[stato]}"></span>${stato}<b>${counts[stato]}</b>`;
+    legend.appendChild(div);
+  });
+}
+
+function renderLottoBars(){
+  const wrap = document.getElementById('lottoBars');
+  wrap.innerHTML = '';
+  ['1','2','3'].forEach(lotto => {
+    const rows = SAMPLE_DATA.filter(d=>d.lotto===lotto);
+    const ottenute = rows.filter(r=>r.stato==='OTTENUTO').length;
+    const pct = rows.length ? Math.round(ottenute/rows.length*100) : 0;
+    const row = document.createElement('div');
+    row.className = 'lotto-bar-row';
+    row.innerHTML = `
+      <div class="lotto-bar-top">
+        <span class="name">Lotto ${lotto} · ${IMPRESE[lotto]}</span>
+        <span class="pct">${ottenute}/${rows.length} · ${pct}%</span>
+      </div>
+      <div class="lotto-bar-track">
+        <div class="lotto-bar-fill" style="width:${pct}%; background:${LOTTO_COLORS[lotto]}"></div>
+      </div>`;
+    wrap.appendChild(row);
+  });
+}
+
+function renderTable(rows){
+  const body = document.getElementById('tblBody');
+  body.innerHTML = '';
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.t}</td>
+      <td>${r.comune}</td>
+      <td><span class="chip-lotto" style="background:${LOTTO_COLORS[r.lotto]}">Lotto ${r.lotto}</span></td>
+      <td>${IMPRESE[r.lotto]}</td>
+      <td><span class="badge-stato" style="background:${STATO_HEX[r.stato]}1A; color:${STATO_HEX[r.stato]}"><span class="dot" style="background:${STATO_HEX[r.stato]}"></span>${r.stato}</span></td>
+      <td>${r.m} m</td>
+      <td>${r.pratica}</td>
+      <td>${r.ente}</td>`;
+    tr.addEventListener('click', () => openRowModal(r));
+    body.appendChild(tr);
+  });
+}
+
+function renderAll(){
+  const rows = filtered();
+  renderKPIs(rows);
+  renderDonut(rows);
+  renderTable(rows);
+}
+
+/* ── POPUP dettaglio tratta ── */
+const ITER_STEPS = ['In Redazione','Coordinamento','Verifica/Firma','Invio/Protocollo','Necessaria Integr.','Protocollo Integr.','Rilascio'];
+const BLOCK_NOTES = {
+  'IN REDAZIONE INTEGRAZIONE':'In redazione: l\'ente ha segnalato la necessità di integrare la documentazione prima dell\'invio.',
+  'NECESSARIA INTEGRAZIONE':'L\'ente ha richiesto un\'integrazione documentale per poter procedere.',
+  'PROTOCOLLATO INTEGRAZIONE':'Protocollata, ma in attesa dell\'integrazione richiesta dall\'ente.'
+};
+function stepInfoFor(stato){
+  switch(stato){
+    case 'IN ATTESA':
+    case 'IN REDAZIONE':              return { idx:0, blocked:false };
+    case 'IN REDAZIONE INTEGRAZIONE': return { idx:0, blocked:true  };
+    case 'COORDINAMENTO':             return { idx:1, blocked:false };
+    case 'IN FIRMA RDS':              return { idx:2, blocked:false };
+    case 'INVIATO':                   return { idx:3, blocked:false };
+    case 'PROTOCOLLATO':              return { idx:3, blocked:false };
+    case 'NECESSARIA INTEGRAZIONE':   return { idx:4, blocked:true  };
+    case 'PROTOCOLLATO INTEGRAZIONE': return { idx:5, blocked:true  };
+    case 'OTTENUTO':                  return { idx:6, blocked:false };
+    default:                          return { idx:0, blocked:false };
+  }
+}
+function openRowModal(r){
+  const { idx, blocked } = stepInfoFor(r.stato);
+  const isOttenuto = r.stato === 'OTTENUTO';
+  document.getElementById('rowModalTitle').textContent = r.t + ' · ' + r.comune;
+  document.getElementById('rowModalSub').innerHTML =
+    `<span class="badge-stato" style="background:${STATO_HEX[r.stato]}1A; color:${STATO_HEX[r.stato]}"><span class="dot" style="background:${STATO_HEX[r.stato]}"></span>${r.stato}</span>`;
+  document.getElementById('rowInfoGrid').innerHTML = `
+    <div class="info-item"><div class="lbl">Lotto</div><div class="val">Lotto ${r.lotto} · ${IMPRESE[r.lotto]}</div></div>
+    <div class="info-item"><div class="lbl">Lunghezza</div><div class="val">${r.m} m</div></div>
+    <div class="info-item"><div class="lbl">Pratica</div><div class="val">${r.pratica}</div></div>
+    <div class="info-item"><div class="lbl">Ente</div><div class="val">${r.ente}</div></div>`;
+  document.getElementById('rowStepper').innerHTML = ITER_STEPS.map((label,i)=>{
+    let cls;
+    if(isOttenuto) cls = 'done';
+    else if(i < idx) cls = 'done';
+    else if(i === idx) cls = blocked ? 'blocked' : 'active';
+    else cls = '';
+    return `<div class="step ${cls}"><div class="step-dot"></div><div class="step-label">${label}</div></div>`;
+  }).join('');
+  const noteEl = document.getElementById('rowNote');
+  if(BLOCK_NOTES[r.stato]){ noteEl.style.display='block'; noteEl.textContent = BLOCK_NOTES[r.stato]; }
+  else { noteEl.style.display='none'; }
+  document.getElementById('rowModalOverlay').classList.add('open');
+}
+function closeRowModal(){ document.getElementById('rowModalOverlay').classList.remove('open'); }
+
+/* ── POPUP dettaglio KPI ── */
+const KPI_LABELS = {
+  attesa:'In Attesa / Redazione', coordinamento:'Coordinamento', firma:'In Verifica / In Firma',
+  inviato:'Inviato / Protocollato', integrazione:'Necessaria Integrazione',
+  protint:'Protocollato Integrazione', ottenuto:'Autorizzati'
+};
+function openKpiModal(bucket){
+  const stati = KPI_BUCKETS[bucket];
+  document.getElementById('kpiModalTitle').textContent = KPI_LABELS[bucket] + ' — per lotto';
+  document.getElementById('kpiModalBody').innerHTML = ['1','2','3'].map(lotto=>{
+    const lottoRows = SAMPLE_DATA.filter(d=>d.lotto===lotto);
+    const bucketRows = lottoRows.filter(r=>stati.includes(r.stato));
+    const km = bucketRows.reduce((s,r)=>s+r.m,0)/1000;
+    const totLottoKm = lottoRows.reduce((s,r)=>s+r.m,0)/1000 || 1;
+    const pct = Math.min(100, km/totLottoKm*100);
+    return `<div class="bar-row">
+      <div class="bar-label">Lotto ${lotto}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%; background:${LOTTO_COLORS[lotto]}"></div></div>
+      <div class="bar-val">${bucketRows.length} trat. · ${km.toFixed(1)} km</div>
+    </div>`;
+  }).join('');
+  document.getElementById('kpiModalOverlay').classList.add('open');
+}
+function closeKpiModal(){ document.getElementById('kpiModalOverlay').classList.remove('open'); }
+
+document.querySelectorAll('.kpi').forEach(card => {
+  card.addEventListener('click', () => openKpiModal(card.dataset.bucket));
 });
+document.querySelectorAll('.modal-overlay').forEach(ov => {
+  ov.addEventListener('click', e => { if(e.target === ov) ov.classList.remove('open'); });
+});
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(o => o.classList.remove('open'));
+});
+
+document.getElementById('lottoPills').addEventListener('click', e => {
+  const btn = e.target.closest('.pill');
+  if(!btn) return;
+  document.querySelectorAll('.pill').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active');
+  activeLotto = btn.dataset.lotto;
+  renderAll();
+});
+
+renderLottoBars();
+renderAll();
 </script>
 </body>
 </html>
