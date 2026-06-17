@@ -53,6 +53,22 @@
   tr.selected td{background:var(--accent-light)}
   td.mono{font-family:'Fira Code',monospace;font-size:11.5px;color:#495057}
   .tag{display:inline-flex;align-items:center;padding:2px 8px;border-radius:5px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.02em}
+  /* Submission detail modal */
+  .sub-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px}
+  .sub-modal{background:#fff;border-radius:16px;width:100%;max-width:620px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.18)}
+  .sub-modal-head{display:flex;align-items:flex-start;justify-content:space-between;padding:20px 24px 16px;border-bottom:1px solid #f0f2f5}
+  .sub-modal-title{font-family:'Bricolage Grotesque',sans-serif;font-size:16px;font-weight:700;color:#1a1a2e}
+  .sub-modal-sub{font-size:12px;color:var(--muted);margin-top:3px}
+  .sub-modal-body{overflow-y:auto;flex:1;padding:16px 24px 20px}
+  .sub-modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;padding:0;margin-left:12px}
+  .sub-change{background:#f8f9fc;border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  .sub-change-header{font-weight:700;font-size:12px;margin-bottom:8px;color:#1a1a2e;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .sub-field{display:flex;gap:8px;padding:4px 0;border-bottom:1px solid #eef0f3}
+  .sub-field:last-child{border-bottom:none}
+  .sub-field-key{color:var(--muted);min-width:150px;font-size:12px}
+  .sub-field-val{color:#1a1a2e;font-size:12px;font-weight:500;word-break:break-all}
+  tr[data-sub]:hover td{background:rgba(67,97,238,.04);cursor:pointer}
+  .sub-section-label{font-size:11px;font-weight:600;color:var(--muted);margin-bottom:8px}
   .tag.pending{background:#FEF3C7;color:#B45309}.tag.approved{background:#EBFBEE;color:#2B8A3E}.tag.rejected{background:#FEE2E2;color:#B91C1C}
   .stato-OTTENUTO{color:#1F7A4E;font-weight:600}
   .stato-INVIATO,.stato-PROTOCOLLATO{color:#0B3182;font-weight:600}
@@ -491,17 +507,91 @@
     try {
       const d = await api(`/api/imprese/my-submissions?nome=${encodeURIComponent(nome)}`);
       if (!d.submissions || !d.submissions.length){ $('mineBody').innerHTML = '<tr><td colspan="5" class="empty">Nessuna submission ancora</td></tr>'; return; }
-      $('mineBody').innerHTML = d.submissions.map(s => `
-        <tr>
+      $('mineBody').innerHTML = d.submissions.map(s => {
+        const payload = JSON.stringify(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const nMod = (s.changes||[]).length;
+        return `<tr data-sub="${payload}" style="cursor:pointer" title="Clicca per vedere i dettagli">
           <td class="mono">${new Date(s.submitted_at).toLocaleString('it-IT')}</td>
           <td>${s.type === 'update' ? 'Aggiornamento' : 'Nuova pratica'}</td>
-          <td>${(s.changes||[]).length}</td>
+          <td>${nMod === 1 ? '1 modifica' : nMod + ' modifiche'}</td>
           <td><span class="tag ${s.status}">${s.status}</span></td>
           <td>${escapeHtml(s.reviewed_note || s.note || '')}</td>
-        </tr>`).join('');
+        </tr>`;
+      }).join('');
     } catch(e){ $('mineBody').innerHTML = `<tr><td colspan="5" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`; }
   }
   $('refreshMineBtn').onclick = loadMine;
+
+  // Click su riga submission → mostra dettagli
+  $('mineBody').addEventListener('click', e => {
+    const tr = e.target.closest('tr[data-sub]');
+    if (!tr) return;
+    try {
+      const s = JSON.parse(tr.dataset.sub.replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>'));
+      showSubDetail(s);
+    } catch(_) {}
+  });
+
+  function showSubDetail(s) {
+    const fieldLabels = {
+      STATO_PERMESSO:'Nuovo stato', DATA_RICHIESTA:'Data richiesta',
+      DATA_APPROVAZIONE:'Data approvazione', PRATICA:'Pratica', NOTE:'Note',
+      DATA_ULTIMA_MODIFICA:'Ultima modifica'
+    };
+    const statusColor = {pending:'#f59e0b',approved:'#10b981',rejected:'#ef4444'}[s.status]||'#6b7280';
+    const typeLabel = s.type === 'update' ? 'Aggiornamento' : 'Nuova pratica';
+    const nMod = (s.changes||[]).length;
+
+    const changesHtml = (s.changes||[]).map(c => {
+      const tratta = c.tratta_id || c.TRATTA_ID || '—';
+      const ente   = c.ente   || c.ENTE   || '';
+      const tipo   = c.tipo_permesso || c.TIPO_PERMESSO || '';
+      const fields = c.fields || {};
+      const cols   = Object.entries(fields).map(([k,v]) => `
+        <div class="sub-field">
+          <span class="sub-field-key">${escapeHtml(fieldLabels[k]||k)}</span>
+          <span class="sub-field-val">${escapeHtml(String(v||'—'))}</span>
+        </div>`).join('');
+      return `<div class="sub-change">
+        <div class="sub-change-header">
+          <span style="font-family:'Fira Code',monospace">${escapeHtml(tratta)}</span>
+          ${ente ? `<span style="color:#6b7280;font-weight:400;font-size:11px">${escapeHtml(ente)}</span>` : ''}
+          ${tipo ? `<span style="padding:1px 7px;border-radius:20px;font-size:10px;font-weight:600;background:#eff6ff;color:#3b82f6">${escapeHtml(tipo)}</span>` : ''}
+        </div>
+        ${cols||'<span style="color:var(--muted);font-size:11px">Nessun campo</span>'}
+      </div>`;
+    }).join('');
+
+    const noteHtml = (s.reviewed_note||s.note) ? `
+      <div style="margin-top:12px">
+        <div class="sub-section-label">Note revisione</div>
+        <div style="background:#fff7ed;border-radius:8px;padding:10px 12px;font-size:12px;color:#92400e">${escapeHtml(s.reviewed_note||s.note)}</div>
+      </div>` : '';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'sub-modal-overlay';
+    overlay.innerHTML = `
+      <div class="sub-modal">
+        <div class="sub-modal-head">
+          <div>
+            <div class="sub-modal-title">${typeLabel}</div>
+            <div class="sub-modal-sub">
+              ${new Date(s.submitted_at).toLocaleString('it-IT')}
+              &nbsp;<span style="display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:600;background:${statusColor}22;color:${statusColor}">${s.status}</span>
+            </div>
+          </div>
+          <button class="sub-modal-close" id="_subClose">&times;</button>
+        </div>
+        <div class="sub-modal-body">
+          <div class="sub-section-label">${nMod === 1 ? '1 modifica' : nMod + ' modifiche'}</div>
+          ${changesHtml}
+          ${noteHtml}
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#_subClose').onclick = () => overlay.remove();
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  }
 })();
 </script>
 </body>
