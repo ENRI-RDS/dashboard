@@ -199,7 +199,9 @@
           </div>
           <div>
             <label>Ente *</label>
-            <input type="text" id="new-ente" required data-testid="new-ente">
+            <select id="new-ente" required data-testid="new-ente">
+              <option value="">— seleziona ente —</option>
+            </select>
           </div>
           <div>
             <label>Tipo permesso *</label>
@@ -352,11 +354,26 @@
       const d = await api(`/api/imprese/pratiche?nome=${encodeURIComponent(nome)}`);
       PRATICHE = (d.pratiche || []).map(p => ({...p, _codice: buildCodice(p)}));
       renderPratiche('');
+      _populateEntiSelect();
     } catch(e){
       $('pratBody').innerHTML = `<tr><td colspan="7" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
     }
   }
   $('searchPratiche').addEventListener('input', e => renderPratiche(e.target.value));
+
+  // Popola il select degli enti con i valori unici presenti nelle pratiche
+  function _populateEntiSelect() {
+    const sel = $('new-ente');
+    if (!sel || sel.tagName !== 'SELECT') return;
+    const current = sel.value;
+    // Raccoglie enti unici, ordinati alfabeticamente, escludendo vuoti
+    const enti = [...new Set(
+      PRATICHE.map(p => (p.ENTE || '').trim()).filter(Boolean)
+    )].sort((a, b) => a.localeCompare(b, 'it'));
+    sel.innerHTML = '<option value="">— seleziona ente —</option>' +
+      enti.map(e => `<option value="${escapeHtml(e)}"${e === current ? ' selected' : ''}>${escapeHtml(e)}</option>`).join('') +
+      '<option value="__altro__">✏ Altro (scrivi manualmente)…</option>';
+  }
 
   function buildCodice(p) {
     const tipoMap = {'AUTORIZZAZIONE':'AUT','NULLA OSTA':'NO','ORDINANZA':'ORD'};
@@ -479,7 +496,9 @@
     const row = {
       "Source.Name": $('new-lotto').value,
       "TRATTA_ID": $('new-tratta').value.trim(),
-      "ENTE": $('new-ente').value.trim(),
+      "ENTE": ($('new-ente').value === '__altro__'
+               ? ($('new-ente-custom') ? $('new-ente-custom').value.trim() : '')
+               : $('new-ente').value.trim()),
       "TIPO_PERMESSO": $('new-tipo').value,
       "STATO_PERMESSO": "IN REDAZIONE",
       "DATA_RICHIESTA": $('new-data-rich').value.trim(),
@@ -521,6 +540,25 @@
     } catch(e){ $('mineBody').innerHTML = `<tr><td colspan="5" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`; }
   }
   $('refreshMineBtn').onclick = loadMine;
+
+  // Campo libero per "Altro" ente
+  $('new-ente').addEventListener('change', function() {
+    let custom = $('new-ente-custom');
+    if (this.value === '__altro__') {
+      if (!custom) {
+        custom = document.createElement('input');
+        custom.type = 'text';
+        custom.id = 'new-ente-custom';
+        custom.placeholder = 'Scrivi il nome dell'ente…';
+        custom.style.marginTop = '6px';
+        custom.required = true;
+        this.parentNode.appendChild(custom);
+        custom.focus();
+      }
+    } else {
+      if (custom) { custom.remove(); }
+    }
+  });
 
   // Click su riga submission → mostra dettagli
   $('mineBody').addEventListener('click', e => {
