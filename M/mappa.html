@@ -99,7 +99,6 @@
   .leaflet-popup-close-button{display:none!important;}
   /* Popup layout */
   .popup-inner{min-width:min(560px, 90vw);max-width:min(640px, 95vw);font-family:'DM Sans',sans-serif;}
-  .popup-inner.sed-popup{min-width:min(260px,88vw);max-width:min(300px,92vw);}
   .popup-head{padding:14px 16px 12px;position:relative;}
   .popup-head-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;}
   .popup-lotto{font-size:18px;font-weight:700;font-family:'DM Mono',monospace;color:var(--text);letter-spacing:-0.02em;}
@@ -468,23 +467,6 @@
 
   @media print{.search-bar{display:none!important;}}
 
-  /* ── SED ATTRAVERSAMENTI ─────────────────────────────── */
-  /* punti nella legenda (cerchio invece di linea) */
-  .legend-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
-  .sed-control-btn {
-    padding:0 10px; height:36px; border-radius:8px;
-    background:var(--surface); border:1px solid var(--border);
-    box-shadow:0 2px 8px #0002;
-    display:flex; align-items:center; justify-content:center; gap:5px;
-    cursor:pointer; font-size:10px; font-weight:700;
-    font-family:'DM Sans',sans-serif; letter-spacing:0.05em;
-    color:var(--text); white-space:nowrap;
-    transition:background 0.15s, box-shadow 0.15s;
-    user-select:none; margin-top:8px; margin-left:10px;
-  }
-  .sed-control-btn:hover { background:var(--surface2); box-shadow:0 3px 12px #0003; }
-  .sed-control-btn.active { background:#fff7ed; border-color:#b45309; color:#b45309; }
-
   /* Basemap floating control — Google-style thumbnail button */
   .leaflet-top.leaflet-left { display:flex; flex-direction:column; align-items:flex-start; }
   .leaflet-basemap-control {
@@ -748,23 +730,26 @@ const STATO_COLORS = {
   'NECESSARIA INTEGRAZIONE':'#cc3333','PROTOCOLLATO INTEGRAZIONE':'#B5657A','OTTENUTO':'#3a8c5c'
 };
 window.STATO_COLORS = STATO_COLORS;
-const IMPRESE = {'1A':'Impresa 1','1B':'Impresa 2','2A':'Impresa 3'};
-const LOTTO_ORDER = ['1A','1B','2A','1','2','3','4','5','6','7','8'];
-const LOTTI_ATTIVI = ['1A','1B','2A'];
-const LOTTI_AVVIO  = ['1','2','3','4','5','6','7','8'];
+const IMPRESE = {'1':'Impresa 1','2':'Impresa 2','3':'Impresa 3'};
+const LOTTI_ATTIVI = ['1','2','3'];
+// LOTTI_AVVIO e LOTTO_ORDER vengono calcolati dinamicamente in base ai valori
+// effettivamente presenti nel campo "folders" del GeoJSON (vedi il blocco di
+// caricamento dati più sotto), invece di un elenco fisso.
+let LOTTI_AVVIO = [];
+let LOTTO_ORDER = [...LOTTI_ATTIVI];
 
 let map, allLayers=[], currentFilter='TUTTI', lottoStats={};
 let currentViewMode = 'stato'; // 'stato' | 'lotto'
 
 // Colori per lotto
 const LOTTO_COLORS = {
-  '1A':'#2563eb','1B':'#16a34a',
-  '2A':'#e8580c'
+  '1':'#2563eb','2':'#16a34a',
+  '3':'#e8580c'
 };
 
 function getColorForMode(feature, mode) {
   const p = feature.properties;
-  if (mode === 'lotto')   return LOTTO_COLORS[p.LOTTO] || '#6b7080';
+  if (mode === 'lotto')   return LOTTO_COLORS[p.folders] || '#6b7080';
   return getColor(p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE);
 }
 
@@ -896,29 +881,6 @@ function updateLegend(mode) {
       `<div class="legend-item"><div class="legend-line" style="background:${c}"></div>Lotto ${l}</div>`
     ).join('');
     leg.innerHTML = `<div class="legend-title">Lotto</div>${items}`;
-  }
-  // ── voci SED (condizionali al toggle) ──
-  const sedOn = _sedActive;
-  if (sedOn) {
-    leg.innerHTML += `
-      <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px">
-        <div class="legend-title">Attraversamenti SED</div>
-        <div class="legend-item">
-          <div style="width:22px;height:22px;border-radius:50%;background:#fef3c7;border:1.5px solid #b45309;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <svg viewBox="0 0 24 24" width="13" height="13"><rect x="1" y="9" width="17" height="8" rx="2" fill="#b45309"/><rect x="16" y="6" width="6" height="11" rx="1.5" fill="#92400e"/><rect x="17.5" y="7.5" width="3" height="3" rx="0.8" fill="#fef9c3"/><rect x="5" y="11" width="3" height="3" rx="0.6" fill="#fef9c3" opacity="0.9"/><circle cx="5" cy="18.5" r="2.5" fill="#78350f" stroke="#fef3c7" stroke-width="0.8"/><circle cx="11" cy="18.5" r="2.5" fill="#78350f" stroke="#fef3c7" stroke-width="0.8"/><circle cx="18" cy="18.5" r="2.5" fill="#78350f" stroke="#fef3c7" stroke-width="0.8"/></svg>
-          </div>Ferroviario
-        </div>
-        <div class="legend-item">
-          <div style="width:22px;height:22px;border-radius:50%;background:#f0fdf4;border:1.5px solid #16a34a;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <svg viewBox="0 0 20 20" width="12" height="12"><rect x="1" y="7.5" width="18" height="5" rx="2" fill="#374151"/><rect x="8" y="9.25" width="1.5" height="1.5" rx="0.5" fill="#fff"/><rect x="11" y="9.25" width="1.5" height="1.5" rx="0.5" fill="#fff"/><rect x="1" y="7" width="18" height="1" rx="0.5" fill="#f59e0b"/><rect x="1" y="12" width="18" height="1" rx="0.5" fill="#f59e0b"/></svg>
-          </div>Autostradale
-        </div>
-        <div class="legend-item">
-          <div style="width:22px;height:22px;border-radius:50%;background:#e0f2fe;border:1.5px solid #0369a1;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <svg viewBox="0 0 20 20" width="12" height="12"><path d="M1 10 Q3.5 5 6 10 Q8.5 15 11 10 Q13.5 5 16 10 Q17.5 13 19 10" stroke="#0369a1" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M1 14 Q3.5 9 6 14 Q8.5 19 11 14 Q13.5 9 16 14 Q17.5 17 19 14" stroke="#38bdf8" stroke-width="1.8" fill="none" stroke-linecap="round" opacity="0.7"/></svg>
-          </div>Idrico
-        </div>
-      </div>`;
   }
 }
 
@@ -1223,7 +1185,7 @@ function makePopupHtml(p, gmapsUrl) {
   const hasDetail = motivoHtml || noHtml || ordHtml;
 
   // % avanzamento lotto (da lottoStats globale)
-  const ls = (typeof lottoStats !== 'undefined') ? lottoStats[p.LOTTO] : null;
+  const ls = (typeof lottoStats !== 'undefined') ? lottoStats[p.folders] : null;
   const lottoPct      = ls ? ls.pct.toFixed(1) : null;
   const lottoSubmPct  = ls && ls.totale > 0
     ? ((['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO']
@@ -1237,7 +1199,7 @@ function makePopupHtml(p, gmapsUrl) {
 
   const lottoProgressHtml = ls ? `
     <div class="popup-section">
-      <div class="popup-section-title">Avanzamento lotto ${p.LOTTO||''}</div>
+      <div class="popup-section-title">Avanzamento lotto ${p.folders||''}</div>
       <div style="margin-bottom:8px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
           <span style="font-size:10px;color:var(--muted)">Permessi ottenuti</span>
@@ -1266,7 +1228,7 @@ function makePopupHtml(p, gmapsUrl) {
 
   // Lotto progress per colonna destra (senza border-top, ci pensa il layout)
   const lottoProgressRightHtml = ls ? `
-    <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);font-weight:500;margin-bottom:10px;">Avanzamento lotto ${p.LOTTO||''}</div>
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);font-weight:500;margin-bottom:10px;">Avanzamento lotto ${p.folders||''}</div>
     <div style="margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
         <span style="font-size:10px;color:var(--muted)">Permessi ottenuti</span>
@@ -1295,11 +1257,11 @@ function makePopupHtml(p, gmapsUrl) {
   return `<div class="popup-inner">
     <div class="popup-head">
       <div class="popup-head-top">
-        <span class="popup-lotto">Lotto ${p.LOTTO||'—'}</span>
+        <span class="popup-lotto">Lotto ${p.folders||'—'}</span>
         <button class="popup-close-btn" onclick="this.closest('.leaflet-popup').querySelector('.leaflet-popup-close-button').click()">✕</button>
       </div>
       <div class="popup-meta">
-        ${IMPRESE[p.LOTTO]?`<span class="popup-impresa">${IMPRESE[p.LOTTO]}</span>`:''}
+        ${IMPRESE[p.folders]?`<span class="popup-impresa">${IMPRESE[p.folders]}</span>`:''}
         ${p.TRATTA_ID?`<span class="popup-tratta">${p.TRATTA_ID}</span>`:''}
       </div>
       <div style="height:3px;width:100%;margin-top:12px;border-radius:2px;background:${color}33;overflow:hidden"><div style="height:100%;width:100%;background:${color};opacity:0.75"></div></div>
@@ -1357,9 +1319,8 @@ function makePopupHtml(p, gmapsUrl) {
 async function loadGeoJSON() {
   const resp = await fetch('QGIS_3.geojson?t='+Date.now());
   if (!resp.ok) throw new Error('QGIS_3.geojson non trovato');
-  // NB: il campo "folders" del GeoJSON QGIS_3 (valori 1/2/3) corrisponde alle cartelle
-  // QGIS di origine; verificare/aggiornare la corrispondenza folders -> LOTTO
-  // (attualmente: 1=1A, 2=1B, 3=2A) in fase di import/popolamento dati.
+  // Il campo "folders" del GeoJSON QGIS_3 (valori 1/2/3) è il campo
+  // associato ai lotti ed è usato come identificativo di lotto in tutta l'app.
   return await resp.json();
 }
 
@@ -1368,7 +1329,7 @@ function buildLottoStats(features) {
   const stats = {};
   features.forEach(f => {
     const p = f.properties;
-    const lotto = p.LOTTO;
+    const lotto = p.folders;
     if (!lotto||lotto==='P') return;
     if (!stats[lotto]) stats[lotto]={totale:0,ottenuto:0,lavorabili:0,stati:{},pratiche:new Set()};
     const l = p.LUNGHEZZA||0;
@@ -1517,7 +1478,7 @@ function searchPratiche(query) {
         feature: f,          // prima feature trovata (usata per zoomToFeature)
         praticheSet: new Set(),
         tratta: tid,
-        lotto: p.LOTTO,
+        lotto: p.folders,
         stato: p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE || '',
         comune: p.COMUNE || ''
       });
@@ -1845,285 +1806,6 @@ function toggleQTS(on) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── LAYER SED ATTRAVERSAMENTI ───────────────────────────────────────────────
-const SED_META = {
-  'FERROVIARIO': {
-    color: '#b45309', bg: '#fef3c7', border:'#b4530966',
-    // locomotiva di profilo
-    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
-      <!-- corpo principale -->
-      <rect x="1" y="9" width="17" height="8" rx="2" fill="#b45309"/>
-      <!-- cabina macchinista -->
-      <rect x="16" y="6" width="6" height="11" rx="1.5" fill="#92400e"/>
-      <!-- finestrino cabina -->
-      <rect x="17.5" y="7.5" width="3" height="3" rx="0.8" fill="#fef9c3"/>
-      <!-- camino -->
-      <rect x="3.5" y="5" width="2.5" height="4" rx="1" fill="#92400e"/>
-      <!-- vapore camino -->
-      <circle cx="3.5" cy="4.5" r="1.2" fill="#d4d4d4" opacity="0.7"/>
-      <circle cx="5.5" cy="3.8" r="0.9" fill="#d4d4d4" opacity="0.5"/>
-      <circle cx="4.5" cy="3" r="0.7" fill="#d4d4d4" opacity="0.4"/>
-      <!-- finestre fiancata -->
-      <rect x="5" y="11" width="3" height="3" rx="0.6" fill="#fef9c3" opacity="0.9"/>
-      <rect x="9.5" y="11" width="3" height="3" rx="0.6" fill="#fef9c3" opacity="0.9"/>
-      <!-- ruote -->
-      <circle cx="5"  cy="18.5" r="2.5" fill="#78350f" stroke="#fef3c7" stroke-width="0.8"/>
-      <circle cx="11" cy="18.5" r="2.5" fill="#78350f" stroke="#fef3c7" stroke-width="0.8"/>
-      <circle cx="18" cy="18.5" r="2.5" fill="#78350f" stroke="#fef3c7" stroke-width="0.8"/>
-      <!-- centro ruote -->
-      <circle cx="5"  cy="18.5" r="0.8" fill="#fef3c7"/>
-      <circle cx="11" cy="18.5" r="0.8" fill="#fef3c7"/>
-      <circle cx="18" cy="18.5" r="0.8" fill="#fef3c7"/>
-      <!-- bielle collegate -->
-      <line x1="5" y1="18.5" x2="11" y2="18.5" stroke="#92400e" stroke-width="1"/>
-      <line x1="11" y1="18.5" x2="18" y2="18.5" stroke="#92400e" stroke-width="1"/>
-      <!-- fanale anteriore -->
-      <circle cx="22" cy="13" r="1.2" fill="#fde68a"/>
-    </svg>`,
-    label: 'Ferroviario'
-  },
-  'AUTOSTRADALE': {
-    color: '#16a34a', bg: '#f0fdf4', border:'#16a34a66',
-    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
-      <rect x="1" y="7.5" width="18" height="5" rx="2" fill="#374151"/>
-      <rect x="8" y="9.25" width="1.5" height="1.5" rx="0.5" fill="#fff"/>
-      <rect x="11" y="9.25" width="1.5" height="1.5" rx="0.5" fill="#fff"/>
-      <rect x="1" y="7" width="18" height="1" rx="0.5" fill="#f59e0b"/>
-      <rect x="1" y="12" width="18" height="1" rx="0.5" fill="#f59e0b"/>
-    </svg>`,
-    label: 'Autostradale'
-  },
-  'IDRICO': {
-    color: '#0369a1', bg: '#e0f2fe', border:'#0369a166',
-    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
-      <path d="M1 10 Q3.5 5 6 10 Q8.5 15 11 10 Q13.5 5 16 10 Q17.5 13 19 10"
-            stroke="#0369a1" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-      <path d="M1 14 Q3.5 9 6 14 Q8.5 19 11 14 Q13.5 9 16 14 Q17.5 17 19 14"
-            stroke="#38bdf8" stroke-width="1.8" fill="none" stroke-linecap="round" opacity="0.7"/>
-    </svg>`,
-    label: 'Idrico'
-  }
-};
-
-// Genera un L.divIcon con l'SVG del tipo SED
-function sedDivIcon(tipo) {
-  const m = SED_META[tipo] || SED_META['IDRICO'];
-  const size = 32;
-  const svgScaled = m.svg
-    .replace(/width="\d+"/, 'width="18"')
-    .replace(/height="\d+"/, 'height="18"');
-  return L.divIcon({
-    className: '',
-    html: `<div style="
-      width:${size}px;height:${size}px;border-radius:50%;
-      background:${m.bg};border:2px solid ${m.color};
-      display:flex;align-items:center;justify-content:center;
-      box-shadow:0 2px 8px #00000035;
-      transform:translate(-50%,-50%);
-      transition:transform 0.15s;
-    ">${svgScaled}</div>`,
-    iconSize: [size, size],
-    iconAnchor: [size/2, size/2]
-  });
-}
-
-let sedLayer   = null;
-let sedLoaded  = false;
-let _sedActive = false;
-
-async function loadSED() {
-  if (sedLoaded) return;
-
-  // Carica Master.csv e indicizza per N_SED (opzionale, non blocca)
-  if (!window._sedFromCSV) {
-    try {
-      const csvResp = await fetch('Master.csv?t=' + Date.now());
-      if (csvResp.ok) {
-        const csvText = await csvResp.text();
-        const rows = csvText.split('\n');
-        const headers = rows[0].split(';').map(h => h.trim().replace(/^"|"$/g,''));
-        const idx = n => headers.findIndex(h => h.toUpperCase() === n.toUpperCase());
-        const iNSed  = idx('N_SED'),    iTipo  = idx('TIPO_PERMESSO');
-        const iEnte  = idx('ENTE'),     iStato = idx('STATO_PERMESSO');
-        const iInvio = idx('DATA_RICHIESTA'), iNote = idx('NOTE');
-        const iPrat  = idx('PRATICA'),  iDum   = idx('DATA_ULTIMA_MODIFICA');
-        const iLotto = idx('LOTTO'),    iSrc   = idx('Source.Name');
-
-        const permMap = {}; // key: nSed|pratica|tipo → best row
-        rows.slice(1).forEach(row => {
-          if (!row.trim()) return;
-          const cols = row.split(';').map(c => c.trim().replace(/^"|"$/g,''));
-          const nSed = cols[iNSed]; if (!nSed) return;
-          const prat = iPrat >= 0 ? cols[iPrat]||'' : '';
-          const tipo = iTipo >= 0 ? cols[iTipo]||'' : '';
-          const dum  = iDum  >= 0 ? cols[iDum] ||'' : '';
-          const src  = iSrc  >= 0 ? cols[iSrc] ||'' : '';
-          const lotto= src ? src.replace(/\.xlsx$/i,'').replace(/^Lotto\s*/i,'').trim().toUpperCase()
-                           : (iLotto >= 0 ? cols[iLotto]||'' : '');
-          const key  = nSed + '|' + prat + '|' + tipo;
-          const existing = permMap[key];
-          const dumDate  = dum ? new Date(dum.split('/').reverse().join('-')) : null;
-          const exDate   = existing?.dum ? new Date(existing.dum.split('/').reverse().join('-')) : null;
-          // Costruisce codice leggibile: NO/5/2B
-          const tipoPrefix = tipo === 'AUTORIZZAZIONE' ? 'AUT'
-            : tipo === 'NULLA OSTA' ? 'NO'
-            : tipo === 'ORDINANZA'  ? 'ORD'
-            : (tipo.substring(0,3)||'?');
-          const codice = tipoPrefix + (prat ? '/'+prat : '') + (lotto ? '/'+lotto : '');
-          if (!existing || (dumDate && (!exDate || dumDate >= exDate))) {
-            permMap[key] = {
-              nSed, pratica: codice, tipo,
-              ente:  iEnte  >= 0 ? cols[iEnte] ||'' : '',
-              stato: iStato >= 0 ? cols[iStato]||'' : '',
-              invio: iInvio >= 0 ? cols[iInvio]||'' : '',
-              dum, note: iNote >= 0 ? cols[iNote]||'' : ''
-            };
-          }
-        });
-
-        const map2 = {};
-        Object.values(permMap).forEach(r => {
-          const keys = r.nSed.split(' - ').map(k => k.trim()).filter(Boolean);
-          keys.forEach(k => {
-            if (!map2[k]) map2[k] = [];
-            map2[k].push(r);
-          });
-        });
-        window._sedFromCSV = map2;
-      }
-    } catch(e) { /* CSV non disponibile */ }
-  }
-  try {
-    const resp = await fetch('SED_classificato.geojson?t=' + Date.now());
-    if (!resp.ok) throw new Error('SED_classificato.geojson non trovato');
-    const geojson = await resp.json();
-
-    sedLayer = L.geoJSON(geojson, {
-      pointToLayer: (feature, latlng) => {
-        const tipo = feature.properties.TIPO_ATTRAVERSAMENTO || 'IDRICO';
-        return L.marker(latlng, { icon: sedDivIcon(tipo) });
-      },
-      onEachFeature: (f, layer) => {
-        const p    = f.properties || {};
-        const tipo = p.TIPO_ATTRAVERSAMENTO || 'IDRICO';
-        const m    = SED_META[tipo] || SED_META['IDRICO'];
-        const svgSm = m.svg.replace(/width="\d+"/, 'width="13"').replace(/height="\d+"/, 'height="13"');
-        const _coords = layer.getLatLng();
-        const gmapsUrlSed = (p.LATITUDINE && p.LONGITUDINE)
-          ? `https://www.google.com/maps?q=${p.LATITUDINE},${p.LONGITUDINE}`
-          : `https://www.google.com/maps?q=${_coords.lat.toFixed(6)},${_coords.lng.toFixed(6)}`;
-        // Pratiche CSV per questo SED
-        const nSedKey = p.N_SED || '';
-        const csvPrats = (window._sedFromCSV && nSedKey && window._sedFromCSV[nSedKey]) ? window._sedFromCSV[nSedKey] : [];
-        const getSC = s => (window.STATO_COLORS||{})[s] || '#888';
-
-        // Raggruppa pratiche per tipo permesso
-        const gruppi = {};
-        csvPrats.forEach(p2 => { if(!gruppi[p2.tipo]) gruppi[p2.tipo]=[]; gruppi[p2.tipo].push(p2); });
-
-        const pratHTML = Object.keys(gruppi).map(tipo => {
-          const rows = gruppi[tipo].map(p2 => {
-            const c = getSC(p2.stato);
-            return `<div class="popup-detail-row" style="display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:4px 6px;padding:4px 0;border-bottom:1px solid var(--border)">
-              <span style="font-size:9px;font-weight:700;color:var(--accent);font-family:'DM Mono',monospace">${p2.pratica||'—'}</span>
-              <span style="font-size:10px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p2.ente||'—'}</span>
-              <span style="font-size:9px;color:var(--muted2)">${p2.dum||p2.invio||''}</span>
-              <span style="grid-column:1/-1;padding:2px 6px;border-radius:3px;font-size:9px;font-weight:700;color:${c};background:${c}15;border:1px solid ${c}40;display:inline-block;width:fit-content">${p2.stato}</span>
-            </div>`;
-          }).join('');
-          return `<div style="font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700;margin:8px 0 4px;padding-bottom:3px;border-bottom:2px solid var(--border2)">${tipo||'—'}</div>${rows}`;
-        }).join('');
-
-        layer.bindPopup(`<div class="popup-inner sed-popup">
-          <div class="popup-head" style="padding:10px 14px 8px">
-            <div class="popup-head-top">
-              <div style="display:flex;align-items:center;gap:6px">
-                ${p.N_SED ? `<span style="font-size:11px;font-weight:700;font-family:'DM Mono',monospace;color:var(--text);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 6px">${p.N_SED}</span>` : ''}
-                <span class="popup-stato" style="background:${m.bg};color:${m.color};border:1.5px solid ${m.border};padding:1px 7px;font-size:9px">
-                  <span class="popup-stato-dot" style="background:${m.color}"></span>${m.label||tipo}
-                </span>
-                <span style="font-size:11px;color:var(--muted)">Lotto ${p.LOTTO||'—'}</span>
-              </div>
-              <button class="popup-close-btn" onclick="this.closest('.leaflet-popup').querySelector('.leaflet-popup-close-button').click()">✕</button>
-            </div>
-            ${p.name ? `<div style="font-size:12px;font-weight:700;color:var(--text);margin-top:5px">${p.name}</div>` : ''}
-            <div style="height:2px;width:100%;margin-top:8px;border-radius:2px;background:${m.color}33"><div style="height:100%;width:100%;background:${m.color};opacity:.8"></div></div>
-          </div>
-          <div class="popup-body-left" style="padding:8px 14px">
-            <div class="popup-grid">
-              ${p.COMUNE    ? `<div class="popup-field"><span class="popup-field-label">Comune</span><span class="popup-field-val" style="font-size:11px">${p.COMUNE}</span></div>` : ''}
-              ${p.PROVINCIA ? `<div class="popup-field"><span class="popup-field-label">Provincia</span><span class="popup-field-val" style="font-size:11px">${p.PROVINCIA}</span></div>` : ''}
-              ${p.ENTE      ? `<div class="popup-field full"><span class="popup-field-label">Ente</span><span class="popup-field-val" style="font-size:11px">${p.ENTE}</span></div>` : ''}
-            </div>
-            ${csvPrats.length ? `<div class="popup-section" style="margin-top:6px">
-              <div class="popup-section-title">Pratiche (${csvPrats.length})</div>
-              ${pratHTML}
-            </div>` : `<div style="font-size:10px;color:var(--muted);font-style:italic;padding:4px 0">Nessuna pratica associata</div>`}
-          </div>
-          <div style="padding:0 14px 10px">
-            <a class="popup-gmaps-btn" href="${gmapsUrlSed}" target="_blank" rel="noopener" style="font-size:10px;padding:4px 10px">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#2563eb"/></svg>
-              Google Maps
-            </a>
-          </div>
-        </div>`, { maxWidth: 300 });
-
-        layer.on('mouseover', () => {
-          const el = layer.getElement();
-          if (el) { const d = el.querySelector('div'); if(d) d.style.transform='translate(-50%,-50%) scale(1.25)'; }
-        });
-        layer.on('mouseout', () => {
-          const el = layer.getElement();
-          if (el) { const d = el.querySelector('div'); if(d) d.style.transform='translate(-50%,-50%) scale(1)'; }
-        });
-      }
-    });
-
-    sedLoaded = true;
-
-  } catch (e) {
-    console.warn('SED layer:', e.message);
-    const btn = document.getElementById('sedBtn');
-    if (btn) { btn.style.opacity = '0.45'; btn.style.pointerEvents = 'none'; btn.title = 'SED_classificato.geojson non disponibile'; }
-  }
-}
-
-function toggleSED(forcedState) {
-  _sedActive = (forcedState !== undefined) ? forcedState : !_sedActive;
-  const btn = document.getElementById('sedBtn');
-  if (btn) btn.classList.toggle('active', _sedActive);
-
-  if (_sedActive) {
-    if (!sedLoaded) {
-      loadSED().then(() => {
-        if (_sedActive && sedLayer) sedLayer.addTo(map).bringToFront();
-        updateLegend(currentViewMode);
-      });
-    } else if (sedLayer) {
-      sedLayer.addTo(map).bringToFront();
-      updateLegend(currentViewMode);
-    }
-  } else {
-    if (sedLayer && map.hasLayer(sedLayer)) map.removeLayer(sedLayer);
-    updateLegend(currentViewMode);
-  }
-}
-
-// Controllo Leaflet per il tasto SED (topleft, sotto Misura)
-const SedControl = L.Control.extend({
-  options: { position: 'topleft' },
-  onAdd: function() {
-    const btn = L.DomUtil.create('div', 'sed-control-btn');
-    btn.id = 'sedBtn';
-    btn.title = 'Attraversamenti SED';
-    btn.innerHTML = '🔶 SED';
-    L.DomEvent.disableClickPropagation(btn);
-    L.DomEvent.on(btn, 'click', () => toggleSED());
-    return btn;
-  }
-});
-new SedControl().addTo(map);
-// ─────────────────────────────────────────────────────────────────────────────
 
 (async()=>{
   try{
@@ -2131,9 +1813,16 @@ new SedControl().addTo(map);
     const features=geojson.features.filter(f=>f.properties.LOTTO!=='P');
     allFeatures = features;  // per ricerca pratiche
     lottoStats=buildLottoStats(features);
+    // "Lotti in avvio": tutti i valori del campo "folders" trovati nel GeoJSON
+    // che non rientrano tra i lotti attivi (1,2,3). Si adatta automaticamente
+    // a nuovi lotti che compaiono nei dati, senza elenco fisso.
+    LOTTI_AVVIO = Object.keys(lottoStats)
+      .filter(id => !LOTTI_ATTIVI.includes(id))
+      .sort((a,b) => a.localeCompare(b, undefined, {numeric:true}));
+    LOTTO_ORDER = [...LOTTI_ATTIVI, ...LOTTI_AVVIO];
 
     const lottoGroups={};
-    features.forEach(f=>{ const l=f.properties.LOTTO; if(!lottoGroups[l]) lottoGroups[l]=[]; lottoGroups[l].push(f); });
+    features.forEach(f=>{ const l=f.properties.folders; if(!lottoGroups[l]) lottoGroups[l]=[]; lottoGroups[l].push(f); });
 
     Object.entries(lottoGroups).forEach(([lotto,feats])=>{
       const geoData={type:'FeatureCollection',features:feats};
@@ -2174,7 +1863,7 @@ new SedControl().addTo(map);
           layer.bindTooltip(`
             <div style="display:flex;align-items:center;gap:6px">
               <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0"></span>
-              <strong>Lotto ${f.properties.LOTTO||'—'}</strong>
+              <strong>Lotto ${f.properties.folders||'—'}</strong>
               <span style="color:var(--muted)">·</span>
               <span>${stato.charAt(0)+stato.slice(1).toLowerCase()}</span>
             </div>
@@ -2458,7 +2147,7 @@ window.addEventListener('load', () => {
 
     <div class="help-section">
       <h4>🎨 Modalità di Visualizzazione</h4>
-      <p>I pulsanti <strong>Per Stato · Per Lotto · Per Cluster</strong> nella barra laterale cambiano il criterio di colorazione delle tratte. <em>Per Stato</em> mostra l'avanzamento autorizzativo con colori che vanno dal grigio (in attesa) al verde (ottenuto). <em>Per Lotto</em> distingue i tre lotti attivi (1A, 1B, 2A) e quelli in avvio (1–8). <em>Per Cluster</em> raggruppa le tratte per area geografica con una tavolozza di 30 colori distinti. La legenda in basso a sinistra si aggiorna automaticamente al cambio di modalità.</p>
+      <p>I pulsanti <strong>Per Stato · Per Lotto · Per Cluster</strong> nella barra laterale cambiano il criterio di colorazione delle tratte. <em>Per Stato</em> mostra l'avanzamento autorizzativo con colori che vanno dal grigio (in attesa) al verde (ottenuto). <em>Per Lotto</em> distingue i tre lotti attivi (1, 2, 3) e quelli in avvio (4–8). <em>Per Cluster</em> raggruppa le tratte per area geografica con una tavolozza di 30 colori distinti. La legenda in basso a sinistra si aggiorna automaticamente al cambio di modalità.</p>
     </div>
 
     <div class="help-section">
