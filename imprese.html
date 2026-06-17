@@ -209,12 +209,17 @@
               <option value="">—</option>
               <option>AUTORIZZAZIONE</option>
               <option>NULLA OSTA</option>
-              <option>ORDINANZA</option>
             </select>
           </div>
           <div>
-            <label>Codice pratica (PRATICA) *</label>
-            <input type="text" id="new-pratica" required placeholder="es. 24" data-testid="new-pratica">
+            <label>Numero progressivo pratica *</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span id="new-pratica-prefix" style="font-family:'Fira Code',monospace;font-size:13px;color:var(--muted);white-space:nowrap">—/</span>
+              <input type="number" id="new-pratica" required min="1" step="1" placeholder="es. 24"
+                     data-testid="new-pratica" style="max-width:100px">
+              <span id="new-pratica-suffix" style="font-family:'Fira Code',monospace;font-size:13px;color:var(--muted);white-space:nowrap">/—</span>
+            </div>
+            <div style="margin-top:4px;font-family:'Fira Code',monospace;font-size:11px;color:var(--accent)" id="new-pratica-preview"></div>
           </div>
           <div>
             <label>Data richiesta</label>
@@ -376,7 +381,7 @@
   }
 
   function buildCodice(p) {
-    const tipoMap = {'AUTORIZZAZIONE':'AUT','NULLA OSTA':'NO','ORDINANZA':'ORD'};
+    const tipoMap = {'AUTORIZZAZIONE':'AUT','NULLA OSTA':'NO'};
     const prefix = tipoMap[(p.TIPO_PERMESSO||'').trim()] || (p.TIPO_PERMESSO||'').trim().substring(0,3);
     const m = String(p['Source.Name']||'').match(/Lotto\s*([\w\d]+)/i);
     const lotto = m ? m[1] : '';
@@ -491,8 +496,8 @@
   // ─── nuova ─────────────────────────────────────────
   $('newForm').addEventListener('submit', async e => {
     e.preventDefault();
-    const pratica = $('new-pratica').value.trim();
-    if (!pratica) return setMsg($('msgNew'), 'Il codice pratica è obbligatorio', false);
+    const pratica = String($('new-pratica').value).trim();
+    if (!pratica || isNaN(parseInt(pratica))) return setMsg($('msgNew'), 'Il numero progressivo pratica è obbligatorio', false);
     const row = {
       "Source.Name": $('new-lotto').value,
       "TRATTA_ID": $('new-tratta').value.trim(),
@@ -540,6 +545,32 @@
     } catch(e){ $('mineBody').innerHTML = `<tr><td colspan="5" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`; }
   }
   $('refreshMineBtn').onclick = loadMine;
+
+  // Preview codice pratica — si aggiorna al cambio di tipo, lotto e numero
+  function _updatePraticaPreview() {
+    const tipoMap = {'AUTORIZZAZIONE':'AUT','NULLA OSTA':'NO'};
+    const tipo   = $('new-tipo').value;
+    const prefix = tipoMap[tipo] || '—';
+    // Estrai la sigla lotto da "Lotto 2A.xlsx" → "2A"
+    const lottoVal = $('new-lotto').value || '';
+    const m = lottoVal.match(/Lotto\s*([\w\d]+)/i);
+    const lotto = m ? m[1] : (lottoVal.replace('.xlsx','').replace('Lotto','').trim() || '—');
+    const num   = $('new-pratica').value || '—';
+    $('new-pratica-prefix').textContent = prefix + '/';
+    $('new-pratica-suffix').textContent = '/' + lotto;
+    const preview = $('new-pratica-preview');
+    if (prefix !== '—' && lotto !== '—' && num !== '—') {
+      preview.textContent = '→ ' + prefix + '/' + num + '/' + lotto;
+      preview.style.opacity = '1';
+    } else {
+      preview.textContent = '';
+    }
+  }
+  $('new-tipo').addEventListener('change',  _updatePraticaPreview);
+  $('new-lotto').addEventListener('change', _updatePraticaPreview);
+  $('new-pratica').addEventListener('input', _updatePraticaPreview);
+  // Inizializza al caricamento
+  _updatePraticaPreview();
 
   // Campo libero per "Altro" ente
   $('new-ente').addEventListener('change', function() {
