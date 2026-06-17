@@ -71,12 +71,8 @@
   }
   .btn-sm:hover { background:var(--surface2); color:var(--text); }
 
-  .badge-demo {
-    font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
-    padding:5px 11px; border-radius:20px;
-    background:rgba(229,80,0,.1); color:var(--accent2);
-    border:1px solid rgba(229,80,0,.25);
-  }
+  /* token colore per i bucket KPI */
+  :root { --integrazione:#C23B22; --protint:#B5657A; }
 
   /* ── MAIN ── */
   .main { max-width:1260px; margin:0 auto; padding:24px 24px 48px; display:flex; flex-direction:column; gap:20px; }
@@ -103,26 +99,45 @@
   .pill.active { background:var(--accent); border-color:var(--accent); color:#fff; }
 
   /* ── KPI ROW ── */
-  .kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
-  @media(max-width:900px){ .kpi-row{ grid-template-columns:repeat(2,1fr); } }
-  @media(max-width:520px){ .kpi-row{ grid-template-columns:1fr; } }
+  .kpi-row { display:grid; grid-template-columns:repeat(7,1fr); gap:10px; align-items:stretch; }
+  @media(max-width:1100px){ .kpi-row{ grid-template-columns:repeat(4,1fr); } }
+  @media(max-width:640px){ .kpi-row{ grid-template-columns:repeat(2,1fr); } }
 
-  .kpi-card {
-    background:var(--surface); border:1px solid var(--border); border-radius:14px;
-    padding:16px 18px; box-shadow:var(--sh-sm); position:relative; overflow:hidden;
+  .kpi {
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:14px 16px; position:relative; overflow:hidden; cursor:pointer;
+    transition:all .2s; box-shadow:var(--sh-xs);
   }
-  .kpi-card::before { content:''; position:absolute; top:0; left:0; bottom:0; width:3px; border-radius:12px 0 0 12px; }
-  .kpi-card.k-tratte::before    { background:var(--accent); }
-  .kpi-card.k-km::before        { background:var(--coordinamento); }
-  .kpi-card.k-ottenuto::before  { background:var(--ottenuto); }
-  .kpi-card.k-bloccate::before  { background:var(--bloccato); }
+  .kpi:hover { border-color:var(--border2); box-shadow:var(--sh-sm); transform:translateY(-2px); }
+  .kpi::before { content:''; position:absolute; top:0; left:0; bottom:0; width:3px; border-radius:12px 0 0 12px; }
+  .kpi.attesa::before        { background:var(--attesa); }
+  .kpi.coordinamento::before { background:var(--coordinamento); }
+  .kpi.firma::before         { background:var(--firma); }
+  .kpi.inviato::before       { background:var(--inviato); }
+  .kpi.integrazione::before  { background:var(--integrazione); }
+  .kpi.protint::before       { background:var(--protint); }
+  .kpi.ottenuto::before      { background:var(--ottenuto); }
 
-  .kpi-label {
-    font-family:'Fira Code', monospace; font-size:9.5px; font-weight:500;
-    letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin-bottom:7px;
+  .kpi-owner {
+    font-size:8.5px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+    padding:1px 7px; border-radius:3px; display:inline-block; margin-bottom:7px;
   }
-  .kpi-value { font-family:'Bricolage Grotesque', sans-serif; font-size:26px; font-weight:700; color:var(--text); }
-  .kpi-sub { font-size:10.5px; color:var(--muted2); margin-top:3px; }
+  .kpi-owner.impresa { background:#E550000D; color:#E55000; border:1px solid #E5500030; }
+  .kpi-owner.rds     { background:#0B31820D; color:#0B3182; border:1px solid #0B318230; }
+  .kpi-owner.ente    { background:#1F7A4E0D; color:#1F7A4E; border:1px solid #1F7A4E30; }
+
+  .kpi-label { font-size:9px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:8px; font-weight:600; }
+  .kpi-value { font-size:24px; font-weight:700; font-family:'Bricolage Grotesque', sans-serif; line-height:1; color:var(--text); letter-spacing:-.02em; }
+  .kpi-sub { font-size:10.5px; color:var(--text2); margin-top:6px; font-weight:500; }
+
+  .kpi.attesa .kpi-value        { color:var(--attesa); }
+  .kpi.coordinamento .kpi-value { color:var(--coordinamento); }
+  .kpi.firma .kpi-value         { color:var(--firma); }
+  .kpi.inviato .kpi-value       { color:var(--inviato); }
+  .kpi.integrazione .kpi-value  { color:var(--integrazione); }
+  .kpi.protint .kpi-value       { color:var(--protint); }
+  .kpi.protint .kpi-owner       { background:#B5657A0D; color:var(--protint); border-color:#B5657A30; }
+  .kpi.ottenuto .kpi-value      { color:var(--ottenuto); }
 
   /* ── PANELS ── */
   .panels-row { display:grid; grid-template-columns:1.1fr 1fr; gap:16px; }
@@ -178,7 +193,48 @@
   }
   .badge-stato .dot { width:6px; height:6px; border-radius:50%; }
 
-  .footnote { font-size:11px; color:var(--muted2); text-align:center; padding-top:6px; font-style:italic; }
+  /* ── INTERAZIONI ── */
+  table.tbl tbody tr { cursor:pointer; }
+  table.tbl tbody tr:hover { background:var(--surface2); }
+
+  /* ── MODALI ── */
+  .modal-overlay {
+    position:fixed; inset:0; background:rgba(20,20,35,.45);
+    display:flex; align-items:center; justify-content:center;
+    opacity:0; pointer-events:none; transition:opacity .2s; z-index:200; padding:20px;
+  }
+  .modal-overlay.open { opacity:1; pointer-events:all; }
+  .modal {
+    background:var(--surface); border-radius:16px; width:420px; max-width:100%;
+    max-height:86vh; overflow-y:auto; box-shadow:var(--sh-md);
+    padding:22px 24px; transform:translateY(10px); transition:transform .2s;
+  }
+  .modal-overlay.open .modal { transform:translateY(0); }
+  .modal-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:16px; }
+  .modal-title { font-family:'Bricolage Grotesque', sans-serif; font-size:16px; font-weight:700; color:var(--text); }
+  .modal-close { cursor:pointer; color:var(--muted); font-size:20px; line-height:1; background:none; border:none; padding:0; }
+  .modal-close:hover { color:var(--text); }
+
+  .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px 16px; margin-bottom:6px; }
+  .info-item .lbl { font-size:9.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:600; margin-bottom:3px; }
+  .info-item .val { font-size:13px; color:var(--text); font-weight:600; }
+
+  .stepper { display:flex; align-items:flex-start; justify-content:space-between; margin:20px 0 4px; position:relative; }
+  .stepper::before { content:''; position:absolute; top:7px; left:14px; right:14px; height:2px; background:var(--border2); z-index:0; }
+  .step { position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; gap:6px; flex:1; }
+  .step-dot { width:14px; height:14px; border-radius:50%; background:var(--surface); border:2px solid var(--border2); }
+  .step.done .step-dot { background:var(--ottenuto); border-color:var(--ottenuto); }
+  .step.active .step-dot { background:var(--accent); border-color:var(--accent); }
+  .step-label { font-size:9.5px; color:var(--muted); text-align:center; max-width:74px; line-height:1.3; }
+  .step.done .step-label, .step.active .step-label { color:var(--text); font-weight:600; }
+
+  .iter-note { margin-top:14px; padding:9px 12px; border-radius:8px; background:rgba(192,57,43,.08); border:1px solid rgba(192,57,43,.25); color:var(--bloccato); font-size:11.5px; }
+
+  .bar-row { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+  .bar-label { width:90px; font-size:11.5px; color:var(--text2); flex-shrink:0; font-weight:600; }
+  .bar-track { flex:1; height:9px; border-radius:5px; background:var(--surface2); overflow:hidden; }
+  .bar-fill { height:100%; border-radius:5px; }
+  .bar-val { width:60px; text-align:right; font-size:12.5px; font-weight:700; color:var(--text); flex-shrink:0; }
 </style>
 </head>
 <body>
@@ -190,7 +246,6 @@
     <span class="page-title">Progettazione · Iter autorizzativo</span>
   </div>
   <div class="topbar-right">
-    <span class="badge-demo">Dati di esempio</span>
     <a href="mappa.html" class="btn-sm">Mappa</a>
     <a href="Hub.html" class="btn-sm">← Hub</a>
   </div>
@@ -202,7 +257,7 @@
     <div class="page-header-left">
       <div class="eyebrow">Fase 1 · Permitting</div>
       <div class="page-title-lg">Avanzamento autorizzativo</div>
-      <div class="page-sub">Stato delle pratiche per tratta, lotto ed ente. Vista dimostrativa con dati fittizi, costruita sullo stesso modello dati della mappa.</div>
+      <div class="page-sub">Monitoraggio dell'iter autorizzativo per tratta, lotto ed ente: stato delle pratiche, percentuali di avanzamento e chilometri coperti.</div>
     </div>
     <div class="pills" id="lottoPills">
       <button class="pill active" data-lotto="all">Tutti</button>
@@ -212,26 +267,48 @@
     </div>
   </div>
 
-  <div class="kpi-row">
-    <div class="kpi-card k-tratte">
-      <div class="kpi-label">Tratte</div>
-      <div class="kpi-value" id="kpiTratte">—</div>
-      <div class="kpi-sub" id="kpiTratteSub">&nbsp;</div>
+  <div class="kpi-row" id="kpiRow">
+    <div class="kpi attesa" data-bucket="attesa">
+      <span class="kpi-owner impresa">Impresa</span>
+      <div class="kpi-label">In Attesa / Redazione</div>
+      <div class="kpi-value" id="kpi-attesa">—</div>
+      <div class="kpi-sub" id="kpisub-attesa">—</div>
     </div>
-    <div class="kpi-card k-km">
-      <div class="kpi-label">Lunghezza totale</div>
-      <div class="kpi-value" id="kpiKm">—</div>
-      <div class="kpi-sub">km di tratta interessati</div>
+    <div class="kpi coordinamento" data-bucket="coordinamento">
+      <span class="kpi-owner impresa">Impresa/Enti</span>
+      <div class="kpi-label">Coordinamento</div>
+      <div class="kpi-value" id="kpi-coordinamento">—</div>
+      <div class="kpi-sub" id="kpisub-coordinamento">—</div>
     </div>
-    <div class="kpi-card k-ottenuto">
-      <div class="kpi-label">Pratiche ottenute</div>
-      <div class="kpi-value" id="kpiOttenuto">—</div>
-      <div class="kpi-sub" id="kpiOttenutoSub">&nbsp;</div>
+    <div class="kpi firma" data-bucket="firma">
+      <span class="kpi-owner rds">RDS</span>
+      <div class="kpi-label">In Verifica / In Firma</div>
+      <div class="kpi-value" id="kpi-firma">—</div>
+      <div class="kpi-sub" id="kpisub-firma">—</div>
     </div>
-    <div class="kpi-card k-bloccate">
-      <div class="kpi-label">Pratiche bloccate</div>
-      <div class="kpi-value" id="kpiBloccate">—</div>
-      <div class="kpi-sub">richiedono integrazione</div>
+    <div class="kpi inviato" data-bucket="inviato">
+      <span class="kpi-owner ente">Ente</span>
+      <div class="kpi-label">Inviato / Protocollato</div>
+      <div class="kpi-value" id="kpi-inviato">—</div>
+      <div class="kpi-sub" id="kpisub-inviato">—</div>
+    </div>
+    <div class="kpi integrazione" data-bucket="integrazione">
+      <span class="kpi-owner impresa">Impresa</span>
+      <div class="kpi-label">Necessaria Integrazione</div>
+      <div class="kpi-value" id="kpi-integrazione">—</div>
+      <div class="kpi-sub" id="kpisub-integrazione">—</div>
+    </div>
+    <div class="kpi protint" data-bucket="protint">
+      <span class="kpi-owner ente">Ente</span>
+      <div class="kpi-label">Protocollato Integrazione</div>
+      <div class="kpi-value" id="kpi-protint">—</div>
+      <div class="kpi-sub" id="kpisub-protint">—</div>
+    </div>
+    <div class="kpi ottenuto" data-bucket="ottenuto">
+      <span class="kpi-owner ente">Ente</span>
+      <div class="kpi-label">🏆 Autorizzati</div>
+      <div class="kpi-value" id="kpi-ottenuto">—</div>
+      <div class="kpi-sub" id="kpisub-ottenuto">—</div>
     </div>
   </div>
 
@@ -265,13 +342,46 @@
     </table>
   </div>
 
-  <div class="footnote">Dati di esempio a scopo dimostrativo — non rappresentano l'avanzamento reale del progetto.</div>
+</div>
 
+<div class="modal-overlay" id="rowModalOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="rowModalTitle">—</div>
+        <div id="rowModalSub" style="margin-top:7px;"></div>
+      </div>
+      <button class="modal-close" onclick="closeRowModal()">×</button>
+    </div>
+    <div class="info-grid" id="rowInfoGrid"></div>
+    <div class="stepper" id="rowStepper"></div>
+    <div class="iter-note" id="rowNote" style="display:none;"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="kpiModalOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="kpiModalTitle">—</div>
+      <button class="modal-close" onclick="closeKpiModal()">×</button>
+    </div>
+    <div id="kpiModalBody"></div>
+  </div>
 </div>
 
 <script>
 const LOTTO_COLORS = { '1':'#2563eb', '2':'#16a34a', '3':'#e8580c' };
 const IMPRESE      = { '1':'Impresa 1', '2':'Impresa 2', '3':'Impresa 3' };
+
+const KPI_BUCKETS = {
+  attesa:        ['IN ATTESA','IN REDAZIONE'],
+  coordinamento: ['COORDINAMENTO'],
+  firma:         ['IN FIRMA RDS'],
+  inviato:       ['INVIATO','PROTOCOLLATO'],
+  integrazione:  ['NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE'],
+  protint:       ['PROTOCOLLATO INTEGRAZIONE'],
+  ottenuto:      ['OTTENUTO']
+};
 
 const STATO_COLORS = {
   'IN ATTESA':                 'var(--attesa)',
@@ -323,16 +433,14 @@ function filtered(){
 }
 
 function renderKPIs(rows){
-  const tot = rows.length;
-  const km = rows.reduce((s,r)=>s+r.m,0);
-  const ottenute = rows.filter(r=>r.stato==='OTTENUTO').length;
-  const bloccate = rows.filter(r=>['NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE'].includes(r.stato)).length;
-  document.getElementById('kpiTratte').textContent = tot;
-  document.getElementById('kpiTratteSub').textContent = activeLotto==='all' ? 'su 3 lotti' : ('Lotto ' + activeLotto + ' · ' + IMPRESE[activeLotto]);
-  document.getElementById('kpiKm').textContent = fmtKm(km);
-  document.getElementById('kpiOttenuto').textContent = tot ? Math.round(ottenute/tot*100)+'%' : '—';
-  document.getElementById('kpiOttenutoSub').textContent = ottenute + ' di ' + tot + ' tratte';
-  document.getElementById('kpiBloccate').textContent = bloccate;
+  const totKm = rows.reduce((s,r)=>s+r.m,0);
+  Object.entries(KPI_BUCKETS).forEach(([key, stati]) => {
+    const bucketRows = rows.filter(r => stati.includes(r.stato));
+    const km = bucketRows.reduce((s,r)=>s+r.m,0);
+    const pct = totKm > 0 ? km/totKm*100 : 0;
+    document.getElementById('kpi-'+key).textContent = pct.toFixed(1)+'%';
+    document.getElementById('kpisub-'+key).textContent = bucketRows.length + ' tratte · ' + fmtKm(km) + ' km';
+  });
 }
 
 function renderDonut(rows){
@@ -396,6 +504,7 @@ function renderTable(rows){
       <td>${r.m} m</td>
       <td>${r.pratica}</td>
       <td>${r.ente}</td>`;
+    tr.addEventListener('click', () => openRowModal(r));
     body.appendChild(tr);
   });
 }
@@ -406,6 +515,77 @@ function renderAll(){
   renderDonut(rows);
   renderTable(rows);
 }
+
+/* ── POPUP dettaglio tratta ── */
+const ITER_STEPS = ['Predisposizione','Invio','Protocollazione','Rilascio'];
+const BLOCK_NOTES = {
+  'IN REDAZIONE INTEGRAZIONE':'In redazione: l\'ente ha segnalato la necessità di integrare la documentazione prima dell\'invio.',
+  'NECESSARIA INTEGRAZIONE':'L\'ente ha richiesto un\'integrazione documentale per poter procedere.',
+  'PROTOCOLLATO INTEGRAZIONE':'Protocollata, ma in attesa dell\'integrazione richiesta dall\'ente.'
+};
+function stepIndexFor(stato){
+  if(['IN ATTESA','IN REDAZIONE','IN REDAZIONE INTEGRAZIONE'].includes(stato)) return 0;
+  if(['COORDINAMENTO','IN FIRMA RDS'].includes(stato)) return 1;
+  if(stato === 'INVIATO') return 2;
+  if(['PROTOCOLLATO','PROTOCOLLATO INTEGRAZIONE','NECESSARIA INTEGRAZIONE'].includes(stato)) return 3;
+  if(stato === 'OTTENUTO') return 4;
+  return 0;
+}
+function openRowModal(r){
+  const step = stepIndexFor(r.stato);
+  document.getElementById('rowModalTitle').textContent = r.t + ' · ' + r.comune;
+  document.getElementById('rowModalSub').innerHTML =
+    `<span class="badge-stato" style="background:${STATO_HEX[r.stato]}1A; color:${STATO_HEX[r.stato]}"><span class="dot" style="background:${STATO_HEX[r.stato]}"></span>${r.stato}</span>`;
+  document.getElementById('rowInfoGrid').innerHTML = `
+    <div class="info-item"><div class="lbl">Lotto</div><div class="val">Lotto ${r.lotto} · ${IMPRESE[r.lotto]}</div></div>
+    <div class="info-item"><div class="lbl">Lunghezza</div><div class="val">${r.m} m</div></div>
+    <div class="info-item"><div class="lbl">Pratica</div><div class="val">${r.pratica}</div></div>
+    <div class="info-item"><div class="lbl">Ente</div><div class="val">${r.ente}</div></div>`;
+  document.getElementById('rowStepper').innerHTML = ITER_STEPS.map((label,i)=>{
+    const cls = step >= 4 ? 'done' : (i < step ? 'done' : (i === step ? 'active' : ''));
+    return `<div class="step ${cls}"><div class="step-dot"></div><div class="step-label">${label}</div></div>`;
+  }).join('');
+  const noteEl = document.getElementById('rowNote');
+  if(BLOCK_NOTES[r.stato]){ noteEl.style.display='block'; noteEl.textContent = BLOCK_NOTES[r.stato]; }
+  else { noteEl.style.display='none'; }
+  document.getElementById('rowModalOverlay').classList.add('open');
+}
+function closeRowModal(){ document.getElementById('rowModalOverlay').classList.remove('open'); }
+
+/* ── POPUP dettaglio KPI ── */
+const KPI_LABELS = {
+  attesa:'In Attesa / Redazione', coordinamento:'Coordinamento', firma:'In Verifica / In Firma',
+  inviato:'Inviato / Protocollato', integrazione:'Necessaria Integrazione',
+  protint:'Protocollato Integrazione', ottenuto:'Autorizzati'
+};
+function openKpiModal(bucket){
+  const stati = KPI_BUCKETS[bucket];
+  document.getElementById('kpiModalTitle').textContent = KPI_LABELS[bucket] + ' — per lotto';
+  document.getElementById('kpiModalBody').innerHTML = ['1','2','3'].map(lotto=>{
+    const lottoRows = SAMPLE_DATA.filter(d=>d.lotto===lotto);
+    const bucketRows = lottoRows.filter(r=>stati.includes(r.stato));
+    const km = bucketRows.reduce((s,r)=>s+r.m,0)/1000;
+    const totLottoKm = lottoRows.reduce((s,r)=>s+r.m,0)/1000 || 1;
+    const pct = Math.min(100, km/totLottoKm*100);
+    return `<div class="bar-row">
+      <div class="bar-label">Lotto ${lotto}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%; background:${LOTTO_COLORS[lotto]}"></div></div>
+      <div class="bar-val">${bucketRows.length} trat. · ${km.toFixed(1)} km</div>
+    </div>`;
+  }).join('');
+  document.getElementById('kpiModalOverlay').classList.add('open');
+}
+function closeKpiModal(){ document.getElementById('kpiModalOverlay').classList.remove('open'); }
+
+document.querySelectorAll('.kpi').forEach(card => {
+  card.addEventListener('click', () => openKpiModal(card.dataset.bucket));
+});
+document.querySelectorAll('.modal-overlay').forEach(ov => {
+  ov.addEventListener('click', e => { if(e.target === ov) ov.classList.remove('open'); });
+});
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(o => o.classList.remove('open'));
+});
 
 document.getElementById('lottoPills').addEventListener('click', e => {
   const btn = e.target.closest('.pill');
