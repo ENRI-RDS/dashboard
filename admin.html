@@ -694,10 +694,15 @@
         }).join(' ; ') + ((s.changes||[]).length > 2 ? ` (+${s.changes.length - 2})` : '');
         const statusTag = `<span class="tag" style="background:${s.status==='pending'?'#FEF3C7':s.status==='approved'?'#EBFBEE':'#FEE2E2'};color:${s.status==='pending'?'#B45309':s.status==='approved'?'#2B8A3E':'#B91C1C'};text-transform:uppercase;font-size:10px;font-weight:700;padding:3px 8px;border-radius:5px">${s.status}</span>`;
         return `
-        <tr>
-          <td class="mono">${new Date(s.submitted_at).toLocaleString('it-IT')}</td>
+        <tr style="${s.type==='new'
+            ? 'border-left:3px solid #10b981'
+            : 'border-left:3px solid #3b82f6'}">
+          <td class="mono">${fmtDate(s.submitted_at)}</td>
           <td>${escapeHtml(s.nome)}</td>
-          <td>${s.type==='update'?'Aggiornamento':'Nuova'}</td>
+          <td>${s.type==='update'
+            ? '<span style="color:#1d4ed8;font-weight:600;font-size:12px">&#8635; Aggiornamento</span>'
+            : '<span style="color:#059669;font-weight:600;font-size:12px">&#43; Nuova tratta</span>'
+          }</td>
           <td>${(s.changes||[]).length}</td>
           <td class="mono" style="font-size:11px">${preview}</td>
           <td>${statusTag}</td>
