@@ -149,6 +149,18 @@
     color:var(--text); margin-bottom:14px;
   }
 
+  .panel-title-row { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-bottom:14px; }
+  .panel-title-row .panel-title { margin-bottom:0; }
+  .table-filters { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .table-search, .table-select {
+    font-family:'Plus Jakarta Sans', sans-serif; font-size:11.5px; color:var(--text);
+    background:var(--surface); border:1px solid var(--border2); border-radius:7px;
+    padding:6px 11px; outline:none; transition:border-color .15s;
+  }
+  .table-search { width:220px; }
+  .table-search:focus, .table-select:focus { border-color:var(--accent); }
+  .table-count { font-size:10.5px; color:var(--muted2); font-family:'Fira Code', monospace; white-space:nowrap; }
+
   .donut-row { display:flex; align-items:center; gap:22px; flex-wrap:wrap; }
   .donut-wrap { position:relative; width:140px; height:140px; flex-shrink:0; }
   .donut { width:100%; height:100%; border-radius:50%; }
@@ -353,7 +365,16 @@
   </div>
 
   <div class="panel panel-table">
-    <div class="panel-title">Dettaglio tratte</div>
+    <div class="panel-title-row">
+      <div class="panel-title">Dettaglio tratte</div>
+      <div class="table-filters">
+        <input type="text" id="tableSearch" class="table-search" placeholder="Cerca tratta, comune, ente, pratica…">
+        <select id="tableStatoFilter" class="table-select">
+          <option value="all">Tutti gli stati</option>
+        </select>
+        <span class="table-count" id="tableCount"></span>
+      </div>
+    </div>
     <div class="tbl-scroll">
     <table class="tbl">
       <thead>
@@ -439,11 +460,28 @@ const STATO_HEX = {
 const SAMPLE_DATA = [{"t": "T-001", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "INVIATO", "m": 305, "pratica": "", "ente": "Comune di Corsico"}, {"t": "T-002", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 2270, "pratica": "AUT/3-002", "ente": "Comune di Rozzano"}, {"t": "T-003", "comune": "Settimo Milanese", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 676, "pratica": "AUT/3-003", "ente": "Comune di Gaggiano"}, {"t": "T-004", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 240, "pratica": "AUT/3-004", "ente": "Comune di Cesano Boscone"}, {"t": "T-005", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "IN REDAZIONE", "m": 222, "pratica": "", "ente": "Comune di Corsico"}, {"t": "T-006", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "INVIATO", "m": 615, "pratica": "", "ente": "Comune di Cesano Boscone"}, {"t": "T-007", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "IN ATTESA", "m": 533, "pratica": "", "ente": "Comune di Corsico"}, {"t": "T-008", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 448, "pratica": "AUT/3-008", "ente": "Comune di Corsico"}, {"t": "T-009", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "PROTOCOLLATO", "m": 441, "pratica": "", "ente": "Comune di Corsico"}, {"t": "T-010", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 1067, "pratica": "AUT/3-010", "ente": "Comune di Cesano Boscone"}, {"t": "T-011", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 529, "pratica": "AUT/3-011", "ente": "Comune di Corsico"}, {"t": "T-012", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "IN FIRMA RDS", "m": 791, "pratica": "", "ente": "Comune di Buccinasco"}, {"t": "T-013", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 1548, "pratica": "AUT/3-013", "ente": "Comune di Buccinasco"}, {"t": "T-014", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 3, "pratica": "AUT/3-014", "ente": "Comune di Rozzano"}, {"t": "T-015", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "INVIATO", "m": 1426, "pratica": "", "ente": "Comune di Buccinasco"}, {"t": "T-016", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "IN FIRMA RDS", "m": 408, "pratica": "", "ente": "Comune di Buccinasco"}, {"t": "T-017", "comune": "Cusago", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 939, "pratica": "AUT/3-017", "ente": "Comune di Gaggiano"}, {"t": "T-018", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "COORDINAMENTO", "m": 4, "pratica": "", "ente": "Comune di Zibido San Giacomo"}, {"t": "T-019", "comune": "San Donato Milanese", "lotto": "3", "lottoCode": "2A", "stato": "IN REDAZIONE", "m": 593, "pratica": "", "ente": "Comune di Opera"}, {"t": "T-020", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 3, "pratica": "AUT/3-020", "ente": "Comune di Buccinasco"}, {"t": "T-021", "comune": "Cusago", "lotto": "3", "lottoCode": "2A", "stato": "IN REDAZIONE", "m": 28, "pratica": "", "ente": "Comune di Gaggiano"}, {"t": "T-022", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "INVIATO", "m": 509, "pratica": "", "ente": "Comune di Gaggiano"}, {"t": "T-023", "comune": "Cusago", "lotto": "3", "lottoCode": "2A", "stato": "PROTOCOLLATO", "m": 184, "pratica": "", "ente": "Comune di Gaggiano"}, {"t": "T-024", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 2186, "pratica": "AUT/3-024", "ente": "Comune di Gaggiano"}, {"t": "T-025", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "PROTOCOLLATO INTEGRAZIONE", "m": 498, "pratica": "", "ente": "Comune di Buccinasco"}, {"t": "T-026", "comune": "San Donato Milanese", "lotto": "2", "lottoCode": "1B", "stato": "PROTOCOLLATO", "m": 12, "pratica": "", "ente": "Comune di Locate di Triulzi"}, {"t": "T-027", "comune": "Cusago", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 113, "pratica": "AUT/3-027", "ente": "Comune di Gaggiano"}, {"t": "T-028", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 547, "pratica": "AUT/3-028", "ente": "Comune di Zibido San Giacomo"}, {"t": "T-029", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "IN ATTESA", "m": 2217, "pratica": "", "ente": "Comune di Zibido San Giacomo"}, {"t": "T-030", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "COORDINAMENTO", "m": 406, "pratica": "", "ente": "Comune di Zibido San Giacomo"}, {"t": "T-031", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "IN REDAZIONE", "m": 568, "pratica": "", "ente": "Comune di Buccinasco"}, {"t": "T-032", "comune": "Cusago", "lotto": "3", "lottoCode": "2A", "stato": "INVIATO", "m": 1302, "pratica": "", "ente": "Comune di Gaggiano"}, {"t": "T-033", "comune": "Cusago", "lotto": "3", "lottoCode": "2A", "stato": "IN FIRMA RDS", "m": 857, "pratica": "", "ente": "Comune di Gaggiano"}, {"t": "T-034", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "PROTOCOLLATO INTEGRAZIONE", "m": 1171, "pratica": "", "ente": "Comune di Gaggiano"}, {"t": "T-035", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "PROTOCOLLATO", "m": 2, "pratica": "", "ente": "Comune di Zibido San Giacomo"}, {"t": "T-036", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "COORDINAMENTO", "m": 1381, "pratica": "", "ente": "Comune di Gaggiano"}, {"t": "T-037", "comune": "San Donato Milanese", "lotto": "3", "lottoCode": "2A", "stato": "IN ATTESA", "m": 7, "pratica": "", "ente": "Comune di Opera"}, {"t": "T-038", "comune": "San Donato Milanese", "lotto": "3", "lottoCode": "2A", "stato": "COORDINAMENTO", "m": 1342, "pratica": "", "ente": "Comune di Locate di Triulzi"}, {"t": "T-039", "comune": "Gaggiano", "lotto": "3", "lottoCode": "2A", "stato": "IN ATTESA", "m": 2, "pratica": "", "ente": "Comune di Gaggiano"}, {"t": "T-040", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "COORDINAMENTO", "m": 951, "pratica": "", "ente": "Comune di Buccinasco"}, {"t": "T-041", "comune": "Lodi", "lotto": "2", "lottoCode": "1B", "stato": "INVIATO", "m": 447, "pratica": "", "ente": "Comune di Cerro al Lambro"}, {"t": "T-042", "comune": "Lodi", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 4307, "pratica": "AUT/2-042", "ente": "Comune di Merlino"}, {"t": "T-043", "comune": "Lodi", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 543, "pratica": "AUT/2-043", "ente": "Comune di Cerro al Lambro"}, {"t": "T-044", "comune": "Locate di Triulzi", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 4575, "pratica": "AUT/2-044", "ente": "Comune di Locate di Triulzi"}, {"t": "T-045", "comune": "Lodi", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 1328, "pratica": "AUT/2-045", "ente": "Comune di Cerro al Lambro"}, {"t": "T-046", "comune": "Melegnano", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 3939, "pratica": "AUT/2-046", "ente": "Comune di Melegnano"}, {"t": "T-047", "comune": "San Giuliano Milanese", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 2685, "pratica": "AUT/2-047", "ente": "Comune di Opera"}, {"t": "T-048", "comune": "San Giuliano Milanese", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 5799, "pratica": "AUT/2-048", "ente": "Comune di Dresano"}, {"t": "T-049", "comune": "Lodi", "lotto": "2", "lottoCode": "1B", "stato": "INVIATO", "m": 32, "pratica": "", "ente": "Comune di Cerro al Lambro"}, {"t": "T-050", "comune": "Lodi", "lotto": "2", "lottoCode": "1B", "stato": "PROTOCOLLATO", "m": 2002, "pratica": "", "ente": "Comune di Dresano"}, {"t": "T-051", "comune": "Casalpusterlengo", "lotto": "2", "lottoCode": "1B", "stato": "PROTOCOLLATO", "m": 1630, "pratica": "", "ente": "Comune di Casalpusterlengo"}, {"t": "T-052", "comune": "Lodi", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 1708, "pratica": "AUT/2-052", "ente": "Comune di Cerro al Lambro"}, {"t": "T-053", "comune": "Melegnano", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 1374, "pratica": "AUT/2-053", "ente": "Comune di Melegnano"}, {"t": "T-054", "comune": "San Donato Milanese", "lotto": "2", "lottoCode": "1B", "stato": "NECESSARIA INTEGRAZIONE", "m": 1823, "pratica": "", "ente": "Comune di Locate di Triulzi"}, {"t": "T-055", "comune": "Mairago", "lotto": "2", "lottoCode": "1B", "stato": "INVIATO", "m": 3006, "pratica": "", "ente": "Comune di Casalpusterlengo"}, {"t": "T-056", "comune": "San Donato Milanese", "lotto": "2", "lottoCode": "1B", "stato": "COORDINAMENTO", "m": 305, "pratica": "", "ente": "Comune di Locate di Triulzi"}, {"t": "T-057", "comune": "San Donato Milanese", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 706, "pratica": "AUT/2-057", "ente": "Comune di Locate di Triulzi"}, {"t": "T-058", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "INVIATO", "m": 61, "pratica": "", "ente": "Comune di Cesano Boscone"}, {"t": "T-059", "comune": "Turano Lodigiano", "lotto": "1", "lottoCode": "1A", "stato": "OTTENUTO", "m": 1771, "pratica": "AUT/1-059", "ente": "Comune di Turano Lodigiano"}, {"t": "T-060", "comune": "Turano Lodigiano", "lotto": "1", "lottoCode": "1A", "stato": "PROTOCOLLATO", "m": 1042, "pratica": "", "ente": "Comune di Casalpusterlengo"}, {"t": "T-061", "comune": "Turano Lodigiano", "lotto": "1", "lottoCode": "1A", "stato": "PROTOCOLLATO INTEGRAZIONE", "m": 392, "pratica": "", "ente": "Comune di Casalpusterlengo"}, {"t": "T-062", "comune": "Turano Lodigiano", "lotto": "1", "lottoCode": "1A", "stato": "INVIATO", "m": 186, "pratica": "", "ente": "Comune di Casalpusterlengo"}, {"t": "T-063", "comune": "Turano Lodigiano", "lotto": "2", "lottoCode": "1B", "stato": "COORDINAMENTO", "m": 164, "pratica": "", "ente": "Comune di Turano Lodigiano"}, {"t": "T-064", "comune": "Turano Lodigiano", "lotto": "1", "lottoCode": "1A", "stato": "INVIATO", "m": 120, "pratica": "", "ente": "Comune di Turano Lodigiano"}, {"t": "T-065", "comune": "Turano Lodigiano", "lotto": "1", "lottoCode": "1A", "stato": "IN ATTESA", "m": 498, "pratica": "", "ente": "Comune di Turano Lodigiano"}, {"t": "T-066", "comune": "Turano Lodigiano", "lotto": "1", "lottoCode": "1A", "stato": "IN REDAZIONE", "m": 17, "pratica": "", "ente": "Comune di Turano Lodigiano"}, {"t": "T-067", "comune": "Turano Lodigiano", "lotto": "1", "lottoCode": "1A", "stato": "OTTENUTO", "m": 612, "pratica": "AUT/1-067", "ente": "Comune di Casalpusterlengo"}];
 
 let activeLotto = 'all';
+let tableSearch = '';
+let tableStato = 'all';
 
 function fmtKm(metri){ return (metri/1000).toFixed(1).replace('.', ','); }
 
 function filtered(){
   return activeLotto === 'all' ? SAMPLE_DATA : SAMPLE_DATA.filter(d => d.lotto === activeLotto);
+}
+
+function applyTableFilters(rows){
+  let r = rows;
+  if(tableStato !== 'all') r = r.filter(x => x.stato === tableStato);
+  if(tableSearch){
+    const q = tableSearch.toLowerCase();
+    r = r.filter(x =>
+      x.t.toLowerCase().includes(q) ||
+      x.comune.toLowerCase().includes(q) ||
+      x.ente.toLowerCase().includes(q) ||
+      (x.pratica||'').toLowerCase().includes(q)
+    );
+  }
+  return r;
 }
 
 function renderKPIs(rows){
@@ -533,11 +571,41 @@ function renderTable(rows){
   });
 }
 
+function renderTableCount(lottoRows, tableRows){
+  document.getElementById('tableCount').textContent = tableRows.length + ' / ' + lottoRows.length;
+}
+
+function refreshTable(){
+  const lottoRows = filtered();
+  const tableRows = applyTableFilters(lottoRows);
+  renderTable(tableRows);
+  renderTableCount(lottoRows, tableRows);
+}
+
+function populateStatoFilter(){
+  const sel = document.getElementById('tableStatoFilter');
+  STATO_ORDER.filter(s => SAMPLE_DATA.some(d => d.stato === s)).forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s;
+    sel.appendChild(opt);
+  });
+}
+
+document.getElementById('tableSearch').addEventListener('input', e => {
+  tableSearch = e.target.value;
+  refreshTable();
+});
+document.getElementById('tableStatoFilter').addEventListener('change', e => {
+  tableStato = e.target.value;
+  refreshTable();
+});
+
 function renderAll(){
   const rows = filtered();
   renderKPIs(rows);
   renderDonut(rows);
-  renderTable(rows);
+  refreshTable();
 }
 
 /* ── POPUP dettaglio tratta ── */
@@ -681,6 +749,7 @@ document.getElementById('lottoPills').addEventListener('click', e => {
   renderAll();
 });
 
+populateStatoFilter();
 renderLottoBars();
 renderAll();
 </script>
