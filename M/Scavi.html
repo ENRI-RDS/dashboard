@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="it" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="google" content="notranslate">
+<meta http-equiv="Content-Language" content="it">
+<title>Progetto M — Avanzamento Lavori</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Plus+Jakarta+Sans:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #F4F3EE;
+    --surface:   #FFFFFF;
+    --surface2:  #F0EEE6;
+    --border:    #E0DDD4;
+    --border2:   #CCC9BE;
+    --accent:    #0B3182;
+    --accent2:   #E55000;
+    --text:      #1C1C2E;
+    --text2:     #3A3A52;
+    --muted:     #52526E;
+    --muted2:    #7878A0;
+    --sh-xs: 0 1px 3px rgba(11,49,130,.06), 0 1px 2px rgba(0,0,0,.04);
+    --sh-sm: 0 2px 8px rgba(11,49,130,.08), 0 1px 4px rgba(0,0,0,.05);
+    --sh-md: 0 4px 20px rgba(11,49,130,.10), 0 2px 8px rgba(0,0,0,.06);
+
+    --c-nonavv:     #8A91B4;
+    --c-allest:     #C08A14;
+    --c-incorso:    #0B3182;
+    --c-sospeso:    #C23B22;
+    --c-completato: #1F7A4E;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Plus Jakarta Sans', sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+
+  /* ── TOPBAR ── */
+  .topbar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 24px; height:52px; background:var(--surface);
+    border-bottom:1px solid var(--border); box-shadow:var(--sh-xs);
+    position:sticky; top:0; z-index:50;
+  }
+  .topbar-left { display:flex; align-items:center; gap:12px; }
+  .topbar-right { display:flex; align-items:center; gap:8px; }
+  .logo { font-family:'Bricolage Grotesque', sans-serif; font-size:13px; font-weight:700; letter-spacing:.14em; color:var(--accent); text-transform:uppercase; }
+  .divider-v { width:1px; height:20px; background:var(--border2); }
+  .page-title { font-size:12px; color:var(--muted); font-weight:500; }
+  .btn-nav {
+    font-size:12px; padding:7px 14px; border-radius:7px; background:var(--surface2); color:var(--text);
+    border:1px solid var(--border); cursor:pointer; font-family:'Plus Jakarta Sans', sans-serif;
+    font-weight:600; text-decoration:none; transition:opacity .2s; white-space:nowrap;
+    display:inline-flex; align-items:center; gap:5px;
+  }
+  .btn-nav:hover { opacity:.75; }
+  .btn-nav.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+
+  /* ── MAIN ── */
+  .main { max-width:1260px; margin:0 auto; padding:24px 24px 48px; display:flex; flex-direction:column; gap:20px; }
+
+  .page-eyebrow { font-family:'Fira Code', monospace; font-size:9px; font-weight:500; letter-spacing:.2em; text-transform:uppercase; color:var(--accent2); }
+  .page-h1 { font-family:'Bricolage Grotesque', sans-serif; font-size:22px; font-weight:700; letter-spacing:-.025em; color:var(--text); line-height:1.2; margin-top:2px; }
+  .page-sub { font-size:12.5px; color:var(--muted); margin-top:4px; line-height:1.5; max-width:680px; }
+
+  /* ── KPI ── */
+  .kpi-row { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
+  @media(max-width:900px){ .kpi-row{ grid-template-columns:repeat(3,1fr); } }
+  @media(max-width:560px){ .kpi-row{ grid-template-columns:repeat(2,1fr); } }
+  .kpi {
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:15px 17px; position:relative; overflow:hidden; cursor:pointer;
+    transition:all .2s; box-shadow:var(--sh-xs);
+  }
+  .kpi:hover { border-color:var(--border2); box-shadow:var(--sh-sm); transform:translateY(-2px); }
+  .kpi::before { content:''; position:absolute; top:0; left:0; bottom:0; width:3px; border-radius:12px 0 0 12px; }
+  .kpi.k-nonavv::before     { background:var(--c-nonavv); }
+  .kpi.k-allest::before     { background:var(--c-allest); }
+  .kpi.k-incorso::before    { background:var(--c-incorso); }
+  .kpi.k-completato::before { background:var(--c-completato); }
+  .kpi.k-sospeso::before    { background:var(--c-sospeso); }
+  .kpi-label { font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin-bottom:9px; font-weight:600; }
+  .kpi-value { font-size:27px; font-weight:700; font-family:'Bricolage Grotesque', sans-serif; line-height:1; letter-spacing:-.02em; color:var(--text); }
+  .kpi-sub { font-size:10.5px; color:var(--text2); margin-top:6px; font-weight:500; }
+  .kpi.k-nonavv .kpi-value     { color:var(--c-nonavv); }
+  .kpi.k-allest .kpi-value     { color:var(--c-allest); }
+  .kpi.k-incorso .kpi-value    { color:var(--c-incorso); }
+  .kpi.k-completato .kpi-value { color:var(--c-completato); }
+  .kpi.k-sospeso .kpi-value    { color:var(--c-sospeso); }
+
+  /* ── CARD ── */
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; box-shadow:var(--sh-xs); }
+  .card-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--border); }
+  .card-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); font-family:'Bricolage Grotesque', sans-serif; }
+  .card-header-meta { font-size:10px; color:var(--muted); font-family:'Fira Code', monospace; }
+  .card-body { padding:18px; }
+
+  /* ── LOTTO BARS ── */
+  .bar-row { display:flex; align-items:center; gap:12px; border-radius:8px; padding:8px 8px; margin-bottom:2px; transition:background .15s; cursor:pointer; }
+  .bar-row:hover { background:var(--surface2); }
+  .bar-lotto-wrap { width:140px; flex-shrink:0; display:flex; flex-direction:column; gap:2px; }
+  .bar-lotto-num { font-size:14px; font-weight:700; font-family:'Bricolage Grotesque', sans-serif; color:var(--text); letter-spacing:-.01em; }
+  .bar-lotto-sub { font-size:10px; font-weight:600; color:var(--accent); }
+  .bar-track { flex:1; height:24px; border-radius:6px; overflow:hidden; display:flex; background:var(--surface2); border:1px solid var(--border); }
+  .bar-seg { height:100%; display:flex; align-items:center; justify-content:center; }
+  .bar-seg span { font-size:10px; font-weight:700; color:#fff; text-shadow:0 0 4px rgba(0,0,0,.8); font-family:'Bricolage Grotesque', sans-serif; }
+  .bar-pct { font-size:12.5px; font-weight:700; font-family:'Bricolage Grotesque', sans-serif; color:var(--text2); width:42px; text-align:right; flex-shrink:0; }
+  .bar-meters { min-width:78px; text-align:right; font-size:12px; font-family:'Bricolage Grotesque', sans-serif; font-weight:700; color:var(--text2); flex-shrink:0; }
+
+  .legend { display:flex; flex-wrap:wrap; gap:12px; padding:12px 18px; border-top:1px solid var(--border); background:var(--surface2); }
+  .legend-item { display:flex; align-items:center; gap:6px; font-size:10px; color:var(--muted); font-weight:500; }
+  .legend-dot { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
+
+  /* ── GRID MAIN ── */
+  .grid-main { display:grid; grid-template-columns:1fr 290px; gap:18px; }
+  @media(max-width:900px){ .grid-main{ grid-template-columns:1fr; } }
+  .side { display:flex; flex-direction:column; gap:14px; }
+
+  /* ── TABLE ── */
+  table.tbl { width:100%; border-collapse:collapse; }
+  table.tbl thead th {
+    background:var(--surface2); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--muted); padding:9px 12px; border-bottom:1px solid var(--border); text-align:left; white-space:nowrap;
+  }
+  table.tbl tbody tr { cursor:pointer; transition:background .1s; }
+  table.tbl tbody tr:hover { background:var(--surface2); }
+  table.tbl td { font-size:11.5px; padding:9px 12px; border-bottom:1px solid var(--border); color:var(--text2); vertical-align:middle; }
+  table.tbl tbody tr:last-child td { border-bottom:none; }
+
+  .prog-wrap { display:flex; align-items:center; gap:7px; }
+  .prog-track { flex:1; height:6px; border-radius:3px; background:var(--surface2); border:1px solid var(--border); overflow:hidden; min-width:50px; }
+  .prog-fill { height:100%; border-radius:3px; }
+  .prog-val { font-size:10.5px; font-weight:700; font-family:'Fira Code', monospace; color:var(--text2); width:32px; text-align:right; flex-shrink:0; }
+
+  .chip-lotto { display:inline-flex; align-items:center; padding:2px 9px; border-radius:12px; font-size:10.5px; font-weight:700; color:#fff; }
+  .chip { font-size:9.5px; font-weight:700; padding:3px 9px; border-radius:5px; white-space:nowrap; display:inline-block; text-transform:uppercase; letter-spacing:.04em; }
+  .chip.non-avviato  { background:#8A91B418; color:#4A5078; border:1px solid #8A91B440; }
+  .chip.allestimento { background:#C08A1418; color:#7A5500; border:1px solid #C08A1440; }
+  .chip.in-corso     { background:#0B318218; color:#0B3182; border:1px solid #0B318240; }
+  .chip.sospeso      { background:#C23B2218; color:#8B1A1A; border:1px solid #C23B2240; }
+  .chip.completato   { background:#1F7A4E18; color:#1F7A4E; border:1px solid #1F7A4E40; }
+
+  /* ── SIDEBAR ── */
+  .stat-row { display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border); }
+  .stat-row:last-child { border-bottom:none; }
+  .stat-label { font-size:11px; color:var(--muted); }
+  .stat-val { font-size:14px; font-weight:700; font-family:'Bricolage Grotesque', sans-serif; color:var(--text); letter-spacing:-.01em; }
+
+  .donut-wrap { position:relative; width:140px; height:140px; margin:0 auto; }
+  .donut { width:100%; height:100%; border-radius:50%; }
+  .donut-hole { position:absolute; inset:22px; border-radius:50%; background:var(--surface); display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .donut-hole b { font-family:'Bricolage Grotesque', sans-serif; font-size:18px; color:var(--text); line-height:1; }
+  .donut-hole span { font-size:9px; color:var(--muted2); letter-spacing:.05em; text-transform:uppercase; margin-top:2px; }
+
+  .mini-legend { display:flex; flex-direction:column; gap:8px; margin-top:14px; }
+  .mini-legend-item { display:flex; align-items:center; gap:7px; font-size:11px; color:var(--text2); }
+  .mini-legend-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .mini-legend-item b { color:var(--text); margin-left:auto; padding-left:8px; font-weight:700; }
+
+  /* ── MODALI ── */
+  .modal-overlay {
+    position:fixed; inset:0; background:rgba(20,20,35,.45);
+    display:flex; align-items:center; justify-content:center;
+    opacity:0; pointer-events:none; transition:opacity .2s; z-index:200; padding:20px;
+  }
+  .modal-overlay.open { opacity:1; pointer-events:all; }
+  .modal {
+    background:var(--surface); border-radius:16px; width:640px; max-width:100%;
+    max-height:86vh; overflow-y:auto; box-shadow:var(--sh-md);
+    padding:22px 24px; transform:translateY(10px); transition:transform .2s;
+  }
+  .modal-overlay.open .modal { transform:translateY(0); }
+  .modal-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:16px; }
+  .modal-title { font-family:'Bricolage Grotesque', sans-serif; font-size:17px; font-weight:700; color:var(--text); }
+  .modal-close { cursor:pointer; color:var(--muted); font-size:20px; line-height:1; background:none; border:none; padding:0; }
+  .modal-close:hover { color:var(--text); }
+
+  .modal-stats { display:flex; gap:30px; margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--border); }
+  .modal-stats .stat-lbl { font-size:9.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:4px; font-weight:600; }
+  .modal-stats .stat-val { font-family:'Bricolage Grotesque', sans-serif; font-size:23px; font-weight:700; color:var(--text); letter-spacing:-.02em; }
+
+  .pills { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+  .pill {
+    font-size:10.5px; font-weight:600; padding:5px 12px; border-radius:20px; border:1px solid var(--border2);
+    background:var(--surface); color:var(--muted); cursor:pointer; transition:all .15s;
+  }
+  .pill:hover { border-color:var(--accent); color:var(--accent); }
+  .pill.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+  .modal-list { max-height:320px; overflow-y:auto; border:1px solid var(--border); border-radius:10px; }
+  .modal-list table.tbl th { position:sticky; top:0; }
+  .modal-list table.tbl td { font-size:11px; padding:8px 10px; }
+  .modal-list table.tbl th { padding:8px 10px; }
+  .modal-empty { padding:28px; text-align:center; color:var(--muted); font-size:12.5px; }
+
+  .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px 20px; margin-bottom:10px; }
+  .info-item .lbl { font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:600; margin-bottom:3px; }
+  .info-item .val { font-size:14px; color:var(--text); font-weight:600; }
+
+  .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; padding-top:16px; border-top:1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <span class="logo">PROGETTO · M</span>
+    <div class="divider-v"></div>
+    <span class="page-title">Avanzamento Lavori</span>
+  </div>
+  <div class="topbar-right">
+    <a href="Index.html" class="btn-nav">📋 Progettazione</a>
+    <a href="mappa.html" class="btn-nav">🗺 Mappa</a>
+    <a href="Hub.html" class="btn-nav primary">← Hub</a>
+  </div>
+</div>
+
+<div class="main">
+
+  <div>
+    <div class="page-eyebrow">Fase 2 · Esecuzione</div>
+    <div class="page-h1">Avanzamento Lavori</div>
+    <div class="page-sub">Stato dei cantieri attivi sul territorio per lotto e tratta: percentuale di scavo, criticità operative e tratte in attesa di autorizzazione.</div>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi k-nonavv" data-cantiere="non-avviato">
+      <div class="kpi-label">Non Avviati</div>
+      <div class="kpi-value" id="kpiNonavv">—</div>
+      <div class="kpi-sub">in attesa di autorizzazioni</div>
+    </div>
+    <div class="kpi k-allest" data-cantiere="allestimento">
+      <div class="kpi-label">In Allestimento</div>
+      <div class="kpi-value" id="kpiAllest">—</div>
+      <div class="kpi-sub">cantieri in preparazione</div>
+    </div>
+    <div class="kpi k-incorso" data-cantiere="in-corso">
+      <div class="kpi-label">In Corso</div>
+      <div class="kpi-value" id="kpiIncorso">—</div>
+      <div class="kpi-sub">tratte con scavo attivo</div>
+    </div>
+    <div class="kpi k-completato" data-cantiere="completato">
+      <div class="kpi-label">Completate</div>
+      <div class="kpi-value" id="kpiCompletato">—</div>
+      <div class="kpi-sub">tratte ultimate</div>
+    </div>
+    <div class="kpi k-sospeso" data-cantiere="sospeso">
+      <div class="kpi-label">In Sospeso</div>
+      <div class="kpi-value" id="kpiSospeso">—</div>
+      <div class="kpi-sub">cantieri temporaneamente bloccati</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Avanzamento per Lotto</span>
+      <span class="card-header-meta" id="lottiStatus">— m totali</span>
+    </div>
+    <div class="card-body" style="display:flex; flex-direction:column; gap:2px;" id="lottoBarsContainer"></div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-incorso)"></div>In corso</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-allest)"></div>In allestimento</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-sospeso)"></div>In sospeso</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-completato)"></div>Completato</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-nonavv)"></div>Non avviato</div>
+    </div>
+  </div>
+
+  <div class="grid-main">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Registro Tratte · Stato Cantiere</span>
+        <span class="card-header-meta" id="registroMeta">18 tratte</span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Tratta</th><th>Comune</th><th>Lotto</th><th>Impresa</th>
+              <th>Stato Cantiere</th><th>Avanzamento</th><th style="text-align:right">Lunghezza</th>
+            </tr>
+          </thead>
+          <tbody id="registroBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Riepilogo Operativo</span></div>
+        <div class="card-body">
+          <div class="stat-row"><span class="stat-label">Tracciato totale</span><span class="stat-val" id="statTotale">—</span></div>
+          <div class="stat-row"><span class="stat-label">Metri scavati</span><span class="stat-val" style="color:var(--c-incorso)" id="statScavati">—</span></div>
+          <div class="stat-row"><span class="stat-label">Avanzamento globale</span><span class="stat-val" style="color:var(--c-incorso)" id="statAvanzamento">—</span></div>
+          <div class="stat-row"><span class="stat-label">Tratte con scavo attivo</span><span class="stat-val" id="statAttive">—</span></div>
+          <div class="stat-row"><span class="stat-label">Comuni attraversati</span><span class="stat-val" id="statComuni">—</span></div>
+          <div class="stat-row"><span class="stat-label">Lotti coinvolti</span><span class="stat-val">3</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">Distribuzione Stati</span></div>
+        <div class="card-body">
+          <div class="donut-wrap">
+            <div class="donut" id="donut"></div>
+            <div class="donut-hole"><b id="donutTotal">0</b><span>tratte</span></div>
+          </div>
+          <div class="mini-legend" id="donutLegend"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="modal-overlay" id="listModalOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="listModalTitle">—</div>
+      <button class="modal-close" onclick="closeListModal()">×</button>
+    </div>
+    <div class="modal-stats" id="listModalStats"></div>
+    <div class="pills" id="listModalPills"></div>
+    <div class="modal-list" id="listModalBody"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="rowModalOverlay">
+  <div class="modal" style="width:600px">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="rowModalTitle">—</div>
+        <div id="rowModalSub" style="margin-top:7px;"></div>
+      </div>
+      <button class="modal-close" onclick="closeRowModal()">×</button>
+    </div>
+    <div class="info-grid" id="rowInfoGrid"></div>
+    <div class="prog-wrap" style="margin-top:6px;">
+      <div class="prog-track" style="height:10px;"><div class="prog-fill" id="rowProgFill" style="height:100%;"></div></div>
+      <div class="prog-val" id="rowProgVal" style="width:auto; font-size:13px;"></div>
+    </div>
+    <div class="modal-actions">
+      <a href="Index.html" class="btn-nav">📋 Progettazione</a>
+      <a href="mappa.html" class="btn-nav">🗺 Mappa</a>
+    </div>
+  </div>
+</div>
+
+<script>
+const LOTTO_COLORS = { '1':'#2563eb', '2':'#16a34a', '3':'#e8580c' };
+const IMPRESE      = { '1':'Impresa 1', '2':'Impresa 2', '3':'Impresa 3' };
+
+const CANTIERE_LABEL = { 'non-avviato':'Non Avviato', 'allestimento':'In Allestimento', 'in-corso':'In Corso', 'sospeso':'In Sospeso', 'completato':'Completato' };
+const CANTIERE_COLOR = { 'non-avviato':'var(--c-nonavv)', 'allestimento':'var(--c-allest)', 'in-corso':'var(--c-incorso)', 'sospeso':'var(--c-sospeso)', 'completato':'var(--c-completato)' };
+const CANTIERE_ORDER = ['non-avviato','allestimento','in-corso','sospeso','completato'];
+
+const SCAVI_DATA = [
+  {t:'T-101', comune:'Milano',             lotto:'1', statoPermesso:'OTTENUTO',                  m:1450, cantiere:'completato',  pct:100},
+  {t:'T-102', comune:'Sesto San Giovanni',  lotto:'1', statoPermesso:'PROTOCOLLATO',               m:980,  cantiere:'non-avviato', pct:0},
+  {t:'T-103', comune:'Cinisello Balsamo',   lotto:'1', statoPermesso:'IN FIRMA RDS',                m:1220, cantiere:'non-avviato', pct:0},
+  {t:'T-104', comune:'Cologno Monzese',     lotto:'1', statoPermesso:'IN REDAZIONE',                m:760,  cantiere:'non-avviato', pct:0},
+  {t:'T-105', comune:'Bresso',              lotto:'1', statoPermesso:'NECESSARIA INTEGRAZIONE',     m:540,  cantiere:'non-avviato', pct:0},
+  {t:'T-106', comune:'Monza',               lotto:'1', statoPermesso:'OTTENUTO',                  m:2100, cantiere:'in-corso',    pct:65},
+  {t:'T-201', comune:'Rho',                 lotto:'2', statoPermesso:'OTTENUTO',                  m:1680, cantiere:'completato',  pct:100},
+  {t:'T-202', comune:'Pero',                lotto:'2', statoPermesso:'INVIATO',                    m:890,  cantiere:'non-avviato', pct:0},
+  {t:'T-203', comune:'Lainate',             lotto:'2', statoPermesso:'COORDINAMENTO',              m:1340, cantiere:'non-avviato', pct:0},
+  {t:'T-204', comune:'Garbagnate Milanese', lotto:'2', statoPermesso:'IN ATTESA',                   m:670,  cantiere:'non-avviato', pct:0},
+  {t:'T-205', comune:'Bollate',             lotto:'2', statoPermesso:'PROTOCOLLATO',               m:1050, cantiere:'non-avviato', pct:0},
+  {t:'T-206', comune:'Novate Milanese',     lotto:'2', statoPermesso:'OTTENUTO',                  m:1490, cantiere:'in-corso',    pct:40},
+  {t:'T-301', comune:'Cesano Maderno',      lotto:'3', statoPermesso:'IN REDAZIONE INTEGRAZIONE',  m:780,  cantiere:'non-avviato', pct:0},
+  {t:'T-302', comune:'Seveso',              lotto:'3', statoPermesso:'OTTENUTO',                  m:1610, cantiere:'allestimento', pct:5},
+  {t:'T-303', comune:'Paderno Dugnano',     lotto:'3', statoPermesso:'IN FIRMA RDS',                m:920,  cantiere:'non-avviato', pct:0},
+  {t:'T-304', comune:'Senago',              lotto:'3', statoPermesso:'PROTOCOLLATO INTEGRAZIONE',  m:540,  cantiere:'non-avviato', pct:0},
+  {t:'T-305', comune:'Limbiate',            lotto:'3', statoPermesso:'OTTENUTO',                  m:1380, cantiere:'sospeso',     pct:30},
+  {t:'T-306', comune:'Cesate',              lotto:'3', statoPermesso:'IN ATTESA',                   m:610,  cantiere:'non-avviato', pct:0}
+];
+
+function fmtM(n){ return Math.round(n).toLocaleString('it-IT'); }
+function fmtKm(metri){ return (metri/1000).toFixed(1).replace('.', ','); }
+
+/* ── KPI ── */
+function renderKPIs(){
+  const counts = { 'non-avviato':0, 'allestimento':0, 'in-corso':0, 'completato':0, 'sospeso':0 };
+  SCAVI_DATA.forEach(r => counts[r.cantiere]++);
+  document.getElementById('kpiNonavv').textContent     = counts['non-avviato'];
+  document.getElementById('kpiAllest').textContent     = counts['allestimento'];
+  document.getElementById('kpiIncorso').textContent    = counts['in-corso'];
+  document.getElementById('kpiCompletato').textContent = counts['completato'];
+  document.getElementById('kpiSospeso').textContent    = counts['sospeso'];
+}
+
+/* ── BARRE PER LOTTO ── */
+function renderLottoBars(){
+  const container = document.getElementById('lottoBarsContainer');
+  container.innerHTML = '';
+  const totGenerale = SCAVI_DATA.reduce((s,r)=>s+r.m,0);
+  document.getElementById('lottiStatus').textContent = fmtM(totGenerale) + ' m totali';
+
+  ['1','2','3'].forEach(lotto => {
+    const rows = SCAVI_DATA.filter(r => r.lotto === lotto);
+    const tot = rows.reduce((s,r)=>s+r.m,0);
+    const byStato = {};
+    rows.forEach(r => byStato[r.cantiere] = (byStato[r.cantiere]||0) + r.m);
+    const scavatiM = rows.reduce((s,r)=> s + r.m * r.pct / 100, 0);
+    const avanzPct = tot ? scavatiM / tot * 100 : 0;
+
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.title = 'Clicca per il dettaglio';
+    row.addEventListener('click', () => openLottoModal(lotto));
+
+    const lbl = document.createElement('div');
+    lbl.className = 'bar-lotto-wrap';
+    lbl.innerHTML = `<span class="bar-lotto-num">Lotto ${lotto}</span><span class="bar-lotto-sub">${IMPRESE[lotto]}</span>`;
+
+    const track = document.createElement('div');
+    track.className = 'bar-track';
+    CANTIERE_ORDER.forEach(stato => {
+      const m = byStato[stato] || 0;
+      if (!m) return;
+      const pct = m / tot * 100;
+      const seg = document.createElement('div');
+      seg.className = 'bar-seg';
+      seg.style.width = pct + '%';
+      seg.style.background = CANTIERE_COLOR[stato];
+      seg.style.opacity = stato === 'non-avviato' ? '.5' : '.9';
+      if (pct >= 10) seg.innerHTML = `<span>${pct.toFixed(0)}%</span>`;
+      track.appendChild(seg);
+    });
+
+    const pctEl = document.createElement('span');
+    pctEl.className = 'bar-pct';
+    pctEl.style.color = 'var(--c-incorso)';
+    pctEl.textContent = avanzPct.toFixed(0) + '%';
+
+    const mEl = document.createElement('span');
+    mEl.className = 'bar-meters';
+    mEl.textContent = fmtM(tot) + ' m';
+
+    row.appendChild(lbl);
+    row.appendChild(track);
+    row.appendChild(pctEl);
+    row.appendChild(mEl);
+    container.appendChild(row);
+  });
+}
+
+/* ── TABELLA REGISTRO ── */
+function renderRegistro(){
+  const body = document.getElementById('registroBody');
+  body.innerHTML = SCAVI_DATA.map(r => `
+    <tr data-t="${r.t}">
+      <td>${r.t}</td>
+      <td>${r.comune}</td>
+      <td><span class="chip-lotto" style="background:${LOTTO_COLORS[r.lotto]}">Lotto ${r.lotto}</span></td>
+      <td>${IMPRESE[r.lotto]}</td>
+      <td><span class="chip ${r.cantiere}">${CANTIERE_LABEL[r.cantiere]}</span></td>
+      <td>
+        <div class="prog-wrap">
+          <div class="prog-track"><div class="prog-fill" style="width:${r.pct}%; background:${CANTIERE_COLOR[r.cantiere]}"></div></div>
+          <div class="prog-val">${r.pct}%</div>
+        </div>
+      </td>
+      <td style="text-align:right; font-family:'Bricolage Grotesque',sans-serif; font-weight:700;">${fmtM(r.m)} m</td>
+    </tr>`).join('');
+  body.querySelectorAll('tr').forEach(tr => {
+    tr.addEventListener('click', () => openRowModal(SCAVI_DATA.find(d => d.t === tr.dataset.t)));
+  });
+}
+
+/* ── SIDEBAR ── */
+function renderSidebar(){
+  const totM = SCAVI_DATA.reduce((s,r)=>s+r.m,0);
+  const scavatiM = SCAVI_DATA.reduce((s,r)=> s + r.m * r.pct / 100, 0);
+  document.getElementById('statTotale').textContent = fmtKm(totM) + ' km';
+  document.getElementById('statScavati').textContent = fmtKm(scavatiM) + ' km';
+  document.getElementById('statAvanzamento').textContent = (totM ? (scavatiM/totM*100) : 0).toFixed(1) + '%';
+  document.getElementById('statAttive').textContent = SCAVI_DATA.filter(r=>r.cantiere==='in-corso').length;
+  document.getElementById('statComuni').textContent = new Set(SCAVI_DATA.map(r=>r.comune)).size;
+}
+
+/* ── DONUT DISTRIBUZIONE STATI ── */
+const CANTIERE_HEX = { 'non-avviato':'#8A91B4', 'allestimento':'#C08A14', 'in-corso':'#0B3182', 'sospeso':'#C23B22', 'completato':'#1F7A4E' };
+function renderDonut(){
+  const counts = {};
+  SCAVI_DATA.forEach(r => counts[r.cantiere] = (counts[r.cantiere]||0) + 1);
+  const total = SCAVI_DATA.length || 1;
+  let acc = 0;
+  const stops = [];
+  CANTIERE_ORDER.forEach(stato => {
+    const c = counts[stato] || 0;
+    if (!c) return;
+    const pct = c / total * 100;
+    stops.push(`${CANTIERE_HEX[stato]} ${acc}% ${acc+pct}%`);
+    acc += pct;
+  });
+  document.getElementById('donut').style.background = `conic-gradient(${stops.join(', ')})`;
+  document.getElementById('donutTotal').textContent = total;
+
+  const legend = document.getElementById('donutLegend');
+  legend.innerHTML = CANTIERE_ORDER.filter(s => counts[s]).map(stato => {
+    const pct = counts[stato] / total * 100;
+    return `<div class="mini-legend-item"><span class="mini-legend-dot" style="background:${CANTIERE_HEX[stato]}"></span>${CANTIERE_LABEL[stato]} <span style="color:var(--muted2); font-size:9.5px; margin-left:4px;">${pct.toFixed(0)}%</span><b>${counts[stato]}</b></div>`;
+  }).join('');
+}
+
+/* ── POPUP elenco (per KPI o per lotto) ── */
+function openCantiereModal(stato){
+  let lottoFilter = 'all';
+  function draw(){
+    const allRows = SCAVI_DATA.filter(r => r.cantiere === stato);
+    const rows = lottoFilter === 'all' ? allRows : allRows.filter(r => r.lotto === lottoFilter);
+    document.getElementById('listModalStats').innerHTML = `
+      <div><div class="stat-lbl">Tratte</div><div class="stat-val">${rows.length}</div></div>
+      <div><div class="stat-lbl">Lunghezza</div><div class="stat-val">${fmtKm(rows.reduce((s,r)=>s+r.m,0))} km</div></div>`;
+    const lottiPresenti = [...new Set(allRows.map(r=>r.lotto))].sort();
+    document.getElementById('listModalPills').innerHTML =
+      `<button class="pill ${lottoFilter==='all'?'active':''}" data-l="all">Tutti</button>` +
+      lottiPresenti.map(l => `<button class="pill ${lottoFilter===l?'active':''}" data-l="${l}">Lotto ${l}</button>`).join('');
+    renderListBody(rows, true);
+  }
+  document.getElementById('listModalTitle').textContent = CANTIERE_LABEL[stato];
+  document.getElementById('listModalPills').onclick = e => {
+    const btn = e.target.closest('.pill');
+    if(!btn) return;
+    lottoFilter = btn.dataset.l;
+    draw();
+  };
+  draw();
+  document.getElementById('listModalOverlay').classList.add('open');
+}
+
+function openLottoModal(lotto){
+  document.getElementById('listModalTitle').textContent = 'Lotto ' + lotto + ' · ' + IMPRESE[lotto];
+  const rows = SCAVI_DATA.filter(r => r.lotto === lotto);
+  document.getElementById('listModalStats').innerHTML = `
+    <div><div class="stat-lbl">Tratte</div><div class="stat-val">${rows.length}</div></div>
+    <div><div class="stat-lbl">Lunghezza</div><div class="stat-val">${fmtKm(rows.reduce((s,r)=>s+r.m,0))} km</div></div>`;
+  document.getElementById('listModalPills').innerHTML = '';
+  document.getElementById('listModalPills').onclick = null;
+  renderListBody(rows, false);
+  document.getElementById('listModalOverlay').classList.add('open');
+}
+
+function renderListBody(rows, showCantiereChip){
+  const body = document.getElementById('listModalBody');
+  if(rows.length === 0){
+    body.innerHTML = '<div class="modal-empty">Nessuna tratta corrispondente.</div>';
+    return;
+  }
+  body.innerHTML = `<table class="tbl"><thead><tr>
+      <th>Tratta</th><th>Comune</th><th>Lotto</th>${showCantiereChip?'':'<th>Stato Cantiere</th>'}<th>Avanzamento</th><th style="text-align:right">Lunghezza</th>
+    </tr></thead><tbody>${rows.map(r => `
+      <tr data-t="${r.t}">
+        <td>${r.t}</td>
+        <td>${r.comune}</td>
+        <td><span class="chip-lotto" style="background:${LOTTO_COLORS[r.lotto]}">Lotto ${r.lotto}</span></td>
+        ${showCantiereChip ? '' : `<td><span class="chip ${r.cantiere}">${CANTIERE_LABEL[r.cantiere]}</span></td>`}
+        <td>
+          <div class="prog-wrap">
+            <div class="prog-track"><div class="prog-fill" style="width:${r.pct}%; background:${CANTIERE_COLOR[r.cantiere]}"></div></div>
+            <div class="prog-val">${r.pct}%</div>
+          </div>
+        </td>
+        <td style="text-align:right; font-weight:700;">${fmtM(r.m)} m</td>
+      </tr>`).join('')}</tbody></table>`;
+  body.querySelectorAll('tbody tr').forEach(tr => {
+    tr.addEventListener('click', () => {
+      closeListModal();
+      openRowModal(SCAVI_DATA.find(d => d.t === tr.dataset.t));
+    });
+  });
+}
+function closeListModal(){ document.getElementById('listModalOverlay').classList.remove('open'); }
+
+/* ── POPUP dettaglio tratta ── */
+function openRowModal(r){
+  document.getElementById('rowModalTitle').textContent = r.t + ' · ' + r.comune;
+  document.getElementById('rowModalSub').innerHTML = `<span class="chip ${r.cantiere}">${CANTIERE_LABEL[r.cantiere]}</span>`;
+  document.getElementById('rowInfoGrid').innerHTML = `
+    <div class="info-item"><div class="lbl">Lotto</div><div class="val">Lotto ${r.lotto} · ${IMPRESE[r.lotto]}</div></div>
+    <div class="info-item"><div class="lbl">Lunghezza</div><div class="val">${r.m} m</div></div>
+    <div class="info-item"><div class="lbl">Stato autorizzativo</div><div class="val">${r.statoPermesso}</div></div>
+    <div class="info-item"><div class="lbl">Metri scavati</div><div class="val">${Math.round(r.m*r.pct/100)} m</div></div>`;
+  document.getElementById('rowProgFill').style.width = r.pct + '%';
+  document.getElementById('rowProgFill').style.background = CANTIERE_COLOR[r.cantiere];
+  document.getElementById('rowProgVal').textContent = r.pct + '%';
+  document.getElementById('rowModalOverlay').classList.add('open');
+}
+function closeRowModal(){ document.getElementById('rowModalOverlay').classList.remove('open'); }
+
+document.querySelectorAll('.kpi').forEach(card => {
+  card.addEventListener('click', () => openCantiereModal(card.dataset.cantiere));
+});
+document.querySelectorAll('.modal-overlay').forEach(ov => {
+  ov.addEventListener('click', e => { if(e.target === ov) ov.classList.remove('open'); });
+});
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(o => o.classList.remove('open'));
+});
+
+renderKPIs();
+renderLottoBars();
+renderRegistro();
+renderSidebar();
+renderDonut();
+</script>
+</body>
+</html>
