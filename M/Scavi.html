@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="google" content="notranslate">
 <meta http-equiv="Content-Language" content="it">
-<title>Progetto M — Avanzamento Lavori</title>
+<title>Progetto M — Progettazione (Esempio)</title>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Plus+Jakarta+Sans:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -24,137 +24,196 @@
     --sh-sm: 0 2px 8px rgba(11,49,130,.08), 0 1px 4px rgba(0,0,0,.05);
     --sh-md: 0 4px 20px rgba(11,49,130,.10), 0 2px 8px rgba(0,0,0,.06);
 
-    --c-nonavv:     #8A91B4;
-    --c-allest:     #C08A14;
-    --c-incorso:    #0B3182;
-    --c-sospeso:    #C23B22;
-    --c-completato: #1F7A4E;
+    /* stati pratica — stessa palette concettuale della dashboard reale */
+    --attesa:       #8A91B4;
+    --redazione:    #C08A14;
+    --coordinamento:#6B3FA0;
+    --firma:        #D4622A;
+    --inviato:      #0B3182;
+    --protocollato: #2D6CC0;
+    --bloccato:     #C0392B;
+    --ottenuto:     #1F7A4E;
   }
 
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:'Plus Jakarta Sans', sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+
+  body {
+    font-family:'Plus Jakarta Sans', sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    min-height:100vh;
+  }
 
   /* ── TOPBAR ── */
   .topbar {
     display:flex; align-items:center; justify-content:space-between;
-    padding:0 24px; height:52px; background:var(--surface);
-    border-bottom:1px solid var(--border); box-shadow:var(--sh-xs);
+    padding:0 24px; height:52px;
+    background:var(--surface);
+    border-bottom:1px solid var(--border);
+    box-shadow:var(--sh-xs);
     position:sticky; top:0; z-index:50;
   }
   .topbar-left { display:flex; align-items:center; gap:12px; }
   .topbar-right { display:flex; align-items:center; gap:8px; }
-  .logo { font-family:'Bricolage Grotesque', sans-serif; font-size:13px; font-weight:700; letter-spacing:.14em; color:var(--accent); text-transform:uppercase; }
+  .logo {
+    font-family:'Bricolage Grotesque', sans-serif;
+    font-size:13px; font-weight:700;
+    letter-spacing:.14em; color:var(--accent); text-transform:uppercase;
+  }
   .divider-v { width:1px; height:20px; background:var(--border2); }
   .page-title { font-size:12px; color:var(--muted); font-weight:500; }
-  .btn-nav {
-    font-size:12px; padding:7px 14px; border-radius:7px; background:var(--surface2); color:var(--text);
-    border:1px solid var(--border); cursor:pointer; font-family:'Plus Jakarta Sans', sans-serif;
-    font-weight:600; text-decoration:none; transition:opacity .2s; white-space:nowrap;
-    display:inline-flex; align-items:center; gap:5px;
+
+  .btn-sm {
+    font-size:11px; padding:6px 14px; border-radius:6px;
+    background:transparent; color:var(--muted); border:1px solid var(--border2);
+    cursor:pointer; font-family:'Plus Jakarta Sans', sans-serif; font-weight:600;
+    text-decoration:none; transition:all .18s; display:inline-flex; align-items:center;
   }
-  .btn-nav:hover { opacity:.75; }
-  .btn-nav.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .btn-sm:hover { background:var(--surface2); color:var(--text); }
+
+  /* token colore per i bucket KPI */
+  :root { --integrazione:#C23B22; --protint:#B5657A; }
 
   /* ── MAIN ── */
   .main { max-width:1260px; margin:0 auto; padding:24px 24px 48px; display:flex; flex-direction:column; gap:20px; }
 
-  .page-eyebrow { font-family:'Fira Code', monospace; font-size:9px; font-weight:500; letter-spacing:.2em; text-transform:uppercase; color:var(--accent2); }
-  .page-h1 { font-family:'Bricolage Grotesque', sans-serif; font-size:22px; font-weight:700; letter-spacing:-.025em; color:var(--text); line-height:1.2; margin-top:2px; }
-  .page-sub { font-size:12.5px; color:var(--muted); margin-top:4px; line-height:1.5; max-width:680px; }
+  .page-header { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+  .page-header-left { display:flex; flex-direction:column; gap:3px; max-width:640px; }
+  .eyebrow {
+    font-family:'Fira Code', monospace; font-size:9px; font-weight:500;
+    letter-spacing:.2em; text-transform:uppercase; color:var(--accent2);
+  }
+  .page-title-lg {
+    font-family:'Bricolage Grotesque', sans-serif; font-size:22px; font-weight:700;
+    letter-spacing:-.02em; color:var(--text);
+  }
+  .page-sub { font-size:12.5px; color:var(--muted); line-height:1.5; }
 
-  /* ── KPI ── */
-  .kpi-row { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
-  @media(max-width:900px){ .kpi-row{ grid-template-columns:repeat(3,1fr); } }
-  @media(max-width:560px){ .kpi-row{ grid-template-columns:repeat(2,1fr); } }
+  .pills { display:flex; gap:6px; flex-wrap:wrap; }
+  .pill {
+    font-family:'Plus Jakarta Sans', sans-serif; font-size:11px; font-weight:600;
+    padding:7px 14px; border-radius:20px; border:1px solid var(--border2);
+    background:var(--surface); color:var(--muted); cursor:pointer; transition:all .15s;
+  }
+  .pill:hover { border-color:var(--accent); color:var(--accent); }
+  .pill.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+  /* ── KPI ROW ── */
+  .kpi-row { display:grid; grid-template-columns:repeat(7,1fr); gap:10px; align-items:stretch; }
+  @media(max-width:1100px){ .kpi-row{ grid-template-columns:repeat(4,1fr); } }
+  @media(max-width:640px){ .kpi-row{ grid-template-columns:repeat(2,1fr); } }
+
   .kpi {
     background:var(--surface); border:1px solid var(--border); border-radius:12px;
-    padding:15px 17px; position:relative; overflow:hidden; cursor:pointer;
+    padding:14px 16px; position:relative; overflow:hidden; cursor:pointer;
     transition:all .2s; box-shadow:var(--sh-xs);
   }
   .kpi:hover { border-color:var(--border2); box-shadow:var(--sh-sm); transform:translateY(-2px); }
   .kpi::before { content:''; position:absolute; top:0; left:0; bottom:0; width:3px; border-radius:12px 0 0 12px; }
-  .kpi.k-nonavv::before     { background:var(--c-nonavv); }
-  .kpi.k-allest::before     { background:var(--c-allest); }
-  .kpi.k-incorso::before    { background:var(--c-incorso); }
-  .kpi.k-completato::before { background:var(--c-completato); }
-  .kpi.k-sospeso::before    { background:var(--c-sospeso); }
-  .kpi-label { font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin-bottom:9px; font-weight:600; }
-  .kpi-value { font-size:27px; font-weight:700; font-family:'Bricolage Grotesque', sans-serif; line-height:1; letter-spacing:-.02em; color:var(--text); }
-  .kpi-sub { font-size:10.5px; color:var(--text2); margin-top:6px; font-weight:500; }
-  .kpi.k-nonavv .kpi-value     { color:var(--c-nonavv); }
-  .kpi.k-allest .kpi-value     { color:var(--c-allest); }
-  .kpi.k-incorso .kpi-value    { color:var(--c-incorso); }
-  .kpi.k-completato .kpi-value { color:var(--c-completato); }
-  .kpi.k-sospeso .kpi-value    { color:var(--c-sospeso); }
+  .kpi.attesa::before        { background:var(--attesa); }
+  .kpi.coordinamento::before { background:var(--coordinamento); }
+  .kpi.firma::before         { background:var(--firma); }
+  .kpi.inviato::before       { background:var(--inviato); }
+  .kpi.integrazione::before  { background:var(--integrazione); }
+  .kpi.protint::before       { background:var(--protint); }
+  .kpi.ottenuto::before      { background:var(--ottenuto); }
 
-  /* ── CARD ── */
-  .card { background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; box-shadow:var(--sh-xs); }
-  .card-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--border); }
-  .card-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); font-family:'Bricolage Grotesque', sans-serif; }
-  .card-header-meta { font-size:10px; color:var(--muted); font-family:'Fira Code', monospace; }
-  .card-body { padding:18px; }
-
-  /* ── LOTTO BARS ── */
-  .bar-row { display:flex; align-items:center; gap:12px; border-radius:8px; padding:8px 8px; margin-bottom:2px; transition:background .15s; cursor:pointer; }
-  .bar-row:hover { background:var(--surface2); }
-  .bar-lotto-wrap { width:140px; flex-shrink:0; display:flex; flex-direction:column; gap:2px; }
-  .bar-lotto-num { font-size:14px; font-weight:700; font-family:'Bricolage Grotesque', sans-serif; color:var(--text); letter-spacing:-.01em; }
-  .bar-lotto-sub { font-size:10px; font-weight:600; color:var(--accent); }
-  .bar-track { flex:1; height:24px; border-radius:6px; overflow:hidden; display:flex; background:var(--surface2); border:1px solid var(--border); }
-  .bar-seg { height:100%; display:flex; align-items:center; justify-content:center; }
-  .bar-seg span { font-size:10px; font-weight:700; color:#fff; text-shadow:0 0 4px rgba(0,0,0,.8); font-family:'Bricolage Grotesque', sans-serif; }
-  .bar-pct { font-size:12.5px; font-weight:700; font-family:'Bricolage Grotesque', sans-serif; color:var(--text2); width:42px; text-align:right; flex-shrink:0; }
-  .bar-meters { min-width:78px; text-align:right; font-size:12px; font-family:'Bricolage Grotesque', sans-serif; font-weight:700; color:var(--text2); flex-shrink:0; }
-
-  .legend { display:flex; flex-wrap:wrap; gap:12px; padding:12px 18px; border-top:1px solid var(--border); background:var(--surface2); }
-  .legend-item { display:flex; align-items:center; gap:6px; font-size:10px; color:var(--muted); font-weight:500; }
-  .legend-dot { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
-
-  /* ── GRID MAIN ── */
-  .grid-main { display:grid; grid-template-columns:1fr 290px; gap:18px; }
-  @media(max-width:900px){ .grid-main{ grid-template-columns:1fr; } }
-  .side { display:flex; flex-direction:column; gap:14px; }
-
-  /* ── TABLE ── */
-  table.tbl { width:100%; border-collapse:collapse; }
-  table.tbl thead th {
-    background:var(--surface2); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.08em;
-    color:var(--muted); padding:9px 12px; border-bottom:1px solid var(--border); text-align:left; white-space:nowrap;
+  .kpi-owner {
+    font-size:8.5px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+    padding:1px 7px; border-radius:3px; display:inline-block; margin-bottom:7px;
   }
-  table.tbl tbody tr { cursor:pointer; transition:background .1s; }
-  table.tbl tbody tr:hover { background:var(--surface2); }
-  table.tbl td { font-size:11.5px; padding:9px 12px; border-bottom:1px solid var(--border); color:var(--text2); vertical-align:middle; }
-  table.tbl tbody tr:last-child td { border-bottom:none; }
+  .kpi-owner.impresa { background:#E550000D; color:#E55000; border:1px solid #E5500030; }
+  .kpi-owner.rds     { background:#0B31820D; color:#0B3182; border:1px solid #0B318230; }
+  .kpi-owner.ente    { background:#1F7A4E0D; color:#1F7A4E; border:1px solid #1F7A4E30; }
 
-  .prog-wrap { display:flex; align-items:center; gap:7px; }
-  .prog-track { flex:1; height:6px; border-radius:3px; background:var(--surface2); border:1px solid var(--border); overflow:hidden; min-width:50px; }
-  .prog-fill { height:100%; border-radius:3px; }
-  .prog-val { font-size:10.5px; font-weight:700; font-family:'Fira Code', monospace; color:var(--text2); width:32px; text-align:right; flex-shrink:0; }
+  .kpi-label { font-size:9px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:8px; font-weight:600; }
+  .kpi-value { font-size:24px; font-weight:700; font-family:'Bricolage Grotesque', sans-serif; line-height:1; color:var(--text); letter-spacing:-.02em; }
+  .kpi-sub { font-size:10.5px; color:var(--text2); margin-top:6px; font-weight:500; }
 
-  .chip-lotto { display:inline-flex; align-items:center; padding:2px 9px; border-radius:12px; font-size:10.5px; font-weight:700; color:#fff; }
-  .chip { font-size:9.5px; font-weight:700; padding:3px 9px; border-radius:5px; white-space:nowrap; display:inline-block; text-transform:uppercase; letter-spacing:.04em; }
-  .chip.non-avviato  { background:#8A91B418; color:#4A5078; border:1px solid #8A91B440; }
-  .chip.allestimento { background:#C08A1418; color:#7A5500; border:1px solid #C08A1440; }
-  .chip.in-corso     { background:#0B318218; color:#0B3182; border:1px solid #0B318240; }
-  .chip.sospeso      { background:#C23B2218; color:#8B1A1A; border:1px solid #C23B2240; }
-  .chip.completato   { background:#1F7A4E18; color:#1F7A4E; border:1px solid #1F7A4E40; }
+  .kpi.attesa .kpi-value        { color:var(--attesa); }
+  .kpi.coordinamento .kpi-value { color:var(--coordinamento); }
+  .kpi.firma .kpi-value         { color:var(--firma); }
+  .kpi.inviato .kpi-value       { color:var(--inviato); }
+  .kpi.integrazione .kpi-value  { color:var(--integrazione); }
+  .kpi.protint .kpi-value       { color:var(--protint); }
+  .kpi.protint .kpi-owner       { background:#B5657A0D; color:var(--protint); border-color:#B5657A30; }
+  .kpi.ottenuto .kpi-value      { color:var(--ottenuto); }
 
-  /* ── SIDEBAR ── */
-  .stat-row { display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border); }
-  .stat-row:last-child { border-bottom:none; }
-  .stat-label { font-size:11px; color:var(--muted); }
-  .stat-val { font-size:14px; font-weight:700; font-family:'Bricolage Grotesque', sans-serif; color:var(--text); letter-spacing:-.01em; }
+  /* ── PANELS ── */
+  .panels-row { display:grid; grid-template-columns:1.1fr 1fr; gap:16px; }
+  @media(max-width:900px){ .panels-row{ grid-template-columns:1fr; } }
 
-  .donut-wrap { position:relative; width:140px; height:140px; margin:0 auto; }
+  .panel { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px 20px; box-shadow:var(--sh-sm); }
+  .panel-title {
+    font-family:'Bricolage Grotesque', sans-serif; font-size:13.5px; font-weight:700;
+    color:var(--text); margin-bottom:14px;
+  }
+
+  .panel-title-row { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-bottom:14px; }
+  .panel-title-row .panel-title { margin-bottom:0; }
+  .table-filters { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .table-search, .table-select {
+    font-family:'Plus Jakarta Sans', sans-serif; font-size:11.5px; color:var(--text);
+    background:var(--surface); border:1px solid var(--border2); border-radius:7px;
+    padding:6px 11px; outline:none; transition:border-color .15s;
+  }
+  .table-search { width:220px; }
+  .table-search:focus, .table-select:focus { border-color:var(--accent); }
+  .table-count { font-size:10.5px; color:var(--muted2); font-family:'Fira Code', monospace; white-space:nowrap; }
+
+  .donut-row { display:flex; align-items:center; gap:22px; flex-wrap:wrap; }
+  .donut-wrap { position:relative; width:140px; height:140px; flex-shrink:0; }
   .donut { width:100%; height:100%; border-radius:50%; }
-  .donut-hole { position:absolute; inset:22px; border-radius:50%; background:var(--surface); display:flex; flex-direction:column; align-items:center; justify-content:center; }
-  .donut-hole b { font-family:'Bricolage Grotesque', sans-serif; font-size:18px; color:var(--text); line-height:1; }
+  .donut-hole {
+    position:absolute; inset:22px; border-radius:50%; background:var(--surface);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+  }
+  .donut-hole b { font-family:'Bricolage Grotesque', sans-serif; font-size:20px; color:var(--text); line-height:1; }
   .donut-hole span { font-size:9px; color:var(--muted2); letter-spacing:.05em; text-transform:uppercase; margin-top:2px; }
 
-  .mini-legend { display:flex; flex-direction:column; gap:8px; margin-top:14px; }
-  .mini-legend-item { display:flex; align-items:center; gap:7px; font-size:11px; color:var(--text2); }
-  .mini-legend-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-  .mini-legend-item b { color:var(--text); margin-left:auto; padding-left:8px; font-weight:700; }
+  .legend { display:flex; flex-direction:column; gap:10px; flex:1; min-width:180px; }
+  .legend-item { display:flex; flex-direction:column; gap:5px; font-size:11.5px; color:var(--text2); }
+  .legend-top { display:flex; align-items:center; gap:7px; }
+  .legend-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .legend-top b { color:var(--text); margin-left:auto; padding-left:10px; font-weight:700; }
+  .legend-pct { font-size:10px; color:var(--muted2); font-weight:600; }
+  .legend-bar-track { height:5px; border-radius:3px; background:var(--surface2); overflow:hidden; }
+  .legend-bar-fill { height:100%; border-radius:3px; transition:width .3s; }
+
+  .lotto-bars { display:flex; flex-direction:column; gap:16px; }
+  .lotto-bar-row { display:flex; flex-direction:column; gap:6px; }
+  .lotto-bar-top { display:flex; justify-content:space-between; align-items:baseline; font-size:12px; }
+  .lotto-bar-top .name { font-weight:600; color:var(--text); }
+  .lotto-bar-top .pct { font-family:'Fira Code', monospace; color:var(--muted); font-size:11px; }
+  .lotto-bar-track { height:8px; border-radius:5px; background:var(--surface2); overflow:hidden; }
+  .lotto-bar-fill { height:100%; border-radius:5px; transition:width .3s; }
+
+  /* ── TABLE ── */
+  .panel-table { overflow-x:auto; }
+  .panel-table .tbl-scroll { max-height:540px; overflow-y:auto; }
+  .panel-table table.tbl thead th { position:sticky; top:0; background:var(--surface); z-index:1; }
+  table.tbl { width:100%; border-collapse:collapse; min-width:680px; }
+  table.tbl th {
+    text-align:left; font-family:'Fira Code', monospace; font-size:9.5px; font-weight:500;
+    letter-spacing:.08em; text-transform:uppercase; color:var(--muted);
+    padding:0 10px 10px; border-bottom:1px solid var(--border2);
+  }
+  table.tbl td { padding:10px 10px; font-size:12.5px; color:var(--text2); border-bottom:1px solid var(--border); }
+  table.tbl tr:last-child td { border-bottom:none; }
+
+  .chip-lotto {
+    display:inline-flex; align-items:center; padding:2px 9px; border-radius:12px;
+    font-size:10.5px; font-weight:700; color:#fff;
+  }
+  .badge-stato {
+    display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:12px;
+    font-size:10.5px; font-weight:600;
+  }
+  .badge-stato .dot { width:6px; height:6px; border-radius:50%; }
+
+  /* ── INTERAZIONI ── */
+  table.tbl tbody tr { cursor:pointer; }
+  table.tbl tbody tr:hover { background:var(--surface2); }
 
   /* ── MODALI ── */
   .modal-overlay {
@@ -164,39 +223,53 @@
   }
   .modal-overlay.open { opacity:1; pointer-events:all; }
   .modal {
-    background:var(--surface); border-radius:16px; width:640px; max-width:100%;
+    background:var(--surface); border-radius:16px; width:420px; max-width:100%;
     max-height:86vh; overflow-y:auto; box-shadow:var(--sh-md);
     padding:22px 24px; transform:translateY(10px); transition:transform .2s;
   }
   .modal-overlay.open .modal { transform:translateY(0); }
-  .modal-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:16px; }
-  .modal-title { font-family:'Bricolage Grotesque', sans-serif; font-size:17px; font-weight:700; color:var(--text); }
+  .modal.modal-row { width:740px; }
+  .modal-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:18px; }
+  .modal-title { font-family:'Bricolage Grotesque', sans-serif; font-size:18px; font-weight:700; color:var(--text); }
   .modal-close { cursor:pointer; color:var(--muted); font-size:20px; line-height:1; background:none; border:none; padding:0; }
   .modal-close:hover { color:var(--text); }
 
-  .modal-stats { display:flex; gap:30px; margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--border); }
-  .modal-stats .stat-lbl { font-size:9.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:4px; font-weight:600; }
-  .modal-stats .stat-val { font-family:'Bricolage Grotesque', sans-serif; font-size:23px; font-weight:700; color:var(--text); letter-spacing:-.02em; }
-
-  .pills { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
-  .pill {
-    font-size:10.5px; font-weight:600; padding:5px 12px; border-radius:20px; border:1px solid var(--border2);
-    background:var(--surface); color:var(--muted); cursor:pointer; transition:all .15s;
-  }
-  .pill:hover { border-color:var(--accent); color:var(--accent); }
-  .pill.active { background:var(--accent); border-color:var(--accent); color:#fff; }
-
-  .modal-list { max-height:320px; overflow-y:auto; border:1px solid var(--border); border-radius:10px; }
-  .modal-list table.tbl th { position:sticky; top:0; }
-  .modal-list table.tbl td { font-size:11px; padding:8px 10px; }
-  .modal-list table.tbl th { padding:8px 10px; }
-  .modal-empty { padding:28px; text-align:center; color:var(--muted); font-size:12.5px; }
-
-  .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px 20px; margin-bottom:10px; }
+  .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px 20px; margin-bottom:8px; }
   .info-item .lbl { font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:600; margin-bottom:3px; }
   .info-item .val { font-size:14px; color:var(--text); font-weight:600; }
 
-  .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; padding-top:16px; border-top:1px solid var(--border); }
+  .stepper { display:flex; align-items:flex-start; justify-content:space-between; margin:26px 0 6px; position:relative; }
+  .stepper::before { content:''; position:absolute; top:8px; left:18px; right:18px; height:2px; background:var(--border2); z-index:0; }
+  .step { position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; gap:7px; flex:1; }
+  .step-dot { width:16px; height:16px; border-radius:50%; background:var(--surface); border:2.5px solid var(--border2); }
+  .step.done .step-dot { background:var(--ottenuto); border-color:var(--ottenuto); }
+  .step.active .step-dot { background:var(--accent); border-color:var(--accent); }
+  .step.blocked .step-dot { background:var(--bloccato); border-color:var(--bloccato); }
+  .step-label { font-size:10px; color:var(--muted); text-align:center; max-width:84px; line-height:1.3; }
+  .step.done .step-label, .step.active .step-label { color:var(--text); font-weight:600; }
+  .step.blocked .step-label { color:var(--bloccato); font-weight:700; }
+
+  .iter-note { margin-top:16px; padding:9px 12px; border-radius:8px; background:rgba(192,57,43,.08); border:1px solid rgba(192,57,43,.25); color:var(--bloccato); font-size:11.5px; }
+
+  .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; padding-top:16px; border-top:1px solid var(--border); }
+  .btn-map {
+    font-size:12px; padding:8px 16px; border-radius:7px;
+    background:var(--surface2); color:var(--text); border:1px solid var(--border);
+    cursor:pointer; font-family:'Plus Jakarta Sans', sans-serif; font-weight:600;
+    text-decoration:none; transition:opacity .2s; white-space:nowrap;
+  }
+  .btn-map:hover { opacity:.75; }
+
+  .kpi-modal-stats { display:flex; gap:32px; margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--border); }
+  .kpi-modal-stats .stat-lbl { font-size:9.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:4px; font-weight:600; }
+  .kpi-modal-stats .stat-val { font-family:'Bricolage Grotesque', sans-serif; font-size:24px; font-weight:700; color:var(--text); letter-spacing:-.02em; }
+  #kpiModalPills { margin-bottom:12px; }
+  #kpiModalPills .pill { font-size:10.5px; padding:5px 12px; }
+  .kpi-modal-list { max-height:320px; overflow-y:auto; border:1px solid var(--border); border-radius:10px; }
+  .kpi-modal-list table.tbl { min-width:0; }
+  .kpi-modal-list table.tbl th { padding:9px 10px 9px; position:sticky; top:0; background:var(--surface); }
+  .kpi-modal-list table.tbl td { padding:9px 10px; font-size:11.5px; }
+  .kpi-modal-empty { padding:30px; text-align:center; color:var(--muted); font-size:12.5px; }
 </style>
 </head>
 <body>
@@ -205,127 +278,120 @@
   <div class="topbar-left">
     <span class="logo">PROGETTO · M</span>
     <div class="divider-v"></div>
-    <span class="page-title">Avanzamento Lavori</span>
+    <span class="page-title">Progettazione · Iter autorizzativo</span>
   </div>
   <div class="topbar-right">
-    <a href="Index.html" class="btn-nav">📋 Progettazione</a>
-    <a href="mappa.html" class="btn-nav">🗺 Mappa</a>
-    <a href="Hub.html" class="btn-nav primary">← Hub</a>
+    <a href="mappa.html" class="btn-sm">Mappa</a>
+    <a href="Hub.html" class="btn-sm">← Hub</a>
   </div>
 </div>
 
 <div class="main">
 
-  <div>
-    <div class="page-eyebrow">Fase 2 · Esecuzione</div>
-    <div class="page-h1">Avanzamento Lavori</div>
-    <div class="page-sub">Stato dei cantieri attivi sul territorio per lotto e tratta: percentuale di scavo, criticità operative e tratte in attesa di autorizzazione.</div>
-  </div>
-
-  <div class="kpi-row">
-    <div class="kpi k-nonavv" data-cantiere="non-avviato">
-      <div class="kpi-label">Non Avviati</div>
-      <div class="kpi-value" id="kpiNonavv">—</div>
-      <div class="kpi-sub">in attesa di autorizzazioni</div>
+  <div class="page-header">
+    <div class="page-header-left">
+      <div class="eyebrow">Fase 1 · Permitting</div>
+      <div class="page-title-lg">Avanzamento autorizzativo</div>
+      <div class="page-sub">Monitoraggio dell'iter autorizzativo per tratta, lotto ed ente: stato delle pratiche, percentuali di avanzamento e chilometri coperti.</div>
     </div>
-    <div class="kpi k-allest" data-cantiere="allestimento">
-      <div class="kpi-label">In Allestimento</div>
-      <div class="kpi-value" id="kpiAllest">—</div>
-      <div class="kpi-sub">cantieri in preparazione</div>
-    </div>
-    <div class="kpi k-incorso" data-cantiere="in-corso">
-      <div class="kpi-label">In Corso</div>
-      <div class="kpi-value" id="kpiIncorso">—</div>
-      <div class="kpi-sub">tratte con scavo attivo</div>
-    </div>
-    <div class="kpi k-completato" data-cantiere="completato">
-      <div class="kpi-label">Completate</div>
-      <div class="kpi-value" id="kpiCompletato">—</div>
-      <div class="kpi-sub">tratte ultimate</div>
-    </div>
-    <div class="kpi k-sospeso" data-cantiere="sospeso">
-      <div class="kpi-label">In Sospeso</div>
-      <div class="kpi-value" id="kpiSospeso">—</div>
-      <div class="kpi-sub">cantieri temporaneamente bloccati</div>
+    <div class="pills" id="lottoPills">
+      <button class="pill active" data-lotto="all">Tutti</button>
+      <button class="pill" data-lotto="1">Lotto 1</button>
+      <button class="pill" data-lotto="2">Lotto 2</button>
+      <button class="pill" data-lotto="3">Lotto 3</button>
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title">Avanzamento per Lotto</span>
-      <span class="card-header-meta" id="lottiStatus">— m totali</span>
+  <div class="kpi-row" id="kpiRow">
+    <div class="kpi attesa" data-bucket="attesa">
+      <span class="kpi-owner impresa">Impresa</span>
+      <div class="kpi-label">In Attesa / Redazione</div>
+      <div class="kpi-value" id="kpi-attesa">—</div>
+      <div class="kpi-sub" id="kpisub-attesa">—</div>
     </div>
-    <div class="card-body" style="display:flex; flex-direction:column; gap:2px;" id="lottoBarsContainer"></div>
-    <div class="legend">
-      <div class="legend-item"><div class="legend-dot" style="background:var(--c-incorso)"></div>In corso</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--c-allest)"></div>In allestimento</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--c-sospeso)"></div>In sospeso</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--c-completato)"></div>Completato</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--c-nonavv)"></div>Non avviato</div>
+    <div class="kpi coordinamento" data-bucket="coordinamento">
+      <span class="kpi-owner impresa">Impresa/Enti</span>
+      <div class="kpi-label">Coordinamento</div>
+      <div class="kpi-value" id="kpi-coordinamento">—</div>
+      <div class="kpi-sub" id="kpisub-coordinamento">—</div>
+    </div>
+    <div class="kpi firma" data-bucket="firma">
+      <span class="kpi-owner rds">RDS</span>
+      <div class="kpi-label">In Verifica / In Firma</div>
+      <div class="kpi-value" id="kpi-firma">—</div>
+      <div class="kpi-sub" id="kpisub-firma">—</div>
+    </div>
+    <div class="kpi inviato" data-bucket="inviato">
+      <span class="kpi-owner ente">Ente</span>
+      <div class="kpi-label">Inviato / Protocollato</div>
+      <div class="kpi-value" id="kpi-inviato">—</div>
+      <div class="kpi-sub" id="kpisub-inviato">—</div>
+    </div>
+    <div class="kpi integrazione" data-bucket="integrazione">
+      <span class="kpi-owner impresa">Impresa</span>
+      <div class="kpi-label">Necessaria Integrazione</div>
+      <div class="kpi-value" id="kpi-integrazione">—</div>
+      <div class="kpi-sub" id="kpisub-integrazione">—</div>
+    </div>
+    <div class="kpi protint" data-bucket="protint">
+      <span class="kpi-owner ente">Ente</span>
+      <div class="kpi-label">Protocollato Integrazione</div>
+      <div class="kpi-value" id="kpi-protint">—</div>
+      <div class="kpi-sub" id="kpisub-protint">—</div>
+    </div>
+    <div class="kpi ottenuto" data-bucket="ottenuto">
+      <span class="kpi-owner ente">Ente</span>
+      <div class="kpi-label">🏆 Autorizzati</div>
+      <div class="kpi-value" id="kpi-ottenuto">—</div>
+      <div class="kpi-sub" id="kpisub-ottenuto">—</div>
     </div>
   </div>
 
-  <div class="grid-main">
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title">Registro Tratte · Stato Cantiere</span>
-        <span class="card-header-meta" id="registroMeta">— tratte</span>
-      </div>
-      <div style="overflow-x:auto; max-height:540px; overflow-y:auto;">
-        <table class="tbl">
-          <thead>
-            <tr style="position:sticky; top:0;">
-              <th style="background:var(--surface2);">Tratta</th><th style="background:var(--surface2);">Comune</th><th style="background:var(--surface2);">Lotto</th><th style="background:var(--surface2);">Impresa</th>
-              <th style="background:var(--surface2);">Stato Cantiere</th><th style="background:var(--surface2);">Avanzamento</th><th style="background:var(--surface2); text-align:right">Lunghezza</th>
-            </tr>
-          </thead>
-          <tbody id="registroBody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="side">
-      <div class="card">
-        <div class="card-header"><span class="card-title">Riepilogo Operativo</span></div>
-        <div class="card-body">
-          <div class="stat-row"><span class="stat-label">Tracciato totale</span><span class="stat-val" id="statTotale">—</span></div>
-          <div class="stat-row"><span class="stat-label">Metri scavati</span><span class="stat-val" style="color:var(--c-incorso)" id="statScavati">—</span></div>
-          <div class="stat-row"><span class="stat-label">Avanzamento globale</span><span class="stat-val" style="color:var(--c-incorso)" id="statAvanzamento">—</span></div>
-          <div class="stat-row"><span class="stat-label">Tratte con scavo attivo</span><span class="stat-val" id="statAttive">—</span></div>
-          <div class="stat-row"><span class="stat-label">Comuni attraversati</span><span class="stat-val" id="statComuni">—</span></div>
-          <div class="stat-row"><span class="stat-label">Lotti coinvolti</span><span class="stat-val">3</span></div>
+  <div class="panels-row">
+    <div class="panel">
+      <div class="panel-title">Stato pratiche</div>
+      <div class="donut-row">
+        <div class="donut-wrap">
+          <div class="donut" id="donut"></div>
+          <div class="donut-hole"><b id="donutTotal">0</b><span>pratiche</span></div>
         </div>
+        <div class="legend" id="donutLegend"></div>
       </div>
-
-      <div class="card">
-        <div class="card-header"><span class="card-title">Distribuzione Stati</span></div>
-        <div class="card-body">
-          <div class="donut-wrap">
-            <div class="donut" id="donut"></div>
-            <div class="donut-hole"><b id="donutTotal">0</b><span>tratte</span></div>
-          </div>
-          <div class="mini-legend" id="donutLegend"></div>
-        </div>
-      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Avanzamento per lotto</div>
+      <div class="lotto-bars" id="lottoBars"></div>
     </div>
   </div>
 
-</div>
-
-<div class="modal-overlay" id="listModalOverlay">
-  <div class="modal">
-    <div class="modal-head">
-      <div class="modal-title" id="listModalTitle">—</div>
-      <button class="modal-close" onclick="closeListModal()">×</button>
+  <div class="panel panel-table">
+    <div class="panel-title-row">
+      <div class="panel-title">Dettaglio tratte</div>
+      <div class="table-filters">
+        <input type="text" id="tableSearch" class="table-search" placeholder="Cerca tratta, comune, ente, pratica…">
+        <select id="tableStatoFilter" class="table-select">
+          <option value="all">Tutti gli stati</option>
+        </select>
+        <span class="table-count" id="tableCount"></span>
+      </div>
     </div>
-    <div class="modal-stats" id="listModalStats"></div>
-    <div class="pills" id="listModalPills"></div>
-    <div class="modal-list" id="listModalBody"></div>
+    <div class="tbl-scroll">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Tratta</th><th>Comune</th><th>Lotto</th><th>Impresa</th><th>Stato</th>
+          <th>Lunghezza</th><th>Pratica</th><th>Ente</th>
+        </tr>
+      </thead>
+      <tbody id="tblBody"></tbody>
+    </table>
+    </div>
   </div>
+
 </div>
 
 <div class="modal-overlay" id="rowModalOverlay">
-  <div class="modal" style="width:600px">
+  <div class="modal modal-row">
     <div class="modal-head">
       <div>
         <div class="modal-title" id="rowModalTitle">—</div>
@@ -334,14 +400,26 @@
       <button class="modal-close" onclick="closeRowModal()">×</button>
     </div>
     <div class="info-grid" id="rowInfoGrid"></div>
-    <div class="prog-wrap" style="margin-top:6px;">
-      <div class="prog-track" style="height:10px;"><div class="prog-fill" id="rowProgFill" style="height:100%;"></div></div>
-      <div class="prog-val" id="rowProgVal" style="width:auto; font-size:13px;"></div>
-    </div>
+    <div class="stepper" id="rowStepper"></div>
+    <div class="iter-note" id="rowNote" style="display:none;"></div>
     <div class="modal-actions">
-      <a href="Index.html" class="btn-nav">📋 Progettazione</a>
-      <a href="mappa.html" class="btn-nav">🗺 Mappa</a>
+      <a href="mappa.html" class="btn-map">🗺 Mappa</a>
     </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="kpiModalOverlay">
+  <div class="modal modal-row">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="kpiModalTitle">—</div>
+        <div id="kpiModalSub" style="margin-top:7px;"></div>
+      </div>
+      <button class="modal-close" onclick="closeKpiModal()">×</button>
+    </div>
+    <div class="kpi-modal-stats" id="kpiModalStats"></div>
+    <div class="pills" id="kpiModalPills"></div>
+    <div class="kpi-modal-list" id="kpiModalBody"></div>
   </div>
 </div>
 
@@ -349,229 +427,311 @@
 const LOTTO_COLORS = { '1':'#2563eb', '2':'#16a34a', '3':'#e8580c' };
 const IMPRESE      = { '1':'Impresa 1', '2':'Impresa 2', '3':'Impresa 3' };
 
-const CANTIERE_LABEL = { 'non-avviato':'Non Avviato', 'allestimento':'In Allestimento', 'in-corso':'In Corso', 'sospeso':'In Sospeso', 'completato':'Completato' };
-const CANTIERE_COLOR = { 'non-avviato':'var(--c-nonavv)', 'allestimento':'var(--c-allest)', 'in-corso':'var(--c-incorso)', 'sospeso':'var(--c-sospeso)', 'completato':'var(--c-completato)' };
-const CANTIERE_ORDER = ['non-avviato','allestimento','in-corso','sospeso','completato'];
+const KPI_BUCKETS = {
+  attesa:        ['IN ATTESA','IN REDAZIONE'],
+  coordinamento: ['COORDINAMENTO'],
+  firma:         ['IN FIRMA RDS'],
+  inviato:       ['INVIATO','PROTOCOLLATO'],
+  integrazione:  ['NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE'],
+  protint:       ['PROTOCOLLATO INTEGRAZIONE'],
+  ottenuto:      ['OTTENUTO']
+};
 
-const SCAVI_DATA = [{"t": "T-001", "comune": "Milano", "lotto": "3", "statoPermesso": "INVIATO", "m": 305, "cantiere": "non-avviato", "pct": 0}, {"t": "T-002", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 2270, "cantiere": "completato", "pct": 100}, {"t": "T-003", "comune": "Settimo Milanese", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 676, "cantiere": "in-corso", "pct": 40}, {"t": "T-004", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 240, "cantiere": "allestimento", "pct": 8}, {"t": "T-005", "comune": "Milano", "lotto": "3", "statoPermesso": "IN REDAZIONE", "m": 222, "cantiere": "non-avviato", "pct": 0}, {"t": "T-006", "comune": "Milano", "lotto": "3", "statoPermesso": "INVIATO", "m": 615, "cantiere": "non-avviato", "pct": 0}, {"t": "T-007", "comune": "Milano", "lotto": "3", "statoPermesso": "IN ATTESA", "m": 533, "cantiere": "non-avviato", "pct": 0}, {"t": "T-008", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 448, "cantiere": "allestimento", "pct": 5}, {"t": "T-009", "comune": "Milano", "lotto": "3", "statoPermesso": "PROTOCOLLATO", "m": 441, "cantiere": "non-avviato", "pct": 0}, {"t": "T-010", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 1067, "cantiere": "in-corso", "pct": 55}, {"t": "T-011", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 529, "cantiere": "in-corso", "pct": 25}, {"t": "T-012", "comune": "Milano", "lotto": "3", "statoPermesso": "IN FIRMA RDS", "m": 791, "cantiere": "non-avviato", "pct": 0}, {"t": "T-013", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 1548, "cantiere": "completato", "pct": 100}, {"t": "T-014", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 3, "cantiere": "sospeso", "pct": 18}, {"t": "T-015", "comune": "Milano", "lotto": "3", "statoPermesso": "INVIATO", "m": 1426, "cantiere": "non-avviato", "pct": 0}, {"t": "T-016", "comune": "Milano", "lotto": "3", "statoPermesso": "IN FIRMA RDS", "m": 408, "cantiere": "non-avviato", "pct": 0}, {"t": "T-017", "comune": "Cusago", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 939, "cantiere": "in-corso", "pct": 48}, {"t": "T-018", "comune": "Milano", "lotto": "3", "statoPermesso": "COORDINAMENTO", "m": 4, "cantiere": "non-avviato", "pct": 0}, {"t": "T-019", "comune": "San Donato Milanese", "lotto": "3", "statoPermesso": "IN REDAZIONE", "m": 593, "cantiere": "non-avviato", "pct": 0}, {"t": "T-020", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 3, "cantiere": "sospeso", "pct": 30}, {"t": "T-021", "comune": "Cusago", "lotto": "3", "statoPermesso": "IN REDAZIONE", "m": 28, "cantiere": "non-avviato", "pct": 0}, {"t": "T-022", "comune": "Milano", "lotto": "3", "statoPermesso": "INVIATO", "m": 509, "cantiere": "non-avviato", "pct": 0}, {"t": "T-023", "comune": "Cusago", "lotto": "3", "statoPermesso": "PROTOCOLLATO", "m": 184, "cantiere": "non-avviato", "pct": 0}, {"t": "T-024", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 2186, "cantiere": "completato", "pct": 100}, {"t": "T-025", "comune": "Milano", "lotto": "3", "statoPermesso": "PROTOCOLLATO INTEGRAZIONE", "m": 498, "cantiere": "non-avviato", "pct": 0}, {"t": "T-026", "comune": "San Donato Milanese", "lotto": "2", "statoPermesso": "PROTOCOLLATO", "m": 12, "cantiere": "non-avviato", "pct": 0}, {"t": "T-027", "comune": "Cusago", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 113, "cantiere": "allestimento", "pct": 10}, {"t": "T-028", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 547, "cantiere": "in-corso", "pct": 32}, {"t": "T-029", "comune": "Milano", "lotto": "3", "statoPermesso": "IN ATTESA", "m": 2217, "cantiere": "non-avviato", "pct": 0}, {"t": "T-030", "comune": "Milano", "lotto": "3", "statoPermesso": "COORDINAMENTO", "m": 406, "cantiere": "non-avviato", "pct": 0}, {"t": "T-031", "comune": "Milano", "lotto": "3", "statoPermesso": "IN REDAZIONE", "m": 568, "cantiere": "non-avviato", "pct": 0}, {"t": "T-032", "comune": "Cusago", "lotto": "3", "statoPermesso": "INVIATO", "m": 1302, "cantiere": "non-avviato", "pct": 0}, {"t": "T-033", "comune": "Cusago", "lotto": "3", "statoPermesso": "IN FIRMA RDS", "m": 857, "cantiere": "non-avviato", "pct": 0}, {"t": "T-034", "comune": "Milano", "lotto": "3", "statoPermesso": "PROTOCOLLATO INTEGRAZIONE", "m": 1171, "cantiere": "non-avviato", "pct": 0}, {"t": "T-035", "comune": "Milano", "lotto": "3", "statoPermesso": "PROTOCOLLATO", "m": 2, "cantiere": "non-avviato", "pct": 0}, {"t": "T-036", "comune": "Milano", "lotto": "3", "statoPermesso": "COORDINAMENTO", "m": 1381, "cantiere": "non-avviato", "pct": 0}, {"t": "T-037", "comune": "San Donato Milanese", "lotto": "3", "statoPermesso": "IN ATTESA", "m": 7, "cantiere": "non-avviato", "pct": 0}, {"t": "T-038", "comune": "San Donato Milanese", "lotto": "3", "statoPermesso": "COORDINAMENTO", "m": 1342, "cantiere": "non-avviato", "pct": 0}, {"t": "T-039", "comune": "Gaggiano", "lotto": "3", "statoPermesso": "IN ATTESA", "m": 2, "cantiere": "non-avviato", "pct": 0}, {"t": "T-040", "comune": "Milano", "lotto": "3", "statoPermesso": "COORDINAMENTO", "m": 951, "cantiere": "non-avviato", "pct": 0}, {"t": "T-041", "comune": "Lodi", "lotto": "2", "statoPermesso": "INVIATO", "m": 447, "cantiere": "non-avviato", "pct": 0}, {"t": "T-042", "comune": "Lodi", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 4307, "cantiere": "completato", "pct": 100}, {"t": "T-043", "comune": "Lodi", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 543, "cantiere": "sospeso", "pct": 28}, {"t": "T-044", "comune": "Locate di Triulzi", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 4575, "cantiere": "completato", "pct": 100}, {"t": "T-045", "comune": "Lodi", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 1328, "cantiere": "in-corso", "pct": 42}, {"t": "T-046", "comune": "Melegnano", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 3939, "cantiere": "completato", "pct": 100}, {"t": "T-047", "comune": "San Giuliano Milanese", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 2685, "cantiere": "in-corso", "pct": 72}, {"t": "T-048", "comune": "San Giuliano Milanese", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 5799, "cantiere": "completato", "pct": 100}, {"t": "T-049", "comune": "Lodi", "lotto": "2", "statoPermesso": "INVIATO", "m": 32, "cantiere": "non-avviato", "pct": 0}, {"t": "T-050", "comune": "Lodi", "lotto": "2", "statoPermesso": "PROTOCOLLATO", "m": 2002, "cantiere": "non-avviato", "pct": 0}, {"t": "T-051", "comune": "Casalpusterlengo", "lotto": "2", "statoPermesso": "PROTOCOLLATO", "m": 1630, "cantiere": "non-avviato", "pct": 0}, {"t": "T-052", "comune": "Lodi", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 1708, "cantiere": "in-corso", "pct": 60}, {"t": "T-053", "comune": "Melegnano", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 1374, "cantiere": "in-corso", "pct": 52}, {"t": "T-054", "comune": "San Donato Milanese", "lotto": "2", "statoPermesso": "NECESSARIA INTEGRAZIONE", "m": 1823, "cantiere": "non-avviato", "pct": 0}, {"t": "T-055", "comune": "Mairago", "lotto": "2", "statoPermesso": "INVIATO", "m": 3006, "cantiere": "non-avviato", "pct": 0}, {"t": "T-056", "comune": "San Donato Milanese", "lotto": "2", "statoPermesso": "COORDINAMENTO", "m": 305, "cantiere": "non-avviato", "pct": 0}, {"t": "T-057", "comune": "San Donato Milanese", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 706, "cantiere": "allestimento", "pct": 8}, {"t": "T-058", "comune": "Milano", "lotto": "3", "statoPermesso": "INVIATO", "m": 61, "cantiere": "non-avviato", "pct": 0}, {"t": "T-059", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "OTTENUTO", "m": 1771, "cantiere": "completato", "pct": 100}, {"t": "T-060", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "PROTOCOLLATO", "m": 1042, "cantiere": "non-avviato", "pct": 0}, {"t": "T-061", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "PROTOCOLLATO INTEGRAZIONE", "m": 392, "cantiere": "non-avviato", "pct": 0}, {"t": "T-062", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "INVIATO", "m": 186, "cantiere": "non-avviato", "pct": 0}, {"t": "T-063", "comune": "Turano Lodigiano", "lotto": "2", "statoPermesso": "COORDINAMENTO", "m": 164, "cantiere": "non-avviato", "pct": 0}, {"t": "T-064", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "INVIATO", "m": 120, "cantiere": "non-avviato", "pct": 0}, {"t": "T-065", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "IN ATTESA", "m": 498, "cantiere": "non-avviato", "pct": 0}, {"t": "T-066", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "IN REDAZIONE", "m": 17, "cantiere": "non-avviato", "pct": 0}, {"t": "T-067", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "OTTENUTO", "m": 612, "cantiere": "in-corso", "pct": 35}];
+const STATO_COLORS = {
+  'IN ATTESA':                 'var(--attesa)',
+  'IN REDAZIONE':               'var(--redazione)',
+  'IN REDAZIONE INTEGRAZIONE':  'var(--bloccato)',
+  'COORDINAMENTO':              'var(--coordinamento)',
+  'IN FIRMA RDS':                'var(--firma)',
+  'INVIATO':                    'var(--inviato)',
+  'PROTOCOLLATO':                'var(--protocollato)',
+  'NECESSARIA INTEGRAZIONE':     'var(--bloccato)',
+  'PROTOCOLLATO INTEGRAZIONE':   'var(--bloccato)',
+  'OTTENUTO':                    'var(--ottenuto)'
+};
+// versione hex (per i conic-gradient, che non leggono le var())
+const STATO_HEX = {
+  'IN ATTESA':'#8A91B4', 'IN REDAZIONE':'#C08A14', 'IN REDAZIONE INTEGRAZIONE':'#C0392B',
+  'COORDINAMENTO':'#6B3FA0', 'IN FIRMA RDS':'#D4622A', 'INVIATO':'#0B3182',
+  'PROTOCOLLATO':'#2D6CC0', 'NECESSARIA INTEGRAZIONE':'#C0392B',
+  'PROTOCOLLATO INTEGRAZIONE':'#C0392B', 'OTTENUTO':'#1F7A4E'
+};
 
-function fmtM(n){ return Math.round(n).toLocaleString('it-IT'); }
+const SAMPLE_DATA = [{"t": "T-001", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "INVIATO", "m": 305, "pratica": "", "ente": "Comune di Corsico"}, {"t": "T-002", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 2270, "pratica": "AUT/3-002", "ente": "Comune di Rozzano"}, {"t": "T-003", "comune": "Settimo Milanese", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 676, "pratica": "AUT/3-003", "ente": "Comune di Gaggiano"}, {"t": "T-004", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 240, "pratica": "AUT/3-004", "ente": "Comune di Cesano Boscone"}, {"t": "T-005", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "IN REDAZIONE", "m": 222, "pratica": "", "ente": "Comune di Corsico"}, {"t": "T-006", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "INVIATO", "m": 615, "pratica": "", "ente": "Comune di Cesano Boscone"}, {"t": "T-007", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "IN ATTESA", "m": 533, "pratica": "", "ente": "Comune di Corsico"}, {"t": "T-008", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 448, "pratica": "AUT/3-008", "ente": "Comune di Corsico"}, {"t": "T-009", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "PROTOCOLLATO", "m": 441, "pratica": "", "ente": "Comune di Corsico"}, {"t": "T-010", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 1067, "pratica": "AUT/3-010", "ente": "Comune di Cesano Boscone"}, {"t": "T-011", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 529, "pratica": "AUT/3-011", "ente": "Comune di Corsico"}, {"t": "T-012", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "IN FIRMA RDS", "m": 791, "pratica": "", "ente": "Comune di Buccinasco"}, {"t": "T-013", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 1548, "pratica": "AUT/3-013", "ente": "Comune di Buccinasco"}, {"t": "T-014", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 3, "pratica": "AUT/3-014", "ente": "Comune di Rozzano"}, {"t": "T-015", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "INVIATO", "m": 1426, "pratica": "", "ente": "Comune di Buccinasco"}, {"t": "T-016", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "IN FIRMA RDS", "m": 408, "pratica": "", "ente": "Comune di Buccinasco"}, {"t": "T-017", "comune": "Cusago", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 939, "pratica": "AUT/3-017", "ente": "Comune di Gaggiano"}, {"t": "T-018", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "COORDINAMENTO", "m": 4, "pratica": "", "ente": "Comune di Zibido San Giacomo"}, {"t": "T-019", "comune": "San Donato Milanese", "lotto": "3", "lottoCode": "2A", "stato": "IN REDAZIONE", "m": 593, "pratica": "", "ente": "Comune di Opera"}, {"t": "T-020", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 3, "pratica": "AUT/3-020", "ente": "Comune di Buccinasco"}, {"t": "T-021", "comune": "Cusago", "lotto": "3", "lottoCode": "2A", "stato": "IN REDAZIONE", "m": 28, "pratica": "", "ente": "Comune di Gaggiano"}, {"t": "T-022", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "INVIATO", "m": 509, "pratica": "", "ente": "Comune di Gaggiano"}, {"t": "T-023", "comune": "Cusago", "lotto": "3", "lottoCode": "2A", "stato": "PROTOCOLLATO", "m": 184, "pratica": "", "ente": "Comune di Gaggiano"}, {"t": "T-024", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 2186, "pratica": "AUT/3-024", "ente": "Comune di Gaggiano"}, {"t": "T-025", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "PROTOCOLLATO INTEGRAZIONE", "m": 498, "pratica": "", "ente": "Comune di Buccinasco"}, {"t": "T-026", "comune": "San Donato Milanese", "lotto": "2", "lottoCode": "1B", "stato": "PROTOCOLLATO", "m": 12, "pratica": "", "ente": "Comune di Locate di Triulzi"}, {"t": "T-027", "comune": "Cusago", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 113, "pratica": "AUT/3-027", "ente": "Comune di Gaggiano"}, {"t": "T-028", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "OTTENUTO", "m": 547, "pratica": "AUT/3-028", "ente": "Comune di Zibido San Giacomo"}, {"t": "T-029", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "IN ATTESA", "m": 2217, "pratica": "", "ente": "Comune di Zibido San Giacomo"}, {"t": "T-030", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "COORDINAMENTO", "m": 406, "pratica": "", "ente": "Comune di Zibido San Giacomo"}, {"t": "T-031", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "IN REDAZIONE", "m": 568, "pratica": "", "ente": "Comune di Buccinasco"}, {"t": "T-032", "comune": "Cusago", "lotto": "3", "lottoCode": "2A", "stato": "INVIATO", "m": 1302, "pratica": "", "ente": "Comune di Gaggiano"}, {"t": "T-033", "comune": "Cusago", "lotto": "3", "lottoCode": "2A", "stato": "IN FIRMA RDS", "m": 857, "pratica": "", "ente": "Comune di Gaggiano"}, {"t": "T-034", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "PROTOCOLLATO INTEGRAZIONE", "m": 1171, "pratica": "", "ente": "Comune di Gaggiano"}, {"t": "T-035", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "PROTOCOLLATO", "m": 2, "pratica": "", "ente": "Comune di Zibido San Giacomo"}, {"t": "T-036", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "COORDINAMENTO", "m": 1381, "pratica": "", "ente": "Comune di Gaggiano"}, {"t": "T-037", "comune": "San Donato Milanese", "lotto": "3", "lottoCode": "2A", "stato": "IN ATTESA", "m": 7, "pratica": "", "ente": "Comune di Opera"}, {"t": "T-038", "comune": "San Donato Milanese", "lotto": "3", "lottoCode": "2A", "stato": "COORDINAMENTO", "m": 1342, "pratica": "", "ente": "Comune di Locate di Triulzi"}, {"t": "T-039", "comune": "Gaggiano", "lotto": "3", "lottoCode": "2A", "stato": "IN ATTESA", "m": 2, "pratica": "", "ente": "Comune di Gaggiano"}, {"t": "T-040", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "COORDINAMENTO", "m": 951, "pratica": "", "ente": "Comune di Buccinasco"}, {"t": "T-041", "comune": "Lodi", "lotto": "2", "lottoCode": "1B", "stato": "INVIATO", "m": 447, "pratica": "", "ente": "Comune di Cerro al Lambro"}, {"t": "T-042", "comune": "Lodi", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 4307, "pratica": "AUT/2-042", "ente": "Comune di Merlino"}, {"t": "T-043", "comune": "Lodi", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 543, "pratica": "AUT/2-043", "ente": "Comune di Cerro al Lambro"}, {"t": "T-044", "comune": "Locate di Triulzi", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 4575, "pratica": "AUT/2-044", "ente": "Comune di Locate di Triulzi"}, {"t": "T-045", "comune": "Lodi", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 1328, "pratica": "AUT/2-045", "ente": "Comune di Cerro al Lambro"}, {"t": "T-046", "comune": "Melegnano", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 3939, "pratica": "AUT/2-046", "ente": "Comune di Melegnano"}, {"t": "T-047", "comune": "San Giuliano Milanese", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 2685, "pratica": "AUT/2-047", "ente": "Comune di Opera"}, {"t": "T-048", "comune": "San Giuliano Milanese", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 5799, "pratica": "AUT/2-048", "ente": "Comune di Dresano"}, {"t": "T-049", "comune": "Lodi", "lotto": "2", "lottoCode": "1B", "stato": "INVIATO", "m": 32, "pratica": "", "ente": "Comune di Cerro al Lambro"}, {"t": "T-050", "comune": "Lodi", "lotto": "2", "lottoCode": "1B", "stato": "PROTOCOLLATO", "m": 2002, "pratica": "", "ente": "Comune di Dresano"}, {"t": "T-051", "comune": "Casalpusterlengo", "lotto": "2", "lottoCode": "1B", "stato": "PROTOCOLLATO", "m": 1630, "pratica": "", "ente": "Comune di Casalpusterlengo"}, {"t": "T-052", "comune": "Lodi", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 1708, "pratica": "AUT/2-052", "ente": "Comune di Cerro al Lambro"}, {"t": "T-053", "comune": "Melegnano", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 1374, "pratica": "AUT/2-053", "ente": "Comune di Melegnano"}, {"t": "T-054", "comune": "San Donato Milanese", "lotto": "2", "lottoCode": "1B", "stato": "NECESSARIA INTEGRAZIONE", "m": 1823, "pratica": "", "ente": "Comune di Locate di Triulzi"}, {"t": "T-055", "comune": "Mairago", "lotto": "2", "lottoCode": "1B", "stato": "INVIATO", "m": 3006, "pratica": "", "ente": "Comune di Casalpusterlengo"}, {"t": "T-056", "comune": "San Donato Milanese", "lotto": "2", "lottoCode": "1B", "stato": "COORDINAMENTO", "m": 305, "pratica": "", "ente": "Comune di Locate di Triulzi"}, {"t": "T-057", "comune": "San Donato Milanese", "lotto": "2", "lottoCode": "1B", "stato": "OTTENUTO", "m": 706, "pratica": "AUT/2-057", "ente": "Comune di Locate di Triulzi"}, {"t": "T-058", "comune": "Milano", "lotto": "3", "lottoCode": "2A", "stato": "INVIATO", "m": 61, "pratica": "", "ente": "Comune di Cesano Boscone"}, {"t": "T-059", "comune": "Turano Lodigiano", "lotto": "1", "lottoCode": "1A", "stato": "OTTENUTO", "m": 1771, "pratica": "AUT/1-059", "ente": "Comune di Turano Lodigiano"}, {"t": "T-060", "comune": "Turano Lodigiano", "lotto": "1", "lottoCode": "1A", "stato": "PROTOCOLLATO", "m": 1042, "pratica": "", "ente": "Comune di Casalpusterlengo"}, {"t": "T-061", "comune": "Turano Lodigiano", "lotto": "1", "lottoCode": "1A", "stato": "PROTOCOLLATO INTEGRAZIONE", "m": 392, "pratica": "", "ente": "Comune di Casalpusterlengo"}, {"t": "T-062", "comune": "Turano Lodigiano", "lotto": "1", "lottoCode": "1A", "stato": "INVIATO", "m": 186, "pratica": "", "ente": "Comune di Casalpusterlengo"}, {"t": "T-063", "comune": "Turano Lodigiano", "lotto": "2", "lottoCode": "1B", "stato": "COORDINAMENTO", "m": 164, "pratica": "", "ente": "Comune di Turano Lodigiano"}, {"t": "T-064", "comune": "Turano Lodigiano", "lotto": "1", "lottoCode": "1A", "stato": "INVIATO", "m": 120, "pratica": "", "ente": "Comune di Turano Lodigiano"}, {"t": "T-065", "comune": "Turano Lodigiano", "lotto": "1", "lottoCode": "1A", "stato": "IN ATTESA", "m": 498, "pratica": "", "ente": "Comune di Turano Lodigiano"}, {"t": "T-066", "comune": "Turano Lodigiano", "lotto": "1", "lottoCode": "1A", "stato": "IN REDAZIONE", "m": 17, "pratica": "", "ente": "Comune di Turano Lodigiano"}, {"t": "T-067", "comune": "Turano Lodigiano", "lotto": "1", "lottoCode": "1A", "stato": "OTTENUTO", "m": 612, "pratica": "AUT/1-067", "ente": "Comune di Casalpusterlengo"}];
+
+let activeLotto = 'all';
+let tableSearch = '';
+let tableStato = 'all';
+
 function fmtKm(metri){ return (metri/1000).toFixed(1).replace('.', ','); }
 
-/* ── KPI ── */
-function renderKPIs(){
-  const counts = { 'non-avviato':0, 'allestimento':0, 'in-corso':0, 'completato':0, 'sospeso':0 };
-  SCAVI_DATA.forEach(r => counts[r.cantiere]++);
-  document.getElementById('kpiNonavv').textContent     = counts['non-avviato'];
-  document.getElementById('kpiAllest').textContent     = counts['allestimento'];
-  document.getElementById('kpiIncorso').textContent    = counts['in-corso'];
-  document.getElementById('kpiCompletato').textContent = counts['completato'];
-  document.getElementById('kpiSospeso').textContent    = counts['sospeso'];
+function filtered(){
+  return activeLotto === 'all' ? SAMPLE_DATA : SAMPLE_DATA.filter(d => d.lotto === activeLotto);
 }
 
-/* ── BARRE PER LOTTO ── */
-function renderLottoBars(){
-  const container = document.getElementById('lottoBarsContainer');
-  container.innerHTML = '';
-  const totGenerale = SCAVI_DATA.reduce((s,r)=>s+r.m,0);
-  document.getElementById('lottiStatus').textContent = fmtM(totGenerale) + ' m totali';
+function applyTableFilters(rows){
+  let r = rows;
+  if(tableStato !== 'all') r = r.filter(x => x.stato === tableStato);
+  if(tableSearch){
+    const q = tableSearch.toLowerCase();
+    r = r.filter(x =>
+      x.t.toLowerCase().includes(q) ||
+      x.comune.toLowerCase().includes(q) ||
+      x.ente.toLowerCase().includes(q) ||
+      (x.pratica||'').toLowerCase().includes(q)
+    );
+  }
+  return r;
+}
 
-  ['1','2','3'].forEach(lotto => {
-    const rows = SCAVI_DATA.filter(r => r.lotto === lotto);
-    const tot = rows.reduce((s,r)=>s+r.m,0);
-    const byStato = {};
-    rows.forEach(r => byStato[r.cantiere] = (byStato[r.cantiere]||0) + r.m);
-    const scavatiM = rows.reduce((s,r)=> s + r.m * r.pct / 100, 0);
-    const avanzPct = tot ? scavatiM / tot * 100 : 0;
-
-    const row = document.createElement('div');
-    row.className = 'bar-row';
-    row.title = 'Clicca per il dettaglio';
-    row.addEventListener('click', () => openLottoModal(lotto));
-
-    const lbl = document.createElement('div');
-    lbl.className = 'bar-lotto-wrap';
-    lbl.innerHTML = `<span class="bar-lotto-num">Lotto ${lotto}</span><span class="bar-lotto-sub">${IMPRESE[lotto]}</span>`;
-
-    const track = document.createElement('div');
-    track.className = 'bar-track';
-    CANTIERE_ORDER.forEach(stato => {
-      const m = byStato[stato] || 0;
-      if (!m) return;
-      const pct = m / tot * 100;
-      const seg = document.createElement('div');
-      seg.className = 'bar-seg';
-      seg.style.width = pct + '%';
-      seg.style.background = CANTIERE_COLOR[stato];
-      seg.style.opacity = stato === 'non-avviato' ? '.5' : '.9';
-      if (pct >= 10) seg.innerHTML = `<span>${pct.toFixed(0)}%</span>`;
-      track.appendChild(seg);
-    });
-
-    const pctEl = document.createElement('span');
-    pctEl.className = 'bar-pct';
-    pctEl.style.color = 'var(--c-incorso)';
-    pctEl.textContent = avanzPct.toFixed(0) + '%';
-
-    const mEl = document.createElement('span');
-    mEl.className = 'bar-meters';
-    mEl.textContent = fmtM(tot) + ' m';
-
-    row.appendChild(lbl);
-    row.appendChild(track);
-    row.appendChild(pctEl);
-    row.appendChild(mEl);
-    container.appendChild(row);
+function renderKPIs(rows){
+  const totKm = rows.reduce((s,r)=>s+r.m,0);
+  Object.entries(KPI_BUCKETS).forEach(([key, stati]) => {
+    const bucketRows = rows.filter(r => stati.includes(r.stato));
+    const km = bucketRows.reduce((s,r)=>s+r.m,0);
+    const pct = totKm > 0 ? km/totKm*100 : 0;
+    document.getElementById('kpi-'+key).textContent = pct.toFixed(1)+'%';
+    document.getElementById('kpisub-'+key).textContent = fmtKm(km) + ' km';
   });
 }
 
-/* ── TABELLA REGISTRO ── */
-function renderRegistro(){
-  const body = document.getElementById('registroBody');
-  body.innerHTML = SCAVI_DATA.map(r => `
-    <tr data-t="${r.t}">
+const STATO_ORDER = ['IN ATTESA','IN REDAZIONE','COORDINAMENTO','IN FIRMA RDS','INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'];
+
+function renderDonut(rows){
+  const counts = {};
+  rows.forEach(r => counts[r.stato] = (counts[r.stato]||0) + 1);
+  const ordered = Object.keys(counts).sort((a,b)=>STATO_ORDER.indexOf(a)-STATO_ORDER.indexOf(b));
+  const total = rows.length || 1;
+  let acc = 0;
+  const stops = [];
+  ordered.forEach(stato => {
+    const pct = counts[stato] / total * 100;
+    stops.push(`${STATO_HEX[stato]} ${acc}% ${acc+pct}%`);
+    acc += pct;
+  });
+  document.getElementById('donut').style.background = rows.length
+    ? `conic-gradient(${stops.join(', ')})`
+    : 'var(--surface2)';
+  document.getElementById('donutTotal').textContent = rows.length;
+
+  const legend = document.getElementById('donutLegend');
+  legend.innerHTML = '';
+  ordered.forEach(stato => {
+    const pct = counts[stato] / total * 100;
+    const div = document.createElement('div');
+    div.className = 'legend-item';
+    div.innerHTML = `
+      <div class="legend-top">
+        <span class="legend-dot" style="background:${STATO_HEX[stato]}"></span>${stato}
+        <span class="legend-pct">${pct.toFixed(0)}%</span>
+        <b>${counts[stato]}</b>
+      </div>
+      <div class="legend-bar-track"><div class="legend-bar-fill" style="width:${pct}%; background:${STATO_HEX[stato]}"></div></div>`;
+    legend.appendChild(div);
+  });
+}
+
+function renderLottoBars(){
+  const wrap = document.getElementById('lottoBars');
+  wrap.innerHTML = '';
+  ['1','2','3'].forEach(lotto => {
+    const rows = SAMPLE_DATA.filter(d=>d.lotto===lotto);
+    const ottenute = rows.filter(r=>r.stato==='OTTENUTO').length;
+    const pct = rows.length ? Math.round(ottenute/rows.length*100) : 0;
+    const row = document.createElement('div');
+    row.className = 'lotto-bar-row';
+    row.innerHTML = `
+      <div class="lotto-bar-top">
+        <span class="name">Lotto ${lotto} · ${IMPRESE[lotto]}</span>
+        <span class="pct">${ottenute}/${rows.length} · ${pct}%</span>
+      </div>
+      <div class="lotto-bar-track">
+        <div class="lotto-bar-fill" style="width:${pct}%; background:${LOTTO_COLORS[lotto]}"></div>
+      </div>`;
+    wrap.appendChild(row);
+  });
+}
+
+function renderTable(rows){
+  const body = document.getElementById('tblBody');
+  body.innerHTML = '';
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
       <td>${r.t}</td>
       <td>${r.comune}</td>
       <td><span class="chip-lotto" style="background:${LOTTO_COLORS[r.lotto]}">Lotto ${r.lotto}</span></td>
       <td>${IMPRESE[r.lotto]}</td>
-      <td><span class="chip ${r.cantiere}">${CANTIERE_LABEL[r.cantiere]}</span></td>
-      <td>
-        <div class="prog-wrap">
-          <div class="prog-track"><div class="prog-fill" style="width:${r.pct}%; background:${CANTIERE_COLOR[r.cantiere]}"></div></div>
-          <div class="prog-val">${r.pct}%</div>
-        </div>
-      </td>
-      <td style="text-align:right; font-family:'Bricolage Grotesque',sans-serif; font-weight:700;">${fmtM(r.m)} m</td>
-    </tr>`).join('');
-  body.querySelectorAll('tr').forEach(tr => {
-    tr.addEventListener('click', () => openRowModal(SCAVI_DATA.find(d => d.t === tr.dataset.t)));
+      <td><span class="badge-stato" style="background:${STATO_HEX[r.stato]}1A; color:${STATO_HEX[r.stato]}"><span class="dot" style="background:${STATO_HEX[r.stato]}"></span>${r.stato}</span></td>
+      <td>${r.m} m</td>
+      <td>${r.pratica || "—"}</td>
+      <td>${r.ente}</td>`;
+    tr.addEventListener('click', () => openRowModal(r));
+    body.appendChild(tr);
   });
 }
 
-/* ── SIDEBAR ── */
-function renderSidebar(){
-  document.getElementById('registroMeta').textContent = SCAVI_DATA.length + ' tratte';
-  const totM = SCAVI_DATA.reduce((s,r)=>s+r.m,0);
-  const scavatiM = SCAVI_DATA.reduce((s,r)=> s + r.m * r.pct / 100, 0);
-  document.getElementById('statTotale').textContent = fmtKm(totM) + ' km';
-  document.getElementById('statScavati').textContent = fmtKm(scavatiM) + ' km';
-  document.getElementById('statAvanzamento').textContent = (totM ? (scavatiM/totM*100) : 0).toFixed(1) + '%';
-  document.getElementById('statAttive').textContent = SCAVI_DATA.filter(r=>r.cantiere==='in-corso').length;
-  document.getElementById('statComuni').textContent = new Set(SCAVI_DATA.map(r=>r.comune)).size;
+function renderTableCount(lottoRows, tableRows){
+  document.getElementById('tableCount').textContent = tableRows.length + ' / ' + lottoRows.length;
 }
 
-/* ── DONUT DISTRIBUZIONE STATI ── */
-const CANTIERE_HEX = { 'non-avviato':'#8A91B4', 'allestimento':'#C08A14', 'in-corso':'#0B3182', 'sospeso':'#C23B22', 'completato':'#1F7A4E' };
-function renderDonut(){
-  const counts = {};
-  SCAVI_DATA.forEach(r => counts[r.cantiere] = (counts[r.cantiere]||0) + 1);
-  const total = SCAVI_DATA.length || 1;
-  let acc = 0;
-  const stops = [];
-  CANTIERE_ORDER.forEach(stato => {
-    const c = counts[stato] || 0;
-    if (!c) return;
-    const pct = c / total * 100;
-    stops.push(`${CANTIERE_HEX[stato]} ${acc}% ${acc+pct}%`);
-    acc += pct;
+function refreshTable(){
+  const lottoRows = filtered();
+  const tableRows = applyTableFilters(lottoRows);
+  renderTable(tableRows);
+  renderTableCount(lottoRows, tableRows);
+}
+
+function populateStatoFilter(){
+  const sel = document.getElementById('tableStatoFilter');
+  STATO_ORDER.filter(s => SAMPLE_DATA.some(d => d.stato === s)).forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s;
+    sel.appendChild(opt);
   });
-  document.getElementById('donut').style.background = `conic-gradient(${stops.join(', ')})`;
-  document.getElementById('donutTotal').textContent = total;
-
-  const legend = document.getElementById('donutLegend');
-  legend.innerHTML = CANTIERE_ORDER.filter(s => counts[s]).map(stato => {
-    const pct = counts[stato] / total * 100;
-    return `<div class="mini-legend-item"><span class="mini-legend-dot" style="background:${CANTIERE_HEX[stato]}"></span>${CANTIERE_LABEL[stato]} <span style="color:var(--muted2); font-size:9.5px; margin-left:4px;">${pct.toFixed(0)}%</span><b>${counts[stato]}</b></div>`;
-  }).join('');
 }
 
-/* ── POPUP elenco (per KPI o per lotto) ── */
-function openCantiereModal(stato){
-  let lottoFilter = 'all';
-  function draw(){
-    const allRows = SCAVI_DATA.filter(r => r.cantiere === stato);
-    const rows = lottoFilter === 'all' ? allRows : allRows.filter(r => r.lotto === lottoFilter);
-    document.getElementById('listModalStats').innerHTML = `
-      <div><div class="stat-lbl">Tratte</div><div class="stat-val">${rows.length}</div></div>
-      <div><div class="stat-lbl">Lunghezza</div><div class="stat-val">${fmtKm(rows.reduce((s,r)=>s+r.m,0))} km</div></div>`;
-    const lottiPresenti = [...new Set(allRows.map(r=>r.lotto))].sort();
-    document.getElementById('listModalPills').innerHTML =
-      `<button class="pill ${lottoFilter==='all'?'active':''}" data-l="all">Tutti</button>` +
-      lottiPresenti.map(l => `<button class="pill ${lottoFilter===l?'active':''}" data-l="${l}">Lotto ${l}</button>`).join('');
-    renderListBody(rows, true);
+document.getElementById('tableSearch').addEventListener('input', e => {
+  tableSearch = e.target.value;
+  refreshTable();
+});
+document.getElementById('tableStatoFilter').addEventListener('change', e => {
+  tableStato = e.target.value;
+  refreshTable();
+});
+
+function renderAll(){
+  const rows = filtered();
+  renderKPIs(rows);
+  renderDonut(rows);
+  refreshTable();
+}
+
+/* ── POPUP dettaglio tratta ── */
+const ITER_STEPS = ['In Redazione','Coordinamento','Verifica/Firma','Invio/Protocollo','Necessaria Integr.','Redazione Integr.','Protocollo Integr.','Rilascio'];
+const BLOCK_NOTES = {
+  'IN REDAZIONE INTEGRAZIONE':'In redazione: l\'ente ha segnalato la necessità di integrare la documentazione prima dell\'invio.',
+  'NECESSARIA INTEGRAZIONE':'L\'ente ha richiesto un\'integrazione documentale per poter procedere.',
+  'PROTOCOLLATO INTEGRAZIONE':'Protocollata, ma in attesa dell\'integrazione richiesta dall\'ente.'
+};
+function stepInfoFor(stato){
+  switch(stato){
+    case 'IN ATTESA':
+    case 'IN REDAZIONE':              return { idx:0, blocked:false };
+    case 'COORDINAMENTO':             return { idx:1, blocked:false };
+    case 'IN FIRMA RDS':              return { idx:2, blocked:false };
+    case 'INVIATO':                   return { idx:3, blocked:false };
+    case 'PROTOCOLLATO':              return { idx:3, blocked:false };
+    case 'NECESSARIA INTEGRAZIONE':   return { idx:4, blocked:true  };
+    case 'IN REDAZIONE INTEGRAZIONE': return { idx:5, blocked:true  };
+    case 'PROTOCOLLATO INTEGRAZIONE': return { idx:6, blocked:true  };
+    case 'OTTENUTO':                  return { idx:7, blocked:false };
+    default:                          return { idx:0, blocked:false };
   }
-  document.getElementById('listModalTitle').textContent = CANTIERE_LABEL[stato];
-  document.getElementById('listModalPills').onclick = e => {
-    const btn = e.target.closest('.pill');
-    if(!btn) return;
-    lottoFilter = btn.dataset.l;
-    draw();
-  };
-  draw();
-  document.getElementById('listModalOverlay').classList.add('open');
+}
+function openRowModal(r){
+  const { idx, blocked } = stepInfoFor(r.stato);
+  const isOttenuto = r.stato === 'OTTENUTO';
+  document.getElementById('rowModalTitle').textContent = r.t + ' · ' + r.comune;
+  document.getElementById('rowModalSub').innerHTML =
+    `<span class="badge-stato" style="background:${STATO_HEX[r.stato]}1A; color:${STATO_HEX[r.stato]}"><span class="dot" style="background:${STATO_HEX[r.stato]}"></span>${r.stato}</span>`;
+  document.getElementById('rowInfoGrid').innerHTML = `
+    <div class="info-item"><div class="lbl">Lotto</div><div class="val">Lotto ${r.lotto} · ${IMPRESE[r.lotto]}</div></div>
+    <div class="info-item"><div class="lbl">Lunghezza</div><div class="val">${r.m} m</div></div>
+    <div class="info-item"><div class="lbl">Pratica</div><div class="val">${r.pratica || "—"}</div></div>
+    <div class="info-item"><div class="lbl">Ente</div><div class="val">${r.ente}</div></div>`;
+  document.getElementById('rowStepper').innerHTML = ITER_STEPS.map((label,i)=>{
+    let cls;
+    if(isOttenuto) cls = 'done';
+    else if(i < idx) cls = 'done';
+    else if(i === idx) cls = blocked ? 'blocked' : 'active';
+    else cls = '';
+    return `<div class="step ${cls}"><div class="step-dot"></div><div class="step-label">${label}</div></div>`;
+  }).join('');
+  const noteEl = document.getElementById('rowNote');
+  if(BLOCK_NOTES[r.stato]){ noteEl.style.display='block'; noteEl.textContent = BLOCK_NOTES[r.stato]; }
+  else { noteEl.style.display='none'; }
+  document.getElementById('rowModalOverlay').classList.add('open');
+}
+function closeRowModal(){ document.getElementById('rowModalOverlay').classList.remove('open'); }
+
+/* ── POPUP dettaglio KPI ── */
+const KPI_LABELS = {
+  attesa:'In Attesa / Redazione', coordinamento:'Coordinamento', firma:'In Verifica / In Firma',
+  inviato:'Inviato / Protocollato', integrazione:'Necessaria Integrazione',
+  protint:'Protocollato Integrazione', ottenuto:'Autorizzati'
+};
+const KPI_OWNER = {
+  attesa:{cls:'impresa', label:'Impresa'}, coordinamento:{cls:'impresa', label:'Impresa/Enti'},
+  firma:{cls:'rds', label:'RDS'}, inviato:{cls:'ente', label:'Ente'},
+  integrazione:{cls:'impresa', label:'Impresa'}, protint:{cls:'ente', label:'Ente'},
+  ottenuto:{cls:'ente', label:'Ente'}
+};
+let kpiModalBucket = null;
+let kpiModalLotto = 'all';
+
+function openKpiModal(bucket){
+  kpiModalBucket = bucket;
+  kpiModalLotto = 'all';
+  document.getElementById('kpiModalTitle').textContent = KPI_LABELS[bucket];
+  const owner = KPI_OWNER[bucket];
+  document.getElementById('kpiModalSub').innerHTML = `<span class="kpi-owner ${owner.cls}">${owner.label}</span>`;
+  renderKpiModalBody();
+  document.getElementById('kpiModalOverlay').classList.add('open');
 }
 
-function openLottoModal(lotto){
-  document.getElementById('listModalTitle').textContent = 'Lotto ' + lotto + ' · ' + IMPRESE[lotto];
-  const rows = SCAVI_DATA.filter(r => r.lotto === lotto);
-  document.getElementById('listModalStats').innerHTML = `
+function renderKpiModalBody(){
+  const stati = KPI_BUCKETS[kpiModalBucket];
+  const allRows = SAMPLE_DATA.filter(r => stati.includes(r.stato));
+  const rows = kpiModalLotto === 'all' ? allRows : allRows.filter(r => r.lotto === kpiModalLotto);
+
+  document.getElementById('kpiModalStats').innerHTML = `
     <div><div class="stat-lbl">Tratte</div><div class="stat-val">${rows.length}</div></div>
     <div><div class="stat-lbl">Lunghezza</div><div class="stat-val">${fmtKm(rows.reduce((s,r)=>s+r.m,0))} km</div></div>`;
-  document.getElementById('listModalPills').innerHTML = '';
-  document.getElementById('listModalPills').onclick = null;
-  renderListBody(rows, false);
-  document.getElementById('listModalOverlay').classList.add('open');
-}
 
-function renderListBody(rows, showCantiereChip){
-  const body = document.getElementById('listModalBody');
+  const lottiPresenti = [...new Set(allRows.map(r => r.lotto))].sort();
+  document.getElementById('kpiModalPills').innerHTML =
+    `<button class="pill ${kpiModalLotto==='all'?'active':''}" data-lotto="all">Tutti</button>` +
+    lottiPresenti.map(l => `<button class="pill ${kpiModalLotto===l?'active':''}" data-lotto="${l}">Lotto ${l}</button>`).join('');
+
+  const body = document.getElementById('kpiModalBody');
   if(rows.length === 0){
-    body.innerHTML = '<div class="modal-empty">Nessuna tratta corrispondente.</div>';
+    body.innerHTML = '<div class="kpi-modal-empty">Nessuna tratta in questo stato.</div>';
     return;
   }
   body.innerHTML = `<table class="tbl"><thead><tr>
-      <th>Tratta</th><th>Comune</th><th>Lotto</th>${showCantiereChip?'':'<th>Stato Cantiere</th>'}<th>Avanzamento</th><th style="text-align:right">Lunghezza</th>
+      <th>Tratta</th><th>Comune</th><th>Lotto</th><th>Stato</th><th>Lunghezza</th><th>Pratica</th><th>Ente</th>
     </tr></thead><tbody>${rows.map(r => `
       <tr data-t="${r.t}">
         <td>${r.t}</td>
         <td>${r.comune}</td>
         <td><span class="chip-lotto" style="background:${LOTTO_COLORS[r.lotto]}">Lotto ${r.lotto}</span></td>
-        ${showCantiereChip ? '' : `<td><span class="chip ${r.cantiere}">${CANTIERE_LABEL[r.cantiere]}</span></td>`}
-        <td>
-          <div class="prog-wrap">
-            <div class="prog-track"><div class="prog-fill" style="width:${r.pct}%; background:${CANTIERE_COLOR[r.cantiere]}"></div></div>
-            <div class="prog-val">${r.pct}%</div>
-          </div>
-        </td>
-        <td style="text-align:right; font-weight:700;">${fmtM(r.m)} m</td>
+        <td><span class="badge-stato" style="background:${STATO_HEX[r.stato]}1A; color:${STATO_HEX[r.stato]}"><span class="dot" style="background:${STATO_HEX[r.stato]}"></span>${r.stato}</span></td>
+        <td>${r.m} m</td>
+        <td>${r.pratica || "—"}</td>
+        <td>${r.ente}</td>
       </tr>`).join('')}</tbody></table>`;
   body.querySelectorAll('tbody tr').forEach(tr => {
     tr.addEventListener('click', () => {
-      closeListModal();
-      openRowModal(SCAVI_DATA.find(d => d.t === tr.dataset.t));
+      const row = SAMPLE_DATA.find(d => d.t === tr.dataset.t);
+      closeKpiModal();
+      openRowModal(row);
     });
   });
 }
-function closeListModal(){ document.getElementById('listModalOverlay').classList.remove('open'); }
 
-/* ── POPUP dettaglio tratta ── */
-function openRowModal(r){
-  document.getElementById('rowModalTitle').textContent = r.t + ' · ' + r.comune;
-  document.getElementById('rowModalSub').innerHTML = `<span class="chip ${r.cantiere}">${CANTIERE_LABEL[r.cantiere]}</span>`;
-  document.getElementById('rowInfoGrid').innerHTML = `
-    <div class="info-item"><div class="lbl">Lotto</div><div class="val">Lotto ${r.lotto} · ${IMPRESE[r.lotto]}</div></div>
-    <div class="info-item"><div class="lbl">Lunghezza</div><div class="val">${r.m} m</div></div>
-    <div class="info-item"><div class="lbl">Stato autorizzativo</div><div class="val">${r.statoPermesso}</div></div>
-    <div class="info-item"><div class="lbl">Metri scavati</div><div class="val">${Math.round(r.m*r.pct/100)} m</div></div>`;
-  document.getElementById('rowProgFill').style.width = r.pct + '%';
-  document.getElementById('rowProgFill').style.background = CANTIERE_COLOR[r.cantiere];
-  document.getElementById('rowProgVal').textContent = r.pct + '%';
-  document.getElementById('rowModalOverlay').classList.add('open');
-}
-function closeRowModal(){ document.getElementById('rowModalOverlay').classList.remove('open'); }
+document.getElementById('kpiModalPills').addEventListener('click', e => {
+  const btn = e.target.closest('.pill');
+  if(!btn) return;
+  kpiModalLotto = btn.dataset.lotto;
+  renderKpiModalBody();
+});
+
+function closeKpiModal(){ document.getElementById('kpiModalOverlay').classList.remove('open'); }
 
 document.querySelectorAll('.kpi').forEach(card => {
-  card.addEventListener('click', () => openCantiereModal(card.dataset.cantiere));
+  card.addEventListener('click', () => openKpiModal(card.dataset.bucket));
 });
 document.querySelectorAll('.modal-overlay').forEach(ov => {
   ov.addEventListener('click', e => { if(e.target === ov) ov.classList.remove('open'); });
@@ -580,11 +740,18 @@ document.addEventListener('keydown', e => {
   if(e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(o => o.classList.remove('open'));
 });
 
-renderKPIs();
+document.getElementById('lottoPills').addEventListener('click', e => {
+  const btn = e.target.closest('.pill');
+  if(!btn) return;
+  document.querySelectorAll('.pill').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active');
+  activeLotto = btn.dataset.lotto;
+  renderAll();
+});
+
+populateStatoFilter();
 renderLottoBars();
-renderRegistro();
-renderSidebar();
-renderDonut();
+renderAll();
 </script>
 </body>
 </html>
