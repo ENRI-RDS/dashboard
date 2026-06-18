@@ -468,17 +468,20 @@ function renderKPIs(rows){
     const km = bucketRows.reduce((s,r)=>s+r.m,0);
     const pct = totKm > 0 ? km/totKm*100 : 0;
     document.getElementById('kpi-'+key).textContent = pct.toFixed(1)+'%';
-    document.getElementById('kpisub-'+key).textContent = bucketRows.length + ' tratte · ' + fmtKm(km) + ' km';
+    document.getElementById('kpisub-'+key).textContent = fmtKm(km) + ' km';
   });
 }
+
+const STATO_ORDER = ['IN ATTESA','IN REDAZIONE','COORDINAMENTO','IN FIRMA RDS','INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'];
 
 function renderDonut(rows){
   const counts = {};
   rows.forEach(r => counts[r.stato] = (counts[r.stato]||0) + 1);
+  const ordered = Object.keys(counts).sort((a,b)=>STATO_ORDER.indexOf(a)-STATO_ORDER.indexOf(b));
   const total = rows.length || 1;
   let acc = 0;
   const stops = [];
-  Object.keys(counts).forEach(stato => {
+  ordered.forEach(stato => {
     const pct = counts[stato] / total * 100;
     stops.push(`${STATO_HEX[stato]} ${acc}% ${acc+pct}%`);
     acc += pct;
@@ -490,7 +493,7 @@ function renderDonut(rows){
 
   const legend = document.getElementById('donutLegend');
   legend.innerHTML = '';
-  Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).forEach(stato => {
+  ordered.forEach(stato => {
     const pct = counts[stato] / total * 100;
     const div = document.createElement('div');
     div.className = 'legend-item';
