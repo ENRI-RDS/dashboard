@@ -414,6 +414,9 @@ async def delete_upload(
         {"_id": oid},
         {"$set": {"deleted_at": _now_iso(), "gridfs_id": None}},
     )
+    # Se è Master.csv, sincronizza GitHub con la versione ora corrente
+    if doc.get("filename") == MASTER_FILENAME:
+        asyncio.create_task(_push_current_master_to_github())
     return {"deleted": str(oid), "filename": doc["filename"]}
 
 
@@ -493,6 +496,9 @@ async def restore_upload(
     if not doc.get("gridfs_id"):
         raise HTTPException(410, "Underlying content was purged; cannot restore")
     await uploads_col.update_one({"_id": oid}, {"$set": {"deleted_at": None}})
+    # Se è Master.csv, sincronizza GitHub con la versione ripristinata
+    if doc.get("filename") == MASTER_FILENAME:
+        asyncio.create_task(_push_current_master_to_github())
     return {"ok": True, "restored": str(oid), "filename": doc["filename"]}
 
 
@@ -559,6 +565,18 @@ async def _read_master_csv() -> "pd.DataFrame":
 GITHUB_REPO   = os.environ.get("GITHUB_REPO", "ENRI-RDS/dashboard")
 GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
 GITHUB_CSV_PATH = os.environ.get("GITHUB_CSV_PATH", "Master.csv")
+
+async def _push_current_master_to_github() -> None:
+    """Legge la versione corrente di Master.csv da MongoDB e la pusha su GitHub."""
+    try:
+        df = await _read_master_csv()
+        github_buf = io.StringIO()
+        df.to_csv(github_buf, index=False, sep="\t")
+        github_data = github_buf.getvalue().encode("utf-8")
+        await _push_to_github(github_data)
+    except Exception as e:
+        print(f"[GitHub] _push_current_master: {e}")
+
 
 async def _push_to_github(csv_bytes: bytes) -> None:
     """Aggiorna Master.csv su GitHub via API dopo ogni approvazione."""
