@@ -603,6 +603,10 @@ async def _write_master_csv(df: "pd.DataFrame", note: str) -> str:
     buf = io.StringIO()
     df.to_csv(buf, index=False, sep=_detected_sep)
     data = buf.getvalue().encode("utf-8")
+    # Per GitHub usiamo sempre tab (formato originale del file nel repo)
+    github_buf = io.StringIO()
+    df.to_csv(github_buf, index=False, sep="\t")
+    github_data = github_buf.getvalue().encode("utf-8")
     gid = await gridfs.upload_from_stream(
         MASTER_FILENAME,
         io.BytesIO(data),
@@ -623,7 +627,7 @@ async def _write_master_csv(df: "pd.DataFrame", note: str) -> str:
     }
     res = await uploads_col.insert_one(record)
     # Aggiorna Master.csv anche su GitHub (fire-and-forget, non blocca la risposta)
-    asyncio.create_task(_push_to_github(data))
+    asyncio.create_task(_push_to_github(github_data))
     return str(res.inserted_id)
 
 
@@ -788,20 +792,39 @@ def _apply_changes_to_df(df, submission: dict) -> tuple:
                 mask = mask & (df["ENTE"].astype(str).str.strip() == ente)
             if tipo:
                 mask = mask & (df["TIPO_PERMESSO"].astype(str).str.strip() == tipo)
-            idx = df.index[mask].tolist()
+            # Se la submission include anche PRATICA, usa come discriminante
+            # per distinguere pratiche diverse sulla stessa tratta+ente+tipo
+            pratica_key = str(fields.get("PRATICA") or ch.get("pratica") or "").strip()
+            if not pratica_key and "PRATICA" in df.columns:
+                # Prova a ricavarlo dalla submission (campo originale della riga)
+                pratica_key = str(ch.get("original_pratica") or "").strip()
+            if pratica_key and "PRATICA" in df.columns:
+                mask_p = mask & (df["PRATICA"].astype(str).str.strip() == pratica_key)
+                idx_p  = df.index[mask_p].tolist()
+                if idx_p:   # usa il filtro per pratica solo se trova qualcosa
+                    idx = idx_p
+                else:
+                    idx = df.index[mask].tolist()
+            else:
+                idx = df.index[mask].tolist()
             if not idx:
                 summary["not_found"] += 1
                 continue
             # Auto-set DATA_ULTIMA_MODIFICA se non fornita
             if "DATA_ULTIMA_MODIFICA" not in fields and "STATO_PERMESSO" in fields:
                 fields["DATA_ULTIMA_MODIFICA"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
-            # Copia l'ultima riga esistente (più recente) e aggiungi una NUOVA riga
-            # con i campi aggiornati — le righe storiche vengono preservate
-            last_row = df.loc[idx[-1]].copy()
+            # Copia l'ultima riga esistente e inserisce la nuova SUBITO DOPO
+            # in modo da mantenere le righe dello stesso iter vicine
+            last_idx = idx[-1]
+            last_row = df.loc[last_idx].copy()
             for col, val in fields.items():
                 if col in df.columns:
                     last_row[col] = str(val)
-            df = pd.concat([df, pd.DataFrame([last_row])], ignore_index=True)
+            new_row_df = pd.DataFrame([last_row])
+            # Dividi il DataFrame prima e dopo il punto di inserimento
+            top    = df.iloc[:last_idx + 1]
+            bottom = df.iloc[last_idx + 1:]
+            df = pd.concat([top, new_row_df, bottom], ignore_index=True)
             summary["updated"] += 1
     elif typ == "new":
         for row in changes:
