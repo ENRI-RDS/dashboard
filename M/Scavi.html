@@ -80,14 +80,13 @@
   .kpi.k-sospeso::before    { background:var(--c-sospeso); }
   .kpi-label { font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin-bottom:9px; font-weight:600; }
   .kpi-value { font-size:27px; font-weight:700; font-family:'Bricolage Grotesque', sans-serif; line-height:1; letter-spacing:-.02em; color:var(--text); }
-  .kpi-footer { display:flex; align-items:center; justify-content:space-between; margin-top:10px; gap:6px; }
-  .kpi-sub { font-size:10.5px; color:var(--text2); font-weight:500; }
-  .kpi-km {
-    font-size:10px; font-weight:700; font-family:'Fira Code', monospace;
-    padding:2px 8px; border-radius:20px;
-    background:rgba(0,0,0,.06); color:var(--muted);
-    white-space:nowrap; letter-spacing:.02em;
-  }
+  .kpi-sub { font-size:10.5px; color:var(--text2); font-weight:500; margin-top:6px; }
+  .kpi-meter { margin-top:11px; }
+  .kpi-meter-track { height:4px; border-radius:3px; background:var(--surface2); overflow:hidden; }
+  .kpi-meter-fill { height:100%; border-radius:3px; transition:width .3s; }
+  .kpi-meter-row { display:flex; align-items:baseline; justify-content:space-between; margin-top:6px; }
+  .kpi-meter-km { font-size:11px; font-weight:700; font-family:'Fira Code', monospace; color:var(--text2); }
+  .kpi-meter-pct { font-size:10px; font-weight:600; color:var(--muted2); }
   .kpi.k-nonavv .kpi-value     { color:var(--c-nonavv); }
   .kpi.k-allest .kpi-value     { color:var(--c-allest); }
   .kpi.k-incorso .kpi-value    { color:var(--c-incorso); }
@@ -157,6 +156,7 @@
 
   /* ── SIDEBAR ── */
   .stat-row { display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border); }
+  .stat-note { font-size:10px; color:var(--muted2); line-height:1.45; padding-bottom:10px; border-bottom:1px solid var(--border); }
   .stat-row:last-child { border-bottom:none; }
   .stat-label { font-size:11px; color:var(--muted); }
   .stat-val { font-size:14px; font-weight:700; font-family:'Bricolage Grotesque', sans-serif; color:var(--text); letter-spacing:-.01em; }
@@ -242,27 +242,47 @@
     <div class="kpi k-nonavv" data-cantiere="non-avviato">
       <div class="kpi-label">Non Avviati</div>
       <div class="kpi-value" id="kpiNonavv">—</div>
-      <div class="kpi-footer"><span class="kpi-sub">in attesa di autorizzazioni</span><span class="kpi-km" id="kpiNonavvKm"></span></div>
+      <div class="kpi-sub">in attesa di autorizzazioni</div>
+      <div class="kpi-meter">
+        <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpiNonavvBar" style="background:var(--c-nonavv)"></div></div>
+        <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpiNonavvKm"></span><span class="kpi-meter-pct" id="kpiNonavvPct"></span></div>
+      </div>
     </div>
     <div class="kpi k-allest" data-cantiere="allestimento">
       <div class="kpi-label">In Allestimento</div>
       <div class="kpi-value" id="kpiAllest">—</div>
-      <div class="kpi-footer"><span class="kpi-sub">cantieri in preparazione</span><span class="kpi-km" id="kpiAllestKm"></span></div>
+      <div class="kpi-sub">cantieri in preparazione</div>
+      <div class="kpi-meter">
+        <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpiAllestBar" style="background:var(--c-allest)"></div></div>
+        <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpiAllestKm"></span><span class="kpi-meter-pct" id="kpiAllestPct"></span></div>
+      </div>
     </div>
     <div class="kpi k-incorso" data-cantiere="in-corso">
       <div class="kpi-label">In Corso</div>
       <div class="kpi-value" id="kpiIncorso">—</div>
-      <div class="kpi-footer"><span class="kpi-sub">tratte con scavo attivo</span><span class="kpi-km" id="kpiIncorsoKm"></span></div>
+      <div class="kpi-sub">tratte con scavo attivo</div>
+      <div class="kpi-meter">
+        <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpiIncorsoBar" style="background:var(--c-incorso)"></div></div>
+        <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpiIncorsoKm"></span><span class="kpi-meter-pct" id="kpiIncorsoPct"></span></div>
+      </div>
     </div>
     <div class="kpi k-completato" data-cantiere="completato">
       <div class="kpi-label">Completate</div>
       <div class="kpi-value" id="kpiCompletato">—</div>
-      <div class="kpi-footer"><span class="kpi-sub">tratte ultimate</span><span class="kpi-km" id="kpiCompletatoKm"></span></div>
+      <div class="kpi-sub">quota di rete conclusa</div>
+      <div class="kpi-meter">
+        <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpiCompletatoBar" style="background:var(--c-completato)"></div></div>
+        <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpiCompletatoKm"></span><span class="kpi-meter-pct" id="kpiCompletatoPct"></span></div>
+      </div>
     </div>
     <div class="kpi k-sospeso" data-cantiere="sospeso">
       <div class="kpi-label">In Sospeso</div>
       <div class="kpi-value" id="kpiSospeso">—</div>
-      <div class="kpi-footer"><span class="kpi-sub">cantieri temporaneamente bloccati</span><span class="kpi-km" id="kpiSospesoKm"></span></div>
+      <div class="kpi-sub">cantieri temporaneamente bloccati</div>
+      <div class="kpi-meter">
+        <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpiSospesoBar" style="background:var(--c-sospeso)"></div></div>
+        <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpiSospesoKm"></span><span class="kpi-meter-pct" id="kpiSospesoPct"></span></div>
+      </div>
     </div>
   </div>
 
@@ -312,7 +332,8 @@
         <div class="card-body">
           <div class="stat-row"><span class="stat-label">Tracciato totale</span><span class="stat-val" id="statTotale">—</span></div>
           <div class="stat-row"><span class="stat-label">Metri scavati</span><span class="stat-val" style="color:var(--c-incorso)" id="statScavati">—</span></div>
-          <div class="stat-row"><span class="stat-label">Avanzamento globale</span><span class="stat-val" style="color:var(--c-incorso)" id="statAvanzamento">—</span></div>
+          <div class="stat-row" style="border-bottom:none; padding-bottom:2px;"><span class="stat-label">Avanzamento scavo</span><span class="stat-val" style="color:var(--c-incorso)" id="statAvanzamento">—</span></div>
+          <div class="stat-note">Pondera anche lo scavo parziale delle tratte in corso, in allestimento e sospese — non coincide con la quota di tratte completate.</div>
           <div class="stat-row"><span class="stat-label">Tratte con scavo attivo</span><span class="stat-val" id="statAttive">—</span></div>
           <div class="stat-row"><span class="stat-label">Comuni attraversati</span><span class="stat-val" id="statComuni">—</span></div>
           <div class="stat-row"><span class="stat-label">Lotti coinvolti</span><span class="stat-val">3</span></div>
@@ -324,7 +345,7 @@
         <div class="card-body">
           <div class="donut-wrap">
             <div class="donut" id="donut"></div>
-            <div class="donut-hole"><b id="donutTotal">0</b><span>tratte</span></div>
+            <div class="donut-hole"><b id="donutTotal">0</b><span>km totali</span></div>
           </div>
           <div class="mini-legend" id="donutLegend"></div>
         </div>
@@ -385,16 +406,20 @@ function renderKPIs(){
   const counts = { 'non-avviato':0, 'allestimento':0, 'in-corso':0, 'completato':0, 'sospeso':0 };
   const km     = { 'non-avviato':0, 'allestimento':0, 'in-corso':0, 'completato':0, 'sospeso':0 };
   SCAVI_DATA.forEach(r => { counts[r.cantiere]++; km[r.cantiere] += r.m; });
+  const totM = SCAVI_DATA.reduce((s,r)=>s+r.m,0) || 1;
   document.getElementById('kpiNonavv').textContent     = counts['non-avviato'];
   document.getElementById('kpiAllest').textContent     = counts['allestimento'];
   document.getElementById('kpiIncorso').textContent    = counts['in-corso'];
   document.getElementById('kpiCompletato').textContent = counts['completato'];
   document.getElementById('kpiSospeso').textContent    = counts['sospeso'];
-  document.getElementById('kpiNonavvKm').textContent     = fmtKm(km['non-avviato'])     + ' km';
-  document.getElementById('kpiAllestKm').textContent     = fmtKm(km['allestimento'])     + ' km';
-  document.getElementById('kpiIncorsoKm').textContent    = fmtKm(km['in-corso'])         + ' km';
-  document.getElementById('kpiCompletatoKm').textContent = fmtKm(km['completato'])       + ' km';
-  document.getElementById('kpiSospesoKm').textContent    = fmtKm(km['sospeso'])          + ' km';
+
+  const idMap = { 'non-avviato':'Nonavv', 'allestimento':'Allest', 'in-corso':'Incorso', 'completato':'Completato', 'sospeso':'Sospeso' };
+  Object.entries(idMap).forEach(([stato, suffix]) => {
+    const pct = km[stato] / totM * 100;
+    document.getElementById('kpi'+suffix+'Bar').style.width = pct + '%';
+    document.getElementById('kpi'+suffix+'Km').textContent  = fmtKm(km[stato]) + ' km';
+    document.getElementById('kpi'+suffix+'Pct').textContent = pct.toFixed(0) + '%';
+  });
 }
 
 /* ── BARRE PER LOTTO ── */
@@ -504,24 +529,27 @@ function renderSidebar(){
 /* ── DONUT DISTRIBUZIONE STATI ── */
 const CANTIERE_HEX = { 'non-avviato':'#8A91B4', 'allestimento':'#C08A14', 'in-corso':'#0B3182', 'sospeso':'#C23B22', 'completato':'#1F7A4E' };
 function renderDonut(){
+  const kmByStato = {};
+  SCAVI_DATA.forEach(r => kmByStato[r.cantiere] = (kmByStato[r.cantiere]||0) + r.m);
+  const totM = SCAVI_DATA.reduce((s,r)=>s+r.m,0) || 1;
   const counts = {};
   SCAVI_DATA.forEach(r => counts[r.cantiere] = (counts[r.cantiere]||0) + 1);
-  const total = SCAVI_DATA.length || 1;
+
   let acc = 0;
   const stops = [];
   CANTIERE_ORDER.forEach(stato => {
-    const c = counts[stato] || 0;
-    if (!c) return;
-    const pct = c / total * 100;
+    const m = kmByStato[stato] || 0;
+    if (!m) return;
+    const pct = m / totM * 100;
     stops.push(`${CANTIERE_HEX[stato]} ${acc}% ${acc+pct}%`);
     acc += pct;
   });
   document.getElementById('donut').style.background = `conic-gradient(${stops.join(', ')})`;
-  document.getElementById('donutTotal').textContent = total;
+  document.getElementById('donutTotal').textContent = fmtKm(totM);
 
   const legend = document.getElementById('donutLegend');
-  legend.innerHTML = CANTIERE_ORDER.filter(s => counts[s]).map(stato => {
-    const pct = counts[stato] / total * 100;
+  legend.innerHTML = CANTIERE_ORDER.filter(s => kmByStato[s]).map(stato => {
+    const pct = kmByStato[stato] / totM * 100;
     return `<div class="mini-legend-item"><span class="mini-legend-dot" style="background:${CANTIERE_HEX[stato]}"></span>${CANTIERE_LABEL[stato]} <span style="color:var(--muted2); font-size:9.5px; margin-left:4px;">${pct.toFixed(0)}%</span><b>${counts[stato]}</b></div>`;
   }).join('');
 }
