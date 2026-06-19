@@ -3148,7 +3148,7 @@ async function loadCluster() {
 
     // Rileva separatore automaticamente dalla prima riga
     const firstLine = lines[0];
-    const sep = firstLine.includes(';') ? ';' : ',';
+    const sep = firstLine.includes('\t') ? '\t' : (firstLine.includes(';') ? ';' : ',');
 
     // Split gestendo virgolette (es. "3" per cluster)
     const splitLine = (line) => {
@@ -3712,7 +3712,7 @@ function loadCompare(input) {
   reader.onload = e => {
     const lines = e.target.result.trim().split('\n').map(l=>l.replace(/\r/,''));
     // Auto-detect separatore (coerente con loadData)
-    const sep = lines[0].includes(';') ? ';' : ',';
+    const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',');
     const headers = lines[0].split(sep);
     const iL = headers.findIndex(h => h.trim().toUpperCase() === 'LOTTO');
     const iS = headers.findIndex(h => h.trim().toUpperCase() === 'STATO_AUTORIZZAZIONE' || h.trim().toUpperCase() === 'STATO_LEGENDA');
@@ -3868,7 +3868,7 @@ async function loadData(saveSnapshot = false) {
     setLoading(70);
     // Aggrega da Riepilogo_progettazione.csv (stessa fonte dei cluster → totali coerenti)
     const lines = text.trim().split('\n').map(l => l.replace(/\r/,''));
-    const sep = lines[0].includes(';') ? ';' : ',';
+    const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',');
     const splitLine = (line) => {
       const res = []; let cur = '', inQ = false;
       for (const ch of line) {
@@ -5422,7 +5422,7 @@ async function loadMaster() {
       } catch(e) {}
     }
     const lines = text.trim().split('\n').map(l => l.replace(/\r/,''));
-    const sep = lines[0].includes(';') ? ';' : ',';
+    const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',');
 
     const splitLine = (line) => {
       const result = []; let cur = '', inQ = false;
