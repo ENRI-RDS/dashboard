@@ -2284,7 +2284,8 @@ async function _loadSEDInner() {
       if (csvResp.ok) {
         const csvText = await csvResp.text();
         const rows = csvText.split('\n');
-        const headers = rows[0].split(';').map(h => h.trim().replace(/^"|"$/g,''));
+        const _sep = rows[0].includes('\t') ? '\t' : (rows[0].includes(';') ? ';' : ',');
+        const headers = rows[0].split(_sep).map(h => h.trim().replace(/^"|"$/g,''));
         const idx = n => headers.findIndex(h => h.toUpperCase() === n.toUpperCase());
         const iNSed  = idx('N_SED'),    iTipo  = idx('TIPO_PERMESSO');
         const iEnte  = idx('ENTE'),     iStato = idx('STATO_PERMESSO');
@@ -2295,7 +2296,7 @@ async function _loadSEDInner() {
         const permMap = {}; // key: nSed|pratica|tipo → best row
         rows.slice(1).forEach(row => {
           if (!row.trim()) return;
-          const cols = row.split(';').map(c => c.trim().replace(/^"|"$/g,''));
+          const cols = row.split(_sep).map(c => c.trim().replace(/^"|"$/g,''));
           const nSed = cols[iNSed]; if (!nSed) return;
           const prat = iPrat >= 0 ? cols[iPrat]||'' : '';
           const tipo = iTipo >= 0 ? cols[iTipo]||'' : '';
