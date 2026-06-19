@@ -79,6 +79,16 @@
 
   .page-header { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; }
   .page-header-left { display:flex; flex-direction:column; gap:3px; max-width:640px; }
+  .page-header-right { display:flex; flex-direction:column; align-items:flex-end; gap:9px; }
+  .network-stat {
+    display:flex; align-items:center; gap:14px;
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    padding:8px 16px; box-shadow:var(--sh-xs);
+  }
+  .network-stat-item { display:flex; flex-direction:column; align-items:flex-end; line-height:1.2; }
+  .network-stat-item b { font-family:'Bricolage Grotesque', sans-serif; font-size:16px; font-weight:700; color:var(--text); letter-spacing:-.01em; }
+  .network-stat-item span { font-size:8.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:600; margin-top:1px; }
+  .network-stat-div { width:1px; height:24px; background:var(--border2); }
   .eyebrow {
     font-family:'Fira Code', monospace; font-size:9px; font-weight:500;
     letter-spacing:.2em; text-transform:uppercase; color:var(--accent2);
@@ -129,6 +139,19 @@
   .kpi-label { font-size:9px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:8px; font-weight:600; }
   .kpi-value { font-size:24px; font-weight:700; font-family:'Bricolage Grotesque', sans-serif; line-height:1; color:var(--text); letter-spacing:-.02em; }
   .kpi-sub { font-size:10.5px; color:var(--text2); margin-top:6px; font-weight:500; }
+  .kpi-meter { margin-top:10px; }
+  .kpi-meter-track { height:4px; border-radius:3px; background:var(--surface2); overflow:hidden; }
+  .kpi-meter-fill { height:100%; border-radius:3px; transition:width .3s; }
+  .kpi-meter-row { display:flex; align-items:baseline; justify-content:space-between; margin-top:6px; }
+  .kpi-meter-km { font-size:10.5px; font-weight:700; font-family:'Fira Code', monospace; color:var(--text2); }
+  .kpi-meter-count { font-size:9.5px; font-weight:600; color:var(--muted2); }
+  .kpi.attesa .kpi-meter-fill        { background:var(--attesa); }
+  .kpi.coordinamento .kpi-meter-fill { background:var(--coordinamento); }
+  .kpi.firma .kpi-meter-fill         { background:var(--firma); }
+  .kpi.inviato .kpi-meter-fill       { background:var(--inviato); }
+  .kpi.integrazione .kpi-meter-fill  { background:var(--integrazione); }
+  .kpi.protint .kpi-meter-fill       { background:var(--protint); }
+  .kpi.ottenuto .kpi-meter-fill      { background:var(--ottenuto); }
 
   .kpi.attesa .kpi-value        { color:var(--attesa); }
   .kpi.coordinamento .kpi-value { color:var(--coordinamento); }
@@ -281,9 +304,8 @@
     <span class="page-title">Progettazione · Iter autorizzativo</span>
   </div>
   <div class="topbar-right">
-    <a href="mappa.html" class="btn-sm" style="background:#2563eb;color:#fff;border-color:#2563eb;min-width:64px;justify-content:center;">Mappa</a>
-    <a href="Scavi.html" class="btn-sm" style="background:#f97316;color:#fff;border-color:#f97316;min-width:64px;justify-content:center;">Scavi</a>
-    <a href="Hub.html" class="btn-sm" style="background:#fff;color:#1a1d27;border-color:#dde1ec;min-width:64px;justify-content:center;">Hub</a>
+    <a href="mappa.html" class="btn-sm">Mappa</a>
+    <a href="Hub.html" class="btn-sm">← Hub</a>
   </div>
 </div>
 
@@ -295,11 +317,18 @@
       <div class="page-title-lg">Avanzamento autorizzativo</div>
       <div class="page-sub">Monitoraggio dell'iter autorizzativo per tratta, lotto ed ente: stato delle pratiche, percentuali di avanzamento e chilometri coperti.</div>
     </div>
-    <div class="pills" id="lottoPills">
-      <button class="pill active" data-lotto="all">Tutti</button>
-      <button class="pill" data-lotto="1">Lotto 1</button>
-      <button class="pill" data-lotto="2">Lotto 2</button>
-      <button class="pill" data-lotto="3">Lotto 3</button>
+    <div class="page-header-right">
+      <div class="network-stat">
+        <div class="network-stat-item"><b id="totalKmStat">—</b><span>km rete</span></div>
+        <div class="network-stat-div"></div>
+        <div class="network-stat-item"><b id="totalTratteStat">—</b><span>tratte</span></div>
+      </div>
+      <div class="pills" id="lottoPills">
+        <button class="pill active" data-lotto="all">Tutti</button>
+        <button class="pill" data-lotto="1">Lotto 1</button>
+        <button class="pill" data-lotto="2">Lotto 2</button>
+        <button class="pill" data-lotto="3">Lotto 3</button>
+      </div>
     </div>
   </div>
 
@@ -308,43 +337,64 @@
       <span class="kpi-owner impresa">Impresa</span>
       <div class="kpi-label">In Attesa / Redazione</div>
       <div class="kpi-value" id="kpi-attesa">—</div>
-      <div class="kpi-sub" id="kpisub-attesa">—</div>
+      <div class="kpi-meter">
+        <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpi-attesa-bar"></div></div>
+        <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpisub-attesa"></span><span class="kpi-meter-count" id="kpicount-attesa"></span></div>
+      </div>
     </div>
     <div class="kpi coordinamento" data-bucket="coordinamento">
       <span class="kpi-owner impresa">Impresa/Enti</span>
       <div class="kpi-label">Coordinamento</div>
       <div class="kpi-value" id="kpi-coordinamento">—</div>
-      <div class="kpi-sub" id="kpisub-coordinamento">—</div>
+      <div class="kpi-meter">
+        <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpi-coordinamento-bar"></div></div>
+        <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpisub-coordinamento"></span><span class="kpi-meter-count" id="kpicount-coordinamento"></span></div>
+      </div>
     </div>
     <div class="kpi firma" data-bucket="firma">
       <span class="kpi-owner rds">RDS</span>
       <div class="kpi-label">In Verifica / In Firma</div>
       <div class="kpi-value" id="kpi-firma">—</div>
-      <div class="kpi-sub" id="kpisub-firma">—</div>
+      <div class="kpi-meter">
+        <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpi-firma-bar"></div></div>
+        <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpisub-firma"></span><span class="kpi-meter-count" id="kpicount-firma"></span></div>
+      </div>
     </div>
     <div class="kpi inviato" data-bucket="inviato">
       <span class="kpi-owner ente">Ente</span>
       <div class="kpi-label">Inviato / Protocollato</div>
       <div class="kpi-value" id="kpi-inviato">—</div>
-      <div class="kpi-sub" id="kpisub-inviato">—</div>
+      <div class="kpi-meter">
+        <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpi-inviato-bar"></div></div>
+        <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpisub-inviato"></span><span class="kpi-meter-count" id="kpicount-inviato"></span></div>
+      </div>
     </div>
     <div class="kpi integrazione" data-bucket="integrazione">
       <span class="kpi-owner impresa">Impresa</span>
       <div class="kpi-label">Necessaria Integrazione</div>
       <div class="kpi-value" id="kpi-integrazione">—</div>
-      <div class="kpi-sub" id="kpisub-integrazione">—</div>
+      <div class="kpi-meter">
+        <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpi-integrazione-bar"></div></div>
+        <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpisub-integrazione"></span><span class="kpi-meter-count" id="kpicount-integrazione"></span></div>
+      </div>
     </div>
     <div class="kpi protint" data-bucket="protint">
       <span class="kpi-owner ente">Ente</span>
       <div class="kpi-label">Protocollato Integrazione</div>
       <div class="kpi-value" id="kpi-protint">—</div>
-      <div class="kpi-sub" id="kpisub-protint">—</div>
+      <div class="kpi-meter">
+        <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpi-protint-bar"></div></div>
+        <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpisub-protint"></span><span class="kpi-meter-count" id="kpicount-protint"></span></div>
+      </div>
     </div>
     <div class="kpi ottenuto" data-bucket="ottenuto">
       <span class="kpi-owner ente">Ente</span>
       <div class="kpi-label">🏆 Autorizzati</div>
       <div class="kpi-value" id="kpi-ottenuto">—</div>
-      <div class="kpi-sub" id="kpisub-ottenuto">—</div>
+      <div class="kpi-meter">
+        <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpi-ottenuto-bar"></div></div>
+        <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpisub-ottenuto"></span><span class="kpi-meter-count" id="kpicount-ottenuto"></span></div>
+      </div>
     </div>
   </div>
 
@@ -354,7 +404,7 @@
       <div class="donut-row">
         <div class="donut-wrap">
           <div class="donut" id="donut"></div>
-          <div class="donut-hole"><b id="donutTotal">0</b><span>pratiche</span></div>
+          <div class="donut-hole"><b id="donutTotal">0</b><span>km totali</span></div>
         </div>
         <div class="legend" id="donutLegend"></div>
       </div>
@@ -492,33 +542,39 @@ function renderKPIs(rows){
     const km = bucketRows.reduce((s,r)=>s+r.m,0);
     const pct = totKm > 0 ? km/totKm*100 : 0;
     document.getElementById('kpi-'+key).textContent = pct.toFixed(1)+'%';
+    document.getElementById('kpi-'+key+'-bar').style.width = pct + '%';
     document.getElementById('kpisub-'+key).textContent = fmtKm(km) + ' km';
+    document.getElementById('kpicount-'+key).textContent = bucketRows.length + ' tratte';
   });
 }
 
 const STATO_ORDER = ['IN ATTESA','IN REDAZIONE','COORDINAMENTO','IN FIRMA RDS','INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'];
 
 function renderDonut(rows){
+  const totKm = rows.reduce((s,r)=>s+r.m,0) || 1;
+  const kmByStato = {};
   const counts = {};
-  rows.forEach(r => counts[r.stato] = (counts[r.stato]||0) + 1);
+  rows.forEach(r => {
+    kmByStato[r.stato] = (kmByStato[r.stato]||0) + r.m;
+    counts[r.stato] = (counts[r.stato]||0) + 1;
+  });
   const ordered = Object.keys(counts).sort((a,b)=>STATO_ORDER.indexOf(a)-STATO_ORDER.indexOf(b));
-  const total = rows.length || 1;
   let acc = 0;
   const stops = [];
   ordered.forEach(stato => {
-    const pct = counts[stato] / total * 100;
+    const pct = kmByStato[stato] / totKm * 100;
     stops.push(`${STATO_HEX[stato]} ${acc}% ${acc+pct}%`);
     acc += pct;
   });
   document.getElementById('donut').style.background = rows.length
     ? `conic-gradient(${stops.join(', ')})`
     : 'var(--surface2)';
-  document.getElementById('donutTotal').textContent = rows.length;
+  document.getElementById('donutTotal').textContent = fmtKm(totKm);
 
   const legend = document.getElementById('donutLegend');
   legend.innerHTML = '';
   ordered.forEach(stato => {
-    const pct = counts[stato] / total * 100;
+    const pct = kmByStato[stato] / totKm * 100;
     const div = document.createElement('div');
     div.className = 'legend-item';
     div.innerHTML = `
@@ -537,14 +593,16 @@ function renderLottoBars(){
   wrap.innerHTML = '';
   ['1','2','3'].forEach(lotto => {
     const rows = SAMPLE_DATA.filter(d=>d.lotto===lotto);
-    const ottenute = rows.filter(r=>r.stato==='OTTENUTO').length;
-    const pct = rows.length ? Math.round(ottenute/rows.length*100) : 0;
+    const totKm = rows.reduce((s,r)=>s+r.m,0);
+    const ottenute = rows.filter(r=>r.stato==='OTTENUTO');
+    const ottenutoKm = ottenute.reduce((s,r)=>s+r.m,0);
+    const pct = totKm ? Math.round(ottenutoKm/totKm*100) : 0;
     const row = document.createElement('div');
     row.className = 'lotto-bar-row';
     row.innerHTML = `
       <div class="lotto-bar-top">
         <span class="name">Lotto ${lotto} · ${IMPRESE[lotto]}</span>
-        <span class="pct">${ottenute}/${rows.length} · ${pct}%</span>
+        <span class="pct">${ottenute.length}/${rows.length} tratte · ${pct}%</span>
       </div>
       <div class="lotto-bar-track">
         <div class="lotto-bar-fill" style="width:${pct}%; background:${LOTTO_COLORS[lotto]}"></div>
@@ -607,6 +665,8 @@ function renderAll(){
   renderKPIs(rows);
   renderDonut(rows);
   refreshTable();
+  document.getElementById('totalKmStat').textContent = fmtKm(rows.reduce((s,r)=>s+r.m,0));
+  document.getElementById('totalTratteStat').textContent = rows.length;
 }
 
 /* ── POPUP dettaglio tratta ── */
