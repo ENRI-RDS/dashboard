@@ -2165,22 +2165,28 @@ function _showBarTip(tooltip, seg, e) {
 
 // Gruppi visivi per le barre — gli stati vengono accorpati prima del rendering
 const STATI_GRUPPI = [
-  { label: 'In Attesa / Redazione', stati: ['IN ATTESA','IN REDAZIONE'], color: '#4a4f6a' },
+  { label: 'In Attesa / Redazione', stati: ['IN ATTESA','IN REDAZIONE','NO COMPETENZA'], color: '#4a4f6a' },
   { label: 'Coordinamento',          stati: ['COORDINAMENTO'],                                         color: '#9b59b6' },
   { label: 'In Verifica / In Firma', stati: ['IN FIRMA RDS'],                                         color: '#e07b3a' },
   { label: 'Inviato / Protocollato',stati: ['INVIATO','PROTOCOLLATO'],                               color: '#4f8ef7' },
   { label: 'Necessaria Integrazione',stati: ['NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE'], color: '#cc3333' },
   { label: 'Protocollato Integrazione',stati: ['PROTOCOLLATO INTEGRAZIONE'],                        color: '#B5657A' },
   { label: 'Ottenuto',              stati: ['OTTENUTO'],                                             color: '#3a8c5c' },
+  { label: 'Altro',                 stati: [],                                                        color: '#8a8a96' }, // catch-all: stati non ancora mappati esplicitamente
 ];
 
 function buildGruppiMap(statiMap) {
   // Converte una mappa {STATO: metri} in {GRUPPO_LABEL: metri} per il rendering barre
   const out = {};
+  const statiCoperti = new Set();
   STATI_GRUPPI.forEach(g => {
-    const tot = g.stati.reduce((s, st) => s + (statiMap[st] || 0), 0);
+    const tot = g.stati.reduce((s, st) => { statiCoperti.add(st); return s + (statiMap[st] || 0); }, 0);
     if (tot > 0) out[g.label] = tot;
   });
+  // Qualsiasi stato presente nei dati ma non ancora elencato sopra finisce qui,
+  // invece di sparire silenziosamente lasciando un vuoto nella barra
+  const nonMappato = Object.entries(statiMap).reduce((s, [st, m]) => s + (statiCoperti.has(st) ? 0 : m), 0);
+  if (nonMappato > 0) out['Altro'] = nonMappato;
   return out;
 }
 
@@ -2193,6 +2199,7 @@ function renderBarre(gruppiMap, totale, tooltip, onHover) {
     'Necessaria Integrazione',
     'Protocollato Integrazione',
     'Ottenuto',
+    'Altro',
     'In Attesa / Redazione',
   ];
   let html = '';
