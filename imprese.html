@@ -230,13 +230,14 @@
             </select>
           </div>
           <div>
-            <label>Numero progressivo pratica *</label>
+            <label>Numero progressivo pratica (automatico)</label>
             <div style="display:flex;align-items:center;gap:8px">
               <span id="new-pratica-prefix" style="font-family:'Fira Code',monospace;font-size:13px;color:var(--muted);white-space:nowrap">—/</span>
-              <input type="number" id="new-pratica" required min="1" step="1" placeholder="es. 24"
-                     data-testid="new-pratica" style="max-width:100px">
+              <input type="number" id="new-pratica" required readonly
+                     data-testid="new-pratica" style="max-width:100px;background:#f4f6ff;cursor:not-allowed">
               <span id="new-pratica-suffix" style="font-family:'Fira Code',monospace;font-size:13px;color:var(--muted);white-space:nowrap">/—</span>
             </div>
+            <div style="margin-top:4px;font-size:11px;color:var(--muted)">Calcolato come ultimo progressivo del lotto selezionato + 1</div>
             <div style="margin-top:4px;font-family:'Fira Code',monospace;font-size:11px;color:var(--accent)" id="new-pratica-preview"></div>
           </div>
           <div>
@@ -379,6 +380,7 @@
       PRATICHE = (d.pratiche || []).map(p => ({...p, _codice: buildCodice(p)}));
       renderPratiche('');
       _populateEntiSelect();
+      _setAutoPratica();
     } catch(e){
       $('pratBody').innerHTML = `<tr><td colspan="7" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
     }
@@ -661,9 +663,19 @@
       preview.textContent = '';
     }
   }
+  // Calcola e imposta automaticamente il prossimo numero progressivo
+  // (ultimo PRATICA esistente per il lotto selezionato + 1)
+  function _setAutoPratica() {
+    const lottoVal = $('new-lotto').value || '';
+    const nums = PRATICHE
+      .filter(p => String(p['Source.Name']||'').trim() === lottoVal)
+      .map(p => parseInt(String(p.PRATICA||'').trim(), 10))
+      .filter(n => !isNaN(n));
+    $('new-pratica').value = nums.length ? Math.max(...nums) + 1 : 1;
+    _updatePraticaPreview();
+  }
   $('new-tipo').addEventListener('change',  _updatePraticaPreview);
-  $('new-lotto').addEventListener('change', _updatePraticaPreview);
-  $('new-pratica').addEventListener('input', _updatePraticaPreview);
+  $('new-lotto').addEventListener('change', _setAutoPratica);
   // Inizializza al caricamento
   _updatePraticaPreview();
 
