@@ -461,12 +461,21 @@
     // Trova le altre tratte che appartengono alla stessa pratica
     // (stesso ENTE + TIPO_PERMESSO + numero PRATICA)
     const pratNum = String(SELECTED.PRATICA || '').trim();
-    SIBLINGS = pratNum ? PRATICHE.filter(p =>
+    const siblingsRaw = pratNum ? PRATICHE.filter(p =>
       p.TRATTA_ID !== SELECTED.TRATTA_ID &&
       String(p.ENTE||'').trim() === String(SELECTED.ENTE||'').trim() &&
       String(p.TIPO_PERMESSO||'').trim() === String(SELECTED.TIPO_PERMESSO||'').trim() &&
       String(p.PRATICA||'').trim() === pratNum
     ) : [];
+    // Dedup per TRATTA_ID: tieni solo la riga con DATA_ULTIMA_MODIFICA più recente
+    const siblingsMap = new Map();
+    siblingsRaw.forEach(p => {
+      const existing = siblingsMap.get(p.TRATTA_ID);
+      if (!existing || parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(existing.DATA_ULTIMA_MODIFICA)) {
+        siblingsMap.set(p.TRATTA_ID, p);
+      }
+    });
+    SIBLINGS = Array.from(siblingsMap.values());
 
     const panel = $('siblingsPanel');
     if (SIBLINGS.length) {
