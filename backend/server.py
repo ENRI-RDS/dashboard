@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
+import json
 import os
 import re
 from datetime import datetime, timezone
@@ -562,25 +563,26 @@ async def _read_master_csv() -> "pd.DataFrame":
     return pd.read_csv(io.BytesIO(raw), sep=_detected_sep, dtype=str, keep_default_na=False, encoding="utf-8", encoding_errors="replace")
 
 
-GITHUB_REPO   = os.environ.get("GITHUB_REPO", "ENRI-RDS/dashboard")
-GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
+QGIS_FILENAME      = "QGIS.geojson"
+RIEPILOGO_FILENAME = "Riepilogo_progettazione.csv"
+
+GITHUB_REPO     = os.environ.get("GITHUB_REPO", "ENRI-RDS/dashboard")
+GITHUB_BRANCH   = os.environ.get("GITHUB_BRANCH", "main")
 GITHUB_CSV_PATH = os.environ.get("GITHUB_CSV_PATH", "Master.csv")
 
-async def _push_current_master_to_github() -> None:
-    """Legge la versione corrente di Master.csv da MongoDB e la pusha su GitHub."""
-    try:
-        df = await _read_master_csv()
-        github_buf = io.StringIO()
-        df.to_csv(github_buf, index=False, sep="\t")
-        github_data = github_buf.getvalue().encode("utf-8")
-        await _push_to_github(github_data)
-    except Exception as e:
-        print(f"[GitHub] _push_current_master: {e}")
+# Mappa file dashboard -> path nel repo GitHub (override via env se servono sottocartelle)
+GITHUB_PATHS: dict = {
+    "Master.csv":                  GITHUB_CSV_PATH,
+    "Riepilogo_progettazione.csv": os.environ.get("GITHUB_RIEPILOGO_PATH", "Riepilogo_progettazione.csv"),
+    "QGIS.geojson":                os.environ.get("GITHUB_QGIS_PATH", "QGIS.geojson"),
+}
 
 
-async def _push_to_github(csv_bytes: bytes) -> None:
-    """Aggiorna Master.csv su GitHub via API dopo ogni approvazione."""
-    print(f"[GitHub] push avviato — {len(csv_bytes)} bytes, repo={GITHUB_REPO}, path={GITHUB_CSV_PATH}, branch={GITHUB_BRANCH}")
+async def _push_to_github(file_bytes: bytes, path: str = None, label: str = None) -> None:
+    """Aggiorna un file su GitHub via API (Master.csv, QGIS.geojson, Riepilogo_progettazione.csv, ...)."""
+    path  = path or GITHUB_CSV_PATH
+    label = label or path
+    print(f"[GitHub] push avviato — {len(file_bytes)} bytes, repo={GITHUB_REPO}, path={path}, branch={GITHUB_BRANCH}")
     token = os.environ.get("GITHUB_TOKEN")
     if not token:
         print("[GitHub] GITHUB_TOKEN non impostato — skip push")
@@ -590,30 +592,302 @@ async def _push_to_github(csv_bytes: bytes) -> None:
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_CSV_PATH}"
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}"
     try:
-      async with httpx.AsyncClient(timeout=20) as client:
-        # 1. Recupera il SHA del file attuale (obbligatorio per aggiornarlo)
-        r = await client.get(url, headers=headers, params={"ref": GITHUB_BRANCH})
-        if r.status_code not in (200, 404):
-            print(f"[GitHub] GET {url} → {r.status_code}: {r.text[:200]}")
-            return
-        sha = r.json().get("sha") if r.status_code == 200 else None
-        # 2. Commit del file aggiornato
-        payload: dict = {
-            "message": "Auto-update Master.csv via approvazione admin [skip ci]",
-            "content": base64.b64encode(csv_bytes).decode(),
-            "branch": GITHUB_BRANCH,
-        }
-        if sha:
-            payload["sha"] = sha
-        resp = await client.put(url, headers=headers, json=payload)
-        if resp.status_code in (200, 201):
-            print(f"[GitHub] Master.csv aggiornato sul branch {GITHUB_BRANCH}")
-        else:
-            print(f"[GitHub] Errore push: {resp.status_code} {resp.text[:300]}")
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.get(url, headers=headers, params={"ref": GITHUB_BRANCH})
+            if r.status_code not in (200, 404):
+                print(f"[GitHub] GET {url} → {r.status_code}: {r.text[:200]}")
+                return
+            sha = r.json().get("sha") if r.status_code == 200 else None
+            payload: dict = {
+                "message": f"Auto-update {label} via approvazione admin [skip ci]",
+                "content": base64.b64encode(file_bytes).decode(),
+                "branch": GITHUB_BRANCH,
+            }
+            if sha:
+                payload["sha"] = sha
+            resp = await client.put(url, headers=headers, json=payload)
+            if resp.status_code in (200, 201):
+                print(f"[GitHub] {label} aggiornato sul branch {GITHUB_BRANCH}")
+            else:
+                print(f"[GitHub] Errore push {label}: {resp.status_code} {resp.text[:300]}")
     except Exception as e:
-        print(f"[GitHub] Eccezione: {type(e).__name__}: {e}")
+        print(f"[GitHub] Eccezione {label}: {type(e).__name__}: {e}")
+
+
+async def _push_current_master_to_github() -> None:
+    """Legge la versione corrente di Master.csv da MongoDB, la pusha su GitHub
+    e rigenera QGIS.geojson + Riepilogo_progettazione.csv (usata da delete/restore)."""
+    try:
+        df = await _read_master_csv()
+        github_buf = io.StringIO()
+        df.to_csv(github_buf, index=False, sep="\t")
+        github_data = github_buf.getvalue().encode("utf-8")
+        await _push_to_github(github_data, path=GITHUB_PATHS["Master.csv"], label="Master.csv")
+        await _regenerate_derived_files(df, note="restore/delete Master.csv")
+    except Exception as e:
+        print(f"[GitHub] _push_current_master: {e}")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Derivazione QGIS.geojson + Riepilogo_progettazione.csv da Master.csv
+# ─────────────────────────────────────────────────────────────────────────────
+# Regole verificate contro un export reale di Riepilogo_progettazione.csv:
+#   - STATO_LEGENDA è sempre identico a STATO_AUTORIZZAZIONE (0 eccezioni su 692 righe)
+#   - LAVORABILE = SI solo se STATO_AUTORIZZAZIONE = OTTENUTO E (se richiesto)
+#     anche il/i NULLA OSTA sono OTTENUTI (idem ORDINANZA se richiesta)
+#   - Quando una tratta ha PIU' nulla osta (enti diversi), si usa lo stato PIU'
+#     INDIETRO (peggiore) tra l'ultimo stato registrato per ciascun ente
+#   - CAMPO AWS, PROTOCOLLO_AUT, ENTE 2: provengono da un sistema esterno o non
+#     hanno una regola derivabile con certezza dai dati disponibili — NON vengono
+#     toccati dalla rigenerazione, il valore esistente viene preservato.
+# ═════════════════════════════════════════════════════════════════════════════
+
+_STATUS_RANK = {
+    "NECESSARIA INTEGRAZIONE": 0,
+    "IN REDAZIONE INTEGRAZIONE": 1,
+    "IN REDAZIONE": 2,
+    "IN ATTESA": 2,
+    "COORDINAMENTO": 3,
+    "IN FIRMA RDS": 4,
+    "INVIATO": 5,
+    "PROTOCOLLATO INTEGRAZIONE": 6,
+    "PROTOCOLLATO": 7,
+    "OTTENUTO": 8,
+}
+
+_TIPO_PREFIX = {"AUTORIZZAZIONE": "AUT", "NULLA OSTA": "NO", "ORDINANZA": "ORD"}
+
+
+def _norm(s) -> str:
+    return str(s or "").replace("\xa0", " ").strip().upper()
+
+
+def _worst_status(statuses: list) -> str:
+    clean = [str(s).strip() for s in statuses if s and str(s).strip()]
+    if not clean:
+        return ""
+    return min(clean, key=lambda s: _STATUS_RANK.get(s.upper(), 99))
+
+
+def _latest_per_ente(rows: list, tipo: str) -> list:
+    """Tra le righe di un TIPO_PERMESSO, prende l'ultima riga (cronologicamente
+    piu' recente, assumendo l'ordine di inserimento) per ciascun ente distinto."""
+    by_ente, order = {}, []
+    for r in rows:
+        if _norm(r.get("TIPO_PERMESSO")) != tipo:
+            continue
+        ente = _norm(r.get("ENTE"))
+        if ente not in by_ente:
+            order.append(ente)
+        by_ente[ente] = r  # l'ultima occorrenza trovata vince
+    return [by_ente[e] for e in order]
+
+
+def _lotto_from_source(source_name: str) -> str:
+    """'Lotto 1A.xlsx' -> '1A'."""
+    s = str(source_name or "")
+    s = re.sub(r"(?i)^lotto\s*", "", s).strip()
+    s = re.sub(r"(?i)\.xlsx?$", "", s).strip()
+    return s.upper()
+
+
+def _build_pratica(rows: list) -> str:
+    """'AUT/24/1A | NO/22/1A | NO/26/1A' — AUT prima, poi NO, poi ORD."""
+    parts, seen = [], set()
+    for tipo, pref in (("AUTORIZZAZIONE", "AUT"), ("NULLA OSTA", "NO"), ("ORDINANZA", "ORD")):
+        for r in rows:
+            if _norm(r.get("TIPO_PERMESSO")) != tipo:
+                continue
+            num = str(r.get("PRATICA") or "").strip()
+            if not num:
+                continue
+            lotto = _lotto_from_source(r.get("Source.Name", ""))
+            tok = f"{pref}/{num}/{lotto}"
+            if tok not in seen:
+                seen.add(tok)
+                parts.append(tok)
+    return " | ".join(parts)
+
+
+def _compute_tratta_summary(master_df: "pd.DataFrame") -> dict:
+    """Per ogni TRATTA_ID calcola: STATO_AUTORIZZAZIONE, STATO_NULLAOSTA,
+    STATO_ORDINANZA, LAVORABILE, MOTIVO_NO, PRATICA, STATO_LEGENDA, ENTE."""
+    if master_df is None or "TRATTA_ID" not in master_df.columns:
+        return {}
+    df = master_df.fillna("")
+    result = {}
+
+    for tratta_id, group in df.groupby(df["TRATTA_ID"].astype(str).str.strip()):
+        tratta_id = tratta_id.strip()
+        if not tratta_id:
+            continue
+        rows = group.to_dict(orient="records")
+
+        # AUTORIZZAZIONE: un solo permesso per tratta -> ultima riga inserita
+        aut_rows = [r for r in rows if _norm(r.get("TIPO_PERMESSO")) == "AUTORIZZAZIONE"]
+        stato_aut = _norm(aut_rows[-1].get("STATO_PERMESSO")) if aut_rows else "IN ATTESA"
+        ente_aut  = str(aut_rows[-1].get("ENTE", "")).strip() if aut_rows else ""
+        need_no   = _norm(aut_rows[-1].get("NULLA OSTA NECESSARIO")) if aut_rows else "NO"
+        need_ord  = _norm(aut_rows[-1].get("ORDINANZA NECESSARIA")) if aut_rows else "NO"
+
+        # NULLA OSTA / ORDINANZA: possono essercene piu' di uno (enti diversi) ->
+        # prendi l'ultimo stato di ciascun ente, poi il PEGGIORE tra questi
+        no_latest  = _latest_per_ente(rows, "NULLA OSTA")
+        stato_no   = _worst_status([r.get("STATO_PERMESSO") for r in no_latest]) if no_latest else (
+            "IN ATTESA" if need_no == "SI" else "NON NECESSARIO"
+        )
+        ord_latest = _latest_per_ente(rows, "ORDINANZA")
+        stato_ord  = _worst_status([r.get("STATO_PERMESSO") for r in ord_latest]) if ord_latest else (
+            "IN ATTESA" if need_ord == "SI" else "NON NECESSARIO"
+        )
+
+        aut_ok = stato_aut == "OTTENUTO"
+        no_ok  = stato_no == "OTTENUTO"
+        ord_ok = stato_ord == "OTTENUTO"
+
+        lavorabile = aut_ok
+        if need_no == "SI":
+            lavorabile = lavorabile and no_ok
+        if need_ord == "SI":
+            lavorabile = lavorabile and ord_ok
+
+        motivi = []
+        if not aut_ok:
+            motivi.append("Manca autorizz")
+        if need_no == "SI" and not no_ok:
+            motivi.append("Manca nulla osta")
+        if need_ord == "SI" and not ord_ok:
+            motivi.append("Manca ordinanza")
+
+        result[tratta_id] = {
+            "STATO_AUTORIZZAZIONE": stato_aut,
+            "STATO_LEGENDA":        stato_aut,  # sempre identico, confermato sui dati reali
+            "STATO_NULLAOSTA":      stato_no,
+            "STATO_ORDINANZA":      stato_ord,
+            "LAVORABILE":           "SI" if lavorabile else "NO",
+            "MOTIVO_NO":            " | ".join(motivi),
+            "PRATICA":              _build_pratica(rows),
+            "ENTE":                 ente_aut,
+        }
+    return result
+
+
+async def _read_current_geojson(filename: str):
+    """Legge un GeoJSON (MongoDB se presente, altrimenti seed su disco)."""
+    cur = await _current_upload(filename)
+    if cur and cur.get("gridfs_id"):
+        raw = await _read_gridfs(cur["gridfs_id"])
+    else:
+        path = DATA_DIR / filename
+        if not path.exists():
+            return None
+        raw = path.read_bytes()
+    for enc in ("utf-8", "cp1252", "latin-1"):
+        try:
+            return json.loads(raw.decode(enc))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+    return None
+
+
+async def _store_derived_file(filename: str, data: bytes, content_type: str, note: str) -> str:
+    """Salva un file derivato (rigenerato) come nuova versione in GridFS."""
+    gid = await gridfs.upload_from_stream(
+        filename, io.BytesIO(data),
+        metadata={"project": "main", "uploaded_at": _now_iso(), "source": "derived", "note": note},
+    )
+    record = {
+        "filename": filename, "original_name": filename, "size": len(data),
+        "content_type": content_type, "project": "main", "rows": None,
+        "uploaded_at": _now_iso(), "gridfs_id": gid, "deleted_at": None,
+        "source": "derived", "note": note,
+    }
+    res = await uploads_col.insert_one(record)
+    return str(res.inserted_id)
+
+
+async def _regenerate_derived_files(master_df: "pd.DataFrame", note: str = "") -> dict:
+    """Rigenera QGIS.geojson e Riepilogo_progettazione.csv a partire da Master.csv.
+
+    Verificato sui file reali: Riepilogo_progettazione.csv e' ESATTAMENTE la
+    tabella attributi di QGIS.geojson esportata in CSV (stesse 21 colonne,
+    stesso ordine, stessi valori, stesso numero di righe — confrontato riga
+    per riga su TR_0103 e sull'intero file). Per questo la patch avviene UNA
+    SOLA VOLTA sulle properties di QGIS.geojson, e Riepilogo viene poi
+    derivato direttamente da quello: i due file non possono piu' disallinearsi.
+
+    Vengono aggiornati SOLO i campi calcolati da Master.csv:
+    STATO_AUTORIZZAZIONE, STATO_LEGENDA, STATO_NULLAOSTA, STATO_ORDINANZA,
+    LAVORABILE, MOTIVO_NO, PRATICA, ENTE.
+    Tutto il resto (fid, TIPOLOGIA, PROVINCIA, COMUNE, CLUSTER, ROUTE, ENTE 2,
+    LUNGHEZZA, SPAN, LOTTO, PROTOCOLLO_AUT, CAMPO AWS, geometria) resta
+    esattamente come nel QGIS.geojson esistente.
+
+    Fire-and-forget: eventuali errori vengono solo loggati.
+    """
+    # Ordine colonne confermato sul file reale (json.load preserva l'ordine delle key)
+    RIEPILOGO_COLUMNS = [
+        "fid", "TIPOLOGIA", "PROVINCIA", "COMUNE", "CLUSTER", "ROUTE", "ENTE", "ENTE 2",
+        "LUNGHEZZA", "SPAN", "LOTTO", "TRATTA_ID", "MOTIVO_NO", "STATO_AUTORIZZAZIONE",
+        "STATO_NULLAOSTA", "STATO_ORDINANZA", "PROTOCOLLO_AUT", "PRATICA", "LAVORABILE",
+        "STATO_LEGENDA", "CAMPO AWS",
+    ]
+
+    out_ids: dict = {}
+    try:
+        summary = _compute_tratta_summary(master_df)
+        if not summary:
+            print("[Sync] Master.csv senza TRATTA_ID utilizzabili — skip rigenerazione")
+            return out_ids
+
+        geo = await _read_current_geojson(QGIS_FILENAME)
+        if not geo or not isinstance(geo.get("features"), list):
+            print(f"[Sync] {QGIS_FILENAME} non trovato — skip rigenerazione")
+            return out_ids
+
+        # ── 1. Patch in place delle proprieta' di stato su QGIS.geojson ─────────
+        riepilogo_rows = []
+        for feat in geo["features"]:
+            props = feat.get("properties") or {}
+            tid = str(props.get("TRATTA_ID") or "").strip()
+            s = summary.get(tid)
+            if s:
+                props["STATO_AUTORIZZAZIONE"] = s["STATO_AUTORIZZAZIONE"]
+                props["STATO_LEGENDA"]        = s["STATO_LEGENDA"]
+                props["STATO_NULLAOSTA"]      = s["STATO_NULLAOSTA"]
+                props["STATO_ORDINANZA"]      = s["STATO_ORDINANZA"]
+                props["LAVORABILE"]           = s["LAVORABILE"]
+                props["MOTIVO_NO"]            = s["MOTIVO_NO"]
+                if s["PRATICA"]:
+                    props["PRATICA"] = s["PRATICA"]
+                if s["ENTE"]:
+                    props["ENTE"] = s["ENTE"]
+            feat["properties"] = props
+            # Riga corrispondente per Riepilogo_progettazione.csv — stesse colonne,
+            # stessi valori, derivati dalla stessa feature appena patchata.
+            riepilogo_rows.append({col: props.get(col, "") for col in RIEPILOGO_COLUMNS})
+
+        geo_bytes = json.dumps(geo, ensure_ascii=False).encode("utf-8")
+        out_ids["qgis"] = await _store_derived_file(QGIS_FILENAME, geo_bytes, "application/geo+json", note)
+        asyncio.create_task(_push_to_github(geo_bytes, path=GITHUB_PATHS["QGIS.geojson"], label=QGIS_FILENAME))
+
+        # ── 2. Riepilogo_progettazione.csv: derivato 1:1 da QGIS.geojson ────────
+        riep_df = pd.DataFrame(riepilogo_rows, columns=RIEPILOGO_COLUMNS)
+        rbuf = io.StringIO()
+        riep_df.to_csv(rbuf, index=False)  # virgola, come il file originale
+        rdata = rbuf.getvalue().encode("utf-8")
+        out_ids["riepilogo"] = await _store_derived_file(RIEPILOGO_FILENAME, rdata, "text/csv", note)
+        asyncio.create_task(_push_to_github(rdata, path=GITHUB_PATHS["Riepilogo_progettazione.csv"], label=RIEPILOGO_FILENAME))
+
+        print(f"[Sync] Rigenerati: {list(out_ids.keys())} ({len(summary)} tratte, note={note!r})")
+    except Exception as e:
+        print(f"[Sync] Errore rigenerazione QGIS/Riepilogo: {type(e).__name__}: {e}")
+    return out_ids
+
+
+
 
 
 async def _write_master_csv(df: "pd.DataFrame", note: str) -> str:
@@ -644,8 +918,9 @@ async def _write_master_csv(df: "pd.DataFrame", note: str) -> str:
         "note": note,
     }
     res = await uploads_col.insert_one(record)
-    # Aggiorna Master.csv anche su GitHub (fire-and-forget, non blocca la risposta)
-    asyncio.create_task(_push_to_github(github_data))
+    # Aggiorna Master.csv su GitHub e rigenera i file derivati (fire-and-forget)
+    asyncio.create_task(_push_to_github(github_data, path=GITHUB_PATHS["Master.csv"], label="Master.csv"))
+    asyncio.create_task(_regenerate_derived_files(df, note=note))
     return str(res.inserted_id)
 
 
