@@ -68,6 +68,11 @@
   .sub-field-key{color:var(--muted);min-width:150px;font-size:12px}
   .sub-field-val{color:#1a1a2e;font-size:12px;font-weight:500;word-break:break-all}
   tr[data-sub]:hover td{background:rgba(67,97,238,.04);cursor:pointer}
+  .warn-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px}
+  .warn-modal{background:#fff;border-radius:16px;width:100%;max-width:440px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+  .warn-modal-icon{font-size:28px;margin-bottom:10px}
+  .warn-modal-title{font-family:'Bricolage Grotesque',sans-serif;font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:8px}
+  .warn-modal-body{font-size:13px;color:#374151;line-height:1.5;margin-bottom:18px}
   .sub-section-label{font-size:11px;font-weight:600;color:var(--muted);margin-bottom:8px}
   .tag.pending{background:#FEF3C7;color:#B45309}.tag.approved{background:#EBFBEE;color:#2B8A3E}.tag.rejected{background:#FEE2E2;color:#B91C1C}
   .stato-OTTENUTO{color:#1F7A4E;font-weight:600}
@@ -131,6 +136,14 @@
 
       <div id="editForm" style="display:none;margin-top:16px;border-top:1px dashed var(--border);padding-top:16px">
         <div style="font-weight:700;margin-bottom:10px;font-size:14px">Aggiornamento — <span id="editRowSub" class="mono" style="color:var(--muted);font-size:12px"></span></div>
+        <div id="siblingsPanel" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12.5px">
+          <div style="font-weight:700;color:#1d4ed8;margin-bottom:4px">Questa pratica include altre tratte</div>
+          <div id="siblingsList" style="color:#374151;margin-bottom:8px"></div>
+          <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-weight:600;color:#1d4ed8">
+            <input type="checkbox" id="siblingsToggle" checked style="width:15px;height:15px;cursor:pointer">
+            Aggiorna tutte insieme (consigliato)
+          </label>
+        </div>
         <div class="grid2">
           <div>
             <label>Nuovo stato</label>
@@ -284,6 +297,7 @@
   let MY_LOTTI = [];
   let PRATICHE = [];
   const QUEUE = []; // [{tratta_id, ente, tipo_permesso, fields, _row}]
+  let SIBLINGS = []; // tratte della stessa pratica (ENTE+TIPO_PERMESSO+PRATICA) diverse da SELECTED
   let SELECTED = null;
 
   // ─── boot ───────────────────────────────────────────
@@ -443,10 +457,77 @@
     $('fld-data-app').value = SELECTED.DATA_APPROVAZIONE || '';
     $('fld-pratica').value = SELECTED.PRATICA || '';
     $('fld-note').value = SELECTED.NOTE || '';
+
+    // Trova le altre tratte che appartengono alla stessa pratica
+    // (stesso ENTE + TIPO_PERMESSO + numero PRATICA)
+    const pratNum = String(SELECTED.PRATICA || '').trim();
+    SIBLINGS = pratNum ? PRATICHE.filter(p =>
+      p.TRATTA_ID !== SELECTED.TRATTA_ID &&
+      String(p.ENTE||'').trim() === String(SELECTED.ENTE||'').trim() &&
+      String(p.TIPO_PERMESSO||'').trim() === String(SELECTED.TIPO_PERMESSO||'').trim() &&
+      String(p.PRATICA||'').trim() === pratNum
+    ) : [];
+
+    const panel = $('siblingsPanel');
+    if (SIBLINGS.length) {
+      $('siblingsList').textContent = `Tratte collegate: ${SIBLINGS.map(s => s.TRATTA_ID).join(', ')} (${SIBLINGS.length + 1} tratte totali in questa pratica)`;
+      $('siblingsToggle').checked = true;
+      panel.style.display = '';
+    } else {
+      panel.style.display = 'none';
+    }
+
     $('editForm').scrollIntoView({behavior:'smooth', block:'nearest'});
   });
 
-  $('cancelEditBtn').onclick = () => { $('editForm').style.display = 'none'; SELECTED = null; document.querySelectorAll('#pratBody tr.selected').forEach(x => x.classList.remove('selected')); };
+  $('cancelEditBtn').onclick = () => { $('editForm').style.display = 'none'; $('siblingsPanel').style.display = 'none'; SELECTED = null; SIBLINGS = []; document.querySelectorAll('#pratBody tr.selected').forEach(x => x.classList.remove('selected')); };
+
+  function _pushToQueue(row, fields) {
+    QUEUE.push({
+      tratta_id: row.TRATTA_ID,
+      ente: row.ENTE,
+      tipo_permesso: row.TIPO_PERMESSO,
+      original_pratica: row.PRATICA || '',
+      fields: { ...fields },
+    });
+  }
+
+  function _finalizeAdd(fields, includeSiblings) {
+    _pushToQueue(SELECTED, fields);
+    if (includeSiblings) {
+      SIBLINGS.forEach(s => _pushToQueue(s, fields));
+    }
+    renderQueue();
+    $('editForm').style.display = 'none';
+    $('siblingsPanel').style.display = 'none';
+    document.querySelectorAll('#pratBody tr.selected').forEach(x => x.classList.remove('selected'));
+    const n = includeSiblings ? (1 + SIBLINGS.length) : 1;
+    setMsg($('msgUpd'), n > 1 ? `Aggiunte ${n} tratte alla coda` : `Aggiunto alla coda (${QUEUE.length} modifiche totali)`, true);
+  }
+
+  // Modale di avviso quando si aggiorna solo una tratta pur avendo altre nella stessa pratica
+  function _showSingleTrattaWarning(fields) {
+    const overlay = document.createElement('div');
+    overlay.className = 'warn-modal-overlay';
+    overlay.innerHTML = `
+      <div class="warn-modal">
+        <div class="warn-modal-icon">⚠️</div>
+        <div class="warn-modal-title">Aggiornare solo questa tratta?</div>
+        <div class="warn-modal-body">
+          Questa pratica include anche <b>${SIBLINGS.length}</b> altr${SIBLINGS.length===1?'a tratta':'e tratte'}
+          (${SIBLINGS.map(s=>escapeHtml(s.TRATTA_ID)).join(', ')}) che non verranno aggiornate.
+          Lo stato complessivo della pratica resterà invariato finché tutte le tratte non saranno allineate allo stesso stato.
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button class="btn btn-ghost" id="_warnCancel">Annulla</button>
+          <button class="btn" id="_warnConfirm">Procedi solo con questa</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#_warnCancel').onclick = () => overlay.remove();
+    overlay.querySelector('#_warnConfirm').onclick = () => { overlay.remove(); _finalizeAdd(fields, false); };
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  }
 
   $('addToQueueBtn').onclick = () => {
     if (!SELECTED) return;
@@ -457,16 +538,15 @@
     // PRATICA non modificabile dall'impresa — campo solo lettura
     if ($('fld-note').value !== SELECTED.NOTE) fields.NOTE = $('fld-note').value;
     if (!Object.keys(fields).length) return setMsg($('msgUpd'), 'Nessun campo modificato', false);
-    QUEUE.push({
-      tratta_id: SELECTED.TRATTA_ID,
-      ente: SELECTED.ENTE,
-      tipo_permesso: SELECTED.TIPO_PERMESSO,
-      original_pratica: SELECTED.PRATICA || '',
-      fields,
-    });
-    renderQueue();
-    $('editForm').style.display = 'none';
-    setMsg($('msgUpd'), `Aggiunto alla coda (${QUEUE.length} modifiche)`, true);
+
+    const wantsAllTogether = SIBLINGS.length > 0 && $('siblingsToggle').checked;
+    const wantsSingleOnly  = SIBLINGS.length > 0 && !$('siblingsToggle').checked;
+
+    if (wantsSingleOnly) {
+      _showSingleTrattaWarning(fields); // richiede conferma esplicita
+    } else {
+      _finalizeAdd(fields, wantsAllTogether);
+    }
   };
 
   function renderQueue(){
