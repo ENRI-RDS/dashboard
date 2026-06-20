@@ -725,12 +725,27 @@ def _compute_tratta_summary(master_df: "pd.DataFrame") -> dict:
             continue
         rows = group.to_dict(orient="records")
 
-        # AUTORIZZAZIONE: un solo permesso per tratta -> ultima riga inserita
+        # AUTORIZZAZIONE: un solo permesso per tratta -> ultima riga inserita.
+        # Le pratiche chiuse con STATO_PERMESSO=NO COMPETENZA sono superate:
+        # l'ente ha dichiarato di non essere competente, quindi prima o poi
+        # arriva una NUOVA pratica con un ente diverso sulla stessa tratta.
+        # Finché esiste un'alternativa attiva va sempre preferita a NO COMPETENZA;
+        # se invece NO COMPETENZA è l'unica pratica presente, la tratta è
+        # semplicemente in attesa che la nuova pratica venga aperta.
         aut_rows = [r for r in rows if _norm(r.get("TIPO_PERMESSO")) == "AUTORIZZAZIONE"]
-        stato_aut = _norm(aut_rows[-1].get("STATO_PERMESSO")) if aut_rows else "IN ATTESA"
-        ente_aut  = str(aut_rows[-1].get("ENTE", "")).strip() if aut_rows else ""
-        need_no   = _norm(aut_rows[-1].get("NULLA OSTA NECESSARIO")) if aut_rows else "NO"
-        need_ord  = _norm(aut_rows[-1].get("ORDINANZA NECESSARIA")) if aut_rows else "NO"
+        aut_rows_attive = [r for r in aut_rows if _norm(r.get("STATO_PERMESSO")) != "NO COMPETENZA"]
+        if aut_rows_attive:
+            aut_row_corrente = aut_rows_attive[-1]
+            stato_aut = _norm(aut_row_corrente.get("STATO_PERMESSO"))
+        elif aut_rows:
+            aut_row_corrente = aut_rows[-1]
+            stato_aut = "IN ATTESA"
+        else:
+            aut_row_corrente = None
+            stato_aut = "IN ATTESA"
+        ente_aut  = str(aut_row_corrente.get("ENTE", "")).strip() if aut_row_corrente else ""
+        need_no   = _norm(aut_row_corrente.get("NULLA OSTA NECESSARIO")) if aut_row_corrente else "NO"
+        need_ord  = _norm(aut_row_corrente.get("ORDINANZA NECESSARIA")) if aut_row_corrente else "NO"
 
         # NULLA OSTA / ORDINANZA: possono essercene piu' di uno (enti diversi) ->
         # prendi l'ultimo stato di ciascun ente, poi il PEGGIORE tra questi
