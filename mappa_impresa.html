@@ -2487,7 +2487,7 @@ async function _loadMyLotti() {
   if (resp.status === 404) throw new Error('Il tuo nome non è ancora stato assegnato a un lotto dall\'amministratore.');
   if (!resp.ok) throw new Error('Errore nel recupero dei lotti assegnati (HTTP ' + resp.status + ').');
   const data = await resp.json();
-  const lotti = data.lotti || [];
+  const lotti = (data.lotti || []).map(l => String(l).replace(/^lotto\s*/i, '').trim());
   if (!lotti.length) throw new Error('Nessun lotto risulta assegnato al tuo nome. Contatta l\'amministratore.');
   document.title = 'ENRI — Mappa ' + nome;
   const pt = document.querySelector('.page-title');
