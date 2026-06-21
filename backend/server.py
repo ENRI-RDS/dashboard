@@ -381,6 +381,12 @@ async def upload_file(
     }
     res = await uploads_col.insert_one(record)
 
+    # Se è Master.csv, rigenera anche i file derivati (Riepilogo_progettazione.csv,
+    # QGIS.geojson) e sincronizza GitHub — stesso comportamento di approve/delete/restore,
+    # altrimenti un upload manuale lascia mappa e barre ferme alla versione precedente.
+    if rel == MASTER_FILENAME:
+        asyncio.create_task(_push_current_master_to_github())
+
     return JSONResponse({
         "ok": True,
         "id": str(res.inserted_id),
@@ -446,6 +452,10 @@ async def delete_file(
         {"filename": rel, "deleted_at": None},
         {"$set": {"deleted_at": _now_iso(), "gridfs_id": None}},
     )
+    # Se è Master.csv, sincronizza GitHub e rigenera i file derivati con la
+    # versione ora corrente (il seed da disco, se non resta nessun'altra versione)
+    if rel == MASTER_FILENAME:
+        asyncio.create_task(_push_current_master_to_github())
     return {"filename": rel, "deleted_versions": res.modified_count}
 
 
@@ -579,7 +589,9 @@ GITHUB_PATHS: dict = {
 
 
 async def _push_to_github(file_bytes: bytes, path: str = None, label: str = None) -> None:
-    """Aggiorna un file su GitHub via API (Master.csv, QGIS.geojson, Riepilogo_progettazione.csv, ...)."""
+    """Aggiorna un file su GitHub via API (Master.csv, QGIS.geojson, Riepilogo_progettazione.csv, ...).
+    In caso di conflitto sha (409 — qualcun altro ha scritto sullo stesso file nel frattempo,
+    es. una modifica manuale in parallelo) rilegge lo sha aggiornato e riprova fino a 3 volte."""
     path  = path or GITHUB_CSV_PATH
     label = label or path
     print(f"[GitHub] push avviato — {len(file_bytes)} bytes, repo={GITHUB_REPO}, path={path}, branch={GITHUB_BRANCH}")
@@ -593,27 +605,36 @@ async def _push_to_github(file_bytes: bytes, path: str = None, label: str = None
         "X-GitHub-Api-Version": "2022-11-28",
     }
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}"
+    max_tentativi = 3
     try:
         async with httpx.AsyncClient(timeout=20) as client:
-            r = await client.get(url, headers=headers, params={"ref": GITHUB_BRANCH})
-            if r.status_code not in (200, 404):
-                print(f"[GitHub] GET {url} → {r.status_code}: {r.text[:200]}")
-                return
-            sha = r.json().get("sha") if r.status_code == 200 else None
-            payload: dict = {
-                "message": f"Auto-update {label} via approvazione admin [skip ci]",
-                "content": base64.b64encode(file_bytes).decode(),
-                "branch": GITHUB_BRANCH,
-            }
-            if sha:
-                payload["sha"] = sha
-            resp = await client.put(url, headers=headers, json=payload)
-            if resp.status_code in (200, 201):
-                print(f"[GitHub] {label} aggiornato sul branch {GITHUB_BRANCH}")
-            else:
+            for tentativo in range(1, max_tentativi + 1):
+                r = await client.get(url, headers=headers, params={"ref": GITHUB_BRANCH})
+                if r.status_code not in (200, 404):
+                    print(f"[GitHub] GET {url} → {r.status_code}: {r.text[:200]}")
+                    return
+                sha = r.json().get("sha") if r.status_code == 200 else None
+                payload: dict = {
+                    "message": f"Auto-update {label} via approvazione admin [skip ci]",
+                    "content": base64.b64encode(file_bytes).decode(),
+                    "branch": GITHUB_BRANCH,
+                }
+                if sha:
+                    payload["sha"] = sha
+                resp = await client.put(url, headers=headers, json=payload)
+                if resp.status_code in (200, 201):
+                    extra = f" (tentativo {tentativo}/{max_tentativi})" if tentativo > 1 else ""
+                    print(f"[GitHub] {label} aggiornato sul branch {GITHUB_BRANCH}{extra}")
+                    return
+                if resp.status_code == 409 and tentativo < max_tentativi:
+                    print(f"[GitHub] Conflitto sha su {label} (tentativo {tentativo}/{max_tentativi}) — rileggo e riprovo")
+                    await asyncio.sleep(1)
+                    continue
                 print(f"[GitHub] Errore push {label}: {resp.status_code} {resp.text[:300]}")
+                return
     except Exception as e:
         print(f"[GitHub] Eccezione {label}: {type(e).__name__}: {e}")
+
 
 
 async def _push_current_master_to_github() -> None:
