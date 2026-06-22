@@ -161,11 +161,13 @@
           </div>
           <div>
             <label>Data richiesta (gg/mm/aaaa)</label>
-            <input type="text" id="fld-data-rich" placeholder="es. 12/05/2026" data-testid="fld-data-richiesta">
+            <input type="date" id="fld-data-rich" data-testid="fld-data-richiesta">
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Formato: gg/mm/aaaa nel CSV</div>
           </div>
           <div>
             <label>Data approvazione (gg/mm/aaaa)</label>
-            <input type="text" id="fld-data-app" placeholder="es. 20/05/2026" data-testid="fld-data-app">
+            <input type="date" id="fld-data-app" data-testid="fld-data-app">
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Formato: gg/mm/aaaa nel CSV</div>
           </div>
           <div>
             <label>Pratica
@@ -242,7 +244,7 @@
           </div>
           <div>
             <label>Data richiesta</label>
-            <input type="text" id="new-data-rich" placeholder="gg/mm/aaaa">
+            <input type="date" id="new-data-rich">
           </div>
           <div>
             <label>N_SED</label>
@@ -467,8 +469,22 @@
     $('editForm').style.display = '';
     $('editRowSub').textContent = `${SELECTED._codice || ''} · ${SELECTED.TRATTA_ID} · ${SELECTED.ENTE} · ${SELECTED.TIPO_PERMESSO}`;
     $('fld-stato').value = '';
-    $('fld-data-rich').value = SELECTED.DATA_RICHIESTA || '';
-    $('fld-data-app').value = SELECTED.DATA_APPROVAZIONE || '';
+  // Conversione date DD/MM/YYYY (formato CSV) ↔ YYYY-MM-DD (formato input[type=date])
+  function toInputDate(ddmmyyyy) {
+    if (!ddmmyyyy) return '';
+    const p = String(ddmmyyyy).trim().split('/');
+    if (p.length !== 3) return '';
+    return `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
+  }
+  function fromInputDate(yyyymmdd) {
+    if (!yyyymmdd) return '';
+    const p = String(yyyymmdd).trim().split('-');
+    if (p.length !== 3) return '';
+    return `${p[2].padStart(2,'0')}/${p[1].padStart(2,'0')}/${p[0]}`;
+  }
+
+    $('fld-data-rich').value = toInputDate(SELECTED.DATA_RICHIESTA || '');
+    $('fld-data-app').value  = toInputDate(SELECTED.DATA_APPROVAZIONE || '');
     $('fld-pratica').value = SELECTED.PRATICA || '';
     $('fld-note').value = SELECTED.NOTE || '';
 
@@ -578,8 +594,8 @@
     if (!SELECTED) return;
     const fields = {};
     if ($('fld-stato').value) fields.STATO_PERMESSO = $('fld-stato').value;
-    if ($('fld-data-rich').value !== SELECTED.DATA_RICHIESTA) fields.DATA_RICHIESTA = $('fld-data-rich').value;
-    if ($('fld-data-app').value !== SELECTED.DATA_APPROVAZIONE) fields.DATA_APPROVAZIONE = $('fld-data-app').value;
+    if ($('fld-data-rich').value !== toInputDate(SELECTED.DATA_RICHIESTA)) fields.DATA_RICHIESTA = fromInputDate($('fld-data-rich').value);
+    if ($('fld-data-app').value !== toInputDate(SELECTED.DATA_APPROVAZIONE)) fields.DATA_APPROVAZIONE = fromInputDate($('fld-data-app').value);
     // PRATICA non modificabile dall'impresa — campo solo lettura
     if ($('fld-note').value !== SELECTED.NOTE) fields.NOTE = $('fld-note').value;
     if (!Object.keys(fields).length) return setMsg($('msgUpd'), 'Nessun campo modificato', false);
@@ -637,7 +653,7 @@
                : $('new-ente').value.trim()),
       "TIPO_PERMESSO": $('new-tipo').value,
       "STATO_PERMESSO": "IN REDAZIONE",
-      "DATA_RICHIESTA": $('new-data-rich').value.trim(),
+      "DATA_RICHIESTA": fromInputDate($('new-data-rich').value),
       "DATA_ULTIMA_MODIFICA": new Date().toLocaleDateString('it-IT'),
       "DATA_APPROVAZIONE": "",
       "NULLA OSTA NECESSARIO": $('new-no-nec').value,
