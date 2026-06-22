@@ -256,6 +256,18 @@
             <label>Ordinanza necessaria</label>
             <select id="new-ord-nec"><option value=""></option><option>SI</option><option>NO</option></select>
           </div>
+          <div>
+            <label>Convenzione</label>
+            <select id="new-convenzione"><option value=""></option><option>SI</option><option>NO</option></select>
+          </div>
+          <div>
+            <label>Polizza</label>
+            <select id="new-polizza"><option value=""></option><option>SI</option><option>NO</option></select>
+          </div>
+          <div>
+            <label>Lunghezza tratta (m)</label>
+            <input type="number" id="new-lunghezza" step="any" min="0" placeholder="es. 350">
+          </div>
           <div style="grid-column:span 2">
             <label>Note</label>
             <textarea id="new-note"></textarea>
@@ -608,6 +620,9 @@
       "DATA_APPROVAZIONE": "",
       "NULLA OSTA NECESSARIO": $('new-no-nec').value,
       "ORDINANZA NECESSARIA": $('new-ord-nec').value,
+      "CONVENZIONE": $('new-convenzione').value,
+      "POLIZZA ": $('new-polizza').value,
+      "LUNGHEZZA": $('new-lunghezza').value.trim(),
       "PRATICA": pratica,
       "N_SED": $('new-nsed').value.trim(),
       "NOTE": $('new-note').value.trim(),
@@ -756,7 +771,10 @@
               &nbsp;<span style="display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:600;background:${statusColor}22;color:${statusColor}">${s.status}</span>
             </div>
           </div>
-          <button class="sub-modal-close" id="_subClose">&times;</button>
+          <div style="display:flex;align-items:center;gap:8px">
+            ${s.status === 'pending' ? `<button id="_subDelete" style="padding:4px 12px;border-radius:6px;border:1px solid #ef4444;background:transparent;color:#ef4444;font-size:12px;cursor:pointer;font-weight:600">🗑 Elimina richiesta</button>` : ''}
+            <button class="sub-modal-close" id="_subClose">&times;</button>
+          </div>
         </div>
         <div class="sub-modal-body">
           <div class="sub-section-label">${nMod === 1 ? '1 modifica' : nMod + ' modifiche'}</div>
@@ -767,6 +785,16 @@
     document.body.appendChild(overlay);
     overlay.querySelector('#_subClose').onclick = () => overlay.remove();
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    if (s.status === 'pending') {
+      overlay.querySelector('#_subDelete').onclick = async () => {
+        if (!confirm('Eliminare questa richiesta? L\'operazione non è reversibile.')) return;
+        try {
+          await api(`/api/imprese/submissions/${s._id}?nome=${encodeURIComponent(nome)}`, { method: 'DELETE' });
+          overlay.remove();
+          await loadMine();
+        } catch(e) { alert('Errore: ' + e.message); }
+      };
+    }
   }
 })();
 </script>
