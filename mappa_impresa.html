@@ -1130,9 +1130,11 @@ function updateLegend(mode) {
       <div class="legend-item"><div class="legend-line" style="background:#4a4f6a"></div>In Attesa / Redazione</div>
       <div class="legend-item"><div class="legend-line" style="background:#9b59b6"></div>Coordinamento</div>`;
   } else if (mode === 'lotto') {
-    const items = Object.entries(LOTTO_COLORS).map(([l,c]) =>
-      `<div class="legend-item"><div class="legend-line" style="background:${c}"></div>Lotto ${l}</div>`
-    ).join('');
+    const lottiPresenti = new Set(allFeatures.map(f => f.properties.LOTTO).filter(Boolean));
+    const items = Object.entries(LOTTO_COLORS)
+      .filter(([l]) => lottiPresenti.has(l))
+      .map(([l,c]) => `<div class="legend-item"><div class="legend-line" style="background:${c}"></div>Lotto ${l}</div>`)
+      .join('');
     leg.innerHTML = `<div class="legend-title">Lotto</div>${items}`;
   } else {
     // Cluster: legenda dinamica con i cluster presenti nel GeoJSON
