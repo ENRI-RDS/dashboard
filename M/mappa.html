@@ -1,1005 +1,681 @@
 <!DOCTYPE html>
 <html lang="en" translate="no">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="google" content="notranslate">
-    <meta http-equiv="Content-Language" content="en">
-    <title>Design Progress</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="google" content="notranslate">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Design Progress</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+(function(){
+  var w = window.innerWidth || document.documentElement.clientWidth || screen.width;
+  if(w <= 768){
+    document.addEventListener('DOMContentLoaded', function(){
+      var s = document.getElementById('sidebarEl');
+      if(s){ s.style.display = 'none'; s.style.transform = 'translateX(-100%)'; }
+    });
+  }
+})();
+</script>
+<style>
+  :root {
+    --bg-main: #111319;
+    --bg-card: #171a24;
+    --bg-card-hover: #1d212f;
+    --border-color: #262b3d;
+    --text-primary: #f3f4f6;
+    --text-secondary: #9ca3af;
+    --text-muted: #6b7280;
     
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
-    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    /* Tavolozza Stati (Coerente con Dashboard) */
+    --c-pianificato: #6b7280;
+    --c-in-corso: #f59e0b;
+    --c-approvato: #10b981;
+    --c-in-approvazione: #06b6d4;
+    --c-sospeso: #ef4444;
+    
+    /* Variabili Dinamiche per Grafici */
+    --p-approvate: 0%;
+    --p-incorso: 0%;
+    --p-pianificate: 0%;
+    --p-sospese: 0%;
+  }
 
-    <style>
-        :root {
-            --bg:        #3B73A4; /* Sfondo coordinato con l'hub principale */
-            --surface:   #FFFFFF;
-            --surface2:  #F8F9FA;
-            --border:    #E9ECEF;
-            --border2:   #DEE2E6;
-            --accent:    #0B3182;
-            --text:      #1C1C2E;
-            --text2:     #495057;
-            --muted:     #6C757D;
-            
-            /* Colori degli Stati */
-            --color-pianificato: #6c757d;
-            --color-incorso: #fd7e14;
-            --color-approvato: #198754;
-            --color-inapprovazione: #0dcaf0;
-            --color-sospeso: #dc3545;
-        }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'DM Sans', sans-serif; }
+  body { background: var(--bg-main); color: var(--text-primary); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+  
+  /* ── TOPBAR ── */
+  .topbar {
+    height: 48px; background: var(--bg-card); border-bottom: 1px solid var(--border-color);
+    display: flex; align-items: center; justify-content: space-between; padding: 0 16px; z-index: 1001;
+  }
+  .topbar-left { display: flex; align-items: center; gap: 12px; }
+  .btn-back {
+    display: flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+    border-radius: 6px; background: var(--bg-main); border: 1px solid var(--border-color);
+    color: var(--text-secondary); cursor: pointer; text-decoration: none; transition: all 0.15s;
+  }
+  .btn-back:hover { color: var(--text-primary); border-color: #4b5563; background: var(--bg-card-hover); }
+  .topbar-title { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; color: var(--text-primary); }
+  
+  .topbar-right { display: flex; align-items: center; gap: 8px; }
+  .user-badge {
+    font-size: 11px; font-weight: 500; color: var(--text-secondary); background: var(--bg-main);
+    padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border-color); max-width: 140px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
 
-        * { margin:0; padding:0; box-sizing:border-box; }
+  /* ── MAIN LAYOUT ── */
+  .main-container { flex: 1; display: flex; position: relative; overflow: hidden; }
+  
+  /* ── MAP CONTAINER ── */
+  #map { flex: 1; height: 100%; background: #0b0d12; z-index: 1; }
 
-        body {
-            font-family: 'Plus Jakarta Sans', sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
+  /* ── SIDEBAR FILTRI (SINISTRA) ── */
+  .sidebar-left {
+    width: 280px; background: var(--bg-card); border-right: 1px solid var(--border-color);
+    display: flex; flex-direction: column; z-index: 1000; transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .sidebar-header {
+    padding: 14px 16px; border-bottom: 1px solid var(--border-color);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .sidebar-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
+  
+  .sidebar-scroll { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 20px; }
+  
+  /* Gruppi di Filtro */
+  .filter-group { display: flex; flex-direction: column; gap: 6px; }
+  .filter-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); }
+  
+  .custom-select {
+    width: 100%; height: 34px; background: var(--bg-main); border: 1px solid var(--border-color);
+    border-radius: 6px; color: var(--text-primary); padding: 0 10px; font-size: 12px; font-weight: 500;
+    outline: none; cursor: pointer; transition: border-color 0.15s;
+  }
+  .custom-select:focus { border-color: #4b5563; }
+  .custom-select option { background: var(--bg-card); color: var(--text-primary); }
 
-        /* HEADER */
-        .header {
-            background: var(--surface);
-            border-bottom: 1px solid var(--border2);
-            padding: 12px 24px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            height: 56px;
-            z-index: 1000;
-        }
+  /* Lista Stati (Bottoni Selettori) */
+  .status-list { display: flex; flex-direction: column; gap: 4px; }
+  .status-row {
+    display: flex; align-items: center; justify-content: space-between; padding: 8px 10px;
+    background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px;
+    cursor: pointer; transition: all 0.15s; user-select: none;
+  }
+  .status-row:hover { background: var(--bg-card-hover); border-color: #374151; }
+  .status-row.active { background: #1e293b; border-color: #3b82f6; }
+  
+  .status-left { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+  .status-row.active .status-left { color: var(--text-primary); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .status-count { font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 500; color: var(--text-muted); }
+  .status-row.active .status-count { color: #3b82f6; font-weight: 600; }
 
-        .header-title {
-            font-family: 'Bricolage Grotesque', sans-serif;
-            font-size: 18px;
-            font-weight: 700;
-            color: var(--accent);
-        }
+  /* Info Box */
+  .info-box {
+    background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .info-row { display: flex; align-items: center; justify-content: space-between; font-size: 11px; }
+  .info-lbl { color: var(--text-muted); font-weight: 500; }
+  .info-val { font-family: 'DM Mono', monospace; color: var(--text-secondary); font-weight: 500; }
+  .info-val.highlight { color: #3b82f6; font-weight: 600; }
 
-        .back-btn {
-            font-size: 12px;
-            font-weight: 600;
-            padding: 6px 12px;
-            border-radius: 6px;
-            border: 1px solid var(--border2);
-            background: var(--surface2);
-            color: var(--text2);
-            text-decoration: none;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .back-btn:hover {
-            background: var(--border);
-            color: var(--text);
-        }
+  .btn-reset {
+    width: 100%; height: 32px; background: transparent; border: 1px solid var(--border-color);
+    border-radius: 6px; color: var(--text-secondary); font-size: 11px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .btn-reset:hover { color: var(--text-primary); background: var(--bg-card-hover); border-color: #4b5563; }
 
-        /* CONTAINER PRINCIPALE */
-        .wrapper {
-            display: flex;
-            flex: 1;
-            position: relative;
-            overflow: hidden;
-        }
+  /* ── PANEL DETTAGLI (DESTRA) ── */
+  .panel-right {
+    width: 320px; background: var(--bg-card); border-left: 1px solid var(--border-color);
+    display: flex; flex-direction: column; z-index: 1000;
+    position: absolute; right: 0; top: 0; bottom: 0;
+    transform: translateX(100%); transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: -4px 0 16px rgba(0,0,0,0.25);
+  }
+  .panel-right.open { transform: translateX(0); position: relative; }
+  
+  .panel-header {
+    padding: 14px 16px; border-bottom: 1px solid var(--border-color);
+    display: flex; align-items: center; justify-content: space-between; background: #1a1e2a;
+  }
+  .panel-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+  .btn-close-panel {
+    background: transparent; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em;
+  }
+  .btn-close-panel:hover { color: var(--text-secondary); }
 
-        /* SIDEBAR SINISTRA (FILTRI) */
-        .sidebar {
-            width: 320px;
-            background: var(--surface);
-            border-right: 1px solid var(--border2);
-            display: flex;
-            flex-direction: column;
-            z-index: 999;
-            box-shadow: 2px 0 8px rgba(0,0,0,0.05);
-            transition: transform 0.3s ease;
-        }
+  .panel-scroll { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 18px; }
+  
+  /* Sotto-sezioni Dettaglio */
+  .det-section { display: flex; flex-direction: column; gap: 8px; }
+  .det-sec-title { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+  
+  /* Griglia Info */
+  .grid-info { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .grid-card { background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; }
+  .grid-lbl { font-size: 9px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; margin-bottom: 2px; }
+  .grid-val { font-size: 12px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-        .sidebar-content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
+  /* Grafico Stacked Lineare */
+  .stacked-bar {
+    width: 100%; height: 10px; background: #111319; border-radius: 20px; overflow: hidden;
+    display: flex; border: 1px solid var(--border-color); margin-top: 4px;
+  }
+  .segment { height: 100%; transition: width 0.3s ease; }
+  .seg-approved { background: var(--c-approvato); }
+  .seg-inprogress { background: var(--c-in-corso); }
+  .seg-planned { background: var(--c-pianificato); }
+  .seg-suspended { background: var(--c-sospeso); }
 
-        .section-title {
-            font-family: 'Bricolage Grotesque', sans-serif;
-            font-size: 14px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text);
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
+  /* Legenda Mini */
+  .mini-legenda { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 12px; margin-top: 4px; }
+  .mini-leg-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); }
+  .mini-leg-val { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text-muted); margin-left: auto; }
 
-        .filter-group {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
+  /* Elenco Pratiche Critiche */
+  .critiche-list { display: flex; flex-direction: column; gap: 6px; }
+  .critica-card {
+    background: #22161a; border: 1px solid #441c24; border-radius: 6px; padding: 8px 10px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .critica-top { display: flex; align-items: center; justify-content: space-between; }
+  .critica-id { font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 600; color: #fecdd3; }
+  .critica-days { font-size: 10px; font-weight: 600; background: #881337; color: #ffe4e6; padding: 1px 5px; border-radius: 4px; }
+  .critica-ente { font-size: 11px; color: #f43f5e; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  
+  .no-critiche {
+    font-size: 11px; color: var(--text-muted); font-style: italic; text-align: center;
+    padding: 14px 0; background: var(--bg-main); border: 1px dashed var(--border-color); border-radius: 6px;
+  }
 
-        .filter-group label {
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--muted);
-            text-transform: uppercase;
-        }
+  .panel-placeholder {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 32px; text-align: center; color: var(--text-muted); font-size: 12px; gap: 8px;
+  }
 
-        .form-select {
-            width: 100%;
-            padding: 8px 12px;
-            border-radius: 6px;
-            border: 1px solid var(--border2);
-            background-color: var(--surface2);
-            font-family: inherit;
-            font-size: 13px;
-            color: var(--text);
-            cursor: pointer;
-            outline: none;
-        }
-        .form-select:focus {
-            border-color: var(--accent);
-        }
+  /* ── INTERFACCIA MOBILE OVERLAYS ── */
+  .mobile-toggle-bar {
+    display: none; height: 36px; background: #1a1e2a; border-top: 1px solid var(--border-color);
+    z-index: 1002; width: 100%;
+  }
+  .m-toggle-btn {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+    background: transparent; border: none; color: var(--text-secondary); font-size: 11px; font-weight: 600; cursor: pointer;
+  }
+  .m-toggle-btn:not(:last-child) { border-right: 1px solid var(--border-color); }
+  .m-toggle-btn.active { color: #3b82f6; background: var(--bg-main); }
+  
+  /* Floating Search Inside Map */
+  .map-search-box {
+    position: absolute; top: 12px; left: 12px; z-index: 500; width: 240px;
+    background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 6px;
+    display: flex; align-items: center; padding: 0 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+  .map-search-input {
+    flex: 1; height: 30px; background: transparent; border: none; outline: none;
+    color: var(--text-primary); font-size: 11px; font-weight: 500;
+  }
+  .map-search-input::placeholder { color: var(--text-muted); }
+  .map-search-clear {
+    background: transparent; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 12px; display: none; padding: 4px;
+  }
+  .map-search-clear:hover { color: var(--text-secondary); }
 
-        /* STATO ITER BUTTONS */
-        .status-grid {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
+  /* ── LEAFLET CUSTOM POPUP ── */
+  .leaflet-popup-content-wrapper { background: var(--bg-card) !important; color: var(--text-primary) !important; border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.4) !important; }
+  .leaflet-popup-tip { background: var(--bg-card) !important; border-left: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); }
+  .pop-title { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px; }
+  .pop-row { font-size: 11px; color: var(--text-secondary); margin-bottom: 2px; display: flex; justify-content: space-between; gap: 12px; }
+  .pop-val { font-family: 'DM Mono', monospace; color: var(--text-primary); font-weight: 500; }
+  .pop-btn {
+    display: block; width: 100%; text-align: center; background: #1e293b; border: 1px solid #334155;
+    color: #f8fafc !important; font-size: 10px; font-weight: 600; text-transform: uppercase; padding: 5px 0;
+    border-radius: 4px; margin-top: 6px; text-decoration: none; cursor: pointer; transition: all 0.12s;
+  }
+  .pop-btn:hover { background: #334155; border-color: #475569; }
 
-        .status-btn {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 8px 12px;
-            border-radius: 6px;
-            border: 1px solid var(--border2);
-            background: var(--surface2);
-            cursor: pointer;
-            font-size: 12px;
-            font-weight: 500;
-            color: var(--text2);
-            text-align: left;
-            transition: all 0.15s;
-        }
-        .status-btn:hover {
-            background: var(--border);
-        }
-        .status-btn.active {
-            background: var(--accent);
-            color: white;
-            border-color: var(--accent);
-        }
+  /* ── RESPONSIVE RESPONSIVENESS ── */
+  @media(max-width: 768px) {
+    .sidebar-left { position: absolute; left: 0; top: 0; bottom: 0; transform: translateX(-100%); width: 100%; }
+    .sidebar-left.open { transform: translateX(0); }
+    .panel-right { width: 100%; }
+    .mobile-toggle-bar { display: flex; }
+    .map-search-box { width: calc(100% - 24px); left: 12px; top: 12px; }
+  }
 
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 8px;
-        }
-
-        .btn-reset {
-            width: 100%;
-            padding: 10px;
-            border-radius: 6px;
-            border: 1px solid var(--border2);
-            background: var(--surface2);
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--text);
-            cursor: pointer;
-            transition: background 0.2s;
-            margin-top: auto;
-        }
-        .btn-reset:hover { background: var(--border); }
-
-        /* LEGENDA STATI */
-        .legend-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        .legend-item {
-            display: flex;
-            align-items: center;
-            font-size: 12px;
-            color: var(--text2);
-        }
-
-        /* COUNTERS PANEL */
-        .counters-panel {
-            background: var(--surface2);
-            border-radius: 8px;
-            padding: 12px;
-            border: 1px solid var(--border2);
-        }
-        .counter-row {
-            display: flex;
-            justify-content: space-between;
-            font-size: 12px;
-            padding: 4px 0;
-            color: var(--text2);
-        }
-        .counter-row.total {
-            font-weight: 700;
-            border-top: 1px solid var(--border2);
-            margin-top: 4px;
-            padding-top: 6px;
-            color: var(--text);
-        }
-
-        /* MAPPA CONTAINER */
-        #map {
-            flex: 1;
-            height: 100%;
-            z-index: 1;
-        }
-
-        /* SEARCH BAR OVER MAP */
-        .map-search-container {
-            position: absolute;
-            top: 15px;
-            left: 350px;
-            z-index: 998;
-            width: 300px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            border-radius: 8px;
-            overflow: hidden;
-            background: white;
-            display: flex;
-            align-items: center;
-            border: 1px solid var(--border2);
-        }
-        .map-search-input {
-            width: 100%;
-            padding: 10px 14px;
-            border: none;
-            outline: none;
-            font-size: 13px;
-            font-family: inherit;
-        }
-        .map-search-btn {
-            background: white;
-            border: none;
-            padding: 0 12px;
-            cursor: pointer;
-            color: var(--muted);
-        }
-
-        /* DETTAGLI SIDEBAR DESTRA */
-        .details-panel {
-            width: 360px;
-            background: var(--surface);
-            border-left: 1px solid var(--border2);
-            z-index: 999;
-            box-shadow: -2px 0 8px rgba(0,0,0,0.05);
-            display: flex;
-            flex-direction: column;
-            transform: translateX(100%);
-            transition: transform 0.3s ease;
-            position: absolute;
-            right: 0;
-            top: 0;
-            bottom: 0;
-        }
-        .details-panel.open {
-            transform: translateX(0);
-            position: relative;
-        }
-
-        .details-header {
-            padding: 16px 20px;
-            border-bottom: 1px solid var(--border2);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            background: var(--surface2);
-        }
-        .details-title {
-            font-family: 'Bricolage Grotesque', sans-serif;
-            font-size: 15px;
-            font-weight: 700;
-            color: var(--text);
-        }
-        .close-details-btn {
-            background: transparent;
-            border: none;
-            cursor: pointer;
-            color: var(--muted);
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-        .close-details-btn:hover { color: var(--text); }
-
-        .details-body {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .info-card {
-            background: var(--surface2);
-            border: 1px solid var(--border2);
-            border-radius: 8px;
-            padding: 14px;
-        }
-        .info-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            font-size: 13px;
-        }
-        .info-row:last-child { margin-bottom: 0; }
-        .info-label { color: var(--muted); font-weight: 500; }
-        .info-value { color: var(--text); font-weight: 600; }
-
-        /* PROGRESS BARS */
-        .progress-container {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        .progress-item {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        .progress-label-row {
-            display: flex;
-            justify-content: space-between;
-            font-size: 12px;
-            font-weight: 500;
-        }
-        .progress-bar-bg {
-            height: 8px;
-            background: var(--border);
-            border-radius: 4px;
-            overflow: hidden;
-        }
-        .progress-bar-fill {
-            height: 100%;
-            border-radius: 4px;
-            transition: width 0.5s ease;
-        }
-
-        /* CRITICAL ITEMS LIST */
-        .critical-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        .critical-item {
-            padding: 10px;
-            border-radius: 6px;
-            border: 1px solid rgba(220, 53, 69, 0.2);
-            background: rgba(220, 53, 69, 0.03);
-            font-size: 12px;
-        }
-        .critical-item-header {
-            display: flex;
-            justify-content: space-between;
-            font-weight: 600;
-            margin-bottom: 2px;
-            color: #b02a37;
-        }
-        .critical-item-desc { color: var(--text2); }
-
-        .no-data-msg {
-            font-size: 12px;
-            color: var(--muted);
-            font-style: italic;
-            text-align: center;
-            padding: 10px 0;
-        }
-
-        .placeholder-panel {
-            flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 40px;
-            text-align: center;
-            color: var(--muted);
-            font-size: 13px;
-        }
-
-        /* CLUSTER CUSTOM MARKERS */
-        .marker-cluster-custom {
-            background: rgba(11, 49, 130, 0.2);
-            border-radius: 50%;
-            transition: all 0.2s ease;
-        }
-        .marker-cluster-custom div {
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            background: var(--accent);
-            color: white;
-            font-family: 'Fira Code', monospace;
-            font-weight: 600;
-            font-size: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-        }
-
-        /* POPUP STYLING */
-        .leaflet-popup-content-wrapper {
-            border-radius: 12px;
-            padding: 4px;
-            font-family: 'Plus Jakarta Sans', sans-serif;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-        }
-        .popup-container {
-            padding: 6px;
-            min-width: 180px;
-        }
-        .popup-title {
-            font-family: 'Bricolage Grotesque', sans-serif;
-            font-weight: 700;
-            font-size: 14px;
-            margin-bottom: 6px;
-            color: var(--accent);
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 4px;
-        }
-        .popup-row {
-            font-size: 11px;
-            margin-bottom: 4px;
-            color: var(--text2);
-        }
-        .popup-row strong { color: var(--text); }
-        .popup-btn {
-            display: block;
-            width: 100%;
-            text-align: center;
-            background: var(--accent);
-            color: white !important;
-            padding: 6px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
-            text-decoration: none;
-            margin-top: 8px;
-            transition: background 0.15s;
-        }
-        .popup-btn:hover { background: #051b4d; }
-
-        /* TOAST NOTIFICATION */
-        #toast {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #1c1c2e;
-            color: white;
-            padding: 10px 20px;
-            border-radius: 30px;
-            font-size: 12px;
-            font-weight: 500;
-            z-index: 2000;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            opacity: 0;
-            transition: opacity 0.3s ease;
-            pointer-events: none;
-        }
-        #toast.show { opacity: 1; }
-
-        @media(max-width: 768px) {
-            .sidebar {
-                position: absolute;
-                left: 0; top: 0; bottom: 0;
-                transform: translateX(-100%);
-            }
-            .sidebar.open { transform: translateX(0); }
-            .map-search-container { left: 20px; width: calc(100% - 40px); }
-            .details-panel { width: 100%; }
-        }
-    </style>
+  /* Fix per icone/pulsanti Leaflet oscuri */
+  .leaflet-bar a { background-color: var(--bg-card) !important; color: var(--text-primary) !important; border-bottom: 1px solid var(--border-color) !important; }
+  .leaflet-bar a:hover { background-color: var(--bg-card-hover) !important; }
+  .leaflet-bar a.leaflet-disabled { background-color: var(--bg-main) !important; color: var(--text-muted) !important; }
+</style>
 </head>
 <body>
 
-    <div class="header">
-        <div class="header-title">Design Progress</div>
-        <a href="Hub.html" class="back-btn">Back to Hub</a>
+  <div class="topbar">
+    <div class="topbar-left">
+      <a class="btn-back" href="Hub.html" title="Back to Hub">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+      </a>
+      <span class="topbar-title">Design Progress Map</span>
+    </div>
+    <div class="topbar-right">
+      <span class="user-badge" id="userBadge">Guest</span>
+    </div>
+  </div>
+
+  <div class="main-container">
+    
+    <div class="sidebar-left" id="sidebarEl">
+      <div class="sidebar-header">
+        <span class="sidebar-title">Filters & Variables</span>
+      </div>
+      
+      <div class="sidebar-scroll">
+        
+        <div class="filter-group">
+          <label class="filter-label">Cluster Filter</label>
+          <select class="custom-select" id="selCluster">
+            <option value="ALL">All Clusters</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label class="filter-label">Lot Selection</label>
+          <select class="custom-select" id="selLotto">
+            <option value="ALL">All Lots</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label class="filter-label">Filter by Process Status</label>
+          <div class="status-list" id="statusListContainer">
+            <div class="status-row active" data-status="ALL" id="row-all">
+              <div class="status-left"><span class="dot" style="background:#3b82f6;"></span>Show All</div>
+              <span class="status-count" id="txt-count-all">0</span>
+            </div>
+            </div>
+        </div>
+
+        <div class="info-box">
+          <div class="info-row">
+            <span class="info-lbl">Total Items:</span>
+            <span class="info-val" id="stat-totale">0</span>
+          </div>
+          <div class="info-row">
+            <span class="info-lbl">Filtered Items:</span>
+            <span class="info-val highlight" id="stat-filtrato">0</span>
+          </div>
+        </div>
+
+        <button class="btn-reset" id="btnReset">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          Reset All Filters
+        </button>
+
+      </div>
     </div>
 
-    <div class="wrapper">
-        
-        <div class="sidebar" id="sidebar">
-            <div class="sidebar-content">
-                
-                <div>
-                    <div class="section-title">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-                        Main Filters
-                    </div>
-                    
-                    <div style="display: flex; flex-direction: column; gap: 12px;">
-                        <div class="filter-group">
-                            <label for="selectCluster">Cluster</label>
-                            <select id="selectCluster" class="form-select">
-                                <option value="">Select Cluster...</option>
-                            </select>
-                        </div>
-
-                        <div class="filter-group">
-                            <label for="selectLotto">Lot</label>
-                            <select id="selectLotto" class="form-select">
-                                <option value="">Select Lot...</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <div>
-                    <div class="section-title">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                        Process Status
-                    </div>
-                    <div class="status-grid" id="statusFilterGrid">
-                        <button class="status-btn active" data-status="ALL">
-                            <span>Show All</span>
-                            <span id="count-all" style="font-weight: 700; font-size: 11px;">0</span>
-                        </button>
-                        </div>
-                </div>
-
-                <div>
-                    <div class="section-title">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2H2v10h10V2zM22 12H12v10h10V12zM12 12H2v10h10V12zM22 2H12v10h10V2z"/></svg>
-                        Status Legend
-                    </div>
-                    <div class="legend-list">
-                        <div class="legend-item"><span class="status-dot" style="background: var(--color-pianificato)"></span>Planned</div>
-                        <div class="legend-item"><span class="status-dot" style="background: var(--color-incorso)"></span>In Progress</div>
-                        <div class="legend-item"><span class="status-dot" style="background: var(--color-approvato)"></span>Approved</div>
-                        <div class="legend-item"><span class="status-dot" style="background: var(--color-inapprovazione)"></span>Pending Approval</div>
-                        <div class="legend-item"><span class="status-dot" style="background: var(--color-sospeso)"></span>Suspended / Blocked</div>
-                    </div>
-                </div>
-
-                <div class="counters-panel">
-                    <div class="section-title" style="font-size: 11px; margin-bottom: 6px;">Items Summary</div>
-                    <div class="counter-row">
-                        <span>Total Items:</span>
-                        <span id="counter-total" style="font-weight: 600;">0</span>
-                    </div>
-                    <div class="counter-row">
-                        <span>Filtered Items:</span>
-                        <span id="counter-filtered" style="font-weight: 600; color: var(--accent);">0</span>
-                    </div>
-                    <div class="counter-row total">
-                        <span>Last Update:</span>
-                        <span id="last-update-date" style="font-size: 11px;">-</span>
-                    </div>
-                </div>
-
-                <button class="btn-reset" id="btnResetAll">Reset All Filters</button>
-
-            </div>
-        </div>
-
-        <div class="map-search-container">
-            <input type="text" class="map-search-input" id="mapSearchInput" placeholder="Search address...">
-            <button class="map-search-btn" id="mapSearchBtn">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            </button>
-        </div>
-
-        <div id="map"></div>
-
-        <div class="details-panel" id="detailsPanel">
-            <div class="details-header">
-                <div class="details-title" id="detailsPanelTitle">Lot Details</div>
-                <button class="close-details-btn" id="closeDetailsBtn">Close</button>
-            </div>
-            <div class="details-body" id="detailsPanelBody">
-                <div class="placeholder-panel">Select a lot on the map to view details.</div>
-            </div>
-        </div>
-
+    <div id="map">
+      <div class="map-search-box">
+        <input type="text" class="map-search-input" id="mapSearchInput" placeholder="Search address or locality...">
+        <button class="map-search-clear" id="mapSearchClear">&times;</button>
+      </div>
     </div>
 
-    <div id="toast">Loading data...</div>
+    <div class="panel-right" id="panelRightEl">
+      <div class="panel-header">
+        <span class="panel-title" id="panelTitleEl">Lot Detail</span>
+        <button class="btn-close-panel" id="panelCloseBtn">Close</button>
+      </div>
+      
+      <div class="panel-scroll" id="panelScrollEl">
+        <div class="panel-placeholder">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--text-muted)"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+          Select an active item or marker on the map to inspect project variables, metrics, and critical issues.
+        </div>
+      </div>
+    </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  </div>
 
-    <script>
-        // GLOBALS
-        let map;
-        let markersClusterGroup;
-        let allGeoJsonFeatures = [];
-        let filteredFeatures = [];
-        let currentSelectedStatus = "ALL";
+  <div class="mobile-toggle-bar">
+    <button class="m-toggle-btn active" id="mTabMap">Map view</button>
+    <button class="m-toggle-btn" id="mTabFilters">Filters panel</button>
+  </div>
+
+  <script>
+  // Configurazione log bin e identità statica
+  const LOG_BIN_ID = "677d29bcad19ca34f8e6c710";
+  let utente = "Guest", ruolo = "PM";
+
+  // Estrae parametri dall'URL di caricamento se presenti
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('u')) utente = params.get('u');
+    if (params.get('r')) ruolo = params.get('r');
+  } catch(e){}
+  document.getElementById('userBadge').textContent = utente;
+
+  // Variabili di sessione per tracking analitico
+  let _sessionTs = null, _sessionStart = Date.now(), _cachedData = null;
+  const SAVE_INTERVAL_MS = 60_000, ACCESSI_MAX = 400;
+
+  function _proxyGet(binId) {
+    return fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, { headers: { "X-Master-Key": "$2a$10$iGgI0gI9P.5YmGvE7PqIReh9Y.1Iasj.tWnJkWLpB4wWbK6.zE6vi" } })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => d.record).catch(() => ({ accessi: [], utenti: [] }));
+  }
+  function _proxyPut(binId, payload, silent=false) {
+    return fetch(`https://api.jsonbin.io/v3/b/${binId}`, {
+      method: "PUT", headers: { "Content-Type": "application/json", "X-Master-Key": "$2a$10$iGgI0gI9P.5YmGvE7PqIReh9Y.1Iasj.tWnJkWLpB4wWbK6.zE6vi" },
+      body: JSON.stringify(payload)
+    }).then(r => r.ok ? r.json() : Promise.reject()).catch(e => { if(!silent) console.error("Sync error", e); });
+  }
+  function _getIP() {
+    return fetch('https://api.ipify.org?format=json').then(r => r.json()).then(j => j.ip).catch(() => 'unknown');
+  }
+  function _flushDurata() {
+    if (!_sessionTs || !_cachedData) return;
+    const entry = _cachedData.accessi.find(a => a.ts === _sessionTs);
+    if (!entry) return;
+    const durata = Math.round((Date.now() - _sessionStart) / 60_000);
+    if (entry.durata === durata) return;
+    entry.durata = durata;
+    _proxyPut(LOG_BIN_ID, _cachedData, true).catch(() => {});
+  }
+
+  // Registra l'accesso all'avvio in background
+  Promise.all([_proxyGet(LOG_BIN_ID), _getIP()]).then(([data, ip]) => {
+    const entry = {
+      ts: new Date().toISOString(), utente, ruolo, ip,
+      ua: navigator.userAgent.substring(0, 120),
+      durata: 0, lotti: [], nAperture: 0, pagina: 'mappa'
+    };
+    if (!data.accessi) data.accessi = [];
+    if (!data.utenti) data.utenti = [];
+    data.accessi.push(entry);
+    if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
+    if (!data.utenti.includes(utente)) data.utenti.push(utente);
+    _sessionTs = entry.ts; _cachedData = data;
+    _proxyPut(LOG_BIN_ID, data).catch(() => {});
+    setInterval(_flushDurata, SAVE_INTERVAL_MS);
+  }).catch(() => {});
+
+  function trackLottoClick(lottoId) {
+    if (!_cachedData || !_sessionTs) return;
+    const entry = _cachedData.accessi.find(a => a.ts === _sessionTs);
+    if (!entry) return;
+    entry.nAperture++;
+    if (!entry.lotti.includes(lottoId)) entry.lotti.push(lottoId);
+    _flushDurata();
+  }
+
+  // ── SVILUPPO MAPPA ED ELEMENTI GEOJSON ──
+  let lottiGeoData = null, mapObject = null, geoJsonLayer = null;
+  const STATI_CONFIG = {
+    "PIANIFICATO": { lbl: "Planned", col: "#6b7280" },
+    "IN CORSO": { lbl: "In Progress", col: "#f59e0b" },
+    "APPROVATO": { lbl: "Approved", col: "#10b981" },
+    "IN APPROVAZIONE": { lbl: "Pending Approval", col: "#06b6d4" },
+    "SOSPESO": { lbl: "Suspended", col: "#ef4444" },
+    "BLOCCATO": { lbl: "Blocked", col: "#ef4444" }
+  };
+
+  // Inizializzazione della mappa
+  mapObject = L.map('map', { attributionControl: false, zoomControl: false }).setView([45.4642, 9.1900], 9);
+  L.control.zoom({ position: 'bottomright' }).addTo(mapObject);
+
+  // Tema Dark CartoDB
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(mapObject);
+
+  // Caricamento asincrono file dati
+  fetch('lotti.geojson')
+    .then(r => r.json())
+    .then(geo => {
+      lottiGeoData = geo;
+      CostruisciFiltri();
+      ApplicaFiltriEdisegna();
+    }).catch(err => console.error("Error loading elements data:", err));
+
+  function CostruisciFiltri() {
+    const clusters = new Set(), lotti = new Set(), stati = new Set();
+    lottiGeoData.features.forEach(f => {
+      if(f.properties.cluster) clusters.add(f.properties.cluster);
+      if(f.properties.lotto) lotti.add(f.properties.lotto);
+      if(f.properties.stato_iter) stati.add(f.properties.stato_iter.toUpperCase().trim());
+    });
+
+    const selCluster = document.getElementById('selCluster');
+    Array.from(clusters).sort().forEach(c => {
+      let o = document.createElement('option'); o.value = c; o.textContent = c; selCluster.appendChild(o);
+    });
+
+    const selLotto = document.getElementById('selLotto');
+    Array.from(lotti).sort().forEach(l => {
+      let o = document.createElement('option'); o.value = l; o.textContent = l; selLotto.appendChild(o);
+    });
+
+    const listCont = document.getElementById('statusListContainer');
+    Array.from(stati).sort().forEach(s => {
+      const config = STATI_CONFIG[s] || { lbl: s, col: "#9ca3af" };
+      let r = document.createElement('div');
+      r.className = "status-row"; r.dataset.status = s;
+      r.innerHTML = `<div class="status-left"><span class="dot" style="background:${config.col}"></span>${config.lbl}</div><span class="status-count" id="txt-count-${s.replace(/\s+/g, '-')}">0</span>`;
+      listCont.appendChild(r);
+    });
+
+    // Associa eventi ai bottoni di stato del processo
+    document.querySelectorAll('.status-row').forEach(row => {
+      row.addEventListener('click', function() {
+        document.querySelectorAll('.status-row').forEach(x => x.classList.remove('active'));
+        this.classList.add('active');
+        ApplicaFiltriEdisegna();
+      });
+    });
+  }
+
+  function ApplicaFiltriEdisegna() {
+    if(!lottiGeoData) return;
+    
+    const fCluster = document.getElementById('selCluster').value;
+    const fLotto = document.getElementById('selLotto').value;
+    const activeRow = document.querySelector('.status-row.active');
+    const fStato = activeRow ? activeRow.dataset.status : "ALL";
+
+    // Pulisce il layer precedente se presente
+    if(geoJsonLayer) mapObject.removeLayer(geoJsonLayer);
+
+    // Contatori assoluti temporanei per popolamento
+    let countAll = 0;
+    const contatoriStati = {};
+    document.querySelectorAll('.status-row').forEach(r => { if(r.dataset.status!=="ALL") contatoriStati[r.dataset.status] = 0; });
+
+    // Costruisce la collezione filtrata
+    const featuresFiltrate = lottiGeoData.features.filter(f => {
+      const p = f.properties;
+      const sMatch = p.stato_iter ? p.stato_iter.toUpperCase().trim() : '';
+      
+      const matchC = (fCluster === "ALL" || p.cluster === fCluster);
+      const matchL = (fLotto === "ALL" || p.lotto === fLotto);
+      
+      if(matchC && matchL) {
+        countAll++;
+        if(contatoriStati[sMatch] !== undefined) contatoriStati[sMatch]++;
+      }
+      
+      const matchS = (fStato === "ALL" || sMatch === fStato);
+      return matchC && matchL && matchS;
+    });
+
+    // Aggiorna etichette numeriche
+    document.getElementById('txt-count-all').textContent = countAll;
+    document.getElementById('stat-totale').textContent = lottiGeoData.features.length;
+    document.getElementById('stat-filtrato').textContent = featuresFiltrate.length;
+    Object.keys(contatoriStati).forEach(k => {
+      const el = document.getElementById(`txt-count-${k.replace(/\s+/g, '-')}`);
+      if(el) el.textContent = contatoriStati[k];
+    });
+
+    // Disegna le feature sulla mappa Leaflet
+    geoJsonLayer = L.geoJson({ type: "FeatureCollection", features: featuresFiltrate }, {
+      pointToLayer: function(feat, latlng) {
+        const s = feat.properties.stato_iter ? feat.properties.stato_iter.toUpperCase().trim() : '';
+        const col = STATI_CONFIG[s] ? STATI_CONFIG[s].col : '#9ca3af';
+        return L.circleMarker(latlng, { radius: 7, fillColor: col, color: "#000", weight: 1, fillOpacity: 0.85 });
+      },
+      onEachFeature: function(feat, layer) {
+        const p = feat.properties;
+        const sLabel = STATI_CONFIG[p.stato_iter?.toUpperCase().trim()]?.lbl || p.stato_iter || '-';
         
-        // Mappatura colori per stato itera autorizzativo
-        const statusColors = {
-            "PIANIFICATO": "var(--color-pianificato)",
-            "IN CORSO": "var(--color-incorso)",
-            "APPROVATO": "var(--color-approvato)",
-            "IN APPROVAZIONE": "var(--color-inapprovazione)",
-            "SOSPESO": "var(--color-sospeso)",
-            "BLOCCATO": "var(--color-sospeso)"
-        };
+        let html = `<div class="pop-title">Lot ${p.lotto || '-'}</div>`;
+        html += `<div class="pop-row"><span>Cluster:</span><span class="pop-val">${p.cluster || '-'}</span></div>`;
+        html += `<div class="pop-row"><span>Status:</span><span class="pop-val">${sLabel}</span></div>`;
+        html += `<div class="pop-row"><span>Total Cases:</span><span class="pop-val">${p.pratiche_totali || 0}</span></div>`;
+        html += `<button class="pop-btn" onclick="IspezionaLotto('${p.lotto}')">Open Details</button>`;
+        
+        layer.bindPopup(html, { closeButton: false, offset: L.point(0, -4) });
+      }
+    }).addTo(mapObject);
 
-        const statusTranslations = {
-            "PIANIFICATO": "Planned",
-            "IN CORSO": "In Progress",
-            "APPROVATO": "Approved",
-            "IN APPROVAZIONE": "Pending Approval",
-            "SOSPESO": "Suspended",
-            "BLOCCATO": "Blocked"
-        };
+    // Inquadra i marker calcolando i bounds reali
+    if(featuresFiltrate.length > 0) {
+      try { mapObject.fitBounds(geoJsonLayer.getBounds(), { padding: [24, 24], maxZoom: 14 }); } catch(e){}
+    }
+  }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            initMap();
-            loadGeoJsonData();
-            setupEventListeners();
-        });
+  // Ispezione e rendering sidebar destra dettagliata
+  window.IspezionaLotto = function(lottoId) {
+    if(!lottiGeoData) return;
+    const feat = lottiGeoData.features.find(f => f.properties.lotto === lottoId);
+    if(!feat) return;
+    
+    trackLottoClick(lottoId);
+    const p = feat.properties;
+    
+    document.getElementById('panelTitleEl').textContent = `Inspection: ${p.lotto || '-'}`;
+    
+    const tot = parseInt(p.pratiche_totali) || 0;
+    const app = parseInt(p.pratiche_approvate) || 0;
+    const inc = parseInt(p.pratiche_incorso) || 0;
+    const pia = parseInt(p.pratiche_pianificate) || 0;
+    const sos = parseInt(p.pratiche_sospese) || 0;
 
-        function showToast(message) {
-            const toast = document.getElementById('toast');
-            toast.textContent = message;
-            toast.classList.add('show');
-            setTimeout(() => toast.classList.remove('show'), 3000);
-        }
+    const pApp = tot > 0 ? (app/tot*100).toFixed(1) : 0;
+    const pInc = tot > 0 ? (inc/tot*100).toFixed(1) : 0;
+    const pPia = tot > 0 ? (pia/tot*100).toFixed(1) : 0;
+    const pSos = tot > 0 ? (sos/tot*100).toFixed(1) : 0;
 
-        function initMap() {
-            // Inizializza mappa su coordinate centro Italia
-            map = L.map('map', {
-                zoomControl: false 
-            }).setView([43.0, 12.5], 6);
+    const sLabel = STATI_CONFIG[p.stato_iter?.toUpperCase().trim()]?.lbl || p.stato_iter || '-';
 
-            L.control.zoom({ position: 'bottomright' }).addTo(map);
+    let html = `
+      <div class="det-section">
+        <span class="det-sec-title">Core Metadatas</span>
+        <div class="grid-info">
+          <div class="grid-card"><div class="grid-lbl">Cluster</div><div class="grid-val">${p.cluster || '-'}</div></div>
+          <div class="grid-card"><div class="grid-lbl">Global State</div><div class="grid-val">${sLabel}</div></div>
+          <div class="grid-card"><div class="grid-lbl">Total Volume</div><div class="grid-val">${tot}</div></div>
+          <div class="grid-card"><div class="grid-lbl">In Progress</div><div class="grid-val">${inc}</div></div>
+        </div>
+      </div>
 
-            // Base Layer: CartoDB Positron (chiaro, elegante)
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-                subdomains: 'abcd',
-                maxZoom: 20
-            }).addTo(map);
+      <div class="det-section">
+        <span class="det-sec-title">Internal Balance Metrics</span>
+        <div class="stacked-bar">
+          <div class="segment seg-approved" style="width:${pApp}%" title="Approved: ${pApp}%"></div>
+          <div class="segment seg-inprogress" style="width:${pInc}%" title="In Progress: ${pInc}%"></div>
+          <div class="segment seg-planned" style="width:${pPia}%" title="Planned: ${pPia}%"></div>
+          <div class="segment seg-suspended" style="width:${pSos}%" title="Suspended: ${pSos}%"></div>
+        </div>
+        <div class="mini-legenda">
+          <div class="mini-leg-item"><span class="dot" style="background:var(--c-approvato)"></span>Approved <span class="mini-leg-val">${app}</span></div>
+          <div class="mini-leg-item"><span class="dot" style="background:var(--c-in-corso)"></span>In Progress <span class="mini-leg-val">${inc}</span></div>
+          <div class="mini-leg-item"><span class="dot" style="background:var(--c-pianificato)"></span>Planned <span class="mini-leg-val">${pia}</span></div>
+          <div class="mini-leg-item"><span class="dot" style="background:var(--c-sospeso)"></span>Suspended <span class="mini-leg-val">${sos}</span></div>
+        </div>
+      </div>
 
-            // Inizializza cluster group con opzioni grafiche custom
-            markersClusterGroup = L.markerClusterGroup({
-                showCoverageOnHover: false,
-                maxClusterRadius: 45,
-                iconCreateFunction: function(cluster) {
-                    const count = cluster.getChildCount();
-                    return L.divIcon({
-                        html: `<div><span>${count}</span></div>`,
-                        className: 'marker-cluster-custom',
-                        iconSize: L.point(30, 30)
-                    });
-                }
-            });
-            map.addLayer(markersClusterGroup);
-        }
+      <div class="det-section">
+        <span class="det-sec-title">Critical & Overdue Files</span>
+        <div class="critiche-list">
+    `;
 
-        async function loadGeoJsonData() {
-            showToast("Loading data...");
-            try {
-                // Fetch del file geojson locale (stessa cartella)
-                const response = await fetch('lotti.geojson');
-                if (!response.ok) throw new Error("File lotti.geojson not found");
-                
-                const data = await response.json();
-                
-                if (data && data.features) {
-                    allGeoJsonFeatures = data.features;
-                    filteredFeatures = [...allGeoJsonFeatures];
-                    
-                    // Popola i filtri dinamici basati sui dati reali
-                    populateFilterOptions();
-                    updateCountersAndGrid();
-                    renderMarkersOnMap();
-                    
-                    // Imposta data ultimo aggiornamento (oggi)
-                    document.getElementById('last-update-date').textContent = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
-                    showToast("Data loaded successfully.");
-                } else {
-                    throw new Error("Invalid GeoJSON structure");
-                }
-            } catch (err) {
-                console.error(err);
-                showToast("Error loading data.");
-            }
-        }
+    if(p.pratiche_critiche_elenco && Array.isArray(p.pratiche_critiche_elenco) && p.pratiche_critiche_elenco.length > 0) {
+      p.pratiche_critiche_elenco.forEach(c => {
+        html += `
+          <div class="critica-card">
+            <div class="critica-top">
+              <span class="critica-id">${c.id || 'File'}</span>
+              <span class="critica-days">${c.giorni_ritardo || 0}d delay</span>
+            </div>
+            <div class="critica-ente">${c.ente || 'Unknown Institution'}</div>
+          </div>
+        `;
+      });
+    } else {
+      html += `<div class="no-critiche">No critical or overdue files found for this lot.</div>`;
+    }
 
-        function populateFilterOptions() {
-            const clusters = new Set();
-            const lotti = new Set();
-            const stati = new Set();
+    html += `</div></div>`;
+    
+    document.getElementById('panelScrollEl').innerHTML = html;
+    document.getElementById('panelRightEl').classList.add('open');
+    mapObject.closePopup();
+  };
 
-            allGeoJsonFeatures.forEach(f => {
-                if(f.properties.cluster) clusters.add(f.properties.cluster);
-                if(f.properties.lotto) lotti.add(f.properties.lotto);
-                if(f.properties.stato_iter) stati.add(f.properties.stato_iter.toUpperCase());
-            });
+  // ── GESTIONE EVENTI INPUT E BOTTONI INTERFACCIA ──
+  document.getElementById('selCluster').addEventListener('change', ApplicaFiltriEdisegna);
+  document.getElementById('selLotto').addEventListener('change', ApplicaFiltriEdisegna);
+  
+  document.getElementById('btnReset').addEventListener('click', () => {
+    document.getElementById('selCluster').value = "ALL";
+    document.getElementById('selLotto').value = "ALL";
+    document.querySelectorAll('.status-row').forEach(x => x.classList.remove('active'));
+    document.getElementById('row-all').classList.add('active');
+    ApplicaFiltriEdisegna();
+  });
 
-            // Popola Cluster Select
-            const selectCluster = document.getElementById('selectCluster');
-            Array.from(clusters).sort().forEach(c => {
-                const opt = document.createElement('option');
-                opt.value = c; opt.textContent = c;
-                selectCluster.appendChild(opt);
-            });
+  document.getElementById('panelCloseBtn').addEventListener('click', () => {
+    document.getElementById('panelRightEl').classList.remove('open');
+  });
 
-            // Popola Lotto Select
-            const selectLotto = document.getElementById('selectLotto');
-            Array.from(lotti).sort().forEach(l => {
-                const opt = document.createElement('option');
-                opt.value = l; opt.textContent = l;
-                selectLotto.appendChild(opt);
-            });
+  // Logica Geocoding nominatim nativa per barra di ricerca indirizzo
+  const sInput = document.getElementById('mapSearchInput');
+  const sClear = document.getElementById('mapSearchClear');
+  
+  sInput.addEventListener('input', function() { sClear.style.display = this.value ? 'block' : 'none'; });
+  sClear.addEventListener('click', function() { sInput.value = ''; this.style.display = 'none'; });
+  
+  sInput.addEventListener('keypress', function(e) {
+    if(e.key === 'Enter' && this.value.trim()) {
+      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(this.value.trim())}`)
+        .then(r => r.json())
+        .then(res => {
+          if(res && res.length > 0) mapObject.setView([parseFloat(res[0].lat), parseFloat(res[0].lon)], 13);
+        }).catch(()=>{});
+    }
+  });
 
-            // Genera bottoni di stato dinamici
-            const statusGrid = document.getElementById('statusFilterGrid');
-            Array.from(stati).sort().forEach(s => {
-                const color = statusColors[s] || '#6c757d';
-                const label = statusTranslations[s] || s;
-                const btn = document.createElement('button');
-                btn.className = 'status-btn';
-                btn.dataset.status = s;
-                btn.innerHTML = `
-                    <span style="display:flex; align-items:center;">
-                        <span class="status-dot" style="background:${color}"></span>${label}
-                    </span>
-                    <span id="count-${s.replace(/\s+/g, '')}" style="font-weight:600; opacity:0.7;">0</span>
-                `;
-                statusGrid.appendChild(btn);
-            });
-
-            // Riassegna eventi ai bottoni appena creati
-            document.querySelectorAll('.status-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active'));
-                    const currentBtn = e.currentTarget;
-                    currentBtn.classList.add('active');
-                    currentSelectedStatus = currentBtn.dataset.status;
-                    applyFilters();
-                });
-            });
-        }
-
-        function updateCountersAndGrid() {
-            // Aggiorna contatori generali panel sinistro
-            document.getElementById('counter-total').textContent = allGeoJsonFeatures.length;
-            document.getElementById('counter-filtered').textContent = filteredFeatures.length;
-
-            // Ricalcola conteggi per singolo stato basandosi sui filtri correnti (escluso lo stato stesso)
-            document.getElementById('count-all').textContent = filteredFeatures.length;
-
-            // Conteggi per stato reali sulle feature attualmente filtrate
-            const counts = {};
-            allGeoJsonFeatures.forEach(f => {
-                const s = f.properties.stato_iter ? f.properties.stato_iter.toUpperCase() : 'UNKNOWN';
-                counts[s] = (counts[s] || 0) + 1;
-            });
-
-            // Resetta tutti i contatori dei bottoni di stato a 0
-            document.querySelectorAll('.status-btn [id^="count-"]').forEach(el => el.textContent = 0);
-            document.getElementById('count-all').textContent = filteredFeatures.length;
-
-            // Conta sulle feature correntemente filtrate per i singoli bottoni
-            const filteredCounts = {};
-            filteredFeatures.forEach(f => {
-                const s = f.properties.stato_iter ? f.properties.stato_iter.toUpperCase() : 'UNKNOWN';
-                filteredCounts[s] = (filteredCounts[s] || 0) + 1;
-            });
-
-            Object.keys(filteredCounts).forEach(s => {
-                const id = `count-${s.replace(/\s+/g, '')}`;
-                const el = document.getElementById(id);
-                if(el) el.textContent = filteredCounts[s];
-            });
-        }
-
-        function applyFilters() {
-            const clusterVal = document.getElementById('selectCluster').value;
-            const lottoVal = document.getElementById('selectLotto').value;
-
-            filteredFeatures = allGeoJsonFeatures.filter(f => {
-                const matchCluster = !clusterVal || f.properties.cluster === clusterVal;
-                const matchLotto = !lottoVal || f.properties.lotto === lottoVal;
-                const matchStatus = currentSelectedStatus === "ALL" || (f.properties.stato_iter && f.properties.stato_iter.toUpperCase() === currentSelectedStatus);
-                return matchCluster && matchLotto && matchStatus;
-            });
-
-            updateCountersAndGrid();
-            renderMarkersOnMap();
-
-            if(filteredFeatures.length === 0) {
-                showToast("No items match the selected filters.");
-            }
-        }
-
-        function renderMarkersOnMap() {
-            markersClusterGroup.clearLayers();
-
-            filteredFeatures.forEach(feature => {
-                // Supporta sia Point sia geometrie complesse prendendo il centroide / coordinate
-                let coords;
-                if (feature.geometry.type === "Point") {
-                    coords = [feature.geometry.coordinates[1], feature.geometry.coordinates[0]];
-                } else if (feature.geometry.type === "Polygon" || feature.geometry.type === "MultiPolygon") {
-                    // Fallback veloce per poligoni: calcola centroide approssimativo o usa Leaflet geoJson bounds center
-                    const dummyLayer = L.geoJSON(feature);
-                    const bounds = dummyLayer.getBounds();
-                    coords = bounds.getCenter();
-                }
-
-                if (!coords) return;
-
-                const status = feature.properties.stato_iter ? feature.properties.stato_iter.toUpperCase() : '';
-                const color = statusColors[status] || '#6c757d';
-
-                // Marker Cerchio personalizzato coerente con il colore di stato
-                const marker = L.circleMarker(coords, {
-                    radius: 8,
-                    fillColor: color,
-                    color: '#ffffff',
-                    weight: 1.5,
-                    opacity: 1,
-                    fillOpacity: 0.9
-                });
-
-                // Popup HTML renderizzato al click sul pallino
-                const labelStatus = statusTranslations[status] || status;
-                const popupContent = `
-                    <div class="popup-container">
-                        <div class="popup-title">Lot ${feature.properties.lotto || '-'}</div>
-                        <div class="popup-row"><strong>Cluster:</strong> ${feature.properties.cluster || '-'}</div>
-                        <div class="popup-row"><strong>Status:</strong> ${labelStatus}</div>
-                        <div class="popup-row"><strong>Total cases:</strong> ${feature.properties.pratiche_totali || '0'}</div>
-                        <a href="#" class="popup-btn" onclick="openDetailsPanel('${feature.properties.lotto}'); return false;">Details</a>
-                    </div>
-                `;
-                marker.bindPopup(popupContent, { closeButton: false });
-                
-                // Salva il riferimento al lotto dentro l'oggetto marker per utilizzi futuri
-                marker.lottoId = feature.properties.lotto;
-                markersClusterGroup.addLayer(marker);
-            });
-
-            // Se ci sono elementi filtrati, adatta lo zoom per includerli tutti visivamente
-            if (filteredFeatures.length > 0 && map) {
-                try {
-                    const bounds = markersClusterGroup.getBounds();
-                    if(bounds.isValid()) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 });
-                } catch(e){}
-            }
-        }
-
-        window.openDetailsPanel = function(lottoId) {
-            const feature = allGeoJsonFeatures.find(f => f.properties.lotto === lottoId);
-            if(!feature) return;
-
-            const p = feature.properties;
-            const panel = document.getElementById('detailsPanel');
-            const panelBody = document.getElementById('detailsPanelBody');
-            
-            document.getElementById('detailsPanelTitle').textContent = `Lot Details: ${p.lotto || '-'}`;
-
-            // Calcolo percentuali per barre avanzamento pratiche
-            const totali = parseInt(p.pratiche_totali) || 0;
-            const approvate = parseInt(p.pratiche_approvate) || 0;
-            const incorso = parseInt(p.pratiche_incorso) || 0;
-            
-            const percApprovate = totali > 0 ? Math.round((approvate / totali) * 100) : 0;
-            const percInCorso = totali > 0 ? Math.round((incorso / totali) * 100) : 0;
-
-            const labelStatus = statusTranslations[p.stato_iter.toUpperCase()] || p.stato_iter;
-
-            // Generazione dinamica delle info di dettaglio e casi critici
-            let html = `
-                <div class="info-card">
-                    <div class="section-title" style="font-size:12px; margin-bottom:10px;">General Information</div>
-                    <div class="info-row"><span class="info-label">Cluster:</span><span class="info-value">${p.cluster || '-'}</span></div>
-                    <div class="info-row"><span class="info-label">Current Status:</span><span class="info-value" style="color:${statusColors[p.stato_iter.toUpperCase()] || 'var(--text)'}">${labelStatus}</span></div>
-                    <div class="info-row"><span class="info-label">Total Cases:</span><span class="info-value">${totali}</span></div>
-                </div>
-
-                <div class="progress-container">
-                    <div class="section-title" style="font-size:12px; margin-bottom:2px;">Cases Progress</div>
-                    
-                    <div class="progress-item">
-                        <div class="progress-label-row"><span>Approved</span><span>${approvate}/${totali} (${percApprovate}%)</span></div>
-                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${percApprovate}%; background: var(--color-approvato);"></div></div>
-                    </div>
-
-                    <div class="progress-item">
-                        <div class="progress-label-row"><span>In Progress</span><span>${incorso}/${totali} (${percInCorso}%)</span></div>
-                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${percInCorso}%; background: var(--color-incorso);"></div></div>
-                    </div>
-                </div>
-
-                <div>
-                    <div class="section-title" style="font-size:12px; margin-bottom:10px;">List of Extended / Critical Cases</div>
-                    <div class="critical-list">
-            `;
-
-            // Parsing delle pratiche critiche se valorizzate nell'oggetto properties
-            if (p.pratiche_critiche_elenco && Array.isArray(p.pratiche_critiche_elenco) && p.pratiche_critiche_elenco.length > 0) {
-                p.pratiche_critiche_elenco.forEach(item => {
-                    html += `
-                        <div class="critical-item">
-                            <div class="critical-item-header"><span>${item.id || 'Case'}</span><span>${item.tipo || 'Critical'}</span></div>
-                            <div class="critical-item-desc">Ente: ${item.ente || '-'}<br>Days Delay: ${item.giorni_ritardo || '0'}</div>
-                        </div>
-                    `;
-                });
-            } else {
-                html += `<div class="no-data-msg">There are no critical or extended cases for this lot.</div>`;
-            }
-
-            html += `</div></div>`;
-            panelBody.innerHTML = html;
-            panel.classList.add('open');
-        };
-
-        function setupEventListeners() {
-            // Select change listeners
-            document.getElementById('selectCluster').addEventListener('change', applyFilters);
-            document.getElementById('selectLotto').addEventListener('change', applyFilters);
-
-            // Reset button listener
-            document.getElementById('btnResetAll').addEventListener('click', () => {
-                document.getElementById('selectCluster').value = "";
-                document.getElementById('selectLotto').value = "";
-                currentSelectedStatus = "ALL";
-                document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active'));
-                document.querySelector('.status-btn[data-status="ALL"]').classList.add('active');
-                applyFilters();
-            });
-
-            // Close details panel listener
-            document.getElementById('closeDetailsBtn').addEventListener('click', () => {
-                document.getElementById('detailsPanel').classList.remove('open');
-            });
-
-            // Funzionalità di geocoding / ricerca indirizzo testuale sulla mappa
-            const triggerSearch = async () => {
-                const query = document.getElementById('mapSearchInput').value;
-                if(!query) return;
-                
-                try {
-                    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
-                    const data = await res.json();
-                    if(data && data.length > 0) {
-                        const loc = data[0];
-                        map.setView([parseFloat(loc.lat), parseFloat(loc.lon)], 13);
-                    } else {
-                        showToast("No data available");
-                    }
-                } catch(e) {
-                    showToast("No data available");
-                }
-            };
-
-            document.getElementById('mapSearchBtn').addEventListener('click', triggerSearch);
-            document.getElementById('mapSearchInput').addEventListener('keypress', (e) => {
-                if(e.key === 'Enter') triggerSearch();
-            });
-        }
-    </script>
+  // TABS CONTROLLERS PER DISPOSITIVI MOBILE
+  document.getElementById('mTabMap').addEventListener('click', function() {
+    this.classList.add('active'); document.getElementById('mTabFilters').classList.remove('active');
+    document.getElementById('sidebarEl').classList.remove('open');
+  });
+  document.getElementById('mTabFilters').addEventListener('click', function() {
+    this.classList.add('active'); document.getElementById('mTabMap').classList.remove('active');
+    document.getElementById('sidebarEl').classList.add('open');
+  });
+  </script>
 </body>
 </html>
