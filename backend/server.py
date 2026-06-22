@@ -976,10 +976,18 @@ def _serialize_assignment(d: dict) -> dict:
 
 # ───────── Imprese (no admin token required, identified by their `nome`) ────
 
+async def _find_assignment(nome: str) -> dict | None:
+    """Cerca un assignment per nome in modo case-insensitive,
+    così 'sertori', 'Sertori' e 'SERTORI' trovano tutti lo stesso record."""
+    return await assignments_col.find_one(
+        {"nome": {"$regex": f"^{re.escape(nome.strip())}$", "$options": "i"}}
+    )
+
+
 @app.get("/api/imprese/me")
 async def impresa_me(nome: str):
     """Returns the impresa's profile if they are assigned, else 404."""
-    doc = await assignments_col.find_one({"nome": nome})
+    doc = await _find_assignment(nome)
     if not doc:
         raise HTTPException(404, "Impresa non assegnata")
     return {"nome": doc["nome"], "lotti": doc.get("lotti", []), "active": bool(doc.get("active", True))}
@@ -990,7 +998,7 @@ async def impresa_pratiche(nome: str):
     """Returns Master.csv rows whose Source.Name matches one of the user's lotti
     (confronto per codice lotto esatto, non substring — così 'Lotto 2' non
     aggancia per errore 'Lotto 2A.xlsx' o eventuali lotti a doppia cifra)."""
-    doc = await assignments_col.find_one({"nome": nome})
+    doc = await _find_assignment(nome)
     if not doc or not doc.get("active", True):
         raise HTTPException(404, "Impresa non autorizzata")
     lotti = {_lotto_from_source(l) for l in doc.get("lotti", []) if str(l).strip()}
@@ -1018,7 +1026,7 @@ async def impresa_submit(payload: dict):
         raise HTTPException(400, "type must be 'update' or 'new'")
     if not isinstance(changes, list) or not changes:
         raise HTTPException(400, "Empty 'changes' array")
-    doc = await assignments_col.find_one({"nome": nome})
+    doc = await _find_assignment(nome)
     if not doc or not doc.get("active", True):
         raise HTTPException(403, "Impresa non autorizzata")
 
@@ -1095,7 +1103,7 @@ async def upsert_assignment(
         raise HTTPException(400, "lotti must be a list")
     doc = {"nome": nome, "lotti": [str(x) for x in lotti], "active": active, "updated_at": _now_iso()}
     await assignments_col.update_one({"nome": nome}, {"$set": doc, "$setOnInsert": {"created_at": _now_iso()}}, upsert=True)
-    out = await assignments_col.find_one({"nome": nome})
+    out = await _find_assignment(nome)
     return _serialize_assignment(out)
 
 
