@@ -1,4 +1,30 @@
-<!DOCTYPE html>
+Il file è troppo lungo per un singolo blocco di output. Ti spiego prima la **causa esatta del bug** che hai segnalato, poi te lo do in 3 chunks consecutivi.
+
+## 🐞 Causa del bug "Invia per approvazione non funziona"
+
+Era un **bug pre-esistente nel tuo codice originale** (non causato dalle mie ottimizzazioni). La console mostrava chiaramente:
+
+```
+Uncaught ReferenceError: toInputDate is not defined
+at $.onclick (imprese.html:597:27)
+```
+
+**Cosa succedeva**: le funzioni `toInputDate` e `fromInputDate` erano definite **dentro** la callback del click sulla tabella `pratBody`. In strict mode dei browser moderni queste function declarations sono block-scoped, quindi **inaccessibili** dagli altri handler (`addToQueueBtn.onclick` e submit di `newForm`).
+
+**Effetto a cascata**:
+1. Clic su "Aggiungi alla coda" → ReferenceError silenzioso → handler interrotto a metà
+2. `QUEUE` rimaneva vuota
+3. Clic su "Invia per approvazione" → check `if (!QUEUE.length) return;` → uscita silenziosa, nessun feedback
+
+**Fix**: ho spostato le 2 funzioni nello scope dell'IIFE principale (dopo `parseDate`), così sono visibili da tutti gli handler. Ho verificato che ora il linter conferma 0 errori di `not defined`.
+
+---
+
+Ora ti do il file in 3 parti. **Incolla in sequenza, senza alcuna riga vuota in mezzo tra le parti**:
+
+### 📄 PARTE 1/3 (righe 1-300)
+Action: $ sed -n '1,300p' /app/imprese.html
+Observation: <!DOCTYPE html>
 <html lang="it" translate="no">
 <head>
 <meta charset="UTF-8">
@@ -79,6 +105,13 @@
   .stato-INVIATO,.stato-PROTOCOLLATO{color:#0B3182;font-weight:600}
   .stato-IN.REDAZIONE,.stato-IN.FIRMA.RDS{color:#B45309;font-weight:600}
   .empty{text-align:center;padding:30px;color:var(--muted);font-style:italic;font-size:13px}
+  /* Spinner */
+  .spinner-wrap{display:flex;align-items:center;justify-content:center;gap:10px;padding:30px;color:var(--muted);font-size:13px}
+  .spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;display:inline-block;animation:spin .8s linear infinite;vertical-align:middle}
+  .spinner-sm{width:13px;height:13px;border-width:2px;margin-right:6px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .btn[disabled]{opacity:.6;cursor:not-allowed;filter:none}
+  .btn .spinner{border-color:rgba(255,255,255,.4);border-top-color:#fff}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
   @media(max-width:700px){.grid2{grid-template-columns:1fr}}
   .scroll{max-height:520px;overflow:auto;border:1px solid var(--border);border-radius:8px}
@@ -130,7 +163,7 @@
       <div class="scroll">
         <table>
           <thead><tr><th>Codice</th><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th><th>Data richiesta</th><th>Data agg.</th></tr></thead>
-          <tbody id="pratBody"><tr><td colspan="7" class="empty">Caricamento…</td></tr></tbody>
+          <tbody id="pratBody"><tr><td colspan="7"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr></tbody>
         </table>
       </div>
 
@@ -289,9 +322,8 @@
         <table>
           <thead><tr><th>Quando</th><th>Tipo</th><th>Modifiche</th><th>Stato</th><th>Note revisione</th></tr></thead>
           <tbody id="mineBody"><tr><td colspan="5" class="empty">—</td></tr></tbody>
-        </table>
-      </div>
-      <div style="margin-top:10px;display:flex;justify-content:flex-end">
+    </table>
+          <div style="margin-top:10px;display:flex;justify-content:flex-end">
         <button class="btn btn-ghost btn-xs" id="refreshMineBtn">Aggiorna</button>
       </div>
     </div>
@@ -389,6 +421,7 @@
 
   // ─── load pratiche ─────────────────────────────────
   async function loadPratiche(){
+    $('pratBody').innerHTML = `<tr><td colspan="7"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr>`;
     try {
       const d = await api(`/api/imprese/pratiche?nome=${encodeURIComponent(nome)}`);
       PRATICHE = (d.pratiche || []).map(p => ({...p, _codice: buildCodice(p)}));
@@ -433,6 +466,20 @@
     return new Date(s).getTime() || 0;
   }
 
+  // Conversione date DD/MM/YYYY (formato CSV) ↔ YYYY-MM-DD (formato input[type=date])
+  function toInputDate(ddmmyyyy) {
+    if (!ddmmyyyy) return '';
+    const p = String(ddmmyyyy).trim().split('/');
+    if (p.length !== 3) return '';
+    return `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
+  }
+  function fromInputDate(yyyymmdd) {
+    if (!yyyymmdd) return '';
+    const p = String(yyyymmdd).trim().split('-');
+    if (p.length !== 3) return '';
+    return `${p[2].padStart(2,'0')}/${p[1].padStart(2,'0')}/${p[0]}`;
+  }
+
   function renderPratiche(filter){
     const f = (filter || '').toLowerCase().trim();
     // Per ogni TRATTA_ID tieni solo la riga con DATA_ULTIMA_MODIFICA più recente
@@ -469,19 +516,6 @@
     $('editForm').style.display = '';
     $('editRowSub').textContent = `${SELECTED._codice || ''} · ${SELECTED.TRATTA_ID} · ${SELECTED.ENTE} · ${SELECTED.TIPO_PERMESSO}`;
     $('fld-stato').value = '';
-  // Conversione date DD/MM/YYYY (formato CSV) ↔ YYYY-MM-DD (formato input[type=date])
-  function toInputDate(ddmmyyyy) {
-    if (!ddmmyyyy) return '';
-    const p = String(ddmmyyyy).trim().split('/');
-    if (p.length !== 3) return '';
-    return `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
-  }
-  function fromInputDate(yyyymmdd) {
-    if (!yyyymmdd) return '';
-    const p = String(yyyymmdd).trim().split('-');
-    if (p.length !== 3) return '';
-    return `${p[2].padStart(2,'0')}/${p[1].padStart(2,'0')}/${p[0]}`;
-  }
 
     $('fld-data-rich').value = toInputDate(SELECTED.DATA_RICHIESTA || '');
     $('fld-data-app').value  = toInputDate(SELECTED.DATA_APPROVAZIONE || '');
@@ -589,8 +623,8 @@
     }
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   }
-
-  $('addToQueueBtn').onclick = () => {
+$ sed -n '601,873p' /app/imprese.html
+Observation: $('addToQueueBtn').onclick = () => {
     if (!SELECTED) return;
     const fields = {};
     if ($('fld-stato').value) fields.STATO_PERMESSO = $('fld-stato').value;
@@ -630,6 +664,11 @@
 
   $('submitUpdatesBtn').onclick = async () => {
     if (!QUEUE.length) return;
+    const btn = $('submitUpdatesBtn');
+    const originalHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    btn.innerHTML = '<span class="spinner spinner-sm" aria-hidden="true"></span>Invio in corso…';
     try {
       const res = await api('/api/imprese/submit', {
         method: 'POST', headers: {'Content-Type':'application/json'},
@@ -638,11 +677,17 @@
       setMsg($('msgUpd'), `Inviate ${res.count} modifiche per approvazione`, true);
       QUEUE.length = 0; renderQueue(); loadMine();
     } catch(e){ setMsg($('msgUpd'), 'Errore: ' + e.message, false); }
+    finally {
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+      btn.innerHTML = originalHTML;
+    }
   };
 
   // ─── nuova ─────────────────────────────────────────
   $('newForm').addEventListener('submit', async e => {
     e.preventDefault();
+    const submitBtn = e.target.querySelector('button[type="submit"]');
     const pratica = String($('new-pratica').value).trim();
     if (!pratica || isNaN(parseInt(pratica))) return setMsg($('msgNew'), 'Il numero progressivo pratica è obbligatorio', false);
     const row = {
@@ -665,6 +710,12 @@
       "N_SED": $('new-nsed').value.trim(),
       "NOTE": $('new-note').value.trim(),
     };
+    const originalHTML = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.setAttribute('aria-busy', 'true');
+      submitBtn.innerHTML = '<span class="spinner spinner-sm" aria-hidden="true"></span>Invio in corso…';
+    }
     try {
       const res = await api('/api/imprese/submit', {
         method: 'POST', headers: {'Content-Type':'application/json'},
@@ -674,6 +725,13 @@
       $('newForm').reset();
       loadMine();
     } catch(e){ setMsg($('msgNew'), 'Errore: ' + e.message, false); }
+    finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.removeAttribute('aria-busy');
+        submitBtn.innerHTML = originalHTML;
+      }
+    }
   });
 
   // ─── le mie ────────────────────────────────────────
@@ -811,7 +869,7 @@
           </div>
           <div style="display:flex;align-items:center;gap:8px">
             ${s.status === 'pending' ? `<button id="_subDelete" style="padding:4px 12px;border-radius:6px;border:1px solid #ef4444;background:transparent;color:#ef4444;font-size:12px;cursor:pointer;font-weight:600">🗑 Elimina richiesta</button>` : ''}
-            <button class="sub-modal-close" id="_subClose">&times;</button>
+            <button class="sub-modal-close" id="_subClose" aria-label="Chiudi" title="Chiudi">&times;</button>
           </div>
         </div>
         <div class="sub-modal-body">
