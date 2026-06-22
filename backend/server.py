@@ -693,7 +693,8 @@ def _norm(s) -> str:
 
 
 def _worst_status(statuses: list) -> str:
-    clean = [str(s).strip() for s in statuses if s and str(s).strip()]
+    clean = [str(s).strip() for s in statuses
+             if s and str(s).strip() and str(s).strip().upper() != "NO COMPETENZA"]
     if not clean:
         return ""
     return min(clean, key=lambda s: _STATUS_RANK.get(s.upper(), 99))
