@@ -530,25 +530,47 @@
 
   // Modale di avviso quando si aggiorna solo una tratta pur avendo altre nella stessa pratica
   function _showSingleTrattaWarning(fields) {
+    const statoInChanges = 'STATO_PERMESSO' in fields;
     const overlay = document.createElement('div');
     overlay.className = 'warn-modal-overlay';
-    overlay.innerHTML = `
-      <div class="warn-modal">
-        <div class="warn-modal-icon">⚠️</div>
-        <div class="warn-modal-title">Aggiornare solo questa tratta?</div>
-        <div class="warn-modal-body">
-          Questa pratica include anche <b>${SIBLINGS.length}</b> altr${SIBLINGS.length===1?'a tratta':'e tratte'}
-          (${SIBLINGS.map(s=>escapeHtml(s.TRATTA_ID)).join(', ')}) che non verranno aggiornate.
-          Lo stato complessivo della pratica resterà invariato finché tutte le tratte non saranno allineate allo stesso stato.
-        </div>
-        <div style="display:flex;gap:10px;justify-content:flex-end">
-          <button class="btn btn-ghost" id="_warnCancel">Annulla</button>
-          <button class="btn" id="_warnConfirm">Procedi solo con questa</button>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-    overlay.querySelector('#_warnCancel').onclick = () => overlay.remove();
-    overlay.querySelector('#_warnConfirm').onclick = () => { overlay.remove(); _finalizeAdd(fields, false); };
+    if (statoInChanges) {
+      // Cambio di stato: blocco vero — non si può aggiornare solo una tratta
+      overlay.innerHTML = `
+        <div class="warn-modal">
+          <div class="warn-modal-icon">🚫</div>
+          <div class="warn-modal-title">Impossibile aggiornare solo questa tratta</div>
+          <div class="warn-modal-body">
+            Questa pratica include altre <b>${SIBLINGS.length}</b> tratt${SIBLINGS.length===1?'a':'e'}
+            (${SIBLINGS.map(s=>escapeHtml(s.TRATTA_ID)).join(', ')}).
+            Quando si cambia lo <strong>stato</strong> di un permesso, tutte le tratte della stessa pratica
+            devono essere aggiornate insieme, altrimenti lo stato complessivo risulta incoerente.
+            <br><br>Attiva <em>"Aggiorna tutte insieme"</em> prima di procedere.
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn" id="_warnCancel">Capito</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector('#_warnCancel').onclick = () => overlay.remove();
+    } else {
+      // Solo date/note: avviso non bloccante, l'utente può scegliere
+      overlay.innerHTML = `
+        <div class="warn-modal">
+          <div class="warn-modal-icon">⚠️</div>
+          <div class="warn-modal-title">Aggiornare solo questa tratta?</div>
+          <div class="warn-modal-body">
+            Questa pratica include anche <b>${SIBLINGS.length}</b> altr${SIBLINGS.length===1?'a tratta':'e tratte'}
+            (${SIBLINGS.map(s=>escapeHtml(s.TRATTA_ID)).join(', ')}) che non verranno aggiornate.
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-ghost" id="_warnCancel">Annulla</button>
+            <button class="btn" id="_warnConfirm">Procedi solo con questa</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector('#_warnCancel').onclick = () => overlay.remove();
+      overlay.querySelector('#_warnConfirm').onclick = () => { overlay.remove(); _finalizeAdd(fields, false); };
+    }
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   }
 
