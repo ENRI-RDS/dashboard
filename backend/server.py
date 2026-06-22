@@ -1046,6 +1046,24 @@ async def my_submissions(nome: str, limit: int = 50):
     return {"submissions": items, "count": len(items)}
 
 
+@app.delete("/api/imprese/submissions/{sub_id}")
+async def delete_my_submission(sub_id: str, nome: str):
+    """L'impresa può cancellare solo le proprie submission ancora in stato pending."""
+    try:
+        oid = ObjectId(sub_id)
+    except Exception:
+        raise HTTPException(400, "ID submission non valido")
+    doc = await pending_col.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Submission non trovata")
+    if doc.get("nome") != nome:
+        raise HTTPException(403, "Non autorizzato")
+    if doc.get("status") != "pending":
+        raise HTTPException(409, "Solo le richieste in attesa possono essere eliminate")
+    await pending_col.delete_one({"_id": oid})
+    return {"deleted": sub_id}
+
+
 # ───────── Admin: assignments management ────────────────────────────────────
 
 @app.get("/api/admin/assignments")
