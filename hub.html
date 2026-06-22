@@ -664,40 +664,46 @@ function _showHub(nome) {
 
   const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
 
-  // Helper: applica il filtro visuale impresa (solo card impresa visibili)
-  function _applyImpresaFilter() {
-    document.querySelectorAll('.nav-card').forEach(card => {
-      card.style.display = (card.id === 'impresaCard' || card.id === 'impresaMapCard') ? '' : 'none';
-    });
-    document.querySelectorAll('[data-section-title]').forEach(s => s.style.display = 'none');
-  }
-
-  if (!isAdmin) {
-    // Utente non-admin: applica subito il filtro impresa basato sul ruolo
-    // (indipendentemente da apiBase, anche in modalità incognito)
-    _applyImpresaFilter();
-
-    if (apiBase) {
-      // Verifica aggiuntiva backend (es. controllo active, lotti assegnati)
-      function _doImpresaCheck(retryBtn) {
-        if (retryBtn) retryBtn.disabled = true;
-        const controller = new AbortController();
-        const timeoutId  = setTimeout(() => controller.abort(), 10000);
-        fetch(apiBase + '/api/imprese/me?nome=' + encodeURIComponent(nome), { signal: controller.signal })
-          .then(r => { clearTimeout(timeoutId); return r.ok ? r.json() : Promise.reject('not-ok'); })
-          .then(d => {
-            const err = document.getElementById('_impresaCheckError');
-            if (err) err.remove();
-            // Il filtro è già applicato; se il backend dice active=false nascondi anche le card impresa
-            if (!d || d.active === false) {
-              document.getElementById('impresaCard')  && (document.getElementById('impresaCard').style.display  = 'none');
-              document.getElementById('impresaMapCard') && (document.getElementById('impresaMapCard').style.display = 'none');
+  if (!isAdmin && apiBase) {
+    // Non-admin: aspettiamo la risposta backend prima di mostrare qualsiasi card.
+    // Così non c'è mai flash di contenuto non autorizzato.
+    let _autoRetryCount = 0;
+    const _MAX_AUTO_RETRY = 12; // 12 × 5s = 60s di attesa automatica
+    function _doImpresaCheck(retryBtn) {
+      if (retryBtn) retryBtn.disabled = true;
+      const controller = new AbortController();
+      const timeoutId  = setTimeout(() => controller.abort(), 12000);
+      fetch(apiBase + '/api/imprese/me?nome=' + encodeURIComponent(nome), { signal: controller.signal })
+        .then(r => { clearTimeout(timeoutId); return r.ok ? r.json() : Promise.reject('not-ok'); })
+        .then(d => {
+          _autoRetryCount = 0;
+          const err = document.getElementById('_impresaCheckError');
+          if (err) err.remove();
+          if (d && d.active !== false) {
+            document.querySelectorAll('.nav-card').forEach(card => {
+              card.style.display = (card.id === 'impresaCard' || card.id === 'impresaMapCard') ? '' : 'none';
+            });
+            document.querySelectorAll('[data-section-title]').forEach(s => s.style.display = 'none');
+          }
+          _reveal();
+        })
+        .catch(() => {
+          clearTimeout(timeoutId);
+          _autoRetryCount++;
+          if (_autoRetryCount <= _MAX_AUTO_RETRY) {
+            // Retry automatico silenzioso: mostra solo spinner con countdown
+            const spinner = document.getElementById('initSpinner');
+            if (spinner) {
+              spinner.style.display = '';
+              const remaining = (_MAX_AUTO_RETRY - _autoRetryCount + 1) * 5;
+              spinner.querySelector && (spinner.querySelector('p') || {textContent:''}).textContent;
+              // Aggiorna testo se esiste un elemento p nello spinner
+              const p = spinner.querySelector('p');
+              if (p) p.textContent = `Avvio server in corso… (${remaining}s)`;
             }
-            _reveal();
-          })
-          .catch(() => {
-            // Backend non raggiungibile: il filtro impresa è già applicato, mostra comunque le card impresa
-            // e offri il tasto Riprova per la verifica opzionale
+            setTimeout(() => _doImpresaCheck(null), 5000);
+          } else {
+            // Solo dopo 60s di tentativi: mostra il pannello manuale
             document.getElementById('initSpinner').style.display = 'none';
             let err = document.getElementById('_impresaCheckError');
             if (!err) {
@@ -707,25 +713,20 @@ function _showHub(nome) {
                 'background:#fff;border-radius:16px;padding:2rem 2.5rem;box-shadow:0 8px 32px rgba(0,0,0,.15);' +
                 'text-align:center;z-index:9999;font-family:inherit;max-width:340px';
               err.innerHTML = '<p style="margin:0 0 .5rem;font-size:1.1rem;font-weight:600;color:#1a1a2e">⚠️ Server non raggiungibile</p>' +
-                '<p style="margin:0 0 1.5rem;color:#555;font-size:.9rem">Il server si sta avviando o la connessione non è disponibile. Attendi qualche secondo e riprova.</p>' +
+                '<p style="margin:0 0 1.5rem;color:#555;font-size:.9rem">Il server non risponde dopo 60 secondi. Controlla la connessione o riprova tra qualche minuto.</p>' +
                 '<button id="_impresaRetryBtn" style="background:var(--accent,#4361ee);color:#fff;border:none;border-radius:8px;' +
                 'padding:.6rem 1.6rem;font-size:.95rem;cursor:pointer;font-weight:600">Riprova</button>';
               document.body.appendChild(err);
             }
             const btn = document.getElementById('_impresaRetryBtn');
-            if (btn) btn.addEventListener('click', () => _doImpresaCheck(btn));
+            if (btn) btn.addEventListener('click', () => { _autoRetryCount = 0; _doImpresaCheck(btn); });
             if (retryBtn) retryBtn.disabled = false;
-            // Mostra comunque le card impresa (filtro già applicato)
-            _reveal();
-          });
-      }
-      _doImpresaCheck(null);
-    } else {
-      // Nessun apiBase (es. incognito): filtro già applicato, mostra subito
-      _reveal();
+          }
+        });
     }
+    _doImpresaCheck(null);
   } else {
-    // Admin: mostra subito tutto; controlla opzionalmente se è anche un'impresa
+    // Admin o nessun apiBase: mostra subito
     if (impresaCard && apiBase) {
       fetch(apiBase + '/api/imprese/me?nome=' + encodeURIComponent(nome))
         .then(r => r.ok ? r.json() : null)
