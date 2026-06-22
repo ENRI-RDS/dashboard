@@ -666,7 +666,6 @@ function _showHub(nome) {
 
   if (!isAdmin && apiBase) {
     // Non-admin: aspettiamo la risposta backend prima di mostrare qualsiasi card.
-    // Così non c'è mai flash di contenuto non autorizzato.
     let _autoRetryCount = 0;
     const _MAX_AUTO_RETRY = 12; // 12 × 5s = 60s di attesa automatica
     function _doImpresaCheck(retryBtn) {
@@ -725,6 +724,17 @@ function _showHub(nome) {
         });
     }
     _doImpresaCheck(null);
+  } else if (!isAdmin && !apiBase) {
+    // Non-admin senza apiBase configurato: non mostrare nulla —
+    // potrebbe essere un utente impresa su un browser senza localStorage configurato
+    document.getElementById('initSpinner').style.display = 'none';
+    const err = document.createElement('div');
+    err.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
+      'background:#fff;border-radius:16px;padding:2rem 2.5rem;box-shadow:0 8px 32px rgba(0,0,0,.15);' +
+      'text-align:center;z-index:9999;font-family:inherit;max-width:340px';
+    err.innerHTML = '<p style="margin:0 0 .5rem;font-size:1.1rem;font-weight:600;color:#1a1a2e">⚠️ Configurazione mancante</p>' +
+      '<p style="margin:0 0 1.5rem;color:#555;font-size:.9rem">L\'endpoint API non è configurato. Contatta l\'amministratore.</p>';
+    document.body.appendChild(err);
   } else {
     // Admin o nessun apiBase: mostra subito
     if (impresaCard && apiBase) {
