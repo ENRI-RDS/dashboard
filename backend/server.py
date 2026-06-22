@@ -563,10 +563,17 @@ async def _read_master_csv() -> "pd.DataFrame":
         raw = path.read_bytes()
     # Auto-rileva separatore dal contenuto reale del file
     _detected_sep = _detect_sep(raw)
-    # Master.csv may be UTF-8 or Latin-1/CP1252 depending on the Excel export
+    # Master.csv may be UTF-8 or Latin-1/CP1252 depending on the Excel export.
+    # on_bad_lines='warn' evita che UNA riga malformata (es. virgola non quotata
+    # in un campo di testo libero come NOTE) faccia fallire la lettura di tutto
+    # il file: la riga incriminata viene segnalata in log e scartata, il resto
+    # del file resta leggibile.
     for enc in ("utf-8", "cp1252", "latin-1"):
         try:
-            return pd.read_csv(io.BytesIO(raw), sep=_detected_sep, dtype=str, keep_default_na=False, encoding=enc)
+            return pd.read_csv(
+                io.BytesIO(raw), sep=_detected_sep, dtype=str, keep_default_na=False,
+                encoding=enc, on_bad_lines="warn",
+            )
         except (UnicodeDecodeError, UnicodeError):
             continue
     # Last resort: replace bad bytes
@@ -979,16 +986,18 @@ async def impresa_me(nome: str):
 
 @app.get("/api/imprese/pratiche")
 async def impresa_pratiche(nome: str):
-    """Returns Master.csv rows whose Source.Name matches one of the user's lotti."""
+    """Returns Master.csv rows whose Source.Name matches one of the user's lotti
+    (confronto per codice lotto esatto, non substring — così 'Lotto 2' non
+    aggancia per errore 'Lotto 2A.xlsx' o eventuali lotti a doppia cifra)."""
     doc = await assignments_col.find_one({"nome": nome})
     if not doc or not doc.get("active", True):
         raise HTTPException(404, "Impresa non autorizzata")
-    lotti = set(doc.get("lotti", []))
+    lotti = {_lotto_from_source(l) for l in doc.get("lotti", []) if str(l).strip()}
     df = await _read_master_csv()
-    if "Source.Name" not in df.columns:
-        return {"pratiche": [], "lotti": list(lotti), "total": 0}
-    mask = df["Source.Name"].apply(lambda x: any(lot and lot in str(x) for lot in lotti)) if lotti else False
-    sub = df[mask] if hasattr(mask, "__iter__") else df.iloc[0:0]
+    if "Source.Name" not in df.columns or not lotti:
+        return {"pratiche": [], "lotti": sorted(lotti), "total": 0}
+    mask = df["Source.Name"].apply(lambda x: _lotto_from_source(x) in lotti)
+    sub = df[mask]
     pratiche = sub.fillna("").to_dict(orient="records")
     return {"pratiche": pratiche, "lotti": sorted(lotti), "total": len(pratiche)}
 
