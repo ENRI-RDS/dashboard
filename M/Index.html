@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="it" translate="no">
+<html lang="en" translate="no">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="google" content="notranslate">
-<meta http-equiv="Content-Language" content="it">
-<title>Progetto M — Progettazione (Esempio)</title>
+<meta http-equiv="Content-Language" content="en">
+<title>Project M — Permitting (Sample)</title>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Plus+Jakarta+Sans:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -24,7 +24,7 @@
     --sh-sm: 0 2px 8px rgba(11,49,130,.08), 0 1px 4px rgba(0,0,0,.05);
     --sh-md: 0 4px 20px rgba(11,49,130,.10), 0 2px 8px rgba(0,0,0,.06);
 
-    /* stati pratica — stessa palette concettuale della dashboard reale */
+    /* permit status colours — same conceptual palette as the real dashboard */
     --attesa:       #8A91B4;
     --redazione:    #C08A14;
     --coordinamento:#6B3FA0;
@@ -293,6 +293,70 @@
   .kpi-modal-list table.tbl th { padding:9px 10px 9px; position:sticky; top:0; background:var(--surface); }
   .kpi-modal-list table.tbl td { padding:9px 10px; font-size:11.5px; }
   .kpi-modal-empty { padding:30px; text-align:center; color:var(--muted); font-size:12.5px; }
+
+  /* ── HELP ── */
+  .btn-help {
+    width:28px; height:28px; border-radius:50%;
+    border:1.5px solid var(--border2); background:var(--surface2);
+    color:var(--muted); font-size:13px; font-weight:700;
+    cursor:pointer; display:inline-flex; align-items:center; justify-content:center;
+    transition:all .18s; flex-shrink:0; line-height:1;
+  }
+  .btn-help:hover { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+  .help-modal { width:620px; }
+  .help-section { margin-bottom:22px; }
+  .help-section:last-child { margin-bottom:0; }
+  .help-section-title {
+    font-family:'Bricolage Grotesque', sans-serif; font-size:13px; font-weight:700;
+    color:var(--text); margin-bottom:10px; padding-bottom:6px;
+    border-bottom:1px solid var(--border);
+  }
+  .help-para { font-size:12.5px; color:var(--text2); line-height:1.6; margin-bottom:8px; }
+  .help-para:last-child { margin-bottom:0; }
+
+  .help-stati { display:flex; flex-direction:column; gap:7px; }
+  .help-stato-row { display:flex; align-items:flex-start; gap:10px; }
+  .help-stato-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; margin-top:3px; }
+  .help-stato-body { display:flex; flex-direction:column; gap:1px; }
+  .help-stato-name { font-size:12px; font-weight:700; color:var(--text); }
+  .help-stato-desc { font-size:11.5px; color:var(--muted); line-height:1.45; }
+  .help-stato-owner {
+    font-size:9.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+    padding:1px 6px; border-radius:3px; display:inline-block; margin-top:2px;
+  }
+  .help-stato-owner.impresa { background:#E550000D; color:#E55000; border:1px solid #E5500030; }
+  .help-stato-owner.rds     { background:#0B31820D; color:#0B3182; border:1px solid #0B318230; }
+  .help-stato-owner.ente    { background:#1F7A4E0D; color:#1F7A4E; border:1px solid #1F7A4E30; }
+
+  .help-iter { display:flex; gap:0; overflow-x:auto; padding-bottom:4px; }
+  .help-iter-step { display:flex; flex-direction:column; align-items:center; flex:1; min-width:60px; position:relative; }
+  .help-iter-step::after {
+    content:''; position:absolute; top:9px; left:50%; right:-50%;
+    height:2px; background:var(--border2); z-index:0;
+  }
+  .help-iter-step:last-child::after { display:none; }
+  .help-iter-dot { width:18px; height:18px; border-radius:50%; border:2.5px solid var(--border2); background:var(--surface); z-index:1; flex-shrink:0; }
+  .help-iter-label { font-size:9.5px; color:var(--muted); text-align:center; margin-top:6px; line-height:1.3; max-width:70px; }
+  .help-iter-step.s-done .help-iter-dot  { background:var(--ottenuto); border-color:var(--ottenuto); }
+  .help-iter-step.s-warn .help-iter-dot  { background:var(--firma); border-color:var(--firma); }
+  .help-iter-step.s-block .help-iter-dot { background:var(--bloccato); border-color:var(--bloccato); }
+  .help-iter-step.s-block .help-iter-label { color:var(--bloccato); font-weight:700; }
+
+  /* tooltip per KPI card */
+  [data-tip] { position:relative; }
+  [data-tip]:hover::after {
+    content: attr(data-tip);
+    position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%);
+    background:var(--text); color:#fff; font-size:11px; font-family:'Plus Jakarta Sans', sans-serif;
+    padding:6px 10px; border-radius:7px; white-space:pre-wrap; max-width:220px;
+    pointer-events:none; z-index:300; line-height:1.45; text-align:center;
+    box-shadow:0 4px 14px rgba(0,0,0,.22);
+  }
+  [data-tip]:hover::before {
+    content:''; position:absolute; bottom:calc(100% + 2px); left:50%; transform:translateX(-50%);
+    border:6px solid transparent; border-top-color:var(--text); z-index:300; pointer-events:none;
+  }
 </style>
 </head>
 <body>
@@ -301,11 +365,12 @@
   <div class="topbar-left">
     <span class="logo">PROGETTO · M</span>
     <div class="divider-v"></div>
-    <span class="page-title">Progettazione · Iter autorizzativo</span>
+    <span class="page-title">Design · Authorization Tracking</span>
   </div>
   <div class="topbar-right">
-    <a href="mappa.html" class="btn-sm">Mappa</a>
+    <a href="mappa.html" class="btn-sm">Map</a>
     <a href="Hub.html" class="btn-sm">← Hub</a>
+    <button class="btn-help" onclick="document.getElementById('helpOverlay').classList.add('open')" title="Page guide">?</button>
   </div>
 </div>
 
@@ -313,83 +378,83 @@
 
   <div class="page-header">
     <div class="page-header-left">
-      <div class="eyebrow">Fase 1 · Permitting</div>
-      <div class="page-title-lg">Avanzamento autorizzativo</div>
-      <div class="page-sub">Monitoraggio dell'iter autorizzativo per tratta, lotto ed ente: stato delle pratiche, percentuali di avanzamento e chilometri coperti.</div>
+      <div class="eyebrow">Phase 1 · Permitting</div>
+      <div class="page-title-lg">Authorization Progress</div>
+      <div class="page-sub">Tracking the authorization process per route, lot and authority: permit status, progress percentages and kilometres covered.</div>
     </div>
     <div class="page-header-right">
       <div class="network-stat">
-        <div class="network-stat-item"><b id="totalKmStat">—</b><span>km rete</span></div>
+        <div class="network-stat-item"><b id="totalKmStat">—</b><span>network km</span></div>
         <div class="network-stat-div"></div>
-        <div class="network-stat-item"><b id="totalTratteStat">—</b><span>tratte</span></div>
+        <div class="network-stat-item"><b id="totalTratteStat">—</b><span>routes</span></div>
       </div>
       <div class="pills" id="lottoPills">
-        <button class="pill active" data-lotto="all">Tutti</button>
-        <button class="pill" data-lotto="1">Lotto 1</button>
-        <button class="pill" data-lotto="2">Lotto 2</button>
-        <button class="pill" data-lotto="3">Lotto 3</button>
+        <button class="pill active" data-lotto="all">All</button>
+        <button class="pill" data-lotto="1">Lot 1</button>
+        <button class="pill" data-lotto="2">Lot 2</button>
+        <button class="pill" data-lotto="3">Lot 3</button>
       </div>
     </div>
   </div>
 
   <div class="kpi-row" id="kpiRow">
-    <div class="kpi attesa" data-bucket="attesa">
-      <span class="kpi-owner impresa">Impresa</span>
-      <div class="kpi-label">In Attesa / Redazione</div>
+    <div class="kpi attesa" data-bucket="attesa" data-tip="The permit has not been started yet or is being compiled by the contractor.">
+      <span class="kpi-owner impresa">Contractor</span>
+      <div class="kpi-label">Pending / Drafting</div>
       <div class="kpi-value" id="kpi-attesa">—</div>
       <div class="kpi-meter">
         <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpi-attesa-bar"></div></div>
         <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpisub-attesa"></span><span class="kpi-meter-count" id="kpicount-attesa"></span></div>
       </div>
     </div>
-    <div class="kpi coordinamento" data-bucket="coordinamento">
-      <span class="kpi-owner impresa">Impresa/Enti</span>
-      <div class="kpi-label">Coordinamento</div>
+    <div class="kpi coordinamento" data-bucket="coordinamento" data-tip="Technical alignment in progress between contractor and authority. Documentation checked before formal submission.">
+      <span class="kpi-owner impresa">Contr./Auth.</span>
+      <div class="kpi-label">Coordination</div>
       <div class="kpi-value" id="kpi-coordinamento">—</div>
       <div class="kpi-meter">
         <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpi-coordinamento-bar"></div></div>
         <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpisub-coordinamento"></span><span class="kpi-meter-count" id="kpicount-coordinamento"></span></div>
       </div>
     </div>
-    <div class="kpi firma" data-bucket="firma">
+    <div class="kpi firma" data-bucket="firma" data-tip="Permit under internal review or awaiting RDS signature. Assigned to the project manager.">
       <span class="kpi-owner rds">RDS</span>
-      <div class="kpi-label">In Verifica / In Firma</div>
+      <div class="kpi-label">Review / Signature</div>
       <div class="kpi-value" id="kpi-firma">—</div>
       <div class="kpi-meter">
         <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpi-firma-bar"></div></div>
         <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpisub-firma"></span><span class="kpi-meter-count" id="kpicount-firma"></span></div>
       </div>
     </div>
-    <div class="kpi inviato" data-bucket="inviato">
-      <span class="kpi-owner ente">Ente</span>
-      <div class="kpi-label">Inviato / Protocollato</div>
+    <div class="kpi inviato" data-bucket="inviato" data-tip="Documentation sent to the competent authority and formally registered. Awaiting response.">
+      <span class="kpi-owner ente">Authority</span>
+      <div class="kpi-label">Submitted / Registered</div>
       <div class="kpi-value" id="kpi-inviato">—</div>
       <div class="kpi-meter">
         <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpi-inviato-bar"></div></div>
         <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpisub-inviato"></span><span class="kpi-meter-count" id="kpicount-inviato"></span></div>
       </div>
     </div>
-    <div class="kpi integrazione" data-bucket="integrazione">
-      <span class="kpi-owner impresa">Impresa</span>
-      <div class="kpi-label">Necessaria Integrazione</div>
+    <div class="kpi integrazione" data-bucket="integrazione" data-tip="The authority has requested additional documentation. The contractor must supplement and resubmit.">
+      <span class="kpi-owner impresa">Contractor</span>
+      <div class="kpi-label">Integration Required</div>
       <div class="kpi-value" id="kpi-integrazione">—</div>
       <div class="kpi-meter">
         <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpi-integrazione-bar"></div></div>
         <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpisub-integrazione"></span><span class="kpi-meter-count" id="kpicount-integrazione"></span></div>
       </div>
     </div>
-    <div class="kpi protint" data-bucket="protint">
-      <span class="kpi-owner ente">Ente</span>
-      <div class="kpi-label">Protocollato Integrazione</div>
+    <div class="kpi protint" data-bucket="protint" data-tip="The requested integration has been delivered and registered. Second evaluation pending.">
+      <span class="kpi-owner ente">Authority</span>
+      <div class="kpi-label">Integration Registered</div>
       <div class="kpi-value" id="kpi-protint">—</div>
       <div class="kpi-meter">
         <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpi-protint-bar"></div></div>
         <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpisub-protint"></span><span class="kpi-meter-count" id="kpicount-protint"></span></div>
       </div>
     </div>
-    <div class="kpi ottenuto" data-bucket="ottenuto">
-      <span class="kpi-owner ente">Ente</span>
-      <div class="kpi-label">🏆 Autorizzati</div>
+    <div class="kpi ottenuto" data-bucket="ottenuto" data-tip="Authorization issued by the authority. The route is ready for excavation.">
+      <span class="kpi-owner ente">Authority</span>
+      <div class="kpi-label">🏆 Authorized</div>
       <div class="kpi-value" id="kpi-ottenuto">—</div>
       <div class="kpi-meter">
         <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpi-ottenuto-bar"></div></div>
@@ -400,28 +465,28 @@
 
   <div class="panels-row">
     <div class="panel">
-      <div class="panel-title">Stato pratiche</div>
+      <div class="panel-title">Permit Status</div>
       <div class="donut-row">
         <div class="donut-wrap">
           <div class="donut" id="donut"></div>
-          <div class="donut-hole"><b id="donutTotal">0</b><span>km totali</span></div>
+          <div class="donut-hole"><b id="donutTotal">0</b><span>total km</span></div>
         </div>
         <div class="legend" id="donutLegend"></div>
       </div>
     </div>
     <div class="panel">
-      <div class="panel-title">Avanzamento per lotto</div>
+      <div class="panel-title">Progress by Lot</div>
       <div class="lotto-bars" id="lottoBars"></div>
     </div>
   </div>
 
   <div class="panel panel-table">
     <div class="panel-title-row">
-      <div class="panel-title">Dettaglio tratte</div>
+      <div class="panel-title">Route Detail</div>
       <div class="table-filters">
-        <input type="text" id="tableSearch" class="table-search" placeholder="Cerca tratta, comune, ente, pratica…">
+        <input type="text" id="tableSearch" class="table-search" placeholder="Search route, municipality, authority, permit…">
         <select id="tableStatoFilter" class="table-select">
-          <option value="all">Tutti gli stati</option>
+          <option value="all">All statuses</option>
         </select>
         <span class="table-count" id="tableCount"></span>
       </div>
@@ -430,8 +495,8 @@
     <table class="tbl">
       <thead>
         <tr>
-          <th>Tratta</th><th>Comune</th><th>Lotto</th><th>Impresa</th><th>Stato</th>
-          <th>Lunghezza</th><th>Pratica</th><th>Ente</th>
+          <th>Route</th><th>Municipality</th><th>Lot</th><th>Contractor</th><th>Status</th>
+          <th>Length</th><th>Permit</th><th>Authority</th>
         </tr>
       </thead>
       <tbody id="tblBody"></tbody>
@@ -476,7 +541,7 @@
 
 <script>
 const LOTTO_COLORS = { '1':'#2563eb', '2':'#16a34a', '3':'#e8580c' };
-const IMPRESE      = { '1':'Impresa 1', '2':'Impresa 2', '3':'Impresa 3' };
+const IMPRESE      = { '1':'Contractor 1', '2':'Contractor 2', '3':'Contractor 3' };
 
 const KPI_BUCKETS = {
   attesa:        ['IN ATTESA','IN REDAZIONE'],
@@ -544,10 +609,16 @@ function renderKPIs(rows){
     document.getElementById('kpi-'+key).textContent = pct.toFixed(1)+'%';
     document.getElementById('kpi-'+key+'-bar').style.width = pct + '%';
     document.getElementById('kpisub-'+key).textContent = fmtKm(km) + ' km';
-    document.getElementById('kpicount-'+key).textContent = bucketRows.length + ' tratte';
+    document.getElementById('kpicount-'+key).textContent = bucketRows.length + ' routes';
   });
 }
 
+const STATO_EN = {
+  'IN ATTESA':'Pending','IN REDAZIONE':'Drafting','COORDINAMENTO':'Coordination',
+  'IN FIRMA RDS':'Review / Signature','INVIATO':'Submitted','PROTOCOLLATO':'Registered',
+  'NECESSARIA INTEGRAZIONE':'Integration Required','IN REDAZIONE INTEGRAZIONE':'Integration Drafting',
+  'PROTOCOLLATO INTEGRAZIONE':'Integration Registered','OTTENUTO':'Authorized'
+};
 const STATO_ORDER = ['IN ATTESA','IN REDAZIONE','COORDINAMENTO','IN FIRMA RDS','INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'];
 
 function renderDonut(rows){
@@ -579,7 +650,7 @@ function renderDonut(rows){
     div.className = 'legend-item';
     div.innerHTML = `
       <div class="legend-top">
-        <span class="legend-dot" style="background:${STATO_HEX[stato]}"></span>${stato}
+        <span class="legend-dot" style="background:${STATO_HEX[stato]}"></span>${STATO_EN[stato]||stato}
         <span class="legend-pct">${pct.toFixed(0)}%</span>
         <b>${counts[stato]}</b>
       </div>
@@ -601,8 +672,8 @@ function renderLottoBars(){
     row.className = 'lotto-bar-row';
     row.innerHTML = `
       <div class="lotto-bar-top">
-        <span class="name">Lotto ${lotto} · ${IMPRESE[lotto]}</span>
-        <span class="pct">${ottenute.length}/${rows.length} tratte · ${pct}%</span>
+        <span class="name">Lot ${lotto} · ${IMPRESE[lotto]}</span>
+        <span class="pct">${ottenute.length}/${rows.length} routes · ${pct}%</span>
       </div>
       <div class="lotto-bar-track">
         <div class="lotto-bar-fill" style="width:${pct}%; background:${LOTTO_COLORS[lotto]}"></div>
@@ -621,7 +692,7 @@ function renderTable(rows){
       <td>${r.comune}</td>
       <td><span class="chip-lotto" style="background:${LOTTO_COLORS[r.lotto]}">Lotto ${r.lotto}</span></td>
       <td>${IMPRESE[r.lotto]}</td>
-      <td><span class="badge-stato" style="background:${STATO_HEX[r.stato]}1A; color:${STATO_HEX[r.stato]}"><span class="dot" style="background:${STATO_HEX[r.stato]}"></span>${r.stato}</span></td>
+      <td><span class="badge-stato" style="background:${STATO_HEX[r.stato]}1A; color:${STATO_HEX[r.stato]}"><span class="dot" style="background:${STATO_HEX[r.stato]}"></span>${STATO_EN[r.stato]||r.stato}</span></td>
       <td>${r.m} m</td>
       <td>${r.pratica || "—"}</td>
       <td>${r.ente}</td>`;
@@ -646,7 +717,7 @@ function populateStatoFilter(){
   STATO_ORDER.filter(s => SAMPLE_DATA.some(d => d.stato === s)).forEach(s => {
     const opt = document.createElement('option');
     opt.value = s;
-    opt.textContent = s;
+    opt.textContent = STATO_EN[s] || s;
     sel.appendChild(opt);
   });
 }
@@ -669,12 +740,12 @@ function renderAll(){
   document.getElementById('totalTratteStat').textContent = rows.length;
 }
 
-/* ── POPUP dettaglio tratta ── */
-const ITER_STEPS = ['In Redazione','Coordinamento','Verifica/Firma','Invio/Protocollo','Necessaria Integr.','Redazione Integr.','Protocollo Integr.','Rilascio'];
+/* ── ROUTE DETAIL POPUP ── */
+const ITER_STEPS = ['Drafting','Coordination','Review/Signature','Submission','Integration Req.','Integration Draft','Integration Reg.','Authorized'];
 const BLOCK_NOTES = {
-  'IN REDAZIONE INTEGRAZIONE':'In redazione: l\'ente ha segnalato la necessità di integrare la documentazione prima dell\'invio.',
-  'NECESSARIA INTEGRAZIONE':'L\'ente ha richiesto un\'integrazione documentale per poter procedere.',
-  'PROTOCOLLATO INTEGRAZIONE':'Protocollata, ma in attesa dell\'integrazione richiesta dall\'ente.'
+  'IN REDAZIONE INTEGRAZIONE':'Drafting integration: the authority has signalled the need to supplement documentation before resubmission.',
+  'NECESSARIA INTEGRAZIONE':'The authority has requested additional documentation before proceeding.',
+  'PROTOCOLLATO INTEGRAZIONE':'Registered, but awaiting the integration requested by the authority.'
 };
 function stepInfoFor(stato){
   switch(stato){
@@ -696,12 +767,12 @@ function openRowModal(r){
   const isOttenuto = r.stato === 'OTTENUTO';
   document.getElementById('rowModalTitle').textContent = r.t + ' · ' + r.comune;
   document.getElementById('rowModalSub').innerHTML =
-    `<span class="badge-stato" style="background:${STATO_HEX[r.stato]}1A; color:${STATO_HEX[r.stato]}"><span class="dot" style="background:${STATO_HEX[r.stato]}"></span>${r.stato}</span>`;
+    `<span class="badge-stato" style="background:${STATO_HEX[r.stato]}1A; color:${STATO_HEX[r.stato]}"><span class="dot" style="background:${STATO_HEX[r.stato]}"></span>${STATO_EN[r.stato]||r.stato}</span>`;
   document.getElementById('rowInfoGrid').innerHTML = `
-    <div class="info-item"><div class="lbl">Lotto</div><div class="val">Lotto ${r.lotto} · ${IMPRESE[r.lotto]}</div></div>
-    <div class="info-item"><div class="lbl">Lunghezza</div><div class="val">${r.m} m</div></div>
-    <div class="info-item"><div class="lbl">Pratica</div><div class="val">${r.pratica || "—"}</div></div>
-    <div class="info-item"><div class="lbl">Ente</div><div class="val">${r.ente}</div></div>`;
+    <div class="info-item"><div class="lbl">Lot</div><div class="val">Lot ${r.lotto} · ${IMPRESE[r.lotto]}</div></div>
+    <div class="info-item"><div class="lbl">Length</div><div class="val">${r.m} m</div></div>
+    <div class="info-item"><div class="lbl">Permit</div><div class="val">${r.pratica || "—"}</div></div>
+    <div class="info-item"><div class="lbl">Authority</div><div class="val">${r.ente}</div></div>`;
   document.getElementById('rowStepper').innerHTML = ITER_STEPS.map((label,i)=>{
     let cls;
     if(isOttenuto) cls = 'done';
@@ -717,17 +788,17 @@ function openRowModal(r){
 }
 function closeRowModal(){ document.getElementById('rowModalOverlay').classList.remove('open'); }
 
-/* ── POPUP dettaglio KPI ── */
+/* ── KPI DETAIL POPUP ── */
 const KPI_LABELS = {
-  attesa:'In Attesa / Redazione', coordinamento:'Coordinamento', firma:'In Verifica / In Firma',
-  inviato:'Inviato / Protocollato', integrazione:'Necessaria Integrazione',
-  protint:'Protocollato Integrazione', ottenuto:'Autorizzati'
+  attesa:'Pending / Drafting', coordinamento:'Coordination', firma:'Review / Signature',
+  inviato:'Submitted / Registered', integrazione:'Integration Required',
+  protint:'Integration Registered', ottenuto:'Authorized'
 };
 const KPI_OWNER = {
-  attesa:{cls:'impresa', label:'Impresa'}, coordinamento:{cls:'impresa', label:'Impresa/Enti'},
-  firma:{cls:'rds', label:'RDS'}, inviato:{cls:'ente', label:'Ente'},
-  integrazione:{cls:'impresa', label:'Impresa'}, protint:{cls:'ente', label:'Ente'},
-  ottenuto:{cls:'ente', label:'Ente'}
+  attesa:{cls:'impresa', label:'Contractor'}, coordinamento:{cls:'impresa', label:'Contr./Auth.'},
+  firma:{cls:'rds', label:'RDS'}, inviato:{cls:'ente', label:'Authority'},
+  integrazione:{cls:'impresa', label:'Contractor'}, protint:{cls:'ente', label:'Authority'},
+  ottenuto:{cls:'ente', label:'Authority'}
 };
 let kpiModalBucket = null;
 let kpiModalLotto = 'all';
@@ -748,27 +819,27 @@ function renderKpiModalBody(){
   const rows = kpiModalLotto === 'all' ? allRows : allRows.filter(r => r.lotto === kpiModalLotto);
 
   document.getElementById('kpiModalStats').innerHTML = `
-    <div><div class="stat-lbl">Tratte</div><div class="stat-val">${rows.length}</div></div>
-    <div><div class="stat-lbl">Lunghezza</div><div class="stat-val">${fmtKm(rows.reduce((s,r)=>s+r.m,0))} km</div></div>`;
+    <div><div class="stat-lbl">Routes</div><div class="stat-val">${rows.length}</div></div>
+    <div><div class="stat-lbl">Length</div><div class="stat-val">${fmtKm(rows.reduce((s,r)=>s+r.m,0))} km</div></div>`;
 
   const lottiPresenti = [...new Set(allRows.map(r => r.lotto))].sort();
   document.getElementById('kpiModalPills').innerHTML =
-    `<button class="pill ${kpiModalLotto==='all'?'active':''}" data-lotto="all">Tutti</button>` +
-    lottiPresenti.map(l => `<button class="pill ${kpiModalLotto===l?'active':''}" data-lotto="${l}">Lotto ${l}</button>`).join('');
+    `<button class="pill ${kpiModalLotto==='all'?'active':''}" data-lotto="all">All</button>` +
+    lottiPresenti.map(l => `<button class="pill ${kpiModalLotto===l?'active':''}" data-lotto="${l}">Lot ${l}</button>`).join('');
 
   const body = document.getElementById('kpiModalBody');
   if(rows.length === 0){
-    body.innerHTML = '<div class="kpi-modal-empty">Nessuna tratta in questo stato.</div>';
+    body.innerHTML = '<div class="kpi-modal-empty">No routes in this status.</div>';
     return;
   }
   body.innerHTML = `<table class="tbl"><thead><tr>
-      <th>Tratta</th><th>Comune</th><th>Lotto</th><th>Stato</th><th>Lunghezza</th><th>Pratica</th><th>Ente</th>
+      <th>Route</th><th>Municipality</th><th>Lot</th><th>Status</th><th>Length</th><th>Permit</th><th>Authority</th>
     </tr></thead><tbody>${rows.map(r => `
       <tr data-t="${r.t}">
         <td>${r.t}</td>
         <td>${r.comune}</td>
-        <td><span class="chip-lotto" style="background:${LOTTO_COLORS[r.lotto]}">Lotto ${r.lotto}</span></td>
-        <td><span class="badge-stato" style="background:${STATO_HEX[r.stato]}1A; color:${STATO_HEX[r.stato]}"><span class="dot" style="background:${STATO_HEX[r.stato]}"></span>${r.stato}</span></td>
+        <td><span class="chip-lotto" style="background:${LOTTO_COLORS[r.lotto]}">Lot ${r.lotto}</span></td>
+        <td><span class="badge-stato" style="background:${STATO_HEX[r.stato]}1A; color:${STATO_HEX[r.stato]}"><span class="dot" style="background:${STATO_HEX[r.stato]}"></span>${STATO_EN[r.stato]||r.stato}</span></td>
         <td>${r.m} m</td>
         <td>${r.pratica || "—"}</td>
         <td>${r.ente}</td>
@@ -814,5 +885,72 @@ populateStatoFilter();
 renderLottoBars();
 renderAll();
 </script>
+
+<!-- ─── HELP MODAL ─── -->
+<div class="modal-overlay" id="helpOverlay" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal help-modal">
+    <div class="modal-head">
+      <div class="modal-title">Guide — Authorization Dashboard</div>
+      <button class="modal-close" onclick="document.getElementById('helpOverlay').classList.remove('open')">×</button>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">📋 What this page shows</div>
+      <p class="help-para">The dashboard tracks the progress of <strong>authorization permits</strong> for the project's excavation routes. For each route the permit application process towards the relevant authorities (municipalities, provinces, highways, RFI, etc.) is monitored.</p>
+      <p class="help-para">At the top, the <strong>KPI cards</strong> show how many routes (and how many km) are in each phase. The <strong>donut chart</strong> distributes total km by status. The <strong>lot bars</strong> show the percentage of authorizations obtained. The <strong>table</strong> lists all routes with filters.</p>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">🏷 Responsibility by phase</div>
+      <p class="help-para" style="margin-bottom:10px;">Each status has an owner indicated by the coloured badge on the card:</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <span class="help-stato-owner impresa">Contractor — must produce / supplement documents</span>
+        <span class="help-stato-owner rds">RDS — internal Retelit review / signature</span>
+        <span class="help-stato-owner ente">Authority — awaiting external evaluation</span>
+      </div>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">🔄 Standard process flow</div>
+      <div class="help-iter" style="margin-bottom:14px;">
+        <div class="help-iter-step s-block"><div class="help-iter-dot"></div><div class="help-iter-label">Pending / Drafting</div></div>
+        <div class="help-iter-step"><div class="help-iter-dot" style="border-color:var(--coordinamento);background:var(--coordinamento)"></div><div class="help-iter-label">Coordination</div></div>
+        <div class="help-iter-step"><div class="help-iter-dot" style="border-color:var(--firma);background:var(--firma)"></div><div class="help-iter-label">Review / RDS Signature</div></div>
+        <div class="help-iter-step"><div class="help-iter-dot" style="border-color:var(--inviato);background:var(--inviato)"></div><div class="help-iter-label">Submitted / Registered</div></div>
+        <div class="help-iter-step s-done"><div class="help-iter-dot"></div><div class="help-iter-label">🏆 Authorized</div></div>
+      </div>
+      <p class="help-para" style="margin-bottom:6px;">If the authority requests supplementary documentation, the flow branches:</p>
+      <div class="help-iter">
+        <div class="help-iter-step"><div class="help-iter-dot" style="border-color:var(--inviato);background:var(--inviato)"></div><div class="help-iter-label">Registered</div></div>
+        <div class="help-iter-step s-warn"><div class="help-iter-dot"></div><div class="help-iter-label">Integration Required</div></div>
+        <div class="help-iter-step"><div class="help-iter-dot" style="border-color:var(--coordinamento);background:var(--coordinamento)"></div><div class="help-iter-label">Integration Drafting</div></div>
+        <div class="help-iter-step"><div class="help-iter-dot" style="border-color:var(--inviato);background:var(--inviato)"></div><div class="help-iter-label">Integration Registered</div></div>
+        <div class="help-iter-step s-done"><div class="help-iter-dot"></div><div class="help-iter-label">🏆 Authorized</div></div>
+      </div>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">📌 Status descriptions</div>
+      <div class="help-stati">
+        <div class="help-stato-row"><div class="help-stato-dot" style="background:var(--attesa)"></div><div class="help-stato-body"><span class="help-stato-name">Pending / Drafting</span><span class="help-stato-desc">Permit not yet started or being prepared. The contractor is collecting/compiling the technical documentation.</span></div></div>
+        <div class="help-stato-row"><div class="help-stato-dot" style="background:var(--coordinamento)"></div><div class="help-stato-body"><span class="help-stato-name">Coordination</span><span class="help-stato-desc">Technical discussion in progress with the authority before formal submission (site survey, plan clarifications, pre-screening).</span></div></div>
+        <div class="help-stato-row"><div class="help-stato-dot" style="background:var(--firma)"></div><div class="help-stato-body"><span class="help-stato-name">Review / RDS Signature</span><span class="help-stato-desc">Documentation under internal Retelit review. The sector manager must check and sign before submission.</span></div></div>
+        <div class="help-stato-row"><div class="help-stato-dot" style="background:var(--inviato)"></div><div class="help-stato-body"><span class="help-stato-name">Submitted / Registered</span><span class="help-stato-desc">Application sent to the authority and protocol number received. The ball is in the authority's court; statutory deadlines start running.</span></div></div>
+        <div class="help-stato-row"><div class="help-stato-dot" style="background:var(--bloccato)"></div><div class="help-stato-body"><span class="help-stato-name">Integration Required</span><span class="help-stato-desc">The authority has requested additional documentation with suspension of deadlines. The contractor must produce the missing documents.</span></div></div>
+        <div class="help-stato-row"><div class="help-stato-dot" style="background:var(--protint,#7c3aed)"></div><div class="help-stato-body"><span class="help-stato-name">Integration Registered</span><span class="help-stato-desc">The supplementary documentation has been delivered and registered. Deadlines resume; second evaluation pending.</span></div></div>
+        <div class="help-stato-row"><div class="help-stato-dot" style="background:var(--ottenuto)"></div><div class="help-stato-body"><span class="help-stato-name">🏆 Authorized</span><span class="help-stato-desc">Clearance or authorization issued by the authority. The route is ready for construction.</span></div></div>
+      </div>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">💡 Quick tips</div>
+      <p class="help-para">• Hover over a <strong>KPI card</strong> to read a short description of the status.<br>
+      • Click a <strong>KPI card</strong> to see the list of routes in that status.<br>
+      • Click a <strong>table row</strong> to open the route detail with the process stepper.<br>
+      • Use the <strong>lot filters</strong> at the top and the status filter in the table to navigate quickly.</p>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
