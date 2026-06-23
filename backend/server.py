@@ -616,9 +616,14 @@ async def auth_login(payload: dict):
                 content=json.dumps({"secret": APPS_SCRIPT_SECRET, "action": "login", "nome": nome, "codice": codice}),
                 headers={"Content-Type": "text/plain"},
             )
-        data = r.json()
     except Exception as e:
         raise HTTPException(502, f"Servizio di login non raggiungibile: {e}")
+
+    try:
+        data = r.json()
+    except Exception:
+        snippet = r.text[:200].replace("\n", " ")
+        raise HTTPException(502, f"Risposta non valida da Apps Script (HTTP {r.status_code}): {snippet!r}")
 
     if not data.get("ok"):
         raise HTTPException(401, data.get("msg") or "Nome o codice non riconosciuti")
