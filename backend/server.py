@@ -17,10 +17,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
+import hmac
 import io
 import json
 import os
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Any
@@ -29,7 +32,7 @@ import httpx
 import pandas as pd
 from bson import ObjectId
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Header, Query
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, Response, FileResponse
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
@@ -534,6 +537,98 @@ async def _on_startup():
 # and the change is applied to Master.csv (a new GridFS version is created).
 # ═════════════════════════════════════════════════════════════════════════════
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Sessione firmata — risolve il problema per cui chiunque potesse fare
+# `localStorage.setItem('_enri_user', 'Nome Impresa')` e impersonare quel
+# nome senza conoscere il codice di accesso (il codice era verificato SOLO
+# da Google Apps Script al login, mai dal backend sulle chiamate successive).
+#
+# Flusso corretto:
+#   1. hub.html invia nome+codice a /api/auth/login (non più direttamente ad
+#      Apps Script: il segreto APPS_SCRIPT_SECRET resta lato server)
+#   2. Il backend verifica nome+codice chiamando Apps Script server-to-server
+#   3. Se ok, firma un token (HMAC, non falsificabile senza SESSION_SECRET)
+#      con nome+ruolo+scadenza, e lo restituisce al browser
+#   4. Ogni chiamata /api/imprese/* richiede questo token nell'header
+#      x-session-token; il `nome` viene SEMPRE preso dal token firmato,
+#      MAI dal parametro `nome` passato dal client (che viene ignorato)
+# ─────────────────────────────────────────────────────────────────────────────
+
+SESSION_SECRET = os.environ.get("SESSION_SECRET", "")
+SESSION_TTL_SECONDS = int(os.environ.get("SESSION_TTL_SECONDS", str(12 * 3600)))  # 12h default
+APPS_SCRIPT_URL = os.environ.get("APPS_SCRIPT_URL", "")
+APPS_SCRIPT_SECRET = os.environ.get("APPS_SCRIPT_SECRET", "")
+
+
+def _sign_session(nome: str, ruolo: str) -> str:
+    if not SESSION_SECRET:
+        raise HTTPException(500, "SESSION_SECRET non configurato sul server")
+    exp = int(time.time()) + SESSION_TTL_SECONDS
+    payload = f"{nome}|{ruolo}|{exp}"
+    sig = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    raw = f"{payload}|{sig}"
+    return base64.urlsafe_b64encode(raw.encode()).decode()
+
+
+def _verify_session(token: str) -> dict | None:
+    if not token or not SESSION_SECRET:
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(token.encode()).decode()
+        nome, ruolo, exp, sig = raw.split("|", 3)
+        payload = f"{nome}|{ruolo}|{exp}"
+        expected = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return None
+        if int(exp) < int(time.time()):
+            return None
+        return {"nome": nome, "ruolo": ruolo}
+    except Exception:
+        return None
+
+
+async def _require_session(
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+) -> dict:
+    """Dependency per gli endpoint /api/imprese/*: il `nome` autenticato viene
+    SEMPRE letto dal token firmato, mai da un parametro passato dal client."""
+    sess = _verify_session(x_session_token or "")
+    if not sess:
+        raise HTTPException(401, "Sessione non valida o scaduta — effettua di nuovo il login")
+    return sess
+
+
+@app.post("/api/auth/login")
+async def auth_login(payload: dict):
+    """Proxy server-to-server verso Google Apps Script: il browser non vede
+    più APPS_SCRIPT_SECRET, e il codice viene verificato per davvero (non solo
+    al primo login, ma e' la base per ogni chiamata successiva tramite il token)."""
+    nome = (payload or {}).get("nome", "").strip()
+    codice = (payload or {}).get("codice", "").strip()
+    if not nome or not codice:
+        raise HTTPException(400, "Nome e codice sono richiesti")
+    if not APPS_SCRIPT_URL or not APPS_SCRIPT_SECRET:
+        raise HTTPException(500, "Login non configurato sul server (APPS_SCRIPT_URL/SECRET mancanti)")
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(
+                APPS_SCRIPT_URL,
+                content=json.dumps({"secret": APPS_SCRIPT_SECRET, "action": "login", "nome": nome, "codice": codice}),
+                headers={"Content-Type": "text/plain"},
+            )
+        data = r.json()
+    except Exception as e:
+        raise HTTPException(502, f"Servizio di login non raggiungibile: {e}")
+
+    if not data.get("ok"):
+        raise HTTPException(401, data.get("msg") or "Nome o codice non riconosciuti")
+
+    nome_canonical = data.get("nome") or nome
+    ruolo = str(data.get("ruolo") or "user").lower()
+    token = _sign_session(nome_canonical, ruolo)
+    return {"ok": True, "token": token, "nome": nome_canonical, "ruolo": ruolo}
+
+
 MASTER_FILENAME = "Master.csv"
 ROW_KEY_COLS = ("TRATTA_ID", "ENTE", "TIPO_PERMESSO")  # natural key for an update
 
@@ -985,20 +1080,21 @@ async def _find_assignment(nome: str) -> dict | None:
 
 
 @app.get("/api/imprese/me")
-async def impresa_me(nome: str):
-    """Returns the impresa's profile if they are assigned, else 404."""
-    doc = await _find_assignment(nome)
+async def impresa_me(sess: dict = Depends(_require_session)):
+    """Returns the impresa's profile if they are assigned, else 404.
+    Il nome viene dal token di sessione firmato, non da un parametro client."""
+    doc = await _find_assignment(sess["nome"])
     if not doc:
         raise HTTPException(404, "Impresa non assegnata")
     return {"nome": doc["nome"], "lotti": doc.get("lotti", []), "active": bool(doc.get("active", True))}
 
 
 @app.get("/api/imprese/pratiche")
-async def impresa_pratiche(nome: str):
+async def impresa_pratiche(sess: dict = Depends(_require_session)):
     """Returns Master.csv rows whose Source.Name matches one of the user's lotti
     (confronto per codice lotto esatto, non substring — così 'Lotto 2' non
     aggancia per errore 'Lotto 2A.xlsx' o eventuali lotti a doppia cifra)."""
-    doc = await _find_assignment(nome)
+    doc = await _find_assignment(sess["nome"])
     if not doc or not doc.get("active", True):
         raise HTTPException(404, "Impresa non autorizzata")
     lotti = {_lotto_from_source(l) for l in doc.get("lotti", []) if str(l).strip()}
@@ -1012,16 +1108,17 @@ async def impresa_pratiche(nome: str):
 
 
 @app.post("/api/imprese/submit")
-async def impresa_submit(payload: dict):
-    """Body: {nome, type: 'update'|'new', changes: [...]}.
+async def impresa_submit(payload: dict, sess: dict = Depends(_require_session)):
+    """Body: {type: 'update'|'new', changes: [...]}. Il `nome` arriva dalla
+    sessione firmata: anche se il client invia un 'nome' diverso nel body,
+    viene ignorato — non e' piu' possibile inviare submission per conto di
+    un'altra impresa semplicemente cambiando un parametro.
     For 'update': each change has {tratta_id, ente, tipo_permesso, fields:{col:val}}
     For 'new': each change is a full row dict.
     Goes into pending_updates with status='pending'."""
-    nome = (payload or {}).get("nome", "").strip()
+    nome = sess["nome"]
     typ = (payload or {}).get("type", "").strip()
     changes = (payload or {}).get("changes") or []
-    if not nome:
-        raise HTTPException(400, "Missing 'nome'")
     if typ not in {"update", "new"}:
         raise HTTPException(400, "type must be 'update' or 'new'")
     if not isinstance(changes, list) or not changes:
@@ -1046,8 +1143,8 @@ async def impresa_submit(payload: dict):
 
 
 @app.get("/api/imprese/my-submissions")
-async def my_submissions(nome: str, limit: int = 50):
-    cur = pending_col.find({"nome": nome}).sort("submitted_at", -1).limit(min(limit, 200))
+async def my_submissions(limit: int = 50, sess: dict = Depends(_require_session)):
+    cur = pending_col.find({"nome": sess["nome"]}).sort("submitted_at", -1).limit(min(limit, 200))
     items = []
     async for d in cur:
         d["_id"] = str(d["_id"])
@@ -1056,8 +1153,9 @@ async def my_submissions(nome: str, limit: int = 50):
 
 
 @app.delete("/api/imprese/submissions/{sub_id}")
-async def delete_my_submission(sub_id: str, nome: str):
-    """L'impresa può cancellare solo le proprie submission ancora in stato pending."""
+async def delete_my_submission(sub_id: str, sess: dict = Depends(_require_session)):
+    """L'impresa può cancellare solo le proprie submission ancora in stato pending.
+    Il confronto usa il nome dalla sessione, non un parametro client."""
     try:
         oid = ObjectId(sub_id)
     except Exception:
@@ -1065,7 +1163,7 @@ async def delete_my_submission(sub_id: str, nome: str):
     doc = await pending_col.find_one({"_id": oid})
     if not doc:
         raise HTTPException(404, "Submission non trovata")
-    if doc.get("nome") != nome:
+    if doc.get("nome") != sess["nome"]:
         raise HTTPException(403, "Non autorizzato")
     if doc.get("status") != "pending":
         raise HTTPException(409, "Solo le richieste in attesa possono essere eliminate")
