@@ -164,8 +164,8 @@
       <div class="panel active" id="panel-files">
         <p class="sub">Vista unificata: file caricati su MongoDB e file "seed" presenti nel repo GitHub. Il backend serve sempre la versione MongoDB se esiste, altrimenti il file del repo.</p>
         <table>
-          <thead><tr><th>File</th><th>Sorgente</th><th>Dimensione</th><th>Versioni</th><th>Azioni</th></tr></thead>
-          <tbody id="filesBody"><tr><td colspan="5" class="empty">Caricamento…</td></tr></tbody>
+          <thead><tr><th>File</th><th>Sorgente</th><th>Dimensione</th><th>Versioni</th><th>Ultima modifica</th><th>Origine</th><th>Azioni</th></tr></thead>
+          <tbody id="filesBody"><tr><td colspan="7" class="empty">Caricamento…</td></tr></tbody>
         </table>
       </div>
 
@@ -338,7 +338,15 @@
     if(s < 1024*1024) return (s/1024).toFixed(1) + ' KB';
     return (s/1024/1024).toFixed(2) + ' MB';
   }
-  function fmtDate(d){ try{ return new Date(d).toLocaleString('it-IT'); }catch{return d}}
+  function fmtDate(d){
+    try{
+      const dt = new Date(d);
+      return dt.toLocaleString('it-IT',{
+        day:'2-digit', month:'2-digit', year:'2-digit',
+        hour:'2-digit', minute:'2-digit'
+      });
+    }catch{return d}
+  }
   function authHeaders(){
     const t = token();
     return t ? { 'x-upload-token': t } : {};
@@ -390,20 +398,29 @@
   // ──────────────────────────────────────────────────────────────────────
   // Files list
   async function refreshFiles(){
-    if(!apiBase()){ filesBody.innerHTML = '<tr><td colspan="5" class="empty">Imposta l\'API endpoint qui sopra</td></tr>'; return; }
+    if(!apiBase()){ filesBody.innerHTML = '<tr><td colspan="7" class="empty">Imposta l\'API endpoint qui sopra</td></tr>'; return; }
     try{
       const d = await api('/api/files');
       $('statFiles').textContent = d.count;
       if(!d.files || !d.files.length){
-        filesBody.innerHTML = '<tr><td colspan="5" class="empty">Nessun file</td></tr>';
+        filesBody.innerHTML = '<tr><td colspan="7" class="empty">Nessun file</td></tr>';
         return;
       }
-      filesBody.innerHTML = d.files.map(f => `
+      const originLabel = { impresa: 'Approvazione impresa', derived: 'Rigenerato automaticamente', admin: 'Upload manuale' };
+      const originColor  = { impresa: '#1d4ed8', derived: '#7c3aed', admin: '#6b7280' };
+      filesBody.innerHTML = d.files.map(f => {
+        const origin = f.upload_source || 'admin';
+        const originTitle = f.note ? `${originLabel[origin] || origin} — ${escapeHtml(f.note)}` : (originLabel[origin] || origin);
+        return `
         <tr>
           <td class="mono">${escapeHtml(f.name)}</td>
           <td><span class="tag ${f.source}">${f.source}</span></td>
           <td>${fmtSize(f.size)}</td>
           <td>${f.versions || (f.source === 'disk' ? '—' : 1)}</td>
+          <td class="mono" style="font-size:12px" title="${f.modified ? new Date(f.modified).toLocaleString('it-IT') : ''}">${f.modified ? fmtDate(f.modified) : '—'}</td>
+          <td>${f.source === 'mongo'
+            ? `<span style="font-size:11px;color:${originColor[origin]||'#6b7280'};font-weight:600" title="${originTitle}">${originLabel[origin] || origin}</span>`
+            : '<span style="font-size:11px;color:var(--muted)">—</span>'}</td>
           <td class="actions">
             <button class="btn btn-ghost btn-xs" data-act="preview" data-name="${encodeURIComponent(f.name)}" data-testid="preview-${cssId(f.name)}">Anteprima</button>
             <button class="btn btn-ghost btn-xs" data-act="download" data-name="${encodeURIComponent(f.name)}">Scarica</button>
@@ -412,9 +429,10 @@
               <button class="btn btn-danger btn-xs" data-act="delete-file" data-name="${encodeURIComponent(f.name)}" data-testid="delete-${cssId(f.name)}">Elimina tutte</button>
             ` : ''}
           </td>
-        </tr>`).join('');
+        </tr>`;
+      }).join('');
     }catch(e){
-      filesBody.innerHTML = `<tr><td colspan="5" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
+      filesBody.innerHTML = `<tr><td colspan="7" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
     }
   }
 
