@@ -629,6 +629,49 @@ async def auth_login(payload: dict):
     return {"ok": True, "token": token, "nome": nome_canonical, "ruolo": ruolo}
 
 
+@app.get("/api/auth/verify")
+async def auth_verify(sess: dict = Depends(_require_session)):
+    """Verifica token di sessione e restituisce nome+ruolo — usato da index.html per la rivalidazione silenziosa."""
+    return {"ok": True, "nome": sess["nome"], "ruolo": sess.get("ruolo", "user")}
+
+
+@app.post("/api/logs/get")
+async def logs_get(payload: dict, sess: dict = Depends(_require_session)):
+    """Proxy JSONBin get via Apps Script (il segreto resta server-side)."""
+    bin_id = (payload or {}).get("binId", "")
+    if not APPS_SCRIPT_URL or not APPS_SCRIPT_SECRET:
+        raise HTTPException(500, "Log service non configurato")
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            r = await client.post(
+                APPS_SCRIPT_URL,
+                content=json.dumps({"secret": APPS_SCRIPT_SECRET, "action": "jsonbin_get", "binId": bin_id}),
+                headers={"Content-Type": "text/plain"},
+            )
+        return r.json()
+    except Exception as e:
+        raise HTTPException(502, f"Log service non raggiungibile: {e}")
+
+
+@app.post("/api/logs/put")
+async def logs_put(payload: dict, sess: dict = Depends(_require_session)):
+    """Proxy JSONBin put via Apps Script (il segreto resta server-side)."""
+    bin_id = (payload or {}).get("binId", "")
+    data   = (payload or {}).get("data")
+    if not APPS_SCRIPT_URL or not APPS_SCRIPT_SECRET:
+        raise HTTPException(500, "Log service non configurato")
+    try:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+            r = await client.post(
+                APPS_SCRIPT_URL,
+                content=json.dumps({"secret": APPS_SCRIPT_SECRET, "action": "jsonbin_put", "binId": bin_id, "data": data}),
+                headers={"Content-Type": "text/plain"},
+            )
+        return r.json()
+    except Exception as e:
+        raise HTTPException(502, f"Log service non raggiungibile: {e}")
+
+
 MASTER_FILENAME = "Master.csv"
 ROW_KEY_COLS = ("TRATTA_ID", "ENTE", "TIPO_PERMESSO")  # natural key for an update
 
