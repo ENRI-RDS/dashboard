@@ -1,11 +1,9 @@
 <!DOCTYPE html>
-<html lang="it" translate="no">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="google" content="notranslate">
-<meta http-equiv="Content-Language" content="it">
-<title>Progetto M — Avanzamento Lavori</title>
+<title>Project M — Works Progress</title>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Plus+Jakarta+Sans:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -213,72 +211,122 @@
   .info-item .val { font-size:14px; color:var(--text); font-weight:600; }
 
   .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; padding-top:16px; border-top:1px solid var(--border); }
+
+  /* ── HELP ── */
+  .btn-help {
+    width:28px; height:28px; border-radius:50%;
+    border:1.5px solid var(--border2); background:var(--surface2);
+    color:var(--muted); font-size:13px; font-weight:700;
+    cursor:pointer; display:inline-flex; align-items:center; justify-content:center;
+    transition:all .18s; flex-shrink:0; line-height:1;
+  }
+  .btn-help:hover { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+  .help-modal { width:620px; }
+  .help-section { margin-bottom:22px; }
+  .help-section:last-child { margin-bottom:0; }
+  .help-section-title {
+    font-family:'Bricolage Grotesque', sans-serif; font-size:13px; font-weight:700;
+    color:var(--text); margin-bottom:10px; padding-bottom:6px;
+    border-bottom:1px solid var(--border);
+  }
+  .help-para { font-size:12.5px; color:var(--text2); line-height:1.6; margin-bottom:8px; }
+  .help-para:last-child { margin-bottom:0; }
+
+  .help-stati { display:flex; flex-direction:column; gap:7px; }
+  .help-stato-row { display:flex; align-items:flex-start; gap:10px; }
+  .help-stato-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; margin-top:3px; }
+  .help-stato-body { display:flex; flex-direction:column; gap:1px; }
+  .help-stato-name { font-size:12px; font-weight:700; color:var(--text); }
+  .help-stato-desc { font-size:11.5px; color:var(--muted); line-height:1.45; }
+  .help-stato-owner {
+    font-size:9.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+    padding:1px 6px; border-radius:3px; display:inline-block; margin-top:2px;
+  }
+  .help-stato-owner.impresa { background:#E550000D; color:#E55000; border:1px solid #E5500030; }
+  .help-stato-owner.rds     { background:#0B31820D; color:#0B3182; border:1px solid #0B318230; }
+  .help-stato-owner.ente    { background:#1F7A4E0D; color:#1F7A4E; border:1px solid #1F7A4E30; }
+
+  .help-iter { display:flex; gap:0; overflow-x:auto; padding-bottom:4px; }
+  .help-iter-step { display:flex; flex-direction:column; align-items:center; flex:1; min-width:60px; position:relative; }
+  .help-iter-step::after {
+    content:''; position:absolute; top:9px; left:50%; right:-50%;
+    height:2px; background:var(--border2); z-index:0;
+  }
+  .help-iter-step:last-child::after { display:none; }
+  .help-iter-dot { width:18px; height:18px; border-radius:50%; border:2.5px solid var(--border2); background:var(--surface); z-index:1; flex-shrink:0; }
+  .help-iter-label { font-size:9.5px; color:var(--muted); text-align:center; margin-top:6px; line-height:1.3; max-width:70px; }
+  .help-iter-step.s-done .help-iter-dot  { background:var(--c-completato); border-color:var(--c-completato); }
+  .help-iter-step.s-warn .help-iter-dot  { background:var(--c-allest); border-color:var(--c-allest); }
+  .help-iter-step.s-block .help-iter-dot { background:var(--c-sospeso); border-color:var(--c-sospeso); }
+  .help-iter-step.s-block .help-iter-label { color:var(--c-sospeso); font-weight:700; }
 </style>
 </head>
 <body>
 
 <div class="topbar">
   <div class="topbar-left">
-    <span class="logo">PROGETTO · M</span>
+    <span class="logo">PROJECT · M</span>
     <div class="divider-v"></div>
-    <span class="page-title">Avanzamento Lavori</span>
+    <span class="page-title">Works Progress</span>
   </div>
   <div class="topbar-right">
-    <a href="Index.html" class="btn-nav" style="background:#0B3182;color:#fff;border-color:#0B3182;min-width:64px;justify-content:center;">Progettazione</a>
-    <a href="mappa.html" class="btn-nav" style="background:#2563eb;color:#fff;border-color:#2563eb;min-width:64px;justify-content:center;">Mappa</a>
+    <a href="Index.html" class="btn-nav" style="background:#0B3182;color:#fff;border-color:#0B3182;min-width:64px;justify-content:center;">Design</a>
+    <a href="mappa.html" class="btn-nav" style="background:#2563eb;color:#fff;border-color:#2563eb;min-width:64px;justify-content:center;">Map</a>
     <a href="Hub.html" class="btn-nav" style="background:#fff;color:#1a1d27;border-color:#dde1ec;min-width:64px;justify-content:center;">Hub</a>
+    <button class="btn-help" onclick="document.getElementById('helpOverlay').classList.add('open')" title="Page guide">?</button>
   </div>
 </div>
 
 <div class="main">
 
   <div>
-    <div class="page-eyebrow">Fase 2 · Esecuzione</div>
-    <div class="page-h1">Avanzamento Lavori</div>
-    <div class="page-sub">Stato dei cantieri attivi sul territorio per lotto e tratta: percentuale di scavo, criticità operative e tratte in attesa di autorizzazione.</div>
+    <div class="page-eyebrow">Phase 2 · Execution</div>
+    <div class="page-h1">Works Progress</div>
+    <div class="page-sub">Status of active worksites by lot and section: excavation percentage, operational issues and sections awaiting permit.</div>
   </div>
 
   <div class="kpi-row">
     <div class="kpi k-nonavv" data-cantiere="non-avviato">
-      <div class="kpi-label">Non Avviati</div>
+      <div class="kpi-label">Not Started</div>
       <div class="kpi-value" id="kpiNonavv">—</div>
-      <div class="kpi-sub">in attesa di autorizzazioni</div>
+      <div class="kpi-sub">awaiting permits</div>
       <div class="kpi-meter">
         <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpiNonavvBar" style="background:var(--c-nonavv)"></div></div>
         <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpiNonavvKm"></span><span class="kpi-meter-pct" id="kpiNonavvPct"></span></div>
       </div>
     </div>
     <div class="kpi k-allest" data-cantiere="allestimento">
-      <div class="kpi-label">In Allestimento</div>
+      <div class="kpi-label">Setting Up</div>
       <div class="kpi-value" id="kpiAllest">—</div>
-      <div class="kpi-sub">cantieri in preparazione</div>
+      <div class="kpi-sub">worksites under preparation</div>
       <div class="kpi-meter">
         <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpiAllestBar" style="background:var(--c-allest)"></div></div>
         <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpiAllestKm"></span><span class="kpi-meter-pct" id="kpiAllestPct"></span></div>
       </div>
     </div>
     <div class="kpi k-incorso" data-cantiere="in-corso">
-      <div class="kpi-label">In Corso</div>
+      <div class="kpi-label">In Progress</div>
       <div class="kpi-value" id="kpiIncorso">—</div>
-      <div class="kpi-sub">tratte con scavo attivo</div>
+      <div class="kpi-sub">sections with active excavation</div>
       <div class="kpi-meter">
         <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpiIncorsoBar" style="background:var(--c-incorso)"></div></div>
         <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpiIncorsoKm"></span><span class="kpi-meter-pct" id="kpiIncorsoPct"></span></div>
       </div>
     </div>
     <div class="kpi k-completato" data-cantiere="completato">
-      <div class="kpi-label">Completate</div>
+      <div class="kpi-label">Completed</div>
       <div class="kpi-value" id="kpiCompletato">—</div>
-      <div class="kpi-sub">quota di rete conclusa</div>
+      <div class="kpi-sub">share of network finished</div>
       <div class="kpi-meter">
         <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpiCompletatoBar" style="background:var(--c-completato)"></div></div>
         <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpiCompletatoKm"></span><span class="kpi-meter-pct" id="kpiCompletatoPct"></span></div>
       </div>
     </div>
     <div class="kpi k-sospeso" data-cantiere="sospeso">
-      <div class="kpi-label">In Sospeso</div>
+      <div class="kpi-label">On Hold</div>
       <div class="kpi-value" id="kpiSospeso">—</div>
-      <div class="kpi-sub">cantieri temporaneamente bloccati</div>
+      <div class="kpi-sub">temporarily blocked worksites</div>
       <div class="kpi-meter">
         <div class="kpi-meter-track"><div class="kpi-meter-fill" id="kpiSospesoBar" style="background:var(--c-sospeso)"></div></div>
         <div class="kpi-meter-row"><span class="kpi-meter-km" id="kpiSospesoKm"></span><span class="kpi-meter-pct" id="kpiSospesoPct"></span></div>
@@ -288,37 +336,37 @@
 
   <div class="card">
     <div class="card-header">
-      <span class="card-title">Avanzamento per Lotto</span>
-      <span class="card-header-meta" id="lottiStatus">— m totali</span>
+      <span class="card-title">Progress by Lot</span>
+      <span class="card-header-meta" id="lottiStatus">— m total</span>
     </div>
     <div class="card-body" style="display:flex; flex-direction:column; gap:2px;" id="lottoBarsContainer"></div>
     <div class="legend">
-      <div class="legend-item"><div class="legend-dot" style="background:var(--c-incorso)"></div>In corso</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--c-allest)"></div>In allestimento</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--c-sospeso)"></div>In sospeso</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--c-completato)"></div>Completato</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--c-nonavv)"></div>Non avviato</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-incorso)"></div>In Progress</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-allest)"></div>Setting Up</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-sospeso)"></div>On Hold</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-completato)"></div>Completed</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--c-nonavv)"></div>Not Started</div>
     </div>
   </div>
 
   <div class="grid-main">
     <div class="card">
       <div class="card-header" style="flex-wrap:wrap; gap:10px;">
-        <span class="card-title">Registro Tratte · Stato Cantiere</span>
+        <span class="card-title">Section Register · Worksite Status</span>
         <div class="table-filters">
-          <input type="text" id="tableSearch" class="table-search" placeholder="Cerca tratta o comune…">
+          <input type="text" id="tableSearch" class="table-search" placeholder="Search section or municipality…">
           <select id="tableCantiereFilter" class="table-select">
-            <option value="all">Tutti gli stati cantiere</option>
+            <option value="all">All worksite statuses</option>
           </select>
-          <span class="card-header-meta" id="registroMeta">— tratte</span>
+          <span class="card-header-meta" id="registroMeta">— sections</span>
         </div>
       </div>
       <div style="overflow-x:auto; max-height:540px; overflow-y:auto;">
         <table class="tbl">
           <thead>
             <tr style="position:sticky; top:0;">
-              <th style="background:var(--surface2);">Tratta</th><th style="background:var(--surface2);">Comune</th><th style="background:var(--surface2);">Lotto</th><th style="background:var(--surface2);">Impresa</th>
-              <th style="background:var(--surface2);">Stato Cantiere</th><th style="background:var(--surface2);">Avanzamento</th><th style="background:var(--surface2); text-align:right">Lunghezza</th>
+              <th style="background:var(--surface2);">Section</th><th style="background:var(--surface2);">Municipality</th><th style="background:var(--surface2);">Lot</th><th style="background:var(--surface2);">Contractor</th>
+              <th style="background:var(--surface2);">Worksite Status</th><th style="background:var(--surface2);">Progress</th><th style="background:var(--surface2); text-align:right">Length</th>
             </tr>
           </thead>
           <tbody id="registroBody"></tbody>
@@ -328,24 +376,24 @@
 
     <div class="side">
       <div class="card">
-        <div class="card-header"><span class="card-title">Riepilogo Operativo</span></div>
+        <div class="card-header"><span class="card-title">Operational Summary</span></div>
         <div class="card-body">
-          <div class="stat-row"><span class="stat-label">Tracciato totale</span><span class="stat-val" id="statTotale">—</span></div>
-          <div class="stat-row"><span class="stat-label">Metri scavati</span><span class="stat-val" style="color:var(--c-incorso)" id="statScavati">—</span></div>
-          <div class="stat-row" style="border-bottom:none; padding-bottom:2px;"><span class="stat-label">Avanzamento scavo</span><span class="stat-val" style="color:var(--c-incorso)" id="statAvanzamento">—</span></div>
-          <div class="stat-note">Pondera anche lo scavo parziale delle tratte in corso, in allestimento e sospese — non coincide con la quota di tratte completate.</div>
-          <div class="stat-row"><span class="stat-label">Tratte con scavo attivo</span><span class="stat-val" id="statAttive">—</span></div>
-          <div class="stat-row"><span class="stat-label">Comuni attraversati</span><span class="stat-val" id="statComuni">—</span></div>
-          <div class="stat-row"><span class="stat-label">Lotti coinvolti</span><span class="stat-val">3</span></div>
+          <div class="stat-row"><span class="stat-label">Total route</span><span class="stat-val" id="statTotale">—</span></div>
+          <div class="stat-row"><span class="stat-label">Metres excavated</span><span class="stat-val" style="color:var(--c-incorso)" id="statScavati">—</span></div>
+          <div class="stat-row" style="border-bottom:none; padding-bottom:2px;"><span class="stat-label">Excavation progress</span><span class="stat-val" style="color:var(--c-incorso)" id="statAvanzamento">—</span></div>
+          <div class="stat-note">Also accounts for partial excavation of sections in progress, setting up, and on hold — does not match the share of fully completed sections.</div>
+          <div class="stat-row"><span class="stat-label">Sections with active excavation</span><span class="stat-val" id="statAttive">—</span></div>
+          <div class="stat-row"><span class="stat-label">Municipalities covered</span><span class="stat-val" id="statComuni">—</span></div>
+          <div class="stat-row"><span class="stat-label">Lots involved</span><span class="stat-val">3</span></div>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-header"><span class="card-title">Distribuzione Stati</span></div>
+        <div class="card-header"><span class="card-title">Status Distribution</span></div>
         <div class="card-body">
           <div class="donut-wrap">
             <div class="donut" id="donut"></div>
-            <div class="donut-hole"><b id="donutTotal">0</b><span>km totali</span></div>
+            <div class="donut-hole"><b id="donutTotal">0</b><span>km total</span></div>
           </div>
           <div class="mini-legend" id="donutLegend"></div>
         </div>
@@ -382,8 +430,8 @@
       <div class="prog-val" id="rowProgVal" style="width:auto; font-size:13px;"></div>
     </div>
     <div class="modal-actions">
-      <a href="Index.html" class="btn-nav">📋 Progettazione</a>
-      <a href="mappa.html" class="btn-nav">🗺 Mappa</a>
+      <a href="Index.html" class="btn-nav">📋 Design</a>
+      <a href="mappa.html" class="btn-nav">🗺 Map</a>
     </div>
   </div>
 </div>
@@ -392,14 +440,14 @@
 const LOTTO_COLORS = { '1':'#2563eb', '2':'#16a34a', '3':'#e8580c' };
 const IMPRESE      = { '1':'Impresa 1', '2':'Impresa 2', '3':'Impresa 3' };
 
-const CANTIERE_LABEL = { 'non-avviato':'Non Avviato', 'allestimento':'In Allestimento', 'in-corso':'In Corso', 'sospeso':'In Sospeso', 'completato':'Completato' };
+const CANTIERE_LABEL = { 'non-avviato':'Not Started', 'allestimento':'Setting Up', 'in-corso':'In Progress', 'sospeso':'On Hold', 'completato':'Completed' };
 const CANTIERE_COLOR = { 'non-avviato':'var(--c-nonavv)', 'allestimento':'var(--c-allest)', 'in-corso':'var(--c-incorso)', 'sospeso':'var(--c-sospeso)', 'completato':'var(--c-completato)' };
 const CANTIERE_ORDER = ['non-avviato','allestimento','in-corso','sospeso','completato'];
 
 const SCAVI_DATA = [{"t": "T-001", "comune": "Milano", "lotto": "3", "statoPermesso": "INVIATO", "m": 305, "cantiere": "non-avviato", "pct": 0}, {"t": "T-002", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 2270, "cantiere": "completato", "pct": 100}, {"t": "T-003", "comune": "Settimo Milanese", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 676, "cantiere": "in-corso", "pct": 40}, {"t": "T-004", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 240, "cantiere": "allestimento", "pct": 8}, {"t": "T-005", "comune": "Milano", "lotto": "3", "statoPermesso": "IN REDAZIONE", "m": 222, "cantiere": "non-avviato", "pct": 0}, {"t": "T-006", "comune": "Milano", "lotto": "3", "statoPermesso": "INVIATO", "m": 615, "cantiere": "non-avviato", "pct": 0}, {"t": "T-007", "comune": "Milano", "lotto": "3", "statoPermesso": "IN ATTESA", "m": 533, "cantiere": "non-avviato", "pct": 0}, {"t": "T-008", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 448, "cantiere": "allestimento", "pct": 5}, {"t": "T-009", "comune": "Milano", "lotto": "3", "statoPermesso": "PROTOCOLLATO", "m": 441, "cantiere": "non-avviato", "pct": 0}, {"t": "T-010", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 1067, "cantiere": "in-corso", "pct": 55}, {"t": "T-011", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 529, "cantiere": "in-corso", "pct": 25}, {"t": "T-012", "comune": "Milano", "lotto": "3", "statoPermesso": "IN FIRMA RDS", "m": 791, "cantiere": "non-avviato", "pct": 0}, {"t": "T-013", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 1548, "cantiere": "completato", "pct": 100}, {"t": "T-014", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 3, "cantiere": "sospeso", "pct": 18}, {"t": "T-015", "comune": "Milano", "lotto": "3", "statoPermesso": "INVIATO", "m": 1426, "cantiere": "non-avviato", "pct": 0}, {"t": "T-016", "comune": "Milano", "lotto": "3", "statoPermesso": "IN FIRMA RDS", "m": 408, "cantiere": "non-avviato", "pct": 0}, {"t": "T-017", "comune": "Cusago", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 939, "cantiere": "in-corso", "pct": 48}, {"t": "T-018", "comune": "Milano", "lotto": "3", "statoPermesso": "COORDINAMENTO", "m": 4, "cantiere": "non-avviato", "pct": 0}, {"t": "T-019", "comune": "San Donato Milanese", "lotto": "3", "statoPermesso": "IN REDAZIONE", "m": 593, "cantiere": "non-avviato", "pct": 0}, {"t": "T-020", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 3, "cantiere": "sospeso", "pct": 30}, {"t": "T-021", "comune": "Cusago", "lotto": "3", "statoPermesso": "IN REDAZIONE", "m": 28, "cantiere": "non-avviato", "pct": 0}, {"t": "T-022", "comune": "Milano", "lotto": "3", "statoPermesso": "INVIATO", "m": 509, "cantiere": "non-avviato", "pct": 0}, {"t": "T-023", "comune": "Cusago", "lotto": "3", "statoPermesso": "PROTOCOLLATO", "m": 184, "cantiere": "non-avviato", "pct": 0}, {"t": "T-024", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 2186, "cantiere": "completato", "pct": 100}, {"t": "T-025", "comune": "Milano", "lotto": "3", "statoPermesso": "PROTOCOLLATO INTEGRAZIONE", "m": 498, "cantiere": "non-avviato", "pct": 0}, {"t": "T-026", "comune": "San Donato Milanese", "lotto": "2", "statoPermesso": "PROTOCOLLATO", "m": 12, "cantiere": "non-avviato", "pct": 0}, {"t": "T-027", "comune": "Cusago", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 113, "cantiere": "allestimento", "pct": 10}, {"t": "T-028", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 547, "cantiere": "in-corso", "pct": 32}, {"t": "T-029", "comune": "Milano", "lotto": "3", "statoPermesso": "IN ATTESA", "m": 2217, "cantiere": "non-avviato", "pct": 0}, {"t": "T-030", "comune": "Milano", "lotto": "3", "statoPermesso": "COORDINAMENTO", "m": 406, "cantiere": "non-avviato", "pct": 0}, {"t": "T-031", "comune": "Milano", "lotto": "3", "statoPermesso": "IN REDAZIONE", "m": 568, "cantiere": "non-avviato", "pct": 0}, {"t": "T-032", "comune": "Cusago", "lotto": "3", "statoPermesso": "INVIATO", "m": 1302, "cantiere": "non-avviato", "pct": 0}, {"t": "T-033", "comune": "Cusago", "lotto": "3", "statoPermesso": "IN FIRMA RDS", "m": 857, "cantiere": "non-avviato", "pct": 0}, {"t": "T-034", "comune": "Milano", "lotto": "3", "statoPermesso": "PROTOCOLLATO INTEGRAZIONE", "m": 1171, "cantiere": "non-avviato", "pct": 0}, {"t": "T-035", "comune": "Milano", "lotto": "3", "statoPermesso": "PROTOCOLLATO", "m": 2, "cantiere": "non-avviato", "pct": 0}, {"t": "T-036", "comune": "Milano", "lotto": "3", "statoPermesso": "COORDINAMENTO", "m": 1381, "cantiere": "non-avviato", "pct": 0}, {"t": "T-037", "comune": "San Donato Milanese", "lotto": "3", "statoPermesso": "IN ATTESA", "m": 7, "cantiere": "non-avviato", "pct": 0}, {"t": "T-038", "comune": "San Donato Milanese", "lotto": "3", "statoPermesso": "COORDINAMENTO", "m": 1342, "cantiere": "non-avviato", "pct": 0}, {"t": "T-039", "comune": "Gaggiano", "lotto": "3", "statoPermesso": "IN ATTESA", "m": 2, "cantiere": "non-avviato", "pct": 0}, {"t": "T-040", "comune": "Milano", "lotto": "3", "statoPermesso": "COORDINAMENTO", "m": 951, "cantiere": "non-avviato", "pct": 0}, {"t": "T-041", "comune": "Lodi", "lotto": "2", "statoPermesso": "INVIATO", "m": 447, "cantiere": "non-avviato", "pct": 0}, {"t": "T-042", "comune": "Lodi", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 4307, "cantiere": "completato", "pct": 100}, {"t": "T-043", "comune": "Lodi", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 543, "cantiere": "sospeso", "pct": 28}, {"t": "T-044", "comune": "Locate di Triulzi", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 4575, "cantiere": "completato", "pct": 100}, {"t": "T-045", "comune": "Lodi", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 1328, "cantiere": "in-corso", "pct": 42}, {"t": "T-046", "comune": "Melegnano", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 3939, "cantiere": "completato", "pct": 100}, {"t": "T-047", "comune": "San Giuliano Milanese", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 2685, "cantiere": "in-corso", "pct": 72}, {"t": "T-048", "comune": "San Giuliano Milanese", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 5799, "cantiere": "completato", "pct": 100}, {"t": "T-049", "comune": "Lodi", "lotto": "2", "statoPermesso": "INVIATO", "m": 32, "cantiere": "non-avviato", "pct": 0}, {"t": "T-050", "comune": "Lodi", "lotto": "2", "statoPermesso": "PROTOCOLLATO", "m": 2002, "cantiere": "non-avviato", "pct": 0}, {"t": "T-051", "comune": "Casalpusterlengo", "lotto": "2", "statoPermesso": "PROTOCOLLATO", "m": 1630, "cantiere": "non-avviato", "pct": 0}, {"t": "T-052", "comune": "Lodi", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 1708, "cantiere": "in-corso", "pct": 60}, {"t": "T-053", "comune": "Melegnano", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 1374, "cantiere": "in-corso", "pct": 52}, {"t": "T-054", "comune": "San Donato Milanese", "lotto": "2", "statoPermesso": "NECESSARIA INTEGRAZIONE", "m": 1823, "cantiere": "non-avviato", "pct": 0}, {"t": "T-055", "comune": "Mairago", "lotto": "2", "statoPermesso": "INVIATO", "m": 3006, "cantiere": "non-avviato", "pct": 0}, {"t": "T-056", "comune": "San Donato Milanese", "lotto": "2", "statoPermesso": "COORDINAMENTO", "m": 305, "cantiere": "non-avviato", "pct": 0}, {"t": "T-057", "comune": "San Donato Milanese", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 706, "cantiere": "allestimento", "pct": 8}, {"t": "T-058", "comune": "Milano", "lotto": "3", "statoPermesso": "INVIATO", "m": 61, "cantiere": "non-avviato", "pct": 0}, {"t": "T-059", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "OTTENUTO", "m": 1771, "cantiere": "completato", "pct": 100}, {"t": "T-060", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "PROTOCOLLATO", "m": 1042, "cantiere": "non-avviato", "pct": 0}, {"t": "T-061", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "PROTOCOLLATO INTEGRAZIONE", "m": 392, "cantiere": "non-avviato", "pct": 0}, {"t": "T-062", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "INVIATO", "m": 186, "cantiere": "non-avviato", "pct": 0}, {"t": "T-063", "comune": "Turano Lodigiano", "lotto": "2", "statoPermesso": "COORDINAMENTO", "m": 164, "cantiere": "non-avviato", "pct": 0}, {"t": "T-064", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "INVIATO", "m": 120, "cantiere": "non-avviato", "pct": 0}, {"t": "T-065", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "IN ATTESA", "m": 498, "cantiere": "non-avviato", "pct": 0}, {"t": "T-066", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "IN REDAZIONE", "m": 17, "cantiere": "non-avviato", "pct": 0}, {"t": "T-067", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "OTTENUTO", "m": 612, "cantiere": "in-corso", "pct": 35}];
 
-function fmtM(n){ return Math.round(n).toLocaleString('it-IT'); }
-function fmtKm(metri){ return (metri/1000).toFixed(1).replace('.', ','); }
+function fmtM(n){ return Math.round(n).toLocaleString('en-US'); }
+function fmtKm(metri){ return (metri/1000).toFixed(1); }
 
 /* ── KPI ── */
 function renderKPIs(){
@@ -427,7 +475,7 @@ function renderLottoBars(){
   const container = document.getElementById('lottoBarsContainer');
   container.innerHTML = '';
   const totGenerale = SCAVI_DATA.reduce((s,r)=>s+r.m,0);
-  document.getElementById('lottiStatus').textContent = fmtM(totGenerale) + ' m totali';
+  document.getElementById('lottiStatus').textContent = fmtM(totGenerale) + ' m total';
 
   ['1','2','3'].forEach(lotto => {
     const rows = SCAVI_DATA.filter(r => r.lotto === lotto);
@@ -439,12 +487,12 @@ function renderLottoBars(){
 
     const row = document.createElement('div');
     row.className = 'bar-row';
-    row.title = 'Clicca per il dettaglio';
+    row.title = 'Click for details';
     row.addEventListener('click', () => openLottoModal(lotto));
 
     const lbl = document.createElement('div');
     lbl.className = 'bar-lotto-wrap';
-    lbl.innerHTML = `<span class="bar-lotto-num">Lotto ${lotto}</span><span class="bar-lotto-sub">${IMPRESE[lotto]}</span>`;
+    lbl.innerHTML = `<span class="bar-lotto-num">Lot ${lotto}</span><span class="bar-lotto-sub">${IMPRESE[lotto]}</span>`;
 
     const track = document.createElement('div');
     track.className = 'bar-track';
@@ -498,7 +546,7 @@ function renderRegistro(rows){
     <tr data-t="${r.t}">
       <td>${r.t}</td>
       <td>${r.comune}</td>
-      <td><span class="chip-lotto" style="background:${LOTTO_COLORS[r.lotto]}">Lotto ${r.lotto}</span></td>
+      <td><span class="chip-lotto" style="background:${LOTTO_COLORS[r.lotto]}">Lot ${r.lotto}</span></td>
       <td>${IMPRESE[r.lotto]}</td>
       <td><span class="chip ${r.cantiere}">${CANTIERE_LABEL[r.cantiere]}</span></td>
       <td>
@@ -509,7 +557,7 @@ function renderRegistro(rows){
       </td>
       <td style="text-align:right; font-family:'Bricolage Grotesque',sans-serif; font-weight:700;">${fmtM(r.m)} m</td>
     </tr>`).join('');
-  document.getElementById('registroMeta').textContent = rows.length + ' / ' + SCAVI_DATA.length + ' tratte';
+  document.getElementById('registroMeta').textContent = rows.length + ' / ' + SCAVI_DATA.length + ' sections';
   body.querySelectorAll('tr').forEach(tr => {
     tr.addEventListener('click', () => openRowModal(SCAVI_DATA.find(d => d.t === tr.dataset.t)));
   });
@@ -561,12 +609,12 @@ function openCantiereModal(stato){
     const allRows = SCAVI_DATA.filter(r => r.cantiere === stato);
     const rows = lottoFilter === 'all' ? allRows : allRows.filter(r => r.lotto === lottoFilter);
     document.getElementById('listModalStats').innerHTML = `
-      <div><div class="stat-lbl">Tratte</div><div class="stat-val">${rows.length}</div></div>
-      <div><div class="stat-lbl">Lunghezza</div><div class="stat-val">${fmtKm(rows.reduce((s,r)=>s+r.m,0))} km</div></div>`;
+      <div><div class="stat-lbl">Sections</div><div class="stat-val">${rows.length}</div></div>
+      <div><div class="stat-lbl">Length</div><div class="stat-val">${fmtKm(rows.reduce((s,r)=>s+r.m,0))} km</div></div>`;
     const lottiPresenti = [...new Set(allRows.map(r=>r.lotto))].sort();
     document.getElementById('listModalPills').innerHTML =
-      `<button class="pill ${lottoFilter==='all'?'active':''}" data-l="all">Tutti</button>` +
-      lottiPresenti.map(l => `<button class="pill ${lottoFilter===l?'active':''}" data-l="${l}">Lotto ${l}</button>`).join('');
+      `<button class="pill ${lottoFilter==='all'?'active':''}" data-l="all">All</button>` +
+      lottiPresenti.map(l => `<button class="pill ${lottoFilter===l?'active':''}" data-l="${l}">Lot ${l}</button>`).join('');
     renderListBody(rows, true);
   }
   document.getElementById('listModalTitle').textContent = CANTIERE_LABEL[stato];
@@ -581,11 +629,11 @@ function openCantiereModal(stato){
 }
 
 function openLottoModal(lotto){
-  document.getElementById('listModalTitle').textContent = 'Lotto ' + lotto + ' · ' + IMPRESE[lotto];
+  document.getElementById('listModalTitle').textContent = 'Lot ' + lotto + ' · ' + IMPRESE[lotto];
   const rows = SCAVI_DATA.filter(r => r.lotto === lotto);
   document.getElementById('listModalStats').innerHTML = `
-    <div><div class="stat-lbl">Tratte</div><div class="stat-val">${rows.length}</div></div>
-    <div><div class="stat-lbl">Lunghezza</div><div class="stat-val">${fmtKm(rows.reduce((s,r)=>s+r.m,0))} km</div></div>`;
+    <div><div class="stat-lbl">Sections</div><div class="stat-val">${rows.length}</div></div>
+    <div><div class="stat-lbl">Length</div><div class="stat-val">${fmtKm(rows.reduce((s,r)=>s+r.m,0))} km</div></div>`;
   document.getElementById('listModalPills').innerHTML = '';
   document.getElementById('listModalPills').onclick = null;
   renderListBody(rows, false);
@@ -595,16 +643,16 @@ function openLottoModal(lotto){
 function renderListBody(rows, showCantiereChip){
   const body = document.getElementById('listModalBody');
   if(rows.length === 0){
-    body.innerHTML = '<div class="modal-empty">Nessuna tratta corrispondente.</div>';
+    body.innerHTML = '<div class="modal-empty">No matching sections.</div>';
     return;
   }
   body.innerHTML = `<table class="tbl"><thead><tr>
-      <th>Tratta</th><th>Comune</th><th>Lotto</th>${showCantiereChip?'<th>Stato Cantiere</th>':''}<th>Avanzamento</th><th style="text-align:right">Lunghezza</th>
+      <th>Section</th><th>Municipality</th><th>Lot</th>${showCantiereChip?'<th>Worksite Status</th>':''}<th>Progress</th><th style="text-align:right">Length</th>
     </tr></thead><tbody>${rows.map(r => `
       <tr data-t="${r.t}">
         <td>${r.t}</td>
         <td>${r.comune}</td>
-        <td><span class="chip-lotto" style="background:${LOTTO_COLORS[r.lotto]}">Lotto ${r.lotto}</span></td>
+        <td><span class="chip-lotto" style="background:${LOTTO_COLORS[r.lotto]}">Lot ${r.lotto}</span></td>
         ${showCantiereChip ? `<td><span class="chip ${r.cantiere}">${CANTIERE_LABEL[r.cantiere]}</span></td>` : ''}
         <td>
           <div class="prog-wrap">
@@ -628,10 +676,10 @@ function openRowModal(r){
   document.getElementById('rowModalTitle').textContent = r.t + ' · ' + r.comune;
   document.getElementById('rowModalSub').innerHTML = `<span class="chip ${r.cantiere}">${CANTIERE_LABEL[r.cantiere]}</span>`;
   document.getElementById('rowInfoGrid').innerHTML = `
-    <div class="info-item"><div class="lbl">Lotto</div><div class="val">Lotto ${r.lotto} · ${IMPRESE[r.lotto]}</div></div>
-    <div class="info-item"><div class="lbl">Lunghezza</div><div class="val">${r.m} m</div></div>
-    <div class="info-item"><div class="lbl">Stato autorizzativo</div><div class="val">${r.statoPermesso}</div></div>
-    <div class="info-item"><div class="lbl">Metri scavati</div><div class="val">${Math.round(r.m*r.pct/100)} m</div></div>`;
+    <div class="info-item"><div class="lbl">Lot</div><div class="val">Lot ${r.lotto} · ${IMPRESE[r.lotto]}</div></div>
+    <div class="info-item"><div class="lbl">Length</div><div class="val">${r.m} m</div></div>
+    <div class="info-item"><div class="lbl">Permit status</div><div class="val">${r.statoPermesso}</div></div>
+    <div class="info-item"><div class="lbl">Metres excavated</div><div class="val">${Math.round(r.m*r.pct/100)} m</div></div>`;
   document.getElementById('rowProgFill').style.width = r.pct + '%';
   document.getElementById('rowProgFill').style.background = CANTIERE_COLOR[r.cantiere];
   document.getElementById('rowProgVal').textContent = r.pct + '%';
@@ -674,5 +722,59 @@ renderRegistro(applyTableFilters());
 renderSidebar();
 renderDonut();
 </script>
+
+<!-- ─── HELP MODAL ─── -->
+<div class="modal-overlay" id="helpOverlay" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal help-modal">
+    <div class="modal-head">
+      <div class="modal-title">Guide — Works Progress Dashboard</div>
+      <button class="modal-close" onclick="document.getElementById('helpOverlay').classList.remove('open')">×</button>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">📋 What this page shows</div>
+      <p class="help-para">The dashboard tracks the <strong>excavation progress</strong> for the project's routes across all active lots. For each section the current worksite status, percentage of metres excavated, and any operational blockages are monitored.</p>
+      <p class="help-para">At the top, the <strong>KPI cards</strong> show how many sections (and how many km) are in each phase. The <strong>lot bars</strong> show the overall excavation progress per lot. The <strong>table</strong> lists all sections with filters. The <strong>donut chart</strong> distributes total km by status.</p>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">🔄 Typical worksite progression</div>
+      <div class="help-iter" style="margin-bottom:6px;">
+        <div class="help-iter-step"><div class="help-iter-dot"></div><div class="help-iter-label">Not Started</div></div>
+        <div class="help-iter-step"><div class="help-iter-dot" style="border-color:var(--c-allest);background:var(--c-allest)"></div><div class="help-iter-label">Setting Up</div></div>
+        <div class="help-iter-step"><div class="help-iter-dot" style="border-color:var(--c-incorso);background:var(--c-incorso)"></div><div class="help-iter-label">In Progress</div></div>
+        <div class="help-iter-step s-done"><div class="help-iter-dot"></div><div class="help-iter-label">🏆 Completed</div></div>
+      </div>
+      <p class="help-para" style="margin-bottom:6px;">A section may be temporarily blocked after starting:</p>
+      <div class="help-iter">
+        <div class="help-iter-step"><div class="help-iter-dot" style="border-color:var(--c-incorso);background:var(--c-incorso)"></div><div class="help-iter-label">In Progress</div></div>
+        <div class="help-iter-step s-block"><div class="help-iter-dot"></div><div class="help-iter-label">On Hold</div></div>
+        <div class="help-iter-step"><div class="help-iter-dot" style="border-color:var(--c-incorso);background:var(--c-incorso)"></div><div class="help-iter-label">Resumed</div></div>
+        <div class="help-iter-step s-done"><div class="help-iter-dot"></div><div class="help-iter-label">🏆 Completed</div></div>
+      </div>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">📌 Status descriptions</div>
+      <div class="help-stati">
+        <div class="help-stato-row"><div class="help-stato-dot" style="background:var(--c-nonavv)"></div><div class="help-stato-body"><span class="help-stato-name">Not Started</span><span class="help-stato-desc">Section awaiting permit or mobilisation. No excavation activity has begun yet.</span></div></div>
+        <div class="help-stato-row"><div class="help-stato-dot" style="background:var(--c-allest)"></div><div class="help-stato-body"><span class="help-stato-name">Setting Up</span><span class="help-stato-desc">Worksite being mobilised: machinery, fencing, and site logistics in preparation. Excavation has not yet started.</span></div></div>
+        <div class="help-stato-row"><div class="help-stato-dot" style="background:var(--c-incorso)"></div><div class="help-stato-body"><span class="help-stato-name">In Progress</span><span class="help-stato-desc">Active excavation underway. The progress percentage indicates metres completed vs total section length.</span></div></div>
+        <div class="help-stato-row"><div class="help-stato-dot" style="background:var(--c-sospeso)"></div><div class="help-stato-body"><span class="help-stato-name">On Hold</span><span class="help-stato-desc">Excavation temporarily suspended due to operational, logistical, or authorisation issues. Partial progress is retained.</span></div></div>
+        <div class="help-stato-row"><div class="help-stato-dot" style="background:var(--c-completato)"></div><div class="help-stato-body"><span class="help-stato-name">🏆 Completed</span><span class="help-stato-desc">Excavation finished for the entire section. The section is ready for the next construction phase.</span></div></div>
+      </div>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">💡 Quick tips</div>
+      <p class="help-para">• Click a <strong>KPI card</strong> to see the list of sections in that status, filterable by lot.<br>
+      • Click a <strong>lot bar</strong> to open the detail list for that lot.<br>
+      • Click a <strong>table row</strong> to open the section detail.<br>
+      • Use the <strong>search box</strong> and the status filter in the table to navigate quickly.<br>
+      • The overall <strong>excavation progress</strong> (sidebar) also accounts for partial metres in sections that are in progress, setting up, or on hold.</p>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
