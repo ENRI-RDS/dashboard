@@ -626,7 +626,11 @@
 
 <script>
 const APPS_SCRIPT_URL    = 'https://script.google.com/macros/s/AKfycbxSoKwfqsE4c8RORsUqhUVIXJRpd337jxireCf_RwxMf7UL0QJZyw2qE5UR59aaPEN_/exec';
-const APPS_SCRIPT_SECRET = 'enri_login_2024_X9f83KsL21pQ';
+// APPS_SCRIPT_SECRET non vive piu' qui: il login ora passa dal backend
+// (/api/auth/login), che fa la chiamata server-to-server ad Apps Script.
+// Cosi' il segreto non e' mai visibile nel codice della pagina, e ogni
+// chiamata successiva alle API viene autenticata con un token firmato
+// invece di fidarsi del solo 'nome' salvato in localStorage.
 
 window.addEventListener('DOMContentLoaded', () => {
   const savedUser = localStorage.getItem('_enri_user');
@@ -683,7 +687,10 @@ function _showHub(nome) {
       if (retryBtn) retryBtn.disabled = true;
       const controller = new AbortController();
       const timeoutId  = setTimeout(() => controller.abort(), 12000);
-      fetch(apiBase + '/api/imprese/me?nome=' + encodeURIComponent(nome), { signal: controller.signal })
+      fetch(apiBase + '/api/imprese/me?nome=' + encodeURIComponent(nome), {
+        signal: controller.signal,
+        headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' }
+      })
         .then(r => { clearTimeout(timeoutId); return r.ok ? r.json() : Promise.reject('not-ok'); })
         .then(d => {
           _autoRetryCount = 0;
@@ -752,7 +759,9 @@ function _showHub(nome) {
   } else {
     // Admin o nessun apiBase: mostra subito
     if (impresaCard && apiBase) {
-      fetch(apiBase + '/api/imprese/me?nome=' + encodeURIComponent(nome))
+      fetch(apiBase + '/api/imprese/me?nome=' + encodeURIComponent(nome), {
+        headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' }
+      })
         .then(r => r.ok ? r.json() : null)
         .then(d => {
           if (d && d.active !== false) {
@@ -773,6 +782,7 @@ function _showHub(nome) {
 function _doLogout() {
   localStorage.removeItem('_enri_user');
   localStorage.removeItem('_enri_role');
+  localStorage.removeItem('_enri_session');
   location.reload();
 }
 
@@ -872,16 +882,17 @@ async function _handleLogin() {
   btn.disabled = true;
 
   try {
-    const res = await fetch(APPS_SCRIPT_URL, {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    if (!apiBase) throw new Error('API endpoint non configurato');
+    const res = await fetch(apiBase + '/api/auth/login', {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ secret: APPS_SCRIPT_SECRET, action: 'login', nome, codice })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome, codice })
     });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const risposta = await res.json();
+    const risposta = await res.json().catch(() => ({}));
 
-    if (!risposta.ok) {
-      errEl.textContent = risposta.msg || 'Nome o codice non riconosciuti. Contatta l\'amministratore.';
+    if (!res.ok || !risposta.ok) {
+      errEl.textContent = risposta.detail || risposta.msg || 'Nome o codice non riconosciuti. Contatta l\'amministratore.';
       errEl.style.display = 'block';
       if (btnText) btnText.textContent = 'Accedi';
       if (btnArrow) btnArrow.textContent = '→';
@@ -893,6 +904,7 @@ async function _handleLogin() {
     const nomeCanonical = risposta.nome;
     localStorage.setItem('_enri_user', nomeCanonical);
     localStorage.setItem('_enri_role', ruolo);
+    localStorage.setItem('_enri_session', risposta.token); // token firmato — ogni chiamata API successiva lo userà
     document.getElementById('loginOverlay').remove();
     _showHub(nomeCanonical);
 
