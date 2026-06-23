@@ -39,7 +39,7 @@ Auth login: hub.html → POST /api/auth/login → backend chiama Google Apps Scr
 
 **Tre modi di girare:**
 1. **Production**: GitHub Pages + Render + Atlas.
-2. **Preview Emergent**: static HTML servito da `frontend/server.js` su :3000, FastAPI su :8001, MongoDB locale.
+2. **Preview**: static HTML servito da `frontend/server.js` su :3000, FastAPI su :8001, MongoDB locale.
 3. **Solo statico**: GitHub Pages senza backend (le pagine fanno `fetch('Master.csv')` direttamente sui file committati nel repo — sempre presenti perché il backend ri-pusha dopo ogni approvazione).
 
 ---
