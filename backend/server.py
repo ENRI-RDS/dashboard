@@ -218,6 +218,8 @@ async def list_files():
             "uploaded_at": {"$first": "$uploaded_at"},
             "project": {"$first": "$project"},
             "rows": {"$first": "$rows"},
+            "upload_source": {"$first": "$source"},
+            "note": {"$first": "$note"},
         }},
     ]
     versions_pipeline = [
@@ -240,6 +242,8 @@ async def list_files():
             "project": d.get("project", "main"),
             "rows": d.get("rows"),
             "versions": version_counts.get(name, 1),
+            "upload_source": d.get("upload_source") or "admin",  # impresa | derived | admin (upload manuale)
+            "note": d.get("note") or "",
         }
 
     files = sorted(out.values(), key=lambda x: x["name"])
