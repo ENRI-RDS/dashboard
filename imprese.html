@@ -310,10 +310,11 @@
   const $ = (id) => document.getElementById(id);
   const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
   const nome = (localStorage.getItem('_enri_user') || '').trim();
+  const sessionToken = (localStorage.getItem('_enri_session') || '').trim();
 
   $('userPill').innerHTML = nome ? `<b>${escapeHtml(nome)}</b>` : '(non loggato)';
 
-  if (!nome) return showGuard('Devi loggarti prima', 'Apri il portale e accedi con le tue credenziali.');
+  if (!nome || !sessionToken) return showGuard('Devi loggarti prima', 'Apri il portale e accedi con le tue credenziali.');
   if (!apiBase) return showGuard('Endpoint API non configurato', 'Contatta l\'amministratore: l\'API endpoint non risulta impostato in questa pagina.');
 
   let MY_LOTTI = [];
@@ -337,6 +338,10 @@
       loadPratiche();
       loadMine();
     } catch(e) {
+      if(String(e.message).includes('401')) {
+        localStorage.removeItem('_enri_session');
+        return showGuard('Sessione scaduta', 'La tua sessione non è più valida. Torna al portale e accedi di nuovo.', false);
+      }
       if(String(e.message).includes('404')) return showGuard('Impresa non autorizzata', 'Il tuo nome non è ancora stato assegnato a un lotto dall\'amministratore.', false);
       // Errore di rete (es. Render in avvio): mostra pannello con retry, non solo "torna al login"
       showGuard('Server non raggiungibile', 'Il server si sta avviando (può richiedere 20-30 secondi). Attendi qualche istante e riprova.', true);
@@ -359,6 +364,10 @@
         loadPratiche();
         loadMine();
       } catch(e2) {
+        if(String(e2.message).includes('401')) {
+          localStorage.removeItem('_enri_session');
+          return showGuard('Sessione scaduta', 'La tua sessione non è più valida. Torna al portale e accedi di nuovo.', false);
+        }
         if(String(e2.message).includes('404')) return showGuard('Impresa non autorizzata', 'Il tuo nome non è ancora stato assegnato a un lotto dall\'amministratore.', false);
         showGuard('Server non raggiungibile', 'Il server si sta avviando. Riprova tra qualche secondo.', true);
       }
@@ -377,7 +386,8 @@
 
   // ─── helpers ───────────────────────────────────────
   async function api(path, opts={}){
-    const r = await fetch(apiBase + path, opts);
+    const headers = { ...(opts.headers || {}), 'x-session-token': localStorage.getItem('_enri_session') || '' };
+    const r = await fetch(apiBase + path, { ...opts, headers });
     const text = await r.text();
     let data; try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
     if(!r.ok) throw new Error(data.detail || data.raw || ('HTTP ' + r.status));
