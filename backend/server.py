@@ -610,7 +610,7 @@ async def auth_login(payload: dict):
     if not APPS_SCRIPT_URL or not APPS_SCRIPT_SECRET:
         raise HTTPException(500, "Login non configurato sul server (APPS_SCRIPT_URL/SECRET mancanti)")
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
             r = await client.post(
                 APPS_SCRIPT_URL,
                 content=json.dumps({"secret": APPS_SCRIPT_SECRET, "action": "login", "nome": nome, "codice": codice}),
