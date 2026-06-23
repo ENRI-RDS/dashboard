@@ -3969,6 +3969,29 @@ async function loadData(saveSnapshot = false) {
         _lu0.innerHTML = `<span>${_d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})}</span>`;
     }
 
+    // Controlla anche la data dell'ultima approvazione/modifica di Master.csv:
+    // se più recente di quella mostrata (storico JSONBin), prevale questa.
+    (async () => {
+      try {
+        const base = _apiBase();
+        if (!base) return;
+        const r = await fetch(base + '/api/uploads?filename=Master.csv&limit=1');
+        if (!r.ok) return;
+        const d = await r.json();
+        const last = d.uploads && d.uploads[0];
+        if (!last || !last.uploaded_at) return;
+        const masterIso = last.uploaded_at;
+        const currentIso = localStorage.getItem('enri_last_upload_iso');
+        if (!currentIso || new Date(masterIso) > new Date(currentIso)) {
+          const dateStr = new Date(masterIso).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
+          const lu = document.getElementById('lastUpdate');
+          if (lu) lu.innerHTML = `<span>${dateStr}</span>`;
+          localStorage.setItem('enri_last_upload_iso', masterIso);
+          localStorage.setItem('enri_last_upload_date', dateStr);
+        }
+      } catch(e) { /* silenzioso: il badge resta quello dello storico JSONBin */ }
+    })();
+
     // Completa la sincronizzazione JSONBin in background
     _jsonbinPromise.then(async record => {
       if (!record) return; // JSONBin non disponibile, niente da fare
@@ -4017,15 +4040,19 @@ async function loadData(saveSnapshot = false) {
       // Aggiorna prevSnapshot delta (badge variazione KPI)
       window._prevSnapshotData = prevForModal ? prevForModal.data : null;
 
-      // Aggiorna badge data con quella reale dello storico
+      // Aggiorna badge data con quella reale dello storico — ma solo se più
+      // recente di quanto già mostrato (es. dall'ultima approvazione Master.csv)
       const _lastIso = storageRecord.last_excel_upload_at
         || (storicoPrev.length > 0 ? storicoPrev[storicoPrev.length-1]?.ts : null);
       if (_lastIso && !Number.isNaN(new Date(_lastIso).getTime())) {
-        const _lu = document.getElementById('lastUpdate');
-        const _dateStr = new Date(_lastIso).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
-        if (_lu) _lu.innerHTML = `<span>${_dateStr}</span>`;
-        localStorage.setItem('enri_last_upload_iso', _lastIso);    // ISO raw — sopravvive tra sessioni
-        localStorage.setItem('enri_last_upload_date', _dateStr);   // formatted — retrocompatibilità
+        const _currentIso = localStorage.getItem('enri_last_upload_iso');
+        if (!_currentIso || new Date(_lastIso) > new Date(_currentIso)) {
+          const _lu = document.getElementById('lastUpdate');
+          const _dateStr = new Date(_lastIso).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
+          if (_lu) _lu.innerHTML = `<span>${_dateStr}</span>`;
+          localStorage.setItem('enri_last_upload_iso', _lastIso);    // ISO raw — sopravvive tra sessioni
+          localStorage.setItem('enri_last_upload_date', _dateStr);   // formatted — retrocompatibilità
+        }
       }
 
       // ────────────────────────────────────────────────────────────────────
