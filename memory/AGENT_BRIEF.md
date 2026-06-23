@@ -60,11 +60,6 @@ Auth login: hub.html → POST /api/auth/login → backend chiama Google Apps Scr
 ├── admin.html                  # PANNELLO ADMIN — upload + coda imprese + assegnazioni + storico versioni
 ├── imprese.html                # PORTALE IMPRESE — aggiorna pratiche / nuova tratta / mie submission
 │
-├── M/                          # Sotto-progetto "M" (varianti di mappa.html e geojson) — non trattato qui
-│
-├── pm/                         # Sezione Project Management
-│   └── *.html
-│
 ├── js/
 │   └── api-config.js           # **CRUCIALE** — intercetta fetch() e li reindirizza al backend
 │
