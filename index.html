@@ -2471,26 +2471,26 @@ const JSONBIN_LOG_BIN_ID  = '69c8fbdced015c742bc8e978';
 const JSONBIN_NOTE_BIN_ID = '69d7a45c36566621a894ed23'; 
 const ACCESSI_MAX        = 500;
 
-// ── APPS SCRIPT PROXY AUTENTICAZIONE ─────────────────────────────────────────
-// Il CSV utenti NON è più pubblico. Tutte le verifiche avvengono lato server.
-const APPS_SCRIPT_URL    = 'https://script.google.com/macros/s/AKfycbxSoKwfqsE4c8RORsUqhUVIXJRpd337jxireCf_RwxMf7UL0QJZyw2qE5UR59aaPEN_/exec';
-const APPS_SCRIPT_SECRET = 'enri_login_2024_X9f83KsL21pQ';
+// ── API BASE ──────────────────────────────────────────────────────────────────
+// Tutte le chiamate auth/log passano per il backend — nessun segreto in chiaro.
+const _apiBase = () => (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+const _sessionToken = () => localStorage.getItem('_enri_session') || '';
+const _authHeaders = () => ({ 'Content-Type': 'application/json', 'x-session-token': _sessionToken() });
 
 // ── JSONBIN PROXY (Bug 9) ─────────────────────────────────────────────────────
 // Le chiamate JSONBin passano per Apps Script così la MASTER_KEY
 // non viaggia più in chiaro nelle request del browser.
 // NOTA: aggiungi i case 'jsonbin_get' e 'jsonbin_put' nel tuo doPost Apps Script.
 async function _jbGet(binId, signal) {
-  const res = await fetch(APPS_SCRIPT_URL, {
+  const res = await fetch(_apiBase() + '/api/logs/get', {
     method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({ secret: APPS_SCRIPT_SECRET, action: 'jsonbin_get', binId }),
+    headers: _authHeaders(),
+    body: JSON.stringify({ binId }),
     signal
   });
   if (!res.ok) throw new Error('_jbGet HTTP ' + res.status);
   const json = await res.json();
-  // Se il proxy risponde {ok:false} (es. script non re-deployato), lancia errore esplicito
-  if (json && json.ok === false) throw new Error('Proxy error: ' + (json.msg || 'risposta non valida da Apps Script'));
+  if (json && json.ok === false) throw new Error('Proxy error: ' + (json.msg || 'risposta non valida'));
   return json;
 }
 async function _jbPut(binId, data, keepalive) {
@@ -2498,17 +2498,17 @@ async function _jbPut(binId, data, keepalive) {
   const ctrl = keepalive ? null : new AbortController();
   const tid  = ctrl ? setTimeout(() => ctrl.abort(), 20000) : null;
   try {
-    const res = await fetch(APPS_SCRIPT_URL, {
+    const res = await fetch(_apiBase() + '/api/logs/put', {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ secret: APPS_SCRIPT_SECRET, action: 'jsonbin_put', binId, data }),
+      headers: _authHeaders(),
+      body: JSON.stringify({ binId, data }),
       ...(ctrl ? { signal: ctrl.signal } : {}),
       ...(keepalive ? { keepalive: true } : {})
     });
     if (tid) clearTimeout(tid);
     if (!res.ok) throw new Error('_jbPut HTTP ' + res.status);
     const jbPutJson = await res.json();
-    if (jbPutJson && jbPutJson.ok === false) throw new Error('Proxy error: ' + (jbPutJson.msg || 'risposta non valida da Apps Script'));
+    if (jbPutJson && jbPutJson.ok === false) throw new Error('Proxy error: ' + (jbPutJson.msg || 'risposta non valida'));
     return jbPutJson;
   } catch(e) {
     if (tid) clearTimeout(tid);
@@ -2925,17 +2925,18 @@ async function _handleLogin() {
   btn.disabled = true;
 
   try {
-    // Chiama il proxy Apps Script — il browser non vede mai la lista utenti
-    const res = await fetch(APPS_SCRIPT_URL, {
+    // Chiama il backend — il browser non vede mai il segreto GAS
+    const base = _apiBase();
+    if (!base) throw new Error('API endpoint non configurato');
+    const res = await fetch(base + '/api/auth/login', {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ secret: APPS_SCRIPT_SECRET, action: 'login', nome, codice })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome, codice })
     });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const risposta = await res.json();
+    const risposta = await res.json().catch(() => ({}));
 
-    if (!risposta.ok) {
-      errEl.textContent = risposta.msg || 'Nome o codice non riconosciuti. Contatta l\'amministratore.';
+    if (!res.ok || !risposta.ok) {
+      errEl.textContent = risposta.detail || risposta.msg || 'Nome o codice non riconosciuti. Contatta l\'amministratore.';
       errEl.style.display = 'block';
       if (btnText) btnText.textContent = 'Accedi';
       if (btnArrow) btnArrow.textContent = '→';
@@ -2946,9 +2947,10 @@ async function _handleLogin() {
     }
 
     const ruolo = (risposta.ruolo || 'user').toLowerCase();
-    const nomeCanonical = risposta.nome; // nome esatto restituito dal server
+    const nomeCanonical = risposta.nome;
     localStorage.setItem('_enri_user', nomeCanonical);
     localStorage.setItem('_enri_role', ruolo);
+    localStorage.setItem('_enri_session', risposta.token);
     window._enriValidatedRole = ruolo; // ruolo validato lato server — non manipolabile da localStorage
 
     // Log accesso — la navigazione a hub.html avviene DOPO il salvataggio
@@ -3016,10 +3018,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Le due fetch (Apps Script e JSONBin) partono in parallelo per velocità,
     // ma il log scrive il ruolo solo dopo che la validazione è conclusa
     // — nessuna race condition, il ruolo nel log è sempre quello certificato.
-    const revalidatePromise = fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ secret: APPS_SCRIPT_SECRET, action: 'revalidate', nome: savedUser })
+    const revalidatePromise = fetch(_apiBase() + '/api/auth/verify', {
+      headers: { 'x-session-token': _sessionToken() }
     }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
     const logDataPromise    = Promise.all([_logGetData(), _getIP()]);
 
