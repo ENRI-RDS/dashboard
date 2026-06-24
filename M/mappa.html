@@ -760,12 +760,15 @@ function buildCantiereData(features) {
     const rnd = _seededRand(_hashStr(id));
     let cantiere = 'non-avviato', pct = 0;
     if (stato === 'OTTENUTO') {
+      // Permesso ottenuto ⇒ il cantiere è SEMPRE avviato (mai "non-avviato").
+      // Pesi calibrati sulla distribuzione reale di Scavi.html.
       const r = rnd();
-      if      (r < 0.22) { cantiere = 'completato';   pct = 100; }
-      else if (r < 0.50) { cantiere = 'in-corso';      pct = Math.round(20 + rnd()*55); }
-      else if (r < 0.65) { cantiere = 'allestimento';  pct = Math.round(3  + rnd()*12); }
-      else if (r < 0.72) { cantiere = 'sospeso';       pct = Math.round(10 + rnd()*30); }
+      if      (r < 0.31) { cantiere = 'completato';   pct = 100; }
+      else if (r < 0.72) { cantiere = 'in-corso';      pct = Math.round(20 + rnd()*55); }
+      else if (r < 0.89) { cantiere = 'allestimento';  pct = Math.round(3  + rnd()*12); }
+      else               { cantiere = 'sospeso';       pct = Math.round(10 + rnd()*30); }
     }
+    // Permesso non ottenuto ⇒ cantiere resta "non-avviato", pct 0 (default sopra).
     data[id] = { cantiere, pct };
   });
   return data;
