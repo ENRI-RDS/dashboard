@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="google" content="notranslate">
-<title>ENRI Dashboard — Admin</title>
+<title>ENRI — Area Impresa</title>
+<script src="js/api-config.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root{
@@ -16,877 +16,923 @@
   }
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased}
-  .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:60px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:60px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50}
   .logo{font-family:'Bricolage Grotesque',sans-serif;font-size:14px;font-weight:700;letter-spacing:.1em;color:var(--accent)}
-  .back-link{font-size:13px;font-weight:500;color:var(--muted);text-decoration:none;padding:8px 16px;border:1px solid var(--border);border-radius:8px}
+  .right{display:flex;align-items:center;gap:14px}
+  .userpill{font-size:12.5px;color:var(--muted)}
+  .userpill b{color:var(--text);font-weight:700}
+  .back-link{font-size:13px;font-weight:500;color:var(--muted);text-decoration:none;padding:8px 14px;border:1px solid var(--border);border-radius:8px}
   .back-link:hover{background:var(--bg);color:var(--text)}
-  .main{max-width:1400px;margin:0 auto;padding:32px 24px;display:flex;flex-direction:column;gap:24px}
-  .hdr{border-bottom:1px solid var(--border);padding-bottom:16px}
+  .main{max-width:1400px;margin:0 auto;padding:28px 24px;display:flex;flex-direction:column;gap:20px}
+  .hdr{border-bottom:1px solid var(--border);padding-bottom:14px}
   .eyebrow{font-family:'Fira Code',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.15em;color:var(--muted);margin-bottom:6px}
   .title{font-family:'Bricolage Grotesque',sans-serif;font-size:26px;font-weight:700;letter-spacing:-.02em}
-  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-  .grid{display:grid;grid-template-columns:1.05fr 1.95fr;gap:24px;align-items:start}
-  @media(max-width:1100px){.grid{grid-template-columns:1fr}}
-  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px;box-shadow:var(--shadow-md)}
-  .card h2{font-family:'Bricolage Grotesque',sans-serif;font-size:16px;font-weight:700;margin-bottom:4px}
-  .card .sub{font-size:12.5px;color:var(--muted);margin-bottom:18px;line-height:1.5}
-  label{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;margin-top:14px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;box-shadow:var(--shadow-md)}
+  .tabbar{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border)}
+  .tab{padding:10px 16px;font-size:13px;font-weight:600;color:var(--muted);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;font-family:inherit}
+  .tab.active{color:var(--accent);border-color:var(--accent)}
+  .panel{display:none}.panel.active{display:block}
+  label{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;margin-top:12px;color:var(--text)}
   label:first-of-type{margin-top:0}
-  input[type=text],input[type=password],input[type=number],select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);font-family:inherit;font-size:13px;color:var(--text)}
-  input:focus,select:focus{outline:none;border-color:var(--border-focus);background:var(--surface);box-shadow:0 0 0 3px rgba(11,49,130,.08)}
-  .dropzone{border:2px dashed #CED4DA;border-radius:10px;padding:22px;text-align:center;background:var(--bg);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px}
-  .dropzone:hover,.dropzone.drag{border-color:var(--border-focus);background:var(--accent-light)}
-  .dropzone .filename{font-family:'Fira Code',monospace;font-size:11px;color:var(--muted)}
-  .dropzone input[type=file]{display:none}
-  .btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 16px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;font-weight:600;font-size:13px;background:var(--accent);color:#fff;transition:filter .15s}
+  input[type=text],input[type=date],input[type=number],select,textarea{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:7px;background:var(--bg);font-family:inherit;font-size:13px;color:var(--text)}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--border-focus);background:var(--surface);box-shadow:0 0 0 3px rgba(11,49,130,.08)}
+  textarea{min-height:54px;resize:vertical}
+  .btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 18px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;font-weight:600;font-size:13px;background:var(--accent);color:#fff;transition:filter .15s}
   .btn:hover{filter:brightness(1.08)}
   .btn:disabled{opacity:.5;cursor:not-allowed}
-  .btn-block{width:100%;margin-top:18px;padding:13px 16px;font-size:14px}
   .btn-ghost{background:transparent;color:var(--text);border:1px solid var(--border)}
   .btn-ghost:hover{background:var(--bg)}
-  .btn-danger{background:var(--danger);color:#fff}
-  .btn-warn{background:var(--warn);color:#fff}
-  .btn-xs{padding:6px 10px;font-size:11.5px;border-radius:6px}
-  td.actions{white-space:nowrap}
-  .actions-row{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
-  .menu-wrap{position:relative;display:inline-block}
-  .menu-dots{width:30px;height:30px;border-radius:6px;border:1px solid var(--border);background:#fff;cursor:pointer;font-size:14px;color:var(--muted);line-height:1}
-  .menu-dots:hover{background:var(--bg)}
-  .menu-dropdown{position:absolute;right:0;top:calc(100% + 4px);background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:140px;z-index:50;display:none;overflow:hidden}
-  .menu-dropdown.open{display:block}
-  .menu-dropdown button{display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;font-size:12px;cursor:pointer;font-family:inherit;color:var(--text)}
-  .menu-dropdown button:hover{background:var(--bg)}
-  .menu-dropdown button.danger{color:var(--danger)}
-  .msg{margin-top:12px;padding:10px 12px;border-radius:8px;font-size:12.5px;font-weight:500;display:none}
+  .btn-xs{padding:5px 10px;font-size:11.5px;border-radius:6px}
+  .msg{margin-top:12px;padding:10px 12px;border-radius:8px;font-size:13px;font-weight:500;display:none}
   .msg.ok{display:block;background:var(--ok-bg);color:var(--ok);border:1px solid rgba(43,138,62,.2)}
   .msg.err{display:block;background:var(--danger-bg);color:var(--danger);border:1px solid rgba(185,28,28,.2)}
-  table{width:100%;border-collapse:collapse}
-  th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:10px 8px;border-bottom:2px solid var(--border);text-align:left}
-  td{padding:12px 8px;font-size:12.5px;border-bottom:1px solid var(--border);vertical-align:middle}
-  tr:hover td{background:rgba(0,0,0,.015)}
-  td.mono{font-family:'Fira Code',monospace;font-size:11.5px;color:#495057;word-break:break-all}
-  .tag{display:inline-flex;align-items:center;padding:3px 8px;border-radius:5px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
-  .tag.disk{background:#EEE;color:#444}
-  .tag.mongo{background:rgba(11,49,130,.1);color:var(--accent)}
-  .tag.main{background:rgba(11,49,130,.1);color:var(--accent)}
-  .tag.M{background:rgba(229,80,0,.1);color:#E55000}
-  .tag.pm{background:rgba(107,63,160,.1);color:#6B3FA0}
-  .empty{text-align:center;padding:32px 16px!important;color:var(--muted);font-size:12.5px;font-style:italic}
-  .actions{display:flex;gap:6px;flex-wrap:wrap}
-  .modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:100;padding:24px}
-  .modal.open{display:flex}
-  .modal-card{background:var(--surface);border-radius:14px;padding:24px;max-width:780px;width:100%;max-height:85vh;display:flex;flex-direction:column;gap:14px}
-  .modal-head{display:flex;justify-content:space-between;align-items:start;gap:12px}
-  .modal-title{font-family:'Bricolage Grotesque',sans-serif;font-size:18px;font-weight:700}
-  .modal-sub{font-size:12px;color:var(--muted);font-family:'Fira Code',monospace}
-  .modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted)}
-  .detail-section{margin-bottom:14px}
-  .detail-label{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
-  .detail-change{background:#f8f9fc;border-radius:8px;padding:12px;margin-bottom:8px}
-  .detail-change-header{font-weight:700;font-size:12px;margin-bottom:6px;color:#1a1a2e}
-  .detail-field{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid #f0f0f0}
-  .detail-field:last-child{border-bottom:none}
-  .detail-field-key{color:var(--muted);min-width:160px;font-family:'Fira Code',monospace;font-size:11px}
-  .detail-field-val{color:#1a1a2e;font-family:'Fira Code',monospace;font-size:11px;word-break:break-all}
-  pre.preview{background:#0E1116;color:#D6DEEB;padding:14px;border-radius:8px;overflow:auto;font-family:'Fira Code',monospace;font-size:11.5px;max-height:50vh;white-space:pre;line-height:1.5}
-  .tabbar{display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid var(--border)}
-  .tab{padding:8px 14px;font-size:12.5px;font-weight:600;color:var(--muted);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
-  .tab.active{color:var(--accent);border-color:var(--accent)}
-  .panel{display:none}
-  .panel.active{display:block}
-  .pillstat{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:var(--muted)}
-  .pillstat b{color:var(--text);font-weight:700}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:9px 8px;border-bottom:2px solid var(--border);text-align:left;background:var(--surface);position:sticky;top:0}
+  td{padding:9px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+  tr:hover td{background:rgba(0,0,0,.015);cursor:pointer}
+  tr.selected td{background:var(--accent-light)}
+  td.mono{font-family:'Fira Code',monospace;font-size:11.5px;color:#495057}
+  .tag{display:inline-flex;align-items:center;padding:2px 8px;border-radius:5px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.02em}
+  /* Submission detail modal */
+  .sub-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px}
+  .sub-modal{background:#fff;border-radius:16px;width:100%;max-width:620px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.18)}
+  .sub-modal-head{display:flex;align-items:flex-start;justify-content:space-between;padding:20px 24px 16px;border-bottom:1px solid #f0f2f5}
+  .sub-modal-title{font-family:'Bricolage Grotesque',sans-serif;font-size:16px;font-weight:700;color:#1a1a2e}
+  .sub-modal-sub{font-size:12px;color:var(--muted);margin-top:3px}
+  .sub-modal-body{overflow-y:auto;flex:1;padding:16px 24px 20px}
+  .sub-modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;padding:0;margin-left:12px}
+  .sub-change{background:#f8f9fc;border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  .sub-change-header{font-weight:700;font-size:12px;margin-bottom:8px;color:#1a1a2e;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .sub-field{display:flex;gap:8px;padding:4px 0;border-bottom:1px solid #eef0f3}
+  .sub-field:last-child{border-bottom:none}
+  .sub-field-key{color:var(--muted);min-width:150px;font-size:12px}
+  .sub-field-val{color:#1a1a2e;font-size:12px;font-weight:500;word-break:break-all}
+  tr[data-sub]:hover td{background:rgba(67,97,238,.04);cursor:pointer}
+  .warn-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px}
+  .warn-modal{background:#fff;border-radius:16px;width:100%;max-width:440px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+  .warn-modal-icon{font-size:28px;margin-bottom:10px}
+  .warn-modal-title{font-family:'Bricolage Grotesque',sans-serif;font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:8px}
+  .warn-modal-body{font-size:13px;color:#374151;line-height:1.5;margin-bottom:18px}
+  .sub-section-label{font-size:11px;font-weight:600;color:var(--muted);margin-bottom:8px}
+  .tag.pending{background:#FEF3C7;color:#B45309}.tag.approved{background:#EBFBEE;color:#2B8A3E}.tag.rejected{background:#FEE2E2;color:#B91C1C}
+  .stato-OTTENUTO{color:#1F7A4E;font-weight:600}
+  .stato-INVIATO,.stato-PROTOCOLLATO{color:#0B3182;font-weight:600}
+  .stato-IN.REDAZIONE,.stato-IN.FIRMA.RDS{color:#B45309;font-weight:600}
+  .empty{text-align:center;padding:30px;color:var(--muted);font-style:italic;font-size:13px}
+  /* Spinner */
+  .spinner-wrap{display:flex;align-items:center;justify-content:center;gap:10px;padding:30px;color:var(--muted);font-size:13px}
+  .spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;display:inline-block;animation:spin .8s linear infinite;vertical-align:middle}
+  .spinner-sm{width:13px;height:13px;border-width:2px;margin-right:6px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .btn[disabled]{opacity:.6;cursor:not-allowed;filter:none}
+  .btn .spinner{border-color:rgba(255,255,255,.4);border-top-color:#fff}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:700px){.grid2{grid-template-columns:1fr}}
+  .scroll{max-height:520px;overflow:auto;border:1px solid var(--border);border-radius:8px}
+  .search{margin-bottom:12px}
+  .search input{padding-left:34px;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236C757D' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='7'/><path d='m21 21-4.3-4.3'/></svg>");background-repeat:no-repeat;background-position:11px center}
+  .pill-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .pill-row .pill{font-size:11px;background:var(--accent-light);color:var(--accent);padding:3px 9px;border-radius:5px;font-weight:600;letter-spacing:.02em}
+  .submit-bar{position:sticky;bottom:0;background:var(--surface);padding:14px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;margin:14px -20px -20px;border-radius:0 0 14px 14px}
+  .guard{display:none;text-align:center;padding:60px 20px}
+  .guard h2{font-family:'Bricolage Grotesque',sans-serif;font-size:22px;margin-bottom:12px}
+  .guard p{color:var(--muted);max-width:520px;margin:0 auto 18px}
 </style>
 </head>
 <body>
 
 <div class="topbar">
-  <div class="logo">ENRI · ADMIN</div>
-  <a class="back-link" href="hub.html">← Hub</a>
+  <div class="logo">ENRI · AREA IMPRESA</div>
+  <div class="right">
+    <span class="userpill" id="userPill">—</span>
+    <a class="back-link" href="hub.html">← Hub</a>
+  </div>
 </div>
 
-<div class="main">
+<!-- Guard: not logged in or not authorized -->
+<div class="guard" id="guard">
+  <h2 id="guardTitle">Accesso non autorizzato</h2>
+  <p id="guardMsg">Per accedere a quest'area devi prima effettuare il login dal portale e la tua impresa deve essere stata abilitata dall'amministratore.</p>
+  <button id="guardRetryBtn" class="btn" onclick="_retryBoot()" style="display:none;margin-right:10px">⟳ Riprova</button>
+  <a class="btn" href="hub.html" data-testid="goto-hub" style="background:#f1f5f9;color:#374151;border:1px solid #e2e8f0">← Torna al login</a>
+</div>
+
+<div class="main" id="app" style="display:none">
   <div class="hdr">
-    <div class="eyebrow">Gestione dati</div>
-    <div class="title">Pannello Admin — File &amp; Versioni</div>
+    <div class="eyebrow">Operatività impresa</div>
+    <div class="title" id="welcomeTitle">Benvenuta impresa</div>
+    <div class="pill-row" id="lottiPills"></div>
   </div>
 
-  <!-- Connection bar -->
-  <div class="card" data-testid="conn-card">
-    <div class="row" style="gap:16px">
-      <div style="flex:2;min-width:260px">
-        <label>API endpoint</label>
-        <input type="text" id="apiBase" placeholder="https://enri-dashboard-api.onrender.com" data-testid="api-base-input">
-      </div>
-      <div style="flex:1;min-width:200px">
-        <label>Upload token <span style="text-transform:none;color:var(--muted);font-weight:400">(se configurato)</span></label>
-        <input type="password" id="token" placeholder="••••••••" data-testid="token-input">
-      </div>
-      <div style="align-self:end">
-        <button class="btn" id="saveConnBtn" data-testid="save-conn-btn">Salva &amp; aggiorna</button>
-      </div>
+  <div class="card">
+    <div class="tabbar">
+      <button class="tab active" data-tab="aggiorna" data-testid="tab-update">Aggiorna pratiche</button>
+      <button class="tab" data-tab="nuova" data-testid="tab-new">Nuova pratica</button>
+      <button class="tab" data-tab="mie" data-testid="tab-mine">Le mie submission</button>
     </div>
-    <div class="row" style="margin-top:14px;gap:18px">
-      <span class="pillstat">Stato API: <b id="apiStatus">—</b></span>
-      <span class="pillstat">File totali: <b id="statFiles">—</b></span>
-      <span class="pillstat">Versioni in MongoDB: <b id="statVersions">—</b></span>
-    </div>
-  </div>
 
-  <div class="grid">
-    <!-- Upload card -->
-    <div class="card" data-testid="upload-card">
-      <h2>Nuovo upload / Sostituisci</h2>
-      <p class="sub">Excel → CSV (sep <code>;</code>) automatico. Il contenuto è salvato in MongoDB (GridFS) ed è la versione "viva" servita a tutte le pagine.</p>
+    <!-- AGGIORNA -->
+    <div class="panel active" id="panel-aggiorna">
+      <div class="search"><input type="text" id="searchPratiche" placeholder="Cerca per codice, tratta, ente, stato…" data-testid="search-pratiche"></div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Pratica</th><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th><th>Data richiesta</th><th>Data agg.</th><th>Data ottenimento</th><th style="text-align:right">Lung. (m)</th></tr></thead>
+          <tbody id="pratBody"><tr><td colspan="9"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr></tbody>
+        </table>
+      </div>
 
-      <form id="uploadForm">
-        <label for="project">Progetto</label>
-        <select id="project" data-testid="project-select">
-          <option value="main">main (root)</option>
-          <option value="M">M (Progetto M)</option>
-          <option value="pm">pm (Project Management)</option>
-        </select>
-
-        <label for="target">Nome file di destinazione <span style="text-transform:none;color:var(--muted);font-weight:400">(opzionale — sovrascrive un file esistente)</span></label>
-        <input type="text" id="target" placeholder="es. Master.csv  oppure  M/QGIS_3.geojson" data-testid="target-input">
-
-        <label>File</label>
-        <div class="dropzone" id="dropzone" data-testid="dropzone">
-          <div>Trascina qui un file o <strong>clicca per selezionare</strong></div>
-          <div class="filename" id="fileName">.xlsx, .xls, .csv, .geojson, .json — max 25 MB</div>
-          <input type="file" id="file" accept=".xlsx,.xls,.csv,.geojson,.json" data-testid="file-input">
+      <div id="editForm" style="display:none;margin-top:16px;border-top:1px dashed var(--border);padding-top:16px">
+        <div style="font-weight:700;margin-bottom:10px;font-size:14px">Aggiornamento — <span id="editRowSub" class="mono" style="color:var(--muted);font-size:12px"></span></div>
+        <div id="siblingsPanel" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12.5px">
+          <div style="font-weight:700;color:#1d4ed8;margin-bottom:4px">Questa pratica include altre tratte</div>
+          <div id="siblingsList" style="color:#374151;margin-bottom:8px"></div>
+          <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-weight:600;color:#1d4ed8">
+            <input type="checkbox" id="siblingsToggle" checked style="width:15px;height:15px;cursor:pointer">
+            Aggiorna tutte insieme (consigliato)
+          </label>
         </div>
+        <div class="grid2">
+          <div style="grid-column:span 2">
+            <label>Nuovo stato</label>
+            <select id="fld-stato" data-testid="fld-stato">
+              <option value="">— seleziona stato —</option>
+            </select>
+            <div id="fld-stato-hint" style="font-size:10.5px;color:var(--muted);margin-top:4px"></div>
+          </div>
+          <!-- Data richiesta: visibile solo se nuovo stato = INVIATO -->
+          <div id="wrap-data-rich" style="display:none">
+            <label>Data richiesta (gg/mm/aaaa)</label>
+            <input type="date" id="fld-data-rich" data-testid="fld-data-richiesta">
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Obbligatoria per lo stato INVIATO</div>
+          </div>
+          <!-- Data approvazione: visibile solo se nuovo stato = OTTENUTO -->
+          <div id="wrap-data-app" style="display:none">
+            <label>Data ottenimento (gg/mm/aaaa)</label>
+            <input type="date" id="fld-data-app" data-testid="fld-data-app">
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Obbligatoria per lo stato OTTENUTO</div>
+          </div>
+          <div style="grid-column:span 2">
+            <label>Note</label>
+            <textarea id="fld-note" placeholder="Seleziona prima il nuovo stato…" data-testid="fld-note"
+              disabled style="background:#f8f9fc;color:var(--muted);cursor:not-allowed;resize:none"></textarea>
+          </div>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-ghost" id="cancelEditBtn">Annulla</button>
+          <button class="btn" id="addToQueueBtn" data-testid="add-to-queue">Aggiungi alla coda</button>
+        </div>
+      </div>
 
-        <button type="submit" class="btn btn-block" id="submitBtn" data-testid="upload-btn">Carica</button>
-        <div class="msg" id="msg"></div>
+      <div id="updateQueue" style="margin-top:14px;display:none">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">Modifiche in coda da inviare (<span id="qCount">0</span>)</div>
+        <table>
+          <thead><tr><th>Tratta</th><th>Lunghezza</th><th>Ente</th><th>Modifiche</th><th></th></tr></thead>
+          <tbody id="queueBody"></tbody>
+        </table>
+        <div style="margin-top:12px;display:flex;justify-content:flex-end;gap:10px">
+          <button class="btn btn-ghost" id="clearQueueBtn">Svuota</button>
+          <button class="btn" id="submitUpdatesBtn" data-testid="submit-updates">Invia per approvazione</button>
+        </div>
+      </div>
+
+      <div class="msg" id="msgUpd"></div>
+    </div>
+
+    <!-- NUOVA -->
+    <div class="panel" id="panel-nuova">
+      <p style="color:var(--muted);font-size:13px;margin-bottom:14px">Compila i campi della nuova pratica. Lo stato iniziale è <b>IN REDAZIONE</b> (automatico). Dopo l'invio l'amministratore approverà l'inserimento nella dashboard.</p>
+      <form id="newForm">
+        <div class="grid2">
+          <div>
+            <label>Lotto *</label>
+            <select id="new-lotto" required data-testid="new-lotto"></select>
+          </div>
+          <div>
+            <label>TRATTA_ID *</label>
+            <input type="text" id="new-tratta" placeholder="TR_XXXX" required data-testid="new-tratta">
+          </div>
+          <div>
+            <label>Ente *</label>
+            <select id="new-ente" required data-testid="new-ente">
+              <option value="">— seleziona ente —</option>
+            </select>
+          </div>
+          <div>
+            <label>Tipo permesso *</label>
+            <select id="new-tipo" required data-testid="new-tipo">
+              <option value="">—</option>
+              <option>AUTORIZZAZIONE</option>
+              <option>NULLA OSTA</option>
+            </select>
+          </div>
+          <div>
+            <label>Numero progressivo pratica (automatico)</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span id="new-pratica-prefix" style="font-family:'Fira Code',monospace;font-size:13px;color:var(--muted);white-space:nowrap">—/</span>
+              <input type="number" id="new-pratica" required readonly
+                     data-testid="new-pratica" style="max-width:100px;background:#f4f6ff;cursor:not-allowed">
+              <span id="new-pratica-suffix" style="font-family:'Fira Code',monospace;font-size:13px;color:var(--muted);white-space:nowrap">/—</span>
+            </div>
+            <div style="margin-top:4px;font-size:11px;color:var(--muted)">Calcolato come ultimo progressivo del lotto selezionato + 1</div>
+            <div style="margin-top:4px;font-family:'Fira Code',monospace;font-size:11px;color:var(--accent)" id="new-pratica-preview"></div>
+          </div>
+          <div>
+            <label>Data richiesta</label>
+            <input type="date" id="new-data-rich">
+          </div>
+          <div>
+            <label>N_SED</label>
+            <input type="text" id="new-nsed" placeholder="es. SED-127 oppure 0">
+          </div>
+          <div>
+            <label>Nulla osta necessario</label>
+            <select id="new-no-nec"><option value=""></option><option>SI</option><option>NO</option></select>
+          </div>
+          <div>
+            <label>Ordinanza necessaria</label>
+            <select id="new-ord-nec"><option value=""></option><option>SI</option><option>NO</option></select>
+          </div>
+          <div>
+            <label>Convenzione</label>
+            <select id="new-convenzione"><option value=""></option><option>SI</option><option>NO</option></select>
+          </div>
+          <div>
+            <label>Polizza</label>
+            <select id="new-polizza"><option value=""></option><option>SI</option><option>NO</option></select>
+          </div>
+          <div>
+            <label>Lunghezza tratta (m)</label>
+            <input type="number" id="new-lunghezza" step="any" min="0" placeholder="es. 350">
+          </div>
+          <div style="grid-column:span 2">
+            <label>Note</label>
+            <textarea id="new-note"></textarea>
+          </div>
+        </div>
+        <div style="margin-top:14px;display:flex;justify-content:flex-end">
+          <button type="submit" class="btn" data-testid="submit-new">Invia nuova pratica</button>
+        </div>
+        <div class="msg" id="msgNew"></div>
       </form>
     </div>
 
-    <!-- Files card -->
-    <div class="card" data-testid="files-card">
-      <div class="tabbar">
-        <button class="tab active" data-tab="files" data-testid="tab-files">File correnti</button>
-        <button class="tab" data-tab="uploads" data-testid="tab-uploads">Storico versioni</button>
-        <button class="tab" data-tab="pending" data-testid="tab-pending">Coda imprese <span id="pendingBadge" style="display:none;background:#FEF3C7;color:#B45309;border-radius:999px;padding:1px 7px;font-size:10px;margin-left:5px"></span></button>
-        <button class="tab" data-tab="assign" data-testid="tab-assign">Assegnazioni imprese</button>
-      </div>
-
-      <div class="panel active" id="panel-files">
-        <p class="sub">Vista unificata: file caricati su MongoDB e file "seed" presenti nel repo GitHub. Il backend serve sempre la versione MongoDB se esiste, altrimenti il file del repo.</p>
+    <!-- MIE SUBMISSION -->
+    <div class="panel" id="panel-mie">
+      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Storico delle tue richieste — vedi lo stato di approvazione.</p>
+      <div class="scroll">
         <table>
-          <thead><tr><th>File</th><th>Sorgente</th><th>Versioni</th><th>Ultima modifica</th><th>Origine</th><th>Azioni</th></tr></thead>
-          <tbody id="filesBody"><tr><td colspan="6" class="empty">Caricamento…</td></tr></tbody>
-        </table>
-      </div>
-
-      <div class="panel" id="panel-uploads">
-        <p class="sub">Tutti gli upload registrati su MongoDB, ordinati per data. Puoi cancellare una singola versione.</p>
-        <div class="row" style="margin-bottom:10px">
-          <label style="margin:0;flex:0 0 auto"><input type="checkbox" id="includeDeleted" data-testid="include-deleted"> mostra anche cancellati</label>
-        </div>
-        <table>
-          <thead><tr><th>File</th><th>Progetto</th><th>Righe</th><th>Quando</th><th>Stato</th><th>Azioni</th></tr></thead>
-          <tbody id="uploadsBody"><tr><td colspan="6" class="empty">Caricamento…</td></tr></tbody>
-        </table>
-      </div>
-
-      <!-- PENDING (impresa submissions awaiting approval) -->
-      <div class="panel" id="panel-pending">
-        <p class="sub">Modifiche &amp; nuove pratiche inviate dalle imprese. Approva per applicare a <code>Master.csv</code> (genera nuova versione in MongoDB).</p>
-        <div class="row" style="margin-bottom:10px;gap:14px;align-items:center">
-          <label style="margin:0">Stato:</label>
-          <select id="pendingFilter" style="width:auto;padding:6px 10px" data-testid="pending-filter">
-            <option value="pending">In attesa</option>
-            <option value="approved">Approvati</option>
-            <option value="rejected">Rifiutati</option>
-            <option value="all">Tutti</option>
-          </select>
-          <button class="btn btn-ghost btn-xs" id="refreshPendingBtn">Aggiorna</button>
-        </div>
-        <table>
-          <thead><tr><th>Quando</th><th>Impresa</th><th>Tipo</th><th>N.</th><th>Anteprima</th><th>Stato</th><th>Azioni</th></tr></thead>
-          <tbody id="pendingBody"><tr><td colspan="7" class="empty">Caricamento…</td></tr></tbody>
-        </table>
-      </div>
-
-      <!-- ASSIGNMENTS -->
-      <div class="panel" id="panel-assign">
-        <p class="sub">Assegna a ciascuna impresa i lotti su cui può inserire/aggiornare pratiche. Il <i>nome</i> deve corrispondere ESATTAMENTE a quello con cui l'impresa accede dal portale (Google Sheet).</p>
-        <div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
-          <div style="flex:1;min-width:200px">
-            <label style="display:block;font-size:11px;margin-bottom:5px">Nome impresa</label>
-            <input type="text" id="newAssignNome" placeholder="es. Costruzioni Alfa Srl" data-testid="assign-nome">
-          </div>
-          <div style="flex:2;min-width:250px">
-            <label style="display:block;font-size:11px;margin-bottom:5px">Lotti (separati da virgola)</label>
-            <input type="text" id="newAssignLotti" placeholder="es. Lotto 1, Lotto 1A, Lotto 2" data-testid="assign-lotti">
-          </div>
-          <button class="btn" id="newAssignBtn" data-testid="assign-save">Salva</button>
-        </div>
-        <table>
-          <thead><tr><th>Nome impresa</th><th>Lotti</th><th>Attivo</th><th>Azioni</th></tr></thead>
-          <tbody id="assignBody"><tr><td colspan="4" class="empty">Caricamento…</td></tr></tbody>
-        </table>
-        <div class="msg" id="assignMsg"></div>
+          <thead><tr><th>Quando</th><th>Tipo</th><th>Modifiche</th><th>Stato</th><th>Note revisione</th></tr></thead>
+          <tbody id="mineBody"><tr><td colspan="5" class="empty">—</td></tr></tbody>
+    </table>
+          <div style="margin-top:10px;display:flex;justify-content:flex-end">
+        <button class="btn btn-ghost btn-xs" id="refreshMineBtn">Aggiorna</button>
       </div>
     </div>
   </div>
 </div>
-
-<!-- Preview modal -->
-<div class="modal" id="previewModal" data-testid="preview-modal">
-  <div class="modal-card">
-    <div class="modal-head">
-      <div>
-        <div class="modal-title" id="previewTitle">Anteprima</div>
-        <div class="modal-sub" id="previewSub"></div>
-      </div>
-      <button class="modal-close" id="previewClose" data-testid="preview-close">&times;</button>
-    </div>
-    <pre class="preview" id="previewBody"></pre>
-    <div class="row" style="justify-content:flex-end">
-      <a class="btn btn-ghost" id="downloadLink" target="_blank">Apri completo</a>
-    </div>
-  </div>
-</div>
-
-<!-- Confirm modal generico -->
-<div class="modal" id="confirmModal">
-  <div class="modal-card" style="max-width:420px">
-    <div class="modal-head">
-      <div class="modal-title" id="confirmTitle">Conferma</div>
-      <button class="modal-close" id="confirmClose">&times;</button>
-    </div>
-    <p id="confirmMsg" style="color:#374151;font-size:14px;line-height:1.5;margin:0 0 16px"></p>
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button class="btn btn-ghost" id="confirmCancel">Annulla</button>
-      <button class="btn" id="confirmOk">Conferma</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal" id="rejectModal">
-  <div class="modal-card" style="max-width:480px">
-    <div class="modal-head">
-      <div>
-        <div class="modal-title">Rifiuta submission</div>
-        <div class="modal-sub" id="rejectSub"></div>
-      </div>
-      <button class="modal-close" id="rejectClose">&times;</button>
-    </div>
-    <p style="color:#374151;font-size:13px;margin:0 0 8px">Motivo del rifiuto (opzionale):</p>
-    <textarea id="rejectNote" style="width:100%;min-height:80px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical;box-sizing:border-box" placeholder="es. Dati incompleti, verificare con l'impresa…"></textarea>
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
-      <button class="btn btn-ghost" id="rejectCancel">Annulla</button>
-      <button class="btn btn-danger" id="rejectOk">Rifiuta</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal" id="detailsModal">
-  <div class="modal-card" style="max-width:680px;max-height:80vh;display:flex;flex-direction:column">
-    <div class="modal-head">
-      <div>
-        <div class="modal-title" id="detailsTitle">Dettagli</div>
-        <div class="modal-sub" id="detailsSub"></div>
-      </div>
-      <button class="modal-close" id="detailsClose">&times;</button>
-    </div>
-    <div style="overflow-y:auto;flex:1;padding-top:4px" id="detailsBody"></div>
-  </div>
-</div>
-
-<!-- Rename modal -->
-<div class="modal" id="renameModal" data-testid="rename-modal">
-  <div class="modal-card" style="max-width:520px">
-    <div class="modal-head">
-      <div>
-        <div class="modal-title">Rinomina file</div>
-        <div class="modal-sub" id="renameSub"></div>
-      </div>
-      <button class="modal-close" id="renameClose">&times;</button>
-    </div>
-    <label>Nuovo nome (path relativo, es. M/QGIS_3.geojson)</label>
-    <input type="text" id="renameInput" data-testid="rename-input">
-    <div class="row" style="justify-content:flex-end;gap:8px">
-      <button class="btn btn-ghost" id="renameCancel">Annulla</button>
-      <button class="btn" id="renameConfirm" data-testid="rename-confirm">Rinomina</button>
-    </div>
-    <div class="msg" id="renameMsg"></div>
-  </div>
 </div>
 
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
-  const apiBaseInput = $('apiBase');
-  const tokenInput = $('token');
-  const fileInput = $('file');
-  const dz = $('dropzone');
-  const fileName = $('fileName');
-  const msg = $('msg');
-  const form = $('uploadForm');
-  const submitBtn = $('submitBtn');
-  const filesBody = $('filesBody');
-  const uploadsBody = $('uploadsBody');
-  let droppedFile = null;
+  const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+  const nome = (localStorage.getItem('_enri_user') || '').trim();
+  const sessionToken = (localStorage.getItem('_enri_session') || '').trim();
 
-  apiBaseInput.value = localStorage.getItem('enri_api_base') || '';
-  tokenInput.value = localStorage.getItem('enri_upload_token') || '';
+  $('userPill').innerHTML = nome ? `<b>${escapeHtml(nome)}</b>` : '(non loggato)';
 
-  // ──────────────────────────────────────────────────────────────────────
-  // Helpers
-  function apiBase(){ return apiBaseInput.value.trim().replace(/\/$/, ''); }
-  function token(){ return tokenInput.value.trim(); }
-  function setMsg(el, text, ok){
-    el.className = 'msg ' + (ok ? 'ok' : 'err');
-    el.textContent = text;
+  if (!nome || !sessionToken) return showGuard('Devi loggarti prima', 'Apri il portale e accedi con le tue credenziali.');
+  if (!apiBase) return showGuard('Endpoint API non configurato', 'Contatta l\'amministratore: l\'API endpoint non risulta impostato in questa pagina.');
+
+  let MY_LOTTI = [];
+  let PRATICHE = [];
+  const QUEUE = []; // [{tratta_id, ente, tipo_permesso, fields, _row}]
+  let SIBLINGS = []; // tratte della stessa pratica (ENTE+TIPO_PERMESSO+PRATICA) diverse da SELECTED
+  let SELECTED = null;
+
+  // ─── boot ───────────────────────────────────────────
+  (async () => {
+    try {
+      const me = await api(`/api/imprese/me?nome=${encodeURIComponent(nome)}`);
+      MY_LOTTI = me.lotti || [];
+      $('welcomeTitle').textContent = `Benvenuta, ${nome}`;
+      $('lottiPills').innerHTML = MY_LOTTI.length
+        ? MY_LOTTI.map(l => `<span class="pill">${escapeHtml(l)}</span>`).join('')
+        : '<span class="pill" style="background:#fee;color:#B91C1C">nessun lotto assegnato</span>';
+      const sel = $('new-lotto');
+      sel.innerHTML = MY_LOTTI.map(l => `<option value="${escapeHtml(l)}.xlsx">${escapeHtml(l)}</option>`).join('');
+      $('app').style.display = '';
+      loadPratiche();
+      loadMine();
+    } catch(e) {
+      if(String(e.message).includes('401')) {
+        localStorage.removeItem('_enri_session');
+        return showGuard('Sessione scaduta', 'La tua sessione non è più valida. Torna al portale e accedi di nuovo.', false);
+      }
+      if(String(e.message).includes('404')) return showGuard('Impresa non autorizzata', 'Il tuo nome non è ancora stato assegnato a un lotto dall\'amministratore.', false);
+      // Errore di rete (es. Render in avvio): mostra pannello con retry, non solo "torna al login"
+      showGuard('Server non raggiungibile', 'Il server si sta avviando (può richiedere 20-30 secondi). Attendi qualche istante e riprova.', true);
+    }
+  })();
+
+  function _retryBoot() {
+    $('guard').style.display = 'none';
+    (async () => {
+      try {
+        const me = await api(`/api/imprese/me?nome=${encodeURIComponent(nome)}`);
+        MY_LOTTI = me.lotti || [];
+        $('welcomeTitle').textContent = `Benvenuta, ${nome}`;
+        $('lottiPills').innerHTML = MY_LOTTI.length
+          ? MY_LOTTI.map(l => `<span class="pill">${escapeHtml(l)}</span>`).join('')
+          : '<span class="pill" style="background:#fee;color:#B91C1C">nessun lotto assegnato</span>';
+        const sel = $('new-lotto');
+        sel.innerHTML = MY_LOTTI.map(l => `<option value="${escapeHtml(l)}.xlsx">${escapeHtml(l)}</option>`).join('');
+        $('app').style.display = '';
+        loadPratiche();
+        loadMine();
+      } catch(e2) {
+        if(String(e2.message).includes('401')) {
+          localStorage.removeItem('_enri_session');
+          return showGuard('Sessione scaduta', 'La tua sessione non è più valida. Torna al portale e accedi di nuovo.', false);
+        }
+        if(String(e2.message).includes('404')) return showGuard('Impresa non autorizzata', 'Il tuo nome non è ancora stato assegnato a un lotto dall\'amministratore.', false);
+        showGuard('Server non raggiungibile', 'Il server si sta avviando. Riprova tra qualche secondo.', true);
+      }
+    })();
   }
-  function fmtSize(s){
-    if(s == null) return '—';
-    if(s < 1024) return s + ' B';
-    if(s < 1024*1024) return (s/1024).toFixed(1) + ' KB';
-    return (s/1024/1024).toFixed(2) + ' MB';
+
+  function showGuard(title, msg, showRetry){
+    $('guardTitle').textContent = title;
+    $('guardMsg').textContent = msg;
+    // Bottone Riprova: visibile solo per errori di rete, non per 404/accesso negato
+    const retryBtn = document.getElementById('guardRetryBtn');
+    if (retryBtn) retryBtn.style.display = showRetry ? '' : 'none';
+    $('guard').style.display = 'block';
+    $('app').style.display = 'none';
   }
-  function fmtDate(d){
-    try{
-      const dt = new Date(d);
-      return dt.toLocaleString('it-IT',{
-        day:'2-digit', month:'2-digit', year:'2-digit',
-        hour:'2-digit', minute:'2-digit'
-      });
-    }catch{return d}
-  }
-  function authHeaders(){
-    const t = token();
-    return t ? { 'x-upload-token': t } : {};
-  }
-  function withTokenQuery(path){
-    const t = token();
-    if(!t) return path;
-    // also append as query param so it works against the OLD backend signature
-    // (which read x_upload_token as a query parameter, not a header)
-    return path + (path.includes('?') ? '&' : '?') + 'x_upload_token=' + encodeURIComponent(t);
-  }
+
+  // ─── helpers ───────────────────────────────────────
   async function api(path, opts={}){
-    const r = await fetch(apiBase() + path, opts);
+    const headers = { ...(opts.headers || {}), 'x-session-token': localStorage.getItem('_enri_session') || '' };
+    const r = await fetch(apiBase + path, { ...opts, headers });
     const text = await r.text();
-    let data; try{ data = text ? JSON.parse(text) : {}; }catch{ data = { raw: text }; }
+    let data; try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
     if(!r.ok) throw new Error(data.detail || data.raw || ('HTTP ' + r.status));
     return data;
   }
+  function setMsg(el, txt, ok){ el.className = 'msg ' + (ok ? 'ok' : 'err'); el.textContent = txt; }
+  function escapeHtml(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-  // ──────────────────────────────────────────────────────────────────────
-  // Tabs
-  document.querySelectorAll('.tab').forEach(t => {
-    t.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-      document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
-      t.classList.add('active');
-      $('panel-' + t.dataset.tab).classList.add('active');
-      if (t.dataset.tab === 'pending') refreshPending();
-      if (t.dataset.tab === 'assign') refreshAssignments();
-    });
-  });
+  // ─── tabs ───────────────────────────────────────────
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+    t.classList.add('active'); $('panel-' + t.dataset.tab).classList.add('active');
+    if (t.dataset.tab === 'mie') loadMine();
+  }));
 
-  // ──────────────────────────────────────────────────────────────────────
-  // Connection
-  $('saveConnBtn').addEventListener('click', () => {
-    localStorage.setItem('enri_api_base', apiBaseInput.value.trim());
-    localStorage.setItem('enri_upload_token', tokenInput.value.trim());
-    refreshAll();
-  });
-
-  async function refreshStatus(){
-    if(!apiBase()){ $('apiStatus').textContent = 'no endpoint'; return; }
-    try{
-      const h = await api('/api/health');
-      $('apiStatus').textContent = h.mongo ? 'OK (mongo)' : 'API ok, mongo DOWN';
-    }catch(e){ $('apiStatus').textContent = 'errore: ' + e.message; }
-  }
-
-  // ──────────────────────────────────────────────────────────────────────
-  // Files list
-  async function refreshFiles(){
-    if(!apiBase()){ filesBody.innerHTML = '<tr><td colspan="6" class="empty">Imposta l\'API endpoint qui sopra</td></tr>'; return; }
-    try{
-      const d = await api('/api/files');
-      $('statFiles').textContent = d.count;
-      if(!d.files || !d.files.length){
-        filesBody.innerHTML = '<tr><td colspan="6" class="empty">Nessun file</td></tr>';
-        return;
-      }
-      const originLabel = { impresa: 'Approvazione impresa', derived: 'Rigenerato automaticamente', admin: 'Upload manuale' };
-      const originColor  = { impresa: '#1d4ed8', derived: '#7c3aed', admin: '#6b7280' };
-      filesBody.innerHTML = d.files.map(f => {
-        const origin = f.upload_source || 'admin';
-        const originTitle = f.note ? `${originLabel[origin] || origin} — ${escapeHtml(f.note)}` : (originLabel[origin] || origin);
-        return `
-        <tr>
-          <td class="mono" style="white-space:nowrap">${escapeHtml(f.name)}</td>
-          <td><span class="tag ${f.source}">${f.source}</span></td>
-          <td>${f.versions || (f.source === 'disk' ? '—' : 1)}</td>
-          <td class="mono" style="font-size:12px;white-space:nowrap" title="${f.modified ? new Date(f.modified).toLocaleString('it-IT') : ''}">${f.modified ? fmtDate(f.modified) : '—'}</td>
-          <td>${f.source === 'mongo'
-            ? `<span style="font-size:11px;color:${originColor[origin]||'#6b7280'};font-weight:600;white-space:nowrap" title="${originTitle}">${originLabel[origin] || origin}</span>`
-            : '<span style="font-size:11px;color:var(--muted)">—</span>'}</td>
-          <td class="actions">
-            <div class="actions-row">
-              <button class="btn btn-ghost btn-xs" data-act="preview" data-name="${encodeURIComponent(f.name)}" data-testid="preview-${cssId(f.name)}">Anteprima</button>
-              <button class="btn btn-ghost btn-xs" data-act="download" data-name="${encodeURIComponent(f.name)}">Scarica</button>
-              ${f.source === 'mongo' ? `
-                <div class="menu-wrap">
-                  <button class="menu-dots" data-act="toggle-menu" type="button">⋮</button>
-                  <div class="menu-dropdown">
-                    <button data-act="rename" data-name="${encodeURIComponent(f.name)}" data-testid="rename-${cssId(f.name)}">Rinomina</button>
-                    <button class="danger" data-act="delete-file" data-name="${encodeURIComponent(f.name)}" data-testid="delete-${cssId(f.name)}">Elimina tutte</button>
-                  </div>
-                </div>
-              ` : ''}
-            </div>
-          </td>
-        </tr>`;
-      }).join('');
-    }catch(e){
-      filesBody.innerHTML = `<tr><td colspan="6" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
-    }
-  }
-
-  // ──────────────────────────────────────────────────────────────────────
-  // Uploads list (versioning)
-  async function refreshUploads(){
-    if(!apiBase()){ uploadsBody.innerHTML = '<tr><td colspan="6" class="empty">Imposta l\'API endpoint qui sopra</td></tr>'; return; }
-    try{
-      const includeDeleted = $('includeDeleted').checked;
-      const d = await api('/api/uploads?limit=200' + (includeDeleted ? '&include_deleted=true' : ''));
-      $('statVersions').textContent = d.count;
-      if(!d.uploads || !d.uploads.length){
-        uploadsBody.innerHTML = '<tr><td colspan="6" class="empty">Nessun upload ancora</td></tr>';
-        return;
-      }
-      uploadsBody.innerHTML = d.uploads.map(u => {
-        const deleted = !!u.deleted_at;
-        const status = deleted ? `<span class="tag" style="background:#FEE2E2;color:#B91C1C">cancellato</span>` : `<span class="tag" style="background:#EBFBEE;color:#2B8A3E">attivo</span>`;
-        return `
-        <tr>
-          <td class="mono">${escapeHtml(u.filename)}</td>
-          <td><span class="tag ${u.project||'main'}">${escapeHtml(u.project||'main')}</span></td>
-          <td>${u.rows ?? '—'}</td>
-          <td class="mono">${fmtDate(u.uploaded_at)}</td>
-          <td>${status}</td>
-          <td class="actions">
-            ${deleted
-              ? (u.gridfs_id ? `<button class="btn btn-ghost btn-xs" data-act="restore" data-id="${u._id}">Ripristina</button>` : `<span style="color:var(--muted);font-size:11px">contenuto perso</span>`)
-              : `<button class="btn btn-danger btn-xs" data-act="delete-upload" data-id="${u._id}" data-testid="del-version-${u._id}">Elimina</button>`
-            }
-          </td>
-        </tr>`;
-      }).join('');
-    }catch(e){
-      uploadsBody.innerHTML = `<tr><td colspan="6" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
-    }
-  }
-
-  $('includeDeleted').addEventListener('change', refreshUploads);
-
-  // ──────────────────────────────────────────────────────────────────────
-  // Action delegation
-  document.body.addEventListener('click', async (e) => {
-    // Chiude qualsiasi menu a tendina aperto se il click è fuori da un menu-wrap
-    if (!e.target.closest('.menu-wrap')) {
-      document.querySelectorAll('.menu-dropdown.open').forEach(d => d.classList.remove('open'));
-    }
-    const btn = e.target.closest('button[data-act]');
-    if(!btn) return;
-    const act = btn.dataset.act;
-    const name = btn.dataset.name ? decodeURIComponent(btn.dataset.name) : null;
-    const id = btn.dataset.id || null;
-
-    // Toggle del menu a tendina (Rinomina/Elimina) — gestito subito, non in try/catch
-    if(act === 'toggle-menu'){
-      const dd = btn.nextElementSibling;
-      const wasOpen = dd.classList.contains('open');
-      document.querySelectorAll('.menu-dropdown.open').forEach(d => d.classList.remove('open'));
-      if(!wasOpen) dd.classList.add('open');
-      return;
-    }
-
+  // ─── load pratiche ─────────────────────────────────
+  async function loadPratiche(){
+    $('pratBody').innerHTML = `<tr><td colspan="9"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr>`;
     try {
-      if(act === 'preview' && name){
-        const p = await api('/api/preview/' + encodeURIComponent(name).replace(/%2F/g,'/') + '?max_bytes=16384');
-        $('previewTitle').textContent = name;
-        $('previewSub').textContent = `${p.source.toUpperCase()} · ${fmtSize(p.size)}${p.truncated ? ' · troncato' : ''}`;
-        $('previewBody').textContent = p.content;
-        $('downloadLink').href = apiBase() + '/api/data/' + encodeURIComponent(name).replace(/%2F/g,'/');
-        $('previewModal').classList.add('open');
+      const d = await api(`/api/imprese/pratiche?nome=${encodeURIComponent(nome)}`);
+      PRATICHE = (d.pratiche || []).map(p => ({...p, _codice: buildCodice(p)}));
+      renderPratiche('');
+      await _populateEntiSelect();
+      _setAutoPratica();
+    } catch(e){
+      $('pratBody').innerHTML = `<tr><td colspan="9" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+  $('searchPratiche').addEventListener('input', e => renderPratiche(e.target.value));
+
+  // Popola il select degli enti con tutti i valori unici presenti in Master.csv
+  async function _populateEntiSelect() {
+    const sel = $('new-ente');
+    if (!sel || sel.tagName !== 'SELECT') return;
+    const current = sel.value;
+    let enti = [];
+    try {
+      const d = await api('/api/enti');
+      enti = d.enti || [];
+    } catch (_) {
+      // fallback: enti dalle pratiche dell'impresa
+      enti = [...new Set(
+        PRATICHE.map(p => (p.ENTE || '').trim()).filter(Boolean)
+      )].sort((a, b) => a.localeCompare(b, 'it'));
+    }
+    sel.innerHTML = '<option value="">— seleziona ente —</option>' +
+      enti.map(e => `<option value="${escapeHtml(e)}"${e === current ? ' selected' : ''}>${escapeHtml(e)}</option>`).join('') +
+      '<option value="__altro__">✏ Altro (scrivi manualmente)…</option>';
+  }
+
+  function buildCodice(p) {
+    const tipoMap = {'AUTORIZZAZIONE':'AUT','NULLA OSTA':'NO'};
+    const prefix = tipoMap[(p.TIPO_PERMESSO||'').trim()] || (p.TIPO_PERMESSO||'').trim().substring(0,3);
+    const m = String(p['Source.Name']||'').match(/Lotto\s*([\w\d]+)/i);
+    const lotto = m ? m[1] : '';
+    const prat = String(p.PRATICA||'').trim();
+    if (!prefix || !prat) return '';
+    return `${prefix}/${prat}/${lotto}`;
+  }
+
+  function parseDate(s){
+    // Supports dd/mm/yyyy or yyyy-mm-dd
+    if (!s) return 0;
+    const p = s.split('/');
+    if (p.length === 3) return new Date(p[2], p[1]-1, p[0]).getTime();
+    return new Date(s).getTime() || 0;
+  }
+
+  // Conversione date DD/MM/YYYY (formato CSV) ↔ YYYY-MM-DD (formato input[type=date])
+  function toInputDate(ddmmyyyy) {
+    if (!ddmmyyyy) return '';
+    const p = String(ddmmyyyy).trim().split('/');
+    if (p.length !== 3) return '';
+    return `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
+  }
+  function fromInputDate(yyyymmdd) {
+    if (!yyyymmdd) return '';
+    const p = String(yyyymmdd).trim().split('-');
+    if (p.length !== 3) return '';
+    return `${p[2].padStart(2,'0')}/${p[1].padStart(2,'0')}/${p[0]}`;
+  }
+
+  function renderPratiche(filter){
+    const f = (filter || '').toLowerCase().trim();
+    // Per ogni TRATTA_ID tieni solo la riga con DATA_ULTIMA_MODIFICA più recente
+    const latestMap = new Map();
+    PRATICHE.forEach(p => {
+      const key = p.TRATTA_ID + '|' + p.ENTE + '|' + p.TIPO_PERMESSO;
+      const existing = latestMap.get(key);
+      if (!existing || parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(existing.DATA_ULTIMA_MODIFICA)) {
+        latestMap.set(key, p);
       }
-      else if(act === 'download' && name){
-        window.open(apiBase() + '/api/data/' + encodeURIComponent(name).replace(/%2F/g,'/'), '_blank');
+    });
+    const deduplicated = Array.from(latestMap.values());
+    const rows = deduplicated.filter(p => !f || JSON.stringify(p).toLowerCase().includes(f));
+    if (!rows.length){ $('pratBody').innerHTML = '<tr><td colspan="9" class="empty">Nessuna pratica</td></tr>'; return; }
+    // Salva l'array corrente filtrato per recuperare la riga al click
+    renderPratiche._current = rows.slice(0, 500);
+    $('pratBody').innerHTML = renderPratiche._current.map((p, i) => `
+      <tr data-idx="${i}">
+        <td class="mono" style="font-weight:700;color:var(--accent);background:#f4f6ff;border-left:3px solid var(--accent)">${escapeHtml(p._codice)}</td>
+        <td class="mono">${escapeHtml(p.TRATTA_ID)}</td>
+        <td>${escapeHtml(p.ENTE)}</td>
+        <td>${escapeHtml(p.TIPO_PERMESSO)}</td>
+        <td class="stato-${(p.STATO_PERMESSO||'').replace(/\s+/g,'.')}">${escapeHtml(p.STATO_PERMESSO)}</td>
+        <td class="mono">${escapeHtml(p.DATA_RICHIESTA)}</td>
+        <td class="mono">${escapeHtml(p.DATA_ULTIMA_MODIFICA)}</td>
+        <td class="mono">${escapeHtml(p.DATA_APPROVAZIONE || '—')}</td>
+        <td style="text-align:right;background:#f0fdf4;font-family:'Fira Code',monospace;font-size:11.5px;color:#1F7A4E;font-weight:600;border-left:2px solid #bbf7d0">${escapeHtml(String(p.LUNGHEZZA ?? '—'))}</td>
+      </tr>`).join('');
+  }
+  $('pratBody').addEventListener('click', e => {
+    const tr = e.target.closest('tr[data-idx]');
+    if (!tr) return;
+    document.querySelectorAll('#pratBody tr.selected').forEach(x => x.classList.remove('selected'));
+    tr.classList.add('selected');
+    SELECTED = (renderPratiche._current || [])[+tr.dataset.idx];
+    $('editForm').style.display = '';
+    $('editRowSub').textContent = `${SELECTED._codice || ''} · ${SELECTED.TRATTA_ID} · ${SELECTED.ENTE} · ${SELECTED.TIPO_PERMESSO}`;
+
+    // Popola select stato con le transizioni consentite
+    _populateStatoSelect(SELECTED.STATO_PERMESSO || '');
+
+    // Reset campi condizionali
+    $('fld-data-rich').value = '';
+    $('fld-data-app').value  = '';
+    $('fld-note').value = '';
+    $('fld-note').disabled = true;
+    $('fld-note').style.cssText = 'background:#f8f9fc;color:var(--muted);cursor:not-allowed;resize:none';
+    $('fld-note').placeholder = 'Seleziona prima il nuovo stato…';
+    $('wrap-data-rich').style.display = 'none';
+    $('wrap-data-app').style.display  = 'none';
+
+    // Trova le altre tratte che appartengono alla stessa pratica
+    // (stesso ENTE + TIPO_PERMESSO + numero PRATICA)
+    const pratNum = String(SELECTED.PRATICA || '').trim();
+    const siblingsRaw = pratNum ? PRATICHE.filter(p =>
+      p.TRATTA_ID !== SELECTED.TRATTA_ID &&
+      String(p.ENTE||'').trim() === String(SELECTED.ENTE||'').trim() &&
+      String(p.TIPO_PERMESSO||'').trim() === String(SELECTED.TIPO_PERMESSO||'').trim() &&
+      String(p.PRATICA||'').trim() === pratNum
+    ) : [];
+    // Dedup per TRATTA_ID: tieni solo la riga con DATA_ULTIMA_MODIFICA più recente
+    const siblingsMap = new Map();
+    siblingsRaw.forEach(p => {
+      const existing = siblingsMap.get(p.TRATTA_ID);
+      if (!existing || parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(existing.DATA_ULTIMA_MODIFICA)) {
+        siblingsMap.set(p.TRATTA_ID, p);
       }
-      else if(act === 'rename' && name){
-        openRename(name);
-      }
-      else if(act === 'delete-file' && name){
-        const okDel = await showConfirm('Elimina tutte le versioni', `Eliminare TUTTE le versioni di "${name}"? Verrà servito il file da GitHub se presente.`, 'Elimina tutto', 'btn btn-danger');
-        if(!okDel) return;
-        const res = await api(withTokenQuery('/api/files/' + encodeURIComponent(name).replace(/%2F/g,'/')), { method: 'DELETE', headers: authHeaders() });
-        toast(`Eliminate ${res.deleted_versions} versioni`);
-        refreshAll();
-      }
-      else if(act === 'delete-upload' && id){
-        const okOne = await showConfirm('Elimina versione', 'Eliminare questa singola versione?', 'Elimina', 'btn btn-danger');
-        if(!okOne) return;
-        await api(withTokenQuery('/api/uploads/' + id), { method: 'DELETE', headers: authHeaders() });
-        toast('Versione eliminata');
-        refreshAll();
-      }
-      else if(act === 'restore' && id){
-        await api(withTokenQuery('/api/uploads/' + id + '/restore'), { method: 'POST', headers: authHeaders() });
-        toast('Versione ripristinata');
-        refreshAll();
-      }
-    } catch(err){ toast('Errore: ' + err.message, true); }
+    });
+    SIBLINGS = Array.from(siblingsMap.values());
+
+    const panel = $('siblingsPanel');
+    if (SIBLINGS.length) {
+      $('siblingsList').textContent = `Tratte collegate: ${SIBLINGS.map(s => s.TRATTA_ID).join(', ')} (${SIBLINGS.length + 1} tratte totali in questa pratica)`;
+      $('siblingsToggle').checked = true;
+      panel.style.display = '';
+    } else {
+      panel.style.display = 'none';
+    }
+
+    $('editForm').scrollIntoView({behavior:'smooth', block:'nearest'});
   });
 
-  // ──────────────────────────────────────────────────────────────────────
-  // Rename modal
-  let renameTarget = null;
-  function openRename(name){
-    renameTarget = name;
-    $('renameSub').textContent = name;
-    $('renameInput').value = name;
-    $('renameMsg').className = 'msg';
-    $('renameModal').classList.add('open');
-    $('renameInput').focus();
-  }
-  $('renameClose').onclick = $('renameCancel').onclick = () => $('renameModal').classList.remove('open');
-  $('renameConfirm').onclick = async () => {
-    const newName = $('renameInput').value.trim();
-    if(!newName) return setMsg($('renameMsg'), 'Inserisci un nome', false);
-    try{
-      await api(withTokenQuery('/api/files/' + encodeURIComponent(renameTarget).replace(/%2F/g,'/')), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ new_name: newName }),
-      });
-      $('renameModal').classList.remove('open');
-      toast('Rinominato');
-      refreshAll();
-    }catch(e){ setMsg($('renameMsg'), e.message, false); }
+  $('cancelEditBtn').onclick = () => { $('editForm').style.display = 'none'; $('siblingsPanel').style.display = 'none'; SELECTED = null; SIBLINGS = []; document.querySelectorAll('#pratBody tr.selected').forEach(x => x.classList.remove('selected')); };
+
+  // Mappa delle transizioni consentite per ogni stato
+  const STATO_TRANSITIONS = {
+    'IN REDAZIONE':              ['IN FIRMA RDS', 'NO COMPETENZA'],
+    'IN FIRMA RDS':              ['INVIATO', 'NO COMPETENZA'],
+    'INVIATO':                   ['PROTOCOLLATO', 'NO COMPETENZA'],
+    'PROTOCOLLATO':              ['NECESSARIA INTEGRAZIONE', 'IN REDAZIONE INTEGRAZIONE', 'OTTENUTO', 'NO COMPETENZA'],
+    'NECESSARIA INTEGRAZIONE':   ['IN REDAZIONE INTEGRAZIONE', 'NO COMPETENZA'],
+    'IN REDAZIONE INTEGRAZIONE': ['PROTOCOLLATO INTEGRAZIONE', 'NO COMPETENZA'],
+    'PROTOCOLLATO INTEGRAZIONE': ['NECESSARIA INTEGRAZIONE', 'OTTENUTO', 'NO COMPETENZA'],
+    'OTTENUTO':                  ['NO COMPETENZA'],
+    'NO COMPETENZA':             ['IN REDAZIONE', 'IN FIRMA RDS', 'INVIATO', 'PROTOCOLLATO', 'NECESSARIA INTEGRAZIONE', 'IN REDAZIONE INTEGRAZIONE', 'PROTOCOLLATO INTEGRAZIONE', 'OTTENUTO'],
   };
 
-  // ──────────────────────────────────────────────────────────────────────
+  function _populateStatoSelect(statoCorrente) {
+    const sel = $('fld-stato');
+    const allowed = STATO_TRANSITIONS[statoCorrente.trim()] || Object.keys(STATO_TRANSITIONS);
+    sel.innerHTML = '<option value="">— seleziona stato —</option>' +
+      allowed.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+    sel.value = '';
+    $('fld-stato-hint').textContent = statoCorrente
+      ? `Stato attuale: ${statoCorrente}`
+      : '';
+  }
 
-  // ── Modali generici ────────────────────────────────────────────────────────
+  $('fld-stato').addEventListener('change', function() {
+    const v = this.value;
+    const noteEl = $('fld-note');
+    if (!v) {
+      noteEl.disabled = true;
+      noteEl.style.cssText = 'background:#f8f9fc;color:var(--muted);cursor:not-allowed;resize:none';
+      noteEl.placeholder = 'Seleziona prima il nuovo stato…';
+      $('wrap-data-rich').style.display = 'none';
+      $('wrap-data-app').style.display  = 'none';
+    } else {
+      noteEl.disabled = false;
+      noteEl.style.cssText = '';
+      noteEl.placeholder = 'Note opzionali';
+      $('wrap-data-rich').style.display = (v === 'INVIATO')   ? '' : 'none';
+      $('wrap-data-app').style.display  = (v === 'OTTENUTO')  ? '' : 'none';
+    }
+  });
 
-  // Confirm modal
-  let _confirmResolve = null;
-  function showConfirm(title, msg, okLabel = 'Conferma', okClass = 'btn') {
-    return new Promise(resolve => {
-      _confirmResolve = resolve;
-      $('confirmTitle').textContent = title;
-      $('confirmMsg').textContent   = msg;
-      $('confirmOk').className      = okClass;
-      $('confirmOk').textContent    = okLabel;
-      $('confirmModal').classList.add('open');
+  function _pushToQueue(row, fields) {
+    QUEUE.push({
+      tratta_id: row.TRATTA_ID,
+      ente: row.ENTE,
+      tipo_permesso: row.TIPO_PERMESSO,
+      original_pratica: row.PRATICA || '',
+      lunghezza: row.LUNGHEZZA || '—',
+      fields: { ...fields },
     });
   }
-  $('confirmOk').addEventListener('click', () => {
-    $('confirmModal').classList.remove('open');
-    if (_confirmResolve) { _confirmResolve(true); _confirmResolve = null; }
-  });
-  ['confirmClose','confirmCancel'].forEach(id => {
-    $(id).addEventListener('click', () => {
-      $('confirmModal').classList.remove('open');
-      if (_confirmResolve) { _confirmResolve(false); _confirmResolve = null; }
-    });
-  });
 
-  // Reject modal
-  let _rejectResolve = null;
-  function showReject(sub) {
-    return new Promise(resolve => {
-      _rejectResolve = resolve;
-      $('rejectSub').textContent = `${sub.nome} · ${new Date(sub.submitted_at).toLocaleString('it-IT')}`;
-      $('rejectNote').value = '';
-      $('rejectModal').classList.add('open');
-      setTimeout(() => $('rejectNote').focus(), 100);
-    });
+  function _finalizeAdd(fields, includeSiblings) {
+    _pushToQueue(SELECTED, fields);
+    if (includeSiblings) {
+      SIBLINGS.forEach(s => _pushToQueue(s, fields));
+    }
+    renderQueue();
+    $('editForm').style.display = 'none';
+    $('siblingsPanel').style.display = 'none';
+    document.querySelectorAll('#pratBody tr.selected').forEach(x => x.classList.remove('selected'));
+    const n = includeSiblings ? (1 + SIBLINGS.length) : 1;
+    setMsg($('msgUpd'), n > 1 ? `Aggiunte ${n} tratte alla coda` : `Aggiunto alla coda (${QUEUE.length} modifiche totali)`, true);
   }
-  $('rejectOk').addEventListener('click', () => {
-    const note = $('rejectNote').value.trim();
-    $('rejectModal').classList.remove('open');
-    if (_rejectResolve) { _rejectResolve({ confirmed: true, note }); _rejectResolve = null; }
+
+  // Modale di avviso quando si aggiorna solo una tratta pur avendo altre nella stessa pratica
+  function _showSingleTrattaWarning(fields) {
+    const statoInChanges = 'STATO_PERMESSO' in fields;
+    const overlay = document.createElement('div');
+    overlay.className = 'warn-modal-overlay';
+    if (statoInChanges) {
+      // Cambio di stato: blocco vero — non si può aggiornare solo una tratta
+      overlay.innerHTML = `
+        <div class="warn-modal">
+          <div class="warn-modal-icon">🚫</div>
+          <div class="warn-modal-title">Impossibile aggiornare solo questa tratta</div>
+          <div class="warn-modal-body">
+            Questa pratica include altre <b>${SIBLINGS.length}</b> tratt${SIBLINGS.length===1?'a':'e'}
+            (${SIBLINGS.map(s=>escapeHtml(s.TRATTA_ID)).join(', ')}).
+            Quando si cambia lo <strong>stato</strong> di un permesso, tutte le tratte della stessa pratica
+            devono essere aggiornate insieme, altrimenti lo stato complessivo risulta incoerente.
+            <br><br>Attiva <em>"Aggiorna tutte insieme"</em> prima di procedere.
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn" id="_warnCancel">Capito</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector('#_warnCancel').onclick = () => overlay.remove();
+    } else {
+      // Solo date/note: avviso non bloccante, l'utente può scegliere
+      overlay.innerHTML = `
+        <div class="warn-modal">
+          <div class="warn-modal-icon">⚠️</div>
+          <div class="warn-modal-title">Aggiornare solo questa tratta?</div>
+          <div class="warn-modal-body">
+            Questa pratica include anche <b>${SIBLINGS.length}</b> altr${SIBLINGS.length===1?'a tratta':'e tratte'}
+            (${SIBLINGS.map(s=>escapeHtml(s.TRATTA_ID)).join(', ')}) che non verranno aggiornate.
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-ghost" id="_warnCancel">Annulla</button>
+            <button class="btn" id="_warnConfirm">Procedi solo con questa</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector('#_warnCancel').onclick = () => overlay.remove();
+      overlay.querySelector('#_warnConfirm').onclick = () => { overlay.remove(); _finalizeAdd(fields, false); };
+    }
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  }
+  $('addToQueueBtn').onclick = () => {
+    if (!SELECTED) return;
+    const stato = $('fld-stato').value;
+    if (!stato) return setMsg($('msgUpd'), 'Seleziona il nuovo stato prima di aggiungere alla coda', false);
+
+    const fields = { STATO_PERMESSO: stato };
+
+    if (stato === 'INVIATO') {
+      const dr = $('fld-data-rich').value;
+      if (!dr) return setMsg($('msgUpd'), 'Inserisci la data richiesta per lo stato INVIATO', false);
+      fields.DATA_RICHIESTA = fromInputDate(dr);
+    }
+    if (stato === 'OTTENUTO') {
+      const da = $('fld-data-app').value;
+      if (!da) return setMsg($('msgUpd'), 'Inserisci la data ottenimento per lo stato OTTENUTO', false);
+      fields.DATA_APPROVAZIONE = fromInputDate(da);
+    }
+
+    const noteVal = $('fld-note').value.trim();
+    if (noteVal) fields.NOTE = noteVal;
+
+    const wantsAllTogether = SIBLINGS.length > 0 && $('siblingsToggle').checked;
+    const wantsSingleOnly  = SIBLINGS.length > 0 && !$('siblingsToggle').checked;
+
+    if (wantsSingleOnly) {
+      _showSingleTrattaWarning(fields);
+    } else {
+      _finalizeAdd(fields, wantsAllTogether);
+    }
+  };
+
+  function renderQueue(){
+    if (!QUEUE.length){ $('updateQueue').style.display = 'none'; return; }
+    $('updateQueue').style.display = '';
+    $('qCount').textContent = QUEUE.length;
+    $('queueBody').innerHTML = QUEUE.map((q, i) => `
+      <tr>
+        <td class="mono">${escapeHtml(q.tratta_id)}</td>
+        <td class="mono">${escapeHtml(String(q.lunghezza ?? '—'))}</td>
+        <td>${escapeHtml(q.ente)}</td>
+        <td><span class="mono" style="font-size:11px">${Object.entries(q.fields).map(([k,v]) => `${k}=${escapeHtml(v)}`).join(' · ')}</span></td>
+        <td><button class="btn btn-ghost btn-xs" data-rem="${i}">Rimuovi</button></td>
+      </tr>`).join('');
+  }
+  $('queueBody').addEventListener('click', e => {
+    const b = e.target.closest('button[data-rem]');
+    if (!b) return; QUEUE.splice(+b.dataset.rem, 1); renderQueue();
   });
-  ['rejectClose','rejectCancel'].forEach(id => {
-    $(id).addEventListener('click', () => {
-      $('rejectModal').classList.remove('open');
-      if (_rejectResolve) { _rejectResolve({ confirmed: false }); _rejectResolve = null; }
-    });
+  $('clearQueueBtn').onclick = () => { QUEUE.length = 0; renderQueue(); };
+
+  $('submitUpdatesBtn').onclick = async () => {
+    if (!QUEUE.length) return;
+    const btn = $('submitUpdatesBtn');
+    const originalHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    btn.innerHTML = '<span class="spinner spinner-sm" aria-hidden="true"></span>Invio in corso…';
+    try {
+      const res = await api('/api/imprese/submit', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ nome, type: 'update', changes: QUEUE }),
+      });
+      setMsg($('msgUpd'), `Inviate ${res.count} modifiche per approvazione`, true);
+      QUEUE.length = 0; renderQueue(); loadMine();
+    } catch(e){ setMsg($('msgUpd'), 'Errore: ' + e.message, false); }
+    finally {
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+      btn.innerHTML = originalHTML;
+    }
+  };
+
+  // ─── nuova ─────────────────────────────────────────
+  $('newForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const pratica = String($('new-pratica').value).trim();
+    if (!pratica || isNaN(parseInt(pratica))) return setMsg($('msgNew'), 'Il numero progressivo pratica è obbligatorio', false);
+    const row = {
+      "Source.Name": $('new-lotto').value,
+      "TRATTA_ID": $('new-tratta').value.trim(),
+      "ENTE": ($('new-ente').value === '__altro__'
+               ? ($('new-ente-custom') ? $('new-ente-custom').value.trim() : '')
+               : $('new-ente').value.trim()),
+      "TIPO_PERMESSO": $('new-tipo').value,
+      "STATO_PERMESSO": "IN REDAZIONE",
+      "DATA_RICHIESTA": fromInputDate($('new-data-rich').value),
+      "DATA_ULTIMA_MODIFICA": new Date().toLocaleDateString('it-IT'),
+      "DATA_APPROVAZIONE": "",
+      "NULLA OSTA NECESSARIO": $('new-no-nec').value,
+      "ORDINANZA NECESSARIA": $('new-ord-nec').value,
+      "CONVENZIONE": $('new-convenzione').value,
+      "POLIZZA ": $('new-polizza').value,
+      "LUNGHEZZA": $('new-lunghezza').value.trim(),
+      "PRATICA": pratica,
+      "N_SED": $('new-nsed').value.trim(),
+      "NOTE": $('new-note').value.trim(),
+    };
+    const originalHTML = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.setAttribute('aria-busy', 'true');
+      submitBtn.innerHTML = '<span class="spinner spinner-sm" aria-hidden="true"></span>Invio in corso…';
+    }
+    try {
+      const res = await api('/api/imprese/submit', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ nome, type: 'new', changes: [row] }),
+      });
+      setMsg($('msgNew'), `Inviata 1 nuova pratica per approvazione (ID ${res.id.slice(-8)})`, true);
+      $('newForm').reset();
+      loadMine();
+    } catch(e){ setMsg($('msgNew'), 'Errore: ' + e.message, false); }
+    finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.removeAttribute('aria-busy');
+        submitBtn.innerHTML = originalHTML;
+      }
+    }
   });
 
-  // Details modal
-  function showDetails(s) {
-    const typeLabel = s.type === 'update' ? 'Aggiornamento' : 'Nuova pratica';
-    $('detailsTitle').textContent = `${typeLabel} — ${s.nome}`;
-    const statusColor = {pending:'#f59e0b',approved:'#10b981',rejected:'#ef4444'}[s.status]||'#6b7280';
-    $('detailsSub').innerHTML = `Inviato: ${new Date(s.submitted_at).toLocaleString('it-IT')}  <span style="display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:600;background:${statusColor}22;color:${statusColor}">${s.status}</span>`;
+  // ─── le mie ────────────────────────────────────────
+  async function loadMine(){
+    try {
+      const d = await api(`/api/imprese/my-submissions?nome=${encodeURIComponent(nome)}`);
+      if (!d.submissions || !d.submissions.length){ $('mineBody').innerHTML = '<tr><td colspan="5" class="empty">Nessuna submission ancora</td></tr>'; return; }
+      $('mineBody').innerHTML = d.submissions.map(s => {
+        const payload = JSON.stringify(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const nMod = (s.changes||[]).length;
+        return `<tr data-sub="${payload}" style="cursor:pointer" title="Clicca per vedere i dettagli">
+          <td class="mono">${new Date(s.submitted_at).toLocaleString('it-IT')}</td>
+          <td>${s.type === 'update' ? 'Aggiornamento' : 'Nuova pratica'}</td>
+          <td>${nMod === 1 ? '1 modifica' : nMod + ' modifiche'}</td>
+          <td><span class="tag ${s.status}">${s.status}</span></td>
+          <td>${escapeHtml(s.reviewed_note || s.note || '')}</td>
+        </tr>`;
+      }).join('');
+    } catch(e){ $('mineBody').innerHTML = `<tr><td colspan="5" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`; }
+  }
+  $('refreshMineBtn').onclick = loadMine;
+
+  // Preview codice pratica — si aggiorna al cambio di tipo, lotto e numero
+  function _updatePraticaPreview() {
+    const tipoMap = {'AUTORIZZAZIONE':'AUT','NULLA OSTA':'NO'};
+    const tipo   = $('new-tipo').value;
+    const prefix = tipoMap[tipo] || '—';
+    // Estrai la sigla lotto da "Lotto 2A.xlsx" → "2A"
+    const lottoVal = $('new-lotto').value || '';
+    const m = lottoVal.match(/Lotto\s*([\w\d]+)/i);
+    const lotto = m ? m[1] : (lottoVal.replace('.xlsx','').replace('Lotto','').trim() || '—');
+    const num   = $('new-pratica').value || '—';
+    $('new-pratica-prefix').textContent = prefix + '/';
+    $('new-pratica-suffix').textContent = '/' + lotto;
+    const preview = $('new-pratica-preview');
+    if (prefix !== '—' && lotto !== '—' && num !== '—') {
+      preview.textContent = '→ ' + prefix + '/' + num + '/' + lotto;
+      preview.style.opacity = '1';
+    } else {
+      preview.textContent = '';
+    }
+  }
+  // Calcola e imposta automaticamente il prossimo numero progressivo
+  // (ultimo PRATICA esistente per il lotto selezionato + 1)
+  function _setAutoPratica() {
+    const lottoVal = $('new-lotto').value || '';
+    const nums = PRATICHE
+      .filter(p => String(p['Source.Name']||'').trim() === lottoVal)
+      .map(p => parseInt(String(p.PRATICA||'').trim(), 10))
+      .filter(n => !isNaN(n));
+    $('new-pratica').value = nums.length ? Math.max(...nums) + 1 : 1;
+    _updatePraticaPreview();
+  }
+  $('new-tipo').addEventListener('change',  _updatePraticaPreview);
+  $('new-lotto').addEventListener('change', _setAutoPratica);
+  // Inizializza al caricamento
+  _updatePraticaPreview();
+
+  // Campo libero per "Altro" ente
+  $('new-ente').addEventListener('change', function() {
+    let custom = $('new-ente-custom');
+    if (this.value === '__altro__') {
+      if (!custom) {
+        custom = document.createElement('input');
+        custom.type = 'text';
+        custom.id = 'new-ente-custom';
+        custom.placeholder = 'Scrivi il nome dell\'ente…';
+        custom.style.marginTop = '6px';
+        custom.required = true;
+        this.parentNode.appendChild(custom);
+        custom.focus();
+      }
+    } else {
+      if (custom) { custom.remove(); }
+    }
+  });
+
+  // Click su riga submission → mostra dettagli
+  $('mineBody').addEventListener('click', e => {
+    const tr = e.target.closest('tr[data-sub]');
+    if (!tr) return;
+    try {
+      const s = JSON.parse(tr.dataset.sub.replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>'));
+      showSubDetail(s);
+    } catch(_) {}
+  });
+
+  function showSubDetail(s) {
     const fieldLabels = {
       STATO_PERMESSO:'Nuovo stato', DATA_RICHIESTA:'Data richiesta',
       DATA_APPROVAZIONE:'Data approvazione', PRATICA:'Pratica', NOTE:'Note',
       DATA_ULTIMA_MODIFICA:'Ultima modifica'
     };
-    const changesHtml = (s.changes || []).map(c => {
+    const statusColor = {pending:'#f59e0b',approved:'#10b981',rejected:'#ef4444'}[s.status]||'#6b7280';
+    const typeLabel = s.type === 'update' ? 'Aggiornamento' : 'Nuova pratica';
+    const nMod = (s.changes||[]).length;
+
+    const changesHtml = (s.changes||[]).map(c => {
       const tratta = c.tratta_id || c.TRATTA_ID || '—';
       const ente   = c.ente   || c.ENTE   || '';
       const tipo   = c.tipo_permesso || c.TIPO_PERMESSO || '';
       const fields = c.fields || {};
-      const colonne = Object.entries(fields).map(([k,v]) => `
-        <div class="detail-field">
-          <span class="detail-field-key">${escapeHtml(fieldLabels[k]||k)}</span>
-          <span class="detail-field-val">${escapeHtml(String(v||'—'))}</span>
+      const cols   = Object.entries(fields).map(([k,v]) => `
+        <div class="sub-field">
+          <span class="sub-field-key">${escapeHtml(fieldLabels[k]||k)}</span>
+          <span class="sub-field-val">${escapeHtml(String(v||'—'))}</span>
         </div>`).join('');
-      return `
-        <div class="detail-change">
-          <div class="detail-change-header">
-            Tratta ${escapeHtml(tratta)}
-            ${ente ? `<span style="font-weight:400;color:var(--muted)"> · ${escapeHtml(ente)}</span>` : ''}
-            ${tipo ? `<span style="font-weight:400;color:var(--muted)"> · ${escapeHtml(tipo)}</span>` : ''}
-          </div>
-          ${colonne||'<span style="color:var(--muted);font-size:11px">Nessun campo modificato</span>'}
-        </div>`;
+      return `<div class="sub-change">
+        <div class="sub-change-header">
+          <span style="font-family:'Fira Code',monospace">${escapeHtml(tratta)}</span>
+          ${ente ? `<span style="color:#6b7280;font-weight:400;font-size:11px">${escapeHtml(ente)}</span>` : ''}
+          ${tipo ? `<span style="padding:1px 7px;border-radius:20px;font-size:10px;font-weight:600;background:#eff6ff;color:#3b82f6">${escapeHtml(tipo)}</span>` : ''}
+        </div>
+        ${cols||'<span style="color:var(--muted);font-size:11px">Nessun campo</span>'}
+      </div>`;
     }).join('');
-    let summaryHtml = '';
-    if (s.summary) {
-      summaryHtml = `<div class="detail-section" style="margin-top:12px">
-        <div class="detail-label">Risultato approvazione</div>
-        <div style="font-size:12px;color:#374151">
-          ${s.summary.updated||0} aggiornate · ${s.summary.added||0} aggiunte · ${s.summary.not_found||0} non trovate
-        </div></div>`;
-    }
-    $('detailsBody').innerHTML = `
-      <div class="detail-section">
-        <div class="detail-label">${(s.changes||[]).length} modifica/he</div>
-        ${changesHtml}
-      </div>${summaryHtml}`;
-    $('detailsModal').classList.add('open');
-  }
-  $('detailsClose').addEventListener('click', () => $('detailsModal').classList.remove('open'));
 
-  // Preview modal close
-  $('previewClose').onclick = () => $('previewModal').classList.remove('open');
-  document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => {
-    if(e.target === m) m.classList.remove('open');
-  }));
+    const noteHtml = (s.reviewed_note||s.note) ? `
+      <div style="margin-top:12px">
+        <div class="sub-section-label">Note revisione</div>
+        <div style="background:#fff7ed;border-radius:8px;padding:10px 12px;font-size:12px;color:#92400e">${escapeHtml(s.reviewed_note||s.note)}</div>
+      </div>` : '';
 
-  // ──────────────────────────────────────────────────────────────────────
-  // Upload form
-  dz.addEventListener('click', () => fileInput.click());
-  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
-  dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
-  dz.addEventListener('drop', e => {
-    e.preventDefault(); dz.classList.remove('drag');
-    if(e.dataTransfer.files.length){ droppedFile = e.dataTransfer.files[0]; updateName(); }
-  });
-  fileInput.addEventListener('change', () => { droppedFile = null; updateName(); });
-  function updateName(){
-    const f = droppedFile || fileInput.files[0];
-    fileName.textContent = f ? `${f.name} — ${fmtSize(f.size)}` : '.xlsx, .xls, .csv, .geojson, .json — max 25 MB';
-  }
-
-  form.addEventListener('submit', async e => {
-    e.preventDefault();
-    msg.className = 'msg';
-    if(!apiBase()) return setMsg(msg, "Imposta l'API endpoint", false);
-    const f = droppedFile || fileInput.files[0];
-    if(!f) return setMsg(msg, 'Seleziona un file', false);
-
-    const fd = new FormData();
-    fd.append('file', f);
-    fd.append('project', $('project').value);
-    if($('target').value.trim()) fd.append('target', $('target').value.trim());
-    if(token()) fd.append('token', token());
-
-    submitBtn.disabled = true; submitBtn.textContent = 'Caricamento…';
-    try{
-      const r = await fetch(apiBase() + '/api/upload', { method: 'POST', body: fd });
-      const data = await r.json();
-      if(!r.ok) throw new Error(data.detail || ('HTTP ' + r.status));
-      setMsg(msg, `Caricato: ${data.filename} (${fmtSize(data.size)}${data.rows ? ', '+data.rows+' righe' : ''})`, true);
-      fileInput.value = ''; droppedFile = null; updateName();
-      refreshAll();
-    }catch(err){
-      setMsg(msg, 'Errore: ' + err.message, false);
-    }finally{
-      submitBtn.disabled = false; submitBtn.textContent = 'Carica';
-    }
-  });
-
-  // ──────────────────────────────────────────────────────────────────────
-  // Pending submissions (impresa approval queue)
-  async function refreshPending(){
-    if(!apiBase()){ $('pendingBody').innerHTML = '<tr><td colspan="7" class="empty">Imposta API endpoint</td></tr>'; return; }
-    try{
-      const status = $('pendingFilter').value;
-      const d = await api(withTokenQuery('/api/admin/pending-updates?status=' + encodeURIComponent(status)));
-      if(!d.submissions || !d.submissions.length){
-        $('pendingBody').innerHTML = '<tr><td colspan="7" class="empty">Nessuna submission</td></tr>';
-        updatePendingBadge(0);
-        return;
-      }
-      $('pendingBody').innerHTML = d.submissions.map(s => {
-        const preview = (s.changes || []).slice(0, 2).map(c => {
-          if (s.type === 'update') return `${escapeHtml(c.tratta_id||'')} · ${Object.keys(c.fields||{}).join(',')}`;
-          return `${escapeHtml(c.TRATTA_ID||c['TRATTA_ID']||'')}/${escapeHtml(c.ENTE||'')}`;
-        }).join(' ; ') + ((s.changes||[]).length > 2 ? ` (+${s.changes.length - 2})` : '');
-        const statusTag = `<span class="tag" style="background:${s.status==='pending'?'#FEF3C7':s.status==='approved'?'#EBFBEE':'#FEE2E2'};color:${s.status==='pending'?'#B45309':s.status==='approved'?'#2B8A3E':'#B91C1C'};text-transform:uppercase;font-size:10px;font-weight:700;padding:3px 8px;border-radius:5px">${s.status}</span>`;
-        return `
-        <tr style="${s.type==='new'
-            ? 'border-left:3px solid #10b981'
-            : 'border-left:3px solid #3b82f6'}">
-          <td class="mono">${fmtDate(s.submitted_at)}</td>
-          <td>${escapeHtml(s.nome)}</td>
-          <td>${s.type==='update'
-            ? '<span style="color:#1d4ed8;font-weight:600;font-size:12px">&#8635; Aggiornamento</span>'
-            : '<span style="color:#059669;font-weight:600;font-size:12px">&#43; Nuova tratta</span>'
-          }</td>
-          <td>${(s.changes||[]).length}</td>
-          <td class="mono" style="font-size:11px">${preview}</td>
-          <td>${statusTag}</td>
-          <td class="actions">
-            ${s.status === 'pending' ? `
-              <button class="btn btn-xs" data-act="approve" data-id="${s._id}" style="background:var(--ok)" data-testid="approve-${s._id}">Approva</button>
-              <button class="btn btn-danger btn-xs" data-act="reject" data-id="${s._id}" data-testid="reject-${s._id}">Rifiuta</button>
-            ` : ''}
-            <button class="btn btn-ghost btn-xs" data-act="details" data-payload='${escapeHtml(JSON.stringify(s))}'>Dettagli</button>
-          </td>
-        </tr>`;
-      }).join('');
-      if(status === 'pending') updatePendingBadge(d.count);
-    }catch(e){
-      $('pendingBody').innerHTML = `<tr><td colspan="7" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
+    const overlay = document.createElement('div');
+    overlay.className = 'sub-modal-overlay';
+    overlay.innerHTML = `
+      <div class="sub-modal">
+        <div class="sub-modal-head">
+          <div>
+            <div class="sub-modal-title">${typeLabel}</div>
+            <div class="sub-modal-sub">
+              ${new Date(s.submitted_at).toLocaleString('it-IT')}
+              &nbsp;<span style="display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:600;background:${statusColor}22;color:${statusColor}">${s.status}</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            ${s.status === 'pending' ? `<button id="_subDelete" style="padding:4px 12px;border-radius:6px;border:1px solid #ef4444;background:transparent;color:#ef4444;font-size:12px;cursor:pointer;font-weight:600">🗑 Elimina richiesta</button>` : ''}
+            <button class="sub-modal-close" id="_subClose" aria-label="Chiudi" title="Chiudi">&times;</button>
+          </div>
+        </div>
+        <div class="sub-modal-body">
+          <div class="sub-section-label">${nMod === 1 ? '1 modifica' : nMod + ' modifiche'}</div>
+          ${changesHtml}
+          ${noteHtml}
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#_subClose').onclick = () => overlay.remove();
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    if (s.status === 'pending') {
+      overlay.querySelector('#_subDelete').onclick = async () => {
+        if (!confirm('Eliminare questa richiesta? L\'operazione non è reversibile.')) return;
+        try {
+          await api(`/api/imprese/submissions/${s._id}?nome=${encodeURIComponent(nome)}`, { method: 'DELETE' });
+          overlay.remove();
+          await loadMine();
+        } catch(e) { alert('Errore: ' + e.message); }
+      };
     }
   }
-  function updatePendingBadge(n){
-    const b = $('pendingBadge');
-    if(n > 0){ b.style.display = 'inline-block'; b.textContent = n; }
-    else b.style.display = 'none';
-  }
-  $('pendingFilter').addEventListener('change', refreshPending);
-  $('refreshPendingBtn').addEventListener('click', refreshPending);
-
-  // Pending actions
-  document.body.addEventListener('click', async (e) => {
-    const btn = e.target.closest('button[data-act]');
-    if(!btn) return;
-    const act = btn.dataset.act;
-    if(act === 'approve' && btn.dataset.id){
-      const ok = await showConfirm('Approva submission', 'Applicare le modifiche a Master.csv? Verrà creata una nuova versione.', 'Approva', 'btn');
-      if(!ok) return;
-      try{
-        const r = await api(withTokenQuery('/api/admin/pending-updates/' + btn.dataset.id + '/approve'), { method: 'POST', headers: authHeaders() });
-        refreshPending(); refreshFiles(); refreshUploads(); refreshPendingCount();
-        const s = r.summary || {};
-        toast(`Approvato: ${s.updated ?? 0} aggiornate, ${s.added ?? 0} aggiunte, ${s.not_found ?? 0} non trovate`);
-      }catch(err){
-        toast('Errore: ' + err.message, true);
-        refreshPending(); refreshPendingCount(); // anche in errore, lo stato potrebbe essere già cambiato lato server
-      }
-    } else if(act === 'reject' && btn.dataset.id){
-      const sub = JSON.parse(btn.closest('tr').querySelector('[data-act="details"]').dataset.payload.replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>'));
-      const res = await showReject(sub);
-      if(!res.confirmed) return;
-      try{
-        await api(withTokenQuery('/api/admin/pending-updates/' + btn.dataset.id + '/reject'), { method: 'POST', headers: { 'Content-Type':'application/json', ...authHeaders() }, body: JSON.stringify({ note: res.note }) });
-        refreshPending(); refreshPendingCount();
-        toast('Rifiutato');
-      }catch(err){
-        toast('Errore: ' + err.message, true);
-        refreshPending(); refreshPendingCount();
-      }
-    } else if(act === 'details' && btn.dataset.payload){
-      try { showDetails(JSON.parse(btn.dataset.payload.replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>'))); } catch(_){}
-    }
-  });
-
-  // ──────────────────────────────────────────────────────────────────────
-  // Assignments management
-  async function refreshAssignments(){
-    if(!apiBase()){ $('assignBody').innerHTML = '<tr><td colspan="4" class="empty">Imposta API endpoint</td></tr>'; return; }
-    try{
-      const d = await api(withTokenQuery('/api/admin/assignments'));
-      if(!d.assignments || !d.assignments.length){
-        $('assignBody').innerHTML = '<tr><td colspan="4" class="empty">Nessuna impresa assegnata</td></tr>';
-        return;
-      }
-      $('assignBody').innerHTML = d.assignments.map(a => `
-        <tr>
-          <td>${escapeHtml(a.nome)}</td>
-          <td><span class="mono" style="font-size:11px">${(a.lotti||[]).map(escapeHtml).join(' · ')}</span></td>
-          <td>${a.active !== false ? '<span class="tag" style="background:#EBFBEE;color:#2B8A3E;padding:3px 8px;border-radius:5px;font-size:10px;font-weight:700">SÌ</span>' : '<span class="tag" style="background:#FEE2E2;color:#B91C1C;padding:3px 8px;border-radius:5px;font-size:10px;font-weight:700">NO</span>'}</td>
-          <td class="actions">
-            <button class="btn btn-ghost btn-xs" data-act="assign-edit" data-nome="${escapeHtml(a.nome)}" data-lotti="${escapeHtml((a.lotti||[]).join(', '))}" data-active="${a.active !== false}">Modifica</button>
-            <button class="btn btn-danger btn-xs" data-act="assign-del" data-nome="${escapeHtml(a.nome)}" data-testid="del-assign-${cssId(a.nome)}">Elimina</button>
-          </td>
-        </tr>`).join('');
-    }catch(e){
-      $('assignBody').innerHTML = `<tr><td colspan="4" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
-    }
-  }
-
-  $('newAssignBtn').addEventListener('click', async () => {
-    const nome = $('newAssignNome').value.trim();
-    const lottiRaw = $('newAssignLotti').value.trim();
-    if(!nome) return setMsg($('assignMsg'), 'Inserisci il nome impresa', false);
-    const lotti = lottiRaw.split(',').map(s => s.trim()).filter(Boolean);
-    try{
-      await api(withTokenQuery('/api/admin/assignments/' + encodeURIComponent(nome)), {
-        method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ lotti, active: true }),
-      });
-      $('newAssignNome').value = ''; $('newAssignLotti').value = '';
-      setMsg($('assignMsg'), 'Assegnazione salvata', true);
-      refreshAssignments();
-    }catch(e){ setMsg($('assignMsg'), 'Errore: ' + e.message, false); }
-  });
-
-  document.body.addEventListener('click', async (e) => {
-    const btn = e.target.closest('button[data-act^="assign-"]');
-    if(!btn) return;
-    if(btn.dataset.act === 'assign-edit'){
-      $('newAssignNome').value = btn.dataset.nome;
-      $('newAssignLotti').value = btn.dataset.lotti;
-      $('newAssignNome').scrollIntoView({behavior:'smooth', block:'center'});
-    } else if(btn.dataset.act === 'assign-del'){
-      const okAssign = await showConfirm('Elimina assegnazione', `Eliminare l'assegnazione di "${btn.dataset.nome}"?`, 'Elimina', 'btn btn-danger');
-      if(!okAssign) return;
-      try{
-        await api(withTokenQuery('/api/admin/assignments/' + encodeURIComponent(btn.dataset.nome)), { method: 'DELETE', headers: authHeaders() });
-        toast('Eliminato'); refreshAssignments();
-      }catch(err){ toast('Errore: ' + err.message, true); }
-    }
-  });
-
-  // Auto-refresh pending count every 60s
-  setInterval(() => { if($('apiStatus').textContent.startsWith('OK')) refreshPendingCount(); }, 60000);
-  async function refreshPendingCount(){
-    try{ const d = await api(withTokenQuery('/api/admin/pending-updates?status=pending&limit=1')); updatePendingBadge(d.count); }catch(_){}
-  }
-
-  // ──────────────────────────────────────────────────────────────────────
-  // Toast (reusing msg banner)
-  function toast(text, isErr){
-    setMsg(msg, text, !isErr);
-    setTimeout(() => { msg.className = 'msg'; }, 4000);
-  }
-
-  // ──────────────────────────────────────────────────────────────────────
-  // Utils
-  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-  function cssId(s){ return String(s).replace(/[^a-zA-Z0-9]/g, '-'); }
-
-  function refreshAll(){ refreshStatus(); refreshFiles(); refreshUploads(); refreshPendingCount(); }
-  refreshAll();
 })();
 </script>
 </body>
