@@ -419,15 +419,21 @@
   }
   $('searchPratiche').addEventListener('input', e => renderPratiche(e.target.value));
 
-  // Popola il select degli enti con i valori unici presenti nelle pratiche
-  function _populateEntiSelect() {
+  // Popola il select degli enti con tutti i valori unici presenti in Master.csv
+  async function _populateEntiSelect() {
     const sel = $('new-ente');
     if (!sel || sel.tagName !== 'SELECT') return;
     const current = sel.value;
-    // Raccoglie enti unici, ordinati alfabeticamente, escludendo vuoti
-    const enti = [...new Set(
-      PRATICHE.map(p => (p.ENTE || '').trim()).filter(Boolean)
-    )].sort((a, b) => a.localeCompare(b, 'it'));
+    let enti = [];
+    try {
+      const d = await api('/api/enti');
+      enti = d.enti || [];
+    } catch (_) {
+      // fallback: enti dalle pratiche dell'impresa
+      enti = [...new Set(
+        PRATICHE.map(p => (p.ENTE || '').trim()).filter(Boolean)
+      )].sort((a, b) => a.localeCompare(b, 'it'));
+    }
     sel.innerHTML = '<option value="">— seleziona ente —</option>' +
       enti.map(e => `<option value="${escapeHtml(e)}"${e === current ? ' selected' : ''}>${escapeHtml(e)}</option>`).join('') +
       '<option value="__altro__">✏ Altro (scrivi manualmente)…</option>';
