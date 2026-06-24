@@ -199,7 +199,7 @@
       <div id="updateQueue" style="margin-top:14px;display:none">
         <div style="font-weight:700;font-size:13px;margin-bottom:8px">Modifiche in coda da inviare (<span id="qCount">0</span>)</div>
         <table>
-          <thead><tr><th>Tratta</th><th>Ente</th><th>Modifiche</th><th></th></tr></thead>
+          <thead><tr><th>Tratta</th><th>Lunghezza</th><th>Ente</th><th>Modifiche</th><th></th></tr></thead>
           <tbody id="queueBody"></tbody>
         </table>
         <div style="margin-top:12px;display:flex;justify-content:flex-end;gap:10px">
@@ -411,7 +411,7 @@
       const d = await api(`/api/imprese/pratiche?nome=${encodeURIComponent(nome)}`);
       PRATICHE = (d.pratiche || []).map(p => ({...p, _codice: buildCodice(p)}));
       renderPratiche('');
-      _populateEntiSelect();
+      await _populateEntiSelect();
       _setAutoPratica();
     } catch(e){
       $('pratBody').innerHTML = `<tr><td colspan="7" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
@@ -552,6 +552,7 @@
       ente: row.ENTE,
       tipo_permesso: row.TIPO_PERMESSO,
       original_pratica: row.PRATICA || '',
+      lunghezza: row.LUNGHEZZA || '—',
       fields: { ...fields },
     });
   }
@@ -641,6 +642,7 @@
     $('queueBody').innerHTML = QUEUE.map((q, i) => `
       <tr>
         <td class="mono">${escapeHtml(q.tratta_id)}</td>
+        <td class="mono">${escapeHtml(String(q.lunghezza ?? '—'))}</td>
         <td>${escapeHtml(q.ente)}</td>
         <td><span class="mono" style="font-size:11px">${Object.entries(q.fields).map(([k,v]) => `${k}=${escapeHtml(v)}`).join(' · ')}</span></td>
         <td><button class="btn btn-ghost btn-xs" data-rem="${i}">Rimuovi</button></td>
