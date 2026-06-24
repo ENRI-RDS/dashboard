@@ -72,6 +72,7 @@ db = client[DB_NAME]
 uploads_col = db["uploads"]
 assignments_col = db["assignments"]            # impresa nome -> {lotti: [...]}
 pending_col = db["pending_updates"]            # submissions from imprese pending admin review
+solleciti_col = db["solleciti"]                # registro solleciti per tratta/pratica
 gridfs = AsyncIOMotorGridFSBucket(db, bucket_name="files")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -744,6 +745,7 @@ GITHUB_PATHS: dict = {
     "Master.csv":                  GITHUB_CSV_PATH,
     "Riepilogo_progettazione.csv": os.environ.get("GITHUB_RIEPILOGO_PATH", "Riepilogo_progettazione.csv"),
     "QGIS.geojson":                os.environ.get("GITHUB_QGIS_PATH", "QGIS.geojson"),
+    "solleciti.csv":               os.environ.get("GITHUB_SOLLECITI_PATH", "solleciti.csv"),
 }
 
 
@@ -1416,3 +1418,112 @@ async def reject_pending(
     if res.matched_count == 0:
         raise HTTPException(404, "Submission not found or not pending")
     return {"ok": True}
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SOLLECITI — registro solleciti per tratta/pratica
+# ─────────────────────────────────────────────────────────────────────────────
+# Ogni sollecito viene scritto direttamente su MongoDB (senza approvazione admin)
+# e il CSV solleciti.csv viene sincronizzato su GitHub dopo ogni inserimento.
+# ═════════════════════════════════════════════════════════════════════════════
+
+SOLLECITI_COLS = ["_id", "tratta_id", "pratica", "tipo_sollecito", "data_sollecito", "note", "impresa", "created_at"]
+
+
+async def _build_solleciti_csv() -> bytes:
+    """Legge tutti i solleciti da MongoDB e genera un CSV con separatore ;"""
+    cols = ["tratta_id", "pratica", "tipo_sollecito", "data_sollecito", "note", "impresa", "created_at"]
+    rows = []
+    async for d in solleciti_col.find({}).sort("created_at", -1):
+        rows.append({c: str(d.get(c, "") or "") for c in cols})
+    df = pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)
+    buf = io.StringIO()
+    df.to_csv(buf, index=False, sep=";")
+    return buf.getvalue().encode("utf-8")
+
+
+async def _push_solleciti_to_github() -> None:
+    """Rigenera solleciti.csv e lo pusha su GitHub."""
+    try:
+        data = await _build_solleciti_csv()
+        await _push_to_github(data, path=GITHUB_PATHS["solleciti.csv"], label="solleciti.csv")
+    except Exception as e:
+        print(f"[GitHub] _push_solleciti: {e}")
+
+
+@app.get("/api/imprese/solleciti")
+async def get_solleciti(sess: dict = Depends(_require_session)):
+    """Restituisce i solleciti dell'impresa autenticata, filtrati per le tratte dei suoi lotti."""
+    nome = sess["nome"]
+    # Recupera i lotti assegnati
+    assignment = await _find_assignment(nome)
+    if not assignment:
+        return {"solleciti": [], "count": 0}
+    lotti = [str(l) for l in (assignment.get("lotti") or [])]
+
+    # Legge le tratte dei lotti dell'impresa dal Master.csv
+    try:
+        df = await _read_master_csv()
+        tratte_impresa: set[str] = set()
+        for lotto in lotti:
+            mask = df["Source.Name"].astype(str).str.contains(lotto, case=False, na=False)
+            tratte_impresa.update(df.loc[mask, "TRATTA_ID"].astype(str).str.strip().tolist())
+    except Exception:
+        tratte_impresa = set()
+
+    cur = solleciti_col.find(
+        {"tratta_id": {"$in": list(tratte_impresa)}} if tratte_impresa else {"impresa": nome}
+    ).sort("created_at", -1).limit(500)
+    items = []
+    async for d in cur:
+        d["_id"] = str(d["_id"])
+        items.append(d)
+    return {"solleciti": items, "count": len(items)}
+
+
+@app.post("/api/imprese/solleciti")
+async def add_sollecito(payload: dict, sess: dict = Depends(_require_session)):
+    """Inserisce un nuovo sollecito. Scrittura diretta senza approvazione admin."""
+    nome = sess["nome"]
+    tratta_id    = str((payload or {}).get("tratta_id", "")).strip()
+    pratica      = str((payload or {}).get("pratica", "")).strip()
+    tipo         = str((payload or {}).get("tipo_sollecito", "")).strip()
+    data_sol     = str((payload or {}).get("data_sollecito", "")).strip()
+    note         = str((payload or {}).get("note", "")).strip()
+
+    if not tratta_id:
+        raise HTTPException(400, "tratta_id obbligatorio")
+    if tipo not in ("PEC", "MAIL", "TELEFONICO"):
+        raise HTTPException(400, "tipo_sollecito deve essere PEC, MAIL o TELEFONICO")
+    if not data_sol:
+        raise HTTPException(400, "data_sollecito obbligatoria")
+
+    record = {
+        "tratta_id":     tratta_id,
+        "pratica":       pratica,
+        "tipo_sollecito": tipo,
+        "data_sollecito": data_sol,
+        "note":          note,
+        "impresa":       nome,
+        "created_at":    _now_iso(),
+    }
+    res = await solleciti_col.insert_one(record)
+    asyncio.create_task(_push_solleciti_to_github())
+    return {"ok": True, "id": str(res.inserted_id)}
+
+
+@app.delete("/api/imprese/solleciti/{sol_id}")
+async def delete_sollecito(sol_id: str, sess: dict = Depends(_require_session)):
+    """L'impresa può eliminare solo i propri solleciti."""
+    try:
+        oid = ObjectId(sol_id)
+    except Exception:
+        raise HTTPException(400, "ID non valido")
+    doc = await solleciti_col.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Sollecito non trovato")
+    if doc.get("impresa") != sess["nome"]:
+        raise HTTPException(403, "Non autorizzato")
+    await solleciti_col.delete_one({"_id": oid})
+    asyncio.create_task(_push_solleciti_to_github())
+    return {"deleted": sol_id}
