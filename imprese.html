@@ -321,13 +321,19 @@
 
       <!-- Tabella solleciti -->
       <div style="font-weight:700;font-size:13px;margin-bottom:8px">Storico solleciti</div>
-      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+        <div class="search" style="flex:1;margin-bottom:0"><input type="text" id="searchSolleciti" placeholder="Cerca per codice, tratta, ente, stato, tipo sollecito…"></div>
         <button class="btn btn-ghost btn-xs" id="sol-refresh">Aggiorna</button>
       </div>
       <div class="scroll">
         <table>
-          <thead><tr><th>Data</th><th>Tratta</th><th>Pratica</th><th>Tipo</th><th>Note</th><th></th></tr></thead>
-          <tbody id="solBody"><tr><td colspan="6" class="empty">—</td></tr></tbody>
+          <thead><tr>
+            <th>Pratica</th><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th>
+            <th>Data richiesta</th><th>Data agg.</th><th>Data ottenimento</th>
+            <th style="text-align:right">Lung. (m)</th>
+            <th>Tipo sollecito</th><th>Data sollecito</th><th>Note sollecito</th><th></th>
+          </tr></thead>
+          <tbody id="solBody"><tr><td colspan="13" class="empty">—</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -1002,36 +1008,90 @@
       tratte.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
   }
 
+  // Modale di conferma generico (stesso stile di warn-modal usato sopra)
+  function showConfirm(title, msg, okLabel, okStyle) {
+    return new Promise(resolve => {
+      const overlay = document.createElement('div');
+      overlay.className = 'warn-modal-overlay';
+      overlay.innerHTML = `
+        <div class="warn-modal">
+          <div class="warn-modal-icon">⚠️</div>
+          <div class="warn-modal-title">${escapeHtml(title)}</div>
+          <div class="warn-modal-body">${escapeHtml(msg)}</div>
+          <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-ghost" id="_confCancel">Annulla</button>
+            <button class="btn" id="_confOk" style="${okStyle || ''}">${escapeHtml(okLabel || 'Conferma')}</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector('#_confCancel').onclick = () => { overlay.remove(); resolve(false); };
+      overlay.querySelector('#_confOk').onclick     = () => { overlay.remove(); resolve(true); };
+    });
+  }
+
+  let SOLLECITI = [];
+
+  // Trova la pratica collegata a un sollecito: priorità al match per codice
+  // pratica esatto, altrimenti la più recente sulla stessa tratta.
+  function _praticaPerSollecito(s) {
+    const candidates = PRATICHE.filter(p => p.TRATTA_ID === s.tratta_id);
+    if (!candidates.length) return null;
+    if (s.pratica) {
+      const exact = candidates.find(p => p._codice === s.pratica || String(p.PRATICA) === String(s.pratica));
+      if (exact) return exact;
+    }
+    return candidates[0];
+  }
+
   async function loadSolleciti() {
-    $('solBody').innerHTML = `<tr><td colspan="6"><div class="spinner-wrap"><span class="spinner"></span><span>Caricamento…</span></div></td></tr>`;
+    $('solBody').innerHTML = `<tr><td colspan="13"><div class="spinner-wrap"><span class="spinner"></span><span>Caricamento…</span></div></td></tr>`;
     try {
       const d = await api('/api/imprese/solleciti');
-      const items = d.solleciti || [];
-      if (!items.length) { $('solBody').innerHTML = '<tr><td colspan="6" class="empty">Nessun sollecito registrato</td></tr>'; return; }
-      $('solBody').innerHTML = items.map(s => `
-        <tr>
-          <td class="mono">${escapeHtml(s.data_sollecito)}</td>
-          <td class="mono">${escapeHtml(s.tratta_id)}</td>
-          <td class="mono" style="font-size:11px">${escapeHtml(s.pratica || '—')}</td>
-          <td><span style="padding:2px 8px;border-radius:5px;font-size:10.5px;font-weight:700;background:#eff6ff;color:#1d4ed8">${escapeHtml(s.tipo_sollecito)}</span></td>
-          <td style="font-size:12px;color:var(--muted)">${escapeHtml(s.note || '—')}</td>
-          <td><button class="btn btn-ghost btn-xs" style="color:#ef4444;border-color:#ef4444" data-sol-del="${escapeHtml(s._id)}">🗑</button></td>
-        </tr>`).join('');
+      SOLLECITI = d.solleciti || [];
+      renderSolleciti('');
     } catch(e) {
-      $('solBody').innerHTML = `<tr><td colspan="6" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
+      $('solBody').innerHTML = `<tr><td colspan="13" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
     }
   }
 
+  function renderSolleciti(filter) {
+    const f = (filter || '').toLowerCase().trim();
+    if (!SOLLECITI.length) { $('solBody').innerHTML = '<tr><td colspan="13" class="empty">Nessun sollecito registrato</td></tr>'; return; }
+
+    const enriched = SOLLECITI.map(s => ({ s, p: _praticaPerSollecito(s) }));
+    const rows = enriched.filter(({s, p}) => !f || JSON.stringify({s, p}).toLowerCase().includes(f));
+    if (!rows.length) { $('solBody').innerHTML = '<tr><td colspan="13" class="empty">Nessun risultato</td></tr>'; return; }
+
+    $('solBody').innerHTML = rows.map(({s, p}) => `
+      <tr>
+        <td class="mono" style="font-weight:700;color:var(--accent);background:#f4f6ff;border-left:3px solid var(--accent)">${escapeHtml(p?._codice || s.pratica || '—')}</td>
+        <td class="mono">${escapeHtml(s.tratta_id)}</td>
+        <td>${escapeHtml(p?.ENTE || '—')}</td>
+        <td>${escapeHtml(p?.TIPO_PERMESSO || '—')}</td>
+        <td class="${p ? 'stato-' + (p.STATO_PERMESSO||'').replace(/\s+/g,'.') : ''}">${escapeHtml(p?.STATO_PERMESSO || '—')}</td>
+        <td class="mono">${escapeHtml(p?.DATA_RICHIESTA || '—')}</td>
+        <td class="mono">${escapeHtml(p?.DATA_ULTIMA_MODIFICA || '—')}</td>
+        <td class="mono">${escapeHtml(p?.DATA_APPROVAZIONE || '—')}</td>
+        <td style="text-align:right;background:#f0fdf4;font-family:'Fira Code',monospace;font-size:11.5px;color:#1F7A4E;font-weight:600;border-left:2px solid #bbf7d0">${escapeHtml(String(p?.LUNGHEZZA ?? '—'))}</td>
+        <td><span style="padding:2px 8px;border-radius:5px;font-size:10.5px;font-weight:700;background:#eff6ff;color:#1d4ed8">${escapeHtml(s.tipo_sollecito)}</span></td>
+        <td class="mono">${escapeHtml(s.data_sollecito)}</td>
+        <td style="font-size:12px;color:var(--muted)">${escapeHtml(s.note || '—')}</td>
+        <td><button class="btn btn-ghost btn-xs" style="color:#ef4444;border-color:#ef4444" data-sol-del="${escapeHtml(s._id)}">🗑</button></td>
+      </tr>`).join('');
+  }
+
+  $('searchSolleciti').addEventListener('input', e => renderSolleciti(e.target.value));
   $('sol-refresh').addEventListener('click', loadSolleciti);
 
   $('solBody').addEventListener('click', async e => {
     const btn = e.target.closest('[data-sol-del]');
     if (!btn) return;
-    if (!confirm('Eliminare questo sollecito?')) return;
+    const ok = await showConfirm('Elimina sollecito', 'Eliminare definitivamente questo sollecito?', 'Elimina', 'background:#ef4444;border-color:#ef4444');
+    if (!ok) return;
     try {
       await api(`/api/imprese/solleciti/${btn.dataset.solDel}`, { method: 'DELETE' });
       await loadSolleciti();
-    } catch(e) { alert('Errore: ' + e.message); }
+    } catch(e) { setMsg($('msgSol'), 'Errore: ' + e.message, false); }
   });
 
   $('sol-submit').addEventListener('click', async () => {
