@@ -92,7 +92,9 @@ app.add_middleware(
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 _SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9_\-./]+$")
-_EXCLUDE_DIRS = {"backend", "frontend", "node_modules", "__pycache__", ".git", "memory", "js"}
+_EXCLUDE_DIRS = {"backend", "frontend", "node_modules", "__pycache__", ".git", "memory", "js", "M"}
+# "M" esclusa: cartella di file legacy (es. M/QGIS_3.geojson) non collegati alla
+# dashboard — restano nel repo per storico ma non devono comparire in admin.html
 
 
 def _safe_relpath(name: str) -> str:
