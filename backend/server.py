@@ -92,7 +92,8 @@ app.add_middleware(
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 _SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9_\-./]+$")
-_EXCLUDE_DIRS = {"backend", "frontend", "node_modules", "__pycache__", ".git", "memory", "js", "M"}
+_EXCLUDE_DIRS  = {"backend", "frontend", "node_modules", "__pycache__", ".git", "memory", "js", "M"}
+_EXCLUDE_FILES = {"dati.csv"}          # file su disco da NON esporre nella lista admin
 # "M" esclusa: cartella di file legacy (es. M/QGIS_3.geojson) non collegati alla
 # dashboard — restano nel repo per storico ma non devono comparire in admin.html
 
@@ -200,6 +201,8 @@ async def list_files():
                 continue
             top = rel.split("/", 1)[0]
             if top in _EXCLUDE_DIRS or top.startswith("."):
+                continue
+            if p.name in _EXCLUDE_FILES:
                 continue
             out[rel] = {
                 "name": rel,
