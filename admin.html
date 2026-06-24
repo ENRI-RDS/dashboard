@@ -47,6 +47,16 @@
   .btn-danger{background:var(--danger);color:#fff}
   .btn-warn{background:var(--warn);color:#fff}
   .btn-xs{padding:6px 10px;font-size:11.5px;border-radius:6px}
+  td.actions{white-space:nowrap}
+  .actions-row{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
+  .menu-wrap{position:relative;display:inline-block}
+  .menu-dots{width:30px;height:30px;border-radius:6px;border:1px solid var(--border);background:#fff;cursor:pointer;font-size:14px;color:var(--muted);line-height:1}
+  .menu-dots:hover{background:var(--bg)}
+  .menu-dropdown{position:absolute;right:0;top:calc(100% + 4px);background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:140px;z-index:50;display:none;overflow:hidden}
+  .menu-dropdown.open{display:block}
+  .menu-dropdown button{display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;font-size:12px;cursor:pointer;font-family:inherit;color:var(--text)}
+  .menu-dropdown button:hover{background:var(--bg)}
+  .menu-dropdown button.danger{color:var(--danger)}
   .msg{margin-top:12px;padding:10px 12px;border-radius:8px;font-size:12.5px;font-weight:500;display:none}
   .msg.ok{display:block;background:var(--ok-bg);color:var(--ok);border:1px solid rgba(43,138,62,.2)}
   .msg.err{display:block;background:var(--danger-bg);color:var(--danger);border:1px solid rgba(185,28,28,.2)}
@@ -421,12 +431,19 @@
             ? `<span style="font-size:11px;color:${originColor[origin]||'#6b7280'};font-weight:600;white-space:nowrap" title="${originTitle}">${originLabel[origin] || origin}</span>`
             : '<span style="font-size:11px;color:var(--muted)">—</span>'}</td>
           <td class="actions">
-            <button class="btn btn-ghost btn-xs" data-act="preview" data-name="${encodeURIComponent(f.name)}" data-testid="preview-${cssId(f.name)}">Anteprima</button>
-            <button class="btn btn-ghost btn-xs" data-act="download" data-name="${encodeURIComponent(f.name)}">Scarica</button>
-            ${f.source === 'mongo' ? `
-              <button class="btn btn-ghost btn-xs" data-act="rename" data-name="${encodeURIComponent(f.name)}" data-testid="rename-${cssId(f.name)}">Rinomina</button>
-              <button class="btn btn-danger btn-xs" data-act="delete-file" data-name="${encodeURIComponent(f.name)}" data-testid="delete-${cssId(f.name)}">Elimina tutte</button>
-            ` : ''}
+            <div class="actions-row">
+              <button class="btn btn-ghost btn-xs" data-act="preview" data-name="${encodeURIComponent(f.name)}" data-testid="preview-${cssId(f.name)}">Anteprima</button>
+              <button class="btn btn-ghost btn-xs" data-act="download" data-name="${encodeURIComponent(f.name)}">Scarica</button>
+              ${f.source === 'mongo' ? `
+                <div class="menu-wrap">
+                  <button class="menu-dots" data-act="toggle-menu" type="button">⋮</button>
+                  <div class="menu-dropdown">
+                    <button data-act="rename" data-name="${encodeURIComponent(f.name)}" data-testid="rename-${cssId(f.name)}">Rinomina</button>
+                    <button class="danger" data-act="delete-file" data-name="${encodeURIComponent(f.name)}" data-testid="delete-${cssId(f.name)}">Elimina tutte</button>
+                  </div>
+                </div>
+              ` : ''}
+            </div>
           </td>
         </tr>`;
       }).join('');
@@ -475,11 +492,24 @@
   // ──────────────────────────────────────────────────────────────────────
   // Action delegation
   document.body.addEventListener('click', async (e) => {
+    // Chiude qualsiasi menu a tendina aperto se il click è fuori da un menu-wrap
+    if (!e.target.closest('.menu-wrap')) {
+      document.querySelectorAll('.menu-dropdown.open').forEach(d => d.classList.remove('open'));
+    }
     const btn = e.target.closest('button[data-act]');
     if(!btn) return;
     const act = btn.dataset.act;
     const name = btn.dataset.name ? decodeURIComponent(btn.dataset.name) : null;
     const id = btn.dataset.id || null;
+
+    // Toggle del menu a tendina (Rinomina/Elimina) — gestito subito, non in try/catch
+    if(act === 'toggle-menu'){
+      const dd = btn.nextElementSibling;
+      const wasOpen = dd.classList.contains('open');
+      document.querySelectorAll('.menu-dropdown.open').forEach(d => d.classList.remove('open'));
+      if(!wasOpen) dd.classList.add('open');
+      return;
+    }
 
     try {
       if(act === 'preview' && name){
