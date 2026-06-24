@@ -1136,6 +1136,19 @@ async def _find_assignment(nome: str) -> dict | None:
     )
 
 
+@app.get("/api/enti")
+async def get_enti(sess: dict = Depends(_require_session)):
+    """Restituisce tutti gli enti unici presenti in Master.csv, ordinati alfabeticamente."""
+    df = await _load_master()
+    if df is None or "ENTE" not in df.columns:
+        return {"enti": []}
+    enti = sorted(
+        {str(v).strip() for v in df["ENTE"].dropna() if str(v).strip()},
+        key=lambda x: x.lower()
+    )
+    return {"enti": enti}
+
+
 @app.get("/api/imprese/me")
 async def impresa_me(sess: dict = Depends(_require_session)):
     """Returns the impresa's profile if they are assigned, else 404.
