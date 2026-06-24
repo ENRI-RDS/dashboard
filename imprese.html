@@ -152,42 +152,29 @@
           </label>
         </div>
         <div class="grid2">
-          <div>
+          <div style="grid-column:span 2">
             <label>Nuovo stato</label>
             <select id="fld-stato" data-testid="fld-stato">
-              <option value="">— invariato —</option>
-              <option>IN REDAZIONE</option>
-              <option>IN FIRMA RDS</option>
-              <option>INVIATO</option>
-              <option>PROTOCOLLATO</option>
-              <option>NECESSARIA INTEGRAZIONE</option>
-              <option>IN REDAZIONE INTEGRAZIONE</option>
-              <option>PROTOCOLLATO INTEGRAZIONE</option>
-              <option>OTTENUTO</option>
+              <option value="">— seleziona stato —</option>
             </select>
+            <div id="fld-stato-hint" style="font-size:10.5px;color:var(--muted);margin-top:4px"></div>
           </div>
-          <div>
+          <!-- Data richiesta: visibile solo se nuovo stato = INVIATO -->
+          <div id="wrap-data-rich" style="display:none">
             <label>Data richiesta (gg/mm/aaaa)</label>
             <input type="date" id="fld-data-rich" data-testid="fld-data-richiesta">
-            <div style="font-size:10px;color:var(--muted);margin-top:2px">Formato: gg/mm/aaaa nel CSV</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Obbligatoria per lo stato INVIATO</div>
           </div>
-          <div>
-            <label>Data approvazione (gg/mm/aaaa)</label>
+          <!-- Data approvazione: visibile solo se nuovo stato = OTTENUTO -->
+          <div id="wrap-data-app" style="display:none">
+            <label>Data ottenimento (gg/mm/aaaa)</label>
             <input type="date" id="fld-data-app" data-testid="fld-data-app">
-            <div style="font-size:10px;color:var(--muted);margin-top:2px">Formato: gg/mm/aaaa nel CSV</div>
-          </div>
-          <div>
-            <label>Pratica
-              <span style="font-size:10px;font-weight:500;color:var(--muted);margin-left:6px;font-family:inherit">
-                (solo lettura — per modifiche contatta l'amministratore)
-              </span>
-            </label>
-            <input type="text" id="fld-pratica" readonly
-                   style="background:#f8f9fc;color:var(--muted);cursor:not-allowed;font-family:'Fira Code',monospace">
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Obbligatoria per lo stato OTTENUTO</div>
           </div>
           <div style="grid-column:span 2">
             <label>Note</label>
-            <textarea id="fld-note" placeholder="Note opzionali" data-testid="fld-note"></textarea>
+            <textarea id="fld-note" placeholder="Seleziona prima il nuovo stato…" data-testid="fld-note"
+              disabled style="background:#f8f9fc;color:var(--muted);cursor:not-allowed;resize:none"></textarea>
           </div>
         </div>
         <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
@@ -508,12 +495,19 @@
     SELECTED = (renderPratiche._current || [])[+tr.dataset.idx];
     $('editForm').style.display = '';
     $('editRowSub').textContent = `${SELECTED._codice || ''} · ${SELECTED.TRATTA_ID} · ${SELECTED.ENTE} · ${SELECTED.TIPO_PERMESSO}`;
-    $('fld-stato').value = '';
 
-    $('fld-data-rich').value = toInputDate(SELECTED.DATA_RICHIESTA || '');
-    $('fld-data-app').value  = toInputDate(SELECTED.DATA_APPROVAZIONE || '');
-    $('fld-pratica').value = SELECTED.PRATICA || '';
-    $('fld-note').value = SELECTED.NOTE || '';
+    // Popola select stato con le transizioni consentite
+    _populateStatoSelect(SELECTED.STATO_PERMESSO || '');
+
+    // Reset campi condizionali
+    $('fld-data-rich').value = '';
+    $('fld-data-app').value  = '';
+    $('fld-note').value = '';
+    $('fld-note').disabled = true;
+    $('fld-note').style.cssText = 'background:#f8f9fc;color:var(--muted);cursor:not-allowed;resize:none';
+    $('fld-note').placeholder = 'Seleziona prima il nuovo stato…';
+    $('wrap-data-rich').style.display = 'none';
+    $('wrap-data-app').style.display  = 'none';
 
     // Trova le altre tratte che appartengono alla stessa pratica
     // (stesso ENTE + TIPO_PERMESSO + numero PRATICA)
@@ -547,6 +541,48 @@
   });
 
   $('cancelEditBtn').onclick = () => { $('editForm').style.display = 'none'; $('siblingsPanel').style.display = 'none'; SELECTED = null; SIBLINGS = []; document.querySelectorAll('#pratBody tr.selected').forEach(x => x.classList.remove('selected')); };
+
+  // Mappa delle transizioni consentite per ogni stato
+  const STATO_TRANSITIONS = {
+    'IN REDAZIONE':              ['IN FIRMA RDS', 'NO COMPETENZA'],
+    'IN FIRMA RDS':              ['INVIATO', 'NO COMPETENZA'],
+    'INVIATO':                   ['PROTOCOLLATO', 'NO COMPETENZA'],
+    'PROTOCOLLATO':              ['NECESSARIA INTEGRAZIONE', 'IN REDAZIONE INTEGRAZIONE', 'OTTENUTO', 'NO COMPETENZA'],
+    'NECESSARIA INTEGRAZIONE':   ['IN REDAZIONE INTEGRAZIONE', 'NO COMPETENZA'],
+    'IN REDAZIONE INTEGRAZIONE': ['PROTOCOLLATO INTEGRAZIONE', 'NO COMPETENZA'],
+    'PROTOCOLLATO INTEGRAZIONE': ['NECESSARIA INTEGRAZIONE', 'OTTENUTO', 'NO COMPETENZA'],
+    'OTTENUTO':                  ['NO COMPETENZA'],
+    'NO COMPETENZA':             ['IN REDAZIONE', 'IN FIRMA RDS', 'INVIATO', 'PROTOCOLLATO', 'NECESSARIA INTEGRAZIONE', 'IN REDAZIONE INTEGRAZIONE', 'PROTOCOLLATO INTEGRAZIONE', 'OTTENUTO'],
+  };
+
+  function _populateStatoSelect(statoCorrente) {
+    const sel = $('fld-stato');
+    const allowed = STATO_TRANSITIONS[statoCorrente.trim()] || Object.keys(STATO_TRANSITIONS);
+    sel.innerHTML = '<option value="">— seleziona stato —</option>' +
+      allowed.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+    sel.value = '';
+    $('fld-stato-hint').textContent = statoCorrente
+      ? `Stato attuale: ${statoCorrente}`
+      : '';
+  }
+
+  $('fld-stato').addEventListener('change', function() {
+    const v = this.value;
+    const noteEl = $('fld-note');
+    if (!v) {
+      noteEl.disabled = true;
+      noteEl.style.cssText = 'background:#f8f9fc;color:var(--muted);cursor:not-allowed;resize:none';
+      noteEl.placeholder = 'Seleziona prima il nuovo stato…';
+      $('wrap-data-rich').style.display = 'none';
+      $('wrap-data-app').style.display  = 'none';
+    } else {
+      noteEl.disabled = false;
+      noteEl.style.cssText = '';
+      noteEl.placeholder = 'Note opzionali';
+      $('wrap-data-rich').style.display = (v === 'INVIATO')   ? '' : 'none';
+      $('wrap-data-app').style.display  = (v === 'OTTENUTO')  ? '' : 'none';
+    }
+  });
 
   function _pushToQueue(row, fields) {
     QUEUE.push({
@@ -619,19 +655,30 @@
   }
   $('addToQueueBtn').onclick = () => {
     if (!SELECTED) return;
-    const fields = {};
-    if ($('fld-stato').value) fields.STATO_PERMESSO = $('fld-stato').value;
-    if ($('fld-data-rich').value !== toInputDate(SELECTED.DATA_RICHIESTA)) fields.DATA_RICHIESTA = fromInputDate($('fld-data-rich').value);
-    if ($('fld-data-app').value !== toInputDate(SELECTED.DATA_APPROVAZIONE)) fields.DATA_APPROVAZIONE = fromInputDate($('fld-data-app').value);
-    // PRATICA non modificabile dall'impresa — campo solo lettura
-    if ($('fld-note').value !== SELECTED.NOTE) fields.NOTE = $('fld-note').value;
-    if (!Object.keys(fields).length) return setMsg($('msgUpd'), 'Nessun campo modificato', false);
+    const stato = $('fld-stato').value;
+    if (!stato) return setMsg($('msgUpd'), 'Seleziona il nuovo stato prima di aggiungere alla coda', false);
+
+    const fields = { STATO_PERMESSO: stato };
+
+    if (stato === 'INVIATO') {
+      const dr = $('fld-data-rich').value;
+      if (!dr) return setMsg($('msgUpd'), 'Inserisci la data richiesta per lo stato INVIATO', false);
+      fields.DATA_RICHIESTA = fromInputDate(dr);
+    }
+    if (stato === 'OTTENUTO') {
+      const da = $('fld-data-app').value;
+      if (!da) return setMsg($('msgUpd'), 'Inserisci la data ottenimento per lo stato OTTENUTO', false);
+      fields.DATA_APPROVAZIONE = fromInputDate(da);
+    }
+
+    const noteVal = $('fld-note').value.trim();
+    if (noteVal) fields.NOTE = noteVal;
 
     const wantsAllTogether = SIBLINGS.length > 0 && $('siblingsToggle').checked;
     const wantsSingleOnly  = SIBLINGS.length > 0 && !$('siblingsToggle').checked;
 
     if (wantsSingleOnly) {
-      _showSingleTrattaWarning(fields); // richiede conferma esplicita
+      _showSingleTrattaWarning(fields);
     } else {
       _finalizeAdd(fields, wantsAllTogether);
     }
