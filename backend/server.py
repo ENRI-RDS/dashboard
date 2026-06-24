@@ -1,888 +1,1418 @@
-<!DOCTYPE html>
-<html lang="it" translate="no">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ENRI — Area Impresa</title>
-<script src="js/api-config.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
-<style>
-  :root{
-    --bg:#F8F9FA;--surface:#FFFFFF;--border:#E9ECEF;--border-focus:#0B3182;
-    --text:#212529;--muted:#6C757D;--accent:#0B3182;--accent-light:rgba(11,49,130,.05);
-    --ok:#2B8A3E;--ok-bg:#EBFBEE;--warn:#B45309;--warn-bg:#FEF3C7;
-    --danger:#B91C1C;--danger-bg:#FEE2E2;
-    --shadow-md:0 10px 15px -3px rgba(0,0,0,.05),0 4px 6px -2px rgba(0,0,0,.05);
-  }
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased}
-  .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:60px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50}
-  .logo{font-family:'Bricolage Grotesque',sans-serif;font-size:14px;font-weight:700;letter-spacing:.1em;color:var(--accent)}
-  .right{display:flex;align-items:center;gap:14px}
-  .userpill{font-size:12.5px;color:var(--muted)}
-  .userpill b{color:var(--text);font-weight:700}
-  .back-link{font-size:13px;font-weight:500;color:var(--muted);text-decoration:none;padding:8px 14px;border:1px solid var(--border);border-radius:8px}
-  .back-link:hover{background:var(--bg);color:var(--text)}
-  .main{max-width:1400px;margin:0 auto;padding:28px 24px;display:flex;flex-direction:column;gap:20px}
-  .hdr{border-bottom:1px solid var(--border);padding-bottom:14px}
-  .eyebrow{font-family:'Fira Code',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.15em;color:var(--muted);margin-bottom:6px}
-  .title{font-family:'Bricolage Grotesque',sans-serif;font-size:26px;font-weight:700;letter-spacing:-.02em}
-  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;box-shadow:var(--shadow-md)}
-  .tabbar{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border)}
-  .tab{padding:10px 16px;font-size:13px;font-weight:600;color:var(--muted);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;font-family:inherit}
-  .tab.active{color:var(--accent);border-color:var(--accent)}
-  .panel{display:none}.panel.active{display:block}
-  label{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;margin-top:12px;color:var(--text)}
-  label:first-of-type{margin-top:0}
-  input[type=text],input[type=date],input[type=number],select,textarea{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:7px;background:var(--bg);font-family:inherit;font-size:13px;color:var(--text)}
-  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--border-focus);background:var(--surface);box-shadow:0 0 0 3px rgba(11,49,130,.08)}
-  textarea{min-height:54px;resize:vertical}
-  .btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 18px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;font-weight:600;font-size:13px;background:var(--accent);color:#fff;transition:filter .15s}
-  .btn:hover{filter:brightness(1.08)}
-  .btn:disabled{opacity:.5;cursor:not-allowed}
-  .btn-ghost{background:transparent;color:var(--text);border:1px solid var(--border)}
-  .btn-ghost:hover{background:var(--bg)}
-  .btn-xs{padding:5px 10px;font-size:11.5px;border-radius:6px}
-  .msg{margin-top:12px;padding:10px 12px;border-radius:8px;font-size:13px;font-weight:500;display:none}
-  .msg.ok{display:block;background:var(--ok-bg);color:var(--ok);border:1px solid rgba(43,138,62,.2)}
-  .msg.err{display:block;background:var(--danger-bg);color:var(--danger);border:1px solid rgba(185,28,28,.2)}
-  table{width:100%;border-collapse:collapse;font-size:12.5px}
-  th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:9px 8px;border-bottom:2px solid var(--border);text-align:left;background:var(--surface);position:sticky;top:0}
-  td{padding:9px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
-  tr:hover td{background:rgba(0,0,0,.015);cursor:pointer}
-  tr.selected td{background:var(--accent-light)}
-  td.mono{font-family:'Fira Code',monospace;font-size:11.5px;color:#495057}
-  .tag{display:inline-flex;align-items:center;padding:2px 8px;border-radius:5px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.02em}
-  /* Submission detail modal */
-  .sub-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px}
-  .sub-modal{background:#fff;border-radius:16px;width:100%;max-width:620px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.18)}
-  .sub-modal-head{display:flex;align-items:flex-start;justify-content:space-between;padding:20px 24px 16px;border-bottom:1px solid #f0f2f5}
-  .sub-modal-title{font-family:'Bricolage Grotesque',sans-serif;font-size:16px;font-weight:700;color:#1a1a2e}
-  .sub-modal-sub{font-size:12px;color:var(--muted);margin-top:3px}
-  .sub-modal-body{overflow-y:auto;flex:1;padding:16px 24px 20px}
-  .sub-modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;padding:0;margin-left:12px}
-  .sub-change{background:#f8f9fc;border-radius:10px;padding:12px 14px;margin-bottom:10px}
-  .sub-change-header{font-weight:700;font-size:12px;margin-bottom:8px;color:#1a1a2e;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-  .sub-field{display:flex;gap:8px;padding:4px 0;border-bottom:1px solid #eef0f3}
-  .sub-field:last-child{border-bottom:none}
-  .sub-field-key{color:var(--muted);min-width:150px;font-size:12px}
-  .sub-field-val{color:#1a1a2e;font-size:12px;font-weight:500;word-break:break-all}
-  tr[data-sub]:hover td{background:rgba(67,97,238,.04);cursor:pointer}
-  .warn-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px}
-  .warn-modal{background:#fff;border-radius:16px;width:100%;max-width:440px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.2)}
-  .warn-modal-icon{font-size:28px;margin-bottom:10px}
-  .warn-modal-title{font-family:'Bricolage Grotesque',sans-serif;font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:8px}
-  .warn-modal-body{font-size:13px;color:#374151;line-height:1.5;margin-bottom:18px}
-  .sub-section-label{font-size:11px;font-weight:600;color:var(--muted);margin-bottom:8px}
-  .tag.pending{background:#FEF3C7;color:#B45309}.tag.approved{background:#EBFBEE;color:#2B8A3E}.tag.rejected{background:#FEE2E2;color:#B91C1C}
-  .stato-OTTENUTO{color:#1F7A4E;font-weight:600}
-  .stato-INVIATO,.stato-PROTOCOLLATO{color:#0B3182;font-weight:600}
-  .stato-IN.REDAZIONE,.stato-IN.FIRMA.RDS{color:#B45309;font-weight:600}
-  .empty{text-align:center;padding:30px;color:var(--muted);font-style:italic;font-size:13px}
-  /* Spinner */
-  .spinner-wrap{display:flex;align-items:center;justify-content:center;gap:10px;padding:30px;color:var(--muted);font-size:13px}
-  .spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;display:inline-block;animation:spin .8s linear infinite;vertical-align:middle}
-  .spinner-sm{width:13px;height:13px;border-width:2px;margin-right:6px}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  .btn[disabled]{opacity:.6;cursor:not-allowed;filter:none}
-  .btn .spinner{border-color:rgba(255,255,255,.4);border-top-color:#fff}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-  @media(max-width:700px){.grid2{grid-template-columns:1fr}}
-  .scroll{max-height:520px;overflow:auto;border:1px solid var(--border);border-radius:8px}
-  .search{margin-bottom:12px}
-  .search input{padding-left:34px;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236C757D' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='7'/><path d='m21 21-4.3-4.3'/></svg>");background-repeat:no-repeat;background-position:11px center}
-  .pill-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
-  .pill-row .pill{font-size:11px;background:var(--accent-light);color:var(--accent);padding:3px 9px;border-radius:5px;font-weight:600;letter-spacing:.02em}
-  .submit-bar{position:sticky;bottom:0;background:var(--surface);padding:14px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;margin:14px -20px -20px;border-radius:0 0 14px 14px}
-  .guard{display:none;text-align:center;padding:60px 20px}
-  .guard h2{font-family:'Bricolage Grotesque',sans-serif;font-size:22px;margin-bottom:12px}
-  .guard p{color:var(--muted);max-width:520px;margin:0 auto 18px}
-</style>
-</head>
-<body>
+"""
+ENRI Dashboard — Backend API
+============================
+FastAPI service for the ENRI-RDS/dashboard project.
 
-<div class="topbar">
-  <div class="logo">ENRI · AREA IMPRESA</div>
-  <div class="right">
-    <span class="userpill" id="userPill">—</span>
-    <a class="back-link" href="hub.html">← Hub</a>
-  </div>
-</div>
+Storage model
+-------------
+MongoDB is the AUTHORITATIVE storage for uploaded files (via GridFS).
+Files committed in the git repo are used as the INITIAL SEED ONLY:
+when no upload exists for a given filename, the API falls back to
+the file on disk (the version pushed on GitHub Pages).
 
-<!-- Guard: not logged in or not authorized -->
-<div class="guard" id="guard">
-  <h2 id="guardTitle">Accesso non autorizzato</h2>
-  <p id="guardMsg">Per accedere a quest'area devi prima effettuare il login dal portale e la tua impresa deve essere stata abilitata dall'amministratore.</p>
-  <button id="guardRetryBtn" class="btn" onclick="_retryBoot()" style="display:none;margin-right:10px">⟳ Riprova</button>
-  <a class="btn" href="hub.html" data-testid="goto-hub" style="background:#f1f5f9;color:#374151;border:1px solid #e2e8f0">← Torna al login</a>
-</div>
+This avoids data loss on Render's ephemeral filesystem AND keeps the
+static GitHub Pages fallback fully functional.
+"""
+from __future__ import annotations
 
-<div class="main" id="app" style="display:none">
-  <div class="hdr">
-    <div class="eyebrow">Operatività impresa</div>
-    <div class="title" id="welcomeTitle">Benvenuta impresa</div>
-    <div class="pill-row" id="lottiPills"></div>
-  </div>
+import asyncio
+import base64
+import hashlib
+import hmac
+import io
+import json
+import os
+import re
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Annotated, Any
 
-  <div class="card">
-    <div class="tabbar">
-      <button class="tab active" data-tab="aggiorna" data-testid="tab-update">Aggiorna pratiche</button>
-      <button class="tab" data-tab="nuova" data-testid="tab-new">Nuova pratica</button>
-      <button class="tab" data-tab="mie" data-testid="tab-mine">Le mie submission</button>
-    </div>
+import httpx
+import pandas as pd
+from bson import ObjectId
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, Header, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, PlainTextResponse, Response, FileResponse
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 
-    <!-- AGGIORNA -->
-    <div class="panel active" id="panel-aggiorna">
-      <div class="search"><input type="text" id="searchPratiche" placeholder="Cerca per codice, tratta, ente, stato…" data-testid="search-pratiche"></div>
-      <div class="scroll">
-        <table>
-          <thead><tr><th>Codice</th><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th><th>Data richiesta</th><th>Data agg.</th></tr></thead>
-          <tbody id="pratBody"><tr><td colspan="7"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr></tbody>
-        </table>
-      </div>
+# ─────────────────────────────────────────────────────────────────────────────
+# Config
+# ─────────────────────────────────────────────────────────────────────────────
+ROOT_DIR = Path(__file__).resolve().parent
+load_dotenv(ROOT_DIR / ".env")
 
-      <div id="editForm" style="display:none;margin-top:16px;border-top:1px dashed var(--border);padding-top:16px">
-        <div style="font-weight:700;margin-bottom:10px;font-size:14px">Aggiornamento — <span id="editRowSub" class="mono" style="color:var(--muted);font-size:12px"></span></div>
-        <div id="siblingsPanel" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12.5px">
-          <div style="font-weight:700;color:#1d4ed8;margin-bottom:4px">Questa pratica include altre tratte</div>
-          <div id="siblingsList" style="color:#374151;margin-bottom:8px"></div>
-          <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-weight:600;color:#1d4ed8">
-            <input type="checkbox" id="siblingsToggle" checked style="width:15px;height:15px;cursor:pointer">
-            Aggiorna tutte insieme (consigliato)
-          </label>
-        </div>
-        <div class="grid2">
-          <div>
-            <label>Nuovo stato</label>
-            <select id="fld-stato" data-testid="fld-stato">
-              <option value="">— invariato —</option>
-              <option>IN REDAZIONE</option>
-              <option>IN FIRMA RDS</option>
-              <option>INVIATO</option>
-              <option>PROTOCOLLATO</option>
-              <option>NECESSARIA INTEGRAZIONE</option>
-              <option>IN REDAZIONE INTEGRAZIONE</option>
-              <option>PROTOCOLLATO INTEGRAZIONE</option>
-              <option>OTTENUTO</option>
-            </select>
-          </div>
-          <div>
-            <label>Data richiesta (gg/mm/aaaa)</label>
-            <input type="date" id="fld-data-rich" data-testid="fld-data-richiesta">
-            <div style="font-size:10px;color:var(--muted);margin-top:2px">Formato: gg/mm/aaaa nel CSV</div>
-          </div>
-          <div>
-            <label>Data approvazione (gg/mm/aaaa)</label>
-            <input type="date" id="fld-data-app" data-testid="fld-data-app">
-            <div style="font-size:10px;color:var(--muted);margin-top:2px">Formato: gg/mm/aaaa nel CSV</div>
-          </div>
-          <div>
-            <label>Pratica
-              <span style="font-size:10px;font-weight:500;color:var(--muted);margin-left:6px;font-family:inherit">
-                (solo lettura — per modifiche contatta l'amministratore)
-              </span>
-            </label>
-            <input type="text" id="fld-pratica" readonly
-                   style="background:#f8f9fc;color:var(--muted);cursor:not-allowed;font-family:'Fira Code',monospace">
-          </div>
-          <div style="grid-column:span 2">
-            <label>Note</label>
-            <textarea id="fld-note" placeholder="Note opzionali" data-testid="fld-note"></textarea>
-          </div>
-        </div>
-        <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
-          <button class="btn btn-ghost" id="cancelEditBtn">Annulla</button>
-          <button class="btn" id="addToQueueBtn" data-testid="add-to-queue">Aggiungi alla coda</button>
-        </div>
-      </div>
+MONGO_URL = os.environ["MONGO_URL"]
+DB_NAME = os.environ["DB_NAME"]
 
-      <div id="updateQueue" style="margin-top:14px;display:none">
-        <div style="font-weight:700;font-size:13px;margin-bottom:8px">Modifiche in coda da inviare (<span id="qCount">0</span>)</div>
-        <table>
-          <thead><tr><th>Tratta</th><th>Ente</th><th>Modifiche</th><th></th></tr></thead>
-          <tbody id="queueBody"></tbody>
-        </table>
-        <div style="margin-top:12px;display:flex;justify-content:flex-end;gap:10px">
-          <button class="btn btn-ghost" id="clearQueueBtn">Svuota</button>
-          <button class="btn" id="submitUpdatesBtn" data-testid="submit-updates">Invia per approvazione</button>
-        </div>
-      </div>
+# DATA_DIR is the directory containing the git-committed seed files
+# (Master.csv, QGIS.geojson, etc.). It's READ-ONLY in the new model.
+DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT_DIR.parent)).resolve()
 
-      <div class="msg" id="msgUpd"></div>
-    </div>
+_default_origins = (
+    "https://enri-rds.github.io,"
+    "http://localhost:3000,"
+    "http://localhost:5500,"
+    "http://127.0.0.1:5500"
+)
+ALLOWED_ORIGINS = [
+    o.strip() for o in os.environ.get("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()
+]
 
-    <!-- NUOVA -->
-    <div class="panel" id="panel-nuova">
-      <p style="color:var(--muted);font-size:13px;margin-bottom:14px">Compila i campi della nuova pratica. Lo stato iniziale è <b>IN REDAZIONE</b> (automatico). Dopo l'invio l'amministratore approverà l'inserimento nella dashboard.</p>
-      <form id="newForm">
-        <div class="grid2">
-          <div>
-            <label>Lotto *</label>
-            <select id="new-lotto" required data-testid="new-lotto"></select>
-          </div>
-          <div>
-            <label>TRATTA_ID *</label>
-            <input type="text" id="new-tratta" placeholder="TR_XXXX" required data-testid="new-tratta">
-          </div>
-          <div>
-            <label>Ente *</label>
-            <select id="new-ente" required data-testid="new-ente">
-              <option value="">— seleziona ente —</option>
-            </select>
-          </div>
-          <div>
-            <label>Tipo permesso *</label>
-            <select id="new-tipo" required data-testid="new-tipo">
-              <option value="">—</option>
-              <option>AUTORIZZAZIONE</option>
-              <option>NULLA OSTA</option>
-            </select>
-          </div>
-          <div>
-            <label>Numero progressivo pratica (automatico)</label>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span id="new-pratica-prefix" style="font-family:'Fira Code',monospace;font-size:13px;color:var(--muted);white-space:nowrap">—/</span>
-              <input type="number" id="new-pratica" required readonly
-                     data-testid="new-pratica" style="max-width:100px;background:#f4f6ff;cursor:not-allowed">
-              <span id="new-pratica-suffix" style="font-family:'Fira Code',monospace;font-size:13px;color:var(--muted);white-space:nowrap">/—</span>
-            </div>
-            <div style="margin-top:4px;font-size:11px;color:var(--muted)">Calcolato come ultimo progressivo del lotto selezionato + 1</div>
-            <div style="margin-top:4px;font-family:'Fira Code',monospace;font-size:11px;color:var(--accent)" id="new-pratica-preview"></div>
-          </div>
-          <div>
-            <label>Data richiesta</label>
-            <input type="date" id="new-data-rich">
-          </div>
-          <div>
-            <label>N_SED</label>
-            <input type="text" id="new-nsed" placeholder="es. SED-127 oppure 0">
-          </div>
-          <div>
-            <label>Nulla osta necessario</label>
-            <select id="new-no-nec"><option value=""></option><option>SI</option><option>NO</option></select>
-          </div>
-          <div>
-            <label>Ordinanza necessaria</label>
-            <select id="new-ord-nec"><option value=""></option><option>SI</option><option>NO</option></select>
-          </div>
-          <div>
-            <label>Convenzione</label>
-            <select id="new-convenzione"><option value=""></option><option>SI</option><option>NO</option></select>
-          </div>
-          <div>
-            <label>Polizza</label>
-            <select id="new-polizza"><option value=""></option><option>SI</option><option>NO</option></select>
-          </div>
-          <div>
-            <label>Lunghezza tratta (m)</label>
-            <input type="number" id="new-lunghezza" step="any" min="0" placeholder="es. 350">
-          </div>
-          <div style="grid-column:span 2">
-            <label>Note</label>
-            <textarea id="new-note"></textarea>
-          </div>
-        </div>
-        <div style="margin-top:14px;display:flex;justify-content:flex-end">
-          <button type="submit" class="btn" data-testid="submit-new">Invia nuova pratica</button>
-        </div>
-        <div class="msg" id="msgNew"></div>
-      </form>
-    </div>
+UPLOAD_TOKEN = os.environ.get("UPLOAD_TOKEN", "").strip()
+ALLOWED_EXT = {".csv", ".xlsx", ".xls", ".geojson", ".json"}
+MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "25"))
 
-    <!-- MIE SUBMISSION -->
-    <div class="panel" id="panel-mie">
-      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Storico delle tue richieste — vedi lo stato di approvazione.</p>
-      <div class="scroll">
-        <table>
-          <thead><tr><th>Quando</th><th>Tipo</th><th>Modifiche</th><th>Stato</th><th>Note revisione</th></tr></thead>
-          <tbody id="mineBody"><tr><td colspan="5" class="empty">—</td></tr></tbody>
-    </table>
-          <div style="margin-top:10px;display:flex;justify-content:flex-end">
-        <button class="btn btn-ghost btn-xs" id="refreshMineBtn">Aggiorna</button>
-      </div>
-    </div>
-  </div>
-</div>
-</div>
+# ─────────────────────────────────────────────────────────────────────────────
+# DB
+# ─────────────────────────────────────────────────────────────────────────────
+client = AsyncIOMotorClient(MONGO_URL)
+db = client[DB_NAME]
+uploads_col = db["uploads"]
+assignments_col = db["assignments"]            # impresa nome -> {lotti: [...]}
+pending_col = db["pending_updates"]            # submissions from imprese pending admin review
+gridfs = AsyncIOMotorGridFSBucket(db, bucket_name="files")
 
-<script>
-(() => {
-  const $ = (id) => document.getElementById(id);
-  const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
-  const nome = (localStorage.getItem('_enri_user') || '').trim();
-  const sessionToken = (localStorage.getItem('_enri_session') || '').trim();
+# ─────────────────────────────────────────────────────────────────────────────
+# App
+# ─────────────────────────────────────────────────────────────────────────────
+app = FastAPI(title="ENRI Dashboard API", version="2.0.0")
 
-  $('userPill').innerHTML = nome ? `<b>${escapeHtml(nome)}</b>` : '(non loggato)';
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
+)
 
-  if (!nome || !sessionToken) return showGuard('Devi loggarti prima', 'Apri il portale e accedi con le tue credenziali.');
-  if (!apiBase) return showGuard('Endpoint API non configurato', 'Contatta l\'amministratore: l\'API endpoint non risulta impostato in questa pagina.');
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+_SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9_\-./]+$")
+_EXCLUDE_DIRS  = {"backend", "frontend", "node_modules", "__pycache__", ".git", "memory", "js", "M"}
+_EXCLUDE_FILES = {"dati.csv"}          # file su disco da NON esporre nella lista admin
+# "M" esclusa: cartella di file legacy (es. M/QGIS_3.geojson) non collegati alla
+# dashboard — restano nel repo per storico ma non devono comparire in admin.html
 
-  let MY_LOTTI = [];
-  let PRATICHE = [];
-  const QUEUE = []; // [{tratta_id, ente, tipo_permesso, fields, _row}]
-  let SIBLINGS = []; // tratte della stessa pratica (ENTE+TIPO_PERMESSO+PRATICA) diverse da SELECTED
-  let SELECTED = null;
 
-  // ─── boot ───────────────────────────────────────────
-  (async () => {
-    try {
-      const me = await api(`/api/imprese/me?nome=${encodeURIComponent(nome)}`);
-      MY_LOTTI = me.lotti || [];
-      $('welcomeTitle').textContent = `Benvenuta, ${nome}`;
-      $('lottiPills').innerHTML = MY_LOTTI.length
-        ? MY_LOTTI.map(l => `<span class="pill">${escapeHtml(l)}</span>`).join('')
-        : '<span class="pill" style="background:#fee;color:#B91C1C">nessun lotto assegnato</span>';
-      const sel = $('new-lotto');
-      sel.innerHTML = MY_LOTTI.map(l => `<option value="${escapeHtml(l)}.xlsx">${escapeHtml(l)}</option>`).join('');
-      $('app').style.display = '';
-      loadPratiche();
-      loadMine();
-    } catch(e) {
-      if(String(e.message).includes('401')) {
-        localStorage.removeItem('_enri_session');
-        return showGuard('Sessione scaduta', 'La tua sessione non è più valida. Torna al portale e accedi di nuovo.', false);
-      }
-      if(String(e.message).includes('404')) return showGuard('Impresa non autorizzata', 'Il tuo nome non è ancora stato assegnato a un lotto dall\'amministratore.', false);
-      // Errore di rete (es. Render in avvio): mostra pannello con retry, non solo "torna al login"
-      showGuard('Server non raggiungibile', 'Il server si sta avviando (può richiedere 20-30 secondi). Attendi qualche istante e riprova.', true);
+def _safe_relpath(name: str) -> str:
+    name = name.replace("\\", "/").lstrip("/")
+    if ".." in name.split("/") or not _SAFE_NAME_RE.match(name):
+        raise HTTPException(400, "Invalid filename")
+    return name
+
+
+def _check_token(token: str | None) -> None:
+    if UPLOAD_TOKEN and token != UPLOAD_TOKEN:
+        raise HTTPException(401, "Invalid or missing upload token")
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _media_type(name: str) -> str:
+    ext = name.rsplit(".", 1)[-1].lower()
+    if ext == "geojson":
+        return "application/geo+json"
+    if ext == "json":
+        return "application/json"
+    if ext == "csv":
+        return "text/csv; charset=utf-8"
+    return "application/octet-stream"
+
+
+def _serialize(doc: dict) -> dict:
+    d = dict(doc)
+    if "_id" in d:
+        d["_id"] = str(d["_id"])
+    if "gridfs_id" in d and isinstance(d["gridfs_id"], ObjectId):
+        d["gridfs_id"] = str(d["gridfs_id"])
+    return d
+
+
+async def _current_upload(filename: str) -> dict | None:
+    """Most recent non-deleted upload for a given filename."""
+    return await uploads_col.find_one(
+        {"filename": filename, "deleted_at": None},
+        sort=[("uploaded_at", -1)],
+    )
+
+
+async def _read_gridfs(gridfs_id: ObjectId) -> bytes:
+    stream = await gridfs.open_download_stream(gridfs_id)
+    try:
+        return await stream.read()
+    finally:
+        # motor's GridOut.close is synchronous
+        close = getattr(stream, "close", None)
+        if callable(close):
+            res = close()
+            if hasattr(res, "__await__"):
+                await res
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Routes
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/api/")
+async def root():
+    return {
+        "service": "enri-dashboard-api",
+        "status": "ok",
+        "time": _now_iso(),
+        "version": "2.0.0",
     }
-  })();
 
-  function _retryBoot() {
-    $('guard').style.display = 'none';
-    (async () => {
-      try {
-        const me = await api(`/api/imprese/me?nome=${encodeURIComponent(nome)}`);
-        MY_LOTTI = me.lotti || [];
-        $('welcomeTitle').textContent = `Benvenuta, ${nome}`;
-        $('lottiPills').innerHTML = MY_LOTTI.length
-          ? MY_LOTTI.map(l => `<span class="pill">${escapeHtml(l)}</span>`).join('')
-          : '<span class="pill" style="background:#fee;color:#B91C1C">nessun lotto assegnato</span>';
-        const sel = $('new-lotto');
-        sel.innerHTML = MY_LOTTI.map(l => `<option value="${escapeHtml(l)}.xlsx">${escapeHtml(l)}</option>`).join('');
-        $('app').style.display = '';
-        loadPratiche();
-        loadMine();
-      } catch(e2) {
-        if(String(e2.message).includes('401')) {
-          localStorage.removeItem('_enri_session');
-          return showGuard('Sessione scaduta', 'La tua sessione non è più valida. Torna al portale e accedi di nuovo.', false);
+
+@app.get("/api/health")
+async def health():
+    try:
+        await db.command("ping")
+        mongo_ok = True
+    except Exception:
+        mongo_ok = False
+    return {"ok": True, "mongo": mongo_ok, "time": _now_iso()}
+
+
+@app.get("/api/files")
+async def list_files():
+    """Union of:
+    - files with current (non-deleted) GridFS uploads
+    - seed files on disk (excluding system dirs) that aren't shadowed by a
+      Mongo upload
+    """
+    out: dict[str, dict] = {}
+
+    # 1) Disk seed
+    if DATA_DIR.exists():
+        for p in sorted(DATA_DIR.rglob("*")):
+            if not p.is_file():
+                continue
+            ext = p.suffix.lower()
+            if ext not in {".csv", ".geojson", ".json"}:
+                continue
+            try:
+                rel = p.relative_to(DATA_DIR).as_posix()
+            except ValueError:
+                continue
+            top = rel.split("/", 1)[0]
+            if top in _EXCLUDE_DIRS or top.startswith("."):
+                continue
+            if p.name in _EXCLUDE_FILES:
+                continue
+            out[rel] = {
+                "name": rel,
+                "size": p.stat().st_size,
+                "type": ext[1:],
+                "source": "disk",
+                "modified": datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc).isoformat(),
+                "versions": 0,
+            }
+
+    # 2) Mongo current versions (override disk)
+    pipeline = [
+        {"$match": {"deleted_at": None}},
+        {"$sort": {"uploaded_at": -1}},
+        {"$group": {
+            "_id": "$filename",
+            "size": {"$first": "$size"},
+            "uploaded_at": {"$first": "$uploaded_at"},
+            "project": {"$first": "$project"},
+            "rows": {"$first": "$rows"},
+            "upload_source": {"$first": "$source"},
+            "note": {"$first": "$note"},
+        }},
+    ]
+    versions_pipeline = [
+        {"$match": {"deleted_at": None}},
+        {"$group": {"_id": "$filename", "count": {"$sum": 1}}},
+    ]
+    version_counts: dict[str, int] = {}
+    async for d in uploads_col.aggregate(versions_pipeline):
+        version_counts[d["_id"]] = d["count"]
+
+    async for d in uploads_col.aggregate(pipeline):
+        name = d["_id"]
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        out[name] = {
+            "name": name,
+            "size": d["size"],
+            "type": ext,
+            "source": "mongo",
+            "modified": d["uploaded_at"],
+            "project": d.get("project", "main"),
+            "rows": d.get("rows"),
+            "versions": version_counts.get(name, 1),
+            "upload_source": d.get("upload_source") or "admin",  # impresa | derived | admin (upload manuale)
+            "note": d.get("note") or "",
         }
-        if(String(e2.message).includes('404')) return showGuard('Impresa non autorizzata', 'Il tuo nome non è ancora stato assegnato a un lotto dall\'amministratore.', false);
-        showGuard('Server non raggiungibile', 'Il server si sta avviando. Riprova tra qualche secondo.', true);
-      }
-    })();
-  }
 
-  function showGuard(title, msg, showRetry){
-    $('guardTitle').textContent = title;
-    $('guardMsg').textContent = msg;
-    // Bottone Riprova: visibile solo per errori di rete, non per 404/accesso negato
-    const retryBtn = document.getElementById('guardRetryBtn');
-    if (retryBtn) retryBtn.style.display = showRetry ? '' : 'none';
-    $('guard').style.display = 'block';
-    $('app').style.display = 'none';
-  }
+    files = sorted(out.values(), key=lambda x: x["name"])
+    return {"files": files, "count": len(files)}
 
-  // ─── helpers ───────────────────────────────────────
-  async function api(path, opts={}){
-    const headers = { ...(opts.headers || {}), 'x-session-token': localStorage.getItem('_enri_session') || '' };
-    const r = await fetch(apiBase + path, { ...opts, headers });
-    const text = await r.text();
-    let data; try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
-    if(!r.ok) throw new Error(data.detail || data.raw || ('HTTP ' + r.status));
-    return data;
-  }
-  function setMsg(el, txt, ok){ el.className = 'msg ' + (ok ? 'ok' : 'err'); el.textContent = txt; }
-  function escapeHtml(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-  // ─── tabs ───────────────────────────────────────────
-  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
-    t.classList.add('active'); $('panel-' + t.dataset.tab).classList.add('active');
-    if (t.dataset.tab === 'mie') loadMine();
-  }));
+@app.get("/api/data/{filename:path}")
+async def get_data_file(filename: str):
+    rel = _safe_relpath(filename)
+    cur = await _current_upload(rel)
+    if cur:
+        data = await _read_gridfs(cur["gridfs_id"])
+        return Response(content=data, media_type=_media_type(rel))
+    # Fallback to disk seed (git-committed file)
+    path = DATA_DIR / rel
+    if path.exists() and path.is_file():
+        return FileResponse(path, media_type=_media_type(rel), filename=path.name)
+    raise HTTPException(404, f"File not found: {rel}")
 
-  // ─── load pratiche ─────────────────────────────────
-  async function loadPratiche(){
-    $('pratBody').innerHTML = `<tr><td colspan="7"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr>`;
-    try {
-      const d = await api(`/api/imprese/pratiche?nome=${encodeURIComponent(nome)}`);
-      PRATICHE = (d.pratiche || []).map(p => ({...p, _codice: buildCodice(p)}));
-      renderPratiche('');
-      await _populateEntiSelect();
-      _setAutoPratica();
-    } catch(e){
-      $('pratBody').innerHTML = `<tr><td colspan="7" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
-    }
-  }
-  $('searchPratiche').addEventListener('input', e => renderPratiche(e.target.value));
 
-  // Popola il select degli enti con tutti i valori unici presenti in Master.csv
-  async function _populateEntiSelect() {
-    const sel = $('new-ente');
-    if (!sel || sel.tagName !== 'SELECT') return;
-    const current = sel.value;
-    let enti = [];
-    try {
-      const d = await api('/api/enti');
-      enti = d.enti || [];
-    } catch (_) {
-      // fallback: enti dalle pratiche dell'impresa
-      enti = [...new Set(
-        PRATICHE.map(p => (p.ENTE || '').trim()).filter(Boolean)
-      )].sort((a, b) => a.localeCompare(b, 'it'));
-    }
-    sel.innerHTML = '<option value="">— seleziona ente —</option>' +
-      enti.map(e => `<option value="${escapeHtml(e)}"${e === current ? ' selected' : ''}>${escapeHtml(e)}</option>`).join('') +
-      '<option value="__altro__">✏ Altro (scrivi manualmente)…</option>';
-  }
+@app.get("/api/data-text/{filename:path}", response_class=PlainTextResponse)
+async def get_data_text(filename: str):
+    rel = _safe_relpath(filename)
+    cur = await _current_upload(rel)
+    if cur:
+        data = await _read_gridfs(cur["gridfs_id"])
+        return data.decode("utf-8", errors="replace")
+    path = DATA_DIR / rel
+    if path.exists() and path.is_file():
+        return path.read_text(encoding="utf-8", errors="replace")
+    raise HTTPException(404, f"File not found: {rel}")
 
-  function buildCodice(p) {
-    const tipoMap = {'AUTORIZZAZIONE':'AUT','NULLA OSTA':'NO'};
-    const prefix = tipoMap[(p.TIPO_PERMESSO||'').trim()] || (p.TIPO_PERMESSO||'').trim().substring(0,3);
-    const m = String(p['Source.Name']||'').match(/Lotto\s*([\w\d]+)/i);
-    const lotto = m ? m[1] : '';
-    const prat = String(p.PRATICA||'').trim();
-    if (!prefix || !prat) return '';
-    return `${prefix}/${prat}/${lotto}`;
-  }
 
-  function parseDate(s){
-    // Supports dd/mm/yyyy or yyyy-mm-dd
-    if (!s) return 0;
-    const p = s.split('/');
-    if (p.length === 3) return new Date(p[2], p[1]-1, p[0]).getTime();
-    return new Date(s).getTime() || 0;
-  }
-
-  // Conversione date DD/MM/YYYY (formato CSV) ↔ YYYY-MM-DD (formato input[type=date])
-  function toInputDate(ddmmyyyy) {
-    if (!ddmmyyyy) return '';
-    const p = String(ddmmyyyy).trim().split('/');
-    if (p.length !== 3) return '';
-    return `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
-  }
-  function fromInputDate(yyyymmdd) {
-    if (!yyyymmdd) return '';
-    const p = String(yyyymmdd).trim().split('-');
-    if (p.length !== 3) return '';
-    return `${p[2].padStart(2,'0')}/${p[1].padStart(2,'0')}/${p[0]}`;
-  }
-
-  function renderPratiche(filter){
-    const f = (filter || '').toLowerCase().trim();
-    // Per ogni TRATTA_ID tieni solo la riga con DATA_ULTIMA_MODIFICA più recente
-    const latestMap = new Map();
-    PRATICHE.forEach(p => {
-      const key = p.TRATTA_ID + '|' + p.ENTE + '|' + p.TIPO_PERMESSO;
-      const existing = latestMap.get(key);
-      if (!existing || parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(existing.DATA_ULTIMA_MODIFICA)) {
-        latestMap.set(key, p);
-      }
-    });
-    const deduplicated = Array.from(latestMap.values());
-    const rows = deduplicated.filter(p => !f || JSON.stringify(p).toLowerCase().includes(f));
-    if (!rows.length){ $('pratBody').innerHTML = '<tr><td colspan="7" class="empty">Nessuna pratica</td></tr>'; return; }
-    // Salva l'array corrente filtrato per recuperare la riga al click
-    renderPratiche._current = rows.slice(0, 500);
-    $('pratBody').innerHTML = renderPratiche._current.map((p, i) => `
-      <tr data-idx="${i}">
-        <td class="mono" style="font-weight:700;color:var(--accent);background:#f4f6ff;border-left:3px solid var(--accent)">${escapeHtml(p._codice)}</td>
-        <td class="mono">${escapeHtml(p.TRATTA_ID)}</td>
-        <td>${escapeHtml(p.ENTE)}</td>
-        <td>${escapeHtml(p.TIPO_PERMESSO)}</td>
-        <td class="stato-${(p.STATO_PERMESSO||'').replace(/\s+/g,'.')}">${escapeHtml(p.STATO_PERMESSO)}</td>
-        <td class="mono">${escapeHtml(p.DATA_RICHIESTA)}</td>
-        <td class="mono">${escapeHtml(p.DATA_ULTIMA_MODIFICA)}</td>
-      </tr>`).join('');
-  }
-  $('pratBody').addEventListener('click', e => {
-    const tr = e.target.closest('tr[data-idx]');
-    if (!tr) return;
-    document.querySelectorAll('#pratBody tr.selected').forEach(x => x.classList.remove('selected'));
-    tr.classList.add('selected');
-    SELECTED = (renderPratiche._current || [])[+tr.dataset.idx];
-    $('editForm').style.display = '';
-    $('editRowSub').textContent = `${SELECTED._codice || ''} · ${SELECTED.TRATTA_ID} · ${SELECTED.ENTE} · ${SELECTED.TIPO_PERMESSO}`;
-    $('fld-stato').value = '';
-
-    $('fld-data-rich').value = toInputDate(SELECTED.DATA_RICHIESTA || '');
-    $('fld-data-app').value  = toInputDate(SELECTED.DATA_APPROVAZIONE || '');
-    $('fld-pratica').value = SELECTED.PRATICA || '';
-    $('fld-note').value = SELECTED.NOTE || '';
-
-    // Trova le altre tratte che appartengono alla stessa pratica
-    // (stesso ENTE + TIPO_PERMESSO + numero PRATICA)
-    const pratNum = String(SELECTED.PRATICA || '').trim();
-    const siblingsRaw = pratNum ? PRATICHE.filter(p =>
-      p.TRATTA_ID !== SELECTED.TRATTA_ID &&
-      String(p.ENTE||'').trim() === String(SELECTED.ENTE||'').trim() &&
-      String(p.TIPO_PERMESSO||'').trim() === String(SELECTED.TIPO_PERMESSO||'').trim() &&
-      String(p.PRATICA||'').trim() === pratNum
-    ) : [];
-    // Dedup per TRATTA_ID: tieni solo la riga con DATA_ULTIMA_MODIFICA più recente
-    const siblingsMap = new Map();
-    siblingsRaw.forEach(p => {
-      const existing = siblingsMap.get(p.TRATTA_ID);
-      if (!existing || parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(existing.DATA_ULTIMA_MODIFICA)) {
-        siblingsMap.set(p.TRATTA_ID, p);
-      }
-    });
-    SIBLINGS = Array.from(siblingsMap.values());
-
-    const panel = $('siblingsPanel');
-    if (SIBLINGS.length) {
-      $('siblingsList').textContent = `Tratte collegate: ${SIBLINGS.map(s => s.TRATTA_ID).join(', ')} (${SIBLINGS.length + 1} tratte totali in questa pratica)`;
-      $('siblingsToggle').checked = true;
-      panel.style.display = '';
-    } else {
-      panel.style.display = 'none';
+@app.get("/api/preview/{filename:path}")
+async def preview_file(filename: str, max_bytes: int = 8192):
+    """Returns a short text preview of a file (first max_bytes)."""
+    rel = _safe_relpath(filename)
+    max_bytes = max(256, min(max_bytes, 65536))
+    cur = await _current_upload(rel)
+    if cur:
+        data = (await _read_gridfs(cur["gridfs_id"]))[:max_bytes]
+        source = "mongo"
+        size = cur["size"]
+    else:
+        path = DATA_DIR / rel
+        if not (path.exists() and path.is_file()):
+            raise HTTPException(404, f"File not found: {rel}")
+        size = path.stat().st_size
+        with path.open("rb") as f:
+            data = f.read(max_bytes)
+        source = "disk"
+    return {
+        "filename": rel,
+        "source": source,
+        "size": size,
+        "truncated": size > max_bytes,
+        "content": data.decode("utf-8", errors="replace"),
     }
 
-    $('editForm').scrollIntoView({behavior:'smooth', block:'nearest'});
-  });
 
-  $('cancelEditBtn').onclick = () => { $('editForm').style.display = 'none'; $('siblingsPanel').style.display = 'none'; SELECTED = null; SIBLINGS = []; document.querySelectorAll('#pratBody tr.selected').forEach(x => x.classList.remove('selected')); };
+@app.get("/api/uploads")
+async def list_uploads(
+    limit: int = 50,
+    project: str | None = None,
+    filename: str | None = None,
+    include_deleted: bool = False,
+):
+    q: dict = {}
+    if project:
+        q["project"] = project
+    if filename:
+        q["filename"] = filename
+    if not include_deleted:
+        q["deleted_at"] = None
+    cur = uploads_col.find(q).sort("uploaded_at", -1).limit(min(limit, 500))
+    items = [_serialize(d) async for d in cur]
+    return {"uploads": items, "count": len(items)}
 
-  function _pushToQueue(row, fields) {
-    QUEUE.push({
-      tratta_id: row.TRATTA_ID,
-      ente: row.ENTE,
-      tipo_permesso: row.TIPO_PERMESSO,
-      original_pratica: row.PRATICA || '',
-      fields: { ...fields },
-    });
-  }
 
-  function _finalizeAdd(fields, includeSiblings) {
-    _pushToQueue(SELECTED, fields);
-    if (includeSiblings) {
-      SIBLINGS.forEach(s => _pushToQueue(s, fields));
+@app.post("/api/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    target: str = Form(""),
+    project: str = Form("main"),
+    convert_to_csv: bool = Form(True),
+    x_upload_token: Annotated[str | None, Form(alias="token")] = None,
+    header_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+):
+    _check_token(x_upload_token or header_token)
+
+    raw = await file.read()
+    if len(raw) == 0:
+        raise HTTPException(400, "Empty file")
+    if len(raw) > MAX_UPLOAD_MB * 1024 * 1024:
+        raise HTTPException(413, f"File too large (>{MAX_UPLOAD_MB} MB)")
+
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in ALLOWED_EXT:
+        raise HTTPException(400, f"Unsupported file type {ext!r}. Allowed: {sorted(ALLOWED_EXT)}")
+
+    rows = None
+    out_name = target.strip() or (file.filename or "uploaded")
+    out_bytes = raw
+
+    if ext in {".xlsx", ".xls"} and convert_to_csv:
+        try:
+            df = pd.read_excel(io.BytesIO(raw))
+        except Exception as e:
+            raise HTTPException(400, f"Cannot parse Excel: {e}")
+        rows = int(len(df))
+        buf = io.StringIO()
+        df.to_csv(buf, index=False, sep=";")
+        out_bytes = buf.getvalue().encode("utf-8")
+        if not target:
+            out_name = Path(file.filename).stem + ".csv"
+
+    if out_name.lower().endswith(".csv") and rows is None:
+        try:
+            rows = max(0, out_bytes.decode("utf-8", errors="replace").count("\n") - 1)
+        except Exception:
+            rows = None
+
+    rel = _safe_relpath(out_name)
+
+    # Store content in GridFS
+    gridfs_id = await gridfs.upload_from_stream(
+        rel,
+        io.BytesIO(out_bytes),
+        metadata={"project": project or "main", "uploaded_at": _now_iso()},
+    )
+
+    record = {
+        "filename": rel,
+        "original_name": file.filename,
+        "size": len(out_bytes),
+        "content_type": file.content_type or "",
+        "project": project or "main",
+        "rows": rows,
+        "uploaded_at": _now_iso(),
+        "gridfs_id": gridfs_id,
+        "deleted_at": None,
     }
-    renderQueue();
-    $('editForm').style.display = 'none';
-    $('siblingsPanel').style.display = 'none';
-    document.querySelectorAll('#pratBody tr.selected').forEach(x => x.classList.remove('selected'));
-    const n = includeSiblings ? (1 + SIBLINGS.length) : 1;
-    setMsg($('msgUpd'), n > 1 ? `Aggiunte ${n} tratte alla coda` : `Aggiunto alla coda (${QUEUE.length} modifiche totali)`, true);
-  }
+    res = await uploads_col.insert_one(record)
 
-  // Modale di avviso quando si aggiorna solo una tratta pur avendo altre nella stessa pratica
-  function _showSingleTrattaWarning(fields) {
-    const statoInChanges = 'STATO_PERMESSO' in fields;
-    const overlay = document.createElement('div');
-    overlay.className = 'warn-modal-overlay';
-    if (statoInChanges) {
-      // Cambio di stato: blocco vero — non si può aggiornare solo una tratta
-      overlay.innerHTML = `
-        <div class="warn-modal">
-          <div class="warn-modal-icon">🚫</div>
-          <div class="warn-modal-title">Impossibile aggiornare solo questa tratta</div>
-          <div class="warn-modal-body">
-            Questa pratica include altre <b>${SIBLINGS.length}</b> tratt${SIBLINGS.length===1?'a':'e'}
-            (${SIBLINGS.map(s=>escapeHtml(s.TRATTA_ID)).join(', ')}).
-            Quando si cambia lo <strong>stato</strong> di un permesso, tutte le tratte della stessa pratica
-            devono essere aggiornate insieme, altrimenti lo stato complessivo risulta incoerente.
-            <br><br>Attiva <em>"Aggiorna tutte insieme"</em> prima di procedere.
-          </div>
-          <div style="display:flex;gap:10px;justify-content:flex-end">
-            <button class="btn" id="_warnCancel">Capito</button>
-          </div>
-        </div>`;
-      document.body.appendChild(overlay);
-      overlay.querySelector('#_warnCancel').onclick = () => overlay.remove();
-    } else {
-      // Solo date/note: avviso non bloccante, l'utente può scegliere
-      overlay.innerHTML = `
-        <div class="warn-modal">
-          <div class="warn-modal-icon">⚠️</div>
-          <div class="warn-modal-title">Aggiornare solo questa tratta?</div>
-          <div class="warn-modal-body">
-            Questa pratica include anche <b>${SIBLINGS.length}</b> altr${SIBLINGS.length===1?'a tratta':'e tratte'}
-            (${SIBLINGS.map(s=>escapeHtml(s.TRATTA_ID)).join(', ')}) che non verranno aggiornate.
-          </div>
-          <div style="display:flex;gap:10px;justify-content:flex-end">
-            <button class="btn btn-ghost" id="_warnCancel">Annulla</button>
-            <button class="btn" id="_warnConfirm">Procedi solo con questa</button>
-          </div>
-        </div>`;
-      document.body.appendChild(overlay);
-      overlay.querySelector('#_warnCancel').onclick = () => overlay.remove();
-      overlay.querySelector('#_warnConfirm').onclick = () => { overlay.remove(); _finalizeAdd(fields, false); };
+    # Se è Master.csv, rigenera anche i file derivati (Riepilogo_progettazione.csv,
+    # QGIS.geojson) e sincronizza GitHub — stesso comportamento di approve/delete/restore,
+    # altrimenti un upload manuale lascia mappa e barre ferme alla versione precedente.
+    if rel == MASTER_FILENAME:
+        asyncio.create_task(_push_current_master_to_github())
+
+    return JSONResponse({
+        "ok": True,
+        "id": str(res.inserted_id),
+        "filename": rel,
+        "size": len(out_bytes),
+        "rows": rows,
+        "converted_from_excel": ext in {".xlsx", ".xls"} and convert_to_csv,
+    })
+
+
+@app.delete("/api/uploads/{upload_id}")
+async def delete_upload(
+    upload_id: str,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """Soft-delete a single upload version + remove its GridFS blob."""
+    _check_token(x_upload_token or token_q)
+    try:
+        oid = ObjectId(upload_id)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    doc = await uploads_col.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Upload not found")
+    if doc.get("gridfs_id"):
+        try:
+            await gridfs.delete(doc["gridfs_id"])
+        except Exception:
+            pass
+    await uploads_col.update_one(
+        {"_id": oid},
+        {"$set": {"deleted_at": _now_iso(), "gridfs_id": None}},
+    )
+    # Se è Master.csv, sincronizza GitHub con la versione ora corrente
+    if doc.get("filename") == MASTER_FILENAME:
+        asyncio.create_task(_push_current_master_to_github())
+    return {"deleted": str(oid), "filename": doc["filename"]}
+
+
+@app.delete("/api/files/{filename:path}")
+async def delete_file(
+    filename: str,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """Soft-delete ALL upload versions of `filename`. After this call, if
+    a disk seed exists, it becomes the served version again; otherwise the
+    file returns 404."""
+    _check_token(x_upload_token or token_q)
+    rel = _safe_relpath(filename)
+    # Collect gridfs ids to remove
+    ids: list[ObjectId] = []
+    async for d in uploads_col.find({"filename": rel, "deleted_at": None}):
+        if d.get("gridfs_id"):
+            ids.append(d["gridfs_id"])
+    for gid in ids:
+        try:
+            await gridfs.delete(gid)
+        except Exception:
+            pass
+    res = await uploads_col.update_many(
+        {"filename": rel, "deleted_at": None},
+        {"$set": {"deleted_at": _now_iso(), "gridfs_id": None}},
+    )
+    # Se è Master.csv, sincronizza GitHub e rigenera i file derivati con la
+    # versione ora corrente (il seed da disco, se non resta nessun'altra versione)
+    if rel == MASTER_FILENAME:
+        asyncio.create_task(_push_current_master_to_github())
+    return {"filename": rel, "deleted_versions": res.modified_count}
+
+
+@app.patch("/api/files/{old_name:path}")
+async def rename_file(
+    old_name: str,
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """Rename a file in MongoDB. Disk seed (if any) keeps its original name
+    but it's shadowed by the renamed Mongo entry."""
+    _check_token(x_upload_token or token_q)
+    new_name = (payload or {}).get("new_name", "")
+    if not new_name:
+        raise HTTPException(400, "Missing 'new_name'")
+    old_rel = _safe_relpath(old_name)
+    new_rel = _safe_relpath(new_name)
+    if old_rel == new_rel:
+        return {"ok": True, "filename": new_rel, "updated": 0}
+    # Make sure target name isn't already taken by an active upload
+    clash = await uploads_col.find_one({"filename": new_rel, "deleted_at": None})
+    if clash:
+        raise HTTPException(409, f"Target name already in use: {new_rel}")
+    res = await uploads_col.update_many(
+        {"filename": old_rel, "deleted_at": None},
+        {"$set": {"filename": new_rel}},
+    )
+    return {"ok": True, "from": old_rel, "to": new_rel, "updated": res.modified_count}
+
+
+@app.post("/api/uploads/{upload_id}/restore")
+async def restore_upload(
+    upload_id: str,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """Make a past (soft-deleted) version current again, by clearing
+    `deleted_at` on it. NB: doesn't recover GridFS bytes if they were
+    already purged. If gridfs_id is null, this fails."""
+    _check_token(x_upload_token or token_q)
+    try:
+        oid = ObjectId(upload_id)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    doc = await uploads_col.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Upload not found")
+    if not doc.get("gridfs_id"):
+        raise HTTPException(410, "Underlying content was purged; cannot restore")
+    await uploads_col.update_one({"_id": oid}, {"$set": {"deleted_at": None}})
+    # Se è Master.csv, sincronizza GitHub con la versione ripristinata
+    if doc.get("filename") == MASTER_FILENAME:
+        asyncio.create_task(_push_current_master_to_github())
+    return {"ok": True, "restored": str(oid), "filename": doc["filename"]}
+
+
+@app.on_event("startup")
+async def _on_startup():
+    print(f"[enri-dashboard] DATA_DIR (seed) = {DATA_DIR}")
+    print(f"[enri-dashboard] DB_NAME         = {DB_NAME}")
+    print(f"[enri-dashboard] CORS            = {ALLOWED_ORIGINS}")
+    print(f"[enri-dashboard] UPLOAD_TOKEN    = {'set' if UPLOAD_TOKEN else 'OFF (open)'}")
+    # Backfill: ensure pre-existing upload records have a deleted_at field
+    await uploads_col.update_many(
+        {"deleted_at": {"$exists": False}}, {"$set": {"deleted_at": None}}
+    )
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# IMPRESE (contractor) — assignments + pending updates workflow
+# ─────────────────────────────────────────────────────────────────────────────
+# An "impresa" user logs in via the existing Google Apps Script flow (hub.html).
+# We keep a server-side mapping nome → lotti[] in `assignments`. When the user
+# submits updates / new rows, they go in `pending_updates`; the admin approves
+# and the change is applied to Master.csv (a new GridFS version is created).
+# ═════════════════════════════════════════════════════════════════════════════
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sessione firmata — risolve il problema per cui chiunque potesse fare
+# `localStorage.setItem('_enri_user', 'Nome Impresa')` e impersonare quel
+# nome senza conoscere il codice di accesso (il codice era verificato SOLO
+# da Google Apps Script al login, mai dal backend sulle chiamate successive).
+#
+# Flusso corretto:
+#   1. hub.html invia nome+codice a /api/auth/login (non più direttamente ad
+#      Apps Script: il segreto APPS_SCRIPT_SECRET resta lato server)
+#   2. Il backend verifica nome+codice chiamando Apps Script server-to-server
+#   3. Se ok, firma un token (HMAC, non falsificabile senza SESSION_SECRET)
+#      con nome+ruolo+scadenza, e lo restituisce al browser
+#   4. Ogni chiamata /api/imprese/* richiede questo token nell'header
+#      x-session-token; il `nome` viene SEMPRE preso dal token firmato,
+#      MAI dal parametro `nome` passato dal client (che viene ignorato)
+# ─────────────────────────────────────────────────────────────────────────────
+
+SESSION_SECRET = os.environ.get("SESSION_SECRET", "")
+SESSION_TTL_SECONDS = int(os.environ.get("SESSION_TTL_SECONDS", str(12 * 3600)))  # 12h default
+APPS_SCRIPT_URL = os.environ.get("APPS_SCRIPT_URL", "")
+APPS_SCRIPT_SECRET = os.environ.get("APPS_SCRIPT_SECRET", "")
+
+
+def _sign_session(nome: str, ruolo: str) -> str:
+    if not SESSION_SECRET:
+        raise HTTPException(500, "SESSION_SECRET non configurato sul server")
+    exp = int(time.time()) + SESSION_TTL_SECONDS
+    payload = f"{nome}|{ruolo}|{exp}"
+    sig = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    raw = f"{payload}|{sig}"
+    return base64.urlsafe_b64encode(raw.encode()).decode()
+
+
+def _verify_session(token: str) -> dict | None:
+    if not token or not SESSION_SECRET:
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(token.encode()).decode()
+        nome, ruolo, exp, sig = raw.split("|", 3)
+        payload = f"{nome}|{ruolo}|{exp}"
+        expected = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return None
+        if int(exp) < int(time.time()):
+            return None
+        return {"nome": nome, "ruolo": ruolo}
+    except Exception:
+        return None
+
+
+async def _require_session(
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+) -> dict:
+    """Dependency per gli endpoint /api/imprese/*: il `nome` autenticato viene
+    SEMPRE letto dal token firmato, mai da un parametro passato dal client."""
+    sess = _verify_session(x_session_token or "")
+    if not sess:
+        raise HTTPException(401, "Sessione non valida o scaduta — effettua di nuovo il login")
+    return sess
+
+
+@app.post("/api/auth/login")
+async def auth_login(payload: dict):
+    """Proxy server-to-server verso Google Apps Script: il browser non vede
+    più APPS_SCRIPT_SECRET, e il codice viene verificato per davvero (non solo
+    al primo login, ma e' la base per ogni chiamata successiva tramite il token)."""
+    nome = (payload or {}).get("nome", "").strip()
+    codice = (payload or {}).get("codice", "").strip()
+    if not nome or not codice:
+        raise HTTPException(400, "Nome e codice sono richiesti")
+    if not APPS_SCRIPT_URL or not APPS_SCRIPT_SECRET:
+        raise HTTPException(500, "Login non configurato sul server (APPS_SCRIPT_URL/SECRET mancanti)")
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            r = await client.post(
+                APPS_SCRIPT_URL,
+                content=json.dumps({"secret": APPS_SCRIPT_SECRET, "action": "login", "nome": nome, "codice": codice}),
+                headers={"Content-Type": "text/plain"},
+            )
+    except Exception as e:
+        raise HTTPException(502, f"Servizio di login non raggiungibile: {e}")
+
+    try:
+        data = r.json()
+    except Exception:
+        snippet = r.text[:200].replace("\n", " ")
+        raise HTTPException(502, f"Risposta non valida da Apps Script (HTTP {r.status_code}): {snippet!r}")
+
+    if not data.get("ok"):
+        raise HTTPException(401, data.get("msg") or "Nome o codice non riconosciuti")
+
+    nome_canonical = data.get("nome") or nome
+    ruolo = str(data.get("ruolo") or "user").lower()
+    token = _sign_session(nome_canonical, ruolo)
+    return {"ok": True, "token": token, "nome": nome_canonical, "ruolo": ruolo}
+
+
+@app.get("/api/auth/verify")
+async def auth_verify(sess: dict = Depends(_require_session)):
+    """Verifica token di sessione e restituisce nome+ruolo — usato da index.html per la rivalidazione silenziosa."""
+    return {"ok": True, "nome": sess["nome"], "ruolo": sess.get("ruolo", "user")}
+
+
+@app.post("/api/logs/get")
+async def logs_get(payload: dict, sess: dict = Depends(_require_session)):
+    """Proxy JSONBin get via Apps Script (il segreto resta server-side)."""
+    bin_id = (payload or {}).get("binId", "")
+    if not APPS_SCRIPT_URL or not APPS_SCRIPT_SECRET:
+        raise HTTPException(500, "Log service non configurato")
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            r = await client.post(
+                APPS_SCRIPT_URL,
+                content=json.dumps({"secret": APPS_SCRIPT_SECRET, "action": "jsonbin_get", "binId": bin_id}),
+                headers={"Content-Type": "text/plain"},
+            )
+        return r.json()
+    except Exception as e:
+        raise HTTPException(502, f"Log service non raggiungibile: {e}")
+
+
+@app.post("/api/logs/put")
+async def logs_put(payload: dict, sess: dict = Depends(_require_session)):
+    """Proxy JSONBin put via Apps Script (il segreto resta server-side)."""
+    bin_id = (payload or {}).get("binId", "")
+    data   = (payload or {}).get("data")
+    if not APPS_SCRIPT_URL or not APPS_SCRIPT_SECRET:
+        raise HTTPException(500, "Log service non configurato")
+    try:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+            r = await client.post(
+                APPS_SCRIPT_URL,
+                content=json.dumps({"secret": APPS_SCRIPT_SECRET, "action": "jsonbin_put", "binId": bin_id, "data": data}),
+                headers={"Content-Type": "text/plain"},
+            )
+        return r.json()
+    except Exception as e:
+        raise HTTPException(502, f"Log service non raggiungibile: {e}")
+
+
+MASTER_FILENAME = "Master.csv"
+ROW_KEY_COLS = ("TRATTA_ID", "ENTE", "TIPO_PERMESSO")  # natural key for an update
+
+# Separatore rilevato dal file effettivo — viene impostato in _read_master_csv()
+_detected_sep: str = ";"
+
+def _detect_sep(raw: bytes, encoding: str = "utf-8") -> str:
+    """Auto-detect CSV separator: tab, semicolon or comma."""
+    try:
+        sample = raw[:4096].decode(encoding, errors="replace")
+        first_line = sample.split("\n")[0]
+        counts = {"\t": first_line.count("\t"), ";": first_line.count(";"), ",": first_line.count(",")}
+        return max(counts, key=counts.get)
+    except Exception:
+        return ";"
+
+async def _read_master_csv() -> "pd.DataFrame":
+    """Read the current authoritative Master.csv (Mongo first, then disk seed)."""
+    global _detected_sep
+    cur = await _current_upload(MASTER_FILENAME)
+    if cur:
+        raw = await _read_gridfs(cur["gridfs_id"])
+    else:
+        path = DATA_DIR / MASTER_FILENAME
+        if not path.exists():
+            raise HTTPException(404, "Master.csv not found")
+        raw = path.read_bytes()
+    # Auto-rileva separatore dal contenuto reale del file
+    _detected_sep = _detect_sep(raw)
+    # Master.csv may be UTF-8 or Latin-1/CP1252 depending on the Excel export.
+    # on_bad_lines='warn' evita che UNA riga malformata (es. virgola non quotata
+    # in un campo di testo libero come NOTE) faccia fallire la lettura di tutto
+    # il file: la riga incriminata viene segnalata in log e scartata, il resto
+    # del file resta leggibile.
+    for enc in ("utf-8", "cp1252", "latin-1"):
+        try:
+            return pd.read_csv(
+                io.BytesIO(raw), sep=_detected_sep, dtype=str, keep_default_na=False,
+                encoding=enc, on_bad_lines="warn",
+            )
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+    # Last resort: replace bad bytes
+    return pd.read_csv(io.BytesIO(raw), sep=_detected_sep, dtype=str, keep_default_na=False, encoding="utf-8", encoding_errors="replace")
+
+
+QGIS_FILENAME      = "QGIS.geojson"
+RIEPILOGO_FILENAME = "Riepilogo_progettazione.csv"
+
+GITHUB_REPO     = os.environ.get("GITHUB_REPO", "ENRI-RDS/dashboard")
+GITHUB_BRANCH   = os.environ.get("GITHUB_BRANCH", "main")
+GITHUB_CSV_PATH = os.environ.get("GITHUB_CSV_PATH", "Master.csv")
+
+# Mappa file dashboard -> path nel repo GitHub (override via env se servono sottocartelle)
+GITHUB_PATHS: dict = {
+    "Master.csv":                  GITHUB_CSV_PATH,
+    "Riepilogo_progettazione.csv": os.environ.get("GITHUB_RIEPILOGO_PATH", "Riepilogo_progettazione.csv"),
+    "QGIS.geojson":                os.environ.get("GITHUB_QGIS_PATH", "QGIS.geojson"),
+}
+
+
+async def _push_to_github(file_bytes: bytes, path: str = None, label: str = None) -> None:
+    """Aggiorna un file su GitHub via API (Master.csv, QGIS.geojson, Riepilogo_progettazione.csv, ...).
+    In caso di conflitto sha (409 — qualcun altro ha scritto sullo stesso file nel frattempo,
+    es. una modifica manuale in parallelo) rilegge lo sha aggiornato e riprova fino a 3 volte."""
+    path  = path or GITHUB_CSV_PATH
+    label = label or path
+    print(f"[GitHub] push avviato — {len(file_bytes)} bytes, repo={GITHUB_REPO}, path={path}, branch={GITHUB_BRANCH}")
+    token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        print("[GitHub] GITHUB_TOKEN non impostato — skip push")
+        return
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
     }
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  }
-  $('addToQueueBtn').onclick = () => {
-    if (!SELECTED) return;
-    const fields = {};
-    if ($('fld-stato').value) fields.STATO_PERMESSO = $('fld-stato').value;
-    if ($('fld-data-rich').value !== toInputDate(SELECTED.DATA_RICHIESTA)) fields.DATA_RICHIESTA = fromInputDate($('fld-data-rich').value);
-    if ($('fld-data-app').value !== toInputDate(SELECTED.DATA_APPROVAZIONE)) fields.DATA_APPROVAZIONE = fromInputDate($('fld-data-app').value);
-    // PRATICA non modificabile dall'impresa — campo solo lettura
-    if ($('fld-note').value !== SELECTED.NOTE) fields.NOTE = $('fld-note').value;
-    if (!Object.keys(fields).length) return setMsg($('msgUpd'), 'Nessun campo modificato', false);
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}"
+    max_tentativi = 3
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            for tentativo in range(1, max_tentativi + 1):
+                r = await client.get(url, headers=headers, params={"ref": GITHUB_BRANCH})
+                if r.status_code not in (200, 404):
+                    print(f"[GitHub] GET {url} → {r.status_code}: {r.text[:200]}")
+                    return
+                sha = r.json().get("sha") if r.status_code == 200 else None
+                payload: dict = {
+                    "message": f"Auto-update {label} via approvazione admin [skip ci]",
+                    "content": base64.b64encode(file_bytes).decode(),
+                    "branch": GITHUB_BRANCH,
+                }
+                if sha:
+                    payload["sha"] = sha
+                resp = await client.put(url, headers=headers, json=payload)
+                if resp.status_code in (200, 201):
+                    extra = f" (tentativo {tentativo}/{max_tentativi})" if tentativo > 1 else ""
+                    print(f"[GitHub] {label} aggiornato sul branch {GITHUB_BRANCH}{extra}")
+                    return
+                if resp.status_code == 409 and tentativo < max_tentativi:
+                    print(f"[GitHub] Conflitto sha su {label} (tentativo {tentativo}/{max_tentativi}) — rileggo e riprovo")
+                    await asyncio.sleep(1)
+                    continue
+                print(f"[GitHub] Errore push {label}: {resp.status_code} {resp.text[:300]}")
+                return
+    except Exception as e:
+        print(f"[GitHub] Eccezione {label}: {type(e).__name__}: {e}")
 
-    const wantsAllTogether = SIBLINGS.length > 0 && $('siblingsToggle').checked;
-    const wantsSingleOnly  = SIBLINGS.length > 0 && !$('siblingsToggle').checked;
 
-    if (wantsSingleOnly) {
-      _showSingleTrattaWarning(fields); // richiede conferma esplicita
-    } else {
-      _finalizeAdd(fields, wantsAllTogether);
+
+async def _push_current_master_to_github() -> None:
+    """Legge la versione corrente di Master.csv da MongoDB, la pusha su GitHub
+    e rigenera QGIS.geojson + Riepilogo_progettazione.csv (usata da delete/restore)."""
+    try:
+        df = await _read_master_csv()
+        github_buf = io.StringIO()
+        df.to_csv(github_buf, index=False, sep="\t")
+        github_data = github_buf.getvalue().encode("utf-8")
+        await _push_to_github(github_data, path=GITHUB_PATHS["Master.csv"], label="Master.csv")
+        await _regenerate_derived_files(df, note="restore/delete Master.csv")
+    except Exception as e:
+        print(f"[GitHub] _push_current_master: {e}")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Derivazione QGIS.geojson + Riepilogo_progettazione.csv da Master.csv
+# ─────────────────────────────────────────────────────────────────────────────
+# Regole verificate contro un export reale di Riepilogo_progettazione.csv:
+#   - STATO_LEGENDA è sempre identico a STATO_AUTORIZZAZIONE (0 eccezioni su 692 righe)
+#   - LAVORABILE = SI solo se STATO_AUTORIZZAZIONE = OTTENUTO E (se richiesto)
+#     anche il/i NULLA OSTA sono OTTENUTI (idem ORDINANZA se richiesta)
+#   - Quando una tratta ha PIU' nulla osta (enti diversi), si usa lo stato PIU'
+#     INDIETRO (peggiore) tra l'ultimo stato registrato per ciascun ente
+#   - CAMPO AWS, PROTOCOLLO_AUT, ENTE 2: provengono da un sistema esterno o non
+#     hanno una regola derivabile con certezza dai dati disponibili — NON vengono
+#     toccati dalla rigenerazione, il valore esistente viene preservato.
+# ═════════════════════════════════════════════════════════════════════════════
+
+_STATUS_RANK = {
+    "NECESSARIA INTEGRAZIONE": 0,
+    "IN REDAZIONE INTEGRAZIONE": 1,
+    "IN REDAZIONE": 2,
+    "IN ATTESA": 2,
+    "COORDINAMENTO": 3,
+    "IN FIRMA RDS": 4,
+    "INVIATO": 5,
+    "PROTOCOLLATO INTEGRAZIONE": 6,
+    "PROTOCOLLATO": 7,
+    "OTTENUTO": 8,
+}
+
+_TIPO_PREFIX = {"AUTORIZZAZIONE": "AUT", "NULLA OSTA": "NO", "ORDINANZA": "ORD"}
+
+
+def _norm(s) -> str:
+    return str(s or "").replace("\xa0", " ").strip().upper()
+
+
+def _worst_status(statuses: list) -> str:
+    clean = [str(s).strip() for s in statuses
+             if s and str(s).strip() and str(s).strip().upper() != "NO COMPETENZA"]
+    if not clean:
+        return ""
+    return min(clean, key=lambda s: _STATUS_RANK.get(s.upper(), 99))
+
+
+def _latest_per_ente(rows: list, tipo: str) -> list:
+    """Tra le righe di un TIPO_PERMESSO, prende l'ultima riga (cronologicamente
+    piu' recente, assumendo l'ordine di inserimento) per ciascun ente distinto."""
+    by_ente, order = {}, []
+    for r in rows:
+        if _norm(r.get("TIPO_PERMESSO")) != tipo:
+            continue
+        ente = _norm(r.get("ENTE"))
+        if ente not in by_ente:
+            order.append(ente)
+        by_ente[ente] = r  # l'ultima occorrenza trovata vince
+    return [by_ente[e] for e in order]
+
+
+def _lotto_from_source(source_name: str) -> str:
+    """'Lotto 1A.xlsx' -> '1A'."""
+    s = str(source_name or "")
+    s = re.sub(r"(?i)^lotto\s*", "", s).strip()
+    s = re.sub(r"(?i)\.xlsx?$", "", s).strip()
+    return s.upper()
+
+
+def _build_pratica(rows: list) -> str:
+    """'AUT/24/1A | NO/22/1A | NO/26/1A' — AUT prima, poi NO, poi ORD."""
+    parts, seen = [], set()
+    for tipo, pref in (("AUTORIZZAZIONE", "AUT"), ("NULLA OSTA", "NO"), ("ORDINANZA", "ORD")):
+        for r in rows:
+            if _norm(r.get("TIPO_PERMESSO")) != tipo:
+                continue
+            num = str(r.get("PRATICA") or "").strip()
+            if not num:
+                continue
+            lotto = _lotto_from_source(r.get("Source.Name", ""))
+            tok = f"{pref}/{num}/{lotto}"
+            if tok not in seen:
+                seen.add(tok)
+                parts.append(tok)
+    return " | ".join(parts)
+
+
+def _compute_tratta_summary(master_df: "pd.DataFrame") -> dict:
+    """Per ogni TRATTA_ID calcola: STATO_AUTORIZZAZIONE, STATO_NULLAOSTA,
+    STATO_ORDINANZA, LAVORABILE, MOTIVO_NO, PRATICA, STATO_LEGENDA, ENTE."""
+    if master_df is None or "TRATTA_ID" not in master_df.columns:
+        return {}
+    df = master_df.fillna("")
+    result = {}
+
+    for tratta_id, group in df.groupby(df["TRATTA_ID"].astype(str).str.strip()):
+        tratta_id = tratta_id.strip()
+        if not tratta_id:
+            continue
+        rows = group.to_dict(orient="records")
+
+        # AUTORIZZAZIONE: un solo permesso per tratta -> ultima riga inserita.
+        # Le pratiche chiuse con STATO_PERMESSO=NO COMPETENZA sono superate:
+        # l'ente ha dichiarato di non essere competente, quindi prima o poi
+        # arriva una NUOVA pratica con un ente diverso sulla stessa tratta.
+        # Finché esiste un'alternativa attiva va sempre preferita a NO COMPETENZA;
+        # se invece NO COMPETENZA è l'unica pratica presente, la tratta è
+        # semplicemente in attesa che la nuova pratica venga aperta.
+        aut_rows = [r for r in rows if _norm(r.get("TIPO_PERMESSO")) == "AUTORIZZAZIONE"]
+        aut_rows_attive = [r for r in aut_rows if _norm(r.get("STATO_PERMESSO")) != "NO COMPETENZA"]
+        if aut_rows_attive:
+            aut_row_corrente = aut_rows_attive[-1]
+            stato_aut = _norm(aut_row_corrente.get("STATO_PERMESSO"))
+        elif aut_rows:
+            aut_row_corrente = aut_rows[-1]
+            stato_aut = "IN ATTESA"
+        else:
+            aut_row_corrente = None
+            stato_aut = "IN ATTESA"
+        ente_aut  = str(aut_row_corrente.get("ENTE", "")).strip() if aut_row_corrente else ""
+        need_no   = _norm(aut_row_corrente.get("NULLA OSTA NECESSARIO")) if aut_row_corrente else "NO"
+        need_ord  = _norm(aut_row_corrente.get("ORDINANZA NECESSARIA")) if aut_row_corrente else "NO"
+
+        # NULLA OSTA / ORDINANZA: possono essercene piu' di uno (enti diversi) ->
+        # prendi l'ultimo stato di ciascun ente, poi il PEGGIORE tra questi
+        no_latest  = _latest_per_ente(rows, "NULLA OSTA")
+        stato_no   = _worst_status([r.get("STATO_PERMESSO") for r in no_latest]) if no_latest else (
+            "IN ATTESA" if need_no == "SI" else "NON NECESSARIO"
+        )
+        ord_latest = _latest_per_ente(rows, "ORDINANZA")
+        stato_ord  = _worst_status([r.get("STATO_PERMESSO") for r in ord_latest]) if ord_latest else (
+            "IN ATTESA" if need_ord == "SI" else "NON NECESSARIO"
+        )
+
+        aut_ok = stato_aut == "OTTENUTO"
+        no_ok  = stato_no == "OTTENUTO"
+        ord_ok = stato_ord == "OTTENUTO"
+
+        lavorabile = aut_ok
+        if need_no == "SI":
+            lavorabile = lavorabile and no_ok
+        if need_ord == "SI":
+            lavorabile = lavorabile and ord_ok
+
+        motivi = []
+        if not aut_ok:
+            motivi.append("Manca autorizz")
+        if need_no == "SI" and not no_ok:
+            motivi.append("Manca nulla osta")
+        if need_ord == "SI" and not ord_ok:
+            motivi.append("Manca ordinanza")
+
+        result[tratta_id] = {
+            "STATO_AUTORIZZAZIONE": stato_aut,
+            "STATO_LEGENDA":        stato_aut,  # sempre identico, confermato sui dati reali
+            "STATO_NULLAOSTA":      stato_no,
+            "STATO_ORDINANZA":      stato_ord,
+            "LAVORABILE":           "SI" if lavorabile else "NO",
+            "MOTIVO_NO":            " | ".join(motivi),
+            "PRATICA":              _build_pratica(rows),
+            "ENTE":                 ente_aut,
+        }
+    return result
+
+
+async def _read_current_geojson(filename: str):
+    """Legge un GeoJSON (MongoDB se presente, altrimenti seed su disco)."""
+    cur = await _current_upload(filename)
+    if cur and cur.get("gridfs_id"):
+        raw = await _read_gridfs(cur["gridfs_id"])
+    else:
+        path = DATA_DIR / filename
+        if not path.exists():
+            return None
+        raw = path.read_bytes()
+    for enc in ("utf-8", "cp1252", "latin-1"):
+        try:
+            return json.loads(raw.decode(enc))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+    return None
+
+
+async def _store_derived_file(filename: str, data: bytes, content_type: str, note: str) -> str:
+    """Salva un file derivato (rigenerato) come nuova versione in GridFS."""
+    gid = await gridfs.upload_from_stream(
+        filename, io.BytesIO(data),
+        metadata={"project": "main", "uploaded_at": _now_iso(), "source": "derived", "note": note},
+    )
+    record = {
+        "filename": filename, "original_name": filename, "size": len(data),
+        "content_type": content_type, "project": "main", "rows": None,
+        "uploaded_at": _now_iso(), "gridfs_id": gid, "deleted_at": None,
+        "source": "derived", "note": note,
     }
-  };
+    res = await uploads_col.insert_one(record)
+    return str(res.inserted_id)
 
-  function renderQueue(){
-    if (!QUEUE.length){ $('updateQueue').style.display = 'none'; return; }
-    $('updateQueue').style.display = '';
-    $('qCount').textContent = QUEUE.length;
-    $('queueBody').innerHTML = QUEUE.map((q, i) => `
-      <tr>
-        <td class="mono">${escapeHtml(q.tratta_id)}</td>
-        <td>${escapeHtml(q.ente)}</td>
-        <td><span class="mono" style="font-size:11px">${Object.entries(q.fields).map(([k,v]) => `${k}=${escapeHtml(v)}`).join(' · ')}</span></td>
-        <td><button class="btn btn-ghost btn-xs" data-rem="${i}">Rimuovi</button></td>
-      </tr>`).join('');
-  }
-  $('queueBody').addEventListener('click', e => {
-    const b = e.target.closest('button[data-rem]');
-    if (!b) return; QUEUE.splice(+b.dataset.rem, 1); renderQueue();
-  });
-  $('clearQueueBtn').onclick = () => { QUEUE.length = 0; renderQueue(); };
 
-  $('submitUpdatesBtn').onclick = async () => {
-    if (!QUEUE.length) return;
-    const btn = $('submitUpdatesBtn');
-    const originalHTML = btn.innerHTML;
-    btn.disabled = true;
-    btn.setAttribute('aria-busy', 'true');
-    btn.innerHTML = '<span class="spinner spinner-sm" aria-hidden="true"></span>Invio in corso…';
-    try {
-      const res = await api('/api/imprese/submit', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ nome, type: 'update', changes: QUEUE }),
-      });
-      setMsg($('msgUpd'), `Inviate ${res.count} modifiche per approvazione`, true);
-      QUEUE.length = 0; renderQueue(); loadMine();
-    } catch(e){ setMsg($('msgUpd'), 'Errore: ' + e.message, false); }
-    finally {
-      btn.disabled = false;
-      btn.removeAttribute('aria-busy');
-      btn.innerHTML = originalHTML;
+async def _regenerate_derived_files(master_df: "pd.DataFrame", note: str = "") -> dict:
+    """Rigenera QGIS.geojson e Riepilogo_progettazione.csv a partire da Master.csv.
+
+    Verificato sui file reali: Riepilogo_progettazione.csv e' ESATTAMENTE la
+    tabella attributi di QGIS.geojson esportata in CSV (stesse 21 colonne,
+    stesso ordine, stessi valori, stesso numero di righe — confrontato riga
+    per riga su TR_0103 e sull'intero file). Per questo la patch avviene UNA
+    SOLA VOLTA sulle properties di QGIS.geojson, e Riepilogo viene poi
+    derivato direttamente da quello: i due file non possono piu' disallinearsi.
+
+    Vengono aggiornati SOLO i campi calcolati da Master.csv:
+    STATO_AUTORIZZAZIONE, STATO_LEGENDA, STATO_NULLAOSTA, STATO_ORDINANZA,
+    LAVORABILE, MOTIVO_NO, PRATICA, ENTE.
+    Tutto il resto (fid, TIPOLOGIA, PROVINCIA, COMUNE, CLUSTER, ROUTE, ENTE 2,
+    LUNGHEZZA, SPAN, LOTTO, PROTOCOLLO_AUT, CAMPO AWS, geometria) resta
+    esattamente come nel QGIS.geojson esistente.
+
+    Fire-and-forget: eventuali errori vengono solo loggati.
+    """
+    # Ordine colonne confermato sul file reale (json.load preserva l'ordine delle key)
+    RIEPILOGO_COLUMNS = [
+        "fid", "TIPOLOGIA", "PROVINCIA", "COMUNE", "CLUSTER", "ROUTE", "ENTE", "ENTE 2",
+        "LUNGHEZZA", "SPAN", "LOTTO", "TRATTA_ID", "MOTIVO_NO", "STATO_AUTORIZZAZIONE",
+        "STATO_NULLAOSTA", "STATO_ORDINANZA", "PROTOCOLLO_AUT", "PRATICA", "LAVORABILE",
+        "STATO_LEGENDA", "CAMPO AWS",
+    ]
+
+    out_ids: dict = {}
+    try:
+        summary = _compute_tratta_summary(master_df)
+        if not summary:
+            print("[Sync] Master.csv senza TRATTA_ID utilizzabili — skip rigenerazione")
+            return out_ids
+
+        geo = await _read_current_geojson(QGIS_FILENAME)
+        if not geo or not isinstance(geo.get("features"), list):
+            print(f"[Sync] {QGIS_FILENAME} non trovato — skip rigenerazione")
+            return out_ids
+
+        # ── 1. Patch in place delle proprieta' di stato su QGIS.geojson ─────────
+        riepilogo_rows = []
+        for feat in geo["features"]:
+            props = feat.get("properties") or {}
+            tid = str(props.get("TRATTA_ID") or "").strip()
+            s = summary.get(tid)
+            if s:
+                props["STATO_AUTORIZZAZIONE"] = s["STATO_AUTORIZZAZIONE"]
+                props["STATO_LEGENDA"]        = s["STATO_LEGENDA"]
+                props["STATO_NULLAOSTA"]      = s["STATO_NULLAOSTA"]
+                props["STATO_ORDINANZA"]      = s["STATO_ORDINANZA"]
+                props["LAVORABILE"]           = s["LAVORABILE"]
+                props["MOTIVO_NO"]            = s["MOTIVO_NO"]
+                if s["PRATICA"]:
+                    props["PRATICA"] = s["PRATICA"]
+                if s["ENTE"]:
+                    props["ENTE"] = s["ENTE"]
+            feat["properties"] = props
+            # Riga corrispondente per Riepilogo_progettazione.csv — stesse colonne,
+            # stessi valori, derivati dalla stessa feature appena patchata.
+            riepilogo_rows.append({col: props.get(col, "") for col in RIEPILOGO_COLUMNS})
+
+        geo_bytes = json.dumps(geo, ensure_ascii=False).encode("utf-8")
+        out_ids["qgis"] = await _store_derived_file(QGIS_FILENAME, geo_bytes, "application/geo+json", note)
+        asyncio.create_task(_push_to_github(geo_bytes, path=GITHUB_PATHS["QGIS.geojson"], label=QGIS_FILENAME))
+
+        # ── 2. Riepilogo_progettazione.csv: derivato 1:1 da QGIS.geojson ────────
+        riep_df = pd.DataFrame(riepilogo_rows, columns=RIEPILOGO_COLUMNS)
+        rbuf = io.StringIO()
+        riep_df.to_csv(rbuf, index=False)  # virgola, come il file originale
+        rdata = rbuf.getvalue().encode("utf-8")
+        out_ids["riepilogo"] = await _store_derived_file(RIEPILOGO_FILENAME, rdata, "text/csv", note)
+        asyncio.create_task(_push_to_github(rdata, path=GITHUB_PATHS["Riepilogo_progettazione.csv"], label=RIEPILOGO_FILENAME))
+
+        print(f"[Sync] Rigenerati: {list(out_ids.keys())} ({len(summary)} tratte, note={note!r})")
+    except Exception as e:
+        print(f"[Sync] Errore rigenerazione QGIS/Riepilogo: {type(e).__name__}: {e}")
+    return out_ids
+
+
+
+
+
+async def _write_master_csv(df: "pd.DataFrame", note: str) -> str:
+    """Persist a new Master.csv version in GridFS and return the new upload id."""
+    buf = io.StringIO()
+    df.to_csv(buf, index=False, sep=_detected_sep)
+    data = buf.getvalue().encode("utf-8")
+    # Per GitHub usiamo sempre tab (formato originale del file nel repo)
+    github_buf = io.StringIO()
+    df.to_csv(github_buf, index=False, sep="\t")
+    github_data = github_buf.getvalue().encode("utf-8")
+    gid = await gridfs.upload_from_stream(
+        MASTER_FILENAME,
+        io.BytesIO(data),
+        metadata={"project": "main", "uploaded_at": _now_iso(), "source": "impresa", "note": note},
+    )
+    record = {
+        "filename": MASTER_FILENAME,
+        "original_name": MASTER_FILENAME,
+        "size": len(data),
+        "content_type": "text/csv",
+        "project": "main",
+        "rows": max(0, len(df)),
+        "uploaded_at": _now_iso(),
+        "gridfs_id": gid,
+        "deleted_at": None,
+        "source": "impresa",
+        "note": note,
     }
-  };
+    res = await uploads_col.insert_one(record)
+    # Aggiorna Master.csv su GitHub e rigenera i file derivati (fire-and-forget)
+    asyncio.create_task(_push_to_github(github_data, path=GITHUB_PATHS["Master.csv"], label="Master.csv"))
+    asyncio.create_task(_regenerate_derived_files(df, note=note))
+    return str(res.inserted_id)
 
-  // ─── nuova ─────────────────────────────────────────
-  $('newForm').addEventListener('submit', async e => {
-    e.preventDefault();
-    const submitBtn = e.target.querySelector('button[type="submit"]');
-    const pratica = String($('new-pratica').value).trim();
-    if (!pratica || isNaN(parseInt(pratica))) return setMsg($('msgNew'), 'Il numero progressivo pratica è obbligatorio', false);
-    const row = {
-      "Source.Name": $('new-lotto').value,
-      "TRATTA_ID": $('new-tratta').value.trim(),
-      "ENTE": ($('new-ente').value === '__altro__'
-               ? ($('new-ente-custom') ? $('new-ente-custom').value.trim() : '')
-               : $('new-ente').value.trim()),
-      "TIPO_PERMESSO": $('new-tipo').value,
-      "STATO_PERMESSO": "IN REDAZIONE",
-      "DATA_RICHIESTA": fromInputDate($('new-data-rich').value),
-      "DATA_ULTIMA_MODIFICA": new Date().toLocaleDateString('it-IT'),
-      "DATA_APPROVAZIONE": "",
-      "NULLA OSTA NECESSARIO": $('new-no-nec').value,
-      "ORDINANZA NECESSARIA": $('new-ord-nec').value,
-      "CONVENZIONE": $('new-convenzione').value,
-      "POLIZZA ": $('new-polizza').value,
-      "LUNGHEZZA": $('new-lunghezza').value.trim(),
-      "PRATICA": pratica,
-      "N_SED": $('new-nsed').value.trim(),
-      "NOTE": $('new-note').value.trim(),
-    };
-    const originalHTML = submitBtn ? submitBtn.innerHTML : '';
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.setAttribute('aria-busy', 'true');
-      submitBtn.innerHTML = '<span class="spinner spinner-sm" aria-hidden="true"></span>Invio in corso…';
+
+def _serialize_assignment(d: dict) -> dict:
+    out = dict(d)
+    out["_id"] = str(out["_id"])
+    return out
+
+
+# ───────── Imprese (no admin token required, identified by their `nome`) ────
+
+async def _find_assignment(nome: str) -> dict | None:
+    """Cerca un assignment per nome in modo case-insensitive,
+    così 'sertori', 'Sertori' e 'SERTORI' trovano tutti lo stesso record."""
+    return await assignments_col.find_one(
+        {"nome": {"$regex": f"^{re.escape(nome.strip())}$", "$options": "i"}}
+    )
+
+
+@app.get("/api/enti")
+async def get_enti(sess: dict = Depends(_require_session)):
+    """Restituisce tutti gli enti unici presenti in Master.csv, ordinati alfabeticamente."""
+    df = await _read_master_csv()
+    if df is None or "ENTE" not in df.columns:
+        return {"enti": []}
+    enti = sorted(
+        {str(v).strip() for v in df["ENTE"].dropna() if str(v).strip()},
+        key=lambda x: x.lower()
+    )
+    return {"enti": enti}
+
+
+@app.get("/api/imprese/me")
+async def impresa_me(sess: dict = Depends(_require_session)):
+    """Returns the impresa's profile if they are assigned, else 404.
+    Il nome viene dal token di sessione firmato, non da un parametro client."""
+    doc = await _find_assignment(sess["nome"])
+    if not doc:
+        raise HTTPException(404, "Impresa non assegnata")
+    return {"nome": doc["nome"], "lotti": doc.get("lotti", []), "active": bool(doc.get("active", True))}
+
+
+@app.get("/api/imprese/pratiche")
+async def impresa_pratiche(sess: dict = Depends(_require_session)):
+    """Returns Master.csv rows whose Source.Name matches one of the user's lotti
+    (confronto per codice lotto esatto, non substring — così 'Lotto 2' non
+    aggancia per errore 'Lotto 2A.xlsx' o eventuali lotti a doppia cifra)."""
+    doc = await _find_assignment(sess["nome"])
+    if not doc or not doc.get("active", True):
+        raise HTTPException(404, "Impresa non autorizzata")
+    lotti = {_lotto_from_source(l) for l in doc.get("lotti", []) if str(l).strip()}
+    df = await _read_master_csv()
+    if "Source.Name" not in df.columns or not lotti:
+        return {"pratiche": [], "lotti": sorted(lotti), "total": 0}
+    mask = df["Source.Name"].apply(lambda x: _lotto_from_source(x) in lotti)
+    sub = df[mask]
+    pratiche = sub.fillna("").to_dict(orient="records")
+    return {"pratiche": pratiche, "lotti": sorted(lotti), "total": len(pratiche)}
+
+
+@app.post("/api/imprese/submit")
+async def impresa_submit(payload: dict, sess: dict = Depends(_require_session)):
+    """Body: {type: 'update'|'new', changes: [...]}. Il `nome` arriva dalla
+    sessione firmata: anche se il client invia un 'nome' diverso nel body,
+    viene ignorato — non e' piu' possibile inviare submission per conto di
+    un'altra impresa semplicemente cambiando un parametro.
+    For 'update': each change has {tratta_id, ente, tipo_permesso, fields:{col:val}}
+    For 'new': each change is a full row dict.
+    Goes into pending_updates with status='pending'."""
+    nome = sess["nome"]
+    typ = (payload or {}).get("type", "").strip()
+    changes = (payload or {}).get("changes") or []
+    if typ not in {"update", "new"}:
+        raise HTTPException(400, "type must be 'update' or 'new'")
+    if not isinstance(changes, list) or not changes:
+        raise HTTPException(400, "Empty 'changes' array")
+    doc = await _find_assignment(nome)
+    if not doc or not doc.get("active", True):
+        raise HTTPException(403, "Impresa non autorizzata")
+
+    record = {
+        "nome": nome,
+        "type": typ,
+        "changes": changes,
+        "status": "pending",
+        "submitted_at": _now_iso(),
+        "reviewed_at": None,
+        "reviewed_by": None,
+        "applied_upload_id": None,
+        "note": (payload or {}).get("note", ""),
     }
-    try {
-      const res = await api('/api/imprese/submit', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ nome, type: 'new', changes: [row] }),
-      });
-      setMsg($('msgNew'), `Inviata 1 nuova pratica per approvazione (ID ${res.id.slice(-8)})`, true);
-      $('newForm').reset();
-      loadMine();
-    } catch(e){ setMsg($('msgNew'), 'Errore: ' + e.message, false); }
-    finally {
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.removeAttribute('aria-busy');
-        submitBtn.innerHTML = originalHTML;
-      }
-    }
-  });
+    res = await pending_col.insert_one(record)
+    return {"ok": True, "id": str(res.inserted_id), "count": len(changes)}
 
-  // ─── le mie ────────────────────────────────────────
-  async function loadMine(){
-    try {
-      const d = await api(`/api/imprese/my-submissions?nome=${encodeURIComponent(nome)}`);
-      if (!d.submissions || !d.submissions.length){ $('mineBody').innerHTML = '<tr><td colspan="5" class="empty">Nessuna submission ancora</td></tr>'; return; }
-      $('mineBody').innerHTML = d.submissions.map(s => {
-        const payload = JSON.stringify(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        const nMod = (s.changes||[]).length;
-        return `<tr data-sub="${payload}" style="cursor:pointer" title="Clicca per vedere i dettagli">
-          <td class="mono">${new Date(s.submitted_at).toLocaleString('it-IT')}</td>
-          <td>${s.type === 'update' ? 'Aggiornamento' : 'Nuova pratica'}</td>
-          <td>${nMod === 1 ? '1 modifica' : nMod + ' modifiche'}</td>
-          <td><span class="tag ${s.status}">${s.status}</span></td>
-          <td>${escapeHtml(s.reviewed_note || s.note || '')}</td>
-        </tr>`;
-      }).join('');
-    } catch(e){ $('mineBody').innerHTML = `<tr><td colspan="5" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`; }
-  }
-  $('refreshMineBtn').onclick = loadMine;
 
-  // Preview codice pratica — si aggiorna al cambio di tipo, lotto e numero
-  function _updatePraticaPreview() {
-    const tipoMap = {'AUTORIZZAZIONE':'AUT','NULLA OSTA':'NO'};
-    const tipo   = $('new-tipo').value;
-    const prefix = tipoMap[tipo] || '—';
-    // Estrai la sigla lotto da "Lotto 2A.xlsx" → "2A"
-    const lottoVal = $('new-lotto').value || '';
-    const m = lottoVal.match(/Lotto\s*([\w\d]+)/i);
-    const lotto = m ? m[1] : (lottoVal.replace('.xlsx','').replace('Lotto','').trim() || '—');
-    const num   = $('new-pratica').value || '—';
-    $('new-pratica-prefix').textContent = prefix + '/';
-    $('new-pratica-suffix').textContent = '/' + lotto;
-    const preview = $('new-pratica-preview');
-    if (prefix !== '—' && lotto !== '—' && num !== '—') {
-      preview.textContent = '→ ' + prefix + '/' + num + '/' + lotto;
-      preview.style.opacity = '1';
-    } else {
-      preview.textContent = '';
-    }
-  }
-  // Calcola e imposta automaticamente il prossimo numero progressivo
-  // (ultimo PRATICA esistente per il lotto selezionato + 1)
-  function _setAutoPratica() {
-    const lottoVal = $('new-lotto').value || '';
-    const nums = PRATICHE
-      .filter(p => String(p['Source.Name']||'').trim() === lottoVal)
-      .map(p => parseInt(String(p.PRATICA||'').trim(), 10))
-      .filter(n => !isNaN(n));
-    $('new-pratica').value = nums.length ? Math.max(...nums) + 1 : 1;
-    _updatePraticaPreview();
-  }
-  $('new-tipo').addEventListener('change',  _updatePraticaPreview);
-  $('new-lotto').addEventListener('change', _setAutoPratica);
-  // Inizializza al caricamento
-  _updatePraticaPreview();
+@app.get("/api/imprese/my-submissions")
+async def my_submissions(limit: int = 50, sess: dict = Depends(_require_session)):
+    cur = pending_col.find({"nome": sess["nome"]}).sort("submitted_at", -1).limit(min(limit, 200))
+    items = []
+    async for d in cur:
+        d["_id"] = str(d["_id"])
+        items.append(d)
+    return {"submissions": items, "count": len(items)}
 
-  // Campo libero per "Altro" ente
-  $('new-ente').addEventListener('change', function() {
-    let custom = $('new-ente-custom');
-    if (this.value === '__altro__') {
-      if (!custom) {
-        custom = document.createElement('input');
-        custom.type = 'text';
-        custom.id = 'new-ente-custom';
-        custom.placeholder = 'Scrivi il nome dell\'ente…';
-        custom.style.marginTop = '6px';
-        custom.required = true;
-        this.parentNode.appendChild(custom);
-        custom.focus();
-      }
-    } else {
-      if (custom) { custom.remove(); }
-    }
-  });
 
-  // Click su riga submission → mostra dettagli
-  $('mineBody').addEventListener('click', e => {
-    const tr = e.target.closest('tr[data-sub]');
-    if (!tr) return;
-    try {
-      const s = JSON.parse(tr.dataset.sub.replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>'));
-      showSubDetail(s);
-    } catch(_) {}
-  });
+@app.delete("/api/imprese/submissions/{sub_id}")
+async def delete_my_submission(sub_id: str, sess: dict = Depends(_require_session)):
+    """L'impresa può cancellare solo le proprie submission ancora in stato pending.
+    Il confronto usa il nome dalla sessione, non un parametro client."""
+    try:
+        oid = ObjectId(sub_id)
+    except Exception:
+        raise HTTPException(400, "ID submission non valido")
+    doc = await pending_col.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Submission non trovata")
+    if doc.get("nome") != sess["nome"]:
+        raise HTTPException(403, "Non autorizzato")
+    if doc.get("status") != "pending":
+        raise HTTPException(409, "Solo le richieste in attesa possono essere eliminate")
+    await pending_col.delete_one({"_id": oid})
+    return {"deleted": sub_id}
 
-  function showSubDetail(s) {
-    const fieldLabels = {
-      STATO_PERMESSO:'Nuovo stato', DATA_RICHIESTA:'Data richiesta',
-      DATA_APPROVAZIONE:'Data approvazione', PRATICA:'Pratica', NOTE:'Note',
-      DATA_ULTIMA_MODIFICA:'Ultima modifica'
-    };
-    const statusColor = {pending:'#f59e0b',approved:'#10b981',rejected:'#ef4444'}[s.status]||'#6b7280';
-    const typeLabel = s.type === 'update' ? 'Aggiornamento' : 'Nuova pratica';
-    const nMod = (s.changes||[]).length;
 
-    const changesHtml = (s.changes||[]).map(c => {
-      const tratta = c.tratta_id || c.TRATTA_ID || '—';
-      const ente   = c.ente   || c.ENTE   || '';
-      const tipo   = c.tipo_permesso || c.TIPO_PERMESSO || '';
-      const fields = c.fields || {};
-      const cols   = Object.entries(fields).map(([k,v]) => `
-        <div class="sub-field">
-          <span class="sub-field-key">${escapeHtml(fieldLabels[k]||k)}</span>
-          <span class="sub-field-val">${escapeHtml(String(v||'—'))}</span>
-        </div>`).join('');
-      return `<div class="sub-change">
-        <div class="sub-change-header">
-          <span style="font-family:'Fira Code',monospace">${escapeHtml(tratta)}</span>
-          ${ente ? `<span style="color:#6b7280;font-weight:400;font-size:11px">${escapeHtml(ente)}</span>` : ''}
-          ${tipo ? `<span style="padding:1px 7px;border-radius:20px;font-size:10px;font-weight:600;background:#eff6ff;color:#3b82f6">${escapeHtml(tipo)}</span>` : ''}
-        </div>
-        ${cols||'<span style="color:var(--muted);font-size:11px">Nessun campo</span>'}
-      </div>`;
-    }).join('');
+# ───────── Admin: assignments management ────────────────────────────────────
 
-    const noteHtml = (s.reviewed_note||s.note) ? `
-      <div style="margin-top:12px">
-        <div class="sub-section-label">Note revisione</div>
-        <div style="background:#fff7ed;border-radius:8px;padding:10px 12px;font-size:12px;color:#92400e">${escapeHtml(s.reviewed_note||s.note)}</div>
-      </div>` : '';
+@app.get("/api/admin/assignments")
+async def list_assignments(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    _check_token(x_upload_token or token_q)
+    cur = assignments_col.find({}).sort("nome", 1)
+    items = [_serialize_assignment(d) async for d in cur]
+    return {"assignments": items, "count": len(items)}
 
-    const overlay = document.createElement('div');
-    overlay.className = 'sub-modal-overlay';
-    overlay.innerHTML = `
-      <div class="sub-modal">
-        <div class="sub-modal-head">
-          <div>
-            <div class="sub-modal-title">${typeLabel}</div>
-            <div class="sub-modal-sub">
-              ${new Date(s.submitted_at).toLocaleString('it-IT')}
-              &nbsp;<span style="display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:600;background:${statusColor}22;color:${statusColor}">${s.status}</span>
-            </div>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px">
-            ${s.status === 'pending' ? `<button id="_subDelete" style="padding:4px 12px;border-radius:6px;border:1px solid #ef4444;background:transparent;color:#ef4444;font-size:12px;cursor:pointer;font-weight:600">🗑 Elimina richiesta</button>` : ''}
-            <button class="sub-modal-close" id="_subClose" aria-label="Chiudi" title="Chiudi">&times;</button>
-          </div>
-        </div>
-        <div class="sub-modal-body">
-          <div class="sub-section-label">${nMod === 1 ? '1 modifica' : nMod + ' modifiche'}</div>
-          ${changesHtml}
-          ${noteHtml}
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-    overlay.querySelector('#_subClose').onclick = () => overlay.remove();
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-    if (s.status === 'pending') {
-      overlay.querySelector('#_subDelete').onclick = async () => {
-        if (!confirm('Eliminare questa richiesta? L\'operazione non è reversibile.')) return;
-        try {
-          await api(`/api/imprese/submissions/${s._id}?nome=${encodeURIComponent(nome)}`, { method: 'DELETE' });
-          overlay.remove();
-          await loadMine();
-        } catch(e) { alert('Errore: ' + e.message); }
-      };
-    }
-  }
-})();
-</script>
-</body>
-</html>
+
+@app.put("/api/admin/assignments/{nome}")
+async def upsert_assignment(
+    nome: str,
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    _check_token(x_upload_token or token_q)
+    nome = nome.strip()
+    lotti = (payload or {}).get("lotti", [])
+    active = bool((payload or {}).get("active", True))
+    if not nome:
+        raise HTTPException(400, "nome required")
+    if not isinstance(lotti, list):
+        raise HTTPException(400, "lotti must be a list")
+    doc = {"nome": nome, "lotti": [str(x) for x in lotti], "active": active, "updated_at": _now_iso()}
+    await assignments_col.update_one({"nome": nome}, {"$set": doc, "$setOnInsert": {"created_at": _now_iso()}}, upsert=True)
+    out = await _find_assignment(nome)
+    return _serialize_assignment(out)
+
+
+@app.delete("/api/admin/assignments/{nome}")
+async def delete_assignment(
+    nome: str,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    _check_token(x_upload_token or token_q)
+    res = await assignments_col.delete_one({"nome": nome})
+    return {"deleted": res.deleted_count}
+
+
+# ───────── Admin: pending updates approval queue ────────────────────────────
+
+@app.get("/api/admin/pending-updates")
+async def list_pending(
+    status: str = "pending",
+    limit: int = 100,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    _check_token(x_upload_token or token_q)
+    q: dict = {}
+    if status and status != "all":
+        q["status"] = status
+    cur = pending_col.find(q).sort("submitted_at", -1).limit(min(limit, 500))
+    items = []
+    async for d in cur:
+        d["_id"] = str(d["_id"])
+        items.append(d)
+    return {"submissions": items, "count": len(items)}
+
+
+def _apply_changes_to_df(df, submission: dict) -> tuple:
+    """Returns (new_df, summary). Raises HTTPException on errors."""
+    typ = submission["type"]
+    changes = submission["changes"]
+    summary = {"updated": 0, "added": 0, "not_found": 0}
+    if typ == "update":
+        for ch in changes:
+            tratta = (ch.get("tratta_id") or "").strip()
+            ente   = (ch.get("ente") or "").strip()
+            tipo   = (ch.get("tipo_permesso") or "").strip()
+            fields = ch.get("fields") or {}
+            if not tratta:
+                continue
+            mask = df["TRATTA_ID"].astype(str).str.strip() == tratta
+            if ente:
+                mask = mask & (df["ENTE"].astype(str).str.strip() == ente)
+            if tipo:
+                mask = mask & (df["TIPO_PERMESSO"].astype(str).str.strip() == tipo)
+            # Se la submission include anche PRATICA, usa come discriminante
+            # per distinguere pratiche diverse sulla stessa tratta+ente+tipo
+            pratica_key = str(fields.get("PRATICA") or ch.get("pratica") or "").strip()
+            if not pratica_key and "PRATICA" in df.columns:
+                # Prova a ricavarlo dalla submission (campo originale della riga)
+                pratica_key = str(ch.get("original_pratica") or "").strip()
+            if pratica_key and "PRATICA" in df.columns:
+                mask_p = mask & (df["PRATICA"].astype(str).str.strip() == pratica_key)
+                idx_p  = df.index[mask_p].tolist()
+                if idx_p:   # usa il filtro per pratica solo se trova qualcosa
+                    idx = idx_p
+                else:
+                    idx = df.index[mask].tolist()
+            else:
+                idx = df.index[mask].tolist()
+            if not idx:
+                summary["not_found"] += 1
+                continue
+            # Auto-set DATA_ULTIMA_MODIFICA se non fornita
+            if "DATA_ULTIMA_MODIFICA" not in fields and "STATO_PERMESSO" in fields:
+                fields["DATA_ULTIMA_MODIFICA"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+            # Copia l'ultima riga esistente e inserisce la nuova SUBITO DOPO
+            # in modo da mantenere le righe dello stesso iter vicine
+            last_idx = idx[-1]
+            last_row = df.loc[last_idx].copy()
+            for col, val in fields.items():
+                if col in df.columns:
+                    last_row[col] = str(val)
+            new_row_df = pd.DataFrame([last_row])
+            # Dividi il DataFrame prima e dopo il punto di inserimento
+            top    = df.iloc[:last_idx + 1]
+            bottom = df.iloc[last_idx + 1:]
+            df = pd.concat([top, new_row_df, bottom], ignore_index=True)
+            summary["updated"] += 1
+    elif typ == "new":
+        for row in changes:
+            if not isinstance(row, dict):
+                continue
+            new_row = {c: str(row.get(c, "")) for c in df.columns}
+            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+            summary["added"] += 1
+    return df, summary
+
+
+@app.post("/api/admin/pending-updates/{sub_id}/approve")
+async def approve_pending(
+    sub_id: str,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    _check_token(x_upload_token or token_q)
+    try:
+        oid = ObjectId(sub_id)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    sub = await pending_col.find_one({"_id": oid})
+    if not sub:
+        raise HTTPException(404, "Submission not found")
+    if sub.get("status") != "pending":
+        raise HTTPException(409, f"Already {sub.get('status')}")
+    df = await _read_master_csv()
+    new_df, summary = _apply_changes_to_df(df, sub)
+    note = f"Submission {sub_id} from {sub['nome']} ({sub['type']})"
+    upload_id = await _write_master_csv(new_df, note=note)
+    await pending_col.update_one(
+        {"_id": oid},
+        {"$set": {"status": "approved", "reviewed_at": _now_iso(), "applied_upload_id": upload_id, "summary": summary}},
+    )
+    return {"ok": True, "summary": summary, "new_upload_id": upload_id}
+
+
+@app.post("/api/admin/pending-updates/{sub_id}/reject")
+async def reject_pending(
+    sub_id: str,
+    payload: dict | None = None,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    _check_token(x_upload_token or token_q)
+    try:
+        oid = ObjectId(sub_id)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    note = ((payload or {}).get("note") or "").strip()
+    res = await pending_col.update_one(
+        {"_id": oid, "status": "pending"},
+        {"$set": {"status": "rejected", "reviewed_at": _now_iso(), "reviewed_note": note}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(404, "Submission not found or not pending")
+    return {"ok": True}
