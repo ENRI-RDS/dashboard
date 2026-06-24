@@ -744,32 +744,40 @@ const CANTIERE_ORDER  = ['non-avviato','allestimento','in-corso','sospeso','comp
 window.CANTIERE_COLORS = CANTIERE_COLORS;
 let cantiereData = {}; // TRATTA_ID -> {cantiere, pct}
 
+// ── Dati cantiere da Scavi.html (fonte primaria) ─────────────────────────────
+const SCAVI_DATA = [{"t": "T-001", "comune": "Milano", "lotto": "3", "statoPermesso": "INVIATO", "m": 305, "cantiere": "non-avviato", "pct": 0}, {"t": "T-002", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 2270, "cantiere": "completato", "pct": 100}, {"t": "T-003", "comune": "Settimo Milanese", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 676, "cantiere": "in-corso", "pct": 40}, {"t": "T-004", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 240, "cantiere": "allestimento", "pct": 8}, {"t": "T-005", "comune": "Milano", "lotto": "3", "statoPermesso": "IN REDAZIONE", "m": 222, "cantiere": "non-avviato", "pct": 0}, {"t": "T-006", "comune": "Milano", "lotto": "3", "statoPermesso": "INVIATO", "m": 615, "cantiere": "non-avviato", "pct": 0}, {"t": "T-007", "comune": "Milano", "lotto": "3", "statoPermesso": "IN ATTESA", "m": 533, "cantiere": "non-avviato", "pct": 0}, {"t": "T-008", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 448, "cantiere": "allestimento", "pct": 5}, {"t": "T-009", "comune": "Milano", "lotto": "3", "statoPermesso": "PROTOCOLLATO", "m": 441, "cantiere": "non-avviato", "pct": 0}, {"t": "T-010", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 1067, "cantiere": "in-corso", "pct": 55}, {"t": "T-011", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 529, "cantiere": "in-corso", "pct": 25}, {"t": "T-012", "comune": "Milano", "lotto": "3", "statoPermesso": "IN FIRMA RDS", "m": 791, "cantiere": "non-avviato", "pct": 0}, {"t": "T-013", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 1548, "cantiere": "completato", "pct": 100}, {"t": "T-014", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 3, "cantiere": "sospeso", "pct": 18}, {"t": "T-015", "comune": "Milano", "lotto": "3", "statoPermesso": "INVIATO", "m": 1426, "cantiere": "non-avviato", "pct": 0}, {"t": "T-016", "comune": "Milano", "lotto": "3", "statoPermesso": "IN FIRMA RDS", "m": 408, "cantiere": "non-avviato", "pct": 0}, {"t": "T-017", "comune": "Cusago", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 939, "cantiere": "in-corso", "pct": 48}, {"t": "T-018", "comune": "Milano", "lotto": "3", "statoPermesso": "COORDINAMENTO", "m": 4, "cantiere": "non-avviato", "pct": 0}, {"t": "T-019", "comune": "San Donato Milanese", "lotto": "3", "statoPermesso": "IN REDAZIONE", "m": 593, "cantiere": "non-avviato", "pct": 0}, {"t": "T-020", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 3, "cantiere": "sospeso", "pct": 30}, {"t": "T-021", "comune": "Cusago", "lotto": "3", "statoPermesso": "IN REDAZIONE", "m": 28, "cantiere": "non-avviato", "pct": 0}, {"t": "T-022", "comune": "Milano", "lotto": "3", "statoPermesso": "INVIATO", "m": 509, "cantiere": "non-avviato", "pct": 0}, {"t": "T-023", "comune": "Cusago", "lotto": "3", "statoPermesso": "PROTOCOLLATO", "m": 184, "cantiere": "non-avviato", "pct": 0}, {"t": "T-024", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 2186, "cantiere": "completato", "pct": 100}, {"t": "T-025", "comune": "Milano", "lotto": "3", "statoPermesso": "PROTOCOLLATO INTEGRAZIONE", "m": 498, "cantiere": "non-avviato", "pct": 0}, {"t": "T-026", "comune": "San Donato Milanese", "lotto": "2", "statoPermesso": "PROTOCOLLATO", "m": 12, "cantiere": "non-avviato", "pct": 0}, {"t": "T-027", "comune": "Cusago", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 113, "cantiere": "allestimento", "pct": 10}, {"t": "T-028", "comune": "Milano", "lotto": "3", "statoPermesso": "OTTENUTO", "m": 547, "cantiere": "in-corso", "pct": 32}, {"t": "T-029", "comune": "Milano", "lotto": "3", "statoPermesso": "IN ATTESA", "m": 2217, "cantiere": "non-avviato", "pct": 0}, {"t": "T-030", "comune": "Milano", "lotto": "3", "statoPermesso": "COORDINAMENTO", "m": 406, "cantiere": "non-avviato", "pct": 0}, {"t": "T-031", "comune": "Milano", "lotto": "3", "statoPermesso": "IN REDAZIONE", "m": 568, "cantiere": "non-avviato", "pct": 0}, {"t": "T-032", "comune": "Cusago", "lotto": "3", "statoPermesso": "INVIATO", "m": 1302, "cantiere": "non-avviato", "pct": 0}, {"t": "T-033", "comune": "Cusago", "lotto": "3", "statoPermesso": "IN FIRMA RDS", "m": 857, "cantiere": "non-avviato", "pct": 0}, {"t": "T-034", "comune": "Milano", "lotto": "3", "statoPermesso": "PROTOCOLLATO INTEGRAZIONE", "m": 1171, "cantiere": "non-avviato", "pct": 0}, {"t": "T-035", "comune": "Milano", "lotto": "3", "statoPermesso": "PROTOCOLLATO", "m": 2, "cantiere": "non-avviato", "pct": 0}, {"t": "T-036", "comune": "Milano", "lotto": "3", "statoPermesso": "COORDINAMENTO", "m": 1381, "cantiere": "non-avviato", "pct": 0}, {"t": "T-037", "comune": "San Donato Milanese", "lotto": "3", "statoPermesso": "IN ATTESA", "m": 7, "cantiere": "non-avviato", "pct": 0}, {"t": "T-038", "comune": "San Donato Milanese", "lotto": "3", "statoPermesso": "COORDINAMENTO", "m": 1342, "cantiere": "non-avviato", "pct": 0}, {"t": "T-039", "comune": "Gaggiano", "lotto": "3", "statoPermesso": "IN ATTESA", "m": 2, "cantiere": "non-avviato", "pct": 0}, {"t": "T-040", "comune": "Milano", "lotto": "3", "statoPermesso": "COORDINAMENTO", "m": 951, "cantiere": "non-avviato", "pct": 0}, {"t": "T-041", "comune": "Lodi", "lotto": "2", "statoPermesso": "INVIATO", "m": 447, "cantiere": "non-avviato", "pct": 0}, {"t": "T-042", "comune": "Lodi", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 4307, "cantiere": "completato", "pct": 100}, {"t": "T-043", "comune": "Lodi", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 543, "cantiere": "sospeso", "pct": 28}, {"t": "T-044", "comune": "Locate di Triulzi", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 4575, "cantiere": "completato", "pct": 100}, {"t": "T-045", "comune": "Lodi", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 1328, "cantiere": "in-corso", "pct": 42}, {"t": "T-046", "comune": "Melegnano", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 3939, "cantiere": "completato", "pct": 100}, {"t": "T-047", "comune": "San Giuliano Milanese", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 2685, "cantiere": "in-corso", "pct": 72}, {"t": "T-048", "comune": "San Giuliano Milanese", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 5799, "cantiere": "completato", "pct": 100}, {"t": "T-049", "comune": "Lodi", "lotto": "2", "statoPermesso": "INVIATO", "m": 32, "cantiere": "non-avviato", "pct": 0}, {"t": "T-050", "comune": "Lodi", "lotto": "2", "statoPermesso": "PROTOCOLLATO", "m": 2002, "cantiere": "non-avviato", "pct": 0}, {"t": "T-051", "comune": "Casalpusterlengo", "lotto": "2", "statoPermesso": "PROTOCOLLATO", "m": 1630, "cantiere": "non-avviato", "pct": 0}, {"t": "T-052", "comune": "Lodi", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 1708, "cantiere": "in-corso", "pct": 60}, {"t": "T-053", "comune": "Melegnano", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 1374, "cantiere": "in-corso", "pct": 52}, {"t": "T-054", "comune": "San Donato Milanese", "lotto": "2", "statoPermesso": "NECESSARIA INTEGRAZIONE", "m": 1823, "cantiere": "non-avviato", "pct": 0}, {"t": "T-055", "comune": "Mairago", "lotto": "2", "statoPermesso": "INVIATO", "m": 3006, "cantiere": "non-avviato", "pct": 0}, {"t": "T-056", "comune": "San Donato Milanese", "lotto": "2", "statoPermesso": "COORDINAMENTO", "m": 305, "cantiere": "non-avviato", "pct": 0}, {"t": "T-057", "comune": "San Donato Milanese", "lotto": "2", "statoPermesso": "OTTENUTO", "m": 706, "cantiere": "allestimento", "pct": 8}, {"t": "T-058", "comune": "Milano", "lotto": "3", "statoPermesso": "INVIATO", "m": 61, "cantiere": "non-avviato", "pct": 0}, {"t": "T-059", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "OTTENUTO", "m": 1771, "cantiere": "completato", "pct": 100}, {"t": "T-060", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "PROTOCOLLATO", "m": 1042, "cantiere": "non-avviato", "pct": 0}, {"t": "T-061", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "PROTOCOLLATO INTEGRAZIONE", "m": 392, "cantiere": "non-avviato", "pct": 0}, {"t": "T-062", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "INVIATO", "m": 186, "cantiere": "non-avviato", "pct": 0}, {"t": "T-063", "comune": "Turano Lodigiano", "lotto": "2", "statoPermesso": "COORDINAMENTO", "m": 164, "cantiere": "non-avviato", "pct": 0}, {"t": "T-064", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "INVIATO", "m": 120, "cantiere": "non-avviato", "pct": 0}, {"t": "T-065", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "IN ATTESA", "m": 498, "cantiere": "non-avviato", "pct": 0}, {"t": "T-066", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "IN REDAZIONE", "m": 17, "cantiere": "non-avviato", "pct": 0}, {"t": "T-067", "comune": "Turano Lodigiano", "lotto": "1", "statoPermesso": "OTTENUTO", "m": 612, "cantiere": "in-corso", "pct": 35}];
+// Lookup rapido TRATTA_ID → record Scavi
+const SCAVI_LOOKUP = Object.fromEntries(SCAVI_DATA.map(r => [r.t, r]));
+
 function _hashStr(s){ let h=0; for(let i=0;i<s.length;i++){ h=Math.imul(31,h)+s.charCodeAt(i)|0; } return h>>>0; }
 function _seededRand(seed){ let x=seed||1; return ()=>{ x^=x<<13; x^=x>>>17; x^=x<<5; x|=0; return ((x>>>0)/4294967296); }; }
 
-// Genera dati cantiere deterministici per ogni tratta, prendendo spunto dalla
-// logica di Scavi.html: senza permesso OTTENUTO il cantiere resta "non-avviato";
-// con permesso OTTENUTO la fase varia (allestimento/in-corso/sospeso/completato).
+// Genera dati cantiere per ogni tratta.
+// Priorità: SCAVI_DATA (fonte reale) → fallback seeded-random basato su stato permesso.
 function buildCantiereData(features) {
   const data = {};
   features.forEach(f => {
     const p = f.properties;
     const id = p.TRATTA_ID;
     if (!id) return;
+    // 1) Usa i dati reali di Scavi.html se la tratta è presente
+    if (SCAVI_LOOKUP[id]) {
+      const s = SCAVI_LOOKUP[id];
+      data[id] = { cantiere: s.cantiere, pct: s.pct, metriTotali: s.m, statoPermesso: s.statoPermesso };
+      return;
+    }
+    // 2) Fallback: deriva lo stato dal permesso GeoJSON con seeded-random
     const stato = p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE || 'IN ATTESA';
     const rnd = _seededRand(_hashStr(id));
     let cantiere = 'non-avviato', pct = 0;
     if (stato === 'OTTENUTO') {
-      // Permesso ottenuto ⇒ il cantiere è SEMPRE avviato (mai "non-avviato").
-      // Pesi calibrati sulla distribuzione reale di Scavi.html.
       const r = rnd();
-      if      (r < 0.31) { cantiere = 'completato';   pct = 100; }
-      else if (r < 0.72) { cantiere = 'in-corso';      pct = Math.round(20 + rnd()*55); }
-      else if (r < 0.89) { cantiere = 'allestimento';  pct = Math.round(3  + rnd()*12); }
-      else               { cantiere = 'sospeso';       pct = Math.round(10 + rnd()*30); }
+      if      (r < 0.31) { cantiere = 'completato';  pct = 100; }
+      else if (r < 0.72) { cantiere = 'in-corso';     pct = Math.round(20 + rnd()*55); }
+      else if (r < 0.89) { cantiere = 'allestimento'; pct = Math.round(3  + rnd()*12); }
+      else               { cantiere = 'sospeso';      pct = Math.round(10 + rnd()*30); }
     }
-    // Permesso non ottenuto ⇒ cantiere resta "non-avviato", pct 0 (default sopra).
-    data[id] = { cantiere, pct };
+    data[id] = { cantiere, pct, metriTotali: p.LUNGHEZZA || null, statoPermesso: stato };
   });
   return data;
 }
@@ -1301,6 +1309,100 @@ function makePopupHtml(p, gmapsUrl) {
       <strong style="color:var(--text);font-family:'DM Mono',monospace;font-size:11px">${trattaKm} km${trattaContrib?`<span style="font-weight:400;color:var(--muted);font-size:9px"> (${trattaContrib}%)</span>`:''}</strong>
       <strong style="color:var(--text);font-family:'DM Mono',monospace;font-size:11px">${lottoKm} km</strong>
     </div>` : '';
+
+
+  // ── POPUP MODALITÀ WORKSITE ───────────────────────────────────────────────
+  if (currentViewMode === 'scavi') {
+    const cant = cantiereData[p.TRATTA_ID];
+    const cantiere = cant ? cant.cantiere : 'non-avviato';
+    const cantColor = CANTIERE_COLORS[cantiere];
+    const cantLabel = CANTIERE_LABEL[cantiere];
+    const pctScavo = cant ? cant.pct : 0;
+    const metriTot = cant && cant.metriTotali ? cant.metriTotali : (p.LUNGHEZZA || null);
+    const metriDone = metriTot ? Math.round(metriTot * pctScavo / 100) : null;
+    const permessoDisplay = cant && cant.statoPermesso ? cant.statoPermesso : stato;
+    const permColor = getColor(permessoDisplay);
+    const permLabel = {
+      'IN FIRMA RDS':'Review / Signature','COORDINAMENTO':'Coordination',
+      'PROTOCOLLATO INTEGRAZIONE':'Integration Registered','NECESSARIA INTEGRAZIONE':'Integration Required',
+      'IN REDAZIONE INTEGRAZIONE':'Integration Drafting','IN ATTESA':'Pending',
+      'IN REDAZIONE':'Drafting','INVIATO':'Submitted','PROTOCOLLATO':'Registered','OTTENUTO':'Authorized',
+    }[permessoDisplay] || permessoDisplay;
+    const impresa = IMPRESE[p.folders] || '—';
+    const trattaKmW = metriTot ? (metriTot/1000).toFixed(3).replace('.',',') + ' km' : fmtM(p.LUNGHEZZA);
+
+    // Barra progresso scavo
+    const showBar = cantiere !== 'non-avviato';
+    const barBg = cantiere === 'completato' ? cantColor+'22' : cantColor+'18';
+    const metriLabel = metriDone !== null && cantiere !== 'non-avviato' && cantiere !== 'completato'
+      ? `<span style="font-size:10px;color:var(--muted)">${metriDone.toLocaleString()} / ${metriTot.toLocaleString()} m</span>` : '';
+
+    return `<div class="popup-inner">
+    <div class="popup-head">
+      <div class="popup-head-top">
+        <span class="popup-lotto">Lot ${p.folders||'—'}</span>
+        <button class="popup-close-btn" onclick="this.closest('.leaflet-popup').querySelector('.leaflet-popup-close-button').click()">✕</button>
+      </div>
+      <div class="popup-meta">
+        ${impresa !== '—' ? `<span class="popup-impresa">${impresa}</span>` : ''}
+        ${p.TRATTA_ID ? `<span class="popup-tratta">${p.TRATTA_ID}</span>` : ''}
+      </div>
+      <div style="height:3px;width:100%;margin-top:12px;border-radius:2px;background:${cantColor}33;overflow:hidden"><div style="height:100%;width:100%;background:${cantColor};opacity:0.85"></div></div>
+    </div>
+    <div class="popup-body">
+      <div class="popup-body-left" style="width:100%">
+        <div style="margin-bottom:12px">
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);font-weight:600;margin-bottom:6px">Worksite status</div>
+          <span class="popup-stato" style="background:${cantColor}18;color:${cantColor};border:1.5px solid ${cantColor}44;font-size:12px;padding:4px 10px">
+            <span class="popup-stato-dot" style="background:${cantColor}"></span>${cantLabel}${cantiere!=='non-avviato'&&cantiere!=='completato' ? ' · '+pctScavo+'%' : ''}
+          </span>
+        </div>
+        ${showBar ? `<div style="margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <span style="font-size:10px;color:var(--muted);font-weight:500">Excavation progress</span>
+            <span style="font-size:11px;font-weight:700;font-family:'DM Mono',monospace;color:${cantColor}">${pctScavo}%</span>
+          </div>
+          <div style="height:7px;background:${barBg};border-radius:4px;overflow:hidden">
+            <div style="height:100%;width:${pctScavo}%;background:${cantColor};border-radius:4px;transition:width .3s"></div>
+          </div>
+          <div style="margin-top:4px;text-align:right">${metriLabel}</div>
+        </div>` : ''}
+        <div class="popup-grid" style="margin-bottom:10px">
+          <div class="popup-field">
+            <span class="popup-field-label">Municipality</span>
+            <span class="popup-field-val">${p.COMUNE||'—'}</span>
+          </div>
+          <div class="popup-field">
+            <span class="popup-field-label">Length</span>
+            <span class="popup-field-val">${trattaKmW}</span>
+          </div>
+          <div class="popup-field">
+            <span class="popup-field-label">Type</span>
+            <span class="popup-field-val">${p.TIPOLOGIA||'—'}</span>
+          </div>
+          <div class="popup-field">
+            <span class="popup-field-label">Cluster</span>
+            <span class="popup-field-val">${p.CLUSTER||'—'}</span>
+          </div>
+        </div>
+        <div style="padding-top:8px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);font-weight:600">Permit</span>
+          <span class="popup-stato" style="background:${permColor}18;color:${permColor};border:1.5px solid ${permColor}44">
+            <span class="popup-stato-dot" style="background:${permColor}"></span>${permLabel}
+          </span>
+          ${pratiche.length ? pratiche.map(pr=>`<span class="popup-pratica">${pr}</span>`).join('') : ''}
+        </div>
+      </div>
+    </div>
+    ${gmapsUrl ? `<div style="padding:0 16px 12px">
+      <a class="popup-gmaps-btn" href="${gmapsUrl}" target="_blank" rel="noopener">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#2563eb"/></svg>
+        Open in Google Maps
+      </a>
+    </div>` : ''}
+  </div>`;
+  }
+  // ── FINE POPUP WORKSITE ───────────────────────────────────────────────────
 
   return `<div class="popup-inner">
     <div class="popup-head">
