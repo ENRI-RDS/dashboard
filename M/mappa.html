@@ -1843,119 +1843,7 @@ document.addEventListener('click', e => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 
-// ── LAYER QTS ───────────────────────────────────────────────────────────────
-let qtsLayer = null;
-let qtsOutlineLayer = null;
-let qtsLoaded = false;
-const QTS_COLOR_HEX = '#8b5cf6';
 
-async function loadQTS() {
-  if (qtsLoaded) return;
-  try {
-    const resp = await fetch('QTS.geojson?t=' + Date.now());
-    if (!resp.ok) throw new Error('QTS.geojson not found');
-    const geojson = await resp.json();
-
-    let totM = 0;
-    geojson.features.forEach(f => {
-      const l = f.properties && (f.properties.LUNGHEZZA || f.properties.lunghezza || 0);
-      totM += Number(l) || 0;
-    });
-
-    qtsOutlineLayer = L.geoJSON(geojson, {
-      renderer: outlineRenderer,
-      style: () => ({ color:'#5577aa', weight:8, opacity:0.3, smoothFactor:1.5, interactive:false })
-    });
-
-    qtsLayer = L.geoJSON(geojson, {
-      renderer: mainRenderer,
-      style: () => ({ color: QTS_COLOR_HEX, weight:4, opacity:0.95, smoothFactor:1.5, dashArray:'8,6' }),
-      onEachFeature: (f, layer) => {
-        const p = f.properties || {};
-        const len = p.LUNGHEZZA || p.lunghezza || '';
-        const desc = [p.NOME || p.nome || p.NAME || '', p.TRATTA_ID || p.tratta_id || ''].filter(Boolean).join(' — ');
-        layer.bindPopup(`<div class="popup-inner">
-          <div class="popup-header" style="border-color:#0aa3c255">
-            <span class="popup-lotto" style="color:${QTS_COLOR_HEX}">QTS</span>
-            ${desc ? `<span class="popup-impresa" style="color:${QTS_COLOR_HEX}">${desc}</span>` : ''}
-          </div>
-          ${len ? `<div class="popup-row"><span class="label">Length</span><span class="val">${(Number(len)/1000).toFixed(3).replace('.',',')} km</span></div>` : ''}
-          <div style="margin-top:8px"><span class="popup-stato" style="background:#8b5cf622;color:${QTS_COLOR_HEX};border:1px solid #8b5cf644">QTS Route</span></div>
-        </div>`, {maxWidth:320});
-        layer.on('mouseover', e => { e.target.setStyle({weight:7, opacity:1}); e.target.bringToFront(); });
-        layer.on('mouseout',  e => { e.target.setStyle({weight:4, opacity:0.95}); });
-      }
-    });
-
-    qtsLoaded = true;
-
-    if (totM > 0) {
-      const kmEl = document.getElementById('qtsKm');
-      if (kmEl) { kmEl.textContent = (totM/1000).toFixed(1).replace('.',',') + ' km'; kmEl.style.display=''; }
-    }
-
-  } catch(e) {
-    console.warn('QTS layer:', e.message);
-    const tog = document.getElementById('qtsToggle');
-    if (tog) {
-      tog.checked  = false;   // ← resetta lo stato visivo prima di disabilitare
-      tog.disabled = true;
-      tog.parentElement.title = 'QTS.geojson not available';
-    }
-  }
-}
-
-async function setQTSOnly(on) {
-  qtsOnlyMode = !!on;
-  const btn = document.getElementById('qtsOnlyBtn');
-  if (btn) btn.classList.toggle('active', qtsOnlyMode);
-
-  if (qtsOnlyMode) {
-    const tog = document.getElementById('qtsToggle');
-    if (tog && !tog.checked) {
-      tog.checked = true;
-      toggleQTS(true);
-    } else if (tog && tog.checked && !qtsLoaded) {
-      await loadQTS();
-      toggleQTS(true);
-    }
-    allLayers.forEach(({layer,outlineLayer}) => {
-      if (map.hasLayer(layer)) map.removeLayer(layer);
-      if (outlineLayer && map.hasLayer(outlineLayer)) map.removeLayer(outlineLayer);
-    });
-    if (qtsLayer) {
-      const g = L.featureGroup([qtsLayer]);
-      if (g.getBounds && g.getBounds().isValid()) map.fitBounds(g.getBounds(), { padding:[50,50], maxZoom:14 });
-    }
-    return;
-  }
-
-  if (currentViewMode === 'cluster') applyFilterClusterMulti();
-  else applyFilterMulti();
-}
-
-function toggleQTS(on) {
-  if (!on && qtsOnlyMode) setQTSOnly(false);
-  if (on) {
-    if (!qtsLoaded) {
-      loadQTS().then(() => {
-        // Verifica che il checkbox sia ancora attivo prima di aggiungere i layer
-        const tog = document.getElementById('qtsToggle');
-        if (tog && tog.checked && qtsLayer) {
-          if (!map.hasLayer(qtsOutlineLayer)) qtsOutlineLayer.addTo(map).bringToBack();
-          if (!map.hasLayer(qtsLayer)) qtsLayer.addTo(map).bringToFront();
-        }
-      });
-    } else if (qtsLayer) {
-      if (!map.hasLayer(qtsOutlineLayer)) qtsOutlineLayer.addTo(map).bringToBack();
-      if (!map.hasLayer(qtsLayer)) qtsLayer.addTo(map).bringToFront();
-      else qtsLayer.bringToFront();
-    }
-  } else {
-    if (qtsLayer && map.hasLayer(qtsLayer)) map.removeLayer(qtsLayer);
-    if (qtsOutlineLayer && map.hasLayer(qtsOutlineLayer)) map.removeLayer(qtsOutlineLayer);
-  }
-}
 // ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -2299,32 +2187,20 @@ window.addEventListener('load', () => {
     <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Overview of available features</div>
 
     <div class="help-section">
-      <h4>🎨 View Modes</h4>
-      <p>The <strong>By Status · By Lot</strong> buttons in the sidebar change the colouring of routes. <em>By Status</em> shows authorization progress with colours ranging from grey (pending) to green (authorized). <em>By Lot</em> distinguishes the three active lots (1, 2, 3) and any start-up lots. The legend at the bottom-left updates automatically when switching modes.</p>
+      <h4>🎨 Modalità Vista</h4>
+      <p>I pulsanti <strong>Per Stato · Per Lotto · Cantiere</strong> nella barra laterale cambiano la colorazione delle tratte sulla mappa.</p>
+      <p><strong>Per Stato</strong> mostra l'avanzamento autorizzativo con colori dal grigio (in attesa) al verde (ottenuto). <strong>Per Lotto</strong> distingue i tre lotti attivi (1, 2, 3) e gli eventuali lotti di avvio. La legenda in basso a sinistra si aggiorna automaticamente al cambio modalità.</p>
+      <p><strong>Cantiere</strong> colorizza le tratte per fase di scavo, indipendentemente dallo stato permessistico: <em>Non Avviato</em> (grigio), <em>Allestimento</em> (ambra), <em>In Corso</em> (blu), <em>Sospeso</em> (rosso), <em>Completato</em> (verde).</p>
+      <p>In modalità <em>Per Stato</em> e <em>Per Lotto</em> è possibile cliccare più badge lotto nella barra filtri per combinarli: la mappa mostra solo i lotti selezionati e si centra automaticamente sull'area risultante. Il pulsante <strong>Tutti</strong> ripristina la vista completa.</p>
     </div>
 
     <div class="help-section">
-      <h4>🚧 Worksite View</h4>
-      <p>The <strong>Worksite</strong> button in the sidebar switches the map to excavation-status colouring, independent of permit status. Each route is coloured by its current site phase: <em>Not Started</em> (grey), <em>Setting Up</em> (amber), <em>In Progress</em> (blue), <em>On Hold</em> (red) and <em>Completed</em> (green). The legend updates automatically. Clicking a route opens a dedicated popup showing the worksite status badge, completion percentage (where applicable), metres excavated and permit status in the right column. Data is sourced from the Scavi dataset embedded at build time.</p>
+      <h4>📍 Popup Dettaglio Tratta</h4>
+      <p>Cliccando una tratta si apre il pannello dettaglio con: comune, cluster, tipo, lunghezza, ente ricevente (fino a due), stato autorizzativo con badge colorato, lavorabilità e motivo di blocco se presente, nulla osta e ordinanza ove disponibili, pratiche associate. La colonna destra mostra l'avanzamento del lotto con due barre grafiche (permessi ottenuti e pratiche inviate+) e il contributo della tratta al totale del lotto. Un link apre la posizione direttamente in Google Maps.</p>
     </div>
 
     <div class="help-section">
-      <h4>🔍 Multi-select Filters</h4>
-      <p>In <em>By Status</em> and <em>By Lot</em> modes you can click multiple lot badges in the filter bar to combine them: the map shows only the selected lots and auto-zooms to the resulting area. Click <strong>All</strong> to return to the full view.</p>
-    </div>
-
-    <div class="help-section">
-      <h4>📍 Route Detail Popup</h4>
-      <p>Click any route to open the detail panel. It shows: municipality, cluster, type, length, receiving authority (up to two), authorization status with coloured badge, workability status and any blocking reason, clearance and order if present, associated permit codes. The right column shows lot progress with two graphic bars (permits obtained and submitted permits+) and the route's contribution to the lot total. A link opens the location directly in Google Maps.</p>
-    </div>
-
-    <div class="help-section">
-      <h4>🟣 QTS Route</h4>
-      <p>The <strong>QTS Route</strong> toggle in the sidebar overlays the QTS reference route on the current map, displayed as a dashed purple line. The <strong>QTS Only</strong> button hides all other layers and centres the view on the QTS route, useful for quick comparisons. The total length of the QTS appears next to the toggle once the file is loaded.</p>
-    </div>
-
-    <div class="help-section">
-      <h4>🗺 Map Types (Basemap)</h4>
+      <h4>🗺 Tipi di Mappa (Basemap)</h4>
       <p>The control at the bottom-left (thumbnail of the current map) lets you switch the background layer between five options: <strong>Map</strong> (OpenStreetMap), <strong>Hybrid</strong> and <strong>Satellite</strong> (Google Maps), <strong>Topographic</strong> (OpenTopoMap) and <strong>Cadastral</strong> (Italian Revenue Agency WMS). The cadastral layer activates automatically from zoom 14 onwards and requires an external connection; a notice appears if you need to zoom in.</p>
     </div>
 
