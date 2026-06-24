@@ -128,6 +128,7 @@
     <div class="tabbar">
       <button class="tab active" data-tab="aggiorna" data-testid="tab-update">Aggiorna pratiche</button>
       <button class="tab" data-tab="nuova" data-testid="tab-new">Nuova pratica</button>
+      <button class="tab" data-tab="solleciti" data-testid="tab-solleciti">Solleciti</button>
       <button class="tab" data-tab="mie" data-testid="tab-mine">Le mie submission</button>
     </div>
 
@@ -276,6 +277,61 @@
       </form>
     </div>
 
+    <!-- SOLLECITI -->
+    <div class="panel" id="panel-solleciti">
+      <p style="color:var(--muted);font-size:13px;margin-bottom:14px">Registra i solleciti inviati agli enti per le pratiche in corso. La registrazione è immediata e non richiede approvazione.</p>
+
+      <!-- Form nuovo sollecito -->
+      <div class="card" style="margin-bottom:16px;padding:16px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:12px">Nuovo sollecito</div>
+        <div class="grid2">
+          <div>
+            <label>Tratta *</label>
+            <select id="sol-tratta" data-testid="sol-tratta">
+              <option value="">— seleziona tratta —</option>
+            </select>
+          </div>
+          <div>
+            <label>Pratica (codice)</label>
+            <input type="text" id="sol-pratica" placeholder="es. AUT/6/2A" style="font-family:'Fira Code',monospace">
+          </div>
+          <div>
+            <label>Tipo sollecito *</label>
+            <select id="sol-tipo">
+              <option value="">—</option>
+              <option value="PEC">PEC</option>
+              <option value="MAIL">Mail</option>
+              <option value="TELEFONICO">Telefonico</option>
+            </select>
+          </div>
+          <div>
+            <label>Data sollecito *</label>
+            <input type="date" id="sol-data">
+          </div>
+          <div style="grid-column:span 2">
+            <label>Note</label>
+            <textarea id="sol-note" placeholder="Note opzionali (es. numero protocollo, nominativo contattato…)"></textarea>
+          </div>
+        </div>
+        <div style="margin-top:12px;display:flex;justify-content:flex-end">
+          <button class="btn" id="sol-submit">Registra sollecito</button>
+        </div>
+        <div class="msg" id="msgSol"></div>
+      </div>
+
+      <!-- Tabella solleciti -->
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px">Storico solleciti</div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+        <button class="btn btn-ghost btn-xs" id="sol-refresh">Aggiorna</button>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Data</th><th>Tratta</th><th>Pratica</th><th>Tipo</th><th>Note</th><th></th></tr></thead>
+          <tbody id="solBody"><tr><td colspan="6" class="empty">—</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- MIE SUBMISSION -->
     <div class="panel" id="panel-mie">
       <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Storico delle tue richieste — vedi lo stato di approvazione.</p>
@@ -389,6 +445,7 @@
     document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
     t.classList.add('active'); $('panel-' + t.dataset.tab).classList.add('active');
     if (t.dataset.tab === 'mie') loadMine();
+    if (t.dataset.tab === 'solleciti') { loadSolleciti(); _populateSolTratte(); }
   }));
 
   // ─── load pratiche ─────────────────────────────────
@@ -933,6 +990,84 @@
       };
     }
   }
+
+  // ─── SOLLECITI ──────────────────────────────────────────────────────────────
+
+  // Popola select tratte con i TRATTA_ID unici dalle pratiche caricate
+  function _populateSolTratte() {
+    const sel = $('sol-tratta');
+    if (!sel) return;
+    const tratte = [...new Set(PRATICHE.map(p => (p.TRATTA_ID || '').trim()).filter(Boolean))].sort();
+    sel.innerHTML = '<option value="">— seleziona tratta —</option>' +
+      tratte.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+  }
+
+  async function loadSolleciti() {
+    $('solBody').innerHTML = `<tr><td colspan="6"><div class="spinner-wrap"><span class="spinner"></span><span>Caricamento…</span></div></td></tr>`;
+    try {
+      const d = await api('/api/imprese/solleciti');
+      const items = d.solleciti || [];
+      if (!items.length) { $('solBody').innerHTML = '<tr><td colspan="6" class="empty">Nessun sollecito registrato</td></tr>'; return; }
+      $('solBody').innerHTML = items.map(s => `
+        <tr>
+          <td class="mono">${escapeHtml(s.data_sollecito)}</td>
+          <td class="mono">${escapeHtml(s.tratta_id)}</td>
+          <td class="mono" style="font-size:11px">${escapeHtml(s.pratica || '—')}</td>
+          <td><span style="padding:2px 8px;border-radius:5px;font-size:10.5px;font-weight:700;background:#eff6ff;color:#1d4ed8">${escapeHtml(s.tipo_sollecito)}</span></td>
+          <td style="font-size:12px;color:var(--muted)">${escapeHtml(s.note || '—')}</td>
+          <td><button class="btn btn-ghost btn-xs" style="color:#ef4444;border-color:#ef4444" data-sol-del="${escapeHtml(s._id)}">🗑</button></td>
+        </tr>`).join('');
+    } catch(e) {
+      $('solBody').innerHTML = `<tr><td colspan="6" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  $('sol-refresh').addEventListener('click', loadSolleciti);
+
+  $('solBody').addEventListener('click', async e => {
+    const btn = e.target.closest('[data-sol-del]');
+    if (!btn) return;
+    if (!confirm('Eliminare questo sollecito?')) return;
+    try {
+      await api(`/api/imprese/solleciti/${btn.dataset.solDel}`, { method: 'DELETE' });
+      await loadSolleciti();
+    } catch(e) { alert('Errore: ' + e.message); }
+  });
+
+  $('sol-submit').addEventListener('click', async () => {
+    const tratta = $('sol-tratta').value;
+    const tipo   = $('sol-tipo').value;
+    const data   = $('sol-data').value;
+    const msgEl  = $('msgSol');
+    if (!tratta) return setMsg(msgEl, 'Seleziona una tratta', false);
+    if (!tipo)   return setMsg(msgEl, 'Seleziona il tipo di sollecito', false);
+    if (!data)   return setMsg(msgEl, 'Inserisci la data del sollecito', false);
+    $('sol-submit').disabled = true;
+    try {
+      await api('/api/imprese/solleciti', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tratta_id: tratta,
+          pratica: $('sol-pratica').value.trim(),
+          tipo_sollecito: tipo,
+          data_sollecito: data,
+          note: $('sol-note').value.trim(),
+        })
+      });
+      setMsg(msgEl, 'Sollecito registrato', true);
+      $('sol-tratta').value = ''; $('sol-pratica').value = '';
+      $('sol-tipo').value = ''; $('sol-data').value = ''; $('sol-note').value = '';
+      await loadSolleciti();
+    } catch(e) {
+      setMsg(msgEl, 'Errore: ' + e.message, false);
+    } finally {
+      $('sol-submit').disabled = false;
+    }
+  });
+
+  // Carica solleciti quando si passa al tab — gestito nel listener globale tab sopra
+
 })();
 </script>
 </body>
