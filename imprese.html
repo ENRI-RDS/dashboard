@@ -136,8 +136,8 @@
       <div class="search"><input type="text" id="searchPratiche" placeholder="Cerca per codice, tratta, ente, stato…" data-testid="search-pratiche"></div>
       <div class="scroll">
         <table>
-          <thead><tr><th>Pratica</th><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th><th>Data richiesta</th><th>Data agg.</th><th style="text-align:right">Lung. (m)</th></tr></thead>
-          <tbody id="pratBody"><tr><td colspan="8"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr></tbody>
+          <thead><tr><th>Pratica</th><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th><th>Data richiesta</th><th>Data agg.</th><th>Data ottenimento</th><th style="text-align:right">Lung. (m)</th></tr></thead>
+          <tbody id="pratBody"><tr><td colspan="9"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr></tbody>
         </table>
       </div>
 
@@ -406,7 +406,7 @@
 
   // ─── load pratiche ─────────────────────────────────
   async function loadPratiche(){
-    $('pratBody').innerHTML = `<tr><td colspan="8"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr>`;
+    $('pratBody').innerHTML = `<tr><td colspan="9"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr>`;
     try {
       const d = await api(`/api/imprese/pratiche?nome=${encodeURIComponent(nome)}`);
       PRATICHE = (d.pratiche || []).map(p => ({...p, _codice: buildCodice(p)}));
@@ -414,7 +414,7 @@
       await _populateEntiSelect();
       _setAutoPratica();
     } catch(e){
-      $('pratBody').innerHTML = `<tr><td colspan="8" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
+      $('pratBody').innerHTML = `<tr><td colspan="9" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
     }
   }
   $('searchPratiche').addEventListener('input', e => renderPratiche(e.target.value));
@@ -484,7 +484,7 @@
     });
     const deduplicated = Array.from(latestMap.values());
     const rows = deduplicated.filter(p => !f || JSON.stringify(p).toLowerCase().includes(f));
-    if (!rows.length){ $('pratBody').innerHTML = '<tr><td colspan="8" class="empty">Nessuna pratica</td></tr>'; return; }
+    if (!rows.length){ $('pratBody').innerHTML = '<tr><td colspan="9" class="empty">Nessuna pratica</td></tr>'; return; }
     // Salva l'array corrente filtrato per recuperare la riga al click
     renderPratiche._current = rows.slice(0, 500);
     $('pratBody').innerHTML = renderPratiche._current.map((p, i) => `
@@ -496,6 +496,7 @@
         <td class="stato-${(p.STATO_PERMESSO||'').replace(/\s+/g,'.')}">${escapeHtml(p.STATO_PERMESSO)}</td>
         <td class="mono">${escapeHtml(p.DATA_RICHIESTA)}</td>
         <td class="mono">${escapeHtml(p.DATA_ULTIMA_MODIFICA)}</td>
+        <td class="mono">${escapeHtml(p.DATA_APPROVAZIONE || '—')}</td>
         <td style="text-align:right;background:#f0fdf4;font-family:'Fira Code',monospace;font-size:11.5px;color:#1F7A4E;font-weight:600;border-left:2px solid #bbf7d0">${escapeHtml(String(p.LUNGHEZZA ?? '—'))}</td>
       </tr>`).join('');
   }
