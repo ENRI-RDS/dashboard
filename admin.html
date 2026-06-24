@@ -785,17 +785,25 @@
       if(!ok) return;
       try{
         const r = await api(withTokenQuery('/api/admin/pending-updates/' + btn.dataset.id + '/approve'), { method: 'POST', headers: authHeaders() });
-        toast(`Approvato: ${r.summary.updated} aggiornate, ${r.summary.added} aggiunte, ${r.summary.not_found} non trovate`);
-        refreshPending(); refreshFiles(); refreshUploads();
-      }catch(err){ toast('Errore: ' + err.message, true); }
+        refreshPending(); refreshFiles(); refreshUploads(); refreshPendingCount();
+        const s = r.summary || {};
+        toast(`Approvato: ${s.updated ?? 0} aggiornate, ${s.added ?? 0} aggiunte, ${s.not_found ?? 0} non trovate`);
+      }catch(err){
+        toast('Errore: ' + err.message, true);
+        refreshPending(); refreshPendingCount(); // anche in errore, lo stato potrebbe essere già cambiato lato server
+      }
     } else if(act === 'reject' && btn.dataset.id){
       const sub = JSON.parse(btn.closest('tr').querySelector('[data-act="details"]').dataset.payload.replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>'));
       const res = await showReject(sub);
       if(!res.confirmed) return;
       try{
         await api(withTokenQuery('/api/admin/pending-updates/' + btn.dataset.id + '/reject'), { method: 'POST', headers: { 'Content-Type':'application/json', ...authHeaders() }, body: JSON.stringify({ note: res.note }) });
-        toast('Rifiutato'); refreshPending();
-      }catch(err){ toast('Errore: ' + err.message, true); }
+        refreshPending(); refreshPendingCount();
+        toast('Rifiutato');
+      }catch(err){
+        toast('Errore: ' + err.message, true);
+        refreshPending(); refreshPendingCount();
+      }
     } else if(act === 'details' && btn.dataset.payload){
       try { showDetails(JSON.parse(btn.dataset.payload.replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>'))); } catch(_){}
     }
