@@ -7230,7 +7230,7 @@ _hookScadenze();
       window._solByPratica = {};
       for (let i = 1; i < lines.length; i++) {
         const cols = lines[i].split(sep).map(c => c.replace(/^"|"$/g,'').trim());
-        const cod = cols[iTratta] || '';
+        const cod = cols[iCod] || '';
         if (!cod) continue;
         if (!window._solByPratica[cod]) window._solByPratica[cod] = [];
         window._solByPratica[cod].push({
@@ -7242,6 +7242,7 @@ _hookScadenze();
         });
       }
       // ridisegna la tabella se già renderizzata
+      console.log('[Solleciti] caricati:', Object.keys(window._solByPratica).length, 'tratte', Object.keys(window._solByPratica).slice(0,5));
       if (typeof renderTabella === 'function') renderTabella();
     } catch(e) { console.warn('loadSolleciti:', e.message); }
   }
@@ -7253,7 +7254,7 @@ _hookScadenze();
     const arr = (window._solByPratica || {})[codice];
     if (!arr || !arr.length) return '<span style="color:var(--muted2);font-size:11px">—</span>';
     const n = arr.length;
-    return '<span class="sol-badge" data-sol-tratta="' + codice.replace(/"/g,'') + '" '
+    return '<span class="sol-badge" data-sol-cod="' + codice.replace(/"/g,'') + '" '
       + 'style="cursor:pointer;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;'
       + 'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;user-select:none" '
       + 'title="Vedi solleciti per ' + codice.replace(/"/g,'') + '">' + n + ' 📋</span>';
@@ -7272,7 +7273,7 @@ _hookScadenze();
       const badge = e.target.closest('.sol-badge');
       if (!badge) { box.style.display = 'none'; return; }
       e.stopPropagation();
-      const cod = badge.dataset.solTratta;
+      const cod = badge.dataset.solCod;
       const arr = ((window._solByPratica || {})[cod] || [])
         .slice().sort((a,b) => b.data.localeCompare(a.data));
       const rows = arr.map(s => {
@@ -7391,7 +7392,7 @@ _hookScadenze();
         <td class="tbl-td">${scadHtml(r.scad_gg)}</td>
         <td class="tbl-td">${prevHtml}</td>
         <td class="tbl-td tbl-td-r tbl-metri">${fmt(r.metri)}</td>
-        <td class="tbl-td tbl-td-r">${_solBadge(r.tratta)}</td>
+        <td class="tbl-td tbl-td-r">${_solBadge(r.codice)}</td>
       </tr>`;
     }).join('');
 
