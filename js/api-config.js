@@ -18,8 +18,11 @@
  *   localStorage.removeItem('enri_api_base')
  */
 (function () {
+  const DEFAULT_API_BASE = 'https://enri-dashboard-api.onrender.com';
+
   const API_BASE = (window.ENRI_API_BASE
     || localStorage.getItem('enri_api_base')
+    || DEFAULT_API_BASE
     || '').replace(/\/$/, '');
 
   window.ENRI = {
