@@ -1581,6 +1581,21 @@ async def delete_sollecito(sol_id: str, sess: dict = Depends(_require_session)):
     return {"deleted": sol_id}
 
 
+
+
+@app.get("/api/admin/solleciti")
+async def admin_get_solleciti(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q:        Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """Restituisce tutti i solleciti (vista admin, senza filtro impresa)."""
+    _check_token(x_upload_token or token_q)
+    items = []
+    async for d in solleciti_col.find({}).sort("data_sollecito", -1):
+        d["_id"] = str(d["_id"])
+        items.append(d)
+    return {"solleciti": items, "count": len(items)}
+
 @app.post("/api/imprese/solleciti/bulk-delete")
 async def bulk_delete_solleciti(payload: dict, sess: dict = Depends(_require_session)):
     """Elimina più solleciti in una sola chiamata e fa un unico push GitHub."""
