@@ -81,13 +81,23 @@
   .modal-sub{font-size:12px;color:var(--muted);font-family:'Fira Code',monospace}
   .modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted)}
   .detail-section{margin-bottom:14px}
-  .detail-label{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
-  .detail-change{background:#f8f9fc;border-radius:8px;padding:12px;margin-bottom:8px}
-  .detail-change-header{font-weight:700;font-size:12px;margin-bottom:6px;color:#1a1a2e}
-  .detail-field{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid #f0f0f0}
+  .detail-label{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .detail-change{background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+  .detail-change-header{font-weight:700;font-size:13px;margin-bottom:10px;color:#1a1a2e;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .detail-cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:520px){.detail-cols{grid-template-columns:1fr}}
+  .detail-col-box{background:#f8fafc;border-radius:7px;padding:10px 12px;border:1px solid var(--border)}
+  .detail-col-title{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .detail-field{display:flex;flex-direction:column;gap:1px;padding:5px 0;border-bottom:1px solid #f0f0f0}
   .detail-field:last-child{border-bottom:none}
-  .detail-field-key{color:var(--muted);min-width:160px;font-family:'Fira Code',monospace;font-size:11px}
-  .detail-field-val{color:#1a1a2e;font-family:'Fira Code',monospace;font-size:11px;word-break:break-all}
+  .detail-field-key{color:var(--muted);font-size:9.5px;text-transform:uppercase;letter-spacing:.05em}
+  .detail-field-val{color:#1a1a2e;font-family:'Fira Code',monospace;font-size:11.5px;font-weight:600;word-break:break-all}
+  .pend-card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.05);transition:box-shadow .15s}
+  .pend-card:hover{box-shadow:0 3px 10px rgba(0,0,0,.09)}
+  .pend-card-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+  .pend-card-body{font-size:11.5px;color:#374151;line-height:1.6}
+  .pend-tag{display:inline-flex;align-items:center;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+  .pend-actions{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   pre.preview{background:#0E1116;color:#D6DEEB;padding:14px;border-radius:8px;overflow:auto;font-family:'Fira Code',monospace;font-size:11.5px;max-height:50vh;white-space:pre;line-height:1.5}
   .tabbar{display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid var(--border)}
   .tab{padding:8px 14px;font-size:12.5px;font-weight:600;color:var(--muted);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
@@ -203,10 +213,7 @@
           </select>
           <button class="btn btn-ghost btn-xs" id="refreshPendingBtn">Aggiorna</button>
         </div>
-        <table>
-          <thead><tr><th>Quando</th><th>Impresa</th><th>Tipo</th><th>N.</th><th>Anteprima</th><th>Stato</th><th>Azioni</th></tr></thead>
-          <tbody id="pendingBody"><tr><td colspan="7" class="empty">Caricamento…</td></tr></tbody>
-        </table>
+        <div id="pendingBody"><div class="empty" style="padding:16px">Caricamento…</div></div>
       </div>
 
       <!-- ASSIGNMENTS -->
@@ -284,7 +291,7 @@
 </div>
 
 <div class="modal" id="detailsModal">
-  <div class="modal-card" style="max-width:680px;max-height:80vh;display:flex;flex-direction:column">
+  <div class="modal-card" style="max-width:720px;max-height:88vh;display:flex;flex-direction:column">
     <div class="modal-head">
       <div>
         <div class="modal-title" id="detailsTitle">Dettagli</div>
@@ -292,7 +299,7 @@
       </div>
       <button class="modal-close" id="detailsClose">&times;</button>
     </div>
-    <div style="overflow-y:auto;flex:1;padding-top:4px" id="detailsBody"></div>
+    <div style="overflow-y:auto;flex:1" id="detailsBody"></div>
   </div>
 </div>
 
@@ -641,19 +648,73 @@
       const ente   = c.ente   || c.ENTE   || '';
       const tipo   = c.tipo_permesso || c.TIPO_PERMESSO || '';
       const fields = c.fields || {};
-      const colonne = Object.entries(fields).map(([k,v]) => `
-        <div class="detail-field">
+
+      // Recupera dati attuali della pratica da _masterByTratta
+      const master = (window._masterByTratta || {})[tratta] || [];
+      const pratInfo = master.find(p =>
+        (!ente || p.ente === ente) && (!tipo || p.tipo === tipo)
+      ) || master[0] || null;
+
+      // Card stato attuale
+      const statoAttuale = pratInfo ? pratInfo.stato : null;
+      const statoColor = statoAttuale === 'OTTENUTO' ? '#059669'
+        : statoAttuale === 'INVIATO' ? '#1d4ed8'
+        : statoAttuale === 'PROTOCOLLATO' ? '#7c3aed'
+        : statoAttuale === 'NECESSARIA INTEGRAZIONE' ? '#d97706'
+        : '#6b7280';
+      const currentInfoHtml = pratInfo ? `
+        <div style="margin:6px 0 8px;padding:8px 10px;background:#f8fafc;border-radius:6px;border:1px solid var(--border);display:flex;flex-wrap:wrap;gap:8px 16px;font-size:11px">
+          <div><span style="color:var(--muted);text-transform:uppercase;font-size:9px;letter-spacing:.05em">Stato attuale</span><br>
+            <span style="font-weight:700;color:${statoColor}">${escapeHtml(statoAttuale||'—')}</span></div>
+          ${pratInfo.dr ? `<div><span style="color:var(--muted);text-transform:uppercase;font-size:9px;letter-spacing:.05em">Data richiesta</span><br><span style="font-family:monospace">${escapeHtml(pratInfo.dr)}</span></div>` : ''}
+          ${pratInfo.dum ? `<div><span style="color:var(--muted);text-transform:uppercase;font-size:9px;letter-spacing:.05em">Ultima modifica</span><br><span style="font-family:monospace">${escapeHtml(pratInfo.dum)}</span></div>` : ''}
+          ${pratInfo.lungh ? `<div><span style="color:var(--muted);text-transform:uppercase;font-size:9px;letter-spacing:.05em">Metri</span><br><span style="font-weight:600">${escapeHtml(String(pratInfo.lungh))}</span></div>` : ''}
+          ${pratInfo.lotto ? `<div><span style="color:var(--muted);text-transform:uppercase;font-size:9px;letter-spacing:.05em">Lotto</span><br><span>${escapeHtml(pratInfo.lotto)}</span></div>` : ''}
+        </div>` : '';
+
+      // Campi richiesti dall'impresa
+      const colonneRichiesta = Object.entries(fields).map(([k,v]) => {
+        const isStato = k === 'STATO_PERMESSO';
+        const sc = isStato ? ({
+          'OTTENUTO':'#059669','INVIATO':'#1d4ed8','PROTOCOLLATO':'#7c3aed',
+          'NECESSARIA INTEGRAZIONE':'#d97706','IN FIRMA RDS':'#0891b2',
+          'IN REDAZIONE':'#6b7280','NO COMPETENZA':'#dc2626'
+        }[String(v)]||'#374151') : '#374151';
+        return `<div class="detail-field">
           <span class="detail-field-key">${escapeHtml(fieldLabels[k]||k)}</span>
-          <span class="detail-field-val">${escapeHtml(String(v||'—'))}</span>
-        </div>`).join('');
+          <span class="detail-field-val" style="color:${sc}">${escapeHtml(String(v||'—'))}</span>
+        </div>`;
+      }).join('') || '<span style="color:var(--muted);font-size:11px">Nessun campo modificato</span>';
+
+      // Header badge tipo permesso
+      const tipoBadgeColor = tipo==='AUTORIZZAZIONE'?'#1d4ed8':tipo==='NULLA OSTA'?'#7c3aed':'#374151';
+
       return `
         <div class="detail-change">
           <div class="detail-change-header">
-            Tratta ${escapeHtml(tratta)}
-            ${ente ? `<span style="font-weight:400;color:var(--muted)"> · ${escapeHtml(ente)}</span>` : ''}
-            ${tipo ? `<span style="font-weight:400;color:var(--muted)"> · ${escapeHtml(tipo)}</span>` : ''}
+            <span style="font-family:'Fira Code',monospace;font-size:12px;background:#f1f5f9;padding:2px 8px;border-radius:5px;border:1px solid #e2e8f0">Tratta ${escapeHtml(tratta)}</span>
+            ${ente ? `<span style="font-weight:500;color:#374151">${escapeHtml(ente)}</span>` : ''}
+            ${tipo ? `<span class="pend-tag" style="background:${tipoBadgeColor}15;color:${tipoBadgeColor};font-size:9.5px">${escapeHtml(tipo)}</span>` : ''}
           </div>
-          ${colonne||'<span style="color:var(--muted);font-size:11px">Nessun campo modificato</span>'}
+          <div class="detail-cols">
+            <div class="detail-col-box">
+              <div class="detail-col-title">Stato attuale</div>
+              ${pratInfo ? `
+                <div class="detail-field">
+                  <span class="detail-field-key">Stato</span>
+                  <span class="detail-field-val" style="color:${statoColor}">${escapeHtml(statoAttuale||'—')}</span>
+                </div>
+                ${pratInfo.dr ? `<div class="detail-field"><span class="detail-field-key">Data richiesta</span><span class="detail-field-val">${escapeHtml(pratInfo.dr)}</span></div>` : ''}
+                ${pratInfo.dum ? `<div class="detail-field"><span class="detail-field-key">Ultima modifica</span><span class="detail-field-val">${escapeHtml(pratInfo.dum)}</span></div>` : ''}
+                ${pratInfo.lungh ? `<div class="detail-field"><span class="detail-field-key">Metri</span><span class="detail-field-val">${escapeHtml(String(pratInfo.lungh))} m</span></div>` : ''}
+                ${pratInfo.lotto ? `<div class="detail-field"><span class="detail-field-key">Lotto</span><span class="detail-field-val">${escapeHtml(pratInfo.lotto)}</span></div>` : ''}
+              ` : '<span style="color:var(--muted);font-size:11px">Dati non disponibili</span>'}
+            </div>
+            <div class="detail-col-box" style="border-color:#c7d2fe;background:#f5f3ff">
+              <div class="detail-col-title" style="color:#7c3aed">Richiesta impresa</div>
+              ${colonneRichiesta}
+            </div>
+          </div>
         </div>`;
     }).join('');
     let summaryHtml = '';
@@ -664,11 +725,13 @@
           ${s.summary.updated||0} aggiornate · ${s.summary.added||0} aggiunte · ${s.summary.not_found||0} non trovate
         </div></div>`;
     }
+    const nCh = (s.changes||[]).length;
     $('detailsBody').innerHTML = `
-      <div class="detail-section">
-        <div class="detail-label">${(s.changes||[]).length} modifica/he</div>
+      <div style="padding:14px 16px">
+        <div class="detail-label" style="margin-bottom:12px">${nCh} pratica${nCh!==1?'che':''} coinvolta${nCh!==1?'e':''}</div>
         ${changesHtml}
-      </div>${summaryHtml}`;
+        ${summaryHtml}
+      </div>`;
     $('detailsModal').classList.add('open');
   }
   $('detailsClose').addEventListener('click', () => $('detailsModal').classList.remove('open'));
@@ -725,46 +788,57 @@
   // ──────────────────────────────────────────────────────────────────────
   // Pending submissions (impresa approval queue)
   async function refreshPending(){
-    if(!apiBase()){ $('pendingBody').innerHTML = '<tr><td colspan="7" class="empty">Imposta API endpoint</td></tr>'; return; }
+    if(!apiBase()){ $('pendingBody').innerHTML = '<div class="empty" style="padding:16px">Imposta API endpoint</div>'; return; }
     try{
       const status = $('pendingFilter').value;
       const d = await api(withTokenQuery('/api/admin/pending-updates?status=' + encodeURIComponent(status)));
       if(!d.submissions || !d.submissions.length){
-        $('pendingBody').innerHTML = '<tr><td colspan="7" class="empty">Nessuna submission</td></tr>';
+        $('pendingBody').innerHTML = '<div class="empty" style="padding:24px;text-align:center">Nessuna submission</div>';
         updatePendingBadge(0);
         return;
       }
       $('pendingBody').innerHTML = d.submissions.map(s => {
-        const preview = (s.changes || []).slice(0, 2).map(c => {
-          if (s.type === 'update') return `${escapeHtml(c.tratta_id||'')} · ${Object.keys(c.fields||{}).join(',')}`;
-          return `${escapeHtml(c.TRATTA_ID||c['TRATTA_ID']||'')}/${escapeHtml(c.ENTE||'')}`;
-        }).join(' ; ') + ((s.changes||[]).length > 2 ? ` (+${s.changes.length - 2})` : '');
-        const statusTag = `<span class="tag" style="background:${s.status==='pending'?'#FEF3C7':s.status==='approved'?'#EBFBEE':'#FEE2E2'};color:${s.status==='pending'?'#B45309':s.status==='approved'?'#2B8A3E':'#B91C1C'};text-transform:uppercase;font-size:10px;font-weight:700;padding:3px 8px;border-radius:5px">${s.status}</span>`;
-        return `
-        <tr style="${s.type==='new'
-            ? 'border-left:3px solid #10b981'
-            : 'border-left:3px solid #3b82f6'}">
-          <td class="mono">${fmtDate(s.submitted_at)}</td>
-          <td>${escapeHtml(s.nome)}</td>
-          <td>${s.type==='update'
-            ? '<span style="color:#1d4ed8;font-weight:600;font-size:12px">&#8635; Aggiornamento</span>'
-            : '<span style="color:#059669;font-weight:600;font-size:12px">&#43; Nuova tratta</span>'
-          }</td>
-          <td>${(s.changes||[]).length}</td>
-          <td class="mono" style="font-size:11px">${preview}</td>
-          <td>${statusTag}</td>
-          <td class="actions">
-            ${s.status === 'pending' ? `
-              <button class="btn btn-xs" data-act="approve" data-id="${s._id}" style="background:var(--ok)" data-testid="approve-${s._id}">Approva</button>
-              <button class="btn btn-danger btn-xs" data-act="reject" data-id="${s._id}" data-testid="reject-${s._id}">Rifiuta</button>
-            ` : ''}
-            <button class="btn btn-ghost btn-xs" data-act="details" data-payload='${escapeHtml(JSON.stringify(s))}'>Dettagli</button>
-          </td>
-        </tr>`;
+        const isUpdate = s.type === 'update';
+        const accentColor = isUpdate ? '#3b82f6' : '#10b981';
+        const typeIcon = isUpdate ? '⟳' : '+';
+        const typeLabel = isUpdate ? 'Aggiornamento' : 'Nuova pratica';
+        const stBg = s.status==='pending'?'#FEF3C7':s.status==='approved'?'#EBFBEE':'#FEE2E2';
+        const stFg = s.status==='pending'?'#B45309':s.status==='approved'?'#2B8A3E':'#B91C1C';
+        const stLabel = s.status==='pending'?'In attesa':s.status==='approved'?'Approvato':'Rifiutato';
+        const n = (s.changes||[]).length;
+        // tratte coinvolte
+        const tratte = [...new Set((s.changes||[]).map(c => c.tratta_id||c.TRATTA_ID||'').filter(Boolean))];
+        const tratteHtml = tratte.slice(0,4).map(t =>
+          `<span style="font-family:'Fira Code',monospace;font-size:10px;background:#f1f5f9;padding:1px 6px;border-radius:4px;border:1px solid #e2e8f0">${escapeHtml(t)}</span>`
+        ).join(' ') + (tratte.length > 4 ? ` <span style="color:var(--muted);font-size:10px">+${tratte.length-4}</span>` : '');
+        // nuovo stato richiesto
+        const nuovoStato = (s.changes||[]).map(c => (c.fields||{}).STATO_PERMESSO).find(Boolean) || '';
+        const actions = s.status === 'pending' ? `
+          <button class="btn btn-xs" data-act="approve" data-id="${s._id}" style="background:var(--ok);font-size:11px" data-testid="approve-${s._id}">✓ Approva</button>
+          <button class="btn btn-danger btn-xs" data-act="reject" data-id="${s._id}" style="font-size:11px" data-testid="reject-${s._id}">✗ Rifiuta</button>` : '';
+        return `<div class="pend-card" style="border-left:3px solid ${accentColor}">
+          <div class="pend-card-head">
+            <span class="pend-tag" style="background:${accentColor}18;color:${accentColor}">${typeIcon} ${escapeHtml(typeLabel)}</span>
+            <span style="font-weight:700;font-size:13px">${escapeHtml(s.nome)}</span>
+            <span style="color:var(--muted);font-size:11px">${fmtDate(s.submitted_at)}</span>
+            <span class="pend-tag" style="background:${stBg};color:${stFg};margin-left:auto">${stLabel}</span>
+          </div>
+          <div class="pend-card-body">
+            <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px">
+              <span style="color:var(--muted);font-size:11px">${n} pratica${n!==1?'che':''}</span>
+              ${tratteHtml}
+              ${nuovoStato ? `<span style="margin-left:4px;font-size:11px">→ <b style="color:#7c3aed">${escapeHtml(nuovoStato)}</b></span>` : ''}
+            </div>
+          </div>
+          <div class="pend-actions">
+            ${actions}
+            <button class="btn btn-ghost btn-xs" data-act="details" data-payload='${escapeHtml(JSON.stringify(s))}' style="font-size:11px">🔍 Dettagli</button>
+          </div>
+        </div>`;
       }).join('');
       if(status === 'pending') updatePendingBadge(d.count);
     }catch(e){
-      $('pendingBody').innerHTML = `<tr><td colspan="7" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
+      $('pendingBody').innerHTML = `<div class="empty" style="padding:16px;color:#ef4444">Errore: ${escapeHtml(e.message)}</div>`;
     }
   }
   function updatePendingBadge(n){
