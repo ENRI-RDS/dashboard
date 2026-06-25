@@ -1233,8 +1233,14 @@
 
     try {
       const toDelete = deleteAll ? [solId, ...siblings.map(s => s._id)] : [solId];
-      for (const id of toDelete) {
-        await api(`/api/imprese/solleciti/${id}`, { method: 'DELETE' });
+      if (toDelete.length > 1) {
+        await api('/api/imprese/solleciti/bulk-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: toDelete })
+        });
+      } else {
+        await api(`/api/imprese/solleciti/${toDelete[0]}`, { method: 'DELETE' });
       }
       await loadSolleciti();
     } catch(e) { setMsg($('msgSol'), 'Errore: ' + e.message, false); }
