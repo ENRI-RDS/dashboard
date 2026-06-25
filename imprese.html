@@ -1184,10 +1184,44 @@
   $('solBody').addEventListener('click', async e => {
     const btn = e.target.closest('[data-sol-del]');
     if (!btn) return;
-    const ok = await showConfirm('Elimina sollecito', 'Eliminare definitivamente questo sollecito?', 'Elimina', 'background:#ef4444;border-color:#ef4444');
-    if (!ok) return;
+    const solId   = btn.dataset.solDel;
+    const clicked = SOLLECITI.find(s => s._id === solId);
+    if (!clicked) return;
+
+    // Cerca solleciti fratelli: stesso codice pratica, stessa data sollecito, stesso tipo
+    const siblings = SOLLECITI.filter(s =>
+      s._id !== solId &&
+      s.pratica        === clicked.pratica &&
+      s.data_sollecito === clicked.data_sollecito &&
+      s.tipo_sollecito === clicked.tipo_sollecito
+    );
+
+    let deleteAll = false;
+    if (siblings.length) {
+      const tratte = [clicked.tratta_id, ...siblings.map(s => s.tratta_id)].join(', ');
+      const ok = await showConfirm(
+        'Elimina sollecito',
+        `Ci sono ${siblings.length} tratt${siblings.length === 1 ? 'a collegata' : 'e collegate'} con lo stesso sollecito (${tratte}).\nVuoi eliminare tutti i solleciti insieme?`,
+        'Elimina tutti',
+        'background:#ef4444;border-color:#ef4444'
+      );
+      if (ok === null) return; // annullato
+      deleteAll = ok;
+      if (!deleteAll) {
+        // chiede conferma per solo questo
+        const single = await showConfirm('Elimina sollecito', 'Eliminare solo questo sollecito?', 'Elimina', 'background:#ef4444;border-color:#ef4444');
+        if (!single) return;
+      }
+    } else {
+      const ok = await showConfirm('Elimina sollecito', 'Eliminare definitivamente questo sollecito?', 'Elimina', 'background:#ef4444;border-color:#ef4444');
+      if (!ok) return;
+    }
+
     try {
-      await api(`/api/imprese/solleciti/${btn.dataset.solDel}`, { method: 'DELETE' });
+      const toDelete = deleteAll ? [solId, ...siblings.map(s => s._id)] : [solId];
+      for (const id of toDelete) {
+        await api(`/api/imprese/solleciti/${id}`, { method: 'DELETE' });
+      }
       await loadSolleciti();
     } catch(e) { setMsg($('msgSol'), 'Errore: ' + e.message, false); }
   });
