@@ -1,41 +1,42 @@
-<!DOCTYPE html> <html lang="it" translate="no"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <meta name="google" content="notranslate"> <title>ENRI — Sopralluoghi</title> <script src="js/api-config.js"></script> <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Plus+Jakarta+Sans:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<!DOCTYPE html> <html lang="it" translate="no"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <meta name="google" content="notranslate"> <title>ENRI — Sopralluoghi</title> <script src="js/api-config.js"></script> <link href="https://fonts.googleapis.com/css2?family=Raleway:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
   :root {
-    --bg:#F4F3EE; --surface:#FFFFFF; --surface2:#F0EEE6;
-    --border:#E0DDD4; --border2:#CCC9BE;
-    --accent:#0B3182; --accent2:#E55000;
-    --teal:#0E7490;
-    --text:#1C1C2E; --text2:#3A3A52; --muted:#52526E; --muted2:#7878A0;
-    --sh-xs:0 1px 3px rgba(11,49,130,.06),0 1px 2px rgba(0,0,0,.04);
-    --sh-sm:0 2px 8px rgba(11,49,130,.08),0 1px 4px rgba(0,0,0,.05);
-    --sh-md:0 4px 20px rgba(11,49,130,.10),0 2px 8px rgba(0,0,0,.06);
+    --bg:#F7F8FA; --surface:#FFFFFF; --surface2:#EEF1F5;
+    --border:#DFE4EB; --border2:#C4CDD8;
+    --accent:#043F75; --accent2:#1A7D99;
+    --teal:#1A7D99; --sky:#41BBD9;
+    --ok:#1E9E6A; --warn:#D08A1A; --err:#C0392B;
+    --text:#363D48; --text2:#363D48; --muted:#6B7685; --muted2:#9AA5B4;
+    --sh-xs:0 1px 3px rgba(4,63,117,.06),0 1px 2px rgba(0,0,0,.04);
+    --sh-sm:0 2px 8px rgba(4,63,117,.08),0 1px 4px rgba(0,0,0,.05);
+    --sh-md:0 4px 20px rgba(4,63,117,.10),0 2px 8px rgba(0,0,0,.06);
   }
   *{margin:0;padding:0;box-sizing:border-box;}
-  body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+  body{font-family:'Raleway',Calibri,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
 
   .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:52px;background:var(--surface);border-bottom:1px solid var(--border);box-shadow:var(--sh-xs);position:sticky;top:0;z-index:50;}
   .topbar-left{display:flex;align-items:center;gap:12px;}
   .topbar-right{display:flex;align-items:center;gap:8px;}
-  .logo{font-family:'Bricolage Grotesque',sans-serif;font-size:13px;font-weight:700;letter-spacing:.14em;color:var(--accent);text-transform:uppercase;}
+  .logo{font-family:'Raleway',sans-serif;font-size:13px;font-weight:700;letter-spacing:.14em;color:var(--accent);text-transform:uppercase;}
   .divider-v{width:1px;height:20px;background:var(--border2);}
   .page-title{font-size:12px;color:var(--muted);font-weight:500;}
-  .btn-sm{font-size:11px;padding:6px 14px;border-radius:6px;background:transparent;color:var(--muted);border:1px solid var(--border2);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;transition:all .18s;text-decoration:none;display:inline-flex;align-items:center;}
+  .btn-sm{font-size:11px;padding:6px 14px;border-radius:6px;background:transparent;color:var(--muted);border:1px solid var(--border2);cursor:pointer;font-family:'Raleway',sans-serif;font-weight:600;transition:all .18s;text-decoration:none;display:inline-flex;align-items:center;}
   .btn-sm:hover{background:var(--surface2);color:var(--text);}
 
   .main{max-width:720px;margin:0 auto;padding:28px 24px;display:flex;flex-direction:column;gap:20px;}
 
   .page-header{display:flex;flex-direction:column;gap:3px;}
-  .eyebrow{font-family:'Fira Code',monospace;font-size:9px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:var(--teal);}
-  .page-h1{font-family:'Bricolage Grotesque',sans-serif;font-size:22px;font-weight:700;letter-spacing:-.025em;color:var(--text);line-height:1.2;}
+  .eyebrow{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:var(--teal);}
+  .page-h1{font-family:'Raleway',sans-serif;font-size:22px;font-weight:700;letter-spacing:-.025em;color:var(--accent);line-height:1.2;}
   .page-sub{font-size:12px;color:var(--muted);margin-top:2px;}
 
   .form-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;box-shadow:var(--sh-sm);display:flex;flex-direction:column;gap:0;position:relative;overflow:hidden;}
-  .form-card::before{content:'';position:absolute;top:0;left:0;bottom:0;width:3px;border-radius:14px 0 0 14px;background:linear-gradient(180deg,#0E7490,#22aac4);}
+  .form-card::before{content:'';position:absolute;top:0;left:0;bottom:0;width:3px;border-radius:14px 0 0 14px;background:linear-gradient(180deg,#1A7D99,#41BBD9);}
 
-  .section-label{font-family:'Fira Code',monospace;font-size:9px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:var(--teal);margin-top:22px;margin-bottom:10px;}
+  .section-label{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:var(--teal);margin-top:22px;margin-bottom:10px;}
   .section-label:first-child{margin-top:0;}
 
   .field-group{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
@@ -46,10 +47,10 @@
   input,textarea,select{
     width:100%;padding:9px 12px;
     border:1.5px solid var(--border2);border-radius:8px;
-    font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;color:var(--text);
+    font-family:'Raleway',sans-serif;font-size:13px;color:var(--text);
     background:var(--surface2);outline:none;transition:border-color .2s,box-shadow .2s,background .2s;
   }
-  input:focus,textarea:focus,select:focus{border-color:var(--teal);background:var(--surface);box-shadow:0 0 0 3px rgba(14,116,144,.1);}
+  input:focus,textarea:focus,select:focus{border-color:var(--teal);background:var(--surface);box-shadow:0 0 0 3px rgba(26,125,153,.1);}
   textarea{resize:vertical;min-height:72px;line-height:1.6;}
 
   .divider-h{border:none;border-top:1px solid var(--border);margin:20px 0 4px;}
@@ -64,35 +65,35 @@
     border:1.5px solid var(--border2);background:var(--surface2);
     color:var(--muted);transition:all .18s;
   }
-  .radio-pill input:checked + label{border-color:var(--teal);background:#0E74901A;color:var(--teal);}
-  .radio-pill.sev-alta input:checked + label{border-color:#C23B22;background:#C23B221A;color:#C23B22;}
-  .radio-pill.sev-media input:checked + label{border-color:#B45309;background:#B453091A;color:#B45309;}
+  .radio-pill input:checked + label{border-color:var(--teal);background:#1A7D991A;color:var(--teal);}
+  .radio-pill.sev-alta input:checked + label{border-color:#C0392B;background:#C0392B1A;color:#C0392B;}
+  .radio-pill.sev-media input:checked + label{border-color:#D08A1A;background:#D08A1A1A;color:#D08A1A;}
 
   /* LEGGENDA GRAVITÀ */
   .legend-hints{margin-top:8px;display:flex;flex-direction:column;gap:3px;}
   .legend-hint{font-size:11px;color:var(--muted2);display:flex;align-items:baseline;gap:5px;}
   .legend-hint .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;position:relative;top:0px;}
-  .legend-hint .dot.media{background:#B45309;}
-  .legend-hint .dot.critica{background:#C23B22;}
+  .legend-hint .dot.media{background:#D08A1A;}
+  .legend-hint .dot.critica{background:#C0392B;}
   .legend-hint strong{font-weight:600;font-size:11px;}
-  .legend-hint strong.media{color:#B45309;}
-  .legend-hint strong.critica{color:#C23B22;}
+  .legend-hint strong.media{color:#D08A1A;}
+  .legend-hint strong.critica{color:#C0392B;}
 
   /* DOWNLOAD BTN */
   .btn-download{
     margin-top:24px;width:100%;padding:13px;
     background:var(--teal);color:#fff;border:none;border-radius:10px;
-    font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;
+    font-family:'Raleway',sans-serif;font-size:14px;font-weight:700;cursor:pointer;
     display:flex;align-items:center;justify-content:center;gap:8px;
-    box-shadow:0 3px 14px rgba(14,116,144,.28);
+    box-shadow:0 3px 14px rgba(26,125,153,.28);
     transition:background .2s,transform .18s,box-shadow .18s;
   }
-  .btn-download:hover{background:#0c6880;transform:translateY(-1px);box-shadow:0 6px 22px rgba(14,116,144,.36);}
+  .btn-download:hover{background:#14647A;transform:translateY(-1px);box-shadow:0 6px 22px rgba(26,125,153,.36);}
   .btn-download:active{transform:translateY(0);}
 
   #toast{
     position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(20px);
-    background:#1C1C2E;color:#fff;padding:10px 20px;border-radius:10px;
+    background:#363D48;color:#fff;padding:10px 20px;border-radius:10px;
     font-size:13px;font-weight:600;opacity:0;transition:all .3s;pointer-events:none;
     display:flex;align-items:center;gap:8px;white-space:nowrap;
     box-shadow:0 8px 28px rgba(0,0,0,.22);
@@ -107,10 +108,10 @@
   .guard-box{
     background:var(--surface);border-radius:16px;padding:36px 40px;
     text-align:center;max-width:340px;
-    box-shadow:0 32px 80px rgba(11,49,130,.22);
+    box-shadow:0 32px 80px rgba(4,63,117,.22);
   }
   .guard-box svg{color:var(--teal);margin-bottom:14px;}
-  .guard-box h2{font-family:'Bricolage Grotesque',sans-serif;font-size:18px;font-weight:700;margin-bottom:8px;}
+  .guard-box h2{font-family:'Raleway',sans-serif;font-size:18px;font-weight:700;margin-bottom:8px;}
   .guard-box p{font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.6;}
   .guard-box a{
     display:inline-block;padding:10px 24px;border-radius:8px;
@@ -125,7 +126,7 @@
     background:var(--surface2);transition:border-color .2s,background .2s;
     position:relative;
   }
-  .foto-upload-area:hover{border-color:var(--teal);background:#0E74900A;}
+  .foto-upload-area:hover{border-color:var(--teal);background:#1A7D990A;}
   .foto-upload-area input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
   .foto-upload-icon{color:var(--muted2);margin-bottom:6px;}
   .foto-upload-text{font-size:12px;color:var(--muted);font-weight:500;}
@@ -139,28 +140,28 @@
   .foto-remove{
     position:absolute;top:-6px;right:-6px;
     width:18px;height:18px;border-radius:50%;
-    background:#C23B22;color:#fff;border:none;cursor:pointer;
+    background:#C0392B;color:#fff;border:none;cursor:pointer;
     font-size:11px;line-height:18px;text-align:center;font-weight:700;
     display:flex;align-items:center;justify-content:center;
   }
-  .foto-count{font-size:11px;color:var(--muted);margin-top:6px;font-family:'Fira Code',monospace;}
+  .foto-count{font-size:11px;color:var(--muted);margin-top:6px;font-family:'JetBrains Mono',monospace;}
 
   /* BTN ROW */
   .btn-row{display:flex;gap:10px;margin-top:24px;}
   .btn-download{
     flex:1;padding:13px;
     background:var(--teal);color:#fff;border:none;border-radius:10px;
-    font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;
+    font-family:'Raleway',sans-serif;font-size:13px;font-weight:700;cursor:pointer;
     display:flex;align-items:center;justify-content:center;gap:7px;
-    box-shadow:0 3px 14px rgba(14,116,144,.28);
+    box-shadow:0 3px 14px rgba(26,125,153,.28);
     transition:background .2s,transform .18s,box-shadow .18s;
   }
-  .btn-download:hover{background:#0c6880;transform:translateY(-1px);box-shadow:0 6px 22px rgba(14,116,144,.36);}
+  .btn-download:hover{background:#14647A;transform:translateY(-1px);box-shadow:0 6px 22px rgba(26,125,153,.36);}
   .btn-download:active{transform:translateY(0);}
-  .btn-download.excel{background:#1D6F42;box-shadow:0 3px 14px rgba(29,111,66,.25);}
-  .btn-download.excel:hover{background:#155232;box-shadow:0 6px 22px rgba(29,111,66,.35);}
-  .btn-download.pdf{background:var(--accent2);box-shadow:0 3px 14px rgba(229,80,0,.25);}
-  .btn-download.pdf:hover{background:#c44400;box-shadow:0 6px 22px rgba(229,80,0,.35);}
+  .btn-download.excel{background:#1E9E6A;box-shadow:0 3px 14px rgba(30,158,106,.25);}
+  .btn-download.excel:hover{background:#15805A;box-shadow:0 6px 22px rgba(30,158,106,.35);}
+  .btn-download.pdf{background:var(--accent2);box-shadow:0 3px 14px rgba(26,125,153,.25);}
+  .btn-download.pdf:hover{background:#14647A;box-shadow:0 6px 22px rgba(26,125,153,.35);}
   @media(max-width:500px){.btn-row{flex-direction:column;}}
 </style>
 </head>
@@ -182,7 +183,7 @@
     <span class="page-title">Sopralluoghi</span>
   </div>
   <div class="topbar-right">
-    <span id="topbarUser" style="font-size:11px;color:var(--muted);font-family:'Fira Code',monospace;"></span>
+    <span id="topbarUser" style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;"></span>
     <a href="hub.html" class="btn-sm">← Hub</a>
   </div>
 </div>
@@ -436,7 +437,7 @@ function generateExcel(){
   ];
 
   // Stile intestazioni (sfondo blu ENRI, testo bianco, grassetto)
-  const headerFill  = {patternType:'solid', fgColor:{rgb:'0B3182'}};
+  const headerFill  = {patternType:'solid', fgColor:{rgb:'043F75'}};
   const headerFont  = {bold:true, color:{rgb:'FFFFFF'}, sz:11};
   const headerAlign = {horizontal:'center', vertical:'center', wrapText:true};
   const dataFont    = {sz:11};
@@ -477,7 +478,7 @@ async function generatePdf(){
   // ── helpers ──────────────────────────────────────────────
   function makePrintDiv(innerHTML){
     const d = document.createElement('div');
-    d.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-1;width:794px;background:#F4F3EE;font-family:"Plus Jakarta Sans",sans-serif;color:#1C1C2E;padding:0;';
+    d.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-1;width:794px;background:#F7F8FA;font-family:"Raleway",sans-serif;color:#363D48;padding:0;';
     d.innerHTML = innerHTML;
     document.body.appendChild(d);
     return d;
@@ -486,7 +487,7 @@ async function generatePdf(){
   async function capture(el){
     return html2canvas(el, {
       scale: 2, useCORS: true, allowTaint: true,
-      backgroundColor: '#F4F3EE', logging: false,
+      backgroundColor: '#F7F8FA', logging: false,
       width: 794,
     });
   }
@@ -518,28 +519,28 @@ async function generatePdf(){
     ['Note libere', f.note],
   ].filter(([,v]) => v && v !== '—');
 
-  const gravColor = f.gravita === 'Anomalia critica' ? '#C23B22'
-                  : f.gravita === 'Anomalia media'   ? '#B45309' : '#0E7490';
+  const gravColor = f.gravita === 'Anomalia critica' ? '#C0392B'
+                  : f.gravita === 'Anomalia media'   ? '#D08A1A' : '#1A7D99';
 
   const tableRows = fields.map(([lbl, val], i) => `
-    <tr style="background:${i%2===0?'#E6F4F7':'#ffffff'}">
-      <td style="padding:6px 12px;font-size:10px;font-weight:700;color:#0E7490;width:200px;border:1px solid #d5d0c5;">${lbl}</td>
-      <td style="padding:6px 12px;font-size:10.5px;color:#1C1C2E;border:1px solid #d5d0c5;">${val}</td>
+    <tr style="background:${i%2===0?'#D3DEEA':'#ffffff'}">
+      <td style="padding:6px 12px;font-size:10px;font-weight:700;color:#1A7D99;width:200px;border:1px solid #DFE4EB;">${lbl}</td>
+      <td style="padding:6px 12px;font-size:10.5px;color:#363D48;border:1px solid #DFE4EB;">${val}</td>
     </tr>`).join('');
 
   const sectHtml = extraSections.map(([title, val]) => `
     <div style="margin-bottom:12px;">
-      <div style="font-size:8px;font-weight:700;color:#0E7490;letter-spacing:.14em;text-transform:uppercase;margin-bottom:5px;font-family:'Fira Code',monospace;">${title}</div>
-      <div style="font-size:10px;color:#1C1C2E;line-height:1.6;background:#fff;border:1.5px solid #CCC9BE;border-radius:8px;padding:8px 12px;white-space:pre-wrap;">${val}</div>
+      <div style="font-size:8px;font-weight:700;color:#1A7D99;letter-spacing:.14em;text-transform:uppercase;margin-bottom:5px;font-family:'JetBrains Mono',monospace;">${title}</div>
+      <div style="font-size:10px;color:#363D48;line-height:1.6;background:#fff;border:1.5px solid #C4CDD8;border-radius:8px;padding:8px 12px;white-space:pre-wrap;">${val}</div>
     </div>`).join('');
 
-  const cardStyle = 'background:#fff;border:1px solid #E0DDD4;border-radius:14px;padding:16px 20px 14px 24px;box-shadow:0 2px 8px rgba(11,49,130,.07);position:relative;margin-bottom:14px;';
-  const stripeStyle = 'position:absolute;top:0;left:0;bottom:0;width:3px;border-radius:14px 0 0 14px;background:linear-gradient(180deg,#0E7490,#22aac4);';
-  const secLabel = 'font-family:"Fira Code",monospace;font-size:8px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:#0E7490;margin-bottom:10px;';
+  const cardStyle = 'background:#fff;border:1px solid #DFE4EB;border-radius:14px;padding:16px 20px 14px 24px;box-shadow:0 2px 8px rgba(4,63,117,.07);position:relative;margin-bottom:14px;';
+  const stripeStyle = 'position:absolute;top:0;left:0;bottom:0;width:3px;border-radius:14px 0 0 14px;background:linear-gradient(180deg,#1A7D99,#41BBD9);';
+  const secLabel = 'font-family:"JetBrains Mono",monospace;font-size:8px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:#1A7D99;margin-bottom:10px;';
 
   // ── pagina 1: form ────────────────────────────────────────
   const mainHtml = `
-    <div style="background:#0B3182;padding:14px 36px;display:flex;align-items:center;justify-content:space-between;">
+    <div style="background:#043F75;padding:14px 36px;display:flex;align-items:center;justify-content:space-between;">
       <div>
         <div style="font-size:9px;color:rgba(255,255,255,.6);letter-spacing:.18em;text-transform:uppercase;margin-bottom:3px;">Progetto ENRI · Infrastruttura Fibra Ottica</div>
         <div style="font-size:20px;font-weight:700;color:#fff;letter-spacing:-.025em;">Verbale di Sopralluogo</div>
@@ -555,7 +556,7 @@ async function generatePdf(){
       </div>
 
       ${extraSections.length ? `
-      <div style="${cardStyle.replace('margin-bottom:22px','margin-bottom:22px').replace('#0E7490,#22aac4',gravColor+','+gravColor+'99')}">
+      <div style="${cardStyle.replace('margin-bottom:22px','margin-bottom:22px').replace('#1A7D99,#41BBD9',gravColor+','+gravColor+'99')}">
         <div style="position:absolute;top:0;left:0;bottom:0;width:3px;border-radius:14px 0 0 14px;background:linear-gradient(180deg,${gravColor},${gravColor}99);"></div>
         <div style="${secLabel}">Segnalazioni</div>
         ${sectHtml}
@@ -566,14 +567,14 @@ async function generatePdf(){
         <div style="${secLabel}">Firme</div>
         <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="width:33%;padding:6px 10px;font-size:10px;font-weight:700;color:#0E7490;background:#E6F4F7;border:1px solid #d5d0c5;">Ruolo</td>
-            <td style="width:33%;padding:6px 10px;font-size:10px;font-weight:700;color:#0E7490;background:#E6F4F7;border:1px solid #d5d0c5;">Nome</td>
-            <td style="width:33%;padding:6px 10px;font-size:10px;font-weight:700;color:#0E7490;background:#E6F4F7;border:1px solid #d5d0c5;">Firma</td>
+            <td style="width:33%;padding:6px 10px;font-size:10px;font-weight:700;color:#1A7D99;background:#D3DEEA;border:1px solid #DFE4EB;">Ruolo</td>
+            <td style="width:33%;padding:6px 10px;font-size:10px;font-weight:700;color:#1A7D99;background:#D3DEEA;border:1px solid #DFE4EB;">Nome</td>
+            <td style="width:33%;padding:6px 10px;font-size:10px;font-weight:700;color:#1A7D99;background:#D3DEEA;border:1px solid #DFE4EB;">Firma</td>
           </tr>
           <tr>
-            <td style="padding:8px 10px;font-size:11px;border:1px solid #d5d0c5;">${f.ruolo}</td>
-            <td style="padding:8px 10px;font-size:11px;border:1px solid #d5d0c5;">${f.redattore}</td>
-            <td style="padding:8px 10px;height:46px;border:1px solid #d5d0c5;"></td>
+            <td style="padding:8px 10px;font-size:11px;border:1px solid #DFE4EB;">${f.ruolo}</td>
+            <td style="padding:8px 10px;font-size:11px;border:1px solid #DFE4EB;">${f.redattore}</td>
+            <td style="padding:8px 10px;height:46px;border:1px solid #DFE4EB;"></td>
           </tr>
         </table>
       </div>
@@ -589,8 +590,8 @@ async function generatePdf(){
         <div style="display:flex;flex-direction:column;gap:20px;">
           ${photos.map((p,i) => `
             <div style="display:flex;flex-direction:column;gap:6px;">
-              <img src="${p.dataUrl}" style="width:100%;height:auto;border-radius:8px;border:1px solid #E0DDD4;display:block;">
-              <span style="font-size:10px;color:#7878A0;font-family:'Fira Code',monospace;">Foto ${i+1}</span>
+              <img src="${p.dataUrl}" style="width:100%;height:auto;border-radius:8px;border:1px solid #DFE4EB;display:block;">
+              <span style="font-size:10px;color:#9AA5B4;font-family:'JetBrains Mono',monospace;">Foto ${i+1}</span>
             </div>`).join('')}
         </div>
       </div>
@@ -621,14 +622,14 @@ async function generatePdf(){
                  :         [[0,1],[2,3]];
 
       const imgStyle = (full) =>
-        `width:100%;height:auto;max-height:${full?'500px':'420px'};object-fit:contain;background:#F0EEE6;border-radius:8px;border:1px solid #E0DDD4;display:block;`;
+        `width:100%;height:auto;max-height:${full?'500px':'420px'};object-fit:contain;background:#EEF1F5;border-radius:8px;border:1px solid #DFE4EB;display:block;`;
 
       const rowsHtml = rows.map(row => `
         <div style="display:flex;gap:10px;margin-bottom:12px;">
           ${row.map(i => `
             <div style="display:flex;flex-direction:column;gap:5px;${row.length===1?'width:100%':'flex:1;'}">
               <img src="${photos[i].dataUrl}" style="${imgStyle(row.length===1)}">
-              <span style="font-size:10px;color:#7878A0;font-family:'Fira Code',monospace;">Foto ${i+1}</span>
+              <span style="font-size:10px;color:#9AA5B4;font-family:'JetBrains Mono',monospace;">Foto ${i+1}</span>
             </div>`).join('')}
         </div>`).join('');
 
