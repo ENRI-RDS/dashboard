@@ -1119,25 +1119,38 @@
 
   let SOLLECITI = [];
 
-  // Trova la pratica collegata a un sollecito usando tutti i campi disponibili
   function _praticaPerSollecito(s) {
     const candidates = PRATICHE.filter(p => p.TRATTA_ID === s.tratta_id);
     if (!candidates.length) return null;
-    // 1. Match esatto per codice + ente + tipo
+    // 1. Match completo: codice + ente + tipo + stato
+    if (s.pratica && s.ente && s.tipo_permesso && s.stato_permesso) {
+      const full = candidates.find(p =>
+        (p._codice === s.pratica || String(p.PRATICA) === String(s.pratica)) &&
+        p.ENTE === s.ente &&
+        p.TIPO_PERMESSO === s.tipo_permesso &&
+        p.STATO_PERMESSO === s.stato_permesso
+      );
+      if (full) return full;
+    }
+    // 2. Match codice + ente + tipo
     if (s.pratica && s.ente && s.tipo_permesso) {
-      const exact = candidates.find(p =>
+      const byAll = candidates.find(p =>
         (p._codice === s.pratica || String(p.PRATICA) === String(s.pratica)) &&
         p.ENTE === s.ente &&
         p.TIPO_PERMESSO === s.tipo_permesso
       );
-      if (exact) return exact;
+      if (byAll) return byAll;
     }
-    // 2. Match per ente + tipo
-    if (s.ente && s.tipo_permesso) {
-      const byEntetipo = candidates.find(p => p.ENTE === s.ente && p.TIPO_PERMESSO === s.tipo_permesso);
-      if (byEntetipo) return byEntetipo;
+    // 3. Match solo ente + tipo + stato
+    if (s.ente && s.tipo_permesso && s.stato_permesso) {
+      const byETS = candidates.find(p =>
+        p.ENTE === s.ente &&
+        p.TIPO_PERMESSO === s.tipo_permesso &&
+        p.STATO_PERMESSO === s.stato_permesso
+      );
+      if (byETS) return byETS;
     }
-    // 3. Match per codice pratica
+    // 4. Match codice
     if (s.pratica) {
       const byCode = candidates.find(p => p._codice === s.pratica || String(p.PRATICA) === String(s.pratica));
       if (byCode) return byCode;
@@ -1165,13 +1178,13 @@
     if (!rows.length) { $('solBody').innerHTML = '<tr><td colspan="13" class="empty">Nessun risultato</td></tr>'; return; }
 
     $('solBody').innerHTML = rows.map(({s, p}) => {
-      const ente       = s.ente           || p?.ENTE          || '—';
-      const tipo       = s.tipo_permesso  || p?.TIPO_PERMESSO || '—';
-      const stato      = s.stato_permesso || p?.STATO_PERMESSO|| '—';
-      const dataRich   = p?.DATA_RICHIESTA        || '—';
-      const dataAgg    = p?.DATA_ULTIMA_MODIFICA  || '—';
-      const dataOtt    = p?.DATA_APPROVAZIONE     || '—';
-      const lungh      = s.lunghezza      || p?.LUNGHEZZA     || '—';
+      const ente       = s.ente                  || p?.ENTE          || '—';
+      const tipo       = s.tipo_permesso         || p?.TIPO_PERMESSO || '—';
+      const stato      = s.stato_permesso        || p?.STATO_PERMESSO|| '—';
+      const dataRich   = s.data_richiesta        || p?.DATA_RICHIESTA        || '—';
+      const dataAgg    = s.data_ultima_modifica  || p?.DATA_ULTIMA_MODIFICA  || '—';
+      const dataOtt    = p?.DATA_APPROVAZIONE    || '—';
+      const lungh      = s.lunghezza             || p?.LUNGHEZZA     || '—';
       const codice     = p?._codice || s.pratica || '—';
       return `
       <tr>
@@ -1252,14 +1265,16 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tratta_id,
-        pratica: pratica_codice,
-        tipo_sollecito: tipo,
-        data_sollecito: data,
+        pratica:           pratica_codice,
+        tipo_sollecito:    tipo,
+        data_sollecito:    data,
         note,
-        ente:            row?.ENTE            || '',
-        tipo_permesso:   row?.TIPO_PERMESSO   || '',
-        stato_permesso:  row?.STATO_PERMESSO  || '',
-        lunghezza:       row?.LUNGHEZZA       || '',
+        ente:              row?.ENTE                 || '',
+        tipo_permesso:     row?.TIPO_PERMESSO        || '',
+        stato_permesso:    row?.STATO_PERMESSO       || '',
+        lunghezza:         row?.LUNGHEZZA            || '',
+        data_richiesta:    row?.DATA_RICHIESTA       || '',
+        data_ultima_modifica: row?.DATA_ULTIMA_MODIFICA || '',
       })
     });
   }
@@ -1284,8 +1299,27 @@
     const targets = includeSiblings ? [SOL_SELECTED, ...SOL_SIBLINGS] : [SOL_SELECTED];
     $('sol-submit').disabled = true;
     try {
-      for (const t of targets) {
-        await _postSollecito(t.TRATTA_ID, t._codice || t.PRATICA || '', tipo, data, note, t);
+      if (targets.length > 1) {
+        const items = targets.map(t => ({
+          tratta_id:           t.TRATTA_ID,
+          pratica:             t._codice || t.PRATICA || '',
+          tipo_sollecito:      tipo,
+          data_sollecito:      data,
+          note,
+          ente:                t.ENTE                  || '',
+          tipo_permesso:       t.TIPO_PERMESSO         || '',
+          stato_permesso:      t.STATO_PERMESSO        || '',
+          lunghezza:           t.LUNGHEZZA             || '',
+          data_richiesta:      t.DATA_RICHIESTA        || '',
+          data_ultima_modifica: t.DATA_ULTIMA_MODIFICA || '',
+        }));
+        await api('/api/imprese/solleciti/bulk-insert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items })
+        });
+      } else {
+        await _postSollecito(targets[0].TRATTA_ID, targets[0]._codice || targets[0].PRATICA || '', tipo, data, note, targets[0]);
       }
       setMsg(msgEl, targets.length > 1 ? `Registrati ${targets.length} solleciti` : 'Sollecito registrato', true);
       _resetSolForm();
