@@ -1306,6 +1306,39 @@ async def list_pending(
     async for d in cur:
         d["_id"] = str(d["_id"])
         items.append(d)
+    # Arricchisce ogni change con lo stato attuale dal Master.csv
+    try:
+        df = await _read_master_csv()
+        for sub in items:
+            if sub.get("type") != "update":
+                continue
+            for ch in sub.get("changes", []):
+                tratta  = str(ch.get("tratta_id") or "").strip()
+                ente    = str(ch.get("ente") or "").strip()
+                tipo    = str(ch.get("tipo_permesso") or "").strip()
+                pratica = str(ch.get("original_pratica") or "").strip()
+                if not tratta:
+                    continue
+                mask = df["TRATTA_ID"].astype(str).str.strip() == tratta
+                if ente:
+                    mask = mask & (df["ENTE"].astype(str).str.strip() == ente)
+                if tipo:
+                    mask = mask & (df["TIPO_PERMESSO"].astype(str).str.strip() == tipo)
+                if pratica and "PRATICA" in df.columns:
+                    mp = mask & (df["PRATICA"].astype(str).str.strip() == pratica)
+                    if mp.any():
+                        mask = mp
+                rows = df[mask]
+                if rows.empty:
+                    continue
+                row = rows.sort_values("DATA_ULTIMA_MODIFICA", ascending=False).iloc[0]
+                ch["_stato_attuale"]     = str(row.get("STATO_PERMESSO", "") or "")
+                ch["_data_richiesta"]    = str(row.get("DATA_RICHIESTA", "") or "")
+                ch["_data_ult_mod"]      = str(row.get("DATA_ULTIMA_MODIFICA", "") or "")
+                ch["_data_approvazione"] = str(row.get("DATA_APPROVAZIONE", "") or "")
+    except Exception as e:
+        print(f"[pending-updates] enrich error: {e}")
+
     return {"submissions": items, "count": len(items)}
 
 
