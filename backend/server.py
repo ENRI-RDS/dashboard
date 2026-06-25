@@ -1490,6 +1490,10 @@ async def add_sollecito(payload: dict, sess: dict = Depends(_require_session)):
     tipo         = str((payload or {}).get("tipo_sollecito", "")).strip()
     data_sol     = str((payload or {}).get("data_sollecito", "")).strip()
     note         = str((payload or {}).get("note", "")).strip()
+    ente         = str((payload or {}).get("ente", "")).strip()
+    tipo_perm    = str((payload or {}).get("tipo_permesso", "")).strip()
+    stato_perm   = str((payload or {}).get("stato_permesso", "")).strip()
+    lunghezza    = str((payload or {}).get("lunghezza", "")).strip()
 
     if not tratta_id:
         raise HTTPException(400, "tratta_id obbligatorio")
@@ -1499,13 +1503,17 @@ async def add_sollecito(payload: dict, sess: dict = Depends(_require_session)):
         raise HTTPException(400, "data_sollecito obbligatoria")
 
     record = {
-        "tratta_id":     tratta_id,
-        "pratica":       pratica,
+        "tratta_id":      tratta_id,
+        "pratica":        pratica,
         "tipo_sollecito": tipo,
         "data_sollecito": data_sol,
-        "note":          note,
-        "impresa":       nome,
-        "created_at":    _now_iso(),
+        "note":           note,
+        "impresa":        nome,
+        "ente":           ente,
+        "tipo_permesso":  tipo_perm,
+        "stato_permesso": stato_perm,
+        "lunghezza":      lunghezza,
+        "created_at":     _now_iso(),
     }
     res = await solleciti_col.insert_one(record)
     asyncio.create_task(_push_solleciti_to_github())
