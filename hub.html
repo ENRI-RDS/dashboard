@@ -582,15 +582,40 @@
 </div>
 
 <script>
-// Logica JS intatta come da file originale per preservare le sessioni e i ruoli di backend.
 window.addEventListener('DOMContentLoaded', () => {
   const savedUser = localStorage.getItem('_enri_user');
-  if (savedUser) {
-    _showHub(savedUser);
-  } else {
+  const token     = localStorage.getItem('_enri_session');
+  const apiBase   = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+
+  function showLogin() {
     _buildLoginModal();
     document.getElementById('initSpinner').style.opacity = '0';
     setTimeout(() => { document.getElementById('initSpinner').style.display = 'none'; }, 300);
+  }
+
+  if (savedUser && token && apiBase) {
+    // Rivalida il token col backend: non fidarsi del solo nome salvato in localStorage.
+    fetch(apiBase + '/api/auth/verify', { headers: { 'x-session-token': token } })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => {
+        if (!d || !d.ok) return Promise.reject();
+        localStorage.setItem('_enri_role', d.ruolo || 'user'); // ruolo sempre dal server, non dal client
+        _showHub(d.nome || savedUser);
+      })
+      .catch(() => {
+        localStorage.removeItem('_enri_user');
+        localStorage.removeItem('_enri_role');
+        localStorage.removeItem('_enri_session');
+        showLogin();
+      });
+  } else if (savedUser) {
+    // Nome salvato ma token/apiBase assenti: niente accesso senza verifica.
+    localStorage.removeItem('_enri_user');
+    localStorage.removeItem('_enri_role');
+    localStorage.removeItem('_enri_session');
+    showLogin();
+  } else {
+    showLogin();
   }
 });
 
