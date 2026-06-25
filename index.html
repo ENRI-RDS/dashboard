@@ -2471,10 +2471,7 @@ const JSONBIN_BIN_ID     = '69b3d128b7ec241ddc6545cc';
 // spostarla nel doPost Apps Script completa la migrazione lato server.
 const JSONBIN_BASE       = 'https://api.jsonbin.io/v3/b';
 const STORICO_MAX_ENTRIES = 104; // ~2 anni di aggiornamenti settimanali
-// ── REGISTRO ACCESSI CON USERNAME ────────────────────────────────────────────
-const JSONBIN_LOG_BIN_ID  = '69c8fbdced015c742bc8e978';
-const JSONBIN_NOTE_BIN_ID = '69d7a45c36566621a894ed23'; 
-const ACCESSI_MAX        = 500;
+
 
 // ── API BASE ──────────────────────────────────────────────────────────────────
 // Tutte le chiamate auth/log passano per il backend — nessun segreto in chiaro.
@@ -2521,128 +2518,11 @@ async function _jbPut(binId, data, keepalive) {
   }
 }
 
-// ── SESSION TRACKING ─────────────────────────────────────────────────────────
-let _sessionStart   = Date.now();
-let _sessionLotti   = [];   // lotti aperti in questa sessione
-let _sessionAperture = 0;   // totale aperture modal
-let _sessionLogIdx  = -1;   // indice dell'accesso corrente nel log (settato al login) — deprecato
-let _sessionTs      = null; // timestamp univoco dell'entry corrente (robusto a inserimenti concorrenti)
-let _sessionSaving  = false; // flag anti-concorrenza per salvataggio periodico
-
-function _trackLotto(lotto) {
-  _sessionAperture++;
-  if (lotto && !_sessionLotti.includes(lotto)) _sessionLotti.push(lotto);
-}
-
-async function _saveSessionData() {
-  if (!_sessionTs || _sessionSaving) return;
-  _sessionSaving = true;
-  try {
-    const data = await _logGetData();
-    let entry = data.accessi.find(a => a.ts === _sessionTs);
-    // Fallback: se il salvataggio iniziale è fallito, l'entry è in _logCache
-    // ma non ancora su JSONBin — la recuperiamo e la reinseriamo.
-    if (!entry && _logCache) {
-      const cached = _logCache.accessi.find(a => a.ts === _sessionTs);
-      if (cached) {
-        data.accessi.push(cached);
-        if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
-        entry = cached;
-      }
-    }
-    if (!entry) return;
-    entry.durata  = Math.round((Date.now() - _sessionStart) / 60000); // minuti
-    entry.lotti   = [..._sessionLotti];
-    entry.nAperture = _sessionAperture;
-    await _logSaveData(data);
-  } catch(_) {}
-  finally { _sessionSaving = false; }
-}
-
-// Salvataggio periodico ogni 5 minuti (copre crash di browser/tab che non triggerano beforeunload)
-setInterval(() => { _saveSessionData(); }, 5 * 60 * 1000);
-
-// visibilitychange: più affidabile di beforeunload su mobile/Safari
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') _saveSessionData();
-});
-
-// Cache locale dell'ultimo record log — usata da beforeunload per evitare fetch GET
-// (il browser può killare fetch normali durante beforeunload, solo keepalive è affidabile)
-let _logCache = null;
-
-window.addEventListener('beforeunload', () => {
-  if (!_sessionTs) return;
-  const durataMin = Math.round((Date.now() - _sessionStart) / 60000);
-
-  // Prova con cache locale (nessun fetch GET necessario — più affidabile)
-  if (_logCache) {
-    const entry = _logCache.accessi.find(a => a.ts === _sessionTs);
-    if (entry) {
-      entry.durata    = durataMin;
-      entry.lotti     = [..._sessionLotti];
-      entry.nAperture = _sessionAperture;
-      _jbPut(JSONBIN_LOG_BIN_ID, _logCache, true);
-      return;
-    }
-  }
-
-  // Fallback: fetch GET + PUT keepalive (meno affidabile ma copre il caso senza cache)
-  _logGetData().then(data => {
-    const entry = data.accessi.find(a => a.ts === _sessionTs);
-    if (!entry) return;
-    entry.durata    = durataMin;
-    entry.lotti     = [..._sessionLotti];
-    entry.nAperture = _sessionAperture;
-    _jbPut(JSONBIN_LOG_BIN_ID, data, true);
-  }).catch(() => {});
-});
-
-let _logDataCache = null;
-let _logDataCacheTs = 0;
-const _LOG_CACHE_TTL = 30_000; // 30s — evita fetch ripetute ad apertura rapida del pannello
-
-async function _logGetData() {
-  const now = Date.now();
-  if (_logDataCache && (now - _logDataCacheTs) < _LOG_CACHE_TTL) {
-    return JSON.parse(JSON.stringify(_logDataCache));
-  }
-  const ctrl = new AbortController();
-  const tid  = setTimeout(() => ctrl.abort(), 20000);
-  try {
-    const json = await _jbGet(JSONBIN_LOG_BIN_ID, ctrl.signal);
-    clearTimeout(tid);
-    const result = {
-      utenti:  Array.isArray(json.record?.utenti)  ? json.record.utenti  : [],
-      accessi: Array.isArray(json.record?.accessi) ? json.record.accessi : []
-    };
-    _logDataCache = result;
-    _logDataCacheTs = Date.now();
-    return JSON.parse(JSON.stringify(result));
-  } catch(e) {
-    clearTimeout(tid);
-    throw e.name === 'AbortError' ? new Error('Timeout connessione JSONBin (>20s) — riprova tra qualche secondo') : e;
-  }
-}
-
-async function _logSaveData(data) {
-  // Aggiorna sempre _logCache in memoria — anche se il PUT fallisce,
-  // beforeunload e _saveSessionData trovano l'entry e possono ritentare.
-  _logCache = JSON.parse(JSON.stringify(data));
-  await _jbPut(JSONBIN_LOG_BIN_ID, data);
-  // Invalida la cache di _logGetData solo a salvataggio confermato
-  _logDataCache = null;
-  _logDataCacheTs = 0;
-}
-async function _getIP() {
-  try {
-    const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
-    const d = await r.json();
-    return d.ip || null;
-  } catch(_) { return null; }
-}
 
 function _formatDate(isoStr) {
+  const d = new Date(isoStr);
+  return d.toLocaleDateString('it-IT') + ' ' + d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+}
   const d = new Date(isoStr);
   return d.toLocaleDateString('it-IT') + ' ' + d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
 }
@@ -2958,34 +2838,11 @@ async function _handleLogin() {
     localStorage.setItem('_enri_session', risposta.token);
     window._enriValidatedRole = ruolo; // ruolo validato lato server — non manipolabile da localStorage
 
-    // Log accesso — la navigazione a hub.html avviene DOPO il salvataggio
-    // (in precedenza la redirect sincrona cancellava la fetch in volo)
     const _doRedirect = () => {
       document.getElementById('loginOverlay').remove();
       window.location.href = 'hub.html';
     };
-    Promise.all([_logGetData(), _getIP()]).then(([data, ip]) => {
-        const entry = {
-          ts: new Date().toISOString(),
-          utente: nomeCanonical,
-          ruolo: ruolo,
-          ip: ip,
-          ua: navigator.userAgent.substring(0, 120),
-          durata: 0,
-          lotti: [],
-          nAperture: 0,
-          pagina: 'dashboard'
-        };
-        data.accessi.push(entry);
-        if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
-        if (!data.utenti.some(u => u.toLowerCase().trim() === nomeCanonical.toLowerCase().trim())) {
-          data.utenti.push(nomeCanonical);
-        }
-        _sessionTs     = entry.ts;
-        _sessionLogIdx = data.accessi.length - 1;
-        _sessionStart  = Date.now();
-        return _logSaveData(data);
-    }).catch(() => {}).finally(() => _doRedirect());
+    _doRedirect();
 
     _showUserBadge(nomeCanonical);
     window.dispatchEvent(new Event('_enri_role_changed'));
@@ -3026,36 +2883,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const revalidatePromise = fetch(_apiBase() + '/api/auth/verify', {
       headers: { 'x-session-token': _sessionToken() }
     }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
-    const logDataPromise    = Promise.all([_logGetData(), _getIP()]);
-
-    function _writeLog(data, ip, ruolo) {
-      const entry = {
-        ts: new Date().toISOString(),
-        utente: savedUser,
-        ruolo: ruolo,   // ruolo già validato — nessun fallback su localStorage
-        ip: ip,
-        ua: navigator.userAgent.substring(0, 120),
-        durata: 0, lotti: [], nAperture: 0, pagina: 'dashboard'
-      };
-      data.accessi.push(entry);
-      if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
-      _sessionTs     = entry.ts;
-      _sessionLogIdx = data.accessi.length - 1; // mantenuto per compatibilità
-      _sessionStart  = Date.now();
-      // Retry automatico dopo 8s se il primo salvataggio fallisce
-      _logSaveData(data).catch(() => {
-        setTimeout(() => _logSaveData(data).catch(() => {}), 8000);
-      });
-    }
 
     revalidatePromise.then(risposta => {
       if (!risposta.ok) {
-        // Utente non trovato — contiamo i fallimenti consecutivi prima di fare logout
-        // per evitare logout accidentali da errori di rete transitori.
         const failKey = '_enri_revalidate_fails';
         const fails = parseInt(localStorage.getItem(failKey) || '0', 10) + 1;
         if (fails >= 2) {
-          // Due fallimenti consecutivi → utente rimosso realmente
           localStorage.removeItem('_enri_user');
           localStorage.removeItem('_enri_role');
           localStorage.removeItem(failKey);
@@ -3063,32 +2896,21 @@ document.addEventListener('DOMContentLoaded', () => {
           location.reload();
         } else {
           localStorage.setItem(failKey, String(fails));
-          // Degraded mode: mantieni sessione con ruolo sicuro
           const cachedRole = localStorage.getItem('_enri_role') || 'user';
           window._enriValidatedRole = (cachedRole === 'admin') ? 'user' : cachedRole;
           window.dispatchEvent(new Event('_enri_role_changed'));
         }
         return;
       }
-      // Revalidate riuscita → reset contatore fallimenti
       localStorage.removeItem('_enri_revalidate_fails');
       const ruoloAggiornato = (risposta.ruolo || 'user').toLowerCase();
       localStorage.setItem('_enri_role', ruoloAggiornato);
-      window._enriValidatedRole = ruoloAggiornato; // ruolo validato in memoria
-      window.dispatchEvent(new Event('_enri_role_changed')); // aggiorna UI (badge admin, tre punti)
-
-      // Log con ruolo certificato — la fetch del log potrebbe già essere pronta
-      logDataPromise.then(([data, ip]) => _writeLog(data, ip, ruoloAggiornato)).catch(() => {});
+      window._enriValidatedRole = ruoloAggiornato;
+      window.dispatchEvent(new Event('_enri_role_changed'));
     }).catch(() => {
-      // Apps Script non raggiungibile: degraded mode.
-      // SICUREZZA: admin non può sopravvivere al degraded mode — previene
-      // l'attacco localStorage.setItem('_enri_role','admin') + rete offline.
       const cachedRole = localStorage.getItem('_enri_role') || 'user';
       window._enriValidatedRole = (cachedRole === 'admin') ? 'user' : cachedRole;
       window.dispatchEvent(new Event('_enri_role_changed'));
-
-      // Log in degraded mode — ruolo già "sanificato"
-      logDataPromise.then(([data, ip]) => _writeLog(data, ip, window._enriValidatedRole)).catch(() => {});
     });
     // ─────────────────────────────────────────────────────────────────────
   } else {
@@ -3312,7 +3134,6 @@ function parseNum(s) { if(!s||s.trim()==='') return 0; return parseFloat(s.repla
 function parsePct(s) { if(!s||s.trim()==='') return 0; return parseFloat(s.replace('%','').replace(',','.'))/100; }
 
 function openModal(lotto, statiMetri, totale) {
-  _trackLotto(lotto);
   document.getElementById('modalTitle').textContent = `Lotto ${lotto} — Dettaglio`;
   const body = document.getElementById('modalBody');
 
@@ -6251,541 +6072,6 @@ function openHelp() { window._modalOpen('helpOverlay'); }
   </div>
 </div>
 
-<!-- ── SEZIONE ADMIN ACCESSI ─────────────────────────────────────────────── -->
-<div id="adminSection" style="display:none;padding:28px;border-top:2px solid var(--border);
-  background:var(--surface2);margin-top:32px;">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-    <div>
-      <div style="font-family:'Bricolage Grotesque',sans-serif;font-size:16px;font-weight:700;
-        color:var(--accent);letter-spacing:-0.01em">🔐 Registro Accessi</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:2px">Visibile solo a te — sezione admin</div>
-    </div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <span id="adminUtentiCount" class="badge"></span>
-      <span id="adminAccessiCount" class="badge"></span>
-      <button onclick="_adminCancellaLog()"
-        style="font-size:11px;padding:6px 14px;border-radius:6px;background:#C23B220D;
-          color:#C23B22;border:1px solid #C23B2244;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">
-        🗑 Cancella cronologia
-      </button>
-      <button onclick="document.getElementById('adminSection').style.display='none'"
-        style="font-size:11px;padding:6px 14px;border-radius:6px;background:var(--surface);
-          color:var(--muted);border:1px solid var(--border2);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">
-        Nascondi
-      </button>
-    </div>
-  </div>
-
-  <!-- Statistiche -->
-  <div id="adminStats" style="margin-bottom:28px"></div>
-
-  <!-- Utenti registrati -->
-  <div style="margin-bottom:24px">
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;
-      color:var(--muted);margin-bottom:10px">Utenti Registrati</div>
-    <div id="adminUtentiList" style="display:flex;flex-wrap:wrap;gap:8px">
-      <span style="font-size:12px;color:var(--muted)">Caricamento…</span>
-    </div>
-  </div>
-
-  <!-- Tabella accessi -->
-  <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;
-    color:var(--muted);margin-bottom:10px">Ultimi Accessi</div>
-  <div style="overflow-x:auto;border-radius:10px;border:1px solid var(--border)">
-    <table style="width:100%;border-collapse:collapse;background:var(--surface)">
-      <thead>
-        <tr style="background:var(--surface2)">
-          <th style="padding:8px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;
-            color:var(--muted);text-align:left;font-weight:700;border-bottom:1px solid var(--border)">Data / Ora</th>
-          <th style="padding:8px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;
-            color:var(--muted);text-align:left;font-weight:700;border-bottom:1px solid var(--border)">Utente</th>
-          <th style="padding:8px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;
-            color:var(--muted);text-align:left;font-weight:700;border-bottom:1px solid var(--border)">Ruolo</th>
-          <th style="padding:8px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;
-            color:var(--muted);text-align:left;font-weight:700;border-bottom:1px solid var(--border)">IP</th>
-          <th style="padding:8px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;
-            color:var(--muted);text-align:left;font-weight:700;border-bottom:1px solid var(--border)">Browser</th>
-          <th style="padding:8px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;
-            color:var(--muted);text-align:left;font-weight:700;border-bottom:1px solid var(--border)">Durata</th>
-          <th style="padding:8px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;
-            color:var(--muted);text-align:left;font-weight:700;border-bottom:1px solid var(--border)">Pagina</th>
-          <th style="padding:8px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;
-            color:var(--muted);text-align:left;font-weight:700;border-bottom:1px solid var(--border)">Lotti aperti</th>
-        </tr>
-      </thead>
-      <tbody id="adminAccessiBody">
-        <tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted);font-size:12px">Caricamento…</td></tr>
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<!-- Footer bottom bar -->
-<div style="padding:10px 28px 8px;background:var(--bg)"></div>
-
-<script>
-function _adminOpen() {
-  // Usa il ruolo validato in memoria (impostato dopo fetch Google Sheet)
-  // — non leggere da localStorage per evitare elevation tramite DevTools
-  const role = window._enriValidatedRole;
-  if (role !== 'admin') {
-    alert('Accesso admin non autorizzato.');
-    return;
-  }
-  const section = document.getElementById('adminSection');
-  section.style.display = 'block';
-  section.scrollIntoView({ behavior: 'smooth' });
-  _adminLoad();
-}
-
-// Sanitizza stringhe prima di inserirle in innerHTML — previene XSS
-function _escHtml(s) {
-  if (s == null) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-async function _adminLoad() {
-  // Guard: verifica ruolo validato in memoria — non bypassabile da console
-  if (window._enriValidatedRole !== 'admin') { console.warn('[ENRI] _adminLoad() blocked: not admin'); return; }
-  // Mostra stato di caricamento immediato prima della fetch
-  const statsEl = document.getElementById('adminStats');
-  const utentiEl = document.getElementById('adminUtentiList');
-  const tbody = document.getElementById('adminAccessiBody');
-  const spinnerRow = `<tr><td colspan="8" style="padding:28px;text-align:center">
-    <div style="display:inline-flex;flex-direction:column;align-items:center;gap:10px">
-      <div style="width:24px;height:24px;border:2px solid var(--border2);border-top-color:var(--accent);
-        border-radius:50%;animation:spin 0.8s linear infinite"></div>
-      <span style="font-size:11px;color:var(--muted)">Connessione a JSONBin…</span>
-    </div>
-  </td></tr>`;
-  statsEl.innerHTML = '';
-  utentiEl.innerHTML = '<span style="font-size:12px;color:var(--muted)">Caricamento…</span>';
-  tbody.innerHTML = spinnerRow;
-
-  try {
-    const data = await _logGetData();
-
-    // Badge contatori
-    document.getElementById('adminUtentiCount').textContent  = `👥 ${data.utenti.length} utenti`;
-    document.getElementById('adminAccessiCount').textContent = `📋 ${data.accessi.length} accessi`;
-
-    // ── STATISTICHE ──────────────────────────────────────────────────────────
-    const accessi = data.accessi;
-
-    // Durata media (solo sessioni con durata > 0)
-    const sessioni = accessi.filter(a => a.durata > 0);
-    const durataMedia = sessioni.length
-      ? Math.round(sessioni.reduce((s, a) => s + a.durata, 0) / sessioni.length)
-      : 0;
-
-    // Utente più attivo
-    const countUtente = {};
-    accessi.forEach(a => { if (a.utente) countUtente[a.utente] = (countUtente[a.utente] || 0) + 1; });
-    const topUtente = Object.entries(countUtente).sort((a,b) => b[1]-a[1])[0];
-
-    // Ora di punta
-    const countOra = Array(24).fill(0);
-    accessi.forEach(a => { if (a.ts) countOra[new Date(a.ts).getHours()]++; });
-    const oraMax = countOra.indexOf(Math.max(...countOra));
-
-    // Lotto più visto
-    const countLotto = {};
-    accessi.forEach(a => (a.lotti || []).forEach(l => { countLotto[l] = (countLotto[l] || 0) + 1; }));
-    const topLotti = Object.entries(countLotto).sort((a,b) => b[1]-a[1]).slice(0, 5);
-    const maxLottoVal = topLotti[0]?.[1] || 1;
-
-    statsEl.innerHTML = `
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;
-        color:var(--muted);margin-bottom:12px">Statistiche</div>
-
-      <!-- Card row -->
-      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
-        ${[
-          ['⏱', 'Durata media sessione', durataMedia ? durataMedia + ' min' : '—'],
-          ['👤', 'Utente più attivo',     topUtente ? `${_escHtml(topUtente[0])} (${topUtente[1]})` : '—'],
-          ['🕐', 'Ora di punta',          countOra[oraMax] > 0 ? `${oraMax}:00 – ${oraMax < 23 ? oraMax+1 : 0}:00` : '—'],
-          ['🏆', 'Lotto più visto',       topLotti[0] ? `${topLotti[0][0]} (${topLotti[0][1]}×)` : '—'],
-        ].map(([icon, label, val]) => `
-          <div style="flex:1;min-width:160px;background:var(--surface);border:1px solid var(--border);
-            border-radius:10px;padding:14px 18px;">
-            <div style="font-size:18px;margin-bottom:4px">${icon}</div>
-            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:4px">${label}</div>
-            <div style="font-size:14px;font-weight:700;color:var(--text)">${val}</div>
-          </div>
-        `).join('')}
-      </div>
-
-      <!-- Grafico lotti -->
-      ${topLotti.length ? `
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 20px">
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:12px">
-            Lotti più visitati
-          </div>
-          ${topLotti.map(([lotto, count]) => `
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-              <div style="width:70px;font-size:11px;font-weight:600;color:var(--text2);white-space:nowrap">Lotto ${lotto}</div>
-              <div style="flex:1;height:8px;background:var(--surface2);border-radius:4px;overflow:hidden">
-                <div style="height:100%;width:${Math.round(count/maxLottoVal*100)}%;background:var(--accent);border-radius:4px;transition:width .4s"></div>
-              </div>
-              <div style="width:28px;font-size:11px;font-family:'Fira Code',monospace;color:var(--muted);text-align:right">${count}</div>
-            </div>
-          `).join('')}
-        </div>
-      ` : ''}
-    `;
-
-    // ── LISTA UTENTI ─────────────────────────────────────────────────────────
-    if (data.utenti.length === 0) {
-      utentiEl.innerHTML = '<span style="font-size:12px;color:var(--muted)">Nessun utente ancora</span>';
-    } else {
-      utentiEl.innerHTML = data.utenti.map(u => `
-        <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;
-          border-radius:20px;background:var(--surface);border:1px solid var(--border2);
-          font-size:11px;color:var(--text2);font-weight:500;">
-          👤 ${_escHtml(u)}
-          <span onclick="_adminRemoveUser('${_escHtml(u.replace(/'/g,"\\'"))}', this)"
-            style="cursor:pointer;color:var(--muted2);font-size:13px;line-height:1;margin-left:2px"
-            title="Rimuovi utente">×</span>
-        </span>
-      `).join('');
-    }
-
-    // ── TABELLA ACCESSI ───────────────────────────────────────────────────────
-    const reversed = [...data.accessi].reverse();
-    if (reversed.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--muted);font-size:12px">Nessun accesso registrato</td></tr>';
-    } else {
-      tbody.innerHTML = reversed.map((a, i) => {
-        const ua = a.ua || '';
-        let browser = '—';
-        if (ua.includes('Edg/')) browser = 'Edge';
-        else if (ua.includes('Chrome/')) browser = 'Chrome';
-        else if (ua.includes('Firefox/')) browser = 'Firefox';
-        else if (ua.includes('Safari/') && !ua.includes('Chrome')) browser = 'Safari';
-        else if (ua.includes('OPR/') || ua.includes('Opera/')) browser = 'Opera';
-        let os = '';
-        if (ua.includes('Windows')) os = ' · Win';
-        else if (ua.includes('Mac OS')) os = ' · Mac';
-        else if (ua.includes('iPhone') || ua.includes('iPad')) os = ' · iOS';
-        else if (ua.includes('Android')) os = ' · And';
-        else if (ua.includes('Linux')) os = ' · Linux';
-
-        const durata = a.durata > 0 ? `${a.durata} min` : '—';
-        const lotti  = (a.lotti && a.lotti.length) ? a.lotti.map(l => `<span style="display:inline-block;padding:1px 6px;border-radius:4px;background:var(--surface2);border:1px solid var(--border);font-size:9px;margin:1px">${l}</span>`).join('') : '—';
-        const paginaMap = { dashboard: ['🏠','var(--accent)','#0B31820D'], mappa: ['🗺','#2D6B1A','#2D6B1A0D'], executive: ['📋','#7A3DAA','#7A3DAA0D'] };
-        const [pIcon, pColor, pBg] = paginaMap[a.pagina] || ['·','var(--muted)','transparent'];
-        const paginaHtml = `<span style="font-size:10px;padding:1px 7px;border-radius:4px;background:${pBg};color:${pColor};border:1px solid ${pColor}33;font-weight:600;font-family:'Fira Code',monospace">${pIcon} ${a.pagina||'dashboard'}</span>`;
-
-        return `
-        <tr style="border-bottom:1px solid var(--border);${i%2===1?'background:var(--surface2)':''}">
-          <td style="padding:7px 14px;font-size:11px;font-family:'Fira Code',monospace;color:var(--text2);white-space:nowrap">${_formatDate(a.ts)}</td>
-          <td style="padding:7px 14px;font-size:12px;font-weight:600;color:var(--accent);white-space:nowrap">${_escHtml(a.utente) || '—'}</td>
-          <td style="padding:7px 14px;font-size:11px;color:var(--muted);white-space:nowrap">${_escHtml(a.ruolo) || 'user'}</td>
-          <td style="padding:7px 14px;font-size:11px;font-family:'Fira Code',monospace;color:var(--muted);white-space:nowrap">${_escHtml(a.ip) || '—'}</td>
-          <td style="padding:7px 14px;font-size:11px;color:var(--muted);white-space:nowrap">${browser}${os}</td>
-          <td style="padding:7px 14px;font-size:11px;font-family:'Fira Code',monospace;color:var(--muted);white-space:nowrap">${durata}</td>
-          <td style="padding:7px 14px;font-size:11px;white-space:nowrap">${paginaHtml}</td>
-          <td style="padding:7px 14px;font-size:11px">${lotti}</td>
-        </tr>`;
-      }).join('');
-    }
-  } catch(e) {
-    tbody.innerHTML =
-      `<tr><td colspan="8" style="padding:24px;text-align:center">
-        <div style="color:#C23B22;font-size:12px;margin-bottom:12px">⚠ ${_escHtml(e.message)}</div>
-        <button onclick="_adminLoad()" style="font-size:12px;padding:7px 18px;border-radius:7px;
-          background:var(--accent);color:#fff;border:none;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-weight:600">
-          ↺ Riprova
-        </button>
-      </td></tr>`;
-  }
-}
-
-async function _adminRemoveUser(nome, el) {
-  if (window._enriValidatedRole !== 'admin') { console.warn('[ENRI] _adminRemoveUser() blocked: not admin'); return; }
-  if (!confirm(`Rimuovere l'utente "${nome}"? Potrà ri-registrarsi liberamente.`)) return;
-  try {
-    const data = await _logGetData();
-    data.utenti = data.utenti.filter(u => u !== nome);
-    await _logSaveData(data);
-    el.closest('span').remove();
-    document.getElementById('adminUtentiCount').textContent = `👥 ${data.utenti.length} utenti`;
-  } catch(e) { alert('Errore: ' + e.message); }
-}
-
-async function _adminCancellaLog() {
-  // Costruisce il dialog di scelta filtro
-  const scelta = await new Promise(resolve => {
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(11,25,70,.45);backdrop-filter:blur(8px);z-index:10000;display:flex;align-items:center;justify-content:center;';
-    overlay.innerHTML = `
-      <div style="background:var(--surface);border-radius:16px;padding:32px;width:380px;max-width:92vw;
-        box-shadow:0 20px 60px rgba(11,49,130,.25);">
-        <div style="font-family:'Bricolage Grotesque',sans-serif;font-size:17px;font-weight:700;
-          color:var(--text);margin-bottom:6px">🗑 Cancella cronologia</div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:22px;line-height:1.5">
-          Scegli quali accessi eliminare dal registro.
-        </div>
-        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:24px">
-          ${[
-            ['tutti',    '🗑 Tutti gli accessi'],
-            ['30',       '📅 Più vecchi di 30 giorni'],
-            ['90',       '📅 Più vecchi di 90 giorni'],
-            ['utente',   '👤 Di un utente specifico'],
-          ].map(([val, label]) => `
-            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;
-              border-radius:8px;border:1px solid var(--border);background:var(--surface2);font-size:13px;color:var(--text2)">
-              <input type="radio" name="_delFiltro" value="${val}" style="accent-color:var(--accent)"> ${label}
-            </label>
-          `).join('')}
-        </div>
-        <div id="_delUtenteWrap" style="display:none;margin-bottom:18px">
-          <input id="_delUtenteInput" type="text" placeholder="Nome utente esatto"
-            style="width:100%;padding:9px 14px;border-radius:8px;border:1px solid var(--border2);
-              font-size:13px;font-family:'Plus Jakarta Sans',sans-serif;box-sizing:border-box;outline:none;">
-        </div>
-        <div style="display:flex;gap:10px;justify-content:flex-end">
-          <button id="_delCancel" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border2);
-            background:var(--surface);color:var(--muted);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;">
-            Annulla
-          </button>
-          <button id="_delConfirm" style="padding:8px 18px;border-radius:8px;border:none;
-            background:#C23B22;color:#fff;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:600;">
-            Conferma
-          </button>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-
-    // Mostra/nascondi campo utente
-    overlay.querySelectorAll('input[name="_delFiltro"]').forEach(r => {
-      r.addEventListener('change', () => {
-        document.getElementById('_delUtenteWrap').style.display = r.value === 'utente' ? 'block' : 'none';
-      });
-    });
-
-    document.getElementById('_delCancel').onclick  = () => { overlay.remove(); resolve(null); };
-    document.getElementById('_delConfirm').onclick = () => {
-      const filtro = overlay.querySelector('input[name="_delFiltro"]:checked')?.value;
-      if (!filtro) { alert('Seleziona un\'opzione.'); return; }
-      const utente = document.getElementById('_delUtenteInput').value.trim();
-      if (filtro === 'utente' && !utente) { alert('Inserisci il nome utente.'); return; }
-      overlay.remove();
-      resolve({ filtro, utente });
-    };
-  });
-
-  if (!scelta) return;
-
-  try {
-    const data = await _logGetData();
-    const now = Date.now();
-    const prima = data.accessi.length;
-
-    if (scelta.filtro === 'tutti') {
-      data.accessi = [];
-    } else if (scelta.filtro === '30') {
-      data.accessi = data.accessi.filter(a => (now - new Date(a.ts).getTime()) < 30*24*3600*1000);
-    } else if (scelta.filtro === '90') {
-      data.accessi = data.accessi.filter(a => (now - new Date(a.ts).getTime()) < 90*24*3600*1000);
-    } else if (scelta.filtro === 'utente') {
-      data.accessi = data.accessi.filter(a => a.utente?.toLowerCase() !== scelta.utente.toLowerCase());
-    }
-
-    await _logSaveData(data);
-    const eliminati = prima - data.accessi.length;
-    alert(`✅ Eliminati ${eliminati} accessi. Rimasti: ${data.accessi.length}.`);
-    _adminLoad();
-  } catch(e) {
-    alert('Errore: ' + e.message);
-  }
-}
-
-function _adminClearUser() {
-  if (window._enriValidatedRole !== 'admin') { console.warn('[ENRI] _adminClearUser() blocked: not admin'); return; }
-  localStorage.removeItem('_enri_user');
-  localStorage.removeItem('_enri_role');
-  location.reload();
-}
-</script>
-
-<!-- ── TASTO MODIFICA MANUALE (nascosto, basso destra) ──────────────────────── -->
-<button id="btnEditManuale"
-  onclick="apriEditManuale()"
-  title="Modifica manuale dati"
-  style="position:fixed;bottom:14px;right:18px;z-index:300;
-    background:none;border:none;cursor:pointer;
-    font-size:13px;color:var(--border2);opacity:0.20;
-    font-family:'Fira Code',monospace;letter-spacing:0.04em;
-    padding:4px 7px;border-radius:5px;
-    transition:opacity 0.2s,color 0.2s;">✎</button>
-
-<!-- ── TRE PUNTI ADMIN (centro in basso, solo admin) ─────────────────────── -->
-<button id="btnAdminDots"
-  onclick="_adminOpen()"
-  title="Amministrazione"
-  style="position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:300;
-    display:none;
-    background:none;border:none;cursor:pointer;
-    font-size:14px;color:var(--border2);opacity:0.25;
-    font-family:'Fira Code',monospace;letter-spacing:0.12em;
-    padding:4px 10px;border-radius:5px;
-    transition:opacity 0.2s,color 0.2s;">···</button>
-
-<!-- Tasto Previsioni nascosto in fondo alla pagina (in flow) -->
-<button
-  id="btnPrevParam"
-  onclick="apriParamPrev()"
-  title="Parametri Previsioni"
-  style="display:block;margin:8px 0 8px 14px;
-         background:none;border:none;cursor:pointer;
-         font-size:11px;color:var(--muted2);opacity:0.28;
-         font-family:'Fira Code',monospace;letter-spacing:0.06em;
-         padding:4px 8px;border-radius:5px;
-         transition:opacity 0.2s,color 0.2s;">⚙ prev</button>
-
-<script>
-// Mostra i tre punti admin solo se l'utente è admin
-(function() {
-  function _checkAdminDots() {
-    // Usa ruolo validato in memoria — non localStorage (manipolabile da DevTools)
-    const role = window._enriValidatedRole;
-    const btn = document.getElementById('btnAdminDots');
-    if (btn) btn.style.display = (role === 'admin') ? 'block' : 'none';
-  }
-  _checkAdminDots();
-  // Re-check dopo login (nel caso la pagina carichi prima del login)
-  window.addEventListener('_enri_role_changed', _checkAdminDots);
-})();
-</script>
-<style>
-  @view-transition { navigation: auto; }
-
-  #btnEditManuale:hover { opacity:0.9 !important; color:var(--accent) !important; background:var(--surface2) !important; }
-  #btnAdminDots:hover { opacity:0.9 !important; color:var(--accent) !important; background:var(--surface2) !important; }
-  #btnPrevParam:hover { opacity:0.85 !important; color:var(--accent) !important; background:var(--surface2) !important; }
-  /* ── MODALE EDIT MANUALE ── */
-  #overlayEditManuale {
-    display:none;position:fixed;inset:0;
-    background:rgba(11,25,70,.55);backdrop-filter:blur(6px);
-    z-index:2000;align-items:center;justify-content:center;
-  }
-  #overlayEditManuale.open { display:flex; }
-  #modalEditManuale {
-    background:var(--surface);border:1px solid var(--border2);
-    border-radius:16px;width:92vw;max-width:1100px;
-    max-height:88vh;display:flex;flex-direction:column;
-    box-shadow:0 20px 60px rgba(11,49,130,.25);overflow:hidden;
-  }
-  #modalEditManuale .em-head {
-    display:flex;align-items:center;gap:12px;
-    padding:18px 24px 14px;border-bottom:1px solid var(--border);
-    flex-shrink:0;
-  }
-  #modalEditManuale .em-body {
-    overflow-y:auto;overflow-x:auto;padding:18px 24px;flex:1;
-  }
-  #modalEditManuale .em-foot {
-    display:flex;gap:10px;justify-content:flex-end;
-    padding:14px 24px;border-top:1px solid var(--border);flex-shrink:0;
-  }
-  .em-table { border-collapse:collapse;width:100%;font-size:11px; }
-  .em-table th {
-    position:sticky;top:0;background:var(--surface2);
-    padding:7px 10px;text-align:center;white-space:nowrap;
-    font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
-    color:var(--muted);border-bottom:2px solid var(--border2);
-  }
-  .em-table th.th-lotto { text-align:left;min-width:60px; }
-  .em-table td { padding:5px 6px;border-bottom:1px solid var(--border);vertical-align:middle; }
-  .em-table td.td-lotto {
-    font-family:'Fira Code',monospace;font-size:11px;font-weight:700;
-    color:var(--accent);white-space:nowrap;padding-right:10px;
-  }
-  .em-table td .em-grp {
-    display:flex;flex-direction:column;gap:3px;
-  }
-  .em-inp {
-    width:88px;padding:4px 7px;border:1px solid var(--border2);
-    border-radius:5px;font-size:11px;font-family:'Fira Code',monospace;
-    background:var(--surface2);color:var(--text);text-align:right;
-    transition:border-color .15s,background .15s;
-  }
-  .em-inp:focus { outline:none;border-color:var(--accent);background:#fff; }
-  .em-inp-lbl { font-size:8px;color:var(--muted);text-align:center;
-    font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap; }
-  .em-sep-row td { background:var(--bg);padding:5px 10px;
-    font-size:9px;font-weight:700;text-transform:uppercase;
-    letter-spacing:.12em;color:var(--muted);border-top:2px solid var(--border2); }
-
-  /* ── FILTER BAR nel modal pratiche ── */
-  .kpi-filter-bar {
-    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
-    padding:10px 0 14px; border-bottom:1px solid var(--border); margin-bottom:14px;
-  }
-  .kpi-filter-search {
-    flex:1; min-width:160px; max-width:260px;
-    padding:6px 10px; border-radius:7px;
-    border:1px solid var(--border2); background:var(--surface2);
-    font-family:'Plus Jakarta Sans',sans-serif; font-size:11px; color:var(--text);
-    outline:none; transition:border-color .15s;
-  }
-  .kpi-filter-search:focus { border-color:var(--accent); background:#fff; }
-  .kpi-filter-search::placeholder { color:var(--muted2); }
-  .kpi-filt-btn {
-    font-size:10px; padding:3px 11px; border-radius:20px;
-    cursor:pointer; transition:all .18s;
-    border:1px solid var(--border2); background:transparent;
-    color:var(--muted); font-family:'Plus Jakarta Sans',sans-serif; font-weight:600;
-  }
-  .kpi-filt-btn:hover { border-color:var(--accent); color:var(--accent); }
-  .kpi-filt-btn.active {
-    background:var(--accent); border-color:var(--accent); color:#fff;
-  }
-  .kpi-filter-count {
-    font-size:10px; color:var(--muted); margin-left:auto;
-    font-family:'Fira Code',monospace;
-  }
-</style>
-
-<!-- Modale -->
-<div id="overlayEditManuale" onclick="if(event.target===this)chiudiEditManuale()">
-  <div id="modalEditManuale">
-    <div class="em-head">
-      <span style="font-family:'Bricolage Grotesque',sans-serif;font-size:16px;font-weight:700;color:var(--text)">✎ Modifica Manuale Dati</span>
-      <span style="font-size:11px;color:var(--muted);font-weight:400">— Inserisci i metri per lotto e stato, poi premi Applica.</span>
-      <button onclick="chiudiEditManuale()" style="margin-left:auto;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1">×</button>
-    </div>
-    <div class="em-body">
-      <div id="emTableWrap"></div>
-    </div>
-    <div class="em-foot">
-      <div style="flex:1;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">
-        <span id="emSaveBadge" style="display:none;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600"></span>
-      </div>
-      <button id="btnRipristinaCSV" onclick="ripristinaCSV()" style="display:none;padding:8px 18px;border-radius:7px;border:1px solid #C23B2244;background:#fce8e8;color:#C23B22;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:600">↺ Ripristina CSV</button>
-      <button onclick="chiudiEditManuale()" style="padding:8px 20px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--muted);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px">Annulla</button>
-      <button onclick="applicaEditManuale()" style="padding:8px 22px;border-radius:7px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:700">✓ Applica e salva</button>
-    </div>
-  </div>
-</div>
-
-<script>
-// ── MODIFICA MANUALE — persistente su JSONBin ─────────────────────────────────
-const EM_GRUPPI = [
-  { key:'attesa',        label:'In Attesa / Redazione',       stati:['IN ATTESA','IN REDAZIONE'], color:'#4a4f6a' },
-  { key:'coordinamento', label:'Coordinamento',               stati:['COORDINAMENTO'],                                        color:'#9b59b6' },
-  { key:'firma',         label:'In Verifica / In Firma',      stati:['IN FIRMA RDS'],                                        color:'#e07b3a' },
-  { key:'inviato',       label:'Inviato / Protocollato',      stati:['INVIATO','PROTOCOLLATO'],                              color:'#4f8ef7' },
-  { key:'integrazione',  label:'Necessaria Integrazione',     stati:['NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE'],                             color:'#cc3333' },
-  { key:'protint',       label:'Protocollato Integrazione',   stati:['PROTOCOLLATO INTEGRAZIONE'],                           color:'#B5657A' },
-  { key:'ottenuto',      label:'🏆 Autorizzati',              stati:['OTTENUTO'],                                            color:'#3a8c5c' },
-];
 
 function emBuildMap(data) {
   const map = {};
