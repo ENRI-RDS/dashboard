@@ -1119,14 +1119,28 @@
 
   let SOLLECITI = [];
 
-  // Trova la pratica collegata a un sollecito: priorità al match per codice
-  // pratica esatto, altrimenti la più recente sulla stessa tratta.
+  // Trova la pratica collegata a un sollecito usando tutti i campi disponibili
   function _praticaPerSollecito(s) {
     const candidates = PRATICHE.filter(p => p.TRATTA_ID === s.tratta_id);
     if (!candidates.length) return null;
-    if (s.pratica) {
-      const exact = candidates.find(p => p._codice === s.pratica || String(p.PRATICA) === String(s.pratica));
+    // 1. Match esatto per codice + ente + tipo
+    if (s.pratica && s.ente && s.tipo_permesso) {
+      const exact = candidates.find(p =>
+        (p._codice === s.pratica || String(p.PRATICA) === String(s.pratica)) &&
+        p.ENTE === s.ente &&
+        p.TIPO_PERMESSO === s.tipo_permesso
+      );
       if (exact) return exact;
+    }
+    // 2. Match per ente + tipo
+    if (s.ente && s.tipo_permesso) {
+      const byEntetipo = candidates.find(p => p.ENTE === s.ente && p.TIPO_PERMESSO === s.tipo_permesso);
+      if (byEntetipo) return byEntetipo;
+    }
+    // 3. Match per codice pratica
+    if (s.pratica) {
+      const byCode = candidates.find(p => p._codice === s.pratica || String(p.PRATICA) === String(s.pratica));
+      if (byCode) return byCode;
     }
     return candidates[0];
   }
