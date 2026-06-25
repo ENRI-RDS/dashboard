@@ -1979,6 +1979,11 @@ window.loadXLSX = (function(){
 </div>
 
 <script>
+// Stub: _colReset e _colResetAll sono definite in un blocco script successivo.
+// Questo stub garantisce che le chiamate anticipate non generino ReferenceError.
+function _colReset(t) { if (typeof window._colResetImpl === 'function') window._colResetImpl(t); }
+function _colResetAll() { if (typeof window._colResetAllImpl === 'function') window._colResetAllImpl(); }
+
 // ── EXPORT EXCEL ──────────────────────────────────────────────────────────────
 function exportXlsx(pratiche, filename) {
   return window.loadXLSX().then(() => _exportXlsxImpl(pratiche, filename));
@@ -6980,7 +6985,7 @@ function _colRefreshCurrent() {
 }
 
 /* Reset stato colonne all'apertura di ogni modale */
-function _colReset(modalType) {
+window._colResetImpl = function _colReset(modalType) {
   window._colSort      = { col: null, dir: 'asc' };
   window._colFilters   = {};
   window._colModalType = modalType || null;
@@ -7124,7 +7129,7 @@ function _colRemoveSort() {
   window._colSort = { col: null, dir: 'asc' };
   _colRefreshCurrent();
 }
-function _colResetAll() {
+window._colResetAllImpl = function _colResetAll() {
   window._colSort    = { col: null, dir: 'asc' };
   window._colFilters = {};
   _colRefreshCurrent();
@@ -7931,9 +7936,7 @@ _hookScadenze();
       const url = _staticFileUrl('solleciti.csv');
       const text = await fetch(url, { cache: 'no-cache' }).then(r => r.ok ? r.text() : '');
       if (!text.trim()) return;
-      const lines = text.trim().split(/
-?
-/);
+      const lines = text.trim().split(/\r?\n/);
       if (lines.length < 2) return;
       const sep = lines[0].includes(';') ? ';' : ',';
       const hdr = lines[0].split(sep).map(h => h.trim().toLowerCase().replace(/"/g,''));
