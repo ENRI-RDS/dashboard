@@ -6163,7 +6163,7 @@ function updatePrevRilascio() {
     col.style.display = 'none'; return;
   }
   col.style.display = 'flex';
-  adjustClusterMobile();
+  if (typeof adjustClusterMobile === 'function') adjustClusterMobile();
   document.getElementById('prevOkVal').textContent   = okPrats.length;
   document.getElementById('prevWarnVal').textContent = warnPrats.length;
   document.getElementById('prevLateVal').textContent = latePrats.length;
@@ -7961,42 +7961,65 @@ _hookScadenze();
   }
   window.loadSolleciti = loadSolleciti;
 
+  // _solBadge: restituisce solo il badge cliccabile (no popup inline nel td).
+  // Il popup è un elemento fisso nel DOM (id=solPopoverBox) aggiornato al click.
   function _solBadge(codice) {
     const arr = (window._solByPratica || {})[codice];
     if (!arr || !arr.length) return '<span style="color:var(--muted2);font-size:11px">—</span>';
     const n = arr.length;
-    const last = arr.slice().sort((a,b) => b.data.localeCompare(a.data))[0];
-    const tipoBg = last.tipo === 'PEC' ? '#1d4ed8' : last.tipo === 'MAIL' ? '#0369a1' : '#4f46e5';
-    const rows = arr.slice().sort((a,b) => b.data.localeCompare(a.data))
-      .map(s => `<tr style="border-bottom:1px solid var(--border)">
-        <td style="padding:4px 8px;font-size:10.5px;white-space:nowrap">${s.data||'—'}</td>
-        <td style="padding:4px 8px"><span style="padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;background:${s.tipo==='PEC'?'#1d4ed822':s.tipo==='MAIL'?'#0369a122':'#4f46e522'};color:${s.tipo==='PEC'?'#1d4ed8':s.tipo==='MAIL'?'#0369a1':'#4f46e5'}">${s.tipo}</span></td>
-        <td style="padding:4px 8px;font-size:10.5px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(s.note||'').replace(/"/g,'&quot;')}">${s.note||'—'}</td>
-      </tr>`).join('');
-    const popup = `<div id="solPop_${codice.replace(/\//g,'_')}" onclick="event.stopPropagation()"
-      style="display:none;position:absolute;z-index:9999;right:0;top:24px;min-width:320px;max-width:420px;
-      background:var(--surface);border:1px solid var(--border2);border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.18);padding:0;overflow:hidden">
-      <div style="padding:8px 12px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:11px;font-weight:700;color:var(--accent)">${codice} — Solleciti (${n})</span>
-        <span onclick="document.getElementById('solPop_${codice.replace(/\//g,'_')}').style.display='none'"
-          style="cursor:pointer;color:var(--muted);font-size:16px;line-height:1">×</span>
-      </div>
-      <table style="width:100%;border-collapse:collapse">
-        <thead><tr style="background:var(--surface2)">
-          <th style="padding:4px 8px;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left">Data</th>
-          <th style="padding:4px 8px;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left">Tipo</th>
-          <th style="padding:4px 8px;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left">Note</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
-    return `<div style="position:relative;display:inline-block;text-align:right">
-      <span onclick="(function(e){e.stopPropagation();var p=document.getElementById('solPop_${codice.replace(/\//g,'_')}');if(!p)return;var open=p.style.display!=='none';document.querySelectorAll('[id^=solPop_]').forEach(x=>x.style.display='none');p.style.display=open?'none':'block'})(event)"
-        style="cursor:pointer;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;user-select:none"
-        title="Vedi solleciti per ${codice}">${n} 📋</span>
-      ${popup}
-    </div>`;
+    return '<span class="sol-badge" data-sol-cod="' + codice.replace(/"/g,'') + '" '
+      + 'style="cursor:pointer;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;'
+      + 'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;user-select:none" '
+      + 'title="Vedi solleciti per ' + codice.replace(/"/g,'') + '">' + n + ' 📋</span>';
   }
+
+  // Popover fisso, aggiornato al click sul badge
+  (function() {
+    const box = document.createElement('div');
+    box.id = 'solPopoverBox';
+    box.style.cssText = 'display:none;position:fixed;z-index:99999;min-width:320px;max-width:420px;'
+      + 'background:var(--surface);border:1px solid var(--border2);border-radius:8px;'
+      + 'box-shadow:0 4px 20px rgba(0,0,0,.22);overflow:hidden;font-family:inherit';
+    document.body.appendChild(box);
+
+    document.addEventListener('click', function(e) {
+      const badge = e.target.closest('.sol-badge');
+      if (!badge) { box.style.display = 'none'; return; }
+      e.stopPropagation();
+      const cod = badge.dataset.solCod;
+      const arr = ((window._solByPratica || {})[cod] || [])
+        .slice().sort((a,b) => b.data.localeCompare(a.data));
+      const rows = arr.map(s => {
+        const bg = s.tipo==='PEC'?'#1d4ed822':s.tipo==='MAIL'?'#0369a122':'#4f46e522';
+        const fg = s.tipo==='PEC'?'#1d4ed8':s.tipo==='MAIL'?'#0369a1':'#4f46e5';
+        const note = (s.note||'—').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        return '<tr style="border-bottom:1px solid var(--border)">'
+          + '<td style="padding:4px 8px;font-size:10.5px;white-space:nowrap">' + (s.data||'—') + '</td>'
+          + '<td style="padding:4px 8px"><span style="padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;background:' + bg + ';color:' + fg + '">' + s.tipo + '</span></td>'
+          + '<td style="padding:4px 8px;font-size:10.5px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + note + '">' + note + '</td>'
+          + '</tr>';
+      }).join('');
+      box.innerHTML = '<div style="padding:8px 12px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">'
+        + '<span style="font-size:11px;font-weight:700;color:var(--accent)">' + cod + ' — Solleciti (' + arr.length + ')</span>'
+        + '<span id="solPopClose" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1">×</span></div>'
+        + '<table style="width:100%;border-collapse:collapse">'
+        + '<thead><tr style="background:var(--surface2)">'
+        + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">Data</th>'
+        + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">Tipo</th>'
+        + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">Note</th>'
+        + '</tr></thead><tbody>' + rows + '</tbody></table>';
+      document.getElementById('solPopClose').onclick = function(ev) { ev.stopPropagation(); box.style.display='none'; };
+      // posiziona vicino al badge
+      const rect = badge.getBoundingClientRect();
+      const bw = 340;
+      let left = Math.min(rect.right - bw, window.innerWidth - bw - 8);
+      if (left < 8) left = 8;
+      let top = rect.bottom + 4;
+      box.style.left = left + 'px';
+      box.style.top  = top + 'px';
+      box.style.display = 'block';
+    });
+  })();
 
   // Chiude popup solleciti cliccando altrove
   document.addEventListener('click', () => {
