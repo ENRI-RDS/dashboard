@@ -1427,7 +1427,9 @@ async def reject_pending(
 # e il CSV solleciti.csv viene sincronizzato su GitHub dopo ogni inserimento.
 # ═════════════════════════════════════════════════════════════════════════════
 
-SOLLECITI_COLS = ["_id", "tratta_id", "pratica", "tipo_sollecito", "data_sollecito", "note", "impresa", "created_at"]
+SOLLECITI_COLS = ["_id", "tratta_id", "pratica", "ente", "tipo_permesso", "stato_permesso",
+                  "lunghezza", "data_richiesta", "data_ultima_modifica",
+                  "tipo_sollecito", "data_sollecito", "note", "impresa", "created_at"]
 
 
 async def _build_solleciti_csv() -> bytes:
@@ -1494,6 +1496,8 @@ async def add_sollecito(payload: dict, sess: dict = Depends(_require_session)):
     tipo_perm    = str((payload or {}).get("tipo_permesso", "")).strip()
     stato_perm   = str((payload or {}).get("stato_permesso", "")).strip()
     lunghezza    = str((payload or {}).get("lunghezza", "")).strip()
+    data_rich    = str((payload or {}).get("data_richiesta", "")).strip()
+    data_ult_mod = str((payload or {}).get("data_ultima_modifica", "")).strip()
 
     if not tratta_id:
         raise HTTPException(400, "tratta_id obbligatorio")
@@ -1503,21 +1507,61 @@ async def add_sollecito(payload: dict, sess: dict = Depends(_require_session)):
         raise HTTPException(400, "data_sollecito obbligatoria")
 
     record = {
-        "tratta_id":      tratta_id,
-        "pratica":        pratica,
-        "tipo_sollecito": tipo,
-        "data_sollecito": data_sol,
-        "note":           note,
-        "impresa":        nome,
-        "ente":           ente,
-        "tipo_permesso":  tipo_perm,
-        "stato_permesso": stato_perm,
-        "lunghezza":      lunghezza,
-        "created_at":     _now_iso(),
+        "tratta_id":           tratta_id,
+        "pratica":             pratica,
+        "tipo_sollecito":      tipo,
+        "data_sollecito":      data_sol,
+        "note":                note,
+        "impresa":             nome,
+        "ente":                ente,
+        "tipo_permesso":       tipo_perm,
+        "stato_permesso":      stato_perm,
+        "lunghezza":           lunghezza,
+        "data_richiesta":      data_rich,
+        "data_ultima_modifica": data_ult_mod,
+        "created_at":          _now_iso(),
     }
     res = await solleciti_col.insert_one(record)
     asyncio.create_task(_push_solleciti_to_github())
     return {"ok": True, "id": str(res.inserted_id)}
+
+
+@app.post("/api/imprese/solleciti/bulk-insert")
+async def bulk_insert_solleciti(payload: dict, sess: dict = Depends(_require_session)):
+    """Inserisce più solleciti in una sola chiamata e fa un unico push GitHub."""
+    nome  = sess["nome"]
+    items = (payload or {}).get("items", [])
+    if not items or not isinstance(items, list):
+        raise HTTPException(400, "items obbligatorio")
+
+    inserted = []
+    for item in items:
+        tratta_id = str(item.get("tratta_id", "")).strip()
+        tipo      = str(item.get("tipo_sollecito", "")).strip()
+        data_sol  = str(item.get("data_sollecito", "")).strip()
+        if not tratta_id or tipo not in ("PEC", "MAIL", "TELEFONICO") or not data_sol:
+            continue
+        record = {
+            "tratta_id":           tratta_id,
+            "pratica":             str(item.get("pratica", "")).strip(),
+            "tipo_sollecito":      tipo,
+            "data_sollecito":      data_sol,
+            "note":                str(item.get("note", "")).strip(),
+            "impresa":             nome,
+            "ente":                str(item.get("ente", "")).strip(),
+            "tipo_permesso":       str(item.get("tipo_permesso", "")).strip(),
+            "stato_permesso":      str(item.get("stato_permesso", "")).strip(),
+            "lunghezza":           str(item.get("lunghezza", "")).strip(),
+            "data_richiesta":      str(item.get("data_richiesta", "")).strip(),
+            "data_ultima_modifica": str(item.get("data_ultima_modifica", "")).strip(),
+            "created_at":          _now_iso(),
+        }
+        res = await solleciti_col.insert_one(record)
+        inserted.append(str(res.inserted_id))
+
+    if inserted:
+        asyncio.create_task(_push_solleciti_to_github())
+    return {"ok": True, "inserted": inserted, "count": len(inserted)}
 
 
 @app.delete("/api/imprese/solleciti/{sol_id}")
