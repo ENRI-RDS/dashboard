@@ -7243,6 +7243,16 @@ _hookScadenze();
       }
       // ridisegna la tabella se già renderizzata
       console.log('[Solleciti] caricati:', Object.keys(window._solByPratica).length, 'tratte', Object.keys(window._solByPratica).slice(0,5));
+      // Deduplica per codice pratica: stessa data+tipo = stesso sollecito
+      Object.keys(window._solByPratica).forEach(cod => {
+        const seen = new Set();
+        window._solByPratica[cod] = window._solByPratica[cod].filter(s => {
+          const key = s.data + '|' + s.tipo;
+          if (seen.has(key)) return false;
+          seen.add(key); return true;
+        });
+      });
+      console.log('[Solleciti] caricati:', Object.keys(window._solByPratica).length, 'pratiche', Object.keys(window._solByPratica).slice(0,5));
       if (typeof renderTabella === 'function') renderTabella();
     } catch(e) { console.warn('loadSolleciti:', e.message); }
   }
