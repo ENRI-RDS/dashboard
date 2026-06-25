@@ -1535,3 +1535,25 @@ async def delete_sollecito(sol_id: str, sess: dict = Depends(_require_session)):
     await solleciti_col.delete_one({"_id": oid})
     asyncio.create_task(_push_solleciti_to_github())
     return {"deleted": sol_id}
+
+
+@app.post("/api/imprese/solleciti/bulk-delete")
+async def bulk_delete_solleciti(payload: dict, sess: dict = Depends(_require_session)):
+    """Elimina più solleciti in una sola chiamata e fa un unico push GitHub."""
+    ids = (payload or {}).get("ids", [])
+    if not ids or not isinstance(ids, list):
+        raise HTTPException(400, "ids obbligatorio")
+    deleted = []
+    for sol_id in ids:
+        try:
+            oid = ObjectId(str(sol_id))
+        except Exception:
+            continue
+        doc = await solleciti_col.find_one({"_id": oid})
+        if not doc or doc.get("impresa") != sess["nome"]:
+            continue
+        await solleciti_col.delete_one({"_id": oid})
+        deleted.append(str(sol_id))
+    if deleted:
+        asyncio.create_task(_push_solleciti_to_github())
+    return {"deleted": deleted, "count": len(deleted)}
