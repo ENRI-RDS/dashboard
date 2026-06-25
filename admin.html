@@ -649,28 +649,18 @@
       const tipo   = c.tipo_permesso || c.TIPO_PERMESSO || '';
       const fields = c.fields || {};
 
-      // Recupera dati attuali della pratica da _masterByTratta
-      const master = (window._masterByTratta || {})[tratta] || [];
-      const pratInfo = master.find(p =>
-        (!ente || p.ente === ente) && (!tipo || p.tipo === tipo)
-      ) || master[0] || null;
-
-      // Card stato attuale
-      const statoAttuale = pratInfo ? pratInfo.stato : null;
-      const statoColor = statoAttuale === 'OTTENUTO' ? '#059669'
-        : statoAttuale === 'INVIATO' ? '#1d4ed8'
-        : statoAttuale === 'PROTOCOLLATO' ? '#7c3aed'
-        : statoAttuale === 'NECESSARIA INTEGRAZIONE' ? '#d97706'
-        : '#6b7280';
-      const currentInfoHtml = pratInfo ? `
-        <div style="margin:6px 0 8px;padding:8px 10px;background:#f8fafc;border-radius:6px;border:1px solid var(--border);display:flex;flex-wrap:wrap;gap:8px 16px;font-size:11px">
-          <div><span style="color:var(--muted);text-transform:uppercase;font-size:9px;letter-spacing:.05em">Stato attuale</span><br>
-            <span style="font-weight:700;color:${statoColor}">${escapeHtml(statoAttuale||'—')}</span></div>
-          ${pratInfo.dr ? `<div><span style="color:var(--muted);text-transform:uppercase;font-size:9px;letter-spacing:.05em">Data richiesta</span><br><span style="font-family:monospace">${escapeHtml(pratInfo.dr)}</span></div>` : ''}
-          ${pratInfo.dum ? `<div><span style="color:var(--muted);text-transform:uppercase;font-size:9px;letter-spacing:.05em">Ultima modifica</span><br><span style="font-family:monospace">${escapeHtml(pratInfo.dum)}</span></div>` : ''}
-          ${pratInfo.lungh ? `<div><span style="color:var(--muted);text-transform:uppercase;font-size:9px;letter-spacing:.05em">Metri</span><br><span style="font-weight:600">${escapeHtml(String(pratInfo.lungh))}</span></div>` : ''}
-          ${pratInfo.lotto ? `<div><span style="color:var(--muted);text-transform:uppercase;font-size:9px;letter-spacing:.05em">Lotto</span><br><span>${escapeHtml(pratInfo.lotto)}</span></div>` : ''}
-        </div>` : '';
+      // Dati dal change (locali) + dati arricchiti dal backend (_stato_attuale ecc.)
+      const lunghezza    = c.lunghezza || c.LUNGHEZZA || '';
+      const origPratica  = c.original_pratica || c.PRATICA || '';
+      const statoAttuale = c._stato_attuale || '';
+      const drAttuale    = c._data_richiesta || '';
+      const dumAttuale   = c._data_ult_mod || '';
+      const daAttuale    = c._data_approvazione || '';
+      const statoColor   = {'OTTENUTO':'#059669','INVIATO':'#1d4ed8','PROTOCOLLATO':'#7c3aed',
+        'NECESSARIA INTEGRAZIONE':'#d97706','IN FIRMA RDS':'#0891b2',
+        'IN REDAZIONE':'#6b7280','NO COMPETENZA':'#dc2626',
+        'PROTOCOLLATO INTEGRAZIONE':'#9333ea','IN REDAZIONE INTEGRAZIONE':'#0284c7'
+      }[statoAttuale] || '#374151';
 
       // Campi richiesti dall'impresa
       const colonneRichiesta = Object.entries(fields).map(([k,v]) => {
@@ -699,16 +689,13 @@
           <div class="detail-cols">
             <div class="detail-col-box">
               <div class="detail-col-title">Stato attuale</div>
-              ${pratInfo ? `
-                <div class="detail-field">
-                  <span class="detail-field-key">Stato</span>
-                  <span class="detail-field-val" style="color:${statoColor}">${escapeHtml(statoAttuale||'—')}</span>
-                </div>
-                ${pratInfo.dr ? `<div class="detail-field"><span class="detail-field-key">Data richiesta</span><span class="detail-field-val">${escapeHtml(pratInfo.dr)}</span></div>` : ''}
-                ${pratInfo.dum ? `<div class="detail-field"><span class="detail-field-key">Ultima modifica</span><span class="detail-field-val">${escapeHtml(pratInfo.dum)}</span></div>` : ''}
-                ${pratInfo.lungh ? `<div class="detail-field"><span class="detail-field-key">Metri</span><span class="detail-field-val">${escapeHtml(String(pratInfo.lungh))} m</span></div>` : ''}
-                ${pratInfo.lotto ? `<div class="detail-field"><span class="detail-field-key">Lotto</span><span class="detail-field-val">${escapeHtml(pratInfo.lotto)}</span></div>` : ''}
-              ` : '<span style="color:var(--muted);font-size:11px">Dati non disponibili</span>'}
+              ${statoAttuale ? `<div class="detail-field"><span class="detail-field-key">Stato</span><span class="detail-field-val" style="color:${statoColor};font-weight:700">${escapeHtml(statoAttuale)}</span></div>` : ''}
+              ${drAttuale ? `<div class="detail-field"><span class="detail-field-key">Data richiesta</span><span class="detail-field-val">${escapeHtml(drAttuale)}</span></div>` : ''}
+              ${dumAttuale ? `<div class="detail-field"><span class="detail-field-key">Ultima modifica</span><span class="detail-field-val">${escapeHtml(dumAttuale)}</span></div>` : ''}
+              ${daAttuale ? `<div class="detail-field"><span class="detail-field-key">Data approvazione</span><span class="detail-field-val">${escapeHtml(daAttuale)}</span></div>` : ''}
+              ${origPratica ? `<div class="detail-field"><span class="detail-field-key">Codice pratica</span><span class="detail-field-val">${escapeHtml(origPratica)}</span></div>` : ''}
+              ${lunghezza && lunghezza !== '—' ? `<div class="detail-field"><span class="detail-field-key">Lunghezza</span><span class="detail-field-val">${escapeHtml(String(lunghezza))} m</span></div>` : ''}
+              ${!statoAttuale ? '<span style="color:var(--muted);font-size:11px">Dati non trovati nel CSV</span>' : ''}
             </div>
             <div class="detail-col-box" style="border-color:#c7d2fe;background:#f5f3ff">
               <div class="detail-col-title" style="color:#7c3aed">Richiesta impresa</div>
@@ -728,7 +715,7 @@
     const nCh = (s.changes||[]).length;
     $('detailsBody').innerHTML = `
       <div style="padding:14px 16px">
-        <div class="detail-label" style="margin-bottom:12px">${nCh} pratica${nCh!==1?'che':''} coinvolta${nCh!==1?'e':''}</div>
+        <div class="detail-label" style="margin-bottom:12px">${nCh} pratica${nCh!==1?'che':''} coinvolg${nCh!==1?'ono':'e'}</div>
         ${changesHtml}
         ${summaryHtml}
       </div>`;
