@@ -290,31 +290,21 @@
 
       <!-- Form nuovo sollecito -->
       <div class="card" style="margin-bottom:16px;padding:16px">
-        <div style="font-weight:700;font-size:13px;margin-bottom:12px">Nuovo sollecito — seleziona la tratta</div>
+        <div style="font-weight:700;font-size:13px;margin-bottom:12px">Nuovo sollecito — seleziona la pratica</div>
 
-        <div class="search"><input type="text" id="searchSolPratiche" placeholder="Cerca per codice, tratta, ente, stato…"></div>
+        <div class="search"><input type="text" id="searchSolPratiche" placeholder="Cerca per codice, ente, tipo, stato…"></div>
         <div class="scroll" style="margin-bottom:16px">
           <table>
             <thead><tr>
-              <th>Pratica</th><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th>
-              <th>Data richiesta</th><th>Data agg.</th><th>Data ottenimento</th>
-              <th style="text-align:right">Lung. (m)</th>
+              <th>Pratica</th><th>Ente</th><th>Tipo</th><th>Stato</th>
+              <th style="text-align:center">Tratte</th>
             </tr></thead>
-            <tbody id="solPratBody"><tr><td colspan="9" class="empty">Caricamento pratiche…</td></tr></tbody>
+            <tbody id="solPratBody"><tr><td colspan="5" class="empty">Caricamento pratiche…</td></tr></tbody>
           </table>
         </div>
 
         <div id="solSelectedForm" style="display:none;border-top:1px dashed var(--border);padding-top:16px">
           <div style="font-weight:700;margin-bottom:10px;font-size:13px">Sollecito per — <span id="solEditRowSub" class="mono" style="color:var(--muted);font-size:12px"></span></div>
-
-          <div id="solSiblingsPanel" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12.5px">
-            <div style="font-weight:700;color:#1d4ed8;margin-bottom:4px">Questa pratica include altre tratte</div>
-            <div id="solSiblingsList" style="color:#374151;margin-bottom:8px"></div>
-            <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-weight:600;color:#1d4ed8">
-              <input type="checkbox" id="solSiblingsToggle" checked style="width:15px;height:15px;cursor:pointer">
-              Registra il sollecito su tutte insieme (consigliato)
-            </label>
-          </div>
 
           <div class="grid2">
             <div>
@@ -329,6 +319,11 @@
             <div>
               <label>Data sollecito *</label>
               <input type="date" id="sol-data">
+            </div>
+            <div>
+              <label>N° sollecito</label>
+              <input type="number" id="sol-numero" min="1" value="1" style="max-width:120px">
+              <div style="font-size:10.5px;color:var(--muted);margin-top:2px">Numero progressivo per questa pratica</div>
             </div>
             <div style="grid-column:span 2">
               <label>Note</label>
@@ -355,9 +350,9 @@
             <th>Pratica</th><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th>
             <th>Data richiesta</th><th>Data agg.</th><th>Data ottenimento</th>
             <th style="text-align:right">Lung. (m)</th>
-            <th>Tipo sollecito</th><th>Data sollecito</th><th>Note sollecito</th><th></th>
+            <th style="text-align:center">N°</th><th>Tipo sollecito</th><th>Data sollecito</th><th>Note sollecito</th><th></th>
           </tr></thead>
-          <tbody id="solBody"><tr><td colspan="13" class="empty">—</td></tr></tbody>
+          <tbody id="solBody"><tr><td colspan="14" class="empty">—</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -1023,36 +1018,47 @@
 
   // ─── SOLLECITI ──────────────────────────────────────────────────────────────
 
-  // Popola select tratte con i TRATTA_ID unici dalle pratiche caricate
   let SOL_SELECTED = null;
   let SOL_SIBLINGS = [];
+
+  const SOL_STATI_ESCLUSI = new Set([
+    'IN REDAZIONE', 'IN FIRMA RDS',
+    'OTTENUTO',
+    'NECESSARIA INTEGRAZIONE', 'IN REDAZIONE INTEGRAZIONE', 'PROTOCOLLATO INTEGRAZIONE',
+    'NO COMPETENZA'
+  ]);
 
   function renderSolPratiche(filter) {
     const tbody = $('solPratBody');
     if (!tbody) return;
     const f = (filter || '').toLowerCase().trim();
-    const dedup = new Map();
+    const praticaMap = new Map();
     PRATICHE.forEach(p => {
-      const existing = dedup.get(p.TRATTA_ID);
-      if (!existing || parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(existing.DATA_ULTIMA_MODIFICA)) {
-        dedup.set(p.TRATTA_ID, p);
+      const stato = (p.STATO_PERMESSO || '').trim();
+      if (SOL_STATI_ESCLUSI.has(stato)) return;
+      const pNum = String(p.PRATICA || '').trim();
+      if (!pNum) return;
+      const key = pNum + '|' + String(p.ENTE||'').trim() + '|' + String(p.TIPO_PERMESSO||'').trim();
+      if (!praticaMap.has(key)) {
+        praticaMap.set(key, { rep: p, tratte: [p] });
+      } else {
+        const entry = praticaMap.get(key);
+        entry.tratte.push(p);
+        if (parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(entry.rep.DATA_ULTIMA_MODIFICA)) entry.rep = p;
       }
     });
-    const all = Array.from(dedup.values());
-    const rows = all.filter(p => !f || JSON.stringify(p).toLowerCase().includes(f));
+    const all   = Array.from(praticaMap.values());
+    const rows  = all.filter(({ rep }) => !f ||
+      [rep._codice, rep.ENTE, rep.TIPO_PERMESSO, rep.STATO_PERMESSO].join(' ').toLowerCase().includes(f));
     renderSolPratiche._current = rows;
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="9" class="empty">Nessuna pratica</td></tr>'; return; }
-    tbody.innerHTML = rows.map((p, i) => `
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">Nessuna pratica disponibile per il sollecito</td></tr>'; return; }
+    tbody.innerHTML = rows.map(({ rep, tratte }, i) => `
       <tr data-idx="${i}">
-        <td class="mono" style="font-weight:700;color:var(--accent);background:#f4f6ff;border-left:3px solid var(--accent)">${escapeHtml(p._codice)}</td>
-        <td class="mono">${escapeHtml(p.TRATTA_ID)}</td>
-        <td>${escapeHtml(p.ENTE)}</td>
-        <td>${escapeHtml(p.TIPO_PERMESSO)}</td>
-        <td class="stato-${(p.STATO_PERMESSO||'').replace(/\s+/g,'.')}">${escapeHtml(p.STATO_PERMESSO)}</td>
-        <td class="mono">${escapeHtml(p.DATA_RICHIESTA)}</td>
-        <td class="mono">${escapeHtml(p.DATA_ULTIMA_MODIFICA)}</td>
-        <td class="mono">${escapeHtml(p.DATA_APPROVAZIONE || '—')}</td>
-        <td style="text-align:right;background:#f0fdf4;font-family:var(--font-mono);font-size:11.5px;color:#1F7A4E;font-weight:600;border-left:2px solid #bbf7d0">${escapeHtml(String(p.LUNGHEZZA ?? '—'))}</td>
+        <td class="mono" style="font-weight:700;color:var(--accent);background:#f4f6ff;border-left:3px solid var(--accent)">${escapeHtml(rep._codice || String(rep.PRATICA||''))}</td>
+        <td>${escapeHtml(rep.ENTE)}</td>
+        <td>${escapeHtml(rep.TIPO_PERMESSO)}</td>
+        <td class="stato-${(rep.STATO_PERMESSO||'').replace(/\s+/g,'.')}">${escapeHtml(rep.STATO_PERMESSO)}</td>
+        <td class="mono" style="text-align:center">${tratte.length}</td>
       </tr>`).join('');
   }
 
@@ -1063,37 +1069,21 @@
     if (!tr) return;
     document.querySelectorAll('#solPratBody tr.selected').forEach(x => x.classList.remove('selected'));
     tr.classList.add('selected');
-    SOL_SELECTED = (renderSolPratiche._current || [])[+tr.dataset.idx];
-
-    $('solSelectedForm').style.display = '';
-    $('solEditRowSub').textContent = `${SOL_SELECTED._codice || ''} · ${SOL_SELECTED.TRATTA_ID} · ${SOL_SELECTED.ENTE} · ${SOL_SELECTED.TIPO_PERMESSO}`;
-
-    // Stesso identico criterio di "Aggiorna pratiche": stesso ENTE + TIPO_PERMESSO + PRATICA
-    const pratNum = String(SOL_SELECTED.PRATICA || '').trim();
-    const siblingsRaw = pratNum ? PRATICHE.filter(p =>
-      p.TRATTA_ID !== SOL_SELECTED.TRATTA_ID &&
-      String(p.ENTE||'').trim() === String(SOL_SELECTED.ENTE||'').trim() &&
-      String(p.TIPO_PERMESSO||'').trim() === String(SOL_SELECTED.TIPO_PERMESSO||'').trim() &&
-      String(p.PRATICA||'').trim() === pratNum
-    ) : [];
+    const { rep, tratte } = (renderSolPratiche._current || [])[+tr.dataset.idx];
+    SOL_SELECTED = rep;
     const siblingsMap = new Map();
-    siblingsRaw.forEach(p => {
-      const existing = siblingsMap.get(p.TRATTA_ID);
-      if (!existing || parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(existing.DATA_ULTIMA_MODIFICA)) {
-        siblingsMap.set(p.TRATTA_ID, p);
-      }
+    tratte.forEach(p => {
+      if (p.TRATTA_ID === rep.TRATTA_ID) return;
+      const ex = siblingsMap.get(p.TRATTA_ID);
+      if (!ex || parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(ex.DATA_ULTIMA_MODIFICA)) siblingsMap.set(p.TRATTA_ID, p);
     });
     SOL_SIBLINGS = Array.from(siblingsMap.values());
-
-    const panel = $('solSiblingsPanel');
-    if (SOL_SIBLINGS.length) {
-      $('solSiblingsList').textContent = `Tratte collegate: ${SOL_SIBLINGS.map(s => s.TRATTA_ID).join(', ')} (${SOL_SIBLINGS.length + 1} tratte totali in questa pratica)`;
-      $('solSiblingsToggle').checked = true;
-      panel.style.display = '';
-    } else {
-      panel.style.display = 'none';
-    }
-
+    $('solSelectedForm').style.display = '';
+    const tot = tratte.length;
+    $('solEditRowSub').textContent = `${rep._codice || String(rep.PRATICA||'')} · ${rep.ENTE} · ${rep.TIPO_PERMESSO} · ${tot} tratt${tot === 1 ? 'a' : 'e'}`;
+    const pratCode = rep._codice || String(rep.PRATICA || '').trim();
+    const distinctSol = new Set(SOLLECITI.filter(s => s.pratica === pratCode).map(s => s.numero_sollecito || s.data_sollecito));
+    const numEl = $('sol-numero'); if (numEl) numEl.value = distinctSol.size + 1;
     $('solSelectedForm').scrollIntoView({behavior:'smooth', block:'nearest'});
   });
 
@@ -1172,27 +1162,26 @@
       SOLLECITI = d.solleciti || [];
       renderSolleciti('');
     } catch(e) {
-      $('solBody').innerHTML = `<tr><td colspan="13" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
+      $('solBody').innerHTML = `<tr><td colspan="14" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
     }
   }
 
   function renderSolleciti(filter) {
     const f = (filter || '').toLowerCase().trim();
-    if (!SOLLECITI.length) { $('solBody').innerHTML = '<tr><td colspan="13" class="empty">Nessun sollecito registrato</td></tr>'; return; }
-
+    if (!SOLLECITI.length) { $('solBody').innerHTML = '<tr><td colspan="14" class="empty">Nessun sollecito registrato</td></tr>'; return; }
     const enriched = SOLLECITI.map(s => ({ s, p: _praticaPerSollecito(s) }));
     const rows = enriched.filter(({s, p}) => !f || JSON.stringify({s, p}).toLowerCase().includes(f));
-    if (!rows.length) { $('solBody').innerHTML = '<tr><td colspan="13" class="empty">Nessun risultato</td></tr>'; return; }
-
+    if (!rows.length) { $('solBody').innerHTML = '<tr><td colspan="14" class="empty">Nessun risultato</td></tr>'; return; }
     $('solBody').innerHTML = rows.map(({s, p}) => {
-      const ente       = s.ente                  || p?.ENTE          || '—';
-      const tipo       = s.tipo_permesso         || p?.TIPO_PERMESSO || '—';
-      const stato      = s.stato_permesso        || p?.STATO_PERMESSO|| '—';
-      const dataRich   = s.data_richiesta        || p?.DATA_RICHIESTA        || '—';
-      const dataAgg    = s.data_ultima_modifica  || p?.DATA_ULTIMA_MODIFICA  || '—';
-      const dataOtt    = p?.DATA_APPROVAZIONE    || '—';
-      const lungh      = s.lunghezza             || p?.LUNGHEZZA     || '—';
-      const codice     = p?._codice || s.pratica || '—';
+      const ente   = s.ente                 || p?.ENTE          || '—';
+      const tipo   = s.tipo_permesso        || p?.TIPO_PERMESSO || '—';
+      const stato  = s.stato_permesso       || p?.STATO_PERMESSO|| '—';
+      const dataRich = s.data_richiesta     || p?.DATA_RICHIESTA       || '—';
+      const dataAgg  = s.data_ultima_modifica || p?.DATA_ULTIMA_MODIFICA || '—';
+      const dataOtt  = p?.DATA_APPROVAZIONE || '—';
+      const lungh  = s.lunghezza            || p?.LUNGHEZZA     || '—';
+      const codice = p?._codice || s.pratica || '—';
+      const nSol   = s.numero_sollecito != null ? String(s.numero_sollecito) : '—';
       return `
       <tr>
         <td class="mono" style="font-weight:700;color:var(--accent);background:#f4f6ff;border-left:3px solid var(--accent)">${escapeHtml(codice)}</td>
@@ -1204,6 +1193,7 @@
         <td class="mono">${escapeHtml(dataAgg)}</td>
         <td class="mono">${escapeHtml(dataOtt)}</td>
         <td style="text-align:right;background:#f0fdf4;font-family:var(--font-mono);font-size:11.5px;color:#1F7A4E;font-weight:600;border-left:2px solid #bbf7d0">${escapeHtml(String(lungh))}</td>
+        <td class="mono" style="text-align:center;font-weight:700">${escapeHtml(nSol)}</td>
         <td><span style="padding:2px 8px;border-radius:5px;font-size:10.5px;font-weight:700;background:#eff6ff;color:#1d4ed8">${escapeHtml(s.tipo_sollecito)}</span></td>
         <td class="mono">${escapeHtml(s.data_sollecito)}</td>
         <td style="font-size:12px;color:var(--muted)">${escapeHtml(s.note || '—')}</td>
@@ -1222,7 +1212,6 @@
     const clicked = SOLLECITI.find(s => s._id === solId);
     if (!clicked) return;
 
-    // Cerca solleciti fratelli: stesso codice pratica, stessa data sollecito, stesso tipo
     const siblings = SOLLECITI.filter(s =>
       s._id !== solId &&
       s.pratica        === clicked.pratica &&
@@ -1266,7 +1255,7 @@
     } catch(e) { setMsg($('msgSol'), 'Errore: ' + e.message, false); }
   });
 
-  async function _postSollecito(tratta_id, pratica_codice, tipo, data, note, row) {
+  async function _postSollecito(tratta_id, pratica_codice, tipo, data, note, row, numero_sollecito) {
     return api('/api/imprese/solleciti', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1276,12 +1265,13 @@
         tipo_sollecito:    tipo,
         data_sollecito:    data,
         note,
-        ente:              row?.ENTE                 || '',
-        tipo_permesso:     row?.TIPO_PERMESSO        || '',
-        stato_permesso:    row?.STATO_PERMESSO       || '',
-        lunghezza:         row?.LUNGHEZZA            || '',
-        data_richiesta:    row?.DATA_RICHIESTA       || '',
-        data_ultima_modifica: row?.DATA_ULTIMA_MODIFICA || '',
+        numero_sollecito:     numero_sollecito,
+        ente:                 row?.ENTE                  || '',
+        tipo_permesso:        row?.TIPO_PERMESSO         || '',
+        stato_permesso:       row?.STATO_PERMESSO        || '',
+        lunghezza:            row?.LUNGHEZZA             || '',
+        data_richiesta:       row?.DATA_RICHIESTA        || '',
+        data_ultima_modifica: row?.DATA_ULTIMA_MODIFICA  || '',
       })
     });
   }
@@ -1289,36 +1279,38 @@
   function _resetSolForm() {
     SOL_SELECTED = null; SOL_SIBLINGS = [];
     $('solSelectedForm').style.display = 'none';
-    $('solSiblingsPanel').style.display = 'none';
     $('sol-tipo').value = ''; $('sol-data').value = ''; $('sol-note').value = '';
+    const numEl = $('sol-numero'); if (numEl) numEl.value = 1;
     document.querySelectorAll('#solPratBody tr.selected').forEach(x => x.classList.remove('selected'));
   }
 
-  async function _submitSollecito(includeSiblings) {
-    const msgEl = $('msgSol');
-    const tipo  = $('sol-tipo').value;
+  async function _submitSollecito() {
+    const msgEl   = $('msgSol');
+    const tipo    = $('sol-tipo').value;
     const dataRaw = $('sol-data').value;
-    const data  = fromInputDate(dataRaw);
-    const note  = $('sol-note').value.trim();
-    if (!tipo) return setMsg(msgEl, 'Seleziona il tipo di sollecito', false);
+    const data    = fromInputDate(dataRaw);
+    const note    = $('sol-note').value.trim();
+    const nSol    = parseInt($('sol-numero')?.value || '1', 10) || 1;
+    if (!tipo)    return setMsg(msgEl, 'Seleziona il tipo di sollecito', false);
     if (!dataRaw) return setMsg(msgEl, 'Inserisci la data del sollecito', false);
 
-    const targets = includeSiblings ? [SOL_SELECTED, ...SOL_SIBLINGS] : [SOL_SELECTED];
+    const targets = [SOL_SELECTED, ...SOL_SIBLINGS];
     $('sol-submit').disabled = true;
     try {
       if (targets.length > 1) {
         const items = targets.map(t => ({
-          tratta_id:           t.TRATTA_ID,
-          pratica:             t._codice || t.PRATICA || '',
-          tipo_sollecito:      tipo,
-          data_sollecito:      data,
+          tratta_id:            t.TRATTA_ID,
+          pratica:              t._codice || t.PRATICA || '',
+          tipo_sollecito:       tipo,
+          data_sollecito:       data,
           note,
-          ente:                t.ENTE                  || '',
-          tipo_permesso:       t.TIPO_PERMESSO         || '',
-          stato_permesso:      t.STATO_PERMESSO        || '',
-          lunghezza:           t.LUNGHEZZA             || '',
-          data_richiesta:      t.DATA_RICHIESTA        || '',
-          data_ultima_modifica: t.DATA_ULTIMA_MODIFICA || '',
+          numero_sollecito:     nSol,
+          ente:                 t.ENTE                  || '',
+          tipo_permesso:        t.TIPO_PERMESSO         || '',
+          stato_permesso:       t.STATO_PERMESSO        || '',
+          lunghezza:            t.LUNGHEZZA             || '',
+          data_richiesta:       t.DATA_RICHIESTA        || '',
+          data_ultima_modifica: t.DATA_ULTIMA_MODIFICA  || '',
         }));
         await api('/api/imprese/solleciti/bulk-insert', {
           method: 'POST',
@@ -1326,9 +1318,9 @@
           body: JSON.stringify({ items })
         });
       } else {
-        await _postSollecito(targets[0].TRATTA_ID, targets[0]._codice || targets[0].PRATICA || '', tipo, data, note, targets[0]);
+        await _postSollecito(targets[0].TRATTA_ID, targets[0]._codice || targets[0].PRATICA || '', tipo, data, note, targets[0], nSol);
       }
-      setMsg(msgEl, targets.length > 1 ? `Registrati ${targets.length} solleciti` : 'Sollecito registrato', true);
+      setMsg(msgEl, targets.length > 1 ? `Registrati ${targets.length} solleciti (N° ${nSol})` : `Sollecito N° ${nSol} registrato`, true);
       _resetSolForm();
       await loadSolleciti();
     } catch(e) {
@@ -1339,22 +1331,8 @@
   }
 
   $('sol-submit').addEventListener('click', async () => {
-    if (!SOL_SELECTED) return setMsg($('msgSol'), 'Seleziona prima una tratta dalla tabella', false);
-
-    const wantsAllTogether = SOL_SIBLINGS.length > 0 && $('solSiblingsToggle').checked;
-    const wantsSingleOnly  = SOL_SIBLINGS.length > 0 && !$('solSiblingsToggle').checked;
-
-    if (wantsSingleOnly) {
-      const ok = await showConfirm(
-        'Registrare il sollecito solo su questa tratta?',
-        `Questa pratica include anche ${SOL_SIBLINGS.length} altr${SOL_SIBLINGS.length===1?'a tratta':'e tratte'} (${SOL_SIBLINGS.map(s=>s.TRATTA_ID).join(', ')}) che non riceveranno il sollecito.`,
-        'Procedi solo con questa'
-      );
-      if (!ok) return;
-      await _submitSollecito(false);
-    } else {
-      await _submitSollecito(wantsAllTogether);
-    }
+    if (!SOL_SELECTED) return setMsg($('msgSol'), 'Seleziona prima una pratica dalla tabella', false);
+    await _submitSollecito();
   });
 
   // Carica solleciti quando si passa al tab — gestito nel listener globale tab sopra
