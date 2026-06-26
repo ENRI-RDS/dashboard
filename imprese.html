@@ -43,7 +43,9 @@
   label:first-of-type{margin-top:0}
   input[type=text],input[type=date],input[type=number],select,textarea{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:7px;background:var(--bg);font-family:inherit;font-size:13px;color:var(--text)}
   input:focus,select:focus,textarea:focus{outline:none;border-color:var(--border-focus);background:var(--surface);box-shadow:0 0 0 3px rgba(65,187,217,.25)}
-  textarea{min-height:54px;resize:vertical}
+  select[multiple]{padding:6px 8px;line-height:1.6;background:var(--surface);border-color:var(--border)}
+  select[multiple] option:checked{background:var(--retelit-blue);color:#fff}
+  select[multiple]:focus{border-color:var(--border-focus);box-shadow:0 0 0 3px rgba(65,187,217,.25)}
   .btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 18px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;font-weight:600;font-size:13px;background:var(--accent);color:#fff;transition:filter .15s}
   .btn:hover{filter:brightness(1.08)}
   .btn:disabled{opacity:.5;cursor:not-allowed}
@@ -179,6 +181,23 @@
             <input type="date" id="fld-data-app" data-testid="fld-data-app">
             <div style="font-size:10px;color:var(--muted);margin-top:2px">Obbligatoria per lo stato OTTENUTO</div>
           </div>
+          <!-- Nulla Osta Necessario: visibile solo per AUTORIZZAZIONE -->
+          <div id="wrap-upd-no-nec" style="display:none">
+            <label>Nulla Osta Necessario</label>
+            <select id="fld-no-nec">
+              <option value="">—</option>
+              <option value="SI">SI</option>
+              <option value="NO">NO</option>
+            </select>
+          </div>
+          <!-- Tratte NO: visibile solo se Nulla Osta Necessario = SI -->
+          <div id="wrap-upd-no-tratte" style="display:none;grid-column:span 2">
+            <label>Tratte che richiedono Nulla Osta</label>
+            <select id="fld-no-tratte" multiple size="5"
+                    style="height:auto;min-height:100px;font-family:var(--font-mono);font-size:12px">
+            </select>
+            <div style="font-size:10.5px;color:var(--muted);margin-top:3px">Ctrl+click per selezione multipla · Le tratte selezionate genereranno una nuova pratica Nulla Osta</div>
+          </div>
           <div style="grid-column:span 2">
             <label>Note</label>
             <textarea id="fld-note" placeholder="Seleziona prima il nuovo stato…" data-testid="fld-note"
@@ -234,7 +253,7 @@
             <div style="display:flex;align-items:center;gap:8px">
               <span id="new-pratica-prefix" style="font-family:var(--font-mono);font-size:13px;color:var(--muted);white-space:nowrap">—/</span>
               <input type="number" id="new-pratica" required readonly
-                     data-testid="new-pratica" style="max-width:100px;background:#f4f6ff;cursor:not-allowed">
+                     data-testid="new-pratica" style="max-width:100px;background:var(--gray-100);color:var(--muted);cursor:not-allowed">
               <span id="new-pratica-suffix" style="font-family:var(--font-mono);font-size:13px;color:var(--muted);white-space:nowrap">/—</span>
             </div>
             <div style="margin-top:4px;font-size:11px;color:var(--muted)">Calcolato come ultimo progressivo del lotto selezionato + 1</div>
@@ -255,14 +274,6 @@
           <div id="wrap-no-nec" style="display:none">
             <label>Nulla Osta Necessario</label>
             <select id="new-no-nec"><option value=""></option><option>SI</option><option>NO</option></select>
-          </div>
-          <div id="wrap-no-tratte" style="display:none;grid-column:span 2">
-            <label>Tratte associate al Nulla Osta</label>
-            <select id="new-no-tratte" multiple size="6"
-                    style="height:auto;min-height:110px;font-family:var(--font-mono);font-size:12px">
-              <option value="" disabled>— seleziona prima il lotto —</option>
-            </select>
-            <div style="font-size:10.5px;color:var(--muted);margin-top:3px">Ctrl+click per selezione multipla</div>
           </div>
           <div>
             <label>Ordinanza necessaria</label>
@@ -595,6 +606,22 @@
     $('wrap-data-rich').style.display = 'none';
     $('wrap-data-app').style.display  = 'none';
 
+    // Nulla Osta Necessario — solo per AUTORIZZAZIONE
+    const isAut = (SELECTED.TIPO_PERMESSO || '').trim() === 'AUTORIZZAZIONE';
+    $('wrap-upd-no-nec').style.display = isAut ? '' : 'none';
+    $('wrap-upd-no-tratte').style.display = 'none';
+    $('fld-no-nec').value = SELECTED['NULLA OSTA NECESSARIO'] || '';
+    if (isAut) {
+      const pratNum = String(SELECTED.PRATICA || '').trim();
+      const tutteTratte = pratNum ? [...new Set(PRATICHE
+        .filter(p => String(p.PRATICA||'').trim() === pratNum &&
+                     String(p.ENTE||'').trim() === String(SELECTED.ENTE||'').trim() &&
+                     String(p.TIPO_PERMESSO||'').trim() === 'AUTORIZZAZIONE')
+        .map(p => p.TRATTA_ID).filter(Boolean)
+      )].sort() : [];
+      $('fld-no-tratte').innerHTML = tutteTratte.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+    }
+
     // Trova le altre tratte che appartengono alla stessa pratica
     // (stesso ENTE + TIPO_PERMESSO + numero PRATICA)
     const pratNum = String(SELECTED.PRATICA || '').trim();
@@ -651,6 +678,12 @@
       ? `Stato attuale: ${statoCorrente}`
       : '';
   }
+
+  $('fld-no-nec').addEventListener('change', function() {
+    const show = this.value === 'SI';
+    $('wrap-upd-no-tratte').style.display = show ? '' : 'none';
+    if (!show) Array.from($('fld-no-tratte').options).forEach(o => o.selected = false);
+  });
 
   $('fld-stato').addEventListener('change', function() {
     const v = this.value;
@@ -760,6 +793,16 @@
     const noteVal = $('fld-note').value.trim();
     if (noteVal) fields.NOTE = noteVal;
 
+    // Nulla Osta Necessario (solo per AUTORIZZAZIONE)
+    const noNec = $('fld-no-nec').value;
+    if (noNec) {
+      fields['NULLA OSTA NECESSARIO'] = noNec;
+      if (noNec === 'SI') {
+        const tratte = Array.from($('fld-no-tratte').selectedOptions).map(o => o.value).filter(Boolean);
+        if (tratte.length) fields['TRATTE_NO'] = tratte.join(', ');
+      }
+    }
+
     const wantsAllTogether = SIBLINGS.length > 0 && $('siblingsToggle').checked;
     const wantsSingleOnly  = SIBLINGS.length > 0 && !$('siblingsToggle').checked;
 
@@ -821,7 +864,7 @@
     const selectedTratte = Array.from($('new-tratta').selectedOptions).map(o => o.value).filter(Boolean);
     if (!selectedTratte.length) return setMsg($('msgNew'), 'Seleziona almeno una tratta', false);
 
-    const noTratte = new Set(Array.from(($('new-no-tratte')?.selectedOptions || [])).map(o => o.value));
+
     const ente = $('new-ente').value === '__altro__'
       ? ($('new-ente-custom') ? $('new-ente-custom').value.trim() : '')
       : $('new-ente').value.trim();
@@ -834,9 +877,7 @@
       "STATO_PERMESSO":       "IN REDAZIONE",
       "DATA_ULTIMA_MODIFICA": new Date().toLocaleDateString('it-IT'),
       "DATA_APPROVAZIONE":    "",
-      "NULLA OSTA NECESSARIO": $('new-tipo').value === 'AUTORIZZAZIONE'
-                                ? (noTratte.has(tratta) ? 'SI' : 'NO')
-                                : $('new-no-nec')?.value || '',
+      "NULLA OSTA NECESSARIO": $('new-tipo').value === 'AUTORIZZAZIONE' ? $('new-no-nec')?.value || '' : '',
       "ORDINANZA NECESSARIA": $('new-ord-nec').value,
       "CONVENZIONE":          $('new-convenzione').value,
       "POLIZZA ":             $('new-polizza').value,
@@ -859,9 +900,7 @@
       setMsg($('msgNew'), `Inviat${changes.length === 1 ? 'a 1 nuova pratica' : 'e ' + changes.length + ' nuove pratiche'} per approvazione (ID ${res.id.slice(-8)})`, true);
       $('newForm').reset();
       $('new-tratta').innerHTML = '<option value="" disabled>— seleziona prima il lotto —</option>';
-      $('new-no-tratte').innerHTML = '<option value="" disabled>— seleziona prima il lotto —</option>';
       $('wrap-no-nec').style.display = 'none';
-      $('wrap-no-tratte').style.display = 'none';
       loadMine();
     } catch(e){ setMsg($('msgNew'), 'Errore: ' + e.message, false); }
     finally {
@@ -926,7 +965,6 @@
       ? tratte.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('')
       : '<option value="" disabled>Nessuna tratta trovata per questo lotto</option>';
     $('new-tratta').innerHTML = opts;
-    $('new-no-tratte').innerHTML = opts;
   }
 
   function _setAutoPratica() {
@@ -942,12 +980,8 @@
 
   function _toggleNoNec() {
     const isAut = $('new-tipo').value === 'AUTORIZZAZIONE';
-    $('wrap-no-nec').style.display   = isAut ? '' : 'none';
-    $('wrap-no-tratte').style.display = isAut ? '' : 'none';
-    if (!isAut) {
-      $('new-no-nec').value = '';
-      Array.from($('new-no-tratte').options).forEach(o => o.selected = false);
-    }
+    $('wrap-no-nec').style.display = isAut ? '' : 'none';
+    if (!isAut) $('new-no-nec').value = '';
   }
 
   $('new-tipo').addEventListener('change', () => { _updatePraticaPreview(); _toggleNoNec(); });
