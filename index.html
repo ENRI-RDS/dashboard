@@ -1591,7 +1591,8 @@ window.loadXLSX = (function(){
       });
       window._sedData = _sedData;
 
-      var lotti = [];
+      // Aggiorna la tabella "Tutte le Pratiche" con i badge SED ora disponibili
+      if (typeof window.renderTabella === 'function') window.renderTabella();
       _sedData.forEach(function(d){ if(d.lotto && lotti.indexOf(d.lotto)===-1) lotti.push(d.lotto); });
       lotti.sort(sortLotti);
       var selLotto = document.getElementById('sedFLotto');
@@ -4440,6 +4441,7 @@ function _processMasterText(text) {
     // Raggruppa per lotto → per codice pratica (AUT/N/LOTTO)
     // Costruisce window._praticheDetailPerLotto
     const praticheByLotto = {};
+    window._sedByPratica = {};
 
     Object.values(permessiMap).forEach(r => {
       // Determina lotto da Master o da trattaLottoMap
@@ -4476,6 +4478,18 @@ function _processMasterText(text) {
       }
       // Preserva sempre dr_invio se disponibile
       if (r.dr_invio && !existing.dr_invio) existing.dr_invio = r.dr_invio;
+
+      // Popola _sedByPratica: codice → array N_SED unici (deduplicati)
+      if (r.nSed) {
+        if (!window._sedByPratica[codice]) window._sedByPratica[codice] = [];
+        String(r.nSed).split(' - ').forEach(function(key) {
+          key = key.trim();
+          if (!key) return;
+          if (!window._sedByPratica[codice].some(function(e){ return e.nSed === key; })) {
+            window._sedByPratica[codice].push({ nSed: key, stato: r.stato });
+          }
+        });
+      }
     });
 
     window._praticheDetailPerLotto = {};
@@ -6137,6 +6151,7 @@ _hookScadenze();
     {k:'prev',     l:'Prev. Rilascio', w:'110px', mono:true},
     {k:'metri',    l:'Metri (m)',      w:'90px',  right:true},
     {k:'sol',      l:'Solleciti',      w:'80px',  right:true, noSort:true},
+    {k:'sed',      l:'SED',            w:'70px',  right:true, noSort:true},
   ];
 
   const PAGE_SIZE = 10;
@@ -6332,6 +6347,66 @@ _hookScadenze();
     });
   })();
 
+  // _sedBadge: badge cliccabile SED per pratica (analogo a _solBadge)
+  function _sedBadge(codice) {
+    const arr = (window._sedByPratica || {})[codice];
+    if (!arr || !arr.length) return '<span style="color:var(--muted2);font-size:11px">—</span>';
+    const n = arr.length;
+    return '<span class="sed-prat-badge" data-sed-cod="' + codice.replace(/"/g,'') + '" '
+      + 'style="cursor:pointer;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;'
+      + 'background:#fef3c7;color:#d97706;border:1px solid #fde68a;user-select:none" '
+      + 'title="Vedi SED per ' + codice.replace(/"/g,'') + '">' + n + ' 🔀</span>';
+  }
+
+  // Popover fisso SED con smart positioning (si apre sopra se esce dallo schermo)
+  (function() {
+    const box = document.createElement('div');
+    box.id = 'sedPopoverBox';
+    box.style.cssText = 'display:none;position:fixed;z-index:99999;min-width:320px;max-width:440px;'
+      + 'background:var(--surface);border:1px solid var(--border2);border-radius:8px;'
+      + 'box-shadow:0 4px 20px rgba(0,0,0,.22);overflow:hidden;font-family:inherit';
+    document.body.appendChild(box);
+
+    document.addEventListener('click', function(e) {
+      const badge = e.target.closest('.sed-prat-badge');
+      if (!badge) { if (!e.target.closest('#sedPopoverBox')) box.style.display = 'none'; return; }
+      e.stopPropagation();
+      const cod = badge.dataset.sedCod;
+      const arr = (window._sedByPratica || {})[cod] || [];
+      const rows = arr.map(function(s) {
+        const geoItem = (window._sedData || []).find(function(d){ return d.nSed === s.nSed || d.tratta === s.nSed; });
+        const tipo   = (geoItem && geoItem.tipo)   || '—';
+        const comune = (geoItem && geoItem.comune) || '—';
+        const tipoBg = tipo === 'FERROVIARIO' ? '#fef9ec' : tipo === 'AUTOSTRADALE' ? '#f0fdf4' : '#eff6ff';
+        const tipoFg = tipo === 'FERROVIARIO' ? '#b45309' : tipo === 'AUTOSTRADALE' ? '#16a34a' : '#0369a1';
+        return '<tr style="border-bottom:1px solid var(--border)">'
+          + '<td style="padding:4px 8px;font-size:10.5px;white-space:nowrap;font-family:\'Fira Code\',monospace">' + s.nSed + '</td>'
+          + '<td style="padding:4px 8px"><span style="padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;background:' + tipoBg + ';color:' + tipoFg + '">' + tipo + '</span></td>'
+          + '<td style="padding:4px 8px;font-size:10.5px;color:var(--muted)">' + comune + '</td>'
+          + '</tr>';
+      }).join('');
+      box.innerHTML = '<div style="padding:8px 12px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">'
+        + '<span style="font-size:11px;font-weight:700;color:#d97706">' + cod + ' — SED (' + arr.length + ')</span>'
+        + '<span id="sedPopClose" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1">×</span></div>'
+        + '<table style="width:100%;border-collapse:collapse">'
+        + '<thead><tr style="background:var(--surface2)">'
+        + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">N_SED</th>'
+        + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">Tipo</th>'
+        + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">Comune</th>'
+        + '</tr></thead><tbody>' + rows + '</tbody></table>';
+      document.getElementById('sedPopClose').onclick = function(ev) { ev.stopPropagation(); box.style.display = 'none'; };
+      const rect = badge.getBoundingClientRect();
+      const bw = 340, bh = 220;
+      let left = Math.min(rect.right - bw, window.innerWidth - bw - 8);
+      if (left < 8) left = 8;
+      let top = rect.bottom + 4;
+      if (top + bh > window.innerHeight - 8) top = Math.max(8, rect.top - bh - 4);
+      box.style.left = left + 'px';
+      box.style.top  = top  + 'px';
+      box.style.display = 'block';
+    });
+  })();
+
   window.renderTabella = function() {
     buildThead();
     const all = window.getAllPrats();
@@ -6414,6 +6489,7 @@ _hookScadenze();
         <td class="tbl-td">${prevHtml}</td>
         <td class="tbl-td tbl-td-r tbl-metri">${fmt(r.metri)}</td>
         <td class="tbl-td tbl-td-r">${_solBadge(r.codice)}</td>
+        <td class="tbl-td tbl-td-r">${_sedBadge(r.codice)}</td>
       </tr>`;
     }).join('');
 
