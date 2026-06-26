@@ -524,14 +524,6 @@ window.loadXLSX = (function(){
   .prat-table td { font-size:11px; padding:7px 10px; border-bottom:1px solid var(--border); color:var(--text2); }
 
   /* ── STORICO MODAL ── */
-  #modalStoricoOverlay {
-    position:fixed; inset:0; background:rgba(28,28,46,.45);
-    backdrop-filter:blur(4px);
-    z-index:200; display:flex; align-items:center; justify-content:center;
-    opacity:0; pointer-events:none; transition:opacity 0.22s;
-  }
-  #modalStoricoOverlay.open { opacity:1; pointer-events:all; }
-  #modalStoricoOverlay .modal { width:740px; }
 
   /* ── TOUCH / iOS / ANDROID GLOBAL ── */
   /* Evita zoom accidentale su doppio tap e ritardo 300ms */
@@ -648,7 +640,6 @@ window.loadXLSX = (function(){
       max-height: 88dvh;
     }
     .modal-kpi-overlay { align-items: flex-end; }
-    #modalStoricoOverlay .modal { width:100%; border-radius:16px 16px 0 0; }
     .modal-bar-label { width:120px; font-size:10px; }
     .modal-bar-val   { width:70px;  font-size:10px; }
     .modal-ms-row { flex-wrap:wrap; }
@@ -954,9 +945,9 @@ window.loadXLSX = (function(){
         <button onclick="stampaCluster();closePdfDropdown()">📄 Per Cluster</button>
       </div>
     </div>
-    <button class="btn" style="font-size:12px;padding:8px 16px;background:#5a3a8c" onclick="apriStorico()">📈 Storico</button>
     
 
+    <button class="btn" style="font-size:12px;padding:8px 16px;background:#1a6b4a" onclick="apriParamPrev()">⚙️ Previsioni</button>
     <a href="hub.html" style="font-size:12px;padding:8px 16px;border-radius:7px;background:var(--accent);color:#fff;border:1px solid var(--accent);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;text-decoration:none;transition:opacity 0.2s;white-space:nowrap" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1">Hub</a>
     <button class="help-btn" onclick="openHelp()" title="Guida alla Dashboard">?</button>
   </div>
@@ -1026,18 +1017,6 @@ window.loadXLSX = (function(){
     <div id="modalClusterBody"></div>
   </div>
 </div>
-<div class="modal-overlay" id="modalStoricoOverlay" onclick="closeStorico(event)" role="dialog" aria-modal="true" aria-label="Storico Avanzamento">
-  <div class="modal" style="width:820px;max-width:97vw;max-height:88vh;overflow-y:auto">
-    <div class="modal-title">
-      <span>📈 Storico Avanzamento</span>
-      <span class="modal-close" onclick="closeStorico()">×</span>
-    </div>
-    <div id="modalStoricoBody" style="padding:12px 0">
-      <div style="text-align:center;color:var(--muted);font-size:13px;padding:40px">Caricamento storico...</div>
-    </div>
-  </div>
-</div>
-<div class="main">
   <div id="errorBox"></div>
 
   <div class="kpi-phase-wrapper">
@@ -2462,15 +2441,6 @@ function sortPratsByDate(arr) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 
-// ── JSONBin.io — storico condiviso ──────────────────────────────────────────
-// Inserisci qui i tuoi valori da jsonbin.io
-const JSONBIN_BIN_ID     = '69b3d128b7ec241ddc6545cc';
-// NOTA SICUREZZA (Bug 9): la MASTER_KEY non viene più inviata direttamente dal browser.
-// Tutte le chiamate JSONBin transitano per Apps Script tramite _jbGet/_jbPut.
-// La costante è mantenuta qui solo come riferimento; rimuoverla dal sorgente e
-// spostarla nel doPost Apps Script completa la migrazione lato server.
-const JSONBIN_BASE       = 'https://api.jsonbin.io/v3/b';
-const STORICO_MAX_ENTRIES = 104; // ~2 anni di aggiornamenti settimanali
 
 
 // ── API BASE ──────────────────────────────────────────────────────────────────
@@ -2478,46 +2448,6 @@ const STORICO_MAX_ENTRIES = 104; // ~2 anni di aggiornamenti settimanali
 const _apiBase = () => (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
 const _sessionToken = () => localStorage.getItem('_enri_session') || '';
 const _authHeaders = () => ({ 'Content-Type': 'application/json', 'x-session-token': _sessionToken() });
-
-// ── JSONBIN PROXY (Bug 9) ─────────────────────────────────────────────────────
-// Le chiamate JSONBin passano per Apps Script così la MASTER_KEY
-// non viaggia più in chiaro nelle request del browser.
-// NOTA: aggiungi i case 'jsonbin_get' e 'jsonbin_put' nel tuo doPost Apps Script.
-async function _jbGet(binId, signal) {
-  const res = await fetch(_apiBase() + '/api/logs/get', {
-    method: 'POST',
-    headers: _authHeaders(),
-    body: JSON.stringify({ binId }),
-    signal
-  });
-  if (!res.ok) throw new Error('_jbGet HTTP ' + res.status);
-  const json = await res.json();
-  if (json && json.ok === false) throw new Error('Proxy error: ' + (json.msg || 'risposta non valida'));
-  return json;
-}
-async function _jbPut(binId, data, keepalive) {
-  // keepalive e signal sono mutualmente esclusivi in alcuni browser
-  const ctrl = keepalive ? null : new AbortController();
-  const tid  = ctrl ? setTimeout(() => ctrl.abort(), 20000) : null;
-  try {
-    const res = await fetch(_apiBase() + '/api/logs/put', {
-      method: 'POST',
-      headers: _authHeaders(),
-      body: JSON.stringify({ binId, data }),
-      ...(ctrl ? { signal: ctrl.signal } : {}),
-      ...(keepalive ? { keepalive: true } : {})
-    });
-    if (tid) clearTimeout(tid);
-    if (!res.ok) throw new Error('_jbPut HTTP ' + res.status);
-    const jbPutJson = await res.json();
-    if (jbPutJson && jbPutJson.ok === false) throw new Error('Proxy error: ' + (jbPutJson.msg || 'risposta non valida'));
-    return jbPutJson;
-  } catch(e) {
-    if (tid) clearTimeout(tid);
-    throw e.name === 'AbortError' ? new Error('Timeout salvataggio JSONBin (>20s)') : e;
-  }
-}
-
 
 function _formatDate(isoStr) {
   const d = new Date(isoStr);
@@ -2915,38 +2845,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 // ─────────────────────────────────────────────────────────────────────────────
-async function jsonbinLoad() {
-  const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(new DOMException('Timeout connessione a JSONBin', 'TimeoutError')), 20000);
-  try {
-    const json = await _jbGet(JSONBIN_BIN_ID, controller.signal);
-    clearTimeout(tid);
-    return json.record || { storico: [] };
-  } catch(e) {
-    clearTimeout(tid);
-    throw e;
-  }
-}
-
-async function jsonbinSave(record) {
-  await _jbPut(JSONBIN_BIN_ID, record);
-}
-
-async function jsonbinGetLastUpdateISO() {
-  const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(new DOMException('Timeout connessione a JSONBin', 'TimeoutError')), 20000);
-  try {
-    const json = await _jbGet(JSONBIN_BIN_ID, controller.signal);
-    clearTimeout(tid);
-    const record = json?.record || {};
-    const storico = Array.isArray(record.storico) ? record.storico : [];
-    const storicoLastTs = storico.length > 0 ? storico[storico.length - 1]?.ts : null;
-    return record.last_excel_upload_at || storicoLastTs || json?.metadata?.updatedAt || json?.metadata?.createdAt || null;
-  } catch (e) {
-    clearTimeout(tid);
-    throw e;
-  }
-}
 // ────────────────────────────────────────────────────────────────────────────
 
 const COMUNI_PER_LOTTO = {
@@ -3356,7 +3254,7 @@ function closeModal(e) {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     ['modalOverlay','modalGruppoOverlay','modalClusterOverlay',
-     'modalKpiOverlay','modalStoricoOverlay','modalParamPrevOverlay','helpOverlay']
+     'modalKpiOverlay','modalParamPrevOverlay','helpOverlay']
       .forEach(id => { const el = document.getElementById(id); if (el && el.classList.contains('open')) window._modalClose(id); });
   }
 });
@@ -3742,147 +3640,6 @@ async function loadData(saveSnapshot = false) {
       });
     });
 
-    // ── Storico condiviso via JSONBin — NON BLOCCANTE ──────────────────────
-    // Render della dashboard avviene subito con i dati CSV.
-    // La sincronizzazione con JSONBin parte in parallelo e completa in background.
-    let storageRecord = { storico: [] };
-    let prevSnapshot = null;
-    let dataChanged = false;
-
-    // Avvia la chiamata JSONBin senza await — non blocca il rendering
-    const _jsonbinPromise = jsonbinLoad().catch(e => {
-      console.warn('Storico JSONBin error:', e);
-      const eb = document.getElementById('errorBox');
-      if (eb) {
-        eb.style.display = 'block';
-        eb.style.background = '#2a2010';
-        eb.style.border = '1px solid #c9a22744';
-        eb.style.color = '#c9a227';
-        eb.style.borderRadius = '6px';
-        eb.style.padding = '8px 14px';
-        eb.style.fontSize = '11px';
-        const msg = (e.name === 'TimeoutError' || e.name === 'AbortError')
-          ? 'Timeout connessione al server storico — i dati CSV sono stati caricati correttamente'
-          : '⚠ Storico non disponibile: ' + (e.message || e);
-        eb.textContent = msg;
-        setTimeout(() => { eb.style.display = 'none'; }, 6000);
-      }
-      return null; // segnala fallimento silenzioso
-    });
-
-    // Render immediato con solo i dati CSV (storico vuoto per ora)
-    window._csvOriginalData = data;  // copia immutabile del CSV — usata per il ripristino
-    window._currentData = data;
-    window._prevSnapshotData = null;
-    window._storicoCompleto = [];
-
-    setLoading(100);
-    renderDashboard(data);
-    document.getElementById('statusBadge').textContent = '● Aggiornato';
-    document.getElementById('statusBadge').style.cssText='font-size:10px;font-family:\'Fira Code\',monospace;color:#1F7A4E;font-weight:600'; document.getElementById('statusWidget').style.borderColor='#1F7A4E44'; document.getElementById('statusWidget').style.background='#1F7A4E0D';
-    document.getElementById('loadingScreen').style.display = 'none';
-    setTimeout(()=>setLoading(0),600);
-
-    // Mostra subito l'ultima data nota da localStorage (se disponibile)
-    const _lu0 = document.getElementById('lastUpdate');
-    const _cachedIso = localStorage.getItem('enri_last_upload_iso');
-    if (_lu0 && _cachedIso) {
-      const _d = new Date(_cachedIso);
-      if (!Number.isNaN(_d.getTime()))
-        _lu0.innerHTML = `<span>${_d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})}</span>`;
-    }
-
-    // Controlla anche la data dell'ultima approvazione/modifica di Master.csv:
-    // se più recente di quella mostrata (storico JSONBin), prevale questa.
-    (async () => {
-      try {
-        const base = _apiBase();
-        if (!base) return;
-        const r = await fetch(base + '/api/uploads?filename=Master.csv&limit=1');
-        if (!r.ok) return;
-        const d = await r.json();
-        const last = d.uploads && d.uploads[0];
-        if (!last || !last.uploaded_at) return;
-        const masterIso = last.uploaded_at;
-        const currentIso = localStorage.getItem('enri_last_upload_iso');
-        if (!currentIso || new Date(masterIso) > new Date(currentIso)) {
-          const dateStr = new Date(masterIso).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
-          const lu = document.getElementById('lastUpdate');
-          if (lu) lu.innerHTML = `<span>${dateStr}</span>`;
-          localStorage.setItem('enri_last_upload_iso', masterIso);
-          localStorage.setItem('enri_last_upload_date', dateStr);
-        }
-      } catch(e) { /* silenzioso: il badge resta quello dello storico JSONBin */ }
-    })();
-
-    // Completa la sincronizzazione JSONBin in background
-    _jsonbinPromise.then(async record => {
-      if (!record) return; // JSONBin non disponibile, niente da fare
-      storageRecord = record;
-      if (!storageRecord.storico) storageRecord.storico = [];
-
-      try {
-
-      // ── Applica override manuale se presente ────────────────────────────
-      if (storageRecord.manual_override && Array.isArray(storageRecord.manual_override.data) && storageRecord.manual_override.data.length > 0) {
-        const mo = storageRecord.manual_override;
-        window._currentData  = mo.data;
-        window._lastDashData = mo.data;
-        renderDashboard(mo.data);
-        _emAggiornaClusters(mo.data);
-        _emShowManualBadge(mo.ts);
-      }
-      // ────────────────────────────────────────────────────────────────────
-
-      const storico = storageRecord.storico;
-      prevSnapshot = storico.length > 0 ? storico[storico.length - 1] : null;
-
-      const dataHash = JSON.stringify(data.map(r=>`${r.lotto}|${r.stato}|${r.metri}`).sort());
-      const prevHash = prevSnapshot
-        ? JSON.stringify(prevSnapshot.data.map(r=>`${r.lotto}|${r.stato}|${r.metri}`).sort())
-        : null;
-      dataChanged = dataHash !== prevHash;
-
-      if (dataChanged) {
-        const totaleMetri = data.reduce((a, r) => a + (r.metri || 0), 0);
-        if (totaleMetri > 0) {
-          const newEntry = { data: data, ts: new Date().toISOString() };
-          storico.push(newEntry);
-          if (storico.length > STORICO_MAX_ENTRIES) storico.splice(0, storico.length - STORICO_MAX_ENTRIES);
-          storageRecord.storico = storico;
-          storageRecord.last_excel_upload_at = newEntry.ts;
-          jsonbinSave(storageRecord).catch(e => console.warn('Storico save error:', e));
-        }
-      }
-
-      // Aggiorna stato globale storico e badge lastUpdate (in background, dashboard già visibile)
-      const storicoPrev = storageRecord.storico;
-      const prevForModal = storicoPrev.length >= 2 ? storicoPrev[storicoPrev.length - 2] : null;
-      window._prevSnapshotData = prevForModal ? prevForModal.data : null;
-      window._storicoCompleto = storageRecord.storico;
-      // Aggiorna prevSnapshot delta (badge variazione KPI)
-      window._prevSnapshotData = prevForModal ? prevForModal.data : null;
-
-      // Aggiorna badge data con quella reale dello storico — ma solo se più
-      // recente di quanto già mostrato (es. dall'ultima approvazione Master.csv)
-      const _lastIso = storageRecord.last_excel_upload_at
-        || (storicoPrev.length > 0 ? storicoPrev[storicoPrev.length-1]?.ts : null);
-      if (_lastIso && !Number.isNaN(new Date(_lastIso).getTime())) {
-        const _currentIso = localStorage.getItem('enri_last_upload_iso');
-        if (!_currentIso || new Date(_lastIso) > new Date(_currentIso)) {
-          const _lu = document.getElementById('lastUpdate');
-          const _dateStr = new Date(_lastIso).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
-          if (_lu) _lu.innerHTML = `<span>${_dateStr}</span>`;
-          localStorage.setItem('enri_last_upload_iso', _lastIso);    // ISO raw — sopravvive tra sessioni
-          localStorage.setItem('enri_last_upload_date', _dateStr);   // formatted — retrocompatibilità
-        }
-      }
-
-      // ────────────────────────────────────────────────────────────────────
-    } catch(e) {
-      console.warn('Storico background error:', e);
-    }
-  }); // fine _jsonbinPromise.then
 
   } catch(e) {
     setLoading(0);
@@ -4494,757 +4251,6 @@ function renderMilestones() {
   });
 }
 
-// ── Storico Modal ─────────────────────────────────────────────────────────────
-let _storicoChartInstance = null;
-
-function apriStorico() {
-  const overlay = document.getElementById('modalStoricoOverlay');
-  overlay.classList.add('open');
-  window._modalOpen && window._modalOpen('modalStoricoOverlay');
-  // Carica sempre fresh da JSONBin al click
-  const body = document.getElementById('modalStoricoBody');
-  body.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:40px">⏳ Caricamento storico...</div>';
-  jsonbinLoad()
-    .then(record => {
-      window._storicoCompleto = (record && record.storico) ? record.storico : [];
-      renderStoricoModal();
-    })
-    .catch(e => {
-      // Usa dati già in memoria se disponibili
-      if (window._storicoCompleto && window._storicoCompleto.length > 0) {
-        renderStoricoModal();
-      } else {
-        body.innerHTML = `<div style="text-align:center;color:#cc3333;font-size:12px;padding:40px">❌ Impossibile caricare lo storico<br><span style="color:var(--muted);font-size:11px">${e.message}</span></div>`;
-      }
-    });
-}
-
-function closeStorico(e) {
-  if (e && e.target !== document.getElementById('modalStoricoOverlay')) return;
-  window._modalClose('modalStoricoOverlay');
-  // Rimuovi il tooltip custom dal DOM per evitare memory leak
-  const tip = document.getElementById('storicoTooltipCustom');
-  if (tip) tip.remove();
-}
-
-function renderStoricoModal() {
-  const body = document.getElementById('modalStoricoBody');
-  // Ordina sempre per timestamp crescente prima di renderizzare
-  // Scarta snapshot con totale = 0 (CSV non trovato o errato in quel momento)
-  const storicoRaw = window._storicoCompleto || [];
-  // Usa una variabile locale per il rendering: non sovrascrivere _storicoCompleto
-  // altrimenti gli snapshot a zero vengono persi permanentemente alla riapertura
-  const storico = [...storicoRaw]
-    .filter(s => s.data && s.data.reduce((a, r) => a + (r.metri || 0), 0) > 0)
-    .sort((a, b) => new Date(a.ts) - new Date(b.ts));
-
-  if (storico.length === 0) {
-    body.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;font-size:13px">Nessun dato storico ancora.<br><span style="font-size:11px">Lo storico si accumula ad ogni aggiornamento del CSV.</span></div>';
-    return;
-  }
-
-  const STATI_TABELLA = [
-    { label: 'In Attesa / Red.',  stati: ['IN ATTESA','IN REDAZIONE'], color: '#4a4f6a' },
-    { label: 'Coordinamento',     stati: ['COORDINAMENTO'],                                         color: '#9b59b6' },
-    { label: 'In Firma RDS',      stati: ['IN FIRMA RDS'],                                         color: '#e07b3a' },
-    { label: 'Inviato / Prot.',   stati: ['INVIATO','PROTOCOLLATO'],                               color: '#4f8ef7' },
-    { label: 'Nec. Integraz.',    stati: ['NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE'],                              color: '#cc3333' },
-    { label: 'Prot. Integraz.',   stati: ['PROTOCOLLATO INTEGRAZIONE'],                            color: '#B5657A' },
-    { label: 'Ottenuto',          stati: ['OTTENUTO'],                                             color: '#3a8c5c' },
-  ];
-
-  // Tabella ultima rilevazione
-  const last = storico[storico.length - 1];
-  const totLast = last.data.reduce((a,r) => a + r.metri, 0);
-  const righeStati = STATI_TABELLA.map(g => {
-    const m = last.data.filter(r=>g.stati.includes(r.stato)).reduce((a,r)=>a+r.metri,0);
-    const pct = totLast > 0 ? (m/totLast*100).toFixed(1) : '0.0';
-    const km  = (m/1000).toFixed(1);
-    return `<tr>
-      <td style="padding:5px 8px;display:flex;align-items:center;gap:6px">
-        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${g.color};flex-shrink:0"></span>
-        ${g.label}
-      </td>
-      <td style="text-align:right;padding:5px 8px;font-family:'Bricolage Grotesque',sans-serif;font-weight:600;color:var(--text)">${km} km</td>
-      <td style="text-align:right;padding:5px 8px;font-family:'Bricolage Grotesque',sans-serif;color:${g.color};font-weight:700">${pct}%</td>
-    </tr>`;
-  }).join('');
-
-  const totKm = (totLast/1000).toFixed(1);
-
-  const tabellaHtml = `
-    <div style="margin-top:16px;font-size:11px;color:var(--muted);padding:0 4px">
-      <div style="font-weight:700;color:#1C1C2E;font-family:'Bricolage Grotesque',sans-serif;margin-bottom:6px">
-        Situazione attuale — ${new Date(last.ts).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})}
-        <span style="font-weight:400;color:var(--muted);margin-left:8px">${storico.length} rilevazioni nel database</span>
-      </div>
-      <table style="width:100%;border-collapse:collapse">
-        <thead><tr>
-          <th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)">Stato</th>
-          <th style="text-align:right;padding:4px 8px;border-bottom:1px solid var(--border)">Km</th>
-          <th style="text-align:right;padding:4px 8px;border-bottom:1px solid var(--border)">%</th>
-        </tr></thead>
-        <tbody>
-          ${righeStati}
-          <tr style="border-top:2px solid var(--border);font-weight:600;color:var(--text)">
-            <td style="padding:6px 8px;display:flex;align-items:center;gap:6px">
-              <span style="display:inline-block;width:10px;height:10px;flex-shrink:0"></span>
-              TOTALE
-            </td>
-            <td style="text-align:right;padding:6px 8px;font-family:'Bricolage Grotesque',sans-serif;font-weight:700;color:var(--text)">${totKm} km</td>
-            <td style="text-align:right;padding:6px 8px;font-family:'Bricolage Grotesque',sans-serif;font-weight:700">100%</td>
-          </tr>
-        </tbody>
-      </table>
-      <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px;display:flex;flex-direction:column;gap:14px">
-
-        <!-- AZIONE 1: sposta data ultimo snapshot -->
-        <div style="background:#FFFFFF;border:1px solid #E0DDD4;border-radius:10px;padding:12px 14px;box-shadow:0 1px 4px rgba(11,49,130,.06)">
-          <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:4px">📌 Correggi la data dell'ultimo snapshot</div>
-          <div style="font-size:10px;color:var(--muted);margin-bottom:10px;line-height:1.5">
-            Usa questa opzione se lo snapshot salvato ha la data sbagliata.<br>
-            <b style="color:var(--text)">Ultimo snapshot:</b> <span id="ultimoSnapshotData" style="font-family:'Fira Code',monospace;color:var(--accent)"></span>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <div style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px">
-              <span style="font-size:10px;color:var(--muted)">Nuova data:</span>
-              <input type="date" id="inputDataRename"
-                style="background:transparent;border:none;color:var(--text);font-size:11px;font-family:'Fira Code',monospace;outline:none;cursor:pointer"
-                max="${new Date().toISOString().split('T')[0]}"
-                value="${new Date(Date.now()-86400000).toISOString().split('T')[0]}">
-            </div>
-            <button onclick="rinominaUltimoSnapshot()" id="btnRename"
-              style="font-size:11px;padding:5px 14px;border-radius:6px;background:#0B3182;color:white;border:none;cursor:pointer;font-weight:600">
-              ✎ Sposta data
-            </button>
-            <span id="renameStatus" style="font-size:10px;color:var(--muted)"></span>
-          </div>
-        </div>
-
-        <!-- AZIONE 2: aggiungi snapshot backdatato -->
-        <div style="background:#FFFFFF;border:1px solid #E0DDD4;border-radius:10px;padding:12px 14px;box-shadow:0 1px 4px rgba(11,49,130,.06)">
-          <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:4px">✚ Aggiungi snapshot a data precedente</div>
-          <div style="font-size:10px;color:var(--muted);margin-bottom:10px;line-height:1.5">
-            Salva i dati CSV attuali con una data diversa — utile per recuperare un giorno mancante.
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <div style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px">
-              <span style="font-size:10px;color:var(--muted)">Data rilevazione:</span>
-              <input type="date" id="inputDataBackdate"
-                style="background:transparent;border:none;color:var(--text);font-size:11px;font-family:'Fira Code',monospace;outline:none;cursor:pointer"
-                max="${new Date().toISOString().split('T')[0]}"
-                value="${new Date(Date.now()-86400000).toISOString().split('T')[0]}">
-            </div>
-            <button onclick="aggiungiSnapshotBackdate()" id="btnBackdate"
-              style="font-size:11px;padding:5px 14px;border-radius:6px;background:var(--surface);color:var(--text);border:1px solid var(--border);cursor:pointer;font-weight:500">
-              ✚ Aggiungi
-            </button>
-            <span id="backdateStatus" style="font-size:10px;color:var(--muted)"></span>
-          </div>
-        </div>
-
-        <!-- Azioni distruttive in fondo, piccole -->
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:2px">
-          <button onclick="svuotaStorico()" style="font-size:10px;padding:4px 12px;border-radius:4px;background:#C23B220D;color:#C23B22;border:1px solid #C23B2244;cursor:pointer" id="btnSvuotaStorico">
-            🗑 Svuota tutto lo storico
-          </button>
-          <button onclick="seedDemoData()" style="font-size:10px;padding:4px 12px;border-radius:4px;background:#F0EEE6;color:#7A7A96;border:1px solid #E0DDD4;cursor:pointer" id="btnSeedDemo">
-            🧪 Demo 7 giorni
-          </button>
-          <span id="seedStatus" style="font-size:10px;color:var(--muted)"></span>
-        </div>
-
-      </div>
-    </div>`;
-
-  const currentMode = window._storicoViewMode || 'stati';
-  const btnStatiStyle = (m) => `font-size:10px;padding:3px 12px;border-radius:20px;cursor:pointer;transition:all .2s;border:1px solid ${m==='stati'?'#4f8ef7':'var(--border)'};background:${m==='stati'?'#4f8ef720':'transparent'};color:${m==='stati'?'#4f8ef7':'var(--muted)'}`;
-  const btnLottiStyle = (m) => `font-size:10px;padding:3px 12px;border-radius:20px;cursor:pointer;transition:all .2s;border:1px solid ${m==='lotti'?'#4f8ef7':'var(--border)'};background:${m==='lotti'?'#4f8ef720':'transparent'};color:${m==='lotti'?'#4f8ef7':'var(--muted)'}`;
-
-  body.innerHTML = `
-    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap" id="storicoFiltri">
-      <button onclick="storicoToggleView('stati')" id="btnViewStati" style="${btnStatiStyle(currentMode)}">Per stato</button>
-      <button onclick="storicoToggleView('lotti')" id="btnViewLotti" style="${btnLottiStyle(currentMode)}">Per lotto</button>
-    </div>
-    <div style="position:relative;height:280px;width:100%"><canvas id="storicoChart"></canvas></div>
-    <div id="storicoLegenda" style="display:flex;flex-wrap:wrap;gap:10px;padding:8px 4px 0;min-height:22px"></div>
-    ${tabellaHtml}`;
-
-  if (_storicoChartInstance) { _storicoChartInstance.destroy(); _storicoChartInstance = null; }
-  // Popola la data dell'ultimo snapshot nel campo "Correggi data"
-  const ultimoEl = document.getElementById('ultimoSnapshotData');
-  if (ultimoEl && storico.length > 0) {
-    ultimoEl.textContent = new Date(storico[storico.length-1].ts).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
-  }
-  // Delega al toggle che gestisce tutto (evita duplicazione logica)
-  storicoToggleView(currentMode);
-}
-
-window.storicoToggleView = function(mode) {
-  window._storicoViewMode = mode;
-  document.getElementById('btnViewStati').style.cssText =
-    `font-size:10px;padding:3px 12px;border-radius:20px;cursor:pointer;transition:all .2s;border:1px solid ${mode==='stati'?'#4f8ef7':'var(--border)'};background:${mode==='stati'?'#4f8ef720':'transparent'};color:${mode==='stati'?'#4f8ef7':'var(--muted)'}`;
-  document.getElementById('btnViewLotti').style.cssText =
-    `font-size:10px;padding:3px 12px;border-radius:20px;cursor:pointer;transition:all .2s;border:1px solid ${mode==='lotti'?'#4f8ef7':'var(--border)'};background:${mode==='lotti'?'#4f8ef720':'transparent'};color:${mode==='lotti'?'#4f8ef7':'var(--muted)'}`;
-
-  const storico = window._storicoCompleto || [];
-  const labels  = storico.map(s => new Date(s.ts).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'2-digit'}));
-
-  const STATI_G = [
-    { label: 'In Attesa / Red.',  stati: ['IN ATTESA','IN REDAZIONE'], color: '#4a5080' },
-    { label: 'Coordinamento',     stati: ['COORDINAMENTO'],                                         color: '#9b59b6' },
-    { label: 'In Firma RDS',      stati: ['IN FIRMA RDS'],                                         color: '#e07b3a' },
-    { label: 'Inviato / Prot.',   stati: ['INVIATO','PROTOCOLLATO'],                               color: '#4f8ef7' },
-    { label: 'Nec. Integraz.',    stati: ['NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE'],                              color: '#cc3333' },
-    { label: 'Prot. Integraz.',   stati: ['PROTOCOLLATO INTEGRAZIONE'],                            color: '#B5657A' },
-    { label: 'Ottenuto',          stati: ['OTTENUTO'],                                             color: '#3a8c5c' },
-  ];
-  const LOTTI_G = [
-    { label: 'Lotto 1A', lottos: ['1A'], color: '#4f8ef7' },
-    { label: 'Lotto 1B', lottos: ['1B'], color: '#7ab3f7' },
-    { label: 'Lotto 2A', lottos: ['2A'], color: '#e07b3a' },
-    { label: 'Lotto 2B', lottos: ['2B'], color: '#f7a96a' },
-  ];
-
-  let datasets;
-  if (mode === 'stati') {
-    datasets = STATI_G.map(g => ({
-      _color: g.color,
-      label: g.label,
-      data: storico.map(s => {
-        const tot = s.data.reduce((a,r)=>a+r.metri,0);
-        const m   = s.data.filter(r=>g.stati.includes(r.stato)).reduce((a,r)=>a+r.metri,0);
-        return tot>0 ? Math.round(m/tot*1000)/10 : 0;
-      })
-    }));
-  } else {
-    datasets = LOTTI_G.map(g => ({
-      _color: g.color,
-      label: g.label,
-      data: storico.map(s => {
-        const rows = s.data.filter(r => g.lottos.includes(r.lotto));
-        const tot  = rows.length > 0 ? Math.max(...rows.map(r => r.totale || 0)) : 0;
-        const ott  = rows.filter(r => r.stato === 'OTTENUTO').reduce((a,r) => a + r.metri, 0);
-        return tot > 0 ? Math.round(ott / tot * 1000) / 10 : 0;
-      })
-    }));
-  }
-
-  // Y max dinamico: arrotonda al prossimo multiplo di 10 sopra il massimo valore
-  const allValues = datasets.flatMap(d => d.data);
-  const maxVal = Math.max(...allValues, 1);
-  const yMax = mode === 'stati' ? 100 : Math.min(100, Math.ceil(maxVal / 10) * 10 + 10);
-
-  // Overlay "nessun dato" se Per lotto è tutto 0
-  const chartWrap = document.getElementById('storicoChart')?.parentElement;
-  const existingOverlay = document.getElementById('storicoZeroOverlay');
-  if (existingOverlay) existingOverlay.remove();
-  if (mode === 'lotti' && allValues.every(v => v === 0)) {
-    const overlay = document.createElement('div');
-    overlay.id = 'storicoZeroOverlay';
-    overlay.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;pointer-events:none';
-    overlay.innerHTML = `<span style="font-size:22px">🏗</span><span style="font-size:12px;color:#7A7A96">Nessun avanzamento registrato ancora</span><span style="font-size:10px;color:#A8A8BC">Il grafico si attiverà quando le prime tratte usciranno dall'attesa</span>`;
-    if (chartWrap) chartWrap.appendChild(overlay);
-  }
-
-  // Legenda HTML
-  const legEl = document.getElementById('storicoLegenda');
-  if (legEl) {
-    if (mode === 'stati') {
-      legEl.innerHTML = datasets.map(d =>
-        `<span style="display:flex;align-items:center;gap:5px;font-size:10px;color:#7A7A96">
-          <span style="width:8px;height:8px;border-radius:50%;background:${d._color};flex-shrink:0;display:inline-block"></span>
-          ${d.label}
-        </span>`
-      ).join('');
-    } else {
-      legEl.innerHTML = LOTTI_G.map(g =>
-        `<span style="display:flex;align-items:center;gap:5px;font-size:10px;color:#7A7A96">
-          <span style="width:8px;height:8px;border-radius:50%;background:${g.color};flex-shrink:0;display:inline-block"></span>
-          ${g.label}
-        </span>`
-      ).join('') + `<span style="font-size:10px;color:#A8A8BC;margin-left:8px;font-style:italic">— % metri Ottenuti sul totale lotto</span>`;
-    }
-  }
-
-  _buildStoricoChart(storico, labels, datasets, yMax, mode);
-};
-
-async function rinominaUltimoSnapshot() {
-  const btn = document.getElementById('btnRename');
-  const status = document.getElementById('renameStatus');
-  const input = document.getElementById('inputDataRename');
-  if (!btn || !input) return;
-
-  const nuovaData = input.value; // YYYY-MM-DD
-  if (!nuovaData) { status.textContent = '⚠ Scegli una data'; return; }
-
-  btn.disabled = true;
-  btn.textContent = '⏳ Salvataggio...';
-  status.textContent = '';
-
-  try {
-    const record = await jsonbinLoad();
-    const storico = (record && record.storico) ? record.storico : [];
-    if (storico.length === 0) { status.textContent = '⚠ Nessuno snapshot da modificare'; btn.disabled=false; btn.textContent='✎ Sposta data'; return; }
-
-    // Modifica il ts dell'ultimo snapshot
-    storico.sort((a,b) => new Date(a.ts)-new Date(b.ts));
-    storico[storico.length-1].ts = new Date(nuovaData + 'T09:00:00').toISOString();
-
-    // Riscarta e salva
-    storico.sort((a,b) => new Date(a.ts)-new Date(b.ts));
-    await jsonbinSave({ ...record, storico });
-    window._storicoCompleto = storico;
-
-    const dataFmt = new Date(nuovaData).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
-    status.textContent = `✅ Spostato al ${dataFmt}`;
-    btn.textContent = '✎ Sposta data';
-    btn.disabled = false;
-    setTimeout(() => renderStoricoModal(), 400);
-  } catch(e) {
-    status.textContent = '❌ ' + e.message;
-    btn.disabled = false;
-    btn.textContent = '✎ Sposta data';
-  }
-}
-
-async function aggiungiSnapshotBackdate() {
-  const btn = document.getElementById('btnBackdate');
-  const status = document.getElementById('backdateStatus');
-  const inputData = document.getElementById('inputDataBackdate');
-  if (!btn || !inputData) return;
-
-  const dataScelta = inputData.value; // formato YYYY-MM-DD
-  if (!dataScelta) { status.textContent = '⚠ Scegli una data'; return; }
-
-  const oggi = new Date().toISOString().split('T')[0];
-  if (dataScelta > oggi) { status.textContent = '⚠ La data non può essere futura'; return; }
-
-  // Usa i dati reali attualmente caricati
-  const datiAttuali = window._currentData;
-  if (!datiAttuali || datiAttuali.length === 0) {
-    status.textContent = '❌ Nessun dato CSV caricato';
-    return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = '⏳ Salvataggio...';
-  status.textContent = '';
-
-  try {
-    const record = await jsonbinLoad();
-    const storico = (record && record.storico) ? record.storico : [];
-
-    // Controlla se esiste già uno snapshot per questa data
-    const dataGiorno = dataScelta; // YYYY-MM-DD
-    const esistente = storico.find(s => s.ts.startsWith(dataGiorno));
-    if (esistente) {
-      if (!confirm(`Esiste già uno snapshot per il ${new Date(dataScelta).toLocaleDateString('it-IT')}. Vuoi sostituirlo?`)) {
-        btn.disabled = false; btn.textContent = '✚ Aggiungi al grafico';
-        return;
-      }
-      // Rimuovi il vecchio
-      const idx = storico.indexOf(esistente);
-      storico.splice(idx, 1);
-    }
-
-    // Crea il nuovo snapshot con la data scelta (ore 09:00)
-    const tsBackdate = new Date(dataScelta + 'T09:00:00').toISOString();
-    const nuovoEntry = { data: datiAttuali, ts: tsBackdate };
-    storico.push(nuovoEntry);
-
-    // Ordina per data e limita
-    storico.sort((a, b) => new Date(a.ts) - new Date(b.ts));
-    if (storico.length > STORICO_MAX_ENTRIES) storico.splice(0, storico.length - STORICO_MAX_ENTRIES);
-
-    await jsonbinSave({ ...record, storico });
-    window._storicoCompleto = storico;
-
-    const dataFmt = new Date(dataScelta).toLocaleDateString('it-IT', {day:'2-digit', month:'2-digit', year:'numeric'});
-    status.textContent = `✅ Snapshot del ${dataFmt} aggiunto`;
-    btn.textContent = '✚ Aggiungi al grafico';
-    btn.disabled = false;
-    setTimeout(() => renderStoricoModal(), 400);
-
-  } catch(e) {
-    status.textContent = '❌ ' + e.message;
-    btn.disabled = false;
-    btn.textContent = '✚ Aggiungi al grafico';
-  }
-}
-
-async function svuotaStorico() {
-  const btn = document.getElementById('btnSvuotaStorico');
-  const status = document.getElementById('seedStatus');
-  if (!confirm('Sei sicuro di voler svuotare tutto lo storico da JSONBin? Questa azione non è reversibile.')) return;
-  btn.disabled = true;
-  btn.textContent = '⏳ Pulizia...';
-  if (status) status.textContent = '';
-  try {
-    const record = await jsonbinLoad();
-    await jsonbinSave({ ...record, storico: [] });
-    window._storicoCompleto = [];
-    if (status) status.textContent = '✅ Storico svuotato';
-    btn.textContent = '✓ Fatto';
-    setTimeout(() => renderStoricoModal(), 400);
-  } catch(e) {
-    if (status) status.textContent = '❌ ' + e.message;
-    btn.disabled = false;
-    btn.textContent = '🗑 Svuota storico';
-  }
-}
-
-function _buildStoricoChart(storico, labels, datasets, yMax, mode) {
-  yMax = yMax || 100;
-  if (_storicoChartInstance) { _storicoChartInstance.destroy(); _storicoChartInstance = null; }
-  const canvas = document.getElementById('storicoChart');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-
-  // Gradients
-  const dsWithGrad = datasets.map(ds => {
-    const color = ds._color || ds.borderColor || '#4f8ef7';
-    const grad = ctx.createLinearGradient(0, 0, 0, 280);
-    grad.addColorStop(0,   color + '33');
-    grad.addColorStop(0.6, color + '18');
-    grad.addColorStop(1,   color + '00');
-    return {
-      label: ds.label,
-      data: ds.data,
-      borderColor: color,
-      backgroundColor: grad,
-      tension: 0.45,
-      fill: true,
-      pointRadius: storico.length > 14 ? 2 : 5,
-      pointHoverRadius: 7,
-      pointBackgroundColor: color,
-      pointBorderColor: '#1a1d2e',
-      pointBorderWidth: 2,
-      borderWidth: 2.5,
-    };
-  });
-
-  const STATI_ATTESA_SET = new Set(['IN ATTESA','IN REDAZIONE']);
-  const STATI_DETTAGLIO = [
-    { label: 'Coordinamento',          stati: ['COORDINAMENTO'],                   color: '#9b59b6' },
-    { label: 'In Firma RDS',           stati: ['IN FIRMA RDS'],                    color: '#e07b3a' },
-    { label: 'Inviato / Prot.',        stati: ['INVIATO','PROTOCOLLATO'],           color: '#4f8ef7' },
-    { label: 'Nec. Integraz.',         stati: ['NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE'],          color: '#cc3333' },
-    { label: 'Prot. Integraz.',        stati: ['PROTOCOLLATO INTEGRAZIONE'],        color: '#B5657A' },
-    { label: 'Ottenuto',               stati: ['OTTENUTO'],                         color: '#3a8c5c' },
-  ];
-
-  _storicoChartInstance = new Chart(ctx, {
-    type: 'line',
-    data: { labels, datasets: dsWithGrad },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: { duration: 600, easing: 'easeInOutQuart' },
-      interaction: { mode: 'index', intersect: false },
-      layout: { padding: { right: mode === 'lotti' ? 72 : 16 } },
-      plugins: {
-        legend: { display: false },
-        tooltip: mode === 'stati' ? {
-          // Tooltip standard per modalità Per stato
-          backgroundColor: '#ffffffee',
-          borderColor: '#E0DDD4',
-          borderWidth: 1,
-          padding: 12,
-          titleColor: '#1C1C2E',
-          titleFont: { size: 11, weight: '600' },
-          bodyColor: '#7A7A96',
-          bodyFont: { size: 11 },
-          caretSize: 5,
-          cornerRadius: 8,
-          callbacks: {
-            title: items => `📅 ${items[0].label}`,
-            label: c => {
-              const bar = '█'.repeat(Math.round(c.parsed.y / 5));
-              return ` ${c.dataset.label}: ${c.parsed.y.toFixed(1)}%  ${bar}`;
-            }
-          }
-        } : {
-          // Tooltip custom HTML per modalità Per lotto
-          enabled: false,
-          external(context) {
-            let el = document.getElementById('storicoTooltipCustom');
-            if (!el) {
-              el = document.createElement('div');
-              el.id = 'storicoTooltipCustom';
-              el.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;background:#ffffffee;border:1px solid #E0DDD4;border-radius:10px;padding:10px 14px;min-width:220px;font-family:"Plus Jakarta Sans",sans-serif;transition:opacity 0.15s';
-              document.body.appendChild(el);
-            }
-            const { chart, tooltip } = context;
-            if (tooltip.opacity === 0) { el.style.opacity = '0'; return; }
-
-            const idx = tooltip.dataPoints?.[0]?.dataIndex;
-            if (idx == null) { el.style.opacity = '0'; return; }
-            const snap = storico[idx];
-            if (!snap) { el.style.opacity = '0'; return; }
-
-            const dataFmt = new Date(snap.ts).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
-
-            // Costruisci righe per ogni lotto
-            const LOTTI_ORDER = ['1A','1B','2A','2B'];
-            const LOTTI_COLORS = { '1A':'#4f8ef7','1B':'#7ab3f7','2A':'#e07b3a','2B':'#f7a96a' };
-
-            const righe = LOTTI_ORDER.map(lotto => {
-              const rows = snap.data.filter(r => r.lotto === lotto);
-              if (!rows.length) return '';
-              const tot = Math.max(...rows.map(r => r.totale || 0));
-              if (!tot) return '';
-
-              const ott    = rows.filter(r => r.stato === 'OTTENUTO').reduce((a,r) => a+r.metri, 0);
-              const ottPct = tot > 0 ? (ott/tot*100).toFixed(1) : '0.0';
-              const ottM   = (ott/1000).toFixed(1);
-              const totM   = (tot/1000).toFixed(1);
-
-              return `<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #E0DDD4">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-                  <span style="font-size:11px;font-weight:700;color:${LOTTI_COLORS[lotto]}">Lotto ${lotto}</span>
-                  <span style="font-size:13px;font-family:'Bricolage Grotesque',sans-serif;font-weight:700;color:#3a8c5c">${ottPct}%</span>
-                </div>
-                <div style="display:flex;align-items:center;justify-content:space-between">
-                  <span style="font-size:10px;color:#7A7A96">Ottenuto</span>
-                  <span style="font-size:10px;font-family:'Fira Code',monospace;color:#3a8c5c">${ottM} / ${totM} km</span>
-                </div>
-                <div style="margin-top:5px;height:4px;border-radius:2px;background:#E0DDD4;overflow:hidden">
-                  <div style="height:100%;border-radius:2px;background:#3a8c5c;width:${Math.min(100,parseFloat(ottPct))}%"></div>
-                </div>
-              </div>`;
-            }).filter(Boolean).join('');
-
-            el.innerHTML = `
-              <div style="font-size:11px;font-weight:600;color:#1C1C2E;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #E0DDD4">📅 ${dataFmt}</div>
-              ${righe || '<span style="font-size:10px;color:#A8A8BC">Nessun dato</span>'}
-            `;
-            el.style.opacity = '1';
-
-            // Posizionamento
-            const rect = chart.canvas.getBoundingClientRect();
-            let left = rect.left + tooltip.caretX + 16;
-            let top  = rect.top  + tooltip.caretY - 20;
-            // Evita uscita destra
-            if (left + 240 > window.innerWidth) left = rect.left + tooltip.caretX - 240;
-            el.style.left = left + 'px';
-            el.style.top  = top  + 'px';
-          }
-        }
-      },
-      scales: {
-        x: {
-          ticks: {
-            color: '#7A7A96',
-            font: { size: 9 },
-            maxRotation: 0,
-            maxTicksLimit: 8,
-            autoSkip: true,
-          },
-          grid: { color: '#E0DDD488', drawBorder: false },
-          border: { display: false }
-        },
-        y: {
-          min: 0, max: yMax,
-          ticks: {
-            color: '#7A7A96',
-            font: { size: 9 },
-            stepSize: yMax <= 30 ? 5 : yMax <= 60 ? 10 : 25,
-            callback: v => v + '%'
-          },
-          grid: { color: '#E0DDD488', drawBorder: false },
-          border: { display: false }
-        }
-      }
-    },
-    plugins: mode === 'lotti' ? [{
-      id: 'inlineLabels',
-      afterDraw(chart) {
-        const ctx2 = chart.ctx;
-        chart.data.datasets.forEach((ds, i) => {
-          const meta = chart.getDatasetMeta(i);
-          if (!meta.visible) return;
-          const lastPt = meta.data[meta.data.length - 1];
-          if (!lastPt) return;
-          const x = lastPt.x + 8;
-          const y = lastPt.y;
-          const val = ds.data[ds.data.length - 1];
-          const label = ds.label.replace('Lotto ', '');
-          ctx2.save();
-          ctx2.font = `600 10px 'Plus Jakarta Sans', sans-serif`;
-          ctx2.fillStyle = ds.borderColor;
-          ctx2.textAlign = 'left';
-          ctx2.textBaseline = 'middle';
-          ctx2.fillText(`${label}  ${val != null ? val.toFixed(1)+'%' : ''}`, x, y);
-          ctx2.restore();
-        });
-      }
-    }] : []
-  });
-
-  // Nascondi tooltip custom quando il mouse esce dal canvas
-  // Usa una sola registrazione per evitare listener multipli ad ogni switch
-  if (mode === 'lotti' && !canvas._storicoMouseleaveAttached) {
-    canvas._storicoMouseleaveAttached = true;
-    canvas.addEventListener('mouseleave', () => {
-      const el = document.getElementById('storicoTooltipCustom');
-      if (el) el.style.opacity = '0';
-    });
-  }
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ── Seed dati demo (7 giorni) ─────────────────────────────────────────────────
-async function seedDemoData() {
-  const btn = document.getElementById('btnSeedDemo');
-  const status = document.getElementById('seedStatus');
-  if (!btn) return;
-  btn.disabled = true;
-  btn.textContent = '⏳ Invio...';
-  status.textContent = '';
-
-  try {
-    const record = await jsonbinLoad();
-    const storicoEsistente = (record && record.storico) ? record.storico : [];
-
-    const baseData = storicoEsistente.length > 0
-      ? JSON.parse(JSON.stringify(storicoEsistente[storicoEsistente.length-1].data))
-      : (window._storicoCompleto && window._storicoCompleto.length > 0
-          ? JSON.parse(JSON.stringify(window._storicoCompleto[window._storicoCompleto.length-1].data))
-          : null);
-
-    if (!baseData) {
-      status.textContent = '❌ Nessun dato reale disponibile come base';
-      btn.disabled = false; btn.textContent = 'Inietta 7 giorni demo in JSONBin';
-      return;
-    }
-
-    const LOTTI = ['1A','1B','2A','2B'];
-    const TUTTI_STATI = [
-      'IN ATTESA','IN REDAZIONE',
-      'IN FIRMA RDS','COORDINAMENTO','INVIATO','PROTOCOLLATO',
-      'NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'
-    ];
-
-    // Calcola totale metri reale per lotto
-    const totPerLotto = {};
-    LOTTI.forEach(l => {
-      totPerLotto[l] = baseData.filter(r=>r.lotto===l).reduce((a,r)=>a+r.metri,0);
-    });
-    const totGlobale = Object.values(totPerLotto).reduce((a,v)=>a+v,0);
-
-    // Funzione helper: costruisce snapshot con distribuzione % definita
-    function buildSnapshot(distribuzione) {
-      // distribuzione = { LOTTO: { STATO: percentuale(0-100) } }
-      const rows = [];
-      LOTTI.forEach(l => {
-        const tot = totPerLotto[l];
-        const dist = distribuzione[l] || {};
-        let somma = 0;
-        TUTTI_STATI.forEach((s, i) => {
-          const pct = dist[s] || 0;
-          const m = i === TUTTI_STATI.length - 1
-            ? Math.max(0, tot - somma) * 0  // sicurezza
-            : tot * pct / 100;
-          if (m > 0 || pct > 0) {
-            rows.push({ lotto: l, stato: s, metri: Math.round(m * 10) / 10, totale: tot, pct: pct });
-            somma += m;
-          }
-        });
-        // Residuo in IN ATTESA
-        const residuo = tot - rows.filter(r=>r.lotto===l).reduce((a,r)=>a+r.metri,0);
-        if (residuo > 0) {
-          const attesa = rows.find(r=>r.lotto===l && r.stato==='IN ATTESA');
-          if (attesa) attesa.metri += residuo;
-          else rows.push({ lotto: l, stato: 'IN ATTESA', metri: residuo, totale: tot, pct: residuo/tot*100 });
-        }
-      });
-      return rows;
-    }
-
-    // 7 giorni: distribuzione diversa ogni giorno, progressione credibile
-    // Giorno 0 (6 giorni fa): quasi tutto in attesa, pochissimo avanzato
-    // Giorno 6 (oggi): mix realistico con un po' di ottenuto
-    const distribuzioni = [
-      // giorno -6
-      {
-        '1A':{ 'IN ATTESA':72, 'IN REDAZIONE':12, 'IN FIRMA RDS':8, 'INVIATO':5, 'PROTOCOLLATO':3 },
-        '1B':{ 'IN ATTESA':80, 'IN REDAZIONE':10, 'IN FIRMA RDS':5, 'INVIATO':3, 'PROTOCOLLATO':2 },
-        '2A':{ 'IN ATTESA':68, 'IN REDAZIONE':15, 'IN FIRMA RDS':7, 'INVIATO':6, 'PROTOCOLLATO':4 },
-        '2B':{ 'IN ATTESA':75, 'IN REDAZIONE':12, 'IN FIRMA RDS':6, 'INVIATO':4, 'PROTOCOLLATO':3 },
-      },
-      // giorno -5
-      {
-        '1A':{ 'IN ATTESA':68, 'IN REDAZIONE':13, 'IN FIRMA RDS':8, 'INVIATO':6, 'PROTOCOLLATO':4, 'OTTENUTO':1 },
-        '1B':{ 'IN ATTESA':76, 'IN REDAZIONE':11, 'IN FIRMA RDS':5, 'INVIATO':4, 'PROTOCOLLATO':3, 'OTTENUTO':1 },
-        '2A':{ 'IN ATTESA':63, 'IN REDAZIONE':16, 'IN FIRMA RDS':8, 'INVIATO':7, 'PROTOCOLLATO':5, 'OTTENUTO':1 },
-        '2B':{ 'IN ATTESA':70, 'IN REDAZIONE':13, 'IN FIRMA RDS':7, 'INVIATO':5, 'PROTOCOLLATO':3, 'NECESSARIA INTEGRAZIONE':2 },
-      },
-      // giorno -4
-      {
-        '1A':{ 'IN ATTESA':62, 'IN REDAZIONE':14, 'IN FIRMA RDS':9, 'INVIATO':7, 'PROTOCOLLATO':5, 'OTTENUTO':3 },
-        '1B':{ 'IN ATTESA':71, 'IN REDAZIONE':12, 'IN FIRMA RDS':6, 'INVIATO':5, 'PROTOCOLLATO':4, 'OTTENUTO':2 },
-        '2A':{ 'IN ATTESA':58, 'IN REDAZIONE':17, 'IN FIRMA RDS':9, 'INVIATO':7, 'PROTOCOLLATO':6, 'OTTENUTO':3 },
-        '2B':{ 'IN ATTESA':65, 'IN REDAZIONE':14, 'IN FIRMA RDS':7, 'INVIATO':6, 'PROTOCOLLATO':4, 'NECESSARIA INTEGRAZIONE':2, 'OTTENUTO':2 },
-      },
-      // giorno -3
-      {
-        '1A':{ 'IN ATTESA':56, 'IN REDAZIONE':14, 'IN FIRMA RDS':9, 'INVIATO':8, 'PROTOCOLLATO':7, 'PROTOCOLLATO INTEGRAZIONE':2, 'OTTENUTO':4 },
-        '1B':{ 'IN ATTESA':65, 'IN REDAZIONE':13, 'IN FIRMA RDS':7, 'INVIATO':6, 'PROTOCOLLATO':5, 'OTTENUTO':4 },
-        '2A':{ 'IN ATTESA':52, 'IN REDAZIONE':17, 'IN FIRMA RDS':9, 'INVIATO':8, 'PROTOCOLLATO':7, 'OTTENUTO':5, 'NECESSARIA INTEGRAZIONE':2 },
-        '2B':{ 'IN ATTESA':59, 'IN REDAZIONE':15, 'IN FIRMA RDS':8, 'INVIATO':7, 'PROTOCOLLATO':5, 'NECESSARIA INTEGRAZIONE':3, 'OTTENUTO':3 },
-      },
-      // giorno -2
-      {
-        '1A':{ 'IN ATTESA':50, 'IN REDAZIONE':14, 'IN FIRMA RDS':10, 'INVIATO':9, 'PROTOCOLLATO':8, 'PROTOCOLLATO INTEGRAZIONE':3, 'OTTENUTO':6 },
-        '1B':{ 'IN ATTESA':59, 'IN REDAZIONE':14, 'IN FIRMA RDS':8, 'INVIATO':7, 'PROTOCOLLATO':6, 'OTTENUTO':6 },
-        '2A':{ 'IN ATTESA':46, 'IN REDAZIONE':17, 'IN FIRMA RDS':10, 'INVIATO':9, 'PROTOCOLLATO':8, 'OTTENUTO':7, 'NECESSARIA INTEGRAZIONE':3 },
-        '2B':{ 'IN ATTESA':53, 'IN REDAZIONE':15, 'IN FIRMA RDS':9, 'INVIATO':8, 'PROTOCOLLATO':6, 'NECESSARIA INTEGRAZIONE':4, 'OTTENUTO':5 },
-      },
-      // giorno -1
-      {
-        '1A':{ 'IN ATTESA':44, 'IN REDAZIONE':14, 'IN FIRMA RDS':10, 'INVIATO':10, 'PROTOCOLLATO':9, 'PROTOCOLLATO INTEGRAZIONE':4, 'OTTENUTO':9 },
-        '1B':{ 'IN ATTESA':53, 'IN REDAZIONE':14, 'IN FIRMA RDS':9, 'INVIATO':8, 'PROTOCOLLATO':7, 'OTTENUTO':9 },
-        '2A':{ 'IN ATTESA':40, 'IN REDAZIONE':17, 'IN FIRMA RDS':10, 'INVIATO':10, 'PROTOCOLLATO':9, 'OTTENUTO':10, 'NECESSARIA INTEGRAZIONE':4 },
-        '2B':{ 'IN ATTESA':47, 'IN REDAZIONE':15, 'IN FIRMA RDS':9, 'INVIATO':9, 'PROTOCOLLATO':7, 'NECESSARIA INTEGRAZIONE':4, 'OTTENUTO':9 },
-      },
-      // oggi
-      {
-        '1A':{ 'IN ATTESA':38, 'IN REDAZIONE':14, 'IN FIRMA RDS':11, 'INVIATO':11, 'PROTOCOLLATO':10, 'PROTOCOLLATO INTEGRAZIONE':4, 'OTTENUTO':12 },
-        '1B':{ 'IN ATTESA':47, 'IN REDAZIONE':14, 'IN FIRMA RDS':10, 'INVIATO':9, 'PROTOCOLLATO':8, 'OTTENUTO':12 },
-        '2A':{ 'IN ATTESA':34, 'IN REDAZIONE':17, 'IN FIRMA RDS':11, 'INVIATO':11, 'PROTOCOLLATO':10, 'OTTENUTO':13, 'NECESSARIA INTEGRAZIONE':4 },
-        '2B':{ 'IN ATTESA':41, 'IN REDAZIONE':15, 'IN FIRMA RDS':10, 'INVIATO':10, 'PROTOCOLLATO':8, 'NECESSARIA INTEGRAZIONE':4, 'OTTENUTO':12 },
-      },
-    ];
-
-    const nuoviEntry = distribuzioni.map((dist, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
-      d.setHours(9, 0, 0, 0);
-      return { data: buildSnapshot(dist), ts: d.toISOString() };
-    });
-
-    const storicoBase = storicoEsistente.length > 1
-      ? storicoEsistente.slice(0, storicoEsistente.length - 1)
-      : storicoEsistente;
-
-    const limitato = [...storicoBase, ...nuoviEntry].slice(-STORICO_MAX_ENTRIES);
-
-    await jsonbinSave({ ...record, storico: limitato });
-    window._storicoCompleto = limitato;
-
-    status.textContent = `✅ ${nuoviEntry.length} giorni iniettati`;
-    btn.textContent = '✓ Fatto';
-    setTimeout(() => renderStoricoModal(), 300);
-
-  } catch(e) {
-    status.textContent = '❌ ' + e.message;
-    btn.disabled = false;
-    btn.textContent = 'Inietta 7 giorni demo in JSONBin';
-  }
-}
-// ─────────────────────────────────────────────────────────────────────────────
 
 
 // ── CARICAMENTO MASTER.CSV ───────────────────────────────────────────────────
@@ -6138,7 +5144,7 @@ function apriEditManuale() {
       rows += `<td><div class="em-grp">
         <input class="em-inp" type="number" min="0" step="1"
           data-lotto="${lotto}" data-gkey="${g.key}"
-          value="${val > 0 ? Math.round(val) : ''}">
+          value="${(val > 0 && isFinite(val)) ? Math.round(val) : ''}">
         ${subLabels}</div></td>`;
     });
     rows += `</tr>`;
@@ -6157,7 +5163,7 @@ function chiudiEditManuale() {
 }
 
 // ── Applica e salva su JSONBin ────────────────────────────────────────────────
-async function applicaEditManuale() {
+function applicaEditManuale() {
   const inputs = document.querySelectorAll('#emTableWrap .em-inp');
   const totPerLotto = {};
   inputs.forEach(inp => {
@@ -6197,29 +5203,24 @@ async function applicaEditManuale() {
   badge.style.cssText = 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#fef3cd;color:#b07d10;border:1px solid #b07d1055';
 
   try {
-    const record = await jsonbinLoad();
-    record.manual_override = { data: newData, ts: new Date().toISOString() };
-    await jsonbinSave(record);
-
+    const ts = new Date().toISOString();
     window._currentData  = newData;
     window._lastDashData = newData;
-    window._prevSnapshotData = null;
     renderDashboard(newData);
     _emAggiornaClusters(newData);
     _emRemoveManualBadge();
-    _emShowManualBadge(record.manual_override.ts);
-
-    badge.textContent = '✓ Salvato su DB';
+    _emShowManualBadge(ts);
+    badge.textContent = '✓ Applicato';
     badge.style.cssText = 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#d0f0e0;color:#1F7A4E;border:1px solid #1F7A4E44';
     setTimeout(() => chiudiEditManuale(), 1200);
   } catch(e) {
-    badge.textContent = '✕ Errore salvataggio: ' + e.message;
+    badge.textContent = '✕ Errore: ' + e.message;
     badge.style.cssText = 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#fce8e8;color:#C23B22;border:1px solid #C23B2244';
   }
 }
 
 // ── Ripristina dati CSV originali ─────────────────────────────────────────────
-async function ripristinaCSV() {
+function ripristinaCSV() {
   if (!confirm('Ripristinare i dati dal CSV originale? I dati manuali salvati verranno eliminati dal database.')) return;
 
   const badge = document.getElementById('emSaveBadge');
@@ -6230,16 +5231,11 @@ async function ripristinaCSV() {
   setBadge('⏳ Ripristino…', 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#fef3cd;color:#b07d10;border:1px solid #b07d1055');
 
   try {
-    const record = await jsonbinLoad();
-    delete record.manual_override;
-    await jsonbinSave(record);
-
     const csvData = window._csvOriginalData;
     if (!csvData || !csvData.length) { location.reload(); return; }
 
     window._currentData  = csvData;
     window._lastDashData = csvData;
-    window._prevSnapshotData = null;
     renderDashboard(csvData);
     _emAggiornaClusters(csvData);
     _emRemoveManualBadge();
@@ -6823,7 +5819,7 @@ function buildCercaCard(p, query) {
   }
 
   // ── Nota pratica ──────────────────────────────────────────────
-  const notaAttuale = (_noteCache || {})[p.codice] || '';
+  const notaAttuale = ({})[p.codice] || '';
   const noteHtml = buildNoteHtml(p.codice, notaAttuale);
 
   // ── Separatore label data ─────────────────────────────────────
@@ -6884,38 +5880,16 @@ function buildCercaCard(p, query) {
 // ══════════════════════════════════════════════════════════════════════════════
 // NOTE PER PRATICA — JSONBin
 // ══════════════════════════════════════════════════════════════════════════════
-let _noteCache = null;    // { codice: testo }
-let _noteSaving = false;
 
-async function noteLoad() {
-  if (!JSONBIN_NOTE_BIN_ID) return {};
-  if (_noteCache) return _noteCache;
-  try {
-    const data = await _jbGet(JSONBIN_NOTE_BIN_ID);
-    _noteCache = data.record || {};
-    return _noteCache;
-  } catch(e) { return {}; }
-}
-
-async function noteSave(codice, testo) {
-  if (!JSONBIN_NOTE_BIN_ID) return;
-  _noteCache = _noteCache || {};
-  if (testo.trim() === '') {
-    delete _noteCache[codice];
-  } else {
-    _noteCache[codice] = testo.trim();
-  }
-  try {
-    await _jbPut(JSONBIN_NOTE_BIN_ID, _noteCache);
-  } catch(e) { console.warn('Errore salvataggio nota:', e); }
-}
+async function noteLoad() { return {}; }
+async function noteSave() {}
 
 function buildNoteHtml(codice, notaAttuale) {
   const id = 'nota_' + codice.replace(/\//g,'_');
-  const hasBin = !!JSONBIN_NOTE_BIN_ID;
+  const hasBin = false;
   if (!hasBin) {
     return `<div style="margin-top:8px;padding:6px 8px;background:var(--surface2);border:1px dashed var(--border2);border-radius:5px;font-size:9px;color:var(--muted2)">
-      ⚙️ Configura <code>JSONBIN_NOTE_BIN_ID</code> per abilitare le note
+      ⚙️ Note non disponibili in questa versione
     </div>`;
   }
   return `<div style="margin-top:8px">
