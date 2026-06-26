@@ -652,6 +652,7 @@
       // Dati dal change (locali) + dati arricchiti dal backend (_stato_attuale ecc.)
       const lunghezza    = c.lunghezza || c.LUNGHEZZA || '';
       const origPratica  = c.original_pratica || c.PRATICA || '';
+      const lotto        = c._lotto || '';
       const statoAttuale = c._stato_attuale || '';
       const drAttuale    = c._data_richiesta || '';
       const dumAttuale   = c._data_ult_mod || '';
@@ -693,7 +694,11 @@
               ${drAttuale ? `<div class="detail-field"><span class="detail-field-key">Data richiesta</span><span class="detail-field-val">${escapeHtml(drAttuale)}</span></div>` : ''}
               ${dumAttuale ? `<div class="detail-field"><span class="detail-field-key">Ultima modifica</span><span class="detail-field-val">${escapeHtml(dumAttuale)}</span></div>` : ''}
               ${daAttuale ? `<div class="detail-field"><span class="detail-field-key">Data approvazione</span><span class="detail-field-val">${escapeHtml(daAttuale)}</span></div>` : ''}
-              ${origPratica ? `<div class="detail-field"><span class="detail-field-key">Codice pratica</span><span class="detail-field-val">${escapeHtml(origPratica)}</span></div>` : ''}
+              ${origPratica ? `<div class="detail-field"><span class="detail-field-key">Codice pratica</span><span class="detail-field-val">${escapeHtml(
+  (tipo==='AUTORIZZAZIONE'?'AUT':tipo==='NULLA OSTA'?'NO':tipo==='ORDINANZA'?'ORD':(tipo||'').substring(0,3))
+  + '/' + origPratica
+  + (lotto ? '/' + lotto : '')
+)}</span></div>` : ''}
               ${lunghezza && lunghezza !== '—' ? `<div class="detail-field"><span class="detail-field-key">Lunghezza</span><span class="detail-field-val">${escapeHtml(String(lunghezza))} m</span></div>` : ''}
               ${!statoAttuale ? '<span style="color:var(--muted);font-size:11px">Dati non trovati nel CSV</span>' : ''}
             </div>
@@ -715,7 +720,7 @@
     const nCh = (s.changes||[]).length;
     $('detailsBody').innerHTML = `
       <div style="padding:14px 16px">
-        <div class="detail-label" style="margin-bottom:12px">${nCh} pratica${nCh!==1?'che':''} coinvolg${nCh!==1?'ono':'e'}</div>
+        <div class="detail-label" style="margin-bottom:12px">${nCh} ${nCh!==1?'Pratiche':'Pratica'} coinvolte</div>
         ${changesHtml}
         ${summaryHtml}
       </div>`;
