@@ -566,7 +566,8 @@
         latestMap.set(key, p);
       }
     });
-    const deduplicated = Array.from(latestMap.values());
+    // Escludi pratiche già ottenute — non hanno senso da aggiornare
+    const deduplicated = Array.from(latestMap.values()).filter(p => (p.STATO_PERMESSO || '').trim() !== 'OTTENUTO');
     const rows = deduplicated.filter(p => !f || JSON.stringify(p).toLowerCase().includes(f));
     if (!rows.length){ $('pratBody').innerHTML = '<tr><td colspan="9" class="empty">Nessuna pratica</td></tr>'; return; }
     // Salva l'array corrente filtrato per recuperare la riga al click
