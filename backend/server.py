@@ -1467,7 +1467,7 @@ async def reject_pending(
 
 SOLLECITI_COLS = ["_id", "tratta_id", "pratica", "ente", "tipo_permesso", "stato_permesso",
                   "lunghezza", "data_richiesta", "data_ultima_modifica",
-                  "tipo_sollecito", "data_sollecito", "note", "impresa", "created_at"]
+                  "numero_sollecito", "tipo_sollecito", "data_sollecito", "note", "impresa", "created_at"]
 
 
 async def _build_solleciti_csv() -> bytes:
@@ -1536,6 +1536,10 @@ async def add_sollecito(payload: dict, sess: dict = Depends(_require_session)):
     lunghezza    = str((payload or {}).get("lunghezza", "")).strip()
     data_rich    = str((payload or {}).get("data_richiesta", "")).strip()
     data_ult_mod = str((payload or {}).get("data_ultima_modifica", "")).strip()
+    try:
+        numero_sol = int((payload or {}).get("numero_sollecito") or 1)
+    except (TypeError, ValueError):
+        numero_sol = 1
 
     if not tratta_id:
         raise HTTPException(400, "tratta_id obbligatorio")
@@ -1557,6 +1561,7 @@ async def add_sollecito(payload: dict, sess: dict = Depends(_require_session)):
         "lunghezza":           lunghezza,
         "data_richiesta":      data_rich,
         "data_ultima_modifica": data_ult_mod,
+        "numero_sollecito":    numero_sol,
         "created_at":          _now_iso(),
     }
     res = await solleciti_col.insert_one(record)
@@ -1592,6 +1597,7 @@ async def bulk_insert_solleciti(payload: dict, sess: dict = Depends(_require_ses
             "lunghezza":           str(item.get("lunghezza", "")).strip(),
             "data_richiesta":      str(item.get("data_richiesta", "")).strip(),
             "data_ultima_modifica": str(item.get("data_ultima_modifica", "")).strip(),
+            "numero_sollecito":    int(item.get("numero_sollecito") or 1),
             "created_at":          _now_iso(),
         }
         res = await solleciti_col.insert_one(record)
