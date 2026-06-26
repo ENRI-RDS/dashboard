@@ -451,21 +451,58 @@
 </div><!-- /main -->
 
 <script>
-// ── DATI LOTTI ──────────────────────────────────────────────────────────────
-const LOTTI = [
-  { cl:'1', id:'1A',  prov:['MI'],               comuni:3,  stato:'in-corso',     pct:54, metri:16933 },
-  { cl:'1', id:'1B',  prov:['MI'],               comuni:3,  stato:'in-corso',     pct:38, metri:8524  },
-  { cl:'2', id:'2A',  prov:['MI','PV'],           comuni:5,  stato:'in-corso',     pct:22, metri:11611 },
-  { cl:'2', id:'2B',  prov:['MI'],               comuni:4,  stato:'sospeso',      pct:31, metri:15330 },
-  { cl:'3', id:'1',   prov:['BG','MI'],           comuni:20, stato:'in-corso',     pct:14, metri:50924 },
-  { cl:'3', id:'2',   prov:['MB','MI'],           comuni:16, stato:'allestimento', pct:0,  metri:48530 },
-  { cl:'3', id:'3',   prov:['BG','MI'],           comuni:13, stato:'allestimento', pct:0,  metri:46252 },
-  { cl:'4', id:'4',   prov:['BG','CR','MI','PV'], comuni:19, stato:'non-avviato',  pct:0,  metri:56003 },
-  { cl:'3', id:'5',   prov:['MI','PV'],           comuni:9,  stato:'non-avviato',  pct:0,  metri:48333 },
-  { cl:'6', id:'6',   prov:['MI'],               comuni:13, stato:'non-avviato',  pct:0,  metri:58050 },
-  { cl:'5', id:'7',   prov:['BG'],               comuni:15, stato:'non-avviato',  pct:0,  metri:47184 },
-  { cl:'7', id:'8',   prov:['MI','PV'],           comuni:5,  stato:'allestimento', pct:0,  metri:19617 },
-];
+// ── DATI LOTTI — caricati da API /api/cantieri ───────────────────────────────
+let LOTTI = [];
+
+// Mappa stato MongoDB → stato UI (per compatibilità con il codice esistente)
+const STATO_MAP = {
+  non_avviato: 'non-avviato', allestimento: 'allestimento',
+  in_corso: 'in-corso', sospeso: 'sospeso', completato: 'completato'
+};
+
+async function _loadCantieri() {
+  try {
+    const apiBase = (window.ENRI && window.ENRI.apiBase)
+      || localStorage.getItem('enri_api_base') || '';
+    const res = await fetch(apiBase + '/api/cantieri', { cache: 'no-cache' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const d = await res.json();
+    const cantieri = d.cantieri || [];
+
+    // Aggrega per lotto: somma metri, stato = stato più indietro del lotto
+    const STATO_RANK = { 'non-avviato':0, 'allestimento':1, 'sospeso':2, 'in-corso':3, 'completato':4 };
+    const byLotto = {};
+    cantieri.forEach(r => {
+      const lotto   = r.lotto   || '?';
+      const cluster = r.cluster || '?';
+      const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
+      if (!byLotto[lotto]) {
+        byLotto[lotto] = { id: lotto, cl: cluster, metri: 0, scavati: 0,
+                           stato: statoUI, tratte: [] };
+      }
+      byLotto[lotto].metri   += r.metri_totali   || 0;
+      byLotto[lotto].scavati += r.metri_scavati  || 0;
+      byLotto[lotto].tratte.push(r.tratta_id);
+      // Stato del lotto = stato peggiore tra le tratte
+      if (STATO_RANK[statoUI] < STATO_RANK[byLotto[lotto].stato]) {
+        byLotto[lotto].stato = statoUI;
+      }
+    });
+
+    LOTTI = Object.values(byLotto).map(l => ({
+      cl:     l.cl,
+      id:     l.id,
+      stato:  l.stato,
+      pct:    l.metri > 0 ? Math.round(l.scavati / l.metri * 100) : 0,
+      metri:  Math.round(l.metri),
+      tratte: l.tratte,
+    }));
+  } catch(e) {
+    console.warn('[scavi] _loadCantieri:', e.message);
+    LOTTI = [];
+  }
+  _renderAll();
+}
 
 const CLUSTER_LABEL = {
   '1':'Milano urbano',
@@ -493,7 +530,17 @@ const STATO_ORDER = ['in-corso','allestimento','sospeso','completato','non-avvia
 
 function fmt(n){ return Math.round(n).toLocaleString('it-IT'); }
 
+// ── RENDER ALL (chiamata dopo fetch API) ─────────────────────────────────────
+function _renderAll() {
+  _renderKpi();
+  _renderBars();
+  _renderClusters();
+  _renderRadar();
+  _renderTabella();
+}
+
 // ── KPI COUNTERS ────────────────────────────────────────────────────────────
+function _renderKpi() {
 const counts = { 'non-avviato':0, 'allestimento':0, 'in-corso':0, 'completato':0, 'sospeso':0 };
 LOTTI.forEach(r => { if(counts[r.stato]!==undefined) counts[r.stato]++; });
 document.getElementById('kpiNav').textContent = counts['non-avviato'];
@@ -501,6 +548,7 @@ document.getElementById('kpiAll').textContent = counts['allestimento'];
 document.getElementById('kpiCor').textContent = counts['in-corso'];
 document.getElementById('kpiCom').textContent = counts['completato'];
 document.getElementById('kpiSos').textContent = counts['sospeso'];
+}
 
 // ── HELPERS (portati da index.html) ─────────────────────────────────────────
 const tooltip = document.getElementById('tooltip');
@@ -544,8 +592,7 @@ function makeSeg(pct, color, label, metriVal, isGrey) {
 }
 
 // ── CLUSTER BARS ─────────────────────────────────────────────────────────────
-
-// Aggrega per cluster → { stato: metri }
+function _renderClusters() {
 const clMap = {}, clTot = {};
 LOTTI.forEach(r => {
   if (!clMap[r.cl]) { clMap[r.cl] = {}; clTot[r.cl] = 0; }
@@ -611,9 +658,12 @@ Object.keys(clMap).sort((a,b)=>+a-+b).forEach(cl => {
   row.appendChild(metersEl);
   clusterContainer.appendChild(row);
 });
+}
 
 // ── BARRE PER LOTTO ─────────────────────────────────────────────────────────
+function _renderBars() {
 const barContainer = document.getElementById('barContainer');
+barContainer.innerHTML = '';
 LOTTI.forEach(r => {
   const col = STATO_COLOR[r.stato];
   const isInactive = r.stato === 'non-avviato';
@@ -651,8 +701,10 @@ LOTTI.forEach(r => {
   row.appendChild(mEl);
   barContainer.appendChild(row);
 });
+}
 
 // ── TABELLA ─────────────────────────────────────────────────────────────────
+function _renderTabella() {
 const tbody = document.getElementById('tablebody');
 tbody.innerHTML = LOTTI.map(r => {
   const col   = STATO_COLOR[r.stato];
@@ -670,8 +722,10 @@ tbody.innerHTML = LOTTI.map(r => {
     <td style="text-align:right;font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(r.metri)}</td>
   </tr>`;
 }).join('');
+}
 
 // ── DONUT CHART (canvas, stile index) ───────────────────────────────────────
+function _renderRadar() {
 (function renderDonut() {
   const STATI_DONUT = [
     { label:'In corso',        key:'in-corso',     color:'#0B3182' },
@@ -792,6 +846,7 @@ tbody.innerHTML = LOTTI.map(r => {
   });
   canvas.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
 })();
+}
 
 // ── MODAL LOTTO ──────────────────────────────────────────────────────────────
 function openModalLotto(r) {
@@ -982,6 +1037,8 @@ window.addEventListener('DOMContentLoaded', () => {
   const u = localStorage.getItem('_enri_user');
   if (!u) { document.getElementById('authGuard').style.display='flex'; return; }
   document.getElementById('topbarUser').textContent = u;
+  // Carica dati reali da API
+  _loadCantieri();
 });
 </script>
 
