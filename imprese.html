@@ -190,6 +190,22 @@
               <option value="NO">NO</option>
             </select>
           </div>
+          <div>
+            <label>Polizza necessaria</label>
+            <select id="fld-polizza">
+              <option value="">—</option>
+              <option value="SI">SI</option>
+              <option value="NO">NO</option>
+            </select>
+          </div>
+          <div>
+            <label>Convenzione</label>
+            <select id="fld-convenzione">
+              <option value="">—</option>
+              <option value="SI">SI</option>
+              <option value="NO">NO</option>
+            </select>
+          </div>
           <!-- Tratte NO: visibile solo se Nulla Osta Necessario = SI -->
           <div id="wrap-upd-no-tratte" style="display:none;grid-column:span 2">
             <label>Tratte che richiedono Nulla Osta</label>
@@ -278,14 +294,6 @@
           <div>
             <label>Ordinanza necessaria</label>
             <select id="new-ord-nec"><option value=""></option><option>SI</option><option>NO</option></select>
-          </div>
-          <div>
-            <label>Convenzione</label>
-            <select id="new-convenzione"><option value=""></option><option>SI</option><option>NO</option></select>
-          </div>
-          <div>
-            <label>Polizza</label>
-            <select id="new-polizza"><option value=""></option><option>SI</option><option>NO</option></select>
           </div>
           <div style="grid-column:span 2">
             <label>Note</label>
@@ -606,6 +614,8 @@
     $('wrap-upd-no-nec').style.display = isAut ? '' : 'none';
     $('wrap-upd-no-tratte').style.display = 'none';
     $('fld-no-nec').value = SELECTED['NULLA OSTA NECESSARIO'] || '';
+    $('fld-polizza').value = SELECTED['POLIZZA ']?.trim() || '';
+    $('fld-convenzione').value = SELECTED['CONVENZIONE']?.trim() || '';
     if (isAut) {
       const pratNum = String(SELECTED.PRATICA || '').trim();
       const tutteTratte = pratNum ? [...new Set(PRATICHE
@@ -788,6 +798,11 @@
     const noteVal = $('fld-note').value.trim();
     if (noteVal) fields.NOTE = noteVal;
 
+    const polizza = $('fld-polizza').value;
+    if (polizza) fields['POLIZZA '] = polizza;
+    const convenzione = $('fld-convenzione').value;
+    if (convenzione) fields['CONVENZIONE'] = convenzione;
+
     // Nulla Osta Necessario (solo per AUTORIZZAZIONE)
     const noNec = $('fld-no-nec').value;
     if (noNec) {
@@ -874,8 +889,6 @@
       "DATA_APPROVAZIONE":    "",
       "NULLA OSTA NECESSARIO": $('new-tipo').value === 'AUTORIZZAZIONE' ? $('new-no-nec')?.value || '' : '',
       "ORDINANZA NECESSARIA": $('new-ord-nec').value,
-      "CONVENZIONE":          $('new-convenzione').value,
-      "POLIZZA ":             $('new-polizza').value,
       "PRATICA":              pratica,
       "N_SED":                $('new-nsed').value.trim(),
       "NOTE":                 $('new-note').value.trim(),
