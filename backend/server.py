@@ -1336,6 +1336,11 @@ async def list_pending(
                 ch["_data_richiesta"]    = str(row.get("DATA_RICHIESTA", "") or "")
                 ch["_data_ult_mod"]      = str(row.get("DATA_ULTIMA_MODIFICA", "") or "")
                 ch["_data_approvazione"] = str(row.get("DATA_APPROVAZIONE", "") or "")
+                # Ricava lotto da Source.Name (es. "Lotto1.xlsx" → "1A", "Lotto3.xlsx" → "3A")
+                src = str(row.get("Source.Name", "") or "")
+                import re as _re
+                lm = _re.search(r'[Ll]otto\s*(\w+)', src)
+                ch["_lotto"] = lm.group(1) if lm else ""
     except Exception as e:
         print(f"[pending-updates] enrich error: {e}")
 
