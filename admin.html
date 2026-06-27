@@ -122,7 +122,7 @@
   .pend-card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.05);transition:box-shadow .15s}
   .pend-card:hover{box-shadow:0 3px 10px rgba(0,0,0,.09)}
   .pend-card-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
-  .pend-card-body{font-size:11.5px;color:#374151;line-height:1.6}
+  .pend-card-body{font-size:11.5px;color:var(--gray-700);line-height:1.6}
   .pend-tag{display:inline-flex;align-items:center;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
   .pend-actions{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   pre.preview{background:#0E1116;color:#D6DEEB;padding:14px;border-radius:8px;overflow:auto;font-family:var(--font-mono);font-size:11.5px;max-height:50vh;white-space:pre;line-height:1.5}
@@ -204,7 +204,7 @@
       <div class="tabbar">
         <button class="tab active" data-tab="files" data-testid="tab-files">File correnti</button>
         <button class="tab" data-tab="uploads" data-testid="tab-uploads">Storico versioni</button>
-        <button class="tab" data-tab="pending" data-testid="tab-pending">Coda imprese <span id="pendingBadge" style="display:none;background:#FEF3C7;color:#B45309;border-radius:999px;padding:1px 7px;font-size:10px;margin-left:5px"></span></button>
+        <button class="tab" data-tab="pending" data-testid="tab-pending">Coda imprese <span id="pendingBadge" style="display:none;background:var(--retelit-ice);color:var(--retelit-teal);border-radius:999px;padding:1px 7px;font-size:10px;margin-left:5px"></span></button>
         <button class="tab" data-tab="assign" data-testid="tab-assign">Assegnazioni imprese</button>
       </div>
 
@@ -291,7 +291,7 @@
       <div class="modal-title" id="confirmTitle">Conferma</div>
       <button class="modal-close" id="confirmClose">&times;</button>
     </div>
-    <p id="confirmMsg" style="color:#374151;font-size:14px;line-height:1.5;margin:0 0 16px"></p>
+    <p id="confirmMsg" style="color:var(--gray-700);font-size:14px;line-height:1.5;margin:0 0 16px"></p>
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-ghost" id="confirmCancel">Annulla</button>
       <button class="btn" id="confirmOk">Conferma</button>
@@ -308,7 +308,7 @@
       </div>
       <button class="modal-close" id="rejectClose">&times;</button>
     </div>
-    <p style="color:#374151;font-size:13px;margin:0 0 8px">Motivo del rifiuto (opzionale):</p>
+    <p style="color:var(--gray-700);font-size:13px;margin:0 0 8px">Motivo del rifiuto (opzionale):</p>
     <textarea id="rejectNote" style="width:100%;min-height:80px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical;box-sizing:border-box" placeholder="es. Dati incompleti, verificare con l'impresa…"></textarea>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
       <button class="btn btn-ghost" id="rejectCancel">Annulla</button>
@@ -451,7 +451,7 @@
         return;
       }
       const originLabel = { impresa: 'Approvazione impresa', derived: 'Rigenerato automaticamente', admin: 'Upload manuale' };
-      const originColor  = { impresa: '#1d4ed8', derived: '#7c3aed', admin: '#6b7280' };
+      const originColor  = { impresa: 'var(--retelit-blue)', derived: 'var(--retelit-teal)', admin: 'var(--gray-500)' };
       filesBody.innerHTML = d.files.map(f => {
         const origin = f.upload_source || 'admin';
         const originTitle = f.note ? `${originLabel[origin] || origin} — ${escapeHtml(f.note)}` : (originLabel[origin] || origin);
@@ -462,7 +462,7 @@
           <td>${f.versions || (f.source === 'disk' ? '—' : 1)}</td>
           <td class="mono" style="font-size:12px;white-space:nowrap" title="${f.modified ? new Date(f.modified).toLocaleString('it-IT') : ''}">${f.modified ? fmtDate(f.modified) : '—'}</td>
           <td>${f.source === 'mongo'
-            ? `<span style="font-size:11px;color:${originColor[origin]||'#6b7280'};font-weight:600;white-space:nowrap" title="${originTitle}">${originLabel[origin] || origin}</span>`
+            ? `<span style="font-size:11px;color:${originColor[origin]||'var(--gray-500)'};font-weight:600;white-space:nowrap" title="${originTitle}">${originLabel[origin] || origin}</span>`
             : '<span style="font-size:11px;color:var(--muted)">—</span>'}</td>
           <td class="actions">
             <div class="actions-row">
@@ -663,7 +663,7 @@
   function showDetails(s) {
     const typeLabel = s.type === 'update' ? 'Aggiornamento' : 'Nuova pratica';
     $('detailsTitle').textContent = `${typeLabel} — ${s.nome}`;
-    const statusColor = {pending:'#f59e0b',approved:'var(--retelit-sky)',rejected:'#ef4444'}[s.status]||'#6b7280';
+    const statusColor = {pending:'#f59e0b',approved:'var(--retelit-sky)',rejected:'#ef4444'}[s.status]||'var(--gray-500)';
     $('detailsSub').innerHTML = `Inviato: ${new Date(s.submitted_at).toLocaleString('it-IT')}  <span style="display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:600;background:${statusColor}22;color:${statusColor}">${s.status}</span>`;
     const fieldLabels = {
       STATO_PERMESSO:'Nuovo stato', DATA_RICHIESTA:'Data richiesta',
@@ -675,6 +675,33 @@
       const ente   = c.ente   || c.ENTE   || '';
       const tipo   = c.tipo_permesso || c.TIPO_PERMESSO || '';
       const fields = c.fields || {};
+
+      if (s.type === 'new') {
+        // Nuova pratica: mostra tutti i campi della riga
+        const rows = [
+          ['Lotto',         c['Source.Name'] || '—'],
+          ['Tratta',        tratta],
+          ['Ente',          ente || '—'],
+          ['Tipo permesso', tipo || '—'],
+          ['Stato iniziale',c.STATO_PERMESSO || 'IN REDAZIONE'],
+          ['Pratica N°',    c.PRATICA || '—'],
+          ['NO Necessario', c['NULLA OSTA NECESSARIO'] || '—'],
+          ['Ordinanza',     c['ORDINANZA NECESSARIA'] || '—'],
+          ['N_SED',         c.N_SED || '—'],
+          ['Note',          c.NOTE || '—'],
+        ].filter(([,v]) => v && v !== '—');
+        return `<div class="detail-change" style="background:var(--retelit-ice);border:1px solid var(--retelit-mist)">
+          <div class="detail-change-header" style="color:var(--retelit-teal)">
+            ✦ Nuova pratica — Tratta ${escapeHtml(tratta)}
+            ${ente ? `<span style="font-weight:400;color:var(--muted)"> · ${escapeHtml(ente)}</span>` : ''}
+            ${tipo ? `<span style="font-weight:400;color:var(--muted)"> · ${escapeHtml(tipo)}</span>` : ''}
+          </div>
+          ${rows.map(([k,v]) => `<div class="detail-field">
+            <span class="detail-field-key">${escapeHtml(k)}</span>
+            <span class="detail-field-val">${escapeHtml(String(v))}</span>
+          </div>`).join('')}
+        </div>`;
+      }
 
       // Dati dal change (locali) + dati arricchiti dal backend (_stato_attuale ecc.)
       const lunghezza    = c.lunghezza || c.LUNGHEZZA || '';
@@ -688,7 +715,7 @@
         'NECESSARIA INTEGRAZIONE':'#D08A1A','IN FIRMA RDS':'#41BBD9',
         'IN REDAZIONE':'#6B7685','NO COMPETENZA':'#C0392B',
         'PROTOCOLLATO INTEGRAZIONE':'#436A93','IN REDAZIONE INTEGRAZIONE':'#1A7D99'
-      }[statoAttuale] || '#374151';
+      }[statoAttuale] || 'var(--gray-700)';
 
       // Campi richiesti dall'impresa
       const colonneRichiesta = Object.entries(fields).map(([k,v]) => {
@@ -697,7 +724,7 @@
           'OTTENUTO':'#1E9E6A','INVIATO':'#043F75','PROTOCOLLATO':'#1A7D99',
           'NECESSARIA INTEGRAZIONE':'#D08A1A','IN FIRMA RDS':'#41BBD9',
           'IN REDAZIONE':'#6B7685','NO COMPETENZA':'#C0392B'
-        }[String(v)]||'#374151') : '#374151';
+        }[String(v)]||'var(--gray-700)') : 'var(--gray-700)';
         return `<div class="detail-field">
           <span class="detail-field-key">${escapeHtml(fieldLabels[k]||k)}</span>
           <span class="detail-field-val" style="color:${sc}">${escapeHtml(String(v||'—'))}</span>
@@ -705,13 +732,13 @@
       }).join('') || '<span style="color:var(--muted);font-size:11px">Nessun campo modificato</span>';
 
       // Header badge tipo permesso
-      const tipoBadgeColor = tipo==='AUTORIZZAZIONE'?'#1d4ed8':tipo==='NULLA OSTA'?'#7c3aed':'#374151';
+      const tipoBadgeColor = tipo==='AUTORIZZAZIONE'?'var(--retelit-blue)':tipo==='NULLA OSTA'?'var(--retelit-teal)':'var(--gray-700)';
 
       return `
         <div class="detail-change">
           <div class="detail-change-header">
             <span style="font-family:var(--font-mono);font-size:12px;background:#f1f5f9;padding:2px 8px;border-radius:5px;border:1px solid #e2e8f0">Tratta ${escapeHtml(tratta)}</span>
-            ${ente ? `<span style="font-weight:500;color:#374151">${escapeHtml(ente)}</span>` : ''}
+            ${ente ? `<span style="font-weight:500;color:var(--gray-700)">${escapeHtml(ente)}</span>` : ''}
             ${tipo ? `<span class="pend-tag" style="background:${tipoBadgeColor}15;color:${tipoBadgeColor};font-size:9.5px">${escapeHtml(tipo)}</span>` : ''}
           </div>
           <div class="detail-cols">
@@ -740,7 +767,7 @@
     if (s.summary) {
       summaryHtml = `<div class="detail-section" style="margin-top:12px">
         <div class="detail-label">Risultato approvazione</div>
-        <div style="font-size:12px;color:#374151">
+        <div style="font-size:12px;color:var(--gray-700)">
           ${s.summary.updated||0} aggiornate · ${s.summary.added||0} aggiunte · ${s.summary.not_found||0} non trovate
         </div></div>`;
     }
@@ -818,24 +845,34 @@
       }
       $('pendingBody').innerHTML = d.submissions.map(s => {
         const isUpdate = s.type === 'update';
-        const accentColor = isUpdate ? 'var(--retelit-blue)' : 'var(--retelit-sky)';
-        const typeIcon = isUpdate ? '⟳' : '+';
+        const accentColor = isUpdate ? 'var(--retelit-blue)' : 'var(--retelit-teal)';
+        const typeIcon = isUpdate ? '+' : 'NEW';
         const typeLabel = isUpdate ? 'Aggiornamento' : 'Nuova pratica';
-        const stBg = s.status==='pending'?'#FEF3C7':s.status==='approved'?'#EBFBEE':'#FEE2E2';
-        const stFg = s.status==='pending'?'#B45309':s.status==='approved'?'#2B8A3E':'#B91C1C';
+        const stBg = s.status==='pending'?'var(--retelit-ice)':s.status==='approved'?'#EBFBEE':'#FEE2E2';
+        const stFg = s.status==='pending'?'var(--retelit-teal)':s.status==='approved'?'#2B8A3E':'var(--err)';
         const stLabel = s.status==='pending'?'In attesa':s.status==='approved'?'Approvato':'Rifiutato';
         const n = (s.changes||[]).length;
         // tratte coinvolte
         const tratte = [...new Set((s.changes||[]).map(c => c.tratta_id||c.TRATTA_ID||'').filter(Boolean))];
         const tratteHtml = tratte.slice(0,4).map(t =>
-          `<span style="font-family:var(--font-mono);font-size:10px;background:#f1f5f9;padding:1px 6px;border-radius:4px;border:1px solid #e2e8f0">${escapeHtml(t)}</span>`
+          `<span style="font-family:var(--font-mono);font-size:10px;background:var(--gray-100);padding:1px 6px;border-radius:4px;border:1px solid var(--gray-200)">${escapeHtml(t)}</span>`
         ).join(' ') + (tratte.length > 4 ? ` <span style="color:var(--muted);font-size:10px">+${tratte.length-4}</span>` : '');
-        // nuovo stato richiesto
-        const nuovoStato = (s.changes||[]).map(c => (c.fields||{}).STATO_PERMESSO).find(Boolean) || '';
+        let bodyExtra = '';
+        if (isUpdate) {
+          const nuovoStato = (s.changes||[]).map(c => (c.fields||{}).STATO_PERMESSO).find(Boolean) || '';
+          bodyExtra = nuovoStato ? `<span style="margin-left:4px;font-size:11px">→ <b style="color:var(--retelit-teal)">${escapeHtml(nuovoStato)}</b></span>` : '';
+        } else {
+          const first = (s.changes||[])[0] || {};
+          const ente  = first.ENTE || '—';
+          const tipo  = first.TIPO_PERMESSO || '—';
+          const lotto = first['Source.Name'] || '—';
+          bodyExtra = `<span style="font-size:11px;background:var(--retelit-ice);color:var(--retelit-teal);padding:1px 8px;border-radius:4px;font-weight:700;letter-spacing:0.08em;border:1px solid var(--retelit-mist)">NUOVA</span>
+            <span style="font-size:11px;color:var(--muted)">${escapeHtml(lotto)} · ${escapeHtml(tipo)} · ${escapeHtml(ente)}</span>`;
+        }
         const actions = s.status === 'pending' ? `
           <button class="btn btn-xs" data-act="approve" data-id="${s._id}" style="background:var(--ok);font-size:11px" data-testid="approve-${s._id}">✓ Approva</button>
           <button class="btn btn-danger btn-xs" data-act="reject" data-id="${s._id}" style="font-size:11px" data-testid="reject-${s._id}">✗ Rifiuta</button>` : '';
-        return `<div class="pend-card" style="border-left:3px solid ${accentColor}">
+        return `<div class="pend-card" style="border-left:3px solid ${accentColor}${isUpdate ? '' : ';background:var(--retelit-ice)'}">
           <div class="pend-card-head">
             <span class="pend-tag" style="background:${accentColor}18;color:${accentColor}">${typeIcon} ${escapeHtml(typeLabel)}</span>
             <span style="font-weight:700;font-size:13px">${escapeHtml(s.nome)}</span>
@@ -846,7 +883,7 @@
             <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px">
               <span style="color:var(--muted);font-size:11px">${n} pratica${n!==1?'che':''}</span>
               ${tratteHtml}
-              ${nuovoStato ? `<span style="margin-left:4px;font-size:11px">→ <b style="color:#7c3aed">${escapeHtml(nuovoStato)}</b></span>` : ''}
+              ${bodyExtra}
             </div>
           </div>
           <div class="pend-actions">
