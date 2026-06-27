@@ -1423,7 +1423,7 @@ window.loadXLSX = (function(){
 
       return '<tr data-sed="'+((d.nSed||d.tratta||'').replace(/"/g,'&quot;'))+'" style="border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'\'" onclick="openSedModal(this.dataset.sed)">'
         +'<td class="tbl-td" style="padding:6px 14px;font-size:11px;font-weight:700;color:var(--accent);font-family:\'JetBrains Mono\',monospace">'+(d.nSed||'—')+'</td>'
-        +'<td class="tbl-td" style="padding:6px 10px;font-size:10px;white-space:nowrap">'+(pratiche ? pratiche.map(function(p){var pfx=p.tipo==='AUTORIZZAZIONE'?'AUT':p.tipo==='NULLA OSTA'?'NO':p.tipo==='ORDINANZA'?'ORD':(p.tipo||'').substring(0,3);return '<span style="display:inline-block;margin:1px 2px;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;background:var(--surface2);color:var(--accent);border:1px solid var(--border2)">'+pfx+'/'+p.prat+'/'+p.lotto+'</span>';}).join('') : '<span style="color:var(--muted2)">—</span>')+'</td>'
+        +'<td class="tbl-td" style="padding:6px 10px;font-size:10px;white-space:nowrap">'+(pratiche ? (function(){ var seen={}; return pratiche.filter(function(p){ var pfx=p.tipo==='AUTORIZZAZIONE'?'AUT':p.tipo==='NULLA OSTA'?'NO':p.tipo==='ORDINANZA'?'ORD':(p.tipo||'').substring(0,3); var k=pfx+'/'+p.prat+'/'+p.lotto; if(seen[k]) return false; seen[k]=true; return true; }).map(function(p){ var pfx=p.tipo==='AUTORIZZAZIONE'?'AUT':p.tipo==='NULLA OSTA'?'NO':p.tipo==='ORDINANZA'?'ORD':(p.tipo||'').substring(0,3); return '<span style="display:inline-block;margin:1px 2px;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;background:var(--surface2);color:var(--accent);border:1px solid var(--border2)">'+pfx+'/'+p.prat+'/'+p.lotto+'</span>'; }).join(''); })() : '<span style="color:var(--muted2)">—</span>')+'</td>'
         +'<td class="tbl-td" style="padding:8px 14px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+nameSafe+'"><span style="font-size:12px;font-weight:600;color:var(--text)">'+nameSafe+'</span></td>'
         +'<td class="tbl-td" style="padding:8px 10px"><span class="sed-tipo-chip '+d.tipo+'">'+tipoLabel+'</span></td>'
         +'<td class="tbl-td" style="padding:8px 10px"><span class="tbl-lotto-chip">'+(d.lotto||'—')+'</span></td>'
@@ -1432,7 +1432,7 @@ window.loadXLSX = (function(){
         +'<td class="tbl-td" style="padding:8px 10px;font-size:11px;color:var(--text2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+enteSafe+'">'+(d.ente||'—')+'</td>'
         +'<td class="tbl-td" style="padding:6px 10px">'+statoCell+'</td>'
         +'<td class="tbl-td" style="padding:6px 10px;font-size:11px;color:var(--text2)">'+(dataInvio||'—')+'</td>'
-        +'<td class="tbl-td" style="padding:6px 10px;text-align:right" onclick="event.stopPropagation()">'+(window._solSedBadge ? window._solSedBadge(d.nSed||d.tratta||'') : '—')+'</td>'
+        +'<td class="tbl-td" style="padding:6px 10px;text-align:right">'+(window._solSedBadge ? window._solSedBadge(d.nSed||d.tratta||'') : '—')+'</td>'
         +'</tr>';
     }).join('');
 
@@ -6294,13 +6294,50 @@ _hookScadenze();
   window._solSedBadge = function _solSedBadge(nSed) {
     const arr = (window._solBySed || {})[nSed];
     if (!arr || !arr.length) return '—';
-    return '<span class="sol-sed-badge" data-sed-nsed="' + (nSed||'').replace(/"/g,'') + '" '
+    return '<span class="sol-sed-badge" '
+      + 'onclick="event.stopPropagation();window._showSolSedPopover(event,this)" '
+      + 'data-sed-nsed="' + (nSed||'').replace(/"/g,'') + '" '
       + 'style="cursor:pointer;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;'
       + 'background:#fef3c7;color:#d97706;border:1px solid #fde68a;user-select:none" '
       + 'title="Vedi solleciti per ' + (nSed||'') + '">' + arr.length + ' ⚠</span>';
-  }
+  };
 
-  // Popover solleciti SED con smart positioning
+  // Funzione globale che mostra il popover SED solleciti con smart positioning
+  window._showSolSedPopover = function(e, badge) {
+    const box = document.getElementById('solSedPopoverBox');
+    if (!box) return;
+    const nSed = badge.dataset.sedNsed;
+    const arr  = (window._solBySed || {})[nSed] || [];
+    const rows = arr.map(function(s) {
+      const bg = s.tipo && s.tipo.includes('DIFFIDA') ? '#fef2f2' : '#fef9ec';
+      const fg = s.tipo && s.tipo.includes('DIFFIDA') ? '#b91c1c' : '#b45309';
+      return '<tr style="border-bottom:1px solid var(--border)">'
+        + '<td style="padding:4px 8px;font-size:10.5px;white-space:nowrap;color:var(--muted)">' + (s.data||'—') + '</td>'
+        + '<td style="padding:4px 8px"><span style="padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;background:' + bg + ';color:' + fg + '">' + (s.tipo||'—') + '</span></td>'
+        + '<td style="padding:4px 8px;font-size:10.5px;color:var(--text2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (s.note||'').replace(/"/g,'') + '">' + (s.note||'—') + '</td>'
+        + '</tr>';
+    }).join('');
+    box.innerHTML = '<div style="padding:8px 12px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">'
+      + '<span style="font-size:11px;font-weight:700;color:#d97706">' + nSed + ' — Solleciti (' + arr.length + ')</span>'
+      + '<span onclick="event.stopPropagation();document.getElementById(\'solSedPopoverBox\').style.display=\'none\'" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1">×</span></div>'
+      + '<table style="width:100%;border-collapse:collapse">'
+      + '<thead><tr style="background:var(--surface2)">'
+      + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">Data</th>'
+      + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">Tipo</th>'
+      + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">Note</th>'
+      + '</tr></thead><tbody>' + rows + '</tbody></table>';
+    const rect = badge.getBoundingClientRect();
+    const bw = 380, bh = 260;
+    let left = Math.min(rect.right - bw, window.innerWidth - bw - 8);
+    if (left < 8) left = 8;
+    let top = rect.bottom + 4;
+    if (top + bh > window.innerHeight - 8) top = Math.max(8, rect.top - bh - 4);
+    box.style.left = left + 'px';
+    box.style.top  = top  + 'px';
+    box.style.display = 'block';
+  };
+
+  // Popover container SED (chiusura su click esterno)
   ;(function() {
     const box = document.createElement('div');
     box.id = 'solSedPopoverBox';
@@ -6308,41 +6345,10 @@ _hookScadenze();
       + 'background:var(--surface);border:1px solid var(--border2);border-radius:8px;'
       + 'box-shadow:0 4px 20px rgba(0,0,0,.22);overflow:hidden;font-family:inherit';
     document.body.appendChild(box);
-
     document.addEventListener('click', function(e) {
-      const badge = e.target.closest('.sol-sed-badge');
-      if (!badge) { if (!e.target.closest('#solSedPopoverBox')) box.style.display = 'none'; return; }
-      e.stopPropagation();
-      const nSed = badge.dataset.sedNsed;
-      const arr  = (window._solBySed || {})[nSed] || [];
-      const rows = arr.map(function(s) {
-        const bg = s.tipo && s.tipo.includes('DIFFIDA') ? '#fef2f2' : '#fef9ec';
-        const fg = s.tipo && s.tipo.includes('DIFFIDA') ? '#b91c1c' : '#b45309';
-        return '<tr style="border-bottom:1px solid var(--border)">'
-          + '<td style="padding:4px 8px;font-size:10.5px;white-space:nowrap;color:var(--muted)">' + (s.data||'—') + '</td>'
-          + '<td style="padding:4px 8px"><span style="padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;background:' + bg + ';color:' + fg + '">' + (s.tipo||'—') + '</span></td>'
-          + '<td style="padding:4px 8px;font-size:10.5px;color:var(--text2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (s.note||'').replace(/"/g,'') + '">' + (s.note||'—') + '</td>'
-          + '</tr>';
-      }).join('');
-      box.innerHTML = '<div style="padding:8px 12px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">'
-        + '<span style="font-size:11px;font-weight:700;color:#d97706">' + nSed + ' — Solleciti (' + arr.length + ')</span>'
-        + '<span id="solSedPopClose" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1">×</span></div>'
-        + '<table style="width:100%;border-collapse:collapse">'
-        + '<thead><tr style="background:var(--surface2)">'
-        + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">Data</th>'
-        + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">Tipo</th>'
-        + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">Note</th>'
-        + '</tr></thead><tbody>' + rows + '</tbody></table>';
-      document.getElementById('solSedPopClose').onclick = function(ev) { ev.stopPropagation(); box.style.display = 'none'; };
-      const rect = badge.getBoundingClientRect();
-      const bw = 380, bh = 260;
-      let left = Math.min(rect.right - bw, window.innerWidth - bw - 8);
-      if (left < 8) left = 8;
-      let top = rect.bottom + 4;
-      if (top + bh > window.innerHeight - 8) top = Math.max(8, rect.top - bh - 4);
-      box.style.left = left + 'px';
-      box.style.top  = top  + 'px';
-      box.style.display = 'block';
+      if (!e.target.closest('#solSedPopoverBox') && !e.target.closest('.sol-sed-badge')) {
+        box.style.display = 'none';
+      }
     });
   })();
 
