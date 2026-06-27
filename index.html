@@ -4863,9 +4863,7 @@ function calcolaPrevisione(p) {
 }
 
 // Parametri previsione (modificabili dall'utente)
-window.PREV_PARAMS = JSON.parse(localStorage.getItem('ENRI_PREV_PARAMS') || 'null') || {
-  comuneMilano: 60, comune: 45, provincia: 60, anas: 90, aipo: 90, altri: 180, warnDays: 7
-};
+window.PREV_PARAMS = JSON.parse(localStorage.getItem('ENRI_PREV_PARAMS') || 'null') || { ...PREV_PARAMS_DEFAULT };
 
 function prevBadgeHtml(p) {
   const r = calcolaPrevisione(p);
@@ -5044,8 +5042,13 @@ window.addEventListener('load', () => {
   // loadData e loadCluster partono in parallelo.
   // loadCluster usa la cache in memoria se loadData ha già scaricato il CSV;
   // altrimenti fa fetch autonomamente (stesso URL, stesso TTL sessionStorage).
-  loadMaster().catch(e => console.warn('loadMaster error:', e));
-  loadData().catch(() => {}).finally(() => setTimeout(updatePrevRilascio, 600));
+  // loadMaster prima di loadData: _trattaLottoMap deve essere pronto
+  // prima che il CSV venga parsificato (evita race condition sul lotto)
+  loadMaster()
+    .catch(e => console.warn('loadMaster error:', e))
+    .finally(() => {
+      loadData().catch(() => {}).finally(() => setTimeout(updatePrevRilascio, 600));
+    });
   loadCluster().catch(e => console.warn('loadCluster error:', e));
   setTimeout(() => { if (typeof loadSolleciti === 'function') loadSolleciti().catch(e => console.warn('loadSolleciti error:', e)); }, 0);
 });
@@ -6275,7 +6278,8 @@ _hookScadenze();
         const agg = [];
         pratiche.forEach(p => {
           const prefix = p.tipo === 'AUTORIZZAZIONE' ? 'AUT' : p.tipo === 'NULLA OSTA' ? 'NO' : p.tipo === 'ORDINANZA' ? 'ORD' : (p.tipo||'').substring(0,3);
-          const codice = prefix + '/' + p.prat + '/' + p.lotto;
+          if (!prefix) return; // tipo vuoto → salta
+          const codice = prefix + '/' + (p.prat||'').trim() + '/' + (p.lotto||'').trim();
           (window._solByPratica[codice] || []).forEach(s => {
             if (!agg.some(e => e.data === s.data && e.tipo === s.tipo)) agg.push(s);
           });
