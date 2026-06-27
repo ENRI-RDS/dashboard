@@ -202,6 +202,13 @@
 
     <div class="field-row">
       <div class="field-group">
+        <label for="codice_verbale">Codice Verbale</label>
+        <input type="text" id="codice_verbale" readonly placeholder="Generato automaticamente"
+               style="background:var(--bg-input-disabled,#f4f6fa);color:var(--text-muted,#888);cursor:not-allowed;font-family:'JetBrains Mono',monospace;font-weight:600">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field-group">
         <label for="n_cantiere">N° Cantiere</label>
         <input type="text" id="n_cantiere" placeholder="es. CA/1/1A">
       </div>
@@ -390,6 +397,7 @@ function renderPreviews(){
 /* ── DATI CONDIVISI ── */
 function getF(){
   return {
+    codice_verbale:v('codice_verbale'),
     n_cantiere:v('n_cantiere'), data:fmtDate('data'), indirizzo:v('indirizzo'),
     lotto:v('lotto'), impresa:v('impresa'), ruolo:v('ruolo'), redattore:v('redattore'),
     n_foto:String(uploadedPhotos.length), gravita:gravita(),
@@ -505,6 +513,7 @@ async function generatePdf(){
 
   // ── campi e sezioni ──────────────────────────────────────
   const fields = [
+    ['Codice Verbale', f.codice_verbale || '—'],
     ['N° Cantiere', f.n_cantiere], ['Data Sopralluogo', f.data],
     ['Indirizzo / Località', f.indirizzo], ['Impresa esecutrice', f.impresa],
     ['Lotto', f.lotto], ['Ruolo redattore', f.ruolo],
@@ -651,6 +660,38 @@ async function generatePdf(){
     }
 
     const dt = f.data !== '—' ? f.data.replace(/\//g,'-') : 'data';
+
+    // ── Salva su MongoDB e ottieni codice verbale ──
+    try {
+      const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+      const token   = localStorage.getItem('_enri_session') || '';
+      const res = await fetch(apiBase + '/api/sopralluoghi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-session-token': token },
+        body: JSON.stringify({
+          data_sopralluogo:  f.data,
+          lotto:             f.lotto,
+          tratta_id:         f.n_cantiere,
+          impresa:           f.impresa,
+          referente_impresa: f.redattore,
+          referente_retelit: f.ruolo,
+          comune:            f.indirizzo,
+          tipo_intervento:   '',
+          esito:             f.gravita,
+          note:              f.note,
+          segnalazioni:      f.segnalazioni,
+          azioni_richieste:  f.azioni,
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        document.getElementById('codice_verbale').value = data.codice_verbale;
+        f.codice_verbale = data.codice_verbale;
+      }
+    } catch(apiErr) {
+      console.warn('Sopralluogo non salvato su server:', apiErr);
+    }
+
     pdf.save(`Verbale_Sopralluogo_${nc}_${dt}.pdf`);
     showToast('✓ PDF scaricato');
   } catch(e) {
