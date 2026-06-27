@@ -203,8 +203,8 @@
     <div class="field-row">
       <div class="field-group">
         <label for="codice_verbale">Codice Verbale</label>
-        <input type="text" id="codice_verbale" readonly placeholder="Generato automaticamente"
-               style="background:var(--bg-input-disabled,#f4f6fa);color:var(--text-muted,#888);cursor:not-allowed;font-family:'JetBrains Mono',monospace;font-weight:600">
+        <input type="text" id="codice_verbale" readonly placeholder="Generato all'invio"
+               style="background:#f4f6fa;color:#888;cursor:not-allowed;font-family:'JetBrains Mono',monospace;font-weight:600">
       </div>
     </div>
     <div class="field-row">
@@ -325,9 +325,9 @@
     </div>
 
     <div class="btn-row">
-      <button class="btn-download excel" onclick="generateExcel()">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
-        Esporta Excel
+      <button class="btn-download" id="btn-invia" onclick="inviaVerbale()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Invia verbale
       </button>
       <button class="btn-download pdf" onclick="generatePdf()">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -416,65 +416,40 @@ function photoRows(n){
 
 
 /* ══ EXCEL — riga singola da incollare nel master ══ */
-function generateExcel(){
+async function inviaVerbale(){
+  const btn = document.getElementById('btn-invia');
   const f = getF();
-  const nc = f.n_cantiere !== '—' ? f.n_cantiere.replace(/\s/g,'_') : 'cantiere';
-
-  const HEADERS = [
-    'N° Cantiere','Data Sopralluogo','Indirizzo / Località','Lotto',
-    'Impresa Esecutrice','Ruolo Redattore','Redatto da','Gravità anomalie',
-    'Segnalazioni / Anomalie','Azioni richieste','Scadenza azioni',
-    'Prossimo sopralluogo','Note libere','N° Foto allegate'
-  ];
-  const ROW = [
-    f.n_cantiere, f.data, f.indirizzo, f.lotto,
-    f.impresa, f.ruolo, f.redattore, f.gravita,
-    f.segnalazioni, f.azioni, f.scadenza_azioni,
-    f.prossimo_sopr, f.note, f.n_foto
-  ];
-
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([HEADERS, ROW]);
-
-  // Larghezze colonne
-  ws['!cols'] = [
-    {wch:14},{wch:16},{wch:28},{wch:10},
-    {wch:22},{wch:18},{wch:20},{wch:18},
-    {wch:40},{wch:40},{wch:16},
-    {wch:22},{wch:30},{wch:14}
-  ];
-
-  // Stile intestazioni (sfondo blu ENRI, testo bianco, grassetto)
-  const headerFill  = {patternType:'solid', fgColor:{rgb:'043F75'}};
-  const headerFont  = {bold:true, color:{rgb:'FFFFFF'}, sz:11};
-  const headerAlign = {horizontal:'center', vertical:'center', wrapText:true};
-  const dataFont    = {sz:11};
-  const dataAlign   = {vertical:'top', wrapText:true};
-
-  HEADERS.forEach((_,c) => {
-    const addr = XLSX.utils.encode_cell({r:0, c});
-    if(!ws[addr]) return;
-    ws[addr].s = {fill:headerFill, font:headerFont, alignment:headerAlign,
-                  border:{bottom:{style:'thin',color:{rgb:'FFFFFF'}}}};
-  });
-
-  ROW.forEach((_,c) => {
-    const addr = XLSX.utils.encode_cell({r:1, c});
-    if(!ws[addr]) ws[addr] = {t:'s', v:''};
-    // colora riga dati in base a gravità
-    const gravColor = f.gravita === 'Anomalia critica' ? 'FDECEA'
-                    : f.gravita === 'Anomalia media'   ? 'FFF3E0' : 'E6F4F7';
-    ws[addr].s = {fill:{patternType:'solid', fgColor:{rgb:gravColor}},
-                  font:dataFont, alignment:dataAlign};
-  });
-
-  // Altezza riga header e dati
-  ws['!rows'] = [{hpt:28},{hpt:60}];
-
-  XLSX.utils.book_append_sheet(wb, ws, 'Sopralluogo');
-  const dt = f.data !== '—' ? f.data.replace(/\//g,'-') : 'data';
-  XLSX.writeFile(wb, `Verbale_Sopralluogo_${nc}_${dt}.xlsx`);
-  showToast('✓ Excel scaricato — incolla la riga nel file master');
+  if (btn) { btn.disabled = true; btn.textContent = 'Invio…'; }
+  try {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    const token   = localStorage.getItem('_enri_session') || '';
+    const res = await fetch(apiBase + '/api/sopralluoghi', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-session-token': token },
+      body: JSON.stringify({
+        data_sopralluogo:  f.data,
+        lotto:             f.lotto,
+        tratta_id:         f.n_cantiere,
+        impresa:           f.impresa,
+        referente_impresa: f.redattore,
+        referente_retelit: f.ruolo,
+        comune:            f.indirizzo,
+        tipo_intervento:   '',
+        esito:             f.gravita,
+        note:              f.note,
+        segnalazioni:      f.segnalazioni,
+        azioni_richieste:  f.azioni,
+      })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    document.getElementById('codice_verbale').value = data.codice_verbale;
+    showToast('✓ Verbale inviato — ' + data.codice_verbale);
+  } catch(e) {
+    showToast('✗ Errore invio: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Invia verbale'; }
+  }
 }
 
 /* ══ PDF via html2canvas ══ */
@@ -660,38 +635,6 @@ async function generatePdf(){
     }
 
     const dt = f.data !== '—' ? f.data.replace(/\//g,'-') : 'data';
-
-    // ── Salva su MongoDB e ottieni codice verbale ──
-    try {
-      const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
-      const token   = localStorage.getItem('_enri_session') || '';
-      const res = await fetch(apiBase + '/api/sopralluoghi', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-session-token': token },
-        body: JSON.stringify({
-          data_sopralluogo:  f.data,
-          lotto:             f.lotto,
-          tratta_id:         f.n_cantiere,
-          impresa:           f.impresa,
-          referente_impresa: f.redattore,
-          referente_retelit: f.ruolo,
-          comune:            f.indirizzo,
-          tipo_intervento:   '',
-          esito:             f.gravita,
-          note:              f.note,
-          segnalazioni:      f.segnalazioni,
-          azioni_richieste:  f.azioni,
-        })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        document.getElementById('codice_verbale').value = data.codice_verbale;
-        f.codice_verbale = data.codice_verbale;
-      }
-    } catch(apiErr) {
-      console.warn('Sopralluogo non salvato su server:', apiErr);
-    }
-
     pdf.save(`Verbale_Sopralluogo_${nc}_${dt}.pdf`);
     showToast('✓ PDF scaricato');
   } catch(e) {
