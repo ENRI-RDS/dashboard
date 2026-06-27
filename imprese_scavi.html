@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="it" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="google" content="notranslate">
+<title>ENRI — Avanzamento Scavi · Impresa</title>
+<link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ── Retelit design tokens (§3–§5) ─────────────────────────────────────── */
+  :root {
+    --retelit-blue:#043F75; --retelit-blue-75:#436A93; --retelit-blue-50:#819FB9; --retelit-blue-25:#C0CFDC;
+    --retelit-sky:#41BBD9;  --retelit-teal:#1A7D99;   --retelit-mist:#ADCAD6;   --retelit-ice:#D3DEEA;
+    --gray-50:#F7F8FA; --gray-100:#EEF1F5; --gray-200:#DFE4EB; --gray-300:#C4CDD8;
+    --gray-400:#9AA5B4; --gray-500:#6B7685; --gray-600:#4E5866; --gray-700:#363D48; --gray-800:#22272E;
+    --ok:#1E9E6A; --ok-bg:#EBFAF3; --warn:#D08A1A; --warn-bg:#FEF7E7;
+    --danger:#C0392B; --danger-bg:#FEECEB;
+    --font-display:"Raleway","Calibri",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --font-body:"Raleway","Calibri",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --font-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+    --bg:var(--gray-50); --surface:#fff;
+    --border:var(--gray-200); --border2:var(--gray-300);
+    --text:var(--gray-700); --muted:var(--gray-500); --muted2:var(--gray-400);
+    --accent:var(--retelit-blue);
+    --radius-sm:4px; --radius-md:8px; --radius-lg:12px; --radius-xl:20px; --radius-pill:999px;
+    --shadow-sm:0 1px 2px rgba(4,63,117,.06),0 1px 1px rgba(4,63,117,.04);
+    --shadow-md:0 4px 12px rgba(4,63,117,.08),0 2px 4px rgba(4,63,117,.04);
+    --shadow-focus:0 0 0 3px rgba(65,187,217,.35);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+
+  body {
+    font-family:var(--font-body);
+    font-size:14px;
+    color:var(--text);
+    background:var(--bg);
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+  }
+
+  /* ── Topbar ─────────────────────────────────────────────────────────────── */
+  .topbar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 28px; height:58px;
+    background:var(--retelit-blue);
+    position:sticky; top:0; z-index:100;
+  }
+  .topbar-left { display:flex; align-items:center; gap:16px; }
+  .topbar-logo { height:28px; }
+  .topbar-divider { width:1px; height:20px; background:var(--retelit-blue-50); }
+  .topbar-title {
+    font-size:13px; font-weight:600; letter-spacing:.04em;
+    color:var(--retelit-ice); text-transform:uppercase;
+  }
+  .topbar-right { display:flex; align-items:center; gap:12px; }
+  .topbar-user {
+    font-size:12px; color:var(--retelit-ice); font-weight:500;
+    background:rgba(255,255,255,.1); padding:4px 12px;
+    border-radius:var(--radius-pill); border:1px solid rgba(255,255,255,.15);
+  }
+  .topbar-back {
+    font-size:12px; color:var(--retelit-sky); font-weight:600;
+    text-decoration:none; display:flex; align-items:center; gap:4px;
+    padding:4px 10px; border-radius:var(--radius-md);
+    border:1px solid var(--retelit-sky);
+    transition:background .15s;
+  }
+  .topbar-back:hover { background:rgba(65,187,217,.1); }
+
+  /* ── Auth guard ─────────────────────────────────────────────────────────── */
+  #authGuard {
+    display:none; position:fixed; inset:0; z-index:999;
+    background:var(--retelit-blue); flex-direction:column;
+    align-items:center; justify-content:center; gap:16px;
+  }
+  #authGuard p { color:var(--retelit-ice); font-size:15px; }
+  #authGuard a {
+    color:var(--retelit-sky); font-weight:600; font-size:14px;
+    text-decoration:none; border:1px solid var(--retelit-sky);
+    padding:8px 20px; border-radius:var(--radius-md);
+  }
+
+  /* ── Main layout ─────────────────────────────────────────────────────────── */
+  main { flex:1; max-width:1100px; width:100%; margin:0 auto; padding:28px 20px 60px; }
+
+  .page-header { margin-bottom:24px; }
+  .page-eyebrow {
+    font-size:10px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--retelit-teal); margin-bottom:6px;
+  }
+  .page-title {
+    font-size:24px; font-weight:800; letter-spacing:-.02em;
+    color:var(--retelit-blue); line-height:1.1;
+  }
+  .page-sub { font-size:13px; color:var(--muted); margin-top:6px; }
+
+  /* ── KPI row ─────────────────────────────────────────────────────────────── */
+  .kpi-row { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:24px; }
+  @media(max-width:800px){ .kpi-row{ grid-template-columns:repeat(3,1fr); } }
+  @media(max-width:500px){ .kpi-row{ grid-template-columns:repeat(2,1fr); } }
+  .kpi {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius-lg); padding:14px 16px;
+    box-shadow:var(--shadow-sm); position:relative; overflow:hidden;
+  }
+  .kpi::before {
+    content:''; position:absolute; top:0; left:0; bottom:0; width:3px;
+    border-radius:var(--radius-lg) 0 0 var(--radius-lg);
+  }
+  .kpi.k-nav::before  { background:var(--gray-400); }
+  .kpi.k-all::before  { background:var(--warn); }
+  .kpi.k-cor::before  { background:var(--retelit-blue); }
+  .kpi.k-sos::before  { background:var(--danger); }
+  .kpi.k-com::before  { background:var(--ok); }
+  .kpi-label { font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); font-weight:700; margin-bottom:8px; }
+  .kpi-value { font-size:28px; font-weight:800; line-height:1; letter-spacing:-.02em; }
+  .kpi.k-nav .kpi-value { color:var(--gray-400); }
+  .kpi.k-all .kpi-value { color:var(--warn); }
+  .kpi.k-cor .kpi-value { color:var(--retelit-blue); }
+  .kpi.k-sos .kpi-value { color:var(--danger); }
+  .kpi.k-com .kpi-value { color:var(--ok); }
+  .kpi-sub { font-size:10.5px; color:var(--muted); margin-top:4px; }
+
+  /* ── Toolbar ─────────────────────────────────────────────────────────────── */
+  .toolbar {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    margin-bottom:16px;
+  }
+  .toolbar-label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+
+  /* ── Cantieri grid ───────────────────────────────────────────────────────── */
+  #cantieriGrid {
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+    gap:14px;
+    margin-bottom:28px;
+  }
+  .cant-card {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius-lg); padding:16px;
+    box-shadow:var(--shadow-sm); cursor:pointer;
+    transition:box-shadow .15s, border-color .15s;
+    position:relative; overflow:hidden;
+  }
+  .cant-card:hover { box-shadow:var(--shadow-md); border-color:var(--retelit-sky); }
+  .cant-card.selected { border-color:var(--retelit-blue); box-shadow:var(--shadow-focus); }
+  .cant-card-accent {
+    position:absolute; top:0; left:0; right:0; height:3px;
+    border-radius:var(--radius-lg) var(--radius-lg) 0 0;
+  }
+  .cant-card-head {
+    display:flex; align-items:flex-start; justify-content:space-between;
+    gap:8px; margin-bottom:10px; margin-top:4px;
+  }
+  .cant-tratta {
+    font-family:var(--font-mono); font-size:13px; font-weight:700;
+    color:var(--retelit-blue);
+  }
+  .cant-lotto {
+    font-size:10px; color:var(--muted); font-weight:500;
+    background:var(--gray-100); padding:2px 8px;
+    border-radius:var(--radius-pill); border:1px solid var(--border);
+  }
+  .cant-stato-badge {
+    display:inline-flex; align-items:center;
+    padding:3px 10px; border-radius:var(--radius-pill);
+    font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+  }
+  .cant-progress-wrap { margin:10px 0 6px; }
+  .cant-progress-label {
+    display:flex; justify-content:space-between;
+    font-size:10.5px; color:var(--muted); margin-bottom:4px;
+  }
+  .cant-progress-pct { font-weight:700; color:var(--text); }
+  .cant-progress-track {
+    height:6px; background:var(--gray-100); border-radius:var(--radius-pill);
+    overflow:hidden;
+  }
+  .cant-progress-fill {
+    height:100%; border-radius:var(--radius-pill);
+    transition:width .4s ease;
+  }
+  .cant-meta {
+    display:flex; gap:12px; flex-wrap:wrap;
+    font-size:10.5px; color:var(--muted); margin-top:8px;
+  }
+  .cant-meta span { display:flex; align-items:center; gap:4px; }
+  .cant-meta strong { color:var(--text); font-weight:600; }
+  .cant-card-footer {
+    margin-top:12px; padding-top:10px; border-top:1px solid var(--border);
+    display:flex; justify-content:flex-end;
+  }
+
+  /* ── Form aggiornamento ──────────────────────────────────────────────────── */
+  #formPanel {
+    display:none;
+    background:var(--surface); border:2px solid var(--retelit-blue);
+    border-radius:var(--radius-lg); padding:24px;
+    box-shadow:var(--shadow-md); margin-bottom:28px;
+  }
+  .form-header {
+    display:flex; align-items:flex-start; justify-content:space-between;
+    gap:12px; margin-bottom:20px;
+  }
+  .form-title { font-size:15px; font-weight:700; color:var(--retelit-blue); }
+  .form-sub { font-size:12px; color:var(--muted); margin-top:3px; }
+  .form-close {
+    background:none; border:none; cursor:pointer;
+    color:var(--muted); font-size:20px; line-height:1; padding:2px;
+    flex-shrink:0;
+  }
+  .form-close:hover { color:var(--text); }
+
+  /* Avanzamento giornaliero — sezione in evidenza */
+  .daily-box {
+    background:var(--retelit-ice); border:1px solid var(--retelit-mist);
+    border-radius:var(--radius-md); padding:16px; margin-bottom:20px;
+  }
+  .daily-box-title {
+    font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.1em;
+    color:var(--retelit-teal); margin-bottom:12px;
+  }
+  .daily-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media(max-width:600px){ .daily-grid{ grid-template-columns:1fr; } }
+
+  .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media(max-width:600px){ .form-grid{ grid-template-columns:1fr; } }
+  .form-grid .span2 { grid-column:span 2; }
+  @media(max-width:600px){ .form-grid .span2{ grid-column:span 1; } }
+
+  label {
+    display:block; font-size:10.5px; font-weight:700; text-transform:uppercase;
+    letter-spacing:.06em; color:var(--muted); margin-bottom:5px;
+  }
+  input[type=text], input[type=number], input[type=date], select, textarea {
+    width:100%; padding:9px 12px; border-radius:var(--radius-md);
+    border:1px solid var(--border2); background:var(--surface);
+    font-family:var(--font-body); font-size:13px; color:var(--text);
+    transition:border-color .15s, box-shadow .15s;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline:none; border-color:var(--retelit-sky); box-shadow:var(--shadow-focus);
+  }
+  input[type=number] { font-family:var(--font-mono); font-size:14px; }
+  textarea { resize:vertical; min-height:72px; }
+
+  .input-big {
+    font-size:22px !important; font-weight:800 !important;
+    color:var(--retelit-blue) !important; text-align:right;
+    font-family:var(--font-mono) !important;
+  }
+
+  /* ── Storico ─────────────────────────────────────────────────────────────── */
+  #storicoPanel {
+    display:none; background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius-lg); padding:20px; box-shadow:var(--shadow-sm);
+    margin-bottom:28px;
+  }
+  .storico-title { font-size:13px; font-weight:700; color:var(--text); margin-bottom:14px; }
+  .storico-table { width:100%; border-collapse:collapse; font-size:12px; }
+  .storico-table th {
+    font-size:9.5px; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--retelit-teal); font-weight:700; padding:6px 10px;
+    border-bottom:2px solid var(--border); text-align:left;
+  }
+  .storico-table td { padding:8px 10px; border-bottom:1px solid var(--gray-100); }
+  .storico-table tr:last-child td { border-bottom:none; }
+  .storico-table tr:hover td { background:var(--gray-50); }
+
+  /* ── Buttons ─────────────────────────────────────────────────────────────── */
+  .btn {
+    display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    padding:9px 18px; border-radius:var(--radius-md); border:none;
+    cursor:pointer; font-family:var(--font-body); font-weight:700; font-size:13px;
+    background:var(--retelit-blue); color:#fff;
+    transition:filter .15s;
+  }
+  .btn:hover { filter:brightness(1.12); }
+  .btn:disabled { opacity:.5; cursor:not-allowed; filter:none; }
+  .btn-secondary {
+    background:transparent; color:var(--retelit-blue);
+    border:1.5px solid var(--retelit-blue);
+  }
+  .btn-secondary:hover { background:rgba(4,63,117,.06); filter:none; }
+  .btn-ghost {
+    background:transparent; color:var(--muted);
+    border:1px solid var(--border2); font-weight:500;
+  }
+  .btn-ghost:hover { background:var(--gray-100); filter:none; color:var(--text); }
+  .btn-sm { padding:6px 12px; font-size:11.5px; }
+  .btn-danger { background:var(--danger); }
+
+  /* ── Msg ─────────────────────────────────────────────────────────────────── */
+  .msg {
+    margin-top:12px; font-size:12px; font-weight:600; padding:8px 12px;
+    border-radius:var(--radius-md); display:none;
+  }
+  .msg.ok  { background:var(--ok-bg); color:var(--ok); display:block; }
+  .msg.err { background:var(--danger-bg); color:var(--danger); display:block; }
+
+  /* ── Spinner ─────────────────────────────────────────────────────────────── */
+  .spinner-wrap { display:flex; align-items:center; justify-content:center; gap:10px; padding:32px; color:var(--muted); }
+  .spinner {
+    width:20px; height:20px; border-radius:50%;
+    border:2px solid var(--border2); border-top-color:var(--retelit-blue);
+    animation:spin .7s linear infinite;
+  }
+  @keyframes spin { to{ transform:rotate(360deg); } }
+  .empty { text-align:center; color:var(--muted); padding:32px; font-size:13px; }
+
+  /* ── Stato colors ────────────────────────────────────────────────────────── */
+  .s-non_avviato  { background:var(--gray-100); color:var(--gray-600); }
+  .s-allestimento { background:var(--warn-bg); color:var(--warn); }
+  .s-in_corso     { background:rgba(4,63,117,.08); color:var(--retelit-blue); }
+  .s-sospeso      { background:var(--danger-bg); color:var(--danger); }
+  .s-completato   { background:var(--ok-bg); color:var(--ok); }
+
+  .accent-non_avviato  { background:var(--gray-300); }
+  .accent-allestimento { background:var(--warn); }
+  .accent-in_corso     { background:var(--retelit-blue); }
+  .accent-sospeso      { background:var(--danger); }
+  .accent-completato   { background:var(--ok); }
+
+  .fill-non_avviato  { background:var(--gray-300); }
+  .fill-allestimento { background:var(--warn); }
+  .fill-in_corso     { background:var(--retelit-blue); }
+  .fill-sospeso      { background:var(--danger); }
+  .fill-completato   { background:var(--ok); }
+
+  /* ── Footer ─────────────────────────────────────────────────────────────── */
+  footer {
+    text-align:center; font-size:10px; color:var(--muted2);
+    padding:16px; border-top:1px solid var(--border);
+    background:var(--surface);
+  }
+</style>
+</head>
+<body>
+
+<!-- AUTH GUARD -->
+<div id="authGuard">
+  <img src="assets/retelit-logo.svg" alt="Retelit" style="height:36px;opacity:.9">
+  <p>Accesso riservato alle imprese autorizzate.</p>
+  <a href="hub.html">← Torna al login</a>
+</div>
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <div class="topbar-left">
+    <img src="assets/retelit-logo-white.svg" alt="Retelit" class="topbar-logo"
+         onerror="this.style.display='none'">
+    <div class="topbar-divider"></div>
+    <span class="topbar-title">ENRI · Avanzamento Scavi</span>
+  </div>
+  <div class="topbar-right">
+    <span class="topbar-user" id="topbarUser">—</span>
+    <a href="imprese.html" class="topbar-back">← Pratiche</a>
+  </div>
+</header>
+
+<!-- MAIN -->
+<main>
+  <!-- Header pagina -->
+  <div class="page-header">
+    <div class="page-eyebrow">Cantieri · Avanzamento scavi</div>
+    <h1 class="page-title">I miei cantieri</h1>
+    <p class="page-sub" id="pageSubtitle">Caricamento in corso…</p>
+  </div>
+
+  <!-- KPI -->
+  <div class="kpi-row">
+    <div class="kpi k-nav">
+      <div class="kpi-label">Non avviati</div>
+      <div class="kpi-value" id="kpiNav">—</div>
+      <div class="kpi-sub">in attesa di apertura</div>
+    </div>
+    <div class="kpi k-all">
+      <div class="kpi-label">Allestimento</div>
+      <div class="kpi-value" id="kpiAll">—</div>
+      <div class="kpi-sub">cantieri in preparazione</div>
+    </div>
+    <div class="kpi k-cor">
+      <div class="kpi-label">In corso</div>
+      <div class="kpi-value" id="kpiCor">—</div>
+      <div class="kpi-sub">scavo attivo</div>
+    </div>
+    <div class="kpi k-sos">
+      <div class="kpi-label">Sospesi</div>
+      <div class="kpi-value" id="kpiSos">—</div>
+      <div class="kpi-sub">interruzione temporanea</div>
+    </div>
+    <div class="kpi k-com">
+      <div class="kpi-label">Completati</div>
+      <div class="kpi-value" id="kpiCom">—</div>
+      <div class="kpi-sub">scavo ultimato</div>
+    </div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <span class="toolbar-label">Filtra stato:</span>
+    <select id="filterStato" style="font-size:12px;padding:5px 10px;border-radius:var(--radius-md);border:1px solid var(--border2);background:var(--surface);font-family:var(--font-body)">
+      <option value="">Tutti</option>
+      <option value="non_avviato">Non avviati</option>
+      <option value="allestimento">Allestimento</option>
+      <option value="in_corso">In corso</option>
+      <option value="sospeso">Sospesi</option>
+      <option value="completato">Completati</option>
+    </select>
+    <button class="btn btn-ghost btn-sm" id="btnRefresh">↻ Aggiorna</button>
+    <span id="lastUpdate" style="font-size:10.5px;color:var(--muted);margin-left:auto"></span>
+  </div>
+
+  <!-- Form aggiornamento (sticky sopra le card) -->
+  <div id="formPanel">
+    <div class="form-header">
+      <div>
+        <div class="form-title" id="formTitle">Aggiornamento cantiere</div>
+        <div class="form-sub" id="formSub"></div>
+      </div>
+      <button class="form-close" id="formClose">×</button>
+    </div>
+
+    <!-- Avanzamento giornaliero -->
+    <div class="daily-box">
+      <div class="daily-box-title">📍 Avanzamento di oggi</div>
+      <div class="daily-grid">
+        <div>
+          <label>Metri realizzati oggi (m)</label>
+          <input type="number" id="fMetri" min="0" step="0.1" placeholder="0"
+            class="input-big" autocomplete="off">
+          <div style="font-size:10px;color:var(--retelit-teal);margin-top:4px">
+            Inserire 0 se nessuno scavo oggi
+          </div>
+        </div>
+        <div>
+          <label>Fronti di scavo attivi</label>
+          <input type="number" id="fFronti" min="0" step="1" placeholder="0"
+            style="font-family:var(--font-mono);font-size:16px;font-weight:700">
+        </div>
+      </div>
+    </div>
+
+    <!-- Dati cantiere -->
+    <div class="form-grid">
+      <div>
+        <label>Stato cantiere *</label>
+        <select id="fStato">
+          <option value="non_avviato">Non avviato</option>
+          <option value="allestimento">In allestimento</option>
+          <option value="in_corso">In corso</option>
+          <option value="sospeso">Sospeso</option>
+          <option value="completato">Completato</option>
+        </select>
+      </div>
+      <div>
+        <label>Tecnica di scavo</label>
+        <select id="fTecnica">
+          <option value="">— seleziona —</option>
+          <option value="trincea">Trincea</option>
+          <option value="TOC">TOC (Trivellazione Orizzontale Controllata)</option>
+          <option value="microtunnel">Microtunnel</option>
+          <option value="teleispezione">Teleispezione</option>
+          <option value="misto">Misto</option>
+        </select>
+      </div>
+      <div>
+        <label>Data inizio prevista</label>
+        <input type="date" id="fInizioPrev">
+      </div>
+      <div>
+        <label>Data fine prevista</label>
+        <input type="date" id="fFinePrev">
+      </div>
+      <div id="wrapInizioEff" style="display:none">
+        <label>Data inizio effettiva</label>
+        <input type="date" id="fInizioEff">
+      </div>
+      <div id="wrapFineEff" style="display:none">
+        <label>Data fine effettiva</label>
+        <input type="date" id="fFineEff">
+      </div>
+      <div class="span2">
+        <label>Note / Impedimenti</label>
+        <textarea id="fNote" placeholder="Eventuali impedimenti, condizioni meteo, interferenze infrastrutturali…"></textarea>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">
+      <button class="btn btn-ghost" id="fCancel">Annulla</button>
+      <button class="btn" id="fSubmit">Salva aggiornamento</button>
+      <button class="btn btn-secondary btn-sm" id="fStorico" style="margin-left:4px">
+        📋 Storico
+      </button>
+    </div>
+    <div class="msg" id="msgForm"></div>
+  </div>
+
+  <!-- Storico aggiornamenti -->
+  <div id="storicoPanel">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="storico-title" id="storicoTitle">Storico cantiere</div>
+      <button class="btn btn-ghost btn-sm" id="storicoClose">× Chiudi</button>
+    </div>
+    <div id="storicoBody">
+      <div class="empty">Caricamento…</div>
+    </div>
+  </div>
+
+  <!-- Grid cantieri -->
+  <div id="cantieriGrid">
+    <div class="spinner-wrap" style="grid-column:1/-1">
+      <span class="spinner"></span><span>Caricamento cantieri…</span>
+    </div>
+  </div>
+</main>
+
+<footer>
+  ENRI · Retelit S.p.A. · Avanzamento Scavi Impresa
+</footer>
+
+<script src="js/api-config.js"></script>
+<script>
+(function() {
+  // ── Config ────────────────────────────────────────────────────────────────
+  const SESSION_KEY = '_enri_session';
+  const USER_KEY    = '_enri_user';
+
+  function apiBase() {
+    return (window.ENRI && window.ENRI.apiBase)
+      || localStorage.getItem('enri_api_base') || '';
+  }
+  function sessionToken() {
+    return localStorage.getItem(SESSION_KEY) || '';
+  }
+  function $(id) { return document.getElementById(id); }
+
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  async function api(path, opts = {}) {
+    const headers = { 'x-session-token': sessionToken(), ...(opts.headers || {}) };
+    const res = await fetch(apiBase() + path, { ...opts, headers });
+    if (res.status === 401) {
+      localStorage.removeItem(SESSION_KEY);
+      location.reload();
+      throw new Error('Sessione scaduta');
+    }
+    if (!res.ok) {
+      const t = await res.text().catch(() => '');
+      throw new Error(t || 'HTTP ' + res.status);
+    }
+    return res.json();
+  }
+
+  function setMsg(el, text, ok) {
+    el.textContent = text;
+    el.className = 'msg ' + (ok ? 'ok' : 'err');
+    if (ok) setTimeout(() => { el.className = 'msg'; }, 4000);
+  }
+
+  // ── Auth guard ────────────────────────────────────────────────────────────
+  const token = sessionToken();
+  if (!token) { $('authGuard').style.display = 'flex'; return; }
+
+  // Verifica sessione
+  (async () => {
+    try {
+      const d = await api('/api/imprese/me');
+      $('topbarUser').textContent = d.nome || '—';
+    } catch(e) {
+      $('authGuard').style.display = 'flex';
+    }
+  })();
+
+  // ── Stato labels / colors ─────────────────────────────────────────────────
+  const STATO_LABEL = {
+    non_avviato: 'Non avviato', allestimento: 'Allestimento',
+    in_corso: 'In corso', sospeso: 'Sospeso', completato: 'Completato',
+  };
+  const STATO_COLOR = {
+    non_avviato: '#9AA5B4', allestimento: '#D08A1A',
+    in_corso: '#043F75', sospeso: '#C0392B', completato: '#1E9E6A',
+  };
+  const STATI_IN_CORSO_EFF = ['in_corso', 'sospeso', 'completato'];
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  let ALL_CANTIERI = [];
+  let SELECTED = null;
+
+  // ── KPI ───────────────────────────────────────────────────────────────────
+  function renderKpi(items) {
+    const c = { non_avviato:0, allestimento:0, in_corso:0, sospeso:0, completato:0 };
+    items.forEach(r => { if (r.stato_cantiere in c) c[r.stato_cantiere]++; });
+    $('kpiNav').textContent = c.non_avviato;
+    $('kpiAll').textContent = c.allestimento;
+    $('kpiCor').textContent = c.in_corso;
+    $('kpiSos').textContent = c.sospeso;
+    $('kpiCom').textContent = c.completato;
+  }
+
+  // ── Grid cantieri ─────────────────────────────────────────────────────────
+  function renderGrid(items) {
+    const grid = $('cantieriGrid');
+    if (!items.length) {
+      grid.innerHTML = '<div class="empty" style="grid-column:1/-1">Nessun cantiere disponibile per i tuoi lotti.</div>';
+      return;
+    }
+    grid.innerHTML = items.map((r, i) => {
+      const stato  = r.stato_cantiere || 'non_avviato';
+      const col    = STATO_COLOR[stato] || '#9AA5B4';
+      const lbl    = STATO_LABEL[stato] || stato;
+      const tot    = r.metri_totali || 0;
+      const scav   = r.metri_scavati || 0;
+      const pct    = tot > 0 ? Math.min(100, Math.round(scav / tot * 100)) : 0;
+      const fmt    = n => Math.round(n).toLocaleString('it-IT');
+      const agg    = (r.updated_at || '').slice(0, 10) || '—';
+      const tecnica = r.tecnica_scavo || '—';
+
+      return `<div class="cant-card${SELECTED && SELECTED.tratta_id === r.tratta_id ? ' selected' : ''}"
+        data-idx="${i}" role="button" tabindex="0">
+        <div class="cant-card-accent accent-${stato}"></div>
+        <div class="cant-card-head">
+          <span class="cant-tratta">${escapeHtml(r.tratta_id)}</span>
+          <span class="cant-lotto">Lotto ${escapeHtml(r.lotto)}</span>
+        </div>
+        <span class="cant-stato-badge s-${stato}">${escapeHtml(lbl)}</span>
+        <div class="cant-progress-wrap">
+          <div class="cant-progress-label">
+            <span>${fmt(scav)} m scavati</span>
+            <span class="cant-progress-pct">${pct}%</span>
+          </div>
+          <div class="cant-progress-track">
+            <div class="cant-progress-fill fill-${stato}" style="width:${pct}%"></div>
+          </div>
+        </div>
+        <div class="cant-meta">
+          <span>Tot. <strong>${fmt(tot)} m</strong></span>
+          ${tecnica !== '—' ? `<span>Tecnica <strong>${escapeHtml(tecnica)}</strong></span>` : ''}
+          ${r.n_fronti_attivi ? `<span>Fronti <strong>${r.n_fronti_attivi}</strong></span>` : ''}
+          <span style="margin-left:auto">Agg. <strong>${agg}</strong></span>
+        </div>
+        <div class="cant-card-footer">
+          <button class="btn btn-sm" data-open="${i}">✏️ Aggiorna</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Load cantieri ─────────────────────────────────────────────────────────
+  async function loadCantieri() {
+    $('cantieriGrid').innerHTML = '<div class="spinner-wrap" style="grid-column:1/-1"><span class="spinner"></span><span>Caricamento…</span></div>';
+    try {
+      const d = await api('/api/imprese/cantieri');
+      ALL_CANTIERI = d.cantieri || [];
+      renderKpi(ALL_CANTIERI);
+      applyFilter();
+      const tot = ALL_CANTIERI.length;
+      const lottiSet = [...new Set(ALL_CANTIERI.map(r => r.lotto).filter(Boolean))];
+      $('pageSubtitle').textContent = `${tot} tratt${tot!==1?'e':'a'} · Lott${lottiSet.length!==1?'i':'o'} ${lottiSet.join(', ')}`;
+      $('lastUpdate').textContent = 'Aggiornato: ' + new Date().toLocaleTimeString('it-IT');
+    } catch(e) {
+      $('cantieriGrid').innerHTML = `<div class="empty" style="grid-column:1/-1">Errore: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  function applyFilter() {
+    const f = $('filterStato').value;
+    const items = f ? ALL_CANTIERI.filter(r => r.stato_cantiere === f) : ALL_CANTIERI;
+    renderGrid(items);
+  }
+
+  $('filterStato').addEventListener('change', applyFilter);
+  $('btnRefresh').addEventListener('click', loadCantieri);
+
+  // ── Click su card / pulsante Aggiorna ─────────────────────────────────────
+  $('cantieriGrid').addEventListener('click', e => {
+    const btn = e.target.closest('[data-open]');
+    if (!btn) return;
+    const f = $('filterStato').value;
+    const items = f ? ALL_CANTIERI.filter(r => r.stato_cantiere === f) : ALL_CANTIERI;
+    const r = items[+btn.dataset.open];
+    if (!r) return;
+    openForm(r);
+  });
+
+  // ── Apri form ─────────────────────────────────────────────────────────────
+  function openForm(r) {
+    SELECTED = r;
+    // Rende la card selezionata visivamente
+    document.querySelectorAll('.cant-card').forEach(c => c.classList.remove('selected'));
+    const cards = document.querySelectorAll('.cant-card');
+    cards.forEach(c => {
+      if (ALL_CANTIERI[+c.dataset.idx]?.tratta_id === r.tratta_id) c.classList.add('selected');
+    });
+
+    $('formTitle').textContent = `Cantiere ${r.tratta_id}`;
+    const tot  = r.metri_totali || 0;
+    const scav = r.metri_scavati || 0;
+    const pct  = tot > 0 ? Math.round(scav / tot * 100) : 0;
+    $('formSub').textContent =
+      `Lotto ${r.lotto} · ${scav.toLocaleString('it-IT',{maximumFractionDigits:0})} m scavati ` +
+      `su ${tot.toLocaleString('it-IT',{maximumFractionDigits:0})} m totali (${pct}%)`;
+
+    $('fStato').value    = r.stato_cantiere || 'non_avviato';
+    $('fTecnica').value  = r.tecnica_scavo  || '';
+    $('fFronti').value   = r.n_fronti_attivi || '';
+    $('fMetri').value    = '';
+    $('fInizioPrev').value = r.data_inizio_prevista  || '';
+    $('fFinePrev').value   = r.data_fine_prevista    || '';
+    $('fInizioEff').value  = r.data_inizio_effettiva || '';
+    $('fFineEff').value    = r.data_fine_effettiva   || '';
+    $('fNote').value = '';
+    $('msgForm').className = 'msg';
+    updateDateVisibility();
+
+    $('formPanel').style.display = 'block';
+    $('storicoPanel').style.display = 'none';
+    $('formPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function updateDateVisibility() {
+    const s = $('fStato').value;
+    $('wrapInizioEff').style.display = STATI_IN_CORSO_EFF.includes(s) ? '' : 'none';
+    $('wrapFineEff').style.display   = s === 'completato' ? '' : 'none';
+  }
+  $('fStato').addEventListener('change', updateDateVisibility);
+
+  // ── Chiudi form ───────────────────────────────────────────────────────────
+  function closeForm() {
+    $('formPanel').style.display = 'none';
+    $('storicoPanel').style.display = 'none';
+    SELECTED = null;
+    document.querySelectorAll('.cant-card.selected').forEach(c => c.classList.remove('selected'));
+  }
+  $('formClose').addEventListener('click', closeForm);
+  $('fCancel').addEventListener('click', closeForm);
+
+  // ── Submit ────────────────────────────────────────────────────────────────
+  $('fSubmit').addEventListener('click', async () => {
+    if (!SELECTED) return;
+    const metriVal = parseFloat($('fMetri').value);
+    const payload = {
+      stato_cantiere:        $('fStato').value,
+      tecnica_scavo:         $('fTecnica').value,
+      n_fronti_attivi:       parseInt($('fFronti').value) || 0,
+      data_inizio_prevista:  $('fInizioPrev').value,
+      data_fine_prevista:    $('fFinePrev').value,
+      note: $('fNote').value.trim(),
+    };
+    if ($('wrapInizioEff').style.display !== 'none')
+      payload.data_inizio_effettiva = $('fInizioEff').value;
+    if ($('wrapFineEff').style.display !== 'none')
+      payload.data_fine_effettiva = $('fFineEff').value;
+    if (!isNaN(metriVal) && metriVal >= 0)
+      payload.metri_realizzati_oggi = metriVal;
+
+    $('fSubmit').disabled = true;
+    try {
+      await api(`/api/imprese/cantieri/${encodeURIComponent(SELECTED.tratta_id)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      setMsg($('msgForm'), '✓ Aggiornamento salvato', true);
+      await loadCantieri();
+      setTimeout(closeForm, 1800);
+    } catch(e) {
+      setMsg($('msgForm'), 'Errore: ' + e.message, false);
+    } finally {
+      $('fSubmit').disabled = false;
+    }
+  });
+
+  // ── Storico ───────────────────────────────────────────────────────────────
+  $('fStorico').addEventListener('click', async () => {
+    if (!SELECTED) return;
+    $('storicoTitle').textContent = `Storico · ${SELECTED.tratta_id}`;
+    $('storicoPanel').style.display = 'block';
+    $('storicoBody').innerHTML = '<div class="empty">Caricamento…</div>';
+    $('storicoPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    try {
+      const d = await api(`/api/imprese/cantieri/${encodeURIComponent(SELECTED.tratta_id)}/log`);
+      const log = (d.log || []).slice().reverse();
+      if (!log.length) {
+        $('storicoBody').innerHTML = '<div class="empty">Nessun aggiornamento registrato.</div>';
+        return;
+      }
+      $('storicoBody').innerHTML = `<table class="storico-table">
+        <thead><tr>
+          <th>Data</th><th>Stato</th><th>Metri oggi</th>
+          <th>Fronti</th><th>Note</th>
+        </tr></thead>
+        <tbody>${log.map(e => `<tr>
+          <td style="font-family:var(--font-mono);font-size:11px">${escapeHtml(e.data||'—')}</td>
+          <td><span class="cant-stato-badge s-${(e.stato_cantiere||'').replace(/\s/g,'_')} " style="font-size:9.5px">
+            ${escapeHtml(STATO_LABEL[e.stato_cantiere] || e.stato_cantiere || '—')}</span></td>
+          <td style="font-family:var(--font-mono);font-weight:700;text-align:right">
+            ${e.metri_realizzati > 0 ? (e.metri_realizzati).toLocaleString('it-IT',{maximumFractionDigits:1})+' m' : '—'}</td>
+          <td style="text-align:center">${e.n_fronti_attivi || '—'}</td>
+          <td style="color:var(--muted);font-size:11px">${escapeHtml(e.note||'—')}</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+    } catch(e) {
+      $('storicoBody').innerHTML = `<div class="empty">Errore: ${escapeHtml(e.message)}</div>`;
+    }
+  });
+
+  $('storicoClose').addEventListener('click', () => {
+    $('storicoPanel').style.display = 'none';
+  });
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  loadCantieri();
+
+})();
+</script>
+</body>
+</html>
