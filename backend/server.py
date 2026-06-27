@@ -73,6 +73,7 @@ uploads_col = db["uploads"]
 assignments_col = db["assignments"]            # impresa nome -> {lotti: [...]}
 pending_col = db["pending_updates"]            # submissions from imprese pending admin review
 solleciti_col = db["solleciti"]                # registro solleciti per tratta/pratica
+cantieri_col  = db["cantieri"]                  # stato cantiere per tratta lavorabile
 gridfs = AsyncIOMotorGridFSBucket(db, bucket_name="files")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1433,6 +1434,9 @@ async def approve_pending(
         {"_id": oid},
         {"$set": {"status": "approved", "reviewed_at": _now_iso(), "applied_upload_id": upload_id, "summary": summary}},
     )
+    # Sync cantieri: crea automaticamente cantieri non_avviato per le nuove tratte lavorabili
+    asyncio.create_task(_sync_cantieri())
+    asyncio.create_task(_push_cantieri_to_github())
     return {"ok": True, "summary": summary, "new_upload_id": upload_id}
 
 
@@ -1660,3 +1664,213 @@ async def bulk_delete_solleciti(payload: dict, sess: dict = Depends(_require_ses
     if deleted:
         asyncio.create_task(_push_solleciti_to_github())
     return {"deleted": deleted, "count": len(deleted)}
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CANTIERI — stato avanzamento scavi per tratta lavorabile
+# ─────────────────────────────────────────────────────────────────────────────
+# Flusso:
+#   1. Ogni volta che il Master.csv viene aggiornato, _sync_cantieri() crea
+#      automaticamente un documento "non_avviato" per ogni tratta LAVORABILE=SI
+#      che non ha ancora un cantiere aperto.
+#   2. L'impresa aggiorna giornalmente i metri realizzati e lo stato cantiere.
+#   3. scavi.html legge GET /api/cantieri (pubblico) per popolare i grafici.
+# ═════════════════════════════════════════════════════════════════════════════
+
+STATO_CANTIERE_VALUES = ["non_avviato", "allestimento", "in_corso", "sospeso", "completato"]
+TECNICA_SCAVO_VALUES  = ["trincea", "TOC", "microtunnel", "teleispezione", "misto", ""]
+
+CANTIERI_CSV_PATH = os.environ.get("GITHUB_CANTIERI_PATH", "cantieri.csv")
+CANTIERI_COLS = [
+    "tratta_id", "lotto", "cluster", "metri_totali",
+    "stato_cantiere", "tecnica_scavo",
+    "data_inizio_prevista", "data_inizio_effettiva",
+    "data_fine_prevista", "data_fine_effettiva",
+    "metri_scavati", "n_fronti_attivi", "note",
+    "impresa", "updated_at",
+]
+
+
+async def _sync_cantieri() -> int:
+    """Crea documenti cantiere (stato=non_avviato) per le tratte LAVORABILE=SI
+    che non hanno ancora un cantiere. Ritorna il numero di nuovi cantieri creati."""
+    try:
+        df = await _read_master_csv()
+        summary = _compute_tratta_summary(df)
+    except Exception as e:
+        print(f"[sync_cantieri] errore lettura master: {e}")
+        return 0
+
+    created = 0
+    for tratta_id, info in summary.items():
+        if info.get("LAVORABILE") != "SI":
+            continue
+        existing = await cantieri_col.find_one({"tratta_id": tratta_id})
+        if existing:
+            continue
+        # Recupera lotto e cluster dal CSV
+        rows = df[df["TRATTA_ID"].astype(str).str.strip() == tratta_id]
+        lotto   = _lotto_from_source(rows.iloc[0].get("Source.Name", "")) if not rows.empty else ""
+        cluster = str(rows.iloc[0].get("CLUSTER", "")) if not rows.empty else ""
+        lungh   = rows.iloc[0].get("LUNGHEZZA", 0) if not rows.empty else 0
+        try:
+            metri_totali = float(str(lungh).replace(",", ".")) if lungh else 0
+        except Exception:
+            metri_totali = 0
+
+        doc = {
+            "tratta_id":           tratta_id,
+            "lotto":               lotto,
+            "cluster":             cluster,
+            "metri_totali":        metri_totali,
+            "stato_cantiere":      "non_avviato",
+            "tecnica_scavo":       "",
+            "data_inizio_prevista": "",
+            "data_inizio_effettiva": "",
+            "data_fine_prevista":  "",
+            "data_fine_effettiva": "",
+            "metri_scavati":       0.0,
+            "n_fronti_attivi":     0,
+            "note":                "",
+            "impresa":             "",
+            "updated_at":          _now_iso(),
+            "log":                 [],   # storico aggiornamenti giornalieri
+        }
+        await cantieri_col.insert_one(doc)
+        created += 1
+
+    if created:
+        print(f"[sync_cantieri] creati {created} nuovi cantieri")
+    return created
+
+
+async def _push_cantieri_to_github() -> None:
+    """Rigenera cantieri.csv e lo pusha su GitHub."""
+    try:
+        cols = CANTIERI_COLS
+        rows = []
+        async for d in cantieri_col.find({}).sort("tratta_id", 1):
+            rows.append({c: str(d.get(c, "") or "") for c in cols})
+        import pandas as _pd, io as _io
+        _df = _pd.DataFrame(rows, columns=cols) if rows else _pd.DataFrame(columns=cols)
+        buf = _io.StringIO()
+        _df.to_csv(buf, index=False, sep=";")
+        data = buf.getvalue().encode("utf-8")
+        await _push_to_github(data, path=CANTIERI_CSV_PATH, label="cantieri.csv")
+    except Exception as e:
+        print(f"[GitHub] _push_cantieri: {e}")
+
+
+# ── Endpoint pubblico: lista cantieri ────────────────────────────────────────
+
+@app.get("/api/cantieri")
+async def get_cantieri(lotto: str = "", cluster: str = "", stato: str = ""):
+    """Lista cantieri (pubblica). Filtrabile per lotto, cluster, stato."""
+    q: dict = {}
+    if lotto:   q["lotto"]          = lotto
+    if cluster: q["cluster"]        = cluster
+    if stato:   q["stato_cantiere"] = stato
+    items = []
+    async for d in cantieri_col.find(q).sort("tratta_id", 1):
+        d["_id"] = str(d["_id"])
+        d.pop("log", None)   # non esporre lo storico nel listing
+        items.append(d)
+    return {"cantieri": items, "count": len(items)}
+
+
+# ── Endpoint impresa: aggiornamento giornaliero ───────────────────────────────
+
+@app.get("/api/imprese/cantieri")
+async def get_cantieri_impresa(sess: dict = Depends(_require_session)):
+    """Cantieri delle tratte nei lotti dell'impresa autenticata."""
+    nome = sess["nome"]
+    assignment = await _find_assignment(nome)
+    if not assignment:
+        return {"cantieri": [], "count": 0}
+    lotti = [str(l) for l in (assignment.get("lotti") or [])]
+    items = []
+    async for d in cantieri_col.find({"lotto": {"$in": lotti}}).sort("tratta_id", 1):
+        d["_id"] = str(d["_id"])
+        d.pop("log", None)
+        items.append(d)
+    return {"cantieri": items, "count": len(items)}
+
+
+@app.post("/api/imprese/cantieri/{tratta_id}")
+async def update_cantiere(tratta_id: str, payload: dict, sess: dict = Depends(_require_session)):
+    """L'impresa aggiorna lo stato cantiere e i metri realizzati oggi."""
+    nome = sess["nome"]
+    doc = await cantieri_col.find_one({"tratta_id": tratta_id})
+    if not doc:
+        raise HTTPException(404, "Cantiere non trovato")
+
+    # Verifica che la tratta appartenga ai lotti dell'impresa
+    assignment = await _find_assignment(nome)
+    lotti = [str(l) for l in ((assignment or {}).get("lotti") or [])]
+    if doc.get("lotto") not in lotti:
+        raise HTTPException(403, "Tratta non assegnata a questa impresa")
+
+    # Campi aggiornabili dall'impresa
+    allowed = {
+        "stato_cantiere", "tecnica_scavo",
+        "data_inizio_prevista", "data_inizio_effettiva",
+        "data_fine_prevista", "data_fine_effettiva",
+        "metri_realizzati_oggi",   # campo speciale: viene accumulato
+        "n_fronti_attivi", "note",
+    }
+    update: dict = {}
+    for k, v in (payload or {}).items():
+        if k not in allowed:
+            continue
+        if k == "stato_cantiere" and v not in STATO_CANTIERE_VALUES:
+            raise HTTPException(400, f"stato_cantiere non valido: {v}")
+        if k == "tecnica_scavo" and v not in TECNICA_SCAVO_VALUES:
+            raise HTTPException(400, f"tecnica_scavo non valida: {v}")
+        if k != "metri_realizzati_oggi":
+            update[k] = v
+
+    # Accumula metri giornalieri
+    metri_oggi = 0.0
+    if "metri_realizzati_oggi" in payload:
+        try:
+            metri_oggi = max(0.0, float(payload["metri_realizzati_oggi"]))
+        except Exception:
+            raise HTTPException(400, "metri_realizzati_oggi deve essere un numero")
+        update["$inc"] = {"metri_scavati": metri_oggi}
+
+    update["impresa"]    = nome
+    update["updated_at"] = _now_iso()
+
+    # Log entry giornaliero
+    log_entry = {
+        "data":               _now_iso()[:10],
+        "impresa":            nome,
+        "stato_cantiere":     payload.get("stato_cantiere", doc.get("stato_cantiere")),
+        "metri_realizzati":   metri_oggi,
+        "n_fronti_attivi":    payload.get("n_fronti_attivi", doc.get("n_fronti_attivi", 0)),
+        "note":               payload.get("note", ""),
+    }
+
+    # Costruisci update MongoDB
+    mongo_set = {k: v for k, v in update.items() if k != "$inc"}
+    mongo_update: dict = {"$set": mongo_set, "$push": {"log": log_entry}}
+    if "$inc" in update:
+        mongo_update["$inc"] = update["$inc"]
+
+    await cantieri_col.update_one({"tratta_id": tratta_id}, mongo_update)
+    asyncio.create_task(_push_cantieri_to_github())
+    return {"ok": True, "tratta_id": tratta_id}
+
+
+@app.get("/api/imprese/cantieri/{tratta_id}/log")
+async def get_cantiere_log(tratta_id: str, sess: dict = Depends(_require_session)):
+    """Storico aggiornamenti giornalieri di un cantiere."""
+    doc = await cantieri_col.find_one({"tratta_id": tratta_id})
+    if not doc:
+        raise HTTPException(404, "Cantiere non trovato")
+    return {"log": doc.get("log", []), "tratta_id": tratta_id}
+
+
+# ── Trigger sync cantieri dopo approvazione Master.csv ───────────────────────
+# _sync_cantieri() è già chiamata alla fine di approve_pending_update
+# (vedi hook sotto) — aggiungiamo il trigger se non esiste
