@@ -678,17 +678,21 @@
 
       if (s.type === 'new') {
         // Nuova pratica: mostra tutti i campi della riga
+        const rawLotto = c['Source.Name'] || '';
+        const lottoCode = rawLotto.replace(/^lotto\s*/i,'').replace(/\.xlsx$/i,'').trim() || rawLotto || '—';
+        const tipoAbbr = (c.TIPO_PERMESSO||'').startsWith('AUT') ? 'AUT' : 'NO';
+        const praticaFmt = c.PRATICA ? `${tipoAbbr}/${c.PRATICA}/${lottoCode}` : '—';
         const rows = [
-          ['Lotto',         c['Source.Name'] || '—'],
-          ['Tratta',        tratta],
-          ['Ente',          ente || '—'],
-          ['Tipo permesso', tipo || '—'],
-          ['Stato iniziale',c.STATO_PERMESSO || 'IN REDAZIONE'],
-          ['Pratica N°',    c.PRATICA || '—'],
-          ['NO Necessario', c['NULLA OSTA NECESSARIO'] || '—'],
-          ['Ordinanza',     c['ORDINANZA NECESSARIA'] || '—'],
-          ['N_SED',         c.N_SED || '—'],
-          ['Note',          c.NOTE || '—'],
+          ['Lotto',                   lottoCode],
+          ['Tratta',                  tratta],
+          ['Ente',                    ente || '—'],
+          ['Tipo permesso',           tipo || '—'],
+          ['Stato iniziale',          c.STATO_PERMESSO || 'IN REDAZIONE'],
+          ['Numero pratica',          praticaFmt],
+          ['Nulla Osta necessario',   c['NULLA OSTA NECESSARIO'] || '—'],
+          ['Ordinanza necessaria',    c['ORDINANZA NECESSARIA'] || '—'],
+          ['N_SED',                   c.N_SED || '—'],
+          ['Note',                    c.NOTE || '—'],
         ].filter(([,v]) => v && v !== '—');
         return `<div class="detail-change" style="background:var(--retelit-ice);border:1px solid var(--retelit-mist)">
           <div class="detail-change-header" style="color:var(--retelit-teal)">
