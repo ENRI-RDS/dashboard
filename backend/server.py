@@ -1787,19 +1787,36 @@ async def get_cantieri(lotto: str = "", cluster: str = "", stato: str = ""):
 
 # ── Endpoint impresa: aggiornamento giornaliero ───────────────────────────────
 
+@app.get("/api/admin/sync-cantieri")
+async def admin_sync_cantieri(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """Forza la sincronizzazione dei cantieri (solo admin)."""
+    _check_token(x_upload_token or token_q)
+    created = await _sync_cantieri()
+    total = await cantieri_col.count_documents({})
+    asyncio.create_task(_push_cantieri_to_github())
+    return {"created": created, "total_cantieri": total}
+
+
 @app.get("/api/imprese/cantieri")
 async def get_cantieri_impresa(sess: dict = Depends(_require_session)):
     """Cantieri delle tratte nei lotti dell'impresa autenticata."""
     nome = sess["nome"]
     assignment = await _find_assignment(nome)
     if not assignment:
-        return {"cantieri": [], "count": 0}
-    lotti = [str(l) for l in (assignment.get("lotti") or [])]
+        return {"cantieri": [], "count": 0, "debug": "no assignment found"}
+    # Normalizza i lotti dell'impresa con _lotto_from_source
+    raw_lotti = [str(l) for l in (assignment.get("lotti") or [])]
+    lotti = [_lotto_from_source(l) for l in raw_lotti]
     items = []
-    async for d in cantieri_col.find({"lotto": {"$in": lotti}}).sort("tratta_id", 1):
+    async for d in cantieri_col.find({}).sort("tratta_id", 1):
         d["_id"] = str(d["_id"])
         d.pop("log", None)
-        items.append(d)
+        cant_lotto = _lotto_from_source(str(d.get("lotto") or ""))
+        if cant_lotto in lotti:
+            items.append(d)
     return {"cantieri": items, "count": len(items)}
 
 
