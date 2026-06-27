@@ -356,7 +356,7 @@
   </div>
   <div class="topbar-right">
     <span class="topbar-user" id="topbarUser">—</span>
-    <a href="imprese.html" class="topbar-back">← Pratiche</a>
+    <a href="imprese.html" class="topbar-back">📄 Pratiche</a>
     <a href="mappa_impresa.html" class="topbar-back">🗺 Mappa</a>
     <a href="mappa_impresa_caricamento.html" class="topbar-back">📍 Aggiorna Mappa</a>
     <a href="hub.html" class="topbar-back dim">⌂ Hub</a>
@@ -461,6 +461,10 @@
           <option value="trincea">Trincea</option>
           <option value="no_dig">No Dig</option>
         </select>
+      </div>
+      <div>
+        <label>Numero fronti attivi</label>
+        <input type="number" id="fFronti" min="0" step="1" placeholder="0">
       </div>
       <div>
         <label>Data inizio prevista</label>
@@ -740,6 +744,7 @@
   $('fSubmit').addEventListener('click', async () => {
     if (!SELECTED) return;
     const metriVal = parseFloat($('fMetri').value);
+    const frontiVal = parseInt($('fFronti').value, 10);
     const payload = {
       stato_cantiere:        $('fStato').value,
       tecnica_scavo:         $('fTecnica').value,
@@ -748,6 +753,8 @@
       data_fine_prevista:    $('fFinePrev').value,
       note: $('fNote').value.trim(),
     };
+    if (!isNaN(frontiVal) && frontiVal >= 0)
+      payload.n_fronti_attivi = frontiVal;
     if ($('wrapInizioEff').style.display !== 'none')
       payload.data_inizio_effettiva = $('fInizioEff').value;
     if ($('wrapFineEff').style.display !== 'none')
