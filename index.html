@@ -1431,6 +1431,7 @@ window.loadXLSX = (function(){
         +'<td class="tbl-td" style="padding:8px 10px;font-size:11px;color:var(--text2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+enteSafe+'">'+(d.ente||'—')+'</td>'
         +'<td class="tbl-td" style="padding:6px 10px">'+statoCell+'</td>'
         +'<td class="tbl-td" style="padding:6px 10px;font-size:11px;color:var(--text2)">'+(dataInvio||'—')+'</td>'
+        +'<td class="tbl-td" style="padding:6px 10px;text-align:right" onclick="event.stopPropagation()">'+_solSedBadge(d.nSed||d.tratta||'')+'</td>'
         +'</tr>';
     }).join('');
 
@@ -1591,8 +1592,6 @@ window.loadXLSX = (function(){
       });
       window._sedData = _sedData;
 
-      // Aggiorna la tabella "Tutte le Pratiche" con i badge SED ora disponibili
-      if (typeof window.renderTabella === 'function') window.renderTabella();
       var lotti = [];
       _sedData.forEach(function(d){ if(d.lotto && lotti.indexOf(d.lotto)===-1) lotti.push(d.lotto); });
       lotti.sort(sortLotti);
@@ -1882,6 +1881,7 @@ window.loadXLSX = (function(){
               <th onclick="sedSort('ente')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;cursor:pointer;user-select:none" title="Ordina per Ente"><span class="col-th-inner">Ente <span id="sedArr_ente" class="col-sort-btn">↕</span></span></th>
               <th onclick="sedSort('stato')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:160px;cursor:pointer;user-select:none" title="Ordina per Stato Permesso"><span class="col-th-inner">Stato Permesso <span id="sedArr_stato" class="col-sort-btn">↕</span></span></th>
               <th onclick="sedSort('data')" style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:110px;cursor:pointer;user-select:none" title="Ordina per Data Invio"><span class="col-th-inner">Data Invio <span id="sedArr_data" class="col-sort-btn">↕</span></span></th>
+              <th style="padding:9px 10px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:700;min-width:80px">Solleciti</th>
             </tr>
           </thead>
           <tbody id="sedTbody"></tbody>
@@ -4442,7 +4442,6 @@ function _processMasterText(text) {
     // Raggruppa per lotto → per codice pratica (AUT/N/LOTTO)
     // Costruisce window._praticheDetailPerLotto
     const praticheByLotto = {};
-    window._sedByPratica = {};
 
     Object.values(permessiMap).forEach(r => {
       // Determina lotto da Master o da trattaLottoMap
@@ -4480,17 +4479,6 @@ function _processMasterText(text) {
       // Preserva sempre dr_invio se disponibile
       if (r.dr_invio && !existing.dr_invio) existing.dr_invio = r.dr_invio;
 
-      // Popola _sedByPratica: codice → array N_SED unici (deduplicati)
-      if (r.nSed) {
-        if (!window._sedByPratica[codice]) window._sedByPratica[codice] = [];
-        String(r.nSed).split(' - ').forEach(function(key) {
-          key = key.trim();
-          if (!key) return;
-          if (!window._sedByPratica[codice].some(function(e){ return e.nSed === key; })) {
-            window._sedByPratica[codice].push({ nSed: key, stato: r.stato });
-          }
-        });
-      }
     });
 
     window._praticheDetailPerLotto = {};
@@ -6152,7 +6140,6 @@ _hookScadenze();
     {k:'prev',     l:'Prev. Rilascio', w:'110px', mono:true},
     {k:'metri',    l:'Metri (m)',      w:'90px',  right:true},
     {k:'sol',      l:'Solleciti',      w:'80px',  right:true, noSort:true},
-    {k:'sed',      l:'SED',            w:'70px',  right:true, noSort:true},
   ];
 
   const PAGE_SIZE = 10;
@@ -6280,10 +6267,82 @@ _hookScadenze();
         });
       });
       console.log('[Solleciti] caricati:', Object.keys(window._solByPratica).length, 'pratiche', Object.keys(window._solByPratica).slice(0,5));
+
+      // Costruisci _solBySed: nSed → solleciti aggregati da tutte le pratiche collegate
+      window._solBySed = {};
+      Object.entries(window._sedFromCSV || {}).forEach(([nSed, pratiche]) => {
+        const agg = [];
+        pratiche.forEach(p => {
+          const prefix = p.tipo === 'AUTORIZZAZIONE' ? 'AUT' : p.tipo === 'NULLA OSTA' ? 'NO' : p.tipo === 'ORDINANZA' ? 'ORD' : (p.tipo||'').substring(0,3);
+          const codice = prefix + '/' + p.prat + '/' + p.lotto;
+          (window._solByPratica[codice] || []).forEach(s => {
+            if (!agg.some(e => e.data === s.data && e.tipo === s.tipo)) agg.push(s);
+          });
+        });
+        if (agg.length) window._solBySed[nSed] = agg;
+      });
+
       if (typeof renderTabella === 'function') renderTabella();
+      if (typeof window.renderSed === 'function') window.renderSed();
     } catch(e) { console.warn('loadSolleciti:', e.message); }
   }
   window.loadSolleciti = loadSolleciti;
+
+  // _solSedBadge: badge solleciti per riga SED (nSed → solleciti aggregati)
+  function _solSedBadge(nSed) {
+    const arr = (window._solBySed || {})[nSed];
+    if (!arr || !arr.length) return '—';
+    return '<span class="sol-sed-badge" data-sed-nsed="' + (nSed||'').replace(/"/g,'') + '" '
+      + 'style="cursor:pointer;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;'
+      + 'background:#fef3c7;color:#d97706;border:1px solid #fde68a;user-select:none" '
+      + 'title="Vedi solleciti per ' + (nSed||'') + '">' + arr.length + ' ⚠</span>';
+  }
+
+  // Popover solleciti SED con smart positioning
+  (function() {
+    const box = document.createElement('div');
+    box.id = 'solSedPopoverBox';
+    box.style.cssText = 'display:none;position:fixed;z-index:99999;min-width:360px;max-width:480px;'
+      + 'background:var(--surface);border:1px solid var(--border2);border-radius:8px;'
+      + 'box-shadow:0 4px 20px rgba(0,0,0,.22);overflow:hidden;font-family:inherit';
+    document.body.appendChild(box);
+
+    document.addEventListener('click', function(e) {
+      const badge = e.target.closest('.sol-sed-badge');
+      if (!badge) { if (!e.target.closest('#solSedPopoverBox')) box.style.display = 'none'; return; }
+      e.stopPropagation();
+      const nSed = badge.dataset.sedNsed;
+      const arr  = (window._solBySed || {})[nSed] || [];
+      const rows = arr.map(function(s) {
+        const bg = s.tipo && s.tipo.includes('DIFFIDA') ? '#fef2f2' : '#fef9ec';
+        const fg = s.tipo && s.tipo.includes('DIFFIDA') ? '#b91c1c' : '#b45309';
+        return '<tr style="border-bottom:1px solid var(--border)">'
+          + '<td style="padding:4px 8px;font-size:10.5px;white-space:nowrap;color:var(--muted)">' + (s.data||'—') + '</td>'
+          + '<td style="padding:4px 8px"><span style="padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;background:' + bg + ';color:' + fg + '">' + (s.tipo||'—') + '</span></td>'
+          + '<td style="padding:4px 8px;font-size:10.5px;color:var(--text2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (s.note||'').replace(/"/g,'') + '">' + (s.note||'—') + '</td>'
+          + '</tr>';
+      }).join('');
+      box.innerHTML = '<div style="padding:8px 12px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">'
+        + '<span style="font-size:11px;font-weight:700;color:#d97706">' + nSed + ' — Solleciti (' + arr.length + ')</span>'
+        + '<span id="solSedPopClose" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1">×</span></div>'
+        + '<table style="width:100%;border-collapse:collapse">'
+        + '<thead><tr style="background:var(--surface2)">'
+        + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">Data</th>'
+        + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">Tipo</th>'
+        + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">Note</th>'
+        + '</tr></thead><tbody>' + rows + '</tbody></table>';
+      document.getElementById('solSedPopClose').onclick = function(ev) { ev.stopPropagation(); box.style.display = 'none'; };
+      const rect = badge.getBoundingClientRect();
+      const bw = 380, bh = 260;
+      let left = Math.min(rect.right - bw, window.innerWidth - bw - 8);
+      if (left < 8) left = 8;
+      let top = rect.bottom + 4;
+      if (top + bh > window.innerHeight - 8) top = Math.max(8, rect.top - bh - 4);
+      box.style.left = left + 'px';
+      box.style.top  = top  + 'px';
+      box.style.display = 'block';
+    });
+  })();
 
   // _solBadge: restituisce solo il badge cliccabile (no popup inline nel td).
   // Il popup è un elemento fisso nel DOM (id=solPopoverBox) aggiornato al click.
@@ -6344,66 +6403,6 @@ _hookScadenze();
       if (top + bh > window.innerHeight - 8) top = Math.max(8, rect.top - bh - 4);
       box.style.left = left + 'px';
       box.style.top  = top + 'px';
-      box.style.display = 'block';
-    });
-  })();
-
-  // _sedBadge: badge cliccabile SED per pratica (analogo a _solBadge)
-  function _sedBadge(codice) {
-    const arr = (window._sedByPratica || {})[codice];
-    if (!arr || !arr.length) return '<span style="color:var(--muted2);font-size:11px">—</span>';
-    const n = arr.length;
-    return '<span class="sed-prat-badge" data-sed-cod="' + codice.replace(/"/g,'') + '" '
-      + 'style="cursor:pointer;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;'
-      + 'background:#fef3c7;color:#d97706;border:1px solid #fde68a;user-select:none" '
-      + 'title="Vedi SED per ' + codice.replace(/"/g,'') + '">' + n + ' 🔀</span>';
-  }
-
-  // Popover fisso SED con smart positioning (si apre sopra se esce dallo schermo)
-  (function() {
-    const box = document.createElement('div');
-    box.id = 'sedPopoverBox';
-    box.style.cssText = 'display:none;position:fixed;z-index:99999;min-width:320px;max-width:440px;'
-      + 'background:var(--surface);border:1px solid var(--border2);border-radius:8px;'
-      + 'box-shadow:0 4px 20px rgba(0,0,0,.22);overflow:hidden;font-family:inherit';
-    document.body.appendChild(box);
-
-    document.addEventListener('click', function(e) {
-      const badge = e.target.closest('.sed-prat-badge');
-      if (!badge) { if (!e.target.closest('#sedPopoverBox')) box.style.display = 'none'; return; }
-      e.stopPropagation();
-      const cod = badge.dataset.sedCod;
-      const arr = (window._sedByPratica || {})[cod] || [];
-      const rows = arr.map(function(s) {
-        const geoItem = (window._sedData || []).find(function(d){ return d.nSed === s.nSed || d.tratta === s.nSed; });
-        const tipo   = (geoItem && geoItem.tipo)   || '—';
-        const comune = (geoItem && geoItem.comune) || '—';
-        const tipoBg = tipo === 'FERROVIARIO' ? '#fef9ec' : tipo === 'AUTOSTRADALE' ? '#f0fdf4' : '#eff6ff';
-        const tipoFg = tipo === 'FERROVIARIO' ? '#b45309' : tipo === 'AUTOSTRADALE' ? '#16a34a' : '#0369a1';
-        return '<tr style="border-bottom:1px solid var(--border)">'
-          + '<td style="padding:4px 8px;font-size:10.5px;white-space:nowrap;font-family:\'Fira Code\',monospace">' + s.nSed + '</td>'
-          + '<td style="padding:4px 8px"><span style="padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;background:' + tipoBg + ';color:' + tipoFg + '">' + tipo + '</span></td>'
-          + '<td style="padding:4px 8px;font-size:10.5px;color:var(--muted)">' + comune + '</td>'
-          + '</tr>';
-      }).join('');
-      box.innerHTML = '<div style="padding:8px 12px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">'
-        + '<span style="font-size:11px;font-weight:700;color:#d97706">' + cod + ' — SED (' + arr.length + ')</span>'
-        + '<span id="sedPopClose" style="cursor:pointer;color:var(--muted);font-size:18px;line-height:1">×</span></div>'
-        + '<table style="width:100%;border-collapse:collapse">'
-        + '<thead><tr style="background:var(--surface2)">'
-        + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">N_SED</th>'
-        + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">Tipo</th>'
-        + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">Comune</th>'
-        + '</tr></thead><tbody>' + rows + '</tbody></table>';
-      document.getElementById('sedPopClose').onclick = function(ev) { ev.stopPropagation(); box.style.display = 'none'; };
-      const rect = badge.getBoundingClientRect();
-      const bw = 340, bh = 220;
-      let left = Math.min(rect.right - bw, window.innerWidth - bw - 8);
-      if (left < 8) left = 8;
-      let top = rect.bottom + 4;
-      if (top + bh > window.innerHeight - 8) top = Math.max(8, rect.top - bh - 4);
-      box.style.left = left + 'px';
-      box.style.top  = top  + 'px';
       box.style.display = 'block';
     });
   })();
@@ -6490,7 +6489,6 @@ _hookScadenze();
         <td class="tbl-td">${prevHtml}</td>
         <td class="tbl-td tbl-td-r tbl-metri">${fmt(r.metri)}</td>
         <td class="tbl-td tbl-td-r">${_solBadge(r.codice)}</td>
-        <td class="tbl-td tbl-td-r">${_sedBadge(r.codice)}</td>
       </tr>`;
     }).join('');
 
