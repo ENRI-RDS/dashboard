@@ -329,13 +329,6 @@
   .fill-in_corso     { background:var(--retelit-blue); }
   .fill-sospeso      { background:var(--danger); }
   .fill-completato   { background:var(--ok); }
-
-  /* ── Footer ─────────────────────────────────────────────────────────────── */
-  footer {
-    text-align:center; font-size:10px; color:var(--muted2);
-    padding:16px; border-top:1px solid var(--border);
-    background:var(--surface);
-  }
 </style>
 </head>
 <body>
@@ -422,6 +415,7 @@
       <div>
         <div class="form-title" id="formTitle">Aggiornamento cantiere</div>
         <div class="form-sub" id="formSub"></div>
+        <div class="form-sub" id="formTratteInfo" style="margin-top:6px;font-size:11px"></div>
       </div>
       <button class="form-close" id="formClose">×</button>
     </div>
@@ -517,10 +511,6 @@
   </div>
 </main>
 
-<footer>
-  ENRI · Retelit S.p.A. · Avanzamento Scavi Impresa
-</footer>
-
 <script src="js/api-config.js"></script>
 <script>
 (function() {
@@ -615,17 +605,21 @@
       const col    = STATO_COLOR[stato] || '#9AA5B4';
       const lbl    = STATO_LABEL[stato] || stato;
       const tot    = r.metri_totali || 0;
+      const totPot = r.metri_totali_potenziali || tot;
       const scav   = r.metri_scavati || 0;
       const pct    = tot > 0 ? Math.min(100, Math.round(scav / tot * 100)) : 0;
       const fmt    = n => Math.round(n).toLocaleString('it-IT');
       const agg    = (r.updated_at || '').slice(0, 10) || '—';
       const tecnica = r.tecnica_scavo || '—';
+      const tratte  = r.tratte || [];
+      const nLav    = tratte.filter(t => t.lavorabile).length || tratte.length;
+      const nBlocc  = tratte.filter(t => !t.lavorabile).length;
 
-      return `<div class="cant-card${SELECTED && SELECTED.tratta_id === r.tratta_id ? ' selected' : ''}"
+      return `<div class="cant-card${SELECTED && SELECTED.pratica_id === r.pratica_id ? ' selected' : ''}"
         data-idx="${i}" role="button" tabindex="0">
         <div class="cant-card-accent accent-${stato}"></div>
         <div class="cant-card-head">
-          <span class="cant-tratta">${escapeHtml(r.tratta_id)}</span>
+          <span class="cant-tratta">${escapeHtml(r.pratica_id)}</span>
           <span class="cant-lotto">Lotto ${escapeHtml(r.lotto)}</span>
         </div>
         <span class="cant-stato-badge s-${stato}">${escapeHtml(lbl)}</span>
@@ -639,10 +633,14 @@
           </div>
         </div>
         <div class="cant-meta">
-          <span>Tot. <strong>${fmt(tot)} m</strong></span>
+          <span>Tot. lavorabili <strong>${fmt(tot)} m</strong></span>
+          ${totPot > tot ? `<span style="color:var(--warn,#D08A1A)">+${fmt(totPot-tot)} m in attesa N.O.</span>` : ''}
           ${tecnica !== '—' ? `<span>Tecnica <strong>${escapeHtml(tecnica)}</strong></span>` : ''}
           ${r.n_fronti_attivi ? `<span>Fronti <strong>${r.n_fronti_attivi}</strong></span>` : ''}
           <span style="margin-left:auto">Agg. <strong>${agg}</strong></span>
+        </div>
+        <div class="cant-meta" style="margin-top:-6px">
+          <span>${tratte.length} tratt${tratte.length!==1?'e':'a'}${nBlocc ? ` (${nLav} lavorabil${nLav!==1?'i':'e'}, ${nBlocc} in attesa nulla osta)` : ''}</span>
         </div>
         <div class="cant-card-footer">
           <button class="btn btn-sm" data-open="${i}">✏️ Aggiorna</button>
@@ -661,7 +659,7 @@
       applyFilter();
       const tot = ALL_CANTIERI.length;
       const lottiSet = [...new Set(ALL_CANTIERI.map(r => r.lotto).filter(Boolean))];
-      $('pageSubtitle').textContent = `${tot} tratt${tot!==1?'e':'a'} · Lott${lottiSet.length!==1?'i':'o'} ${lottiSet.join(', ')}`;
+      $('pageSubtitle').textContent = `${tot} pratic${tot!==1?'he':'a'} · Lott${lottiSet.length!==1?'i':'o'} ${lottiSet.join(', ')}`;
       $('lastUpdate').textContent = 'Aggiornato: ' + new Date().toLocaleTimeString('it-IT');
     } catch(e) {
       $('cantieriGrid').innerHTML = `<div class="empty" style="grid-column:1/-1">Errore: ${escapeHtml(e.message)}</div>`;
@@ -695,16 +693,24 @@
     document.querySelectorAll('.cant-card').forEach(c => c.classList.remove('selected'));
     const cards = document.querySelectorAll('.cant-card');
     cards.forEach(c => {
-      if (ALL_CANTIERI[+c.dataset.idx]?.tratta_id === r.tratta_id) c.classList.add('selected');
+      if (ALL_CANTIERI[+c.dataset.idx]?.pratica_id === r.pratica_id) c.classList.add('selected');
     });
 
-    $('formTitle').textContent = `Cantiere ${r.tratta_id}`;
-    const tot  = r.metri_totali || 0;
-    const scav = r.metri_scavati || 0;
-    const pct  = tot > 0 ? Math.round(scav / tot * 100) : 0;
+    $('formTitle').textContent = `Cantiere ${r.pratica_id}`;
+    const tot     = r.metri_totali || 0;
+    const totPot  = r.metri_totali_potenziali || tot;
+    const scav    = r.metri_scavati || 0;
+    const pct     = tot > 0 ? Math.round(scav / tot * 100) : 0;
     $('formSub').textContent =
-      `Lotto ${r.lotto} · ${scav.toLocaleString('it-IT',{maximumFractionDigits:0})} m scavati ` +
-      `su ${tot.toLocaleString('it-IT',{maximumFractionDigits:0})} m totali (${pct}%)`;
+      `${escapeHtml(r.ente||'—')} · Lotto ${r.lotto} · ${scav.toLocaleString('it-IT',{maximumFractionDigits:0})} m scavati ` +
+      `su ${tot.toLocaleString('it-IT',{maximumFractionDigits:0})} m lavorabili (${pct}%)`;
+
+    const tratte = r.tratte || [];
+    const lav  = tratte.filter(t => t.lavorabile);
+    const bloc = tratte.filter(t => !t.lavorabile);
+    $('formTratteInfo').innerHTML =
+      `<div><strong>${lav.length}</strong> tratt${lav.length!==1?'e':'a'} lavorabil${lav.length!==1?'i':'e'}: ${lav.map(t=>escapeHtml(t.tratta_id)).join(', ') || '—'}</div>` +
+      (bloc.length ? `<div style="color:var(--warn,#D08A1A);margin-top:3px">${bloc.length} in attesa di nulla osta (+${Math.round(totPot-tot)} m non ancora conteggiati): ${bloc.map(t=>escapeHtml(t.tratta_id)).join(', ')}</div>` : '');
 
     $('fStato').value    = r.stato_cantiere || 'non_avviato';
     $('fTecnica').value  = r.tecnica_scavo  || '';
@@ -764,7 +770,7 @@
 
     $('fSubmit').disabled = true;
     try {
-      await api(`/api/imprese/cantieri/${encodeURIComponent(SELECTED.tratta_id)}`, {
+      await api(`/api/imprese/cantieri/${encodeURIComponent(SELECTED.pratica_id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -782,12 +788,12 @@
   // ── Storico ───────────────────────────────────────────────────────────────
   $('fStorico').addEventListener('click', async () => {
     if (!SELECTED) return;
-    $('storicoTitle').textContent = `Storico · ${SELECTED.tratta_id}`;
+    $('storicoTitle').textContent = `Storico · ${SELECTED.pratica_id}`;
     $('storicoPanel').style.display = 'block';
     $('storicoBody').innerHTML = '<div class="empty">Caricamento…</div>';
     $('storicoPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     try {
-      const d = await api(`/api/imprese/cantieri/${encodeURIComponent(SELECTED.tratta_id)}/log`);
+      const d = await api(`/api/imprese/cantieri/${encodeURIComponent(SELECTED.pratica_id)}/log`);
       const log = (d.log || []).slice().reverse();
       if (!log.length) {
         $('storicoBody').innerHTML = '<div class="empty">Nessun aggiornamento registrato.</div>';
