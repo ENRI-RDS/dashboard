@@ -741,7 +741,8 @@
       return `
         <div class="detail-change">
           <div class="detail-change-header">
-            <span style="font-family:var(--font-mono);font-size:12px;background:#f1f5f9;padding:2px 8px;border-radius:5px;border:1px solid #e2e8f0">Tratta ${escapeHtml(tratta)}</span>
+            <span style="font-family:var(--font-mono);font-size:12px;background:var(--gray-100);padding:2px 8px;border-radius:5px;border:1px solid var(--gray-200)">Tratta ${escapeHtml(tratta)}</span>
+            ${lotto ? `<span style="font-family:var(--font-mono);font-size:12px;background:var(--retelit-ice);color:var(--retelit-teal);padding:2px 8px;border-radius:5px;border:1px solid var(--retelit-mist)">Lotto ${escapeHtml(lotto)}</span>` : ''}
             ${ente ? `<span style="font-weight:500;color:var(--gray-700)">${escapeHtml(ente)}</span>` : ''}
             ${tipo ? `<span class="pend-tag" style="background:${tipoBadgeColor}15;color:${tipoBadgeColor};font-size:9.5px">${escapeHtml(tipo)}</span>` : ''}
           </div>
@@ -791,6 +792,11 @@
   document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => {
     if(e.target === m) m.classList.remove('open');
   }));
+
+  // ESC chiude qualsiasi modal aperto
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open'));
+  });
 
   // ──────────────────────────────────────────────────────────────────────
   // Upload form
@@ -850,7 +856,7 @@
       $('pendingBody').innerHTML = d.submissions.map(s => {
         const isUpdate = s.type === 'update';
         const accentColor = isUpdate ? 'var(--retelit-blue)' : 'var(--retelit-teal)';
-        const typeIcon = isUpdate ? '+' : 'NEW';
+        const typeIcon = isUpdate ? '+' : '';
         const typeLabel = isUpdate ? 'Aggiornamento' : 'Nuova pratica';
         const stBg = s.status==='pending'?'var(--retelit-ice)':s.status==='approved'?'#EBFBEE':'#FEE2E2';
         const stFg = s.status==='pending'?'var(--retelit-teal)':s.status==='approved'?'#2B8A3E':'var(--err)';
@@ -869,7 +875,8 @@
           const first = (s.changes||[])[0] || {};
           const ente  = first.ENTE || '—';
           const tipo  = first.TIPO_PERMESSO || '—';
-          const lotto = first['Source.Name'] || '—';
+          const rawLotto = first['Source.Name'] || '';
+          const lotto = rawLotto.replace(/^lotto\s*/i,'').replace(/\.xlsx$/i,'').trim() || rawLotto || '—';
           bodyExtra = `<span style="font-size:11px;background:var(--retelit-ice);color:var(--retelit-teal);padding:1px 8px;border-radius:4px;font-weight:700;letter-spacing:0.08em;border:1px solid var(--retelit-mist)">NUOVA</span>
             <span style="font-size:11px;color:var(--muted)">${escapeHtml(lotto)} · ${escapeHtml(tipo)} · ${escapeHtml(ente)}</span>`;
         }
@@ -892,7 +899,7 @@
           </div>
           <div class="pend-actions">
             ${actions}
-            <button class="btn btn-ghost btn-xs" data-act="details" data-payload='${escapeHtml(JSON.stringify(s))}' style="font-size:11px">🔍 Dettagli</button>
+            <button class="btn btn-ghost btn-xs" data-act="details" data-payload='${escapeHtml(JSON.stringify(s))}' style="font-size:11px;border:1px solid var(--retelit-blue-25)">Dettagli</button>
           </div>
         </div>`;
       }).join('');
