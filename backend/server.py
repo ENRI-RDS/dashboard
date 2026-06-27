@@ -537,6 +537,13 @@ async def _on_startup():
     await uploads_col.update_many(
         {"deleted_at": {"$exists": False}}, {"$set": {"deleted_at": None}}
     )
+    # Sync cantieri: crea automaticamente cantieri non_avviato per tratte LAVORABILE=SI
+    try:
+        created = await _sync_cantieri()
+        if created:
+            asyncio.create_task(_push_cantieri_to_github())
+    except Exception as e:
+        print(f"[startup] _sync_cantieri: {e}")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
