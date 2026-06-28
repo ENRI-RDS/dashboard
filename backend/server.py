@@ -1506,6 +1506,16 @@ async def _push_sopralluoghi_to_github() -> None:
         print(f"[GitHub] _push_sopralluoghi: {e}")
 
 
+@app.get("/api/sopralluoghi")
+async def list_sopralluoghi(sess: dict = Depends(_require_session)):
+    """Restituisce tutti i verbali di sopralluogo, ordinati per codice decrescente."""
+    verbali = []
+    async for d in sopralluoghi_col.find({}).sort("codice_verbale", -1):
+        d["_id"] = str(d["_id"])
+        verbali.append(d)
+    return {"verbali": verbali}
+
+
 @app.get("/api/sopralluoghi/next-codice")
 async def sopralluogo_next_codice(sess: dict = Depends(_require_session)):
     """Restituisce il prossimo codice verbale progressivo."""
