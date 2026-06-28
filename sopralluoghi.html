@@ -341,7 +341,7 @@
 <div id="toast">✓ Verbale scaricato</div>
 
 <!-- Pannello storico verbali -->
-<div id="verbali-panel" style="display:none;position:fixed;top:0;right:0;width:380px;height:100vh;background:#fff;border-left:1px solid #e0e6ef;box-shadow:-4px 0 24px rgba(4,63,117,.08);z-index:200;display:flex;flex-direction:column">
+<div id="verbali-panel" style="display:none;position:fixed;top:0;right:0;width:380px;height:100vh;background:#fff;border-left:1px solid #e0e6ef;box-shadow:-4px 0 24px rgba(4,63,117,.08);z-index:200;flex-direction:column">
   <div style="padding:16px 20px;border-bottom:1px solid #e0e6ef;display:flex;align-items:center;justify-content:space-between">
     <span style="font-family:'Raleway',sans-serif;font-weight:700;font-size:15px;color:#043F75">Verbali inviati</span>
     <button onclick="document.getElementById('verbali-panel').style.display='none'" style="background:none;border:none;cursor:pointer;color:#888;font-size:20px;line-height:1">&times;</button>
@@ -364,6 +364,12 @@
 window.addEventListener('DOMContentLoaded', () => {
   const u = localStorage.getItem('_enri_user');
   if (!u) { document.getElementById('authGuard').style.display='flex'; return; }
+  const tok = localStorage.getItem('_enri_session');
+  if (!tok) {
+    document.getElementById('authGuard').style.display='flex';
+    document.getElementById('authGuard').querySelector('p').textContent = 'Sessione scaduta. Effettua di nuovo il login.';
+    return;
+  }
   document.getElementById('topbarUser').textContent = u;
   document.getElementById('redattore').value = u;
   document.getElementById('data').value = new Date().toISOString().split('T')[0];
@@ -457,6 +463,11 @@ async function inviaVerbale(){
     const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
     const token   = localStorage.getItem('_enri_session') || '';
     if (!apiBase) throw new Error('API endpoint non configurato — torna all\'hub e riaccedi');
+    if (!token) {
+      showToast('✗ Sessione scaduta — riaccedi dall\'hub');
+      setTimeout(() => { window.location.href = 'hub.html'; }, 2000);
+      return;
+    }
     const res = await fetch(apiBase + '/api/sopralluoghi', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-session-token': token },
@@ -479,6 +490,7 @@ async function inviaVerbale(){
     const data = await res.json();
     document.getElementById('codice_verbale').value = data.codice_verbale;
     showToast('✓ Verbale inviato — ' + data.codice_verbale);
+    await loadVerbali();
   } catch(e) {
     showToast('✗ Errore invio: ' + e.message);
   } finally {
