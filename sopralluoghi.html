@@ -340,6 +340,26 @@
 
 <div id="toast">✓ Verbale scaricato</div>
 
+<!-- Pannello storico verbali -->
+<div id="verbali-panel" style="display:none;position:fixed;top:0;right:0;width:380px;height:100vh;background:#fff;border-left:1px solid #e0e6ef;box-shadow:-4px 0 24px rgba(4,63,117,.08);z-index:200;display:flex;flex-direction:column">
+  <div style="padding:16px 20px;border-bottom:1px solid #e0e6ef;display:flex;align-items:center;justify-content:space-between">
+    <span style="font-family:'Raleway',sans-serif;font-weight:700;font-size:15px;color:#043F75">Verbali inviati</span>
+    <button onclick="document.getElementById('verbali-panel').style.display='none'" style="background:none;border:none;cursor:pointer;color:#888;font-size:20px;line-height:1">&times;</button>
+  </div>
+  <div style="padding:10px 14px">
+    <input type="text" id="verbali-search" placeholder="Cerca per codice, cantiere, lotto…"
+           oninput="filterVerbali(this.value)"
+           style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d0d8e4;border-radius:7px;font-size:12px;font-family:'Raleway',sans-serif">
+  </div>
+  <div id="verbali-list" style="flex:1;overflow-y:auto;padding:0 14px 14px"></div>
+</div>
+
+<!-- Bottone apri pannello -->
+<button onclick="loadVerbali()" id="btn-storico"
+  style="position:fixed;top:50%;right:0;transform:translateY(-50%);background:#043F75;color:#fff;border:none;cursor:pointer;padding:10px 6px;border-radius:8px 0 0 8px;font-family:'Raleway',sans-serif;font-size:11px;font-weight:700;letter-spacing:0.08em;writing-mode:vertical-rl;text-orientation:mixed;box-shadow:-2px 0 12px rgba(4,63,117,.2);z-index:199">
+  VERBALI
+</button>
+
 <script>
 window.addEventListener('DOMContentLoaded', () => {
   const u = localStorage.getItem('_enri_user');
@@ -419,10 +439,24 @@ function photoRows(n){
 async function inviaVerbale(){
   const btn = document.getElementById('btn-invia');
   const f = getF();
-  if (btn) { btn.disabled = true; btn.textContent = 'Invio…'; }
+
+  // Validazione campi obbligatori
+  if (!document.getElementById('data').value) { showToast('✗ Inserisci la data del sopralluogo'); return; }
+  if (!document.getElementById('n_cantiere').value.trim()) { showToast('✗ Inserisci il numero cantiere'); return; }
+  if (!document.getElementById('impresa').value.trim()) { showToast('✗ Inserisci il nome impresa'); return; }
+
+  // Impedisce doppio invio
+  if (document.getElementById('codice_verbale').value) {
+    showToast('✗ Verbale già inviato — codice: ' + document.getElementById('codice_verbale').value);
+    return;
+  }
+
+  const SVG_INVIA = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
+  if (btn) { btn.disabled = true; btn.innerHTML = SVG_INVIA + ' Invio in corso…'; }
   try {
     const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
     const token   = localStorage.getItem('_enri_session') || '';
+    if (!apiBase) throw new Error('API endpoint non configurato — torna all\'hub e riaccedi');
     const res = await fetch(apiBase + '/api/sopralluoghi', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-session-token': token },
@@ -448,7 +482,7 @@ async function inviaVerbale(){
   } catch(e) {
     showToast('✗ Errore invio: ' + e.message);
   } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Invia verbale'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = SVG_INVIA + ' Invia verbale'; }
   }
 }
 
@@ -719,7 +753,52 @@ async function generatePdf(){
     }).catch(() => {});
   });
 })();
-</script>
+
+// ── Storico verbali ──────────────────────────────────────────────────────────
+let _verbaliAll = [];
+
+async function loadVerbali() {
+  const panel = document.getElementById('verbali-panel');
+  panel.style.display = 'flex';
+  const list  = document.getElementById('verbali-list');
+  list.innerHTML = '<div style="color:#888;font-size:12px;padding:20px 0;text-align:center">Caricamento…</div>';
+  try {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    const token   = localStorage.getItem('_enri_session') || '';
+    const res = await fetch(apiBase + '/api/sopralluoghi', {
+      headers: { 'x-session-token': token }
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    _verbaliAll = (data.verbali || []).sort((a,b) => b.codice_verbale.localeCompare(a.codice_verbale));
+    filterVerbali(document.getElementById('verbali-search')?.value || '');
+  } catch(e) {
+    list.innerHTML = `<div style="color:#c0392b;font-size:12px;padding:20px 0;text-align:center">Errore: ${e.message}</div>`;
+  }
+}
+
+function filterVerbali(q) {
+  const list = document.getElementById('verbali-list');
+  const f = (q || '').toLowerCase().trim();
+  const rows = _verbaliAll.filter(v =>
+    !f || [v.codice_verbale, v.tratta_id, v.lotto, v.impresa, v.data_sopralluogo, v.comune].join(' ').toLowerCase().includes(f)
+  );
+  if (!rows.length) {
+    list.innerHTML = '<div style="color:#888;font-size:12px;padding:20px 0;text-align:center">Nessun verbale trovato</div>';
+    return;
+  }
+  list.innerHTML = rows.map(v => `
+    <div style="border:1px solid #e0e6ef;border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#f7f9fc">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12px;color:#043F75">${v.codice_verbale}</span>
+        <span style="font-size:10px;color:#888">${v.data_sopralluogo || '—'}</span>
+      </div>
+      <div style="font-size:11.5px;color:#444;margin-bottom:2px">${v.tratta_id || '—'} · ${v.lotto || '—'}</div>
+      <div style="font-size:11px;color:#666">${v.impresa || '—'} · ${v.comune || '—'}</div>
+      ${v.esito ? `<div style="font-size:10.5px;margin-top:4px;color:#1A7D99">Esito: ${v.esito}</div>` : ''}
+    </div>`).join('');
+}
+
 
 </body>
 </html>
