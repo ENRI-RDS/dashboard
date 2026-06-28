@@ -143,11 +143,12 @@
               <th>Pratica</th>
               <th>Lotto</th>
               <th>Ente</th>
-              <th>Stato</th>
+              <th>Stato permesso</th>
+              <th>Convenzione</th>
               <th>Comune</th>
             </tr>
           </thead>
-          <tbody id="convBody"><tr><td colspan="5" class="loading-row">⏳ Caricamento...</td></tr></tbody>
+          <tbody id="convBody"><tr><td colspan="6" class="loading-row">⏳ Caricamento...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -182,11 +183,12 @@
               <th>Pratica</th>
               <th>Lotto</th>
               <th>Ente</th>
-              <th>Stato</th>
+              <th>Stato permesso</th>
+              <th>Polizza</th>
               <th>Comune</th>
             </tr>
           </thead>
-          <tbody id="polBody"><tr><td colspan="5" class="loading-row">⏳ Caricamento...</td></tr></tbody>
+          <tbody id="polBody"><tr><td colspan="6" class="loading-row">⏳ Caricamento...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -200,11 +202,14 @@
   const STATI_COLORS = {
     'OTTENUTO':                  { bg:'#EBFAF3', color:'#1E9E6A' },
     'INVIATO':                   { bg:'#e0f2fe', color:'#0369a1' },
+    'INVIATA':                   { bg:'#e0f2fe', color:'#0369a1' },
     'PROTOCOLLATO':              { bg:'#ede9fe', color:'#6d28d9' },
     'NECESSARIA INTEGRAZIONE':   { bg:'#FEECEB', color:'#C0392B' },
+    'NECESSARIA':                { bg:'#FEF7E7', color:'#D08A1A' },
     'IN REDAZIONE INTEGRAZIONE': { bg:'#fff7ed', color:'#c2410c' },
     'PROTOCOLLATO INTEGRAZIONE': { bg:'#fdf4ff', color:'#a21caf' },
     'IN FIRMA RDS':              { bg:'#FEF7E7', color:'#D08A1A' },
+    'RICHIESTA RDS':             { bg:'#FEF7E7', color:'#D08A1A' },
     'COORDINAMENTO':             { bg:'#f5f3ff', color:'#7c3aed' },
   };
 
@@ -233,13 +238,22 @@
   }
 
   function setError(msg) {
-    document.getElementById('convBody').innerHTML = '<tr><td colspan="5" class="empty">' + msg + '</td></tr>';
-    document.getElementById('polBody').innerHTML  = '<tr><td colspan="5" class="empty">' + msg + '</td></tr>';
+    console.warn('[Polizze&Convenzioni]', msg);
+    let banner = document.getElementById('_errBanner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = '_errBanner';
+      banner.style.cssText = 'background:#FEECEB;color:#C0392B;border:1px solid #f5c6c2;border-radius:10px;padding:12px 18px;font-size:13px;font-weight:600;margin-bottom:4px';
+      document.querySelector('.main').insertBefore(banner, document.querySelector('.split'));
+    }
+    banner.textContent = msg;
+    document.getElementById('convBody').innerHTML = '<tr><td colspan="6" class="empty">' + msg + '</td></tr>';
+    document.getElementById('polBody').innerHTML  = '<tr><td colspan="6" class="empty">' + msg + '</td></tr>';
   }
 
   function parseAndRender(text) {
     const lines = text.trim().split(/\r?\n/);
-    const sep = lines[0].includes(';') ? ';' : ',';
+    const sep = lines[0].includes('\t') ? '\t' : lines[0].includes(';') ? ';' : ',';
 
     function splitLine(l) {
       const res = []; let cur = ''; let inQ = false;
@@ -264,8 +278,10 @@
     const iConv   = hdr.findIndex(h => h.toUpperCase().trim() === 'CONVENZIONE');
     const iPol    = hdr.findIndex(h => h.toUpperCase().trim() === 'POLIZZA');
 
+    console.log('[Polizze&Convenzioni] Colonne CSV trovate:', hdr.join(', '));
+    console.log('[Polizze&Convenzioni] iConv=', iConv, ' iPol=', iPol);
     if (iConv === -1 && iPol === -1) {
-      setError('⚠ Colonne CONVENZIONE e POLIZZA non trovate nel Master CSV.');
+      setError('⚠ Colonne CONVENZIONE e POLIZZA non trovate nel Master CSV. Verificare che il file Excel contenga queste colonne prima di caricarlo.');
       return;
     }
 
@@ -275,9 +291,9 @@
     for (let i = 1; i < lines.length; i++) {
       if (!lines[i].trim()) continue;
       const cols = splitLine(lines[i]);
-      const conv = iConv >= 0 ? (cols[iConv] || '').trim().toUpperCase() : '';
-      const pol  = iPol  >= 0 ? (cols[iPol]  || '').trim().toUpperCase() : '';
-      if (conv !== 'SI' && pol !== 'SI') continue;
+      const conv = iConv >= 0 ? (cols[iConv] || '').trim() : '';
+      const pol  = iPol  >= 0 ? (cols[iPol]  || '').trim() : '';
+      if (!conv && !pol) continue;
 
       const tratta = iTratta >= 0 ? (cols[iTratta] || '').trim() : '';
       const prat   = iPrat   >= 0 ? (cols[iPrat]   || '').trim() : '';
@@ -292,8 +308,8 @@
         lotto,  impresa: IMPRESE[lotto] || '',
       };
       const key = tratta + '|' + prat + '|' + tipo;
-      if (conv === 'SI' && !seenConv[key]) { seenConv[key] = true; convRows.push(entry); }
-      if (pol  === 'SI' && !seenPol[key])  { seenPol[key]  = true; polRows.push(entry); }
+      if (conv && !seenConv[key]) { seenConv[key] = true; convRows.push({...entry, convStato: conv}); }
+      if (pol  && !seenPol[key])  { seenPol[key]  = true; polRows.push({...entry, polStato: pol}); }
     }
 
     CONV_ROWS = convRows;
@@ -328,15 +344,17 @@
     return r;
   }
 
-  function buildRows(rows, colSpan) {
+  function buildRows(rows, statoKey, colSpan) {
     if (!rows.length) return '<tr><td colspan="' + colSpan + '" class="empty">Nessuna pratica trovata.</td></tr>';
     return rows.map(r => {
-      const st = STATI_COLORS[r.stato] || { bg:'var(--gray-100)', color:'var(--gray-500)' };
+      const st  = STATI_COLORS[r.stato]           || { bg:'var(--gray-100)', color:'var(--gray-500)' };
+      const stS = STATI_COLORS[(r[statoKey]||'').toUpperCase()] || { bg:'var(--gray-100)', color:'var(--gray-500)' };
       return `<tr>
         <td style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--accent)">${r.pratica||'—'}</td>
         <td style="font-size:11px">${r.lotto||'—'}</td>
         <td style="font-size:11.5px">${r.ente||'—'}</td>
         <td><span class="badge" style="background:${st.bg};color:${st.color}">${r.stato||'—'}</span></td>
+        <td><span class="badge" style="background:${stS.bg};color:${stS.color}">${r[statoKey]||'—'}</span></td>
         <td style="font-size:11px;color:var(--muted)">${r.comune||'—'}</td>
       </tr>`;
     }).join('');
@@ -349,7 +367,7 @@
       document.getElementById('convSearch').value.toLowerCase()
     );
     document.getElementById('convCount').textContent = rows.length + ' pratiche';
-    document.getElementById('convBody').innerHTML = buildRows(rows, 5);
+    document.getElementById('convBody').innerHTML = buildRows(rows, 'convStato', 6);
   };
 
   window.renderPol = function() {
@@ -359,7 +377,7 @@
       document.getElementById('polSearch').value.toLowerCase()
     );
     document.getElementById('polCount').textContent = rows.length + ' pratiche';
-    document.getElementById('polBody').innerHTML = buildRows(rows, 5);
+    document.getElementById('polBody').innerHTML = buildRows(rows, 'polStato', 6);
   };
 
   loadData();
