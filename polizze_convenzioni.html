@@ -72,6 +72,30 @@
   .empty{padding:36px;text-align:center;color:var(--muted);font-size:12px}
   .loading-row{padding:28px;text-align:center;color:var(--muted);font-size:12px}
 
+  /* EDIT INLINE */
+  .edit-btn{background:none;border:none;cursor:pointer;padding:3px 5px;border-radius:5px;color:var(--muted);opacity:0;transition:opacity .15s,color .15s;vertical-align:middle}
+  tr:hover .edit-btn{opacity:1}
+  .edit-btn:hover{color:var(--retelit-teal)}
+  .edit-select{padding:3px 6px;border:1.5px solid var(--retelit-sky);border-radius:6px;font-family:inherit;font-size:11px;background:var(--surface);color:var(--text);cursor:pointer}
+  .save-btn{padding:3px 9px;background:var(--retelit-teal);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit}
+  .save-btn:disabled{opacity:.5;cursor:not-allowed}
+  .cancel-btn{padding:3px 7px;background:none;border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;color:var(--muted);font-family:inherit}
+
+  /* TOAST */
+  #toast{position:fixed;bottom:24px;right:24px;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;opacity:0;transform:translateY(8px);transition:opacity .25s,transform .25s;pointer-events:none}
+  #toast.show{opacity:1;transform:translateY(0)}
+  #toast.ok{background:#EBFAF3;color:#1E9E6A;border:1px solid #bbf7d0}
+  #toast.err{background:#FEECEB;color:#C0392B;border:1px solid #f5c6c2}
+
+  /* TOKEN MODAL */
+  #tokenModal{display:none;position:fixed;inset:0;background:rgba(4,63,117,.25);z-index:200;align-items:center;justify-content:center}
+  #tokenModal.open{display:flex}
+  #tokenBox{background:var(--surface);border-radius:14px;padding:28px;width:340px;box-shadow:0 8px 32px rgba(4,63,117,.18)}
+  #tokenBox h3{font-size:16px;font-weight:700;margin-bottom:6px}
+  #tokenBox p{font-size:12px;color:var(--muted);margin-bottom:16px}
+  #tokenInput{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:var(--font-mono);font-size:13px;margin-bottom:12px}
+  #tokenInput:focus{outline:none;border-color:var(--retelit-sky)}
+
   /* BADGE */
   .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}
 </style>
@@ -193,6 +217,21 @@
       </div>
     </div>
 
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- Token modal -->
+<div id="tokenModal">
+  <div id="tokenBox">
+    <h3>Token amministratore</h3>
+    <p>Inserisci l'upload token per salvare le modifiche su MongoDB e GitHub.</p>
+    <input id="tokenInput" type="password" placeholder="Upload token..." autocomplete="off">
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="cancel-btn" onclick="closeTokenModal()">Annulla</button>
+      <button class="save-btn" onclick="confirmToken()">Conferma</button>
+    </div>
   </div>
 </div>
 
@@ -344,20 +383,145 @@
     return r;
   }
 
-  function buildRows(rows, statoKey, colSpan) {
+  // ── VALORI AMMESSI ────────────────────────────────────────────────────────
+  const CONV_VALUES = ['', 'NECESSARIA', 'RICHIESTA RDS', 'INVIATA', 'OTTENUTA'];
+  const POL_VALUES  = ['', 'NECESSARIA', 'RICHIESTA RDS', 'INVIATA', 'OTTENUTA'];
+
+  function buildRows(rows, statoKey, colSpan, field) {
     if (!rows.length) return '<tr><td colspan="' + colSpan + '" class="empty">Nessuna pratica trovata.</td></tr>';
-    return rows.map(r => {
-      const st  = STATI_COLORS[r.stato]           || { bg:'var(--gray-100)', color:'var(--gray-500)' };
+    const values = field === 'CONVENZIONE' ? CONV_VALUES : POL_VALUES;
+    return rows.map((r, i) => {
+      const st  = STATI_COLORS[r.stato]                      || { bg:'var(--gray-100)', color:'var(--gray-500)' };
       const stS = STATI_COLORS[(r[statoKey]||'').toUpperCase()] || { bg:'var(--gray-100)', color:'var(--gray-500)' };
-      return `<tr>
+      const statoVal = r[statoKey] || '';
+      const opts = values.map(v =>
+        `<option value="${v}" ${v === statoVal ? 'selected' : ''}>${v || '(vuoto)'}</option>`
+      ).join('');
+      return `<tr data-idx="${i}" data-field="${field}" data-lotto="${r.lotto}" data-pratica="${r.pratica}">
         <td style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--accent)">${r.pratica||'—'}</td>
         <td style="font-size:11px">${r.lotto||'—'}</td>
         <td style="font-size:11.5px">${r.ente||'—'}</td>
         <td><span class="badge" style="background:${st.bg};color:${st.color}">${r.stato||'—'}</span></td>
-        <td><span class="badge" style="background:${stS.bg};color:${stS.color}">${r[statoKey]||'—'}</span></td>
+        <td class="stato-cell">
+          <span class="badge stato-badge" style="background:${stS.bg};color:${stS.color}">${statoVal||'—'}</span>
+          <button class="edit-btn" title="Modifica" onclick="startEdit(this)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <span class="edit-controls" style="display:none;gap:5px;align-items:center">
+            <select class="edit-select">${opts}</select>
+            <button class="save-btn" onclick="saveEdit(this)">Salva</button>
+            <button class="cancel-btn" onclick="cancelEdit(this)">✕</button>
+          </span>
+        </td>
         <td style="font-size:11px;color:var(--muted)">${r.comune||'—'}</td>
       </tr>`;
     }).join('');
+  }
+
+  // ── EDIT INLINE ────────────────────────────────────────────────────────────
+  window.startEdit = function(btn) {
+    const cell = btn.closest('.stato-cell');
+    cell.querySelector('.stato-badge').style.display = 'none';
+    btn.style.display = 'none';
+    const ctrl = cell.querySelector('.edit-controls');
+    ctrl.style.display = 'inline-flex';
+    ctrl.querySelector('select').focus();
+  };
+
+  window.cancelEdit = function(btn) {
+    const cell = btn.closest('.stato-cell');
+    cell.querySelector('.stato-badge').style.display = '';
+    cell.querySelector('.edit-btn').style.display = '';
+    cell.querySelector('.edit-controls').style.display = 'none';
+  };
+
+  window.saveEdit = function(btn) {
+    const row   = btn.closest('tr');
+    const cell  = btn.closest('.stato-cell');
+    const lotto   = row.dataset.lotto;
+    const pratica = row.dataset.pratica;
+    const field   = row.dataset.field;
+    const val     = cell.querySelector('.edit-select').value;
+    _doSave(lotto, pratica, field, val, btn, cell);
+  };
+
+  function _doSave(lotto, pratica, field, val, btn, cell) {
+    const token = sessionStorage.getItem('_enri_upload_token') || '';
+    if (!token) {
+      _pendingSave = { lotto, pratica, field, val, btn, cell };
+      openTokenModal();
+      return;
+    }
+    _execSave(lotto, pratica, field, val, token, btn, cell);
+  }
+
+  async function _execSave(lotto, pratica, field, val, token, btn, cell) {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    if (!apiBase) { showToast('⚠ API base non configurata', 'err'); return; }
+    btn.disabled = true;
+    try {
+      const r = await fetch(apiBase + '/api/admin/polizze-convenzioni/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-upload-token': token },
+        body: JSON.stringify({ lotto, pratica, fields: { [field]: val } })
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || r.statusText);
+      // Aggiorna badge visivo senza reload
+      const stS = STATI_COLORS[(val||'').toUpperCase()] || { bg:'var(--gray-100)', color:'var(--gray-500)' };
+      const badge = cell.querySelector('.stato-badge');
+      badge.textContent = val || '—';
+      badge.style.background = stS.bg;
+      badge.style.color = stS.color;
+      cancelEdit(btn);
+      showToast('✓ Salvato su MongoDB e GitHub (' + d.rows_updated + ' righe)', 'ok');
+    } catch(e) {
+      if (e.message && e.message.includes('401')) {
+        sessionStorage.removeItem('_enri_upload_token');
+        showToast('Token non valido — riprova', 'err');
+      } else {
+        showToast('Errore: ' + e.message, 'err');
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ── TOKEN MODAL ────────────────────────────────────────────────────────────
+  let _pendingSave = null;
+
+  function openTokenModal() {
+    document.getElementById('tokenModal').classList.add('open');
+    setTimeout(() => document.getElementById('tokenInput').focus(), 50);
+  }
+  window.closeTokenModal = function() {
+    document.getElementById('tokenModal').classList.remove('open');
+    document.getElementById('tokenInput').value = '';
+    if (_pendingSave) { cancelEdit(_pendingSave.btn); _pendingSave = null; }
+  };
+  window.confirmToken = function() {
+    const t = document.getElementById('tokenInput').value.trim();
+    if (!t) return;
+    sessionStorage.setItem('_enri_upload_token', t);
+    document.getElementById('tokenModal').classList.remove('open');
+    document.getElementById('tokenInput').value = '';
+    if (_pendingSave) {
+      const { lotto, pratica, field, val, btn, cell } = _pendingSave;
+      _pendingSave = null;
+      _execSave(lotto, pratica, field, val, t, btn, cell);
+    }
+  };
+  document.getElementById('tokenInput').addEventListener('keydown', e => { if (e.key === 'Enter') window.confirmToken(); });
+  document.getElementById('tokenModal').addEventListener('click', e => { if (e.target === e.currentTarget) window.closeTokenModal(); });
+
+  // ── TOAST ──────────────────────────────────────────────────────────────────
+  let _toastTimer;
+  function showToast(msg, type) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'show ' + type;
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => { t.className = ''; }, 3500);
   }
 
   window.renderConv = function() {
@@ -367,7 +531,7 @@
       document.getElementById('convSearch').value.toLowerCase()
     );
     document.getElementById('convCount').textContent = rows.length + ' pratiche';
-    document.getElementById('convBody').innerHTML = buildRows(rows, 'convStato', 6);
+    document.getElementById('convBody').innerHTML = buildRows(rows, 'convStato', 6, 'CONVENZIONE');
   };
 
   window.renderPol = function() {
@@ -377,7 +541,7 @@
       document.getElementById('polSearch').value.toLowerCase()
     );
     document.getElementById('polCount').textContent = rows.length + ' pratiche';
-    document.getElementById('polBody').innerHTML = buildRows(rows, 'polStato', 6);
+    document.getElementById('polBody').innerHTML = buildRows(rows, 'polStato', 6, 'POLIZZA');
   };
 
   loadData();
