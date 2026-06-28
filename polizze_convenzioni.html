@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="it" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ENRI — Polizze &amp; Convenzioni</title>
+<script src="js/api-config.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --retelit-blue:#043F75;--retelit-blue-75:#436A93;--retelit-blue-50:#819FB9;--retelit-blue-25:#C0CFDC;
+    --retelit-sky:#41BBD9;--retelit-teal:#1A7D99;--retelit-mist:#ADCAD6;--retelit-ice:#D3DEEA;
+    --gray-50:#F7F8FA;--gray-100:#EEF1F5;--gray-200:#DFE4EB;--gray-300:#C4CDD8;
+    --gray-400:#9AA5B4;--gray-500:#6B7685;--gray-700:#363D48;
+    --font-display:"Raleway","Calibri",system-ui,sans-serif;
+    --font-mono:"JetBrains Mono",ui-monospace,monospace;
+    --bg:var(--gray-50);--surface:#fff;--border:var(--gray-200);
+    --text:var(--gray-700);--muted:var(--gray-500);--accent:var(--retelit-blue);
+    --ok:#1E9E6A;--ok-bg:#EBFAF3;--warn:#D08A1A;--warn-bg:#FEF7E7;
+    --danger:#C0392B;--danger-bg:#FEECEB;
+    --shadow-md:0 4px 12px rgba(4,63,117,.08),0 2px 4px rgba(4,63,117,.04);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:var(--font-display);background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:58px;background:var(--retelit-blue);position:sticky;top:0;z-index:100}
+  .topbar-left{display:flex;align-items:center;gap:16px}
+  .topbar-title{font-size:13px;font-weight:600;letter-spacing:.04em;color:var(--retelit-ice);text-transform:uppercase}
+  .topbar-back{font-size:12px;color:var(--retelit-sky);font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:8px;border:1px solid var(--retelit-sky);transition:background .15s}
+  .topbar-back:hover{background:rgba(65,187,217,.1)}
+  .main{max-width:1400px;margin:0 auto;padding:28px 24px;display:flex;flex-direction:column;gap:20px}
+  .hdr{border-bottom:1px solid var(--border);padding-bottom:14px}
+  .eyebrow{font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:.15em;color:var(--muted);margin-bottom:6px}
+  .title{font-family:var(--font-display);font-size:26px;font-weight:700;letter-spacing:-.02em}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;box-shadow:var(--shadow-md)}
+  .filterbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+  .filterbar select,.filterbar input{padding:7px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface);font-family:inherit;font-size:12px;color:var(--text)}
+  .filterbar select:focus,.filterbar input:focus{outline:none;border-color:var(--retelit-sky)}
+  .badge{display:inline-flex;align-items:center;padding:2px 9px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+  .badge-conv{background:#dbeafe;color:#1d4ed8}
+  .badge-pol{background:#fce7f3;color:#9d174d}
+  .badge-both{background:#ede9fe;color:#6d28d9}
+  .badge-si{background:#EBFAF3;color:#1E9E6A;border:1px solid #bbf7d0}
+  .badge-no{background:var(--gray-100);color:var(--gray-500)}
+  .stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;text-align:center}
+  .stat-val{font-size:28px;font-weight:700;font-family:var(--font-display);letter-spacing:-.02em;line-height:1}
+  .stat-lbl{font-size:11px;color:var(--muted);margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  .scroll{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:9px 10px;border-bottom:2px solid var(--border);text-align:left;white-space:nowrap}
+  td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+  tr:hover td{background:rgba(4,63,117,.03)}
+  .empty{padding:40px;text-align:center;color:var(--muted);font-size:13px}
+  #loadingMsg{padding:32px;text-align:center;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <img src="assets/retelit-logo-white.svg" alt="Retelit" style="height:26px" onerror="this.style.display='none'">
+    <div style="width:1px;height:20px;background:var(--retelit-blue-50)"></div>
+    <div class="topbar-title">Polizze &amp; Convenzioni</div>
+  </div>
+  <a href="hub.html" class="topbar-back">← Hub</a>
+</div>
+
+<div class="main">
+  <div class="hdr">
+    <div class="eyebrow">ENRI · Progetto 2025_17</div>
+    <div class="title">Polizze &amp; Convenzioni</div>
+    <div style="font-size:13px;color:var(--muted);margin-top:6px">Pratiche che richiedono convenzione e/o polizza assicurativa, estratte dal Master CSV.</div>
+  </div>
+
+  <!-- KPI -->
+  <div class="stat-grid" id="statGrid" style="display:none">
+    <div class="stat-card">
+      <div class="stat-val" id="statTot">—</div>
+      <div class="stat-lbl">Totale pratiche</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" style="color:#1d4ed8" id="statConv">—</div>
+      <div class="stat-lbl">Richiedono Convenzione</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" style="color:#9d174d" id="statPol">—</div>
+      <div class="stat-lbl">Richiedono Polizza</div>
+    </div>
+  </div>
+
+  <!-- Filtri + tabella -->
+  <div class="card">
+    <div class="filterbar">
+      <select id="filtLotto" onchange="applyFilters()">
+        <option value="">Tutti i lotti</option>
+        <option value="1A">Lotto 1A</option>
+        <option value="1B">Lotto 1B</option>
+        <option value="2A">Lotto 2A</option>
+        <option value="2B">Lotto 2B</option>
+      </select>
+      <select id="filtTipo" onchange="applyFilters()">
+        <option value="">Convenzione e Polizza</option>
+        <option value="conv">Solo Convenzione</option>
+        <option value="pol">Solo Polizza</option>
+        <option value="both">Entrambi</option>
+      </select>
+      <select id="filtStato" onchange="applyFilters()">
+        <option value="">Tutti gli stati</option>
+      </select>
+      <input id="filtSearch" placeholder="🔍 Cerca codice, ente, comune..." style="min-width:220px" oninput="applyFilters()">
+      <button onclick="resetFilters()" style="padding:7px 12px;border:1px solid var(--border);border-radius:7px;background:var(--surface);font-family:inherit;font-size:12px;cursor:pointer;color:var(--muted)">✕ Reset</button>
+      <span id="countLabel" style="font-size:11px;color:var(--muted);margin-left:auto"></span>
+    </div>
+    <div id="loadingMsg">⏳ Caricamento dati...</div>
+    <div class="scroll" id="tableWrap" style="display:none">
+      <table>
+        <thead>
+          <tr>
+            <th>Tratta</th>
+            <th>Pratica</th>
+            <th>Lotto</th>
+            <th>Impresa</th>
+            <th>Ente</th>
+            <th>Stato permesso</th>
+            <th>Convenzione</th>
+            <th>Polizza</th>
+            <th>Comune</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const IMPRESE = { '1A':'Valtellina','1B':'Soleto','2A':'Sielte','2B':'Telebit' };
+  const STATI_COLORS = {
+    'OTTENUTO':                     { bg:'#EBFAF3', color:'#1E9E6A' },
+    'INVIATO':                      { bg:'#e0f2fe', color:'#0369a1' },
+    'PROTOCOLLATO':                 { bg:'#ede9fe', color:'#6d28d9' },
+    'NECESSARIA INTEGRAZIONE':      { bg:'#FEECEB', color:'#C0392B' },
+    'IN REDAZIONE INTEGRAZIONE':    { bg:'#fff7ed', color:'#c2410c' },
+    'PROTOCOLLATO INTEGRAZIONE':    { bg:'#fdf4ff', color:'#a21caf' },
+    'IN FIRMA RDS':                 { bg:'#FEF7E7', color:'#D08A1A' },
+    'COORDINAMENTO':                { bg:'#f5f3ff', color:'#7c3aed' },
+  };
+
+  let ALL_ROWS = [];
+
+  // Legge il Master CSV via endpoint API o GitHub
+  async function loadData() {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    let text = '';
+    try {
+      if (apiBase) {
+        const r = await fetch(apiBase + '/api/data-text/Master.csv', { cache: 'no-cache' });
+        if (r.ok) text = await r.text();
+      }
+      if (!text) {
+        // fallback: GitHub Pages static file
+        const ghBase = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '/');
+        const r = await fetch(ghBase + 'Master.csv', { cache: 'no-cache' });
+        if (r.ok) text = await r.text();
+      }
+    } catch(e) {
+      document.getElementById('loadingMsg').textContent = '⚠ Impossibile caricare il Master CSV: ' + e.message;
+      return;
+    }
+    if (!text.trim()) {
+      document.getElementById('loadingMsg').textContent = '⚠ File Master.csv vuoto o non trovato.';
+      return;
+    }
+    parseAndRender(text);
+  }
+
+  function parseAndRender(text) {
+    const lines = text.trim().split(/\r?\n/);
+    const sep = lines[0].includes(';') ? ';' : ',';
+
+    function splitLine(l) {
+      const res = []; let cur = ''; let inQ = false;
+      for (const ch of l) {
+        if (ch === '"') { inQ = !inQ; }
+        else if (ch === sep && !inQ) { res.push(cur.trim()); cur = ''; }
+        else cur += ch;
+      }
+      res.push(cur.trim()); return res;
+    }
+
+    const hdr = splitLine(lines[0]).map(h => h.replace(/^"|"$/g,'').trim());
+    const idx = k => hdr.findIndex(h => h.toUpperCase() === k.toUpperCase());
+
+    const iTratta = idx('TRATTA_ID');
+    const iPrat   = idx('PRATICA');
+    const iTipo   = idx('TIPO_PERMESSO');
+    const iStato  = idx('STATO_PERMESSO');
+    const iEnte   = idx('ENTE');
+    const iComune = idx('COMUNE');
+    const iSrc    = idx('SOURCE.NAME');
+    const iConv   = hdr.findIndex(h => h.toUpperCase().trim() === 'CONVENZIONE');
+    const iPol    = hdr.findIndex(h => h.toUpperCase().trim() === 'POLIZZA');
+
+    if (iConv === -1 && iPol === -1) {
+      document.getElementById('loadingMsg').textContent = '⚠ Colonne CONVENZIONE e POLIZZA non trovate nel Master CSV.';
+      return;
+    }
+
+    // Deduplica per tratta+pratica+tipo (prendi la riga più recente)
+    const seen = {};
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+      if (!lines[i].trim()) continue;
+      const cols = splitLine(lines[i]);
+      const conv  = iConv >= 0 ? (cols[iConv] || '').trim().toUpperCase() : '';
+      const pol   = iPol  >= 0 ? (cols[iPol]  || '').trim().toUpperCase() : '';
+      if (conv !== 'SI' && pol !== 'SI') continue;
+
+      const tratta = iTratta >= 0 ? (cols[iTratta] || '').trim() : '';
+      const prat   = iPrat   >= 0 ? (cols[iPrat]   || '').trim() : '';
+      const tipo   = iTipo   >= 0 ? (cols[iTipo]   || '').trim() : '';
+      const key    = tratta + '|' + prat + '|' + tipo;
+
+      const src    = iSrc >= 0 ? (cols[iSrc] || '').trim() : '';
+      const lotto  = src.replace(/\.xlsx$/i,'').replace(/^Lotto\s*/i,'').trim().toUpperCase() || '';
+
+      const entry = {
+        tratta,
+        pratica:  prat,
+        tipo,
+        stato:    iStato  >= 0 ? (cols[iStato]  || '').trim() : '',
+        ente:     iEnte   >= 0 ? (cols[iEnte]   || '').trim() : '',
+        comune:   iComune >= 0 ? (cols[iComune] || '').trim() : '',
+        lotto,
+        impresa:  IMPRESE[lotto] || '',
+        conv:     conv === 'SI',
+        pol:      pol  === 'SI',
+      };
+
+      if (!seen[key]) { seen[key] = entry; rows.push(entry); }
+    }
+
+    ALL_ROWS = rows;
+    buildStatoFilter(rows);
+    renderStats(rows);
+    applyFilters();
+    document.getElementById('loadingMsg').style.display = 'none';
+    document.getElementById('tableWrap').style.display = '';
+    document.getElementById('statGrid').style.display = '';
+  }
+
+  function buildStatoFilter(rows) {
+    const stati = [...new Set(rows.map(r => r.stato).filter(Boolean))].sort();
+    const sel = document.getElementById('filtStato');
+    stati.forEach(s => {
+      const o = document.createElement('option');
+      o.value = s; o.textContent = s;
+      sel.appendChild(o);
+    });
+  }
+
+  function renderStats(rows) {
+    document.getElementById('statTot').textContent  = rows.length;
+    document.getElementById('statConv').textContent = rows.filter(r => r.conv).length;
+    document.getElementById('statPol').textContent  = rows.filter(r => r.pol).length;
+  }
+
+  window.applyFilters = function() {
+    const lotto  = document.getElementById('filtLotto').value;
+    const tipo   = document.getElementById('filtTipo').value;
+    const stato  = document.getElementById('filtStato').value;
+    const search = document.getElementById('filtSearch').value.toLowerCase();
+
+    let rows = ALL_ROWS;
+    if (lotto)  rows = rows.filter(r => r.lotto === lotto);
+    if (tipo === 'conv') rows = rows.filter(r => r.conv && !r.pol);
+    if (tipo === 'pol')  rows = rows.filter(r => r.pol  && !r.conv);
+    if (tipo === 'both') rows = rows.filter(r => r.conv && r.pol);
+    if (stato)  rows = rows.filter(r => r.stato === stato);
+    if (search) rows = rows.filter(r =>
+      (r.pratica + r.ente + r.comune + r.tratta + r.lotto).toLowerCase().includes(search)
+    );
+
+    document.getElementById('countLabel').textContent = rows.length + ' pratiche';
+    const tbody = document.getElementById('tbody');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="9" class="empty">Nessuna pratica trovata con i filtri selezionati.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(r => {
+      const st = STATI_COLORS[r.stato] || { bg:'var(--gray-100)', color:'var(--gray-500)' };
+      const tipoBadge = r.conv && r.pol
+        ? '<span class="badge badge-both">Entrambi</span>'
+        : r.conv
+          ? '<span class="badge badge-conv">Convenzione</span>'
+          : '<span class="badge badge-pol">Polizza</span>';
+      return `<tr>
+        <td style="font-family:var(--font-mono);font-size:11px;color:var(--gray-500)">${r.tratta||'—'}</td>
+        <td style="font-family:var(--font-mono);font-size:11.5px;font-weight:600;color:var(--accent)">${r.pratica||'—'}</td>
+        <td style="font-size:11px">${r.lotto||'—'}</td>
+        <td style="font-size:11.5px">${r.impresa||'—'}</td>
+        <td style="font-size:12px">${r.ente||'—'}</td>
+        <td><span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:${st.bg};color:${st.color};white-space:nowrap">${r.stato||'—'}</span></td>
+        <td>${r.conv ? '<span class="badge badge-si">SI</span>' : '<span class="badge badge-no">—</span>'}</td>
+        <td>${r.pol  ? '<span class="badge badge-si">SI</span>' : '<span class="badge badge-no">—</span>'}</td>
+        <td style="font-size:11.5px;color:var(--muted)">${r.comune||'—'}</td>
+      </tr>`;
+    }).join('');
+  };
+
+  window.resetFilters = function() {
+    document.getElementById('filtLotto').value  = '';
+    document.getElementById('filtTipo').value   = '';
+    document.getElementById('filtStato').value  = '';
+    document.getElementById('filtSearch').value = '';
+    applyFilters();
+  };
+
+  loadData();
+})();
+</script>
+</body>
+</html>
