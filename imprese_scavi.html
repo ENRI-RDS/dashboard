@@ -457,12 +457,9 @@
         </select>
       </div>
       <div>
-        <label>Numero fronti attivi</label>
-        <input type="number" id="fFronti" min="0" step="1" placeholder="0">
-      </div>
-      <div>
         <label>Data inizio prevista</label>
         <input type="date" id="fInizioPrev">
+        <div id="hintInizioPrevLock" style="display:none;font-size:10px;color:var(--muted);margin-top:4px">Cantiere già avviato: non modificabile.</div>
       </div>
       <div>
         <label>Data fine prevista</label>
@@ -475,6 +472,14 @@
       <div id="wrapFineEff" style="display:none">
         <label>Data fine effettiva</label>
         <input type="date" id="fFineEff">
+      </div>
+      <div id="wrapMotivoBlocco" style="display:none">
+        <label>Motivo blocco</label>
+        <textarea id="fMotivoBlocco" placeholder="Es. interferenza sottoservizi, maltempo, attesa permessi…"></textarea>
+      </div>
+      <div id="wrapDataRipresa" style="display:none">
+        <label>Data ripresa lavori stimata</label>
+        <input type="date" id="fDataRipresa">
       </div>
       <div class="span2">
         <label>Note / Impedimenti</label>
@@ -576,7 +581,7 @@
     non_avviato: '#9AA5B4', allestimento: '#D08A1A',
     in_corso: '#043F75', sospeso: '#C0392B', completato: '#1E9E6A',
   };
-  const STATI_IN_CORSO_EFF = ['in_corso', 'sospeso', 'completato'];
+  const STATI_IN_CORSO_EFF = ['in_corso', 'completato'];
 
   // ── State ─────────────────────────────────────────────────────────────────
   let ALL_CANTIERI = [];
@@ -637,12 +642,14 @@
           <span>Tot. lavorabili <strong>${fmt(tot)} m</strong></span>
           ${totPot > tot ? `<span style="color:var(--warn,#D08A1A)">+${fmt(totPot-tot)} m in attesa N.O.</span>` : ''}
           ${tecnica !== '—' ? `<span>Tecnica <strong>${escapeHtml(tecnica)}</strong></span>` : ''}
-          ${r.n_fronti_attivi ? `<span>Fronti <strong>${r.n_fronti_attivi}</strong></span>` : ''}
           <span style="margin-left:auto">Agg. <strong>${agg}</strong></span>
         </div>
         <div class="cant-meta" style="margin-top:4px">
           <span>${tratte.length} tratt${tratte.length!==1?'e':'a'}${nBlocc ? ` (${nLav} lavorabil${nLav!==1?'i':'e'}, ${nBlocc} in attesa nulla osta)` : ''}</span>
         </div>
+        ${stato === 'sospeso' && (r.motivo_blocco || r.data_ripresa_stimata) ? `<div class="cant-meta" style="margin-top:4px;color:var(--danger)">
+          <span>${r.motivo_blocco ? '⏸ '+escapeHtml(r.motivo_blocco) : ''}${r.data_ripresa_stimata ? (r.motivo_blocco?' · ':'')+'Ripresa stimata '+escapeHtml(r.data_ripresa_stimata) : ''}</span>
+        </div>` : ''}
         <div class="cant-card-footer">
           <button class="btn btn-sm" data-open="${i}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>Aggiorna</button>
         </div>
@@ -715,12 +722,13 @@
 
     $('fStato').value    = r.stato_cantiere || 'non_avviato';
     $('fTecnica').value  = r.tecnica_scavo  || '';
-    $('fFronti').value   = r.n_fronti_attivi || '';
     $('fMetri').value    = '';
     $('fInizioPrev').value = r.data_inizio_prevista  || '';
     $('fFinePrev').value   = r.data_fine_prevista    || '';
     $('fInizioEff').value  = r.data_inizio_effettiva || '';
     $('fFineEff').value    = r.data_fine_effettiva   || '';
+    $('fMotivoBlocco').value = r.motivo_blocco          || '';
+    $('fDataRipresa').value  = r.data_ripresa_stimata   || '';
     $('fNote').value = '';
     $('msgForm').className = 'msg';
     updateDateVisibility();
@@ -732,8 +740,13 @@
 
   function updateDateVisibility() {
     const s = $('fStato').value;
-    $('wrapInizioEff').style.display = STATI_IN_CORSO_EFF.includes(s) ? '' : 'none';
-    $('wrapFineEff').style.display   = s === 'completato' ? '' : 'none';
+    $('wrapInizioEff').style.display   = STATI_IN_CORSO_EFF.includes(s) ? '' : 'none';
+    $('wrapFineEff').style.display     = s === 'completato' ? '' : 'none';
+    $('wrapMotivoBlocco').style.display = s === 'sospeso' ? '' : 'none';
+    $('wrapDataRipresa').style.display  = s === 'sospeso' ? '' : 'none';
+    const giaAvviato = s !== 'non_avviato';
+    $('fInizioPrev').disabled = giaAvviato;
+    $('hintInizioPrevLock').style.display = giaAvviato ? '' : 'none';
   }
   $('fStato').addEventListener('change', updateDateVisibility);
 
@@ -751,7 +764,6 @@
   $('fSubmit').addEventListener('click', async () => {
     if (!SELECTED) return;
     const metriVal = parseFloat($('fMetri').value);
-    const frontiVal = parseInt($('fFronti').value, 10);
     const payload = {
       stato_cantiere:        $('fStato').value,
       tecnica_scavo:         $('fTecnica').value,
@@ -760,12 +772,14 @@
       data_fine_prevista:    $('fFinePrev').value,
       note: $('fNote').value.trim(),
     };
-    if (!isNaN(frontiVal) && frontiVal >= 0)
-      payload.n_fronti_attivi = frontiVal;
     if ($('wrapInizioEff').style.display !== 'none')
       payload.data_inizio_effettiva = $('fInizioEff').value;
     if ($('wrapFineEff').style.display !== 'none')
       payload.data_fine_effettiva = $('fFineEff').value;
+    if ($('wrapMotivoBlocco').style.display !== 'none') {
+      payload.motivo_blocco        = $('fMotivoBlocco').value.trim();
+      payload.data_ripresa_stimata = $('fDataRipresa').value;
+    }
     if (!isNaN(metriVal) && metriVal >= 0)
       payload.metri_realizzati_oggi = metriVal;
 
@@ -802,18 +816,22 @@
       }
       $('storicoBody').innerHTML = `<table class="storico-table">
         <thead><tr>
-          <th>Data</th><th>Stato</th><th>Metri oggi</th>
-          <th>Fronti</th><th>Note</th>
+          <th>Data</th><th>Stato</th><th>Metri oggi</th><th>Note</th>
         </tr></thead>
-        <tbody>${log.map(e => `<tr>
+        <tbody>${log.map(e => {
+          const noteParts = [];
+          if (e.note) noteParts.push(escapeHtml(e.note));
+          if (e.motivo_blocco) noteParts.push('Blocco: '+escapeHtml(e.motivo_blocco));
+          if (e.data_ripresa_stimata) noteParts.push('Ripresa stimata '+escapeHtml(e.data_ripresa_stimata));
+          return `<tr>
           <td style="font-family:var(--font-mono);font-size:11px">${escapeHtml(e.data||'—')}</td>
           <td><span class="cant-stato-badge s-${(e.stato_cantiere||'').replace(/\s/g,'_')} " style="font-size:9.5px">
             ${escapeHtml(STATO_LABEL[e.stato_cantiere] || e.stato_cantiere || '—')}</span></td>
           <td style="font-family:var(--font-mono);font-weight:700;text-align:right">
             ${e.metri_realizzati > 0 ? (e.metri_realizzati).toLocaleString('it-IT',{maximumFractionDigits:1})+' m' : '—'}</td>
-          <td style="text-align:center">${e.n_fronti_attivi || '—'}</td>
-          <td style="color:var(--muted);font-size:11px">${escapeHtml(e.note||'—')}</td>
-        </tr>`).join('')}</tbody>
+          <td style="color:var(--muted);font-size:11px">${noteParts.join(' · ') || '—'}</td>
+        </tr>`;
+        }).join('')}</tbody>
       </table>`;
     } catch(e) {
       $('storicoBody').innerHTML = `<div class="empty">Errore: ${escapeHtml(e.message)}</div>`;
