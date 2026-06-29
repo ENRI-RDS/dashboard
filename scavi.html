@@ -478,11 +478,13 @@ async function _loadCantieri() {
       const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
       if (!byLotto[lotto]) {
         byLotto[lotto] = { id: lotto, cl: cluster, metri: 0, scavati: 0,
-                           stato: statoUI, tratte: [] };
+                           stato: statoUI, tratte: [], provSet: new Set(), comuniSet: new Set() };
       }
       byLotto[lotto].metri   += r.metri_totali   || 0;
       byLotto[lotto].scavati += r.metri_scavati  || 0;
       byLotto[lotto].tratte.push(r.tratta_id);
+      if (r.provincia) byLotto[lotto].provSet.add(r.provincia);
+      if (r.comune)    byLotto[lotto].comuniSet.add(r.comune);
       // Stato del lotto = stato peggiore tra le tratte
       if (STATO_RANK[statoUI] < STATO_RANK[byLotto[lotto].stato]) {
         byLotto[lotto].stato = statoUI;
@@ -496,6 +498,8 @@ async function _loadCantieri() {
       pct:    l.metri > 0 ? Math.round(l.scavati / l.metri * 100) : 0,
       metri:  Math.round(l.metri),
       tratte: l.tratte,
+      prov:   [...l.provSet],
+      comuni: l.comuniSet.size,
     }));
   } catch(e) {
     console.warn('[scavi] _loadCantieri:', e.message);
@@ -678,7 +682,7 @@ LOTTI.forEach(r => {
   row.innerHTML = `
     <div class="bar-lotto-wrap">
       <span class="bar-lotto-num">${r.id}</span>
-      <span class="bar-lotto-comuni">${r.comuni} comuni · ${r.prov.join('/')}</span>
+      <span class="bar-lotto-comuni">${r.comuni||'—'} comuni${r.prov&&r.prov.length ? ' · '+r.prov.join('/') : ''}</span>
     </div>
 `;
   // Track con segmenti via makeSeg (label interna + rich tooltip)
@@ -708,7 +712,7 @@ function _renderTabella() {
 const tbody = document.getElementById('tablebody');
 tbody.innerHTML = LOTTI.map(r => {
   const col   = STATO_COLOR[r.stato];
-  const pills = r.prov.map(p => `<span class="prov-pill">${p}</span>`).join('');
+  const pills = (r.prov||[]).map(p => `<span class="prov-pill">${p}</span>`).join('');
   const prog  = r.pct > 0
     ? `<div class="prog-wrap"><div class="prog-track"><div class="prog-fill" style="width:${r.pct}%;background:${col}"></div></div><div class="prog-val">${r.pct}%</div></div>`
     : `<span style="color:var(--muted2)">—</span>`;
@@ -897,7 +901,7 @@ function openModalLotto(r) {
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:8px">Territorio</div>
         <div style="font-size:12px;font-weight:600;color:var(--text)">${r.comuni} comuni</div>
         <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">
-          ${r.prov.map(p=>`<span style="background:var(--accent)15;color:var(--accent);border:1px solid var(--accent)30;border-radius:4px;padding:1px 7px;font-size:10px;font-weight:700">${p}</span>`).join('')}
+          ${(r.prov||[]).map(p=>`<span style="background:var(--accent)15;color:var(--accent);border:1px solid var(--accent)30;border-radius:4px;padding:1px 7px;font-size:10px;font-weight:700">${p}</span>`).join('')}
         </div>
       </div>
     </div>`;
@@ -988,7 +992,7 @@ function openModalCluster(cl) {
     lottiHtml += `<tr style="border-bottom:1px solid var(--border)" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
       <td style="padding:8px 10px;font-family:var(--font-mono);font-weight:700;font-size:13px;color:var(--accent);border-left:3px solid ${col}">${r.id}</td>
       <td style="padding:8px 10px"><span style="background:${col}15;color:${col};border:1px solid ${col}30;border-radius:5px;padding:2px 8px;font-size:9px;font-weight:700">${STATO_LABEL[r.stato]}</span></td>
-      <td style="padding:8px 10px;font-size:10px;color:var(--muted)">${r.prov.join(' / ')}</td>
+      <td style="padding:8px 10px;font-size:10px;color:var(--muted)">${(r.prov||[]).join(' / ')}</td>
       <td style="padding:8px 10px;text-align:right;font-weight:700;font-family:var(--font-display)">${fmt(r.metri)} m</td>
       <td style="padding:8px 10px;text-align:right;font-weight:700;font-family:var(--font-display);color:${col}">${r.pct>0?fmt(mScav)+' m':'—'}</td>
       <td style="padding:8px 10px;min-width:100px">
