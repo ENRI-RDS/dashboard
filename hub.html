@@ -656,8 +656,9 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-const SCAVI_ALLOWED_ROLES = ['admin', 'admin2'];
+const SCAVI_ALLOWED_ROLES = ['admin', 'admin2', 'user'];
 const ADMIN_ALLOWED_ROLES = ['admin', 'admin2'];
+const IMPRESA_ROLES      = ['impresa'];
 
 function _showHub(nome) {
   document.getElementById('welcomeName').textContent = nome;
@@ -680,6 +681,7 @@ function _showHub(nome) {
   const adminCard   = document.getElementById('adminCard');
   const impresaCard = document.getElementById('impresaCard');
   const isAdmin     = ADMIN_ALLOWED_ROLES.includes(ruolo);
+  const isImpresa   = IMPRESA_ROLES.includes(ruolo);
   if (adminCard && isAdmin) adminCard.style.display = '';
 
   function _reveal() {
@@ -690,7 +692,7 @@ function _showHub(nome) {
 
   const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
 
-  if (!isAdmin && apiBase) {
+  if (isImpresa && apiBase) {
     let _autoRetryCount = 0;
     const _MAX_AUTO_RETRY = 12;
     function _doImpresaCheck(retryBtn) {
@@ -751,7 +753,7 @@ function _showHub(nome) {
         });
     }
     _doImpresaCheck(null);
-  } else if (!isAdmin && !apiBase) {
+  } else if (isImpresa && !apiBase) {
     document.getElementById('initSpinner').style.display = 'none';
     const err = document.createElement('div');
     err.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
@@ -761,27 +763,7 @@ function _showHub(nome) {
       '<p style="margin:0 0 1.5rem;color:var(--fg-3);font-size:.9rem">Accedi tramite il link ufficiale fornito dall\'amministratore di sistema.</p>';
     document.body.appendChild(err);
   } else {
-    if (impresaCard && apiBase) {
-      fetch(apiBase + '/api/imprese/me?nome=' + encodeURIComponent(nome), {
-        headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' }
-      })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => {
-          if (d && d.active !== false) {
-            impresaCard.style.display = '';
-            const mapCard = document.getElementById('impresaMapCard');
-            if (mapCard) mapCard.style.display = '';
-            const mapUpdCard = document.getElementById('impresaMapUpdCard');
-            if (mapUpdCard) mapUpdCard.style.display = '';
-            const scaviCard2 = document.getElementById('impresaScaviCard');
-            if (scaviCard2) scaviCard2.style.display = '';
-            const wrap = document.getElementById('impresaCardsWrap');
-            if (wrap) wrap.style.display = 'flex';
-            document.getElementById('hubContent').classList.add('impresa-mode');
-          }
-        })
-        .catch(() => {});
-    }
+    // admin, admin2, user: vedono tutto — admin card già mostrata sopra per admin/admin2
     _reveal();
   }
 }
