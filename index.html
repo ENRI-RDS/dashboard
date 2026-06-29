@@ -982,7 +982,6 @@ window.loadXLSX = (function(){
       <span id="lastUpdate" style="font-size:10px;font-family:var(--font-body);font-weight:600;color:var(--retelit-ice);white-space:nowrap;letter-spacing:0.01em"><span></span></span>
     </div>
     <a href="mappa.html" class="topbar-back">Mappa</a>
-    <a href="executive_summary.html" class="topbar-back">Executive</a>
 
     <div class="pdf-dropdown" id="pdfDropdown">
       <button class="topbar-back" style="background:transparent;cursor:pointer;" onclick="togglePdfDropdown(event)">Stampa PDF ▾</button>
@@ -1770,8 +1769,13 @@ window.loadXLSX = (function(){
         <span id="sedBadge" class="badge" style="font-size:10px">Caricamento...</span>
       </div>
       <div style="display:flex;gap:6px;align-items:center">
-        <button onclick="exportSedXlsxView()" style="font-size:11px;padding:6px 13px;border-radius:7px;background:#1a5c6e;color:#c8eaf0;border:1px solid #2e7d8c;cursor:pointer;font-family:inherit;font-weight:600;transition:opacity 0.15s" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">&#128202; Scarica Vista</button>
-        <button onclick="exportSedXlsx()" style="font-size:11px;padding:6px 13px;border-radius:7px;background:#1e6b1e;color:#c8f0c8;border:1px solid #2e8c2e;cursor:pointer;font-family:inherit;font-weight:600;transition:opacity 0.15s" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">&#128202; Scarica Tutti</button>
+        <div class="pdf-dropdown" id="sedXlsDropdown">
+          <button class="btn" style="font-size:11px;padding:6px 13px;background:var(--ok);color:#fff;border:1px solid var(--ok)" onclick="toggleSedXlsDropdown(event)">Scarica Excel ▾</button>
+          <div class="pdf-dropdown-menu">
+            <button onclick="exportSedXlsx();closeSedXlsDropdown()">Tutti gli attraversamenti</button>
+            <button onclick="exportSedXlsxView();closeSedXlsDropdown()">Vista corrente</button>
+          </div>
+        </div>
         <button onclick="sedToggleCollapse()" id="sedCollapseBtn" style="font-size:11px;padding:6px 10px;border-radius:7px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);cursor:pointer;font-family:inherit;font-weight:600;transition:all 0.15s">&#9650; Comprimi</button>
       </div>
     </div>
@@ -2092,6 +2096,16 @@ function toggleXlsDropdown(e) {
 function closeXlsDropdown() {
   document.getElementById('xlsDropdown')?.classList.remove('open');
 }
+function toggleSedXlsDropdown(e) {
+  e.stopPropagation();
+  document.getElementById('sedXlsDropdown').classList.toggle('open');
+}
+function closeSedXlsDropdown() {
+  document.getElementById('sedXlsDropdown')?.classList.remove('open');
+}
+document.addEventListener('click', function(e) {
+  if (!document.getElementById('sedXlsDropdown')?.contains(e.target)) closeSedXlsDropdown();
+});
 document.addEventListener('click', function(e) {
   if (!document.getElementById('xlsDropdown')?.contains(e.target)) closeXlsDropdown();
 });
