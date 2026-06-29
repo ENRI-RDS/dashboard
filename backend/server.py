@@ -1576,6 +1576,22 @@ async def _push_sopralluoghi_to_github() -> None:
         print(f"[GitHub] _push_sopralluoghi: {e}")
 
 
+@app.delete("/api/sopralluoghi/{sop_id}")
+async def delete_sopralluogo(sop_id: str, sess: dict = Depends(_require_session)):
+    """Elimina un verbale di sopralluogo — solo admin."""
+    if sess.get("ruolo", "user") != "admin":
+        raise HTTPException(403, "Solo gli admin possono eliminare verbali")
+    try:
+        oid = ObjectId(sop_id)
+    except Exception:
+        raise HTTPException(400, "ID non valido")
+    res = await sopralluoghi_col.delete_one({"_id": oid})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Verbale non trovato")
+    asyncio.create_task(_push_sopralluoghi_to_github())
+    return {"ok": True, "deleted": sop_id}
+
+
 @app.get("/api/sopralluoghi")
 async def list_sopralluoghi(sess: dict = Depends(_require_session)):
     """Restituisce tutti i verbali di sopralluogo, ordinati per codice decrescente."""
