@@ -206,15 +206,24 @@
         <input type="text" id="codice_verbale" readonly placeholder="Generato all'invio"
                style="background:#f4f6fa;color:#888;cursor:not-allowed;font-family:'JetBrains Mono',monospace;font-weight:600">
       </div>
-    </div>
-    <div class="field-row">
-      <div class="field-group">
-        <label for="n_cantiere">N° Cantiere</label>
-        <input type="text" id="n_cantiere" placeholder="es. CA/1/1A">
-      </div>
       <div class="field-group">
         <label for="data">Data Sopralluogo</label>
         <input type="date" id="data">
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-group">
+        <label for="lotto">Lotto</label>
+        <select id="lotto" onchange="onLottoChange()">
+          <option value="">— seleziona —</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label for="n_cantiere">N° Cantiere</label>
+        <select id="n_cantiere">
+          <option value="">— seleziona prima il lotto —</option>
+        </select>
       </div>
     </div>
 
@@ -232,21 +241,9 @@
           <option>Soleto</option>
           <option>Sielte</option>
           <option>Telebit</option>
+          <option>Circet</option>
         </select>
       </div>
-      <div class="field-group">
-        <label for="lotto">Lotto</label>
-        <select id="lotto">
-          <option value="">— seleziona —</option>
-          <option>Lotto 1A</option>
-          <option>Lotto 1B</option>
-          <option>Lotto 2A</option>
-          <option>Lotto 2B</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="field-row">
       <div class="field-group">
         <label for="ruolo">Ruolo redattore</label>
         <select id="ruolo">
@@ -254,9 +251,7 @@
           <option value="Field Manager">Field Manager</option>
         </select>
       </div>
-      <div class="field-group">
-        <label for="redattore">Redatto da</label>
-        <input type="text" id="redattore" placeholder="Nome Cognome">
+    </div>
       </div>
     </div>
 
@@ -370,6 +365,13 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('authGuard').querySelector('p').textContent = 'Sessione scaduta. Effettua di nuovo il login.';
     return;
   }
+  // Pre-compila redattore con utente corrente
+  const redEl = document.getElementById('redattore');
+  if (redEl && !redEl.value) redEl.value = u;
+
+  // Carica lotti e cantieri dal backend
+  _loadLottiCantieri();
+
   document.getElementById('topbarUser').textContent = u;
   document.getElementById('redattore').value = u;
   document.getElementById('data').value = new Date().toISOString().split('T')[0];
@@ -422,9 +424,12 @@ function renderPreviews(){
 
 /* ── DATI CONDIVISI ── */
 function getF(){
+  const selCantiere = document.getElementById('n_cantiere');
+  const cantLabel = selCantiere?.options[selCantiere.selectedIndex]?.text || selCantiere?.value || '—';
   return {
     codice_verbale:v('codice_verbale'),
-    n_cantiere:v('n_cantiere'), data:fmtDate('data'), indirizzo:v('indirizzo'),
+    n_cantiere: cantLabel !== '— seleziona cantiere —' ? cantLabel : '—',
+    data:fmtDate('data'), indirizzo:v('indirizzo'),
     lotto:v('lotto'), impresa:v('impresa'), ruolo:v('ruolo'), redattore:v('redattore'),
     n_foto:String(uploadedPhotos.length), gravita:gravita(),
     segnalazioni:v('segnalazioni'), azioni:v('azioni'),
@@ -442,6 +447,40 @@ function photoRows(n){
 
 
 /* ══ EXCEL — riga singola da incollare nel master ══ */
+// ── Lotti e cantieri dinamici ────────────────────────────────────────────────
+let _lottiData = {};
+
+async function _loadLottiCantieri() {
+  try {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    const token   = localStorage.getItem('_enri_session') || '';
+    const res = await fetch(apiBase + '/api/lotti-cantieri', {
+      headers: { 'x-session-token': token }
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    _lottiData = data.lotti || {};
+    const sel = document.getElementById('lotto');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">— seleziona —</option>' +
+      Object.keys(_lottiData).map(l => `<option value="${l}"${l===current?' selected':''}>${l}</option>`).join('');
+    if (current) onLottoChange();
+  } catch(e) { console.warn('Lotti non caricati:', e); }
+}
+
+function onLottoChange() {
+  const lotto = document.getElementById('lotto').value;
+  const sel   = document.getElementById('n_cantiere');
+  const cantieri = _lottiData[lotto] || [];
+  if (!cantieri.length) {
+    sel.innerHTML = '<option value="">— nessun cantiere disponibile —</option>';
+    return;
+  }
+  sel.innerHTML = '<option value="">— seleziona cantiere —</option>' +
+    cantieri.map(c => `<option value="${c.value}">${c.label}</option>`).join('');
+}
+
+
 async function inviaVerbale(){
   const btn = document.getElementById('btn-invia');
   const f = getF();
