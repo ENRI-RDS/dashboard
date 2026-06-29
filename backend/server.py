@@ -2027,13 +2027,17 @@ async def _sync_cantieri() -> int:
             await cantieri_col.delete_many({"_id": {"$in": [d["_id"] for d in old_docs]}})
         created += 1
 
-    # Pulizia doppioni: cantieri creati prima della normalizzazione di 'ente'
-    # (spazi multipli/maiuscole diverse → stessa pratica vista come due chiavi
-    # diverse). Se un cantiere "orfano" normalizzato coincide con uno toccato
-    # in questo sync, unisce metri/log nel cantiere corrente ed elimina il doppione.
+    # Pulizia doppioni: cantieri creati prima dell'introduzione di 'cantiere_key'
+    # (schema intermedio: solo pratica_id+ente, niente cantiere_key) oppure prima
+    # della normalizzazione di 'ente' (spazi multipli/maiuscole diverse → stessa
+    # pratica vista come due chiavi diverse). $nin su un campo assente include
+    # anche i documenti dove il campo non esiste affatto (schema intermedio).
     touched_keys = {g["cantiere_key"] for g in groups.values()}
     merged = 0
-    async for orphan in cantieri_col.find({"cantiere_key": {"$exists": True, "$nin": list(touched_keys)}}):
+    async for orphan in cantieri_col.find({
+        "pratica_id": {"$exists": True},
+        "cantiere_key": {"$nin": list(touched_keys)},
+    }):
         m = re.match(r"^AUT/(.+)/([^/]+)$", orphan.get("pratica_id") or "")
         if not m:
             continue
