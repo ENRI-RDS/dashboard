@@ -1576,6 +1576,28 @@ async def _push_sopralluoghi_to_github() -> None:
         print(f"[GitHub] _push_sopralluoghi: {e}")
 
 
+@app.get("/api/lotti-cantieri")
+async def get_lotti_cantieri(sess: dict = Depends(_require_session)):
+    """Restituisce lotti distinti e i loro cantieri per il form sopralluogo."""
+    result = {}
+    async for doc in cantieri_col.find({}, {"cantiere_key": 1, "lotto": 1, "ente": 1, "tratte_lavorabili": 1}):
+        lotto = str(doc.get("lotto", "")).strip()
+        key   = str(doc.get("cantiere_key", "")).strip()
+        if not lotto or not key:
+            continue
+        # Estrai solo il numero progressivo dal cantiere_key (es. "10|2B|PROV..." → "10")
+        num = key.split("|")[0].strip() if "|" in key else key
+        ente = str(doc.get("ente", "")).strip()
+        label = f"{num} — {ente}" if ente else num
+        if lotto not in result:
+            result[lotto] = []
+        if not any(c["value"] == key for c in result[lotto]):
+            result[lotto].append({"value": key, "label": label, "num": num})
+    # Ordina lotti e cantieri
+    ordered = {k: sorted(v, key=lambda x: x["num"]) for k, v in sorted(result.items())}
+    return {"lotti": ordered}
+
+
 @app.delete("/api/sopralluoghi/{sop_id}")
 async def delete_sopralluogo(sop_id: str, sess: dict = Depends(_require_session)):
     """Elimina un verbale di sopralluogo — solo admin."""
