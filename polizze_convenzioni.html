@@ -38,7 +38,7 @@
 
   /* KPI globali */
   .kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-  .kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;text-align:center}
+  .kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;text-align:center}
   .kpi-val{font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1}
   .kpi-lbl{font-size:11px;color:var(--muted);margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
 
@@ -51,8 +51,8 @@
   .panel-head{padding:16px 20px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
   .panel-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .panel-icon svg{width:18px;height:18px;stroke:currentColor}
-  .panel-icon.conv{background:#dbeafe;color:#1d4ed8}
-  .panel-icon.pol{background:#fce7f3;color:#9d174d}
+  .panel-icon.conv{background:var(--retelit-ice);color:var(--retelit-blue)}
+  .panel-icon.pol{background:var(--retelit-mist);color:var(--retelit-teal)}
   .panel-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
   .panel-title{font-size:16px;font-weight:700;letter-spacing:-.01em}
   .panel-count{margin-left:auto;font-family:var(--font-mono);font-size:11px;color:var(--muted)}
@@ -72,32 +72,117 @@
   .empty{padding:36px;text-align:center;color:var(--muted);font-size:12px}
   .loading-row{padding:28px;text-align:center;color:var(--muted);font-size:12px}
 
-  /* EDIT INLINE */
-  .edit-btn{background:none;border:none;cursor:pointer;padding:3px 5px;border-radius:5px;color:var(--muted);opacity:0;transition:opacity .15s,color .15s;vertical-align:middle}
+  /* EDIT INLINE — §7.1 Button, §5.2 radius, §5.4 motion */
+  .edit-btn{
+    background:none;border:none;cursor:pointer;
+    padding:3px 5px;border-radius:var(--radius-md);
+    color:var(--gray-400);opacity:0;
+    transition:opacity var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
+    vertical-align:middle;line-height:1
+  }
   tr:hover .edit-btn{opacity:1}
   .edit-btn:hover{color:var(--retelit-teal)}
-  .edit-select{padding:3px 6px;border:1.5px solid var(--retelit-sky);border-radius:6px;font-family:inherit;font-size:11px;background:var(--surface);color:var(--text);cursor:pointer}
-  .save-btn{padding:3px 9px;background:var(--retelit-teal);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit}
-  .save-btn:disabled{opacity:.5;cursor:not-allowed}
-  .cancel-btn{padding:3px 7px;background:none;border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;color:var(--muted);font-family:inherit}
+  .edit-btn:focus-visible{outline:2px solid var(--retelit-sky);outline-offset:2px}
 
-  /* TOAST */
-  #toast{position:fixed;bottom:24px;right:24px;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;opacity:0;transform:translateY(8px);transition:opacity .25s,transform .25s;pointer-events:none}
+  .edit-select{
+    padding:4px 8px;
+    border:1.5px solid var(--retelit-sky);
+    border-radius:var(--radius-md);
+    font-family:var(--font-display);font-size:12px;
+    background:var(--surface);color:var(--text);cursor:pointer
+  }
+  .edit-select:focus{outline:none;box-shadow:var(--shadow-focus)}
+
+  /* Bottoni inline — variante sm §7.1 */
+  .btn-save{
+    padding:4px 12px;height:28px;
+    background:var(--retelit-teal);color:#fff;
+    border:none;border-radius:var(--radius-md);
+    font-family:var(--font-display);font-size:11px;font-weight:600;
+    cursor:pointer;transition:background var(--dur-base) var(--ease-out)
+  }
+  .btn-save:hover{background:var(--retelit-blue-75)}
+  .btn-save:focus-visible{outline:2px solid var(--retelit-sky);outline-offset:2px}
+  .btn-save:disabled{opacity:.5;cursor:not-allowed}
+
+  .btn-ghost-sm{
+    padding:4px 10px;height:28px;
+    background:transparent;color:var(--gray-500);
+    border:1px solid var(--border);border-radius:var(--radius-md);
+    font-family:var(--font-display);font-size:11px;font-weight:500;
+    cursor:pointer;transition:border-color var(--dur-base) var(--ease-out),color var(--dur-base) var(--ease-out)
+  }
+  .btn-ghost-sm:hover{border-color:var(--gray-400);color:var(--text)}
+  .btn-ghost-sm:focus-visible{outline:2px solid var(--retelit-sky);outline-offset:2px}
+
+  /* TOAST — §7.7 top-right, auto-dismiss 5s — no emoji, solo testo */
+  #toast{
+    position:fixed;bottom:24px;right:24px;
+    padding:10px 18px;border-radius:var(--radius-lg);
+    font-family:var(--font-display);font-size:13px;font-weight:600;
+    z-index:9999;opacity:0;transform:translateY(6px);
+    transition:opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+    pointer-events:none;max-width:360px
+  }
   #toast.show{opacity:1;transform:translateY(0)}
-  #toast.ok{background:#EBFAF3;color:#1E9E6A;border:1px solid #bbf7d0}
-  #toast.err{background:#FEECEB;color:#C0392B;border:1px solid #f5c6c2}
+  #toast.ok{background:var(--ok-bg);color:var(--ok);border:1px solid #bbf7d0}
+  #toast.err{background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger)}
 
-  /* TOKEN MODAL */
-  #tokenModal{display:none;position:fixed;inset:0;background:rgba(4,63,117,.25);z-index:200;align-items:center;justify-content:center}
+  /* TOKEN MODAL — §7.2 Input, §7.3 Card, §5.4 motion */
+  #tokenModal{
+    display:none;position:fixed;inset:0;
+    background:rgba(4,63,117,.3);
+    z-index:200;align-items:center;justify-content:center
+  }
   #tokenModal.open{display:flex}
-  #tokenBox{background:var(--surface);border-radius:14px;padding:28px;width:340px;box-shadow:0 8px 32px rgba(4,63,117,.18)}
-  #tokenBox h3{font-size:16px;font-weight:700;margin-bottom:6px}
-  #tokenBox p{font-size:12px;color:var(--muted);margin-bottom:16px}
-  #tokenInput{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:var(--font-mono);font-size:13px;margin-bottom:12px}
-  #tokenInput:focus{outline:none;border-color:var(--retelit-sky)}
+  #tokenBox{
+    background:var(--surface);border-radius:var(--radius-lg);
+    padding:28px;width:360px;
+    border:1px solid var(--border);
+    box-shadow:var(--shadow-lg)
+  }
+  #tokenBox .r-eyebrow{
+    font-family:var(--font-mono);font-size:10px;
+    text-transform:uppercase;letter-spacing:.15em;
+    color:var(--retelit-teal);margin-bottom:6px
+  }
+  #tokenBox h3{
+    font-family:var(--font-display);font-size:17px;font-weight:700;
+    color:var(--retelit-blue);margin-bottom:8px;letter-spacing:-.01em
+  }
+  #tokenBox p{font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.5}
+  #tokenInput{
+    width:100%;padding:9px 12px;
+    border:1.5px solid var(--border);
+    border-radius:var(--radius-md);
+    font-family:var(--font-mono);font-size:13px;
+    color:var(--text);background:var(--surface);
+    margin-bottom:16px;
+    transition:border-color var(--dur-fast) var(--ease-out),box-shadow var(--dur-fast) var(--ease-out)
+  }
+  #tokenInput:focus{outline:none;border-color:var(--retelit-sky);box-shadow:var(--shadow-focus)}
+  .token-actions{display:flex;gap:8px;justify-content:flex-end}
+  .btn-primary-sm{
+    padding:8px 18px;height:36px;
+    background:var(--retelit-blue);color:#fff;
+    border:none;border-radius:var(--radius-md);
+    font-family:var(--font-display);font-size:13px;font-weight:600;
+    cursor:pointer;transition:background var(--dur-base) var(--ease-out)
+  }
+  .btn-primary-sm:hover{background:var(--retelit-blue-75)}
+  .btn-primary-sm:focus-visible{outline:2px solid var(--retelit-sky);outline-offset:2px}
+  .btn-secondary-sm{
+    padding:8px 16px;height:36px;
+    background:transparent;color:var(--retelit-blue);
+    border:1px solid var(--retelit-blue);border-radius:var(--radius-md);
+    font-family:var(--font-display);font-size:13px;font-weight:600;
+    cursor:pointer;transition:background var(--dur-base) var(--ease-out)
+  }
+  .btn-secondary-sm:hover{background:var(--retelit-ice)}
+  .btn-secondary-sm:focus-visible{outline:2px solid var(--retelit-sky);outline-offset:2px}
 
   /* BADGE */
-  .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}
+  .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:var(--radius-pill);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -125,11 +210,11 @@
       <div class="kpi-lbl">Totale pratiche</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-val" style="color:#1d4ed8" id="kpiConv">—</div>
+      <div class="kpi-val" style="color:var(--retelit-teal)" id="kpiConv">—</div>
       <div class="kpi-lbl">Richiedono Convenzione</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-val" style="color:#9d174d" id="kpiPol">—</div>
+      <div class="kpi-val" style="color:var(--retelit-blue-75)" id="kpiPol">—</div>
       <div class="kpi-lbl">Richiedono Polizza</div>
     </div>
   </div>
@@ -172,7 +257,7 @@
               <th>Comune</th>
             </tr>
           </thead>
-          <tbody id="convBody"><tr><td colspan="6" class="loading-row">⏳ Caricamento...</td></tr></tbody>
+          <tbody id="convBody"><tr><td colspan="6" class="loading-row">Caricamento in corso...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -212,7 +297,7 @@
               <th>Comune</th>
             </tr>
           </thead>
-          <tbody id="polBody"><tr><td colspan="6" class="loading-row">⏳ Caricamento...</td></tr></tbody>
+          <tbody id="polBody"><tr><td colspan="6" class="loading-row">Caricamento in corso...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -223,14 +308,15 @@
 <div id="toast"></div>
 
 <!-- Token modal -->
-<div id="tokenModal">
+<div id="tokenModal" role="dialog" aria-modal="true" aria-labelledby="tokenModalTitle">
   <div id="tokenBox">
-    <h3>Token amministratore</h3>
+    <div class="r-eyebrow">Amministrazione</div>
+    <h3 id="tokenModalTitle">Token di accesso</h3>
     <p>Inserisci l'upload token per salvare le modifiche su MongoDB e GitHub.</p>
-    <input id="tokenInput" type="password" placeholder="Upload token..." autocomplete="off">
-    <div style="display:flex;gap:8px;justify-content:flex-end">
-      <button class="cancel-btn" onclick="closeTokenModal()">Annulla</button>
-      <button class="save-btn" onclick="confirmToken()">Conferma</button>
+    <input id="tokenInput" type="password" placeholder="Upload token" autocomplete="off" aria-label="Upload token">
+    <div class="token-actions">
+      <button class="btn-secondary-sm" onclick="closeTokenModal()">Annulla</button>
+      <button class="btn-primary-sm" onclick="confirmToken()">Conferma</button>
     </div>
   </div>
 </div>
@@ -239,17 +325,17 @@
 (function() {
   const IMPRESE = { '1A':'Valtellina','1B':'Soleto','2A':'Sielte','2B':'Telebit' };
   const STATI_COLORS = {
-    'OTTENUTO':                  { bg:'#EBFAF3', color:'#1E9E6A' },
-    'INVIATO':                   { bg:'#e0f2fe', color:'#0369a1' },
-    'INVIATA':                   { bg:'#e0f2fe', color:'#0369a1' },
-    'PROTOCOLLATO':              { bg:'#ede9fe', color:'#6d28d9' },
-    'NECESSARIA INTEGRAZIONE':   { bg:'#FEECEB', color:'#C0392B' },
-    'NECESSARIA':                { bg:'#FEF7E7', color:'#D08A1A' },
-    'IN REDAZIONE INTEGRAZIONE': { bg:'#fff7ed', color:'#c2410c' },
-    'PROTOCOLLATO INTEGRAZIONE': { bg:'#fdf4ff', color:'#a21caf' },
-    'IN FIRMA RDS':              { bg:'#FEF7E7', color:'#D08A1A' },
-    'RICHIESTA RDS':             { bg:'#FEF7E7', color:'#D08A1A' },
-    'COORDINAMENTO':             { bg:'#f5f3ff', color:'#7c3aed' },
+    'OTTENUTO':                  { bg:'var(--ok-bg)',       color:'var(--ok)' },
+    'INVIATO':                   { bg:'var(--retelit-ice)', color:'var(--retelit-teal)' },
+    'INVIATA':                   { bg:'var(--retelit-ice)', color:'var(--retelit-teal)' },
+    'PROTOCOLLATO':              { bg:'var(--retelit-ice)', color:'var(--retelit-blue)' },
+    'NECESSARIA INTEGRAZIONE':   { bg:'var(--danger-bg)',   color:'var(--danger)' },
+    'NECESSARIA':                { bg:'var(--warn-bg)',     color:'var(--warn)' },
+    'IN REDAZIONE INTEGRAZIONE': { bg:'var(--warn-bg)',     color:'var(--warn)' },
+    'PROTOCOLLATO INTEGRAZIONE': { bg:'var(--retelit-blue-25)', color:'var(--retelit-blue)' },
+    'IN FIRMA RDS':              { bg:'var(--warn-bg)',     color:'var(--warn)' },
+    'RICHIESTA RDS':             { bg:'var(--warn-bg)',     color:'var(--warn)' },
+    'COORDINAMENTO':             { bg:'var(--retelit-blue-25)', color:'var(--retelit-blue-75)' },
   };
 
   let CONV_ROWS = [];
@@ -269,10 +355,10 @@
         if (r.ok) text = await r.text();
       }
     } catch(e) {
-      setError('⚠ Impossibile caricare il Master CSV: ' + e.message);
+      setError('Impossibile caricare il Master CSV: ' + e.message);
       return;
     }
-    if (!text.trim()) { setError('⚠ File Master.csv vuoto o non trovato.'); return; }
+    if (!text.trim()) { setError('File Master.csv vuoto o non trovato.'); return; }
     parseAndRender(text);
   }
 
@@ -282,7 +368,7 @@
     if (!banner) {
       banner = document.createElement('div');
       banner.id = '_errBanner';
-      banner.style.cssText = 'background:#FEECEB;color:#C0392B;border:1px solid #f5c6c2;border-radius:10px;padding:12px 18px;font-size:13px;font-weight:600;margin-bottom:4px';
+      banner.style.cssText = 'background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger-bg);border-radius:var(--radius-lg);padding:12px 18px;font-size:13px;font-weight:600;margin-bottom:4px';
       document.querySelector('.main').insertBefore(banner, document.querySelector('.split'));
     }
     banner.textContent = msg;
@@ -320,7 +406,7 @@
     console.log('[Polizze&Convenzioni] Colonne CSV trovate:', hdr.join(', '));
     console.log('[Polizze&Convenzioni] iConv=', iConv, ' iPol=', iPol);
     if (iConv === -1 && iPol === -1) {
-      setError('⚠ Colonne CONVENZIONE e POLIZZA non trovate nel Master CSV. Verificare che il file Excel contenga queste colonne prima di caricarlo.');
+      setError('Colonne CONVENZIONE e POLIZZA non trovate nel Master CSV. Verificare che il file Excel contenga queste colonne prima di caricarlo.');
       return;
     }
 
@@ -404,13 +490,13 @@
         <td><span class="badge" style="background:${st.bg};color:${st.color}">${r.stato||'—'}</span></td>
         <td class="stato-cell">
           <span class="badge stato-badge" style="background:${stS.bg};color:${stS.color}">${statoVal||'—'}</span>
-          <button class="edit-btn" title="Modifica" onclick="startEdit(this)">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          <button class="edit-btn" title="Modifica stato" onclick="startEdit(this)" aria-label="Modifica stato">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           </button>
           <span class="edit-controls" style="display:none;gap:5px;align-items:center">
             <select class="edit-select">${opts}</select>
-            <button class="save-btn" onclick="saveEdit(this)">Salva</button>
-            <button class="cancel-btn" onclick="cancelEdit(this)">✕</button>
+            <button class="btn-save" onclick="saveEdit(this)">Salva</button>
+            <button class="btn-ghost-sm" onclick="cancelEdit(this)">Annulla</button>
           </span>
         </td>
         <td style="font-size:11px;color:var(--muted)">${r.comune||'—'}</td>
@@ -457,7 +543,7 @@
 
   async function _execSave(lotto, pratica, field, val, token, btn, cell) {
     const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
-    if (!apiBase) { showToast('⚠ API base non configurata', 'err'); return; }
+    if (!apiBase) { showToast('API base non configurata.', 'err'); return; }
     btn.disabled = true;
     try {
       const r = await fetch(apiBase + '/api/admin/polizze-convenzioni/update', {
@@ -474,13 +560,13 @@
       badge.style.background = stS.bg;
       badge.style.color = stS.color;
       cancelEdit(btn);
-      showToast('✓ Salvato su MongoDB e GitHub (' + d.rows_updated + ' righe)', 'ok');
+      showToast('Operazione completata. Righe aggiornate: ' + d.rows_updated + '.', 'ok');
     } catch(e) {
       if (e.message && e.message.includes('401')) {
         sessionStorage.removeItem('_enri_upload_token');
-        showToast('Token non valido — riprova', 'err');
+        showToast('Token non valido. Riprovare.', 'err');
       } else {
-        showToast('Errore: ' + e.message, 'err');
+        showToast('Si è verificato un problema. ' + e.message, 'err');
       }
     } finally {
       btn.disabled = false;
