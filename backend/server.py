@@ -1911,7 +1911,7 @@ CANTIERI_COLS = [
     "stato_cantiere", "tecnica_scavo",
     "data_inizio_prevista", "data_inizio_effettiva",
     "data_fine_prevista", "data_fine_effettiva",
-    "metri_scavati", "n_fronti_attivi", "note",
+    "metri_scavati", "note", "motivo_blocco", "data_ripresa_stimata",
     "impresa", "updated_at",
 ]
 
@@ -2007,7 +2007,6 @@ async def _sync_cantieri() -> int:
             key=lambda s: stato_rank.get(s, 0), default="non_avviato",
         )
         tecnica_scavo = next((d.get("tecnica_scavo") for d in old_docs if d.get("tecnica_scavo")), "")
-        n_fronti      = max((int(d.get("n_fronti_attivi", 0) or 0) for d in old_docs), default=0)
         impresa       = next((d.get("impresa") for d in old_docs if d.get("impresa")), "")
 
         doc = {
@@ -2018,7 +2017,8 @@ async def _sync_cantieri() -> int:
             "stato_cantiere": stato_cantiere, "tecnica_scavo": tecnica_scavo,
             "data_inizio_prevista": "", "data_inizio_effettiva": "",
             "data_fine_prevista": "", "data_fine_effettiva": "",
-            "metri_scavati": metri_scavati, "n_fronti_attivi": n_fronti, "note": "",
+            "metri_scavati": metri_scavati, "note": "",
+            "motivo_blocco": "", "data_ripresa_stimata": "",
             "impresa": impresa, "updated_at": _now_iso(),
             "log": old_log,
         }
@@ -2156,7 +2156,7 @@ async def update_cantiere(cantiere_key: str, payload: dict, sess: dict = Depends
         "data_inizio_prevista", "data_inizio_effettiva",
         "data_fine_prevista", "data_fine_effettiva",
         "metri_realizzati_oggi",   # campo speciale: viene accumulato
-        "n_fronti_attivi", "note",
+        "note", "motivo_blocco", "data_ripresa_stimata",
     }
     update: dict = {}
     for k, v in (payload or {}).items():
@@ -2183,12 +2183,13 @@ async def update_cantiere(cantiere_key: str, payload: dict, sess: dict = Depends
 
     # Log entry giornaliero
     log_entry = {
-        "data":               _now_iso()[:10],
-        "impresa":            nome,
-        "stato_cantiere":     payload.get("stato_cantiere", doc.get("stato_cantiere")),
-        "metri_realizzati":   metri_oggi,
-        "n_fronti_attivi":    payload.get("n_fronti_attivi", doc.get("n_fronti_attivi", 0)),
-        "note":               payload.get("note", ""),
+        "data":                  _now_iso()[:10],
+        "impresa":               nome,
+        "stato_cantiere":        payload.get("stato_cantiere", doc.get("stato_cantiere")),
+        "metri_realizzati":      metri_oggi,
+        "note":                  payload.get("note", ""),
+        "motivo_blocco":         payload.get("motivo_blocco", ""),
+        "data_ripresa_stimata":  payload.get("data_ripresa_stimata", ""),
     }
 
     # Costruisci update MongoDB
