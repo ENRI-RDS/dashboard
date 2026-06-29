@@ -1918,12 +1918,13 @@ async def _sync_cantieri() -> int:
         except Exception:
             lunghezza = 0.0
 
-        ente = info.get("ENTE", "")
-        key = (ente, pratica_num, lotto)
+        ente_display = re.sub(r"\s+", " ", str(info.get("ENTE", ""))).strip()
+        ente_key = ente_display.upper()
+        key = (ente_key, pratica_num, lotto)
         g = groups.setdefault(key, {
-            "cantiere_key": f"{pratica_num}|{lotto}|{ente}",
+            "cantiere_key": f"{pratica_num}|{lotto}|{ente_key}",
             "pratica_id": f"AUT/{pratica_num}/{lotto}",
-            "ente": ente, "lotto": lotto, "cluster": cluster,
+            "ente": ente_display, "lotto": lotto, "cluster": cluster,
             "tratte": [],
         })
         g["tratte"].append({
@@ -1987,6 +1988,34 @@ async def _sync_cantieri() -> int:
         if old_docs:
             await cantieri_col.delete_many({"_id": {"$in": [d["_id"] for d in old_docs]}})
         created += 1
+
+    # Pulizia doppioni: cantieri creati prima della normalizzazione di 'ente'
+    # (spazi multipli/maiuscole diverse → stessa pratica vista come due chiavi
+    # diverse). Se un cantiere "orfano" normalizzato coincide con uno toccato
+    # in questo sync, unisce metri/log nel cantiere corrente ed elimina il doppione.
+    touched_keys = {g["cantiere_key"] for g in groups.values()}
+    merged = 0
+    async for orphan in cantieri_col.find({"cantiere_key": {"$exists": True, "$nin": list(touched_keys)}}):
+        m = re.match(r"^AUT/(.+)/([^/]+)$", orphan.get("pratica_id") or "")
+        if not m:
+            continue
+        o_num, o_lotto = m.group(1), m.group(2)
+        o_ente_key = re.sub(r"\s+", " ", str(orphan.get("ente", ""))).strip().upper()
+        target_key = f"{o_num}|{o_lotto}|{o_ente_key}"
+        if target_key == orphan.get("cantiere_key") or target_key not in touched_keys:
+            continue  # non è un doppione da normalizzazione: lascialo (es. autorizzazione non più OTTENUTA)
+        target = await cantieri_col.find_one({"cantiere_key": target_key})
+        if not target:
+            continue
+        await cantieri_col.update_one(
+            {"_id": target["_id"]},
+            {"$inc": {"metri_scavati": float(orphan.get("metri_scavati", 0) or 0)},
+             "$push": {"log": {"$each": orphan.get("log", [])}}},
+        )
+        await cantieri_col.delete_one({"_id": orphan["_id"]})
+        merged += 1
+    if merged:
+        print(f"[sync_cantieri] uniti {merged} cantieri duplicati (variazioni di formattazione ente)")
 
     if created:
         print(f"[sync_cantieri] creati {created} nuovi cantieri (per pratica)")
