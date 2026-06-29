@@ -74,6 +74,7 @@ assignments_col = db["assignments"]            # impresa nome -> {lotti: [...]}
 pending_col = db["pending_updates"]            # submissions from imprese pending admin review
 solleciti_col = db["solleciti"]                # registro solleciti per tratta/pratica
 cantieri_col  = db["cantieri"]                  # stato cantiere per pratica di autorizzazione
+sopralluoghi_col = db["sopralluoghi"]          # verbali di sopralluogo
 gridfs = AsyncIOMotorGridFSBucket(db, bucket_name="files")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -754,6 +755,7 @@ GITHUB_PATHS: dict = {
     "Riepilogo_progettazione.csv": os.environ.get("GITHUB_RIEPILOGO_PATH", "Riepilogo_progettazione.csv"),
     "QGIS.geojson":                os.environ.get("GITHUB_QGIS_PATH", "QGIS.geojson"),
     "solleciti.csv":               os.environ.get("GITHUB_SOLLECITI_PATH", "solleciti.csv"),
+    "sopralluoghi.csv":             os.environ.get("GITHUB_SOPRALLUOGHI_PATH", "sopralluoghi.csv"),
 }
 
 
@@ -1471,7 +1473,172 @@ async def reject_pending(
     return {"ok": True}
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# POLIZZE & CONVENZIONI — modifica diretta admin
+# ─────────────────────────────────────────────────────────────────────────────
+_POL_CONV_ALLOWED_FIELDS = {"CONVENZIONE", "POLIZZA"}
+_POL_CONV_ALLOWED_VALUES = {"NECESSARIA", "RICHIESTA RDS", "INVIATA", "OTTENUTA", ""}
+
+
+@app.post("/api/admin/polizze-convenzioni/update")
+async def update_polizza_convenzione(
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """Aggiorna CONVENZIONE e/o POLIZZA per tutte le righe lotto+pratica nel Master CSV.
+    Body: {lotto: "2B", pratica: "11", fields: {CONVENZIONE?: val, POLIZZA?: val}}
+    Valori ammessi: NECESSARIA | RICHIESTA RDS | INVIATA | OTTENUTA | "" (vuoto = cancella)
+    Richiede x-upload-token. Scrive su MongoDB e pusha su GitHub."""
+    _check_token(x_upload_token or token_q)
+
+    lotto   = str((payload or {}).get("lotto",   "")).strip().upper()
+    pratica = str((payload or {}).get("pratica", "")).strip()
+    fields  = (payload or {}).get("fields") or {}
+
+    if not lotto or not pratica:
+        raise HTTPException(400, "lotto e pratica sono obbligatori")
+    if not fields:
+        raise HTTPException(400, "fields non puo essere vuoto")
+
+    bad_fields = set(fields.keys()) - _POL_CONV_ALLOWED_FIELDS
+    if bad_fields:
+        raise HTTPException(400, f"Campi non consentiti: {bad_fields}")
+    for k, v in fields.items():
+        if str(v).strip().upper() not in {s.upper() for s in _POL_CONV_ALLOWED_VALUES}:
+            raise HTTPException(400, f"Valore non ammesso per {k}: '{v}'")
+
+    df = await _read_master_csv()
+
+    def _extract_lotto(src: str) -> str:
+        return src.replace(".xlsx", "").replace(".xls", "").replace("Lotto ", "").strip().upper()
+
+    src_col = next((c for c in df.columns if c.strip().upper().replace(".", "").replace(" ", "") in {"SOURCENAME", "SOURCE_NAME"}), None)
+    if src_col is None:
+        raise HTTPException(500, "Colonna SOURCE.NAME non trovata nel Master CSV")
+
+    pratica_col = next((c for c in df.columns if c.strip().upper() == "PRATICA"), None)
+    if pratica_col is None:
+        raise HTTPException(500, "Colonna PRATICA non trovata nel Master CSV")
+
+    mask = (
+        df[src_col].astype(str).apply(_extract_lotto) == lotto
+    ) & (
+        df[pratica_col].astype(str).str.strip() == pratica
+    )
+
+    matched = int(mask.sum())
+    if matched == 0:
+        raise HTTPException(404, f"Nessuna riga trovata per lotto={lotto} pratica={pratica}")
+
+    for col, val in fields.items():
+        real_col = next((c for c in df.columns if c.strip().upper() == col.upper()), None)
+        if real_col is None:
+            raise HTTPException(500, f"Colonna {col} non trovata nel Master CSV")
+        df.loc[mask, real_col] = str(val).strip()
+
+    note = f"Admin update polizze/convenzioni: lotto={lotto} pratica={pratica} fields={fields}"
+    upload_id = await _write_master_csv(df, note=note)
+    return {"ok": True, "rows_updated": matched, "new_upload_id": upload_id}
+
+
+
 # ═════════════════════════════════════════════════════════════════════════════
+# SOPRALLUOGHI — verbali di sopralluogo
+# ─────────────────────────────────────────────────────────────────────────────
+SOPRALLUOGHI_COLS = [
+    "codice_verbale", "data_sopralluogo", "lotto", "tratta_id", "impresa",
+    "referente_impresa", "referente_retelit", "comune", "localita",
+    "tipo_intervento", "esito", "note", "segnalazioni", "azioni_richieste",
+    "firma_impresa", "firma_retelit", "created_at",
+]
+
+
+async def _build_sopralluoghi_csv() -> bytes:
+    rows = []
+    async for d in sopralluoghi_col.find({}).sort("codice_verbale", 1):
+        row = {col: str(d.get(col, "")) for col in SOPRALLUOGHI_COLS}
+        rows.append(row)
+    import io, csv as _csv
+    buf = io.StringIO()
+    w = _csv.DictWriter(buf, fieldnames=SOPRALLUOGHI_COLS, delimiter=";",
+                        extrasaction="ignore", lineterminator="\n")
+    w.writeheader()
+    w.writerows(rows)
+    return buf.getvalue().encode("utf-8-sig")
+
+
+async def _push_sopralluoghi_to_github() -> None:
+    try:
+        data = await _build_sopralluoghi_csv()
+        await _push_to_github(data, path=GITHUB_PATHS["sopralluoghi.csv"], label="sopralluoghi.csv")
+    except Exception as e:
+        print(f"[GitHub] _push_sopralluoghi: {e}")
+
+
+@app.get("/api/sopralluoghi")
+async def list_sopralluoghi(sess: dict = Depends(_require_session)):
+    """Restituisce tutti i verbali di sopralluogo, ordinati per codice decrescente."""
+    verbali = []
+    async for d in sopralluoghi_col.find({}).sort("codice_verbale", -1):
+        d["_id"] = str(d["_id"])
+        verbali.append(d)
+    return {"verbali": verbali}
+
+
+@app.get("/api/sopralluoghi/next-codice")
+async def sopralluogo_next_codice(sess: dict = Depends(_require_session)):
+    """Restituisce il prossimo codice verbale progressivo."""
+    last = await sopralluoghi_col.find_one({}, sort=[("codice_verbale", -1)])
+    next_n = 1
+    if last and last.get("codice_verbale"):
+        try:
+            next_n = int(str(last["codice_verbale"]).split("-")[-1]) + 1
+        except (ValueError, IndexError):
+            count = await sopralluoghi_col.count_documents({})
+            next_n = count + 1
+    year = _now_iso()[:4]
+    return {"codice": f"VBS-{year}-{next_n:04d}", "numero": next_n}
+
+
+@app.post("/api/sopralluoghi")
+async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_session)):
+    """Salva un verbale di sopralluogo su MongoDB e aggiorna sopralluoghi.csv su GitHub."""
+    last = await sopralluoghi_col.find_one({}, sort=[("codice_verbale", -1)])
+    next_n = 1
+    if last and last.get("codice_verbale"):
+        try:
+            next_n = int(str(last["codice_verbale"]).split("-")[-1]) + 1
+        except (ValueError, IndexError):
+            count = await sopralluoghi_col.count_documents({})
+            next_n = count + 1
+    year = _now_iso()[:4]
+    codice = f"VBS-{year}-{next_n:04d}"
+
+    record = {
+        "codice_verbale":      codice,
+        "data_sopralluogo":    str((payload or {}).get("data_sopralluogo", "")).strip(),
+        "lotto":               str((payload or {}).get("lotto", "")).strip(),
+        "tratta_id":           str((payload or {}).get("tratta_id", "")).strip(),
+        "impresa":             str((payload or {}).get("impresa", sess["nome"])).strip(),
+        "referente_impresa":   str((payload or {}).get("referente_impresa", "")).strip(),
+        "referente_retelit":   str((payload or {}).get("referente_retelit", "")).strip(),
+        "comune":              str((payload or {}).get("comune", "")).strip(),
+        "localita":            str((payload or {}).get("localita", "")).strip(),
+        "tipo_intervento":     str((payload or {}).get("tipo_intervento", "")).strip(),
+        "esito":               str((payload or {}).get("esito", "")).strip(),
+        "note":                str((payload or {}).get("note", "")).strip(),
+        "segnalazioni":        str((payload or {}).get("segnalazioni", "")).strip(),
+        "azioni_richieste":    str((payload or {}).get("azioni_richieste", "")).strip(),
+        "firma_impresa":       str((payload or {}).get("firma_impresa", "")).strip(),
+        "firma_retelit":       str((payload or {}).get("firma_retelit", "")).strip(),
+        "created_at":          _now_iso(),
+    }
+    await sopralluoghi_col.insert_one(record)
+    asyncio.create_task(_push_sopralluoghi_to_github())
+    return {"ok": True, "codice_verbale": codice}
+
+
 # SOLLECITI — registro solleciti per tratta/pratica
 # ─────────────────────────────────────────────────────────────────────────────
 # Ogni sollecito viene scritto direttamente su MongoDB (senza approvazione admin)
