@@ -466,7 +466,7 @@
         <input type="date" id="fInizioPrev">
         <div id="hintInizioPrevLock" style="display:none;font-size:10px;color:var(--muted);margin-top:4px">Cantiere già avviato: non modificabile.</div>
       </div>
-      <div>
+      <div id="wrapFinePrev">
         <label>Data fine prevista</label>
         <input type="date" id="fFinePrev">
       </div>
@@ -586,7 +586,7 @@
     non_avviato: '#9AA5B4', allestimento: '#D08A1A',
     in_corso: '#043F75', sospeso: '#C0392B', completato: '#1E9E6A',
   };
-  const STATI_IN_CORSO_EFF = ['in_corso', 'completato'];
+  const STATI_IN_CORSO_EFF = ['in_corso'];  // completato: solo data fine effettiva
 
   // ── State ─────────────────────────────────────────────────────────────────
   let ALL_CANTIERI = [];
@@ -745,13 +745,14 @@
 
   function updateDateVisibility() {
     const s = $('fStato').value;
-    $('wrapInizioEff').style.display   = STATI_IN_CORSO_EFF.includes(s) ? '' : 'none';
-    $('wrapFineEff').style.display     = s === 'completato' ? '' : 'none';
-    $('wrapMotivoBlocco').style.display = s === 'sospeso' ? '' : 'none';
-    $('wrapDataRipresa').style.display  = s === 'sospeso' ? '' : 'none';
     const giaAvviato = s !== 'non_avviato';
     $('fInizioPrev').disabled = giaAvviato;
     $('hintInizioPrevLock').style.display = giaAvviato ? '' : 'none';
+    $('wrapFinePrev').style.display     = s === 'completato' ? 'none' : '';
+    $('wrapInizioEff').style.display    = STATI_IN_CORSO_EFF.includes(s) ? '' : 'none';
+    $('wrapFineEff').style.display      = s === 'completato' ? '' : 'none';
+    $('wrapMotivoBlocco').style.display = s === 'sospeso' ? '' : 'none';
+    $('wrapDataRipresa').style.display  = s === 'sospeso' ? '' : 'none';
   }
   $('fStato').addEventListener('change', updateDateVisibility);
 
