@@ -53,12 +53,15 @@ Auth login: hub.html → POST /api/auth/login → backend chiama Google Apps Scr
 ├── scavi.html                  # FASE 2 — Avanzamento scavi (lotti, cluster, donut)
 ├── mappa.html                  # Mappa Leaflet con SWR su QGIS / QTS / SED / Master
 ├── mappa_impresa.html          # NEW — variante della mappa filtrata sui lotti dell'impresa loggata
-├── executive_summary.html      # Riepilogo direzionale + GANTT
+├── ~~executive_summary.html~~     # RIMOSSA — non più nel progetto (confermato dall'utente; coerente con l'assenza di una card collegata in hub.html)
 ├── sopralluoghi.html           # Redazione verbali di sopralluogo cantiere
 ├── milestone.html              # Milestone di progetto
 ├── ai_alerts.html              # Beta — alert predittivi
 ├── admin.html                  # PANNELLO ADMIN — upload + coda imprese + assegnazioni + storico versioni
 ├── imprese.html                # PORTALE IMPRESE — aggiorna pratiche / nuova tratta / mie submission
+├── imprese_scavi.html          # NEW — Area Impresa: avanzamento scavi giornaliero (stato cantiere, metri, log)
+├── mappa_impresa_caricamento.html  # NEW — variante di mappa_impresa.html con possibilità di aggiornare/inserire pratiche direttamente dalla tratta selezionata sulla mappa
+├── polizze_convenzioni.html    # NEW — pratiche con CONVENZIONE/POLIZZA richiesta: filtro lotto/impresa/stato + KPI aggregati
 │
 ├── js/
 │   └── api-config.js           # **CRUCIALE** — intercetta fetch() e li reindirizza al backend
@@ -96,17 +99,21 @@ Auth login: hub.html → POST /api/auth/login → backend chiama Google Apps Scr
 |---|---|---|
 | **hub.html** | nessuno (login obbligatorio) | Login server-side (POST `/api/auth/login`) + griglia card. Mostra card "Area Impresa" solo se backend conferma assegnazione. Anti-FOUC: card nascoste finché non torna il ruolo. Cold-start Render: timeout 10s e pannello "Riprova" |
 | **index.html** | tutti | KPI, GANTT, tabella filtrabile, modal pratiche, grafici Chart.js. **SWR**: legge GitHub statico + Render in parallelo, ridisegna live se il backend ha dati più freschi. XLSX caricato lazy al primo "Esporta Excel" |
-| **scavi.html** | `admin`/`admin2` | KPI scavi (non avviati/in corso/sospeso/completati), barre per lotto e per cluster, donut chart, modal lotto/cluster |
+| **scavi.html** | `admin`/`admin2`/`user` (tutti tranne `impresa`) | KPI scavi (non avviati/in corso/sospeso/completati), barre per lotto e per cluster, donut chart, modal lotto/cluster. ⚠️ Ruolo cambiato: in precedenza era ristretto a `admin`/`admin2`, ora `SCAVI_ALLOWED_ROLES` include anche `user` |
 | **mappa.html** | tutti | Leaflet — SWR su `QGIS.geojson`, `QTS.geojson`, `SED_classificato.geojson`, `Master.csv`; ricostruzione live dei layer se cambiano. Basemaps Google-style, ricerca, misurazione distanze, esportazione PDF |
-| **mappa_impresa.html** | impresa loggata | Variante di mappa.html filtrata sui lotti assegnati all'impresa (usa `/api/imprese/pratiche` e session token) |
-| **executive_summary.html** | tutti | Riepilogo per direzione (GANTT, milestone critiche, scostamenti) |
-| **sopralluoghi.html** | tutti | Form di redazione verbale + download PDF |
+| **mappa_impresa.html** | impresa loggata | Variante di mappa.html filtrata sui lotti assegnati all'impresa (usa `/api/imprese/pratiche` e session token) — sola visualizzazione |
+| **mappa_impresa_caricamento.html** | impresa loggata | NEW — stessa mappa filtrata, ma con possibilità di aggiornare lo stato di una pratica o inserirne una nuova direttamente cliccando sulla tratta (usa `/api/imprese/pratiche`, `/api/imprese/submit`, `/api/imprese/my-submissions`, `/api/imprese/cantieri*`). Include il blocco "tracking accessi" (vedi §5.9) |
 | **milestone.html** | tutti | Milestone contrattuali e di impresa |
+| **sopralluoghi.html** | tutti | Form di redazione verbale. ⚠️ Non è più solo client-side: i verbali sono ora persistiti su MongoDB (`POST/GET/DELETE /api/sopralluoghi`) con codice progressivo `VBS-AAAA-NNNN` e foto caricate su GitHub (`sopralluoghi/foto/{codice}/`) invece che generare solo un PDF locale |
 | **ai_alerts.html** | tutti (Beta) | Pagina placeholder per future analisi AI |
+| **polizze_convenzioni.html** | ⚠️ **nessuna guardia di login** — pagina apribile da chiunque conosca l'URL (nessun check su `_enri_user`). La sola scrittura (`POST /api/admin/polizze-convenzioni/update`) richiede un `UPLOAD_TOKEN` chiesto al volo via modale e salvato in `sessionStorage['_enri_upload_token']` (chiave **diversa** da quella usata in admin.html, vedi §8.15) | Pratiche con CONVENZIONE e/o POLIZZA richiesta: filtro per lotto/impresa/stato, KPI aggregati. Legge `/api/admin/polizze-convenzioni/data-richiesta`, con fallback diretto a Master.csv su GitHub Pages se l'API non risponde |
 | **admin.html** | richiede `UPLOAD_TOKEN` | 4 tabs (File correnti, Storico versioni, **Coda imprese**, **Assegnazioni imprese**). Badge live conteggio pending, modali HTML custom (no `alert/confirm/prompt` nativi), date in formato `gg/mm/aa, hh:mm`, righe coda colorate per tipo |
-| **imprese.html** | impresa assegnata + session token | 3 tabs (Aggiorna pratiche / Nuova pratica / Le mie submission). Campo **Ente** = select dinamica + opzione "Altro"; **Pratica** in nuova tratta = solo numero progressivo editabile (prefisso AUT/NO + suffisso lotto calcolati). Selezionando una tratta, se altre tratte condividono ENTE+TIPO+PRATICA il sistema propone di aggiornarle tutte insieme |
+| **imprese.html** | impresa assegnata + session token | 3 tabs (Aggiorna pratiche / Nuova pratica / Le mie submission). Campo **Ente** = select dinamica via `/api/enti` + opzione "Altro"; **Pratica** in nuova tratta = solo numero progressivo editabile (prefisso AUT/NO + suffisso lotto calcolati). Selezionando una tratta, se altre tratte condividono ENTE+TIPO+PRATICA il sistema propone di aggiornarle tutte insieme |
+| **imprese_scavi.html** | impresa assegnata + session token | NEW — "Avanzamento Scavi" lato impresa: aggiornamento giornaliero per pratica/cantiere (stato cantiere, tecnica di scavo, date inizio/fine, metri realizzati **oggi** — accumulati su `metri_scavati`), storico log consultabile. Scrittura diretta, **senza** workflow di approvazione admin (a differenza di `imprese.html`) |
 
-Tutte le pagine fanno guardia: `if (!localStorage.getItem('_enri_user')) → mostra overlay/redirect a hub.html`. Le pagine impresa controllano anche `localStorage._enri_token`.
+Tutte le pagine fanno guardia: `if (!localStorage.getItem('_enri_user')) → mostra overlay/redirect a hub.html`. Le pagine impresa controllano anche `localStorage._enri_session`.
+
+⚠️ **Rinominata la chiave di sessione**: il token firmato in localStorage non si chiama più `_enri_token` ma **`_enri_session`** (verificato in hub.html, mappa_impresa_caricamento.html). Se trovi ancora `_enri_token` in qualche file non aggiornato, è codice vecchio.
 
 ---
 
@@ -136,6 +143,7 @@ così la copia statica del repo non va più in deriva da quella servita live.
 | DELETE | `/api/files/{path}` | `UPLOAD_TOKEN` | Soft-delete di TUTTE le versioni — se esiste un seed disco, torna a essere servito |
 | PATCH | `/api/files/{old}` | `UPLOAD_TOKEN` | Body JSON `{"new_name": "..."}` (409 se collide) |
 | POST | `/api/uploads/{id}/restore` | `UPLOAD_TOKEN` | Ripristina versione cancellata (410 se i byte GridFS sono già stati purgati) |
+| GET | `/api/enti` | session token | NEW — elenco enti unici presenti in Master.csv, ordinati alfabeticamente (popola la select "Ente" in imprese.html) |
 
 ### 5.2 Auth firmata (HMAC)
 
@@ -154,6 +162,8 @@ con TTL configurabile via `SESSION_TTL_SECONDS` (default 12h).
 
 ### 5.3 Imprese (richiedono `x-session-token` — il `nome` è SEMPRE preso dal token, MAI da un parametro client)
 
+> Nota: l'header resta `x-session-token`; è solo la chiave **localStorage** lato client che è stata rinominata da `_enri_token` a `_enri_session` (vedi §4 e §7).
+
 | Metodo | Endpoint | Descrizione |
 |---|---|---|
 | GET | `/api/imprese/me` | Profilo + lotti assegnati (404 se non assegnata) |
@@ -161,6 +171,14 @@ con TTL configurabile via `SESSION_TTL_SECONDS` (default 12h).
 | POST | `/api/imprese/submit` | Body `{type:'update'\|'new', changes:[...]}` → record in `pending_updates`, status `pending` |
 | GET | `/api/imprese/my-submissions` | Storico delle proprie submission |
 | DELETE | `/api/imprese/submissions/{id}` | L'impresa cancella SOLO le proprie submission ancora `pending` |
+| GET | `/api/lotti-cantieri` | NEW — lotti distinti (da Master.csv) + cantieri associati (da MongoDB) + mappa lotto→impresa assegnata. Usato per popolare select a cascata |
+| GET | `/api/imprese/cantieri` | NEW — cantieri (uno per pratica di autorizzazione) nei lotti dell'impresa autenticata |
+| POST | `/api/imprese/cantieri/{cantiere_key}` | NEW — aggiorna stato cantiere, tecnica scavo, date, **metri_realizzati_oggi** (si accumula su `metri_scavati`, non sovrascrive), note. Push automatico su GitHub. **Scrittura diretta, nessuna approvazione admin** (a differenza di `/api/imprese/submit`) |
+| GET | `/api/imprese/cantieri/{cantiere_key}/log` | NEW — storico aggiornamenti giornalieri di un cantiere |
+| GET | `/api/imprese/solleciti` | NEW — solleciti dell'impresa, filtrati per le tratte dei suoi lotti |
+| POST | `/api/imprese/solleciti` | NEW — inserisce un sollecito. Scrittura diretta, nessuna approvazione |
+| POST | `/api/imprese/solleciti/bulk-insert` / `bulk-delete` | NEW — inserimento/cancellazione massiva |
+| DELETE | `/api/imprese/solleciti/{id}` | NEW — elimina un sollecito |
 
 ### 5.4 Admin (richiedono `UPLOAD_TOKEN`)
 
@@ -168,8 +186,12 @@ con TTL configurabile via `SESSION_TTL_SECONDS` (default 12h).
 |---|---|---|
 | GET / PUT / DELETE | `/api/admin/assignments[/{nome}]` | CRUD nome impresa ↔ lotti (lookup case-insensitive) |
 | GET | `/api/admin/pending-updates?status=pending\|approved\|rejected\|all` | Lista coda |
-| POST | `/api/admin/pending-updates/{id}/approve` | Applica le modifiche a Master.csv (nuova versione GridFS), **rigenera QGIS.geojson + Riepilogo_progettazione.csv** e pusha tutti e tre su GitHub |
+| POST | `/api/admin/pending-updates/{id}/approve` | Applica le modifiche a Master.csv (nuova versione GridFS), **rigenera QGIS.geojson + Riepilogo_progettazione.csv** e pusha tutti e tre su GitHub. Da qui parte anche `_sync_cantieri()` (vedi §5.12) |
 | POST | `/api/admin/pending-updates/{id}/reject` | Body `{note}` |
+| GET | `/api/admin/polizze-convenzioni/data-richiesta` | NEW — per ogni pratica con CONVENZIONE/POLIZZA valorizzata, fissa (una sola volta, `$setOnInsert`) la data di prima richiesta nella collection `pol_conv_dates` |
+| POST | `/api/admin/polizze-convenzioni/update` | NEW — Body `{lotto, pratica, fields:{CONVENZIONE?, POLIZZA?}}`. Valori ammessi: `NECESSARIA\|RICHIESTA RDS\|INVIATA\|OTTENUTA\|""`. Scrive su Master.csv (tutte le righe lotto+pratica) e pusha su GitHub |
+| GET | `/api/admin/sync-cantieri` | NEW — forza la sincronizzazione cantieri↔Master.csv (crea cantieri mancanti, uno per pratica AUTORIZZAZIONE) |
+| GET | `/api/admin/solleciti` | NEW — vista admin di tutti i solleciti |
 
 ### 5.5 Auto-push GitHub + rigenerazione derivati
 
@@ -232,6 +254,34 @@ Campi **mai derivati automaticamente** (provenienti da sistemi esterni o senza r
 - HMAC compare con `hmac.compare_digest` (timing-safe).
 - Le rotte impresa **ignorano qualunque parametro `nome`** passato dal client e usano sempre quello firmato nel token.
 
+### 5.9 Sopralluoghi (collection `sopralluoghi`)
+
+| Metodo | Endpoint | Auth | Descrizione |
+|---|---|---|---|
+| GET | `/api/sopralluoghi` | session token | Tutti i verbali, ordinati per `codice_verbale` decrescente |
+| GET | `/api/sopralluoghi/next-codice` | session token | Prossimo codice progressivo `VBS-{anno}-{NNNN}` |
+| POST | `/api/sopralluoghi` | session token | Salva verbale su MongoDB + aggiorna `sopralluoghi.csv` su GitHub. Le foto (data URL base64) vengono caricate su GitHub in `sopralluoghi/foto/{codice}/` per non saturare lo storage Mongo gratuito |
+| DELETE | `/api/sopralluoghi/{id}` | session token, **solo ruolo `admin`** | Elimina un verbale |
+
+### 5.10 Cantieri / Avanzamento Scavi impresa (collection `cantieri`)
+
+Un cantiere = una pratica AUTORIZZAZIONE (chiave `cantiere_key`, **non** `pratica_id`, perché quest'ultimo non è garantito univoco tra enti diversi sullo stesso lotto/numero).
+
+- `GET /api/cantieri?lotto=&cluster=&stato=` — lista pubblica, usata da `scavi.html` (lo storico `log` viene tolto dal listing per non appesantire la risposta).
+- L'impresa aggiorna via `POST /api/imprese/cantieri/{cantiere_key}` (vedi §5.3): **scrittura diretta senza approvazione**, a differenza del flusso `imprese.html`/`pending_updates`. Ogni update accumula `metri_realizzati_oggi` su `metri_scavati` (`$inc`) e appende una riga a `log[]` (data, impresa, stato, metri, note, motivo blocco).
+- `_sync_cantieri()` crea i cantieri mancanti a partire da Master.csv; viene rilanciata sia da `/api/admin/sync-cantieri` sia automaticamente dopo ogni approvazione di `pending_updates`.
+- Dopo ogni scrittura, push fire-and-forget su GitHub (`_push_cantieri_to_github`).
+
+### 5.11 Solleciti (collection `solleciti`)
+
+Sistema di "promemoria/follow-up" per pratiche in attesa, associato alle tratte dei lotti dell'impresa. Scrittura diretta (no workflow di approvazione), CRUD completo lato impresa (`/api/imprese/solleciti*`) e vista aggregata lato admin (`/api/admin/solleciti`).
+
+### 5.12 ⚠️ Sistema di tracking accessi — incoerenza da verificare
+
+`scavi.html`, `mappa.html`, `mappa_impresa.html`, `mappa_impresa_caricamento.html` e `sopralluoghi.html` includono un blocco `<!-- TRACKING ACCESSI -->` che logga ogni apertura pagina (utente, ruolo, IP, user-agent, durata sessione) su un JSONBin tramite **chiamata diretta del browser** a un Google Apps Script, con il segreto (`_APPS_SECRET`) **scritto in chiaro nel codice client-side** — nonostante il commento nel codice dica "no MASTER_KEY in chiaro". Non presente in `hub.html`, `index.html`, `admin.html` o `polizze_convenzioni.html` (probabilmente perché non hanno bisogno di guardia di login o sono pagine di ingresso/gestione, non "operative").
+
+Il backend espone già un proxy sicuro pensato esattamente per questo (`POST /api/logs/get` / `/api/logs/put`, §5.2), che terrebbe il segreto lato server. **Le pagine però non lo usano** e bypassano il proxy chiamando Apps Script direttamente. Verificare con chi ha scritto questo blocco se è un refuso/copia-incolla da una versione precedente, o se va effettivamente migrato a `/api/logs/*` — al momento il segreto Apps Script è esposto a chiunque apra il sorgente di quelle pagine.
+
 ---
 
 ## 6. Come i file caricati arrivano sul frontend — `js/api-config.js`
@@ -248,7 +298,7 @@ Ogni pagina HTML include `<script src="js/api-config.js"></script>` in `<head>`.
 - se Render risponde con un contenuto diverso, **la UI si aggiorna live senza reload** (callback ridisegna tabella, ricostruisce layer Leaflet, ecc.).
 
 **Flusso completo upload/approvazione:**
-1. Impresa apre `imprese.html` (auth: token in `_enri_token`), compila modifiche, invia.
+1. Impresa apre `imprese.html` (auth: token in `_enri_session`), compila modifiche, invia.
 2. Backend salva in `pending_updates` (status `pending`).
 3. Admin apre `admin.html` → tab "Coda imprese" (badge live) → Approva.
 4. Backend: legge Master.csv corrente → applica `changes` con pandas (riga inserita dopo l'ultima della stessa pratica) → crea nuova versione GridFS → **rigenera QGIS.geojson + Riepilogo_progettazione.csv** → pusha tutti e tre su GitHub.
@@ -262,23 +312,29 @@ Ogni pagina HTML include `<script src="js/api-config.js"></script>` in `<head>`.
 Implementato come **proxy server-to-server** verso Google Apps Script. Il browser invia `{nome, codice}`; il backend verifica con Apps Script (segreto MAI esposto) e firma un token HMAC che viene salvato in localStorage:
 
 ```js
-localStorage._enri_user   // nome canonico
-localStorage._enri_role   // 'admin' | 'admin2' | 'user' | 'impresa'
-localStorage._enri_token  // session token firmato (HMAC, scade dopo SESSION_TTL_SECONDS)
+localStorage._enri_user    // nome canonico
+localStorage._enri_role    // 'admin' | 'admin2' | 'user' | 'impresa'
+localStorage._enri_session // session token firmato (HMAC, scade dopo SESSION_TTL_SECONDS) — ⚠️ rinominata da _enri_token
 ```
 
 L'admin gestisce gli accessi modificando lo sheet Google collegato all'Apps Script (requisito esplicito del committente).
 
-In `hub.html` due liste filtrano le card:
-- `SCAVI_ALLOWED_ROLES = ['admin', 'admin2']` → mostra/blocca card "Avanzamento Lavori".
+In `hub.html` tre liste filtrano le card:
+- `SCAVI_ALLOWED_ROLES = ['admin', 'admin2', 'user']` → mostra/blocca card "Avanzamento Lavori". ⚠️ Ora include anche `user`, non più solo admin
 - `ADMIN_ALLOWED_ROLES = ['admin', 'admin2']` → mostra/nasconde card "Pannello Admin".
-- Card "Area Impresa" mostrata solo se `/api/imprese/me` conferma assegnazione.
+- `IMPRESA_ROLES = ['impresa']` → attiva la modalità "Area Impresa": nasconde tutte le card normali e mostra fino a 4 card dedicate (`impresaCardsWrap`), ciascuna condizionata a `display:none` finché non si conferma l'assegnazione via `/api/imprese/me`:
+  - `impresaCard` → `imprese.html` (aggiorna pratiche)
+  - `impresaMapCard` → `mappa_impresa.html` (sola visualizzazione mappa)
+  - `impresaMapUpdCard` → `mappa_impresa_caricamento.html` (mappa con aggiornamento pratiche)
+  - `impresaScaviCard` → `imprese_scavi.html` (avanzamento scavi)
+
+Nota minor: la chiamata `fetch(apiBase + '/api/imprese/me?nome=' + ...)` in `hub.html` passa ancora un parametro `?nome=` in query string, ma il backend (`impresa_me`) lo ignora completamente e legge sempre il nome dal token firmato — il parametro è innocuo ma andrebbe rimosso dal client per coerenza con quanto dichiarato in §7.3.
 
 ### 7.2 Upload backend e azioni admin
-Tutte le scritture admin (`POST /api/upload`, `DELETE /api/uploads/*`, `PUT /api/admin/assignments/*`, `POST /api/admin/pending-updates/*/approve|reject`) richiedono `UPLOAD_TOKEN`. In `admin.html` l'admin lo incolla manualmente nel form.
+Tutte le scritture admin (`POST /api/upload`, `DELETE /api/uploads/*`, `PUT /api/admin/assignments/*`, `POST /api/admin/pending-updates/*/approve|reject`, `POST /api/admin/polizze-convenzioni/update`, `GET /api/admin/sync-cantieri`) richiedono `UPLOAD_TOKEN`. In `admin.html` l'admin lo incolla manualmente nel form.
 
 ### 7.3 Azioni impresa
-Tutti gli endpoint `/api/imprese/*` richiedono header `x-session-token`. Il `nome` viene SEMPRE letto dal token firmato, mai da un parametro `?nome=` (che è stato rimosso completamente).
+Tutti gli endpoint `/api/imprese/*` richiedono header `x-session-token`. Il `nome` viene SEMPRE letto dal token firmato, mai da un parametro `?nome=` lato server (vedi nota sopra: il client a volte lo invia ancora, ma viene ignorato).
 
 ---
 
@@ -294,6 +350,13 @@ Tutti gli endpoint `/api/imprese/*` richiedono header `x-session-token`. Il `nom
 8. **Conflitti GitHub (409)**: `_push_to_github` rilegge lo sha aggiornato e riprova fino a 3 volte se qualcuno scrive sullo stesso file in parallelo.
 9. **Lookup impresa case-insensitive**: `_find_assignment` cerca con regex `^nome$` case-insensitive — `sertori`, `Sertori`, `SERTORI` trovano tutti lo stesso record.
 10. **`dati.csv` è in disuso**: `index.html` calcola la stessa aggregazione LOTTO×STATO×Metri/Percentuale lato client da `Riepilogo_progettazione.csv` (variabili `aggMap`/`totMap` in `loadData()`).
+11. **Rebranding "Retelit" — confermato su TUTTE le pagine**: ogni file controllato (`hub`, `index`, `mappa`, `mappa_impresa`, `admin`, `sopralluoghi`, `polizze_convenzioni`) definisce le stesse CSS var `--retelit-blue/-sky/-teal/-mist/-ice` con font Raleway/JetBrains Mono — il brand kit è già uniforme. Restano però **i `<title>` e alcuni testi UI ancora con "ENRI"** invece di "Retelit" (es. `<title>ENRI — Polizze & Convenzioni</title>`, `<title>ENRI Dashboard — Admin</title>`) — probabile rebranding parziale ancora in corso, solo `hub.html` ha il titolo aggiornato a "Retelit — Portale". `admin.html` include anche il logo Retelit come immagine base64 inline.
+12. **Token rinominato**: `_enri_token` → `_enri_session` in localStorage (vedi §7.1). Se incontri ancora `_enri_token` in una pagina, è codice non aggiornato.
+13. **Scrittura diretta vs workflow di approvazione**: occhio a non confondere i due modelli — `imprese.html`/`mappa_impresa_caricamento.html` (pratiche) passano sempre da `pending_updates` + approvazione admin; `imprese_scavi.html` (cantieri) e i solleciti scrivono **direttamente** su MongoDB/GitHub senza step di revisione.
+14. **Tracking accessi con segreto esposto**: vedi §5.12 — `scavi.html`, `mappa.html`, `mappa_impresa.html`, `mappa_impresa_caricamento.html` e `sopralluoghi.html` chiamano Apps Script direttamente dal client con un secret hardcoded, bypassando il proxy sicuro `/api/logs/*` già presente nel backend. Non presente in `hub.html`, `index.html`, `admin.html`, `polizze_convenzioni.html`.
+15. **Due chiavi diverse per lo stesso `UPLOAD_TOKEN`**: `admin.html` lo salva in `localStorage['enri_upload_token']` (persistente), mentre `polizze_convenzioni.html` lo salva in `sessionStorage['_enri_upload_token']` (volatile, chiave con underscore iniziale diversa). Inserire il token in una pagina **non** lo rende disponibile nell'altra — l'admin deve incollarlo due volte se usa entrambe le pagine.
+16. **Login duplicato in `index.html`**: oltre al login "ufficiale" su `hub.html`, `index.html` ha un proprio overlay di login che chiama anch'esso `POST /api/auth/login` e poi reindirizza a `hub.html` dopo aver salvato `_enri_user/_enri_role/_enri_session`. Serve da fallback per chi atterra direttamente su `index.html?direct=1` (link diretto dalla card "Fase 1" in hub.html) senza essere già loggato.
+17. **`executive_summary.html` rimosso dal progetto** (confermato dall'utente): non c'è più una card collegata in `hub.html`. Se trovi ancora riferimenti al file in vecchie versioni di documentazione o in altri repo collegati, sono obsoleti.
 
 ---
 
@@ -353,18 +416,67 @@ Tutti gli endpoint `/api/imprese/*` richiedono header `x-session-token`. Il `nom
 
 File content in `fs.files` / `fs.chunks` (motor `AsyncIOMotorGridFSBucket`, bucket `files`).
 
+```jsonc
+// collection: cantieri (NEW — un documento per pratica di autorizzazione)
+{
+  "_id": ObjectId,
+  "cantiere_key": "24|1A",          // num pratica | lotto — NON pratica_id (non univoco tra enti)
+  "pratica_id": "AUT/24/1A",
+  "lotto": "1A",
+  "cluster": "...",
+  "ente": "...",
+  "stato_cantiere": "...",          // valori in STATO_CANTIERE_VALUES
+  "tecnica_scavo": "...",           // valori in TECNICA_SCAVO_VALUES
+  "data_inizio_prevista": "ISO" | null,
+  "data_inizio_effettiva": "ISO" | null,
+  "data_fine_prevista": "ISO" | null,
+  "data_fine_effettiva": "ISO" | null,
+  "metri_scavati": 0,                // accumulato via $inc da metri_realizzati_oggi
+  "note": "...",
+  "motivo_blocco": "...",
+  "data_ripresa_stimata": "ISO" | null,
+  "impresa": "Costruzioni Alfa Srl",
+  "updated_at": "ISO",
+  "log": [ {"data": "AAAA-MM-GG", "impresa": "...", "stato_cantiere": "...",
+            "metri_realizzati": 0, "note": "...", "motivo_blocco": "...",
+            "data_ripresa_stimata": "..."} ]
+}
+
+// collection: sopralluoghi (NEW)
+{
+  "_id": ObjectId,
+  "codice_verbale": "VBS-2026-0042",
+  // + campi del form (cantiere, segnalazioni, azioni richieste, firme, riferimenti foto su GitHub)
+}
+
+// collection: solleciti (NEW)
+{
+  "_id": ObjectId,
+  "tratta_id": "...",
+  "pratica": "...",
+  "impresa": "Costruzioni Alfa Srl",
+  "tipo_sollecito": "...",
+  "created_at": "ISO"
+}
+
+// collection: pol_conv_dates (NEW — chiave: "{lotto}|{pratica}|CONVENZIONE|POLIZZA")
+{
+  "_id": "1A|11|CONVENZIONE",
+  "data_richiesta": "AAAA-MM-GG"   // fissata una sola volta con $setOnInsert
+}
+```
+
 ---
 
 ## 10. Flusso impresa end-to-end (riepilogo)
 
 1. Admin → `admin.html` tab "Assegnazioni imprese" → aggiunge `Costruzioni Alfa Srl` con lotti `Lotto 1, Lotto 1A`.
-2. L'impresa accede su `hub.html` con nome esattamente `Costruzioni Alfa Srl` + codice → backend verifica con Apps Script → restituisce session token.
-3. Hub mostra card "Area Impresa" (check `/api/imprese/me` con il token).
-4. Click → `imprese.html` → tab "Aggiorna pratiche" / "Nuova pratica" → coda modifiche → "Invia per approvazione".
-5. Admin → tab "Coda imprese" (badge live) → Approva.
-6. Backend applica `changes` a Master.csv, crea nuova versione GridFS, rigenera QGIS+Riepilogo, **pusha tutti e tre su GitHub**.
-7. Dashboard (`/api/data/Master.csv`) serve immediatamente la nuova versione; SWR sulle pagine aggiorna la UI live senza reload.
+2. L'impresa accede su `hub.html` con nome esattamente `Costruzioni Alfa Srl` + codice → backend verifica con Apps Script → restituisce session token (`_enri_session`).
+3. Hub entra in "modalità impresa" (check `/api/imprese/me`) e mostra fino a 4 card: Aggiorna Pratiche, Mappa (sola vista), Mappa con aggiornamento, Avanzamento Scavi.
+4a. **Flusso pratiche** (con approvazione): Click → `imprese.html` o `mappa_impresa_caricamento.html` → coda modifiche → "Invia per approvazione" → Admin tab "Coda imprese" → Approva → Backend applica `changes` a Master.csv, crea nuova versione GridFS, rigenera QGIS+Riepilogo, **pusha tutti e tre su GitHub** → `_sync_cantieri()` riallinea i cantieri.
+4b. **Flusso scavi** (scrittura diretta, NEW): Click → `imprese_scavi.html` → aggiorna stato cantiere/metri giornalieri → `POST /api/imprese/cantieri/{key}` scrive subito su MongoDB e pusha su GitHub, **senza passare da `pending_updates`**.
+5. Dashboard (`/api/data/Master.csv`, `/api/cantieri`) serve immediatamente la nuova versione; SWR sulle pagine aggiorna la UI live senza reload.
 
 ---
 
-_Ultimo aggiornamento: 2026-06-23_
+_Ultimo aggiornamento: 2026-06-30 (rev. 2) — rev.1 ha aggiunto §5.9-§5.12, §7.1 e i gotcha §8.11-§8.14 (Polizze & Convenzioni, Sopralluoghi/Solleciti/Cantieri persistiti su Mongo, rename `_enri_token`→`_enri_session`, ruolo `scavi.html` esteso a `user`, rebranding "Retelit", incoerenza nel tracking accessi). rev.2, dopo aver verificato `mappa_impresa.html`, `sopralluoghi.html`, `polizze_convenzioni.html`, `mappa.html`, `admin.html`, `index.html`, ha: confermato il brand kit Retelit su tutte le pagine (§8.11), esteso la mappa del tracking-accessi a `mappa.html`/`mappa_impresa.html`/`sopralluoghi.html` (§5.12, §8.14), corretto `polizze_convenzioni.html` come pagina **senza guardia di login** (§4), e aggiunto i gotcha §8.15 (doppia chiave per `UPLOAD_TOKEN` tra admin.html e polizze_convenzioni.html) e §8.16 (login duplicato in `index.html` per l'accesso diretto)._
