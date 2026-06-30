@@ -258,12 +258,12 @@
         <table>
           <thead>
             <tr>
-              <th>Pratica</th>
+              <th style="text-align:right">Pratica</th>
               <th>Lotto</th>
               <th>Ente</th>
               <th>Stato permesso</th>
               <th>Convenzione</th>
-              <th>Comune</th>
+              <th>Data Richiesta</th>
             </tr>
           </thead>
           <tbody id="convBody"><tr><td colspan="6" class="loading-row">Caricamento in corso...</td></tr></tbody>
@@ -298,12 +298,12 @@
         <table>
           <thead>
             <tr>
-              <th>Pratica</th>
+              <th style="text-align:right">Pratica</th>
               <th>Lotto</th>
               <th>Ente</th>
               <th>Stato permesso</th>
               <th>Polizza</th>
-              <th>Comune</th>
+              <th>Data Richiesta</th>
             </tr>
           </thead>
           <tbody id="polBody"><tr><td colspan="6" class="loading-row">Caricamento in corso...</td></tr></tbody>
@@ -407,8 +407,8 @@
     const iTipo   = idx('TIPO_PERMESSO');
     const iStato  = idx('STATO_PERMESSO');
     const iEnte   = idx('ENTE');
-    const iComune = idx('COMUNE');
     const iSrc    = idx('SOURCE.NAME');
+    const iDataRich = idx('DATA_RICHIESTA');
     const iConv   = hdr.findIndex(h => h.toUpperCase().trim() === 'CONVENZIONE');
     const iPol    = hdr.findIndex(h => h.toUpperCase().trim() === 'POLIZZA');
 
@@ -434,11 +434,14 @@
       const tipo   = iTipo   >= 0 ? (cols[iTipo]   || '').trim() : '';
       const src    = iSrc    >= 0 ? (cols[iSrc]    || '').trim() : '';
       const lotto  = src.replace(/\.xlsx$/i,'').replace(/^Lotto\s*/i,'').trim().toUpperCase() || '';
+      const tipoMap  = { 'AUTORIZZAZIONE': 'AUT', 'NULLA OSTA': 'NO' };
+      const prefix   = tipoMap[tipo] || tipo.substring(0,3);
+      const codicePratica = (prefix && prat) ? `${prefix}/${prat}/${lotto}` : (prat || '—');
       const entry  = {
-        tratta, pratica: prat, tipo,
-        stato:  iStato  >= 0 ? (cols[iStato]  || '').trim() : '',
-        ente:   iEnte   >= 0 ? (cols[iEnte]   || '').trim() : '',
-        comune: iComune >= 0 ? (cols[iComune] || '').trim() : '',
+        tratta, pratica: prat, codicePratica, tipo,
+        stato:  iStato    >= 0 ? (cols[iStato]    || '').trim() : '',
+        ente:   iEnte     >= 0 ? (cols[iEnte]     || '').trim() : '',
+        dataRichiesta: iDataRich >= 0 ? (cols[iDataRich] || '').trim() : '',
         lotto,  impresa: IMPRESE[lotto] || '',
       };
       const key = lotto + '|' + prat;
@@ -474,7 +477,7 @@
     let r = rows;
     if (lotto)  r = r.filter(x => x.lotto === lotto);
     if (stato)  r = r.filter(x => x.stato === stato);
-    if (search) r = r.filter(x => (x.pratica+x.ente+x.comune+x.tratta+x.lotto).toLowerCase().includes(search));
+    if (search) r = r.filter(x => (x.codicePratica+x.ente+x.tratta+x.lotto).toLowerCase().includes(search));
     return r;
   }
 
@@ -493,7 +496,7 @@
         `<option value="${v}" ${v === statoVal ? 'selected' : ''}>${v || '(vuoto)'}</option>`
       ).join('');
       return `<tr data-idx="${i}" data-field="${field}" data-lotto="${r.lotto}" data-pratica="${r.pratica}">
-        <td style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--accent)">${r.pratica||'—'}</td>
+        <td style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--accent);text-align:right">${r.codicePratica||'—'}</td>
         <td style="font-size:11px">${r.lotto||'—'}</td>
         <td style="font-size:11.5px">${r.ente||'—'}</td>
         <td><span class="badge" style="background:${st.bg};color:${st.color}">${r.stato||'—'}</span></td>
@@ -508,7 +511,7 @@
             <button class="btn-ghost-sm" onclick="cancelEdit(this)">Annulla</button>
           </span>
         </td>
-        <td style="font-size:11px;color:var(--muted)">${r.comune||'—'}</td>
+        <td style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${r.dataRichiesta||'—'}</td>
       </tr>`;
     }).join('');
   }
