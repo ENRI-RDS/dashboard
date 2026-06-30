@@ -120,6 +120,16 @@
   }
 
   /* ── KPI CARDS ─────────────────────────────────────────────────── */
+  .phase-panel {
+    border-radius:14px; padding:14px 16px 16px;
+    background:var(--retelit-ice); border:1.5px solid var(--retelit-blue-25, var(--border2));
+  }
+  .phase-header {
+    display:flex; align-items:center; gap:7px; margin-bottom:10px; padding-bottom:8px;
+    border-bottom:1px dashed var(--border2); color:var(--retelit-blue, var(--accent));
+    font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.13em;
+  }
+  .phase-header-icon { width:18px; height:18px; border-radius:5px; display:inline-flex; align-items:center; justify-content:center; font-size:11px; background:rgba(4,63,117,.12); flex-shrink:0; }
   .kpi-row-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
   @media(max-width:900px){ .kpi-row-grid{ grid-template-columns:repeat(3,1fr); } }
 
@@ -127,7 +137,9 @@
     background:var(--surface); border:1px solid var(--border);
     border-radius:12px; padding:16px 18px; position:relative; overflow:hidden;
     box-shadow:var(--sh-xs); animation:fadeUp .4s ease both;
+    cursor:pointer; transition:all .2s;
   }
+  .kpi:hover { border-color:var(--border2); box-shadow:var(--sh-sm); transform:translateY(-2px); }
   @keyframes fadeUp{ from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
   .kpi:nth-child(1){animation-delay:.05s}.kpi:nth-child(2){animation-delay:.10s}
   .kpi:nth-child(3){animation-delay:.15s}.kpi:nth-child(4){animation-delay:.20s}.kpi:nth-child(5){animation-delay:.25s}
@@ -193,6 +205,23 @@
   .side { display:flex; flex-direction:column; gap:14px; }
 
   /* ── TABLE ─────────────────────────────────────────────────────── */
+  .kpi-filter-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+  .kpi-filter-search {
+    font-family:var(--font-display); font-size:13px; color:var(--text);
+    padding:8px 14px; border-radius:8px; border:1px solid var(--border2); background:var(--surface);
+    min-width:220px; flex:0 1 280px; outline:none; transition:border-color .15s, box-shadow .15s;
+  }
+  .kpi-filter-search:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(4,63,117,.10); }
+  .kpi-filter-search::placeholder { color:var(--muted); }
+  .kpi-filt-btn {
+    font-family:var(--font-display); font-size:12px; font-weight:600;
+    padding:6px 12px; border-radius:7px; cursor:pointer;
+    border:1px solid var(--border2); background:var(--surface2); color:var(--text2); transition:all .15s;
+  }
+  .kpi-filt-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .kpi-filt-btn.active { border-color:var(--accent); background:var(--accent); color:#fff; }
+  .kpi-filter-count { font-size:11px; font-family:var(--font-mono); color:var(--muted); margin-left:auto; }
+
   .cant-table { width:100%; border-collapse:collapse; }
   .cant-table thead th {
     background:var(--surface2); font-size:9px; font-weight:700; text-transform:uppercase;
@@ -298,39 +327,37 @@
     </div>
   </div>
 
-  <div class="alert-banner">
-    <div style="font-size:18px;flex-shrink:0">⚠️</div>
-    <div>
-      <strong>Pagina in sviluppo.</strong> 
+  <div class="phase-panel phase-scavi">
+    <div class="phase-header">
+      <span class="phase-header-icon">🚧</span>
+      Stato Cantieri
     </div>
-  </div>
-
-  <!-- KPI ROW: Non Avviati sinistra · In Sospeso destra -->
-  <div class="kpi-row-grid">
-    <div class="kpi k-nav">
-      <div class="kpi-label">Non Avviati</div>
-      <div class="kpi-value" id="kpiNav">—</div>
-      <div class="kpi-sub">in attesa di autorizzazioni</div>
-    </div>
-    <div class="kpi k-all">
-      <div class="kpi-label">In Allestimento</div>
-      <div class="kpi-value" id="kpiAll">—</div>
-      <div class="kpi-sub">cantieri in preparazione</div>
-    </div>
-    <div class="kpi k-cor">
-      <div class="kpi-label">In Corso</div>
-      <div class="kpi-value" id="kpiCor">—</div>
-      <div class="kpi-sub">lotti con scavo attivo</div>
-    </div>
-    <div class="kpi k-com">
-      <div class="kpi-label">Completati</div>
-      <div class="kpi-value" id="kpiCom">—</div>
-      <div class="kpi-sub">lotti ultimati</div>
-    </div>
-    <div class="kpi k-sos">
-      <div class="kpi-label">In Sospeso</div>
-      <div class="kpi-value" id="kpiSos">—</div>
-      <div class="kpi-sub">cantieri temporaneamente bloccati</div>
+    <div class="kpi-row-grid">
+      <div class="kpi k-nav" role="button" tabindex="0" onclick="_filterCantieriByStato('non-avviato')">
+        <div class="kpi-label">Non Avviati</div>
+        <div class="kpi-value" id="kpiNav">—</div>
+        <div class="kpi-sub">in attesa di autorizzazioni</div>
+      </div>
+      <div class="kpi k-all" role="button" tabindex="0" onclick="_filterCantieriByStato('allestimento')">
+        <div class="kpi-label">In Allestimento</div>
+        <div class="kpi-value" id="kpiAll">—</div>
+        <div class="kpi-sub">cantieri in preparazione</div>
+      </div>
+      <div class="kpi k-cor" role="button" tabindex="0" onclick="_filterCantieriByStato('in-corso')">
+        <div class="kpi-label">In Corso</div>
+        <div class="kpi-value" id="kpiCor">—</div>
+        <div class="kpi-sub">lotti con scavo attivo</div>
+      </div>
+      <div class="kpi k-com" role="button" tabindex="0" onclick="_filterCantieriByStato('completato')">
+        <div class="kpi-label">Completati</div>
+        <div class="kpi-value" id="kpiCom">—</div>
+        <div class="kpi-sub">lotti ultimati</div>
+      </div>
+      <div class="kpi k-sos" role="button" tabindex="0" onclick="_filterCantieriByStato('sospeso')">
+        <div class="kpi-label">In Sospeso</div>
+        <div class="kpi-value" id="kpiSos">—</div>
+        <div class="kpi-sub">cantieri temporaneamente bloccati</div>
+      </div>
     </div>
   </div>
 
@@ -466,11 +493,46 @@
 
   </div><!-- /grid -->
 
+  <!-- TUTTI I CANTIERI (singole tratte, non aggregate per lotto — equivalente di "Tutte le Pratiche" in index) -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">📋 Tutti i Cantieri</span>
+      <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)" id="cantieriCount">caricamento…</span>
+    </div>
+    <div class="card-body">
+      <div class="kpi-filter-bar">
+        <input class="kpi-filter-search" id="cantieriSearchInput" placeholder="Cerca tratta, comune, provincia…" oninput="_renderCantieriTable()">
+        <div id="cantieriLottoFilters" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+        <span class="kpi-filter-count" id="cantieriFilterCount"></span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="cant-table">
+          <thead>
+            <tr>
+              <th>Tratta</th>
+              <th>Lotto</th>
+              <th>Cluster</th>
+              <th>Provincia</th>
+              <th>Comune</th>
+              <th>Stato Cantiere</th>
+              <th>Avanzamento</th>
+              <th style="text-align:right">Metri Tot.</th>
+              <th style="text-align:right">Metri Scavati</th>
+            </tr>
+          </thead>
+          <tbody id="cantieriTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /main -->
 
 <script>
 // ── DATI LOTTI — caricati da API /api/cantieri (scavi) + Riepilogo_progettazione.csv (permessi) ──
 let LOTTI = [];          // dati scavi aggregati per lotto (da MongoDB)
+let CANTIERI_RAW = [];    // singoli cantieri (tratte) non aggregati, da MongoDB
+let _cantieriLottoFiltro = 'all';
 let PERMESSI = {};        // { lotto: { statiMap: {STATO: metri}, totale: metri } }  (da CSV permessi)
 let CLUSTER_PERMESSI = {}; // { cluster: { statiMap: {STATO: metri}, totale: metri, lotti: Set } } — aggregato per tratta, non per lotto: un lotto può attraversare più cluster
 
@@ -622,6 +684,7 @@ async function _loadCantieri() {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const d = await res.json();
     const cantieri = d.cantieri || [];
+    CANTIERI_RAW = cantieri;
 
     // Aggrega per lotto: somma metri, stato = stato più indietro del lotto
     const STATO_RANK = { 'non-avviato':0, 'allestimento':1, 'sospeso':2, 'in-corso':3, 'completato':4 };
@@ -731,8 +794,72 @@ function _renderAll() {
   _renderClusters();
   _renderRadar();
   _renderTabella();
+  _renderCantieriFilters();
+  _renderCantieriTable();
   _renderRiepilogo();
   _renderPageSubtitle();
+}
+
+// Click su una card KPI in alto: filtra la tabella "Tutti i Cantieri" per quello stato
+function _filterCantieriByStato(stato) {
+  const input = document.getElementById('cantieriSearchInput');
+  if (input) input.value = STATO_LABEL[stato] || '';
+  _renderCantieriTable();
+  document.getElementById('cantieriTableBody')?.closest('.card')?.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+// Pulsanti filtro per lotto sopra la tabella "Tutti i Cantieri"
+function _renderCantieriFilters() {
+  const box = document.getElementById('cantieriLottoFilters');
+  if (!box) return;
+  const lotti = [...new Set(CANTIERI_RAW.map(r => String(r.lotto || '?')))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  box.innerHTML = `<button class="kpi-filt-btn${_cantieriLottoFiltro==='all'?' active':''}" onclick="_setCantieriLottoFiltro('all')">Tutti</button>` +
+    lotti.map(l => `<button class="kpi-filt-btn${_cantieriLottoFiltro===l?' active':''}" onclick="_setCantieriLottoFiltro('${l}')">Lotto ${l}</button>`).join('');
+}
+
+function _setCantieriLottoFiltro(lotto) {
+  _cantieriLottoFiltro = lotto;
+  _renderCantieriFilters();
+  _renderCantieriTable();
+}
+
+// Tabella "Tutti i Cantieri": singole tratte/cantieri, non aggregate per lotto
+function _renderCantieriTable() {
+  const tbody = document.getElementById('cantieriTableBody');
+  if (!tbody) return;
+  const q = (document.getElementById('cantieriSearchInput')?.value || '').trim().toLowerCase();
+  const rows = CANTIERI_RAW.filter(r => {
+    if (_cantieriLottoFiltro !== 'all' && String(r.lotto || '?') !== _cantieriLottoFiltro) return false;
+    if (!q) return true;
+    const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
+    const haystack = [r.tratta_id, r.lotto, r.cluster, r.provincia, r.comune, STATO_LABEL[statoUI]].join(' ').toLowerCase();
+    return haystack.includes(q);
+  });
+  const countEl = document.getElementById('cantieriCount');
+  if (countEl) countEl.textContent = `${rows.length} / ${CANTIERI_RAW.length} cantieri`;
+  const filterCountEl = document.getElementById('cantieriFilterCount');
+  if (filterCountEl) filterCountEl.textContent = `${rows.length} risultati`;
+  tbody.innerHTML = rows.map(r => {
+    const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
+    const col = STATO_COLOR[statoUI];
+    const metriTot = r.metri_totali || 0;
+    const scavati  = r.metri_scavati || 0;
+    const pct = metriTot > 0 ? Math.round(scavati / metriTot * 100) : 0;
+    const prog = metriTot > 0
+      ? `<div class="prog-wrap"><div class="prog-track"><div class="prog-fill" style="width:${pct}%;background:${col}"></div></div><div class="prog-val">${pct}%</div></div>`
+      : `<span style="color:var(--muted2)">—</span>`;
+    return `<tr>
+      <td><span style="font-family:var(--font-mono);font-size:10px;color:var(--muted)">${r.tratta_id || '—'}</span></td>
+      <td><span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent)">${r.lotto ?? '—'}</span></td>
+      <td><span style="font-family:var(--font-mono);font-size:10px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 7px;color:var(--muted)">${(r.cluster ?? '?').toString().replace(/^[Cc]/,'')}</span></td>
+      <td style="color:var(--muted)">${r.provincia || '—'}</td>
+      <td style="color:var(--muted)">${r.comune || '—'}</td>
+      <td><span class="chip ${statoUI}">${STATO_LABEL[statoUI]}</span></td>
+      <td>${prog}</td>
+      <td style="text-align:right;font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(metriTot)}</td>
+      <td style="text-align:right;color:var(--muted)">${fmt(scavati)}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">Nessun cantiere trovato.</td></tr>`;
 }
 
 function _renderPageSubtitle() {
