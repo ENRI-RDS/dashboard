@@ -250,7 +250,7 @@
           <option value="2A">Lotto 2A</option><option value="2B">Lotto 2B</option>
         </select>
         <select id="convFiltStato" onchange="renderConv()">
-          <option value="">Tutti gli stati</option>
+          <option value="">Tutti gli stati convenzione</option>
         </select>
         <input id="convSearch" placeholder="Cerca..." style="min-width:130px;flex:1" oninput="renderConv()">
       </div>
@@ -290,7 +290,7 @@
           <option value="2A">Lotto 2A</option><option value="2B">Lotto 2B</option>
         </select>
         <select id="polFiltStato" onchange="renderPol()">
-          <option value="">Tutti gli stati</option>
+          <option value="">Tutti gli stati polizza</option>
         </select>
         <input id="polSearch" placeholder="Cerca..." style="min-width:130px;flex:1" oninput="renderPol()">
       </div>
@@ -349,8 +349,22 @@
 
   let CONV_ROWS = [];
   let POL_ROWS  = [];
+  let DATE_MAP  = {};
+
+  async function loadDates() {
+    try {
+      const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+      if (!apiBase) return;
+      const r = await fetch(apiBase + '/api/admin/polizze-convenzioni/data-richiesta', { cache: 'no-cache' });
+      if (r.ok) {
+        const data = await r.json();
+        DATE_MAP = data.date || {};
+      }
+    } catch(e) { console.warn('[Polizze&Convenzioni] date non caricate:', e); }
+  }
 
   async function loadData() {
+    await loadDates();
     const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
     let text = '';
     try {
@@ -408,7 +422,6 @@
     const iStato  = idx('STATO_PERMESSO');
     const iEnte   = idx('ENTE');
     const iSrc    = idx('SOURCE.NAME');
-    const iDataRich = idx('DATA_RICHIESTA');
     const iConv   = hdr.findIndex(h => h.toUpperCase().trim() === 'CONVENZIONE');
     const iPol    = hdr.findIndex(h => h.toUpperCase().trim() === 'POLIZZA');
 
@@ -441,19 +454,24 @@
         tratta, pratica: prat, codicePratica, tipo,
         stato:  iStato    >= 0 ? (cols[iStato]    || '').trim() : '',
         ente:   iEnte     >= 0 ? (cols[iEnte]     || '').trim() : '',
-        dataRichiesta: iDataRich >= 0 ? (cols[iDataRich] || '').trim() : '',
         lotto,  impresa: IMPRESE[lotto] || '',
       };
       const key = lotto + '|' + prat;
-      if (conv && !seenConv[key]) { seenConv[key] = true; convRows.push({...entry, convStato: conv}); }
-      if (pol  && !seenPol[key])  { seenPol[key]  = true; polRows.push({...entry, polStato: pol}); }
+      if (conv && !seenConv[key]) {
+        seenConv[key] = true;
+        convRows.push({...entry, convStato: conv, dataRichiesta: DATE_MAP[`${lotto}|${prat}|CONVENZIONE`] || ''});
+      }
+      if (pol  && !seenPol[key])  {
+        seenPol[key]  = true;
+        polRows.push({...entry, polStato: pol, dataRichiesta: DATE_MAP[`${lotto}|${prat}|POLIZZA`] || ''});
+      }
     }
 
     CONV_ROWS = convRows;
     POL_ROWS  = polRows;
 
-    buildStatoFilter(convRows, 'convFiltStato');
-    buildStatoFilter(polRows,  'polFiltStato');
+    buildStatoFilter(convRows, 'convFiltStato', 'convStato');
+    buildStatoFilter(polRows,  'polFiltStato',  'polStato');
 
     document.getElementById('kpiTot').textContent  = new Set([...Object.keys({}), ...convRows.map(r=>r.pratica), ...polRows.map(r=>r.pratica)]).size;
     document.getElementById('kpiConv').textContent = convRows.length;
@@ -467,16 +485,16 @@
     renderPol();
   }
 
-  function buildStatoFilter(rows, selId) {
-    const stati = [...new Set(rows.map(r => r.stato).filter(Boolean))].sort();
+  function buildStatoFilter(rows, selId, statoKey) {
+    const stati = [...new Set(rows.map(r => r[statoKey]).filter(Boolean))].sort();
     const sel = document.getElementById(selId);
     stati.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o); });
   }
 
-  function filter(rows, lotto, stato, search) {
+  function filter(rows, lotto, stato, search, statoKey) {
     let r = rows;
     if (lotto)  r = r.filter(x => x.lotto === lotto);
-    if (stato)  r = r.filter(x => x.stato === stato);
+    if (stato)  r = r.filter(x => (x[statoKey] || '') === stato);
     if (search) r = r.filter(x => (x.codicePratica+x.ente+x.tratta+x.lotto).toLowerCase().includes(search));
     return r;
   }
@@ -626,7 +644,8 @@
     const rows = filter(CONV_ROWS,
       document.getElementById('convFiltLotto').value,
       document.getElementById('convFiltStato').value,
-      document.getElementById('convSearch').value.toLowerCase()
+      document.getElementById('convSearch').value.toLowerCase(),
+      'convStato'
     );
     document.getElementById('convCount').textContent = rows.length + ' pratiche';
     document.getElementById('convBody').innerHTML = buildRows(rows, 'convStato', 6, 'CONVENZIONE');
@@ -636,7 +655,8 @@
     const rows = filter(POL_ROWS,
       document.getElementById('polFiltLotto').value,
       document.getElementById('polFiltStato').value,
-      document.getElementById('polSearch').value.toLowerCase()
+      document.getElementById('polSearch').value.toLowerCase(),
+      'polStato'
     );
     document.getElementById('polCount').textContent = rows.length + ' pratiche';
     document.getElementById('polBody').innerHTML = buildRows(rows, 'polStato', 6, 'POLIZZA');
