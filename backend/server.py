@@ -1590,14 +1590,7 @@ async def get_lotti_cantieri(sess: dict = Depends(_require_session)):
             print(f"[lotti-cantieri] colonne disponibili: {list(df.columns[:10])}, colonna lotto: {col}")
             if col:
                 raw = df[col].dropna().unique().tolist()
-                for r in raw:
-                    code = str(r).strip()
-                    # Pulisce eventuali prefissi: "Lotto 1A.xlsx" → "1A"
-                    code = re.sub(r'\.xlsx$|\.csv$', '', code, flags=re.I)
-                    code = re.sub(r'^[Ll]otto\s*', '', code).strip()
-                    if code:
-                        lotti_master.append(code)
-                lotti_master = sorted(set(lotti_master))
+                lotti_master = sorted({_lotto_from_source(r) for r in raw if str(r).strip()})
                 print(f"[lotti-cantieri] lotti da Master.csv: {lotti_master}")
     except Exception as e:
         print(f"[lotti-cantieri] errore lettura Master.csv: {e}")
@@ -1605,7 +1598,7 @@ async def get_lotti_cantieri(sess: dict = Depends(_require_session)):
     # Cantieri da MongoDB — raggruppati per lotto
     cantieri_map: dict = {}
     async for doc in cantieri_col.find({}, {"cantiere_key": 1, "lotto": 1, "ente": 1}):
-        lotto = str(doc.get("lotto", "")).strip()
+        lotto = _lotto_from_source(doc.get("lotto", ""))
         key   = str(doc.get("cantiere_key", "")).strip()
         if not lotto or not key:
             continue
@@ -1627,9 +1620,12 @@ async def get_lotti_cantieri(sess: dict = Depends(_require_session)):
     async for a in assignments_col.find({}, {"nome": 1, "lotti": 1}):
         nome_impresa = a.get("nome", "")
         for l in (a.get("lotti") or []):
-            lotto_impresa[str(l).strip()] = nome_impresa
+            lotto_norm = _lotto_from_source(l)
+            if lotto_norm:
+                lotto_impresa[lotto_norm] = nome_impresa
 
     print(f"[lotti-cantieri] lotti finali: {list(result.keys())}")
+    print(f"[lotti-cantieri] lotto_impresa: {lotto_impresa}")
     return {"lotti": result, "lotto_impresa": lotto_impresa}
 
 
