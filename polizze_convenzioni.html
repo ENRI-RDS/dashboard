@@ -192,9 +192,37 @@
 
   /* BADGE */
   .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:var(--radius-pill);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}
+  #authGuard{
+    position:fixed;inset:0;background:rgba(11,25,70,.55);
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    z-index:9999;display:flex;align-items:center;justify-content:center;
+  }
+  .guard-box{
+    background:var(--surface);border-radius:16px;padding:36px 40px;
+    text-align:center;max-width:340px;
+    box-shadow:0 32px 80px rgba(11,49,130,.22);
+  }
+  .guard-box svg{color:var(--retelit-teal);margin-bottom:14px;}
+  .guard-box h2{font-family:var(--font-display);font-size:18px;font-weight:700;margin-bottom:8px;}
+  .guard-box p{font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.6;}
+  .guard-box a{
+    display:inline-block;padding:10px 24px;border-radius:8px;
+    background:var(--accent);color:#fff;text-decoration:none;
+    font-size:13px;font-weight:700;
+  }
 </style>
 </head>
 <body>
+
+<div id="authGuard" style="display:none">
+  <div class="guard-box">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    <h2>Accesso richiesto</h2>
+    <p>Devi effettuare l'accesso al portale per utilizzare questa pagina.</p>
+    <a href="hub.html">Vai al portale</a>
+  </div>
+</div>
+
 
 <div class="topbar">
   <div class="topbar-left">
@@ -662,7 +690,12 @@
     document.getElementById('polBody').innerHTML = buildRows(rows, 'polStato', 6, 'POLIZZA');
   };
 
-  loadData();
+  // Guardia login — stesso pattern di scavi.html/sopralluoghi.html
+  if (!localStorage.getItem('_enri_user')) {
+    document.getElementById('authGuard').style.display = 'flex';
+  } else {
+    loadData();
+  }
 })();
 </script>
 </body>
