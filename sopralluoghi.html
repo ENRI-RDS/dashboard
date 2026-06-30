@@ -235,14 +235,8 @@
     <div class="field-row">
       <div class="field-group">
         <label for="impresa">Impresa esecutrice</label>
-        <select id="impresa">
-          <option value="">— seleziona —</option>
-          <option>Valtellina</option>
-          <option>Soleto</option>
-          <option>Sielte</option>
-          <option>Telebit</option>
-          <option>Circet</option>
-        </select>
+        <input type="text" id="impresa" readonly placeholder="Seleziona prima il lotto"
+               style="background:#f4f6fa;color:#888;cursor:not-allowed">
       </div>
       <div class="field-group">
         <label for="ruolo">Ruolo redattore</label>
@@ -483,20 +477,12 @@ function onLottoChange() {
       cantieri.map(c => `<option value="${c.value}">${c.label}</option>`).join('');
   }
 
-  // Auto-popola impresa esecutrice in base al lotto
-  const impSel = document.getElementById('impresa');
-  const impresa = _lottoImpresa[lotto];
-  if (impSel && impresa) {
-    const opt = Array.from(impSel.options).find(o => o.value === impresa || o.textContent.trim() === impresa);
-    if (opt) {
-      impSel.value = opt.value;
-    } else {
-      // Aggiunge l'opzione se non presente nella select statica
-      const newOpt = document.createElement('option');
-      newOpt.value = impresa; newOpt.textContent = impresa;
-      impSel.appendChild(newOpt);
-      impSel.value = impresa;
-    }
+  // Imposta impresa esecutrice in base al lotto (campo non editabile)
+  const impField = document.getElementById('impresa');
+  const impresa  = _lottoImpresa[lotto];
+  if (impField) {
+    impField.value = impresa || '';
+    impField.placeholder = impresa ? '' : 'Nessuna impresa assegnata a questo lotto';
   }
 }
 
