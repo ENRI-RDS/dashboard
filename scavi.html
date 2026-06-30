@@ -501,7 +501,7 @@
     </div>
     <div class="card-body">
       <div class="kpi-filter-bar">
-        <input class="kpi-filter-search" id="cantieriSearchInput" placeholder="Cerca tratta, comune, provincia…" oninput="_renderCantieriTable()">
+        <input class="kpi-filter-search" id="cantieriSearchInput" placeholder="Cerca pratica, ente, comune…" oninput="_renderCantieriTable()">
         <div id="cantieriLottoFilters" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
         <span class="kpi-filter-count" id="cantieriFilterCount"></span>
       </div>
@@ -509,7 +509,8 @@
         <table class="cant-table">
           <thead>
             <tr>
-              <th>Tratta</th>
+              <th>Pratica</th>
+              <th>Ente</th>
               <th>Lotto</th>
               <th>Cluster</th>
               <th>Provincia</th>
@@ -702,7 +703,7 @@ async function _loadCantieri() {
       }
       byLotto[lotto].metri   += r.metri_totali   || 0;
       byLotto[lotto].scavati += r.metri_scavati  || 0;
-      byLotto[lotto].tratte.push(r.tratta_id);
+      (r.tratte || []).forEach(t => byLotto[lotto].tratte.push(t.tratta_id));
       if (r.provincia) byLotto[lotto].provSet.add(r.provincia);
       if (r.comune)    byLotto[lotto].comuniSet.add(r.comune);
       // Stato del lotto = stato peggiore tra le tratte
@@ -832,7 +833,7 @@ function _renderCantieriTable() {
     if (_cantieriLottoFiltro !== 'all' && String(r.lotto || '?') !== _cantieriLottoFiltro) return false;
     if (!q) return true;
     const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
-    const haystack = [r.tratta_id, r.lotto, r.cluster, r.provincia, r.comune, STATO_LABEL[statoUI]].join(' ').toLowerCase();
+    const haystack = [r.pratica_id, r.ente, r.lotto, r.cluster, r.provincia, r.comune, STATO_LABEL[statoUI]].join(' ').toLowerCase();
     return haystack.includes(q);
   });
   const countEl = document.getElementById('cantieriCount');
@@ -849,7 +850,8 @@ function _renderCantieriTable() {
       ? `<div class="prog-wrap"><div class="prog-track"><div class="prog-fill" style="width:${pct}%;background:${col}"></div></div><div class="prog-val">${pct}%</div></div>`
       : `<span style="color:var(--muted2)">—</span>`;
     return `<tr>
-      <td><span style="font-family:var(--font-mono);font-size:10px;color:var(--muted)">${r.tratta_id || '—'}</span></td>
+      <td><span style="font-family:var(--font-mono);font-size:10px;color:var(--muted)" title="${(r.tratte||[]).length} tratte">${r.pratica_id || '—'}</span></td>
+      <td style="color:var(--muted)">${r.ente || '—'}</td>
       <td><span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent)">${r.lotto ?? '—'}</span></td>
       <td><span style="font-family:var(--font-mono);font-size:10px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 7px;color:var(--muted)">${(r.cluster ?? '?').toString().replace(/^[Cc]/,'')}</span></td>
       <td style="color:var(--muted)">${r.provincia || '—'}</td>
@@ -859,7 +861,7 @@ function _renderCantieriTable() {
       <td style="text-align:right;font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(metriTot)}</td>
       <td style="text-align:right;color:var(--muted)">${fmt(scavati)}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">Nessun cantiere trovato.</td></tr>`;
+  }).join('') || `<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px">Nessun cantiere trovato.</td></tr>`;
 }
 
 function _renderPageSubtitle() {
