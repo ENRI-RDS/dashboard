@@ -1901,7 +1901,7 @@ async def bulk_delete_solleciti(payload: dict, sess: dict = Depends(_require_ses
 # ═════════════════════════════════════════════════════════════════════════════
 
 STATO_CANTIERE_VALUES = ["non_avviato", "allestimento", "in_corso", "sospeso", "completato"]
-TECNICA_SCAVO_VALUES  = ["trincea", "no_dig", ""]
+TECNICA_SCAVO_VALUES  = ["trincea", "no_dig", "canaletta", ""]
 
 CANTIERI_CSV_PATH = os.environ.get("GITHUB_CANTIERI_PATH", "cantieri.csv")
 CANTIERI_COLS = [
