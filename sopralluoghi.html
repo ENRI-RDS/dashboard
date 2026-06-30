@@ -533,14 +533,37 @@ async function inviaVerbale(){
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    document.getElementById('codice_verbale').value = data.codice_verbale;
     showToast('✓ Verbale inviato — ' + data.codice_verbale);
     await loadVerbali();
+    resetVerbaleForm();
   } catch(e) {
     showToast('✗ Errore invio: ' + e.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = SVG_INVIA + ' Invia verbale'; }
   }
+}
+
+function resetVerbaleForm() {
+  document.getElementById('codice_verbale').value = '';
+  document.getElementById('data').value = '';
+  document.getElementById('lotto').value = '';
+  document.getElementById('n_cantiere').innerHTML = '<option value="">— seleziona prima il lotto —</option>';
+  document.getElementById('indirizzo').value = '';
+  document.getElementById('impresa').value = '';
+  document.getElementById('impresa').placeholder = 'Seleziona prima il lotto';
+  document.getElementById('ruolo').value = 'Direttore Lavori';
+  const u = localStorage.getItem('_enri_user');
+  document.getElementById('redattore').value = u || '';
+  document.getElementById('grav_nessuna').checked = true;
+  document.getElementById('segnalazioni').value = '';
+  document.getElementById('azioni').value = '';
+  document.getElementById('scadenza_azioni').value = '';
+  document.getElementById('prossimo_sopr').value = '';
+  document.getElementById('note').value = '';
+  uploadedPhotos = [];
+  const fotoInput = document.getElementById('fotoInput');
+  if (fotoInput) fotoInput.value = '';
+  renderPreviews();
 }
 
 /* ══ PDF via html2canvas ══ */
@@ -848,9 +871,11 @@ function filterVerbali(q) {
     return;
   }
   const isAdmin = (localStorage.getItem('_enri_role') || '').toLowerCase() === 'admin';
+  const gravColor = e => e === 'Anomalia critica' ? '#C0392B' : e === 'Anomalia media' ? '#D08A1A' : '#1A7D99';
+  const gravBg    = e => e === 'Anomalia critica' ? '#FDECEA' : e === 'Anomalia media' ? '#FFF3E0' : '#f7f9fc';
   list.innerHTML = rows.map(v => `
     <div data-id="${v._id}" class="verbale-card"
-         style="border:1px solid #d0d8e4;border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#f7f9fc;cursor:pointer;transition:border-color .15s">
+         style="border:1px solid ${v.esito ? gravColor(v.esito) : '#d0d8e4'};border-left-width:3px;border-radius:8px;padding:10px 12px;margin-bottom:8px;background:${gravBg(v.esito)};cursor:pointer;transition:border-color .15s">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
         <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12px;color:#043F75">${v.codice_verbale}</span>
         <div style="display:flex;align-items:center;gap:6px">
@@ -861,7 +886,7 @@ function filterVerbali(q) {
       </div>
       <div style="font-size:11.5px;color:#444;margin-bottom:2px">${v.tratta_id || '—'} · ${v.lotto || '—'}</div>
       <div style="font-size:11px;color:#666">${v.impresa || '—'} · ${v.comune || '—'}</div>
-      ${v.esito ? `<div style="font-size:10.5px;margin-top:4px;color:#1A7D99">Esito: ${v.esito}</div>` : ''}
+      ${v.esito ? `<div style="font-size:10.5px;margin-top:4px;font-weight:600;color:${gravColor(v.esito)}">Esito: ${v.esito}</div>` : ''}
     </div>`).join('');
 
   list.querySelectorAll('.verbale-card').forEach(card => {
@@ -906,11 +931,15 @@ function showVerbaleDetail(v) {
         <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:#043F75">${v.codice_verbale}</span>
         <button id="close-detail" style="background:none;border:none;cursor:pointer;color:#888;font-size:22px;line-height:1">&times;</button>
       </div>
-      ${campi.map(([label, val]) => `
+      ${campi.map(([label, val]) => {
+        const isEsito = label === 'Esito / Gravità';
+        const c = isEsito ? (val === 'Anomalia critica' ? '#C0392B' : val === 'Anomalia media' ? '#D08A1A' : '#1A7D99') : '#1a1a2e';
+        return `
         <div style="display:flex;gap:12px;padding:7px 0;border-bottom:1px solid #eef0f3">
           <span style="font-size:10.5px;font-weight:700;letter-spacing:.06em;color:#888;text-transform:uppercase;min-width:140px;flex-shrink:0">${label}</span>
-          <span style="font-size:12.5px;color:#1a1a2e">${val}</span>
-        </div>`).join('')}
+          <span style="font-size:12.5px;color:${c};font-weight:${isEsito?'700':'400'}">${val}</span>
+        </div>`;
+      }).join('')}
     </div>`;
   document.body.appendChild(modal);
   modal.querySelector('#close-detail').onclick = () => modal.remove();
