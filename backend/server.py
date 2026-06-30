@@ -24,6 +24,7 @@ import json
 import os
 import re
 import time
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Any
@@ -777,6 +778,37 @@ async def _read_master_csv() -> "pd.DataFrame":
 
 QGIS_FILENAME      = "QGIS.geojson"
 RIEPILOGO_FILENAME = "Riepilogo_progettazione.csv"
+
+
+async def _read_riepilogo_csv() -> "pd.DataFrame | None":
+    """Legge Riepilogo_progettazione.csv (Mongo se presente, altrimenti seed su
+    disco). Usato per recuperare CLUSTER/PROVINCIA/COMUNE per TRATTA_ID: questi
+    campi non esistono in Master.csv, solo in Riepilogo (ereditati da QGIS.geojson).
+    Ritorna None se il file non e' ancora disponibile (fail-soft: i cantieri
+    vengono comunque creati, solo senza questi campi)."""
+    try:
+        cur = await _current_upload(RIEPILOGO_FILENAME)
+        if cur:
+            raw = await _read_gridfs(cur["gridfs_id"])
+        else:
+            path = DATA_DIR / RIEPILOGO_FILENAME
+            if not path.exists():
+                return None
+            raw = path.read_bytes()
+        sep = _detect_sep(raw)
+        for enc in ("utf-8", "cp1252", "latin-1"):
+            try:
+                return pd.read_csv(
+                    io.BytesIO(raw), sep=sep, dtype=str, keep_default_na=False,
+                    encoding=enc, on_bad_lines="warn",
+                )
+            except (UnicodeDecodeError, UnicodeError):
+                continue
+        return pd.read_csv(io.BytesIO(raw), sep=sep, dtype=str, keep_default_na=False, encoding="utf-8", encoding_errors="replace")
+    except Exception as e:
+        print(f"[_read_riepilogo_csv] errore: {e}")
+        return None
+
 
 GITHUB_REPO     = os.environ.get("GITHUB_REPO", "ENRI-RDS/dashboard")
 GITHUB_BRANCH   = os.environ.get("GITHUB_BRANCH", "main")
@@ -2029,6 +2061,26 @@ async def _sync_cantieri() -> int:
         print(f"[sync_cantieri] errore lettura master: {e}")
         return 0
 
+    # CLUSTER/PROVINCIA/COMUNE non esistono in Master.csv: vengono recuperati da
+    # Riepilogo_progettazione.csv (che li eredita da QGIS.geojson), indicizzati
+    # per TRATTA_ID. Fail-soft: se il file non è disponibile i cantieri vengono
+    # comunque creati, semplicemente senza questi tre campi.
+    geo_by_tratta: dict[str, dict] = {}
+    try:
+        riep_df = await _read_riepilogo_csv()
+        if riep_df is not None and "TRATTA_ID" in riep_df.columns:
+            for _, row in riep_df.iterrows():
+                tid = str(row.get("TRATTA_ID", "")).strip()
+                if not tid:
+                    continue
+                geo_by_tratta[tid] = {
+                    "cluster":   str(row.get("CLUSTER", "")).strip(),
+                    "provincia": str(row.get("PROVINCIA", "")).strip(),
+                    "comune":    str(row.get("COMUNE", "")).strip(),
+                }
+    except Exception as e:
+        print(f"[sync_cantieri] errore lettura riepilogo (cluster/provincia/comune): {e}")
+
     groups: dict[tuple, dict] = {}
     for tratta_id, info in summary.items():
         if info.get("STATO_AUTORIZZAZIONE") != "OTTENUTO":
@@ -2037,8 +2089,11 @@ async def _sync_cantieri() -> int:
         if not pratica_num:
             continue
         rows = df[df["TRATTA_ID"].astype(str).str.strip() == tratta_id]
-        lotto   = _lotto_from_source(rows.iloc[0].get("Source.Name", "")) if not rows.empty else ""
-        cluster = str(rows.iloc[0].get("CLUSTER", "")) if not rows.empty else ""
+        lotto = _lotto_from_source(rows.iloc[0].get("Source.Name", "")) if not rows.empty else ""
+        geo   = geo_by_tratta.get(tratta_id, {})
+        cluster   = geo.get("cluster", "")
+        provincia = geo.get("provincia", "")
+        comune    = geo.get("comune", "")
         try:
             raw_lung = info.get("LUNGHEZZA", 0)
             lunghezza = 0.0 if pd.isna(raw_lung) else float(str(raw_lung).replace(",", "."))
@@ -2059,6 +2114,8 @@ async def _sync_cantieri() -> int:
             "lunghezza":  lunghezza,
             "lavorabile": info.get("LAVORABILE") == "SI",
             "motivo_no":  info.get("MOTIVO_NO", ""),
+            "provincia":  provincia,
+            "comune":     comune,
         })
 
     created = 0
@@ -2066,6 +2123,11 @@ async def _sync_cantieri() -> int:
     for key, g in groups.items():
         metri_totali     = sum(t["lunghezza"] for t in g["tratte"] if t["lavorabile"])
         metri_totali_pot = sum(t["lunghezza"] for t in g["tratte"])
+        # provincia/comune del cantiere: il valore più frequente tra le sue tratte
+        provincia_count = Counter(t["provincia"] for t in g["tratte"] if t.get("provincia"))
+        comune_count     = Counter(t["comune"]    for t in g["tratte"] if t.get("comune"))
+        provincia_cantiere = provincia_count.most_common(1)[0][0] if provincia_count else ""
+        comune_cantiere     = comune_count.most_common(1)[0][0] if comune_count else ""
 
         existing = await cantieri_col.find_one({"cantiere_key": g["cantiere_key"]})
         if existing:
@@ -2074,6 +2136,7 @@ async def _sync_cantieri() -> int:
                 {"$set": {
                     "tratte": g["tratte"], "lotto": g["lotto"], "cluster": g["cluster"],
                     "metri_totali": metri_totali, "metri_totali_potenziali": metri_totali_pot,
+                    "provincia": provincia_cantiere, "comune": comune_cantiere,
                 }},
             )
             continue
@@ -2101,6 +2164,7 @@ async def _sync_cantieri() -> int:
         doc = {
             "cantiere_key": g["cantiere_key"],
             "pratica_id": g["pratica_id"], "ente": g["ente"], "lotto": g["lotto"], "cluster": g["cluster"],
+            "provincia": provincia_cantiere, "comune": comune_cantiere,
             "tratte": g["tratte"],
             "metri_totali": metri_totali, "metri_totali_potenziali": metri_totali_pot,
             "stato_cantiere": stato_cantiere, "tecnica_scavo": tecnica_scavo,
