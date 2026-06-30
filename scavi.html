@@ -335,19 +335,20 @@
     </div>
   </div>
 
-  <!-- CLUSTER BARS (stile index.html) -->
+  <!-- CLUSTER BARS (avanzamento permessi per cluster geografico) -->
   <div class="card">
     <div class="card-header">
-      <span class="card-title">⚡ Avanzamento per Cluster</span>
+      <span class="card-title">⚡ Avanzamento Permessi per Cluster</span>
       <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)" id="clusterStatus">caricamento…</span>
     </div>
     <div class="card-body" style="display:flex;flex-direction:column;gap:2px;" id="clusterContainer"></div>
     <div class="legend">
-      <div class="legend-item"><div class="legend-dot" style="background:#0B3182"></div>In corso</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#C08A14"></div>In allestimento</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#C23B22"></div>In sospeso</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#1F7A4E"></div>Completato</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#8A91B4"></div>Non avviato</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#1E9E6A"></div>Ottenuto</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#B5657A"></div>Prot. Integrazione</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#C0392B"></div>Nec. Integrazione</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#41BBD9"></div>Inviato/Protocollato</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#D08A1A"></div>In Firma</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#6B7685"></div>In Attesa</div>
     </div>
   </div>
 
@@ -463,6 +464,7 @@
 // ── DATI LOTTI — caricati da API /api/cantieri (scavi) + Riepilogo_progettazione.csv (permessi) ──
 let LOTTI = [];          // dati scavi aggregati per lotto (da MongoDB)
 let PERMESSI = {};        // { lotto: { statiMap: {STATO: metri}, totale: metri } }  (da CSV permessi)
+let CLUSTER_PERMESSI = {}; // { cluster: { statiMap: {STATO: metri}, totale: metri, lotti: Set } } — aggregato per tratta, non per lotto: un lotto può attraversare più cluster
 
 // Mappa stato MongoDB → stato UI (per compatibilità con il codice esistente)
 const STATO_MAP = {
@@ -537,6 +539,10 @@ async function _loadPermessi() {
     console.log('[ENRI] colonne trovate → LOTTO:', iL, 'STATO:', iS, 'LUNGHEZZA:', iLun, 'CLUSTER:', iCl, 'PROVINCIA:', iPr, 'COMUNE:', iCom, '| righe:', lines.length - 1);
 
     const aggMap = {}, totMap = {}, clMap = {}, provMap = {}, comMap = {};
+    // Aggregazione separata per cluster (diretta dalla tratta, indipendente dal lotto):
+    // un lotto può attraversare più cluster e nessuna tratta deve sparire dietro
+    // il "cluster prevalente" del proprio lotto.
+    const clusterAggMap = {}, clusterTotMap = {}, clusterLottiMap = {};
     for (let i = 1; i < lines.length; i++) {
       const cols = _parseCsvLine(lines[i], sep);
       const lottoRaw = cols[iL]?.trim().replace(/"/g, '');
@@ -558,7 +564,25 @@ async function _loadPermessi() {
       if (pr) provMap[lotto].add(pr);
       const com = iCom >= 0 ? cols[iCom]?.trim() : '';
       if (com) comMap[lotto].add(com);
+
+      // Aggregazione per cluster: ogni tratta contribuisce al SUO cluster reale
+      if (cl) {
+        if (!clusterAggMap[cl]) { clusterAggMap[cl] = {}; clusterTotMap[cl] = 0; clusterLottiMap[cl] = new Set(); }
+        clusterAggMap[cl][stato] = (clusterAggMap[cl][stato] || 0) + lungh;
+        clusterTotMap[cl] += lungh;
+        clusterLottiMap[cl].add(lotto);
+      }
     }
+
+    CLUSTER_PERMESSI = {};
+    Object.keys(clusterAggMap).forEach(cl => {
+      CLUSTER_PERMESSI[cl] = {
+        statiMap: clusterAggMap[cl],
+        totale: clusterTotMap[cl],
+        lotti: [...clusterLottiMap[cl]],
+      };
+    });
+    console.log('[ENRI] CLUSTER_PERMESSI costruito per cluster:', Object.keys(CLUSTER_PERMESSI), '| totali m:', Object.fromEntries(Object.entries(CLUSTER_PERMESSI).map(([k,v])=>[k,Math.round(v.totale)])));
 
     PERMESSI = {};
     Object.keys(aggMap).forEach(lotto => {
@@ -625,10 +649,11 @@ async function _loadCantieri() {
       // Metri totali del lotto: preferisci il totale reale da permessi (più affidabile e completo)
       const metriTotaliLotto = p ? p.totale : (c ? c.metri : 0);
       const scavati = c ? c.scavati : 0;
-      // Cluster/province/comuni: preferisci MongoDB (più granulare), fallback su CSV permessi
-      const cluster = c ? String(c.cl) : (p ? String(p.cluster) : '?');
-      const prov    = c && c.provSet.size > 0 ? [...c.provSet] : (p ? p.province : []);
-      const nComuni = c && c.comuniSet.size > 0 ? c.comuniSet.size : (p ? p.comuni.length : 0);
+      // Cluster/province/comuni: preferisci CSV permessi (copre tutti i 12 lotti in modo coerente),
+      // fallback su MongoDB solo se il lotto non è presente nel CSV
+      const cluster = p && p.cluster && p.cluster !== '?' ? String(p.cluster) : (c ? String(c.cl) : '?');
+      const prov    = p && p.province.length > 0 ? p.province : (c ? [...c.provSet] : []);
+      const nComuni = p && p.comuni.length > 0 ? p.comuni.length : (c ? c.comuniSet.size : 0);
       return {
         cl:      cluster,
         id:      String(lotto),
@@ -785,20 +810,15 @@ function makeSeg(pct, color, label, metriVal, isGrey) {
 
 // ── CLUSTER BARS ─────────────────────────────────────────────────────────────
 function _renderClusters() {
-const clMap = {}, clTot = {};
-LOTTI.forEach(r => {
-  if (!clMap[r.cl]) { clMap[r.cl] = {}; clTot[r.cl] = 0; }
-  clMap[r.cl][r.stato] = (clMap[r.cl][r.stato] || 0) + r.metri;
-  clTot[r.cl] += r.metri;
-});
-
 const clusterContainer = document.getElementById('clusterContainer');
-const totalAll = Object.values(clTot).reduce((a,b)=>a+b,0);
+const totalAll = Object.values(CLUSTER_PERMESSI).reduce((s, v) => s + v.totale, 0);
 document.getElementById('clusterStatus').textContent = fmt(totalAll) + ' m totali';
 
-Object.keys(clMap).sort((a,b)=>+a-+b).forEach(cl => {
-  const tot = clTot[cl];
-  const statiMap = clMap[cl];
+Object.keys(CLUSTER_PERMESSI).sort((a,b)=>+a-+b).forEach(cl => {
+  const cd = CLUSTER_PERMESSI[cl];
+  const tot = cd.totale;
+  const statiMap = cd.statiMap;
+  const gruppi = buildGruppiMapPermessi(statiMap);
 
   const row = document.createElement('div');
   row.className = 'bar-row';
@@ -806,35 +826,31 @@ Object.keys(clMap).sort((a,b)=>+a-+b).forEach(cl => {
   row.title = 'Clicca per il dettaglio';
   row.addEventListener('click', () => openModalCluster(cl));
 
-  // Lotto label
   const lbl = document.createElement('div');
   lbl.style.cssText = `width:180px;flex-shrink:0;display:flex;flex-direction:column;gap:2px`;
   lbl.innerHTML = `
     <div style="display:flex;align-items:center;gap:6px">
-      <span style="background:${CLUSTER_COLOR[cl]}20;color:${CLUSTER_COLOR[cl]};border:1px solid ${CLUSTER_COLOR[cl]}40;border-radius:4px;padding:1px 7px;font-size:9px;font-weight:700;font-family:var(--font-mono)">${cl}</span>
-      <span style="font-size:11px;font-weight:700;color:var(--text)">${CLUSTER_LABEL[cl]}</span>
+      <span style="background:${CLUSTER_COLOR[cl]||'#8A91B4'}20;color:${CLUSTER_COLOR[cl]||'#8A91B4'};border:1px solid ${CLUSTER_COLOR[cl]||'#8A91B4'}40;border-radius:4px;padding:1px 7px;font-size:9px;font-weight:700;font-family:var(--font-mono)">${cl}</span>
+      <span style="font-size:11px;font-weight:700;color:var(--text)">${CLUSTER_LABEL[cl]||'Cluster '+cl}</span>
     </div>
-    <span style="font-size:9px;color:var(--muted2)">${LOTTI.filter(r=>r.cl===cl).length} lotti</span>`;
+    <span style="font-size:9px;color:var(--muted2)">${cd.lotti.length} lotti</span>`;
 
-  // Bar track con segmenti
+  // Bar track con segmenti PERMESSI (stessa palette di buildGruppiMapPermessi)
   const track = document.createElement('div');
   track.className = 'bar-track';
   track.style.flex = '1';
 
-  STATO_ORDER.forEach(stato => {
-    const m = statiMap[stato] || 0;
-    if (!m) return;
-    const pct = m / tot * 100;
-    track.appendChild(makeSeg(pct, STATO_COLOR[stato], STATO_LABEL[stato], m, stato === 'non-avviato'));
+  ORDINE_WORKFLOW_PERMESSI.forEach(label => {
+    const g = STATI_GRUPPI_PERMESSI.find(x => x.label === label);
+    if (!g) return;
+    const m = gruppi[g.label] || 0;
+    if (m <= 0) return;
+    const pct = tot > 0 ? m / tot * 100 : 0;
+    track.appendChild(makeSeg(pct, g.color, g.label, m, false));
   });
 
-  // % in corso (avanzamento reale)
-  const inCorsoM = LOTTI.filter(r=>r.cl===cl).reduce((s,r)=>{
-    const scavati = r.pct > 0 ? Math.round(r.metri * r.pct / 100) : 0;
-    return s + scavati;
-  }, 0);
-  const avanzPct = tot > 0 ? (inCorsoM / tot * 100) : 0;
-  const pctLbl = avanzPct > 0 ? avanzPct.toFixed(0) + '%' : '';
+  const ottenutoM = statiMap['OTTENUTO'] || 0;
+  const pctLbl = tot > 0 ? Math.round(ottenutoM / tot * 100) + '%' : '';
 
   const pctEl = document.createElement('span');
   pctEl.className = 'bar-pct';
@@ -1161,14 +1177,16 @@ document.addEventListener('keydown', e => {
 
 // ── MODAL CLUSTER ─────────────────────────────────────────────────────────────
 function openModalCluster(cl) {
-  const lottiCl   = LOTTI.filter(r => r.cl === cl);
-  const totMetri  = lottiCl.reduce((s,r) => s + r.metri, 0);
-  const totScavati= lottiCl.reduce((s,r) => s + Math.round(r.metri * r.pct / 100), 0);
-  const pctTot    = totMetri > 0 ? (totScavati / totMetri * 100).toFixed(1) : '0.0';
-  const clCol     = CLUSTER_COLOR[cl];
+  const cd = CLUSTER_PERMESSI[cl] || { statiMap: {}, totale: 0, lotti: [] };
+  const totMetri  = cd.totale;
+  const ottenutoM = cd.statiMap['OTTENUTO'] || 0;
+  const pctTot    = totMetri > 0 ? (ottenutoM / totMetri * 100).toFixed(1) : '0.0';
+  const clCol     = CLUSTER_COLOR[cl] || '#8A91B4';
+  // Lotti che attraversano questo cluster (dalla lista corretta, non dal cluster prevalente)
+  const lottiCl = LOTTI.filter(r => cd.lotti.includes(r.id));
 
   document.getElementById('modalClusterTitle').innerHTML =
-    `<span style="background:${clCol}18;color:${clCol};border:1px solid ${clCol}40;border-radius:6px;padding:2px 10px;font-size:13px;font-weight:700;font-family:var(--font-mono);margin-right:10px">${cl}</span>${CLUSTER_LABEL[cl]}`;
+    `<span style="background:${clCol}18;color:${clCol};border:1px solid ${clCol}40;border-radius:6px;padding:2px 10px;font-size:13px;font-weight:700;font-family:var(--font-mono);margin-right:10px">${cl}</span>${CLUSTER_LABEL[cl]||'Cluster '+cl}`;
 
   // Header stats
   const header = `
@@ -1178,50 +1196,51 @@ function openModalCluster(cl) {
         <span class="modal-stat-val">${fmt(totMetri)} m</span>
       </div>
       <div class="modal-stat">
-        <span class="modal-stat-lbl">⛏ Scavati</span>
-        <span class="modal-stat-val" style="color:${clCol}">${fmt(totScavati)} m</span>
+        <span class="modal-stat-lbl">✓ Permessi ottenuti</span>
+        <span class="modal-stat-val" style="color:#1E9E6A">${fmt(ottenutoM)} m</span>
       </div>
       <div class="modal-stat">
-        <span class="modal-stat-lbl">Avanzamento</span>
-        <span class="modal-stat-val" style="color:${clCol}">${pctTot}%</span>
+        <span class="modal-stat-lbl">Avanzamento permessi</span>
+        <span class="modal-stat-val" style="color:#1E9E6A">${pctTot}%</span>
       </div>
       <div class="modal-stat">
-        <span class="modal-stat-lbl">Lotti</span>
-        <span class="modal-stat-val">${lottiCl.length}</span>
+        <span class="modal-stat-lbl">Lotti coinvolti</span>
+        <span class="modal-stat-val">${cd.lotti.length}</span>
       </div>
     </div>`;
 
-  // Barre per stato (aggregato cluster)
-  const pesoStato = {};
-  lottiCl.forEach(r => { pesoStato[r.stato] = (pesoStato[r.stato]||0) + r.metri; });
-  let barreStato = `<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:10px">Distribuzione per stato</div>`;
-  STATO_ORDER.forEach(stato => {
-    const m = pesoStato[stato]||0; if(!m) return;
-    const pct = totMetri > 0 ? m/totMetri*100 : 0;
-    const col = STATO_COLOR[stato];
+  // Barre per stato permesso (aggregato cluster, da CLUSTER_PERMESSI — corretto per tratta)
+  const gruppi = buildGruppiMapPermessi(cd.statiMap);
+  let barreStato = `<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:10px">Distribuzione permessi per stato</div>`;
+  ORDINE_WORKFLOW_PERMESSI.forEach(label => {
+    const g = STATI_GRUPPI_PERMESSI.find(x => x.label === label);
+    if (!g) return;
+    const m = gruppi[g.label] || 0; if (!m) return;
+    const pct = totMetri > 0 ? m / totMetri * 100 : 0;
     barreStato += `<div class="modal-bar-row">
-      <span class="modal-bar-label">${STATO_LABEL[stato]}</span>
+      <span class="modal-bar-label">${g.label}</span>
       <div class="modal-bar-track">
-        <div class="modal-bar-fill" style="width:${pct}%;background:${col};opacity:${stato==='non-avviato'?.45:.88}"></div>
+        <div class="modal-bar-fill" style="width:${pct}%;background:${g.color};opacity:.88"></div>
         ${pct>=6?`<span class="modal-bar-pct">${pct.toFixed(1)}%</span>`:''}
       </div>
       <span class="modal-bar-val">${fmt(m)} m</span>
     </div>`;
   });
 
-  // Tabella lotti del cluster
+  // Tabella lotti che attraversano il cluster (nota: un lotto può comparire in
+  // più cluster — qui mostriamo i suoi metri totali, non solo la quota in questo cluster)
   let lottiHtml = `
     <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
-      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:12px">Lotti nel cluster</div>
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:12px">Lotti che attraversano questo cluster</div>
       <table style="width:100%;border-collapse:collapse;font-size:12px">
         <thead>
           <tr style="border-bottom:2px solid var(--border)">
             <th style="text-align:left;padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Lotto</th>
-            <th style="text-align:left;padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Stato</th>
+            <th style="text-align:left;padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Stato cantiere</th>
             <th style="text-align:left;padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Province</th>
-            <th style="text-align:right;padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Totale</th>
+            <th style="text-align:right;padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Totale lotto</th>
             <th style="text-align:right;padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Scavati</th>
-            <th style="padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Progresso</th>
+            <th style="padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Progresso scavo</th>
           </tr>
         </thead>
         <tbody>`;
