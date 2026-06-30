@@ -454,10 +454,11 @@
       </div>
       <div>
         <label>Tecnica di scavo</label>
-        <select id="fTecnica">
+        <select id="fTecnica" required>
           <option value="">— seleziona —</option>
           <option value="trincea">Trincea</option>
           <option value="no_dig">No Dig</option>
+          <option value="canaletta">Canaletta</option>
         </select>
       </div>
       <div>
@@ -767,6 +768,11 @@
   // ── Submit ────────────────────────────────────────────────────────────────
   $('fSubmit').addEventListener('click', async () => {
     if (!SELECTED) return;
+    if (!$('fTecnica').value) {
+      setMsg($('msgForm'), 'Seleziona la tecnica di scavo prima di salvare', false);
+      $('fTecnica').focus();
+      return;
+    }
     const metriVal = parseFloat($('fMetri').value);
     const payload = {
       stato_cantiere:        $('fStato').value,
