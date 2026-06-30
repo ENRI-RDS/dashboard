@@ -1621,8 +1621,16 @@ async def get_lotti_cantieri(sess: dict = Depends(_require_session)):
     # Unisce: lotti dal Master + lotti dai cantieri (fallback se Master fallisce)
     tutti_lotti = sorted(set(lotti_master) | set(cantieri_map.keys()))
     result = {l: sorted(cantieri_map.get(l, []), key=lambda x: x["num"]) for l in tutti_lotti}
+
+    # Mappa lotto → impresa assegnata (per auto-popolare il campo impresa)
+    lotto_impresa = {}
+    async for a in assignments_col.find({}, {"nome": 1, "lotti": 1}):
+        nome_impresa = a.get("nome", "")
+        for l in (a.get("lotti") or []):
+            lotto_impresa[str(l).strip()] = nome_impresa
+
     print(f"[lotti-cantieri] lotti finali: {list(result.keys())}")
-    return {"lotti": result}
+    return {"lotti": result, "lotto_impresa": lotto_impresa}
 
 
 @app.delete("/api/sopralluoghi/{sop_id}")
