@@ -1583,7 +1583,7 @@ SOPRALLUOGHI_COLS = [
     "codice_verbale", "data_sopralluogo", "lotto", "tratta_id", "impresa",
     "referente_impresa", "referente_retelit", "comune", "localita",
     "tipo_intervento", "esito", "note", "segnalazioni", "azioni_richieste",
-    "firma_impresa", "firma_retelit", "created_at",
+    "firma_impresa", "firma_retelit", "foto_urls", "created_at",
 ]
 
 
@@ -1705,7 +1705,9 @@ async def sopralluogo_next_codice(sess: dict = Depends(_require_session)):
 
 @app.post("/api/sopralluoghi")
 async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_session)):
-    """Salva un verbale di sopralluogo su MongoDB e aggiorna sopralluoghi.csv su GitHub."""
+    """Salva un verbale di sopralluogo su MongoDB e aggiorna sopralluoghi.csv su GitHub.
+    Le foto (se presenti, come data URL base64) vengono caricate su GitHub in
+    sopralluoghi/foto/{codice_verbale}/ per non saturare lo storage MongoDB gratuito."""
     last = await sopralluoghi_col.find_one({}, sort=[("codice_verbale", -1)])
     next_n = 1
     if last and last.get("codice_verbale"):
@@ -1716,6 +1718,28 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_session)
             next_n = count + 1
     year = _now_iso()[:4]
     codice = f"VBS-{year}-{next_n:04d}"
+
+    # Upload foto su GitHub (max 4, ciascuna come data URL base64 dal frontend)
+    foto_urls = []
+    foto_in = (payload or {}).get("foto") or []
+    for i, foto in enumerate(foto_in[:4]):
+        try:
+            data_url = foto.get("dataUrl", "") if isinstance(foto, dict) else str(foto)
+            if "," not in data_url:
+                continue
+            header, b64data = data_url.split(",", 1)
+            ext = "jpg"
+            if "png" in header:
+                ext = "png"
+            elif "webp" in header:
+                ext = "webp"
+            img_bytes = base64.b64decode(b64data)
+            github_path = f"sopralluoghi/foto/{codice}/foto_{i+1}.{ext}"
+            await _push_to_github(img_bytes, path=github_path, label=f"foto {i+1} — {codice}")
+            raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/{github_path}"
+            foto_urls.append(raw_url)
+        except Exception as e:
+            print(f"[sopralluoghi] errore upload foto {i+1}: {e}")
 
     record = {
         "codice_verbale":      codice,
@@ -1734,11 +1758,12 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_session)
         "azioni_richieste":    str((payload or {}).get("azioni_richieste", "")).strip(),
         "firma_impresa":       str((payload or {}).get("firma_impresa", "")).strip(),
         "firma_retelit":       str((payload or {}).get("firma_retelit", "")).strip(),
+        "foto_urls":           ", ".join(foto_urls),
         "created_at":          _now_iso(),
     }
     await sopralluoghi_col.insert_one(record)
     asyncio.create_task(_push_sopralluoghi_to_github())
-    return {"ok": True, "codice_verbale": codice}
+    return {"ok": True, "codice_verbale": codice, "foto_urls": foto_urls}
 
 
 # SOLLECITI — registro solleciti per tratta/pratica
