@@ -1578,24 +1578,50 @@ async def _push_sopralluoghi_to_github() -> None:
 
 @app.get("/api/lotti-cantieri")
 async def get_lotti_cantieri(sess: dict = Depends(_require_session)):
-    """Restituisce lotti distinti e i loro cantieri per il form sopralluogo."""
-    result = {}
-    async for doc in cantieri_col.find({}, {"cantiere_key": 1, "lotto": 1, "ente": 1, "tratte_lavorabili": 1}):
+    """Restituisce lotti distinti (da Master.csv) e i loro cantieri (da MongoDB)."""
+    lotti_master = []
+
+    # Leggi lotti da Master.csv — prova più nomi colonna
+    try:
+        df = await _read_master_csv()
+        if df is not None:
+            col = next((c for c in df.columns if c.strip().lower() in
+                        ("source.name", "source name", "lotto", "lotti", "nome_lotto")), None)
+            print(f"[lotti-cantieri] colonne disponibili: {list(df.columns[:10])}, colonna lotto: {col}")
+            if col:
+                raw = df[col].dropna().unique().tolist()
+                for r in raw:
+                    code = str(r).strip()
+                    # Pulisce eventuali prefissi: "Lotto 1A.xlsx" → "1A"
+                    code = re.sub(r'\.xlsx$|\.csv$', '', code, flags=re.I)
+                    code = re.sub(r'^[Ll]otto\s*', '', code).strip()
+                    if code:
+                        lotti_master.append(code)
+                lotti_master = sorted(set(lotti_master))
+                print(f"[lotti-cantieri] lotti da Master.csv: {lotti_master}")
+    except Exception as e:
+        print(f"[lotti-cantieri] errore lettura Master.csv: {e}")
+
+    # Cantieri da MongoDB — raggruppati per lotto
+    cantieri_map: dict = {}
+    async for doc in cantieri_col.find({}, {"cantiere_key": 1, "lotto": 1, "ente": 1}):
         lotto = str(doc.get("lotto", "")).strip()
         key   = str(doc.get("cantiere_key", "")).strip()
         if not lotto or not key:
             continue
-        # Estrai solo il numero progressivo dal cantiere_key (es. "10|2B|PROV..." → "10")
-        num = key.split("|")[0].strip() if "|" in key else key
-        ente = str(doc.get("ente", "")).strip()
+        num   = key.split("|")[0].strip() if "|" in key else key
+        ente  = str(doc.get("ente", "")).strip()
         label = f"{num} — {ente}" if ente else num
-        if lotto not in result:
-            result[lotto] = []
-        if not any(c["value"] == key for c in result[lotto]):
-            result[lotto].append({"value": key, "label": label, "num": num})
-    # Ordina lotti e cantieri
-    ordered = {k: sorted(v, key=lambda x: x["num"]) for k, v in sorted(result.items())}
-    return {"lotti": ordered}
+        if lotto not in cantieri_map:
+            cantieri_map[lotto] = []
+        if not any(c["value"] == key for c in cantieri_map[lotto]):
+            cantieri_map[lotto].append({"value": key, "label": label, "num": num})
+
+    # Unisce: lotti dal Master + lotti dai cantieri (fallback se Master fallisce)
+    tutti_lotti = sorted(set(lotti_master) | set(cantieri_map.keys()))
+    result = {l: sorted(cantieri_map.get(l, []), key=lambda x: x["num"]) for l in tutti_lotti}
+    print(f"[lotti-cantieri] lotti finali: {list(result.keys())}")
+    return {"lotti": result}
 
 
 @app.delete("/api/sopralluoghi/{sop_id}")
@@ -1901,7 +1927,7 @@ async def bulk_delete_solleciti(payload: dict, sess: dict = Depends(_require_ses
 # ═════════════════════════════════════════════════════════════════════════════
 
 STATO_CANTIERE_VALUES = ["non_avviato", "allestimento", "in_corso", "sospeso", "completato"]
-TECNICA_SCAVO_VALUES  = ["trincea", "no_dig", "canaletta", ""]
+TECNICA_SCAVO_VALUES  = ["trincea", "no_dig", ""]
 
 CANTIERI_CSV_PATH = os.environ.get("GITHUB_CANTIERI_PATH", "cantieri.csv")
 CANTIERI_COLS = [
