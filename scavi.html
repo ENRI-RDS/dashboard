@@ -335,20 +335,25 @@
     </div>
   </div>
 
-  <!-- CLUSTER BARS (avanzamento permessi per cluster geografico) -->
+  <!-- CLUSTER BARS (doppia barra: permessi sopra · scavi sotto, per cluster geografico) -->
   <div class="card">
     <div class="card-header">
-      <span class="card-title">⚡ Avanzamento Permessi per Cluster</span>
+      <span class="card-title">⚡ Avanzamento per Cluster</span>
       <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)" id="clusterStatus">caricamento…</span>
     </div>
-    <div class="card-body" style="display:flex;flex-direction:column;gap:2px;" id="clusterContainer"></div>
-    <div class="legend">
+    <div class="card-body" style="display:flex;flex-direction:column;gap:0;" id="clusterContainer"></div>
+    <div class="legend" style="flex-wrap:wrap;row-gap:6px;">
+      <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:4px">PERMESSI:</span>
       <div class="legend-item"><div class="legend-dot" style="background:#1E9E6A"></div>Ottenuto</div>
       <div class="legend-item"><div class="legend-dot" style="background:#B5657A"></div>Prot. Integrazione</div>
       <div class="legend-item"><div class="legend-dot" style="background:#C0392B"></div>Nec. Integrazione</div>
       <div class="legend-item"><div class="legend-dot" style="background:#41BBD9"></div>Inviato/Protocollato</div>
       <div class="legend-item"><div class="legend-dot" style="background:#D08A1A"></div>In Firma</div>
       <div class="legend-item"><div class="legend-dot" style="background:#6B7685"></div>In Attesa</div>
+      <div style="width:100%;height:1px;background:var(--border);margin:4px 0"></div>
+      <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:4px">SCAVI:</span>
+      <div class="legend-item"><div class="legend-dot" style="background:#0B3182"></div>In corso</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#8A91B4"></div>Non avviato</div>
     </div>
   </div>
 
@@ -618,6 +623,9 @@ async function _loadCantieri() {
     // Aggrega per lotto: somma metri, stato = stato più indietro del lotto
     const STATO_RANK = { 'non-avviato':0, 'allestimento':1, 'sospeso':2, 'in-corso':3, 'completato':4 };
     const byLotto = {};
+    // Aggregazione scavi per cluster (diretta dal campo r.cluster del cantiere,
+    // ora popolato correttamente dal server via Riepilogo_progettazione.csv)
+    const clusterScaviMap = {};
     cantieri.forEach(r => {
       const lotto   = String(r.lotto   || '?');
       const cluster = String(r.cluster || '?').replace(/^[Cc]/, '');
@@ -635,7 +643,13 @@ async function _loadCantieri() {
       if (STATO_RANK[statoUI] < STATO_RANK[byLotto[lotto].stato]) {
         byLotto[lotto].stato = statoUI;
       }
+      if (cluster && cluster !== '?') {
+        if (!clusterScaviMap[cluster]) clusterScaviMap[cluster] = { metri: 0, scavati: 0 };
+        clusterScaviMap[cluster].metri    += r.metri_totali  || 0;
+        clusterScaviMap[cluster].scavati  += r.metri_scavati || 0;
+      }
     });
+    window._CLUSTER_SCAVI = clusterScaviMap; // letto da _renderClusters
 
     // Lotti con cantiere attivo (almeno una tratta passata a stato cantiere)
     const lottiConCantiere = new Set(Object.keys(byLotto));
@@ -811,60 +825,105 @@ function makeSeg(pct, color, label, metriVal, isGrey) {
 // ── CLUSTER BARS ─────────────────────────────────────────────────────────────
 function _renderClusters() {
 const clusterContainer = document.getElementById('clusterContainer');
+clusterContainer.innerHTML = '';
 const totalAll = Object.values(CLUSTER_PERMESSI).reduce((s, v) => s + v.totale, 0);
 document.getElementById('clusterStatus').textContent = fmt(totalAll) + ' m totali';
+const scaviMap = window._CLUSTER_SCAVI || {};
 
 Object.keys(CLUSTER_PERMESSI).sort((a,b)=>+a-+b).forEach(cl => {
   const cd = CLUSTER_PERMESSI[cl];
   const tot = cd.totale;
   const statiMap = cd.statiMap;
   const gruppi = buildGruppiMapPermessi(statiMap);
+  const sc = scaviMap[cl] || { metri: 0, scavati: 0 };
+  const haScavo = sc.metri > 0;
+  const pctScavo = haScavo ? Math.round(sc.scavati / sc.metri * 100) : 0;
+  const colScavo = STATO_COLOR['in-corso'];
 
-  const row = document.createElement('div');
-  row.className = 'bar-row';
-  row.style.cursor = 'pointer';
-  row.title = 'Clicca per il dettaglio';
-  row.addEventListener('click', () => openModalCluster(cl));
+  const group = document.createElement('div');
+  group.style.cssText = 'padding:8px 6px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;';
+  group.addEventListener('mouseenter', () => group.style.background = 'var(--surface2)');
+  group.addEventListener('mouseleave', () => group.style.background = '');
+  group.title = 'Clicca per il dettaglio';
+  group.addEventListener('click', () => openModalCluster(cl));
+
+  // ── Riga 1: PERMESSI ──
+  const permRow = document.createElement('div');
+  permRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:3px;';
 
   const lbl = document.createElement('div');
-  lbl.style.cssText = `width:180px;flex-shrink:0;display:flex;flex-direction:column;gap:2px`;
+  lbl.style.cssText = 'width:180px;flex-shrink:0;display:flex;flex-direction:column;gap:2px';
   lbl.innerHTML = `
     <div style="display:flex;align-items:center;gap:6px">
       <span style="background:${CLUSTER_COLOR[cl]||'#8A91B4'}20;color:${CLUSTER_COLOR[cl]||'#8A91B4'};border:1px solid ${CLUSTER_COLOR[cl]||'#8A91B4'}40;border-radius:4px;padding:1px 7px;font-size:9px;font-weight:700;font-family:var(--font-mono)">${cl}</span>
       <span style="font-size:11px;font-weight:700;color:var(--text)">${CLUSTER_LABEL[cl]||'Cluster '+cl}</span>
     </div>
     <span style="font-size:9px;color:var(--muted2)">${cd.lotti.length} lotti</span>`;
+  permRow.appendChild(lbl);
 
-  // Bar track con segmenti PERMESSI (stessa palette di buildGruppiMapPermessi)
-  const track = document.createElement('div');
-  track.className = 'bar-track';
-  track.style.flex = '1';
-
+  const permTrack = document.createElement('div');
+  permTrack.className = 'bar-track';
+  permTrack.style.cssText = 'flex:1;height:16px;';
   ORDINE_WORKFLOW_PERMESSI.forEach(label => {
     const g = STATI_GRUPPI_PERMESSI.find(x => x.label === label);
     if (!g) return;
     const m = gruppi[g.label] || 0;
     if (m <= 0) return;
     const pct = tot > 0 ? m / tot * 100 : 0;
-    track.appendChild(makeSeg(pct, g.color, g.label, m, false));
+    permTrack.appendChild(makeSeg(pct, g.color, g.label, m, false));
   });
+  permRow.appendChild(permTrack);
 
   const ottenutoM = statiMap['OTTENUTO'] || 0;
-  const pctLbl = tot > 0 ? Math.round(ottenutoM / tot * 100) + '%' : '';
+  const permPct = tot > 0 ? Math.round(ottenutoM / tot * 100) : 0;
+  const permPctEl = document.createElement('span');
+  permPctEl.style.cssText = 'font-size:10px;font-weight:700;color:var(--muted);width:36px;text-align:right;flex-shrink:0;';
+  permPctEl.textContent = permPct + '%';
+  permRow.appendChild(permPctEl);
 
-  const pctEl = document.createElement('span');
-  pctEl.className = 'bar-pct';
-  pctEl.textContent = pctLbl;
+  const permMEl = document.createElement('span');
+  permMEl.style.cssText = 'min-width:72px;text-align:right;font-size:10px;color:var(--muted);flex-shrink:0;';
+  permMEl.textContent = fmt(tot) + ' m';
+  permRow.appendChild(permMEl);
 
-  const metersEl = document.createElement('span');
-  metersEl.className = 'bar-meters';
-  metersEl.textContent = fmt(tot) + ' m';
+  group.appendChild(permRow);
 
-  row.appendChild(lbl);
-  row.appendChild(track);
-  row.appendChild(pctEl);
-  row.appendChild(metersEl);
-  clusterContainer.appendChild(row);
+  // ── Riga 2: SCAVI ──
+  const scaviRow = document.createElement('div');
+  scaviRow.style.cssText = 'display:flex;align-items:center;gap:10px;';
+  if (!haScavo) scaviRow.style.opacity = '.4';
+
+  const lbl2 = document.createElement('div');
+  lbl2.style.cssText = 'width:180px;flex-shrink:0;font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;';
+  lbl2.textContent = haScavo ? 'Avanzamento scavo' : 'Cantiere non avviato';
+  scaviRow.appendChild(lbl2);
+
+  const scaviTrack = document.createElement('div');
+  scaviTrack.className = 'bar-track';
+  scaviTrack.style.flex = '1';
+  if (haScavo && pctScavo > 0) {
+    scaviTrack.appendChild(makeSeg(pctScavo, colScavo, 'In corso', sc.scavati, false));
+  }
+  const pctRimasto = haScavo ? (100 - pctScavo) : 100;
+  const metriRimasti = haScavo ? Math.round(sc.metri * pctRimasto / 100) : tot;
+  if (pctRimasto > 0) {
+    scaviTrack.appendChild(makeSeg(pctRimasto, STATO_COLOR['non-avviato'], 'Non scavato', metriRimasti, true));
+  }
+  scaviRow.appendChild(scaviTrack);
+
+  const scaviPctEl = document.createElement('span');
+  scaviPctEl.className = 'bar-pct';
+  scaviPctEl.style.color = colScavo;
+  scaviPctEl.textContent = haScavo ? pctScavo + '%' : '—';
+  scaviRow.appendChild(scaviPctEl);
+
+  const scaviMEl = document.createElement('span');
+  scaviMEl.style.cssText = 'min-width:72px;text-align:right;font-size:12px;font-family:Raleway,sans-serif;font-weight:700;color:var(--text2);flex-shrink:0;letter-spacing:-.01em';
+  scaviMEl.textContent = fmt(tot) + ' m';
+  scaviRow.appendChild(scaviMEl);
+
+  group.appendChild(scaviRow);
+  clusterContainer.appendChild(group);
 });
 }
 
