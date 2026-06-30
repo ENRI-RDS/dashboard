@@ -531,9 +531,12 @@ async function _loadPermessi() {
     const iL   = findC('LOTTO');
     const iS   = findC('STATO_AUTORIZZAZIONE', 'STATO_LEGENDA');
     const iLun = findC('LUNGHEZZA', 'LENGTH');
-    console.log('[ENRI] colonne trovate → LOTTO:', iL, 'STATO:', iS, 'LUNGHEZZA:', iLun, '| righe:', lines.length - 1);
+    const iCl  = findC('CLUSTER');
+    const iPr  = findC('PROVINCIA');
+    const iCom = findC('COMUNE');
+    console.log('[ENRI] colonne trovate → LOTTO:', iL, 'STATO:', iS, 'LUNGHEZZA:', iLun, 'CLUSTER:', iCl, 'PROVINCIA:', iPr, 'COMUNE:', iCom, '| righe:', lines.length - 1);
 
-    const aggMap = {}, totMap = {};
+    const aggMap = {}, totMap = {}, clMap = {}, provMap = {}, comMap = {};
     for (let i = 1; i < lines.length; i++) {
       const cols = _parseCsvLine(lines[i], sep);
       const lottoRaw = cols[iL]?.trim().replace(/"/g, '');
@@ -546,14 +549,31 @@ async function _loadPermessi() {
       else if (lunghRaw.includes(',')) lungh = parseFloat(lunghRaw.replace(/\./g, '').replace(',', '.')) || 0;
       else lungh = parseFloat(lunghRaw) || 0;
       if (lungh <= 0) continue;
-      if (!aggMap[lotto]) { aggMap[lotto] = {}; totMap[lotto] = 0; }
+      if (!aggMap[lotto]) { aggMap[lotto] = {}; totMap[lotto] = 0; clMap[lotto] = {}; provMap[lotto] = new Set(); comMap[lotto] = new Set(); }
       aggMap[lotto][stato] = (aggMap[lotto][stato] || 0) + lungh;
       totMap[lotto] += lungh;
+      const cl = iCl >= 0 ? cols[iCl]?.trim().replace(/^[Cc]/, '') : '';
+      if (cl) clMap[lotto][cl] = (clMap[lotto][cl] || 0) + lungh;
+      const pr = iPr >= 0 ? cols[iPr]?.trim() : '';
+      if (pr) provMap[lotto].add(pr);
+      const com = iCom >= 0 ? cols[iCom]?.trim() : '';
+      if (com) comMap[lotto].add(com);
     }
 
     PERMESSI = {};
     Object.keys(aggMap).forEach(lotto => {
-      PERMESSI[lotto] = { statiMap: aggMap[lotto], totale: totMap[lotto] };
+      // Cluster prevalente per il lotto (quello con più metri)
+      const clEntries = Object.entries(clMap[lotto] || {});
+      const clusterPrevalente = clEntries.length > 0
+        ? clEntries.sort((a, b) => b[1] - a[1])[0][0]
+        : '?';
+      PERMESSI[lotto] = {
+        statiMap: aggMap[lotto],
+        totale: totMap[lotto],
+        cluster: clusterPrevalente,
+        province: [...(provMap[lotto] || [])],
+        comuni: [...(comMap[lotto] || [])],
+      };
     });
     console.log('[ENRI] PERMESSI costruito per lotti:', Object.keys(PERMESSI));
   } catch (e) {
@@ -576,7 +596,7 @@ async function _loadCantieri() {
     const byLotto = {};
     cantieri.forEach(r => {
       const lotto   = String(r.lotto   || '?');
-      const cluster = String(r.cluster || '?');
+      const cluster = String(r.cluster || '?').replace(/^[Cc]/, '');
       const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
       if (!byLotto[lotto]) {
         byLotto[lotto] = { id: lotto, cl: cluster, metri: 0, scavati: 0,
@@ -605,15 +625,19 @@ async function _loadCantieri() {
       // Metri totali del lotto: preferisci il totale reale da permessi (più affidabile e completo)
       const metriTotaliLotto = p ? p.totale : (c ? c.metri : 0);
       const scavati = c ? c.scavati : 0;
+      // Cluster/province/comuni: preferisci MongoDB (più granulare), fallback su CSV permessi
+      const cluster = c ? String(c.cl) : (p ? String(p.cluster) : '?');
+      const prov    = c && c.provSet.size > 0 ? [...c.provSet] : (p ? p.province : []);
+      const nComuni = c && c.comuniSet.size > 0 ? c.comuniSet.size : (p ? p.comuni.length : 0);
       return {
-        cl:      c ? String(c.cl) : '?',
+        cl:      cluster,
         id:      String(lotto),
         stato:   c ? c.stato : 'non-avviato',
         pct:     metriTotaliLotto > 0 ? Math.round(scavati / metriTotaliLotto * 100) : 0,
         metri:   Math.round(metriTotaliLotto),
         tratte:  c ? c.tratte : [],
-        prov:    c ? [...c.provSet] : [],
-        comuni:  c ? c.comuniSet.size : 0,
+        prov:    prov,
+        comuni:  nComuni,
         permessi: p ? p.statiMap : null,
         permessiTot: p ? p.totale : 0,
         haCantiere: lottiConCantiere.has(lotto),
