@@ -517,6 +517,7 @@ async function _loadPermessi() {
     const res = await fetch(RIEPILOGO_URL, { cache: 'no-cache' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const text = await res.text();
+    console.log('[ENRI] Riepilogo_progettazione.csv caricato:', text.length, 'caratteri');
     const lines = text.trim().split('\n').map(l => l.replace(/\r/, ''));
     const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',');
     const headers = _parseCsvLine(lines[0], sep);
@@ -530,6 +531,7 @@ async function _loadPermessi() {
     const iL   = findC('LOTTO');
     const iS   = findC('STATO_AUTORIZZAZIONE', 'STATO_LEGENDA');
     const iLun = findC('LUNGHEZZA', 'LENGTH');
+    console.log('[ENRI] colonne trovate → LOTTO:', iL, 'STATO:', iS, 'LUNGHEZZA:', iLun, '| righe:', lines.length - 1);
 
     const aggMap = {}, totMap = {};
     for (let i = 1; i < lines.length; i++) {
@@ -553,8 +555,9 @@ async function _loadPermessi() {
     Object.keys(aggMap).forEach(lotto => {
       PERMESSI[lotto] = { statiMap: aggMap[lotto], totale: totMap[lotto] };
     });
+    console.log('[ENRI] PERMESSI costruito per lotti:', Object.keys(PERMESSI));
   } catch (e) {
-    console.warn('[scavi] _loadPermessi:', e.message);
+    console.error('[ENRI] _loadPermessi FALLITO:', e.message);
     PERMESSI = {};
   }
 }
