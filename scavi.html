@@ -619,6 +619,7 @@ async function _loadCantieri() {
         haCantiere: lottiConCantiere.has(lotto),
       };
     }).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+    console.log('[ENRI] LOTTI finale:', LOTTI.map(l => l.id), '| con permessi:', LOTTI.filter(l=>l.permessi).length, '| con cantiere:', LOTTI.filter(l=>l.haCantiere).length);
   } catch(e) {
     console.warn('[scavi] _loadCantieri:', e.message);
     LOTTI = [];
@@ -653,7 +654,8 @@ function fmt(n){ return Math.round(n).toLocaleString('it-IT'); }
 
 // ── RENDER ALL (chiamata dopo fetch sia permessi che cantieri) ──────────────
 async function _loadAndRenderAll() {
-  await Promise.all([_loadPermessi(), _loadCantieri()]);
+  await _loadPermessi();   // deve completare prima: _loadCantieri legge PERMESSI
+  await _loadCantieri();
   _renderAll();
 }
 
