@@ -534,6 +534,19 @@ async def _on_startup():
     print(f"[enri-dashboard] DB_NAME         = {DB_NAME}")
     print(f"[enri-dashboard] CORS            = {ALLOWED_ORIGINS}")
     print(f"[enri-dashboard] UPLOAD_TOKEN    = {'set' if UPLOAD_TOKEN else 'OFF (open)'}")
+    # Indici MongoDB — evitano full collection scan sulle query più frequenti
+    try:
+        await uploads_col.create_index([("filename", 1), ("deleted_at", 1), ("uploaded_at", -1)])
+        await assignments_col.create_index("nome")
+        await pending_col.create_index([("status", 1), ("submitted_at", -1)])
+        await solleciti_col.create_index([("pratica", 1), ("data_sollecito", 1)])
+        await solleciti_col.create_index("tratta_id")
+        await cantieri_col.create_index([("pratica_id", 1), ("ente", 1)])
+        await cantieri_col.create_index("lotto")
+        await sopralluoghi_col.create_index("codice_verbale")
+        print("[enri-dashboard] Indici MongoDB verificati/creati")
+    except Exception as e:
+        print(f"[startup] creazione indici: {e}")
     # Backfill: ensure pre-existing upload records have a deleted_at field
     await uploads_col.update_many(
         {"deleted_at": {"$exists": False}}, {"$set": {"deleted_at": None}}
@@ -712,10 +725,23 @@ def _detect_sep(raw: bytes, encoding: str = "utf-8") -> str:
     except Exception:
         return ";"
 
+# Cache in-process per _read_master_csv() — evita di riparsare lo stesso CSV
+# più volte nella stessa request (e tra request ravvicinate finché non cambia versione).
+_master_csv_cache: dict = {"key": None, "df": None}
+
 async def _read_master_csv() -> "pd.DataFrame":
-    """Read the current authoritative Master.csv (Mongo first, then disk seed)."""
+    """Read the current authoritative Master.csv (Mongo first, then disk seed).
+    Cache in-process: la cache è valida finché la versione corrente (upload _id)
+    non cambia, così le ~11 chiamate per request evitano di rileggere/riparsare
+    lo stesso file da GridFS più volte."""
     global _detected_sep
     cur = await _current_upload(MASTER_FILENAME)
+    cache_key = str(cur["_id"]) if cur else "disk-seed"
+
+    cached = _master_csv_cache.get("key")
+    if cached == cache_key and _master_csv_cache.get("df") is not None:
+        return _master_csv_cache["df"]
+
     if cur:
         raw = await _read_gridfs(cur["gridfs_id"])
     else:
@@ -730,16 +756,23 @@ async def _read_master_csv() -> "pd.DataFrame":
     # in un campo di testo libero come NOTE) faccia fallire la lettura di tutto
     # il file: la riga incriminata viene segnalata in log e scartata, il resto
     # del file resta leggibile.
+    df = None
     for enc in ("utf-8", "cp1252", "latin-1"):
         try:
-            return pd.read_csv(
+            df = pd.read_csv(
                 io.BytesIO(raw), sep=_detected_sep, dtype=str, keep_default_na=False,
                 encoding=enc, on_bad_lines="warn",
             )
+            break
         except (UnicodeDecodeError, UnicodeError):
             continue
-    # Last resort: replace bad bytes
-    return pd.read_csv(io.BytesIO(raw), sep=_detected_sep, dtype=str, keep_default_na=False, encoding="utf-8", encoding_errors="replace")
+    if df is None:
+        # Last resort: replace bad bytes
+        df = pd.read_csv(io.BytesIO(raw), sep=_detected_sep, dtype=str, keep_default_na=False, encoding="utf-8", encoding_errors="replace")
+
+    _master_csv_cache["key"] = cache_key
+    _master_csv_cache["df"]  = df
+    return df
 
 
 QGIS_FILENAME      = "QGIS.geojson"
