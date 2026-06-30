@@ -451,6 +451,7 @@ function photoRows(n){
 /* ══ EXCEL — riga singola da incollare nel master ══ */
 // ── Lotti e cantieri dinamici ────────────────────────────────────────────────
 let _lottiData = {};
+let _lottoImpresa = {};
 
 async function _loadLottiCantieri() {
   try {
@@ -461,7 +462,8 @@ async function _loadLottiCantieri() {
     });
     if (!res.ok) return;
     const data = await res.json();
-    _lottiData = data.lotti || {};
+    _lottiData    = data.lotti || {};
+    _lottoImpresa = data.lotto_impresa || {};
     const sel = document.getElementById('lotto');
     const current = sel.value;
     sel.innerHTML = '<option value="">— seleziona —</option>' +
@@ -476,10 +478,26 @@ function onLottoChange() {
   const cantieri = _lottiData[lotto] || [];
   if (!cantieri.length) {
     sel.innerHTML = '<option value="">— nessun cantiere disponibile —</option>';
-    return;
+  } else {
+    sel.innerHTML = '<option value="">— seleziona cantiere —</option>' +
+      cantieri.map(c => `<option value="${c.value}">${c.label}</option>`).join('');
   }
-  sel.innerHTML = '<option value="">— seleziona cantiere —</option>' +
-    cantieri.map(c => `<option value="${c.value}">${c.label}</option>`).join('');
+
+  // Auto-popola impresa esecutrice in base al lotto
+  const impSel = document.getElementById('impresa');
+  const impresa = _lottoImpresa[lotto];
+  if (impSel && impresa) {
+    const opt = Array.from(impSel.options).find(o => o.value === impresa || o.textContent.trim() === impresa);
+    if (opt) {
+      impSel.value = opt.value;
+    } else {
+      // Aggiunge l'opzione se non presente nella select statica
+      const newOpt = document.createElement('option');
+      newOpt.value = impresa; newOpt.textContent = impresa;
+      impSel.appendChild(newOpt);
+      impSel.value = impresa;
+    }
+  }
 }
 
 
