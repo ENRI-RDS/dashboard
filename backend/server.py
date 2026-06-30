@@ -1611,7 +1611,8 @@ async def get_lotti_cantieri(sess: dict = Depends(_require_session)):
             continue
         num   = key.split("|")[0].strip() if "|" in key else key
         ente  = str(doc.get("ente", "")).strip()
-        label = f"{num} — {ente}" if ente else num
+        codice = f"CA/{num}/{lotto}"
+        label  = f"{codice} — {ente}" if ente else codice
         if lotto not in cantieri_map:
             cantieri_map[lotto] = []
         if not any(c["value"] == key for c in cantieri_map[lotto]):
