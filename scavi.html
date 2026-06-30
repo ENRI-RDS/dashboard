@@ -289,9 +289,8 @@
     <div>
       <div class="page-eyebrow">Fase 2 · Esecuzione</div>
       <div class="page-h1">Avanzamento Scavi</div>
-      <div class="page-sub">
-        12 lotti · cluster 1, 2, 3, 5, 7 · province BG, MI, MB, PV, CR<br>
-        Ogni lotto attraversa più comuni e più enti — il dettaglio autorizzativo è in Progettazione
+      <div class="page-sub" id="pageSubDyn">
+        Caricamento dati…
       </div>
     </div>
     <div class="demo-badge">
@@ -340,7 +339,7 @@
   <div class="card">
     <div class="card-header">
       <span class="card-title">⚡ Avanzamento per Cluster</span>
-      <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)" id="clusterStatus">— m totali</span>
+      <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)" id="clusterStatus">caricamento…</span>
     </div>
     <div class="card-body" style="display:flex;flex-direction:column;gap:2px;" id="clusterContainer"></div>
     <div class="legend">
@@ -361,15 +360,23 @@
       <div class="card">
         <div class="card-header">
           <span class="card-title">Avanzamento per Lotto</span>
-          <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)">% metri scavati</span>
+          <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)" id="lottiSubtitle">caricamento…</span>
         </div>
-        <div class="card-body" style="display:flex;flex-direction:column;" id="barContainer"></div>
-        <div class="legend">
+        <div class="card-body" style="display:flex;flex-direction:column;gap:0;" id="barContainer"></div>
+        <div class="legend" style="flex-wrap:wrap;row-gap:6px;">
+          <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:4px">PERMESSI:</span>
+          <div class="legend-item"><div class="legend-dot" style="background:#1E9E6A"></div>Ottenuto</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#B5657A"></div>Prot. Integrazione</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#C0392B"></div>Nec. Integrazione</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#41BBD9"></div>Inviato/Protocollato</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#D08A1A"></div>In Firma</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#6B7685"></div>In Attesa</div>
+          <div style="width:100%;height:1px;background:var(--border);margin:4px 0"></div>
+          <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:4px">SCAVI:</span>
           <div class="legend-item"><div class="legend-dot" style="background:#0B3182"></div>In corso</div>
           <div class="legend-item"><div class="legend-dot" style="background:#C08A14"></div>In allestimento</div>
           <div class="legend-item"><div class="legend-dot" style="background:#C23B22"></div>In sospeso</div>
           <div class="legend-item"><div class="legend-dot" style="background:#8A91B4"></div>Non avviato</div>
-          <div class="legend-item" style="opacity:.5;font-style:italic">Barre in grigio = lotto non ancora avviato</div>
         </div>
       </div>
 
@@ -408,6 +415,10 @@
           <div class="stat-row">
             <span class="stat-label">Tracciato totale</span>
             <span class="stat-val" id="repTracciato">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Permessi ottenuti</span>
+            <span class="stat-val" style="color:#1E9E6A" id="repPermessi">—</span>
           </div>
           <div class="stat-row">
             <span class="stat-label">Metri scavati</span>
@@ -449,14 +460,104 @@
 </div><!-- /main -->
 
 <script>
-// ── DATI LOTTI — caricati da API /api/cantieri ───────────────────────────────
-let LOTTI = [];
+// ── DATI LOTTI — caricati da API /api/cantieri (scavi) + Riepilogo_progettazione.csv (permessi) ──
+let LOTTI = [];          // dati scavi aggregati per lotto (da MongoDB)
+let PERMESSI = {};        // { lotto: { statiMap: {STATO: metri}, totale: metri } }  (da CSV permessi)
 
 // Mappa stato MongoDB → stato UI (per compatibilità con il codice esistente)
 const STATO_MAP = {
   non_avviato: 'non-avviato', allestimento: 'allestimento',
   in_corso: 'in-corso', sospeso: 'sospeso', completato: 'completato'
 };
+
+const RIEPILOGO_URL = 'Riepilogo_progettazione.csv';
+
+// Gruppi di stato permesso, in ordine di avanzamento workflow (stesso schema di index.html)
+const STATI_GRUPPI_PERMESSI = [
+  { label: 'In Attesa / Redazione',     stati: ['IN ATTESA','IN REDAZIONE','NO COMPETENZA'],          color: '#6B7685' },
+  { label: 'Coordinamento',             stati: ['COORDINAMENTO'],                                      color: '#9b59b6' },
+  { label: 'In Verifica / In Firma',    stati: ['IN FIRMA RDS'],                                       color: '#D08A1A' },
+  { label: 'Inviato / Protocollato',    stati: ['INVIATO','PROTOCOLLATO'],                             color: '#41BBD9' },
+  { label: 'Necessaria Integrazione',   stati: ['NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE'],color: '#C0392B' },
+  { label: 'Protocollato Integrazione', stati: ['PROTOCOLLATO INTEGRAZIONE'],                          color: '#B5657A' },
+  { label: 'Ottenuto',                  stati: ['OTTENUTO'],                                           color: '#1E9E6A' },
+  { label: 'Altro',                     stati: [],                                                      color: '#8a8a96' },
+];
+const ORDINE_WORKFLOW_PERMESSI = [
+  'Coordinamento','In Verifica / In Firma','Inviato / Protocollato',
+  'Necessaria Integrazione','Protocollato Integrazione','Ottenuto','Altro','In Attesa / Redazione'
+];
+
+function buildGruppiMapPermessi(statiMap) {
+  const out = {};
+  const statiCoperti = new Set();
+  STATI_GRUPPI_PERMESSI.forEach(g => {
+    const tot = g.stati.reduce((s, st) => { statiCoperti.add(st); return s + (statiMap[st] || 0); }, 0);
+    if (tot > 0) out[g.label] = tot;
+  });
+  const nonMappato = Object.entries(statiMap).reduce((s, [st, m]) => s + (statiCoperti.has(st) ? 0 : m), 0);
+  if (nonMappato > 0) out['Altro'] = nonMappato;
+  return out;
+}
+
+// ── Parser CSV minimale (tab/;/, autodetect, supporta campi quotati) ─────────
+function _parseCsvLine(line, sep) {
+  const res = []; let cur = '', inQ = false;
+  for (const ch of line) {
+    if (ch === '"') inQ = !inQ;
+    else if (ch === sep && !inQ) { res.push(cur.trim()); cur = ''; }
+    else cur += ch;
+  }
+  res.push(cur.trim());
+  return res;
+}
+
+async function _loadPermessi() {
+  try {
+    const res = await fetch(RIEPILOGO_URL, { cache: 'no-cache' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    const lines = text.trim().split('\n').map(l => l.replace(/\r/, ''));
+    const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',');
+    const headers = _parseCsvLine(lines[0], sep);
+    const findC = (...names) => {
+      for (const n of names) {
+        const i = headers.findIndex(h => h.trim().toUpperCase() === n.toUpperCase());
+        if (i >= 0) return i;
+      }
+      return -1;
+    };
+    const iL   = findC('LOTTO');
+    const iS   = findC('STATO_AUTORIZZAZIONE', 'STATO_LEGENDA');
+    const iLun = findC('LUNGHEZZA', 'LENGTH');
+
+    const aggMap = {}, totMap = {};
+    for (let i = 1; i < lines.length; i++) {
+      const cols = _parseCsvLine(lines[i], sep);
+      const lottoRaw = cols[iL]?.trim().replace(/"/g, '');
+      if (!lottoRaw) continue;
+      const lotto = String(lottoRaw);
+      const stato = (iS >= 0 ? cols[iS]?.trim() : '') || 'IN ATTESA';
+      const lunghRaw = (cols[iLun] || '0').trim();
+      let lungh = 0;
+      if (lunghRaw.includes(',') && !lunghRaw.includes('.')) lungh = parseFloat(lunghRaw.replace(',', '.')) || 0;
+      else if (lunghRaw.includes(',')) lungh = parseFloat(lunghRaw.replace(/\./g, '').replace(',', '.')) || 0;
+      else lungh = parseFloat(lunghRaw) || 0;
+      if (lungh <= 0) continue;
+      if (!aggMap[lotto]) { aggMap[lotto] = {}; totMap[lotto] = 0; }
+      aggMap[lotto][stato] = (aggMap[lotto][stato] || 0) + lungh;
+      totMap[lotto] += lungh;
+    }
+
+    PERMESSI = {};
+    Object.keys(aggMap).forEach(lotto => {
+      PERMESSI[lotto] = { statiMap: aggMap[lotto], totale: totMap[lotto] };
+    });
+  } catch (e) {
+    console.warn('[scavi] _loadPermessi:', e.message);
+    PERMESSI = {};
+  }
+}
 
 async function _loadCantieri() {
   try {
@@ -489,21 +590,36 @@ async function _loadCantieri() {
       }
     });
 
-    LOTTI = Object.values(byLotto).map(l => ({
-      cl:     String(l.cl),
-      id:     String(l.id),
-      stato:  l.stato,
-      pct:    l.metri > 0 ? Math.round(l.scavati / l.metri * 100) : 0,
-      metri:  Math.round(l.metri),
-      tratte: l.tratte,
-      prov:   [...l.provSet],
-      comuni: l.comuniSet.size,
-    })).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+    // Lotti con cantiere attivo (almeno una tratta passata a stato cantiere)
+    const lottiConCantiere = new Set(Object.keys(byLotto));
+
+    // Unione lotti: quelli con cantieri + quelli presenti solo nei permessi (non ancora avviati)
+    const tuttiLotti = new Set([...lottiConCantiere, ...Object.keys(PERMESSI)]);
+
+    LOTTI = [...tuttiLotti].map(lotto => {
+      const c = byLotto[lotto];
+      const p = PERMESSI[lotto];
+      // Metri totali del lotto: preferisci il totale reale da permessi (più affidabile e completo)
+      const metriTotaliLotto = p ? p.totale : (c ? c.metri : 0);
+      const scavati = c ? c.scavati : 0;
+      return {
+        cl:      c ? String(c.cl) : '?',
+        id:      String(lotto),
+        stato:   c ? c.stato : 'non-avviato',
+        pct:     metriTotaliLotto > 0 ? Math.round(scavati / metriTotaliLotto * 100) : 0,
+        metri:   Math.round(metriTotaliLotto),
+        tratte:  c ? c.tratte : [],
+        prov:    c ? [...c.provSet] : [],
+        comuni:  c ? c.comuniSet.size : 0,
+        permessi: p ? p.statiMap : null,
+        permessiTot: p ? p.totale : 0,
+        haCantiere: lottiConCantiere.has(lotto),
+      };
+    }).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
   } catch(e) {
     console.warn('[scavi] _loadCantieri:', e.message);
     LOTTI = [];
   }
-  _renderAll();
 }
 
 const CLUSTER_LABEL = {
@@ -532,7 +648,12 @@ const STATO_ORDER = ['in-corso','allestimento','sospeso','completato','non-avvia
 
 function fmt(n){ return Math.round(n).toLocaleString('it-IT'); }
 
-// ── RENDER ALL (chiamata dopo fetch API) ─────────────────────────────────────
+// ── RENDER ALL (chiamata dopo fetch sia permessi che cantieri) ──────────────
+async function _loadAndRenderAll() {
+  await Promise.all([_loadPermessi(), _loadCantieri()]);
+  _renderAll();
+}
+
 function _renderAll() {
   _renderKpi();
   _renderBars();
@@ -540,18 +661,36 @@ function _renderAll() {
   _renderRadar();
   _renderTabella();
   _renderRiepilogo();
+  _renderPageSubtitle();
+}
+
+function _renderPageSubtitle() {
+  const el = document.getElementById('pageSubDyn');
+  if (!el) return;
+  const nLotti = LOTTI.length;
+  const clusters = [...new Set(LOTTI.map(r => r.cl).filter(c => c !== '?'))].sort();
+  const provs = [...new Set(LOTTI.flatMap(r => r.prov || []))].sort();
+  el.innerHTML = `${nLotti} lotti` +
+    (clusters.length ? ` · cluster ${clusters.join(', ')}` : '') +
+    (provs.length ? ` · province ${provs.join(', ')}` : '') +
+    `<br>Avanzamento permessi (da Progettazione) e avanzamento fisico scavi (da rendicontazione imprese)`;
+  const lottiSub = document.getElementById('lottiSubtitle');
+  if (lottiSub) lottiSub.textContent = 'permessi (sopra) · % metri scavati (sotto)';
 }
 
 function _renderRiepilogo() {
   const totMetri   = LOTTI.reduce((s, r) => s + r.metri, 0);
   const totScavati = LOTTI.reduce((s, r) => s + Math.round(r.metri * r.pct / 100), 0);
   const pctGlob    = totMetri > 0 ? (totScavati / totMetri * 100).toFixed(1) : '0.0';
-  const lottiAttivi= LOTTI.filter(r => r.stato !== 'non-avviato').length;
+  const lottiAttivi= LOTTI.filter(r => r.haCantiere && r.stato !== 'non-avviato').length;
   const allProv    = [...new Set(LOTTI.flatMap(r => r.prov || []))].sort();
   const totComuni  = LOTTI.reduce((s, r) => s + (r.comuni || 0), 0);
+  const totOttenuto= LOTTI.reduce((s, r) => s + (r.permessi ? (r.permessi['OTTENUTO'] || 0) : 0), 0);
+  const pctPermessi= totMetri > 0 ? (totOttenuto / totMetri * 100).toFixed(1) : '0.0';
 
   const el = id => document.getElementById(id);
   if (el('repTracciato'))  el('repTracciato').textContent  = fmt(Math.round(totMetri / 1000)) + ' km';
+  if (el('repPermessi'))   el('repPermessi').textContent   = pctPermessi + '% (' + fmt(Math.round(totOttenuto/1000)) + ' km)';
   if (el('repScavati'))    el('repScavati').textContent    = fmt(Math.round(totScavati / 1000)) + ' km';
   if (el('repAvanz'))      el('repAvanz').textContent      = pctGlob + '%';
   if (el('repLottiAttivi'))el('repLottiAttivi').textContent= lottiAttivi;
@@ -684,46 +823,97 @@ Object.keys(clMap).sort((a,b)=>+a-+b).forEach(cl => {
 });
 }
 
-// ── BARRE PER LOTTO ─────────────────────────────────────────────────────────
+// ── BARRE PER LOTTO (doppia barra: permessi sopra · scavi sotto) ────────────
 function _renderBars() {
 const barContainer = document.getElementById('barContainer');
 barContainer.innerHTML = '';
 LOTTI.forEach(r => {
   const col = STATO_COLOR[r.stato];
-  const isInactive = r.stato === 'non-avviato';
+  const isInactive = r.stato === 'non-avviato' && !r.haCantiere;
 
-  const row = document.createElement('div');
-  row.className = 'bar-row';
-  row.style.cursor = 'pointer';
-  row.title = 'Clicca per il dettaglio';
-  row.addEventListener('click', () => openModalLotto(r));
-  if (isInactive) row.style.opacity = '.38';
+  const group = document.createElement('div');
+  group.style.cssText = 'padding:8px 6px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;';
+  group.addEventListener('mouseenter', () => group.style.background = 'var(--surface2)');
+  group.addEventListener('mouseleave', () => group.style.background = '');
+  group.title = 'Clicca per il dettaglio';
+  group.addEventListener('click', () => openModalLotto(r));
 
-  row.innerHTML = `
-    <div class="bar-lotto-wrap">
-      <span class="bar-lotto-num">${r.id}</span>
-      <span class="bar-lotto-comuni">${r.comuni||'—'} comuni${r.prov&&r.prov.length ? ' · '+r.prov.join('/') : ''}</span>
-    </div>
-`;
-  // Track con segmenti via makeSeg (label interna + rich tooltip)
+  // ── Riga 1: PERMESSI (dal CSV progettazione) ──
+  const permRow = document.createElement('div');
+  permRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:3px;';
+
+  const lbl = document.createElement('div');
+  lbl.className = 'bar-lotto-wrap';
+  lbl.style.cssText = 'width:140px;flex-shrink:0;';
+  lbl.innerHTML = `
+    <span class="bar-lotto-num">${r.id}</span>
+    <span class="bar-lotto-comuni">${r.comuni||'—'} comuni${r.prov&&r.prov.length ? ' · '+r.prov.join('/') : ''}</span>`;
+  permRow.appendChild(lbl);
+
+  const permTrack = document.createElement('div');
+  permTrack.className = 'bar-track';
+  permTrack.style.cssText = 'flex:1;height:16px;';
+  if (r.permessi) {
+    const gruppi = buildGruppiMapPermessi(r.permessi);
+    ORDINE_WORKFLOW_PERMESSI.forEach(label => {
+      const g = STATI_GRUPPI_PERMESSI.find(x => x.label === label);
+      if (!g) return;
+      const m = gruppi[g.label] || 0;
+      if (m <= 0) return;
+      const pct = r.permessiTot > 0 ? m / r.permessiTot * 100 : 0;
+      permTrack.appendChild(makeSeg(pct, g.color, g.label, m, false));
+    });
+  } else {
+    permTrack.style.opacity = '.3';
+  }
+  permRow.appendChild(permTrack);
+
+  const permPctEl = document.createElement('span');
+  permPctEl.style.cssText = 'font-size:10px;font-weight:700;color:var(--muted);width:36px;text-align:right;flex-shrink:0;';
+  const ottenutoM = r.permessi ? (r.permessi['OTTENUTO'] || 0) : 0;
+  const permPct = r.permessiTot > 0 ? Math.round(ottenutoM / r.permessiTot * 100) : 0;
+  permPctEl.textContent = r.permessi ? permPct + '%' : '—';
+  permRow.appendChild(permPctEl);
+
+  const permMEl = document.createElement('span');
+  permMEl.style.cssText = 'min-width:72px;text-align:right;font-size:10px;color:var(--muted);flex-shrink:0;';
+  permMEl.textContent = r.permessiTot > 0 ? fmt(r.permessiTot) + ' m' : '—';
+  permRow.appendChild(permMEl);
+
+  group.appendChild(permRow);
+
+  // ── Riga 2: SCAVI (da MongoDB cantieri) ──
+  const scaviRow = document.createElement('div');
+  scaviRow.style.cssText = 'display:flex;align-items:center;gap:10px;';
+  if (isInactive) scaviRow.style.opacity = '.4';
+
+  const lbl2 = document.createElement('div');
+  lbl2.style.cssText = 'width:140px;flex-shrink:0;font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;';
+  lbl2.textContent = r.haCantiere ? STATO_LABEL[r.stato] : 'Cantiere non avviato';
+  scaviRow.appendChild(lbl2);
+
   const lottoTrack = document.createElement('div');
   lottoTrack.className = 'bar-track';
   lottoTrack.style.flex = '1';
-  if (r.stato !== 'non-avviato' && r.pct > 0) {
+  // Avanzamento scavo calcolato sul totale REALE del lotto (da permessi)
+  if (r.haCantiere && r.pct > 0) {
     const metriScavati = Math.round(r.metri * r.pct / 100);
     lottoTrack.appendChild(makeSeg(r.pct, col, STATO_LABEL[r.stato], metriScavati, false));
   }
-  const pctRimasto = r.stato === 'non-avviato' ? 100 : (100 - r.pct);
+  const pctRimasto = r.haCantiere ? (100 - r.pct) : 100;
   const metriRimasti = Math.round(r.metri * pctRimasto / 100);
   if (pctRimasto > 0) {
     lottoTrack.appendChild(makeSeg(pctRimasto, STATO_COLOR['non-avviato'], 'Non scavato', metriRimasti, true));
   }
-  const pctEl  = document.createElement('span'); pctEl.className = 'bar-pct'; pctEl.style.color = col; pctEl.textContent = r.pct + '%';
+  scaviRow.appendChild(lottoTrack);
+
+  const pctEl  = document.createElement('span'); pctEl.className = 'bar-pct'; pctEl.style.color = col; pctEl.textContent = r.haCantiere ? r.pct + '%' : '—';
   const mEl    = document.createElement('span'); mEl.style.cssText = 'min-width:72px;text-align:right;font-size:12px;font-family:Raleway,sans-serif;font-weight:700;color:var(--text2);flex-shrink:0;letter-spacing:-.01em'; mEl.textContent = fmt(r.metri) + ' m';
-  row.appendChild(lottoTrack);
-  row.appendChild(pctEl);
-  row.appendChild(mEl);
-  barContainer.appendChild(row);
+  scaviRow.appendChild(pctEl);
+  scaviRow.appendChild(mEl);
+
+  group.appendChild(scaviRow);
+  barContainer.appendChild(group);
 });
 }
 
@@ -1061,8 +1251,8 @@ window.addEventListener('DOMContentLoaded', () => {
   const u = localStorage.getItem('_enri_user');
   if (!u) { document.getElementById('authGuard').style.display='flex'; return; }
   document.getElementById('topbarUser').textContent = u;
-  // Carica dati reali da API
-  _loadCantieri();
+  // Carica dati reali: permessi (CSV) + scavi (API)
+  _loadAndRenderAll();
 });
 </script>
 
