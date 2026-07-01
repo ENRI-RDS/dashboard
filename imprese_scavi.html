@@ -463,7 +463,7 @@
         </select>
       </div>
       <div>
-        <label>Data inizio prevista</label>
+        <label>Data inizio prevista *</label>
         <input type="date" id="fInizioPrev">
         <div id="hintInizioPrevLock" style="display:none;font-size:10px;color:var(--muted);margin-top:4px">Cantiere già avviato: non modificabile.</div>
       </div>
@@ -472,11 +472,11 @@
         <input type="date" id="fFinePrev">
       </div>
       <div id="wrapInizioEff" style="display:none">
-        <label>Data inizio effettiva</label>
+        <label>Data inizio effettiva *</label>
         <input type="date" id="fInizioEff">
       </div>
       <div id="wrapFineEff" style="display:none">
-        <label>Data fine effettiva</label>
+        <label>Data fine effettiva *</label>
         <input type="date" id="fFineEff">
       </div>
       <div id="wrapMotivoBlocco" style="display:none">
@@ -804,6 +804,21 @@
     if ($('fStato').value !== 'allestimento' && !$('fTecnica').value) {
       setMsg($('msgForm'), 'Seleziona la tecnica di scavo prima di salvare', false);
       $('fTecnica').focus();
+      return;
+    }
+    if ($('fStato').value === 'allestimento' && !$('fInizioPrev').value) {
+      setMsg($('msgForm'), 'Data inizio prevista obbligatoria per lo stato Allestimento', false);
+      $('fInizioPrev').focus();
+      return;
+    }
+    if (STATI_IN_CORSO_EFF.includes($('fStato').value) && !SELECTED.data_inizio_effettiva && !$('fInizioEff').value) {
+      setMsg($('msgForm'), 'Data inizio effettiva obbligatoria al primo avvio cantiere', false);
+      $('fInizioEff').focus();
+      return;
+    }
+    if ($('fStato').value === 'completato' && !$('fFineEff').value) {
+      setMsg($('msgForm'), 'Data fine effettiva obbligatoria per chiudere il cantiere', false);
+      $('fFineEff').focus();
       return;
     }
     const metriVal = parseFloat($('fMetri').value);
