@@ -1536,7 +1536,7 @@ async def reject_pending(
 # POLIZZE & CONVENZIONI — modifica diretta admin
 # ─────────────────────────────────────────────────────────────────────────────
 _POL_CONV_ALLOWED_FIELDS = {"CONVENZIONE", "POLIZZA"}
-_POL_CONV_ALLOWED_VALUES = {"NECESSARIA", "RICHIESTA RDS", "INVIATA", "EMESSA", "OTTENUTA", ""}  # OTTENUTA: legacy, rinominato in EMESSA
+_POL_CONV_ALLOWED_VALUES = {"NECESSARIA", "RICHIESTA RDS", "INVIATA", "EMESSA", ""}
 
 
 @app.get("/api/admin/polizze-convenzioni/data-richiesta")
