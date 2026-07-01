@@ -190,7 +190,7 @@ con TTL configurabile via `SESSION_TTL_SECONDS` (default 12h).
 | POST | `/api/admin/pending-updates/{id}/reject` | Body `{note}` |
 | GET | `/api/admin/polizze-convenzioni/data-richiesta` | NEW — per ogni pratica con CONVENZIONE/POLIZZA valorizzata, fissa (una sola volta, `$setOnInsert`) la data di prima richiesta nella collection `pol_conv_dates` |
 | POST | `/api/admin/polizze-convenzioni/update` | NEW — Body `{lotto, pratica, fields:{CONVENZIONE?, POLIZZA?}}`. Valori ammessi: `NECESSARIA\|RICHIESTA RDS\|INVIATA\|OTTENUTA\|""`. Scrive su Master.csv (tutte le righe lotto+pratica) e pusha su GitHub |
-| GET | `/api/admin/sync-cantieri` | NEW — forza la sincronizzazione cantieri↔Master.csv (crea cantieri mancanti, uno per pratica AUTORIZZAZIONE) |
+| GET | `/api/admin/sync-cantieri` | NEW — forza la sincronizzazione cantieri↔Master.csv (crea cantieri mancanti, uno per pratica AUTORIZZAZIONE). Assegna anche `codice_cantiere` ai cantieri storici privi del campo (backfill idempotente, vedi §8.22) |
 | GET | `/api/admin/solleciti` | NEW — vista admin di tutti i solleciti |
 
 ### 5.5 Auto-push GitHub + rigenerazione derivati
@@ -365,6 +365,7 @@ Tutti gli endpoint `/api/imprese/*` richiedono header `x-session-token`. Il `nom
 19. **`IMPRESE_PER_LOTTO` estesa a tutti i 12 lotti**: in `index.html` l'oggetto include ora anche i lotti 1–8 (`1→Valtellina`, `2→Sertori`, `3→Valtellina`, `4→Sielte`, `5→Circet`, `6→Sertori`, `7→Valtellina`, `8→Sielte`). Il nome impresa compare sotto il numero lotto nelle barre di avanzamento.
 20. **SED — bottoni Excel unificati**: la sezione "Attraversamenti SED" in `index.html` aveva due pulsanti separati ("Scarica Vista" / "Scarica Tutti"). Ora è un unico dropdown `sedXlsDropdown` identico a `xlsDropdown` di "Tutte le Pratiche" (con opzioni "Tutti gli attraversamenti" e "Vista corrente").
 21. **`debug_dashboard.py`**: script Python di audit automatico per i file HTML della dashboard. Controlla: CSS vars mancanti/undefined, topbar navy, logo, hub button style, div balance, emoji UI vietate vs funzionali Leaflet, gradienti decorativi, backdrop-filter, colori fuori palette, funzioni JS duplicate e dead, variabili JS inutilizzate, DOM ID mancanti, console.log in produzione, segreti hardcoded. Output con score /100 per file. Uso: `python3 debug_dashboard.py file.html [...]`.
+22. **`codice_cantiere` (NEW, rev.4) — identificativo "ufficiale" del cantiere**: formato `CA/{progressivo}/{lotto}`, distinto da `pratica_id` (`AUT/{num}/{lotto}`, riferimento alla pratica autorizzativa) e da `cantiere_key` (chiave tecnica di lookup interna). Assegnato in `_sync_cantieri()` (`server.py`) **una sola volta** alla creazione del documento cantiere, mai più toccato — `_max_codice_per_lotto()` + `_backfill_codici_cantiere()` garantiscono continuità/stabilità anche per i cantieri creati prima dell'introduzione del campo (ordinati per `pratica_id`, unico riferimento disponibile in assenza di timestamp di creazione). Esposto su tutti gli endpoint che restituiscono documenti cantiere (`/api/cantieri`, `/api/imprese/cantieri`) e in `cantieri.csv`. Lato frontend è il codice mostrato in primo piano in `mappa_impresa_caricamento.html` (funzione `scCantiereCode`, ora legge `r.codice_cantiere` invece di ricalcolarlo per indice array — bug corretto in rev.4) e `imprese_scavi.html` (card, form title/sub, storico); `pratica_id` resta visibile come riferimento secondario in entrambe.
 
 ---
 
@@ -429,6 +430,10 @@ File content in `fs.files` / `fs.chunks` (motor `AsyncIOMotorGridFSBucket`, buck
 {
   "_id": ObjectId,
   "cantiere_key": "24|1A",          // num pratica | lotto — NON pratica_id (non univoco tra enti)
+  "codice_cantiere": "CA/3/1A",     // NEW — CA/progressivo/lotto, assegnato UNA VOLTA alla creazione
+                                     // (mai riassegnato, sequenziale per lotto). È il riferimento
+                                     // "ufficiale" del cantiere lato impresa (vedi §8.22); pratica_id
+                                     // resta come riferimento secondario alla pratica autorizzativa
   "pratica_id": "AUT/24/1A",
   "lotto": "1A",
   "cluster": "...",
@@ -495,4 +500,4 @@ File content in `fs.files` / `fs.chunks` (motor `AsyncIOMotorGridFSBucket`, buck
 
 ---
 
-_Ultimo aggiornamento: 2026-07-01 (rev. 3) — rev.3 ha: completato il rebranding Retelit su tutte le pagine (§8.11, topbar navy, logo base64 bianco 50px, title tag, token CSS completi su tutti i file); rimosso definitivamente `executive_summary.html` e ogni riferimento residuo (§3, §8.17); rinominato "Lotti in Avvio" → "Lotti in Progettazione" e rimossa colonna milestone ridondante da `index.html` (§8.18); esteso `IMPRESE_PER_LOTTO` a tutti i 12 lotti (§8.19); unificato i bottoni Excel SED in un dropdown (§8.20); documentato `debug_dashboard.py` (§8.21)._
+_Ultimo aggiornamento: 2026-07-01 (rev. 4) — rev.4 ha: introdotto `codice_cantiere` (CA/progressivo/lotto) come identificativo stabile e permanente del cantiere, assegnato una sola volta in `_sync_cantieri()` con backfill per i cantieri storici (§9, §5.4, §8.22); aggiornati `mappa_impresa_caricamento.html` e `imprese_scavi.html` per mostrarlo come riferimento primario al posto del calcolo client-side per indice (bug di stabilità corretto). rev.3 ha: completato il rebranding Retelit su tutte le pagine (§8.11, topbar navy, logo base64 bianco 50px, title tag, token CSS completi su tutti i file); rimosso definitivamente `executive_summary.html` e ogni riferimento residuo (§3, §8.17); rinominato "Lotti in Avvio" → "Lotti in Progettazione" e rimossa colonna milestone ridondante da `index.html` (§8.18); esteso `IMPRESE_PER_LOTTO` a tutti i 12 lotti (§8.19); unificato i bottoni Excel SED in un dropdown (§8.20); documentato `debug_dashboard.py` (§8.21)._
