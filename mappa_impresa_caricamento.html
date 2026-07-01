@@ -4074,6 +4074,11 @@ function scUpdateDateVisibility(){
   scId('scFineEff').disabled = !activeFineEff;
   scId('scWrapMotivoBlocco').style.display = s==='sospeso' ? '' : 'none';
   scId('scWrapDataRipresa').style.display  = s==='sospeso' ? '' : 'none';
+  const tecnicaBloccata = s === 'allestimento';
+  scId('scTecnica').disabled = tecnicaBloccata;
+  if (tecnicaBloccata) scId('scTecnica').value = '';
+  scId('scMetri').disabled = tecnicaBloccata;
+  if (tecnicaBloccata) scId('scMetri').value = '';
 }
 scId('scStato').addEventListener('change', scUpdateDateVisibility);
 
@@ -4126,7 +4131,7 @@ scId('scCancelForm').onclick = () => {
 
 scId('scSubmit').addEventListener('click', async () => {
   if (!SC_SELECTED) return;
-  if (!scId('scTecnica').value) {
+  if (scId('scStato').value !== 'allestimento' && !scId('scTecnica').value) {
     scSetMsg('Seleziona la tecnica di scavo prima di salvare', false);
     scId('scTecnica').focus(); return;
   }
@@ -4144,7 +4149,7 @@ scId('scSubmit').addEventListener('click', async () => {
     payload.motivo_blocco        = scId('scMotivoBlocco').value.trim();
     payload.data_ripresa_stimata = scId('scDataRipresa').value;
   }
-  if (!isNaN(metriVal) && metriVal >= 0) payload.metri_realizzati_oggi = metriVal;
+  if (!isNaN(metriVal) && metriVal >= 0 && scId('scStato').value !== 'allestimento') payload.metri_realizzati_oggi = metriVal;
 
   const btn = scId('scSubmit');
   btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Salvataggio…';
