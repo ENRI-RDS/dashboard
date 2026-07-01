@@ -468,6 +468,8 @@
             <div class="actions-row">
               <button class="btn btn-ghost btn-xs" data-act="preview" data-name="${encodeURIComponent(f.name)}" data-testid="preview-${cssId(f.name)}">Anteprima</button>
               <button class="btn btn-ghost btn-xs" data-act="download" data-name="${encodeURIComponent(f.name)}">Scarica</button>
+              ${f.name === 'cantieri.csv' ? `<button class="btn btn-danger btn-xs" data-act="reset-cantieri" data-testid="reset-cantieri">Reset</button>` : ''}
+              ${f.name === 'sopralluoghi.csv' ? `<button class="btn btn-danger btn-xs" data-act="reset-sopralluoghi" data-testid="reset-sopralluoghi">Reset</button>` : ''}
               ${f.source === 'mongo' ? `
                 <div class="menu-wrap">
                   <button class="menu-dots" data-act="toggle-menu" type="button">⋮</button>
@@ -559,6 +561,20 @@
       }
       else if(act === 'rename' && name){
         openRename(name);
+      }
+      else if(act === 'reset-sopralluoghi'){
+        const okReset = await showConfirm('Reset sopralluoghi', 'Eliminare TUTTI i verbali di sopralluogo? Solo test — perde tutti i verbali salvati.', 'Reset', 'btn btn-danger');
+        if(!okReset) return;
+        const res = await api(withTokenQuery('/api/admin/sopralluoghi/reset'), { method: 'DELETE', headers: authHeaders() });
+        toast(`Sopralluoghi eliminati: ${res.deleted}`);
+        refreshAll();
+      }
+      else if(act === 'reset-cantieri'){
+        const okReset = await showConfirm('Reset cantieri', 'Svuotare TUTTI i cantieri e ricrearli da Master.csv? Utile solo in test — perde stato/metri/log inseriti dalle imprese.', 'Reset', 'btn btn-danger');
+        if(!okReset) return;
+        const res = await api(withTokenQuery('/api/admin/cantieri/reset'), { method: 'DELETE', headers: authHeaders() });
+        toast(`Cantieri eliminati: ${res.deleted} · ricreati: ${res.recreated}`);
+        refreshAll();
       }
       else if(act === 'delete-file' && name){
         const okDel = await showConfirm('Elimina tutte le versioni', `Eliminare TUTTE le versioni di "${name}"? Verrà servito il file da GitHub se presente.`, 'Elimina tutto', 'btn btn-danger');
