@@ -454,9 +454,9 @@
             <span class="stat-label">Comuni attraversati</span>
             <span class="stat-val" id="repComuni">—</span>
           </div>
-          <div class="stat-row">
-            <span class="stat-label">Province coinvolte</span>
-            <span class="stat-val" style="font-size:12px" id="repProv">—</span>
+          <div class="stat-row" style="align-items:flex-start">
+            <span class="stat-label">Metri scavati per provincia</span>
+            <span class="stat-val" style="font-size:12px;text-align:right" id="repProv">—</span>
           </div>
         </div>
       </div>
@@ -935,11 +935,17 @@ function _renderRiepilogo() {
   const totMetri   = LOTTI.reduce((s, r) => s + r.metri, 0);
   const totScavati = LOTTI.reduce((s, r) => s + Math.round(r.metri * r.pct / 100), 0);
   const pctGlob    = totMetri > 0 ? (totScavati / totMetri * 100).toFixed(1) : '0.0';
-  const lottiAttivi= LOTTI.filter(r => r.haCantiere && r.stato !== 'non-avviato').length;
-  const allProv    = [...new Set(LOTTI.flatMap(r => r.prov || []))].sort();
+  const lottiAttivi= LOTTI.filter(r => r.haCantiere && Object.entries(r.statoMetri||{}).some(([k,v]) => k !== 'non-avviato' && v > 0)).length;
   const totComuni  = LOTTI.reduce((s, r) => s + (r.comuni || 0), 0);
   const totOttenuto= LOTTI.reduce((s, r) => s + (r.permessi ? (r.permessi['OTTENUTO'] || 0) : 0), 0);
   const pctPermessi= totMetri > 0 ? (totOttenuto / totMetri * 100).toFixed(1) : '0.0';
+
+  const provScavati = {};
+  CANTIERI_RAW.forEach(r => {
+    const p = r.provincia || 'N/D';
+    provScavati[p] = (provScavati[p] || 0) + (r.metri_scavati || 0);
+  });
+  const provEntries = Object.entries(provScavati).sort((a, b) => b[1] - a[1]);
 
   const el = id => document.getElementById(id);
   if (el('repTracciato'))  el('repTracciato').textContent  = fmt(Math.round(totMetri / 1000)) + ' km';
@@ -949,8 +955,8 @@ function _renderRiepilogo() {
   if (el('repLottiAttivi'))el('repLottiAttivi').textContent= lottiAttivi;
   if (el('repComuni'))     el('repComuni').textContent     = totComuni > 0 ? totComuni : LOTTI.length + ' cantieri';
   if (el('repProv')) {
-    el('repProv').innerHTML = allProv.length > 0
-      ? allProv.map(p => `<span class="prov-pill">${p}</span>`).join('')
+    el('repProv').innerHTML = provEntries.length > 0
+      ? provEntries.map(([p, m]) => `<span class="prov-pill">${p}: ${fmt(Math.round(m))} m</span>`).join('')
       : '—';
   }
 }
