@@ -2437,6 +2437,14 @@ async def update_cantiere(cantiere_key: str, payload: dict, sess: dict = Depends
         if k != "metri_realizzati_oggi":
             update[k] = v
 
+    nuovo_stato = payload.get("stato_cantiere", doc.get("stato_cantiere"))
+    if nuovo_stato == "allestimento" and not payload.get("data_inizio_prevista") and not doc.get("data_inizio_prevista"):
+        raise HTTPException(400, "data_inizio_prevista obbligatoria per lo stato Allestimento")
+    if nuovo_stato == "in_corso" and not doc.get("data_inizio_effettiva") and not payload.get("data_inizio_effettiva"):
+        raise HTTPException(400, "data_inizio_effettiva obbligatoria al primo avvio cantiere")
+    if nuovo_stato == "completato" and not payload.get("data_fine_effettiva") and not doc.get("data_fine_effettiva"):
+        raise HTTPException(400, "data_fine_effettiva obbligatoria per chiudere il cantiere")
+
     # Accumula metri giornalieri (con cap su metri_totali)
     metri_oggi = 0.0
     if "metri_realizzati_oggi" in payload:
