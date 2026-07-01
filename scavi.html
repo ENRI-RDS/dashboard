@@ -783,12 +783,50 @@ function _renderAll() {
   _renderPageSubtitle();
 }
 
-// Click su una card KPI in alto: filtra la tabella "Tutti i Cantieri" per quello stato
+// Click su una card KPI in alto: apre popup con tutti i cantieri di quello stato
 function _filterCantieriByStato(stato) {
-  const input = document.getElementById('cantieriSearchInput');
-  if (input) input.value = STATO_LABEL[stato] || '';
-  _renderCantieriTable();
-  document.getElementById('cantieriTableBody')?.closest('.card')?.scrollIntoView({ behavior:'smooth', block:'start' });
+  openModalStato(stato);
+}
+
+function openModalStato(stato) {
+  const rows = CANTIERI_RAW.filter(r => (STATO_MAP[r.stato_cantiere] || 'non-avviato') === stato);
+  const col = STATO_COLOR[stato];
+  document.getElementById('modalStatoTitle').innerHTML =
+    `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col};margin-right:8px"></span>${STATO_LABEL[stato]} <span style="color:var(--muted);font-weight:400;font-size:13px">· ${rows.length} cantieri</span>`;
+  const totMetri = rows.reduce((s,r) => s + (r.metri_totali || 0), 0);
+  const totScav  = rows.reduce((s,r) => s + (r.metri_scavati || 0), 0);
+  const statGrid = `
+    <div class="modal-stat-grid">
+      <div class="modal-stat"><span class="modal-stat-lbl">Cantieri</span><span class="modal-stat-val">${rows.length}</span></div>
+      <div class="modal-stat"><span class="modal-stat-lbl">Metri totali</span><span class="modal-stat-val">${fmt(totMetri)} m</span></div>
+      <div class="modal-stat"><span class="modal-stat-lbl">Metri scavati</span><span class="modal-stat-val" style="color:${col}">${fmt(totScav)} m</span></div>
+    </div>`;
+  const listHtml = rows.length ? rows.map(r => {
+    const metriTot = r.metri_totali || 0;
+    const scavati  = r.metri_scavati || 0;
+    const pct = metriTot > 0 ? Math.round(scavati / metriTot * 100) : 0;
+    return `
+      <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+          <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent)">${r.pratica_id || '—'}</span>
+          <span style="font-size:11px;color:var(--muted)">Lotto ${r.lotto ?? '—'}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">${r.ente || '—'} · ${r.comune || '—'}${r.provincia ? ' ('+r.provincia+')' : ''}</div>
+        <div class="modal-bar-row" style="margin-top:8px">
+          <div class="modal-bar-track">
+            ${pct > 0 ? `<div class="modal-bar-fill" style="width:${pct}%;background:${col}"></div>` : ''}
+            ${pct >= 8 ? `<span class="modal-bar-pct">${pct}%</span>` : ''}
+          </div>
+          <div class="modal-bar-val">${fmt(scavati)} / ${fmt(metriTot)} m</div>
+        </div>
+      </div>`;
+  }).join('') : `<div style="text-align:center;color:var(--muted);padding:24px">Nessun cantiere in questo stato.</div>`;
+  document.getElementById('modalStatoBody').innerHTML = statGrid + listHtml;
+  document.getElementById('modalStatoOverlay').classList.add('open');
+}
+function closeModalStato(e) {
+  if (e && e.target !== document.getElementById('modalStatoOverlay')) return;
+  document.getElementById('modalStatoOverlay').classList.remove('open');
 }
 
 // Pulsanti filtro per lotto sopra la tabella "Tutti i Cantieri"
@@ -1344,6 +1382,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     closeModalLotto();
     closeModalCluster();
+    closeModalStato();
   }
 });
 
@@ -1463,6 +1502,17 @@ function closeModalCluster(e) {
       <button class="modal-close" onclick="closeModalCluster()">×</button>
     </div>
     <div id="modalClusterBody"></div>
+  </div>
+</div>
+
+<!-- Modal Dettaglio Stato -->
+<div class="modal-overlay" id="modalStatoOverlay" onclick="closeModalStato(event)">
+  <div class="modal" style="width:560px;max-height:80vh;overflow-y:auto">
+    <div class="modal-title">
+      <span id="modalStatoTitle">Stato —</span>
+      <button class="modal-close" onclick="closeModalStato()">×</button>
+    </div>
+    <div id="modalStatoBody"></div>
   </div>
 </div>
 
