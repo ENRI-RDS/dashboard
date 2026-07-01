@@ -3973,6 +3973,7 @@ const SC_STATO_LABEL = {
   in_corso:'In corso', sospeso:'Sospeso', completato:'Completato',
 };
 const SC_STATI_IN_CORSO_EFF = ['in_corso'];
+const SC_TECNICA_LABEL = { trincea:'Trincea', no_dig:'No Dig', canaletta:'Canaletta' };
 const SC_STATO_TRANSITIONS = {
   non_avviato:  ['allestimento'],
   allestimento: ['in_corso'],
@@ -4181,7 +4182,7 @@ scId('scStoricoBtn').addEventListener('click', async () => {
     const log = (d.log||[]).slice().reverse();
     if (!log.length) { scId('scStoricoBody').innerHTML='<div class="pr-empty">Nessun aggiornamento ancora</div>'; return; }
     scId('scStoricoBody').innerHTML = `<table class="sc-storico-table">
-      <thead><tr><th>Data</th><th>Stato</th><th>Metri oggi</th><th>Note</th></tr></thead>
+      <thead><tr><th>Data</th><th>Stato</th><th>Tecnica</th><th>Metri</th><th>Note</th></tr></thead>
       <tbody>${log.map(e => {
         const noteParts = [];
         if (e.note) noteParts.push(prEscapeHtml(e.note));
@@ -4190,6 +4191,7 @@ scId('scStoricoBtn').addEventListener('click', async () => {
         return `<tr>
           <td style="font-family:var(--font-mono);font-size:10px">${prEscapeHtml(e.data||'—')}</td>
           <td style="font-size:10px;font-weight:600;color:${SC_STATO_COLOR[e.stato_cantiere]||'#9AA5B4'}">${prEscapeHtml(SC_STATO_LABEL[e.stato_cantiere]||e.stato_cantiere||'—')}</td>
+          <td style="font-size:10px">${prEscapeHtml(SC_TECNICA_LABEL[e.tecnica_scavo]||e.tecnica_scavo||'—')}</td>
           <td style="font-family:var(--font-mono);text-align:right;font-size:10px">${e.metri_realizzati>0?e.metri_realizzati.toLocaleString('it-IT',{maximumFractionDigits:1})+'m':'—'}</td>
           <td style="color:var(--muted);font-size:10px">${noteParts.join(' · ')||'—'}</td>
         </tr>`;
