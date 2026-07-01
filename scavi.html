@@ -223,6 +223,32 @@
   .kpi-filter-count { font-size:11px; font-family:var(--font-mono); color:var(--muted); margin-left:auto; }
 
   .cant-table { width:100%; border-collapse:collapse; }
+  .cant-table thead th { position:relative; }
+  .th-label { cursor:pointer; user-select:none; }
+  .th-label:hover { color:var(--accent); }
+  .th-actions { display:inline-flex; gap:5px; margin-left:6px; vertical-align:middle; }
+  .th-btn { cursor:pointer; font-size:9px; color:var(--muted); user-select:none; }
+  .th-btn:hover, .th-btn.active { color:var(--accent); }
+  .col-filter-popup {
+    position:fixed; background:var(--surface); border:1px solid var(--border2);
+    border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.18); z-index:600;
+    width:220px; padding:8px; font-size:11px;
+  }
+  .col-filter-search {
+    width:100%; box-sizing:border-box; padding:5px 7px; font-size:11px;
+    border:1px solid var(--border2); border-radius:4px; margin-bottom:6px;
+  }
+  .col-filter-list { max-height:180px; overflow-y:auto; display:flex; flex-direction:column; gap:3px; margin-bottom:6px; }
+  .col-filter-list label { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text2); cursor:pointer; padding:1px 2px; }
+  .col-filter-list label:hover { background:var(--surface2); border-radius:3px; }
+  .col-filter-actions { display:flex; gap:6px; margin-bottom:6px; }
+  .col-filter-actions button {
+    flex:1; font-size:10px; padding:3px; border:1px solid var(--border2);
+    border-radius:4px; background:var(--surface2); cursor:pointer;
+  }
+  .col-filter-footer { display:flex; gap:6px; justify-content:flex-end; }
+  .col-filter-footer button { font-size:10px; padding:4px 10px; border-radius:4px; cursor:pointer; border:1px solid var(--border2); background:var(--surface); }
+  .col-filter-footer button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
   .cant-table thead th {
     background:var(--surface2); font-size:9px; font-weight:700; text-transform:uppercase;
     letter-spacing:.08em; color:var(--muted); padding:9px 12px; border-bottom:1px solid var(--border);
@@ -492,20 +518,7 @@
       <div style="overflow-x:auto;">
         <table class="cant-table">
           <thead>
-            <tr>
-              <th>Cod. Cantiere</th>
-              <th>Pratica</th>
-              <th>Ente</th>
-              <th>Lotto</th>
-              <th>Cluster</th>
-              <th>Provincia</th>
-              <th>Comune</th>
-              <th>Impresa</th>
-              <th>Stato Cantiere</th>
-              <th>Avanzamento</th>
-              <th style="text-align:right">Metri Tot.</th>
-              <th style="text-align:right">Metri Scavati</th>
-            </tr>
+            <tr id="cantieriTableHead"></tr>
           </thead>
           <tbody id="cantieriTableBody"></tbody>
         </table>
@@ -514,6 +527,19 @@
   </div>
 
 </div><!-- /main -->
+
+<div class="col-filter-popup" id="colFilterPopup" style="display:none">
+  <input type="text" class="col-filter-search" id="colFilterSearch" placeholder="Cerca valore…" oninput="_renderColFilterList()">
+  <div class="col-filter-actions">
+    <button type="button" onclick="_colFilterSelectAll(true)">Seleziona tutti</button>
+    <button type="button" onclick="_colFilterSelectAll(false)">Deseleziona tutti</button>
+  </div>
+  <div class="col-filter-list" id="colFilterList"></div>
+  <div class="col-filter-footer">
+    <button type="button" onclick="_closeColFilter()">Annulla</button>
+    <button type="button" class="primary" onclick="_applyColFilter()">OK</button>
+  </div>
+</div>
 
 <script>
 // ── DATI LOTTI — caricati da API /api/cantieri (scavi) + Riepilogo_progettazione.csv (permessi) ──
@@ -794,15 +820,12 @@ async function _loadAndRenderAll() {
 }
 
 function _renderAll() {
-  _renderKpi();
-  _renderBars();
-  _renderClusters();
-  _renderRadar();
-  _renderTabella();
-  _renderCantieriFilters();
-  _renderCantieriTable();
-  _renderRiepilogo();
-  _renderPageSubtitle();
+  _renderPageSubtitle(); // aggiorna subito lo stato "caricamento…", indipendente dalle altre render
+  const steps = [_renderKpi, _renderBars, _renderClusters, _renderRadar, _renderTabella,
+                 _renderCantieriFilters, _renderCantieriTable, _renderRiepilogo, _renderPageSubtitle];
+  steps.forEach(fn => {
+    try { fn(); } catch (e) { console.error('[ENRI] render step fallito:', fn.name, e); }
+  });
 }
 
 // Click su una card KPI in alto: apre popup con tutti i cantieri di quello stato
@@ -882,24 +905,158 @@ function _renderCantieriFilters() {
     lotti.map(l => `<button class="kpi-filt-btn${_cantieriLottoFiltro===l?' active':''}" onclick="_setCantieriLottoFiltro('${l}')">Lotto ${l}</button>`).join('');
 }
 
-function _setCantieriLottoFiltro(lotto) {
-  _cantieriLottoFiltro = lotto;
-  _renderCantieriFilters();
+// ── Sort + filtro per colonna (stile Excel) sulla tabella "Tutti i Cantieri" ──
+const CANTIERI_COLS = [
+  { key:'codice_cantiere', label:'Cod. Cantiere', get:r => r.codice_cantiere || '—' },
+  { key:'pratica_id',      label:'Pratica',       get:r => r.pratica_id || '—' },
+  { key:'ente',            label:'Ente',          get:r => r.ente || '—' },
+  { key:'lotto',           label:'Lotto',         get:r => String(r.lotto ?? '—'), numeric:true },
+  { key:'cluster',         label:'Cluster',       get:r => (r.cluster ?? '?').toString().replace(/^[Cc]/,'') },
+  { key:'provincia',       label:'Provincia',     get:r => r.provincia || '—' },
+  { key:'comune',          label:'Comune',        get:r => r.comune || '—' },
+  { key:'impresa',         label:'Impresa',       get:r => r.impresa || '—' },
+  { key:'stato',           label:'Stato Cantiere',get:r => STATO_LABEL[STATO_MAP[r.stato_cantiere] || 'non-avviato'] },
+  { key:'pct',             label:'Avanzamento',   get:r => (r.metri_totali||0) > 0 ? Math.round((r.metri_scavati||0)/r.metri_totali*100) + '%' : '—', numeric:true,
+                           sortVal:r => (r.metri_totali||0) > 0 ? Math.round((r.metri_scavati||0)/r.metri_totali*100) : -1 },
+  { key:'metri_totali',    label:'Metri Tot.',    get:r => fmt(r.metri_totali||0), numeric:true, align:'right', sortVal:r => r.metri_totali||0 },
+  { key:'metri_scavati',   label:'Metri Scavati', get:r => fmt(r.metri_scavati||0), numeric:true, align:'right', sortVal:r => r.metri_scavati||0 },
+];
+let _cantieriSort = { col:null, dir:1 };
+let _cantieriColFilters = {}; // key -> Set(valori ammessi). Assente = nessun filtro attivo su quella colonna.
+let _colFilterOpenKey = null;
+
+function _renderCantieriTableHead() {
+  const tr = document.getElementById('cantieriTableHead');
+  if (!tr) return;
+  tr.innerHTML = CANTIERI_COLS.map(c => {
+    const active = _cantieriColFilters[c.key] ? ' active' : '';
+    const arrow = _cantieriSort.col === c.key ? (_cantieriSort.dir === 1 ? '▲' : '▼') : '⇅';
+    const sortActive = _cantieriSort.col === c.key ? ' active' : '';
+    return `<th style="${c.align === 'right' ? 'text-align:right' : ''}">
+      <span class="th-label" onclick="_sortCantieri('${c.key}')">${c.label}</span>
+      <span class="th-actions">
+        <span class="th-btn${sortActive}" onclick="_sortCantieri('${c.key}')" title="Ordina">${arrow}</span>
+        <span class="th-btn${active}" onclick="_toggleColFilter(event,'${c.key}')" title="Filtra">▾</span>
+      </span>
+    </th>`;
+  }).join('');
+}
+
+function _sortCantieri(key) {
+  if (_cantieriSort.col === key) { _cantieriSort.dir *= -1; }
+  else { _cantieriSort.col = key; _cantieriSort.dir = 1; }
+  _renderCantieriTableHead();
   _renderCantieriTable();
 }
+
+function _toggleColFilter(ev, key) {
+  ev.stopPropagation();
+  const popup = document.getElementById('colFilterPopup');
+  if (_colFilterOpenKey === key && popup.style.display !== 'none') { _closeColFilter(); return; }
+  _colFilterOpenKey = key;
+  const rect = ev.currentTarget.getBoundingClientRect();
+  popup.style.display = 'block';
+  popup.style.top = Math.min(rect.bottom + 4, window.innerHeight - 320) + 'px';
+  popup.style.left = Math.min(rect.left, window.innerWidth - 236) + 'px';
+  document.getElementById('colFilterSearch').value = '';
+  _renderColFilterList();
+}
+
+function _closeColFilter() {
+  document.getElementById('colFilterPopup').style.display = 'none';
+  _colFilterOpenKey = null;
+}
+
+document.addEventListener('click', (ev) => {
+  const popup = document.getElementById('colFilterPopup');
+  if (popup && popup.style.display !== 'none' && !popup.contains(ev.target)) _closeColFilter();
+});
+
+// Righe attualmente visibili escludendo il filtro della colonna che si sta editando (comportamento Excel)
+function _cantieriRowsForColFilter(excludeKey) {
+  const q = (document.getElementById('cantieriSearchInput')?.value || '').trim().toLowerCase();
+  return CANTIERI_RAW.filter(r => {
+    if (_cantieriLottoFiltro !== 'all' && String(r.lotto || '?') !== _cantieriLottoFiltro) return false;
+    if (q) {
+      const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
+      const haystack = [r.codice_cantiere, r.pratica_id, r.ente, r.lotto, r.cluster, r.provincia, r.comune, r.impresa, STATO_LABEL[statoUI]].join(' ').toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    for (const c of CANTIERI_COLS) {
+      if (c.key === excludeKey) continue;
+      const allowed = _cantieriColFilters[c.key];
+      if (allowed && !allowed.has(c.get(r))) return false;
+    }
+    return true;
+  });
+}
+
+function _renderColFilterList() {
+  const key = _colFilterOpenKey;
+  const col = CANTIERI_COLS.find(c => c.key === key);
+  if (!col) return;
+  const rows = _cantieriRowsForColFilter(key);
+  const values = [...new Set(rows.map(r => col.get(r)))].sort((a,b) => a.localeCompare(b, undefined, { numeric:true }));
+  const search = (document.getElementById('colFilterSearch').value || '').toLowerCase();
+  const current = _cantieriColFilters[key]; // Set o undefined (=tutti selezionati)
+  const list = document.getElementById('colFilterList');
+  list.innerHTML = values.filter(v => v.toLowerCase().includes(search)).map(v => {
+    const checked = !current || current.has(v);
+    return `<label><input type="checkbox" value="${v.replace(/"/g,'&quot;')}" ${checked ? 'checked' : ''}> ${v}</label>`;
+  }).join('') || `<div style="color:var(--muted);padding:4px 2px">Nessun valore</div>`;
+}
+
+function _colFilterSelectAll(state) {
+  document.querySelectorAll('#colFilterList input[type=checkbox]').forEach(cb => cb.checked = state);
+}
+
+function _applyColFilter() {
+  const key = _colFilterOpenKey;
+  if (!key) return;
+  const col = CANTIERI_COLS.find(c => c.key === key);
+  const rows = _cantieriRowsForColFilter(key);
+  const allValues = new Set(rows.map(r => col.get(r)));
+  const checked = new Set([...document.querySelectorAll('#colFilterList input[type=checkbox]:checked')].map(cb => cb.value));
+  // Se tutti i valori disponibili sono selezionati, equivale a "nessun filtro"
+  const isAll = checked.size >= allValues.size && [...allValues].every(v => checked.has(v));
+  if (isAll) delete _cantieriColFilters[key];
+  else _cantieriColFilters[key] = checked;
+  _closeColFilter();
+  _renderCantieriTableHead();
+  _renderCantieriTable();
+}
+
 
 // Tabella "Tutti i Cantieri": singole tratte/cantieri, non aggregate per lotto
 function _renderCantieriTable() {
   const tbody = document.getElementById('cantieriTableBody');
   if (!tbody) return;
+  _renderCantieriTableHead();
   const q = (document.getElementById('cantieriSearchInput')?.value || '').trim().toLowerCase();
-  const rows = CANTIERI_RAW.filter(r => {
+  let rows = CANTIERI_RAW.filter(r => {
     if (_cantieriLottoFiltro !== 'all' && String(r.lotto || '?') !== _cantieriLottoFiltro) return false;
-    if (!q) return true;
-    const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
-    const haystack = [r.codice_cantiere, r.pratica_id, r.ente, r.lotto, r.cluster, r.provincia, r.comune, r.impresa, STATO_LABEL[statoUI]].join(' ').toLowerCase();
-    return haystack.includes(q);
+    if (q) {
+      const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
+      const haystack = [r.codice_cantiere, r.pratica_id, r.ente, r.lotto, r.cluster, r.provincia, r.comune, r.impresa, STATO_LABEL[statoUI]].join(' ').toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    for (const c of CANTIERI_COLS) {
+      const allowed = _cantieriColFilters[c.key];
+      if (allowed && !allowed.has(c.get(r))) return false;
+    }
+    return true;
   });
+  if (_cantieriSort.col) {
+    const col = CANTIERI_COLS.find(c => c.key === _cantieriSort.col);
+    const val = col.sortVal || col.get;
+    rows = rows.slice().sort((a, b) => {
+      const va = val(a), vb = val(b);
+      let cmp;
+      if (col.numeric && typeof va === 'number') cmp = va - vb;
+      else cmp = String(va).localeCompare(String(vb), undefined, { numeric:true });
+      return cmp * _cantieriSort.dir;
+    });
+  }
   const countEl = document.getElementById('cantieriCount');
   if (countEl) countEl.textContent = `${rows.length} / ${CANTIERI_RAW.length} cantieri`;
   const filterCountEl = document.getElementById('cantieriFilterCount');
