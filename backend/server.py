@@ -2426,6 +2426,7 @@ async def update_cantiere(cantiere_key: str, payload: dict, sess: dict = Depends
         "data":                  _now_iso()[:10],
         "impresa":               nome,
         "stato_cantiere":        payload.get("stato_cantiere", doc.get("stato_cantiere")),
+        "tecnica_scavo":         payload.get("tecnica_scavo", doc.get("tecnica_scavo")),
         "metri_realizzati":      metri_oggi,
         "note":                  payload.get("note", ""),
         "motivo_blocco":         payload.get("motivo_blocco", ""),
