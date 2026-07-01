@@ -41,6 +41,8 @@
     --font-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
     --bg:var(--gray-50);--surface:#ffffff;--surface2:var(--retelit-ice);--border:var(--gray-200);
     --accent:var(--retelit-blue);--text:var(--gray-700);--muted:var(--gray-500);
+    --gray-100:#EEF1F5;--gray-400:#9AA5B4;--accent-light:rgba(4,63,117,.06);--border-focus:var(--retelit-sky);
+    --ok:#1E9E6A;--ok-bg:#EBFAF3;--warn:#D08A1A;--warn-bg:#FEF7E7;--danger:#C0392B;--danger-bg:#FEECEB;
   }
   *{margin:0;padding:0;box-sizing:border-box;}
   body{font-family:var(--font-body);background:var(--bg);color:var(--text);height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;-webkit-text-size-adjust:100%;}
@@ -48,15 +50,14 @@
   .logo{font-size:13px;font-weight:600;letter-spacing:0.12em;color:var(--accent);white-space:nowrap;}
   .divider-v{width:1px;height:20px;background:var(--border);flex-shrink:0;}
   .page-title{font-size:13px;color:var(--muted);white-space:nowrap;}
-  /* ── Topbar Retelit (sfondo bianco) ──────────────────────────────────── */
-  .topbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 28px;height:58px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:1000}
-  .topbar-right{display:flex;align-items:center;gap:10px;margin-left:auto}
+  /* ── Topbar Retelit ────────────────────────────────────────────────────── */
   .topbar-user{font-size:12px;color:var(--text);font-weight:500;background:var(--surface2);padding:4px 12px;border-radius:999px;border:1px solid var(--border)}
   .topbar-back{font-size:12px;color:var(--accent);font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:8px;border:1px solid var(--accent);transition:background .15s;white-space:nowrap}
   .topbar-back:hover{background:var(--accent-light,rgba(4,63,117,.06))}
   .topbar-back.dim{color:var(--muted);border-color:var(--border)}
   .topbar-back.dim:hover{background:var(--surface2)}
-  .btn{font-size:11px;padding:5px 14px;border-radius:5px;background:var(--retelit-blue,#043F75);color:white;border:none;cursor:pointer;font-family:var(--font-body);font-weight:500;transition:opacity 0.2s;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:5px;}
+  .topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
+  .btn{font-size:11px;padding:5px 14px;border-radius:5px;background:var(--accent);color:white;border:none;cursor:pointer;font-family:var(--font-body);font-weight:500;transition:opacity 0.2s;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:5px;}
   .btn:hover{opacity:0.85;}
   .btn.secondary{background:var(--surface2);border:1px solid var(--border);color:var(--muted);}
   .btn.secondary:hover{color:var(--text);}
@@ -106,6 +107,87 @@
   .view-toggle{display:flex;gap:3px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:3px;margin-bottom:10px;}
   .view-btn{font-size:10px;padding:3px 9px;border-radius:5px;border:none;background:transparent;color:var(--muted);cursor:pointer;font-family:var(--font-body);font-weight:500;transition:all 0.15s;white-space:nowrap;}
   .view-btn.active{background:var(--accent);color:white;}
+
+  /* ── Pannello "Pratiche" (aggiorna/nuova/mie) nella sidebar ── */
+  .pr-search input{width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;background:var(--surface);color:var(--text);margin-bottom:8px;}
+  .pr-search input:focus{outline:none;border-color:var(--border-focus);}
+  .pr-list{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;}
+  .pr-card{border:1px solid var(--border);border-radius:8px;padding:8px 10px;cursor:pointer;font-size:11.5px;background:var(--surface);}
+  .pr-card:hover{background:var(--surface2);}
+  .pr-card.selected{border-color:var(--accent);background:var(--accent-light);}
+  .pr-card-code{font-family:var(--font-mono);font-weight:700;color:var(--accent);font-size:11px;}
+  .pr-card-row{display:flex;justify-content:space-between;gap:6px;color:var(--muted);font-size:10.5px;margin-top:3px;}
+  .pr-empty{padding:16px 4px;text-align:center;color:var(--muted);font-size:11.5px;font-style:italic;}
+  .pr-form label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text);margin:10px 0 4px;font-weight:600;}
+  .pr-form label:first-of-type{margin-top:0;}
+  .pr-form select,.pr-form input[type=text],.pr-form input[type=date],.pr-form input[type=number],.pr-form textarea{
+    width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;background:var(--surface);color:var(--text);}
+  .pr-form select:focus,.pr-form input:focus,.pr-form textarea:focus{outline:none;border-color:var(--border-focus);}
+  .pr-form select[multiple]{padding:4px 6px;}
+  .pr-form textarea{resize:vertical;min-height:48px;}
+  .pr-form textarea:disabled{background:var(--gray-100);color:var(--muted);cursor:not-allowed;resize:none;}
+  .pr-hint{font-size:9.5px;color:var(--muted);margin-top:3px;}
+  .pr-form-title{font-weight:700;font-size:12px;margin-bottom:8px;padding-top:10px;border-top:1px dashed var(--border);}
+  .pr-form-actions{display:flex;gap:6px;justify-content:flex-end;margin-top:12px;}
+  .pr-siblings{background:var(--accent-light);border:1px solid var(--retelit-blue-25);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:11px;}
+  .pr-siblings-title{font-weight:700;color:var(--accent);margin-bottom:4px;}
+  .pr-check{display:flex;align-items:center;gap:6px;font-weight:600;color:var(--accent);cursor:pointer;font-size:11px;text-transform:none!important;margin-top:6px;}
+  .pr-queue{border-top:1px dashed var(--border);padding-top:10px;margin-top:10px;}
+  .pr-queue-title{font-weight:700;font-size:12px;margin-bottom:6px;}
+  .pr-queue-item{display:flex;justify-content:space-between;align-items:flex-start;gap:6px;font-size:10.5px;border:1px solid var(--border);border-radius:6px;padding:5px 8px;margin-bottom:5px;}
+  .pr-queue-item button{background:none;border:none;color:var(--danger);cursor:pointer;font-size:10px;font-weight:700;flex-shrink:0;}
+  .pr-msg{margin-top:10px;padding:8px 10px;border-radius:6px;font-size:11.5px;font-weight:500;display:none;}
+  .pr-msg.ok{display:block;background:var(--ok-bg);color:var(--ok);border:1px solid rgba(30,158,106,.2);}
+  .pr-msg.err{display:block;background:var(--danger-bg);color:var(--danger);border:1px solid rgba(192,57,43,.2);}
+  .pr-tag{display:inline-flex;padding:1px 7px;border-radius:20px;font-size:9.5px;font-weight:700;text-transform:uppercase;}
+  .pr-tag.pending{background:var(--warn-bg);color:var(--warn);}
+  .pr-tag.approved{background:var(--ok-bg);color:var(--ok);}
+  .pr-tag.rejected{background:var(--danger-bg);color:var(--danger);}
+  .pr-mine-card{border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:11px;margin-bottom:6px;}
+  .pr-mine-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;}
+  .pr-mine-del{background:none;border:1px solid var(--danger);color:var(--danger);border-radius:5px;font-size:10px;padding:2px 7px;cursor:pointer;margin-top:6px;font-weight:600;}
+  .pr-popup-actions{display:flex;gap:6px;padding:0 16px 12px;flex-wrap:wrap;}
+  /* ── Pannello Scavi in sidebar ────────────────────────────────────────────── */
+  .sc-card{border:1px solid var(--border);border-radius:8px;padding:8px 10px;cursor:pointer;font-size:11.5px;background:var(--surface);margin-bottom:6px;position:relative;overflow:hidden;}
+  .sc-card:hover{background:var(--surface2);}
+  .sc-card.selected{border-color:var(--accent);background:var(--accent-light,rgba(4,63,117,.06));}
+  .sc-card-accent{position:absolute;left:0;top:0;bottom:0;width:3px;}
+  .sc-card-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2px;}
+  .sc-card-id{font-family:var(--font-mono);font-weight:700;color:var(--accent);font-size:11px;}
+  .sc-card-lotto{font-size:10px;color:var(--muted);background:var(--surface2);padding:1px 6px;border-radius:20px;border:1px solid var(--border);}
+  .sc-card-ente{font-size:10px;color:var(--muted);margin-bottom:4px;}
+  .sc-meta{display:flex;gap:8px;flex-wrap:wrap;font-size:10px;color:var(--muted);margin-top:4px;}
+  .sc-progress-track{height:4px;background:var(--border);border-radius:2px;margin:5px 0 4px;}
+  .sc-progress-fill{height:4px;border-radius:2px;transition:width .3s;}
+  .sc-form label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text);margin:10px 0 4px;font-weight:600;}
+  .sc-form label:first-of-type{margin-top:0;}
+  .sc-form select,.sc-form input[type=date],.sc-form input[type=number],.sc-form textarea{width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;background:var(--surface);color:var(--text);}
+  .sc-form select:focus,.sc-form input:focus,.sc-form textarea:focus{outline:none;border-color:var(--border-focus,var(--retelit-sky));}
+  .sc-form select:disabled,.sc-form input:disabled,.sc-form textarea:disabled{background:var(--gray-100,#EEF1F5);color:var(--muted);cursor:not-allowed;opacity:1;}
+  .sc-form textarea{resize:vertical;min-height:44px;}
+  .sc-form-title{font-weight:700;font-size:12px;margin-bottom:8px;padding-top:10px;border-top:1px dashed var(--border);}
+  .sc-form-sub{font-size:11px;color:var(--muted);margin-bottom:8px;}
+  .sc-hint{font-size:9.5px;color:var(--muted);margin-top:3px;}
+  .sc-msg{margin-top:10px;padding:8px 10px;border-radius:6px;font-size:11.5px;font-weight:500;display:none;}
+  .sc-msg.ok{display:block;background:var(--ok-bg,#EBFAF3);color:var(--ok,#1E9E6A);border:1px solid rgba(30,158,106,.2);}
+  .sc-msg.err{display:block;background:var(--danger-bg,#FEECEB);color:var(--danger,#C0392B);border:1px solid rgba(192,57,43,.2);}
+  .sc-storico-table{width:100%;border-collapse:collapse;font-size:10.5px;margin-top:6px;}
+  .sc-storico-table th{text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:4px 6px;border-bottom:1px solid var(--border);}
+  .sc-storico-table td{padding:5px 6px;border-bottom:1px solid var(--border);vertical-align:top;}
+  .mono{font-family:var(--font-mono);}
+  .stato-OTTENUTO{color:var(--ok);font-weight:600;}
+  .stato-INVIATO,.stato-PROTOCOLLATO{color:var(--accent);font-weight:600;}
+  .stato-IN.REDAZIONE,.stato-IN.FIRMA.RDS{color:var(--warn);font-weight:600;}
+  /* ── Modal di conferma (sostituisce alert/confirm nativi) ── */
+  #prConfirmOverlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:5000;padding:24px;opacity:0;pointer-events:none;transition:opacity .15s;}
+  #prConfirmOverlay.open{opacity:1;pointer-events:all;}
+  .pr-confirm-box{background:var(--surface);border-radius:16px;width:100%;max-width:420px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.2);}
+  .pr-confirm-icon{width:40px;height:40px;border-radius:999px;display:flex;align-items:center;justify-content:center;margin-bottom:12px;}
+  .pr-confirm-icon.warn{background:var(--warn-bg);color:var(--warn);}
+  .pr-confirm-icon.danger{background:var(--danger-bg);color:var(--danger);}
+  .pr-confirm-title{font-family:var(--font-display);font-size:15px;font-weight:700;color:var(--text);margin-bottom:8px;}
+  .pr-confirm-msg{font-size:12.5px;color:var(--text);line-height:1.5;margin-bottom:18px;white-space:pre-line;}
+  .pr-confirm-actions{display:flex;gap:10px;justify-content:flex-end;}
   /* Popup */
   .leaflet-popup-content-wrapper{background:var(--surface)!important;border:none!important;border-radius:14px!important;color:var(--text)!important;box-shadow:0 8px 32px #0000002a, 0 1px 4px #00000014!important;padding:0!important;overflow:hidden!important;}
   .leaflet-popup-content{margin:0!important;width:auto!important;}
@@ -805,8 +887,8 @@
     <button class="btn" style="background:var(--retelit-teal,#1A7D99);font-size:11px;padding:5px 12px" onclick="exportPDF()">⬇ PDF</button>
     <button class="btn secondary" style="font-size:11px;padding:5px 12px" onclick="openHelp()" title="Guida alla Mappa">?</button>
     <a href="imprese.html" class="topbar-back"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>Pratiche</a>
+    <a href="mappa_impresa.html" class="topbar-back"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/></svg>Mappa</a>
     <a href="imprese_scavi.html" class="topbar-back"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5 3.5 14.5a2.121 2.121 0 0 0 3 3L17.5 6.5"/><path d="M3 21l3.5-3.5"/><path d="M16 3l5 5"/></svg>Scavi</a>
-    <a href="mappa_impresa_caricamento.html" class="topbar-back"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>Aggiorna Mappa</a>
     <a href="hub.html" class="topbar-back dim"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>Hub</a>
   </div>
 </div>
@@ -821,18 +903,204 @@
   </div>
   <div class="sidebar" id="sidebarEl">
     <div class="sidebar-head">
-      <div class="sidebar-title">Visualizzazione</div>
-      <div class="view-toggle">
-        <button class="view-btn active" id="vbtn-stato"   onclick="setViewMode('stato')">Per Stato</button>
-        <button class="view-btn"        id="vbtn-lotto"   onclick="setViewMode('lotto')">Per Lotto</button>
-        <button class="view-btn"        id="vbtn-cluster" onclick="setViewMode('cluster')">Per Cluster</button>
+      <div class="view-toggle" id="sbMainTabs">
+        <button class="view-btn active" id="sbtab-mappa" onclick="_sbSwitchMain('mappa')"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/></svg>Mappa</button>
+        <button class="view-btn" id="sbtab-pratiche" onclick="_sbSwitchMain('pratiche')"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>Pratiche</button>
+        <button class="view-btn" id="sbtab-scavi" onclick="_sbSwitchMain('scavi')"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M14.5 3.5 3.5 14.5a2.121 2.121 0 0 0 3 3L17.5 6.5"/><path d="M3 21l3.5-3.5"/><path d="M16 3l5 5"/></svg>Scavi</button>
       </div>
-      <div class="sidebar-title">Filtra per lotto</div>
-      <div class="filter-row" id="filterRow"></div>
+      <div id="sbHeadMappa">
+        <div class="sidebar-title">Visualizzazione</div>
+        <div class="view-toggle">
+          <button class="view-btn active" id="vbtn-stato"   onclick="setViewMode('stato')">Per Stato</button>
+          <button class="view-btn"        id="vbtn-lotto"   onclick="setViewMode('lotto')">Per Lotto</button>
+          <button class="view-btn"        id="vbtn-cluster" onclick="setViewMode('cluster')">Per Cluster</button>
+        </div>
+        <div class="sidebar-title">Filtra per lotto</div>
+        <div class="filter-row" id="filterRow"></div>
+      </div>
+      <div id="sbHeadPratiche" style="display:none">
+        <div class="view-toggle" id="sbPratTabs">
+          <button class="view-btn active" data-prtab="aggiorna" onclick="_sbSwitchPrat('aggiorna')">Aggiorna</button>
+          <button class="view-btn"        data-prtab="nuova"    onclick="_sbSwitchPrat('nuova')">Nuova</button>
+          <button class="view-btn"        data-prtab="mie"      onclick="_sbSwitchPrat('mie')">Mie richieste</button>
+        </div>
+      </div>
     </div>
 
     <div class="sidebar-body" id="lottoList"></div>
+
+    <div class="sidebar-body" id="pratBodyPanel" style="display:none;padding:12px 14px;">
+      <!-- AGGIORNA -->
+      <div id="prPanel-aggiorna" class="pr-subpanel">
+        <div class="pr-search"><input type="text" id="prSearch" placeholder="Cerca pratica, tratta, ente…"></div>
+        <div id="prList" class="pr-list"><div class="pr-empty">Caricamento…</div></div>
+
+        <div id="prEditForm" class="pr-form" style="display:none">
+          <div class="pr-form-title">Aggiornamento — <span id="prEditSub" class="mono" style="font-weight:400"></span></div>
+          <div id="prSiblings" class="pr-siblings" style="display:none">
+            <div class="pr-siblings-title">Altre tratte nella stessa pratica</div>
+            <div id="prSiblingsList" style="color:var(--text)"></div>
+            <label class="pr-check"><input type="checkbox" id="prSibToggle" checked style="width:14px;height:14px"> Aggiorna tutte insieme</label>
+          </div>
+
+          <label>Nuovo stato</label>
+          <select id="pr-stato"><option value="">— seleziona stato —</option></select>
+          <div id="pr-stato-hint" class="pr-hint"></div>
+
+          <div id="pr-wrap-data-rich" style="display:none">
+            <label>Data richiesta</label>
+            <input type="date" id="pr-data-rich">
+          </div>
+          <div id="pr-wrap-data-app" style="display:none">
+            <label>Data ottenimento</label>
+            <input type="date" id="pr-data-app">
+          </div>
+          <div id="pr-wrap-no-nec" style="display:none">
+            <label>Nulla Osta Necessario</label>
+            <select id="pr-no-nec"><option value="">—</option><option value="SI">SI</option><option value="NO">NO</option></select>
+          </div>
+          <label>Polizza necessaria</label>
+          <select id="pr-polizza"><option value="">—</option><option value="SI">SI</option><option value="NO">NO</option></select>
+          <label>Convenzione</label>
+          <select id="pr-convenzione"><option value="">—</option><option value="SI">SI</option><option value="NO">NO</option></select>
+          <div id="pr-wrap-no-tratte" style="display:none">
+            <label>Tratte che richiedono Nulla Osta</label>
+            <select id="pr-no-tratte" multiple size="4" style="font-family:var(--font-mono);font-size:11px"></select>
+          </div>
+          <label>Note</label>
+          <textarea id="pr-note" disabled placeholder="Seleziona prima il nuovo stato…"></textarea>
+
+          <div class="pr-form-actions">
+            <button class="btn secondary" id="prCancelEdit">Annulla</button>
+            <button class="btn" id="prAddToQueue">Aggiungi alla coda</button>
+          </div>
+        </div>
+
+        <div id="prQueueWrap" class="pr-queue" style="display:none">
+          <div class="pr-queue-title">Modifiche in coda (<span id="prQCount">0</span>)</div>
+          <div id="prQueueList"></div>
+          <div class="pr-form-actions">
+            <button class="btn secondary" id="prClearQueue">Svuota</button>
+            <button class="btn" id="prSubmitQueue">Invia per approvazione</button>
+          </div>
+        </div>
+        <div id="prMsgUpd" class="pr-msg"></div>
+      </div>
+
+      <!-- NUOVA -->
+      <div id="prPanel-nuova" class="pr-subpanel pr-form" style="display:none">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Stato iniziale automatico: <b>IN REDAZIONE</b>. Dopo l'invio l'amministratore approverà l'inserimento.</div>
+        <form id="prNewForm">
+          <label>Lotto *</label>
+          <select id="pr-new-lotto" required></select>
+          <label>Ente *</label>
+          <select id="pr-new-ente" required><option value="">— seleziona ente —</option></select>
+          <label>Tipo permesso *</label>
+          <select id="pr-new-tipo" required>
+            <option value="">—</option><option>AUTORIZZAZIONE</option><option>NULLA OSTA</option>
+          </select>
+          <label>Numero progressivo pratica (automatico)</label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span id="pr-new-pratica-prefix" style="font-family:var(--font-mono);font-size:12px;color:var(--muted);white-space:nowrap">—/</span>
+            <input type="number" id="pr-new-pratica" required readonly style="background:var(--gray-100);color:var(--muted);cursor:not-allowed">
+            <span id="pr-new-pratica-suffix" style="font-family:var(--font-mono);font-size:12px;color:var(--muted);white-space:nowrap">/—</span>
+          </div>
+          <div id="pr-new-pratica-preview" class="pr-hint" style="color:var(--accent)"></div>
+          <label>Tratte *</label>
+          <select id="pr-new-tratta" multiple required size="6" style="font-family:var(--font-mono);font-size:11px">
+            <option value="" disabled>— seleziona prima il lotto —</option>
+          </select>
+          <label>N_SED</label>
+          <input type="text" id="pr-new-nsed" placeholder="es. SED-127 oppure 0">
+          <div id="pr-wrap-new-no-nec" style="display:none">
+            <label>Nulla Osta Necessario</label>
+            <select id="pr-new-no-nec"><option value=""></option><option>SI</option><option>NO</option></select>
+          </div>
+          <label>Ordinanza necessaria</label>
+          <select id="pr-new-ord-nec"><option value=""></option><option>SI</option><option>NO</option></select>
+          <label>Note</label>
+          <textarea id="pr-new-note"></textarea>
+          <div class="pr-form-actions">
+            <button type="submit" class="btn">Invia nuova pratica</button>
+          </div>
+          <div id="prMsgNew" class="pr-msg"></div>
+        </form>
+      </div>
+
+      <!-- MIE RICHIESTE -->
+      <div id="prPanel-mie" class="pr-subpanel" style="display:none">
+        <div id="prMineList"><div class="pr-empty">—</div></div>
+        <button class="btn secondary" id="prRefreshMine" style="margin-top:6px">Aggiorna</button>
+      </div>
+    </div>
   </div>
+
+
+    <div class="sidebar-body" id="scaviBodyPanel" style="display:none;padding:12px 14px;">
+      <div id="scList"><div class="pr-empty">Caricamento…</div></div>
+
+      <div id="scFormWrap" style="display:none">
+        <div class="sc-form-title">Aggiornamento — <span id="scFormSub" class="mono" style="font-weight:400;font-size:11px"></span></div>
+        <div id="scTratteInfo" class="sc-form-sub"></div>
+        <div class="sc-form">
+          <label>Metri realizzati oggi (m)</label>
+          <input type="number" id="scMetri" min="0" step="0.1" placeholder="0">
+          <div class="sc-hint">Inserire 0 se nessuno scavo oggi</div>
+
+          <label>Stato cantiere *</label>
+          <select id="scStato"></select>
+
+          <label>Tecnica di scavo *</label>
+          <select id="scTecnica" required>
+            <option value="">— seleziona —</option>
+            <option value="trincea">Trincea</option>
+            <option value="no_dig">No Dig</option>
+            <option value="canaletta">Canaletta</option>
+          </select>
+
+          <label>Data inizio prevista</label>
+          <input type="date" id="scInizioPrev">
+          <div id="scHintInizioPrevLock" style="display:none" class="sc-hint">Cantiere già avviato: non modificabile.</div>
+
+          <label>Data fine prevista</label>
+          <input type="date" id="scFinePrev">
+
+          <label>Data inizio effettiva</label>
+          <input type="date" id="scInizioEff">
+
+          <label>Data fine effettiva</label>
+          <input type="date" id="scFineEff">
+
+          <div id="scWrapMotivoBlocco" style="display:none">
+            <label>Motivo blocco</label>
+            <textarea id="scMotivoBlocco" placeholder="Es. interferenza sottoservizi, maltempo…"></textarea>
+          </div>
+          <div id="scWrapDataRipresa" style="display:none">
+            <label>Data ripresa lavori stimata</label>
+            <input type="date" id="scDataRipresa">
+          </div>
+
+          <label>Note / Impedimenti</label>
+          <textarea id="scNote" placeholder="Eventuali impedimenti, condizioni meteo…"></textarea>
+        </div>
+
+        <div class="pr-form-actions" style="margin-top:12px">
+          <button class="btn secondary" id="scCancelForm">Annulla</button>
+          <button class="btn secondary" id="scStoricoBtn" style="margin-right:auto">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>Storico
+          </button>
+          <button class="btn" id="scSubmit">Salva aggiornamento</button>
+        </div>
+        <div id="scMsg" class="sc-msg"></div>
+
+        <div id="scStoricoWrap" style="display:none;margin-top:10px">
+          <div style="font-weight:700;font-size:12px;margin-bottom:6px" id="scStoricoTitle">Storico</div>
+          <div id="scStoricoBody"></div>
+        </div>
+      </div>
+    </div>
+
+  <div id="prConfirmOverlay" onclick="if(event.target===this)this.classList.remove('open')"></div>
   <div id="measureBadge" class="measure-badge">
     <span id="measureDist">0.00 km</span>
     <span class="measure-badge-clear" onclick="clearMeasure()" title="Cancella misura">✕</span>
@@ -1617,6 +1885,11 @@ function makePopupHtml(p, gmapsUrl) {
         Apri in Google Maps
       </a>
     </div>` : ''}
+    <div class="pr-popup-actions">
+      <button class="btn pr-popup-btn" data-pr-action="aggiorna" data-tratta="${p.TRATTA_ID||''}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>Aggiorna pratica</button>
+      <button class="btn secondary pr-popup-btn" data-pr-action="nuova" data-tratta="${p.TRATTA_ID||''}" data-lotto="${p.LOTTO||''}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="vertical-align:-1px;margin-right:3px"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Nuova pratica</button>
+      <button class="btn secondary sc-popup-btn" data-tratta="${p.TRATTA_ID||''}" data-lotto="${p.LOTTO||''}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M14.5 3.5 3.5 14.5a2.121 2.121 0 0 0 3 3L17.5 6.5"/><path d="M3 21l3.5-3.5"/><path d="M16 3l5 5"/></svg>Aggiorna Scavi</button>
+    </div>
   </div>`;
 }
 
@@ -3059,11 +3332,757 @@ window.addEventListener('load', () => {
   </div>
 </div>
 
+<!-- ── PANNELLO PRATICHE (aggiorna/nuova/mie) — input diretto da mappa ──────── -->
+<script>
+let PR_PRATICHE = [], PR_QUEUE = [], PR_SELECTED = null, PR_SIBLINGS = [], PR_LOTTI_RAW = [];
+let PR_INIT_PROMISE = null;
+
+function _prApiBase(){ return (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || ''; }
+async function prApi(path, opts={}){
+  const headers = { ...(opts.headers||{}), 'x-session-token': localStorage.getItem('_enri_session')||'' };
+  const r = await fetch(_prApiBase() + path, { ...opts, headers });
+  const text = await r.text();
+  let data; try { data = text ? JSON.parse(text) : {}; } catch { data = { raw:text }; }
+  if (!r.ok) throw new Error(data.detail || data.raw || ('HTTP '+r.status));
+  return data;
+}
+function prEscapeHtml(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function prSetMsg(el, txt, ok){ el.className = 'pr-msg ' + (ok?'ok':'err'); el.textContent = txt; }
+
+// ── modal di conferma/avviso (sostituisce alert()/confirm() nativi) ──
+const ICON_ALERT_TRIANGLE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
+const ICON_BAN = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>';
+function _prCloseConfirm(){ document.getElementById('prConfirmOverlay').classList.remove('open'); }
+function prAlert(message, {title='Attenzione', kind='warn'}={}){
+  return new Promise(resolve => {
+    const ov = document.getElementById('prConfirmOverlay');
+    ov.innerHTML = `<div class="pr-confirm-box">
+      <div class="pr-confirm-icon ${kind}">${kind==='danger'?ICON_BAN:ICON_ALERT_TRIANGLE}</div>
+      <div class="pr-confirm-title">${prEscapeHtml(title)}</div>
+      <div class="pr-confirm-msg">${prEscapeHtml(message)}</div>
+      <div class="pr-confirm-actions"><button class="btn" id="prConfirmOk">Capito</button></div>
+    </div>`;
+    ov.classList.add('open');
+    document.getElementById('prConfirmOk').onclick = () => { _prCloseConfirm(); resolve(true); };
+  });
+}
+function prConfirm(message, {title='Confermi?', okText='Conferma', cancelText='Annulla', kind='warn'}={}){
+  return new Promise(resolve => {
+    const ov = document.getElementById('prConfirmOverlay');
+    ov.innerHTML = `<div class="pr-confirm-box">
+      <div class="pr-confirm-icon ${kind}">${kind==='danger'?ICON_BAN:ICON_ALERT_TRIANGLE}</div>
+      <div class="pr-confirm-title">${prEscapeHtml(title)}</div>
+      <div class="pr-confirm-msg">${prEscapeHtml(message)}</div>
+      <div class="pr-confirm-actions">
+        <button class="btn secondary" id="prConfirmCancel">${prEscapeHtml(cancelText)}</button>
+        <button class="btn" id="prConfirmOk">${prEscapeHtml(okText)}</button>
+      </div>
+    </div>`;
+    ov.classList.add('open');
+    document.getElementById('prConfirmCancel').onclick = () => { _prCloseConfirm(); resolve(false); };
+    document.getElementById('prConfirmOk').onclick     = () => { _prCloseConfirm(); resolve(true); };
+  });
+}
+function prParseDate(s){ if(!s) return 0; const p=String(s).split('/'); if(p.length===3) return new Date(p[2],p[1]-1,p[0]).getTime(); return new Date(s).getTime()||0; }
+function prFromInputDate(yyyymmdd){ if(!yyyymmdd) return ''; const p=String(yyyymmdd).trim().split('-'); if(p.length!==3) return ''; return `${p[2].padStart(2,'0')}/${p[1].padStart(2,'0')}/${p[0]}`; }
+function prBuildCodice(p){
+  const tipoMap = {'AUTORIZZAZIONE':'AUT','NULLA OSTA':'NO'};
+  const prefix = tipoMap[(p.TIPO_PERMESSO||'').trim()] || (p.TIPO_PERMESSO||'').trim().substring(0,3);
+  const m = String(p['Source.Name']||'').match(/Lotto\s*([\w\d]+)/i);
+  const lotto = m ? m[1] : '';
+  const prat = String(p.PRATICA||'').trim();
+  if (!prefix || !prat) return '';
+  return `${prefix}/${prat}/${lotto}`;
+}
+
+// ── tab principali sidebar: Mappa | Pratiche ──
+function _sbSwitchMain(tab){
+  document.getElementById('sbtab-mappa').classList.toggle('active', tab==='mappa');
+  document.getElementById('sbtab-pratiche').classList.toggle('active', tab==='pratiche');
+  document.getElementById('sbtab-scavi').classList.toggle('active', tab==='scavi');
+  document.getElementById('sbHeadMappa').style.display    = tab==='mappa' ? '' : 'none';
+  document.getElementById('sbHeadPratiche').style.display = tab==='pratiche' ? '' : 'none';
+  document.getElementById('lottoList').style.display      = tab==='mappa' ? '' : 'none';
+  document.getElementById('pratBodyPanel').style.display  = tab==='pratiche' ? '' : 'none';
+  document.getElementById('scaviBodyPanel').style.display = tab==='scavi' ? '' : 'none';
+  const lbl = document.getElementById('drawerToggleLabel');
+  if (lbl) lbl.textContent = tab==='pratiche' ? 'Pratiche' : tab==='scavi' ? 'Scavi' : 'Lotti e filtri';
+  if (tab === 'pratiche') prEnsureInit();
+  if (tab === 'scavi') scEnsureInit();
+}
+function _sbSwitchPrat(tab){
+  document.querySelectorAll('#sbPratTabs .view-btn').forEach(b => b.classList.toggle('active', b.dataset.prtab===tab));
+  ['aggiorna','nuova','mie'].forEach(t => { document.getElementById('prPanel-'+t).style.display = (t===tab) ? '' : 'none'; });
+  if (tab === 'mie') prLoadMine();
+}
+
+function prEnsureInit(){
+  if (PR_INIT_PROMISE) return PR_INIT_PROMISE;
+  PR_INIT_PROMISE = (async () => {
+    try {
+      const me = await prApi('/api/imprese/me');
+      PR_LOTTI_RAW = me.lotti || [];
+      document.getElementById('pr-new-lotto').innerHTML =
+        PR_LOTTI_RAW.map(l => `<option value="${prEscapeHtml(l)}.xlsx">${prEscapeHtml(l)}</option>`).join('');
+      await prLoadPratiche();
+    } catch(e) {
+      document.getElementById('prList').innerHTML = `<div class="pr-empty">Errore: ${prEscapeHtml(e.message)}</div>`;
+    }
+  })();
+  return PR_INIT_PROMISE;
+}
+
+async function prLoadPratiche(){
+  document.getElementById('prList').innerHTML = '<div class="pr-empty">Caricamento pratiche…</div>';
+  try {
+    const d = await prApi('/api/imprese/pratiche');
+    PR_PRATICHE = (d.pratiche||[]).map(p => ({...p, _codice: prBuildCodice(p)}));
+    renderPrList('');
+    await _prPopulateEntiSelect();
+    prSetAutoPratica();
+  } catch(e) {
+    document.getElementById('prList').innerHTML = `<div class="pr-empty">Errore: ${prEscapeHtml(e.message)}</div>`;
+  }
+}
+
+async function _prPopulateEntiSelect(){
+  const sel = document.getElementById('pr-new-ente');
+  const current = sel.value;
+  let enti = [];
+  try { const d = await prApi('/api/enti'); enti = d.enti || []; }
+  catch(_) { enti = [...new Set(PR_PRATICHE.map(p => (p.ENTE||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'it')); }
+  sel.innerHTML = '<option value="">— seleziona ente —</option>' +
+    enti.map(e => `<option value="${prEscapeHtml(e)}"${e===current?' selected':''}>${prEscapeHtml(e)}</option>`).join('') +
+    '<option value="__altro__">✏ Altro (scrivi manualmente)…</option>';
+}
+
+document.getElementById('prSearch').addEventListener('input', e => renderPrList(e.target.value));
+
+function renderPrList(filter){
+  const f = (filter||'').toLowerCase().trim();
+  const latestMap = new Map();
+  PR_PRATICHE.forEach(p => {
+    const key = p.TRATTA_ID+'|'+p.ENTE+'|'+p.TIPO_PERMESSO;
+    const existing = latestMap.get(key);
+    if (!existing || prParseDate(p.DATA_ULTIMA_MODIFICA) >= prParseDate(existing.DATA_ULTIMA_MODIFICA)) latestMap.set(key, p);
+  });
+  const deduplicated = Array.from(latestMap.values()).filter(p => (p.STATO_PERMESSO||'').trim() !== 'OTTENUTO');
+  const rows = deduplicated.filter(p => !f || JSON.stringify(p).toLowerCase().includes(f));
+  const list = document.getElementById('prList');
+  if (!rows.length) { list.innerHTML = '<div class="pr-empty">Nessuna pratica</div>'; renderPrList._current = []; return; }
+  renderPrList._current = rows.slice(0,500);
+  list.innerHTML = renderPrList._current.map((p,i) => `
+    <div class="pr-card" data-idx="${i}">
+      <div class="pr-card-code">${prEscapeHtml(p._codice)}</div>
+      <div class="pr-card-row"><span>${prEscapeHtml(p.TRATTA_ID)}</span><span class="stato-${(p.STATO_PERMESSO||'').replace(/\s+/g,'.')}">${prEscapeHtml(p.STATO_PERMESSO)}</span></div>
+      <div class="pr-card-row"><span>${prEscapeHtml(p.ENTE)}</span><span>${prEscapeHtml(p.TIPO_PERMESSO)}</span></div>
+    </div>`).join('');
+}
+
+document.getElementById('prList').addEventListener('click', e => {
+  const card = e.target.closest('.pr-card[data-idx]');
+  if (!card) return;
+  prSelectRow(+card.dataset.idx);
+});
+
+const PR_STATO_TRANSITIONS = {
+  'IN REDAZIONE':              ['IN FIRMA RDS', 'NO COMPETENZA'],
+  'IN FIRMA RDS':              ['INVIATO', 'NO COMPETENZA'],
+  'INVIATO':                   ['PROTOCOLLATO', 'OTTENUTO', 'NECESSARIA INTEGRAZIONE', 'NO COMPETENZA'],
+  'PROTOCOLLATO':              ['NECESSARIA INTEGRAZIONE', 'OTTENUTO', 'NO COMPETENZA'],
+  'NECESSARIA INTEGRAZIONE':   ['IN REDAZIONE INTEGRAZIONE', 'NO COMPETENZA'],
+  'IN REDAZIONE INTEGRAZIONE': ['PROTOCOLLATO INTEGRAZIONE', 'NO COMPETENZA'],
+  'PROTOCOLLATO INTEGRAZIONE': ['NECESSARIA INTEGRAZIONE', 'OTTENUTO', 'NO COMPETENZA'],
+  'OTTENUTO':                  ['NO COMPETENZA'],
+  'NO COMPETENZA':             ['IN REDAZIONE', 'IN FIRMA RDS', 'INVIATO', 'PROTOCOLLATO', 'NECESSARIA INTEGRAZIONE', 'IN REDAZIONE INTEGRAZIONE', 'PROTOCOLLATO INTEGRAZIONE', 'OTTENUTO'],
+};
+
+function _prPopulateStatoSelect(statoCorrente){
+  const sel = document.getElementById('pr-stato');
+  const allowed = PR_STATO_TRANSITIONS[statoCorrente.trim()] || Object.keys(PR_STATO_TRANSITIONS);
+  sel.innerHTML = '<option value="">— seleziona stato —</option>' + allowed.map(s => `<option value="${prEscapeHtml(s)}">${prEscapeHtml(s)}</option>`).join('');
+  sel.value = '';
+  document.getElementById('pr-stato-hint').textContent = statoCorrente ? `Stato attuale: ${statoCorrente}` : '';
+}
+
+function prSelectRow(idx){
+  const rows = renderPrList._current || [];
+  PR_SELECTED = rows[idx];
+  if (!PR_SELECTED) return;
+  document.querySelectorAll('#prList .pr-card.selected').forEach(x => x.classList.remove('selected'));
+  document.querySelector(`#prList .pr-card[data-idx="${idx}"]`)?.classList.add('selected');
+
+  document.getElementById('prEditForm').style.display = '';
+  document.getElementById('prEditSub').textContent = `${PR_SELECTED._codice||''} · ${PR_SELECTED.TRATTA_ID} · ${PR_SELECTED.ENTE} · ${PR_SELECTED.TIPO_PERMESSO}`;
+  _prPopulateStatoSelect(PR_SELECTED.STATO_PERMESSO || '');
+
+  document.getElementById('pr-data-rich').value = '';
+  document.getElementById('pr-data-app').value  = '';
+  const noteEl = document.getElementById('pr-note');
+  noteEl.value = ''; noteEl.disabled = true; noteEl.placeholder = 'Seleziona prima il nuovo stato…';
+  document.getElementById('pr-wrap-data-rich').style.display = 'none';
+  document.getElementById('pr-wrap-data-app').style.display  = 'none';
+
+  const isAut = (PR_SELECTED.TIPO_PERMESSO||'').trim() === 'AUTORIZZAZIONE';
+  document.getElementById('pr-wrap-no-nec').style.display = isAut ? '' : 'none';
+  document.getElementById('pr-wrap-no-tratte').style.display = 'none';
+  document.getElementById('pr-no-nec').value = PR_SELECTED['NULLA OSTA NECESSARIO'] || '';
+  document.getElementById('pr-polizza').value = (PR_SELECTED['POLIZZA ']||'').trim();
+  document.getElementById('pr-convenzione').value = (PR_SELECTED['CONVENZIONE']||'').trim();
+  if (isAut) {
+    const pratNum = String(PR_SELECTED.PRATICA||'').trim();
+    const tutteTratte = pratNum ? [...new Set(PR_PRATICHE
+      .filter(p => String(p.PRATICA||'').trim()===pratNum && String(p.ENTE||'').trim()===String(PR_SELECTED.ENTE||'').trim() && String(p.TIPO_PERMESSO||'').trim()==='AUTORIZZAZIONE')
+      .map(p => p.TRATTA_ID).filter(Boolean))].sort() : [];
+    document.getElementById('pr-no-tratte').innerHTML = tutteTratte.map(t => `<option value="${prEscapeHtml(t)}">${prEscapeHtml(t)}</option>`).join('');
+  }
+
+  const pratNum = String(PR_SELECTED.PRATICA||'').trim();
+  const siblingsRaw = pratNum ? PR_PRATICHE.filter(p =>
+    p.TRATTA_ID !== PR_SELECTED.TRATTA_ID &&
+    String(p.ENTE||'').trim()===String(PR_SELECTED.ENTE||'').trim() &&
+    String(p.TIPO_PERMESSO||'').trim()===String(PR_SELECTED.TIPO_PERMESSO||'').trim() &&
+    String(p.PRATICA||'').trim()===pratNum
+  ) : [];
+  const siblingsMap = new Map();
+  siblingsRaw.forEach(p => {
+    const existing = siblingsMap.get(p.TRATTA_ID);
+    if (!existing || prParseDate(p.DATA_ULTIMA_MODIFICA) >= prParseDate(existing.DATA_ULTIMA_MODIFICA)) siblingsMap.set(p.TRATTA_ID, p);
+  });
+  PR_SIBLINGS = Array.from(siblingsMap.values());
+  const panel = document.getElementById('prSiblings');
+  if (PR_SIBLINGS.length) {
+    document.getElementById('prSiblingsList').textContent = `Tratte collegate: ${PR_SIBLINGS.map(s=>s.TRATTA_ID).join(', ')} (${PR_SIBLINGS.length+1} tratte totali)`;
+    document.getElementById('prSibToggle').checked = true;
+    panel.style.display = '';
+  } else { panel.style.display = 'none'; }
+
+  document.getElementById('prEditForm').scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+document.getElementById('prCancelEdit').onclick = () => {
+  document.getElementById('prEditForm').style.display = 'none';
+  document.getElementById('prSiblings').style.display = 'none';
+  PR_SELECTED = null; PR_SIBLINGS = [];
+  document.querySelectorAll('#prList .pr-card.selected').forEach(x => x.classList.remove('selected'));
+};
+
+document.getElementById('pr-no-nec').addEventListener('change', function(){
+  const show = this.value === 'SI';
+  document.getElementById('pr-wrap-no-tratte').style.display = show ? '' : 'none';
+  if (!show) Array.from(document.getElementById('pr-no-tratte').options).forEach(o => o.selected=false);
+});
+
+document.getElementById('pr-stato').addEventListener('change', function(){
+  const v = this.value;
+  const noteEl = document.getElementById('pr-note');
+  if (!v) {
+    noteEl.disabled = true; noteEl.value=''; noteEl.placeholder='Seleziona prima il nuovo stato…';
+    document.getElementById('pr-wrap-data-rich').style.display='none';
+    document.getElementById('pr-wrap-data-app').style.display='none';
+  } else {
+    noteEl.disabled = false; noteEl.placeholder='Note opzionali';
+    document.getElementById('pr-wrap-data-rich').style.display = (v==='INVIATO') ? '' : 'none';
+    document.getElementById('pr-wrap-data-app').style.display  = (v==='OTTENUTO') ? '' : 'none';
+  }
+});
+
+function _prPushToQueue(row, fields){
+  PR_QUEUE.push({ tratta_id: row.TRATTA_ID, ente: row.ENTE, tipo_permesso: row.TIPO_PERMESSO, original_pratica: row.PRATICA||'', lunghezza: row.LUNGHEZZA||'—', fields:{...fields} });
+}
+function _prFinalizeAdd(fields, includeSiblings){
+  _prPushToQueue(PR_SELECTED, fields);
+  if (includeSiblings) PR_SIBLINGS.forEach(s => _prPushToQueue(s, fields));
+  prRenderQueue();
+  document.getElementById('prEditForm').style.display = 'none';
+  document.getElementById('prSiblings').style.display = 'none';
+  document.querySelectorAll('#prList .pr-card.selected').forEach(x => x.classList.remove('selected'));
+  const n = includeSiblings ? (1+PR_SIBLINGS.length) : 1;
+  prSetMsg(document.getElementById('prMsgUpd'), n>1 ? `Aggiunte ${n} tratte alla coda` : `Aggiunto alla coda (${PR_QUEUE.length} modifiche totali)`, true);
+}
+
+document.getElementById('prAddToQueue').onclick = async () => {
+  if (!PR_SELECTED) return;
+  const msgEl = document.getElementById('prMsgUpd');
+  const stato = document.getElementById('pr-stato').value;
+  if (!stato) return prSetMsg(msgEl, 'Seleziona il nuovo stato prima di aggiungere alla coda', false);
+  const fields = { STATO_PERMESSO: stato };
+  if (stato === 'INVIATO') {
+    const dr = document.getElementById('pr-data-rich').value;
+    if (!dr) return prSetMsg(msgEl, 'Inserisci la data richiesta per lo stato INVIATO', false);
+    fields.DATA_RICHIESTA = prFromInputDate(dr);
+  }
+  if (stato === 'OTTENUTO') {
+    const da = document.getElementById('pr-data-app').value;
+    if (!da) return prSetMsg(msgEl, 'Inserisci la data ottenimento per lo stato OTTENUTO', false);
+    fields.DATA_APPROVAZIONE = prFromInputDate(da);
+  }
+  const noteVal = document.getElementById('pr-note').value.trim();
+  if (noteVal) fields.NOTE = noteVal;
+  const polizza = document.getElementById('pr-polizza').value;
+  if (polizza) fields['POLIZZA '] = polizza;
+  const convenzione = document.getElementById('pr-convenzione').value;
+  if (convenzione) fields['CONVENZIONE'] = convenzione;
+  const noNec = document.getElementById('pr-no-nec').value;
+  if (noNec) {
+    fields['NULLA OSTA NECESSARIO'] = noNec;
+    if (noNec === 'SI') {
+      const tratte = Array.from(document.getElementById('pr-no-tratte').selectedOptions).map(o=>o.value).filter(Boolean);
+      if (tratte.length) fields['TRATTE_NO'] = tratte.join(', ');
+    }
+  }
+  const wantsAllTogether = PR_SIBLINGS.length > 0 && document.getElementById('prSibToggle').checked;
+  const wantsSingleOnly  = PR_SIBLINGS.length > 0 && !document.getElementById('prSibToggle').checked;
+  if (wantsSingleOnly) {
+    if ('STATO_PERMESSO' in fields) {
+      await prAlert(`Questa pratica include altre ${PR_SIBLINGS.length} tratte (${PR_SIBLINGS.map(s=>s.TRATTA_ID).join(', ')}). Quando si cambia lo stato, tutte le tratte della stessa pratica devono essere aggiornate insieme. Attiva "Aggiorna tutte insieme" prima di procedere.`, {title:'Impossibile aggiornare solo questa tratta', kind:'danger'});
+      return;
+    }
+    const ok = await prConfirm(`Questa pratica include anche ${PR_SIBLINGS.length} altra/e tratta/e (${PR_SIBLINGS.map(s=>s.TRATTA_ID).join(', ')}) che non verranno aggiornate.`, {title:'Aggiornare solo questa tratta?', okText:'Procedi solo con questa'});
+    if (ok) _prFinalizeAdd(fields, false);
+  } else {
+    _prFinalizeAdd(fields, wantsAllTogether);
+  }
+};
+
+function prRenderQueue(){
+  const wrap = document.getElementById('prQueueWrap');
+  if (!PR_QUEUE.length) { wrap.style.display='none'; return; }
+  wrap.style.display = '';
+  document.getElementById('prQCount').textContent = PR_QUEUE.length;
+  document.getElementById('prQueueList').innerHTML = PR_QUEUE.map((q,i) => `
+    <div class="pr-queue-item">
+      <span><b class="mono">${prEscapeHtml(q.tratta_id)}</b><br>${prEscapeHtml(q.ente)} · ${Object.entries(q.fields).map(([k,v])=>`${k}=${prEscapeHtml(v)}`).join(' · ')}</span>
+      <button data-rem="${i}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg></button>
+    </div>`).join('');
+}
+document.getElementById('prQueueList').addEventListener('click', e => {
+  const b = e.target.closest('button[data-rem]');
+  if (!b) return; PR_QUEUE.splice(+b.dataset.rem, 1); prRenderQueue();
+});
+document.getElementById('prClearQueue').onclick = () => { PR_QUEUE.length = 0; prRenderQueue(); };
+
+document.getElementById('prSubmitQueue').onclick = async () => {
+  if (!PR_QUEUE.length) return;
+  const btn = document.getElementById('prSubmitQueue');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Invio in corso…';
+  try {
+    const res = await prApi('/api/imprese/submit', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type:'update', changes: PR_QUEUE }) });
+    prSetMsg(document.getElementById('prMsgUpd'), `Inviate ${res.count} modifiche per approvazione`, true);
+    PR_QUEUE.length = 0; prRenderQueue();
+  } catch(e) { prSetMsg(document.getElementById('prMsgUpd'), 'Errore: '+e.message, false); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+};
+
+// ── nuova pratica ──
+function _prUpdatePraticaPreview(){
+  const tipoMap = {'AUTORIZZAZIONE':'AUT','NULLA OSTA':'NO'};
+  const tipo = document.getElementById('pr-new-tipo').value;
+  const prefix = tipoMap[tipo] || '—';
+  const lottoVal = document.getElementById('pr-new-lotto').value || '';
+  const m = lottoVal.match(/Lotto\s*([\w\d]+)/i);
+  const lotto = m ? m[1] : (lottoVal.replace('.xlsx','').replace('Lotto','').trim() || '—');
+  const num = document.getElementById('pr-new-pratica').value || '—';
+  document.getElementById('pr-new-pratica-prefix').textContent = prefix + '/';
+  document.getElementById('pr-new-pratica-suffix').textContent = '/' + lotto;
+  document.getElementById('pr-new-pratica-preview').textContent = (prefix!=='—' && lotto!=='—' && num!=='—') ? ('→ '+prefix+'/'+num+'/'+lotto) : '';
+}
+function _prPopulateTrattaSelects(lottoVal){
+  const tratte = [...new Set(PR_PRATICHE.filter(p => String(p['Source.Name']||'').trim()===lottoVal).map(p => (p.TRATTA_ID||'').trim()).filter(Boolean))].sort();
+  document.getElementById('pr-new-tratta').innerHTML = tratte.length
+    ? tratte.map(t => `<option value="${prEscapeHtml(t)}">${prEscapeHtml(t)}</option>`).join('')
+    : '<option value="" disabled>Nessuna tratta trovata per questo lotto</option>';
+}
+function prSetAutoPratica(){
+  const lottoVal = document.getElementById('pr-new-lotto').value || '';
+  const nums = PR_PRATICHE.filter(p => String(p['Source.Name']||'').trim()===lottoVal).map(p => parseInt(String(p.PRATICA||'').trim(),10)).filter(n=>!isNaN(n));
+  document.getElementById('pr-new-pratica').value = nums.length ? Math.max(...nums)+1 : 1;
+  _prUpdatePraticaPreview();
+  _prPopulateTrattaSelects(lottoVal);
+}
+function _prToggleNoNec(){
+  const isAut = document.getElementById('pr-new-tipo').value === 'AUTORIZZAZIONE';
+  document.getElementById('pr-wrap-new-no-nec').style.display = isAut ? '' : 'none';
+  if (!isAut) document.getElementById('pr-new-no-nec').value = '';
+}
+document.getElementById('pr-new-tipo').addEventListener('change', () => { _prUpdatePraticaPreview(); _prToggleNoNec(); });
+document.getElementById('pr-new-lotto').addEventListener('change', prSetAutoPratica);
+document.getElementById('pr-new-ente').addEventListener('change', function(){
+  let custom = document.getElementById('pr-new-ente-custom');
+  if (this.value === '__altro__') {
+    if (!custom) {
+      custom = document.createElement('input');
+      custom.type='text'; custom.id='pr-new-ente-custom'; custom.placeholder="Scrivi il nome dell'ente…";
+      custom.style.marginTop='6px'; custom.required = true;
+      this.parentNode.insertBefore(custom, this.nextSibling);
+      custom.focus();
+    }
+  } else if (custom) { custom.remove(); }
+});
+
+document.getElementById('prNewForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msgEl = document.getElementById('prMsgNew');
+  const pratica = String(document.getElementById('pr-new-pratica').value).trim();
+  if (!pratica || isNaN(parseInt(pratica))) return prSetMsg(msgEl, 'Il numero progressivo pratica è obbligatorio', false);
+  const selectedTratte = Array.from(document.getElementById('pr-new-tratta').selectedOptions).map(o=>o.value).filter(Boolean);
+  if (!selectedTratte.length) return prSetMsg(msgEl, 'Seleziona almeno una tratta', false);
+  const enteSel = document.getElementById('pr-new-ente');
+  const ente = enteSel.value === '__altro__' ? (document.getElementById('pr-new-ente-custom')?.value.trim()||'') : enteSel.value.trim();
+  const changes = selectedTratte.map(tratta => ({
+    "Source.Name":          document.getElementById('pr-new-lotto').value,
+    "TRATTA_ID":            tratta,
+    "ENTE":                 ente,
+    "TIPO_PERMESSO":        document.getElementById('pr-new-tipo').value,
+    "STATO_PERMESSO":       "IN REDAZIONE",
+    "DATA_ULTIMA_MODIFICA": new Date().toLocaleDateString('it-IT'),
+    "DATA_APPROVAZIONE":    "",
+    "NULLA OSTA NECESSARIO": document.getElementById('pr-new-tipo').value==='AUTORIZZAZIONE' ? (document.getElementById('pr-new-no-nec')?.value||'') : '',
+    "ORDINANZA NECESSARIA": document.getElementById('pr-new-ord-nec').value,
+    "PRATICA":              pratica,
+    "N_SED":                document.getElementById('pr-new-nsed').value.trim(),
+    "NOTE":                 document.getElementById('pr-new-note').value.trim(),
+  }));
+  const btn = e.target.querySelector('button[type=submit]');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Invio in corso…';
+  try {
+    const res = await prApi('/api/imprese/submit', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type:'new', changes }) });
+    prSetMsg(msgEl, `Inviat${changes.length===1?'a 1 nuova pratica':'e '+changes.length+' nuove pratiche'} per approvazione (ID ${res.id.slice(-8)})`, true);
+    e.target.reset();
+    document.getElementById('pr-new-tratta').innerHTML = '<option value="" disabled>— seleziona prima il lotto —</option>';
+    document.getElementById('pr-wrap-new-no-nec').style.display = 'none';
+  } catch(e2) { prSetMsg(msgEl, 'Errore: '+e2.message, false); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+});
+
+// ── mie richieste ──
+async function prLoadMine(){
+  const wrap = document.getElementById('prMineList');
+  wrap.innerHTML = '<div class="pr-empty">Caricamento…</div>';
+  try {
+    const d = await prApi('/api/imprese/my-submissions');
+    if (!d.submissions || !d.submissions.length) { wrap.innerHTML = '<div class="pr-empty">Nessuna submission ancora</div>'; return; }
+    wrap.innerHTML = d.submissions.map(s => {
+      const nMod = (s.changes||[]).length;
+      return `<div class="pr-mine-card">
+        <div class="pr-mine-head">
+          <span>${s.type==='update'?'Aggiornamento':'Nuova pratica'} · ${nMod} mod.</span>
+          <span class="pr-tag ${s.status}">${s.status}</span>
+        </div>
+        <div style="color:var(--muted);font-size:10px">${new Date(s.submitted_at).toLocaleString('it-IT')}</div>
+        ${(s.reviewed_note||s.note) ? `<div style="margin-top:4px;color:var(--warn)">${prEscapeHtml(s.reviewed_note||s.note)}</div>` : ''}
+        ${s.status==='pending' ? `<button class="pr-mine-del" data-delsub="${s._id}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>Elimina richiesta</button>` : ''}
+      </div>`;
+    }).join('');
+  } catch(e) { wrap.innerHTML = `<div class="pr-empty">Errore: ${prEscapeHtml(e.message)}</div>`; }
+}
+document.getElementById('prRefreshMine').onclick = prLoadMine;
+document.getElementById('prMineList').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-delsub]');
+  if (!b) return;
+  const ok = await prConfirm("L'operazione non è reversibile.", {title:'Eliminare questa richiesta?', okText:'Elimina', kind:'danger'});
+  if (!ok) return;
+  try { await prApi(`/api/imprese/submissions/${b.dataset.delsub}`, { method:'DELETE' }); await prLoadMine(); }
+  catch(e2) { await prAlert(e2.message, {title:'Errore', kind:'danger'}); }
+});
+
+// ── azioni dal popup mappa ("✎ Aggiorna pratica" / "+ Nuova pratica") ──
+function _prOpenDrawerIfMobile(){
+  if (typeof _isMobile==='function' && _isMobile() && !document.getElementById('sidebarEl').classList.contains('drawer-open')) toggleDrawer();
+}
+function _prLottoRawFromCode(code){
+  return (PR_LOTTI_RAW||[]).find(raw => {
+    const c = String(raw||'').replace(/(?:^|\s)lotto\s*/i,'').replace(/\.xlsx?$/i,'').trim().toUpperCase();
+    return c === String(code||'').toUpperCase();
+  });
+}
+document.addEventListener('click', async e => {
+  const btn = e.target.closest('.pr-popup-btn');
+  if (!btn) return;
+  const trattaId = btn.dataset.tratta || '';
+  const action = btn.dataset.prAction;
+  try { document.querySelector('.leaflet-popup-close-button')?.click(); } catch(_) {}
+  _sbSwitchMain('pratiche');
+  await prEnsureInit();
+  _prOpenDrawerIfMobile();
+  if (action === 'aggiorna') {
+    _sbSwitchPrat('aggiorna');
+    document.getElementById('prSearch').value = trattaId;
+    renderPrList(trattaId);
+    const exact = (renderPrList._current||[]).findIndex(p => p.TRATTA_ID === trattaId);
+    if (exact >= 0) prSelectRow(exact);
+  } else if (action === 'nuova') {
+    _sbSwitchPrat('nuova');
+    const raw = _prLottoRawFromCode(btn.dataset.lotto || '');
+    if (raw) {
+      document.getElementById('pr-new-lotto').value = raw + '.xlsx';
+      prSetAutoPratica();
+      Array.from(document.getElementById('pr-new-tratta').options).forEach(o => { o.selected = (o.value === trattaId); });
+    }
+  }
+});
+</script>
+
+
+<!-- ── PANNELLO SCAVI — aggiornamento cantieri da mappa ──────────────────────── -->
+<script>
+// ── Scavi: stato e costanti ─────────────────────────────────────────────────
+let SC_CANTIERI = [], SC_SELECTED = null;
+let SC_INIT_PROMISE = null;
+
+const SC_STATO_LABEL = {
+  non_avviato:'Non avviato', allestimento:'Allestimento',
+  in_corso:'In corso', sospeso:'Sospeso', completato:'Completato',
+};
+const SC_STATI_IN_CORSO_EFF = ['in_corso'];
+const SC_STATO_TRANSITIONS = {
+  non_avviato:  ['allestimento'],
+  allestimento: ['in_corso'],
+  in_corso:     ['sospeso','completato'],
+  sospeso:      ['in_corso'],
+  completato:   [],
+};
+const SC_STATO_COLOR = {
+  non_avviato:'#9AA5B4', allestimento:'#D08A1A',
+  in_corso:'#043F75', sospeso:'#C0392B', completato:'#1E9E6A',
+};
+
+function scId(id){ return document.getElementById(id); }
+function scSetMsg(txt, ok){ const el = scId('scMsg'); el.className='sc-msg '+(ok?'ok':'err'); el.textContent=txt; }
+
+// ── Init ────────────────────────────────────────────────────────────────────
+function scEnsureInit(){
+  if (SC_INIT_PROMISE) return SC_INIT_PROMISE;
+  SC_INIT_PROMISE = scLoadCantieri();
+  return SC_INIT_PROMISE;
+}
+
+async function scLoadCantieri(){
+  scId('scList').innerHTML = '<div class="pr-empty">Caricamento cantieri...</div>';
+  try {
+    const d = await prApi('/api/imprese/cantieri');
+    SC_CANTIERI = d.cantieri || [];
+    scRenderList(SC_CANTIERI);
+  } catch(e) {
+    scId('scList').innerHTML = `<div class="pr-empty">Errore: ${prEscapeHtml(e.message)}</div>`;
+  }
+}
+
+function scRenderList(items){
+  if (!items.length){
+    scId('scList').innerHTML = '<div class="pr-empty">Nessun cantiere disponibile</div>';
+    return;
+  }
+  const fmt = n => Math.round(n).toLocaleString('it-IT');
+  scId('scList').innerHTML = items.map((r,i) => {
+    const stato = r.stato_cantiere || 'non_avviato';
+    const lbl   = SC_STATO_LABEL[stato] || stato;
+    const col   = SC_STATO_COLOR[stato] || '#9AA5B4';
+    const tot   = r.metri_totali || 0;
+    const scav  = r.metri_scavati || 0;
+    const pct   = tot > 0 ? Math.min(100, Math.round(scav/tot*100)) : 0;
+    const agg   = (r.updated_at||'').slice(0,10) || '—';
+    return `<div class="sc-card${SC_SELECTED && SC_SELECTED.cantiere_key===r.cantiere_key?' selected':''}" data-scidx="${i}">
+      <div class="sc-card-accent" style="background:${col}"></div>
+      <div style="padding-left:6px">
+        <div class="sc-card-head">
+          <span class="sc-card-id">${prEscapeHtml(r.pratica_id)}</span>
+          <span class="sc-card-lotto">Lotto ${prEscapeHtml(r.lotto)}</span>
+        </div>
+        <div class="sc-card-ente">${prEscapeHtml(r.ente||'')}</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+          <span style="font-size:10px;font-weight:600;color:${col}">${prEscapeHtml(lbl)}</span>
+          <span style="font-size:10px;color:var(--muted);margin-left:auto">${fmt(scav)}m / ${fmt(tot)}m (${pct}%)</span>
+        </div>
+        <div class="sc-progress-track"><div class="sc-progress-fill" style="width:${pct}%;background:${col}"></div></div>
+        <div class="sc-meta">
+          ${r.motivo_blocco ? `<span style="color:var(--danger)">⏸ ${prEscapeHtml(r.motivo_blocco)}</span>` : ''}
+          <span style="margin-left:auto">Agg. ${agg}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+scId('scList').addEventListener('click', e => {
+  const card = e.target.closest('[data-scidx]');
+  if (!card) return;
+  scOpenForm(SC_CANTIERI[+card.dataset.scidx]);
+});
+
+// ── Form ────────────────────────────────────────────────────────────────────
+function scPopulateStatoOptions(statoCorrente){
+  const sel = scId('scStato');
+  const allowed = [statoCorrente, ...(SC_STATO_TRANSITIONS[statoCorrente]||[])];
+  sel.innerHTML = allowed.map(s =>
+    `<option value="${s}"${s===statoCorrente?' selected':''}>${SC_STATO_LABEL[s]||s}</option>`
+  ).join('');
+}
+
+function scUpdateDateVisibility(){
+  const s = scId('scStato').value;
+  const giaAvviato = !['non_avviato','allestimento'].includes(s);
+  scId('scInizioPrev').disabled = giaAvviato;
+  scId('scHintInizioPrevLock').style.display = giaAvviato ? '' : 'none';
+  const activeFinePrev  = ['in_corso','sospeso'].includes(s);
+  scId('scFinePrev').disabled = !activeFinePrev;
+  const activeInizioEff = SC_STATI_IN_CORSO_EFF.includes(s);
+  scId('scInizioEff').disabled = !activeInizioEff;
+  const activeFineEff = s === 'completato';
+  scId('scFineEff').disabled = !activeFineEff;
+  scId('scWrapMotivoBlocco').style.display = s==='sospeso' ? '' : 'none';
+  scId('scWrapDataRipresa').style.display  = s==='sospeso' ? '' : 'none';
+}
+scId('scStato').addEventListener('change', scUpdateDateVisibility);
+
+function scOpenForm(r){
+  if (!r) return;
+  SC_SELECTED = r;
+  document.querySelectorAll('#scList [data-scidx]').forEach((c,i) => {
+    c.classList.toggle('selected', SC_CANTIERI[i]?.cantiere_key === r.cantiere_key);
+  });
+
+  const fmt = n => Math.round(n).toLocaleString('it-IT');
+  const tot = r.metri_totali || 0, scav = r.metri_scavati || 0;
+  const pct = tot > 0 ? Math.round(scav/tot*100) : 0;
+  scId('scFormSub').textContent = `${r.pratica_id} · ${r.ente} · ${fmt(scav)}m / ${fmt(tot)}m (${pct}%)`;
+
+  const tratte = r.tratte || [];
+  const lav  = tratte.filter(t => t.lavorabile);
+  const bloc = tratte.filter(t => !t.lavorabile);
+  scId('scTratteInfo').innerHTML =
+    `${lav.length} tratt${lav.length!==1?'e':'a'} lavorabil${lav.length!==1?'i':'e'}: ${lav.map(t=>prEscapeHtml(t.tratta_id)).join(', ')||'—'}` +
+    (bloc.length ? ` · <span style="color:var(--warn)">${bloc.length} in attesa N.O.</span>` : '');
+
+  scPopulateStatoOptions(r.stato_cantiere || 'non_avviato');
+  scId('scTecnica').value         = r.tecnica_scavo || '';
+  scId('scMetri').value           = '';
+  scId('scInizioPrev').value      = r.data_inizio_prevista  || '';
+  scId('scFinePrev').value        = r.data_fine_prevista    || '';
+  scId('scInizioEff').value       = r.data_inizio_effettiva || '';
+  scId('scFineEff').value         = r.data_fine_effettiva   || '';
+  scId('scMotivoBlocco').value    = r.motivo_blocco         || '';
+  scId('scDataRipresa').value     = r.data_ripresa_stimata  || '';
+  scId('scNote').value            = '';
+  scId('scMsg').className         = 'sc-msg';
+  scId('scStoricoWrap').style.display = 'none';
+  scUpdateDateVisibility();
+  // Data inizio effettiva: compilabile solo la prima volta
+  if (r.data_inizio_effettiva) {
+    scId('scInizioEff').disabled = true;
+    scId('scInizioEff').title = 'Già registrata: non modificabile';
+  }
+  scId('scFormWrap').style.display = '';
+  scId('scFormWrap').scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+scId('scCancelForm').onclick = () => {
+  scId('scFormWrap').style.display = 'none';
+  SC_SELECTED = null;
+  document.querySelectorAll('#scList [data-scidx]').forEach(c => c.classList.remove('selected'));
+};
+
+scId('scSubmit').addEventListener('click', async () => {
+  if (!SC_SELECTED) return;
+  if (!scId('scTecnica').value) {
+    scSetMsg('Seleziona la tecnica di scavo prima di salvare', false);
+    scId('scTecnica').focus(); return;
+  }
+  const metriVal = parseFloat(scId('scMetri').value);
+  const payload = {
+    stato_cantiere:       scId('scStato').value,
+    tecnica_scavo:        scId('scTecnica').value,
+    data_inizio_prevista: scId('scInizioPrev').value,
+    data_fine_prevista:   scId('scFinePrev').value,
+    note: scId('scNote').value.trim(),
+  };
+  if (!scId('scInizioEff').disabled)  payload.data_inizio_effettiva = scId('scInizioEff').value;
+  if (!scId('scFineEff').disabled)    payload.data_fine_effettiva   = scId('scFineEff').value;
+  if (scId('scWrapMotivoBlocco').style.display !== 'none') {
+    payload.motivo_blocco        = scId('scMotivoBlocco').value.trim();
+    payload.data_ripresa_stimata = scId('scDataRipresa').value;
+  }
+  if (!isNaN(metriVal) && metriVal >= 0) payload.metri_realizzati_oggi = metriVal;
+
+  const btn = scId('scSubmit');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Salvataggio…';
+  try {
+    await prApi(`/api/imprese/cantieri/${encodeURIComponent(SC_SELECTED.cantiere_key)}`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    });
+    scSetMsg('✓ Aggiornamento salvato', true);
+    SC_INIT_PROMISE = null;
+    await scLoadCantieri();
+    // aggiorna il cantiere selezionato con i nuovi dati
+    const updated = SC_CANTIERI.find(c => c.cantiere_key === SC_SELECTED.cantiere_key);
+    if (updated) scOpenForm(updated);
+  } catch(e) {
+    scSetMsg('Errore: ' + e.message, false);
+  } finally { btn.disabled = false; btn.textContent = orig; }
+});
+
+// ── Storico ─────────────────────────────────────────────────────────────────
+scId('scStoricoBtn').addEventListener('click', async () => {
+  if (!SC_SELECTED) return;
+  const wrap = scId('scStoricoWrap');
+  if (wrap.style.display !== 'none') { wrap.style.display='none'; return; }
+  scId('scStoricoTitle').textContent = `Storico · ${SC_SELECTED.pratica_id}`;
+  wrap.style.display = '';
+  scId('scStoricoBody').innerHTML = '<div class="pr-empty">Caricamento…</div>';
+  try {
+    const d = await prApi(`/api/imprese/cantieri/${encodeURIComponent(SC_SELECTED.cantiere_key)}/log`);
+    const log = (d.log||[]).slice().reverse();
+    if (!log.length) { scId('scStoricoBody').innerHTML='<div class="pr-empty">Nessun aggiornamento ancora</div>'; return; }
+    scId('scStoricoBody').innerHTML = `<table class="sc-storico-table">
+      <thead><tr><th>Data</th><th>Stato</th><th>Metri oggi</th><th>Note</th></tr></thead>
+      <tbody>${log.map(e => {
+        const noteParts = [];
+        if (e.note) noteParts.push(prEscapeHtml(e.note));
+        if (e.motivo_blocco) noteParts.push('Blocco: '+prEscapeHtml(e.motivo_blocco));
+        if (e.data_ripresa_stimata) noteParts.push('Ripresa stimata '+prEscapeHtml(e.data_ripresa_stimata));
+        return `<tr>
+          <td style="font-family:var(--font-mono);font-size:10px">${prEscapeHtml(e.data||'—')}</td>
+          <td style="font-size:10px;font-weight:600;color:${SC_STATO_COLOR[e.stato_cantiere]||'#9AA5B4'}">${prEscapeHtml(SC_STATO_LABEL[e.stato_cantiere]||e.stato_cantiere||'—')}</td>
+          <td style="font-family:var(--font-mono);text-align:right;font-size:10px">${e.metri_realizzati>0?e.metri_realizzati.toLocaleString('it-IT',{maximumFractionDigits:1})+'m':'—'}</td>
+          <td style="color:var(--muted);font-size:10px">${noteParts.join(' · ')||'—'}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  } catch(e) {
+    scId('scStoricoBody').innerHTML = `<div class="pr-empty">Errore: ${prEscapeHtml(e.message)}</div>`;
+  }
+  wrap.scrollIntoView({behavior:'smooth', block:'nearest'});
+});
+
+// ── Click bottone "Aggiorna Scavi" nel popup mappa ───────────────────────────
+document.addEventListener('click', async e => {
+  const btn = e.target.closest('.sc-popup-btn');
+  if (!btn) return;
+  const trattaId = btn.dataset.tratta || '';
+  const lottoId  = btn.dataset.lotto  || '';
+  try { document.querySelector('.leaflet-popup-close-button')?.click(); } catch(_) {}
+  _sbSwitchMain('scavi');
+  await scEnsureInit();
+  _prOpenDrawerIfMobile();
+  // Cerca il cantiere che contiene questa tratta
+  const exact = SC_CANTIERI.find(c => (c.tratte||[]).some(t => t.tratta_id === trattaId));
+  if (exact) { scOpenForm(exact); return; }
+
+  const stessoLotto = lottoId ? SC_CANTIERI.filter(c => c.lotto === lottoId) : [];
+  if (stessoLotto.length === 1) { scOpenForm(stessoLotto[0]); return; }
+  if (stessoLotto.length > 1) {
+    scSetMsg('Più cantieri sul lotto '+lottoId+': seleziona quello corretto dalla lista.', false);
+    return;
+  }
+  scSetMsg('Nessun cantiere trovato per questa tratta: probabilmente l\'autorizzazione non è ancora stata ottenuta.', false);
+});
+</script>
+
 <!-- ── TRACKING ACCESSI (mappa) — usa proxy Apps Script (no MASTER_KEY in chiaro) ── -->
 <script>
 (function(){
-  const _apiBase = () => (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
-  const _sessionToken = () => localStorage.getItem('_enri_session') || '';
+  const _APPS_URL    = 'https://script.google.com/macros/s/AKfycbxSoKwfqsE4c8RORsUqhUVIXJRpd337jxireCf_RwxMf7UL0QJZyw2qE5UR59aaPEN_/exec';
+  const _APPS_SECRET = 'enri_login_2024_X9f83KsL21pQ';
   const LOG_BIN_ID   = '69c8fbdced015c742bc8e978';
   const ACCESSI_MAX  = 500;
   const SAVE_INTERVAL_MS = 60_000;
@@ -3077,9 +4096,9 @@ window.addEventListener('load', () => {
   let _cachedData     = null;
 
   async function _proxyGet(binId) {
-    const res = await fetch(_apiBase() + '/api/logs/get', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session-token': _sessionToken() },
-      body: JSON.stringify({ binId })
+    const res = await fetch(_APPS_URL, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ secret: _APPS_SECRET, action: 'jsonbin_get', binId })
     });
     const json = await res.json();
     return { utenti:  Array.isArray(json.record?.utenti)  ? json.record.utenti  : [],
@@ -3087,9 +4106,9 @@ window.addEventListener('load', () => {
   }
 
   function _proxyPut(binId, data, keepalive) {
-    return fetch(_apiBase() + '/api/logs/put', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session-token': _sessionToken() },
-      body: JSON.stringify({ binId, data }),
+    return fetch(_APPS_URL, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ secret: _APPS_SECRET, action: 'jsonbin_put', binId, data }),
       ...(keepalive ? { keepalive: true } : {})
     });
   }
@@ -3116,7 +4135,7 @@ window.addEventListener('load', () => {
       ts: new Date().toISOString(),
       utente, ruolo, ip,
       ua: navigator.userAgent.substring(0, 120),
-      durata: 0, lotti: [], nAperture: 0, pagina: 'mappa_impresa'
+      durata: 0, lotti: [], nAperture: 0, pagina: 'mappa'
     };
     data.accessi.push(entry);
     if (data.accessi.length > ACCESSI_MAX)
