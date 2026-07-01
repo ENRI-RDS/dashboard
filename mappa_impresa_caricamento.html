@@ -913,7 +913,8 @@
       <div id="sbHeadMappa">
         <div class="sidebar-title">Visualizzazione</div>
         <div class="view-toggle">
-          <button class="view-btn active" id="vbtn-stato"   onclick="setViewMode('stato')">Per Stato</button>
+          <button class="view-btn active" id="vbtn-stato"   onclick="setViewMode('stato')">Stato Pratiche</button>
+          <button class="view-btn"        id="vbtn-scavi"   onclick="setViewMode('scavi')">Stato Scavi</button>
           <button class="view-btn"        id="vbtn-lotto"   onclick="setViewMode('lotto')">Per Lotto</button>
           <button class="view-btn"        id="vbtn-cluster" onclick="setViewMode('cluster')">Per Cluster</button>
         </div>
@@ -1172,10 +1173,22 @@ function getClusterColor(cl) {
   return _CLUSTER_PALETTE[idx];
 }
 
+function getScaviColorForFeature(feature) {
+  const p = feature.properties;
+  const pratiche = p.PRATICA ? String(p.PRATICA).split('|').map(s=>s.trim()).filter(Boolean) : [];
+  if (!pratiche.length || !SC_CANTIERI.length) return '#D5D9DF';
+  for (const pr of pratiche) {
+    const c = SC_CANTIERI.find(x => String(x.pratica_id).trim() === pr);
+    if (c) return SC_STATO_COLOR[c.stato_cantiere] || '#D5D9DF';
+  }
+  return '#D5D9DF';
+}
+
 function getColorForMode(feature, mode) {
   const p = feature.properties;
   if (mode === 'lotto')   return LOTTO_COLORS[p.LOTTO] || '#6b7080';
   if (mode === 'cluster') return getClusterColor(p.CLUSTER ?? p.ID_CLUSTER ?? p.cluster);
+  if (mode === 'scavi')   return getScaviColorForFeature(feature);
   return getColor(p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE);
 }
 
@@ -1185,25 +1198,32 @@ function setViewMode(mode) {
   // Reset multi-selezioni
   if(typeof selectedLotti !== 'undefined') selectedLotti.clear();
   if(typeof selectedClusters !== 'undefined') selectedClusters.clear();
-  ['stato','lotto','cluster'].forEach(m => {
+  ['stato','scavi','lotto','cluster'].forEach(m => {
     const btn = document.getElementById('vbtn-'+m);
     if (btn) btn.className = 'view-btn' + (m === mode ? ' active' : '');
   });
-  // Re-stila tutti i layer e mostra tutti
-  allLayers.forEach(({layer,outlineLayer}) => {
-    layer.eachLayer(l => {
-      if (l.feature) l.setStyle({ color: getColorForMode(l.feature, mode), weight:4, opacity:0.95 });
-    });
-    if (!map.hasLayer(layer)) map.addLayer(layer);
-    if(outlineLayer){ if(!map.hasLayer(outlineLayer)) map.addLayer(outlineLayer); outlineLayer.bringToBack(); }
-  });
-  if (qtsOnlyMode) {
+  const applyColors = () => {
+    // Re-stila tutti i layer e mostra tutti
     allLayers.forEach(({layer,outlineLayer}) => {
-      if (map.hasLayer(layer)) map.removeLayer(layer);
-      if (outlineLayer && map.hasLayer(outlineLayer)) map.removeLayer(outlineLayer);
+      layer.eachLayer(l => {
+        if (l.feature) l.setStyle({ color: getColorForMode(l.feature, mode), weight:4, opacity:0.95 });
+      });
+      if (!map.hasLayer(layer)) map.addLayer(layer);
+      if(outlineLayer){ if(!map.hasLayer(outlineLayer)) map.addLayer(outlineLayer); outlineLayer.bringToBack(); }
     });
+    if (qtsOnlyMode) {
+      allLayers.forEach(({layer,outlineLayer}) => {
+        if (map.hasLayer(layer)) map.removeLayer(layer);
+        if (outlineLayer && map.hasLayer(outlineLayer)) map.removeLayer(outlineLayer);
+      });
+    }
+    updateLegend(mode);
+  };
+  if (mode === 'scavi' && typeof scEnsureInit === 'function') {
+    scEnsureInit().then(applyColors).catch(applyColors);
+  } else {
+    applyColors();
   }
-  updateLegend(mode);
   if (mode === 'cluster') {
     renderFilterCluster();
   } else {
@@ -1411,6 +1431,14 @@ function updateLegend(mode) {
       <div class="legend-item"><div class="legend-line" style="background:#D08A1A"></div>In Verifica / Firma</div>
       <div class="legend-item"><div class="legend-line" style="background:#6B7685"></div>In Attesa / Redazione</div>
       <div class="legend-item"><div class="legend-line" style="background:#043F75"></div>Coordinamento</div>`;
+  } else if (mode === 'scavi') {
+    leg.innerHTML = `
+      <div class="legend-title">Stato scavi</div>
+      <div class="legend-item"><div class="legend-line" style="background:#9AA5B4"></div>Non avviato</div>
+      <div class="legend-item"><div class="legend-line" style="background:#D08A1A"></div>Allestimento</div>
+      <div class="legend-item"><div class="legend-line" style="background:#043F75"></div>In corso</div>
+      <div class="legend-item"><div class="legend-line" style="background:#C0392B"></div>Sospeso</div>
+      <div class="legend-item"><div class="legend-line" style="background:#1E9E6A"></div>Completato</div>`;
   } else if (mode === 'lotto') {
     const lottiPresenti = new Set(allFeatures.map(f => f.properties.LOTTO).filter(Boolean));
     const items = Object.entries(LOTTO_COLORS)
