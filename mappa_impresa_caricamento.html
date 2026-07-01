@@ -1176,12 +1176,12 @@ function getClusterColor(cl) {
 function getScaviColorForFeature(feature) {
   const p = feature.properties;
   const pratiche = p.PRATICA ? String(p.PRATICA).split('|').map(s=>s.trim()).filter(Boolean) : [];
-  if (!pratiche.length || !SC_CANTIERI.length) return '#D5D9DF';
+  if (!pratiche.length || !SC_CANTIERI.length) return null;
   for (const pr of pratiche) {
     const c = SC_CANTIERI.find(x => String(x.pratica_id).trim() === pr);
-    if (c) return SC_STATO_COLOR[c.stato_cantiere] || '#D5D9DF';
+    if (c) return SC_STATO_COLOR[c.stato_cantiere] || SC_STATO_COLOR.non_avviato;
   }
-  return '#D5D9DF';
+  return null;
 }
 
 function getColorForMode(feature, mode) {
@@ -1206,7 +1206,13 @@ function setViewMode(mode) {
     // Re-stila tutti i layer e mostra tutti
     allLayers.forEach(({layer,outlineLayer}) => {
       layer.eachLayer(l => {
-        if (l.feature) l.setStyle({ color: getColorForMode(l.feature, mode), weight:4, opacity:0.95 });
+        if (!l.feature) return;
+        const c = getColorForMode(l.feature, mode);
+        if (mode === 'scavi' && c === null) {
+          l.setStyle({ opacity:0, weight:0 });
+        } else {
+          l.setStyle({ color: c, weight:4, opacity:0.95 });
+        }
       });
       if (!map.hasLayer(layer)) map.addLayer(layer);
       if(outlineLayer){ if(!map.hasLayer(outlineLayer)) map.addLayer(outlineLayer); outlineLayer.bringToBack(); }
@@ -2860,7 +2866,7 @@ function _buildMapLayers(geojson, isUpdate = false) {
               if (c) { scStato = c.stato_cantiere; break; }
             }
             const lbl = scStato ? (SC_STATO_LABEL[scStato] || scStato) : 'Non avviato';
-            const colS = scStato ? (SC_STATO_COLOR[scStato] || '#D5D9DF') : '#D5D9DF';
+            const colS = scStato ? (SC_STATO_COLOR[scStato] || SC_STATO_COLOR.non_avviato) : SC_STATO_COLOR.non_avviato;
             return `
               <div style="display:flex;align-items:center;gap:6px">
                 <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${colS};flex-shrink:0"></span>
@@ -2885,7 +2891,12 @@ function _buildMapLayers(geojson, isUpdate = false) {
         layer.on('mouseover', e => { e.target.setTooltipContent(buildTrattaTip()); e.target.setStyle({ weight:6, opacity:1 }); e.target.bringToFront(); });
         layer.on('mouseout', e => {
           if (_highlightedLayer === e.target) return;
-          e.target.setStyle({ weight:4, opacity:0.95, color: getColorForMode(e.target.feature, currentViewMode) });
+          const c = getColorForMode(e.target.feature, currentViewMode);
+          if (currentViewMode === 'scavi' && c === null) {
+            e.target.setStyle({ opacity:0, weight:0 });
+          } else {
+            e.target.setStyle({ weight:4, opacity:0.95, color: c });
+          }
         });
         layer.on('click', e => { applyHighlight(e.target); });
       }
