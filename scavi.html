@@ -763,6 +763,8 @@ const STATO_COLOR = {
 const STATO_ORDER = ['in-corso','allestimento','sospeso','completato','non-avviato'];
 
 function fmt(n){ return Math.round(n).toLocaleString('it-IT'); }
+function fmtD(iso){ if(!iso) return null; const p = iso.split('-'); return p.length===3 ? `${p[2]}/${p[1]}/${p[0]}` : iso; }
+const TECNICA_LABEL = { trincea:'Trincea', no_dig:'No Dig', canaletta:'Canaletta' };
 
 // ── RENDER ALL (chiamata dopo fetch sia permessi che cantieri) ──────────────
 async function _loadAndRenderAll() {
@@ -805,13 +807,35 @@ function openModalStato(stato) {
     const metriTot = r.metri_totali || 0;
     const scavati  = r.metri_scavati || 0;
     const pct = metriTot > 0 ? Math.round(scavati / metriTot * 100) : 0;
+    const tratte = r.tratte || [];
+    const nLav  = tratte.filter(t => t.lavorabile).length;
+    const nBloc = tratte.length - nLav;
+    const dInizioPrev = fmtD(r.data_inizio_prevista);
+    const dInizioEff  = fmtD(r.data_inizio_effettiva);
+    const dFinePrev   = fmtD(r.data_fine_prevista);
+    const dFineEff    = fmtD(r.data_fine_effettiva);
+    const dateChips = [
+      dInizioPrev ? `Inizio prev. ${dInizioPrev}` : null,
+      dInizioEff  ? `Inizio eff. ${dInizioEff}`   : null,
+      dFinePrev   ? `Fine prev. ${dFinePrev}`     : null,
+      dFineEff    ? `Fine eff. ${dFineEff}`       : null,
+    ].filter(Boolean);
     return `
       <div style="padding:10px 0;border-bottom:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
-          <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent)">${r.pratica_id || '—'}</span>
-          <span style="font-size:11px;color:var(--muted)">Lotto ${r.lotto ?? '—'}</span>
+          <span style="font-family:var(--font-mono);font-size:12px;font-weight:800;color:${col}">${r.codice_cantiere || '—'}</span>
+          <span style="font-size:11px;color:var(--muted)">Lotto ${r.lotto ?? '—'}${r.cluster ? ' · Cluster '+r.cluster : ''}</span>
         </div>
-        <div style="font-size:12px;color:var(--text2);margin-top:2px">${r.ente || '—'} · ${r.comune || '—'}${r.provincia ? ' ('+r.provincia+')' : ''}</div>
+        <div style="font-family:var(--font-mono);font-size:10.5px;color:var(--muted);margin-top:1px">Pratica ${r.pratica_id || '—'}</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:4px">${r.ente || '—'} · ${r.comune || '—'}${r.provincia ? ' ('+r.provincia+')' : ''}</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:4px;display:flex;gap:14px;flex-wrap:wrap">
+          <span>Tecnica: <b>${TECNICA_LABEL[r.tecnica_scavo] || r.tecnica_scavo || '—'}</b></span>
+          <span>Impresa: <b>${r.impresa || '—'}</b></span>
+          <span>Tratte lavorabili/bloccate: <b>${nLav}/${nBloc}</b></span>
+        </div>
+        ${dateChips.length ? `<div style="font-size:10.5px;color:var(--muted);margin-top:4px">${dateChips.join(' · ')}</div>` : ''}
+        ${r.stato_cantiere === 'sospeso' ? `<div style="font-size:11px;color:var(--danger);margin-top:4px">⏸ ${r.motivo_blocco || 'Motivo non specificato'}${r.data_ripresa_stimata ? ' · Ripresa stimata '+fmtD(r.data_ripresa_stimata) : ''}</div>` : ''}
+        ${r.note ? `<div style="font-size:11px;color:var(--text2);margin-top:4px">📝 ${r.note}</div>` : ''}
         <div class="modal-bar-row" style="margin-top:8px">
           <div class="modal-bar-track">
             ${pct > 0 ? `<div class="modal-bar-fill" style="width:${pct}%;background:${col}"></div>` : ''}
