@@ -2377,6 +2377,16 @@ async def get_cantieri(lotto: str = "", cluster: str = "", stato: str = ""):
     return {"cantieri": items, "count": len(items)}
 
 
+@app.get("/api/cantieri/{cantiere_key:path}/log")
+async def get_cantiere_log_public(cantiere_key: str):
+    """Storico aggiornamenti di un cantiere (pubblico, sola lettura — no session).
+    Usato dal 'Registro Cantiere' in scavi.html."""
+    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
+    if not doc:
+        raise HTTPException(404, "Cantiere non trovato")
+    return {"log": doc.get("log", []), "cantiere_key": cantiere_key, "pratica_id": doc.get("pratica_id")}
+
+
 # ── Endpoint impresa: aggiornamento giornaliero ───────────────────────────────
 
 @app.delete("/api/admin/sopralluoghi/reset")
