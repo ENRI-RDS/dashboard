@@ -1017,24 +1017,18 @@ def _compute_tratta_summary(master_df: "pd.DataFrame") -> dict:
         no_ok  = stato_no == "OTTENUTO"
         ord_ok = stato_ord == "OTTENUTO"
 
-        # Vincolante se il flag sull'AUT lo dichiara necessario OPPURE se
-        # esistono comunque righe reali NULLA OSTA/ORDINANZA per la tratta:
-        # il flag può essere disallineato nei dati sorgente, la pratica no.
-        no_effettivo  = (need_no == "SI") or bool(no_latest)
-        ord_effettivo = (need_ord == "SI") or bool(ord_latest)
-
         lavorabile = aut_ok
-        if no_effettivo:
+        if need_no == "SI":
             lavorabile = lavorabile and no_ok
-        if ord_effettivo:
+        if need_ord == "SI":
             lavorabile = lavorabile and ord_ok
 
         motivi = []
         if not aut_ok:
             motivi.append("Manca autorizz")
-        if no_effettivo and not no_ok:
+        if need_no == "SI" and not no_ok:
             motivi.append("Manca nulla osta")
-        if ord_effettivo and not ord_ok:
+        if need_ord == "SI" and not ord_ok:
             motivi.append("Manca ordinanza")
 
         result[tratta_id] = {
@@ -1487,20 +1481,6 @@ def _apply_changes_to_df(df, submission: dict) -> tuple:
             df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
             summary["added"] += 1
     return df, summary
-
-
-@app.post("/api/admin/regenerate-derived")
-async def regenerate_derived(
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    """Rigenera QGIS.geojson + Riepilogo_progettazione.csv dal Master.csv corrente
-    senza modificarlo — utile dopo un fix a _compute_tratta_summary per applicare
-    la nuova logica ai dati già presenti, senza dover re-uploadare Master.csv."""
-    _check_token(x_upload_token or token_q)
-    df = await _read_master_csv()
-    result = await _regenerate_derived_files(df, note="force regenerate (manual)")
-    return {"ok": True, "result": result}
 
 
 @app.post("/api/admin/pending-updates/{sub_id}/approve")
@@ -2072,13 +2052,12 @@ async def bulk_delete_solleciti(payload: dict, sess: dict = Depends(_require_ses
 # CANTIERI — stato avanzamento scavi per PRATICA di AUTORIZZAZIONE
 # ─────────────────────────────────────────────────────────────────────────────
 # Un cantiere = una pratica di AUTORIZZAZIONE ottenuta (non una singola tratta:
-# una stessa autorizzazione può coprire più tratte). Il NULLA OSTA/ORDINANZA
-# non sono un cantiere a sé: sono permessi accessori che possono mancare su
-# alcune tratte della stessa autorizzazione. Quelle tratte restano elencate
-# nel cantiere con 'lavorabile'=false, ma è un flag SOLO indicativo (usato
-# in mappa per colorare le tratte non ancora cantierabili): NON esclude i
-# metri dal totale rendicontabile dall'impresa. metri_totali conta sempre
-# tutta la lunghezza della pratica autorizzata.
+# una stessa autorizzazione può coprire più tratte). Il NULLA OSTA non è un
+# cantiere a sé: è un permesso accessorio che può mancare su alcune tratte
+# della stessa autorizzazione. Quelle tratte restano elencate nel cantiere
+# (per visibilità) ma i loro metri sono esclusi da metri_totali finché il
+# nulla osta non viene ottenuto — a quel punto rientrano automaticamente al
+# sync successivo.
 #
 # Flusso:
 #   1. Ogni volta che il Master.csv viene aggiornato, _sync_cantieri() raggruppa
@@ -2154,10 +2133,8 @@ async def _backfill_codici_cantiere(cache: dict) -> int:
 async def _sync_cantieri() -> int:
     """Raggruppa le tratte con AUTORIZZAZIONE OTTENUTA per pratica (ente, numero,
     lotto) e crea/aggiorna un documento cantiere per pratica. metri_totali conta
-    TUTTE le tratte della pratica (autorizzazione ottenuta), indipendentemente
-    da 'lavorabile': quel flag è solo indicativo per la visualizzazione in
-    mappa (NULLA OSTA/ORDINANZA ottenuti) e non deve limitare i metri che
-    un'impresa può rendicontare come scavati sul cantiere.
+    solo le tratte attualmente LAVORABILE=SI; le tratte bloccate da un nulla
+    osta mancante restano elencate in 'tratte' ma escluse dal totale.
     Ritorna il numero di nuovi cantieri (nuove pratiche) creati."""
     try:
         df = await _read_master_csv()
@@ -2188,16 +2165,6 @@ async def _sync_cantieri() -> int:
 
     codice_cache = await _max_codice_per_lotto()
     await _backfill_codici_cantiere(codice_cache)
-
-    # Mappa lotto → impresa assegnata (stessa fonte di /api/lotti-cantieri) per
-    # popolare/backfillare 'impresa' sia sui cantieri esistenti che su quelli nuovi.
-    lotto_impresa: dict[str, str] = {}
-    async for a in assignments_col.find({}, {"nome": 1, "lotti": 1}):
-        nome_impresa = a.get("nome", "")
-        for l in (a.get("lotti") or []):
-            lotto_norm = _lotto_from_source(l)
-            if lotto_norm:
-                lotto_impresa[lotto_norm] = nome_impresa
 
     groups: dict[tuple, dict] = {}
     for tratta_id, info in summary.items():
@@ -2239,10 +2206,7 @@ async def _sync_cantieri() -> int:
     created = 0
     stato_rank = {s: i for i, s in enumerate(STATO_CANTIERE_VALUES)}
     for key, g in groups.items():
-        # metri_totali = tutte le tratte della pratica (autorizzazione ottenuta),
-        # a prescindere da 'lavorabile' — quel flag è solo per la mappa e non
-        # deve ridurre il totale su cui l'impresa rendiconta i metri scavati.
-        metri_totali     = sum(t["lunghezza"] for t in g["tratte"])
+        metri_totali     = sum(t["lunghezza"] for t in g["tratte"] if t["lavorabile"])
         metri_totali_pot = sum(t["lunghezza"] for t in g["tratte"])
         # provincia/comune del cantiere: il valore più frequente tra le sue tratte
         provincia_count = Counter(t["provincia"] for t in g["tratte"] if t.get("provincia"))
@@ -2258,7 +2222,6 @@ async def _sync_cantieri() -> int:
                     "tratte": g["tratte"], "lotto": g["lotto"], "cluster": g["cluster"],
                     "metri_totali": metri_totali, "metri_totali_potenziali": metri_totali_pot,
                     "provincia": provincia_cantiere, "comune": comune_cantiere,
-                    "impresa": lotto_impresa.get(g["lotto"], existing.get("impresa", "")),
                 }},
             )
             continue
@@ -2281,7 +2244,7 @@ async def _sync_cantieri() -> int:
             key=lambda s: stato_rank.get(s, 0), default="non_avviato",
         )
         tecnica_scavo = next((d.get("tecnica_scavo") for d in old_docs if d.get("tecnica_scavo")), "")
-        impresa       = lotto_impresa.get(g["lotto"]) or next((d.get("impresa") for d in old_docs if d.get("impresa")), "")
+        impresa       = next((d.get("impresa") for d in old_docs if d.get("impresa")), "")
 
         codice_cache[g["lotto"]] = codice_cache.get(g["lotto"], 0) + 1
         codice_cantiere = f"CA/{codice_cache[g['lotto']]}/{g['lotto']}"
@@ -2375,6 +2338,16 @@ async def get_cantieri(lotto: str = "", cluster: str = "", stato: str = ""):
         d.pop("log", None)   # non esporre lo storico nel listing
         items.append(d)
     return {"cantieri": items, "count": len(items)}
+
+
+@app.get("/api/cantieri/{cantiere_key:path}/log")
+async def get_cantiere_log_public(cantiere_key: str):
+    """Storico aggiornamenti di un cantiere (pubblico, sola lettura — no session).
+    Usato dal 'Registro Cantiere' in scavi.html."""
+    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
+    if not doc:
+        raise HTTPException(404, "Cantiere non trovato")
+    return {"log": doc.get("log", []), "cantiere_key": cantiere_key, "pratica_id": doc.get("pratica_id")}
 
 
 # ── Endpoint impresa: aggiornamento giornaliero ───────────────────────────────
