@@ -1214,6 +1214,13 @@ function setViewMode(mode) {
           l.setStyle({ color: c, weight:4, opacity:0.95 });
         }
       });
+      if (outlineLayer) {
+        outlineLayer.eachLayer(ol => {
+          if (!ol.feature) return;
+          const hide = mode === 'scavi' && getColorForMode(ol.feature, mode) === null;
+          ol.setStyle({ opacity: hide ? 0 : 0.25, weight: hide ? 0 : 7 });
+        });
+      }
       if (!map.hasLayer(layer)) map.addLayer(layer);
       if(outlineLayer){ if(!map.hasLayer(outlineLayer)) map.addLayer(outlineLayer); outlineLayer.bringToBack(); }
     });
