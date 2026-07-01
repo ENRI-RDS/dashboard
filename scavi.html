@@ -896,6 +896,51 @@ function closeModalStato(e) {
   document.getElementById('modalStatoOverlay').classList.remove('open');
 }
 
+async function openModalRegistro(cantiereKey) {
+  const overlay = document.getElementById('modalRegistroOverlay');
+  const titleEl = document.getElementById('modalRegistroTitle');
+  const bodyEl  = document.getElementById('modalRegistroBody');
+  const r = CANTIERI_RAW.find(x => x.cantiere_key === cantiereKey);
+  titleEl.textContent = 'Registro · ' + (r?.codice_cantiere || cantiereKey);
+  bodyEl.innerHTML = `<div style="text-align:center;color:var(--muted);padding:20px">Caricamento…</div>`;
+  overlay.classList.add('open');
+  try {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    const res = await fetch(apiBase + '/api/cantieri/' + encodeURIComponent(cantiereKey) + '/log', { cache: 'no-cache' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const d = await res.json();
+    const log = (d.log || []).slice().reverse(); // più recenti in alto
+    if (!log.length) {
+      bodyEl.innerHTML = `<div style="text-align:center;color:var(--muted);padding:20px">Nessun aggiornamento registrato per questo cantiere.</div>`;
+      return;
+    }
+    bodyEl.innerHTML = `<div style="overflow-x:auto"><table class="cant-table"><thead><tr>
+        <th>Data</th><th>Stato</th><th>Tecnica</th><th style="text-align:right">Metri</th><th>Note</th>
+      </tr></thead><tbody>${log.map(e => {
+        const statoUI = STATO_MAP[e.stato_cantiere] || e.stato_cantiere || '—';
+        const stLabel = STATO_LABEL[statoUI] || e.stato_cantiere || '—';
+        const stCol   = STATO_COLOR[statoUI] || 'var(--muted)';
+        const tecnica = TECNICA_LABEL[e.tecnica_scavo] || e.tecnica_scavo || '—';
+        const metri   = (e.metri_realizzati ?? null);
+        const data    = fmtD((e.data || e.ts || '').slice(0,10)) || '—';
+        return `<tr>
+          <td style="font-family:var(--font-mono);font-size:10px">${data}</td>
+          <td><span class="chip ${statoUI}" style="color:${stCol}">${stLabel}</span></td>
+          <td style="font-size:10px;color:var(--muted)">${tecnica}</td>
+          <td style="text-align:right;font-family:var(--font-mono);font-size:11px">${metri != null ? fmt(metri) + ' m' : '—'}</td>
+          <td style="font-size:10px;color:var(--muted)">${e.note || '—'}</td>
+        </tr>`;
+      }).join('')}</tbody></table></div>`;
+  } catch (e) {
+    bodyEl.innerHTML = `<div style="text-align:center;color:var(--danger, #C0392B);padding:20px">Errore nel caricamento del registro: ${e.message}</div>`;
+  }
+}
+
+function closeModalRegistro(e) {
+  if (e && e.target !== document.getElementById('modalRegistroOverlay')) return;
+  document.getElementById('modalRegistroOverlay').classList.remove('open');
+}
+
 // Pulsanti filtro per lotto sopra la tabella "Tutti i Cantieri"
 function _renderCantieriFilters() {
   const box = document.getElementById('cantieriLottoFilters');
@@ -920,6 +965,7 @@ const CANTIERI_COLS = [
                            sortVal:r => (r.metri_totali||0) > 0 ? Math.round((r.metri_scavati||0)/r.metri_totali*100) : -1 },
   { key:'metri_totali',    label:'Metri Tot.',    get:r => fmt(r.metri_totali||0), numeric:true, align:'right', sortVal:r => r.metri_totali||0 },
   { key:'metri_scavati',   label:'Metri Scavati', get:r => fmt(r.metri_scavati||0), numeric:true, align:'right', sortVal:r => r.metri_scavati||0 },
+  { key:'registro',        label:'Registro Cantiere', action:true, align:'center' },
 ];
 let _cantieriSort = { col:null, dir:1 };
 let _cantieriColFilters = {}; // key -> Set(valori ammessi). Assente = nessun filtro attivo su quella colonna.
@@ -929,6 +975,9 @@ function _renderCantieriTableHead() {
   const tr = document.getElementById('cantieriTableHead');
   if (!tr) return;
   tr.innerHTML = CANTIERI_COLS.map(c => {
+    if (c.action) {
+      return `<th style="text-align:${c.align||'left'}"><span class="th-label" style="cursor:default">${c.label}</span></th>`;
+    }
     const active = _cantieriColFilters[c.key] ? ' active' : '';
     const arrow = _cantieriSort.col === c.key ? (_cantieriSort.dir === 1 ? '▲' : '▼') : '⇅';
     const sortActive = _cantieriSort.col === c.key ? ' active' : '';
@@ -983,7 +1032,7 @@ function _cantieriRowsForColFilter(excludeKey) {
       if (!haystack.includes(q)) return false;
     }
     for (const c of CANTIERI_COLS) {
-      if (c.key === excludeKey) continue;
+      if (c.action || c.key === excludeKey) continue;
       const allowed = _cantieriColFilters[c.key];
       if (allowed && !allowed.has(c.get(r))) return false;
     }
@@ -1041,6 +1090,7 @@ function _renderCantieriTable() {
       if (!haystack.includes(q)) return false;
     }
     for (const c of CANTIERI_COLS) {
+      if (c.action) continue;
       const allowed = _cantieriColFilters[c.key];
       if (allowed && !allowed.has(c.get(r))) return false;
     }
@@ -1083,8 +1133,9 @@ function _renderCantieriTable() {
       <td>${prog}</td>
       <td style="text-align:right;font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(metriTot)}</td>
       <td style="text-align:right;color:var(--muted)">${fmt(scavati)}</td>
+      <td style="text-align:center"><button class="th-btn" style="border:1px solid var(--border2);border-radius:5px;padding:3px 9px;font-size:10px;color:var(--text2);background:var(--surface)" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')">📋 Registro</button></td>
     </tr>`;
-  }).join('') || `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:20px">Nessun cantiere trovato.</td></tr>`;
+  }).join('') || `<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px">Nessun cantiere trovato.</td></tr>`;
 }
 
 function _renderPageSubtitle() {
@@ -1748,7 +1799,17 @@ function closeModalCluster(e) {
   </div>
 </div>
 
-<!-- Modal Dettaglio Stato -->
+<!-- Modal Registro Cantiere -->
+<div class="modal-overlay" id="modalRegistroOverlay" onclick="closeModalRegistro(event)">
+  <div class="modal" style="width:640px;max-height:80vh;overflow-y:auto">
+    <div class="modal-title">
+      <span id="modalRegistroTitle">Registro —</span>
+      <button class="modal-close" onclick="closeModalRegistro()">×</button>
+    </div>
+    <div id="modalRegistroBody"></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modalStatoOverlay" onclick="closeModalStato(event)">
   <div class="modal" style="width:560px;max-height:80vh;overflow-y:auto">
     <div class="modal-title">
