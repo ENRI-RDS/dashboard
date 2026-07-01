@@ -293,8 +293,7 @@
 
   .prov-pill {
     display:inline-block; font-size:9px; font-weight:700; font-family:var(--font-mono);
-    padding:1px 6px; border-radius:4px; background:var(--surface2);
-    border:1px solid var(--border2); color:var(--muted); margin-right:2px;
+    padding:1px 6px; border-radius:4px; margin-right:2px; border:1px solid transparent;
   }
 
   .chip { font-size:9px; font-weight:700; padding:2px 8px; border-radius:4px; white-space:nowrap; display:inline-block; text-transform:uppercase; letter-spacing:.04em; }
@@ -546,6 +545,20 @@ const STATO_MAP = {
 };
 
 const RIEPILOGO_URL = 'Riepilogo_progettazione.csv';
+
+// ── Colore distintivo per provincia (deterministico, stessa provincia = stesso colore ovunque) ──
+const PROV_PALETTE = ['#043F75','#1A7D99','#41BBD9','#D08A1A','#C0392B','#7A3DAA','#1E9E6A','#B5657A','#436A93','#8A91B4'];
+function provColor(p) {
+  if (!p) return '#9AA5B4';
+  let hash = 0;
+  for (let i = 0; i < p.length; i++) hash = (hash * 31 + p.charCodeAt(i)) >>> 0;
+  return PROV_PALETTE[hash % PROV_PALETTE.length];
+}
+function provPill(p) {
+  if (!p) return '—';
+  const c = provColor(p);
+  return `<span class="prov-pill" style="background:${c}1f;color:${c};border-color:${c}55">${p}</span>`;
+}
 
 // Gruppi di stato permesso, in ordine di avanzamento workflow (stesso schema di index.html)
 const STATI_GRUPPI_PERMESSI = [
@@ -860,7 +873,7 @@ function openModalStato(stato) {
           <span style="font-size:11px;color:var(--muted)">Lotto ${r.lotto ?? '—'}${r.cluster ? ' · Cluster '+r.cluster : ''}</span>
         </div>
         <div style="font-family:var(--font-mono);font-size:10.5px;color:var(--muted);margin-top:1px">Pratica ${r.pratica_id || '—'}</div>
-        <div style="font-size:12px;color:var(--text2);margin-top:4px">${r.ente || '—'} · ${r.comune || '—'}${r.provincia ? ' ('+r.provincia+')' : ''}</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:4px">${r.ente || '—'} · ${r.comune || '—'}${r.provincia ? ' ('+`<span style="color:${provColor(r.provincia)};font-weight:700">${r.provincia}</span>`+')' : ''}</div>
         <div style="font-size:11px;color:var(--text2);margin-top:4px;display:flex;gap:14px;flex-wrap:wrap">
           <span>Tecnica: <b>${TECNICA_LABEL[r.tecnica_scavo] || r.tecnica_scavo || '—'}</b></span>
           <span>Impresa: <b>${r.impresa || '—'}</b></span>
@@ -1125,7 +1138,7 @@ function _renderCantieriTable() {
       <td style="color:var(--muted)">${r.ente || '—'}</td>
       <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent)">${r.lotto ?? '—'}</span></td>
       <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:10px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 7px;color:var(--muted)">${(r.cluster ?? '?').toString().replace(/^[Cc]/,'')}</span></td>
-      <td style="color:var(--muted);white-space:nowrap">${r.provincia || '—'}</td>
+      <td style="white-space:nowrap">${provPill(r.provincia)}</td>
       <td style="color:var(--muted)">${r.comune || '—'}</td>
       <td style="color:var(--muted);white-space:nowrap">${r.impresa || '—'}</td>
       <td style="white-space:nowrap"><span class="chip ${statoUI}">${STATO_LABEL[statoUI]}</span></td>
@@ -1177,9 +1190,9 @@ function _renderRiepilogo() {
   if (el('repProv')) {
     el('repProv').innerHTML = provEntries.length > 0
       ? provEntries.map(([p, m]) => `
-          <div style="background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;text-align:center">
-            <div style="font-size:10px;color:var(--muted);font-weight:600">${p}</div>
-            <div style="font-family:var(--font-display);font-weight:700;font-size:13px;color:${m>0?'#0B3182':'var(--muted)'}">${fmt(Math.round(m))} m</div>
+          <div style="background:${provColor(p)}12;border:1px solid ${provColor(p)}55;border-radius:6px;padding:6px 8px;text-align:center">
+            <div style="font-size:10px;color:${provColor(p)};font-weight:700">${p}</div>
+            <div style="font-family:var(--font-display);font-weight:700;font-size:13px;color:${m>0?'var(--text)':'var(--muted)'}">${fmt(Math.round(m))} m</div>
           </div>`).join('')
       : '<span style="color:var(--muted);font-size:12px">—</span>';
   }
@@ -1386,7 +1399,7 @@ LOTTI.forEach(r => {
   const lbl = document.createElement('div');
   lbl.className = 'bar-lotto-wrap';
   lbl.style.cssText = 'width:140px;flex-shrink:0;';
-  const provPills = (r.prov||[]).map(p => `<span class="prov-pill">${p}</span>`).join('');
+  const provPills = (r.prov||[]).map(p => provPill(p)).join('');
   lbl.innerHTML = `
     <span class="bar-lotto-num">${r.id}</span>
     <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:2px;">${provPills}</div>`;
@@ -1640,7 +1653,7 @@ function openModalLotto(r) {
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:8px">Territorio</div>
         <div style="font-size:12px;font-weight:600;color:var(--text)">${r.comuni} comuni</div>
         <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">
-          ${(r.prov||[]).map(p=>`<span style="background:var(--accent)15;color:var(--accent);border:1px solid var(--accent)30;border-radius:4px;padding:1px 7px;font-size:10px;font-weight:700">${p}</span>`).join('')}
+          ${(r.prov||[]).map(p=>provPill(p)).join('')}
         </div>
       </div>
     </div>`;
@@ -1735,7 +1748,7 @@ function openModalCluster(cl) {
     lottiHtml += `<tr style="border-bottom:1px solid var(--border)" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
       <td style="padding:8px 10px;font-family:var(--font-mono);font-weight:700;font-size:13px;color:var(--accent);border-left:3px solid ${col}">${r.id}</td>
       <td style="padding:8px 10px"><span style="background:${col}15;color:${col};border:1px solid ${col}30;border-radius:5px;padding:2px 8px;font-size:9px;font-weight:700">${STATO_LABEL[r.stato]}</span></td>
-      <td style="padding:8px 10px;font-size:10px;color:var(--muted)">${(r.prov||[]).join(' / ')}</td>
+      <td style="padding:8px 10px;font-size:10px">${(r.prov||[]).map(p=>provPill(p)).join('')}</td>
       <td style="padding:8px 10px;text-align:right;font-weight:700;font-family:var(--font-display)">${fmt(r.metri)} m</td>
       <td style="padding:8px 10px;text-align:right;font-weight:700;font-family:var(--font-display);color:${col}">${r.pct>0?fmt(mScav)+' m':'—'}</td>
       <td style="padding:8px 10px;min-width:100px">
