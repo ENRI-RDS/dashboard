@@ -2070,7 +2070,7 @@ TECNICA_SCAVO_VALUES  = ["trincea", "no_dig", ""]
 
 CANTIERI_CSV_PATH = os.environ.get("GITHUB_CANTIERI_PATH", "cantieri.csv")
 CANTIERI_COLS = [
-    "cantiere_key", "pratica_id", "ente", "lotto", "cluster",
+    "cantiere_key", "codice_cantiere", "pratica_id", "ente", "lotto", "cluster",
     "tratte_lavorabili", "tratte_bloccate",
     "metri_totali", "metri_totali_potenziali",
     "stato_cantiere", "tecnica_scavo",
@@ -2090,6 +2090,41 @@ def _cantieri_csv_row(d: dict) -> dict:
     row["tratte_lavorabili"] = ", ".join(lav)
     row["tratte_bloccate"]   = ", ".join(bloc)
     return row
+
+
+async def _max_codice_per_lotto() -> dict:
+    """Numero massimo di codice_cantiere (CA/N/lotto) già assegnato per ciascun
+    lotto, per continuare la sequenza senza mai riassegnare un numero usato."""
+    cache: dict[str, int] = {}
+    async for d in cantieri_col.find(
+        {"codice_cantiere": {"$regex": "^CA/"}}, {"lotto": 1, "codice_cantiere": 1}
+    ):
+        m = re.match(r"^CA/(\d+)/", d.get("codice_cantiere", ""))
+        if not m:
+            continue
+        lotto = d.get("lotto", "")
+        cache[lotto] = max(cache.get(lotto, 0), int(m.group(1)))
+    return cache
+
+
+async def _backfill_codici_cantiere(cache: dict) -> int:
+    """Assegna codice_cantiere ai cantieri creati prima dell'introduzione del
+    campo. Progressivo stabile per lotto — una volta scritto su un documento
+    non viene mai più toccato, nemmeno da sync successivi. Ordine pratica_id
+    (unico riferimento disponibile per i cantieri storici, non essendoci un
+    timestamp di creazione)."""
+    n = 0
+    async for d in cantieri_col.find(
+        {"$or": [{"codice_cantiere": {"$exists": False}}, {"codice_cantiere": ""}]}
+    ).sort([("lotto", 1), ("pratica_id", 1)]):
+        lotto = d.get("lotto", "")
+        cache[lotto] = cache.get(lotto, 0) + 1
+        codice = f"CA/{cache[lotto]}/{lotto}"
+        await cantieri_col.update_one({"_id": d["_id"]}, {"$set": {"codice_cantiere": codice}})
+        n += 1
+    if n:
+        print(f"[sync_cantieri] assegnato codice_cantiere a {n} cantieri storici")
+    return n
 
 
 async def _sync_cantieri() -> int:
@@ -2124,6 +2159,9 @@ async def _sync_cantieri() -> int:
                 }
     except Exception as e:
         print(f"[sync_cantieri] errore lettura riepilogo (cluster/provincia/comune): {e}")
+
+    codice_cache = await _max_codice_per_lotto()
+    await _backfill_codici_cantiere(codice_cache)
 
     groups: dict[tuple, dict] = {}
     for tratta_id, info in summary.items():
@@ -2205,8 +2243,12 @@ async def _sync_cantieri() -> int:
         tecnica_scavo = next((d.get("tecnica_scavo") for d in old_docs if d.get("tecnica_scavo")), "")
         impresa       = next((d.get("impresa") for d in old_docs if d.get("impresa")), "")
 
+        codice_cache[g["lotto"]] = codice_cache.get(g["lotto"], 0) + 1
+        codice_cantiere = f"CA/{codice_cache[g['lotto']]}/{g['lotto']}"
+
         doc = {
             "cantiere_key": g["cantiere_key"],
+            "codice_cantiere": codice_cantiere,
             "pratica_id": g["pratica_id"], "ente": g["ente"], "lotto": g["lotto"], "cluster": g["cluster"],
             "provincia": provincia_cantiere, "comune": comune_cantiere,
             "tratte": g["tratte"],
