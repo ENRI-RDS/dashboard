@@ -959,20 +959,20 @@ function _renderCantieriFilters() {
 
 // ── Sort + filtro per colonna (stile Excel) sulla tabella "Tutti i Cantieri" ──
 const CANTIERI_COLS = [
-  { key:'codice_cantiere', label:'Cod. Cantiere', get:r => r.codice_cantiere || '—' },
-  { key:'pratica_id',      label:'Pratica',       get:r => r.pratica_id || '—' },
+  { key:'codice_cantiere', label:'Cod. Cantiere', get:r => r.codice_cantiere || '—', tight:true },
+  { key:'pratica_id',      label:'Pratica',       get:r => r.pratica_id || '—', tight:true },
   { key:'ente',            label:'Ente',          get:r => r.ente || '—' },
-  { key:'lotto',           label:'Lotto',         get:r => String(r.lotto ?? '—'), numeric:true },
-  { key:'cluster',         label:'Cluster',       get:r => (r.cluster ?? '?').toString().replace(/^[Cc]/,'') },
-  { key:'provincia',       label:'Provincia',     get:r => r.provincia || '—' },
+  { key:'lotto',           label:'Lotto',         get:r => String(r.lotto ?? '—'), numeric:true, tight:true },
+  { key:'cluster',         label:'Cluster',       get:r => (r.cluster ?? '?').toString().replace(/^[Cc]/,''), tight:true },
+  { key:'provincia',       label:'Provincia',     get:r => r.provincia || '—', tight:true },
   { key:'comune',          label:'Comune',        get:r => r.comune || '—' },
-  { key:'impresa',         label:'Impresa',       get:r => r.impresa || '—' },
-  { key:'stato',           label:'Stato Cantiere',get:r => STATO_LABEL[STATO_MAP[r.stato_cantiere] || 'non-avviato'] },
+  { key:'impresa',         label:'Impresa',       get:r => r.impresa || '—', tight:true },
+  { key:'stato',           label:'Stato Cantiere',get:r => STATO_LABEL[STATO_MAP[r.stato_cantiere] || 'non-avviato'], tight:true },
   { key:'pct',             label:'Avanzamento',   get:r => (r.metri_totali||0) > 0 ? Math.round((r.metri_scavati||0)/r.metri_totali*100) + '%' : '—', numeric:true,
                            sortVal:r => (r.metri_totali||0) > 0 ? Math.round((r.metri_scavati||0)/r.metri_totali*100) : -1 },
-  { key:'metri_totali',    label:'Metri Tot.',    get:r => fmt(r.metri_totali||0), numeric:true, align:'right', sortVal:r => r.metri_totali||0 },
-  { key:'metri_scavati',   label:'Metri Scavati', get:r => fmt(r.metri_scavati||0), numeric:true, align:'right', sortVal:r => r.metri_scavati||0 },
-  { key:'registro',        label:'Registro Cantiere', action:true, align:'center' },
+  { key:'metri_totali',    label:'Metri Tot.',    get:r => fmt(r.metri_totali||0), numeric:true, align:'right', sortVal:r => r.metri_totali||0, tight:true },
+  { key:'metri_scavati',   label:'Metri Scavati', get:r => fmt(r.metri_scavati||0), numeric:true, align:'right', sortVal:r => r.metri_scavati||0, tight:true },
+  { key:'registro',        label:'Registro Cantiere', action:true, align:'center', tight:true },
 ];
 let _cantieriSort = { col:null, dir:1 };
 let _cantieriColFilters = {}; // key -> Set(valori ammessi). Assente = nessun filtro attivo su quella colonna.
@@ -988,13 +988,14 @@ function _renderCantieriTableHead() {
   };
   const filterIcon = `<svg viewBox="0 0 16 16"><path d="M1.5 2.5h13l-4.7 5.6v4.6l-3.6 1.8v-6.4z" fill="currentColor"/></svg>`;
   tr.innerHTML = CANTIERI_COLS.map(c => {
+    const tightStyle = c.tight ? 'width:1%;white-space:nowrap;' : '';
     if (c.action) {
-      return `<th style="text-align:${c.align||'left'}"><span class="th-label" style="cursor:default">${c.label}</span></th>`;
+      return `<th style="text-align:${c.align||'left'};${tightStyle}"><span class="th-label" style="cursor:default">${c.label}</span></th>`;
     }
     const filterActive = _cantieriColFilters[c.key] ? ' active' : '';
     const sortDir = _cantieriSort.col === c.key ? _cantieriSort.dir : 0;
     const sortActive = sortDir !== 0 ? ' active' : '';
-    return `<th style="${c.align === 'right' ? 'text-align:right' : ''}">
+    return `<th style="${c.align === 'right' ? 'text-align:right;' : ''}${tightStyle}">
       <div class="th-cell">
         <span class="th-label" onclick="_sortCantieri('${c.key}')">${c.label}</span>
         <span class="th-icons">
@@ -1136,16 +1137,16 @@ function _renderCantieriTable() {
       ? `<div class="prog-wrap"><div class="prog-track"><div class="prog-fill" style="width:${pct}%;background:${col}"></div></div><div class="prog-val">${pct}%</div></div>`
       : `<span style="color:var(--muted2)">—</span>`;
     return `<tr>
-      <td><span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--accent)">${r.codice_cantiere || '—'}</span></td>
-      <td><span style="font-family:var(--font-mono);font-size:10px;color:var(--muted)" title="${(r.tratte||[]).length} tratte">${r.pratica_id || '—'}</span></td>
+      <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--accent)">${r.codice_cantiere || '—'}</span></td>
+      <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:10px;color:var(--muted)" title="${(r.tratte||[]).length} tratte">${r.pratica_id || '—'}</span></td>
       <td style="color:var(--muted)">${r.ente || '—'}</td>
-      <td><span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent)">${r.lotto ?? '—'}</span></td>
-      <td><span style="font-family:var(--font-mono);font-size:10px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 7px;color:var(--muted)">${(r.cluster ?? '?').toString().replace(/^[Cc]/,'')}</span></td>
-      <td style="color:var(--muted)">${r.provincia || '—'}</td>
+      <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent)">${r.lotto ?? '—'}</span></td>
+      <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:10px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 7px;color:var(--muted)">${(r.cluster ?? '?').toString().replace(/^[Cc]/,'')}</span></td>
+      <td style="color:var(--muted);white-space:nowrap">${r.provincia || '—'}</td>
       <td style="color:var(--muted)">${r.comune || '—'}</td>
-      <td style="color:var(--muted)">${r.impresa || '—'}</td>
-      <td><span class="chip ${statoUI}">${STATO_LABEL[statoUI]}</span></td>
-      <td>${prog}</td>
+      <td style="color:var(--muted);white-space:nowrap">${r.impresa || '—'}</td>
+      <td style="white-space:nowrap"><span class="chip ${statoUI}">${STATO_LABEL[statoUI]}</span></td>
+      <td style="max-width:150px">${prog}</td>
       <td style="text-align:right;font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(metriTot)}</td>
       <td style="text-align:right;color:var(--muted)">${fmt(scavati)}</td>
       <td style="text-align:center"><button style="border:1px solid var(--border2);border-radius:5px;padding:3px 9px;font-size:10px;color:var(--text2);background:var(--surface);cursor:pointer" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')">📋 Registro</button></td>
