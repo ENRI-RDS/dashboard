@@ -444,30 +444,6 @@
         </div>
       </div>
 
-      <!-- Tabella -->
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Registro Lotti · Stato Cantiere</span>
-          <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)">12 lotti · struttura reale · avanzamento di esempio</span>
-        </div>
-        <div style="overflow-x:auto;">
-          <table class="cant-table">
-            <thead>
-              <tr>
-                <th>Lotto</th>
-                <th>Cluster</th>
-                <th>Province</th>
-                <th>Comuni</th>
-                <th>Stato Cantiere</th>
-                <th>Avanzamento</th>
-                <th style="text-align:right">Metri Tot.</th>
-              </tr>
-            </thead>
-            <tbody id="tablebody"></tbody>
-          </table>
-        </div>
-      </div>
-
     </div>
 
     <!-- RIGHT sidebar -->
@@ -835,7 +811,7 @@ async function _loadAndRenderAll() {
 
 function _renderAll() {
   _renderPageSubtitle(); // aggiorna subito lo stato "caricamento…", indipendente dalle altre render
-  const steps = [_renderKpi, _renderBars, _renderClusters, _renderRadar, _renderTabella,
+  const steps = [_renderKpi, _renderBars, _renderClusters, _renderRadar,
                  _renderCantieriFilters, _renderCantieriTable, _renderRiepilogo, _renderPageSubtitle];
   steps.forEach(fn => {
     try { fn(); } catch (e) { console.error('[ENRI] render step fallito:', fn.name, e); }
@@ -1410,8 +1386,10 @@ LOTTI.forEach(r => {
   const lbl = document.createElement('div');
   lbl.className = 'bar-lotto-wrap';
   lbl.style.cssText = 'width:140px;flex-shrink:0;';
+  const provPills = (r.prov||[]).map(p => `<span class="prov-pill">${p}</span>`).join('');
   lbl.innerHTML = `
-    <span class="bar-lotto-num">${r.id}</span>`;
+    <span class="bar-lotto-num">${r.id}</span>
+    <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:2px;">${provPills}</div>`;
   permRow.appendChild(lbl);
 
   const permTrack = document.createElement('div');
@@ -1483,27 +1461,6 @@ LOTTI.forEach(r => {
   group.appendChild(scaviRow);
   barContainer.appendChild(group);
 });
-}
-
-// ── TABELLA ─────────────────────────────────────────────────────────────────
-function _renderTabella() {
-const tbody = document.getElementById('tablebody');
-tbody.innerHTML = LOTTI.map(r => {
-  const col   = STATO_COLOR[r.stato];
-  const pills = (r.prov||[]).map(p => `<span class="prov-pill">${p}</span>`).join('');
-  const prog  = r.pct > 0
-    ? `<div class="prog-wrap"><div class="prog-track"><div class="prog-fill" style="width:${r.pct}%;background:${col}"></div></div><div class="prog-val">${r.pct}%</div></div>`
-    : `<span style="color:var(--muted2)">—</span>`;
-  return `<tr>
-    <td><span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent)">${r.id}</span></td>
-    <td><span style="font-family:var(--font-mono);font-size:10px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 7px;color:var(--muted)">${r.cl}</span></td>
-    <td>${pills}</td>
-    <td style="color:var(--muted)">${r.comuni} comuni</td>
-    <td><span class="chip ${r.stato}">${STATO_LABEL[r.stato]}</span></td>
-    <td>${prog}</td>
-    <td style="text-align:right;font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(r.metri)}</td>
-  </tr>`;
-}).join('');
 }
 
 // ── DONUT CHART (canvas, stile index) ───────────────────────────────────────
