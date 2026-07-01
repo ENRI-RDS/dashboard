@@ -4006,6 +4006,12 @@ async function scLoadCantieri(){
   }
 }
 
+function scCantiereCode(r){
+  const sameLotto = SC_CANTIERI.filter(x => x.lotto === r.lotto);
+  const idx = sameLotto.indexOf(r) + 1;
+  return `CA/${idx}/${r.lotto}`;
+}
+
 function scRenderList(items){
   if (!items.length){
     scId('scList').innerHTML = '<div class="pr-empty">Nessun cantiere disponibile</div>';
@@ -4024,10 +4030,10 @@ function scRenderList(items){
       <div class="sc-card-accent" style="background:${col}"></div>
       <div style="padding-left:6px">
         <div class="sc-card-head">
-          <span class="sc-card-id">${prEscapeHtml(r.pratica_id)}</span>
+          <span class="sc-card-id">${prEscapeHtml(scCantiereCode(r))}</span>
           <span class="sc-card-lotto">Lotto ${prEscapeHtml(r.lotto)}</span>
         </div>
-        <div class="sc-card-ente">${prEscapeHtml(r.ente||'')}</div>
+        <div class="sc-card-ente">${prEscapeHtml(r.ente||'')} · Pratica ${prEscapeHtml(r.pratica_id)}</div>
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
           <span style="font-size:10px;font-weight:600;color:${col}">${prEscapeHtml(lbl)}</span>
           <span style="font-size:10px;color:var(--muted);margin-left:auto">${fmt(scav)}m / ${fmt(tot)}m (${pct}%)</span>
@@ -4083,7 +4089,7 @@ function scOpenForm(r){
   const fmt = n => Math.round(n).toLocaleString('it-IT');
   const tot = r.metri_totali || 0, scav = r.metri_scavati || 0;
   const pct = tot > 0 ? Math.round(scav/tot*100) : 0;
-  scId('scFormSub').textContent = `${r.pratica_id} · ${r.ente} · ${fmt(scav)}m / ${fmt(tot)}m (${pct}%)`;
+  scId('scFormSub').textContent = `${scCantiereCode(r)} · Pratica ${r.pratica_id} · ${r.ente} · ${fmt(scav)}m / ${fmt(tot)}m (${pct}%)`;
 
   const tratte = r.tratte || [];
   const lav  = tratte.filter(t => t.lavorabile);
@@ -4164,7 +4170,7 @@ scId('scStoricoBtn').addEventListener('click', async () => {
   if (!SC_SELECTED) return;
   const wrap = scId('scStoricoWrap');
   if (wrap.style.display !== 'none') { wrap.style.display='none'; return; }
-  scId('scStoricoTitle').textContent = `Storico · ${SC_SELECTED.pratica_id}`;
+  scId('scStoricoTitle').textContent = `Storico · ${scCantiereCode(SC_SELECTED)}`;
   wrap.style.display = '';
   scId('scStoricoBody').innerHTML = '<div class="pr-empty">Caricamento…</div>';
   try {
