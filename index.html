@@ -2865,9 +2865,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // e causerebbe un flicker (admin button nascosto poi riappare). Lo dispatch avviene
     // solo dopo che la validazione ha stabilito il ruolo effettivo.
 
-    // ── Rivalidazione silenziosa + log accesso ────────────────────────────
-    // Le due fetch (Apps Script e JSONBin) partono in parallelo per velocità,
-    // ma il log scrive il ruolo solo dopo che la validazione è conclusa
+    // ── Rivalidazione silenziosa ──────────────────────────────────────────
+    // Un'unica fetch verso /api/auth/verify; il log accesso (ora su MongoDB,
+    // non più JSONBin) scrive il ruolo solo dopo che la validazione è conclusa
     // — nessuna race condition, il ruolo nel log è sempre quello certificato.
     const revalidatePromise = fetch(_apiBase() + '/api/auth/verify', {
       headers: { 'x-session-token': _sessionToken() }
@@ -5225,7 +5225,7 @@ function chiudiEditManuale() {
   document.getElementById('overlayEditManuale').classList.remove('open');
 }
 
-// ── Applica e salva su JSONBin ────────────────────────────────────────────────
+// ── Applica modifiche manuali (in memoria, nessun DB esterno coinvolto) ───────
 function applicaEditManuale() {
   const inputs = document.querySelectorAll('#emTableWrap .em-inp');
   const totPerLotto = {};
@@ -5941,7 +5941,9 @@ function buildCercaCard(p, query) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ══════════════════════════════════════════════════════════════════════════════
-// NOTE PER PRATICA — JSONBin
+// NOTE PER PRATICA — funzionalità disattivata (stub). In passato usava JSONBin;
+// non più in uso. noteLoad/noteSave restano no-op finché non si decide se/come
+// reintrodurla (es. su una collection MongoDB dedicata).
 // ══════════════════════════════════════════════════════════════════════════════
 
 async function noteLoad() { return {}; }
