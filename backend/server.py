@@ -2072,12 +2072,13 @@ async def bulk_delete_solleciti(payload: dict, sess: dict = Depends(_require_ses
 # CANTIERI — stato avanzamento scavi per PRATICA di AUTORIZZAZIONE
 # ─────────────────────────────────────────────────────────────────────────────
 # Un cantiere = una pratica di AUTORIZZAZIONE ottenuta (non una singola tratta:
-# una stessa autorizzazione può coprire più tratte). Il NULLA OSTA non è un
-# cantiere a sé: è un permesso accessorio che può mancare su alcune tratte
-# della stessa autorizzazione. Quelle tratte restano elencate nel cantiere
-# (per visibilità) ma i loro metri sono esclusi da metri_totali finché il
-# nulla osta non viene ottenuto — a quel punto rientrano automaticamente al
-# sync successivo.
+# una stessa autorizzazione può coprire più tratte). Il NULLA OSTA/ORDINANZA
+# non sono un cantiere a sé: sono permessi accessori che possono mancare su
+# alcune tratte della stessa autorizzazione. Quelle tratte restano elencate
+# nel cantiere con 'lavorabile'=false, ma è un flag SOLO indicativo (usato
+# in mappa per colorare le tratte non ancora cantierabili): NON esclude i
+# metri dal totale rendicontabile dall'impresa. metri_totali conta sempre
+# tutta la lunghezza della pratica autorizzata.
 #
 # Flusso:
 #   1. Ogni volta che il Master.csv viene aggiornato, _sync_cantieri() raggruppa
@@ -2153,8 +2154,10 @@ async def _backfill_codici_cantiere(cache: dict) -> int:
 async def _sync_cantieri() -> int:
     """Raggruppa le tratte con AUTORIZZAZIONE OTTENUTA per pratica (ente, numero,
     lotto) e crea/aggiorna un documento cantiere per pratica. metri_totali conta
-    solo le tratte attualmente LAVORABILE=SI; le tratte bloccate da un nulla
-    osta mancante restano elencate in 'tratte' ma escluse dal totale.
+    TUTTE le tratte della pratica (autorizzazione ottenuta), indipendentemente
+    da 'lavorabile': quel flag è solo indicativo per la visualizzazione in
+    mappa (NULLA OSTA/ORDINANZA ottenuti) e non deve limitare i metri che
+    un'impresa può rendicontare come scavati sul cantiere.
     Ritorna il numero di nuovi cantieri (nuove pratiche) creati."""
     try:
         df = await _read_master_csv()
@@ -2226,7 +2229,10 @@ async def _sync_cantieri() -> int:
     created = 0
     stato_rank = {s: i for i, s in enumerate(STATO_CANTIERE_VALUES)}
     for key, g in groups.items():
-        metri_totali     = sum(t["lunghezza"] for t in g["tratte"] if t["lavorabile"])
+        # metri_totali = tutte le tratte della pratica (autorizzazione ottenuta),
+        # a prescindere da 'lavorabile' — quel flag è solo per la mappa e non
+        # deve ridurre il totale su cui l'impresa rendiconta i metri scavati.
+        metri_totali     = sum(t["lunghezza"] for t in g["tratte"])
         metri_totali_pot = sum(t["lunghezza"] for t in g["tratte"])
         # provincia/comune del cantiere: il valore più frequente tra le sue tratte
         provincia_count = Counter(t["provincia"] for t in g["tratte"] if t.get("provincia"))
