@@ -1536,7 +1536,7 @@ async def reject_pending(
 # POLIZZE & CONVENZIONI — modifica diretta admin
 # ─────────────────────────────────────────────────────────────────────────────
 _POL_CONV_ALLOWED_FIELDS = {"CONVENZIONE", "POLIZZA"}
-_POL_CONV_ALLOWED_VALUES = {"NECESSARIA", "RICHIESTA RDS", "INVIATA", "OTTENUTA", ""}
+_POL_CONV_ALLOWED_VALUES = {"NECESSARIA", "RICHIESTA RDS", "INVIATA", "EMESSA", "OTTENUTA", ""}  # OTTENUTA: legacy, rinominato in EMESSA
 
 
 @app.get("/api/admin/polizze-convenzioni/data-richiesta")
@@ -1597,7 +1597,7 @@ async def update_polizza_convenzione(
 ):
     """Aggiorna CONVENZIONE e/o POLIZZA per tutte le righe lotto+pratica nel Master CSV.
     Body: {lotto: "2B", pratica: "11", fields: {CONVENZIONE?: val, POLIZZA?: val}}
-    Valori ammessi: NECESSARIA | RICHIESTA RDS | INVIATA | OTTENUTA | "" (vuoto = cancella)
+    Valori ammessi: NECESSARIA | RICHIESTA RDS | INVIATA | EMESSA | "" (vuoto = cancella)
     Richiede x-upload-token. Scrive su MongoDB e pusha su GitHub."""
     _check_token(x_upload_token or token_q)
 
