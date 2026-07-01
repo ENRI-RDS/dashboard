@@ -155,7 +155,7 @@ chiamata successiva richiede un token firmato non falsificabile.
 |---|---|---|---|
 | POST | `/api/auth/login` | — | Body `{nome, codice}` → backend chiama Apps Script server-to-server (segreto MAI esposto al browser) → restituisce `{ok, token, nome, ruolo}` |
 | GET | `/api/auth/verify` | session token | Rivalidazione silenziosa (usata da index.html) |
-| POST | `/api/logs/get` / `/api/logs/put` | session token | Proxy JSONBin via Apps Script (segreto server-side) |
+| POST | `/api/logs/get` / `/api/logs/put` | session token | Log accessi — MongoDB (`access_logs`), non più JSONBin/Apps Script (vedi §5.12) |
 
 **Schema token** (base64 urlsafe): `nome | ruolo | exp_unix | HMAC-SHA256(payload, SESSION_SECRET)`
 con TTL configurabile via `SESSION_TTL_SECONDS` (default 12h).
@@ -276,13 +276,15 @@ Un cantiere = una pratica AUTORIZZAZIONE (chiave `cantiere_key`, **non** `pratic
 
 Sistema di "promemoria/follow-up" per pratiche in attesa, associato alle tratte dei lotti dell'impresa. Scrittura diretta (no workflow di approvazione), CRUD completo lato impresa (`/api/imprese/solleciti*`) e vista aggregata lato admin (`/api/admin/solleciti`).
 
-### 5.12 ✅ Tracking accessi — RISOLTO (era: secret esposto lato client)
+### 5.12 ✅ Tracking accessi — RISOLTO + migrato da JSONBin a MongoDB
 
-Tutte le 5 pagine con blocco `<!-- TRACKING ACCESSI -->` (`scavi.html`, `mappa.html`, `mappa_impresa.html`, `mappa_impresa_caricamento.html`, `sopralluoghi.html`) chiamano ora `POST /api/logs/get` e `POST /api/logs/put` (header `x-session-token`, letto da `localStorage._enri_session`), che sul backend fanno da proxy verso Apps Script tenendo il secret lato server. Nessun `_APPS_URL`/`_APPS_SECRET` in chiaro nel client.
+Tutte le 5 pagine con blocco `<!-- TRACKING ACCESSI -->` (`scavi.html`, `mappa.html`, `mappa_impresa.html`, `mappa_impresa_caricamento.html`, `sopralluoghi.html`) chiamano `POST /api/logs/get` e `POST /api/logs/put` (header `x-session-token`). **Il backend non chiama più Apps Script/JSONBin per questo**: legge/scrive dalla collection Mongo `access_logs` (un documento per `binId`, campi `utenti[]`/`accessi[]`). Contratto richiesta/risposta lasciato identico apposta (`{binId}` → `{record:{utenti,accessi}}`), quindi **le 5 pagine non sono state toccate di nuovo** — solo il backend è cambiato.
 
-> Storico: `mappa.html` e `sopralluoghi.html` erano già stati migrati; `scavi.html`, `mappa_impresa.html` e `mappa_impresa_caricamento.html` chiamavano ancora Apps Script direttamente col secret in chiaro — sistemato riportando il pattern già in uso nelle prime due. In `mappa_impresa.html` e `mappa_impresa_caricamento.html` è stato corretto anche un bug minore preesistente: il campo `pagina` nel log veniva scritto sempre come `'mappa'` (copia-incolla da `mappa.html`) invece di `'mappa_impresa'`/`'mappa_impresa_caricamento'`.
+`APPS_SCRIPT_URL`/`APPS_SCRIPT_SECRET` restano in uso **solo per il login** (`action: "login"` verso il Google Sheet), non più per i log.
 
-Il backend espone già un proxy sicuro pensato esattamente per questo (`POST /api/logs/get` / `/api/logs/put`, §5.2), che terrebbe il segreto lato server. **Le pagine però non lo usano** e bypassano il proxy chiamando Apps Script direttamente. Verificare con chi ha scritto questo blocco se è un refuso/copia-incolla da una versione precedente, o se va effettivamente migrato a `/api/logs/*` — al momento il segreto Apps Script è esposto a chiunque apra il sorgente di quelle pagine.
+⚠️ **Dati storici non migrati**: gli accessi già registrati sul vecchio bin JSONBin non sono stati copiati automaticamente su MongoDB (nessun accesso di rete disponibile per farlo in questa sessione). Se serve conservare lo storico, va fatto un import una tantum leggendo il bin esistente e scrivendolo in `access_logs`. Da questo deploy in poi, il log riparte vuoto su Mongo.
+
+`index.html` conteneva anche codice/commenti morti che nominavano JSONBin per una funzione "Note per pratica" già disattivata (stub `noteLoad`/`noteSave` no-op) e per due commenti descrittivi non più accurati — ripuliti (rinominati, nessuna funzionalità toccata).
 
 ---
 
@@ -465,6 +467,14 @@ File content in `fs.files` / `fs.chunks` (motor `AsyncIOMotorGridFSBucket`, buck
 {
   "_id": "1A|11|CONVENZIONE",
   "data_richiesta": "AAAA-MM-GG"   // fissata una sola volta con $setOnInsert
+}
+
+// collection: access_logs (NEW — ex JSONBin, un documento per binId)
+{
+  "_id": "69c8fbdced015c742bc8e978",   // il vecchio LOG_BIN_ID, riusato come chiave Mongo
+  "utenti":  ["Mario Rossi", "Costruzioni Alfa Srl", "..."],
+  "accessi": [ {"ts":"ISO","utente":"...","ruolo":"...","ip":"...","ua":"...",
+                "durata":0,"lotti":[],"nAperture":0,"pagina":"scavi"} ]
 }
 ```
 
