@@ -443,10 +443,6 @@
             <span class="stat-val" style="color:#0B3182" id="repScavati">—</span>
           </div>
           <div class="stat-row">
-            <span class="stat-label">Avanzamento globale</span>
-            <span class="stat-val" style="color:#0B3182" id="repAvanz">—</span>
-          </div>
-          <div class="stat-row">
             <span class="stat-label">Lotti attivi</span>
             <span class="stat-val" id="repLottiAttivi">—</span>
           </div>
@@ -454,10 +450,10 @@
             <span class="stat-label">Comuni attraversati</span>
             <span class="stat-val" id="repComuni">—</span>
           </div>
-          <div class="stat-row" style="align-items:flex-start">
+          <div class="stat-row" style="align-items:flex-start;border-bottom:none;padding-bottom:0">
             <span class="stat-label">Metri scavati per provincia</span>
-            <span class="stat-val" style="font-size:12px;text-align:right" id="repProv">—</span>
           </div>
+          <div id="repProv" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px;margin-top:6px">—</div>
         </div>
       </div>
 
@@ -941,23 +937,27 @@ function _renderRiepilogo() {
   const pctPermessi= totMetri > 0 ? (totOttenuto / totMetri * 100).toFixed(1) : '0.0';
 
   const provScavati = {};
+  LOTTI.forEach(r => (r.prov || []).forEach(p => { if (!(p in provScavati)) provScavati[p] = 0; }));
   CANTIERI_RAW.forEach(r => {
     const p = r.provincia || 'N/D';
     provScavati[p] = (provScavati[p] || 0) + (r.metri_scavati || 0);
   });
-  const provEntries = Object.entries(provScavati).sort((a, b) => b[1] - a[1]);
+  const provEntries = Object.entries(provScavati).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 
   const el = id => document.getElementById(id);
   if (el('repTracciato'))  el('repTracciato').textContent  = fmt(Math.round(totMetri / 1000)) + ' km';
   if (el('repPermessi'))   el('repPermessi').textContent   = pctPermessi + '% (' + fmt(Math.round(totOttenuto/1000)) + ' km)';
   if (el('repScavati'))    el('repScavati').textContent    = fmt(Math.round(totScavati / 1000)) + ' km';
-  if (el('repAvanz'))      el('repAvanz').textContent      = pctGlob + '%';
   if (el('repLottiAttivi'))el('repLottiAttivi').textContent= lottiAttivi;
   if (el('repComuni'))     el('repComuni').textContent     = totComuni > 0 ? totComuni : LOTTI.length + ' cantieri';
   if (el('repProv')) {
     el('repProv').innerHTML = provEntries.length > 0
-      ? provEntries.map(([p, m]) => `<span class="prov-pill">${p}: ${fmt(Math.round(m))} m</span>`).join('')
-      : '—';
+      ? provEntries.map(([p, m]) => `
+          <div style="background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;text-align:center">
+            <div style="font-size:10px;color:var(--muted);font-weight:600">${p}</div>
+            <div style="font-family:var(--font-display);font-weight:700;font-size:13px;color:${m>0?'#0B3182':'var(--muted)'}">${fmt(Math.round(m))} m</div>
+          </div>`).join('')
+      : '<span style="color:var(--muted);font-size:12px">—</span>';
   }
 }
 
@@ -1268,7 +1268,11 @@ function _renderRadar() {
 
   // Costruisci dataset: usa metri totali per lotto come peso
   const pesoPerStato = {};
-  LOTTI.forEach(r => { pesoPerStato[r.stato] = (pesoPerStato[r.stato] || 0) + r.metri; });
+  LOTTI.forEach(r => {
+    Object.entries(r.statoMetri || {}).forEach(([k, v]) => {
+      pesoPerStato[k] = (pesoPerStato[k] || 0) + v;
+    });
+  });
   const grandTotal = Object.values(pesoPerStato).reduce((a,b)=>a+b,0);
 
   const grouped = STATI_DONUT
