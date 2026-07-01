@@ -1060,17 +1060,17 @@
             <option value="canaletta">Canaletta</option>
           </select>
 
-          <label>Data inizio prevista</label>
+          <label>Data inizio prevista *</label>
           <input type="date" id="scInizioPrev">
           <div id="scHintInizioPrevLock" style="display:none" class="sc-hint">Cantiere già avviato: non modificabile.</div>
 
           <label>Data fine prevista</label>
           <input type="date" id="scFinePrev">
 
-          <label>Data inizio effettiva</label>
+          <label>Data inizio effettiva *</label>
           <input type="date" id="scInizioEff">
 
-          <label>Data fine effettiva</label>
+          <label>Data fine effettiva *</label>
           <input type="date" id="scFineEff">
 
           <div id="scWrapMotivoBlocco" style="display:none">
@@ -4141,6 +4141,18 @@ scId('scSubmit').addEventListener('click', async () => {
   if (scId('scStato').value !== 'allestimento' && !scId('scTecnica').value) {
     scSetMsg('Seleziona la tecnica di scavo prima di salvare', false);
     scId('scTecnica').focus(); return;
+  }
+  if (scId('scStato').value === 'allestimento' && !scId('scInizioPrev').value) {
+    scSetMsg('Data inizio prevista obbligatoria per lo stato Allestimento', false);
+    scId('scInizioPrev').focus(); return;
+  }
+  if (SC_STATI_IN_CORSO_EFF.includes(scId('scStato').value) && !SC_SELECTED.data_inizio_effettiva && !scId('scInizioEff').value) {
+    scSetMsg('Data inizio effettiva obbligatoria al primo avvio cantiere', false);
+    scId('scInizioEff').focus(); return;
+  }
+  if (scId('scStato').value === 'completato' && !scId('scFineEff').value) {
+    scSetMsg('Data fine effettiva obbligatoria per chiudere il cantiere', false);
+    scId('scFineEff').focus(); return;
   }
   const metriVal = parseFloat(scId('scMetri').value);
   if (!isNaN(metriVal) && metriVal > 0) {
