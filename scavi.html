@@ -318,27 +318,27 @@
       <div class="kpi k-nav" role="button" tabindex="0" onclick="_filterCantieriByStato('non-avviato')">
         <div class="kpi-label">Non Avviati</div>
         <div class="kpi-value" id="kpiNav">—</div>
-        <div class="kpi-sub">in attesa di autorizzazioni</div>
+        <div class="kpi-sub" id="kpiNavSub">in attesa di autorizzazioni</div>
       </div>
       <div class="kpi k-all" role="button" tabindex="0" onclick="_filterCantieriByStato('allestimento')">
         <div class="kpi-label">In Allestimento</div>
         <div class="kpi-value" id="kpiAll">—</div>
-        <div class="kpi-sub">cantieri in preparazione</div>
+        <div class="kpi-sub" id="kpiAllSub">cantieri in preparazione</div>
       </div>
       <div class="kpi k-cor" role="button" tabindex="0" onclick="_filterCantieriByStato('in-corso')">
         <div class="kpi-label">In Corso</div>
         <div class="kpi-value" id="kpiCor">—</div>
-        <div class="kpi-sub">lotti con scavo attivo</div>
+        <div class="kpi-sub" id="kpiCorSub">lotti con scavo attivo</div>
       </div>
       <div class="kpi k-com" role="button" tabindex="0" onclick="_filterCantieriByStato('completato')">
         <div class="kpi-label">Completati</div>
         <div class="kpi-value" id="kpiCom">—</div>
-        <div class="kpi-sub">lotti ultimati</div>
+        <div class="kpi-sub" id="kpiComSub">lotti ultimati</div>
       </div>
       <div class="kpi k-sos" role="button" tabindex="0" onclick="_filterCantieriByStato('sospeso')">
         <div class="kpi-label">In Sospeso</div>
         <div class="kpi-value" id="kpiSos">—</div>
-        <div class="kpi-sub">cantieri temporaneamente bloccati</div>
+        <div class="kpi-sub" id="kpiSosSub">cantieri temporaneamente bloccati</div>
       </div>
     </div>
   </div>
@@ -491,12 +491,15 @@
         <table class="cant-table">
           <thead>
             <tr>
+              <th>Cod. Cantiere</th>
               <th>Pratica</th>
               <th>Ente</th>
               <th>Lotto</th>
               <th>Cluster</th>
               <th>Provincia</th>
               <th>Comune</th>
+              <th>Impresa</th>
+              <th>Tecnica</th>
               <th>Stato Cantiere</th>
               <th>Avanzamento</th>
               <th style="text-align:right">Metri Tot.</th>
@@ -679,12 +682,15 @@ async function _loadCantieri() {
       const lotto   = String(r.lotto   || '?');
       const cluster = String(r.cluster || '?').replace(/^[Cc]/, '');
       const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
+      const mTot = r.metri_totali || 0;
       if (!byLotto[lotto]) {
         byLotto[lotto] = { id: lotto, cl: cluster, metri: 0, scavati: 0,
-                           stato: statoUI, tratte: [], provSet: new Set(), comuniSet: new Set() };
+                           stato: statoUI, tratte: [], provSet: new Set(), comuniSet: new Set(),
+                           statoMetri: {} };
       }
-      byLotto[lotto].metri   += r.metri_totali   || 0;
+      byLotto[lotto].metri   += mTot;
       byLotto[lotto].scavati += r.metri_scavati  || 0;
+      byLotto[lotto].statoMetri[statoUI] = (byLotto[lotto].statoMetri[statoUI] || 0) + mTot;
       (r.tratte || []).forEach(t => byLotto[lotto].tratte.push(t.tratta_id));
       if (r.provincia) byLotto[lotto].provSet.add(r.provincia);
       if (r.comune)    byLotto[lotto].comuniSet.add(r.comune);
@@ -693,9 +699,10 @@ async function _loadCantieri() {
         byLotto[lotto].stato = statoUI;
       }
       if (cluster && cluster !== '?') {
-        if (!clusterScaviMap[cluster]) clusterScaviMap[cluster] = { metri: 0, scavati: 0 };
-        clusterScaviMap[cluster].metri    += r.metri_totali  || 0;
+        if (!clusterScaviMap[cluster]) clusterScaviMap[cluster] = { metri: 0, scavati: 0, statoMetri: {} };
+        clusterScaviMap[cluster].metri    += mTot;
         clusterScaviMap[cluster].scavati  += r.metri_scavati || 0;
+        clusterScaviMap[cluster].statoMetri[statoUI] = (clusterScaviMap[cluster].statoMetri[statoUI] || 0) + mTot;
       }
     });
     window._CLUSTER_SCAVI = clusterScaviMap; // letto da _renderClusters
@@ -729,6 +736,7 @@ async function _loadCantieri() {
         permessi: p ? p.statiMap : null,
         permessiTot: p ? p.totale : 0,
         haCantiere: lottiConCantiere.has(lotto),
+        statoMetri: c ? c.statoMetri : {},
       };
     }).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
     console.log('[ENRI] LOTTI finale:', LOTTI.map(l => l.id), '| con permessi:', LOTTI.filter(l=>l.permessi).length, '| con cantiere:', LOTTI.filter(l=>l.haCantiere).length);
@@ -877,7 +885,7 @@ function _renderCantieriTable() {
     if (_cantieriLottoFiltro !== 'all' && String(r.lotto || '?') !== _cantieriLottoFiltro) return false;
     if (!q) return true;
     const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
-    const haystack = [r.pratica_id, r.ente, r.lotto, r.cluster, r.provincia, r.comune, STATO_LABEL[statoUI]].join(' ').toLowerCase();
+    const haystack = [r.codice_cantiere, r.pratica_id, r.ente, r.lotto, r.cluster, r.provincia, r.comune, r.impresa, STATO_LABEL[statoUI]].join(' ').toLowerCase();
     return haystack.includes(q);
   });
   const countEl = document.getElementById('cantieriCount');
@@ -894,18 +902,21 @@ function _renderCantieriTable() {
       ? `<div class="prog-wrap"><div class="prog-track"><div class="prog-fill" style="width:${pct}%;background:${col}"></div></div><div class="prog-val">${pct}%</div></div>`
       : `<span style="color:var(--muted2)">—</span>`;
     return `<tr>
+      <td><span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--accent)">${r.codice_cantiere || '—'}</span></td>
       <td><span style="font-family:var(--font-mono);font-size:10px;color:var(--muted)" title="${(r.tratte||[]).length} tratte">${r.pratica_id || '—'}</span></td>
       <td style="color:var(--muted)">${r.ente || '—'}</td>
       <td><span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent)">${r.lotto ?? '—'}</span></td>
       <td><span style="font-family:var(--font-mono);font-size:10px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 7px;color:var(--muted)">${(r.cluster ?? '?').toString().replace(/^[Cc]/,'')}</span></td>
       <td style="color:var(--muted)">${r.provincia || '—'}</td>
       <td style="color:var(--muted)">${r.comune || '—'}</td>
+      <td style="color:var(--muted)">${r.impresa || '—'}</td>
+      <td style="color:var(--muted)">${TECNICA_LABEL[r.tecnica_scavo] || '—'}</td>
       <td><span class="chip ${statoUI}">${STATO_LABEL[statoUI]}</span></td>
       <td>${prog}</td>
       <td style="text-align:right;font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(metriTot)}</td>
       <td style="text-align:right;color:var(--muted)">${fmt(scavati)}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px">Nessun cantiere trovato.</td></tr>`;
+  }).join('') || `<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px">Nessun cantiere trovato.</td></tr>`;
 }
 
 function _renderPageSubtitle() {
@@ -949,12 +960,26 @@ function _renderRiepilogo() {
 // ── KPI COUNTERS ────────────────────────────────────────────────────────────
 function _renderKpi() {
 const counts = { 'non-avviato':0, 'allestimento':0, 'in-corso':0, 'completato':0, 'sospeso':0 };
-CANTIERI_RAW.forEach(r => { const s = STATO_MAP[r.stato_cantiere] || 'non-avviato'; if(counts[s]!==undefined) counts[s]++; });
+const metri  = { 'non-avviato':0, 'allestimento':0, 'in-corso':0, 'completato':0, 'sospeso':0 };
+let totaleMetri = 0;
+CANTIERI_RAW.forEach(r => {
+  const s = STATO_MAP[r.stato_cantiere] || 'non-avviato';
+  const m = r.metri_totali || 0;
+  if(counts[s]!==undefined) counts[s]++;
+  if(metri[s]!==undefined) metri[s] += m;
+  totaleMetri += m;
+});
 document.getElementById('kpiNav').textContent = counts['non-avviato'];
 document.getElementById('kpiAll').textContent = counts['allestimento'];
 document.getElementById('kpiCor').textContent = counts['in-corso'];
 document.getElementById('kpiCom').textContent = counts['completato'];
 document.getElementById('kpiSos').textContent = counts['sospeso'];
+const SUB_ID = { 'non-avviato':'kpiNavSub', 'allestimento':'kpiAllSub', 'in-corso':'kpiCorSub', 'completato':'kpiComSub', 'sospeso':'kpiSosSub' };
+Object.keys(SUB_ID).forEach(stato => {
+  const pct = totaleMetri > 0 ? Math.round(metri[stato] / totaleMetri * 100) : 0;
+  const el = document.getElementById(SUB_ID[stato]);
+  if (el) el.textContent = `${fmt(metri[stato])} m · ${pct}% sul totale`;
+});
 }
 
 // ── HELPERS (portati da index.html) ─────────────────────────────────────────
@@ -1011,10 +1036,9 @@ Object.keys(CLUSTER_PERMESSI).sort((a,b)=>+a-+b).forEach(cl => {
   const tot = cd.totale;
   const statiMap = cd.statiMap;
   const gruppi = buildGruppiMapPermessi(statiMap);
-  const sc = scaviMap[cl] || { metri: 0, scavati: 0 };
+  const sc = scaviMap[cl] || { metri: 0, scavati: 0, statoMetri: {} };
   const haScavo = sc.metri > 0;
   const pctScavo = haScavo ? Math.round(sc.scavati / sc.metri * 100) : 0;
-  const colScavo = STATO_COLOR['in-corso'];
 
   const group = document.createElement('div');
   group.style.cssText = 'padding:8px 6px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;';
@@ -1077,19 +1101,25 @@ Object.keys(CLUSTER_PERMESSI).sort((a,b)=>+a-+b).forEach(cl => {
   const scaviTrack = document.createElement('div');
   scaviTrack.className = 'bar-track';
   scaviTrack.style.flex = '1';
-  if (haScavo && pctScavo > 0) {
-    scaviTrack.appendChild(makeSeg(pctScavo, colScavo, 'In corso', sc.scavati, false));
-  }
-  const pctRimasto = haScavo ? (100 - pctScavo) : 100;
-  const metriRimasti = haScavo ? Math.round(sc.metri * pctRimasto / 100) : tot;
-  if (pctRimasto > 0) {
-    scaviTrack.appendChild(makeSeg(pctRimasto, STATO_COLOR['non-avviato'], 'Non scavato', metriRimasti, true));
+  const statoMetriCl = sc.statoMetri || {};
+  let trackedMetri = 0;
+  STATO_ORDER.forEach(stato => {
+    const m = statoMetriCl[stato] || 0;
+    if (m <= 0) return;
+    trackedMetri += m;
+    const pct = tot > 0 ? m / tot * 100 : 0;
+    scaviTrack.appendChild(makeSeg(pct, STATO_COLOR[stato], STATO_LABEL[stato], m, false));
+  });
+  const metriNonTracciati = Math.max(0, tot - trackedMetri);
+  if (metriNonTracciati > 0) {
+    const pctRimasto = tot > 0 ? metriNonTracciati / tot * 100 : 100;
+    scaviTrack.appendChild(makeSeg(pctRimasto, STATO_COLOR['non-avviato'], 'Non tracciato', metriNonTracciati, true));
   }
   scaviRow.appendChild(scaviTrack);
 
   const scaviPctEl = document.createElement('span');
   scaviPctEl.className = 'bar-pct';
-  scaviPctEl.style.color = colScavo;
+  scaviPctEl.style.color = STATO_COLOR['in-corso'];
   scaviPctEl.textContent = haScavo ? pctScavo + '%' : '—';
   scaviRow.appendChild(scaviPctEl);
 
@@ -1174,15 +1204,19 @@ LOTTI.forEach(r => {
   const lottoTrack = document.createElement('div');
   lottoTrack.className = 'bar-track';
   lottoTrack.style.flex = '1';
-  // Avanzamento scavo calcolato sul totale REALE del lotto (da permessi)
-  if (r.haCantiere && r.pct > 0) {
-    const metriScavati = Math.round(r.metri * r.pct / 100);
-    lottoTrack.appendChild(makeSeg(r.pct, col, STATO_LABEL[r.stato], metriScavati, false));
-  }
-  const pctRimasto = r.haCantiere ? (100 - r.pct) : 100;
-  const metriRimasti = Math.round(r.metri * pctRimasto / 100);
-  if (pctRimasto > 0) {
-    lottoTrack.appendChild(makeSeg(pctRimasto, STATO_COLOR['non-avviato'], 'Non scavato', metriRimasti, true));
+  const statoMetriR = r.statoMetri || {};
+  let trackedMetriR = 0;
+  STATO_ORDER.forEach(stato => {
+    const m = statoMetriR[stato] || 0;
+    if (m <= 0) return;
+    trackedMetriR += m;
+    const pct = r.metri > 0 ? m / r.metri * 100 : 0;
+    lottoTrack.appendChild(makeSeg(pct, STATO_COLOR[stato], STATO_LABEL[stato], m, false));
+  });
+  const metriNonTracciatiR = Math.max(0, r.metri - trackedMetriR);
+  if (metriNonTracciatiR > 0) {
+    const pctRimasto = r.metri > 0 ? metriNonTracciatiR / r.metri * 100 : 100;
+    lottoTrack.appendChild(makeSeg(pctRimasto, STATO_COLOR['non-avviato'], 'Non tracciato', metriNonTracciatiR, true));
   }
   scaviRow.appendChild(lottoTrack);
 
