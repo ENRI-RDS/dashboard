@@ -755,6 +755,11 @@
     $('wrapFineEff').style.display      = s === 'completato' ? '' : 'none';
     $('wrapMotivoBlocco').style.display = s === 'sospeso' ? '' : 'none';
     $('wrapDataRipresa').style.display  = s === 'sospeso' ? '' : 'none';
+    const tecnicaBloccata = s === 'allestimento';
+    $('fTecnica').disabled = tecnicaBloccata;
+    if (tecnicaBloccata) $('fTecnica').value = '';
+    $('fMetri').disabled = tecnicaBloccata;
+    if (tecnicaBloccata) $('fMetri').value = '';
   }
   $('fStato').addEventListener('change', updateDateVisibility);
 
@@ -771,7 +776,7 @@
   // ── Submit ────────────────────────────────────────────────────────────────
   $('fSubmit').addEventListener('click', async () => {
     if (!SELECTED) return;
-    if (!$('fTecnica').value) {
+    if ($('fStato').value !== 'allestimento' && !$('fTecnica').value) {
       setMsg($('msgForm'), 'Seleziona la tecnica di scavo prima di salvare', false);
       $('fTecnica').focus();
       return;
@@ -793,7 +798,7 @@
       payload.motivo_blocco        = $('fMotivoBlocco').value.trim();
       payload.data_ripresa_stimata = $('fDataRipresa').value;
     }
-    if (!isNaN(metriVal) && metriVal >= 0)
+    if (!isNaN(metriVal) && metriVal >= 0 && $('fStato').value !== 'allestimento')
       payload.metri_realizzati_oggi = metriVal;
 
     $('fSubmit').disabled = true;
