@@ -2189,6 +2189,16 @@ async def _sync_cantieri() -> int:
     codice_cache = await _max_codice_per_lotto()
     await _backfill_codici_cantiere(codice_cache)
 
+    # Mappa lotto → impresa assegnata (stessa fonte di /api/lotti-cantieri) per
+    # popolare/backfillare 'impresa' sia sui cantieri esistenti che su quelli nuovi.
+    lotto_impresa: dict[str, str] = {}
+    async for a in assignments_col.find({}, {"nome": 1, "lotti": 1}):
+        nome_impresa = a.get("nome", "")
+        for l in (a.get("lotti") or []):
+            lotto_norm = _lotto_from_source(l)
+            if lotto_norm:
+                lotto_impresa[lotto_norm] = nome_impresa
+
     groups: dict[tuple, dict] = {}
     for tratta_id, info in summary.items():
         if info.get("STATO_AUTORIZZAZIONE") != "OTTENUTO":
@@ -2248,6 +2258,7 @@ async def _sync_cantieri() -> int:
                     "tratte": g["tratte"], "lotto": g["lotto"], "cluster": g["cluster"],
                     "metri_totali": metri_totali, "metri_totali_potenziali": metri_totali_pot,
                     "provincia": provincia_cantiere, "comune": comune_cantiere,
+                    "impresa": lotto_impresa.get(g["lotto"], existing.get("impresa", "")),
                 }},
             )
             continue
@@ -2270,7 +2281,7 @@ async def _sync_cantieri() -> int:
             key=lambda s: stato_rank.get(s, 0), default="non_avviato",
         )
         tecnica_scavo = next((d.get("tecnica_scavo") for d in old_docs if d.get("tecnica_scavo")), "")
-        impresa       = next((d.get("impresa") for d in old_docs if d.get("impresa")), "")
+        impresa       = lotto_impresa.get(g["lotto"]) or next((d.get("impresa") for d in old_docs if d.get("impresa")), "")
 
         codice_cache[g["lotto"]] = codice_cache.get(g["lotto"], 0) + 1
         codice_cantiere = f"CA/{codice_cache[g['lotto']]}/{g['lotto']}"
