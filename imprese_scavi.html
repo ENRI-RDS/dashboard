@@ -587,6 +587,13 @@
     in_corso: '#043F75', sospeso: '#C0392B', completato: '#1E9E6A',
   };
   const STATI_IN_CORSO_EFF = ['in_corso'];  // completato: solo data fine effettiva
+  const STATO_TRANSITIONS = {
+    non_avviato:  ['allestimento'],
+    allestimento: ['in_corso'],
+    in_corso:     ['sospeso','completato'],
+    sospeso:      ['in_corso'],
+    completato:   [],
+  };
 
   // ── State ─────────────────────────────────────────────────────────────────
   let ALL_CANTIERI = [];
@@ -727,7 +734,7 @@
       `<div><strong>${lav.length}</strong> tratt${lav.length!==1?'e':'a'} lavorabil${lav.length!==1?'i':'e'}: ${lav.map(t=>escapeHtml(t.tratta_id)).join(', ') || '—'}</div>` +
       (bloc.length ? `<div style="color:var(--warn,#D08A1A);margin-top:3px">${bloc.length} in attesa di nulla osta (+${Math.round(totPot-tot)} m non ancora conteggiati): ${bloc.map(t=>escapeHtml(t.tratta_id)).join(', ')}</div>` : '');
 
-    $('fStato').value    = r.stato_cantiere || 'non_avviato';
+    populateStatoOptions(r.stato_cantiere || 'non_avviato');
     $('fTecnica').value  = r.tecnica_scavo  || '';
     $('fMetri').value    = '';
     $('fInizioPrev').value = r.data_inizio_prevista  || '';
@@ -739,18 +746,31 @@
     $('fNote').value = '';
     $('msgForm').className = 'msg';
     updateDateVisibility();
+    // Data inizio effettiva: compilabile solo la prima volta
+    if (r.data_inizio_effettiva) {
+      $('fInizioEff').disabled = true;
+      $('fInizioEff').title = 'Già registrata: non modificabile';
+    }
 
     $('formPanel').style.display = 'block';
     $('storicoPanel').style.display = 'none';
     $('formPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
+  function populateStatoOptions(statoCorrente) {
+    const sel = $('fStato');
+    const allowed = [statoCorrente, ...(STATO_TRANSITIONS[statoCorrente] || [])];
+    sel.innerHTML = allowed.map(s =>
+      `<option value="${s}"${s===statoCorrente?' selected':''}>${STATO_LABEL[s]||s}</option>`
+    ).join('');
+  }
+
   function updateDateVisibility() {
     const s = $('fStato').value;
-    const giaAvviato = s !== 'non_avviato';
+    const giaAvviato = !['non_avviato','allestimento'].includes(s);
     $('fInizioPrev').disabled = giaAvviato;
     $('hintInizioPrevLock').style.display = giaAvviato ? '' : 'none';
-    $('wrapFinePrev').style.display     = s === 'completato' ? 'none' : '';
+    $('wrapFinePrev').style.display     = ['in_corso','sospeso'].includes(s) ? '' : 'none';
     $('wrapInizioEff').style.display    = STATI_IN_CORSO_EFF.includes(s) ? '' : 'none';
     $('wrapFineEff').style.display      = s === 'completato' ? '' : 'none';
     $('wrapMotivoBlocco').style.display = s === 'sospeso' ? '' : 'none';
