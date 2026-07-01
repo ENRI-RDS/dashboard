@@ -1017,18 +1017,24 @@ def _compute_tratta_summary(master_df: "pd.DataFrame") -> dict:
         no_ok  = stato_no == "OTTENUTO"
         ord_ok = stato_ord == "OTTENUTO"
 
+        # Vincolante se il flag sull'AUT lo dichiara necessario OPPURE se
+        # esistono comunque righe reali NULLA OSTA/ORDINANZA per la tratta:
+        # il flag può essere disallineato nei dati sorgente, la pratica no.
+        no_effettivo  = (need_no == "SI") or bool(no_latest)
+        ord_effettivo = (need_ord == "SI") or bool(ord_latest)
+
         lavorabile = aut_ok
-        if need_no == "SI":
+        if no_effettivo:
             lavorabile = lavorabile and no_ok
-        if need_ord == "SI":
+        if ord_effettivo:
             lavorabile = lavorabile and ord_ok
 
         motivi = []
         if not aut_ok:
             motivi.append("Manca autorizz")
-        if need_no == "SI" and not no_ok:
+        if no_effettivo and not no_ok:
             motivi.append("Manca nulla osta")
-        if need_ord == "SI" and not ord_ok:
+        if ord_effettivo and not ord_ok:
             motivi.append("Manca ordinanza")
 
         result[tratta_id] = {
