@@ -657,6 +657,17 @@ async function _loadPermessi() {
   }
 }
 
+function _lottoCompare(a, b) {
+  const ka = String(a.id ?? a).match(/^(\d+)([A-Za-z]*)$/);
+  const kb = String(b.id ?? b).match(/^(\d+)([A-Za-z]*)$/);
+  if (!ka || !kb) return String(a.id ?? a).localeCompare(String(b.id ?? b), undefined, { numeric: true });
+  const groupA = ka[2] ? 0 : 1, groupB = kb[2] ? 0 : 1;
+  if (groupA !== groupB) return groupA - groupB;
+  const numA = parseInt(ka[1], 10), numB = parseInt(kb[1], 10);
+  if (numA !== numB) return numA - numB;
+  return ka[2].localeCompare(kb[2]);
+}
+
 async function _loadCantieri() {
   try {
     const apiBase = (window.ENRI && window.ENRI.apiBase)
@@ -733,7 +744,7 @@ async function _loadCantieri() {
         haCantiere: lottiConCantiere.has(lotto),
         statoMetri: c ? c.statoMetri : {},
       };
-    }).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+    }).sort(_lottoCompare);
     console.log('[ENRI] LOTTI finale:', LOTTI.map(l => l.id), '| con permessi:', LOTTI.filter(l=>l.permessi).length, '| con cantiere:', LOTTI.filter(l=>l.haCantiere).length);
   } catch(e) {
     console.warn('[scavi] _loadCantieri:', e.message);
@@ -860,7 +871,7 @@ function closeModalStato(e) {
 function _renderCantieriFilters() {
   const box = document.getElementById('cantieriLottoFilters');
   if (!box) return;
-  const lotti = [...new Set(CANTIERI_RAW.map(r => String(r.lotto || '?')))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  const lotti = [...new Set(CANTIERI_RAW.map(r => String(r.lotto || '?')))].sort((a,b)=>_lottoCompare({id:a},{id:b}));
   box.innerHTML = `<button class="kpi-filt-btn${_cantieriLottoFiltro==='all'?' active':''}" onclick="_setCantieriLottoFiltro('all')">Tutti</button>` +
     lotti.map(l => `<button class="kpi-filt-btn${_cantieriLottoFiltro===l?' active':''}" onclick="_setCantieriLottoFiltro('${l}')">Lotto ${l}</button>`).join('');
 }
