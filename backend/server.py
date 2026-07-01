@@ -77,6 +77,7 @@ solleciti_col = db["solleciti"]                # registro solleciti per tratta/p
 cantieri_col  = db["cantieri"]                  # stato cantiere per pratica di autorizzazione
 sopralluoghi_col = db["sopralluoghi"]          # verbali di sopralluogo
 pol_conv_dates_col = db["pol_conv_dates"]      # prima data in cui CONVENZIONE/POLIZZA è comparsa per una pratica
+access_logs_col = db["access_logs"]            # log accessi (ex-JSONBin) — un documento per binId, {utenti:[...], accessi:[...]}
 gridfs = AsyncIOMotorGridFSBucket(db, bucket_name="files")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -676,39 +677,31 @@ async def auth_verify(sess: dict = Depends(_require_session)):
 
 @app.post("/api/logs/get")
 async def logs_get(payload: dict, sess: dict = Depends(_require_session)):
-    """Proxy JSONBin get via Apps Script (il segreto resta server-side)."""
+    """Log accessi — letto da MongoDB (access_logs). JSONBin/Apps Script non più usati per questo."""
     bin_id = (payload or {}).get("binId", "")
-    if not APPS_SCRIPT_URL or not APPS_SCRIPT_SECRET:
-        raise HTTPException(500, "Log service non configurato")
-    try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            r = await client.post(
-                APPS_SCRIPT_URL,
-                content=json.dumps({"secret": APPS_SCRIPT_SECRET, "action": "jsonbin_get", "binId": bin_id}),
-                headers={"Content-Type": "text/plain"},
-            )
-        return r.json()
-    except Exception as e:
-        raise HTTPException(502, f"Log service non raggiungibile: {e}")
+    doc = await access_logs_col.find_one({"_id": bin_id}) or {}
+    return {"record": {
+        "utenti":  doc.get("utenti", []),
+        "accessi": doc.get("accessi", []),
+    }}
 
 
 @app.post("/api/logs/put")
 async def logs_put(payload: dict, sess: dict = Depends(_require_session)):
-    """Proxy JSONBin put via Apps Script (il segreto resta server-side)."""
+    """Log accessi — scritto su MongoDB (access_logs). JSONBin/Apps Script non più usati per questo."""
     bin_id = (payload or {}).get("binId", "")
-    data   = (payload or {}).get("data")
-    if not APPS_SCRIPT_URL or not APPS_SCRIPT_SECRET:
-        raise HTTPException(500, "Log service non configurato")
-    try:
-        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-            r = await client.post(
-                APPS_SCRIPT_URL,
-                content=json.dumps({"secret": APPS_SCRIPT_SECRET, "action": "jsonbin_put", "binId": bin_id, "data": data}),
-                headers={"Content-Type": "text/plain"},
-            )
-        return r.json()
-    except Exception as e:
-        raise HTTPException(502, f"Log service non raggiungibile: {e}")
+    data   = (payload or {}).get("data") or {}
+    if not bin_id:
+        raise HTTPException(400, "binId mancante")
+    await access_logs_col.update_one(
+        {"_id": bin_id},
+        {"$set": {
+            "utenti":  data.get("utenti", []),
+            "accessi": data.get("accessi", []),
+        }},
+        upsert=True,
+    )
+    return {"ok": True}
 
 
 MASTER_FILENAME = "Master.csv"
