@@ -121,8 +121,8 @@
   .pr-form label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text);margin:10px 0 4px;font-weight:600;}
   .pr-form label:first-of-type{margin-top:0;}
   .pr-form select,.pr-form input[type=text],.pr-form input[type=date],.pr-form input[type=number],.pr-form textarea{
-    width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;background:var(--surface);color:var(--text);}
-  .pr-form select:focus,.pr-form input:focus,.pr-form textarea:focus{outline:none;border-color:var(--border-focus);}
+    width:100%;min-height:40px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit;background:var(--surface);color:var(--text);}
+  .pr-form select:focus,.pr-form input:focus,.pr-form textarea:focus{outline:none;border-color:var(--border-focus,#41BBD9);box-shadow:0 0 0 3px rgba(65,187,217,.35);}
   .pr-form select[multiple]{padding:4px 6px;}
   .pr-form textarea{resize:vertical;min-height:48px;}
   .pr-form textarea:disabled{background:var(--gray-100);color:var(--muted);cursor:not-allowed;resize:none;}
@@ -161,7 +161,8 @@
   .sc-progress-fill{height:4px;border-radius:2px;transition:width .3s;}
   .sc-form label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text);margin:10px 0 4px;font-weight:600;}
   .sc-form label:first-of-type{margin-top:0;}
-  .sc-form select,.sc-form input[type=date],.sc-form input[type=number],.sc-form textarea{width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;background:var(--surface);color:var(--text);}
+  .sc-form select,.sc-form input[type=date],.sc-form input[type=number],.sc-form textarea{width:100%;min-height:40px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit;background:var(--surface);color:var(--text);}
+  .sc-form select:focus,.sc-form input:focus,.sc-form textarea:focus{outline:none;border-color:var(--border-focus,#41BBD9);box-shadow:0 0 0 3px rgba(65,187,217,.35);}
   .sc-form select:focus,.sc-form input:focus,.sc-form textarea:focus{outline:none;border-color:var(--border-focus,var(--retelit-sky));}
   .sc-form select:disabled,.sc-form input:disabled,.sc-form textarea:disabled{background:var(--gray-100,#EEF1F5);color:var(--muted);cursor:not-allowed;opacity:1;}
   .sc-form textarea{resize:vertical;min-height:44px;}
@@ -1131,9 +1132,9 @@
 
 <script>
 const STATO_COLORS = {
-  'IN ATTESA':'#4a4f6a','IN REDAZIONE':'#4a4f6a','IN REDAZIONE INTEGRAZIONE':'#cc3333',
-  'IN FIRMA RDS':'#e07b3a','COORDINAMENTO':'#9b59b6','INVIATO':'#4f8ef7','PROTOCOLLATO':'#4f8ef7',
-  'NECESSARIA INTEGRAZIONE':'#cc3333','PROTOCOLLATO INTEGRAZIONE':'#B5657A','OTTENUTO':'#3a8c5c'
+  'IN ATTESA':'#4E5866', 'IN REDAZIONE':'#4E5866', 'IN REDAZIONE INTEGRAZIONE':'#C0392B',
+  'IN FIRMA RDS':'#D08A1A', 'COORDINAMENTO':'#1A7D99', 'INVIATO':'#41BBD9', 'PROTOCOLLATO':'#41BBD9',
+  'NECESSARIA INTEGRAZIONE':'#C0392B', 'PROTOCOLLATO INTEGRAZIONE':'#436A93', 'OTTENUTO':'#1E9E6A'
 };
 window.STATO_COLORS = STATO_COLORS;
 const IMPRESE = {'1A':'Valtellina','1B':'Soleto','2A':'Sielte','2B':'Telebit'};
@@ -1715,7 +1716,7 @@ function exportPDF(){
   setTimeout(()=>{window.print();btn.textContent='⬇ PDF';btn.disabled=false;},500);
 }
 
-function getColor(stato){ return STATO_COLORS[stato]||'#4a4f6a'; }
+function getColor(stato){ return STATO_COLORS[stato]||'#4E5866'; }
 function fmtM(m){ return m?(m/1000).toFixed(2).replace('.',',')+' km':'—'; }
 
 // Popola il popup con TUTTI i campi disponibili inclusi i nuovi
@@ -2190,7 +2191,7 @@ function renderResults(pratiche, addresses, query) {
     pratiche.forEach(r => {
       const item = document.createElement('div');
       item.className = 'search-result-item';
-      const color = (window.STATO_COLORS||{})[r.stato] || '#6b7080';
+      const color = (window.STATO_COLORS||{})[r.stato] || '#6B7685';
       item.innerHTML = `
         <span class="search-result-icon">📋</span>
         <div style="flex:1;min-width:0">
@@ -2365,7 +2366,7 @@ async function loadQTS() {
             ${desc ? `<span class="popup-impresa" style="color:${QTS_COLOR_HEX}">${desc}</span>` : ''}
           </div>
           ${len ? `<div class="popup-row"><span class="label">Lunghezza</span><span class="val">${(Number(len)/1000).toFixed(3).replace('.',',')} km</span></div>` : ''}
-          <div style="margin-top:8px"><span class="popup-stato" style="background:#1A7D9922;color:${QTS_COLOR_HEX};border:1px solid #8b5cf644">Tracciato QTS</span></div>
+          <div style="margin-top:8px"><span class="popup-stato" style="background:#1A7D9922;color:${QTS_COLOR_HEX};border:1px solid #41BBD944">Tracciato QTS</span></div>
         </div>`, {maxWidth:320});
         layer.on('mouseover', e => { e.target.setStyle({weight:7, opacity:1}); e.target.bringToFront(); });
         layer.on('mouseout',  e => { e.target.setStyle({weight:4, opacity:0.95}); });
@@ -2642,7 +2643,7 @@ async function _loadSEDInner() {
         // Pratiche CSV per questo SED
         const nSedKey = p.N_SED || '';
         const csvPrats = (window._sedFromCSV && nSedKey && window._sedFromCSV[nSedKey]) ? window._sedFromCSV[nSedKey] : [];
-        const getSC = s => (window.STATO_COLORS||{})[s] || '#888';
+        const getSC = s => (window.STATO_COLORS||{})[s] || '#6B7685';
 
         // Raggruppa pratiche per tipo permesso
         const gruppi = {};
