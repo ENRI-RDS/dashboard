@@ -629,8 +629,10 @@
         data-idx="${i}" role="button" tabindex="0">
         <div class="cant-card-accent accent-${stato}"></div>
         <div class="cant-card-head">
-          <span class="cant-tratta">${escapeHtml(r.pratica_id)}</span>
+          <span class="cant-tratta">${escapeHtml(r.codice_cantiere || '—')}</span>
           <span class="cant-lotto">Lotto ${escapeHtml(r.lotto)}</span>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin:-4px 0 2px">Pratica ${escapeHtml(r.pratica_id)}
         </div>
         <div style="font-size:10px;color:var(--muted);margin:-4px 0 6px">${escapeHtml(r.ente||'')}</div>
         <span class="cant-stato-badge s-${stato}">${escapeHtml(lbl)}</span>
@@ -709,13 +711,13 @@
       if (ALL_CANTIERI[+c.dataset.idx]?.cantiere_key === r.cantiere_key) c.classList.add('selected');
     });
 
-    $('formTitle').textContent = `Cantiere ${r.pratica_id}`;
+    $('formTitle').textContent = `Cantiere ${r.codice_cantiere || r.pratica_id}`;
     const tot     = r.metri_totali || 0;
     const totPot  = r.metri_totali_potenziali || tot;
     const scav    = r.metri_scavati || 0;
     const pct     = tot > 0 ? Math.round(scav / tot * 100) : 0;
     $('formSub').textContent =
-      `${escapeHtml(r.ente||'—')} · Lotto ${r.lotto} · ${scav.toLocaleString('it-IT',{maximumFractionDigits:0})} m scavati ` +
+      `Pratica ${escapeHtml(r.pratica_id)} · ${escapeHtml(r.ente||'—')} · Lotto ${r.lotto} · ${scav.toLocaleString('it-IT',{maximumFractionDigits:0})} m scavati ` +
       `su ${tot.toLocaleString('it-IT',{maximumFractionDigits:0})} m lavorabili (${pct}%)`;
 
     const tratte = r.tratte || [];
@@ -814,7 +816,7 @@
   // ── Storico ───────────────────────────────────────────────────────────────
   $('fStorico').addEventListener('click', async () => {
     if (!SELECTED) return;
-    $('storicoTitle').textContent = `Storico · ${SELECTED.pratica_id}`;
+    $('storicoTitle').textContent = `Storico · ${SELECTED.codice_cantiere || SELECTED.pratica_id}`;
     $('storicoPanel').style.display = 'block';
     $('storicoBody').innerHTML = '<div class="empty">Caricamento…</div>';
     $('storicoPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
