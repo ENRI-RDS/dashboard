@@ -363,6 +363,8 @@
   const IMPRESE = { '1A':'Valtellina','1B':'Soleto','2A':'Sielte','2B':'Telebit' };
   const STATI_COLORS = {
     'OTTENUTO':                  { bg:'var(--ok-bg)',       color:'var(--ok)' },
+    'OTTENUTA':                  { bg:'var(--ok-bg)',       color:'var(--ok)' },
+    'EMESSA':                    { bg:'var(--ok-bg)',       color:'var(--ok)' },
     'INVIATO':                   { bg:'var(--retelit-ice)', color:'var(--retelit-teal)' },
     'INVIATA':                   { bg:'var(--retelit-ice)', color:'var(--retelit-teal)' },
     'PROTOCOLLATO':              { bg:'var(--retelit-ice)', color:'var(--retelit-blue)' },
@@ -528,8 +530,8 @@
   }
 
   // ── VALORI AMMESSI ────────────────────────────────────────────────────────
-  const CONV_VALUES = ['', 'NECESSARIA', 'RICHIESTA RDS', 'INVIATA', 'OTTENUTA'];
-  const POL_VALUES  = ['', 'NECESSARIA', 'RICHIESTA RDS', 'INVIATA', 'OTTENUTA'];
+  const CONV_VALUES = ['', 'NECESSARIA', 'RICHIESTA RDS', 'INVIATA', 'EMESSA'];
+  const POL_VALUES  = ['', 'NECESSARIA', 'RICHIESTA RDS', 'INVIATA', 'EMESSA'];
 
   function buildRows(rows, statoKey, colSpan, field) {
     if (!rows.length) return '<tr><td colspan="' + colSpan + '" class="empty">Nessuna pratica trovata.</td></tr>';
@@ -540,7 +542,10 @@
       const statoVal = r[statoKey] || '';
       const opts = values.map(v =>
         `<option value="${v}" ${v === statoVal ? 'selected' : ''}>${v || '(vuoto)'}</option>`
-      ).join('');
+      ).join('')
+      + (statoVal && !values.includes(statoVal)
+          ? `<option value="${statoVal}" selected>${statoVal} (valore precedente)</option>`
+          : '');
       return `<tr data-idx="${i}" data-field="${field}" data-lotto="${r.lotto}" data-pratica="${r.pratica}">
         <td style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--accent);text-align:right">${r.codicePratica||'—'}</td>
         <td style="font-size:11px">${r.lotto||'—'}</td>
