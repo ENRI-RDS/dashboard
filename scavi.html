@@ -144,12 +144,19 @@
   .kpi.k-sos::before      { background:#C23B22; }
   .kpi-label { font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin-bottom:10px; font-weight:600; }
   .kpi-value { font-size:30px; font-weight:700; font-family:var(--font-display); line-height:1; letter-spacing:-.02em; color:var(--text); }
-  .kpi-sub   { font-size:11px; color:var(--text2); margin-top:6px; font-weight:500; }
+  .kpi-sub   { display:flex; align-items:center; justify-content:space-between; margin-top:12px; padding-top:10px; border-top:1px solid var(--border); }
+  .kpi-metri { font-size:12px; color:var(--text2); font-weight:600; font-family:var(--font-mono); }
+  .kpi-pct   { font-size:11px; font-weight:700; font-family:var(--font-display); padding:2px 8px; border-radius:20px; background:var(--surface2); color:var(--muted); }
   .kpi.k-nav .kpi-value { color:#8A91B4; }
   .kpi.k-all .kpi-value { color:#C08A14; }
   .kpi.k-cor .kpi-value { color:#0B3182; }
   .kpi.k-com .kpi-value { color:#1F7A4E; }
   .kpi.k-sos .kpi-value { color:#C23B22; }
+  .kpi.k-nav .kpi-pct { color:#8A91B4; background:rgba(138,145,180,.12); }
+  .kpi.k-all .kpi-pct { color:#C08A14; background:rgba(192,138,20,.12); }
+  .kpi.k-cor .kpi-pct { color:#0B3182; background:rgba(11,49,130,.12); }
+  .kpi.k-com .kpi-pct { color:#1F7A4E; background:rgba(31,122,78,.12); }
+  .kpi.k-sos .kpi-pct { color:#C23B22; background:rgba(194,59,34,.12); }
 
   /* ── CARD ─────────────────────────────────────────────────────── */
   .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:var(--sh-xs); }
@@ -296,7 +303,6 @@
     <span class="page-title">Avanzamento Scavi</span>
   </div>
   <div class="topbar-right">
-    <span id="topbarUser" style="font-size:11px;color:var(--retelit-ice);font-family:var(--font-mono);"></span>
     <a href="index.html" class="topbar-back">Progettazione</a>
     <a href="mappa.html" class="topbar-back">Mappa</a>
     <a href="hub.html" class="topbar-back">← Hub</a>
@@ -318,27 +324,27 @@
       <div class="kpi k-nav" role="button" tabindex="0" onclick="_filterCantieriByStato('non-avviato')">
         <div class="kpi-label">Non Avviati</div>
         <div class="kpi-value" id="kpiNav">—</div>
-        <div class="kpi-sub" id="kpiNavSub">in attesa di autorizzazioni</div>
+        <div class="kpi-sub" id="kpiNavSub"></div>
       </div>
       <div class="kpi k-all" role="button" tabindex="0" onclick="_filterCantieriByStato('allestimento')">
         <div class="kpi-label">In Allestimento</div>
         <div class="kpi-value" id="kpiAll">—</div>
-        <div class="kpi-sub" id="kpiAllSub">cantieri in preparazione</div>
+        <div class="kpi-sub" id="kpiAllSub"></div>
       </div>
       <div class="kpi k-cor" role="button" tabindex="0" onclick="_filterCantieriByStato('in-corso')">
         <div class="kpi-label">In Corso</div>
         <div class="kpi-value" id="kpiCor">—</div>
-        <div class="kpi-sub" id="kpiCorSub">lotti con scavo attivo</div>
+        <div class="kpi-sub" id="kpiCorSub"></div>
       </div>
       <div class="kpi k-com" role="button" tabindex="0" onclick="_filterCantieriByStato('completato')">
         <div class="kpi-label">Completati</div>
         <div class="kpi-value" id="kpiCom">—</div>
-        <div class="kpi-sub" id="kpiComSub">lotti ultimati</div>
+        <div class="kpi-sub" id="kpiComSub"></div>
       </div>
       <div class="kpi k-sos" role="button" tabindex="0" onclick="_filterCantieriByStato('sospeso')">
         <div class="kpi-label">In Sospeso</div>
         <div class="kpi-value" id="kpiSos">—</div>
-        <div class="kpi-sub" id="kpiSosSub">cantieri temporaneamente bloccati</div>
+        <div class="kpi-sub" id="kpiSosSub"></div>
       </div>
     </div>
   </div>
@@ -993,7 +999,10 @@ const SUB_ID = { 'non-avviato':'kpiNavSub', 'allestimento':'kpiAllSub', 'in-cors
 Object.keys(SUB_ID).forEach(stato => {
   const pct = totaleMetri > 0 ? Math.round(metri[stato] / totaleMetri * 100) : 0;
   const el = document.getElementById(SUB_ID[stato]);
-  if (el) el.textContent = `${fmt(metri[stato])} m · ${pct}% sul totale`;
+  if (el) {
+    const km = (metri[stato] / 1000).toLocaleString('it-IT', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    el.innerHTML = `<span class="kpi-metri">${km} km</span><span class="kpi-pct">${pct}%</span>`;
+  }
 });
 }
 
@@ -1597,7 +1606,6 @@ function closeModalCluster(e) {
 window.addEventListener('DOMContentLoaded', () => {
   const u = localStorage.getItem('_enri_user');
   if (!u) { document.getElementById('authGuard').style.display='flex'; return; }
-  document.getElementById('topbarUser').textContent = u;
   // Carica dati reali: permessi (CSV) + scavi (API)
   _loadAndRenderAll();
 });
