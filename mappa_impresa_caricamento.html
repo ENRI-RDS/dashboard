@@ -1233,6 +1233,11 @@ function setViewMode(mode) {
       });
     }
     updateLegend(mode);
+    if (mode === 'scavi') {
+      renderSidebarScavi(SC_CANTIERI);
+    } else {
+      renderSidebar(lottoStats);
+    }
   };
   if (mode === 'scavi' && typeof scEnsureInit === 'function') {
     scEnsureInit().then(applyColors).catch(applyColors);
@@ -2027,6 +2032,59 @@ function buildLottoStats(features) {
     s.pctAutorizzato = s.totale>0 ? (s.ottenuto/s.totale*100) : 0;
   });
   return stats;
+}
+
+function buildScaviLottoStats(cantieri) {
+  const stats = {};
+  cantieri.forEach(c => {
+    const lotto = c.lotto;
+    if (!lotto) return;
+    if (!stats[lotto]) stats[lotto] = { totale:0, scavato:0, completati:0, stati:{} };
+    const tot = c.metri_totali || 0;
+    const scav = c.metri_scavati || 0;
+    stats[lotto].totale += tot;
+    stats[lotto].scavato += scav;
+    if (c.stato_cantiere === 'completato') stats[lotto].completati += 1;
+    const st = c.stato_cantiere || 'non_avviato';
+    stats[lotto].stati[st] = (stats[lotto].stati[st]||0) + tot;
+  });
+  Object.keys(stats).forEach(k => {
+    const s = stats[k];
+    s.pct = s.totale > 0 ? (s.scavato/s.totale*100) : 0;
+    const sorted = Object.entries(s.stati).sort((a,b)=>b[1]-a[1]);
+    s.statoLabel = sorted.length ? sorted[0][0] : 'non_avviato';
+  });
+  return stats;
+}
+
+function renderSidebarScavi(cantieri) {
+  const stats = buildScaviLottoStats(cantieri);
+  const list = document.getElementById('lottoList');
+  if (!list) return;
+  list.innerHTML = '';
+  LOTTO_ORDER.forEach(id => {
+    const s = stats[id]; if (!s) return;
+    const color = SC_STATO_COLOR[s.statoLabel] || SC_STATO_COLOR.non_avviato;
+    const pct = s.pct.toFixed(1);
+    const badge = s.completati > 0
+      ? `<span class="lav-badge lav-si">${s.completati} completati</span>` : '';
+    const div = document.createElement('div');
+    div.className = 'lotto-item'; div.id = 'li-'+id;
+    div.innerHTML = `
+      <div class="lotto-color" style="background:${color}"></div>
+      <div class="lotto-info">
+        <div class="lotto-num">Lotto ${id}</div>
+        ${IMPRESE[id]?`<div class="lotto-impresa">${IMPRESE[id]}</div>`:''}
+        <div class="lotto-sub">${(s.totale/1000).toFixed(1).replace('.',',')} km</div>
+        <div style="height:3px;background:var(--surface2);border-radius:2px;margin-top:4px;overflow:hidden">
+          <div style="height:100%;width:${s.pct.toFixed(1)}%;background:#1E9E6A;border-radius:2px;transition:width 0.5s"></div>
+        </div>
+      </div>
+      ${badge}
+      <div class="lotto-pct" style="color:${parseFloat(pct)>0?'#1E9E6A':'var(--muted)'}">${pct}%</div>`;
+    div.onclick = () => zoomLotto(id);
+    list.appendChild(div);
+  });
 }
 
 function renderSidebar(stats) {
@@ -3543,7 +3601,10 @@ function renderPrList(filter){
     const existing = latestMap.get(key);
     if (!existing || prParseDate(p.DATA_ULTIMA_MODIFICA) >= prParseDate(existing.DATA_ULTIMA_MODIFICA)) latestMap.set(key, p);
   });
-  const deduplicated = Array.from(latestMap.values()).filter(p => (p.STATO_PERMESSO||'').trim() !== 'OTTENUTO');
+  const deduplicated = Array.from(latestMap.values()).filter(p => {
+    const st = (p.STATO_PERMESSO||'').trim();
+    return st !== 'OTTENUTO' && st !== 'NO COMPETENZA';
+  });
   const rows = deduplicated.filter(p => !f || JSON.stringify(p).toLowerCase().includes(f));
   const list = document.getElementById('prList');
   if (!rows.length) { list.innerHTML = '<div class="pr-empty">Nessuna pratica</div>'; renderPrList._current = []; return; }
@@ -3571,7 +3632,7 @@ const PR_STATO_TRANSITIONS = {
   'IN REDAZIONE INTEGRAZIONE': ['PROTOCOLLATO INTEGRAZIONE', 'NO COMPETENZA'],
   'PROTOCOLLATO INTEGRAZIONE': ['NECESSARIA INTEGRAZIONE', 'OTTENUTO', 'NO COMPETENZA'],
   'OTTENUTO':                  ['NO COMPETENZA'],
-  'NO COMPETENZA':             ['IN REDAZIONE', 'IN FIRMA RDS', 'INVIATO', 'PROTOCOLLATO', 'NECESSARIA INTEGRAZIONE', 'IN REDAZIONE INTEGRAZIONE', 'PROTOCOLLATO INTEGRAZIONE', 'OTTENUTO'],
+  'NO COMPETENZA':             [],
 };
 
 function _prPopulateStatoSelect(statoCorrente){
