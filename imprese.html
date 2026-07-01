@@ -580,8 +580,11 @@
         latestMap.set(key, p);
       }
     });
-    // Escludi pratiche già ottenute — non hanno senso da aggiornare
-    const deduplicated = Array.from(latestMap.values()).filter(p => (p.STATO_PERMESSO || '').trim() !== 'OTTENUTO');
+    // Escludi pratiche già ottenute o non di competenza — non hanno senso da aggiornare
+    const deduplicated = Array.from(latestMap.values()).filter(p => {
+      const st = (p.STATO_PERMESSO || '').trim();
+      return st !== 'OTTENUTO' && st !== 'NO COMPETENZA';
+    });
     const rows = deduplicated.filter(p => !f || JSON.stringify(p).toLowerCase().includes(f));
     if (!rows.length){ $('pratBody').innerHTML = '<tr><td colspan="9" class="empty">Nessuna pratica</td></tr>'; return; }
     // Salva l'array corrente filtrato per recuperare la riga al click
@@ -682,7 +685,7 @@
     'IN REDAZIONE INTEGRAZIONE': ['PROTOCOLLATO INTEGRAZIONE', 'NO COMPETENZA'],
     'PROTOCOLLATO INTEGRAZIONE': ['NECESSARIA INTEGRAZIONE', 'OTTENUTO', 'NO COMPETENZA'],
     'OTTENUTO':                  ['NO COMPETENZA'],
-    'NO COMPETENZA':             ['IN REDAZIONE', 'IN FIRMA RDS', 'INVIATO', 'PROTOCOLLATO', 'NECESSARIA INTEGRAZIONE', 'IN REDAZIONE INTEGRAZIONE', 'PROTOCOLLATO INTEGRAZIONE', 'OTTENUTO'],
+    'NO COMPETENZA':             [],
   };
 
   function _populateStatoSelect(statoCorrente) {
