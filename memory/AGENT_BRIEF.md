@@ -429,7 +429,9 @@ File content in `fs.files` / `fs.chunks` (motor `AsyncIOMotorGridFSBucket`, buck
 {
   "_id": ObjectId,
   "cantiere_key": "24|1A",          // num pratica | lotto — NON pratica_id (non univoco tra enti)
-  "pratica_id": "AUT/24/1A",
+  "codice_cantiere": "CA/3/1A",     // NEW — identificativo cantiere mostrato in UI, distinto da pratica_id
+  "codice_progressivo": 3,          // NEW — contatore progressivo per lotto, assegnato una sola volta alla creazione
+  "pratica_id": "AUT/24/1A",        // resta come riferimento pratica, non più usato come nome del cantiere in UI
   "lotto": "1A",
   "cluster": "...",
   "ente": "...",
