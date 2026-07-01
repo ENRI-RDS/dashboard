@@ -2339,6 +2339,19 @@ async def get_cantieri(lotto: str = "", cluster: str = "", stato: str = ""):
 
 # ── Endpoint impresa: aggiornamento giornaliero ───────────────────────────────
 
+@app.delete("/api/admin/cantieri/reset")
+async def admin_reset_cantieri(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """Svuota la collection cantieri (solo test/dev) e la ricrea da Master.csv."""
+    _check_token(x_upload_token or token_q)
+    deleted = (await cantieri_col.delete_many({})).deleted_count
+    created = await _sync_cantieri()
+    asyncio.create_task(_push_cantieri_to_github())
+    return {"deleted": deleted, "recreated": created}
+
+
 @app.get("/api/admin/sync-cantieri")
 async def admin_sync_cantieri(
     x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
@@ -2409,13 +2422,22 @@ async def update_cantiere(cantiere_key: str, payload: dict, sess: dict = Depends
         if k != "metri_realizzati_oggi":
             update[k] = v
 
-    # Accumula metri giornalieri
+    # Accumula metri giornalieri (con cap su metri_totali)
     metri_oggi = 0.0
     if "metri_realizzati_oggi" in payload:
         try:
             metri_oggi = max(0.0, float(payload["metri_realizzati_oggi"]))
         except Exception:
             raise HTTPException(400, "metri_realizzati_oggi deve essere un numero")
+        metri_totali   = float(doc.get("metri_totali", 0) or 0)
+        metri_scavati_attuali = float(doc.get("metri_scavati", 0) or 0)
+        rimanenti = max(0.0, metri_totali - metri_scavati_attuali)
+        if metri_totali > 0 and metri_oggi > rimanenti:
+            raise HTTPException(
+                400,
+                f"Metri inseriti ({metri_oggi:.0f}m) superano i metri rimanenti "
+                f"del cantiere ({rimanenti:.0f}m su {metri_totali:.0f}m totali)."
+            )
         update["$inc"] = {"metri_scavati": metri_oggi}
 
     update["impresa"]    = nome
