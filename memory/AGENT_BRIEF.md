@@ -374,6 +374,12 @@ Tutti gli endpoint `/api/imprese/*` richiedono header `x-session-token`. Il `nom
 26. ✅ **RISOLTO** — **"Aggiorna Scavi" apriva cantiere sbagliato**: il fallback quando non c'era match esatto sulla tratta prendeva "il primo cantiere dello stesso lotto" alla cieca. Ora: match esatto → apri; nessun match + lotto con 1 solo cantiere → apri; nessun match + lotto con più cantieri → messaggio, nessuna apertura automatica; nessun match + nessun cantiere sul lotto → messaggio "autorizzazione non ancora ottenuta". File: `mappa_impresa_caricamento.html`.
 27. ✅ **RISOLTO** — **Bug `LAVORABILE` in `_compute_tratta_summary` (`server.py`)**: `need_no`/`need_ord` venivano letti SOLO dal flag `NULLA OSTA NECESSARIO`/`ORDINANZA NECESSARIA` sulla riga AUT. Se il flag era vuoto/NO ma esistevano comunque righe reali NULLA OSTA/ORDINANZA non ottenute per la tratta, `LAVORABILE` risultava `SI` per errore. Fix: `no_effettivo = (need_no=="SI") or bool(no_latest)` (idem `ord_effettivo`) — vincolante se il flag lo dichiara O se la pratica esiste davvero nei dati.
 28. ⏳ **DA FARE** — Integrare informazioni aggiuntive nella tabella "Tutti i Cantieri" di `scavi.html` (richiesto, non ancora specificato quali campi).
+29. ✅ **RISOLTO** — Nuovo endpoint `POST /api/admin/regenerate-derived` (auth `x-upload-token`): rilegge il Master.csv corrente e richiama `_regenerate_derived_files` senza upload — serve a riprocessare i dati esistenti dopo un fix a `_compute_tratta_summary` senza toccare Master.csv.
+30. ✅ **RISOLTO** — **Popup mappa: info cantiere integrate** (prima mostravano solo dati pratica/autorizzazione).
+    - `mappa_impresa_caricamento.html`: sezione "Cantiere" completa (stato+colore, tecnica, metri scavati/totali+%, impedimento), dati da `SC_CANTIERI` precaricato all'avvio (`scEnsureInit()` fire-and-forget in testa alla IIFE di init mappa).
+    - `mappa.html` / `mappa_impresa.html`: stessa sezione ma **sola lettura** (nessun bottone azione), dati da `GET /api/cantieri` (pubblico, no auth) in `RO_CANTIERI` (costanti locali `RO_SC_STATO_LABEL/COLOR/TECNICA_LABEL`, funzione `_roLoadCantieri()`).
+    - Lookup in tutti e 3 i casi: `cantieri.find(c => (c.tratte||[]).some(t => t.tratta_id === p.TRATTA_ID))`.
+31. ✅ **RISOLTO** — `.btn.secondary{color:var(--muted)}` faceva sembrare disabilitati i pulsanti secondari (es. "Nuova pratica"/"Aggiorna Scavi" nel popup mappa apparivano "spenti" accanto al primario blu). Cambiato a `color:var(--text)` + hover `border-color/color:var(--accent)` in tutti e 3 i file mappa.
 
 ---
 
