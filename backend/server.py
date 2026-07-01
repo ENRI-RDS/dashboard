@@ -2339,6 +2339,18 @@ async def get_cantieri(lotto: str = "", cluster: str = "", stato: str = ""):
 
 # ── Endpoint impresa: aggiornamento giornaliero ───────────────────────────────
 
+@app.delete("/api/admin/sopralluoghi/reset")
+async def admin_reset_sopralluoghi(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """Svuota la collection sopralluoghi (solo test/dev)."""
+    _check_token(x_upload_token or token_q)
+    deleted = (await sopralluoghi_col.delete_many({})).deleted_count
+    asyncio.create_task(_push_sopralluoghi_to_github())
+    return {"deleted": deleted}
+
+
 @app.delete("/api/admin/cantieri/reset")
 async def admin_reset_cantieri(
     x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
