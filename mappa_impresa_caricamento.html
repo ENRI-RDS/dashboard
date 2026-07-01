@@ -2897,7 +2897,10 @@ function _buildMapLayers(geojson, isUpdate = false) {
           `;
         };
         layer.bindTooltip(buildTrattaTip(), { className:'tratta-tip', sticky:true, direction:'top', offset:[0,-4] });
-        layer.on('mouseover', e => { e.target.setTooltipContent(buildTrattaTip()); e.target.setStyle({ weight:6, opacity:1 }); e.target.bringToFront(); });
+        layer.on('mouseover', e => {
+          if (currentViewMode === 'scavi' && getScaviColorForFeature(f) === null) return;
+          e.target.setTooltipContent(buildTrattaTip()); e.target.setStyle({ weight:6, opacity:1 }); e.target.bringToFront();
+        });
         layer.on('mouseout', e => {
           if (_highlightedLayer === e.target) return;
           const c = getColorForMode(e.target.feature, currentViewMode);
@@ -2907,7 +2910,10 @@ function _buildMapLayers(geojson, isUpdate = false) {
             e.target.setStyle({ weight:4, opacity:0.95, color: c });
           }
         });
-        layer.on('click', e => { applyHighlight(e.target); });
+        layer.on('click', e => {
+          if (currentViewMode === 'scavi' && getScaviColorForFeature(f) === null) return;
+          applyHighlight(e.target);
+        });
       }
     }).addTo(map);
     allLayers.push({ layer, outlineLayer, lotto });
