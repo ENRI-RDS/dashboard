@@ -4126,8 +4126,8 @@ document.addEventListener('click', async e => {
 <!-- ── TRACKING ACCESSI (mappa) — usa proxy Apps Script (no MASTER_KEY in chiaro) ── -->
 <script>
 (function(){
-  const _APPS_URL    = 'https://script.google.com/macros/s/AKfycbxSoKwfqsE4c8RORsUqhUVIXJRpd337jxireCf_RwxMf7UL0QJZyw2qE5UR59aaPEN_/exec';
-  const _APPS_SECRET = 'enri_login_2024_X9f83KsL21pQ';
+  const _apiBase = () => (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+  const _sessionToken = () => localStorage.getItem('_enri_session') || '';
   const LOG_BIN_ID   = '69c8fbdced015c742bc8e978';
   const ACCESSI_MAX  = 500;
   const SAVE_INTERVAL_MS = 60_000;
@@ -4141,9 +4141,9 @@ document.addEventListener('click', async e => {
   let _cachedData     = null;
 
   async function _proxyGet(binId) {
-    const res = await fetch(_APPS_URL, {
-      method: 'POST', headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ secret: _APPS_SECRET, action: 'jsonbin_get', binId })
+    const res = await fetch(_apiBase() + '/api/logs/get', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session-token': _sessionToken() },
+      body: JSON.stringify({ binId })
     });
     const json = await res.json();
     return { utenti:  Array.isArray(json.record?.utenti)  ? json.record.utenti  : [],
@@ -4151,9 +4151,9 @@ document.addEventListener('click', async e => {
   }
 
   function _proxyPut(binId, data, keepalive) {
-    return fetch(_APPS_URL, {
-      method: 'POST', headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ secret: _APPS_SECRET, action: 'jsonbin_put', binId, data }),
+    return fetch(_apiBase() + '/api/logs/put', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session-token': _sessionToken() },
+      body: JSON.stringify({ binId, data }),
       ...(keepalive ? { keepalive: true } : {})
     });
   }
@@ -4180,7 +4180,7 @@ document.addEventListener('click', async e => {
       ts: new Date().toISOString(),
       utente, ruolo, ip,
       ua: navigator.userAgent.substring(0, 120),
-      durata: 0, lotti: [], nAperture: 0, pagina: 'mappa'
+      durata: 0, lotti: [], nAperture: 0, pagina: 'mappa_impresa_caricamento'
     };
     data.accessi.push(entry);
     if (data.accessi.length > ACCESSI_MAX)
