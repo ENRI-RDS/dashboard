@@ -587,6 +587,7 @@
     in_corso: '#043F75', sospeso: '#C0392B', completato: '#1E9E6A',
   };
   const STATI_IN_CORSO_EFF = ['in_corso'];  // completato: solo data fine effettiva
+  const TECNICA_LABEL = { trincea:'Trincea', no_dig:'No Dig', canaletta:'Canaletta' };
   const STATO_TRANSITIONS = {
     non_avviato:  ['allestimento'],
     allestimento: ['in_corso'],
@@ -854,7 +855,7 @@
       }
       $('storicoBody').innerHTML = `<table class="storico-table">
         <thead><tr>
-          <th>Data</th><th>Stato</th><th>Metri oggi</th><th>Note</th>
+          <th>Data</th><th>Stato</th><th>Tecnica</th><th>Metri</th><th>Note</th>
         </tr></thead>
         <tbody>${log.map(e => {
           const noteParts = [];
@@ -865,6 +866,7 @@
           <td style="font-family:var(--font-mono);font-size:11px">${escapeHtml(e.data||'—')}</td>
           <td><span class="cant-stato-badge s-${(e.stato_cantiere||'').replace(/\s/g,'_')} " style="font-size:9.5px">
             ${escapeHtml(STATO_LABEL[e.stato_cantiere] || e.stato_cantiere || '—')}</span></td>
+          <td style="font-size:11px">${escapeHtml(TECNICA_LABEL[e.tecnica_scavo] || e.tecnica_scavo || '—')}</td>
           <td style="font-family:var(--font-mono);font-weight:700;text-align:right">
             ${e.metri_realizzati > 0 ? (e.metri_realizzati).toLocaleString('it-IT',{maximumFractionDigits:1})+' m' : '—'}</td>
           <td style="color:var(--muted);font-size:11px">${noteParts.join(' · ') || '—'}</td>
