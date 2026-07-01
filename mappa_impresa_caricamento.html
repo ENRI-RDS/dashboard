@@ -913,10 +913,10 @@
       <div id="sbHeadMappa">
         <div class="sidebar-title">Visualizzazione</div>
         <div class="view-toggle">
-          <button class="view-btn active" id="vbtn-stato"   onclick="setViewMode('stato')">Stato Pratiche</button>
-          <button class="view-btn"        id="vbtn-scavi"   onclick="setViewMode('scavi')">Stato Scavi</button>
-          <button class="view-btn"        id="vbtn-lotto"   onclick="setViewMode('lotto')">Per Lotto</button>
-          <button class="view-btn"        id="vbtn-cluster" onclick="setViewMode('cluster')">Per Cluster</button>
+          <button class="view-btn active" id="vbtn-stato"   onclick="setViewMode('stato')">Pratiche</button>
+          <button class="view-btn"        id="vbtn-scavi"   onclick="setViewMode('scavi')">Scavi</button>
+          <button class="view-btn"        id="vbtn-lotto"   onclick="setViewMode('lotto')">Lotto</button>
+          <button class="view-btn"        id="vbtn-cluster" onclick="setViewMode('cluster')">Cluster</button>
         </div>
         <div class="sidebar-title">Filtra per lotto</div>
         <div class="filter-row" id="filterRow"></div>
@@ -2851,16 +2851,38 @@ function _buildMapLayers(geojson, isUpdate = false) {
         const stato = f.properties.STATO_LEGENDA || f.properties.STATO_AUTORIZZAZIONE || 'IN ATTESA';
         const comune = f.properties.COMUNE || '';
         const col = getColor(stato);
-        layer.bindTooltip(`
-          <div style="display:flex;align-items:center;gap:6px">
-            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0"></span>
-            <strong>Lotto ${f.properties.LOTTO||'—'}</strong>
-            <span style="color:var(--muted)">·</span>
-            <span>${stato.charAt(0)+stato.slice(1).toLowerCase()}</span>
-          </div>
-          ${comune ? `<div style="font-size:10px;color:#6b7080;margin-top:2px">${comune}</div>` : ''}
-        `, { className:'tratta-tip', sticky:true, direction:'top', offset:[0,-4] });
-        layer.on('mouseover', e => { e.target.setStyle({ weight:6, opacity:1 }); e.target.bringToFront(); });
+        const buildTrattaTip = () => {
+          if (currentViewMode === 'scavi') {
+            const pratiche = f.properties.PRATICA ? String(f.properties.PRATICA).split('|').map(s=>s.trim()).filter(Boolean) : [];
+            let scStato = null;
+            for (const pr of pratiche) {
+              const c = SC_CANTIERI.find(x => String(x.pratica_id).trim() === pr);
+              if (c) { scStato = c.stato_cantiere; break; }
+            }
+            const lbl = scStato ? (SC_STATO_LABEL[scStato] || scStato) : 'Non avviato';
+            const colS = scStato ? (SC_STATO_COLOR[scStato] || '#D5D9DF') : '#D5D9DF';
+            return `
+              <div style="display:flex;align-items:center;gap:6px">
+                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${colS};flex-shrink:0"></span>
+                <strong>Lotto ${f.properties.LOTTO||'—'}</strong>
+                <span style="color:var(--muted)">·</span>
+                <span>${lbl}</span>
+              </div>
+              ${comune ? `<div style="font-size:10px;color:#6b7080;margin-top:2px">${comune}</div>` : ''}
+            `;
+          }
+          return `
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0"></span>
+              <strong>Lotto ${f.properties.LOTTO||'—'}</strong>
+              <span style="color:var(--muted)">·</span>
+              <span>${stato.charAt(0)+stato.slice(1).toLowerCase()}</span>
+            </div>
+            ${comune ? `<div style="font-size:10px;color:#6b7080;margin-top:2px">${comune}</div>` : ''}
+          `;
+        };
+        layer.bindTooltip(buildTrattaTip(), { className:'tratta-tip', sticky:true, direction:'top', offset:[0,-4] });
+        layer.on('mouseover', e => { e.target.setTooltipContent(buildTrattaTip()); e.target.setStyle({ weight:6, opacity:1 }); e.target.bringToFront(); });
         layer.on('mouseout', e => {
           if (_highlightedLayer === e.target) return;
           e.target.setStyle({ weight:4, opacity:0.95, color: getColorForMode(e.target.feature, currentViewMode) });
