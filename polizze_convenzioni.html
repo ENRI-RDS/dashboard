@@ -590,7 +590,7 @@
   };
 
   function _doSave(lotto, pratica, field, val, btn, cell) {
-    const token = sessionStorage.getItem('_enri_upload_token') || '';
+    const token = localStorage.getItem('enri_upload_token') || '';
     if (!token) {
       _pendingSave = { lotto, pratica, field, val, btn, cell };
       openTokenModal();
@@ -621,7 +621,7 @@
       showToast('Operazione completata. Righe aggiornate: ' + d.rows_updated + '.', 'ok');
     } catch(e) {
       if (e.message && e.message.includes('401')) {
-        sessionStorage.removeItem('_enri_upload_token');
+        localStorage.removeItem('enri_upload_token');
         showToast('Token non valido. Riprovare.', 'err');
       } else {
         showToast('Si è verificato un problema. ' + e.message, 'err');
@@ -646,7 +646,7 @@
   window.confirmToken = function() {
     const t = document.getElementById('tokenInput').value.trim();
     if (!t) return;
-    sessionStorage.setItem('_enri_upload_token', t);
+    localStorage.setItem('enri_upload_token', t);
     document.getElementById('tokenModal').classList.remove('open');
     document.getElementById('tokenInput').value = '';
     if (_pendingSave) {
