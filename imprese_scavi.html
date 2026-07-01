@@ -435,6 +435,7 @@
           <div style="font-size:10px;color:var(--retelit-teal);margin-top:4px">
             Inserire 0 se nessuno scavo oggi
           </div>
+          <div id="fMetriRimanenti" style="font-size:10.5px;color:var(--muted);margin-top:2px;font-weight:600"></div>
         </div>
 
       </div>
@@ -738,6 +739,9 @@
     populateStatoOptions(r.stato_cantiere || 'non_avviato');
     $('fTecnica').value  = r.tecnica_scavo  || '';
     $('fMetri').value    = '';
+    const rimanenti = Math.max(0, tot - scav);
+    $('fMetri').max = rimanenti;
+    $('fMetriRimanenti').textContent = tot > 0 ? `Rimangono ${rimanenti.toLocaleString('it-IT',{maximumFractionDigits:0})} m su ${tot.toLocaleString('it-IT',{maximumFractionDigits:0})} m` : '';
     $('fInizioPrev').value = r.data_inizio_prevista  || '';
     $('fFinePrev').value   = r.data_fine_prevista    || '';
     $('fInizioEff').value  = r.data_inizio_effettiva || '';
@@ -803,6 +807,14 @@
       return;
     }
     const metriVal = parseFloat($('fMetri').value);
+    if (!isNaN(metriVal) && metriVal > 0) {
+      const rimanenti = Math.max(0, (SELECTED.metri_totali||0) - (SELECTED.metri_scavati||0));
+      if ((SELECTED.metri_totali||0) > 0 && metriVal > rimanenti) {
+        setMsg($('msgForm'), `Superi i metri rimanenti (${rimanenti.toLocaleString('it-IT',{maximumFractionDigits:0})} m su ${SELECTED.metri_totali.toLocaleString('it-IT',{maximumFractionDigits:0})} m totali)`, false);
+        $('fMetri').focus();
+        return;
+      }
+    }
     const payload = {
       stato_cantiere:        $('fStato').value,
       tecnica_scavo:         $('fTecnica').value,
