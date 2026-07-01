@@ -215,7 +215,7 @@ async def list_files():
                 "size": p.stat().st_size,
                 "type": ext[1:],
                 "source": "disk",
-                "modified": datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc).isoformat(),
+                "modified": _GITHUB_PUSH_TIMES.get(p.name) or datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc).isoformat(),
                 "versions": 0,
             }
 
@@ -818,6 +818,8 @@ GITHUB_PATHS: dict = {
 }
 
 
+_GITHUB_PUSH_TIMES: dict[str, str] = {}   # label/basename -> ISO timestamp ultimo push riuscito
+
 async def _push_to_github(file_bytes: bytes, path: str = None, label: str = None) -> None:
     """Aggiorna un file su GitHub via API (Master.csv, QGIS.geojson, Riepilogo_progettazione.csv, ...).
     In caso di conflitto sha (409 — qualcun altro ha scritto sullo stesso file nel frattempo,
@@ -855,6 +857,7 @@ async def _push_to_github(file_bytes: bytes, path: str = None, label: str = None
                 if resp.status_code in (200, 201):
                     extra = f" (tentativo {tentativo}/{max_tentativi})" if tentativo > 1 else ""
                     print(f"[GitHub] {label} aggiornato sul branch {GITHUB_BRANCH}{extra}")
+                    _GITHUB_PUSH_TIMES[os.path.basename(path)] = _now_iso()
                     return
                 if resp.status_code == 409 and tentativo < max_tentativi:
                     print(f"[GitHub] Conflitto sha su {label} (tentativo {tentativo}/{max_tentativi}) — rileggo e riprovo")
