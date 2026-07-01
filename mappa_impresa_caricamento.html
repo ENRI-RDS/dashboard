@@ -1100,57 +1100,6 @@
       </div>
     </div>
 
-    <div class="sidebar-body" id="scaviBodyPanel" style="display:none;padding:12px 14px;">
-      <div id="scList"><div class="pr-empty">Caricamento…</div></div>
-
-      <div id="scFormWrap" style="display:none">
-        <div class="sc-form-title">Aggiornamento — <span id="scFormSub" class="mono" style="font-weight:400;font-size:11px"></span></div>
-        <div id="scTratteInfo" class="sc-form-sub"></div>
-        <div class="sc-form">
-          <label>Metri realizzati oggi (m)</label>
-          <input type="number" id="scMetri" min="0" step="0.1" placeholder="0">
-          <div class="sc-hint">Inserire 0 se nessuno scavo oggi</div>
-          <label>Stato cantiere *</label>
-          <select id="scStato"></select>
-          <label>Tecnica di scavo *</label>
-          <select id="scTecnica" required>
-            <option value="">— seleziona —</option>
-            <option value="trincea">Trincea</option>
-            <option value="no_dig">No Dig</option>
-            <option value="canaletta">Canaletta</option>
-          </select>
-          <label>Data inizio prevista</label>
-          <input type="date" id="scInizioPrev">
-          <div id="scHintInizioPrevLock" style="display:none" class="sc-hint">Cantiere già avviato: non modificabile.</div>
-          <label>Data fine prevista</label>
-          <input type="date" id="scFinePrev">
-          <label>Data inizio effettiva</label>
-          <input type="date" id="scInizioEff">
-          <label>Data fine effettiva</label>
-          <input type="date" id="scFineEff">
-          <div id="scWrapMotivoBlocco" style="display:none">
-            <label>Motivo blocco</label>
-            <textarea id="scMotivoBlocco" placeholder="Es. interferenza sottoservizi, maltempo…"></textarea>
-          </div>
-          <div id="scWrapDataRipresa" style="display:none">
-            <label>Data ripresa lavori stimata</label>
-            <input type="date" id="scDataRipresa">
-          </div>
-          <label>Note / Impedimenti</label>
-          <textarea id="scNote" placeholder="Eventuali impedimenti, condizioni meteo…"></textarea>
-        </div>
-        <div class="pr-form-actions" style="margin-top:12px">
-          <button class="btn secondary" id="scCancelForm">Annulla</button>
-          <button class="btn secondary" id="scStoricoBtn" style="margin-right:auto"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>Storico</button>
-          <button class="btn" id="scSubmit">Salva aggiornamento</button>
-        </div>
-        <div id="scMsg" class="sc-msg"></div>
-        <div id="scStoricoWrap" style="display:none;margin-top:10px">
-          <div style="font-weight:700;font-size:12px;margin-bottom:6px" id="scStoricoTitle">Storico</div>
-          <div id="scStoricoBody"></div>
-        </div>
-      </div>
-    </div>
   <div id="prConfirmOverlay" onclick="if(event.target===this)this.classList.remove('open')"></div>
   <div id="measureBadge" class="measure-badge">
     <span id="measureDist">0.00 km</span>
@@ -4116,18 +4065,24 @@ document.addEventListener('click', async e => {
   await scEnsureInit();
   _prOpenDrawerIfMobile();
   // Cerca il cantiere che contiene questa tratta
-  const target = SC_CANTIERI.find(c =>
-    (c.tratte||[]).some(t => t.tratta_id === trattaId)
-  ) || SC_CANTIERI.find(c => c.lotto && lottoId && c.lotto === lottoId);
-  if (target) scOpenForm(target);
+  const exact = SC_CANTIERI.find(c => (c.tratte||[]).some(t => t.tratta_id === trattaId));
+  if (exact) { scOpenForm(exact); return; }
+
+  const stessoLotto = lottoId ? SC_CANTIERI.filter(c => c.lotto === lottoId) : [];
+  if (stessoLotto.length === 1) { scOpenForm(stessoLotto[0]); return; }
+  if (stessoLotto.length > 1) {
+    scSetMsg('Più cantieri sul lotto '+lottoId+': seleziona quello corretto dalla lista.', false);
+    return;
+  }
+  scSetMsg('Nessun cantiere trovato per questa tratta: probabilmente l\'autorizzazione non è ancora stata ottenuta.', false);
 });
 </script>
 
 <!-- ── TRACKING ACCESSI (mappa) — usa proxy Apps Script (no MASTER_KEY in chiaro) ── -->
 <script>
 (function(){
-  const _apiBase = () => (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
-  const _sessionToken = () => localStorage.getItem('_enri_session') || '';
+  const _APPS_URL    = 'https://script.google.com/macros/s/AKfycbxSoKwfqsE4c8RORsUqhUVIXJRpd337jxireCf_RwxMf7UL0QJZyw2qE5UR59aaPEN_/exec';
+  const _APPS_SECRET = 'enri_login_2024_X9f83KsL21pQ';
   const LOG_BIN_ID   = '69c8fbdced015c742bc8e978';
   const ACCESSI_MAX  = 500;
   const SAVE_INTERVAL_MS = 60_000;
@@ -4141,9 +4096,9 @@ document.addEventListener('click', async e => {
   let _cachedData     = null;
 
   async function _proxyGet(binId) {
-    const res = await fetch(_apiBase() + '/api/logs/get', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session-token': _sessionToken() },
-      body: JSON.stringify({ binId })
+    const res = await fetch(_APPS_URL, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ secret: _APPS_SECRET, action: 'jsonbin_get', binId })
     });
     const json = await res.json();
     return { utenti:  Array.isArray(json.record?.utenti)  ? json.record.utenti  : [],
@@ -4151,9 +4106,9 @@ document.addEventListener('click', async e => {
   }
 
   function _proxyPut(binId, data, keepalive) {
-    return fetch(_apiBase() + '/api/logs/put', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session-token': _sessionToken() },
-      body: JSON.stringify({ binId, data }),
+    return fetch(_APPS_URL, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ secret: _APPS_SECRET, action: 'jsonbin_put', binId, data }),
       ...(keepalive ? { keepalive: true } : {})
     });
   }
@@ -4180,7 +4135,7 @@ document.addEventListener('click', async e => {
       ts: new Date().toISOString(),
       utente, ruolo, ip,
       ua: navigator.userAgent.substring(0, 120),
-      durata: 0, lotti: [], nAperture: 0, pagina: 'mappa_impresa_caricamento'
+      durata: 0, lotti: [], nAperture: 0, pagina: 'mappa'
     };
     data.accessi.push(entry);
     if (data.accessi.length > ACCESSI_MAX)
