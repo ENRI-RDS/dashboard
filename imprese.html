@@ -3,1602 +3,1441 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="google" content="notranslate">
-<meta http-equiv="Content-Language" content="it">
-<title>ENRI — Avanzamento Scavi</title>
+<title>ENRI — Area Impresa</title>
 <script src="js/api-config.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  @view-transition { navigation: auto; }
-
-  /* ── MODALI ── */
-  .modal-overlay {
-    position:fixed; inset:0; background:rgba(28,28,46,.45);
-    backdrop-filter:blur(4px);
-    z-index:200; display:flex; align-items:center; justify-content:center;
-    opacity:0; pointer-events:none; transition:opacity 0.22s;
-  }
-  .modal-overlay.open { opacity:1; pointer-events:all; }
-  .modal {
-    background:var(--surface); border:1px solid var(--border);
-    border-radius:16px; padding:30px;
-    width:680px; max-width:96vw; max-height:88vh; overflow-y:auto;
-    transform:translateY(20px); transition:transform 0.22s;
-    box-shadow:0 12px 40px rgba(11,49,130,.13),0 4px 16px rgba(0,0,0,.07);
-  }
-  .modal-overlay.open .modal { transform:translateY(0); }
-  .modal-title {
-    font-size:17px; font-weight:700; font-family:var(--font-display);
-    margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; color:var(--text);
-  }
-  .modal-close { cursor:pointer; color:var(--muted); font-size:22px; line-height:1; background:none; border:none; }
-  .modal-close:hover { color:var(--text); }
-  .modal-bar-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
-  .modal-bar-label { width:160px; font-size:11px; color:var(--muted); flex-shrink:0; }
-  .modal-bar-track {
-    flex:1; height:22px; background:var(--surface2); border:1px solid var(--border);
-    border-radius:6px; overflow:hidden; position:relative;
-  }
-  .modal-bar-fill { height:100%; border-radius:5px; transition:width 0.5s ease; }
-  .modal-bar-pct {
-    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-    font-size:11px; font-weight:700; font-family:var(--font-mono);
-    color:#fff; text-shadow:0 0 4px rgba(0,0,0,.7),0 1px 3px rgba(0,0,0,.6); pointer-events:none;
-  }
-  .modal-bar-val { width:90px; text-align:right; font-size:13px; font-weight:700; font-family:var(--font-display); flex-shrink:0; white-space:nowrap; color:var(--text); letter-spacing:-0.01em; }
-  .modal-stat-grid { display:flex; gap:20px; margin-bottom:18px; padding-bottom:16px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
-  .modal-stat { display:flex; flex-direction:column; gap:2px; }
-  .modal-stat-lbl { font-size:9px; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); font-weight:600; }
-  .modal-stat-val { font-size:22px; font-weight:700; font-family:var(--font-display); letter-spacing:-0.02em; color:var(--text); }
-
-  :root {
-    /* Retelit brand tokens */
-    --retelit-blue:#043F75; --retelit-blue-75:#436A93; --retelit-blue-50:#819FB9; --retelit-blue-25:#C0CFDC;
-    --retelit-sky:#41BBD9;  --retelit-teal:#1A7D99;   --retelit-mist:#ADCAD6;   --retelit-ice:#D3DEEA;
-    --gray-50:#F7F8FA; --gray-100:#EEF1F5; --gray-200:#DFE4EB;
-    --gray-300:#C4CDD8; --gray-400:#9AA5B4; --gray-500:#6B7685;
-    --gray-700:#363D48; --gray-800:#22272E;
-    --ok:#1E9E6A; --warn:#D08A1A; --err:#C0392B;
-    /* Alias */
-    --bg:        var(--gray-50);
-    --surface:   #FFFFFF;
-    --surface2:  var(--retelit-ice);
-    --border:    var(--gray-200);
-    --border2:   var(--gray-300);
-    --accent:    var(--retelit-blue);
-    --accent2:   var(--retelit-teal);
-    --text:      var(--gray-700);
-    --text2:     var(--gray-500);
-    --muted:     var(--gray-500);
-    --muted2:    var(--gray-400);
+  :root{
+    --retelit-blue:#043F75;--retelit-blue-75:#436A93;--retelit-blue-50:#819FB9;--retelit-blue-25:#C0CFDC;
+    --retelit-sky:#41BBD9;--retelit-teal:#1A7D99;--retelit-mist:#ADCAD6;--retelit-ice:#D3DEEA;
+    --gray-50:#F7F8FA;--gray-100:#EEF1F5;--gray-200:#DFE4EB;--gray-300:#C4CDD8;
+    --gray-400:#9AA5B4;--gray-500:#6B7685;--gray-700:#363D48;
     --font-display:"Raleway","Calibri",system-ui,-apple-system,"Segoe UI",sans-serif;
     --font-body:"Raleway","Calibri",system-ui,-apple-system,"Segoe UI",sans-serif;
     --font-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
-    --sh-xs: 0 1px 2px rgba(4,63,117,.06), 0 1px 1px rgba(4,63,117,.04);
-    --sh-sm: 0 2px 8px rgba(4,63,117,.08), 0 1px 4px rgba(4,63,117,.04);
-    --sh-md: 0 4px 12px rgba(4,63,117,.08), 0 2px 4px rgba(4,63,117,.04);
+    --bg:var(--gray-50);--surface:#FFFFFF;--border:var(--gray-200);--border-focus:var(--retelit-sky);
+    --text:var(--gray-700);--muted:var(--gray-500);--accent:var(--retelit-blue);--accent-light:rgba(4,63,117,.05);
+    --ok:#1E9E6A;--ok-bg:#EBFAF3;--warn:#D08A1A;--warn-bg:#FEF7E7;
+    --danger:#C0392B;--danger-bg:#FEECEB;
+    --shadow-md:0 4px 12px rgba(4,63,117,.08),0 2px 4px rgba(4,63,117,.04);
   }
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:var(--font-body); background:var(--bg); color:var(--text); min-height:100vh; }
-
-  .topbar {
-    display:flex; align-items:center; justify-content:space-between;
-    padding:0 28px; height:58px;
-    background:var(--retelit-blue);
-    position:sticky; top:0; z-index:50;
-  }
-  .topbar-left  { display:flex; align-items:center; gap:12px; flex-shrink:0; }
-  .topbar-right { display:flex; align-items:center; gap:5px; flex-wrap:nowrap; }
-  .divider-v { width:1px; height:20px; background:var(--retelit-blue-50); }
-  .page-title { font-size:13px; font-weight:600; letter-spacing:.04em; color:var(--retelit-ice); text-transform:uppercase; }
-  .topbar-back { font-size:12px; color:var(--retelit-sky); font-weight:600; text-decoration:none; display:flex; align-items:center; gap:4px; padding:4px 10px; border-radius:8px; border:1px solid var(--retelit-sky); transition:background .15s; }
-  .topbar-back:hover { background:rgba(65,187,217,.1); }
-
-  .main { padding:22px 28px; display:flex; flex-direction:column; gap:20px; }
-
-  .page-eyebrow { font-family:var(--font-mono); font-size:9px; font-weight:500; letter-spacing:.2em; text-transform:uppercase; color:var(--accent2); }
-  .page-h1 { font-family:var(--font-display); font-size:22px; font-weight:700; letter-spacing:-.025em; color:var(--text); line-height:1.2; margin-top:2px; }
-  .page-sub { font-size:12px; color:var(--muted); margin-top:3px; line-height:1.5; }
-  .demo-badge {
-    display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:20px;
-    background:var(--retelit-teal)0A; border:1px solid var(--retelit-teal)30; font-size:11px; color:var(--retelit-teal); font-weight:600; white-space:nowrap; flex-shrink:0;
-  }
-
-  .alert-banner {
-    display:flex; align-items:flex-start; gap:12px; background:var(--retelit-teal)0A;
-    border:1px solid var(--retelit-teal)30; border-radius:10px; padding:12px 18px;
-    font-size:12px; color:#7A2800; line-height:1.6;
-  }
-
-  /* ── KPI CARDS ─────────────────────────────────────────────────── */
-  .phase-panel {
-    border-radius:14px; padding:14px 16px 16px;
-    background:var(--retelit-ice); border:1.5px solid var(--retelit-blue-25, var(--border2));
-  }
-  .phase-header {
-    display:flex; align-items:center; gap:7px; margin-bottom:10px; padding-bottom:8px;
-    border-bottom:1px dashed var(--border2); color:var(--retelit-blue, var(--accent));
-    font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.13em;
-  }
-  .phase-header-icon { width:18px; height:18px; border-radius:5px; display:inline-flex; align-items:center; justify-content:center; font-size:11px; background:rgba(4,63,117,.12); flex-shrink:0; }
-  .kpi-row-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
-  @media(max-width:900px){ .kpi-row-grid{ grid-template-columns:repeat(3,1fr); } }
-
-  .kpi {
-    background:var(--surface); border:1px solid var(--border);
-    border-radius:12px; padding:16px 18px; position:relative; overflow:hidden;
-    box-shadow:var(--sh-xs); animation:fadeUp .4s ease both;
-    cursor:pointer; transition:all .2s;
-  }
-  .kpi:hover { border-color:var(--border2); box-shadow:var(--sh-sm); transform:translateY(-2px); }
-  @keyframes fadeUp{ from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
-  .kpi:nth-child(1){animation-delay:.05s}.kpi:nth-child(2){animation-delay:.10s}
-  .kpi:nth-child(3){animation-delay:.15s}.kpi:nth-child(4){animation-delay:.20s}.kpi:nth-child(5){animation-delay:.25s}
-  .kpi::before { content:''; position:absolute; top:0; left:0; bottom:0; width:3px; border-radius:12px 0 0 12px; }
-  .kpi.k-nav::before      { background:#8A91B4; }
-  .kpi.k-all::before      { background:#C08A14; }
-  .kpi.k-cor::before      { background:#0B3182; }
-  .kpi.k-com::before      { background:#1F7A4E; }
-  .kpi.k-sos::before      { background:#C23B22; }
-  .kpi-label { font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin-bottom:10px; font-weight:600; }
-  .kpi-value { font-size:30px; font-weight:700; font-family:var(--font-display); line-height:1; letter-spacing:-.02em; color:var(--text); }
-  .kpi-sub   { font-size:11px; color:var(--text2); margin-top:6px; font-weight:500; }
-  .kpi.k-nav .kpi-value { color:#8A91B4; }
-  .kpi.k-all .kpi-value { color:#C08A14; }
-  .kpi.k-cor .kpi-value { color:#0B3182; }
-  .kpi.k-com .kpi-value { color:#1F7A4E; }
-  .kpi.k-sos .kpi-value { color:#C23B22; }
-
-  /* ── CARD ─────────────────────────────────────────────────────── */
-  .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:var(--sh-xs); }
-  .card-header { display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid var(--border); }
-  .card-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); font-family:var(--font-display); }
-  .card-body  { padding:20px; }
-
-  /* ── CLUSTER BARS (stile index) ──────────────────────────────── */
-  .cluster-section { display:flex; flex-direction:column; gap:4px; }
-  .cluster-sep {
-    display:flex; align-items:center; gap:8px; padding:5px 6px 3px;
-    font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.12em; color:var(--muted2);
-    border-bottom:1px dashed var(--border2); margin-bottom:3px; margin-top:10px;
-  }
-  .cluster-sep:first-child { margin-top:0; }
-
-  /* ── LOTTO BARS ──────────────────────────────────────────────── */
-  .bar-row { display:flex; align-items:center; gap:10px; border-radius:6px; padding:5px 6px; margin-bottom:2px; transition:background .15s; cursor:pointer; }
-  .bar-row:hover { background:var(--surface2); }
-  .bar-lotto-wrap   { width:90px; flex-shrink:0; display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
-  .bar-lotto-num    { font-size:14px; font-weight:700; font-family:var(--font-display); color:var(--text); letter-spacing:-.01em; }
-  .bar-lotto-comuni { font-size:10px; font-weight:600; color:var(--accent); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:90px; }
-  .bar-middle     { flex:1; display:flex; flex-direction:column; gap:3px; }
-  .bar-track      { flex:1; height:22px; border-radius:5px; overflow:hidden; display:flex; background:var(--surface2); border:1px solid var(--border); }
-  .bar-seg        { height:100%; transition:opacity .15s; }
-  .bar-seg:hover  { opacity:.8; }
-  .bar-info       { display:flex; justify-content:space-between; font-size:9px; color:var(--muted2); }
-  .bar-pct        { font-size:12px; font-weight:700; font-family:var(--font-display); color:var(--text2); width:36px; text-align:right; flex-shrink:0; }
-  .bar-meters     { min-width:72px; text-align:right; font-size:12px; font-family:var(--font-display); font-weight:700; color:var(--text2); flex-shrink:0; letter-spacing:-.01em; }
-
-  /* ── TOOLTIP ──────────────────────────────────────────────────── */
-  .tooltip {
-    position:fixed; background:var(--surface); border:1px solid var(--border);
-    border-radius:8px; padding:7px 12px; font-size:11px; pointer-events:none; z-index:1000;
-    opacity:0; transition:opacity 0.15s; font-family:var(--font-mono);
-    color:var(--text); box-shadow:var(--sh-md);
-  }
-
-  .legend { display:flex; flex-wrap:wrap; gap:10px; padding:12px 20px; border-top:1px solid var(--border); background:var(--surface2); }
-  .legend-item { display:flex; align-items:center; gap:6px; font-size:10px; color:var(--muted); font-weight:500; }
-  .legend-dot { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
-
-  /* ── GRID MAIN ─────────────────────────────────────────────────── */
-  .grid-main { display:grid; grid-template-columns:1fr 290px; gap:18px; }
-  @media(max-width:900px){ .grid-main{ grid-template-columns:1fr; } }
-  .side { display:flex; flex-direction:column; gap:14px; }
-
-  /* ── TABLE ─────────────────────────────────────────────────────── */
-  .kpi-filter-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
-  .kpi-filter-search {
-    font-family:var(--font-display); font-size:13px; color:var(--text);
-    padding:8px 14px; border-radius:8px; border:1px solid var(--border2); background:var(--surface);
-    min-width:220px; flex:0 1 280px; outline:none; transition:border-color .15s, box-shadow .15s;
-  }
-  .kpi-filter-search:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(4,63,117,.10); }
-  .kpi-filter-search::placeholder { color:var(--muted); }
-  .kpi-filt-btn {
-    font-family:var(--font-display); font-size:12px; font-weight:600;
-    padding:6px 12px; border-radius:7px; cursor:pointer;
-    border:1px solid var(--border2); background:var(--surface2); color:var(--text2); transition:all .15s;
-  }
-  .kpi-filt-btn:hover { border-color:var(--accent); color:var(--accent); }
-  .kpi-filt-btn.active { border-color:var(--accent); background:var(--accent); color:#fff; }
-  .kpi-filter-count { font-size:11px; font-family:var(--font-mono); color:var(--muted); margin-left:auto; }
-
-  .cant-table { width:100%; border-collapse:collapse; }
-  .cant-table thead th {
-    background:var(--surface2); font-size:9px; font-weight:700; text-transform:uppercase;
-    letter-spacing:.08em; color:var(--muted); padding:9px 12px; border-bottom:1px solid var(--border);
-    font-family:var(--font-display); text-align:left; white-space:nowrap;
-  }
-  .cant-table tbody tr { transition:background .1s; }
-  .cant-table tbody tr:hover td { background:var(--surface2); }
-  .cant-table td { font-size:11px; padding:9px 12px; border-bottom:1px solid var(--border); color:var(--text2); vertical-align:middle; }
-
-  .prog-wrap  { display:flex; align-items:center; gap:7px; }
-  .prog-track { flex:1; height:5px; border-radius:3px; background:var(--surface2); border:1px solid var(--border); overflow:hidden; min-width:50px; }
-  .prog-fill  { height:100%; border-radius:3px; }
-  .prog-val   { font-size:10px; font-weight:700; font-family:var(--font-mono); color:var(--text2); width:34px; text-align:right; }
-
-  .stat-row { display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border); }
-  .stat-row:last-child { border-bottom:none; }
-  .stat-label { font-size:11px; color:var(--muted); }
-  .stat-val   { font-size:14px; font-weight:700; font-family:var(--font-display); color:var(--text); letter-spacing:-.01em; }
-
-  .placeholder-section {
-    background:var(--surface); border:1px dashed var(--border2); border-radius:12px;
-    padding:28px 20px; display:flex; flex-direction:column; align-items:center;
-    justify-content:center; gap:8px; text-align:center; min-height:130px;
-  }
-  .placeholder-icon  { font-size:26px; opacity:.35; }
-  .placeholder-title { font-size:12px; font-weight:600; color:var(--muted); }
-  .placeholder-sub   { font-size:11px; color:var(--muted2); max-width:230px; line-height:1.6; }
-
-  .prov-pill {
-    display:inline-block; font-size:9px; font-weight:700; font-family:var(--font-mono);
-    padding:1px 6px; border-radius:4px; background:var(--surface2);
-    border:1px solid var(--border2); color:var(--muted); margin-right:2px;
-  }
-
-  .chip { font-size:9px; font-weight:700; padding:2px 8px; border-radius:4px; white-space:nowrap; display:inline-block; text-transform:uppercase; letter-spacing:.04em; }
-  .chip.non-avviato  { background:#8A91B418; color:#4A5078; border:1px solid #8A91B440; }
-  .chip.allestimento { background:#C08A1418; color:#7A5500; border:1px solid #C08A1440; }
-  .chip.in-corso     { background:#0B318218; color:#0B3182; border:1px solid #0B318240; }
-  .chip.sospeso      { background:#C23B2218; color:#8B1A1A; border:1px solid #C23B2240; }
-  .chip.completato   { background:#1F7A4E18; color:#1F7A4E; border:1px solid #1F7A4E40; }
-  #authGuard{
-    position:fixed;inset:0;background:rgba(11,25,70,.55);
-    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-    z-index:9999;display:flex;align-items:center;justify-content:center;
-  }
-  .guard-box{
-    background:var(--surface);border-radius:16px;padding:36px 40px;
-    text-align:center;max-width:340px;
-    box-shadow:0 32px 80px rgba(11,49,130,.22);
-  }
-  .guard-box svg{color:var(--teal, #0E7490);margin-bottom:14px;}
-  .guard-box h2{font-family:var(--font-display);font-size:18px;font-weight:700;margin-bottom:8px;}
-  .guard-box p{font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.6;}
-  .guard-box a{
-    display:inline-block;padding:10px 24px;border-radius:8px;
-    background:var(--accent);color:#fff;text-decoration:none;
-    font-size:13px;font-weight:700;
-  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:var(--font-body);background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:58px;background:var(--retelit-blue);position:sticky;top:0;z-index:100}
+  .topbar-left{display:flex;align-items:center;gap:16px}
+  .topbar-divider{width:1px;height:20px;background:var(--retelit-blue-50)}
+  .topbar-title{font-size:13px;font-weight:600;letter-spacing:.04em;color:var(--retelit-ice);text-transform:uppercase}
+  .topbar-right{display:flex;align-items:center;gap:10px}
+  .topbar-user{font-size:12px;color:var(--retelit-ice);font-weight:500;background:rgba(255,255,255,.1);padding:4px 12px;border-radius:var(--radius-pill,999px);border:1px solid rgba(255,255,255,.15)}
+  .topbar-back{font-size:12px;color:var(--retelit-sky);font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:var(--radius-md,8px);border:1px solid var(--retelit-sky);transition:background .15s;white-space:nowrap}
+  .topbar-back:hover{background:rgba(65,187,217,.1)}
+  .topbar-back.dim{color:rgba(211,222,234,.5);border-color:rgba(211,222,234,.25)}
+  .topbar-back.dim:hover{background:rgba(255,255,255,.05)}
+  .main{max-width:1400px;margin:0 auto;padding:28px 24px;display:flex;flex-direction:column;gap:20px}
+  .hdr{border-bottom:1px solid var(--border);padding-bottom:14px}
+  .eyebrow{font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:.15em;color:var(--muted);margin-bottom:6px}
+  .title{font-family:var(--font-display);font-size:26px;font-weight:700;letter-spacing:-.02em}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;box-shadow:var(--shadow-md)}
+  .tabbar{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border)}
+  .tab{padding:10px 16px;font-size:13px;font-weight:600;color:var(--muted);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;font-family:inherit}
+  .tab.active{color:var(--accent);border-color:var(--accent)}
+  .panel{display:none}.panel.active{display:block}
+  label{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;margin-top:12px;color:var(--text)}
+  label:first-of-type{margin-top:0}
+  input[type=text],input[type=date],input[type=number],select,textarea{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:7px;background:var(--bg);font-family:inherit;font-size:13px;color:var(--text)}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--border-focus);background:var(--surface);box-shadow:0 0 0 3px rgba(65,187,217,.25)}
+  select[multiple]{padding:6px 8px;line-height:1.6;background:var(--surface);border-color:var(--border)}
+  select[multiple] option:checked{background:var(--retelit-blue);color:#fff}
+  select[multiple]:focus{border-color:var(--border-focus);box-shadow:0 0 0 3px rgba(65,187,217,.25)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 18px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;font-weight:600;font-size:13px;background:var(--accent);color:#fff;transition:filter .15s}
+  .btn:hover{filter:brightness(1.08)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn-ghost{background:transparent;color:var(--text);border:1px solid var(--border)}
+  .btn-ghost:hover{background:var(--bg)}
+  .btn-xs{padding:5px 10px;font-size:11.5px;border-radius:6px}
+  .msg{margin-top:12px;padding:10px 12px;border-radius:8px;font-size:13px;font-weight:500;display:none}
+  .msg.ok{display:block;background:var(--ok-bg);color:var(--ok);border:1px solid rgba(43,138,62,.2)}
+  .msg.err{display:block;background:var(--danger-bg);color:var(--danger);border:1px solid rgba(185,28,28,.2)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:9px 8px;border-bottom:2px solid var(--border);text-align:left;background:var(--surface);position:sticky;top:0}
+  td{padding:9px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+  tr:hover td{background:rgba(0,0,0,.015);cursor:pointer}
+  tr.selected td{background:var(--accent-light)}
+  td.mono{font-family:var(--font-mono);font-size:11.5px;color:var(--gray-500)}
+  .tag{display:inline-flex;align-items:center;padding:2px 8px;border-radius:5px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.02em}
+  /* Submission detail modal */
+  .sub-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px}
+  .sub-modal{background:#fff;border-radius:16px;width:100%;max-width:620px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.18)}
+  .sub-modal-head{display:flex;align-items:flex-start;justify-content:space-between;padding:20px 24px 16px;border-bottom:1px solid #f0f2f5}
+  .sub-modal-title{font-family:var(--font-display);font-size:16px;font-weight:700;color:var(--gray-700)}
+  .sub-modal-sub{font-size:12px;color:var(--muted);margin-top:3px}
+  .sub-modal-body{overflow-y:auto;flex:1;padding:16px 24px 20px}
+  .sub-modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;padding:0;margin-left:12px}
+  .sub-change{background:var(--gray-50);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  .sub-change-header{font-weight:700;font-size:12px;margin-bottom:8px;color:var(--gray-700);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .sub-field{display:flex;gap:8px;padding:4px 0;border-bottom:1px solid #eef0f3}
+  .sub-field:last-child{border-bottom:none}
+  .sub-field-key{color:var(--muted);min-width:150px;font-size:12px}
+  .sub-field-val{color:var(--gray-700);font-size:12px;font-weight:500;word-break:break-all}
+  tr[data-sub]:hover td{background:rgba(67,97,238,.04);cursor:pointer}
+  .warn-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px}
+  .warn-modal{background:#fff;border-radius:16px;width:100%;max-width:440px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+  .warn-modal-icon{width:40px;height:40px;border-radius:999px;display:flex;align-items:center;justify-content:center;margin-bottom:10px}
+  .warn-modal-icon.danger{background:var(--danger-bg);color:var(--danger)}
+  .warn-modal-icon.warn{background:var(--warn-bg);color:var(--warn)}
+  .warn-modal-title{font-family:var(--font-display);font-size:16px;font-weight:700;color:var(--gray-700);margin-bottom:8px}
+  .warn-modal-body{font-size:13px;color:var(--gray-700);line-height:1.5;margin-bottom:18px}
+  .sub-section-label{font-size:11px;font-weight:600;color:var(--muted);margin-bottom:8px}
+  .tag.pending{background:#FEF3C7;color:#B45309}.tag.approved{background:#EBFBEE;color:#2B8A3E}.tag.rejected{background:#FEE2E2;color:#B91C1C}
+  .stato-OTTENUTO{color:var(--ok);font-weight:600}
+  .stato-INVIATO,.stato-PROTOCOLLATO{color:var(--retelit-blue);font-weight:600}
+  .stato-IN.REDAZIONE,.stato-IN.FIRMA.RDS{color:#B45309;font-weight:600}
+  .empty{text-align:center;padding:30px;color:var(--muted);font-style:italic;font-size:13px}
+  /* Spinner */
+  .spinner-wrap{display:flex;align-items:center;justify-content:center;gap:10px;padding:30px;color:var(--muted);font-size:13px}
+  .spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;display:inline-block;animation:spin .8s linear infinite;vertical-align:middle}
+  .spinner-sm{width:13px;height:13px;border-width:2px;margin-right:6px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .btn[disabled]{opacity:.6;cursor:not-allowed;filter:none}
+  .btn .spinner{border-color:rgba(255,255,255,.4);border-top-color:#fff}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:700px){.grid2{grid-template-columns:1fr}}
+  .scroll{max-height:520px;overflow:auto;border:1px solid var(--border);border-radius:8px}
+  .search{margin-bottom:12px}
+  .search input{padding-left:34px;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236C757D' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='7'/><path d='m21 21-4.3-4.3'/></svg>");background-repeat:no-repeat;background-position:11px center}
+  .pill-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .pill-row .pill{font-size:11px;background:var(--accent-light);color:var(--accent);padding:3px 9px;border-radius:5px;font-weight:600;letter-spacing:.02em}
+  .submit-bar{position:sticky;bottom:0;background:var(--surface);padding:14px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;margin:14px -20px -20px;border-radius:0 0 14px 14px}
+  .guard{display:none;text-align:center;padding:60px 20px}
+  .guard h2{font-family:var(--font-display);font-size:22px;margin-bottom:12px}
+  .guard p{color:var(--muted);max-width:520px;margin:0 auto 18px}
 </style>
 </head>
 <body>
 
-<div id="authGuard" style="display:none">
-  <div class="guard-box">
-    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-    <h2>Accesso richiesto</h2>
-    <p>Devi effettuare l'accesso al portale per utilizzare questa pagina.</p>
-    <a href="hub.html">Vai al portale</a>
-  </div>
-</div>
-
-<div class="tooltip" id="tooltip"></div>
-
-<div class="topbar">
+<header class="topbar">
   <div class="topbar-left">
-    <img src="data:image/png;base64,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" alt="Retelit" style="height:50px;display:block" onerror="this.style.display="none"">
-    <div class="divider-v"></div>
-    <span class="page-title">Avanzamento Scavi</span>
+    <span style="font-family:var(--font-display);font-size:14px;font-weight:700;letter-spacing:.08em;color:#fff">ENRI</span>
+    <div class="topbar-divider"></div>
+    <span class="topbar-title">Area Impresa · Pratiche</span>
   </div>
   <div class="topbar-right">
-    <span id="topbarUser" style="font-size:11px;color:var(--retelit-ice);font-family:var(--font-mono);"></span>
-    <a href="index.html" class="topbar-back">Progettazione</a>
-    <a href="mappa.html" class="topbar-back">Mappa</a>
-    <a href="hub.html" class="topbar-back">← Hub</a>
+    <span class="topbar-user" id="userPill">—</span>
+    <a href="imprese_scavi.html" class="topbar-back"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5 3.5 14.5a2.121 2.121 0 0 0 3 3L17.5 6.5"/><path d="M3 21l3.5-3.5"/><path d="M16 3l5 5"/></svg>Scavi</a>
+    <a href="mappa_impresa.html" class="topbar-back"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/></svg>Mappa</a>
+    <a href="mappa_impresa_caricamento.html" class="topbar-back"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>Aggiorna Mappa</a>
+    <a href="hub.html" class="topbar-back dim"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>Hub</a>
   </div>
+</header>
+
+<!-- Guard: not logged in or not authorized -->
+<div class="guard" id="guard">
+  <h2 id="guardTitle">Accesso non autorizzato</h2>
+  <p id="guardMsg">Per accedere a quest'area devi prima effettuare il login dal portale e la tua impresa deve essere stata abilitata dall'amministratore.</p>
+  <button id="guardRetryBtn" class="btn" onclick="_retryBoot()" style="display:none;margin-right:10px">⟳ Riprova</button>
+  <a class="btn" href="hub.html" data-testid="goto-hub" style="background:var(--gray-100);color:var(--gray-700);border:1px solid var(--border)">← Torna al login</a>
 </div>
 
-<div class="main">
-
-  <!-- HEADER -->
-  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+<div class="main" id="app" style="display:none">
+  <div class="hdr">
+    <div class="eyebrow">Operatività impresa</div>
+    <div class="title" id="welcomeTitle">Benvenuta impresa</div>
+    <div class="pill-row" id="lottiPills"></div>
   </div>
 
-  <div class="phase-panel phase-scavi">
-    <div class="phase-header">
-      <span class="phase-header-icon">🚧</span>
-      Stato Cantieri
-    </div>
-    <div class="kpi-row-grid">
-      <div class="kpi k-nav" role="button" tabindex="0" onclick="_filterCantieriByStato('non-avviato')">
-        <div class="kpi-label">Non Avviati</div>
-        <div class="kpi-value" id="kpiNav">—</div>
-        <div class="kpi-sub">in attesa di autorizzazioni</div>
-      </div>
-      <div class="kpi k-all" role="button" tabindex="0" onclick="_filterCantieriByStato('allestimento')">
-        <div class="kpi-label">In Allestimento</div>
-        <div class="kpi-value" id="kpiAll">—</div>
-        <div class="kpi-sub">cantieri in preparazione</div>
-      </div>
-      <div class="kpi k-cor" role="button" tabindex="0" onclick="_filterCantieriByStato('in-corso')">
-        <div class="kpi-label">In Corso</div>
-        <div class="kpi-value" id="kpiCor">—</div>
-        <div class="kpi-sub">lotti con scavo attivo</div>
-      </div>
-      <div class="kpi k-com" role="button" tabindex="0" onclick="_filterCantieriByStato('completato')">
-        <div class="kpi-label">Completati</div>
-        <div class="kpi-value" id="kpiCom">—</div>
-        <div class="kpi-sub">lotti ultimati</div>
-      </div>
-      <div class="kpi k-sos" role="button" tabindex="0" onclick="_filterCantieriByStato('sospeso')">
-        <div class="kpi-label">In Sospeso</div>
-        <div class="kpi-value" id="kpiSos">—</div>
-        <div class="kpi-sub">cantieri temporaneamente bloccati</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- CLUSTER BARS (doppia barra: permessi sopra · scavi sotto, per cluster geografico) -->
   <div class="card">
-    <div class="card-header">
-      <span class="card-title">⚡ Avanzamento per Cluster</span>
-      <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)" id="clusterStatus">caricamento…</span>
+    <div class="tabbar">
+      <button class="tab active" data-tab="aggiorna" data-testid="tab-update">Aggiorna pratiche</button>
+      <button class="tab" data-tab="nuova" data-testid="tab-new">Nuova pratica</button>
+      <button class="tab" data-tab="solleciti" data-testid="tab-solleciti">Solleciti</button>
+      <button class="tab" data-tab="mie" data-testid="tab-mine">Le mie submission</button>
     </div>
-    <div class="card-body" style="display:flex;flex-direction:column;gap:0;" id="clusterContainer"></div>
-    <div class="legend" style="flex-wrap:wrap;row-gap:6px;">
-      <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:4px">PERMESSI:</span>
-      <div class="legend-item"><div class="legend-dot" style="background:#1E9E6A"></div>Ottenuto</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#436A93"></div>Prot. Integrazione</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#C0392B"></div>Nec. Integrazione</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#41BBD9"></div>Inviato/Protocollato</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#D08A1A"></div>In Firma</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#6B7685"></div>In Attesa</div>
-      <div style="width:100%;height:1px;background:var(--border);margin:4px 0"></div>
-      <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:4px">SCAVI:</span>
-      <div class="legend-item"><div class="legend-dot" style="background:#C23B22"></div>In sospeso</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#1F7A4E"></div>Completato</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#0B3182"></div>In corso</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#C08A14"></div>In allestimento</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#8A91B4"></div>Non avviato</div>
-    </div>
-  </div>
 
-  <!-- GRID: lotti bars + tabella  |  sidebar -->
-  <div class="grid-main">
+    <!-- AGGIORNA -->
+    <div class="panel active" id="panel-aggiorna">
+      <div class="search"><input type="text" id="searchPratiche" placeholder="Cerca per codice, tratta, ente, stato…" data-testid="search-pratiche"></div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Pratica</th><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th><th>Data richiesta</th><th>Data agg.</th><th>Data ottenimento</th><th style="text-align:right">Lung. (m)</th></tr></thead>
+          <tbody id="pratBody"><tr><td colspan="9"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr></tbody>
+        </table>
+      </div>
 
-    <div style="display:flex;flex-direction:column;gap:14px;">
-
-      <!-- Barre per Lotto -->
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Avanzamento per Lotto</span>
-          <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)" id="lottiSubtitle">caricamento…</span>
+      <div id="editForm" style="display:none;margin-top:16px;border-top:1px dashed var(--border);padding-top:16px">
+        <div style="font-weight:700;margin-bottom:10px;font-size:14px">Aggiornamento — <span id="editRowSub" class="mono" style="color:var(--muted);font-size:12px"></span></div>
+        <div id="siblingsPanel" style="display:none;background:var(--accent-light);border:1px solid var(--retelit-blue-25);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12.5px">
+          <div style="font-weight:700;color:var(--accent);margin-bottom:4px">Questa pratica include altre tratte</div>
+          <div id="siblingsList" style="color:var(--gray-700);margin-bottom:8px"></div>
+          <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-weight:600;color:var(--accent)">
+            <input type="checkbox" id="siblingsToggle" checked style="width:15px;height:15px;cursor:pointer">
+            Aggiorna tutte insieme (consigliato)
+          </label>
         </div>
-        <div class="card-body" style="display:flex;flex-direction:column;gap:0;" id="barContainer"></div>
-        <div class="legend" style="flex-wrap:wrap;row-gap:6px;">
-          <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:4px">PERMESSI:</span>
-          <div class="legend-item"><div class="legend-dot" style="background:#1E9E6A"></div>Ottenuto</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#436A93"></div>Prot. Integrazione</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#C0392B"></div>Nec. Integrazione</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#41BBD9"></div>Inviato/Protocollato</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#D08A1A"></div>In Firma</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#6B7685"></div>In Attesa</div>
-          <div style="width:100%;height:1px;background:var(--border);margin:4px 0"></div>
-          <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:4px">SCAVI:</span>
-          <div class="legend-item"><div class="legend-dot" style="background:#C23B22"></div>In sospeso</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#1F7A4E"></div>Completato</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#0B3182"></div>In corso</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#C08A14"></div>In allestimento</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#8A91B4"></div>Non avviato</div>
+        <div class="grid2">
+          <div>
+            <label>Nuovo stato</label>
+            <select id="fld-stato" data-testid="fld-stato">
+              <option value="">— seleziona stato —</option>
+            </select>
+            <div id="fld-stato-hint" style="font-size:10.5px;color:var(--muted);margin-top:4px"></div>
+          </div>
+          <!-- Data richiesta: visibile solo se nuovo stato = INVIATO -->
+          <div id="wrap-data-rich" style="display:none">
+            <label>Data richiesta (gg/mm/aaaa)</label>
+            <input type="date" id="fld-data-rich" data-testid="fld-data-richiesta">
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Obbligatoria per lo stato INVIATO</div>
+          </div>
+          <!-- Data approvazione: visibile solo se nuovo stato = OTTENUTO -->
+          <div id="wrap-data-app" style="display:none">
+            <label>Data ottenimento (gg/mm/aaaa)</label>
+            <input type="date" id="fld-data-app" data-testid="fld-data-app">
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Obbligatoria per lo stato OTTENUTO</div>
+          </div>
+          <!-- Nulla Osta Necessario: visibile solo per AUTORIZZAZIONE -->
+          <div id="wrap-upd-no-nec" style="display:none">
+            <label>Nulla Osta Necessario</label>
+            <select id="fld-no-nec">
+              <option value="">—</option>
+              <option value="SI">SI</option>
+              <option value="NO">NO</option>
+            </select>
+          </div>
+          <div>
+            <label>Polizza necessaria</label>
+            <select id="fld-polizza">
+              <option value="">—</option>
+              <option value="SI">SI</option>
+              <option value="NO">NO</option>
+            </select>
+          </div>
+          <div>
+            <label>Convenzione</label>
+            <select id="fld-convenzione">
+              <option value="">—</option>
+              <option value="SI">SI</option>
+              <option value="NO">NO</option>
+            </select>
+          </div>
+          <!-- Tratte NO: visibile solo se Nulla Osta Necessario = SI -->
+          <div id="wrap-upd-no-tratte" style="display:none;grid-column:span 2">
+            <label>Tratte che richiedono Nulla Osta</label>
+            <select id="fld-no-tratte" multiple size="5"
+                    style="height:auto;min-height:100px;font-family:var(--font-mono);font-size:12px">
+            </select>
+            <div style="font-size:10.5px;color:var(--muted);margin-top:3px">Ctrl+click per selezione multipla · Le tratte selezionate genereranno una nuova pratica Nulla Osta</div>
+          </div>
+          <div style="grid-column:span 2">
+            <label>Note</label>
+            <textarea id="fld-note" placeholder="Seleziona prima il nuovo stato…" data-testid="fld-note"
+              disabled style="background:var(--gray-100);color:var(--muted);cursor:not-allowed;resize:none"></textarea>
+          </div>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-ghost" id="cancelEditBtn">Annulla</button>
+          <button class="btn" id="addToQueueBtn" data-testid="add-to-queue">Aggiungi alla coda</button>
         </div>
       </div>
 
-      <!-- Tabella -->
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Registro Lotti · Stato Cantiere</span>
-          <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)">12 lotti · struttura reale · avanzamento di esempio</span>
+      <div id="updateQueue" style="margin-top:14px;display:none">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">Modifiche in coda da inviare (<span id="qCount">0</span>)</div>
+        <table>
+          <thead><tr><th>Tratta</th><th>Lunghezza</th><th>Ente</th><th>Modifiche</th><th></th></tr></thead>
+          <tbody id="queueBody"></tbody>
+        </table>
+        <div style="margin-top:12px;display:flex;justify-content:flex-end;gap:10px">
+          <button class="btn btn-ghost" id="clearQueueBtn">Svuota</button>
+          <button class="btn" id="submitUpdatesBtn" data-testid="submit-updates">Invia per approvazione</button>
         </div>
-        <div style="overflow-x:auto;">
-          <table class="cant-table">
-            <thead>
-              <tr>
-                <th>Lotto</th>
-                <th>Cluster</th>
-                <th>Province</th>
-                <th>Comuni</th>
-                <th>Stato Cantiere</th>
-                <th>Avanzamento</th>
-                <th style="text-align:right">Metri Tot.</th>
-              </tr>
-            </thead>
-            <tbody id="tablebody"></tbody>
+      </div>
+
+      <div class="msg" id="msgUpd"></div>
+    </div>
+
+    <!-- NUOVA -->
+    <div class="panel" id="panel-nuova">
+      <p style="color:var(--muted);font-size:13px;margin-bottom:14px">Compila i campi della nuova pratica. Lo stato iniziale è <b>IN REDAZIONE</b> (automatico). Dopo l'invio l'amministratore approverà l'inserimento nella dashboard.</p>
+      <form id="newForm">
+        <div class="grid2">
+          <div>
+            <label>Lotto *</label>
+            <select id="new-lotto" required data-testid="new-lotto"></select>
+          </div>
+          <div>
+            <label>Ente *</label>
+            <select id="new-ente" required data-testid="new-ente">
+              <option value="">— seleziona ente —</option>
+            </select>
+          </div>
+          <div>
+            <label>Tipo permesso *</label>
+            <select id="new-tipo" required data-testid="new-tipo">
+              <option value="">—</option>
+              <option>AUTORIZZAZIONE</option>
+              <option>NULLA OSTA</option>
+            </select>
+          </div>
+          <div>
+            <label>Numero progressivo pratica (automatico)</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span id="new-pratica-prefix" style="font-family:var(--font-mono);font-size:13px;color:var(--muted);white-space:nowrap">—/</span>
+              <input type="number" id="new-pratica" required readonly
+                     data-testid="new-pratica" style="max-width:100px;background:var(--gray-100);color:var(--muted);cursor:not-allowed">
+              <span id="new-pratica-suffix" style="font-family:var(--font-mono);font-size:13px;color:var(--muted);white-space:nowrap">/—</span>
+            </div>
+            <div style="margin-top:4px;font-size:11px;color:var(--muted)">Calcolato come ultimo progressivo del lotto selezionato + 1</div>
+            <div style="margin-top:4px;font-family:var(--font-mono);font-size:11px;color:var(--accent)" id="new-pratica-preview"></div>
+          </div>
+          <div style="grid-column:span 2">
+            <label>Tratte *</label>
+            <select id="new-tratta" multiple required size="6" data-testid="new-tratta"
+                    style="height:auto;min-height:110px;font-family:var(--font-mono);font-size:12px">
+              <option value="" disabled>— seleziona prima il lotto —</option>
+            </select>
+            <div style="font-size:10.5px;color:var(--muted);margin-top:3px">Ctrl+click per selezionare più tratte</div>
+          </div>
+          <div>
+            <label>N_SED</label>
+            <input type="text" id="new-nsed" placeholder="es. SED-127 oppure 0">
+          </div>
+          <div id="wrap-no-nec" style="display:none">
+            <label>Nulla Osta Necessario</label>
+            <select id="new-no-nec"><option value=""></option><option>SI</option><option>NO</option></select>
+          </div>
+          <div>
+            <label>Ordinanza necessaria</label>
+            <select id="new-ord-nec"><option value=""></option><option>SI</option><option>NO</option></select>
+          </div>
+          <div style="grid-column:span 2">
+            <label>Note</label>
+            <textarea id="new-note"></textarea>
+          </div>
+        </div>
+        <div style="margin-top:14px;display:flex;justify-content:flex-end">
+          <button type="submit" class="btn" data-testid="submit-new">Invia nuova pratica</button>
+        </div>
+        <div class="msg" id="msgNew"></div>
+      </form>
+    </div>
+
+    <!-- SOLLECITI -->
+    <div class="panel" id="panel-solleciti">
+      <p style="color:var(--muted);font-size:13px;margin-bottom:14px">Registra i solleciti inviati agli enti per le pratiche in corso. La registrazione è immediata e non richiede approvazione.</p>
+
+      <!-- Form nuovo sollecito -->
+      <div class="card" style="margin-bottom:16px;padding:16px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:12px">Nuovo sollecito — seleziona la pratica</div>
+
+        <div class="search"><input type="text" id="searchSolPratiche" placeholder="Cerca per codice, ente, tipo, stato…"></div>
+        <div class="scroll" style="margin-bottom:16px">
+          <table>
+            <thead><tr>
+              <th>Pratica</th><th>Ente</th><th>Tipo</th><th>Stato</th>
+              <th style="text-align:center">Tratte</th>
+            </tr></thead>
+            <tbody id="solPratBody"><tr><td colspan="5" class="empty">Caricamento pratiche…</td></tr></tbody>
           </table>
         </div>
-      </div>
 
-    </div>
+        <div id="solSelectedForm" style="display:none;border-top:1px dashed var(--border);padding-top:16px">
+          <div style="font-weight:700;margin-bottom:10px;font-size:13px">Sollecito per — <span id="solEditRowSub" class="mono" style="color:var(--muted);font-size:12px"></span></div>
 
-    <!-- RIGHT sidebar -->
-    <div class="side">
-
-      <div class="card">
-        <div class="card-header"><span class="card-title">Riepilogo Operativo</span></div>
-        <div class="card-body">
-          <div class="stat-row">
-            <span class="stat-label">Tracciato totale</span>
-            <span class="stat-val" id="repTracciato">—</span>
+          <div class="grid2">
+            <div>
+              <label>Tipo sollecito *</label>
+              <select id="sol-tipo">
+                <option value="">—</option>
+                <option value="PEC">PEC</option>
+                <option value="MAIL">Mail</option>
+                <option value="TELEFONICO">Telefonico</option>
+              </select>
+            </div>
+            <div>
+              <label>Data sollecito *</label>
+              <input type="date" id="sol-data">
+            </div>
+            <div>
+              <label>N° sollecito (automatico)</label>
+              <input type="number" id="sol-numero" min="1" value="1" readonly
+                     style="max-width:120px;background:var(--gray-100);color:var(--muted);cursor:not-allowed">
+            </div>
+            <div style="grid-column:span 2">
+              <label>Note</label>
+              <textarea id="sol-note" placeholder="Note opzionali (es. numero protocollo, nominativo contattato…)"></textarea>
+            </div>
           </div>
-          <div class="stat-row">
-            <span class="stat-label">Permessi ottenuti</span>
-            <span class="stat-val" style="color:#1E9E6A" id="repPermessi">—</span>
+          <div style="margin-top:12px;display:flex;justify-content:flex-end;gap:10px">
+            <button class="btn btn-ghost" id="sol-cancel">Annulla selezione</button>
+            <button class="btn" id="sol-submit">Registra sollecito</button>
           </div>
-          <div class="stat-row">
-            <span class="stat-label">Metri scavati</span>
-            <span class="stat-val" style="color:#0B3182" id="repScavati">—</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-label">Avanzamento globale</span>
-            <span class="stat-val" style="color:#0B3182" id="repAvanz">—</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-label">Lotti attivi</span>
-            <span class="stat-val" id="repLottiAttivi">—</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-label">Comuni attraversati</span>
-            <span class="stat-val" id="repComuni">—</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-label">Province coinvolte</span>
-            <span class="stat-val" style="font-size:12px" id="repProv">—</span>
-          </div>
+          <div class="msg" id="msgSol"></div>
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-header"><span class="card-title">Distribuzione Stati</span></div>
-        <div class="card-body" style="display:flex;flex-direction:column;align-items:center;gap:16px;">
-          <canvas id="donutChart" width="160" height="160"></canvas>
-          <div style="display:flex;flex-direction:column;gap:7px;width:100%" id="donutLegend"></div>
-        </div>
+      <!-- Tabella solleciti -->
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px">Storico solleciti</div>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+        <div class="search" style="flex:1;margin-bottom:0"><input type="text" id="searchSolleciti" placeholder="Cerca per codice, tratta, ente, stato, tipo sollecito…"></div>
+        <button class="btn btn-ghost btn-xs" id="sol-refresh">Aggiorna</button>
       </div>
-
-
-
-    </div>
-
-  </div><!-- /grid -->
-
-  <!-- TUTTI I CANTIERI (singole tratte, non aggregate per lotto — equivalente di "Tutte le Pratiche" in index) -->
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title">📋 Tutti i Cantieri</span>
-      <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)" id="cantieriCount">caricamento…</span>
-    </div>
-    <div class="card-body">
-      <div class="kpi-filter-bar">
-        <input class="kpi-filter-search" id="cantieriSearchInput" placeholder="Cerca pratica, ente, comune…" oninput="_renderCantieriTable()">
-        <div id="cantieriLottoFilters" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
-        <span class="kpi-filter-count" id="cantieriFilterCount"></span>
-      </div>
-      <div style="overflow-x:auto;">
-        <table class="cant-table">
-          <thead>
-            <tr>
-              <th>Pratica</th>
-              <th>Ente</th>
-              <th>Lotto</th>
-              <th>Cluster</th>
-              <th>Provincia</th>
-              <th>Comune</th>
-              <th>Stato Cantiere</th>
-              <th>Avanzamento</th>
-              <th style="text-align:right">Metri Tot.</th>
-              <th style="text-align:right">Metri Scavati</th>
-            </tr>
-          </thead>
-          <tbody id="cantieriTableBody"></tbody>
+      <div class="scroll">
+        <table>
+          <thead><tr>
+            <th>Pratica</th><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th>
+            <th>Data richiesta</th><th>Data agg.</th><th>Data ottenimento</th>
+            <th style="text-align:right">Lung. (m)</th>
+            <th style="text-align:center">N°</th><th>Tipo sollecito</th><th>Data sollecito</th><th>Note sollecito</th><th></th>
+          </tr></thead>
+          <tbody id="solBody"><tr><td colspan="14" class="empty">—</td></tr></tbody>
         </table>
       </div>
     </div>
-  </div>
 
-</div><!-- /main -->
+    <!-- MIE SUBMISSION -->
+    <div class="panel" id="panel-mie">
+      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Storico delle tue richieste — vedi lo stato di approvazione.</p>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Quando</th><th>Tipo</th><th>Modifiche</th><th>Stato</th><th>Note revisione</th></tr></thead>
+          <tbody id="mineBody"><tr><td colspan="5" class="empty">—</td></tr></tbody>
+    </table>
+          <div style="margin-top:10px;display:flex;justify-content:flex-end">
+        <button class="btn btn-ghost btn-xs" id="refreshMineBtn">Aggiorna</button>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
 
 <script>
-// ── DATI LOTTI — caricati da API /api/cantieri (scavi) + Riepilogo_progettazione.csv (permessi) ──
-let LOTTI = [];          // dati scavi aggregati per lotto (da MongoDB)
-let CANTIERI_RAW = [];    // singoli cantieri (tratte) non aggregati, da MongoDB
-let _cantieriLottoFiltro = 'all';
-let PERMESSI = {};        // { lotto: { statiMap: {STATO: metri}, totale: metri } }  (da CSV permessi)
-let CLUSTER_PERMESSI = {}; // { cluster: { statiMap: {STATO: metri}, totale: metri, lotti: Set } } — aggregato per tratta, non per lotto: un lotto può attraversare più cluster
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+  const nome = (localStorage.getItem('_enri_user') || '').trim();
+  const sessionToken = (localStorage.getItem('_enri_session') || '').trim();
 
-// Mappa stato MongoDB → stato UI (per compatibilità con il codice esistente)
-const STATO_MAP = {
-  non_avviato: 'non-avviato', allestimento: 'allestimento',
-  in_corso: 'in-corso', sospeso: 'sospeso', completato: 'completato'
-};
+  $('userPill').innerHTML = nome ? `<b>${escapeHtml(nome)}</b>` : '(non loggato)';
 
-const RIEPILOGO_URL = 'Riepilogo_progettazione.csv';
+  if (!nome || !sessionToken) return showGuard('Devi loggarti prima', 'Apri il portale e accedi con le tue credenziali.');
+  if (!apiBase) return showGuard('Endpoint API non configurato', 'Contatta l\'amministratore: l\'API endpoint non risulta impostato in questa pagina.');
 
-// Gruppi di stato permesso, in ordine di avanzamento workflow (stesso schema di index.html)
-const STATI_GRUPPI_PERMESSI = [
-  { label: 'In Attesa / Redazione',     stati: ['IN ATTESA','IN REDAZIONE','NO COMPETENZA'],          color: '#6B7685' },
-  { label: 'Coordinamento',             stati: ['COORDINAMENTO'],                                      color: '#043F75' },
-  { label: 'In Verifica / In Firma',    stati: ['IN FIRMA RDS'],                                       color: '#D08A1A' },
-  { label: 'Inviato / Protocollato',    stati: ['INVIATO','PROTOCOLLATO'],                             color: '#41BBD9' },
-  { label: 'Necessaria Integrazione',   stati: ['NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE'],color: '#C0392B' },
-  { label: 'Protocollato Integrazione', stati: ['PROTOCOLLATO INTEGRAZIONE'],                          color: '#436A93' },
-  { label: 'Ottenuto',                  stati: ['OTTENUTO'],                                           color: '#1E9E6A' },
-  { label: 'Altro',                     stati: [],                                                      color: '#8a8a96' },
-];
-const ORDINE_WORKFLOW_PERMESSI = [
-  'Coordinamento','In Verifica / In Firma','Inviato / Protocollato',
-  'Necessaria Integrazione','Protocollato Integrazione','Ottenuto','Altro','In Attesa / Redazione'
-];
+  let MY_LOTTI = [];
+  let PRATICHE = [];
+  const QUEUE = []; // [{tratta_id, ente, tipo_permesso, fields, _row}]
+  let SIBLINGS = []; // tratte della stessa pratica (ENTE+TIPO_PERMESSO+PRATICA) diverse da SELECTED
+  let SELECTED = null;
 
-function buildGruppiMapPermessi(statiMap) {
-  const out = {};
-  const statiCoperti = new Set();
-  STATI_GRUPPI_PERMESSI.forEach(g => {
-    const tot = g.stati.reduce((s, st) => { statiCoperti.add(st); return s + (statiMap[st] || 0); }, 0);
-    if (tot > 0) out[g.label] = tot;
-  });
-  const nonMappato = Object.entries(statiMap).reduce((s, [st, m]) => s + (statiCoperti.has(st) ? 0 : m), 0);
-  if (nonMappato > 0) out['Altro'] = nonMappato;
-  return out;
-}
+  // ─── boot ───────────────────────────────────────────
+  (async () => {
+    try {
+      const me = await api(`/api/imprese/me?nome=${encodeURIComponent(nome)}`);
+      MY_LOTTI = me.lotti || [];
+      $('welcomeTitle').textContent = `Benvenuta, ${nome}`;
+      $('lottiPills').innerHTML = MY_LOTTI.length
+        ? MY_LOTTI.map(l => `<span class="pill">${escapeHtml(l)}</span>`).join('')
+        : '<span class="pill" style="background:var(--danger-bg);color:var(--danger)">nessun lotto assegnato</span>';
+      const sel = $('new-lotto');
+      sel.innerHTML = MY_LOTTI.map(l => `<option value="${escapeHtml(l)}.xlsx">${escapeHtml(l)}</option>`).join('');
+      $('app').style.display = '';
+      loadPratiche();
+      loadMine();
+    } catch(e) {
+      if(String(e.message).includes('401')) {
+        localStorage.removeItem('_enri_session');
+        return showGuard('Sessione scaduta', 'La tua sessione non è più valida. Torna al portale e accedi di nuovo.', false);
+      }
+      if(String(e.message).includes('404')) return showGuard('Impresa non autorizzata', 'Il tuo nome non è ancora stato assegnato a un lotto dall\'amministratore.', false);
+      // Errore di rete (es. Render in avvio): mostra pannello con retry, non solo "torna al login"
+      showGuard('Server non raggiungibile', 'Il server si sta avviando (può richiedere 20-30 secondi). Attendi qualche istante e riprova.', true);
+    }
+  })();
 
-// ── Parser CSV minimale (tab/;/, autodetect, supporta campi quotati) ─────────
-function _parseCsvLine(line, sep) {
-  const res = []; let cur = '', inQ = false;
-  for (const ch of line) {
-    if (ch === '"') inQ = !inQ;
-    else if (ch === sep && !inQ) { res.push(cur.trim()); cur = ''; }
-    else cur += ch;
+  function _retryBoot() {
+    $('guard').style.display = 'none';
+    (async () => {
+      try {
+        const me = await api(`/api/imprese/me?nome=${encodeURIComponent(nome)}`);
+        MY_LOTTI = me.lotti || [];
+        $('welcomeTitle').textContent = `Benvenuta, ${nome}`;
+        $('lottiPills').innerHTML = MY_LOTTI.length
+          ? MY_LOTTI.map(l => `<span class="pill">${escapeHtml(l)}</span>`).join('')
+          : '<span class="pill" style="background:var(--danger-bg);color:var(--danger)">nessun lotto assegnato</span>';
+        const sel = $('new-lotto');
+        sel.innerHTML = MY_LOTTI.map(l => `<option value="${escapeHtml(l)}.xlsx">${escapeHtml(l)}</option>`).join('');
+        $('app').style.display = '';
+        loadPratiche();
+        loadMine();
+      } catch(e2) {
+        if(String(e2.message).includes('401')) {
+          localStorage.removeItem('_enri_session');
+          return showGuard('Sessione scaduta', 'La tua sessione non è più valida. Torna al portale e accedi di nuovo.', false);
+        }
+        if(String(e2.message).includes('404')) return showGuard('Impresa non autorizzata', 'Il tuo nome non è ancora stato assegnato a un lotto dall\'amministratore.', false);
+        showGuard('Server non raggiungibile', 'Il server si sta avviando. Riprova tra qualche secondo.', true);
+      }
+    })();
   }
-  res.push(cur.trim());
-  return res;
-}
 
-async function _loadPermessi() {
-  try {
-    const res = await fetch(RIEPILOGO_URL, { cache: 'no-cache' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const text = await res.text();
-    console.log('[ENRI] Riepilogo_progettazione.csv caricato:', text.length, 'caratteri');
-    const lines = text.trim().split('\n').map(l => l.replace(/\r/, ''));
-    const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',');
-    const headers = _parseCsvLine(lines[0], sep);
-    const findC = (...names) => {
-      for (const n of names) {
-        const i = headers.findIndex(h => h.trim().toUpperCase() === n.toUpperCase());
-        if (i >= 0) return i;
+  function showGuard(title, msg, showRetry){
+    $('guardTitle').textContent = title;
+    $('guardMsg').textContent = msg;
+    // Bottone Riprova: visibile solo per errori di rete, non per 404/accesso negato
+    const retryBtn = document.getElementById('guardRetryBtn');
+    if (retryBtn) retryBtn.style.display = showRetry ? '' : 'none';
+    $('guard').style.display = 'block';
+    $('app').style.display = 'none';
+  }
+
+  // ─── helpers ───────────────────────────────────────
+  async function api(path, opts={}){
+    const headers = { ...(opts.headers || {}), 'x-session-token': localStorage.getItem('_enri_session') || '' };
+    const r = await fetch(apiBase + path, { ...opts, headers });
+    const text = await r.text();
+    let data; try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+    if(!r.ok) throw new Error(data.detail || data.raw || ('HTTP ' + r.status));
+    return data;
+  }
+  function setMsg(el, txt, ok){ el.className = 'msg ' + (ok ? 'ok' : 'err'); el.textContent = txt; }
+  function escapeHtml(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  // ─── tabs ───────────────────────────────────────────
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+    t.classList.add('active'); $('panel-' + t.dataset.tab).classList.add('active');
+    if (t.dataset.tab === 'mie') loadMine();
+    if (t.dataset.tab === 'solleciti') { loadSolleciti(); renderSolPratiche(''); }
+  }));
+
+  // ─── load pratiche ─────────────────────────────────
+  async function loadPratiche(){
+    $('pratBody').innerHTML = `<tr><td colspan="9"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr>`;
+    try {
+      const d = await api(`/api/imprese/pratiche?nome=${encodeURIComponent(nome)}`);
+      PRATICHE = (d.pratiche || []).map(p => ({...p, _codice: buildCodice(p)}));
+      renderPratiche('');
+      await _populateEntiSelect();
+      _setAutoPratica();
+    } catch(e){
+      $('pratBody').innerHTML = `<tr><td colspan="9" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+  $('searchPratiche').addEventListener('input', e => renderPratiche(e.target.value));
+
+  // Popola il select degli enti con tutti i valori unici presenti in Master.csv
+  async function _populateEntiSelect() {
+    const sel = $('new-ente');
+    if (!sel || sel.tagName !== 'SELECT') return;
+    const current = sel.value;
+    let enti = [];
+    try {
+      const d = await api('/api/enti');
+      enti = d.enti || [];
+    } catch (_) {
+      // fallback: enti dalle pratiche dell'impresa
+      enti = [...new Set(
+        PRATICHE.map(p => (p.ENTE || '').trim()).filter(Boolean)
+      )].sort((a, b) => a.localeCompare(b, 'it'));
+    }
+    sel.innerHTML = '<option value="">— seleziona ente —</option>' +
+      enti.map(e => `<option value="${escapeHtml(e)}"${e === current ? ' selected' : ''}>${escapeHtml(e)}</option>`).join('') +
+      '<option value="__altro__">✏ Altro (scrivi manualmente)…</option>';
+  }
+
+  function buildCodice(p) {
+    const tipoMap = {'AUTORIZZAZIONE':'AUT','NULLA OSTA':'NO'};
+    const prefix = tipoMap[(p.TIPO_PERMESSO||'').trim()] || (p.TIPO_PERMESSO||'').trim().substring(0,3);
+    const m = String(p['Source.Name']||'').match(/Lotto\s*([\w\d]+)/i);
+    const lotto = m ? m[1] : '';
+    const prat = String(p.PRATICA||'').trim();
+    if (!prefix || !prat) return '';
+    return `${prefix}/${prat}/${lotto}`;
+  }
+
+  function parseDate(s){
+    // Supports dd/mm/yyyy or yyyy-mm-dd
+    if (!s) return 0;
+    const p = s.split('/');
+    if (p.length === 3) return new Date(p[2], p[1]-1, p[0]).getTime();
+    return new Date(s).getTime() || 0;
+  }
+
+  // Conversione date YYYY-MM-DD (formato input[type=date]) → DD/MM/YYYY (formato CSV)
+  function fromInputDate(yyyymmdd) {
+    if (!yyyymmdd) return '';
+    const p = String(yyyymmdd).trim().split('-');
+    if (p.length !== 3) return '';
+    return `${p[2].padStart(2,'0')}/${p[1].padStart(2,'0')}/${p[0]}`;
+  }
+
+  function renderPratiche(filter){
+    const f = (filter || '').toLowerCase().trim();
+    // Per ogni TRATTA_ID tieni solo la riga con DATA_ULTIMA_MODIFICA più recente
+    const latestMap = new Map();
+    PRATICHE.forEach(p => {
+      const key = p.TRATTA_ID + '|' + p.ENTE + '|' + p.TIPO_PERMESSO;
+      const existing = latestMap.get(key);
+      if (!existing || parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(existing.DATA_ULTIMA_MODIFICA)) {
+        latestMap.set(key, p);
       }
-      return -1;
-    };
-    const iL   = findC('LOTTO');
-    const iS   = findC('STATO_AUTORIZZAZIONE', 'STATO_LEGENDA');
-    const iLun = findC('LUNGHEZZA', 'LENGTH');
-    const iCl  = findC('CLUSTER');
-    const iPr  = findC('PROVINCIA');
-    const iCom = findC('COMUNE');
-    console.log('[ENRI] colonne trovate → LOTTO:', iL, 'STATO:', iS, 'LUNGHEZZA:', iLun, 'CLUSTER:', iCl, 'PROVINCIA:', iPr, 'COMUNE:', iCom, '| righe:', lines.length - 1);
+    });
+    // Escludi pratiche già ottenute o non di competenza — non hanno senso da aggiornare
+    const deduplicated = Array.from(latestMap.values()).filter(p => {
+      const st = (p.STATO_PERMESSO || '').trim();
+      return st !== 'OTTENUTO' && st !== 'NO COMPETENZA';
+    });
+    const rows = deduplicated.filter(p => !f || JSON.stringify(p).toLowerCase().includes(f));
+    if (!rows.length){ $('pratBody').innerHTML = '<tr><td colspan="9" class="empty">Nessuna pratica</td></tr>'; return; }
+    // Salva l'array corrente filtrato per recuperare la riga al click
+    renderPratiche._current = rows.slice(0, 500);
+    $('pratBody').innerHTML = renderPratiche._current.map((p, i) => `
+      <tr data-idx="${i}">
+        <td class="mono" style="font-weight:700;color:var(--accent);background:var(--accent-light);border-left:3px solid var(--accent)">${escapeHtml(p._codice)}</td>
+        <td class="mono">${escapeHtml(p.TRATTA_ID)}</td>
+        <td>${escapeHtml(p.ENTE)}</td>
+        <td>${escapeHtml(p.TIPO_PERMESSO)}</td>
+        <td class="stato-${(p.STATO_PERMESSO||'').replace(/\s+/g,'.')}">${escapeHtml(p.STATO_PERMESSO)}</td>
+        <td class="mono">${escapeHtml(p.DATA_RICHIESTA)}</td>
+        <td class="mono">${escapeHtml(p.DATA_ULTIMA_MODIFICA)}</td>
+        <td class="mono">${escapeHtml(p.DATA_APPROVAZIONE || '—')}</td>
+        <td style="text-align:right;background:#f0fdf4;font-family:var(--font-mono);font-size:11.5px;color:#1F7A4E;font-weight:600;border-left:2px solid #bbf7d0">${escapeHtml(String(p.LUNGHEZZA ?? '—'))}</td>
+      </tr>`).join('');
+  }
+  $('pratBody').addEventListener('click', e => {
+    const tr = e.target.closest('tr[data-idx]');
+    if (!tr) return;
+    document.querySelectorAll('#pratBody tr.selected').forEach(x => x.classList.remove('selected'));
+    tr.classList.add('selected');
+    SELECTED = (renderPratiche._current || [])[+tr.dataset.idx];
+    $('editForm').style.display = '';
+    $('editRowSub').textContent = `${SELECTED._codice || ''} · ${SELECTED.TRATTA_ID} · ${SELECTED.ENTE} · ${SELECTED.TIPO_PERMESSO}`;
 
-    const aggMap = {}, totMap = {}, clMap = {}, provMap = {}, comMap = {};
-    // Aggregazione separata per cluster (diretta dalla tratta, indipendente dal lotto):
-    // un lotto può attraversare più cluster e nessuna tratta deve sparire dietro
-    // il "cluster prevalente" del proprio lotto.
-    const clusterAggMap = {}, clusterTotMap = {}, clusterLottiMap = {};
-    for (let i = 1; i < lines.length; i++) {
-      const cols = _parseCsvLine(lines[i], sep);
-      const lottoRaw = cols[iL]?.trim().replace(/"/g, '');
-      if (!lottoRaw) continue;
-      const lotto = String(lottoRaw);
-      const stato = (iS >= 0 ? cols[iS]?.trim() : '') || 'IN ATTESA';
-      const lunghRaw = (cols[iLun] || '0').trim();
-      let lungh = 0;
-      if (lunghRaw.includes(',') && !lunghRaw.includes('.')) lungh = parseFloat(lunghRaw.replace(',', '.')) || 0;
-      else if (lunghRaw.includes(',')) lungh = parseFloat(lunghRaw.replace(/\./g, '').replace(',', '.')) || 0;
-      else lungh = parseFloat(lunghRaw) || 0;
-      if (lungh <= 0) continue;
-      if (!aggMap[lotto]) { aggMap[lotto] = {}; totMap[lotto] = 0; clMap[lotto] = {}; provMap[lotto] = new Set(); comMap[lotto] = new Set(); }
-      aggMap[lotto][stato] = (aggMap[lotto][stato] || 0) + lungh;
-      totMap[lotto] += lungh;
-      const cl = iCl >= 0 ? cols[iCl]?.trim().replace(/^[Cc]/, '') : '';
-      if (cl) clMap[lotto][cl] = (clMap[lotto][cl] || 0) + lungh;
-      const pr = iPr >= 0 ? cols[iPr]?.trim() : '';
-      if (pr) provMap[lotto].add(pr);
-      const com = iCom >= 0 ? cols[iCom]?.trim() : '';
-      if (com) comMap[lotto].add(com);
+    // Popola select stato con le transizioni consentite
+    _populateStatoSelect(SELECTED.STATO_PERMESSO || '');
 
-      // Aggregazione per cluster: ogni tratta contribuisce al SUO cluster reale
-      if (cl) {
-        if (!clusterAggMap[cl]) { clusterAggMap[cl] = {}; clusterTotMap[cl] = 0; clusterLottiMap[cl] = new Set(); }
-        clusterAggMap[cl][stato] = (clusterAggMap[cl][stato] || 0) + lungh;
-        clusterTotMap[cl] += lungh;
-        clusterLottiMap[cl].add(lotto);
-      }
+    // Reset campi condizionali
+    $('fld-data-rich').value = '';
+    $('fld-data-app').value  = '';
+    $('fld-note').value = '';
+    $('fld-note').disabled = true;
+    $('fld-note').style.cssText = 'background:var(--gray-100);color:var(--muted);cursor:not-allowed;resize:none';
+    $('fld-note').placeholder = 'Seleziona prima il nuovo stato…';
+    $('wrap-data-rich').style.display = 'none';
+    $('wrap-data-app').style.display  = 'none';
+
+    // Nulla Osta Necessario — solo per AUTORIZZAZIONE
+    const isAut = (SELECTED.TIPO_PERMESSO || '').trim() === 'AUTORIZZAZIONE';
+    $('wrap-upd-no-nec').style.display = isAut ? '' : 'none';
+    $('wrap-upd-no-tratte').style.display = 'none';
+    $('fld-no-nec').value = SELECTED['NULLA OSTA NECESSARIO'] || '';
+    $('fld-polizza').value = SELECTED['POLIZZA ']?.trim() || '';
+    $('fld-convenzione').value = SELECTED['CONVENZIONE']?.trim() || '';
+    if (isAut) {
+      const pratNum = String(SELECTED.PRATICA || '').trim();
+      const tutteTratte = pratNum ? [...new Set(PRATICHE
+        .filter(p => String(p.PRATICA||'').trim() === pratNum &&
+                     String(p.ENTE||'').trim() === String(SELECTED.ENTE||'').trim() &&
+                     String(p.TIPO_PERMESSO||'').trim() === 'AUTORIZZAZIONE')
+        .map(p => p.TRATTA_ID).filter(Boolean)
+      )].sort() : [];
+      $('fld-no-tratte').innerHTML = tutteTratte.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
     }
 
-    CLUSTER_PERMESSI = {};
-    Object.keys(clusterAggMap).forEach(cl => {
-      CLUSTER_PERMESSI[cl] = {
-        statiMap: clusterAggMap[cl],
-        totale: clusterTotMap[cl],
-        lotti: [...clusterLottiMap[cl]],
-      };
+    // Trova le altre tratte che appartengono alla stessa pratica
+    // (stesso ENTE + TIPO_PERMESSO + numero PRATICA)
+    const pratNum = String(SELECTED.PRATICA || '').trim();
+    const siblingsRaw = pratNum ? PRATICHE.filter(p =>
+      p.TRATTA_ID !== SELECTED.TRATTA_ID &&
+      String(p.ENTE||'').trim() === String(SELECTED.ENTE||'').trim() &&
+      String(p.TIPO_PERMESSO||'').trim() === String(SELECTED.TIPO_PERMESSO||'').trim() &&
+      String(p.PRATICA||'').trim() === pratNum
+    ) : [];
+    // Dedup per TRATTA_ID: tieni solo la riga con DATA_ULTIMA_MODIFICA più recente
+    const siblingsMap = new Map();
+    siblingsRaw.forEach(p => {
+      const existing = siblingsMap.get(p.TRATTA_ID);
+      if (!existing || parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(existing.DATA_ULTIMA_MODIFICA)) {
+        siblingsMap.set(p.TRATTA_ID, p);
+      }
     });
-    console.log('[ENRI] CLUSTER_PERMESSI costruito per cluster:', Object.keys(CLUSTER_PERMESSI), '| totali m:', Object.fromEntries(Object.entries(CLUSTER_PERMESSI).map(([k,v])=>[k,Math.round(v.totale)])));
+    SIBLINGS = Array.from(siblingsMap.values());
 
-    PERMESSI = {};
-    Object.keys(aggMap).forEach(lotto => {
-      // Cluster prevalente per il lotto (quello con più metri)
-      const clEntries = Object.entries(clMap[lotto] || {});
-      const clusterPrevalente = clEntries.length > 0
-        ? clEntries.sort((a, b) => b[1] - a[1])[0][0]
-        : '?';
-      PERMESSI[lotto] = {
-        statiMap: aggMap[lotto],
-        totale: totMap[lotto],
-        cluster: clusterPrevalente,
-        province: [...(provMap[lotto] || [])],
-        comuni: [...(comMap[lotto] || [])],
-      };
-    });
-    console.log('[ENRI] PERMESSI costruito per lotti:', Object.keys(PERMESSI));
-  } catch (e) {
-    console.error('[ENRI] _loadPermessi FALLITO:', e.message);
-    PERMESSI = {};
+    const panel = $('siblingsPanel');
+    if (SIBLINGS.length) {
+      $('siblingsList').textContent = `Tratte collegate: ${SIBLINGS.map(s => s.TRATTA_ID).join(', ')} (${SIBLINGS.length + 1} tratte totali in questa pratica)`;
+      $('siblingsToggle').checked = true;
+      panel.style.display = '';
+    } else {
+      panel.style.display = 'none';
+    }
+
+    $('editForm').scrollIntoView({behavior:'smooth', block:'nearest'});
+  });
+
+  $('cancelEditBtn').onclick = () => { $('editForm').style.display = 'none'; $('siblingsPanel').style.display = 'none'; SELECTED = null; SIBLINGS = []; document.querySelectorAll('#pratBody tr.selected').forEach(x => x.classList.remove('selected')); };
+
+  // Mappa delle transizioni consentite per ogni stato
+  const STATO_TRANSITIONS = {
+    'IN REDAZIONE':              ['IN FIRMA RDS', 'NO COMPETENZA'],
+    'IN FIRMA RDS':              ['INVIATO', 'NO COMPETENZA'],
+    'INVIATO':                   ['PROTOCOLLATO', 'OTTENUTO', 'NECESSARIA INTEGRAZIONE', 'NO COMPETENZA'],
+    'PROTOCOLLATO':              ['NECESSARIA INTEGRAZIONE', 'OTTENUTO', 'NO COMPETENZA'],
+    'NECESSARIA INTEGRAZIONE':   ['IN REDAZIONE INTEGRAZIONE', 'NO COMPETENZA'],
+    'IN REDAZIONE INTEGRAZIONE': ['PROTOCOLLATO INTEGRAZIONE', 'NO COMPETENZA'],
+    'PROTOCOLLATO INTEGRAZIONE': ['NECESSARIA INTEGRAZIONE', 'OTTENUTO', 'NO COMPETENZA'],
+    'OTTENUTO':                  ['NO COMPETENZA'],
+    'NO COMPETENZA':             [],
+  };
+
+  function _populateStatoSelect(statoCorrente) {
+    const sel = $('fld-stato');
+    const allowed = STATO_TRANSITIONS[statoCorrente.trim()] || Object.keys(STATO_TRANSITIONS);
+    sel.innerHTML = '<option value="">— seleziona stato —</option>' +
+      allowed.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+    sel.value = '';
+    $('fld-stato-hint').textContent = statoCorrente
+      ? `Stato attuale: ${statoCorrente}`
+      : '';
   }
-}
 
-async function _loadCantieri() {
-  try {
-    const apiBase = (window.ENRI && window.ENRI.apiBase)
-      || localStorage.getItem('enri_api_base') || '';
-    const res = await fetch(apiBase + '/api/cantieri', { cache: 'no-cache' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const d = await res.json();
-    const cantieri = d.cantieri || [];
-    CANTIERI_RAW = cantieri;
+  $('fld-no-nec').addEventListener('change', function() {
+    const show = this.value === 'SI';
+    $('wrap-upd-no-tratte').style.display = show ? '' : 'none';
+    if (!show) Array.from($('fld-no-tratte').options).forEach(o => o.selected = false);
+  });
 
-    // Aggrega per lotto: somma metri, stato = stato più indietro del lotto
-    const STATO_RANK = { 'non-avviato':0, 'allestimento':1, 'sospeso':2, 'in-corso':3, 'completato':4 };
-    const byLotto = {};
-    // Aggregazione scavi per cluster (diretta dal campo r.cluster del cantiere,
-    // ora popolato correttamente dal server via Riepilogo_progettazione.csv)
-    const clusterScaviMap = {};
-    cantieri.forEach(r => {
-      const lotto   = String(r.lotto   || '?');
-      const cluster = String(r.cluster || '?').replace(/^[Cc]/, '');
-      const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
-      if (!byLotto[lotto]) {
-        byLotto[lotto] = { id: lotto, cl: cluster, metri: 0, scavati: 0,
-                           stato: statoUI, tratte: [], provSet: new Set(), comuniSet: new Set() };
-      }
-      byLotto[lotto].metri   += r.metri_totali   || 0;
-      byLotto[lotto].scavati += r.metri_scavati  || 0;
-      (r.tratte || []).forEach(t => byLotto[lotto].tratte.push(t.tratta_id));
-      if (r.provincia) byLotto[lotto].provSet.add(r.provincia);
-      if (r.comune)    byLotto[lotto].comuniSet.add(r.comune);
-      // Stato del lotto = stato peggiore tra le tratte
-      if (STATO_RANK[statoUI] < STATO_RANK[byLotto[lotto].stato]) {
-        byLotto[lotto].stato = statoUI;
-      }
-      if (cluster && cluster !== '?') {
-        if (!clusterScaviMap[cluster]) clusterScaviMap[cluster] = { metri: 0, scavati: 0 };
-        clusterScaviMap[cluster].metri    += r.metri_totali  || 0;
-        clusterScaviMap[cluster].scavati  += r.metri_scavati || 0;
-      }
+  $('fld-stato').addEventListener('change', function() {
+    const v = this.value;
+    const noteEl = $('fld-note');
+    if (!v) {
+      noteEl.disabled = true;
+      noteEl.style.cssText = 'background:var(--gray-100);color:var(--muted);cursor:not-allowed;resize:none';
+      noteEl.placeholder = 'Seleziona prima il nuovo stato…';
+      $('wrap-data-rich').style.display = 'none';
+      $('wrap-data-app').style.display  = 'none';
+    } else {
+      noteEl.disabled = false;
+      noteEl.style.cssText = '';
+      noteEl.placeholder = 'Note opzionali';
+      $('wrap-data-rich').style.display = (v === 'INVIATO')   ? '' : 'none';
+      $('wrap-data-app').style.display  = (v === 'OTTENUTO')  ? '' : 'none';
+    }
+  });
+
+  function _pushToQueue(row, fields) {
+    QUEUE.push({
+      tratta_id: row.TRATTA_ID,
+      ente: row.ENTE,
+      tipo_permesso: row.TIPO_PERMESSO,
+      original_pratica: row.PRATICA || '',
+      lunghezza: row.LUNGHEZZA || '—',
+      fields: { ...fields },
     });
-    window._CLUSTER_SCAVI = clusterScaviMap; // letto da _renderClusters
-
-    // Lotti con cantiere attivo (almeno una tratta passata a stato cantiere)
-    const lottiConCantiere = new Set(Object.keys(byLotto));
-
-    // Unione lotti: quelli con cantieri + quelli presenti solo nei permessi (non ancora avviati)
-    const tuttiLotti = new Set([...lottiConCantiere, ...Object.keys(PERMESSI)]);
-
-    LOTTI = [...tuttiLotti].map(lotto => {
-      const c = byLotto[lotto];
-      const p = PERMESSI[lotto];
-      // Metri totali del lotto: preferisci il totale reale da permessi (più affidabile e completo)
-      const metriTotaliLotto = p ? p.totale : (c ? c.metri : 0);
-      const scavati = c ? c.scavati : 0;
-      // Cluster/province/comuni: preferisci CSV permessi (copre tutti i 12 lotti in modo coerente),
-      // fallback su MongoDB solo se il lotto non è presente nel CSV
-      const cluster = p && p.cluster && p.cluster !== '?' ? String(p.cluster) : (c ? String(c.cl) : '?');
-      const prov    = p && p.province.length > 0 ? p.province : (c ? [...c.provSet] : []);
-      const nComuni = p && p.comuni.length > 0 ? p.comuni.length : (c ? c.comuniSet.size : 0);
-      return {
-        cl:      cluster,
-        id:      String(lotto),
-        stato:   c ? c.stato : 'non-avviato',
-        pct:     metriTotaliLotto > 0 ? Math.round(scavati / metriTotaliLotto * 100) : 0,
-        metri:   Math.round(metriTotaliLotto),
-        tratte:  c ? c.tratte : [],
-        prov:    prov,
-        comuni:  nComuni,
-        permessi: p ? p.statiMap : null,
-        permessiTot: p ? p.totale : 0,
-        haCantiere: lottiConCantiere.has(lotto),
-      };
-    }).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-    console.log('[ENRI] LOTTI finale:', LOTTI.map(l => l.id), '| con permessi:', LOTTI.filter(l=>l.permessi).length, '| con cantiere:', LOTTI.filter(l=>l.haCantiere).length);
-  } catch(e) {
-    console.warn('[scavi] _loadCantieri:', e.message);
-    LOTTI = [];
   }
-}
 
-const CLUSTER_LABEL = {
-  '1':'Milano urbano',
-  '2':'Sud Milano / Pavia',
-  '3':'Dorsale principale',
-  '4':'Lodigiano',
-  '5':'Pavese',
-  '6':'Cremasco',
-  '7':'Bergamo est'
-};
-const CLUSTER_COLOR = {
-  '1':'#0B3182','2':'#1F7A4E','3':'#6B3FA0',
-  '4':'#1A7A8A','5':'#C08A14','6':'#8A5A1A','7':'#C23B22'
-};
-const STATO_LABEL = {
-  'non-avviato':'Non avviato', 'allestimento':'Allestimento',
-  'in-corso':'In Corso', 'sospeso':'In Sospeso', 'completato':'Completato'
-};
-const STATO_COLOR = {
-  'non-avviato':'#8A91B4', 'allestimento':'#C08A14',
-  'in-corso':'#0B3182', 'sospeso':'#C23B22', 'completato':'#1F7A4E'
-};
-// Ordine visivo dei segmenti nelle barre (come STATI_GRUPPI in index)
-const STATO_ORDER = ['in-corso','allestimento','sospeso','completato','non-avviato'];
+  function _finalizeAdd(fields, includeSiblings) {
+    _pushToQueue(SELECTED, fields);
+    if (includeSiblings) {
+      SIBLINGS.forEach(s => _pushToQueue(s, fields));
+    }
+    renderQueue();
+    $('editForm').style.display = 'none';
+    $('siblingsPanel').style.display = 'none';
+    document.querySelectorAll('#pratBody tr.selected').forEach(x => x.classList.remove('selected'));
+    const n = includeSiblings ? (1 + SIBLINGS.length) : 1;
+    setMsg($('msgUpd'), n > 1 ? `Aggiunte ${n} tratte alla coda` : `Aggiunto alla coda (${QUEUE.length} modifiche totali)`, true);
+  }
 
-function fmt(n){ return Math.round(n).toLocaleString('it-IT'); }
-
-// ── RENDER ALL (chiamata dopo fetch sia permessi che cantieri) ──────────────
-async function _loadAndRenderAll() {
-  await _loadPermessi();   // deve completare prima: _loadCantieri legge PERMESSI
-  await _loadCantieri();
-  _renderAll();
-}
-
-function _renderAll() {
-  _renderKpi();
-  _renderBars();
-  _renderClusters();
-  _renderRadar();
-  _renderTabella();
-  _renderCantieriFilters();
-  _renderCantieriTable();
-  _renderRiepilogo();
-  _renderPageSubtitle();
-}
-
-// Click su una card KPI in alto: apre popup con tutti i cantieri di quello stato
-function _filterCantieriByStato(stato) {
-  openModalStato(stato);
-}
-
-function openModalStato(stato) {
-  const rows = CANTIERI_RAW.filter(r => (STATO_MAP[r.stato_cantiere] || 'non-avviato') === stato);
-  const col = STATO_COLOR[stato];
-  document.getElementById('modalStatoTitle').innerHTML =
-    `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col};margin-right:8px"></span>${STATO_LABEL[stato]} <span style="color:var(--muted);font-weight:400;font-size:13px">· ${rows.length} cantieri</span>`;
-  const totMetri = rows.reduce((s,r) => s + (r.metri_totali || 0), 0);
-  const totScav  = rows.reduce((s,r) => s + (r.metri_scavati || 0), 0);
-  const statGrid = `
-    <div class="modal-stat-grid">
-      <div class="modal-stat"><span class="modal-stat-lbl">Cantieri</span><span class="modal-stat-val">${rows.length}</span></div>
-      <div class="modal-stat"><span class="modal-stat-lbl">Metri totali</span><span class="modal-stat-val">${fmt(totMetri)} m</span></div>
-      <div class="modal-stat"><span class="modal-stat-lbl">Metri scavati</span><span class="modal-stat-val" style="color:${col}">${fmt(totScav)} m</span></div>
-    </div>`;
-  const listHtml = rows.length ? rows.map(r => {
-    const metriTot = r.metri_totali || 0;
-    const scavati  = r.metri_scavati || 0;
-    const pct = metriTot > 0 ? Math.round(scavati / metriTot * 100) : 0;
-    return `
-      <div style="padding:10px 0;border-bottom:1px solid var(--border)">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
-          <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent)">${r.pratica_id || '—'}</span>
-          <span style="font-size:11px;color:var(--muted)">Lotto ${r.lotto ?? '—'}</span>
-        </div>
-        <div style="font-size:12px;color:var(--text2);margin-top:2px">${r.ente || '—'} · ${r.comune || '—'}${r.provincia ? ' ('+r.provincia+')' : ''}</div>
-        <div class="modal-bar-row" style="margin-top:8px">
-          <div class="modal-bar-track">
-            ${pct > 0 ? `<div class="modal-bar-fill" style="width:${pct}%;background:${col}"></div>` : ''}
-            ${pct >= 8 ? `<span class="modal-bar-pct">${pct}%</span>` : ''}
+  // Modale di avviso quando si aggiorna solo una tratta pur avendo altre nella stessa pratica
+  function _showSingleTrattaWarning(fields) {
+    const statoInChanges = 'STATO_PERMESSO' in fields;
+    const overlay = document.createElement('div');
+    overlay.className = 'warn-modal-overlay';
+    if (statoInChanges) {
+      // Cambio di stato: blocco vero — non si può aggiornare solo una tratta
+      overlay.innerHTML = `
+        <div class="warn-modal">
+          <div class="warn-modal-icon danger"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg></div>
+          <div class="warn-modal-title">Impossibile aggiornare solo questa tratta</div>
+          <div class="warn-modal-body">
+            Questa pratica include altre <b>${SIBLINGS.length}</b> tratt${SIBLINGS.length===1?'a':'e'}
+            (${SIBLINGS.map(s=>escapeHtml(s.TRATTA_ID)).join(', ')}).
+            Quando si cambia lo <strong>stato</strong> di un permesso, tutte le tratte della stessa pratica
+            devono essere aggiornate insieme, altrimenti lo stato complessivo risulta incoerente.
+            <br><br>Attiva <em>"Aggiorna tutte insieme"</em> prima di procedere.
           </div>
-          <div class="modal-bar-val">${fmt(scavati)} / ${fmt(metriTot)} m</div>
-        </div>
-      </div>`;
-  }).join('') : `<div style="text-align:center;color:var(--muted);padding:24px">Nessun cantiere in questo stato.</div>`;
-  document.getElementById('modalStatoBody').innerHTML = statGrid + listHtml;
-  document.getElementById('modalStatoOverlay').classList.add('open');
-}
-function closeModalStato(e) {
-  if (e && e.target !== document.getElementById('modalStatoOverlay')) return;
-  document.getElementById('modalStatoOverlay').classList.remove('open');
-}
-
-// Pulsanti filtro per lotto sopra la tabella "Tutti i Cantieri"
-function _renderCantieriFilters() {
-  const box = document.getElementById('cantieriLottoFilters');
-  if (!box) return;
-  const lotti = [...new Set(CANTIERI_RAW.map(r => String(r.lotto || '?')))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
-  box.innerHTML = `<button class="kpi-filt-btn${_cantieriLottoFiltro==='all'?' active':''}" onclick="_setCantieriLottoFiltro('all')">Tutti</button>` +
-    lotti.map(l => `<button class="kpi-filt-btn${_cantieriLottoFiltro===l?' active':''}" onclick="_setCantieriLottoFiltro('${l}')">Lotto ${l}</button>`).join('');
-}
-
-function _setCantieriLottoFiltro(lotto) {
-  _cantieriLottoFiltro = lotto;
-  _renderCantieriFilters();
-  _renderCantieriTable();
-}
-
-// Tabella "Tutti i Cantieri": singole tratte/cantieri, non aggregate per lotto
-function _renderCantieriTable() {
-  const tbody = document.getElementById('cantieriTableBody');
-  if (!tbody) return;
-  const q = (document.getElementById('cantieriSearchInput')?.value || '').trim().toLowerCase();
-  const rows = CANTIERI_RAW.filter(r => {
-    if (_cantieriLottoFiltro !== 'all' && String(r.lotto || '?') !== _cantieriLottoFiltro) return false;
-    if (!q) return true;
-    const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
-    const haystack = [r.pratica_id, r.ente, r.lotto, r.cluster, r.provincia, r.comune, STATO_LABEL[statoUI]].join(' ').toLowerCase();
-    return haystack.includes(q);
-  });
-  const countEl = document.getElementById('cantieriCount');
-  if (countEl) countEl.textContent = `${rows.length} / ${CANTIERI_RAW.length} cantieri`;
-  const filterCountEl = document.getElementById('cantieriFilterCount');
-  if (filterCountEl) filterCountEl.textContent = `${rows.length} risultati`;
-  tbody.innerHTML = rows.map(r => {
-    const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
-    const col = STATO_COLOR[statoUI];
-    const metriTot = r.metri_totali || 0;
-    const scavati  = r.metri_scavati || 0;
-    const pct = metriTot > 0 ? Math.round(scavati / metriTot * 100) : 0;
-    const prog = metriTot > 0
-      ? `<div class="prog-wrap"><div class="prog-track"><div class="prog-fill" style="width:${pct}%;background:${col}"></div></div><div class="prog-val">${pct}%</div></div>`
-      : `<span style="color:var(--muted2)">—</span>`;
-    return `<tr>
-      <td><span style="font-family:var(--font-mono);font-size:10px;color:var(--muted)" title="${(r.tratte||[]).length} tratte">${r.pratica_id || '—'}</span></td>
-      <td style="color:var(--muted)">${r.ente || '—'}</td>
-      <td><span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent)">${r.lotto ?? '—'}</span></td>
-      <td><span style="font-family:var(--font-mono);font-size:10px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 7px;color:var(--muted)">${(r.cluster ?? '?').toString().replace(/^[Cc]/,'')}</span></td>
-      <td style="color:var(--muted)">${r.provincia || '—'}</td>
-      <td style="color:var(--muted)">${r.comune || '—'}</td>
-      <td><span class="chip ${statoUI}">${STATO_LABEL[statoUI]}</span></td>
-      <td>${prog}</td>
-      <td style="text-align:right;font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(metriTot)}</td>
-      <td style="text-align:right;color:var(--muted)">${fmt(scavati)}</td>
-    </tr>`;
-  }).join('') || `<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px">Nessun cantiere trovato.</td></tr>`;
-}
-
-function _renderPageSubtitle() {
-  const el = document.getElementById('pageSubDyn');
-  if (!el) return;
-  const nLotti = LOTTI.length;
-  const clusters = [...new Set(LOTTI.map(r => r.cl).filter(c => c !== '?'))].sort();
-  const provs = [...new Set(LOTTI.flatMap(r => r.prov || []))].sort();
-  el.innerHTML = `${nLotti} lotti` +
-    (clusters.length ? ` · cluster ${clusters.join(', ')}` : '') +
-    (provs.length ? ` · province ${provs.join(', ')}` : '') +
-    `<br>Avanzamento permessi (da Progettazione) e avanzamento fisico scavi (da rendicontazione imprese)`;
-  const lottiSub = document.getElementById('lottiSubtitle');
-  if (lottiSub) lottiSub.textContent = 'permessi (sopra) · % metri scavati (sotto)';
-}
-
-function _renderRiepilogo() {
-  const totMetri   = LOTTI.reduce((s, r) => s + r.metri, 0);
-  const totScavati = LOTTI.reduce((s, r) => s + Math.round(r.metri * r.pct / 100), 0);
-  const pctGlob    = totMetri > 0 ? (totScavati / totMetri * 100).toFixed(1) : '0.0';
-  const lottiAttivi= LOTTI.filter(r => r.haCantiere && r.stato !== 'non-avviato').length;
-  const allProv    = [...new Set(LOTTI.flatMap(r => r.prov || []))].sort();
-  const totComuni  = LOTTI.reduce((s, r) => s + (r.comuni || 0), 0);
-  const totOttenuto= LOTTI.reduce((s, r) => s + (r.permessi ? (r.permessi['OTTENUTO'] || 0) : 0), 0);
-  const pctPermessi= totMetri > 0 ? (totOttenuto / totMetri * 100).toFixed(1) : '0.0';
-
-  const el = id => document.getElementById(id);
-  if (el('repTracciato'))  el('repTracciato').textContent  = fmt(Math.round(totMetri / 1000)) + ' km';
-  if (el('repPermessi'))   el('repPermessi').textContent   = pctPermessi + '% (' + fmt(Math.round(totOttenuto/1000)) + ' km)';
-  if (el('repScavati'))    el('repScavati').textContent    = fmt(Math.round(totScavati / 1000)) + ' km';
-  if (el('repAvanz'))      el('repAvanz').textContent      = pctGlob + '%';
-  if (el('repLottiAttivi'))el('repLottiAttivi').textContent= lottiAttivi;
-  if (el('repComuni'))     el('repComuni').textContent     = totComuni > 0 ? totComuni : LOTTI.length + ' cantieri';
-  if (el('repProv')) {
-    el('repProv').innerHTML = allProv.length > 0
-      ? allProv.map(p => `<span class="prov-pill">${p}</span>`).join('')
-      : '—';
+          <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn" id="_warnCancel">Capito</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector('#_warnCancel').onclick = () => overlay.remove();
+    } else {
+      // Solo date/note: avviso non bloccante, l'utente può scegliere
+      overlay.innerHTML = `
+        <div class="warn-modal">
+          <div class="warn-modal-icon warn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div>
+          <div class="warn-modal-title">Aggiornare solo questa tratta?</div>
+          <div class="warn-modal-body">
+            Questa pratica include anche <b>${SIBLINGS.length}</b> altr${SIBLINGS.length===1?'a tratta':'e tratte'}
+            (${SIBLINGS.map(s=>escapeHtml(s.TRATTA_ID)).join(', ')}) che non verranno aggiornate.
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-ghost" id="_warnCancel">Annulla</button>
+            <button class="btn" id="_warnConfirm">Procedi solo con questa</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector('#_warnCancel').onclick = () => overlay.remove();
+      overlay.querySelector('#_warnConfirm').onclick = () => { overlay.remove(); _finalizeAdd(fields, false); };
+    }
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   }
-}
-
-// ── KPI COUNTERS ────────────────────────────────────────────────────────────
-function _renderKpi() {
-const counts = { 'non-avviato':0, 'allestimento':0, 'in-corso':0, 'completato':0, 'sospeso':0 };
-LOTTI.forEach(r => { if(counts[r.stato]!==undefined) counts[r.stato]++; });
-document.getElementById('kpiNav').textContent = counts['non-avviato'];
-document.getElementById('kpiAll').textContent = counts['allestimento'];
-document.getElementById('kpiCor').textContent = counts['in-corso'];
-document.getElementById('kpiCom').textContent = counts['completato'];
-document.getElementById('kpiSos').textContent = counts['sospeso'];
-}
-
-// ── HELPERS (portati da index.html) ─────────────────────────────────────────
-const tooltip = document.getElementById('tooltip');
-
-function _showBarTip(seg, e) {
-  let d;
-  try { d = JSON.parse(seg.getAttribute('data-tip')); } catch(_) { return; }
-  const barW = Math.min(100, Math.max(1, d.pct));
-  const tw = 180;
-  const left = e.clientX + 14 + tw > window.innerWidth ? e.clientX - tw - 4 : e.clientX + 14;
-  tooltip.innerHTML = `
-    <div style="padding:5px 12px 4px;background:${d.color}18;border-bottom:1px solid ${d.color}33">
-      <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:${d.color}">${d.label}</span>
-    </div>
-    <div style="padding:8px 12px">
-      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin-bottom:6px">
-        <span style="font-size:22px;font-weight:700;font-family:var(--font-display);color:${d.color};letter-spacing:-0.02em">${d.pct.toFixed(1)}%</span>
-        <span style="font-size:11px;font-family:var(--font-mono);color:var(--text2);font-weight:600;white-space:nowrap">${fmt(d.m)} m</span>
-      </div>
-      <div style="height:4px;border-radius:2px;background:var(--border);overflow:hidden">
-        <div style="height:100%;border-radius:2px;background:${d.color};width:${barW}%"></div>
-      </div>
-    </div>`;
-  tooltip.style.opacity = '1';
-  tooltip.style.left = left + 'px';
-  tooltip.style.top = Math.max(4, e.clientY - 30) + 'px';
-}
-
-function makeSeg(pct, color, label, metriVal, isGrey) {
-  const seg = document.createElement('div');
-  seg.className = 'bar-seg';
-  seg.style.cssText = `width:${pct}%;background:${color};position:relative;opacity:${isGrey ? '.45' : '.88'}`;
-  const tip = JSON.stringify({ label, color, pct, m: metriVal });
-  seg.setAttribute('data-tip', tip);
-  if (pct >= 6) {
-    seg.innerHTML = `<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;text-shadow:0 0 4px rgba(0,0,0,1),0 1px 3px rgba(0,0,0,.9);pointer-events:none;font-family:var(--font-display)">${pct.toFixed(0)}%</span>`;
-  }
-  seg.addEventListener('mousemove', e => _showBarTip(seg, e));
-  seg.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
-  return seg;
-}
-
-// ── CLUSTER BARS ─────────────────────────────────────────────────────────────
-function _renderClusters() {
-const clusterContainer = document.getElementById('clusterContainer');
-clusterContainer.innerHTML = '';
-const totalAll = Object.values(CLUSTER_PERMESSI).reduce((s, v) => s + v.totale, 0);
-document.getElementById('clusterStatus').textContent = fmt(totalAll) + ' m totali';
-const scaviMap = window._CLUSTER_SCAVI || {};
-
-Object.keys(CLUSTER_PERMESSI).sort((a,b)=>+a-+b).forEach(cl => {
-  const cd = CLUSTER_PERMESSI[cl];
-  const tot = cd.totale;
-  const statiMap = cd.statiMap;
-  const gruppi = buildGruppiMapPermessi(statiMap);
-  const sc = scaviMap[cl] || { metri: 0, scavati: 0 };
-  const haScavo = sc.metri > 0;
-  const pctScavo = haScavo ? Math.round(sc.scavati / sc.metri * 100) : 0;
-  const colScavo = STATO_COLOR['in-corso'];
-
-  const group = document.createElement('div');
-  group.style.cssText = 'padding:8px 6px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;';
-  group.addEventListener('mouseenter', () => group.style.background = 'var(--surface2)');
-  group.addEventListener('mouseleave', () => group.style.background = '');
-  group.title = 'Clicca per il dettaglio';
-  group.addEventListener('click', () => openModalCluster(cl));
-
-  // ── Riga 1: PERMESSI ──
-  const permRow = document.createElement('div');
-  permRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:3px;';
-
-  const lbl = document.createElement('div');
-  lbl.style.cssText = 'width:180px;flex-shrink:0;display:flex;flex-direction:column;gap:2px';
-  lbl.innerHTML = `
-    <div style="display:flex;align-items:center;gap:6px">
-      <span style="background:${CLUSTER_COLOR[cl]||'#8A91B4'}20;color:${CLUSTER_COLOR[cl]||'#8A91B4'};border:1px solid ${CLUSTER_COLOR[cl]||'#8A91B4'}40;border-radius:4px;padding:1px 7px;font-size:9px;font-weight:700;font-family:var(--font-mono)">${cl}</span>
-      <span style="font-size:11px;font-weight:700;color:var(--text)">${CLUSTER_LABEL[cl]||'Cluster '+cl}</span>
-    </div>
-    <span style="font-size:9px;color:var(--muted2)">${cd.lotti.length} lotti</span>`;
-  permRow.appendChild(lbl);
-
-  const permTrack = document.createElement('div');
-  permTrack.className = 'bar-track';
-  permTrack.style.cssText = 'flex:1;height:16px;';
-  ORDINE_WORKFLOW_PERMESSI.forEach(label => {
-    const g = STATI_GRUPPI_PERMESSI.find(x => x.label === label);
-    if (!g) return;
-    const m = gruppi[g.label] || 0;
-    if (m <= 0) return;
-    const pct = tot > 0 ? m / tot * 100 : 0;
-    permTrack.appendChild(makeSeg(pct, g.color, g.label, m, false));
-  });
-  permRow.appendChild(permTrack);
-
-  const ottenutoM = statiMap['OTTENUTO'] || 0;
-  const permPct = tot > 0 ? Math.round(ottenutoM / tot * 100) : 0;
-  const permPctEl = document.createElement('span');
-  permPctEl.style.cssText = 'font-size:10px;font-weight:700;color:var(--muted);width:36px;text-align:right;flex-shrink:0;';
-  permPctEl.textContent = permPct + '%';
-  permRow.appendChild(permPctEl);
-
-  const permMEl = document.createElement('span');
-  permMEl.style.cssText = 'min-width:72px;text-align:right;font-size:10px;color:var(--muted);flex-shrink:0;';
-  permMEl.textContent = fmt(tot) + ' m';
-  permRow.appendChild(permMEl);
-
-  group.appendChild(permRow);
-
-  // ── Riga 2: SCAVI ──
-  const scaviRow = document.createElement('div');
-  scaviRow.style.cssText = 'display:flex;align-items:center;gap:10px;';
-  if (!haScavo) scaviRow.style.opacity = '.4';
-
-  const lbl2 = document.createElement('div');
-  lbl2.style.cssText = 'width:180px;flex-shrink:0;font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;';
-  lbl2.textContent = '';
-  scaviRow.appendChild(lbl2);
-
-  const scaviTrack = document.createElement('div');
-  scaviTrack.className = 'bar-track';
-  scaviTrack.style.flex = '1';
-  if (haScavo && pctScavo > 0) {
-    scaviTrack.appendChild(makeSeg(pctScavo, colScavo, 'In corso', sc.scavati, false));
-  }
-  const pctRimasto = haScavo ? (100 - pctScavo) : 100;
-  const metriRimasti = haScavo ? Math.round(sc.metri * pctRimasto / 100) : tot;
-  if (pctRimasto > 0) {
-    scaviTrack.appendChild(makeSeg(pctRimasto, STATO_COLOR['non-avviato'], 'Non scavato', metriRimasti, true));
-  }
-  scaviRow.appendChild(scaviTrack);
-
-  const scaviPctEl = document.createElement('span');
-  scaviPctEl.className = 'bar-pct';
-  scaviPctEl.style.color = colScavo;
-  scaviPctEl.textContent = haScavo ? pctScavo + '%' : '—';
-  scaviRow.appendChild(scaviPctEl);
-
-  const scaviMEl = document.createElement('span');
-  scaviMEl.style.cssText = 'min-width:72px;text-align:right;font-size:12px;font-family:Raleway,sans-serif;font-weight:700;color:var(--text2);flex-shrink:0;letter-spacing:-.01em';
-  scaviMEl.textContent = fmt(tot) + ' m';
-  scaviRow.appendChild(scaviMEl);
-
-  group.appendChild(scaviRow);
-  clusterContainer.appendChild(group);
-});
-}
-
-// ── BARRE PER LOTTO (doppia barra: permessi sopra · scavi sotto) ────────────
-function _renderBars() {
-const barContainer = document.getElementById('barContainer');
-barContainer.innerHTML = '';
-LOTTI.forEach(r => {
-  const col = STATO_COLOR[r.stato];
-  const isInactive = r.stato === 'non-avviato' && !r.haCantiere;
-
-  const group = document.createElement('div');
-  group.style.cssText = 'padding:8px 6px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;';
-  group.addEventListener('mouseenter', () => group.style.background = 'var(--surface2)');
-  group.addEventListener('mouseleave', () => group.style.background = '');
-  group.title = 'Clicca per il dettaglio';
-  group.addEventListener('click', () => openModalLotto(r));
-
-  // ── Riga 1: PERMESSI (dal CSV progettazione) ──
-  const permRow = document.createElement('div');
-  permRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:3px;';
-
-  const lbl = document.createElement('div');
-  lbl.className = 'bar-lotto-wrap';
-  lbl.style.cssText = 'width:140px;flex-shrink:0;';
-  lbl.innerHTML = `
-    <span class="bar-lotto-num">${r.id}</span>`;
-  permRow.appendChild(lbl);
-
-  const permTrack = document.createElement('div');
-  permTrack.className = 'bar-track';
-  permTrack.style.cssText = 'flex:1;height:16px;';
-  if (r.permessi) {
-    const gruppi = buildGruppiMapPermessi(r.permessi);
-    ORDINE_WORKFLOW_PERMESSI.forEach(label => {
-      const g = STATI_GRUPPI_PERMESSI.find(x => x.label === label);
-      if (!g) return;
-      const m = gruppi[g.label] || 0;
-      if (m <= 0) return;
-      const pct = r.permessiTot > 0 ? m / r.permessiTot * 100 : 0;
-      permTrack.appendChild(makeSeg(pct, g.color, g.label, m, false));
-    });
-  } else {
-    permTrack.style.opacity = '.3';
-  }
-  permRow.appendChild(permTrack);
-
-  const permPctEl = document.createElement('span');
-  permPctEl.style.cssText = 'font-size:10px;font-weight:700;color:var(--muted);width:36px;text-align:right;flex-shrink:0;';
-  const ottenutoM = r.permessi ? (r.permessi['OTTENUTO'] || 0) : 0;
-  const permPct = r.permessiTot > 0 ? Math.round(ottenutoM / r.permessiTot * 100) : 0;
-  permPctEl.textContent = r.permessi ? permPct + '%' : '—';
-  permRow.appendChild(permPctEl);
-
-  const permMEl = document.createElement('span');
-  permMEl.style.cssText = 'min-width:72px;text-align:right;font-size:10px;color:var(--muted);flex-shrink:0;';
-  permMEl.textContent = r.permessiTot > 0 ? fmt(r.permessiTot) + ' m' : '—';
-  permRow.appendChild(permMEl);
-
-  group.appendChild(permRow);
-
-  // ── Riga 2: SCAVI (da MongoDB cantieri) ──
-  const scaviRow = document.createElement('div');
-  scaviRow.style.cssText = 'display:flex;align-items:center;gap:10px;';
-  if (isInactive) scaviRow.style.opacity = '.4';
-
-  const lbl2 = document.createElement('div');
-  lbl2.style.cssText = 'width:140px;flex-shrink:0;font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;';
-  lbl2.textContent = '';
-  scaviRow.appendChild(lbl2);
-
-  const lottoTrack = document.createElement('div');
-  lottoTrack.className = 'bar-track';
-  lottoTrack.style.flex = '1';
-  // Avanzamento scavo calcolato sul totale REALE del lotto (da permessi)
-  if (r.haCantiere && r.pct > 0) {
-    const metriScavati = Math.round(r.metri * r.pct / 100);
-    lottoTrack.appendChild(makeSeg(r.pct, col, STATO_LABEL[r.stato], metriScavati, false));
-  }
-  const pctRimasto = r.haCantiere ? (100 - r.pct) : 100;
-  const metriRimasti = Math.round(r.metri * pctRimasto / 100);
-  if (pctRimasto > 0) {
-    lottoTrack.appendChild(makeSeg(pctRimasto, STATO_COLOR['non-avviato'], 'Non scavato', metriRimasti, true));
-  }
-  scaviRow.appendChild(lottoTrack);
-
-  const pctEl  = document.createElement('span'); pctEl.className = 'bar-pct'; pctEl.style.color = col; pctEl.textContent = r.haCantiere ? r.pct + '%' : '—';
-  const mEl    = document.createElement('span'); mEl.style.cssText = 'min-width:72px;text-align:right;font-size:12px;font-family:Raleway,sans-serif;font-weight:700;color:var(--text2);flex-shrink:0;letter-spacing:-.01em'; mEl.textContent = fmt(r.metri) + ' m';
-  scaviRow.appendChild(pctEl);
-  scaviRow.appendChild(mEl);
-
-  group.appendChild(scaviRow);
-  barContainer.appendChild(group);
-});
-}
-
-// ── TABELLA ─────────────────────────────────────────────────────────────────
-function _renderTabella() {
-const tbody = document.getElementById('tablebody');
-tbody.innerHTML = LOTTI.map(r => {
-  const col   = STATO_COLOR[r.stato];
-  const pills = (r.prov||[]).map(p => `<span class="prov-pill">${p}</span>`).join('');
-  const prog  = r.pct > 0
-    ? `<div class="prog-wrap"><div class="prog-track"><div class="prog-fill" style="width:${r.pct}%;background:${col}"></div></div><div class="prog-val">${r.pct}%</div></div>`
-    : `<span style="color:var(--muted2)">—</span>`;
-  return `<tr>
-    <td><span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent)">${r.id}</span></td>
-    <td><span style="font-family:var(--font-mono);font-size:10px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 7px;color:var(--muted)">${r.cl}</span></td>
-    <td>${pills}</td>
-    <td style="color:var(--muted)">${r.comuni} comuni</td>
-    <td><span class="chip ${r.stato}">${STATO_LABEL[r.stato]}</span></td>
-    <td>${prog}</td>
-    <td style="text-align:right;font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(r.metri)}</td>
-  </tr>`;
-}).join('');
-}
-
-// ── DONUT CHART (canvas, stile index) ───────────────────────────────────────
-function _renderRadar() {
-(function renderDonut() {
-  const STATI_DONUT = [
-    { label:'In corso',        key:'in-corso',     color:'#0B3182' },
-    { label:'In allestimento', key:'allestimento',  color:'#C08A14' },
-    { label:'In sospeso',      key:'sospeso',       color:'#C23B22' },
-    { label:'Completati',      key:'completato',    color:'#1F7A4E' },
-    { label:'Non avviati',     key:'non-avviato',   color:'#8A91B4' },
-  ];
-
-  // Costruisci dataset: usa metri totali per lotto come peso
-  const pesoPerStato = {};
-  LOTTI.forEach(r => { pesoPerStato[r.stato] = (pesoPerStato[r.stato] || 0) + r.metri; });
-  const grandTotal = Object.values(pesoPerStato).reduce((a,b)=>a+b,0);
-
-  const grouped = STATI_DONUT
-    .map(s => ({ ...s, metri: pesoPerStato[s.key] || 0 }))
-    .filter(s => s.metri > 0);
-
-  const canvas = document.getElementById('donutChart');
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width  = 200 * dpr;
-  canvas.height = 200 * dpr;
-  canvas.style.width  = '200px';
-  canvas.style.height = '200px';
-  const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
-
-  const cx = 100, cy = 100, r = 78, rIn = 52;
-
-  // Disegna segmenti
-  let startAngle = -Math.PI / 2;
-  grouped.forEach(s => {
-    const angle = (s.metri / grandTotal) * 2 * Math.PI;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, r, startAngle, startAngle + angle);
-    ctx.closePath();
-    ctx.fillStyle = s.color;
-    ctx.fill();
-    startAngle += angle;
-  });
-
-  // Foro centrale
-  ctx.beginPath();
-  ctx.arc(cx, cy, rIn, 0, 2 * Math.PI);
-  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#ffffff';
-  ctx.fill();
-
-  // % avanzamento al centro (metri in-corso / totale)
-  const metriAttivi = (pesoPerStato['in-corso'] || 0) + (pesoPerStato['completato'] || 0);
-  const pctAvanz = grandTotal > 0 ? (metriAttivi / grandTotal * 100) : 0;
-  ctx.fillStyle = '#1a1d27';
-  ctx.font = 'bold 20px Raleway, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(pctAvanz.toFixed(1) + '%', cx, cy - 8);
-  ctx.font = '500 9px Raleway, sans-serif';
-  ctx.fillStyle = '#4a5070';
-  ctx.fillText('avanzamento', cx, cy + 10);
-
-  // Legenda
-  const legend = document.getElementById('donutLegend');
-  legend.innerHTML = '';
-  grouped.forEach(s => {
-    const pct = (s.metri / grandTotal * 100).toFixed(1);
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;font-size:10px;';
-    row.innerHTML = `
-      <div style="display:flex;align-items:center;gap:6px">
-        <div style="width:8px;height:8px;border-radius:2px;background:${s.color};flex-shrink:0"></div>
-        <span style="color:var(--muted)">${s.label}</span>
-      </div>
-      <span style="font-family:var(--font-display);font-weight:700;color:${s.color}">${pct}%</span>`;
-    legend.appendChild(row);
-  });
-
-  // Tooltip interattivo al mouseover (come index)
-  const _segs = [];
-  let _dsa = -Math.PI / 2;
-  grouped.forEach(s => {
-    const angle = (s.metri / grandTotal) * 2 * Math.PI;
-    _segs.push({ ...s, pct: s.metri / grandTotal * 100, startAngle: _dsa, endAngle: _dsa + angle });
-    _dsa += angle;
-  });
-  canvas.style.cursor = 'crosshair';
-  canvas.addEventListener('mousemove', e => {
-    const rect = canvas.getBoundingClientRect();
-    const mx = (e.clientX - rect.left) * (200 / rect.width);
-    const my = (e.clientY - rect.top)  * (200 / rect.height);
-    const dx = mx - cx, dy = my - cy;
-    const dist = Math.sqrt(dx*dx + dy*dy);
-    if (dist < rIn || dist > r) { tooltip.style.opacity = '0'; return; }
-    const base = -Math.PI / 2;
-    let ca = Math.atan2(dy, dx);
-    while (ca < base) ca += 2 * Math.PI;
-    while (ca >= base + 2 * Math.PI) ca -= 2 * Math.PI;
-    const seg = _segs.find(s => ca >= s.startAngle && ca < s.endAngle);
-    if (!seg) { tooltip.style.opacity = '0'; return; }
-    const barW = Math.min(100, Math.max(1, seg.pct));
-    const tw = 180;
-    const left = e.clientX + 14 + tw > window.innerWidth ? e.clientX - tw - 4 : e.clientX + 14;
-    tooltip.innerHTML = `
-      <div style="padding:5px 12px 4px;background:${seg.color}18;border-bottom:1px solid ${seg.color}33">
-        <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:${seg.color}">${seg.label}</span>
-      </div>
-      <div style="padding:8px 12px">
-        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin-bottom:6px">
-          <span style="font-size:22px;font-weight:700;font-family:var(--font-display);color:${seg.color};letter-spacing:-0.02em">${seg.pct.toFixed(1)}%</span>
-          <span style="font-size:11px;font-family:var(--font-mono);color:var(--text2);font-weight:600;white-space:nowrap">${fmt(seg.metri)} m</span>
-        </div>
-        <div style="height:4px;border-radius:2px;background:var(--border);overflow:hidden">
-          <div style="height:100%;border-radius:2px;background:${seg.color};width:${barW}%"></div>
-        </div>
-      </div>`;
-    tooltip.style.opacity = '1';
-    tooltip.style.left = left + 'px';
-    tooltip.style.top  = Math.max(4, e.clientY - 30) + 'px';
-  });
-  canvas.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
-})();
-}
-
-// ── MODAL LOTTO ──────────────────────────────────────────────────────────────
-function openModalLotto(r) {
-  const col       = STATO_COLOR[r.stato];
-  const metriScav = r.pct > 0 ? Math.round(r.metri * r.pct / 100) : 0;
-  const metriRim  = r.metri - metriScav;
-  const chip      = `<span style="background:${col}18;color:${col};border:1px solid ${col}40;border-radius:6px;padding:2px 10px;font-size:10px;font-weight:700">${STATO_LABEL[r.stato]}</span>`;
-
-  document.getElementById('modalLottoTitle').innerHTML =
-    `Lotto ${r.id} &nbsp;${chip}`;
-
-  // Barra progresso (2 segmenti come in pagina)
-  const barHtml = `
-    <div class="modal-bar-row" style="margin-bottom:20px">
-      <div class="modal-bar-track" style="height:28px;border-radius:8px">
-        ${r.pct > 0 ? `<div class="modal-bar-fill" style="width:${r.pct}%;background:${col};float:left;border-radius:0"></div>` : ''}
-        <div class="modal-bar-fill" style="width:${100-r.pct}%;background:${STATO_COLOR['non-avviato']};float:left;opacity:.4;border-radius:0"></div>
-        ${r.pct >= 6 ? `<span class="modal-bar-pct">${r.pct}%</span>` : ''}
-      </div>
-    </div>`;
-
-  // Stat grid
-  const statGrid = `
-    <div class="modal-stat-grid">
-      <div class="modal-stat">
-        <span class="modal-stat-lbl">Totale tratta</span>
-        <span class="modal-stat-val">${fmt(r.metri)} m</span>
-      </div>
-      <div class="modal-stat">
-        <span class="modal-stat-lbl">⛏ Scavati</span>
-        <span class="modal-stat-val" style="color:${col}">${fmt(metriScav)} m</span>
-      </div>
-      <div class="modal-stat">
-        <span class="modal-stat-lbl">Rimanenti</span>
-        <span class="modal-stat-val" style="color:var(--muted)">${fmt(metriRim)} m</span>
-      </div>
-    </div>`;
-
-  // Info lotto
-  const infoHtml = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px">
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:8px">Cluster</div>
-        <span style="font-size:13px;font-weight:700;font-family:var(--font-mono);color:var(--accent)">${r.cl}</span>
-        <span style="font-size:11px;color:var(--muted);margin-left:8px">${CLUSTER_LABEL[r.cl]}</span>
-      </div>
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:8px">Territorio</div>
-        <div style="font-size:12px;font-weight:600;color:var(--text)">${r.comuni} comuni</div>
-        <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">
-          ${(r.prov||[]).map(p=>`<span style="background:var(--accent)15;color:var(--accent);border:1px solid var(--accent)30;border-radius:4px;padding:1px 7px;font-size:10px;font-weight:700">${p}</span>`).join('')}
-        </div>
-      </div>
-    </div>`;
-
-  document.getElementById('modalLottoBody').innerHTML = statGrid + barHtml + infoHtml;
-  document.getElementById('modalLottoOverlay').classList.add('open');
-}
-function closeModalLotto(e) {
-  if (e && e.target !== document.getElementById('modalLottoOverlay')) return;
-  document.getElementById('modalLottoOverlay').classList.remove('open');
-}
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    closeModalLotto();
-    closeModalCluster();
-    closeModalStato();
-  }
-});
-
-// ── MODAL CLUSTER ─────────────────────────────────────────────────────────────
-function openModalCluster(cl) {
-  const cd = CLUSTER_PERMESSI[cl] || { statiMap: {}, totale: 0, lotti: [] };
-  const totMetri  = cd.totale;
-  const ottenutoM = cd.statiMap['OTTENUTO'] || 0;
-  const pctTot    = totMetri > 0 ? (ottenutoM / totMetri * 100).toFixed(1) : '0.0';
-  const clCol     = CLUSTER_COLOR[cl] || '#8A91B4';
-  // Lotti che attraversano questo cluster (dalla lista corretta, non dal cluster prevalente)
-  const lottiCl = LOTTI.filter(r => cd.lotti.includes(r.id));
-
-  document.getElementById('modalClusterTitle').innerHTML =
-    `<span style="background:${clCol}18;color:${clCol};border:1px solid ${clCol}40;border-radius:6px;padding:2px 10px;font-size:13px;font-weight:700;font-family:var(--font-mono);margin-right:10px">${cl}</span>${CLUSTER_LABEL[cl]||'Cluster '+cl}`;
-
-  // Header stats
-  const header = `
-    <div class="modal-stat-grid">
-      <div class="modal-stat">
-        <span class="modal-stat-lbl">Totale cluster</span>
-        <span class="modal-stat-val">${fmt(totMetri)} m</span>
-      </div>
-      <div class="modal-stat">
-        <span class="modal-stat-lbl">✓ Permessi ottenuti</span>
-        <span class="modal-stat-val" style="color:#1E9E6A">${fmt(ottenutoM)} m</span>
-      </div>
-      <div class="modal-stat">
-        <span class="modal-stat-lbl">Avanzamento permessi</span>
-        <span class="modal-stat-val" style="color:#1E9E6A">${pctTot}%</span>
-      </div>
-      <div class="modal-stat">
-        <span class="modal-stat-lbl">Lotti coinvolti</span>
-        <span class="modal-stat-val">${cd.lotti.length}</span>
-      </div>
-    </div>`;
-
-  // Barre per stato permesso (aggregato cluster, da CLUSTER_PERMESSI — corretto per tratta)
-  const gruppi = buildGruppiMapPermessi(cd.statiMap);
-  let barreStato = `<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:10px">Distribuzione permessi per stato</div>`;
-  ORDINE_WORKFLOW_PERMESSI.forEach(label => {
-    const g = STATI_GRUPPI_PERMESSI.find(x => x.label === label);
-    if (!g) return;
-    const m = gruppi[g.label] || 0; if (!m) return;
-    const pct = totMetri > 0 ? m / totMetri * 100 : 0;
-    barreStato += `<div class="modal-bar-row">
-      <span class="modal-bar-label">${g.label}</span>
-      <div class="modal-bar-track">
-        <div class="modal-bar-fill" style="width:${pct}%;background:${g.color};opacity:.88"></div>
-        ${pct>=6?`<span class="modal-bar-pct">${pct.toFixed(1)}%</span>`:''}
-      </div>
-      <span class="modal-bar-val">${fmt(m)} m</span>
-    </div>`;
-  });
-
-  // Tabella lotti che attraversano il cluster (nota: un lotto può comparire in
-  // più cluster — qui mostriamo i suoi metri totali, non solo la quota in questo cluster)
-  let lottiHtml = `
-    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
-      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:12px">Lotti che attraversano questo cluster</div>
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead>
-          <tr style="border-bottom:2px solid var(--border)">
-            <th style="text-align:left;padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Lotto</th>
-            <th style="text-align:left;padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Stato cantiere</th>
-            <th style="text-align:left;padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Province</th>
-            <th style="text-align:right;padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Totale lotto</th>
-            <th style="text-align:right;padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Scavati</th>
-            <th style="padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Progresso scavo</th>
-          </tr>
-        </thead>
-        <tbody>`;
-  lottiCl.forEach(r => {
-    const col = STATO_COLOR[r.stato];
-    const mScav = Math.round(r.metri * r.pct / 100);
-    lottiHtml += `<tr style="border-bottom:1px solid var(--border)" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
-      <td style="padding:8px 10px;font-family:var(--font-mono);font-weight:700;font-size:13px;color:var(--accent);border-left:3px solid ${col}">${r.id}</td>
-      <td style="padding:8px 10px"><span style="background:${col}15;color:${col};border:1px solid ${col}30;border-radius:5px;padding:2px 8px;font-size:9px;font-weight:700">${STATO_LABEL[r.stato]}</span></td>
-      <td style="padding:8px 10px;font-size:10px;color:var(--muted)">${(r.prov||[]).join(' / ')}</td>
-      <td style="padding:8px 10px;text-align:right;font-weight:700;font-family:var(--font-display)">${fmt(r.metri)} m</td>
-      <td style="padding:8px 10px;text-align:right;font-weight:700;font-family:var(--font-display);color:${col}">${r.pct>0?fmt(mScav)+' m':'—'}</td>
-      <td style="padding:8px 10px;min-width:100px">
-        <div style="height:8px;border-radius:4px;background:var(--surface2);border:1px solid var(--border);overflow:hidden">
-          <div style="height:100%;width:${r.pct}%;background:${col};opacity:.85;border-radius:3px"></div>
-        </div>
-        <div style="font-size:9px;color:var(--muted);margin-top:2px;text-align:right">${r.pct}%</div>
-      </td>
-    </tr>`;
-  });
-  lottiHtml += '</tbody></table></div>';
-
-  document.getElementById('modalClusterBody').innerHTML = header + barreStato + lottiHtml;
-  document.getElementById('modalClusterOverlay').classList.add('open');
-}
-function closeModalCluster(e) {
-  if (e && e.target !== document.getElementById('modalClusterOverlay')) return;
-  document.getElementById('modalClusterOverlay').classList.remove('open');
-}
-</script>
-
-<!-- Modal Dettaglio Lotto -->
-<div class="modal-overlay" id="modalLottoOverlay" onclick="closeModalLotto(event)">
-  <div class="modal" style="width:580px">
-    <div class="modal-title">
-      <span id="modalLottoTitle">Lotto —</span>
-      <button class="modal-close" onclick="closeModalLotto()">×</button>
-    </div>
-    <div id="modalLottoBody"></div>
-  </div>
-</div>
-
-<!-- Modal Dettaglio Cluster -->
-<div class="modal-overlay" id="modalClusterOverlay" onclick="closeModalCluster(event)">
-  <div class="modal" style="width:720px">
-    <div class="modal-title">
-      <span id="modalClusterTitle">Cluster —</span>
-      <button class="modal-close" onclick="closeModalCluster()">×</button>
-    </div>
-    <div id="modalClusterBody"></div>
-  </div>
-</div>
-
-<!-- Modal Dettaglio Stato -->
-<div class="modal-overlay" id="modalStatoOverlay" onclick="closeModalStato(event)">
-  <div class="modal" style="width:560px;max-height:80vh;overflow-y:auto">
-    <div class="modal-title">
-      <span id="modalStatoTitle">Stato —</span>
-      <button class="modal-close" onclick="closeModalStato()">×</button>
-    </div>
-    <div id="modalStatoBody"></div>
-  </div>
-</div>
-
-<script>
-window.addEventListener('DOMContentLoaded', () => {
-  const u = localStorage.getItem('_enri_user');
-  if (!u) { document.getElementById('authGuard').style.display='flex'; return; }
-  document.getElementById('topbarUser').textContent = u;
-  // Carica dati reali: permessi (CSV) + scavi (API)
-  _loadAndRenderAll();
-});
-</script>
-
-<!-- ── TRACKING ACCESSI (scavi) — usa proxy Apps Script (no MASTER_KEY in chiaro) ── -->
-<script>
-(function(){
-  const _apiBase = () => (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
-  const _sessionToken = () => localStorage.getItem('_enri_session') || '';
-  const LOG_BIN_ID   = '69c8fbdced015c742bc8e978';
-  const ACCESSI_MAX  = 500;
-
-  const utente = localStorage.getItem('_enri_user');
-  const ruolo  = localStorage.getItem('_enri_role') || 'user';
-  if (!utente) return;
-
-  let _sessionStart = Date.now();
-  let _sessionTs    = null;
-  let _logCache     = null;
-
-  async function _proxyGet(binId) {
-    const res = await fetch(_apiBase() + '/api/logs/get', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session-token': _sessionToken() },
-      body: JSON.stringify({ binId })
-    });
-    const json = await res.json();
-    return { utenti:  Array.isArray(json.record?.utenti)  ? json.record.utenti  : [],
-             accessi: Array.isArray(json.record?.accessi) ? json.record.accessi : [] };
-  }
-
-  async function _proxyPut(binId, data, keepalive) {
-    return fetch(_apiBase() + '/api/logs/put', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session-token': _sessionToken() },
-      body: JSON.stringify({ binId, data }),
-      ...(keepalive ? { keepalive: true } : {})
-    });
-  }
-
-  async function _getIP() {
-    try { const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
-          return (await r.json()).ip || null; } catch(_) { return null; }
-  }
-
-  // Log accesso all'apertura
-  Promise.all([_proxyGet(LOG_BIN_ID), _getIP()]).then(([data, ip]) => {
-    const entry = { ts: new Date().toISOString(), utente, ruolo, ip,
-      ua: navigator.userAgent.substring(0, 120),
-      durata: 0, lotti: [], nAperture: 0, pagina: 'scavi' };
-    data.accessi.push(entry);
-    if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
-    if (!data.utenti.includes(utente)) data.utenti.push(utente);
-    _sessionTs = entry.ts;
-    _logCache  = data;
-    _proxyPut(LOG_BIN_ID, data).catch(() => {});
-  }).catch(() => {});
-
-  // beforeunload: aggiorna durata usando cache locale
-  window.addEventListener('beforeunload', () => {
-    if (!_sessionTs) return;
-    const durataMin = Math.round((Date.now() - _sessionStart) / 60000);
-    if (_logCache) {
-      const entry = _logCache.accessi.find(a => a.ts === _sessionTs);
-      if (entry) {
-        entry.durata = durataMin;
-        _proxyPut(LOG_BIN_ID, _logCache, true);
-        return;
+  $('addToQueueBtn').onclick = () => {
+    if (!SELECTED) return;
+    const stato = $('fld-stato').value;
+    if (!stato) return setMsg($('msgUpd'), 'Seleziona il nuovo stato prima di aggiungere alla coda', false);
+
+    const fields = { STATO_PERMESSO: stato };
+
+    if (stato === 'INVIATO') {
+      const dr = $('fld-data-rich').value;
+      if (!dr) return setMsg($('msgUpd'), 'Inserisci la data richiesta per lo stato INVIATO', false);
+      fields.DATA_RICHIESTA = fromInputDate(dr);
+    }
+    if (stato === 'OTTENUTO') {
+      const da = $('fld-data-app').value;
+      if (!da) return setMsg($('msgUpd'), 'Inserisci la data ottenimento per lo stato OTTENUTO', false);
+      fields.DATA_APPROVAZIONE = fromInputDate(da);
+    }
+
+    const noteVal = $('fld-note').value.trim();
+    if (noteVal) fields.NOTE = noteVal;
+
+    const polizza = $('fld-polizza').value;
+    if (polizza) fields['POLIZZA '] = polizza;
+    const convenzione = $('fld-convenzione').value;
+    if (convenzione) fields['CONVENZIONE'] = convenzione;
+
+    // Nulla Osta Necessario (solo per AUTORIZZAZIONE)
+    const noNec = $('fld-no-nec').value;
+    if (noNec) {
+      fields['NULLA OSTA NECESSARIO'] = noNec;
+      if (noNec === 'SI') {
+        const tratte = Array.from($('fld-no-tratte').selectedOptions).map(o => o.value).filter(Boolean);
+        if (tratte.length) fields['TRATTE_NO'] = tratte.join(', ');
       }
     }
-    _proxyGet(LOG_BIN_ID).then(data => {
-      const entry = data.accessi.find(a => a.ts === _sessionTs);
-      if (!entry) return;
-      entry.durata = durataMin;
-      _proxyPut(LOG_BIN_ID, data, true);
-    }).catch(() => {});
+
+    const wantsAllTogether = SIBLINGS.length > 0 && $('siblingsToggle').checked;
+    const wantsSingleOnly  = SIBLINGS.length > 0 && !$('siblingsToggle').checked;
+
+    if (wantsSingleOnly) {
+      _showSingleTrattaWarning(fields);
+    } else {
+      _finalizeAdd(fields, wantsAllTogether);
+    }
+  };
+
+  function renderQueue(){
+    if (!QUEUE.length){ $('updateQueue').style.display = 'none'; return; }
+    $('updateQueue').style.display = '';
+    $('qCount').textContent = QUEUE.length;
+    $('queueBody').innerHTML = QUEUE.map((q, i) => `
+      <tr>
+        <td class="mono">${escapeHtml(q.tratta_id)}</td>
+        <td class="mono">${escapeHtml(String(q.lunghezza ?? '—'))}</td>
+        <td>${escapeHtml(q.ente)}</td>
+        <td><span class="mono" style="font-size:11px">${Object.entries(q.fields).map(([k,v]) => `${k}=${escapeHtml(v)}`).join(' · ')}</span></td>
+        <td><button class="btn btn-ghost btn-xs" data-rem="${i}">Rimuovi</button></td>
+      </tr>`).join('');
+  }
+  $('queueBody').addEventListener('click', e => {
+    const b = e.target.closest('button[data-rem]');
+    if (!b) return; QUEUE.splice(+b.dataset.rem, 1); renderQueue();
   });
+  $('clearQueueBtn').onclick = () => { QUEUE.length = 0; renderQueue(); };
+
+  $('submitUpdatesBtn').onclick = async () => {
+    if (!QUEUE.length) return;
+    const btn = $('submitUpdatesBtn');
+    const originalHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    btn.innerHTML = '<span class="spinner spinner-sm" aria-hidden="true"></span>Invio in corso…';
+    try {
+      const res = await api('/api/imprese/submit', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ nome, type: 'update', changes: QUEUE }),
+      });
+      setMsg($('msgUpd'), `Inviate ${res.count} modifiche per approvazione`, true);
+      QUEUE.length = 0; renderQueue(); loadMine();
+    } catch(e){ setMsg($('msgUpd'), 'Errore: ' + e.message, false); }
+    finally {
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+      btn.innerHTML = originalHTML;
+    }
+  };
+
+  // ─── nuova ─────────────────────────────────────────
+  $('newForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const pratica = String($('new-pratica').value).trim();
+    if (!pratica || isNaN(parseInt(pratica))) return setMsg($('msgNew'), 'Il numero progressivo pratica è obbligatorio', false);
+
+    const selectedTratte = Array.from($('new-tratta').selectedOptions).map(o => o.value).filter(Boolean);
+    if (!selectedTratte.length) return setMsg($('msgNew'), 'Seleziona almeno una tratta', false);
+
+
+    const ente = $('new-ente').value === '__altro__'
+      ? ($('new-ente-custom') ? $('new-ente-custom').value.trim() : '')
+      : $('new-ente').value.trim();
+
+    const changes = selectedTratte.map(tratta => ({
+      "Source.Name":          $('new-lotto').value,
+      "TRATTA_ID":            tratta,
+      "ENTE":                 ente,
+      "TIPO_PERMESSO":        $('new-tipo').value,
+      "STATO_PERMESSO":       "IN REDAZIONE",
+      "DATA_ULTIMA_MODIFICA": new Date().toLocaleDateString('it-IT'),
+      "DATA_APPROVAZIONE":    "",
+      "NULLA OSTA NECESSARIO": $('new-tipo').value === 'AUTORIZZAZIONE' ? $('new-no-nec')?.value || '' : '',
+      "ORDINANZA NECESSARIA": $('new-ord-nec').value,
+      "PRATICA":              pratica,
+      "N_SED":                $('new-nsed').value.trim(),
+      "NOTE":                 $('new-note').value.trim(),
+    }));
+
+    const originalHTML = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.setAttribute('aria-busy', 'true');
+      submitBtn.innerHTML = '<span class="spinner spinner-sm" aria-hidden="true"></span>Invio in corso…';
+    }
+    try {
+      const res = await api('/api/imprese/submit', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ nome, type: 'new', changes }),
+      });
+      setMsg($('msgNew'), `Inviat${changes.length === 1 ? 'a 1 nuova pratica' : 'e ' + changes.length + ' nuove pratiche'} per approvazione (ID ${res.id.slice(-8)})`, true);
+      $('newForm').reset();
+      $('new-tratta').innerHTML = '<option value="" disabled>— seleziona prima il lotto —</option>';
+      $('wrap-no-nec').style.display = 'none';
+      loadMine();
+    } catch(e){ setMsg($('msgNew'), 'Errore: ' + e.message, false); }
+    finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.removeAttribute('aria-busy');
+        submitBtn.innerHTML = originalHTML;
+      }
+    }
+  });
+
+  // ─── le mie ────────────────────────────────────────
+  async function loadMine(){
+    try {
+      const d = await api(`/api/imprese/my-submissions?nome=${encodeURIComponent(nome)}`);
+      if (!d.submissions || !d.submissions.length){ $('mineBody').innerHTML = '<tr><td colspan="5" class="empty">Nessuna submission ancora</td></tr>'; return; }
+      $('mineBody').innerHTML = d.submissions.map(s => {
+        const payload = JSON.stringify(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const nMod = (s.changes||[]).length;
+        return `<tr data-sub="${payload}" style="cursor:pointer" title="Clicca per vedere i dettagli">
+          <td class="mono">${new Date(s.submitted_at).toLocaleString('it-IT')}</td>
+          <td>${s.type === 'update' ? 'Aggiornamento' : 'Nuova pratica'}</td>
+          <td>${nMod === 1 ? '1 modifica' : nMod + ' modifiche'}</td>
+          <td><span class="tag ${s.status}">${s.status}</span></td>
+          <td>${escapeHtml(s.reviewed_note || s.note || '')}</td>
+        </tr>`;
+      }).join('');
+    } catch(e){ $('mineBody').innerHTML = `<tr><td colspan="5" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`; }
+  }
+  $('refreshMineBtn').onclick = loadMine;
+
+  // Preview codice pratica — si aggiorna al cambio di tipo, lotto e numero
+  function _updatePraticaPreview() {
+    const tipoMap = {'AUTORIZZAZIONE':'AUT','NULLA OSTA':'NO'};
+    const tipo   = $('new-tipo').value;
+    const prefix = tipoMap[tipo] || '—';
+    // Estrai la sigla lotto da "Lotto 2A.xlsx" → "2A"
+    const lottoVal = $('new-lotto').value || '';
+    const m = lottoVal.match(/Lotto\s*([\w\d]+)/i);
+    const lotto = m ? m[1] : (lottoVal.replace('.xlsx','').replace('Lotto','').trim() || '—');
+    const num   = $('new-pratica').value || '—';
+    $('new-pratica-prefix').textContent = prefix + '/';
+    $('new-pratica-suffix').textContent = '/' + lotto;
+    const preview = $('new-pratica-preview');
+    if (prefix !== '—' && lotto !== '—' && num !== '—') {
+      preview.textContent = '→ ' + prefix + '/' + num + '/' + lotto;
+      preview.style.opacity = '1';
+    } else {
+      preview.textContent = '';
+    }
+  }
+  // Calcola e imposta automaticamente il prossimo numero progressivo
+  // (ultimo PRATICA esistente per il lotto selezionato + 1)
+  function _populateTrattaSelects(lottoVal) {
+    const tratte = [...new Set(
+      PRATICHE
+        .filter(p => String(p['Source.Name']||'').trim() === lottoVal)
+        .map(p => (p.TRATTA_ID||'').trim())
+        .filter(Boolean)
+    )].sort();
+    const opts = tratte.length
+      ? tratte.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('')
+      : '<option value="" disabled>Nessuna tratta trovata per questo lotto</option>';
+    $('new-tratta').innerHTML = opts;
+  }
+
+  function _setAutoPratica() {
+    const lottoVal = $('new-lotto').value || '';
+    const nums = PRATICHE
+      .filter(p => String(p['Source.Name']||'').trim() === lottoVal)
+      .map(p => parseInt(String(p.PRATICA||'').trim(), 10))
+      .filter(n => !isNaN(n));
+    $('new-pratica').value = nums.length ? Math.max(...nums) + 1 : 1;
+    _updatePraticaPreview();
+    _populateTrattaSelects(lottoVal);
+  }
+
+  function _toggleNoNec() {
+    const isAut = $('new-tipo').value === 'AUTORIZZAZIONE';
+    $('wrap-no-nec').style.display = isAut ? '' : 'none';
+    if (!isAut) $('new-no-nec').value = '';
+  }
+
+  $('new-tipo').addEventListener('change', () => { _updatePraticaPreview(); _toggleNoNec(); });
+  $('new-lotto').addEventListener('change', _setAutoPratica);
+  // Inizializza al caricamento
+  _updatePraticaPreview();
+  _toggleNoNec();
+
+  // Campo libero per "Altro" ente
+  $('new-ente').addEventListener('change', function() {
+    let custom = $('new-ente-custom');
+    if (this.value === '__altro__') {
+      if (!custom) {
+        custom = document.createElement('input');
+        custom.type = 'text';
+        custom.id = 'new-ente-custom';
+        custom.placeholder = 'Scrivi il nome dell\'ente…';
+        custom.style.marginTop = '6px';
+        custom.required = true;
+        this.parentNode.appendChild(custom);
+        custom.focus();
+      }
+    } else {
+      if (custom) { custom.remove(); }
+    }
+  });
+
+  // Click su riga submission → mostra dettagli
+  $('mineBody').addEventListener('click', e => {
+    const tr = e.target.closest('tr[data-sub]');
+    if (!tr) return;
+    try {
+      const s = JSON.parse(tr.dataset.sub.replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>'));
+      showSubDetail(s);
+    } catch(_) {}
+  });
+
+  function showSubDetail(s) {
+    const fieldLabels = {
+      STATO_PERMESSO:'Nuovo stato', DATA_RICHIESTA:'Data richiesta',
+      DATA_APPROVAZIONE:'Data approvazione', PRATICA:'Pratica', NOTE:'Note',
+      DATA_ULTIMA_MODIFICA:'Ultima modifica'
+    };
+    const statusColor = {pending:'#f59e0b',approved:'#10b981',rejected:'#ef4444'}[s.status]||'#6b7280';
+    const typeLabel = s.type === 'update' ? 'Aggiornamento' : 'Nuova pratica';
+    const nMod = (s.changes||[]).length;
+
+    const changesHtml = (s.changes||[]).map(c => {
+      const tratta = c.tratta_id || c.TRATTA_ID || '—';
+      const ente   = c.ente   || c.ENTE   || '';
+      const tipo   = c.tipo_permesso || c.TIPO_PERMESSO || '';
+      const fields = c.fields || {};
+      const cols   = Object.entries(fields).map(([k,v]) => `
+        <div class="sub-field">
+          <span class="sub-field-key">${escapeHtml(fieldLabels[k]||k)}</span>
+          <span class="sub-field-val">${escapeHtml(String(v||'—'))}</span>
+        </div>`).join('');
+      return `<div class="sub-change">
+        <div class="sub-change-header">
+          <span style="font-family:var(--font-mono)">${escapeHtml(tratta)}</span>
+          ${ente ? `<span style="color:var(--muted);font-weight:400;font-size:11px">${escapeHtml(ente)}</span>` : ''}
+          ${tipo ? `<span style="padding:1px 7px;border-radius:20px;font-size:10px;font-weight:600;background:var(--retelit-ice);color:var(--retelit-blue)">${escapeHtml(tipo)}</span>` : ''}
+        </div>
+        ${cols||'<span style="color:var(--muted);font-size:11px">Nessun campo</span>'}
+      </div>`;
+    }).join('');
+
+    const noteHtml = (s.reviewed_note||s.note) ? `
+      <div style="margin-top:12px">
+        <div class="sub-section-label">Note revisione</div>
+        <div style="background:var(--warn-bg);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--warn)">${escapeHtml(s.reviewed_note||s.note)}</div>
+      </div>` : '';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'sub-modal-overlay';
+    overlay.innerHTML = `
+      <div class="sub-modal">
+        <div class="sub-modal-head">
+          <div>
+            <div class="sub-modal-title">${typeLabel}</div>
+            <div class="sub-modal-sub">
+              ${new Date(s.submitted_at).toLocaleString('it-IT')}
+              &nbsp;<span style="display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:600;background:${statusColor}22;color:${statusColor}">${s.status}</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            ${s.status === 'pending' ? `<button id="_subDelete" style="padding:4px 12px;border-radius:6px;border:1px solid var(--danger);background:transparent;color:var(--danger);font-size:12px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>Elimina richiesta</button>` : ''}
+            <button class="sub-modal-close" id="_subClose" aria-label="Chiudi" title="Chiudi">&times;</button>
+          </div>
+        </div>
+        <div class="sub-modal-body">
+          <div class="sub-section-label">${nMod === 1 ? '1 modifica' : nMod + ' modifiche'}</div>
+          ${changesHtml}
+          ${noteHtml}
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#_subClose').onclick = () => overlay.remove();
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    if (s.status === 'pending') {
+      overlay.querySelector('#_subDelete').onclick = async () => {
+        if (!confirm('Eliminare questa richiesta? L\'operazione non è reversibile.')) return;
+        try {
+          await api(`/api/imprese/submissions/${s._id}?nome=${encodeURIComponent(nome)}`, { method: 'DELETE' });
+          overlay.remove();
+          await loadMine();
+        } catch(e) { alert('Errore: ' + e.message); }
+      };
+    }
+  }
+
+  // ─── SOLLECITI ──────────────────────────────────────────────────────────────
+
+  let SOL_SELECTED = null;
+  let SOL_SIBLINGS = [];
+
+  const SOL_STATI_ESCLUSI = new Set([
+    'IN REDAZIONE', 'IN FIRMA RDS',
+    'OTTENUTO',
+    'NECESSARIA INTEGRAZIONE', 'IN REDAZIONE INTEGRAZIONE', 'PROTOCOLLATO INTEGRAZIONE',
+    'NO COMPETENZA'
+  ]);
+
+  function renderSolPratiche(filter) {
+    const tbody = $('solPratBody');
+    if (!tbody) return;
+    const f = (filter || '').toLowerCase().trim();
+    const praticaMap = new Map();
+    PRATICHE.forEach(p => {
+      const stato = (p.STATO_PERMESSO || '').trim();
+      if (SOL_STATI_ESCLUSI.has(stato)) return;
+      const pNum = String(p.PRATICA || '').trim();
+      if (!pNum) return;
+      const key = pNum + '|' + String(p.ENTE||'').trim() + '|' + String(p.TIPO_PERMESSO||'').trim();
+      if (!praticaMap.has(key)) {
+        praticaMap.set(key, { rep: p, tratte: [p] });
+      } else {
+        const entry = praticaMap.get(key);
+        entry.tratte.push(p);
+        if (parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(entry.rep.DATA_ULTIMA_MODIFICA)) entry.rep = p;
+      }
+    });
+    const all   = Array.from(praticaMap.values());
+    const rows  = all.filter(({ rep }) => !f ||
+      [rep._codice, rep.ENTE, rep.TIPO_PERMESSO, rep.STATO_PERMESSO].join(' ').toLowerCase().includes(f));
+    renderSolPratiche._current = rows;
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">Nessuna pratica disponibile per il sollecito</td></tr>'; return; }
+    tbody.innerHTML = rows.map(({ rep, tratte }, i) => `
+      <tr data-idx="${i}">
+        <td class="mono" style="font-weight:700;color:var(--accent);background:var(--accent-light);border-left:3px solid var(--accent)">${escapeHtml(rep._codice || String(rep.PRATICA||''))}</td>
+        <td>${escapeHtml(rep.ENTE)}</td>
+        <td>${escapeHtml(rep.TIPO_PERMESSO)}</td>
+        <td class="stato-${(rep.STATO_PERMESSO||'').replace(/\s+/g,'.')}">${escapeHtml(rep.STATO_PERMESSO)}</td>
+        <td class="mono" style="text-align:center">${tratte.length}</td>
+      </tr>`).join('');
+  }
+
+  $('searchSolPratiche')?.addEventListener('input', e => renderSolPratiche(e.target.value));
+
+  $('solPratBody')?.addEventListener('click', e => {
+    const tr = e.target.closest('tr[data-idx]');
+    if (!tr) return;
+    document.querySelectorAll('#solPratBody tr.selected').forEach(x => x.classList.remove('selected'));
+    tr.classList.add('selected');
+    const { rep, tratte } = (renderSolPratiche._current || [])[+tr.dataset.idx];
+    SOL_SELECTED = rep;
+    const siblingsMap = new Map();
+    tratte.forEach(p => {
+      if (p.TRATTA_ID === rep.TRATTA_ID) return;
+      const ex = siblingsMap.get(p.TRATTA_ID);
+      if (!ex || parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(ex.DATA_ULTIMA_MODIFICA)) siblingsMap.set(p.TRATTA_ID, p);
+    });
+    SOL_SIBLINGS = Array.from(siblingsMap.values());
+    $('solSelectedForm').style.display = '';
+    const tot = tratte.length;
+    $('solEditRowSub').textContent = `${rep._codice || String(rep.PRATICA||'')} · ${rep.ENTE} · ${rep.TIPO_PERMESSO} · ${tot} tratt${tot === 1 ? 'a' : 'e'}`;
+    const pratCode = rep._codice || String(rep.PRATICA || '').trim();
+    const distinctSol = new Set(SOLLECITI.filter(s => s.pratica === pratCode).map(s => s.numero_sollecito || s.data_sollecito));
+    const numEl = $('sol-numero'); if (numEl) numEl.value = distinctSol.size + 1;
+    try { $('solSelectedForm').scrollIntoView({behavior:'smooth', block:'nearest'}); } catch(_) {}
+  });
+
+  $('sol-cancel')?.addEventListener('click', () => {
+    SOL_SELECTED = null; SOL_SIBLINGS = [];
+    $('solSelectedForm').style.display = 'none';
+    document.querySelectorAll('#solPratBody tr.selected').forEach(x => x.classList.remove('selected'));
+  });
+
+  // Modale di conferma generico (stesso stile di warn-modal usato sopra)
+  function showConfirm(title, msg, okLabel, okStyle) {
+    return new Promise(resolve => {
+      const overlay = document.createElement('div');
+      overlay.className = 'warn-modal-overlay';
+      overlay.innerHTML = `
+        <div class="warn-modal">
+          <div class="warn-modal-icon warn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div>
+          <div class="warn-modal-title">${escapeHtml(title)}</div>
+          <div class="warn-modal-body">${escapeHtml(msg)}</div>
+          <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-ghost" id="_confCancel">Annulla</button>
+            <button class="btn" id="_confOk" style="${okStyle || ''}">${escapeHtml(okLabel || 'Conferma')}</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector('#_confCancel').onclick = () => { overlay.remove(); resolve(false); };
+      overlay.querySelector('#_confOk').onclick     = () => { overlay.remove(); resolve(true); };
+    });
+  }
+
+  let SOLLECITI = [];
+
+  function _praticaPerSollecito(s) {
+    const candidates = PRATICHE.filter(p => p.TRATTA_ID === s.tratta_id);
+    if (!candidates.length) return null;
+    // 1. Match completo: codice + ente + tipo + stato
+    if (s.pratica && s.ente && s.tipo_permesso && s.stato_permesso) {
+      const full = candidates.find(p =>
+        (p._codice === s.pratica || String(p.PRATICA) === String(s.pratica)) &&
+        p.ENTE === s.ente &&
+        p.TIPO_PERMESSO === s.tipo_permesso &&
+        p.STATO_PERMESSO === s.stato_permesso
+      );
+      if (full) return full;
+    }
+    // 2. Match codice + ente + tipo
+    if (s.pratica && s.ente && s.tipo_permesso) {
+      const byAll = candidates.find(p =>
+        (p._codice === s.pratica || String(p.PRATICA) === String(s.pratica)) &&
+        p.ENTE === s.ente &&
+        p.TIPO_PERMESSO === s.tipo_permesso
+      );
+      if (byAll) return byAll;
+    }
+    // 3. Match solo ente + tipo + stato
+    if (s.ente && s.tipo_permesso && s.stato_permesso) {
+      const byETS = candidates.find(p =>
+        p.ENTE === s.ente &&
+        p.TIPO_PERMESSO === s.tipo_permesso &&
+        p.STATO_PERMESSO === s.stato_permesso
+      );
+      if (byETS) return byETS;
+    }
+    // 4. Match codice
+    if (s.pratica) {
+      const byCode = candidates.find(p => p._codice === s.pratica || String(p.PRATICA) === String(s.pratica));
+      if (byCode) return byCode;
+    }
+    return candidates[0];
+  }
+
+  async function loadSolleciti() {
+    $('solBody').innerHTML = `<tr><td colspan="13"><div class="spinner-wrap"><span class="spinner"></span><span>Caricamento…</span></div></td></tr>`;
+    try {
+      const d = await api('/api/imprese/solleciti');
+      SOLLECITI = d.solleciti || [];
+      renderSolleciti('');
+    } catch(e) {
+      $('solBody').innerHTML = `<tr><td colspan="14" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  function renderSolleciti(filter) {
+    const f = (filter || '').toLowerCase().trim();
+    if (!SOLLECITI.length) { $('solBody').innerHTML = '<tr><td colspan="14" class="empty">Nessun sollecito registrato</td></tr>'; return; }
+    const enriched = SOLLECITI.map(s => ({ s, p: _praticaPerSollecito(s) }));
+    const rows = enriched.filter(({s, p}) => !f || JSON.stringify({s, p}).toLowerCase().includes(f));
+    if (!rows.length) { $('solBody').innerHTML = '<tr><td colspan="14" class="empty">Nessun risultato</td></tr>'; return; }
+    $('solBody').innerHTML = rows.map(({s, p}) => {
+      const ente   = s.ente                 || p?.ENTE          || '—';
+      const tipo   = s.tipo_permesso        || p?.TIPO_PERMESSO || '—';
+      const stato  = s.stato_permesso       || p?.STATO_PERMESSO|| '—';
+      const dataRich = s.data_richiesta     || p?.DATA_RICHIESTA       || '—';
+      const dataAgg  = s.data_ultima_modifica || p?.DATA_ULTIMA_MODIFICA || '—';
+      const dataOtt  = p?.DATA_APPROVAZIONE || '—';
+      const lungh  = s.lunghezza            || p?.LUNGHEZZA     || '—';
+      const codice = p?._codice || s.pratica || '—';
+      const nSol   = s.numero_sollecito != null ? String(s.numero_sollecito) : '—';
+      return `
+      <tr>
+        <td class="mono" style="font-weight:700;color:var(--accent);background:var(--accent-light);border-left:3px solid var(--accent)">${escapeHtml(codice)}</td>
+        <td class="mono">${escapeHtml(s.tratta_id)}</td>
+        <td>${escapeHtml(ente)}</td>
+        <td>${escapeHtml(tipo)}</td>
+        <td class="${stato !== '—' ? 'stato-' + stato.replace(/\s+/g,'.') : ''}">${escapeHtml(stato)}</td>
+        <td class="mono">${escapeHtml(dataRich)}</td>
+        <td class="mono">${escapeHtml(dataAgg)}</td>
+        <td class="mono">${escapeHtml(dataOtt)}</td>
+        <td style="text-align:right;background:#f0fdf4;font-family:var(--font-mono);font-size:11.5px;color:#1F7A4E;font-weight:600;border-left:2px solid #bbf7d0">${escapeHtml(String(lungh))}</td>
+        <td class="mono" style="text-align:center;font-weight:700">${escapeHtml(nSol)}</td>
+        <td><span style="padding:2px 8px;border-radius:5px;font-size:10.5px;font-weight:700;background:var(--retelit-ice);color:var(--accent)">${escapeHtml(s.tipo_sollecito)}</span></td>
+        <td class="mono">${escapeHtml(s.data_sollecito)}</td>
+        <td style="font-size:12px;color:var(--muted)">${escapeHtml(s.note || '—')}</td>
+        <td><button class="btn btn-ghost btn-xs" style="color:var(--danger);border-color:var(--danger)" data-sol-del="${escapeHtml(s._id)}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  $('searchSolleciti').addEventListener('input', e => renderSolleciti(e.target.value));
+  $('sol-refresh').addEventListener('click', loadSolleciti);
+
+  $('solBody').addEventListener('click', async e => {
+    const btn = e.target.closest('[data-sol-del]');
+    if (!btn) return;
+    const solId   = btn.dataset.solDel;
+    const clicked = SOLLECITI.find(s => s._id === solId);
+    if (!clicked) return;
+
+    const siblings = SOLLECITI.filter(s =>
+      s._id !== solId &&
+      s.pratica        === clicked.pratica &&
+      s.data_sollecito === clicked.data_sollecito &&
+      s.tipo_sollecito === clicked.tipo_sollecito
+    );
+
+    let deleteAll = false;
+    if (siblings.length) {
+      const tratte = [clicked.tratta_id, ...siblings.map(s => s.tratta_id)].join(', ');
+      const ok = await showConfirm(
+        'Elimina sollecito',
+        `Ci sono ${siblings.length} tratt${siblings.length === 1 ? 'a collegata' : 'e collegate'} con lo stesso sollecito (${tratte}).\nVuoi eliminare tutti i solleciti insieme?`,
+        'Elimina tutti',
+        'background:var(--danger);border-color:var(--danger)'
+      );
+      if (ok === null) return; // annullato
+      deleteAll = ok;
+      if (!deleteAll) {
+        // chiede conferma per solo questo
+        const single = await showConfirm('Elimina sollecito', 'Eliminare solo questo sollecito?', 'Elimina', 'background:var(--danger);border-color:var(--danger)');
+        if (!single) return;
+      }
+    } else {
+      const ok = await showConfirm('Elimina sollecito', 'Eliminare definitivamente questo sollecito?', 'Elimina', 'background:var(--danger);border-color:var(--danger)');
+      if (!ok) return;
+    }
+
+    try {
+      const toDelete = deleteAll ? [solId, ...siblings.map(s => s._id)] : [solId];
+      if (toDelete.length > 1) {
+        await api('/api/imprese/solleciti/bulk-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: toDelete })
+        });
+      } else {
+        await api(`/api/imprese/solleciti/${toDelete[0]}`, { method: 'DELETE' });
+      }
+      await loadSolleciti();
+    } catch(e) { setMsg($('msgSol'), 'Errore: ' + e.message, false); }
+  });
+
+  async function _postSollecito(tratta_id, pratica_codice, tipo, data, note, row, numero_sollecito) {
+    return api('/api/imprese/solleciti', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tratta_id,
+        pratica:           pratica_codice,
+        tipo_sollecito:    tipo,
+        data_sollecito:    data,
+        note,
+        numero_sollecito:     numero_sollecito,
+        ente:                 row?.ENTE                  || '',
+        tipo_permesso:        row?.TIPO_PERMESSO         || '',
+        stato_permesso:       row?.STATO_PERMESSO        || '',
+        lunghezza:            row?.LUNGHEZZA             || '',
+        data_richiesta:       row?.DATA_RICHIESTA        || '',
+        data_ultima_modifica: row?.DATA_ULTIMA_MODIFICA  || '',
+      })
+    });
+  }
+
+  function _resetSolForm() {
+    SOL_SELECTED = null; SOL_SIBLINGS = [];
+    $('solSelectedForm').style.display = 'none';
+    $('sol-tipo').value = ''; $('sol-data').value = ''; $('sol-note').value = '';
+    const numEl = $('sol-numero'); if (numEl) numEl.value = 1;
+    document.querySelectorAll('#solPratBody tr.selected').forEach(x => x.classList.remove('selected'));
+  }
+
+  async function _submitSollecito() {
+    const msgEl   = $('msgSol');
+    const tipo    = $('sol-tipo').value;
+    const dataRaw = $('sol-data').value;
+    const data    = fromInputDate(dataRaw);
+    const note    = $('sol-note').value.trim();
+    const nSol    = parseInt($('sol-numero')?.value || '1', 10) || 1;
+    if (!tipo)    return setMsg(msgEl, 'Seleziona il tipo di sollecito', false);
+    if (!dataRaw) return setMsg(msgEl, 'Inserisci la data del sollecito', false);
+
+    const targets = [SOL_SELECTED, ...SOL_SIBLINGS];
+    $('sol-submit').disabled = true;
+    try {
+      if (targets.length > 1) {
+        const items = targets.map(t => ({
+          tratta_id:            t.TRATTA_ID,
+          pratica:              t._codice || t.PRATICA || '',
+          tipo_sollecito:       tipo,
+          data_sollecito:       data,
+          note,
+          numero_sollecito:     nSol,
+          ente:                 t.ENTE                  || '',
+          tipo_permesso:        t.TIPO_PERMESSO         || '',
+          stato_permesso:       t.STATO_PERMESSO        || '',
+          lunghezza:            t.LUNGHEZZA             || '',
+          data_richiesta:       t.DATA_RICHIESTA        || '',
+          data_ultima_modifica: t.DATA_ULTIMA_MODIFICA  || '',
+        }));
+        await api('/api/imprese/solleciti/bulk-insert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items })
+        });
+      } else {
+        await _postSollecito(targets[0].TRATTA_ID, targets[0]._codice || targets[0].PRATICA || '', tipo, data, note, targets[0], nSol);
+      }
+      setMsg(msgEl, targets.length > 1 ? `Registrati ${targets.length} solleciti (N° ${nSol})` : `Sollecito N° ${nSol} registrato`, true);
+      _resetSolForm();
+      await loadSolleciti();
+    } catch(e) {
+      setMsg(msgEl, 'Errore: ' + e.message, false);
+    } finally {
+      $('sol-submit').disabled = false;
+    }
+  }
+
+  $('sol-submit').addEventListener('click', async () => {
+    if (!SOL_SELECTED) return setMsg($('msgSol'), 'Seleziona prima una pratica dalla tabella', false);
+    await _submitSollecito();
+  });
+
+  // Carica solleciti quando si passa al tab — gestito nel listener globale tab sopra
+
 })();
 </script>
-
 </body>
 </html>
