@@ -226,9 +226,16 @@
   .cant-table thead th { position:relative; }
   .th-label { cursor:pointer; user-select:none; }
   .th-label:hover { color:var(--accent); }
-  .th-actions { display:inline-flex; gap:5px; margin-left:6px; vertical-align:middle; }
-  .th-btn { cursor:pointer; font-size:9px; color:var(--muted); user-select:none; }
-  .th-btn:hover, .th-btn.active { color:var(--accent); }
+  .th-cell { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .th-icons { display:flex; align-items:center; gap:1px; flex-shrink:0; }
+  .th-icon-btn {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:18px; height:18px; border-radius:4px; cursor:pointer;
+    color:var(--muted); flex-shrink:0;
+  }
+  .th-icon-btn svg { width:11px; height:11px; display:block; }
+  .th-icon-btn:hover { background:var(--border2); }
+  .th-icon-btn.active { background:var(--accent); color:#fff; }
   .col-filter-popup {
     position:fixed; background:var(--surface); border:1px solid var(--border2);
     border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.18); z-index:600;
@@ -974,19 +981,27 @@ let _colFilterOpenKey = null;
 function _renderCantieriTableHead() {
   const tr = document.getElementById('cantieriTableHead');
   if (!tr) return;
+  const sortIcon = (dir) => {
+    const upOp   = dir === 1  ? '1' : '0.35';
+    const downOp = dir === -1 ? '1' : '0.35';
+    return `<svg viewBox="0 0 16 16"><path d="M8 3l3.5 4h-7z" fill="currentColor" opacity="${upOp}"/><path d="M8 13l-3.5-4h7z" fill="currentColor" opacity="${downOp}"/></svg>`;
+  };
+  const filterIcon = `<svg viewBox="0 0 16 16"><path d="M1.5 2.5h13l-4.7 5.6v4.6l-3.6 1.8v-6.4z" fill="currentColor"/></svg>`;
   tr.innerHTML = CANTIERI_COLS.map(c => {
     if (c.action) {
       return `<th style="text-align:${c.align||'left'}"><span class="th-label" style="cursor:default">${c.label}</span></th>`;
     }
-    const active = _cantieriColFilters[c.key] ? ' active' : '';
-    const arrow = _cantieriSort.col === c.key ? (_cantieriSort.dir === 1 ? '▲' : '▼') : '⇅';
-    const sortActive = _cantieriSort.col === c.key ? ' active' : '';
+    const filterActive = _cantieriColFilters[c.key] ? ' active' : '';
+    const sortDir = _cantieriSort.col === c.key ? _cantieriSort.dir : 0;
+    const sortActive = sortDir !== 0 ? ' active' : '';
     return `<th style="${c.align === 'right' ? 'text-align:right' : ''}">
-      <span class="th-label" onclick="_sortCantieri('${c.key}')">${c.label}</span>
-      <span class="th-actions">
-        <span class="th-btn${sortActive}" onclick="_sortCantieri('${c.key}')" title="Ordina">${arrow}</span>
-        <span class="th-btn${active}" onclick="_toggleColFilter(event,'${c.key}')" title="Filtra">▾</span>
-      </span>
+      <div class="th-cell">
+        <span class="th-label" onclick="_sortCantieri('${c.key}')">${c.label}</span>
+        <span class="th-icons">
+          <span class="th-icon-btn${sortActive}" onclick="_sortCantieri('${c.key}')" title="Ordina">${sortIcon(sortDir)}</span>
+          <span class="th-icon-btn${filterActive}" onclick="_toggleColFilter(event,'${c.key}')" title="Filtra">${filterIcon}</span>
+        </span>
+      </div>
     </th>`;
   }).join('');
 }
@@ -1133,7 +1148,7 @@ function _renderCantieriTable() {
       <td>${prog}</td>
       <td style="text-align:right;font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(metriTot)}</td>
       <td style="text-align:right;color:var(--muted)">${fmt(scavati)}</td>
-      <td style="text-align:center"><button class="th-btn" style="border:1px solid var(--border2);border-radius:5px;padding:3px 9px;font-size:10px;color:var(--text2);background:var(--surface)" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')">📋 Registro</button></td>
+      <td style="text-align:center"><button style="border:1px solid var(--border2);border-radius:5px;padding:3px 9px;font-size:10px;color:var(--text2);background:var(--surface);cursor:pointer" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')">📋 Registro</button></td>
     </tr>`;
   }).join('') || `<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px">Nessun cantiere trovato.</td></tr>`;
 }
