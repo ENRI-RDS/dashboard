@@ -2385,8 +2385,9 @@ async def update_cantiere(cantiere_key: str, payload: dict, sess: dict = Depends
 
     # Verifica che la pratica appartenga ai lotti dell'impresa
     assignment = await _find_assignment(nome)
-    lotti = [str(l) for l in ((assignment or {}).get("lotti") or [])]
-    if doc.get("lotto") not in lotti:
+    raw_lotti = [str(l) for l in ((assignment or {}).get("lotti") or [])]
+    lotti = [_lotto_from_source(l) for l in raw_lotti]
+    if _lotto_from_source(str(doc.get("lotto") or "")) not in lotti:
         raise HTTPException(403, "Pratica non assegnata a questa impresa")
 
     # Campi aggiornabili dall'impresa
