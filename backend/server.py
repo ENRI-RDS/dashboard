@@ -1489,6 +1489,20 @@ def _apply_changes_to_df(df, submission: dict) -> tuple:
     return df, summary
 
 
+@app.post("/api/admin/regenerate-derived")
+async def regenerate_derived(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """Rigenera QGIS.geojson + Riepilogo_progettazione.csv dal Master.csv corrente
+    senza modificarlo — utile dopo un fix a _compute_tratta_summary per applicare
+    la nuova logica ai dati già presenti, senza dover re-uploadare Master.csv."""
+    _check_token(x_upload_token or token_q)
+    df = await _read_master_csv()
+    result = await _regenerate_derived_files(df, note="force regenerate (manual)")
+    return {"ok": True, "result": result}
+
+
 @app.post("/api/admin/pending-updates/{sub_id}/approve")
 async def approve_pending(
     sub_id: str,
