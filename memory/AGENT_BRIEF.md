@@ -368,6 +368,30 @@ Tutti gli endpoint `/api/imprese/*` richiedono header `x-session-token`. Il `nom
 20. **SED — bottoni Excel unificati**: la sezione "Attraversamenti SED" in `index.html` aveva due pulsanti separati ("Scarica Vista" / "Scarica Tutti"). Ora è un unico dropdown `sedXlsDropdown` identico a `xlsDropdown` di "Tutte le Pratiche" (con opzioni "Tutti gli attraversamenti" e "Vista corrente").
 21. **`debug_dashboard.py`**: script Python di audit automatico per i file HTML della dashboard. Controlla: CSS vars mancanti/undefined, topbar navy, logo, hub button style, div balance, emoji UI vietate vs funzionali Leaflet, gradienti decorativi, backdrop-filter, colori fuori palette, funzioni JS duplicate e dead, variabili JS inutilizzate, DOM ID mancanti, console.log in produzione, segreti hardcoded. Output con score /100 per file. Uso: `python3 debug_dashboard.py file.html [...]`.
 22. **Card modal cantieri in `scavi.html` (rev.7)**: `openModalStato()` mostrava solo `pratica_id`/lotto/ente/comune/progresso. Ora mostra tutti i dati disponibili: `codice_cantiere` (primario), cluster, tecnica scavo, impresa, conteggio tratte lavorabili/bloccate (derivato da `r.tratte[]`, **non** da `tratte_lavorabili`/`tratte_bloccate` — quei campi esistono solo nella riga CSV, non nel doc Mongo), le 4 date se valorizzate, motivo blocco+ripresa stimata se `sospeso`, note.
+23. ✅ **RISOLTO** — **Palette colori stato fuori brandkit Retelit**: `STATO_COLORS`/`COLORS`/`STATI_COLORI_MAP` usavano hex arbitrari non a palette (viola `#9b59b6`/`#7A3DAA`, rosa `#B5657A`, verde/rosso/blu/arancio non-token). Mappa canonica ora identica su `index.html`, `mappa.html`, `mappa_impresa.html`, `mappa_impresa_caricamento.html`, `scavi.html` (v. §8bis). **Esclusi deliberatamente**: palette per-lotto/cluster (`LOTTO_COLORS`, rainbow array) e marker misura/ricerca — servono a distinguere entità diverse, non rappresentano uno "stato", restano arbitrari.
+24. ✅ **RISOLTO** — **Nesting HTML rotto in `mappa_impresa_caricamento.html`**: `</div>` di troppo chiudeva `#sidebarEl` prima che `#scaviBodyPanel` venisse aperto → il pannello scavi diventava fratello della sidebar invece che figlio, causava "doppia finestra" (mappa schiacciata, legenda sovrapposta al form). Verificare sempre il nesting con `html.parser` prima di assumere che un problema visivo sia CSS quando coinvolge un intero pannello.
+25. ✅ **RISOLTO** — **`.pr-form-actions` senza `flex-wrap`**: su sidebar 300px i 3 pulsanti (Annulla/Storico/Salva aggiornamento) andavano in overflow orizzontale e venivano tagliati da `.sidebar{overflow:hidden}` (es. "Annulla" → "nnulla"). Aggiunto `flex-wrap:wrap` in `mappa_impresa_caricamento.html`.
+26. ✅ **RISOLTO** — **"Aggiorna Scavi" apriva cantiere sbagliato**: il fallback quando non c'era match esatto sulla tratta prendeva "il primo cantiere dello stesso lotto" alla cieca. Ora: match esatto → apri; nessun match + lotto con 1 solo cantiere → apri; nessun match + lotto con più cantieri → messaggio, nessuna apertura automatica; nessun match + nessun cantiere sul lotto → messaggio "autorizzazione non ancora ottenuta". File: `mappa_impresa_caricamento.html`.
+27. ✅ **RISOLTO** — **Bug `LAVORABILE` in `_compute_tratta_summary` (`server.py`)**: `need_no`/`need_ord` venivano letti SOLO dal flag `NULLA OSTA NECESSARIO`/`ORDINANZA NECESSARIA` sulla riga AUT. Se il flag era vuoto/NO ma esistevano comunque righe reali NULLA OSTA/ORDINANZA non ottenute per la tratta, `LAVORABILE` risultava `SI` per errore. Fix: `no_effettivo = (need_no=="SI") or bool(no_latest)` (idem `ord_effettivo`) — vincolante se il flag lo dichiara O se la pratica esiste davvero nei dati.
+28. ⏳ **DA FARE** — Integrare informazioni aggiuntive nella tabella "Tutti i Cantieri" di `scavi.html` (richiesto, non ancora specificato quali campi).
+
+---
+
+## 8bis. Palette colori stato — mapping canonico (tutte le pagine)
+
+Usata da `STATO_COLORS` (mappa/scavi) e `COLORS`/`STATI_COLORI_MAP` (index). Se aggiungi/tocchi uno di questi dizionari in una pagina, allinealo a questi valori:
+
+| Stato | Hex | Token brandkit |
+|---|---|---|
+| IN ATTESA / IN REDAZIONE | `#6B7685` | `--gray-500` |
+| IN FIRMA RDS | `#D08A1A` | `--warn` |
+| COORDINAMENTO | `#043F75` | `--retelit-blue` |
+| INVIATO / PROTOCOLLATO | `#41BBD9` | `--retelit-sky` |
+| NECESSARIA INTEGRAZIONE / IN REDAZIONE INTEGRAZIONE | `#C0392B` | `--err` |
+| PROTOCOLLATO INTEGRAZIONE | `#436A93` | `--retelit-blue-75` |
+| OTTENUTO | `#1E9E6A` | `--ok` |
+
+File allineati: `index.html`, `mappa.html`, `mappa_impresa.html`, `mappa_impresa_caricamento.html`, `scavi.html`.
 
 ---
 
