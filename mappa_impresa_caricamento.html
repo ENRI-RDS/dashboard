@@ -1047,6 +1047,7 @@
           <label>Metri realizzati oggi (m)</label>
           <input type="number" id="scMetri" min="0" step="0.1" placeholder="0">
           <div class="sc-hint">Inserire 0 se nessuno scavo oggi</div>
+          <div id="scMetriRimanenti" style="font-size:10.5px;color:var(--muted);margin-top:2px;font-weight:600"></div>
 
           <label>Stato cantiere *</label>
           <select id="scStato"></select>
@@ -4107,6 +4108,9 @@ function scOpenForm(r){
   scPopulateStatoOptions(r.stato_cantiere || 'non_avviato');
   scId('scTecnica').value         = r.tecnica_scavo || '';
   scId('scMetri').value           = '';
+  const rimanenti = Math.max(0, tot - scav);
+  scId('scMetri').max = rimanenti;
+  scId('scMetriRimanenti').textContent = tot > 0 ? `Rimangono ${rimanenti.toLocaleString('it-IT',{maximumFractionDigits:0})} m su ${tot.toLocaleString('it-IT',{maximumFractionDigits:0})} m` : '';
   scId('scInizioPrev').value      = r.data_inizio_prevista  || '';
   scId('scFinePrev').value        = r.data_fine_prevista    || '';
   scId('scInizioEff').value       = r.data_inizio_effettiva || '';
@@ -4139,6 +4143,13 @@ scId('scSubmit').addEventListener('click', async () => {
     scId('scTecnica').focus(); return;
   }
   const metriVal = parseFloat(scId('scMetri').value);
+  if (!isNaN(metriVal) && metriVal > 0) {
+    const rimanenti = Math.max(0, (SC_SELECTED.metri_totali||0) - (SC_SELECTED.metri_scavati||0));
+    if ((SC_SELECTED.metri_totali||0) > 0 && metriVal > rimanenti) {
+      scSetMsg(`Superi i metri rimanenti (${rimanenti.toLocaleString('it-IT',{maximumFractionDigits:0})} m su ${SC_SELECTED.metri_totali.toLocaleString('it-IT',{maximumFractionDigits:0})} m totali)`, false);
+      scId('scMetri').focus(); return;
+    }
+  }
   const payload = {
     stato_cantiere:       scId('scStato').value,
     tecnica_scavo:        scId('scTecnica').value,
