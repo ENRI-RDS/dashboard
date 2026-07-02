@@ -1,7 +1,7 @@
 name: Keep Render Alive
 on:
   schedule:
-    - cron: '*/13 7-18 * * *'
+    - cron: '*/13 5-21 * * *'
   workflow_dispatch:
 
 jobs:
@@ -9,4 +9,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping backend
-        run: curl -sf https://enri-dashboard-api.onrender.com/api/health || echo "ping failed"
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" https://enri-dashboard-api.onrender.com/api/health)
+          echo "HTTP status: $code"
+          if [ "$code" -lt 200 ] || [ "$code" -ge 400 ]; then
+            echo "::error::Ping failed with status $code"
+            exit 1
+          fi
