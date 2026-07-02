@@ -2213,7 +2213,7 @@ function _showBarTip(tooltip, seg, e) {
 
 // Gruppi visivi per le barre — gli stati vengono accorpati prima del rendering
 const STATI_GRUPPI = [
-  { label: 'In Attesa / Redazione', stati: ['IN ATTESA','IN REDAZIONE','NO COMPETENZA'], color: '#6B7685' },
+  { label: 'In Attesa / Redazione', stati: ['IN ATTESA','IN REDAZIONE'], color: '#6B7685' },
   { label: 'Coordinamento',          stati: ['COORDINAMENTO'],                                         color: '#1A7D99' },
   { label: 'In Verifica / In Firma', stati: ['IN FIRMA RDS'],                                         color: '#D08A1A' },
   { label: 'Inviato / Protocollato',stati: ['INVIATO','PROTOCOLLATO'],                               color: '#41BBD9' },
@@ -3012,10 +3012,12 @@ async function loadCluster() {
       }
       if (lungh <= 0) continue;
       if (!clMap[cl]) { clMap[cl] = {}; clTot[cl] = 0; }
-      clMap[cl][stato] = (clMap[cl][stato] || 0) + lungh;
-      clTot[cl] += lungh;
+      if (stato !== 'NO COMPETENZA') {
+        clMap[cl][stato] = (clMap[cl][stato] || 0) + lungh;
+        clTot[cl] += lungh;
+      }
 
-      if (iCOM !== -1 && iLOT !== -1) {
+      if (iCOM !== -1 && iLOT !== -1 && stato !== 'NO COMPETENZA') {
         const comune = cols[iCOM]?.trim().replace(/"/g,'');
         const lotto  = cols[iLOT]?.trim().replace(/"/g,'');
         if (comune) {
@@ -3142,6 +3144,7 @@ function openModal(lotto, statiMetri, totale) {
 
   // Dati pratiche dal Master.csv — usa parseDateIT globale
   const allPrats = ((window._praticheDetailPerLotto || {})[lotto] || [])
+    .filter(p => p.stato !== 'NO COMPETENZA')
     .slice()
     .sort((a,b) => {
       const da = parseDateIT(a.dum), db = parseDateIT(b.dum);
@@ -3353,6 +3356,7 @@ function openModalCluster(cl, statiMap, totale) {
     const seen = new Set();
     (window._clusterTrattaMap[cl] || []).forEach(tratta => {
       (window._masterByTratta[tratta] || []).forEach(r => {
+        if (r.stato === 'NO COMPETENZA') return;
         if (!seen.has(r.codice)) {
           seen.add(r.codice);
           clPrats.push({...r});
@@ -3864,6 +3868,7 @@ function renderDashboard(data) {
   const lottiMap={}, lottiTotale={};
   data.forEach(d=>{
     if (!lottiMap[d.lotto]){lottiMap[d.lotto]={};lottiTotale[d.lotto]=d.totale;}
+    if (d.stato === 'NO COMPETENZA') { lottiTotale[d.lotto] -= d.metri; return; }
     lottiMap[d.lotto][d.stato]=(lottiMap[d.lotto][d.stato]||0)+d.metri;
   });
   const ORDER_ATTIVI  = ['1A','1B','2A','2B'];
