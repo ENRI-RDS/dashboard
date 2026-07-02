@@ -961,7 +961,7 @@
           <div id="pr-wrap-data-prevista">
             <label>Data prevista rilascio</label>
             <input type="date" id="pr-data-prevista">
-            <div class="pr-hint">Stima fornita dall'impresa. Non richiesta se lo stato passa a OTTENUTO.</div>
+            <div class="pr-hint">Stima fornita dall'impresa. Non richiesta se lo stato passa a OTTENUTO o NO COMPETENZA.</div>
           </div>
           <div id="pr-wrap-no-nec" style="display:none">
             <label>Nulla Osta Necessario</label>
@@ -3776,7 +3776,7 @@ document.getElementById('pr-stato').addEventListener('change', function(){
     noteEl.disabled = false; noteEl.placeholder='Note opzionali';
     document.getElementById('pr-wrap-data-rich').style.display = (v==='INVIATO') ? '' : 'none';
     document.getElementById('pr-wrap-data-app').style.display  = (v==='OTTENUTO') ? '' : 'none';
-    document.getElementById('pr-wrap-data-prevista').style.display = (v==='OTTENUTO') ? 'none' : '';
+    document.getElementById('pr-wrap-data-prevista').style.display = (v==='OTTENUTO' || v==='NO COMPETENZA') ? 'none' : '';
   }
 });
 
@@ -3798,7 +3798,7 @@ document.getElementById('prAddToQueue').onclick = async () => {
   if (!PR_SELECTED) return;
   const msgEl = document.getElementById('prMsgUpd');
   const stato = document.getElementById('pr-stato').value;
-  const dataPrevista = stato === 'OTTENUTO' ? '' : document.getElementById('pr-data-prevista').value;
+  const dataPrevista = (stato === 'OTTENUTO' || stato === 'NO COMPETENZA') ? '' : document.getElementById('pr-data-prevista').value;
   if (!stato && !dataPrevista) return prSetMsg(msgEl, 'Seleziona il nuovo stato oppure imposta una data prevista rilascio', false);
   const fields = {};
   if (stato) fields.STATO_PERMESSO = stato;
