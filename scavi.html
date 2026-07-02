@@ -578,7 +578,7 @@ function provPill(p) {
 
 // Gruppi di stato permesso, in ordine di avanzamento workflow (stesso schema di index.html)
 const STATI_GRUPPI_PERMESSI = [
-  { label: 'In Attesa / Redazione',     stati: ['IN ATTESA','IN REDAZIONE','NO COMPETENZA'],          color: '#6B7685' },
+  { label: 'In Attesa / Redazione',     stati: ['IN ATTESA','IN REDAZIONE'],          color: '#6B7685' },
   { label: 'Coordinamento',             stati: ['COORDINAMENTO'],                                      color: '#043F75' },
   { label: 'In Verifica / In Firma',    stati: ['IN FIRMA RDS'],                                       color: '#D08A1A' },
   { label: 'Inviato / Protocollato',    stati: ['INVIATO','PROTOCOLLATO'],                             color: '#41BBD9' },
@@ -658,8 +658,10 @@ async function _loadPermessi() {
       else lungh = parseFloat(lunghRaw) || 0;
       if (lungh <= 0) continue;
       if (!aggMap[lotto]) { aggMap[lotto] = {}; totMap[lotto] = 0; clMap[lotto] = {}; provMap[lotto] = new Set(); comMap[lotto] = new Set(); }
-      aggMap[lotto][stato] = (aggMap[lotto][stato] || 0) + lungh;
-      totMap[lotto] += lungh;
+      if (stato !== 'NO COMPETENZA') {
+        aggMap[lotto][stato] = (aggMap[lotto][stato] || 0) + lungh;
+        totMap[lotto] += lungh;
+      }
       const cl = iCl >= 0 ? cols[iCl]?.trim().replace(/^[Cc]/, '') : '';
       if (cl) clMap[lotto][cl] = (clMap[lotto][cl] || 0) + lungh;
       const pr = iPr >= 0 ? cols[iPr]?.trim() : '';
@@ -668,10 +670,13 @@ async function _loadPermessi() {
       if (com) comMap[lotto].add(com);
 
       // Aggregazione per cluster: ogni tratta contribuisce al SUO cluster reale
-      if (cl) {
+      if (cl && stato !== 'NO COMPETENZA') {
         if (!clusterAggMap[cl]) { clusterAggMap[cl] = {}; clusterTotMap[cl] = 0; clusterLottiMap[cl] = new Set(); }
         clusterAggMap[cl][stato] = (clusterAggMap[cl][stato] || 0) + lungh;
         clusterTotMap[cl] += lungh;
+        clusterLottiMap[cl].add(lotto);
+      } else if (cl) {
+        if (!clusterLottiMap[cl]) clusterLottiMap[cl] = new Set();
         clusterLottiMap[cl].add(lotto);
       }
     }
