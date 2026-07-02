@@ -1709,10 +1709,11 @@ window.loadXLSX = (function(){
   var _origRenderSed = window.renderSed;
   window.renderSed = function(keepPage) { _origRenderSed(keepPage); updateQuickCard(); };
 
+  const _loadSEDIfAuth = () => { if (localStorage.getItem('_enri_user')) loadSED(); };
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', loadSED);
+    document.addEventListener('DOMContentLoaded', _loadSEDIfAuth);
   } else {
-    loadSED();
+    _loadSEDIfAuth();
   }
 })();
 </script>
@@ -2274,29 +2275,20 @@ function _timeout(ms, msg) {
 
 async function fetchWithSWR(rel, { onUpdate, isJson = false } = {}) {
   const qs = '?t=' + Math.floor(Date.now() / 300000); // slot da 5 min
-  const staticP = Promise.race([
-    fetch(_staticFileUrl(rel)).then(r => r.ok ? r.text() : Promise.reject('static-fail')),
-    _timeout(5000, 'static-timeout')
-  ]).catch(e => Promise.reject(e));
   const renderP = Promise.race([
     fetch(rel + qs).then(r => r.ok ? r.text() : Promise.reject('render-fail')),
     _timeout(30000, 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.')
   ]).catch(e => Promise.reject(e));
+  const staticP = Promise.race([
+    fetch(_staticFileUrl(rel)).then(r => r.ok ? r.text() : Promise.reject('static-fail')),
+    _timeout(5000, 'static-timeout')
+  ]).catch(e => Promise.reject(e));
   const parse = text => isJson ? JSON.parse(text) : text;
-  let staticText = null;
   try {
-    staticText = await staticP;
-    if (onUpdate) {
-      renderP.then(renderText => {
-        if (renderText && renderText !== staticText) {
-          try { onUpdate(parse(renderText)); } catch(_) {}
-        }
-      }).catch(() => {});
-    } else { renderP.catch(() => {}); }
-    return parse(staticText);
+    return parse(await renderP);
   } catch(_) {
     try {
-      return parse(await renderP);
+      return parse(await staticP);
     } catch(e) {
       throw new Error(e.message || 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.');
     }
@@ -2329,51 +2321,28 @@ async function fetchRiepilogoCSV(forceFresh = false) {
     } catch(e) { /* sessionStorage non disponibile, ignora */ }
   }
 
-  // 3. STALE-WHILE-REVALIDATE
-  //    a) Fetch statico GitHub (assoluto → non passa per Render, risponde subito)
-  //    b) Fetch Render in parallelo (dati aggiornati, ma cold start lento)
-  //    → Mostra subito i dati GitHub, aggiorna silenziosamente quando arriva Render
-
+  // 3. Render primario, GitHub statico come fallback se Render non risponde
   const qs = forceFresh ? '?t=' + Date.now() : '';
 
-  // Fetch statico GitHub — timeout 5s tramite Promise.race (no AbortSignal)
-  const staticPromise = Promise.race([
-    fetch(_staticCsvUrl()).then(r => r.ok ? r.text() : Promise.reject('static-fail')),
-    _timeout(5000, 'static-timeout')
-  ]).catch(e => Promise.reject(e));
-
-  // Fetch Render — timeout 30s tramite Promise.race
   const renderPromise = Promise.race([
     fetch(RIEPILOGO_URL + qs).then(r => r.ok ? r.text() : Promise.reject('render-fail')),
     _timeout(30000, 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.')
   ]).catch(e => Promise.reject(e));
 
-  // Prova a usare il file statico subito
-  let staticText = null;
+  const staticPromise = Promise.race([
+    fetch(_staticCsvUrl()).then(r => r.ok ? r.text() : Promise.reject('static-fail')),
+    _timeout(5000, 'static-timeout')
+  ]).catch(e => Promise.reject(e));
+
   try {
-    staticText = await staticPromise;
-    _saveCsvCache(staticText);
-
-    // Aggiorna in background con i dati freschi di Render
-    renderPromise.then(renderText => {
-      if (!renderText || renderText === _riepilogoCsvText) return; // nessuna differenza
-      if (_swrUpdating) return; // già in aggiornamento, evita loop
-      _swrUpdating = true;
-      _saveCsvCache(renderText);
-      // Ricarica la dashboard silenziosamente; _swrUpdating blocca nuovi fetch dentro loadData
-      if (typeof loadData === 'function') {
-        loadData(false).catch(() => {}).finally(() => { _swrUpdating = false; });
-      } else {
-        _swrUpdating = false;
-      }
-    }).catch(() => { /* Render non disponibile — dati GitHub già mostrati, ok */ });
-
+    const renderText = await renderPromise;
+    _saveCsvCache(renderText);
     return _riepilogoCsvText;
-  } catch(_staticErr) {
-    // File statico non disponibile: aspetta Render (fallback classico)
+  } catch(_renderErr) {
+    // Render non disponibile: fallback su GitHub statico
     try {
-      const renderText = await renderPromise;
-      _saveCsvCache(renderText);
+      const staticText = await staticPromise;
+      _saveCsvCache(staticText);
       return _riepilogoCsvText;
     } catch(e) {
       throw new Error(e.message || 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.');
@@ -4985,6 +4954,7 @@ function updatePrevRilascio() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 window.addEventListener('load', () => {
+  if (!localStorage.getItem('_enri_user')) return; // niente fetch dati finché non autenticato
   // loadData e loadCluster partono in parallelo.
   // loadCluster usa la cache in memoria se loadData ha già scaricato il CSV;
   // altrimenti fa fetch autonomamente (stesso URL, stesso TTL sessionStorage).
