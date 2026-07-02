@@ -1022,26 +1022,6 @@ window.loadXLSX = (function(){
 </div>
 
 <!-- Modal KPI Pratiche per Stato -->
-<!-- Modal Parametri Previsioni -->
-<div class="modal-kpi-overlay" id="modalParamPrevOverlay" onclick="if(event.target===this)chiudiParamPrev()" style="z-index:1100" role="dialog" aria-modal="true" aria-label="Parametri Previsioni">
-  <div class="modal-kpi" style="width:440px;max-width:96vw;padding:28px 32px">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px;padding-bottom:16px;border-bottom:1px solid var(--border)">
-      <span style="font-size:16px;font-weight:700;color:var(--text)">⚙️ Parametri Previsioni</span>
-      <button onclick="chiudiParamPrev()" style="margin-left:auto;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1">✕</button>
-    </div>
-    <div style="font-size:10px;color:var(--muted);margin-bottom:18px;line-height:1.5">
-      Giorni massimi attesi per il rilascio dell'autorizzazione, dal momento dell'invio, per ciascuna tipologia di ente.
-      La soglia <em>In scadenza</em> determina quanti giorni prima della scadenza appare l'avviso arancione. Il <strong>Comune di Milano</strong> ha una regola separata dagli altri comuni.
-    </div>
-    <div id="paramPrevForm" style="display:flex;flex-direction:column;gap:14px">
-      <!-- rows injected by JS -->
-    </div>
-    <div style="display:flex;gap:10px;margin-top:24px;padding-top:16px;border-top:1px solid var(--border)">
-      <button onclick="salvaParamPrev()" style="flex:1;padding:9px;background:#2563b0;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">✓ Applica e ricalcola</button>
-      <button onclick="resetParamPrev()" style="padding:9px 16px;background:#EEF1F5;color:#9AA5B4;border:1px solid #DFE4EB;border-radius:7px;font-size:12px;cursor:pointer">↺ Ripristina default</button>
-    </div>
-  </div>
-</div>
 
 <div class="modal-kpi-overlay" id="modalKpiOverlay" onclick="closeModalKpi(event)" role="dialog" aria-modal="true" aria-labelledby="modalKpiTitle">
   <div class="modal-kpi">
@@ -3330,7 +3310,7 @@ function closeModal(e) {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     ['modalOverlay','modalGruppoOverlay','modalClusterOverlay',
-     'modalKpiOverlay','modalParamPrevOverlay','helpOverlay']
+     'modalKpiOverlay','helpOverlay']
       .forEach(id => { const el = document.getElementById(id); if (el && el.classList.contains('open')) window._modalClose(id); });
   }
 });
@@ -4398,6 +4378,7 @@ function _processMasterText(text) {
     const iComM  = findCol('COMUNE');
     const iNSed  = findCol('N_SED');
     const iNote  = findCol('NOTE');
+    const iDataPrevRil = findCol('DATA_PREVISTA_RILASCIO');
 
     if (iTrat === -1 || iPrat === -1) return;
 
@@ -4427,6 +4408,7 @@ function _processMasterText(text) {
       const comune = iComM !== -1 ? (cols[iComM]?.trim() || '') : '';
       const nSed   = iNSed !== -1 ? (cols[iNSed]?.trim() || '') : '';
       const note   = iNote !== -1 ? (cols[iNote]?.trim() || '') : '';
+      const dataPrevRilascio = iDataPrevRil !== -1 ? (cols[iDataPrevRil]?.trim() || '') : '';
 
       // Estrai lotto da Source.Name (es. "Lotto 1A.xlsx" → "1A")
       const lotto = src ? src.replace(/\.xlsx$/i,'').replace(/^Lotto\s*/i,'').trim().toUpperCase() : '';
@@ -4438,14 +4420,14 @@ function _processMasterText(text) {
 
       if (!existing) {
         permessiMap[key] = {
-          tratta, prat, tipo, stato, ente, dr, dum, lungh, lotto, comune, nSed, note,
+          tratta, prat, tipo, stato, ente, dr, dum, lungh, lotto, comune, nSed, note, dataPrevRilascio,
           dr_invio: stato === 'INVIATO' ? (dr || dum) : ''
         };
       } else if (dumDate && (!exDate || dumDate >= exDate)) {
         const dr_invio = existing.dr_invio
           || (stato === 'INVIATO' ? (dr || dum) : '')
           || (existing.stato === 'INVIATO' ? (existing.dr || existing.dum) : '');
-        permessiMap[key] = { tratta, prat, tipo, stato, ente, dr, dum, lungh: lungh || existing.lungh || 0, lotto, comune: comune || existing.comune || '', nSed: existing.nSed || nSed, note: note || existing.note || '', dr_invio };
+        permessiMap[key] = { tratta, prat, tipo, stato, ente, dr, dum, lungh: lungh || existing.lungh || 0, lotto, comune: comune || existing.comune || '', nSed: existing.nSed || nSed, note: note || existing.note || '', dataPrevRilascio: dataPrevRilascio || existing.dataPrevRilascio || '', dr_invio };
       } else if (stato === 'INVIATO' && !existing.dr_invio) {
         existing.dr_invio = dr;
       }
@@ -4487,7 +4469,7 @@ function _processMasterText(text) {
       if (!praticheByLotto[lotto][codice]) {
         praticheByLotto[lotto][codice] = {
           codice, tipo: r.tipo, stato: r.stato, ente: r.ente,
-          dr: r.dr, dum: r.dum, dr_invio: r.dr_invio || '', metri: 0, lotto,
+          dr: r.dr, dum: r.dum, dr_invio: r.dr_invio || '', dataPrevRilascio: r.dataPrevRilascio || '', metri: 0, lotto,
           comuni: new Set(r.comune ? [r.comune] : [])
         };
       }
@@ -4506,6 +4488,7 @@ function _processMasterText(text) {
       }
       // Preserva sempre dr_invio se disponibile
       if (r.dr_invio && !existing.dr_invio) existing.dr_invio = r.dr_invio;
+      if (r.dataPrevRilascio && !existing.dataPrevRilascio) existing.dataPrevRilascio = r.dataPrevRilascio;
 
     });
 
@@ -4540,7 +4523,7 @@ function _processMasterText(text) {
       if (!window._masterByTratta[r.tratta].find(x => x.codice === codice)) {
         window._masterByTratta[r.tratta].push({
           codice, tipo: r.tipo, stato: r.stato, ente: r.ente,
-          dr: r.dr, dum: r.dum, dr_invio: r.dr_invio || '', metri: r.lungh, lotto
+          dr: r.dr, dum: r.dum, dr_invio: r.dr_invio || '', dataPrevRilascio: r.dataPrevRilascio || '', metri: r.lungh, lotto
         });
       }
     });
@@ -4553,61 +4536,10 @@ function _processMasterText(text) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── MODAL PARAMETRI PREVISIONI ────────────────────────────────────────────────
-const PREV_PARAMS_DEFAULT = { comuneMilano:60, comune:45, provincia:60, anas:90, aipo:90, altri:180, warnDays:7 };
-const PREV_PARAMS_LABELS  = [
-  { key:'comuneMilano',label:'Comune di Milano',     desc:'' },
-  { key:'comune',   label:'Comune',              desc:'tutti gli altri comuni oltre a Milano' },
-  { key:'provincia',label:'Provincie', desc:'es. Provincia di Milano' },
-  { key:'anas',     label:'ANAS',                desc:'Strade statali' },
-  { key:'aipo',     label:'AIPO',                desc:'Agenzia Interregionale per il fiume Po' },
-  { key:'altri',    label:'Altri enti',          desc:'Ferrovie, RFI, ecc.' },
-  { key:'warnDays', label:'Soglia "In scadenza"',desc:'Giorni prima della scadenza con avviso arancione' },
-];
-
-function apriParamPrev() {
-  const p = window.PREV_PARAMS;
-  const form = document.getElementById('paramPrevForm');
-  form.innerHTML = PREV_PARAMS_LABELS.map(({key, label, desc}) => `
-    <div style="display:flex;align-items:center;gap:12px">
-      <div style="flex:1">
-        <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:2px">${label}</div>
-        <div style="font-size:9px;color:var(--muted)">${desc}</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-        <input id="pp_${key}" type="number" min="1" max="730" value="${p[key]}"
-          style="width:64px;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;font-family:'JetBrains Mono',monospace;text-align:center">
-        <span style="font-size:10px;color:var(--muted)">giorni</span>
-      </div>
-    </div>`).join('');
-  window._modalOpen('modalParamPrevOverlay');
-}
-
-function salvaParamPrev() {
-  const p = {};
-  PREV_PARAMS_LABELS.forEach(({key}) => {
-    const val = parseInt(document.getElementById('pp_' + key)?.value, 10);
-    p[key] = isNaN(val) || val < 1 ? PREV_PARAMS_DEFAULT[key] : val;
-  });
-  window.PREV_PARAMS = p;
-  try { localStorage.setItem('ENRI_PREV_PARAMS', JSON.stringify(p)); } catch(e) {}
-  chiudiParamPrev();
-  updatePrevRilascio();
-  // Ricalcola badge nelle sezioni lotto se la dashboard è già renderizzata
-  if (typeof renderDashboard === 'function' && window._lastDashData) renderDashboard(window._lastDashData);
-}
-
-function resetParamPrev() {
-  window.PREV_PARAMS = { ...PREV_PARAMS_DEFAULT };
-  try { localStorage.removeItem('ENRI_PREV_PARAMS'); } catch(e) {}
-  chiudiParamPrev();
-  updatePrevRilascio();
-  if (typeof renderDashboard === 'function' && window._lastDashData) renderDashboard(window._lastDashData);
-}
-
-function chiudiParamPrev() {
-  window._modalClose('modalParamPrevOverlay');
-}
+// ── PREVISIONE RILASCIO: parametri rimossi (rev.44) ────────────────────────────
+// La previsione non è più calcolata da regole giorni-per-ente configurabili;
+// arriva come dato fornito dall'impresa (campo DATA_PREVISTA_RILASCIO in Master.csv,
+// da popolare via imprese.html/mappa_impresa_caricamento.html — TODO prossima sessione).
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── MODAL KPI PRATICHE ───────────────────────────────────────────────────────
@@ -4853,44 +4785,24 @@ function closeModalKpi(e) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── PREVISIONE RILASCIO ───────────────────────────────────────────────────────
-function giorniPerEnte(ente) {
-  const p = window.PREV_PARAMS || { comuneMilano:60, comune:45, provincia:60, anas:90, aipo:90, altri:180 };
-  if (!ente) return p.altri;
-  const u = ente.toUpperCase();
-  if (u.includes('COMUNE') || u.includes('MUNICIPALITY')) {
-    // Regola specifica: Comune di Milano usa comuneMilano
-    if (u.includes('MILANO') && !u.includes('MILANESE') && !u.includes('CORSICO') && !u.includes('CINISELLO') && !u.includes('SESTO') && !u.includes('ROZZANO')) {
-      return p.comuneMilano ?? 60;
-    }
-    return p.comune;
-  }
-  if (u.includes('PROVINCIA') || u.includes('PROVINCE')) return p.provincia;
-  if (u.includes('ANAS')) return p.anas;
-  if (u.includes('AIPO')) return p.aipo ?? 90;
-  return p.altri;
-}
+// ── PREVISIONE RILASCIO ───────────────────────────────────────────────────────
+// Dato fornito dall'impresa (campo dataPrevRilascio, da colonna CSV DATA_PREVISTA_RILASCIO
+// o equivalente popolata via imprese.html/mappa_impresa_caricamento.html).
+// Nessun calcolo formula-based: se l'impresa non ha ancora fornito la data, nessuna previsione.
+const PREV_WARN_DAYS = 7;
 
 function calcolaPrevisione(p) {
-  const STATI_OK = ['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE'];
-  if (!STATI_OK.includes(p.stato)) return null;
-  const invioDate = p.dr_invio || p.dr || (p.stato === 'INVIATO' ? p.dum : '');
-  if (!invioDate) return null;
-  const d = parseDateIT(invioDate);
-  if (!d) return null;
-  const gg = giorniPerEnte(p.ente);
-  const scad = new Date(d.getTime() + gg * 86400000);
+  if (!p.dataPrevRilascio) return null;
+  const scad = parseDateIT(p.dataPrevRilascio);
+  if (!scad) return null;
   const oggi = new Date(); oggi.setHours(0,0,0,0);
   const diff = Math.ceil((scad - oggi) / 86400000);
-  const warnDays = (window.PREV_PARAMS || {}).warnDays ?? 7;
   let status;
   if (diff < 0) status = 'late';
-  else if (diff <= warnDays) status = 'warn';
+  else if (diff <= PREV_WARN_DAYS) status = 'warn';
   else status = 'ok';
   return { status, diff, scad, label: scad.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) };
 }
-
-// Parametri previsione (modificabili dall'utente)
-window.PREV_PARAMS = JSON.parse(localStorage.getItem('ENRI_PREV_PARAMS') || 'null') || { ...PREV_PARAMS_DEFAULT };
 
 function prevBadgeHtml(p) {
   const r = calcolaPrevisione(p);
@@ -5818,18 +5730,21 @@ function buildCercaCard(p, query) {
   const aggStr   = p.dum && p.dum !== invioStr ? p.dum : '';
   const aggDate  = aggStr ? parseDateIT(aggStr) : null;
 
-  // Giorni trascorsi dall'invio
+  // ── Previsione rilascio (dato fornito dall'impresa, se presente) ───
+  const prev = calcolaPrevisione(p);
+
+  // Giorni trascorsi dall'invio, in rapporto alla data prevista impresa (se disponibile)
   let giorniHtml = '';
-  if (invioDate && ['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'].includes(p.stato)) {
+  if (invioDate && prev && ['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO'].includes(p.stato)) {
     const oggi = new Date(); oggi.setHours(0,0,0,0);
     const gg = Math.ceil((oggi - invioDate) / 86400000);
-    const sla = giorniPerEnte(p.ente);
+    const sla = Math.max(Math.ceil((prev.scad - invioDate) / 86400000), 1);
     const pct = Math.min(Math.round(gg / sla * 100), 100);
     const barCol = gg > sla ? '#C0392B' : gg > sla * 0.8 ? '#D08A1A' : '#1E9E6A';
     giorniHtml = `<div style="margin-top:8px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
         <span style="font-size:9px;color:var(--muted)">Giorni trascorsi dall'invio</span>
-        <span style="font-size:9px;font-weight:700;color:${barCol}">${gg} gg / ${sla} gg SLA</span>
+        <span style="font-size:9px;font-weight:700;color:${barCol}">${gg} gg / ${sla} gg previsti</span>
       </div>
       <div style="height:5px;border-radius:3px;background:var(--border);overflow:hidden">
         <div style="height:100%;width:${pct}%;background:${barCol};border-radius:3px;transition:width 0.3s"></div>
@@ -5837,8 +5752,6 @@ function buildCercaCard(p, query) {
     </div>`;
   }
 
-  // ── Previsione rilascio ───────────────────────────────────────
-  const prev = calcolaPrevisione(p);
   let prevHtml = '';
   if (prev) {
     const bg   = prev.status === 'ok' ? '#eaf7f0' : prev.status === 'warn' ? '#fdf6e3' : '#fdeaea';
@@ -6771,6 +6684,5 @@ document.addEventListener('keydown', function(e){
 </script>
 
 
-<span onclick="apriParamPrev()" style="position:fixed;bottom:8px;left:8px;font-size:12px;opacity:0.25;cursor:pointer;user-select:none;line-height:1;padding:4px 6px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);transition:opacity .2s" onmouseover="this.style.opacity=0.7" onmouseout="this.style.opacity=0.25" title="">⚙️</span>
 </body>
 </html>
