@@ -684,6 +684,7 @@ window.addEventListener('pageshow', (e) => {
   const STATO_TRANSITIONS = {
     'IN REDAZIONE':              ['IN FIRMA RDS', 'NO COMPETENZA'],
     'IN FIRMA RDS':              ['INVIATO', 'NO COMPETENZA'],
+    'INVIO PRELIMINARE':         ['INVIATO', 'NO COMPETENZA'],
     'INVIATO':                   ['PROTOCOLLATO', 'OTTENUTO', 'NECESSARIA INTEGRAZIONE', 'NO COMPETENZA'],
     'PROTOCOLLATO':              ['NECESSARIA INTEGRAZIONE', 'OTTENUTO', 'NO COMPETENZA'],
     'NECESSARIA INTEGRAZIONE':   ['IN REDAZIONE INTEGRAZIONE', 'NO COMPETENZA'],
@@ -695,7 +696,13 @@ window.addEventListener('pageshow', (e) => {
 
   function _populateStatoSelect(statoCorrente) {
     const sel = $('fld-stato');
-    const allowed = STATO_TRANSITIONS[statoCorrente.trim()] || Object.keys(STATO_TRANSITIONS);
+    let allowed = STATO_TRANSITIONS[statoCorrente.trim()] || Object.keys(STATO_TRANSITIONS);
+    // INVIO PRELIMINARE selezionabile da IN FIRMA RDS solo per pratiche AUTORIZZAZIONE con ENTE Comune di Milano
+    if (statoCorrente.trim() === 'IN FIRMA RDS' &&
+        (SELECTED?.TIPO_PERMESSO||'').trim() === 'AUTORIZZAZIONE' &&
+        (SELECTED?.ENTE||'').trim() === 'COMUNE DI MILANO') {
+      allowed = ['INVIO PRELIMINARE', ...allowed];
+    }
     sel.innerHTML = '<option value="">— seleziona stato —</option>' +
       allowed.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
     sel.value = '';
