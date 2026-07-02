@@ -540,6 +540,7 @@ File content in `fs.files` / `fs.chunks` (motor `AsyncIOMotorGridFSBucket`, buck
 
 ---
 
+_Ultimo aggiornamento: 2026-07-02 (rev. 26) — rev.26 ha: aggiunto listener `pageshow` (reload su bfcache restore — bug: tasto Back del browser ripristinava lo snapshot DOM vecchio, es. utente/ruolo precedente ancora visibile senza rieseguire il controllo auth) a `imprese.html`, `imprese_scavi.html`, `mappa_impresa.html`, `mappa_impresa_caricamento.html`, `hub.html`, `index.html`, `scavi.html`. Da fare ancora: `mappa.html`, `milestone.html`, `sopralluoghi.html`, `ai_alerts.html`, `polizze_convenzioni.html`, `admin.html`.
 _Ultimo aggiornamento: 2026-07-01 (rev. 25) — rev.25 ha: rimossi chip "Tecnica"/"Tratte" dalla card modal stato di `scavi.html` (§8.37).
 _Ultimo aggiornamento: 2026-07-01 (rev. 24) — rev.24 ha: redesign card cantiere nel modal stato di `scavi.html`, corretto bug CSS `var(--danger)0d` non valido (§8.37).
 _Ultimo aggiornamento: 2026-07-01 (rev. 23) — rev.23 ha: colore distintivo deterministico per provincia in tutta `scavi.html` (§8.36).
