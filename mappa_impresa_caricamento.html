@@ -958,9 +958,11 @@
             <label>Data ottenimento</label>
             <input type="date" id="pr-data-app">
           </div>
-          <label>Data prevista rilascio</label>
-          <input type="date" id="pr-data-prevista">
-          <div class="pr-hint">Stima fornita dall'impresa, aggiornabile in qualsiasi momento indipendentemente dallo stato.</div>
+          <div id="pr-wrap-data-prevista">
+            <label>Data prevista rilascio</label>
+            <input type="date" id="pr-data-prevista">
+            <div class="pr-hint">Stima fornita dall'impresa. Non richiesta se lo stato passa a OTTENUTO.</div>
+          </div>
           <div id="pr-wrap-no-nec" style="display:none">
             <label>Nulla Osta Necessario</label>
             <select id="pr-no-nec"><option value="">—</option><option value="SI">SI</option><option value="NO">NO</option></select>
@@ -3707,6 +3709,7 @@ function prSelectRow(idx){
   document.getElementById('pr-data-rich').value = '';
   document.getElementById('pr-data-app').value  = '';
   document.getElementById('pr-data-prevista').value = prToInputDate(PR_SELECTED.DATA_PREVISTA_RILASCIO || '');
+  document.getElementById('pr-wrap-data-prevista').style.display = '';
   const noteEl = document.getElementById('pr-note');
   noteEl.value = ''; noteEl.disabled = true; noteEl.placeholder = 'Seleziona prima il nuovo stato…';
   document.getElementById('pr-wrap-data-rich').style.display = 'none';
@@ -3773,6 +3776,7 @@ document.getElementById('pr-stato').addEventListener('change', function(){
     noteEl.disabled = false; noteEl.placeholder='Note opzionali';
     document.getElementById('pr-wrap-data-rich').style.display = (v==='INVIATO') ? '' : 'none';
     document.getElementById('pr-wrap-data-app').style.display  = (v==='OTTENUTO') ? '' : 'none';
+    document.getElementById('pr-wrap-data-prevista').style.display = (v==='OTTENUTO') ? 'none' : '';
   }
 });
 
@@ -3794,7 +3798,7 @@ document.getElementById('prAddToQueue').onclick = async () => {
   if (!PR_SELECTED) return;
   const msgEl = document.getElementById('prMsgUpd');
   const stato = document.getElementById('pr-stato').value;
-  const dataPrevista = document.getElementById('pr-data-prevista').value;
+  const dataPrevista = stato === 'OTTENUTO' ? '' : document.getElementById('pr-data-prevista').value;
   if (!stato && !dataPrevista) return prSetMsg(msgEl, 'Seleziona il nuovo stato oppure imposta una data prevista rilascio', false);
   const fields = {};
   if (stato) fields.STATO_PERMESSO = stato;
