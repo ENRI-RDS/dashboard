@@ -3663,6 +3663,7 @@ document.getElementById('prList').addEventListener('click', e => {
 const PR_STATO_TRANSITIONS = {
   'IN REDAZIONE':              ['IN FIRMA RDS', 'NO COMPETENZA'],
   'IN FIRMA RDS':              ['INVIATO', 'NO COMPETENZA'],
+  'INVIO PRELIMINARE':         ['INVIATO', 'NO COMPETENZA'],
   'INVIATO':                   ['PROTOCOLLATO', 'OTTENUTO', 'NECESSARIA INTEGRAZIONE', 'NO COMPETENZA'],
   'PROTOCOLLATO':              ['NECESSARIA INTEGRAZIONE', 'OTTENUTO', 'NO COMPETENZA'],
   'NECESSARIA INTEGRAZIONE':   ['IN REDAZIONE INTEGRAZIONE', 'NO COMPETENZA'],
@@ -3674,7 +3675,13 @@ const PR_STATO_TRANSITIONS = {
 
 function _prPopulateStatoSelect(statoCorrente){
   const sel = document.getElementById('pr-stato');
-  const allowed = PR_STATO_TRANSITIONS[statoCorrente.trim()] || Object.keys(PR_STATO_TRANSITIONS);
+  let allowed = PR_STATO_TRANSITIONS[statoCorrente.trim()] || Object.keys(PR_STATO_TRANSITIONS);
+  // INVIO PRELIMINARE selezionabile da IN FIRMA RDS solo per pratiche AUTORIZZAZIONE con ENTE Comune di Milano
+  if (statoCorrente.trim() === 'IN FIRMA RDS' &&
+      (PR_SELECTED?.TIPO_PERMESSO||'').trim() === 'AUTORIZZAZIONE' &&
+      (PR_SELECTED?.ENTE||'').trim() === 'COMUNE DI MILANO') {
+    allowed = ['INVIO PRELIMINARE', ...allowed];
+  }
   sel.innerHTML = '<option value="">— seleziona stato —</option>' + allowed.map(s => `<option value="${prEscapeHtml(s)}">${prEscapeHtml(s)}</option>`).join('');
   sel.value = '';
   document.getElementById('pr-stato-hint').textContent = statoCorrente ? `Stato attuale: ${statoCorrente}` : '';
