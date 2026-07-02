@@ -59,8 +59,8 @@
   .topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
   .btn{font-size:11px;padding:5px 14px;border-radius:5px;background:var(--accent);color:white;border:none;cursor:pointer;font-family:var(--font-body);font-weight:500;transition:opacity 0.2s;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:5px;}
   .btn:hover{opacity:0.85;}
-  .btn.secondary{background:var(--surface2);border:1px solid var(--border);color:var(--muted);}
-  .btn.secondary:hover{color:var(--text);}
+  .btn.secondary{background:var(--surface2);border:1px solid var(--border);color:var(--text);}
+  .btn.secondary:hover{border-color:var(--accent);color:var(--accent);}
   .badge{font-size:11px;padding:3px 10px;border-radius:4px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);}
   .badge.ok{border-color:#1E9E6A44;color:#1E9E6A;background:#1E9E6A11;}
   .wrap{display:flex;flex:1;overflow:hidden;position:relative;min-height:0;}
@@ -1806,6 +1806,36 @@ function makePopupHtml(p, gmapsUrl) {
   const enti = [p.ENTE, p['ENTE 2']].filter(Boolean).join(', ') || '—';
   const hasDetail = motivoHtml || noHtml || ordHtml;
 
+  // Cantiere collegato a questa tratta (se già avviato un iter scavi)
+  const cantiere = (typeof SC_CANTIERI !== 'undefined')
+    ? SC_CANTIERI.find(c => (c.tratte||[]).some(t => t.tratta_id === p.TRATTA_ID)) : null;
+  const cantiereHtml = cantiere ? (() => {
+    const cStato = cantiere.stato_cantiere || 'non_avviato';
+    const cLbl   = SC_STATO_LABEL[cStato] || cStato;
+    const cCol   = SC_STATO_COLOR[cStato] || '#9AA5B4';
+    const cTot   = cantiere.metri_totali || 0;
+    const cScav  = cantiere.metri_scavati || 0;
+    const cPct   = cTot > 0 ? Math.min(100, Math.round(cScav/cTot*100)) : 0;
+    const cTec   = SC_TECNICA_LABEL[cantiere.tecnica_scavo] || cantiere.tecnica_scavo || '';
+    return `<div class="popup-section">
+      <div class="popup-section-title">Cantiere</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+        <span class="popup-stato" style="background:${cCol}18;color:${cCol};border:1.5px solid ${cCol}44">
+          <span class="popup-stato-dot" style="background:${cCol}"></span>${cLbl}
+        </span>
+        ${cTec ? `<span style="font-size:10px;color:var(--muted)">${cTec}</span>` : ''}
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+        <span style="font-size:10px;color:var(--muted)">Metri scavati</span>
+        <span style="font-size:11px;font-weight:700;font-family:var(--font-mono);color:${cCol}">${cScav}m / ${cTot}m (${cPct}%)</span>
+      </div>
+      <div style="height:5px;background:${cCol}18;border-radius:3px;overflow:hidden">
+        <div style="height:100%;width:${cPct}%;background:${cCol};border-radius:3px"></div>
+      </div>
+      ${cantiere.motivo_blocco ? `<div class="popup-detail-row" style="margin-top:4px"><span class="dl">Impedimento</span><span class="dv" style="color:#C0392B">${prEscapeHtml(cantiere.motivo_blocco)}</span></div>` : ''}
+    </div>`;
+  })() : '';
+
   // % avanzamento lotto (da lottoStats globale)
   const ls = (typeof lottoStats !== 'undefined') ? lottoStats[p.LOTTO] : null;
   const lottoPct      = ls ? ls.pct.toFixed(1) : null;
@@ -1926,6 +1956,7 @@ function makePopupHtml(p, gmapsUrl) {
           <div class="popup-section-title">Pratiche</div>
           <div>${praticheHtml}</div>
         </div>` : ''}
+        ${cantiereHtml}
       </div>
       ${ls ? `<div class="popup-body-right">${lottoProgressRightHtml}</div>` : ''}
     </div>
@@ -3002,6 +3033,7 @@ window.addEventListener('pageshow', (e) => {
 
 (async()=>{
   try{
+    scEnsureInit().catch(()=>{}); // precarico cantieri per i popup mappa (fire-and-forget)
     MY_LOTTI = await _loadMyLotti();
 
     const geojson = await loadGeoJSON(freshGeojson => {
