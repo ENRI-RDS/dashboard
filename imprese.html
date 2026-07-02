@@ -221,7 +221,7 @@
           <div id="wrap-prev-rilascio">
             <label>Data prevista rilascio</label>
             <input type="date" id="fld-prev-rilascio">
-            <div style="font-size:10px;color:var(--muted);margin-top:2px">Stima della data di rilascio dell'autorizzazione. Non richiesta se lo stato passa a OTTENUTO.</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Stima della data di rilascio dell'autorizzazione. Non richiesta se lo stato passa a OTTENUTO o NO COMPETENZA.</div>
           </div>
           <!-- Tratte NO: visibile solo se Nulla Osta Necessario = SI -->
           <div id="wrap-upd-no-tratte" style="display:none;grid-column:span 2">
@@ -747,7 +747,7 @@ window.addEventListener('pageshow', (e) => {
       noteEl.placeholder = 'Note opzionali';
       $('wrap-data-rich').style.display = (v === 'INVIATO')   ? '' : 'none';
       $('wrap-data-app').style.display  = (v === 'OTTENUTO')  ? '' : 'none';
-      $('wrap-prev-rilascio').style.display = (v === 'OTTENUTO') ? 'none' : '';
+      $('wrap-prev-rilascio').style.display = (v === 'OTTENUTO' || v === 'NO COMPETENZA') ? 'none' : '';
     }
   });
 
@@ -846,7 +846,7 @@ window.addEventListener('pageshow', (e) => {
     const convenzione = $('fld-convenzione').value;
     if (convenzione) fields['CONVENZIONE'] = convenzione;
 
-    const prevRilascio = stato === 'OTTENUTO' ? '' : $('fld-prev-rilascio').value;
+    const prevRilascio = (stato === 'OTTENUTO' || stato === 'NO COMPETENZA') ? '' : $('fld-prev-rilascio').value;
     if (prevRilascio) fields['DATA_PREVISTA_RILASCIO'] = fromInputDate(prevRilascio);
 
     // Nulla Osta Necessario (solo per AUTORIZZAZIONE)
