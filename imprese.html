@@ -218,6 +218,11 @@
               <option value="NO">NO</option>
             </select>
           </div>
+          <div>
+            <label>Data prevista rilascio</label>
+            <input type="date" id="fld-prev-rilascio">
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Stima della data di rilascio dell'autorizzazione</div>
+          </div>
           <!-- Tratte NO: visibile solo se Nulla Osta Necessario = SI -->
           <div id="wrap-upd-no-tratte" style="display:none;grid-column:span 2">
             <label>Tratte che richiedono Nulla Osta</label>
@@ -636,6 +641,11 @@ window.addEventListener('pageshow', (e) => {
     $('fld-no-nec').value = SELECTED['NULLA OSTA NECESSARIO'] || '';
     $('fld-polizza').value = SELECTED['POLIZZA ']?.trim() || '';
     $('fld-convenzione').value = SELECTED['CONVENZIONE']?.trim() || '';
+    { // Prefill Data prevista rilascio (DD/MM/YYYY → YYYY-MM-DD per input[type=date])
+      const dpr = (SELECTED['DATA_PREVISTA_RILASCIO'] || '').trim();
+      const dm = dpr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      $('fld-prev-rilascio').value = dm ? `${dm[3]}-${dm[2]}-${dm[1]}` : '';
+    }
     if (isAut) {
       const pratNum = String(SELECTED.PRATICA || '').trim();
       const tutteTratte = pratNum ? [...new Set(PRATICHE
@@ -829,6 +839,9 @@ window.addEventListener('pageshow', (e) => {
     if (polizza) fields['POLIZZA '] = polizza;
     const convenzione = $('fld-convenzione').value;
     if (convenzione) fields['CONVENZIONE'] = convenzione;
+
+    const prevRilascio = $('fld-prev-rilascio').value;
+    if (prevRilascio) fields['DATA_PREVISTA_RILASCIO'] = fromInputDate(prevRilascio);
 
     // Nulla Osta Necessario (solo per AUTORIZZAZIONE)
     const noNec = $('fld-no-nec').value;
