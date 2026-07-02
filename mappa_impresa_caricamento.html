@@ -958,6 +958,9 @@
             <label>Data ottenimento</label>
             <input type="date" id="pr-data-app">
           </div>
+          <label>Data prevista rilascio</label>
+          <input type="date" id="pr-data-prevista">
+          <div class="pr-hint">Stima fornita dall'impresa, aggiornabile in qualsiasi momento indipendentemente dallo stato.</div>
           <div id="pr-wrap-no-nec" style="display:none">
             <label>Nulla Osta Necessario</label>
             <select id="pr-no-nec"><option value="">—</option><option value="SI">SI</option><option value="NO">NO</option></select>
@@ -1015,6 +1018,8 @@
           </select>
           <label>N_SED</label>
           <input type="text" id="pr-new-nsed" placeholder="es. SED-127 oppure 0">
+          <label>Data prevista rilascio</label>
+          <input type="date" id="pr-new-data-prevista">
           <div id="pr-wrap-new-no-nec" style="display:none">
             <label>Nulla Osta Necessario</label>
             <select id="pr-new-no-nec"><option value=""></option><option>SI</option><option>NO</option></select>
@@ -3557,6 +3562,7 @@ function prConfirm(message, {title='Confermi?', okText='Conferma', cancelText='A
 }
 function prParseDate(s){ if(!s) return 0; const p=String(s).split('/'); if(p.length===3) return new Date(p[2],p[1]-1,p[0]).getTime(); return new Date(s).getTime()||0; }
 function prFromInputDate(yyyymmdd){ if(!yyyymmdd) return ''; const p=String(yyyymmdd).trim().split('-'); if(p.length!==3) return ''; return `${p[2].padStart(2,'0')}/${p[1].padStart(2,'0')}/${p[0]}`; }
+function prToInputDate(ddmmyyyy){ if(!ddmmyyyy) return ''; const p=String(ddmmyyyy).trim().split('/'); if(p.length!==3) return ''; return `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`; }
 function prBuildCodice(p){
   const tipoMap = {'AUTORIZZAZIONE':'AUT','NULLA OSTA':'NO'};
   const prefix = tipoMap[(p.TIPO_PERMESSO||'').trim()] || (p.TIPO_PERMESSO||'').trim().substring(0,3);
@@ -3700,6 +3706,7 @@ function prSelectRow(idx){
 
   document.getElementById('pr-data-rich').value = '';
   document.getElementById('pr-data-app').value  = '';
+  document.getElementById('pr-data-prevista').value = prToInputDate(PR_SELECTED.DATA_PREVISTA_RILASCIO || '');
   const noteEl = document.getElementById('pr-note');
   noteEl.value = ''; noteEl.disabled = true; noteEl.placeholder = 'Seleziona prima il nuovo stato…';
   document.getElementById('pr-wrap-data-rich').style.display = 'none';
@@ -3787,8 +3794,11 @@ document.getElementById('prAddToQueue').onclick = async () => {
   if (!PR_SELECTED) return;
   const msgEl = document.getElementById('prMsgUpd');
   const stato = document.getElementById('pr-stato').value;
-  if (!stato) return prSetMsg(msgEl, 'Seleziona il nuovo stato prima di aggiungere alla coda', false);
-  const fields = { STATO_PERMESSO: stato };
+  const dataPrevista = document.getElementById('pr-data-prevista').value;
+  if (!stato && !dataPrevista) return prSetMsg(msgEl, 'Seleziona il nuovo stato oppure imposta una data prevista rilascio', false);
+  const fields = {};
+  if (stato) fields.STATO_PERMESSO = stato;
+  if (dataPrevista) fields.DATA_PREVISTA_RILASCIO = prFromInputDate(dataPrevista);
   if (stato === 'INVIATO') {
     const dr = document.getElementById('pr-data-rich').value;
     if (!dr) return prSetMsg(msgEl, 'Inserisci la data richiesta per lo stato INVIATO', false);
@@ -3924,6 +3934,7 @@ document.getElementById('prNewForm').addEventListener('submit', async e => {
     "PRATICA":              pratica,
     "N_SED":                document.getElementById('pr-new-nsed').value.trim(),
     "NOTE":                 document.getElementById('pr-new-note').value.trim(),
+    "DATA_PREVISTA_RILASCIO": prFromInputDate(document.getElementById('pr-new-data-prevista').value),
   }));
   const btn = e.target.querySelector('button[type=submit]');
   btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Invio in corso…';
