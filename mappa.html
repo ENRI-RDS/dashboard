@@ -819,6 +819,7 @@
       <div class="sidebar-title">Visualizzazione</div>
       <div class="view-toggle">
         <button class="view-btn active" id="vbtn-stato"   onclick="setViewMode('stato')">Per Stato</button>
+        <button class="view-btn"        id="vbtn-scavi"   onclick="setViewMode('scavi')">Scavi</button>
         <button class="view-btn"        id="vbtn-lotto"   onclick="setViewMode('lotto')">Per Lotto</button>
         <button class="view-btn"        id="vbtn-cluster" onclick="setViewMode('cluster')">Per Cluster</button>
       </div>
@@ -906,10 +907,20 @@ function getClusterColor(cl) {
   return _CLUSTER_PALETTE[idx];
 }
 
+function getScaviColorForFeature(feature) {
+  // Colora per stato cantiere (RO_CANTIERI/RO_SC_STATO_COLOR definiti più sotto nel file,
+  // ma la funzione viene invocata solo a interazione utente, quando sono già popolati)
+  if (!RO_CANTIERI.length) return null;
+  const p = feature.properties;
+  const c = RO_CANTIERI.find(x => (x.tratte||[]).some(t => t.tratta_id === p.TRATTA_ID));
+  return c ? (RO_SC_STATO_COLOR[c.stato_cantiere] || RO_SC_STATO_COLOR.non_avviato) : null;
+}
+
 function getColorForMode(feature, mode) {
   const p = feature.properties;
   if (mode === 'lotto')   return LOTTO_COLORS[p.LOTTO] || '#6b7080';
   if (mode === 'cluster') return getClusterColor(p.CLUSTER ?? p.ID_CLUSTER ?? p.cluster);
+  if (mode === 'scavi')   return getScaviColorForFeature(feature);
   return getColor(p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE);
 }
 
@@ -919,15 +930,30 @@ function setViewMode(mode) {
   // Reset multi-selezioni
   if(typeof selectedLotti !== 'undefined') selectedLotti.clear();
   if(typeof selectedClusters !== 'undefined') selectedClusters.clear();
-  ['stato','lotto','cluster'].forEach(m => {
+  ['stato','scavi','lotto','cluster'].forEach(m => {
     const btn = document.getElementById('vbtn-'+m);
     if (btn) btn.className = 'view-btn' + (m === mode ? ' active' : '');
   });
-  // Re-stila tutti i layer e mostra tutti
+  // Re-stila tutti i layer e mostra tutti (in modalità scavi, nasconde le tratte senza cantiere associato)
   allLayers.forEach(({layer,outlineLayer}) => {
     layer.eachLayer(l => {
-      if (l.feature) l.setStyle({ color: getColorForMode(l.feature, mode), weight:4, opacity:0.95 });
+      if (!l.feature) return;
+      const c = getColorForMode(l.feature, mode);
+      if (mode === 'scavi' && c === null) {
+        l.setStyle({ opacity:0, weight:0 });
+        l.options.interactive = false;
+      } else {
+        l.setStyle({ color: c, weight:4, opacity:0.95 });
+        l.options.interactive = true;
+      }
     });
+    if (outlineLayer) {
+      outlineLayer.eachLayer(ol => {
+        if (!ol.feature) return;
+        const hide = mode === 'scavi' && getColorForMode(ol.feature, mode) === null;
+        ol.setStyle({ opacity: hide ? 0 : 0.25, weight: hide ? 0 : 7 });
+      });
+    }
     if (!map.hasLayer(layer)) map.addLayer(layer);
     if(outlineLayer){ if(!map.hasLayer(outlineLayer)) map.addLayer(outlineLayer); outlineLayer.bringToBack(); }
   });
@@ -1146,6 +1172,14 @@ function updateLegend(mode) {
       <div class="legend-item"><div class="legend-line" style="background:#6B7685"></div>In Attesa / Redazione</div>
       <div class="legend-item"><div class="legend-line" style="background:#043F75"></div>Invio Preliminare</div>
       <div class="legend-item"><div class="legend-line" style="background:#1A7D99"></div>Tracciato QTS</div>`;
+  } else if (mode === 'scavi') {
+    leg.innerHTML = `
+      <div class="legend-title">Stato scavi</div>
+      <div class="legend-item"><div class="legend-line" style="background:#9AA5B4"></div>Non avviato</div>
+      <div class="legend-item"><div class="legend-line" style="background:#D08A1A"></div>Allestimento</div>
+      <div class="legend-item"><div class="legend-line" style="background:#043F75"></div>In corso</div>
+      <div class="legend-item"><div class="legend-line" style="background:#C0392B"></div>Sospeso</div>
+      <div class="legend-item"><div class="legend-line" style="background:#1E9E6A"></div>Completato</div>`;
   } else if (mode === 'lotto') {
     const items = Object.entries(LOTTO_COLORS).map(([l,c]) =>
       `<div class="legend-item"><div class="legend-line" style="background:${c}"></div>Lotto ${l}</div>`
