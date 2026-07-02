@@ -218,10 +218,10 @@
               <option value="NO">NO</option>
             </select>
           </div>
-          <div>
+          <div id="wrap-prev-rilascio">
             <label>Data prevista rilascio</label>
             <input type="date" id="fld-prev-rilascio">
-            <div style="font-size:10px;color:var(--muted);margin-top:2px">Stima della data di rilascio dell'autorizzazione</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Stima della data di rilascio dell'autorizzazione. Non richiesta se lo stato passa a OTTENUTO.</div>
           </div>
           <!-- Tratte NO: visibile solo se Nulla Osta Necessario = SI -->
           <div id="wrap-upd-no-tratte" style="display:none;grid-column:span 2">
@@ -303,6 +303,10 @@
           <div>
             <label>N_SED</label>
             <input type="text" id="new-nsed" placeholder="es. SED-127 oppure 0">
+          </div>
+          <div>
+            <label>Data prevista rilascio</label>
+            <input type="date" id="new-prev-rilascio">
           </div>
           <div id="wrap-no-nec" style="display:none">
             <label>Nulla Osta Necessario</label>
@@ -646,6 +650,7 @@ window.addEventListener('pageshow', (e) => {
       const dm = dpr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
       $('fld-prev-rilascio').value = dm ? `${dm[3]}-${dm[2]}-${dm[1]}` : '';
     }
+    $('wrap-prev-rilascio').style.display = '';
     if (isAut) {
       const pratNum = String(SELECTED.PRATICA || '').trim();
       const tutteTratte = pratNum ? [...new Set(PRATICHE
@@ -742,6 +747,7 @@ window.addEventListener('pageshow', (e) => {
       noteEl.placeholder = 'Note opzionali';
       $('wrap-data-rich').style.display = (v === 'INVIATO')   ? '' : 'none';
       $('wrap-data-app').style.display  = (v === 'OTTENUTO')  ? '' : 'none';
+      $('wrap-prev-rilascio').style.display = (v === 'OTTENUTO') ? 'none' : '';
     }
   });
 
@@ -840,7 +846,7 @@ window.addEventListener('pageshow', (e) => {
     const convenzione = $('fld-convenzione').value;
     if (convenzione) fields['CONVENZIONE'] = convenzione;
 
-    const prevRilascio = $('fld-prev-rilascio').value;
+    const prevRilascio = stato === 'OTTENUTO' ? '' : $('fld-prev-rilascio').value;
     if (prevRilascio) fields['DATA_PREVISTA_RILASCIO'] = fromInputDate(prevRilascio);
 
     // Nulla Osta Necessario (solo per AUTORIZZAZIONE)
@@ -932,6 +938,7 @@ window.addEventListener('pageshow', (e) => {
       "PRATICA":              pratica,
       "N_SED":                $('new-nsed').value.trim(),
       "NOTE":                 $('new-note').value.trim(),
+      "DATA_PREVISTA_RILASCIO": fromInputDate($('new-prev-rilascio').value),
     }));
 
     const originalHTML = submitBtn ? submitBtn.innerHTML : '';
