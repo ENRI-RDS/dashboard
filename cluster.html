@@ -63,7 +63,7 @@
 
   .det-header{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px 24px; }
   .det-title{ font-family:var(--font-display); font-size:22px; font-weight:800; color:var(--text); letter-spacing:-.02em; margin-bottom:14px; }
-  .det-stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+  .det-stats{ display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:12px; }
   .det-stat{ background:var(--surface2); border-radius:8px; padding:10px 12px; }
   .det-stat-lbl{ font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:700; margin-bottom:3px; }
   .det-stat-val{ font-family:var(--font-display); font-size:18px; font-weight:800; color:var(--accent); }
@@ -82,6 +82,9 @@
   .imp-card{ border:1px solid var(--border2); border-radius:10px; padding:14px 16px; }
   .imp-name{ font-family:var(--font-display); font-size:15px; font-weight:700; color:var(--text); margin-bottom:8px; display:flex; align-items:center; gap:8px; }
   .imp-avatar{ width:28px; height:28px; border-radius:50%; background:var(--retelit-blue); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0; }
+  .imp-fonte{ display:inline-block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; padding:2px 8px; border-radius:5px; margin-bottom:10px; }
+  .imp-fonte-reale{ background:var(--ok)1a; color:var(--ok); }
+  .imp-fonte-pianif{ background:var(--warn)1a; color:var(--warn); }
   .imp-row{ display:flex; justify-content:space-between; font-size:12px; color:var(--text2); margin-bottom:4px; }
   .imp-row b{ color:var(--text); font-family:var(--font-mono); }
   .imp-lotti{ margin-top:8px; display:flex; gap:5px; flex-wrap:wrap; }
@@ -285,18 +288,20 @@ function _clusterImprese(cl) {
   CANTIERI_RAW.forEach(r => {
     if (clusterKey(r.cluster) !== cl) return;
     const imp = r.impresa || IMPRESE_PER_LOTTO[String(r.lotto)] || 'Non assegnata';
-    if (!map[imp]) map[imp] = { lotti:new Set(), metriTot:0, metriScavati:0 };
+    if (!map[imp]) map[imp] = { lotti:new Set(), metriTot:0, metriScavati:0, reale:false, pianificata:false };
     map[imp].lotti.add(String(r.lotto));
     map[imp].metriTot += r.metri_totali||0;
     map[imp].metriScavati += r.metri_scavati||0;
+    map[imp].reale = true; // cantiere realmente avviato, anche se l'impresa è dedotta da fallback
   });
   (CLUSTER_PERMESSI[cl]?.lotti || []).forEach(lotto => {
     const giaPresente = CANTIERI_RAW.some(r => String(r.lotto)===String(lotto) && clusterKey(r.cluster)===cl);
     if (giaPresente) return;
     const imp = IMPRESE_PER_LOTTO[String(lotto)] || 'Non assegnata';
-    if (!map[imp]) map[imp] = { lotti:new Set(), metriTot:0, metriScavati:0 };
+    if (!map[imp]) map[imp] = { lotti:new Set(), metriTot:0, metriScavati:0, reale:false, pianificata:false };
     map[imp].lotti.add(String(lotto));
     map[imp].metriTot += PERMESSI[lotto]?.totale || 0;
+    map[imp].pianificata = true; // nessun cantiere avviato su questo lotto, impresa dedotta da IMPRESE_PER_LOTTO
   });
   return map;
 }
@@ -354,8 +359,12 @@ function _renderDetail(cl) {
     ? impreseKeys.map(imp => {
         const d = imprese[imp];
         const pct = d.metriTot>0 ? Math.round(d.metriScavati/d.metriTot*100) : 0;
+        const badge = d.reale
+          ? `<span class="imp-fonte imp-fonte-reale">cantiere avviato</span>`
+          : `<span class="imp-fonte imp-fonte-pianif">assegnazione pianificata</span>`;
         return `<div class="imp-card">
           <div class="imp-name"><span class="imp-avatar">${_initials(imp)}</span>${imp}</div>
+          ${badge}
           <div class="imp-row"><span>Metri gestiti</span><b>${fmt(d.metriTot)} m</b></div>
           <div class="imp-row"><span>Scavati</span><b>${fmt(d.metriScavati)} m · ${pct}%</b></div>
           <div class="imp-lotti">${[...d.lotti].sort().map(l=>`<span class="imp-lotto-pill">Lotto ${l}</span>`).join('')}</div>
@@ -391,7 +400,8 @@ function _renderDetail(cl) {
         <div class="det-stat"><div class="det-stat-lbl">Metri totali</div><div class="det-stat-val">${fmt(metriPermessi)} m</div></div>
         <div class="det-stat"><div class="det-stat-lbl">Scavati</div><div class="det-stat-val">${fmt(agg.scavati)} m</div></div>
         <div class="det-stat"><div class="det-stat-lbl">Avanzamento</div><div class="det-stat-val">${pctScavo}%</div></div>
-        <div class="det-stat"><div class="det-stat-lbl">Lotti / Imprese</div><div class="det-stat-val">${lottiIds.length} / ${impreseKeys.length}</div></div>
+        <div class="det-stat"><div class="det-stat-lbl">Lotti compresi</div><div class="det-stat-val">${lottiIds.length}</div></div>
+        <div class="det-stat"><div class="det-stat-lbl">Imprese coinvolte</div><div class="det-stat-val">${impreseKeys.length}</div></div>
       </div>
     </div>
 
@@ -401,7 +411,9 @@ function _renderDetail(cl) {
     </div>
 
     <div class="section">
-      <div class="section-title">Imprese coinvolte</div>
+      <div class="section-title">Imprese coinvolte
+        <span style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--muted2);font-size:11px;margin-left:6px">— verde: cantiere avviato · ambra: assegnazione pianificata, cantiere non ancora aperto</span>
+      </div>
       <div class="imp-grid">${impreseHtml}</div>
     </div>
 
