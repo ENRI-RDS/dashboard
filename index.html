@@ -681,7 +681,6 @@ window.loadXLSX = (function(){
     .milestone-grid { grid-template-columns:1fr; }
     /* Topbar: nascondi etichette testo nei bottoni, mostra solo icone */
     .topbar-right a[href="mappa.html"]::after          { content: ''; }
-    .topbar-right a[href="executive_summary.html"]::after { content: ''; }
   }
 
   /* ── HELP MODAL ── */
@@ -993,6 +992,7 @@ window.loadXLSX = (function(){
       <span id="lastUpdate" style="font-size:10px;font-family:var(--font-body);font-weight:600;color:var(--retelit-ice);white-space:nowrap;letter-spacing:0.01em"><span></span></span>
     </div>
     <a href="mappa.html" class="topbar-back">Mappa</a>
+    <a href="scavi.html" class="topbar-back">Avanz. Lavori</a>
 
     <div class="pdf-dropdown" id="pdfDropdown">
       <button class="topbar-back" style="background:transparent;cursor:pointer;" onclick="togglePdfDropdown(event)">Stampa PDF ▾</button>
@@ -1963,18 +1963,6 @@ window.loadXLSX = (function(){
         <option value="">Tutti gli enti</option>
       </select>
 
-      <!-- filtro scadenza — Scadute prima di 7gg -->
-      <div role="group" aria-label="Filtra per scadenza" style="display:flex;background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:2px;gap:2px">
-        <button id="tblBtnAll" onclick="tblSetScad(0)" aria-label="Mostra tutte le pratiche" aria-pressed="true"
-          style="font-size:10px;font-weight:700;padding:4px 10px;border-radius:4px;border:none;cursor:pointer;font-family:inherit;background:var(--accent);color:#fff;transition:all .15s">Tutte</button>
-        <button id="tblBtnScadute" onclick="tblSetScad(-1)" aria-label="Mostra pratiche scadute" aria-pressed="false"
-          style="font-size:10px;font-weight:700;padding:4px 10px;border-radius:4px;border:none;cursor:pointer;font-family:inherit;background:transparent;color:var(--muted);transition:all .15s">⚠ Scadute</button>
-        <button id="tblBtn7"  onclick="tblSetScad(7)" aria-label="Mostra pratiche in scadenza entro 7 giorni" aria-pressed="false"
-          style="font-size:10px;font-weight:700;padding:4px 10px;border-radius:4px;border:none;cursor:pointer;font-family:inherit;background:transparent;color:var(--muted);transition:all .15s">Scad. 7gg</button>
-        <button id="tblBtn14" onclick="tblSetScad(14)" aria-label="Mostra pratiche in scadenza entro 14 giorni" aria-pressed="false"
-          style="font-size:10px;font-weight:700;padding:4px 10px;border-radius:4px;border:none;cursor:pointer;font-family:inherit;background:transparent;color:var(--muted);transition:all .15s">Scad. 14gg</button>
-      </div>
-
       <!-- reset -->
       <button onclick="tblReset()" aria-label="Azzera tutti i filtri"
         style="font-size:10px;font-weight:600;padding:6px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--muted);cursor:pointer;font-family:inherit;transition:all .15s"
@@ -2115,15 +2103,12 @@ function exportVistaCorrente() {
     const fLotto   = document.getElementById('tblLotto')?.value||'';
     const fImpresa = document.getElementById('tblImpresa')?.value||'';
     const fEnte    = document.getElementById('tblEnte')?.value||'';
-    const scadW    = window._tblScadW !== undefined ? window._tblScadW : 0;
 
   let rows = all.filter(r => {
     if (fStato   && r.stato   !== fStato)   return false;
     if (fLotto   && r.lotto   !== fLotto)   return false;
     if (fImpresa && r.impresa !== fImpresa) return false;
     if (fEnte    && r.ente    !== fEnte)    return false;
-    if (scadW > 0 && (r.scad_gg===null || r.scad_gg<0 || r.scad_gg>scadW)) return false;
-    if (scadW === -1 && (r.scad_gg===null || r.scad_gg>=0)) return false;
     if (q) {
       const hay = [r.codice,r.stato,r.ente,...(r.comuni||[]),r.impresa].join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
@@ -6109,7 +6094,7 @@ _hookScadenze();
   const PAGE_SIZE = 10;
   let _page = 0;
 
-  let _sortK = 'codice', _sortD = 1, _scadW = 0;
+  let _sortK = 'codice', _sortD = 1;
   let _inited = false;
 
   // ── Costruisci thead ──────────────────────────────────────────────────────
@@ -6163,7 +6148,6 @@ _hookScadenze();
       (prats||[]).forEach(p => {
         const invioStr = p.dr_invio || p.dr || (p.stato==='INVIATO'?p.dum:'');
         const aggStr   = (p.dum && p.dum !== invioStr) ? p.dum : '';
-        const prev = calcolaPrevisione({...p, lotto});
         out.push({
           ...p,
           lotto,
@@ -6173,8 +6157,6 @@ _hookScadenze();
           data_update: p.dataUpdate || '',
           comuni: p.comuni || [],
           data_ott: p.stato === 'OTTENUTO' ? (p.dum || '') : '',
-          prev,
-          scad_gg: prev ? prev.diff : null,
         });
       });
     });
@@ -6436,7 +6418,7 @@ _hookScadenze();
     const fEnte   = document.getElementById('tblEnte')?.value||'';
 
     // reset pagina se i filtri sono cambiati
-    const filterKey = q + '|' + fStato + '|' + fLotto + '|' + fImpresa + '|' + fEnte + '|' + _scadW;
+    const filterKey = q + '|' + fStato + '|' + fLotto + '|' + fImpresa + '|' + fEnte;
     if (filterKey !== window._tblLastFilter) { _page = 0; window._tblLastFilter = filterKey; }
 
     let rows = all.filter(r => {
@@ -6444,8 +6426,6 @@ _hookScadenze();
       if (fLotto   && r.lotto   !== fLotto)   return false;
       if (fImpresa && r.impresa !== fImpresa) return false;
       if (fEnte    && r.ente    !== fEnte)    return false;
-      if (_scadW > 0 && (r.scad_gg===null || r.scad_gg<0 || r.scad_gg>_scadW)) return false;
-      if (_scadW === -1 && (r.scad_gg===null || r.scad_gg>=0)) return false;
       if (q) {
         const hay = [r.codice,r.stato,r.ente,...r.comuni,r.impresa].join(' ').toLowerCase();
         if (!hay.includes(q)) return false;
@@ -6472,7 +6452,7 @@ _hookScadenze();
     const SC = STATI_COLORI_MAP || {};
 
     // paginazione: se nessun filtro attivo, limita a PAGE_SIZE righe per pagina
-    const hasFilter = q || fStato || fLotto || fImpresa || _scadW !== 0;
+    const hasFilter = q || fStato || fLotto || fImpresa;
     const totalRows = rows.length;
     if (!hasFilter) {
       // resetta pagina se ordine/filtri cambiano
@@ -6510,7 +6490,6 @@ _hookScadenze();
 
     // footer con paginazione
     const tot = rows.reduce((s,r)=>s+(+r.metri||0),0);
-    const wLabel = _scadW===0?'tutte le pratiche':_scadW===-1?'pratiche scadute':`scadenza entro ${_scadW} gg`;
     if (!hasFilter) {
       const totalPages = Math.ceil(totalRows / PAGE_SIZE);
       const from = _page * PAGE_SIZE + 1;
@@ -6534,27 +6513,13 @@ _hookScadenze();
 
   window._tblPage = function(n) { _page = n; renderTabella(); };
 
-  window.tblSetScad = function(n) {
-    _scadW = n; window._tblScadW = n;
-    [['tblBtnAll',0],['tblBtn7',7],['tblBtn14',14],['tblBtnScadute',-1]].forEach(([id,v]) => {
-      const btn = document.getElementById(id);
-      if (!btn) return;
-      const isActive = (n===v);
-      const isRed = (v===-1);
-      btn.style.background = isActive ? (isRed ? '#C0392B' : 'var(--accent)') : 'transparent';
-      btn.style.color      = isActive ? '#fff' : 'var(--muted)';
-      btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-    });
-    renderTabella();
-  };
-
   window.tblReset = function() {
     document.getElementById('tblQ').value = '';
     document.getElementById('tblStato').value = '';
     document.getElementById('tblLotto').value = '';
     document.getElementById('tblImpresa').value = '';
     document.getElementById('tblEnte').value = '';
-    tblSetScad(0);
+    renderTabella();
   };
 
   // Hook: aggiorna la tabella quando i dati sono pronti
