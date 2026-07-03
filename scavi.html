@@ -1837,7 +1837,6 @@ function openModalLotto(r) {
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px">
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:8px">Cluster</div>
         <span style="font-size:13px;font-weight:700;font-family:var(--font-mono);color:var(--accent)">${r.cl}</span>
-        <span style="font-size:11px;color:var(--muted);margin-left:8px">${CLUSTER_LABEL[r.cl]}</span>
       </div>
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px">
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:8px">Territorio</div>
@@ -1874,7 +1873,7 @@ function openModalCluster(cl) {
   const lottiCl = LOTTI.filter(r => cd.lotti.includes(r.id));
 
   document.getElementById('modalClusterTitle').innerHTML =
-    `<span style="background:${clCol}18;color:${clCol};border:1px solid ${clCol}40;border-radius:6px;padding:2px 10px;font-size:13px;font-weight:700;font-family:var(--font-mono);margin-right:10px">${cl}</span>${CLUSTER_LABEL[cl]||'Cluster '+cl}`;
+    `<span style="background:${clCol}18;color:${clCol};border:1px solid ${clCol}40;border-radius:6px;padding:2px 10px;font-size:13px;font-weight:700;font-family:var(--font-mono);margin-right:10px">${cl}</span>Cluster ${cl}`;
 
   // Header stats
   const header = `
@@ -1951,7 +1950,62 @@ function openModalCluster(cl) {
   });
   lottiHtml += '</tbody></table></div>';
 
-  document.getElementById('modalClusterBody').innerHTML = header + barreStato + lottiHtml;
+  // Imprese assegnate ai lotti del cluster (stessa logica delle card in _renderClusters)
+  const impreseLottiCl = [...cd.lotti].sort(_lottoCompare)
+    .map(l => ({ lotto: l, impresa: IMPRESE_PER_LOTTO[l] || '?' }));
+  const lottiPerImpresaCl = {};
+  impreseLottiCl.forEach(x => { (lottiPerImpresaCl[x.impresa] = lottiPerImpresaCl[x.impresa] || []).push(x.lotto); });
+  let impreseHtml = `
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:12px">Imprese e lotti del cluster</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead>
+          <tr style="border-bottom:2px solid var(--border)">
+            <th style="text-align:left;padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Impresa</th>
+            <th style="text-align:left;padding:6px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Lotti</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${Object.keys(lottiPerImpresaCl).sort().map(imp => `
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:8px 10px;font-weight:700;color:var(--accent)">${imp}</td>
+            <td style="padding:8px 10px;font-family:var(--font-mono)">${lottiPerImpresaCl[imp].join(', ')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+  // Doppia barra Permessi/Scavi, stessa visualizzazione delle card in "Avanzamento per Cluster"
+  const scCl = (window._CLUSTER_SCAVI || {})[cl] || { metri: 0, scavati: 0, statoMetri: {} };
+  const haScavoCl = scCl.metri > 0;
+  const pctScavoCl = haScavoCl ? Math.round(scCl.scavati / scCl.metri * 100) : 0;
+  const permTrackHtml = ORDINE_WORKFLOW_PERMESSI.map(label => {
+    const g = STATI_GRUPPI_PERMESSI.find(x => x.label === label);
+    if (!g) return '';
+    const m = gruppi[g.label] || 0; if (m <= 0) return '';
+    const pct = totMetri > 0 ? m / totMetri * 100 : 0;
+    return `<div style="width:${pct}%;background:${g.color};opacity:.88;position:relative">${pct>=6?`<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;text-shadow:0 0 4px rgba(0,0,0,1),0 1px 3px rgba(0,0,0,.9)">${pct.toFixed(0)}%</span>`:''}</div>`;
+  }).join('');
+  let trackedMetriCl = 0;
+  const scaviTrackHtml = STATO_ORDER.map(stato => {
+    const m = (scCl.statoMetri || {})[stato] || 0; if (m <= 0) return '';
+    trackedMetriCl += m;
+    const pct = totMetri > 0 ? m / totMetri * 100 : 0;
+    return `<div style="width:${pct}%;background:${STATO_COLOR[stato]};opacity:.88;position:relative">${pct>=6?`<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;text-shadow:0 0 4px rgba(0,0,0,1),0 1px 3px rgba(0,0,0,.9)">${STATO_LABEL[stato]} ${pct.toFixed(0)}%</span>`:''}</div>`;
+  }).join('') + (totMetri - trackedMetriCl > 0 ? `<div style="width:${(totMetri-trackedMetriCl)/totMetri*100}%;background:${STATO_COLOR['non-avviato']};opacity:.45"></div>` : '');
+  const doppiaBarraHtml = `
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+      <div style="display:flex;flex-direction:column;gap:2px;margin-bottom:6px">
+        <span style="font-size:8px;font-weight:700;color:var(--retelit-blue);text-transform:uppercase;letter-spacing:.06em">Permessi</span>
+        <div class="bar-track" style="height:16px">${permTrackHtml}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px;opacity:${haScavoCl?'1':'.4'}">
+        <span style="font-size:8px;font-weight:700;color:var(--warn);text-transform:uppercase;letter-spacing:.06em">Scavi</span>
+        <div class="bar-track">${scaviTrackHtml}</div>
+      </div>
+    </div>`;
+
+  document.getElementById('modalClusterBody').innerHTML = header + doppiaBarraHtml + impreseHtml + barreStato + lottiHtml;
   document.getElementById('modalClusterOverlay').classList.add('open');
 }
 function closeModalCluster(e) {
