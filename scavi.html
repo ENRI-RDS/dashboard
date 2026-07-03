@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="it" translate="n">
+<html lang="it" translate="no">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -382,12 +382,7 @@
 <div class="main">
 
   <!-- HEADER -->
-  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
-    <div>
-      <div class="page-eyebrow">ENRI · Rete in Fibra Ottica</div>
-      <div class="page-h1">Avanzamento Scavi</div>
-      <div class="page-sub" id="pageSubDyn">caricamento…</div>
-    </div>
+  <div style="display:flex;align-items:flex-start;justify-content:flex-end;gap:16px;flex-wrap:wrap;">
     <div class="exec-strip" id="execStrip">
       <div class="exec-stat">
         <span class="exec-stat-label">Avanzamento Fisico</span>
@@ -441,7 +436,7 @@
   <!-- PERFORMANCE IMPRESE -->
   <div class="card">
     <div class="card-header">
-      <span class="card-title">🏗️ Performance Imprese sugli Scavi</span>
+      <span class="card-title">🏗️ Performance Imprese</span>
       <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)" id="impreseSubtitle">caricamento…</span>
     </div>
     <div class="card-body">
@@ -450,6 +445,8 @@
           <thead>
             <tr>
               <th class="imp-th-sort" onclick="_sortImprese('impresa')">Impresa</th>
+              <th>Lotto</th>
+              <th>Cluster</th>
               <th class="imp-th-sort" style="text-align:right" onclick="_sortImprese('cantieri')">Cantieri</th>
               <th style="text-align:right">Completati</th>
               <th style="text-align:right">In Corso</th>
@@ -1284,8 +1281,10 @@ function _renderImprese() {
   const oggi = new Date();
   CANTIERI_RAW.forEach(r => {
     const nome = r.impresa || 'N/D';
-    if (!byImpresa[nome]) byImpresa[nome] = { impresa: nome, cantieri:0, completati:0, corso:0, sospesi:0, metriTot:0, metriScav:0, giorniAttivi:0 };
+    if (!byImpresa[nome]) byImpresa[nome] = { impresa: nome, cantieri:0, completati:0, corso:0, sospesi:0, metriTot:0, metriScav:0, giorniAttivi:0, lotti:new Set(), cluster:new Set() };
     const g = byImpresa[nome];
+    g.lotti.add(String(r.lotto ?? '—'));
+    g.cluster.add(String(r.cluster ?? '?').replace(/^[Cc]/, ''));
     const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
     g.cantieri++;
     if (statoUI === 'completato') g.completati++;
@@ -1323,6 +1322,8 @@ function _renderImprese() {
     return `
       <tr>
         <td style="font-weight:600;color:var(--text)">${r.impresa}</td>
+        <td style="font-family:var(--font-mono);font-size:10.5px">${[...r.lotti].sort(_lottoCompare).join(', ')}</td>
+        <td style="font-family:var(--font-mono);font-size:10.5px">${[...r.cluster].sort().join(', ')}</td>
         <td style="text-align:right;font-family:var(--font-mono)">${r.cantieri}</td>
         <td style="text-align:right"><span class="imp-badge" style="background:#1F7A4E1A;color:#1F7A4E">${r.completati}</span></td>
         <td style="text-align:right"><span class="imp-badge" style="background:#0B31821A;color:#0B3182">${r.corso}</span></td>
@@ -1334,7 +1335,7 @@ function _renderImprese() {
         </td>
         <td style="text-align:right;font-family:var(--font-mono)">${r.ritmo > 0 ? r.ritmo + ' m/gg' : '—'}</td>
       </tr>`;
-  }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--muted)">Nessun dato disponibile</td></tr>';
+  }).join('') || '<tr><td colspan="10" style="text-align:center;color:var(--muted)">Nessun dato disponibile</td></tr>';
 }
 
 // ── KPI COUNTERS ────────────────────────────────────────────────────────────
