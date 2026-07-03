@@ -5538,8 +5538,15 @@ function _colLottoRefresh() {
     const agg   = dateParts.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
     const badge = prevBadgeHtml(p);
     const upd   = p.dataUpdate ? fmtDateIT(p.dataUpdate) : '';
+    window._praticaNoteMap[p.codice] = p.notes || [];
+    const hasNote = !!(p.notes && p.notes.length);
     return `<tr style="border-bottom:1px solid #DFE4EB" onmouseover="this.style.background='#EEF1F5'" onmouseout="this.style.background=''">
-      <td style="padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col}">${p.codice}</td>
+      <td class="tbl-codice-click" data-cod="${p.codice}" style="padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col};cursor:pointer" title="${hasNote ? 'Vedi note pratica' : 'Nessuna nota — clicca per vedere'}">
+        <span class="tbl-codice-wrap">
+          <span class="tbl-codice" style="color:var(--text)">${p.codice}</span>
+          <svg class="tbl-note-icon${hasNote ? ' has-note' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </span>
+      </td>
       <td style="padding:6px 10px;font-size:9px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente||'—'}</td>
       <td style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap">${p.stato}</td>
       <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${invio}</td>
@@ -5547,12 +5554,13 @@ function _colLottoRefresh() {
       <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${upd}</td>
       <td style="padding:6px 10px;font-size:9px;text-align:center;white-space:nowrap">${badge}</td>
       <td style="padding:6px 10px;font-size:12px;font-family:'Raleway',sans-serif;color:var(--text);text-align:right;white-space:nowrap;font-weight:700;letter-spacing:-0.01em">${fmt(p.metri)} m</td>
+      <td style="padding:6px 10px;font-size:9px;text-align:center;white-space:nowrap">${window._solBadge ? window._solBadge(p.codice) : "—"}</td>
     </tr>`;
   }).join('');
 
   const autPrats = prats.filter(p =>  p.codice.startsWith('AUT/'));
   const noPrats  = prats.filter(p => !p.codice.startsWith('AUT/'));
-  const sepRow = (label, badge, n) => `<tr><td colspan="8" style="padding:8px 10px 4px;background:var(--bg)">
+  const sepRow = (label, badge, n) => `<tr><td colspan="9" style="padding:8px 10px 4px;background:var(--bg)">
     <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text)">${label}</span>
     <span style="margin-left:6px;font-size:9px;color:var(--muted)">(${n})</span>
     ${badge.includes('3a8c5c') ? `<span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">incide sulle %</span>` : ''}
@@ -5567,6 +5575,7 @@ function _colLottoRefresh() {
     ${_mkTh('Update','realupd','center','lotto')}
     ${_mkTh('Prev. Rilascio','prev','center','lotto')}
     ${_mkTh('Metri','metri','right','lotto')}
+    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2);white-space:nowrap">Solleciti</th>
   </tr>`;
 
   body.innerHTML = `${activeBar}
@@ -5599,8 +5608,15 @@ function _colClRefresh() {
     const badge = prevBadgeHtml(p);
     const upd   = p.dataUpdate ? fmtDateIT(p.dataUpdate) : '';
     const impresa = IMPRESE_PER_LOTTO[p.lotto] || '—';
+    window._praticaNoteMap[p.codice] = p.notes || [];
+    const hasNote = !!(p.notes && p.notes.length);
     return `<tr style="border-bottom:1px solid #DFE4EB" onmouseover="this.style.background='#EEF1F5'" onmouseout="this.style.background=''">
-      <td style="padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col}">${p.codice}</td>
+      <td class="tbl-codice-click" data-cod="${p.codice}" style="padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col};cursor:pointer" title="${hasNote ? 'Vedi note pratica' : 'Nessuna nota — clicca per vedere'}">
+        <span class="tbl-codice-wrap">
+          <span class="tbl-codice" style="color:var(--text)">${p.codice}</span>
+          <svg class="tbl-note-icon${hasNote ? ' has-note' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </span>
+      </td>
       <td style="padding:6px 10px;font-size:9px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente||'—'}</td>
       <td style="padding:6px 10px;font-size:9px;font-weight:600;color:var(--accent2);white-space:nowrap">${impresa}</td>
       <td style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap">${p.stato}</td>
@@ -5609,12 +5625,13 @@ function _colClRefresh() {
       <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${upd}</td>
       <td style="padding:6px 10px;font-size:9px;text-align:center;white-space:nowrap">${badge}</td>
       <td style="padding:6px 10px;font-size:12px;font-family:'Raleway',sans-serif;color:var(--text);text-align:right;white-space:nowrap;font-weight:700;letter-spacing:-0.01em">${fmt(p.metri)} m</td>
+      <td style="padding:6px 10px;font-size:9px;text-align:center;white-space:nowrap">${window._solBadge ? window._solBadge(p.codice) : "—"}</td>
     </tr>`;
   };
 
   const clAut = prats.filter(p =>  p.codice.startsWith('AUT/'));
   const clNo  = prats.filter(p => !p.codice.startsWith('AUT/'));
-  const sepRow = (label, badge, n) => `<tr><td colspan="9" style="padding:8px 10px 4px;background:var(--bg)">
+  const sepRow = (label, badge, n) => `<tr><td colspan="10" style="padding:8px 10px 4px;background:var(--bg)">
     <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text)">${label}</span>
     <span style="margin-left:6px;font-size:9px;color:var(--muted)">(${n})</span>
     ${badge.includes('3a8c5c') ? `<span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">incide sulle %</span>` : ''}
@@ -5630,6 +5647,7 @@ function _colClRefresh() {
     ${_mkTh('Update','realupd','center','cl')}
     ${_mkTh('Prev. Rilascio','prev','center','cl')}
     ${_mkTh('Metri','metri','right','cl')}
+    <th style="padding:5px 10px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);text-align:center;font-weight:600;background:var(--surface2);white-space:nowrap">Solleciti</th>
   </tr>`;
 
   body.innerHTML = `${activeBar}
@@ -6308,6 +6326,7 @@ _hookScadenze();
       + 'background:#eff6ff;color:#043F75;border:1px solid #bfdbfe;user-select:none" '
       + 'title="Vedi solleciti per ' + codice.replace(/"/g,'') + '">' + n + ' </span>';
   }
+  window._solBadge = _solBadge; // esposta globalmente: usata anche dalle tabelle modal Lotto/Cluster
 
   // Popover fisso, aggiornato al click sul badge
   ;(function() {
