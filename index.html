@@ -4386,6 +4386,7 @@ function _processMasterText(text) {
     const iNSed  = findCol('N_SED');
     const iNote  = findCol('NOTE');
     const iDataPrevRil = findCol('DATA_PREVISTA_RILASCIO');
+    const iDataUpdate  = findCol('DATA_UPDATE');
 
     if (iTrat === -1 || iPrat === -1) return;
 
@@ -4416,6 +4417,7 @@ function _processMasterText(text) {
       const nSed   = iNSed !== -1 ? (cols[iNSed]?.trim() || '') : '';
       const note   = iNote !== -1 ? (cols[iNote]?.trim() || '') : '';
       const dataPrevRilascio = iDataPrevRil !== -1 ? (cols[iDataPrevRil]?.trim() || '') : '';
+      const dataUpdate = iDataUpdate !== -1 ? (cols[iDataUpdate]?.trim() || '') : '';
 
       // Estrai lotto da Source.Name (es. "Lotto 1A.xlsx" → "1A")
       const lotto = src ? src.replace(/\.xlsx$/i,'').replace(/^Lotto\s*/i,'').trim().toUpperCase() : '';
@@ -4427,14 +4429,14 @@ function _processMasterText(text) {
 
       if (!existing) {
         permessiMap[key] = {
-          tratta, prat, tipo, stato, ente, dr, dum, lungh, lotto, comune, nSed, note, dataPrevRilascio,
+          tratta, prat, tipo, stato, ente, dr, dum, lungh, lotto, comune, nSed, note, dataPrevRilascio, dataUpdate,
           dr_invio: stato === 'INVIATO' ? (dr || dum) : ''
         };
       } else if (dumDate && (!exDate || dumDate >= exDate)) {
         const dr_invio = existing.dr_invio
           || (stato === 'INVIATO' ? (dr || dum) : '')
           || (existing.stato === 'INVIATO' ? (existing.dr || existing.dum) : '');
-        permessiMap[key] = { tratta, prat, tipo, stato, ente, dr, dum, lungh: lungh || existing.lungh || 0, lotto, comune: comune || existing.comune || '', nSed: existing.nSed || nSed, note: note || existing.note || '', dataPrevRilascio: dataPrevRilascio || existing.dataPrevRilascio || '', dr_invio };
+        permessiMap[key] = { tratta, prat, tipo, stato, ente, dr, dum, lungh: lungh || existing.lungh || 0, lotto, comune: comune || existing.comune || '', nSed: existing.nSed || nSed, note: note || existing.note || '', dataPrevRilascio: dataPrevRilascio || existing.dataPrevRilascio || '', dataUpdate: dataUpdate || existing.dataUpdate || '', dr_invio };
       } else if (stato === 'INVIATO' && !existing.dr_invio) {
         existing.dr_invio = dr;
       }
@@ -4476,7 +4478,7 @@ function _processMasterText(text) {
       if (!praticheByLotto[lotto][codice]) {
         praticheByLotto[lotto][codice] = {
           codice, tipo: r.tipo, stato: r.stato, ente: r.ente,
-          dr: r.dr, dum: r.dum, dr_invio: r.dr_invio || '', dataPrevRilascio: r.dataPrevRilascio || '', metri: 0, lotto,
+          dr: r.dr, dum: r.dum, dr_invio: r.dr_invio || '', dataPrevRilascio: r.dataPrevRilascio || '', dataUpdate: r.dataUpdate || '', metri: 0, lotto,
           comuni: new Set(r.comune ? [r.comune] : [])
         };
       }
@@ -4496,6 +4498,10 @@ function _processMasterText(text) {
       // Preserva sempre dr_invio se disponibile
       if (r.dr_invio && !existing.dr_invio) existing.dr_invio = r.dr_invio;
       if (r.dataPrevRilascio && !existing.dataPrevRilascio) existing.dataPrevRilascio = r.dataPrevRilascio;
+      // dataUpdate: tiene sempre la più recente tra tutte le righe della pratica (non solo l'ultima per stato)
+      const newUpd = parseDateIT(r.dataUpdate);
+      const exUpd  = parseDateIT(existing.dataUpdate);
+      if (newUpd && (!exUpd || newUpd >= exUpd)) existing.dataUpdate = r.dataUpdate;
 
     });
 
@@ -4530,7 +4536,7 @@ function _processMasterText(text) {
       if (!window._masterByTratta[r.tratta].find(x => x.codice === codice)) {
         window._masterByTratta[r.tratta].push({
           codice, tipo: r.tipo, stato: r.stato, ente: r.ente,
-          dr: r.dr, dum: r.dum, dr_invio: r.dr_invio || '', dataPrevRilascio: r.dataPrevRilascio || '', metri: r.lungh, lotto
+          dr: r.dr, dum: r.dum, dr_invio: r.dr_invio || '', dataPrevRilascio: r.dataPrevRilascio || '', dataUpdate: r.dataUpdate || '', metri: r.lungh, lotto
         });
       }
     });
@@ -6087,7 +6093,8 @@ _hookScadenze();
     {k:'stato',    l:'Stato',          w:'180px'},
     {k:'ente',     l:'Ente',           w:'auto',  muted:true},
     {k:'invio',    l:'Data Invio',     w:'90px',  mono:true, muted:true},
-    {k:'agg',      l:'Data Agg.',      w:'90px',  mono:true, muted:true},
+    {k:'agg',      l:'Data Cambio Stato', w:'110px', mono:true, muted:true},
+    {k:'data_update', l:'Data Update',    w:'100px', mono:true, muted:true},
     {k:'data_ott', l:'Data Ott.',      w:'90px',  mono:true},
     {k:'scad',     l:'Scadenza',       w:'100px'},
     {k:'prev',     l:'Prev. Rilascio', w:'110px', mono:true},
@@ -6158,6 +6165,7 @@ _hookScadenze();
           impresa: IMPRESE[lotto] || '',
           invio: invioStr,
           agg:   aggStr,
+          data_update: p.dataUpdate || '',
           comuni: p.comuni || [],
           data_ott: p.stato === 'OTTENUTO' ? (p.dum || '') : '',
           prev,
@@ -6444,6 +6452,7 @@ _hookScadenze();
         <td class="tbl-td tbl-ente" title="${r.ente||''}">${r.ente||'—'}</td>
         <td class="tbl-td tbl-date">${r.invio?fmtDateIT(r.invio):'—'}</td>
         <td class="tbl-td tbl-date">${r.agg?fmtDateIT(r.agg):'—'}</td>
+        <td class="tbl-td tbl-date">${r.data_update?fmtDateIT(r.data_update):'—'}</td>
         <td class="tbl-td tbl-date-ott">${r.data_ott?fmtDateIT(r.data_ott):'—'}</td>
         <td class="tbl-td">${scadHtml(r.scad_gg)}</td>
         <td class="tbl-td">${prevHtml}</td>
