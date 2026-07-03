@@ -4399,6 +4399,9 @@ function _processMasterText(text) {
 
     // Per ogni TRATTA_ID+PRATICA+TIPO_PERMESSO: tieni solo la riga con DATA_ULTIMA_MODIFICA più recente
     const permessiMap = {}; // key: tratta|pratica|tipo → miglior riga
+    // Note: raccolte da OGNI riga grezza (non dal permessiMap collassato), altrimenti le note
+    // delle righe storiche superate dallo stesso tratta+tipo andrebbero perse. Chiave = codice pratica.
+    const praticaNotesRaw = {};
 
     // usa parseDateIT globale
 
@@ -4428,6 +4431,16 @@ function _processMasterText(text) {
 
       // Estrai lotto da Source.Name (es. "Lotto 1A.xlsx" → "1A")
       const lotto = src ? src.replace(/\.xlsx$/i,'').replace(/^Lotto\s*/i,'').trim().toUpperCase() : '';
+
+      // Nota di questa riga grezza, associata al codice pratica (indipendente dal collasso permessiMap)
+      if (note && lotto) {
+        const tipoPrefixRaw = tipo === 'AUTORIZZAZIONE' ? 'AUT' : tipo === 'NULLA OSTA' ? 'NO' : tipo === 'ORDINANZA' ? 'ORD' : tipo.substring(0,3);
+        const codiceRaw = tipoPrefixRaw + '/' + prat + '/' + lotto;
+        const noteDateRaw = dataUpdate || dum || '';
+        if (!praticaNotesRaw[codiceRaw]) praticaNotesRaw[codiceRaw] = [];
+        const dupeRaw = praticaNotesRaw[codiceRaw].some(n => n.note === note && n.date === noteDateRaw);
+        if (!dupeRaw) praticaNotesRaw[codiceRaw].push({ note, date: noteDateRaw });
+      }
 
       const key = tratta + '|' + prat + '|' + tipo;
       const existing = permessiMap[key];
@@ -4502,12 +4515,9 @@ function _processMasterText(text) {
         existing.dr    = r.dr;
         existing.dum   = r.dum;
       }
-      // Note: accumula TUTTE le note non vuote di tutte le righe della pratica (una riga = una tratta/ente), dedup su testo+data
-      if (r.note) {
-        const noteDate = r.dataUpdate || r.dum || '';
-        const dupe = existing.notes.some(n => n.note === r.note && n.date === noteDate);
-        if (!dupe) existing.notes.push({ note: r.note, date: noteDate });
-      }
+      // Note: usa le note raccolte da TUTTE le righe grezze del CSV (praticaNotesRaw), non da r.note
+      // (che riflette solo la riga sopravvissuta al collasso permessiMap per tratta+tipo)
+      if (!existing.notes.length && praticaNotesRaw[codice]) existing.notes = praticaNotesRaw[codice];
       // Preserva sempre dr_invio se disponibile
       if (r.dr_invio && !existing.dr_invio) existing.dr_invio = r.dr_invio;
       if (r.dataPrevRilascio && !existing.dataPrevRilascio) existing.dataPrevRilascio = r.dataPrevRilascio;
