@@ -816,7 +816,7 @@ window.loadXLSX = (function(){
   /* Contenuto celle */
   .tbl-codice  { font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; color:var(--accent); }
   td.tbl-codice-click { display:table-cell; }
-  td.tbl-codice-click .tbl-codice-wrap { display:inline-flex; align-items:center; gap:5px; padding:2px 4px; border-radius:5px; transition:background .12s; }
+  td.tbl-codice-click .tbl-codice-wrap { display:inline-flex; align-items:center; gap:5px; padding:2px 4px; border-radius:5px; transition:background .12s; white-space:nowrap; }
   td.tbl-codice-click:hover .tbl-codice-wrap { background:var(--surface2); }
   td.tbl-codice-click .tbl-codice { border-bottom:1px dashed var(--accent); }
   .tbl-note-icon { width:12px; height:12px; flex:0 0 auto; color:var(--muted); opacity:.55; }
@@ -6102,7 +6102,7 @@ _hookScadenze();
 (function() {
   const IMPRESE = {'1A':'Valtellina','1B':'Soleto','2A':'Sielte','2B':'Telebit'};
   const COLS = [
-    {k:'codice',   l:'Codice',         w:'90px',  mono:true, accent:true},
+    {k:'codice',   l:'Codice',         w:'110px',  mono:true, accent:true},
     {k:'lotto',    l:'Lotto',          w:'68px'},
     {k:'impresa',  l:'Impresa',        w:'95px',  orange:true},
     {k:'tipo',     l:'Tipo',           w:'80px'},
@@ -6408,29 +6408,17 @@ _hookScadenze();
       e.stopPropagation();
       const cod  = cell.dataset.cod;
       const info = window._praticaNoteMap[cod] || {};
-      const sol  = ((window._solByPratica || {})[cod] || []).slice().sort((a,b) => b.data.localeCompare(a.data));
 
       let rows = '';
       if (info.note) {
         const note = info.note.replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        rows += '<tr style="border-bottom:1px solid var(--border)">'
+        rows = '<tr>'
           + '<td style="padding:4px 8px;font-size:10.5px;white-space:nowrap;color:var(--muted)">' + (info.date ? fmtDateIT(info.date) : '—') + '</td>'
-          + '<td style="padding:4px 8px"><span style="padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;background:#eff6ff;color:#043F75">MASTER</span></td>'
           + '<td style="padding:4px 8px;font-size:10.5px;color:var(--text2)">' + note + '</td>'
           + '</tr>';
+      } else {
+        rows = '<tr><td colspan="2" style="padding:12px;text-align:center;font-size:10.5px;color:var(--muted2)">Nessuna nota per questa pratica</td></tr>';
       }
-      rows += sol.map(function(s) {
-        const note = (s.note||'—').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        const bg = s.tipo && s.tipo.includes('DIFFIDA') ? '#fef2f2' : '#fef9ec';
-        const fg = s.tipo && s.tipo.includes('DIFFIDA') ? '#b91c1c' : '#b45309';
-        return '<tr style="border-bottom:1px solid var(--border)">'
-          + '<td style="padding:4px 8px;font-size:10.5px;white-space:nowrap;color:var(--muted)">' + (s.data||'—') + '</td>'
-          + '<td style="padding:4px 8px"><span style="padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;background:' + bg + ';color:' + fg + '">' + (s.tipo||'SOLLECITO') + '</span></td>'
-          + '<td style="padding:4px 8px;font-size:10.5px;color:var(--text2)">' + note + '</td>'
-          + '</tr>';
-      }).join('');
-
-      if (!rows) rows = '<tr><td colspan="3" style="padding:12px;text-align:center;font-size:10.5px;color:var(--muted2)">Nessuna nota per questa pratica</td></tr>';
 
       box.innerHTML = '<div style="padding:8px 12px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0">'
         + '<span style="font-size:11px;font-weight:700;color:var(--accent)">' + cod + ' — Note</span>'
@@ -6438,7 +6426,6 @@ _hookScadenze();
         + '<table style="width:100%;border-collapse:collapse">'
         + '<thead><tr style="background:var(--surface2)">'
         + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">Data</th>'
-        + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">Tipo</th>'
         + '<th style="padding:4px 8px;font-size:9px;text-transform:uppercase;color:var(--muted);text-align:left">Nota</th>'
         + '</tr></thead><tbody>' + rows + '</tbody></table>';
       document.getElementById('notePopClose').onclick = function(ev) { ev.stopPropagation(); box.style.display='none'; };
@@ -6523,7 +6510,7 @@ _hookScadenze();
         return `<span class="tbl-chip tbl-chip-prev ${prevClass}">${r.prev.label}</span>`;
       })() : '<span class="tbl-dash">—</span>';
       window._praticaNoteMap[r.codice] = { note: r.note || '', date: r.data_update || r.agg || r.invio || '' };
-      const hasNote = !!(r.note) || !!((window._solByPratica||{})[r.codice]||[]).length;
+      const hasNote = !!(r.note);
       return `<tr class="tbl-row">
         <td class="tbl-td tbl-codice-click" data-cod="${r.codice}" style="cursor:pointer" title="${hasNote ? 'Vedi note pratica' : 'Nessuna nota — clicca per aggiungere/vedere'}">
           <span class="tbl-codice-wrap">
