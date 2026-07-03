@@ -297,6 +297,11 @@
   .cant-table tbody tr { transition:background .1s; }
   .cant-table tbody tr:hover td { background:var(--surface2); }
   .cant-table td { font-size:11px; padding:9px 12px; border-bottom:1px solid var(--border); color:var(--text2); vertical-align:middle; }
+  .imp-th-sort { cursor:pointer; user-select:none; }
+  .imp-th-sort:hover { color:var(--accent); }
+  .imp-bar-track { width:70px; height:6px; border-radius:3px; background:var(--surface2); display:inline-block; overflow:hidden; vertical-align:middle; margin-right:6px; }
+  .imp-bar-fill { height:100%; border-radius:3px; background:var(--retelit-blue); }
+  .imp-badge { display:inline-flex; align-items:center; justify-content:center; min-width:20px; padding:1px 6px; border-radius:5px; font-size:10.5px; font-weight:700; font-family:var(--font-mono); }
 
   .prog-wrap  { display:flex; align-items:center; gap:7px; }
   .prog-track { flex:1; height:5px; border-radius:3px; background:var(--surface2); border:1px solid var(--border); overflow:hidden; min-width:50px; }
@@ -433,6 +438,33 @@
     </div>
   </div>
 
+  <!-- PERFORMANCE IMPRESE -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">🏗️ Performance Imprese sugli Scavi</span>
+      <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)" id="impreseSubtitle">caricamento…</span>
+    </div>
+    <div class="card-body">
+      <div style="overflow-x:auto;">
+        <table class="cant-table">
+          <thead>
+            <tr>
+              <th class="imp-th-sort" onclick="_sortImprese('impresa')">Impresa</th>
+              <th class="imp-th-sort" style="text-align:right" onclick="_sortImprese('cantieri')">Cantieri</th>
+              <th style="text-align:right">Completati</th>
+              <th style="text-align:right">In Corso</th>
+              <th style="text-align:right">Sospesi</th>
+              <th class="imp-th-sort" style="text-align:right" onclick="_sortImprese('metriTot')">Metri Tot.</th>
+              <th class="imp-th-sort" style="text-align:right" onclick="_sortImprese('pct')">Avanzamento</th>
+              <th class="imp-th-sort" style="text-align:right" onclick="_sortImprese('ritmo')">Ritmo (m/gg)</th>
+            </tr>
+          </thead>
+          <tbody id="impreseTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <!-- CLUSTER BARS (doppia barra: permessi sopra · scavi sotto, per cluster geografico) -->
   <div class="card">
     <div class="card-header">
@@ -470,22 +502,7 @@
           <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)" id="lottiSubtitle">caricamento…</span>
         </div>
         <div class="card-body" style="display:flex;flex-direction:column;gap:0;" id="barContainer"></div>
-        <div class="legend" style="flex-wrap:wrap;row-gap:6px;">
-          <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:4px">PERMESSI:</span>
-          <div class="legend-item"><div class="legend-dot" style="background:#1E9E6A"></div>Ottenuto</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#436A93"></div>Prot. Integrazione</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#C0392B"></div>Nec. Integrazione</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#41BBD9"></div>Inviato/Protocollato</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#D08A1A"></div>In Firma</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#6B7685"></div>In Attesa</div>
-          <div style="width:100%;height:1px;background:var(--border);margin:4px 0"></div>
-          <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:4px">SCAVI:</span>
-          <div class="legend-item"><div class="legend-dot" style="background:#C23B22"></div>In sospeso</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#1F7A4E"></div>Completato</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#0B3182"></div>In corso</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#C08A14"></div>In allestimento</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#8A91B4"></div>Non avviato</div>
-        </div>
+        <div style="font-size:10px;color:var(--muted);padding-top:8px">Legenda colori: vedi "Avanzamento per Cluster" sopra.</div>
       </div>
 
     </div>
@@ -875,7 +892,7 @@ async function _loadAndRenderAll() {
 function _renderAll() {
   _renderPageSubtitle(); // aggiorna subito lo stato "caricamento…", indipendente dalle altre render
   const steps = [_renderKpi, _renderBars, _renderClusters, _renderRadar,
-                 _renderCantieriFilters, _renderCantieriTable, _renderRiepilogo, _renderPageSubtitle];
+                 _renderCantieriFilters, _renderCantieriTable, _renderRiepilogo, _renderImprese, _renderPageSubtitle];
   steps.forEach(fn => {
     try { fn(); } catch (e) { console.error('[ENRI] render step fallito:', fn.name, e); }
   });
@@ -1249,6 +1266,75 @@ function _renderRiepilogo() {
           </div>`).join('')
       : '<span style="color:var(--muted);font-size:12px">—</span>';
   }
+}
+
+// ── PERFORMANCE IMPRESE ──────────────────────────────────────────────────────
+let _impreseSort = { key: 'pct', dir: 'desc' };
+
+function _sortImprese(key) {
+  if (_impreseSort.key === key) _impreseSort.dir = _impreseSort.dir === 'desc' ? 'asc' : 'desc';
+  else _impreseSort = { key, dir: 'desc' };
+  _renderImprese();
+}
+
+function _renderImprese() {
+  const body = document.getElementById('impreseTableBody');
+  if (!body) return;
+  const byImpresa = {};
+  const oggi = new Date();
+  CANTIERI_RAW.forEach(r => {
+    const nome = r.impresa || 'N/D';
+    if (!byImpresa[nome]) byImpresa[nome] = { impresa: nome, cantieri:0, completati:0, corso:0, sospesi:0, metriTot:0, metriScav:0, giorniAttivi:0 };
+    const g = byImpresa[nome];
+    const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
+    g.cantieri++;
+    if (statoUI === 'completato') g.completati++;
+    if (statoUI === 'in-corso') g.corso++;
+    if (statoUI === 'sospeso') g.sospesi++;
+    g.metriTot  += r.metri_totali  || 0;
+    g.metriScav += r.metri_scavati || 0;
+    if (r.data_inizio_effettiva && (r.metri_scavati || 0) > 0) {
+      const inizio = new Date(r.data_inizio_effettiva);
+      const fine   = r.data_fine_effettiva ? new Date(r.data_fine_effettiva) : oggi;
+      const giorni = Math.max(1, Math.round((fine - inizio) / 86400000));
+      g.giorniAttivi += giorni;
+    }
+  });
+
+  let rows = Object.values(byImpresa).map(g => ({
+    ...g,
+    pct:   g.metriTot > 0 ? Math.round(g.metriScav / g.metriTot * 100) : 0,
+    ritmo: g.giorniAttivi > 0 ? Math.round(g.metriScav / g.giorniAttivi) : 0,
+  }));
+
+  const sub = document.getElementById('impreseSubtitle');
+  if (sub) sub.textContent = rows.length + ' imprese · ordina cliccando le colonne';
+
+  const { key, dir } = _impreseSort;
+  rows.sort((a, b) => {
+    const av = key === 'impresa' ? a.impresa.toLowerCase() : a[key];
+    const bv = key === 'impresa' ? b.impresa.toLowerCase() : b[key];
+    const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+    return dir === 'desc' ? -cmp : cmp;
+  });
+
+  body.innerHTML = rows.map(r => {
+    const pctColor = r.pct >= 66 ? '#1F7A4E' : r.pct >= 33 ? '#C08A14' : '#C23B22';
+    return `
+      <tr>
+        <td style="font-weight:600;color:var(--text)">${r.impresa}</td>
+        <td style="text-align:right;font-family:var(--font-mono)">${r.cantieri}</td>
+        <td style="text-align:right"><span class="imp-badge" style="background:#1F7A4E1A;color:#1F7A4E">${r.completati}</span></td>
+        <td style="text-align:right"><span class="imp-badge" style="background:#0B31821A;color:#0B3182">${r.corso}</span></td>
+        <td style="text-align:right">${r.sospesi > 0 ? `<span class="imp-badge" style="background:#C23B221A;color:#C23B22">${r.sospesi}</span>` : '<span style="color:var(--muted)">0</span>'}</td>
+        <td style="text-align:right;font-family:var(--font-mono)">${fmt(r.metriTot)} m</td>
+        <td style="text-align:right;white-space:nowrap">
+          <span class="imp-bar-track"><span class="imp-bar-fill" style="width:${r.pct}%;background:${pctColor}"></span></span>
+          <span style="font-family:var(--font-mono);font-weight:700;color:${pctColor}">${r.pct}%</span>
+        </td>
+        <td style="text-align:right;font-family:var(--font-mono)">${r.ritmo > 0 ? r.ritmo + ' m/gg' : '—'}</td>
+      </tr>`;
+  }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--muted)">Nessun dato disponibile</td></tr>';
 }
 
 // ── KPI COUNTERS ────────────────────────────────────────────────────────────
