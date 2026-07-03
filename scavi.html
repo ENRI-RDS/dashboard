@@ -385,7 +385,7 @@
   <div style="display:flex;align-items:flex-start;justify-content:flex-end;gap:16px;flex-wrap:wrap;">
     <div class="exec-strip" id="execStrip">
       <div class="exec-stat">
-        <span class="exec-stat-label">Avanzamento Fisico</span>
+        <span class="exec-stat-label">Avanzamento globale</span>
         <span class="exec-stat-val" id="execPctScavi">—</span>
       </div>
       <div class="exec-stat">
@@ -445,8 +445,8 @@
           <thead>
             <tr>
               <th class="imp-th-sort" onclick="_sortImprese('impresa')">Impresa</th>
-              <th>Lotto</th>
-              <th>Cluster</th>
+              <th class="imp-th-sort" onclick="_sortImprese('lotti')">Lotto</th>
+              <th class="imp-th-sort" onclick="_sortImprese('cluster')">Cluster</th>
               <th class="imp-th-sort" style="text-align:right" onclick="_sortImprese('cantieri')">Cantieri</th>
               <th style="text-align:right">Completati</th>
               <th style="text-align:right">In Corso</th>
@@ -913,50 +913,48 @@ function openModalStato(stato) {
       <div class="modal-stat"><span class="modal-stat-lbl">Metri totali</span><span class="modal-stat-val">${fmt(totMetri)} m</span></div>
       <div class="modal-stat"><span class="modal-stat-lbl">Metri scavati</span><span class="modal-stat-val" style="color:${col}">${fmt(totScav)} m</span></div>
     </div>`;
-  const listHtml = rows.length ? rows.map(r => {
-    const metriTot = r.metri_totali || 0;
-    const scavati  = r.metri_scavati || 0;
-    const pct = metriTot > 0 ? Math.round(scavati / metriTot * 100) : 0;
-    const dInizioPrev = fmtD(r.data_inizio_prevista);
-    const dInizioEff  = fmtD(r.data_inizio_effettiva);
-    const dFinePrev   = fmtD(r.data_fine_prevista);
-    const dFineEff    = fmtD(r.data_fine_effettiva);
-    const dateChips = [
-      dInizioPrev ? `Inizio prev. ${dInizioPrev}` : null,
-      dInizioEff  ? `Inizio eff. ${dInizioEff}`   : null,
-      dFinePrev   ? `Fine prev. ${dFinePrev}`     : null,
-      dFineEff    ? `Fine eff. ${dFineEff}`       : null,
-    ].filter(Boolean);
-    return `
-      <div class="msc-card">
-        <div class="msc-head">
-          <div>
-            <div class="msc-code" style="color:${col}">${r.codice_cantiere || '—'}</div>
-            <div class="msc-pratica">Pratica ${r.pratica_id || '—'}</div>
-          </div>
-          <span class="msc-badge">Lotto ${r.lotto ?? '—'}${r.cluster ? ' · Cluster '+r.cluster : ''}</span>
-        </div>
-        <div class="msc-loc">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>
-          <span>${r.ente || '—'} · ${r.comune || '—'}</span>
-          ${r.provincia ? provPill(r.provincia) : ''}
-        </div>
-        <div class="msc-chips">
-          <span class="msc-chip">Impresa <b>${r.impresa || '—'}</b></span>
-        </div>
-        ${dateChips.length ? `<div class="msc-dates">${dateChips.map(d=>`<span>${d}</span>`).join('')}</div>` : ''}
-        ${r.stato_cantiere === 'sospeso' ? `<div class="msc-alert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg><span>${r.motivo_blocco || 'Motivo non specificato'}${r.data_ripresa_stimata ? ' · Ripresa stimata '+fmtD(r.data_ripresa_stimata) : ''}</span></div>` : ''}
-        ${r.note ? `<div class="msc-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v12H7l-3 3z"/></svg><span>${r.note}</span></div>` : ''}
-        <div class="modal-bar-row" style="margin-top:10px">
-          <div class="modal-bar-track">
-            ${pct > 0 ? `<div class="modal-bar-fill" style="width:${pct}%;background:${col}"></div>` : ''}
-            ${pct >= 8 ? `<span class="modal-bar-pct">${pct}%</span>` : ''}
-          </div>
-          <div class="modal-bar-val">${fmt(scavati)} / ${fmt(metriTot)} m</div>
-        </div>
-      </div>`;
-  }).join('') : `<div style="text-align:center;color:var(--muted);padding:24px">Nessun cantiere in questo stato.</div>`;
-  document.getElementById('modalStatoBody').innerHTML = statGrid + listHtml;
+  // Stessa tabella/colonne della sezione "Tutti i Cantieri" (vedi CANTIERI_COLS/_renderCantieriTable)
+  const tableHtml = rows.length ? `
+    <div style="overflow-x:auto;margin-top:12px">
+      <table class="cant-table">
+        <thead>
+          <tr>
+            <th>Cod. Cantiere</th><th>Pratica</th><th>Ente</th><th>Lotto</th><th>Cluster</th>
+            <th>Prov.</th><th>Comune</th><th>Impresa</th><th>Stato</th><th>Avanz.</th>
+            <th style="text-align:right">M. Tot.</th><th style="text-align:right">M. Scavati</th>
+            <th style="text-align:center">Registro</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => {
+            const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
+            const rc = STATO_COLOR[statoUI];
+            const metriTot = r.metri_totali || 0;
+            const scavati  = r.metri_scavati || 0;
+            const pct = metriTot > 0 ? Math.round(scavati / metriTot * 100) : 0;
+            const prog = metriTot > 0
+              ? `<div class="prog-wrap"><div class="prog-track"><div class="prog-fill" style="width:${pct}%;background:${rc}"></div></div><div class="prog-val">${pct}%</div></div>`
+              : `<span style="color:var(--muted2)">—</span>`;
+            return `<tr>
+              <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--accent)">${r.codice_cantiere || '—'}</span></td>
+              <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:12px;color:var(--muted)" title="${(r.tratte||[]).length} tratte">${r.pratica_id || '—'}</span></td>
+              <td style="color:var(--muted)">${r.ente || '—'}</td>
+              <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--accent)">${r.lotto ?? '—'}</span></td>
+              <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:12px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 7px;color:var(--muted)">${(r.cluster ?? '?').toString().replace(/^[Cc]/,'')}</span></td>
+              <td style="white-space:nowrap">${provPill(r.provincia)}</td>
+              <td style="color:var(--muted)">${r.comune || '—'}</td>
+              <td style="color:var(--muted);white-space:nowrap">${r.impresa || '—'}</td>
+              <td style="white-space:nowrap"><span class="chip ${statoUI}">${STATO_LABEL[statoUI]}</span></td>
+              <td style="max-width:150px">${prog}</td>
+              <td style="text-align:right;font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(metriTot)}</td>
+              <td style="text-align:right;color:var(--muted)">${fmt(scavati)}</td>
+              <td style="text-align:center"><button class="btn-registro" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Registro</button></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>` : `<div style="text-align:center;color:var(--muted);padding:24px">Nessun cantiere in questo stato.</div>`;
+  document.getElementById('modalStatoBody').innerHTML = statGrid + tableHtml;
   document.getElementById('modalStatoOverlay').classList.add('open');
 }
 function closeModalStato(e) {
@@ -1325,8 +1323,11 @@ function _renderImprese() {
 
   const { key, dir } = _impreseSort;
   rows.sort((a, b) => {
-    const av = key === 'impresa' ? a.impresa.toLowerCase() : a[key];
-    const bv = key === 'impresa' ? b.impresa.toLowerCase() : b[key];
+    let av, bv;
+    if (key === 'impresa') { av = a.impresa.toLowerCase(); bv = b.impresa.toLowerCase(); }
+    else if (key === 'lotti')   { av = [...a.lotti].sort(_lottoCompare).join(', '); bv = [...b.lotti].sort(_lottoCompare).join(', '); }
+    else if (key === 'cluster') { av = [...a.cluster].sort().join(', '); bv = [...b.cluster].sort().join(', '); }
+    else { av = a[key]; bv = b[key]; }
     const cmp = av < bv ? -1 : av > bv ? 1 : 0;
     return dir === 'desc' ? -cmp : cmp;
   });
@@ -1458,7 +1459,7 @@ Object.keys(CLUSTER_PERMESSI).sort((a,b)=>+a-+b).forEach(cl => {
   lbl.innerHTML = `
     <div style="display:flex;align-items:center;gap:6px">
       <span style="background:${CLUSTER_COLOR[cl]||'#8A91B4'}20;color:${CLUSTER_COLOR[cl]||'#8A91B4'};border:1px solid ${CLUSTER_COLOR[cl]||'#8A91B4'}40;border-radius:4px;padding:1px 7px;font-size:9px;font-weight:700;font-family:var(--font-mono)">${cl}</span>
-      <span style="font-size:11px;font-weight:700;color:var(--text)">${CLUSTER_LABEL[cl]||'Cluster '+cl}</span>
+      <span style="font-size:11px;font-weight:700;color:var(--text)">Cluster ${cl}</span>
     </div>
     <span style="font-size:9px;color:var(--muted2)">${cd.lotti.length} lotti</span>`;
   permRow.appendChild(lbl);
