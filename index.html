@@ -815,6 +815,13 @@ window.loadXLSX = (function(){
 
   /* Contenuto celle */
   .tbl-codice  { font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; color:var(--accent); }
+  td.tbl-codice-click { display:table-cell; }
+  td.tbl-codice-click .tbl-codice-wrap { display:inline-flex; align-items:center; gap:5px; padding:2px 4px; border-radius:5px; transition:background .12s; }
+  td.tbl-codice-click:hover .tbl-codice-wrap { background:var(--surface2); }
+  td.tbl-codice-click .tbl-codice { border-bottom:1px dashed var(--accent); }
+  .tbl-note-icon { width:12px; height:12px; flex:0 0 auto; color:var(--muted); opacity:.55; }
+  .tbl-note-icon.has-note { color:var(--accent); opacity:1; }
+  td.tbl-codice-click:hover .tbl-note-icon { opacity:1; }
   .tbl-impresa { font-size:11px; font-weight:600; color:var(--accent2); }
   .tbl-ente    { font-size:12px; color:var(--muted); }
   .tbl-date    { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); }
@@ -4478,7 +4485,7 @@ function _processMasterText(text) {
       if (!praticheByLotto[lotto][codice]) {
         praticheByLotto[lotto][codice] = {
           codice, tipo: r.tipo, stato: r.stato, ente: r.ente,
-          dr: r.dr, dum: r.dum, dr_invio: r.dr_invio || '', dataPrevRilascio: r.dataPrevRilascio || '', dataUpdate: r.dataUpdate || '', metri: 0, lotto,
+          dr: r.dr, dum: r.dum, dr_invio: r.dr_invio || '', dataPrevRilascio: r.dataPrevRilascio || '', dataUpdate: r.dataUpdate || '', note: r.note || '', metri: 0, lotto,
           comuni: new Set(r.comune ? [r.comune] : [])
         };
       }
@@ -4494,6 +4501,15 @@ function _processMasterText(text) {
         existing.ente  = r.ente;
         existing.dr    = r.dr;
         existing.dum   = r.dum;
+      }
+      // Nota: tiene la nota non vuota più recente (per dataUpdate, fallback dum) tra tutte le righe della pratica
+      if (r.note) {
+        const newNoteDate = parseDateIT(r.dataUpdate) || newDum;
+        const exNoteDate  = parseDateIT(existing._noteDate);
+        if (!existing.note || !exNoteDate || (newNoteDate && newNoteDate >= exNoteDate)) {
+          existing.note = r.note;
+          existing._noteDate = r.dataUpdate || r.dum || '';
+        }
       }
       // Preserva sempre dr_invio se disponibile
       if (r.dr_invio && !existing.dr_invio) existing.dr_invio = r.dr_invio;
@@ -6507,8 +6523,14 @@ _hookScadenze();
         return `<span class="tbl-chip tbl-chip-prev ${prevClass}">${r.prev.label}</span>`;
       })() : '<span class="tbl-dash">—</span>';
       window._praticaNoteMap[r.codice] = { note: r.note || '', date: r.data_update || r.agg || r.invio || '' };
+      const hasNote = !!(r.note) || !!((window._solByPratica||{})[r.codice]||[]).length;
       return `<tr class="tbl-row">
-        <td class="tbl-td tbl-codice-click" data-cod="${r.codice}" style="cursor:pointer" title="Vedi note pratica"><span class="tbl-codice">${r.codice}</span></td>
+        <td class="tbl-td tbl-codice-click" data-cod="${r.codice}" style="cursor:pointer" title="${hasNote ? 'Vedi note pratica' : 'Nessuna nota — clicca per aggiungere/vedere'}">
+          <span class="tbl-codice-wrap">
+            <span class="tbl-codice">${r.codice}</span>
+            <svg class="tbl-note-icon${hasNote ? ' has-note' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </span>
+        </td>
         <td class="tbl-td">${lottoChip}</td>
         <td class="tbl-td tbl-impresa">${r.impresa||'—'}</td>
         <td class="tbl-td"><span class="tbl-chip ${tipoClass}">${tipoShort||'—'}</span></td>
