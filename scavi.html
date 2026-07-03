@@ -1281,8 +1281,9 @@ function _renderImprese() {
   const oggi = new Date();
   CANTIERI_RAW.forEach(r => {
     const nome = r.impresa || 'N/D';
-    if (!byImpresa[nome]) byImpresa[nome] = { impresa: nome, cantieri:0, completati:0, corso:0, sospesi:0, metriTot:0, metriScav:0, giorniAttivi:0, lotti:new Set(), cluster:new Set() };
+    if (!byImpresa[nome]) byImpresa[nome] = { impresa: nome, cantieri:0, completati:0, corso:0, sospesi:0, metriTot:0, metriScav:0, giorniAttivi:0, lotti:new Set(), cluster:new Set(), metriTotByLotto:{} };
     const g = byImpresa[nome];
+    const lottoKey = String(r.lotto || '?'); // stessa normalizzazione di PERMESSI/byLotto
     g.lotti.add(String(r.lotto ?? '—'));
     g.cluster.add(String(r.cluster ?? '?').replace(/^[Cc]/, ''));
     const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
@@ -1292,6 +1293,7 @@ function _renderImprese() {
     if (statoUI === 'sospeso') g.sospesi++;
     g.metriTot  += r.metri_totali  || 0;
     g.metriScav += r.metri_scavati || 0;
+    g.metriTotByLotto[lottoKey] = (g.metriTotByLotto[lottoKey] || 0) + (r.metri_totali || 0);
     if (r.data_inizio_effettiva && (r.metri_scavati || 0) > 0) {
       const inizio = new Date(r.data_inizio_effettiva);
       const fine   = r.data_fine_effettiva ? new Date(r.data_fine_effettiva) : oggi;
@@ -1300,11 +1302,23 @@ function _renderImprese() {
     }
   });
 
-  let rows = Object.values(byImpresa).map(g => ({
-    ...g,
-    pct:   g.metriTot > 0 ? Math.round(g.metriScav / g.metriTot * 100) : 0,
-    ritmo: g.giorniAttivi > 0 ? Math.round(g.metriScav / g.giorniAttivi) : 0,
-  }));
+  // Metri totali "reali" per impresa: come nella vista per-Lotto, si preferisce il
+  // totale da PERMESSI (Riepilogo_progettazione.csv, copre tutte le tratte autorizzate
+  // del lotto) rispetto alla somma di metri_totali dai soli cantieri già sincronizzati
+  // in Mongo, che può essere parziale. Fallback sul dato cantieri se il lotto non è in PERMESSI.
+  let rows = Object.values(byImpresa).map(g => {
+    let metriTotReale = 0;
+    Object.keys(g.metriTotByLotto).forEach(l => {
+      const p = PERMESSI[l];
+      metriTotReale += p ? p.totale : g.metriTotByLotto[l];
+    });
+    return {
+      ...g,
+      metriTot: metriTotReale,
+      pct:   metriTotReale > 0 ? Math.round(g.metriScav / metriTotReale * 100) : 0,
+      ritmo: g.giorniAttivi > 0 ? Math.round(g.metriScav / g.giorniAttivi) : 0,
+    };
+  });
 
   const sub = document.getElementById('impreseSubtitle');
   if (sub) sub.textContent = rows.length + ' imprese · ordina cliccando le colonne';
