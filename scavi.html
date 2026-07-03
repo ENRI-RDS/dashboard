@@ -191,7 +191,7 @@
   .card-body  { padding:20px; }
   .card-caption { font-size:12px; font-weight:600; color:var(--text2); font-family:var(--font-mono); letter-spacing:.01em; display:flex; align-items:center; gap:5px; }
   .card-caption .cc-num { font-family:var(--font-display); font-weight:800; color:var(--retelit-blue); font-size:15px; letter-spacing:-.01em; }
-  .card-caption .cc-sep { color:var(--border2); }
+  .card-caption .cc-sep { color:var(--border2); margin:0 2px; }
   .card-caption .cc-sort { color:var(--retelit-teal); }
 
   /* ── CLUSTER BARS (stile index) ──────────────────────────────── */
@@ -251,6 +251,15 @@
   .kpi-filt-btn:hover { border-color:var(--accent); color:var(--accent); }
   .kpi-filt-btn.active { border-color:var(--accent); background:var(--accent); color:#fff; }
   .kpi-filter-count { font-size:12px; font-weight:600; font-family:var(--font-mono); color:var(--text2); margin-left:auto; }
+  .kpi-filt-select {
+    font-family:var(--font-display); font-size:12px; font-weight:600;
+    padding:6px 10px; border-radius:7px; cursor:pointer;
+    border:1px solid var(--border2); background:var(--surface2); color:var(--text2); transition:all .15s;
+    outline:none;
+  }
+  .kpi-filt-select:hover { border-color:var(--accent); color:var(--accent); }
+  .kpi-filt-select.active { border-color:var(--accent); background:var(--accent); color:#fff; }
+  .kpi-filt-select.active option { background:var(--surface); color:var(--text); }
 
   .cant-table { width:100%; border-collapse:collapse; }
   .cant-table thead th { position:relative; }
@@ -441,7 +450,7 @@
   <div class="card">
     <div class="card-header">
       <span class="card-title">Performance Imprese</span>
-      <span class="card-caption" id="impreseSubtitle">caricamento…</span>
+      <span class="card-caption" id="impreseSubtitle" title="Clicca una colonna per cambiare ordine">caricamento…</span>
     </div>
     <div class="card-body">
       <div style="overflow-x:auto;">
@@ -596,7 +605,7 @@
 // ── DATI LOTTI — caricati da API /api/cantieri (scavi) + Riepilogo_progettazione.csv (permessi) ──
 let LOTTI = [];          // dati scavi aggregati per lotto (da MongoDB)
 let CANTIERI_RAW = [];    // singoli cantieri (tratte) non aggregati, da MongoDB
-let _cantieriLottoFiltro = 'all';
+let _cantieriQuickFilters = { lotto:'all', stato:'all', cluster:'all', impresa:'all' };
 let PERMESSI = {};        // { lotto: { statiMap: {STATO: metri}, totale: metri } }  (da CSV permessi)
 let CLUSTER_PERMESSI = {}; // { cluster: { statiMap: {STATO: metri}, totale: metri, lotti: Set } } — aggregato per tratta, non per lotto: un lotto può attraversare più cluster
 
@@ -1015,12 +1024,34 @@ function closeModalRegistro(e) {
 }
 
 // Pulsanti filtro per lotto sopra la tabella "Tutti i Cantieri"
+const CANTIERI_QUICK_FILTERS = [
+  { key:'lotto',    label:'Lotto',    all:'Tutti i lotti',    get:r => String(r.lotto || '?'), sort:(a,b)=>_lottoCompare({id:a},{id:b}) },
+  { key:'stato',    label:'Stato',    all:'Tutti gli stati',  get:r => STATO_LABEL[STATO_MAP[r.stato_cantiere] || 'non-avviato'] },
+  { key:'cluster',  label:'Cluster',  all:'Tutti i cluster',  get:r => (r.cluster ?? '?').toString().replace(/^[Cc]/,'') },
+  { key:'impresa',  label:'Impresa',  all:'Tutte le imprese', get:r => r.impresa || '—' },
+];
+
+function _cantieriQuickFilterMatch(r) {
+  return CANTIERI_QUICK_FILTERS.every(f => _cantieriQuickFilters[f.key] === 'all' || f.get(r) === _cantieriQuickFilters[f.key]);
+}
+
 function _renderCantieriFilters() {
   const box = document.getElementById('cantieriLottoFilters');
   if (!box) return;
-  const lotti = [...new Set(CANTIERI_RAW.map(r => String(r.lotto || '?')))].sort((a,b)=>_lottoCompare({id:a},{id:b}));
-  box.innerHTML = `<button class="kpi-filt-btn${_cantieriLottoFiltro==='all'?' active':''}" onclick="_setCantieriLottoFiltro('all')">Tutti</button>` +
-    lotti.map(l => `<button class="kpi-filt-btn${_cantieriLottoFiltro===l?' active':''}" onclick="_setCantieriLottoFiltro('${l}')">Lotto ${l}</button>`).join('');
+  box.innerHTML = CANTIERI_QUICK_FILTERS.map(f => {
+    let values = [...new Set(CANTIERI_RAW.map(f.get))];
+    values = f.sort ? values.sort(f.sort) : values.sort((a,b) => a.localeCompare(b, undefined, { numeric:true }));
+    const active = _cantieriQuickFilters[f.key] !== 'all';
+    const options = `<option value="all">${f.all}</option>` +
+      values.map(v => `<option value="${v.replace(/"/g,'&quot;')}"${_cantieriQuickFilters[f.key]===v?' selected':''}>${f.label} ${v}</option>`).join('');
+    return `<select class="kpi-filt-select${active?' active':''}" onchange="_setCantieriQuickFilter('${f.key}', this.value)">${options}</select>`;
+  }).join('');
+}
+
+function _setCantieriQuickFilter(key, value) {
+  _cantieriQuickFilters[key] = value;
+  _renderCantieriFilters();
+  _renderCantieriTable();
 }
 
 // ── Sort + filtro per colonna (stile Excel) sulla tabella "Tutti i Cantieri" ──
@@ -1107,7 +1138,7 @@ document.addEventListener('click', (ev) => {
 function _cantieriRowsForColFilter(excludeKey) {
   const q = (document.getElementById('cantieriSearchInput')?.value || '').trim().toLowerCase();
   return CANTIERI_RAW.filter(r => {
-    if (_cantieriLottoFiltro !== 'all' && String(r.lotto || '?') !== _cantieriLottoFiltro) return false;
+    if (!_cantieriQuickFilterMatch(r)) return false;
     if (q) {
       const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
       const haystack = [r.codice_cantiere, r.pratica_id, r.ente, r.lotto, r.cluster, r.provincia, r.comune, r.impresa, STATO_LABEL[statoUI]].join(' ').toLowerCase();
@@ -1165,7 +1196,7 @@ function _renderCantieriTable() {
   _renderCantieriTableHead();
   const q = (document.getElementById('cantieriSearchInput')?.value || '').trim().toLowerCase();
   let rows = CANTIERI_RAW.filter(r => {
-    if (_cantieriLottoFiltro !== 'all' && String(r.lotto || '?') !== _cantieriLottoFiltro) return false;
+    if (!_cantieriQuickFilterMatch(r)) return false;
     if (q) {
       const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
       const haystack = [r.codice_cantiere, r.pratica_id, r.ente, r.lotto, r.cluster, r.provincia, r.comune, r.impresa, STATO_LABEL[statoUI]].join(' ').toLowerCase();
@@ -1222,14 +1253,15 @@ function _renderCantieriTable() {
 
 function _renderPageSubtitle() {
   const el = document.getElementById('pageSubDyn');
-  if (!el) return;
-  const nLotti = LOTTI.length;
-  const clusters = [...new Set(LOTTI.map(r => r.cl).filter(c => c !== '?'))].sort();
-  const provs = [...new Set(LOTTI.flatMap(r => r.prov || []))].sort();
-  el.innerHTML = `${nLotti} lotti` +
-    (clusters.length ? ` · cluster ${clusters.join(', ')}` : '') +
-    (provs.length ? ` · province ${provs.join(', ')}` : '') +
-    `<br>Avanzamento permessi (da Progettazione) e avanzamento fisico scavi (da rendicontazione imprese)`;
+  if (el) {
+    const nLotti = LOTTI.length;
+    const clusters = [...new Set(LOTTI.map(r => r.cl).filter(c => c !== '?'))].sort();
+    const provs = [...new Set(LOTTI.flatMap(r => r.prov || []))].sort();
+    el.innerHTML = `${nLotti} lotti` +
+      (clusters.length ? ` · cluster ${clusters.join(', ')}` : '') +
+      (provs.length ? ` · province ${provs.join(', ')}` : '') +
+      `<br>Avanzamento permessi (da Progettazione) e avanzamento fisico scavi (da rendicontazione imprese)`;
+  }
   const lottiSub = document.getElementById('lottiSubtitle');
   if (lottiSub) lottiSub.textContent = 'permessi (sopra) · % metri scavati (sotto)';
 }
@@ -1330,7 +1362,7 @@ function _renderImprese() {
   if (sub) {
     const sortLabel = IMP_SORT_LABEL[_impreseSort.key] || _impreseSort.key;
     const arrow = _impreseSort.dir === 'desc' ? '↓' : '↑';
-    sub.innerHTML = `<span class="cc-num">${rows.length}</span> imprese<span class="cc-sep">·</span>ordinate per <span class="cc-sort">${sortLabel} ${arrow}</span><span class="cc-sep">·</span>clicca una colonna per cambiare ordine`;
+    sub.innerHTML = `<span class="cc-num">${rows.length}</span> imprese<span class="cc-sep">·</span>ord. <span class="cc-sort">${sortLabel} ${arrow}</span>`;
   }
 
   const { key, dir } = _impreseSort;
