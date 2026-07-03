@@ -1463,9 +1463,12 @@ def _apply_changes_to_df(df, submission: dict) -> tuple:
             if not idx:
                 summary["not_found"] += 1
                 continue
-            # Auto-set DATA_ULTIMA_MODIFICA se non fornita
+            # Auto-set DATA_ULTIMA_MODIFICA se non fornita (solo su cambio stato)
             if "DATA_ULTIMA_MODIFICA" not in fields and "STATO_PERMESSO" in fields:
                 fields["DATA_ULTIMA_MODIFICA"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+            # DATA_UPDATE: qualsiasi tocco dell'impresa sulla pratica (stato, nota, o altro campo), non solo cambio stato
+            if "DATA_UPDATE" in df.columns and "DATA_UPDATE" not in fields:
+                fields["DATA_UPDATE"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
             # Copia l'ultima riga esistente e inserisce la nuova SUBITO DOPO
             # in modo da mantenere le righe dello stesso iter vicine
             last_idx = idx[-1]
@@ -1484,6 +1487,8 @@ def _apply_changes_to_df(df, submission: dict) -> tuple:
             if not isinstance(row, dict):
                 continue
             new_row = {c: str(row.get(c, "")) for c in df.columns}
+            if "DATA_UPDATE" in df.columns and not new_row.get("DATA_UPDATE"):
+                new_row["DATA_UPDATE"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
             df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
             summary["added"] += 1
     return df, summary
@@ -1927,6 +1932,49 @@ async def get_solleciti(sess: dict = Depends(_require_session)):
     return {"solleciti": items, "count": len(items)}
 
 
+async def _touch_data_update(tratta_id: str, pratica: str, tipo_permesso: str = "") -> None:
+    """Aggiorna DATA_UPDATE=oggi sulle righe Master.csv della pratica toccata da un sollecito.
+    Scrittura diretta (fire-and-forget), coerente col modello 'solleciti senza approvazione admin'."""
+    try:
+        df = await _read_master_csv()
+        if "DATA_UPDATE" not in df.columns or "TRATTA_ID" not in df.columns:
+            return
+        mask = df["TRATTA_ID"].astype(str).str.strip() == str(tratta_id).strip()
+        if pratica and "PRATICA" in df.columns:
+            mask = mask & (df["PRATICA"].astype(str).str.strip() == str(pratica).strip())
+        if tipo_permesso and "TIPO_PERMESSO" in df.columns:
+            mask = mask & (df["TIPO_PERMESSO"].astype(str).str.strip() == str(tipo_permesso).strip())
+        if not mask.any():
+            return
+        df.loc[mask, "DATA_UPDATE"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+        await _write_master_csv(df, note=f"Sollecito tratta {tratta_id} pratica {pratica}: touch DATA_UPDATE")
+    except Exception as e:
+        print(f"[_touch_data_update] {e}")
+
+
+async def _touch_data_update_multi(keys: list) -> None:
+    """Come _touch_data_update ma per più pratiche in un solo read+write di Master.csv."""
+    try:
+        df = await _read_master_csv()
+        if "DATA_UPDATE" not in df.columns or "TRATTA_ID" not in df.columns:
+            return
+        oggi = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+        any_hit = False
+        for tratta_id, pratica, tipo_permesso in keys:
+            mask = df["TRATTA_ID"].astype(str).str.strip() == str(tratta_id).strip()
+            if pratica and "PRATICA" in df.columns:
+                mask = mask & (df["PRATICA"].astype(str).str.strip() == str(pratica).strip())
+            if tipo_permesso and "TIPO_PERMESSO" in df.columns:
+                mask = mask & (df["TIPO_PERMESSO"].astype(str).str.strip() == str(tipo_permesso).strip())
+            if mask.any():
+                df.loc[mask, "DATA_UPDATE"] = oggi
+                any_hit = True
+        if any_hit:
+            await _write_master_csv(df, note=f"Solleciti bulk ({len(keys)}): touch DATA_UPDATE")
+    except Exception as e:
+        print(f"[_touch_data_update_multi] {e}")
+
+
 @app.post("/api/imprese/solleciti")
 async def add_sollecito(payload: dict, sess: dict = Depends(_require_session)):
     """Inserisce un nuovo sollecito. Scrittura diretta senza approvazione admin."""
@@ -1972,6 +2020,7 @@ async def add_sollecito(payload: dict, sess: dict = Depends(_require_session)):
     }
     res = await solleciti_col.insert_one(record)
     asyncio.create_task(_push_solleciti_to_github())
+    asyncio.create_task(_touch_data_update(tratta_id, pratica, tipo_perm))
     return {"ok": True, "id": str(res.inserted_id)}
 
 
@@ -1984,6 +2033,7 @@ async def bulk_insert_solleciti(payload: dict, sess: dict = Depends(_require_ses
         raise HTTPException(400, "items obbligatorio")
 
     inserted = []
+    touch_keys = []
     for item in items:
         tratta_id = str(item.get("tratta_id", "")).strip()
         tipo      = str(item.get("tipo_sollecito", "")).strip()
@@ -2008,9 +2058,11 @@ async def bulk_insert_solleciti(payload: dict, sess: dict = Depends(_require_ses
         }
         res = await solleciti_col.insert_one(record)
         inserted.append(str(res.inserted_id))
+        touch_keys.append((tratta_id, record["pratica"], record["tipo_permesso"]))
 
     if inserted:
         asyncio.create_task(_push_solleciti_to_github())
+        asyncio.create_task(_touch_data_update_multi(touch_keys))
     return {"ok": True, "inserted": inserted, "count": len(inserted)}
 
 
