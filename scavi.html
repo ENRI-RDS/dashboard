@@ -117,6 +117,16 @@
   .page-eyebrow { font-family:var(--font-mono); font-size:9px; font-weight:500; letter-spacing:.2em; text-transform:uppercase; color:var(--accent2); }
   .page-h1 { font-family:var(--font-display); font-size:22px; font-weight:700; letter-spacing:-.025em; color:var(--text); line-height:1.2; margin-top:2px; }
   .page-sub { font-size:12px; color:var(--muted); margin-top:3px; line-height:1.5; }
+  .exec-strip { display:flex; gap:10px; flex-wrap:wrap; }
+  .exec-stat {
+    display:flex; flex-direction:column; align-items:flex-end; text-align:right; gap:2px;
+    padding:8px 18px; border-radius:10px; background:var(--surface); border:1px solid var(--border2);
+    min-width:118px; box-shadow:var(--sh-xs);
+  }
+  .exec-stat-label { font-size:9px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); font-weight:700; }
+  .exec-stat-val { font-family:var(--font-display); font-size:27px; font-weight:800; letter-spacing:-.02em; color:var(--retelit-blue); line-height:1.15; }
+  .exec-stat.warn { border-color:#C0392B55; background:#C0392B0A; }
+  .exec-stat.warn .exec-stat-val { color:#C0392B; }
   .demo-badge {
     display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:20px;
     background:var(--retelit-teal)0A; border:1px solid var(--retelit-teal)30; font-size:11px; color:var(--retelit-teal); font-weight:600; white-space:nowrap; flex-shrink:0;
@@ -136,7 +146,7 @@
   .phase-header {
     display:flex; align-items:center; gap:7px; margin-bottom:10px; padding-bottom:8px;
     border-bottom:1px dashed var(--border2); color:var(--retelit-blue, var(--accent));
-    font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.13em;
+    font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
   }
   .phase-header-icon { width:18px; height:18px; border-radius:5px; display:inline-flex; align-items:center; justify-content:center; font-size:11px; background:rgba(4,63,117,.12); flex-shrink:0; }
   .kpi-row-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
@@ -368,6 +378,25 @@
 
   <!-- HEADER -->
   <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+    <div>
+      <div class="page-eyebrow">ENRI · Rete in Fibra Ottica</div>
+      <div class="page-h1">Avanzamento Scavi</div>
+      <div class="page-sub" id="pageSubDyn">caricamento…</div>
+    </div>
+    <div class="exec-strip" id="execStrip">
+      <div class="exec-stat">
+        <span class="exec-stat-label">Avanzamento Fisico</span>
+        <span class="exec-stat-val" id="execPctScavi">—</span>
+      </div>
+      <div class="exec-stat">
+        <span class="exec-stat-label">Permessi Ottenuti</span>
+        <span class="exec-stat-val" id="execPctPermessi">—</span>
+      </div>
+      <div class="exec-stat" id="execRischioCard">
+        <span class="exec-stat-label">Cantieri in Sospeso</span>
+        <span class="exec-stat-val" id="execSospesi">—</span>
+      </div>
+    </div>
   </div>
 
   <div class="phase-panel phase-scavi">
@@ -1204,6 +1233,8 @@ function _renderRiepilogo() {
   const provEntries = Object.entries(provScavati).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 
   const el = id => document.getElementById(id);
+  if (el('execPctScavi'))    el('execPctScavi').textContent    = pctGlob + '%';
+  if (el('execPctPermessi')) el('execPctPermessi').textContent = pctPermessi + '%';
   if (el('repTracciato'))  el('repTracciato').textContent  = fmt(Math.round(totMetri / 1000)) + ' km';
   if (el('repPermessi'))   el('repPermessi').textContent   = pctPermessi + '% (' + fmt(Math.round(totOttenuto/1000)) + ' km)';
   if (el('repScavati'))    el('repScavati').textContent    = fmt(Math.round(totScavati / 1000)) + ' km';
@@ -1237,6 +1268,10 @@ document.getElementById('kpiAll').textContent = counts['allestimento'];
 document.getElementById('kpiCor').textContent = counts['in-corso'];
 document.getElementById('kpiCom').textContent = counts['completato'];
 document.getElementById('kpiSos').textContent = counts['sospeso'];
+const execSospesiEl = document.getElementById('execSospesi');
+const execRischioCard = document.getElementById('execRischioCard');
+if (execSospesiEl) execSospesiEl.textContent = counts['sospeso'];
+if (execRischioCard) execRischioCard.classList.toggle('warn', counts['sospeso'] > 0);
 const SUB_ID = { 'non-avviato':'kpiNavSub', 'allestimento':'kpiAllSub', 'in-corso':'kpiCorSub', 'completato':'kpiComSub', 'sospeso':'kpiSosSub' };
 Object.keys(SUB_ID).forEach(stato => {
   const pct = totaleMetri > 0 ? Math.round(metri[stato] / totaleMetri * 100) : 0;
