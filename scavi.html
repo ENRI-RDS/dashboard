@@ -1467,9 +1467,16 @@ Object.keys(CLUSTER_PERMESSI).sort((a,b)=>+a-+b).forEach(cl => {
     <span style="font-size:9px;color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="Lotti ${[...cd.lotti].sort(_lottoCompare).join(', ')}">Lotti ${[...cd.lotti].sort(_lottoCompare).join(', ')}</span>`;
   permRow.appendChild(lbl);
 
+  const permTrackWrap = document.createElement('div');
+  permTrackWrap.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:2px;';
+  const permCaption = document.createElement('span');
+  permCaption.style.cssText = 'font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);';
+  permCaption.textContent = 'Progettazione (permessi)';
+  permTrackWrap.appendChild(permCaption);
+
   const permTrack = document.createElement('div');
   permTrack.className = 'bar-track';
-  permTrack.style.cssText = 'flex:1;height:16px;';
+  permTrack.style.cssText = 'width:100%;height:16px;';
   ORDINE_WORKFLOW_PERMESSI.forEach(label => {
     const g = STATI_GRUPPI_PERMESSI.find(x => x.label === label);
     if (!g) return;
@@ -1478,7 +1485,8 @@ Object.keys(CLUSTER_PERMESSI).sort((a,b)=>+a-+b).forEach(cl => {
     const pct = tot > 0 ? m / tot * 100 : 0;
     permTrack.appendChild(makeSeg(pct, g.color, g.label, m, false));
   });
-  permRow.appendChild(permTrack);
+  permTrackWrap.appendChild(permTrack);
+  permRow.appendChild(permTrackWrap);
 
   const ottenutoM = statiMap['OTTENUTO'] || 0;
   const permPct = tot > 0 ? Math.round(ottenutoM / tot * 100) : 0;
@@ -1504,9 +1512,16 @@ Object.keys(CLUSTER_PERMESSI).sort((a,b)=>+a-+b).forEach(cl => {
   lbl2.textContent = '';
   scaviRow.appendChild(lbl2);
 
+  const scaviTrackWrap = document.createElement('div');
+  scaviTrackWrap.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:2px;';
+  const scaviCaption = document.createElement('span');
+  scaviCaption.style.cssText = 'font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);';
+  scaviCaption.textContent = 'Scavi (fisico)';
+  scaviTrackWrap.appendChild(scaviCaption);
+
   const scaviTrack = document.createElement('div');
   scaviTrack.className = 'bar-track';
-  scaviTrack.style.flex = '1';
+  scaviTrack.style.width = '100%';
   const statoMetriCl = sc.statoMetri || {};
   let trackedMetri = 0;
   STATO_ORDER.forEach(stato => {
@@ -1521,7 +1536,8 @@ Object.keys(CLUSTER_PERMESSI).sort((a,b)=>+a-+b).forEach(cl => {
     const pctRimasto = tot > 0 ? metriNonTracciati / tot * 100 : 100;
     scaviTrack.appendChild(makeSeg(pctRimasto, STATO_COLOR['non-avviato'], 'Non tracciato', metriNonTracciati, true));
   }
-  scaviRow.appendChild(scaviTrack);
+  scaviTrackWrap.appendChild(scaviTrack);
+  scaviRow.appendChild(scaviTrackWrap);
 
   const scaviPctEl = document.createElement('span');
   scaviPctEl.className = 'bar-pct';
@@ -1567,9 +1583,16 @@ LOTTI.forEach(r => {
     <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:2px;">${provPills}</div>`;
   permRow.appendChild(lbl);
 
+  const permTrackWrap = document.createElement('div');
+  permTrackWrap.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:2px;';
+  const permCaption = document.createElement('span');
+  permCaption.style.cssText = 'font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);';
+  permCaption.textContent = 'Progettazione (permessi)';
+  permTrackWrap.appendChild(permCaption);
+
   const permTrack = document.createElement('div');
   permTrack.className = 'bar-track';
-  permTrack.style.cssText = 'flex:1;height:16px;';
+  permTrack.style.cssText = 'width:100%;height:16px;';
   if (r.permessi) {
     const gruppi = buildGruppiMapPermessi(r.permessi);
     ORDINE_WORKFLOW_PERMESSI.forEach(label => {
@@ -1583,7 +1606,8 @@ LOTTI.forEach(r => {
   } else {
     permTrack.style.opacity = '.3';
   }
-  permRow.appendChild(permTrack);
+  permTrackWrap.appendChild(permTrack);
+  permRow.appendChild(permTrackWrap);
 
   const permPctEl = document.createElement('span');
   permPctEl.style.cssText = 'font-size:10px;font-weight:700;color:var(--muted);width:36px;text-align:right;flex-shrink:0;';
@@ -1609,9 +1633,16 @@ LOTTI.forEach(r => {
   lbl2.textContent = '';
   scaviRow.appendChild(lbl2);
 
+  const lottoTrackWrap = document.createElement('div');
+  lottoTrackWrap.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:2px;';
+  const scaviCaptionR = document.createElement('span');
+  scaviCaptionR.style.cssText = 'font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);';
+  scaviCaptionR.textContent = 'Scavi (fisico)';
+  lottoTrackWrap.appendChild(scaviCaptionR);
+
   const lottoTrack = document.createElement('div');
   lottoTrack.className = 'bar-track';
-  lottoTrack.style.flex = '1';
+  lottoTrack.style.width = '100%';
   const statoMetriR = r.statoMetri || {};
   let trackedMetriR = 0;
   STATO_ORDER.forEach(stato => {
@@ -1626,7 +1657,8 @@ LOTTI.forEach(r => {
     const pctRimasto = r.metri > 0 ? metriNonTracciatiR / r.metri * 100 : 100;
     lottoTrack.appendChild(makeSeg(pctRimasto, STATO_COLOR['non-avviato'], 'Non tracciato', metriNonTracciatiR, true));
   }
-  scaviRow.appendChild(lottoTrack);
+  lottoTrackWrap.appendChild(lottoTrack);
+  scaviRow.appendChild(lottoTrackWrap);
 
   const pctEl  = document.createElement('span'); pctEl.className = 'bar-pct'; pctEl.style.color = col; pctEl.textContent = r.haCantiere ? r.pct + '%' : '—';
   const mEl    = document.createElement('span'); mEl.style.cssText = 'min-width:72px;text-align:right;font-size:12px;font-family:Raleway,sans-serif;font-weight:700;color:var(--text2);flex-shrink:0;letter-spacing:-.01em'; mEl.textContent = fmt(r.metri) + ' m';
