@@ -860,15 +860,6 @@ async function _loadCantieri() {
   }
 }
 
-const CLUSTER_LABEL = {
-  '1':'Milano urbano',
-  '2':'Sud Milano / Pavia',
-  '3':'Dorsale principale',
-  '4':'Lodigiano',
-  '5':'Pavese',
-  '6':'Cremasco',
-  '7':'Bergamo est'
-};
 const CLUSTER_COLOR = {
   '1':'#0B3182','2':'#1F7A4E','3':'#6B3FA0',
   '4':'#1A7A8A','5':'#C08A14','6':'#8A5A1A','7':'#C23B22'
@@ -909,21 +900,10 @@ function _filterCantieriByStato(stato) {
   openModalStato(stato);
 }
 
-function openModalStato(stato) {
-  const rows = CANTIERI_RAW.filter(r => (STATO_MAP[r.stato_cantiere] || 'non-avviato') === stato);
-  const col = STATO_COLOR[stato];
-  document.getElementById('modalStatoTitle').innerHTML =
-    `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col};margin-right:8px"></span>${STATO_LABEL[stato]} <span style="color:var(--muted);font-weight:400;font-size:13px">· ${rows.length} cantieri</span>`;
-  const totMetri = rows.reduce((s,r) => s + (r.metri_totali || 0), 0);
-  const totScav  = rows.reduce((s,r) => s + (r.metri_scavati || 0), 0);
-  const statGrid = `
-    <div class="modal-stat-grid">
-      <div class="modal-stat"><span class="modal-stat-lbl">Cantieri</span><span class="modal-stat-val">${rows.length}</span></div>
-      <div class="modal-stat"><span class="modal-stat-lbl">Metri totali</span><span class="modal-stat-val">${fmt(totMetri)} m</span></div>
-      <div class="modal-stat"><span class="modal-stat-lbl">Metri scavati</span><span class="modal-stat-val" style="color:${col}">${fmt(totScav)} m</span></div>
-    </div>`;
-  // Stessa tabella/colonne della sezione "Tutti i Cantieri" (vedi CANTIERI_COLS/_renderCantieriTable)
-  const tableHtml = rows.length ? `
+// Tabella cantieri riutilizzabile (stesse colonne di "Tutti i Cantieri"), usata da openModalStato e openModalCluster
+function _cantieriTableHtml(rows) {
+  if (!rows.length) return `<div style="text-align:center;color:var(--muted);padding:24px">Nessun cantiere.</div>`;
+  return `
     <div style="overflow-x:auto;margin-top:12px">
       <table class="cant-table">
         <thead>
@@ -962,8 +942,23 @@ function openModalStato(stato) {
           }).join('')}
         </tbody>
       </table>
-    </div>` : `<div style="text-align:center;color:var(--muted);padding:24px">Nessun cantiere in questo stato.</div>`;
-  document.getElementById('modalStatoBody').innerHTML = statGrid + tableHtml;
+    </div>`;
+}
+
+function openModalStato(stato) {
+  const rows = CANTIERI_RAW.filter(r => (STATO_MAP[r.stato_cantiere] || 'non-avviato') === stato);
+  const col = STATO_COLOR[stato];
+  document.getElementById('modalStatoTitle').innerHTML =
+    `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col};margin-right:8px"></span>${STATO_LABEL[stato]} <span style="color:var(--muted);font-weight:400;font-size:13px">· ${rows.length} cantieri</span>`;
+  const totMetri = rows.reduce((s,r) => s + (r.metri_totali || 0), 0);
+  const totScav  = rows.reduce((s,r) => s + (r.metri_scavati || 0), 0);
+  const statGrid = `
+    <div class="modal-stat-grid">
+      <div class="modal-stat"><span class="modal-stat-lbl">Cantieri</span><span class="modal-stat-val">${rows.length}</span></div>
+      <div class="modal-stat"><span class="modal-stat-lbl">Metri totali</span><span class="modal-stat-val">${fmt(totMetri)} m</span></div>
+      <div class="modal-stat"><span class="modal-stat-lbl">Metri scavati</span><span class="modal-stat-val" style="color:${col}">${fmt(totScav)} m</span></div>
+    </div>`;
+  document.getElementById('modalStatoBody').innerHTML = statGrid + _cantieriTableHtml(rows);
   document.getElementById('modalStatoOverlay').classList.add('open');
 }
 function closeModalStato(e) {
@@ -1975,37 +1970,15 @@ function openModalCluster(cl) {
       </table>
     </div>`;
 
-  // Doppia barra Permessi/Scavi, stessa visualizzazione delle card in "Avanzamento per Cluster"
-  const scCl = (window._CLUSTER_SCAVI || {})[cl] || { metri: 0, scavati: 0, statoMetri: {} };
-  const haScavoCl = scCl.metri > 0;
-  const pctScavoCl = haScavoCl ? Math.round(scCl.scavati / scCl.metri * 100) : 0;
-  const permTrackHtml = ORDINE_WORKFLOW_PERMESSI.map(label => {
-    const g = STATI_GRUPPI_PERMESSI.find(x => x.label === label);
-    if (!g) return '';
-    const m = gruppi[g.label] || 0; if (m <= 0) return '';
-    const pct = totMetri > 0 ? m / totMetri * 100 : 0;
-    return `<div style="width:${pct}%;background:${g.color};opacity:.88;position:relative">${pct>=6?`<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;text-shadow:0 0 4px rgba(0,0,0,1),0 1px 3px rgba(0,0,0,.9)">${pct.toFixed(0)}%</span>`:''}</div>`;
-  }).join('');
-  let trackedMetriCl = 0;
-  const scaviTrackHtml = STATO_ORDER.map(stato => {
-    const m = (scCl.statoMetri || {})[stato] || 0; if (m <= 0) return '';
-    trackedMetriCl += m;
-    const pct = totMetri > 0 ? m / totMetri * 100 : 0;
-    return `<div style="width:${pct}%;background:${STATO_COLOR[stato]};opacity:.88;position:relative">${pct>=6?`<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;text-shadow:0 0 4px rgba(0,0,0,1),0 1px 3px rgba(0,0,0,.9)">${STATO_LABEL[stato]} ${pct.toFixed(0)}%</span>`:''}</div>`;
-  }).join('') + (totMetri - trackedMetriCl > 0 ? `<div style="width:${(totMetri-trackedMetriCl)/totMetri*100}%;background:${STATO_COLOR['non-avviato']};opacity:.45"></div>` : '');
-  const doppiaBarraHtml = `
+  // Cantieri del cluster (stessa tabella di "Tutti i Cantieri" / openModalStato)
+  const cantieriCl = CANTIERI_RAW.filter(r => String(r.cluster ?? '?').replace(/^[Cc]/,'') === String(cl));
+  const cantieriClHtml = `
     <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
-      <div style="display:flex;flex-direction:column;gap:2px;margin-bottom:6px">
-        <span style="font-size:8px;font-weight:700;color:var(--retelit-blue);text-transform:uppercase;letter-spacing:.06em">Permessi</span>
-        <div class="bar-track" style="height:16px">${permTrackHtml}</div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:2px;opacity:${haScavoCl?'1':'.4'}">
-        <span style="font-size:8px;font-weight:700;color:var(--warn);text-transform:uppercase;letter-spacing:.06em">Scavi</span>
-        <div class="bar-track">${scaviTrackHtml}</div>
-      </div>
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:12px">Cantieri del cluster</div>
+      ${_cantieriTableHtml(cantieriCl)}
     </div>`;
 
-  document.getElementById('modalClusterBody').innerHTML = header + doppiaBarraHtml + impreseHtml + barreStato + lottiHtml;
+  document.getElementById('modalClusterBody').innerHTML = header + impreseHtml + barreStato + cantieriClHtml + lottiHtml;
   document.getElementById('modalClusterOverlay').classList.add('open');
 }
 function closeModalCluster(e) {
