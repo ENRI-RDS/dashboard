@@ -6102,7 +6102,6 @@ _hookScadenze();
     {k:'agg',      l:'Cambio Stato',   w:'118px', mono:true, muted:true},
     {k:'data_update', l:'Update',      w:'85px',  mono:true, muted:true},
     {k:'data_ott', l:'Data Ott.',      w:'90px',  mono:true},
-    {k:'scad',     l:'Scadenza',       w:'100px'},
     {k:'metri',    l:'Metri (m)',      w:'90px',  right:true},
     {k:'sol',      l:'Solleciti',      w:'90px',  right:true, noSort:true},
   ];
@@ -6180,14 +6179,6 @@ _hookScadenze();
       });
     });
     return out;
-  }
-
-  // ── Scadenza HTML ─────────────────────────────────────────────────────────
-  function scadHtml(pgg) {
-    if (pgg===null||pgg===undefined) return '<span class="tbl-dash">—</span>';
-    if (pgg < 0)  return `<span class="tbl-chip tbl-scad-over">Scad. ${Math.abs(pgg)}gg</span>`;
-    if (pgg <= 7) return `<span class="tbl-chip tbl-scad-warn">${pgg===0?'Oggi':pgg===1?'Domani':pgg+' gg'}</span>`;
-    return `<span class="tbl-chip tbl-scad-ok">${pgg} gg</span>`;
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -6468,7 +6459,6 @@ _hookScadenze();
       if (_sortK==='comuni') { va=(va||[]).join(','); vb=(vb||[]).join(','); }
       if (_sortK==='invio'||_sortK==='agg'||_sortK==='data_ott') { va=parseDateIT(va)||new Date(0); vb=parseDateIT(vb)||new Date(0); }
       if (_sortK==='metri')  { va=+va||0; vb=+vb||0; }
-      if (_sortK==='scad')   { va=a.scad_gg??9999; vb=b.scad_gg??9999; }
       if (va<vb) return -_sortD; if (va>vb) return _sortD; return 0;
     });
 
@@ -6513,7 +6503,6 @@ _hookScadenze();
         <td class="tbl-td tbl-date">${r.agg?fmtDateIT(r.agg):'—'}</td>
         <td class="tbl-td tbl-date">${r.data_update?fmtDateIT(r.data_update):'—'}</td>
         <td class="tbl-td tbl-date-ott">${r.data_ott?fmtDateIT(r.data_ott):'—'}</td>
-        <td class="tbl-td">${scadHtml(r.scad_gg)}</td>
         <td class="tbl-td tbl-td-r tbl-metri">${fmt(r.metri)}</td>
         <td class="tbl-td tbl-td-r">${_solBadge(r.codice)}</td>
       </tr>`;
