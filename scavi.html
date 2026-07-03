@@ -1455,7 +1455,12 @@ Object.keys(CLUSTER_PERMESSI).sort((a,b)=>+a-+b).forEach(cl => {
   // non solo da r.impresa dei cantieri già censiti (che possono mancare per lotti non ancora avviati)
   const impreseLottiCl = [...cd.lotti].sort(_lottoCompare)
     .map(l => ({ lotto: l, impresa: IMPRESE_PER_LOTTO[l] || '?' }));
-  const impreseCl = [...new Set(impreseLottiCl.map(x => `${x.impresa} (Lotto ${x.lotto})`))];
+  const lottiPerImpresa = {};
+  impreseLottiCl.forEach(x => {
+    (lottiPerImpresa[x.impresa] = lottiPerImpresa[x.impresa] || []).push(x.lotto);
+  });
+  const impreseCl = Object.keys(lottiPerImpresa).sort()
+    .map(imp => `${imp} (Lotto ${lottiPerImpresa[imp].join(', ')})`);
 
   const group = document.createElement('div');
   group.style.cssText = 'padding:8px 6px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;';
