@@ -4743,13 +4743,14 @@ function _kpiApplyFilter() {
 
   const _kBd = (a,b) => { const da=parseDateIT(a.dum),db=parseDateIT(b.dum); if(da&&db) return db-da; return da?-1:db?1:a.codice.localeCompare(b.codice); };
   const _showPrev = !['firma','attesa'].includes(key);
-  const _kColspan = _showPrev ? 7 : 6;
+  const _kColspan = _showPrev ? 8 : 7;
   const _kThRow = `<tr style="border-bottom:1px solid var(--border)">
     ${_mkTh('Codice','codice','left','kpi')}
     ${_mkTh('Ente','ente','left','kpi')}
     ${_mkTh('Stato','stato','left','kpi')}
     ${_mkTh('Invio','invio','center','kpi')}
-    ${_mkTh('Update','update','center','kpi')}
+    ${_mkTh('Cambio Stato','update','center','kpi')}
+    ${_mkTh('Update','realupd','center','kpi')}
     ${_showPrev ? _mkTh('Prev. Rilascio','prev','center','kpi') : ''}
     ${_mkTh('Metri','metri','right','kpi')}
   </tr>`;
@@ -4758,6 +4759,7 @@ function _kpiApplyFilter() {
     const dp = buildDateParts(p);
     const invio = dp.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
     const agg   = dp.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
+    const upd   = p.dataUpdate ? fmtDateIT(p.dataUpdate) : '';
     const badge = _showPrev ? prevBadgeHtml(p) : '';
     return `<tr style="border-bottom:1px solid #DFE4EB" onmouseover="this.style.background='#EEF1F5'" onmouseout="this.style.background=''">
       <td style="padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col}">${p.codice}</td>
@@ -4765,6 +4767,7 @@ function _kpiApplyFilter() {
       <td style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap">${p.stato}</td>
       <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${invio}</td>
       <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${agg}</td>
+      <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${upd}</td>
       ${_showPrev ? `<td style="padding:6px 10px;font-size:9px;text-align:center;white-space:nowrap">${badge}</td>` : ''}
       <td style="padding:6px 10px;font-size:12px;font-family:'Raleway',sans-serif;color:var(--text);text-align:right;white-space:nowrap;font-weight:700;letter-spacing:-0.01em">${fmt(p.metri)} m</td>
     </tr>`;
@@ -5303,6 +5306,7 @@ function _colGetDisplay(p, col) {
       const dp = buildDateParts(p);
       return dp.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
     }
+    case 'realupd': return p.dataUpdate ? fmtDateIT(p.dataUpdate) : '';
     case 'prev': {
       const r = calcolaPrevisione(p);
       if (!r) return '';
@@ -5330,6 +5334,10 @@ function _colGetSort(p, col) {
         : dp.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
       const m = raw.match(/(\d{2})\/(\d{2})\/(\d{4})/);
       return m ? new Date(+m[3], +m[2]-1, +m[1]).getTime() : 0;
+    }
+    case 'realupd': {
+      const d = parseDateIT(p.dataUpdate);
+      return d ? d.getTime() : 0;
     }
     case 'prev': {
       const r = calcolaPrevisione(p);
@@ -5395,7 +5403,7 @@ function _colActiveBar() {
   if (!filters.length && !hasSort) return '';
 
   const LABEL = { codice:'Codice', ente:'Ente', stato:'Stato', invio:'Invio',
-                  update:'Update', prev:'Prev. Rilascio', metri:'Metri' };
+                  update:'Cambio Stato', realupd:'Update', prev:'Prev. Rilascio', metri:'Metri' };
 
   const chips = filters.map(([col, s]) => {
     const vals = [...s].slice(0,3).join(', ') + (s.size > 3 ? ` +${s.size-3}` : '');
@@ -5578,12 +5586,14 @@ function _colLottoRefresh() {
     const invio = dateParts.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
     const agg   = dateParts.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
     const badge = prevBadgeHtml(p);
+    const upd   = p.dataUpdate ? fmtDateIT(p.dataUpdate) : '';
     return `<tr style="border-bottom:1px solid #DFE4EB" onmouseover="this.style.background='#EEF1F5'" onmouseout="this.style.background=''">
       <td style="padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col}">${p.codice}</td>
       <td style="padding:6px 10px;font-size:9px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente||'—'}</td>
       <td style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap">${p.stato}</td>
       <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${invio}</td>
       <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${agg}</td>
+      <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${upd}</td>
       <td style="padding:6px 10px;font-size:9px;text-align:center;white-space:nowrap">${badge}</td>
       <td style="padding:6px 10px;font-size:12px;font-family:'Raleway',sans-serif;color:var(--text);text-align:right;white-space:nowrap;font-weight:700;letter-spacing:-0.01em">${fmt(p.metri)} m</td>
     </tr>`;
@@ -5591,7 +5601,7 @@ function _colLottoRefresh() {
 
   const autPrats = prats.filter(p =>  p.codice.startsWith('AUT/'));
   const noPrats  = prats.filter(p => !p.codice.startsWith('AUT/'));
-  const sepRow = (label, badge, n) => `<tr><td colspan="7" style="padding:8px 10px 4px;background:var(--bg)">
+  const sepRow = (label, badge, n) => `<tr><td colspan="8" style="padding:8px 10px 4px;background:var(--bg)">
     <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text)">${label}</span>
     <span style="margin-left:6px;font-size:9px;color:var(--muted)">(${n})</span>
     <span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">${badge.includes('3a8c5c')?'incide sulle %':'non incide sulle %'}</span>
@@ -5602,7 +5612,8 @@ function _colLottoRefresh() {
     ${_mkTh('Ente','ente','left','lotto')}
     ${_mkTh('Stato','stato','left','lotto')}
     ${_mkTh('Invio','invio','center','lotto')}
-    ${_mkTh('Update','update','center','lotto')}
+    ${_mkTh('Cambio Stato','update','center','lotto')}
+    ${_mkTh('Update','realupd','center','lotto')}
     ${_mkTh('Prev. Rilascio','prev','center','lotto')}
     ${_mkTh('Metri','metri','right','lotto')}
   </tr>`;
@@ -5635,12 +5646,14 @@ function _colClRefresh() {
     const invio = dateParts.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
     const agg   = dateParts.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
     const badge = prevBadgeHtml(p);
+    const upd   = p.dataUpdate ? fmtDateIT(p.dataUpdate) : '';
     return `<tr style="border-bottom:1px solid #DFE4EB" onmouseover="this.style.background='#EEF1F5'" onmouseout="this.style.background=''">
       <td style="padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col}">${p.codice}</td>
       <td style="padding:6px 10px;font-size:9px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente||'—'}</td>
       <td style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap">${p.stato}</td>
       <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${invio}</td>
       <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${agg}</td>
+      <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${upd}</td>
       <td style="padding:6px 10px;font-size:9px;text-align:center;white-space:nowrap">${badge}</td>
       <td style="padding:6px 10px;font-size:12px;font-family:'Raleway',sans-serif;color:var(--text);text-align:right;white-space:nowrap;font-weight:700;letter-spacing:-0.01em">${fmt(p.metri)} m</td>
     </tr>`;
@@ -5648,7 +5661,7 @@ function _colClRefresh() {
 
   const clAut = prats.filter(p =>  p.codice.startsWith('AUT/'));
   const clNo  = prats.filter(p => !p.codice.startsWith('AUT/'));
-  const sepRow = (label, badge, n) => `<tr><td colspan="7" style="padding:8px 10px 4px;background:var(--bg)">
+  const sepRow = (label, badge, n) => `<tr><td colspan="8" style="padding:8px 10px 4px;background:var(--bg)">
     <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text)">${label}</span>
     <span style="margin-left:6px;font-size:9px;color:var(--muted)">(${n})</span>
     <span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">${badge.includes('3a8c5c')?'incide sulle %':'non incide sulle %'}</span>
@@ -5659,7 +5672,8 @@ function _colClRefresh() {
     ${_mkTh('Ente','ente','left','cl')}
     ${_mkTh('Stato','stato','left','cl')}
     ${_mkTh('Invio','invio','center','cl')}
-    ${_mkTh('Update','update','center','cl')}
+    ${_mkTh('Cambio Stato','update','center','cl')}
+    ${_mkTh('Update','realupd','center','cl')}
     ${_mkTh('Prev. Rilascio','prev','center','cl')}
     ${_mkTh('Metri','metri','right','cl')}
   </tr>`;
