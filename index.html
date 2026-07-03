@@ -4485,7 +4485,7 @@ function _processMasterText(text) {
       if (!praticheByLotto[lotto][codice]) {
         praticheByLotto[lotto][codice] = {
           codice, tipo: r.tipo, stato: r.stato, ente: r.ente,
-          dr: r.dr, dum: r.dum, dr_invio: r.dr_invio || '', dataPrevRilascio: r.dataPrevRilascio || '', dataUpdate: r.dataUpdate || '', note: r.note || '', metri: 0, lotto,
+          dr: r.dr, dum: r.dum, dr_invio: r.dr_invio || '', dataPrevRilascio: r.dataPrevRilascio || '', dataUpdate: r.dataUpdate || '', notes: [], metri: 0, lotto,
           comuni: new Set(r.comune ? [r.comune] : [])
         };
       }
@@ -4502,14 +4502,11 @@ function _processMasterText(text) {
         existing.dr    = r.dr;
         existing.dum   = r.dum;
       }
-      // Nota: tiene la nota non vuota più recente (per dataUpdate, fallback dum) tra tutte le righe della pratica
+      // Note: accumula TUTTE le note non vuote di tutte le righe della pratica (una riga = una tratta/ente), dedup su testo+data
       if (r.note) {
-        const newNoteDate = parseDateIT(r.dataUpdate) || newDum;
-        const exNoteDate  = parseDateIT(existing._noteDate);
-        if (!existing.note || !exNoteDate || (newNoteDate && newNoteDate >= exNoteDate)) {
-          existing.note = r.note;
-          existing._noteDate = r.dataUpdate || r.dum || '';
-        }
+        const noteDate = r.dataUpdate || r.dum || '';
+        const dupe = existing.notes.some(n => n.note === r.note && n.date === noteDate);
+        if (!dupe) existing.notes.push({ note: r.note, date: noteDate });
       }
       // Preserva sempre dr_invio se disponibile
       if (r.dr_invio && !existing.dr_invio) existing.dr_invio = r.dr_invio;
@@ -6113,7 +6110,6 @@ _hookScadenze();
     {k:'data_update', l:'Update',      w:'85px',  mono:true, muted:true},
     {k:'data_ott', l:'Data Ott.',      w:'90px',  mono:true},
     {k:'scad',     l:'Scadenza',       w:'100px'},
-    {k:'prev',     l:'Prev. Rilascio', w:'120px', mono:true},
     {k:'metri',    l:'Metri (m)',      w:'90px',  right:true},
     {k:'sol',      l:'Solleciti',      w:'90px',  right:true, noSort:true},
   ];
@@ -6407,15 +6403,17 @@ _hookScadenze();
       if (!cell) { if (!e.target.closest('#notePopoverBox')) box.style.display = 'none'; return; }
       e.stopPropagation();
       const cod  = cell.dataset.cod;
-      const info = window._praticaNoteMap[cod] || {};
+      const notes = (window._praticaNoteMap[cod] || []).slice().sort((a,b) => (b.date||'').localeCompare(a.date||''));
 
       let rows = '';
-      if (info.note) {
-        const note = info.note.replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        rows = '<tr>'
-          + '<td style="padding:4px 8px;font-size:10.5px;white-space:nowrap;color:var(--muted)">' + (info.date ? fmtDateIT(info.date) : '—') + '</td>'
-          + '<td style="padding:4px 8px;font-size:10.5px;color:var(--text2)">' + note + '</td>'
-          + '</tr>';
+      if (notes.length) {
+        rows = notes.map(n => {
+          const note = (n.note||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          return '<tr>'
+            + '<td style="padding:4px 8px;font-size:10.5px;white-space:nowrap;color:var(--muted)">' + (n.date ? fmtDateIT(n.date) : '—') + '</td>'
+            + '<td style="padding:4px 8px;font-size:10.5px;color:var(--text2)">' + note + '</td>'
+            + '</tr>';
+        }).join('');
       } else {
         rows = '<tr><td colspan="2" style="padding:12px;text-align:center;font-size:10.5px;color:var(--muted2)">Nessuna nota per questa pratica</td></tr>';
       }
@@ -6478,7 +6476,6 @@ _hookScadenze();
       if (_sortK==='invio'||_sortK==='agg'||_sortK==='data_ott') { va=parseDateIT(va)||new Date(0); vb=parseDateIT(vb)||new Date(0); }
       if (_sortK==='metri')  { va=+va||0; vb=+vb||0; }
       if (_sortK==='scad')   { va=a.scad_gg??9999; vb=b.scad_gg??9999; }
-      if (_sortK==='prev')   { va=a.prev?a.prev.diff:9999; vb=b.prev?b.prev.diff:9999; }
       if (va<vb) return -_sortD; if (va>vb) return _sortD; return 0;
     });
 
@@ -6505,12 +6502,8 @@ _hookScadenze();
       const lottoChip = r.lotto ? `<span class="tbl-lotto-chip">${r.lotto}</span>` : '—';
       const tipoShort = r.tipo === 'AUTORIZZAZIONE' ? 'AUT' : r.tipo === 'NULLA OSTA' ? 'NO' : r.tipo === 'ORDINANZA' ? 'ORD' : (r.tipo||'').substring(0,4);
       const tipoClass = r.tipo === 'AUTORIZZAZIONE' ? 'tbl-tipo-aut' : r.tipo === 'NULLA OSTA' ? 'tbl-tipo-no' : r.tipo === 'ORDINANZA' ? 'tbl-tipo-ord' : 'tbl-tipo-other';
-      const prevHtml = r.prev ? (() => {
-        const prevClass = r.prev.status==='ok' ? 'tbl-prev-ok' : r.prev.status==='warn' ? 'tbl-prev-warn' : 'tbl-prev-ko';
-        return `<span class="tbl-chip tbl-chip-prev ${prevClass}">${r.prev.label}</span>`;
-      })() : '<span class="tbl-dash">—</span>';
-      window._praticaNoteMap[r.codice] = { note: r.note || '', date: r.data_update || r.agg || r.invio || '' };
-      const hasNote = !!(r.note);
+      window._praticaNoteMap[r.codice] = r.notes || [];
+      const hasNote = !!(r.notes && r.notes.length);
       return `<tr class="tbl-row">
         <td class="tbl-td tbl-codice-click" data-cod="${r.codice}" style="cursor:pointer" title="${hasNote ? 'Vedi note pratica' : 'Nessuna nota — clicca per aggiungere/vedere'}">
           <span class="tbl-codice-wrap">
@@ -6528,7 +6521,6 @@ _hookScadenze();
         <td class="tbl-td tbl-date">${r.data_update?fmtDateIT(r.data_update):'—'}</td>
         <td class="tbl-td tbl-date-ott">${r.data_ott?fmtDateIT(r.data_ott):'—'}</td>
         <td class="tbl-td">${scadHtml(r.scad_gg)}</td>
-        <td class="tbl-td">${prevHtml}</td>
         <td class="tbl-td tbl-td-r tbl-metri">${fmt(r.metri)}</td>
         <td class="tbl-td tbl-td-r">${_solBadge(r.codice)}</td>
       </tr>`;
