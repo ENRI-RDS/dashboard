@@ -3161,42 +3161,6 @@ function openModal(lotto, statiMetri, totale) {
   // Pannello pratiche — tabella unica con sezioni AUT / NO+ORD
   let pratHtml = '';
   if (allPrats.length > 0) {
-    const makeRighe = (arr) => arr.map(p => {
-      const col = STATI_COLORI_MAP[p.stato] || '#6B7685';
-      const dateParts = buildDateParts(p);
-      const invio = dateParts.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
-      const agg   = dateParts.find(d => !d.startsWith('Invio:'))?.replace(/^[^:]+:\s*/,'') || '';
-      const badge = prevBadgeHtml(p);
-      return `<tr style="border-bottom:1px solid #DFE4EB" onmouseover="this.style.background='#EEF1F5'" onmouseout="this.style.background=''">
-        <td style="padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col}">${p.codice}</td>
-        <td style="padding:6px 10px;font-size:9px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente || '—'}</td>
-        <td style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap">${p.stato}</td>
-        <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${invio}</td>
-        <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${agg}</td>
-        <td style="padding:6px 10px;font-size:9px;text-align:center;white-space:nowrap">${badge}</td>
-        <td style="padding:6px 10px;font-size:12px;font-family:'Raleway',sans-serif;color:var(--text);text-align:right;white-space:nowrap;font-weight:700;letter-spacing:-0.01em">${fmt(p.metri)} m</td>
-      </tr>`;
-    }).join('');
-
-    const sepRow = (label, badge, n) => `
-      <tr>
-        <td colspan="7" style="padding:8px 10px 4px;background:var(--bg)">
-          <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text)">${label}</span>
-          <span style="margin-left:6px;font-size:9px;color:var(--muted)">(${n})</span>
-          <span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">${badge.includes('3a8c5c') ? 'incide sulle %' : 'non incide sulle %'}</span>
-        </td>
-      </tr>`;
-
-    const colTH = `<tr style="border-bottom:1px solid var(--border)">
-      ${_mkTh('Codice','codice','left','lotto')}
-      ${_mkTh('Ente','ente','left','lotto')}
-      ${_mkTh('Stato','stato','left','lotto')}
-      ${_mkTh('Invio','invio','center','lotto')}
-      ${_mkTh('Update','update','center','lotto')}
-      ${_mkTh('Prev. Rilascio','prev','center','lotto')}
-      ${_mkTh('Metri','metri','right','lotto')}
-    </tr>`;
-
     pratHtml = `<div style="padding-left:20px;border-left:1px solid var(--border);min-width:0;flex:1;overflow-x:auto">
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);font-weight:600">
         Dettaglio pratiche (${autPrats.length} AUT${noPrats.length ? ' · ' + noPrats.length + ' NO/ORD' : ''})
@@ -4775,7 +4739,7 @@ function _kpiApplyFilter() {
   const _kSepRow = (label, badge, n) => `<tr><td colspan="${_kColspan}" style="padding:8px 10px 4px;background:var(--bg)">
     <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text)">${label}</span>
     <span style="margin-left:6px;font-size:9px;color:var(--muted)">(${n})</span>
-    <span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">${badge.includes('3a8c5c') ? 'incide sulle %' : 'non incide sulle %'}</span>
+    ${badge.includes('3a8c5c') ? `<span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">incide sulle %</span>` : ''}
   </td></tr>`;
 
   let html = '';
@@ -5604,7 +5568,7 @@ function _colLottoRefresh() {
   const sepRow = (label, badge, n) => `<tr><td colspan="8" style="padding:8px 10px 4px;background:var(--bg)">
     <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text)">${label}</span>
     <span style="margin-left:6px;font-size:9px;color:var(--muted)">(${n})</span>
-    <span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">${badge.includes('3a8c5c')?'incide sulle %':'non incide sulle %'}</span>
+    ${badge.includes('3a8c5c') ? `<span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">incide sulle %</span>` : ''}
   </td></tr>`;
 
   const thRow = `<tr style="border-bottom:1px solid var(--border)">
@@ -5664,7 +5628,7 @@ function _colClRefresh() {
   const sepRow = (label, badge, n) => `<tr><td colspan="8" style="padding:8px 10px 4px;background:var(--bg)">
     <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text)">${label}</span>
     <span style="margin-left:6px;font-size:9px;color:var(--muted)">(${n})</span>
-    <span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">${badge.includes('3a8c5c')?'incide sulle %':'non incide sulle %'}</span>
+    ${badge.includes('3a8c5c') ? `<span style="margin-left:8px;font-size:8px;padding:1px 7px;border-radius:10px;${badge}">incide sulle %</span>` : ''}
   </td></tr>`;
 
   const thRow = `<tr style="border-bottom:1px solid var(--border)">
