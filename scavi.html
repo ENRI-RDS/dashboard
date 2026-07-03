@@ -189,6 +189,10 @@
   .card-header { display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid var(--border); }
   .card-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); font-family:var(--font-display); }
   .card-body  { padding:20px; }
+  .card-caption { font-size:12px; font-weight:600; color:var(--text2); font-family:var(--font-mono); letter-spacing:.01em; display:flex; align-items:center; gap:5px; }
+  .card-caption .cc-num { font-family:var(--font-display); font-weight:800; color:var(--retelit-blue); font-size:15px; letter-spacing:-.01em; }
+  .card-caption .cc-sep { color:var(--border2); }
+  .card-caption .cc-sort { color:var(--retelit-teal); }
 
   /* ── CLUSTER BARS (stile index) ──────────────────────────────── */
   .cluster-section { display:flex; flex-direction:column; gap:4px; }
@@ -246,7 +250,7 @@
   }
   .kpi-filt-btn:hover { border-color:var(--accent); color:var(--accent); }
   .kpi-filt-btn.active { border-color:var(--accent); background:var(--accent); color:#fff; }
-  .kpi-filter-count { font-size:11px; font-family:var(--font-mono); color:var(--muted); margin-left:auto; }
+  .kpi-filter-count { font-size:12px; font-weight:600; font-family:var(--font-mono); color:var(--text2); margin-left:auto; }
 
   .cant-table { width:100%; border-collapse:collapse; }
   .cant-table thead th { position:relative; }
@@ -436,8 +440,8 @@
   <!-- PERFORMANCE IMPRESE -->
   <div class="card">
     <div class="card-header">
-      <span class="card-title">🏗️ Performance Imprese</span>
-      <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)" id="impreseSubtitle">caricamento…</span>
+      <span class="card-title">Performance Imprese</span>
+      <span class="card-caption" id="impreseSubtitle">caricamento…</span>
     </div>
     <div class="card-body">
       <div style="overflow-x:auto;">
@@ -465,8 +469,8 @@
   <!-- CLUSTER BARS (doppia barra: permessi sopra · scavi sotto, per cluster geografico) -->
   <div class="card">
     <div class="card-header">
-      <span class="card-title">⚡ Avanzamento per Cluster</span>
-      <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)" id="clusterStatus">caricamento…</span>
+      <span class="card-title">Avanzamento per Cluster</span>
+      <span class="card-caption" id="clusterStatus">caricamento…</span>
     </div>
     <div class="card-body" style="display:flex;flex-direction:column;gap:0;" id="clusterContainer"></div>
     <div class="legend" style="flex-wrap:wrap;row-gap:6px;">
@@ -496,10 +500,9 @@
       <div class="card">
         <div class="card-header">
           <span class="card-title">Avanzamento per Lotto</span>
-          <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)" id="lottiSubtitle">caricamento…</span>
+          <span class="card-caption" id="lottiSubtitle">caricamento…</span>
         </div>
         <div class="card-body" style="display:flex;flex-direction:column;gap:0;" id="barContainer"></div>
-        <div style="font-size:10px;color:var(--muted);padding-top:8px">Legenda colori: vedi "Avanzamento per Cluster" sopra.</div>
       </div>
 
     </div>
@@ -554,8 +557,8 @@
   <!-- TUTTI I CANTIERI (singole tratte, non aggregate per lotto — equivalente di "Tutte le Pratiche" in index) -->
   <div class="card">
     <div class="card-header">
-      <span class="card-title">📋 Tutti i Cantieri</span>
-      <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)" id="cantieriCount">caricamento…</span>
+      <span class="card-title">Tutti i Cantieri</span>
+      <span class="card-caption" id="cantieriCount">caricamento…</span>
     </div>
     <div class="card-body">
       <div class="kpi-filter-bar">
@@ -1187,7 +1190,7 @@ function _renderCantieriTable() {
     });
   }
   const countEl = document.getElementById('cantieriCount');
-  if (countEl) countEl.textContent = `${rows.length} / ${CANTIERI_RAW.length} cantieri`;
+  if (countEl) countEl.innerHTML = `<span class="cc-num">${rows.length}</span> / <span class="cc-num">${CANTIERI_RAW.length}</span> cantieri`;
   const filterCountEl = document.getElementById('cantieriFilterCount');
   if (filterCountEl) filterCountEl.textContent = `${rows.length} risultati`;
   tbody.innerHTML = rows.map(r => {
@@ -1322,8 +1325,13 @@ function _renderImprese() {
     };
   });
 
+  const IMP_SORT_LABEL = { impresa:'Impresa', lotti:'Lotto', cluster:'Cluster', cantieri:'Cantieri', metriTot:'Metri Tot.', pct:'Avanzamento', ritmo:'Ritmo' };
   const sub = document.getElementById('impreseSubtitle');
-  if (sub) sub.textContent = rows.length + ' imprese · ordina cliccando le colonne';
+  if (sub) {
+    const sortLabel = IMP_SORT_LABEL[_impreseSort.key] || _impreseSort.key;
+    const arrow = _impreseSort.dir === 'desc' ? '↓' : '↑';
+    sub.innerHTML = `<span class="cc-num">${rows.length}</span> imprese<span class="cc-sep">·</span>ordinate per <span class="cc-sort">${sortLabel} ${arrow}</span><span class="cc-sep">·</span>clicca una colonna per cambiare ordine`;
+  }
 
   const { key, dir } = _impreseSort;
   rows.sort((a, b) => {
@@ -1435,7 +1443,7 @@ function _renderClusters() {
 const clusterContainer = document.getElementById('clusterContainer');
 clusterContainer.innerHTML = '';
 const totalAll = Object.values(CLUSTER_PERMESSI).reduce((s, v) => s + v.totale, 0);
-document.getElementById('clusterStatus').textContent = fmt(totalAll) + ' m totali';
+document.getElementById('clusterStatus').innerHTML = `<span class="cc-num">${fmt(totalAll)}</span> m totali`;
 const scaviMap = window._CLUSTER_SCAVI || {};
 
 Object.keys(CLUSTER_PERMESSI).sort((a,b)=>+a-+b).forEach(cl => {
