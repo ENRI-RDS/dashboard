@@ -1780,8 +1780,8 @@ function exportPDF(){
 // con la stessa logica di _loadSEDInner, indipendente dallo stato del toggle SED in mappa.
 async function exportGeoJSONLotti(){
   const btn = document.querySelector('[onclick="exportGeoJSONLotti()"]');
-  if (!allFeatures || !allFeatures.length) { alert('Nessun dato caricato ancora, riprova tra qualche secondo.'); return; }
-  const vuoiSed = confirm('Vuoi includere anche gli attraversamenti (SED) nel file esportato?');
+  if (!allFeatures || !allFeatures.length) { await prAlert('Nessun dato caricato ancora, riprova tra qualche secondo.', {title:'Attenzione'}); return; }
+  const vuoiSed = await prConfirm('Vuoi includere anche gli attraversamenti (SED) nel file esportato?', {title:'Esporta GeoJSON', okText:'Sì, includi SED', cancelText:'No, solo lotto', kind:'warn'});
   let features = allFeatures.slice();
   if (vuoiSed) {
     if (btn) { btn.textContent = '⏳...'; btn.disabled = true; }
@@ -1791,7 +1791,7 @@ async function exportGeoJSONLotti(){
       features = features.concat(sedFeatures);
     } catch(e) {
       console.warn('Export GeoJSON: SED non disponibile,', e.message);
-      alert('Attraversamenti (SED) non disponibili al momento, esporto solo il tracciato del lotto.');
+      await prAlert('Attraversamenti (SED) non disponibili al momento, esporto solo il tracciato del lotto.', {title:'Attenzione'});
     } finally {
       if (btn) { btn.textContent = '⬇ GeoJSON'; btn.disabled = false; }
     }
