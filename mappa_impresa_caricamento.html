@@ -963,13 +963,23 @@
             <div class="pr-hint">Stima fornita dall'impresa. Non richiesta se lo stato passa a OTTENUTO o NO COMPETENZA.</div>
           </div>
           <div id="pr-wrap-no-nec" style="display:none">
-            <label>Nulla Osta Necessario</label>
-            <select id="pr-no-nec"><option value="">—</option><option value="SI">SI</option><option value="NO">NO</option></select>
+            <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+              <input type="checkbox" id="pr-no-nec" style="width:15px;height:15px;cursor:pointer">
+              Nulla Osta Necessario
+            </label>
           </div>
-          <label>Polizza necessaria</label>
-          <select id="pr-polizza"><option value="">—</option><option value="SI">SI</option><option value="NO">NO</option></select>
-          <label>Convenzione</label>
-          <select id="pr-convenzione"><option value="">—</option><option value="SI">SI</option><option value="NO">NO</option></select>
+          <div id="pr-wrap-polizza">
+            <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+              <input type="checkbox" id="pr-polizza" style="width:15px;height:15px;cursor:pointer">
+              Polizza necessaria
+            </label>
+          </div>
+          <div id="pr-wrap-convenzione">
+            <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+              <input type="checkbox" id="pr-convenzione" style="width:15px;height:15px;cursor:pointer">
+              Convenzione
+            </label>
+          </div>
           <div id="pr-wrap-no-tratte" style="display:none">
             <label>Tratte che richiedono Nulla Osta</label>
             <select id="pr-no-tratte" multiple size="4" style="font-family:var(--font-mono);font-size:11px"></select>
@@ -1025,8 +1035,6 @@
             <label>Nulla Osta Necessario</label>
             <select id="pr-new-no-nec"><option value=""></option><option>SI</option><option>NO</option></select>
           </div>
-          <label>Ordinanza necessaria</label>
-          <select id="pr-new-ord-nec"><option value=""></option><option>SI</option><option>NO</option></select>
           <label>Note</label>
           <textarea id="pr-new-note"></textarea>
           <div class="pr-form-actions">
@@ -3746,9 +3754,9 @@ function prSelectRow(idx){
   const isAut = (PR_SELECTED.TIPO_PERMESSO||'').trim() === 'AUTORIZZAZIONE';
   document.getElementById('pr-wrap-no-nec').style.display = isAut ? '' : 'none';
   document.getElementById('pr-wrap-no-tratte').style.display = 'none';
-  document.getElementById('pr-no-nec').value = PR_SELECTED['NULLA OSTA NECESSARIO'] || '';
-  document.getElementById('pr-polizza').value = (PR_SELECTED['POLIZZA ']||'').trim();
-  document.getElementById('pr-convenzione').value = (PR_SELECTED['CONVENZIONE']||'').trim();
+  document.getElementById('pr-no-nec').checked = (PR_SELECTED['NULLA OSTA NECESSARIO']||'').trim() === 'SI';
+  document.getElementById('pr-polizza').checked = (PR_SELECTED['POLIZZA ']||'').trim() === 'SI';
+  document.getElementById('pr-convenzione').checked = (PR_SELECTED['CONVENZIONE']||'').trim() === 'SI';
   if (isAut) {
     const pratNum = String(PR_SELECTED.PRATICA||'').trim();
     const tutteTratte = pratNum ? [...new Set(PR_PRATICHE
@@ -3788,7 +3796,7 @@ document.getElementById('prCancelEdit').onclick = () => {
 };
 
 document.getElementById('pr-no-nec').addEventListener('change', function(){
-  const show = this.value === 'SI';
+  const show = this.checked;
   document.getElementById('pr-wrap-no-tratte').style.display = show ? '' : 'none';
   if (!show) Array.from(document.getElementById('pr-no-tratte').options).forEach(o => o.selected=false);
 });
@@ -3805,6 +3813,22 @@ document.getElementById('pr-stato').addEventListener('change', function(){
     document.getElementById('pr-wrap-data-rich').style.display = (v==='INVIATO') ? '' : 'none';
     document.getElementById('pr-wrap-data-app').style.display  = (v==='OTTENUTO') ? '' : 'none';
     document.getElementById('pr-wrap-data-prevista').style.display = (v==='OTTENUTO' || v==='NO COMPETENZA') ? 'none' : '';
+
+    const isAut = (PR_SELECTED?.TIPO_PERMESSO || '').trim() === 'AUTORIZZAZIONE';
+    if (v === 'NO COMPETENZA') {
+      document.getElementById('pr-wrap-no-nec').style.display = 'none';
+      document.getElementById('pr-wrap-no-tratte').style.display = 'none';
+      document.getElementById('pr-wrap-polizza').style.display = 'none';
+      document.getElementById('pr-wrap-convenzione').style.display = 'none';
+      document.getElementById('pr-no-nec').checked = false;
+      Array.from(document.getElementById('pr-no-tratte').options).forEach(o => o.selected=false);
+      document.getElementById('pr-polizza').checked = false;
+      document.getElementById('pr-convenzione').checked = false;
+    } else {
+      document.getElementById('pr-wrap-no-nec').style.display = isAut ? '' : 'none';
+      document.getElementById('pr-wrap-polizza').style.display = '';
+      document.getElementById('pr-wrap-convenzione').style.display = '';
+    }
   }
 });
 
@@ -3843,11 +3867,11 @@ document.getElementById('prAddToQueue').onclick = async () => {
   }
   const noteVal = document.getElementById('pr-note').value.trim();
   if (noteVal) fields.NOTE = noteVal;
-  const polizza = document.getElementById('pr-polizza').value;
+  const polizza = stato === 'NO COMPETENZA' ? '' : (document.getElementById('pr-polizza').checked ? 'SI' : 'NO');
   if (polizza) fields['POLIZZA '] = polizza;
-  const convenzione = document.getElementById('pr-convenzione').value;
+  const convenzione = stato === 'NO COMPETENZA' ? '' : (document.getElementById('pr-convenzione').checked ? 'SI' : 'NO');
   if (convenzione) fields['CONVENZIONE'] = convenzione;
-  const noNec = document.getElementById('pr-no-nec').value;
+  const noNec = stato === 'NO COMPETENZA' ? '' : (document.getElementById('pr-no-nec').checked ? 'SI' : 'NO');
   if (noNec) {
     fields['NULLA OSTA NECESSARIO'] = noNec;
     if (noNec === 'SI') {
@@ -3962,7 +3986,6 @@ document.getElementById('prNewForm').addEventListener('submit', async e => {
     "DATA_ULTIMA_MODIFICA": new Date().toLocaleDateString('it-IT'),
     "DATA_APPROVAZIONE":    "",
     "NULLA OSTA NECESSARIO": document.getElementById('pr-new-tipo').value==='AUTORIZZAZIONE' ? (document.getElementById('pr-new-no-nec')?.value||'') : '',
-    "ORDINANZA NECESSARIA": document.getElementById('pr-new-ord-nec').value,
     "PRATICA":              pratica,
     "N_SED":                document.getElementById('pr-new-nsed').value.trim(),
     "NOTE":                 document.getElementById('pr-new-note').value.trim(),
