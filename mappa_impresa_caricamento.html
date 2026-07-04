@@ -1796,7 +1796,12 @@ async function exportGeoJSONLotti(){
       if (btn) { btn.textContent = '⬇ GeoJSON'; btn.disabled = false; }
     }
   }
-  const fc = { type: 'FeatureCollection', features };
+  const EXPORT_EXCLUDE_PROPS = ['MOTIVO_NO','STATO_AUTORIZZAZIONE','STATO_NULLAOSTA','STATO_ORDINANZA','PROTOCOLLO_AUT','PRATICA','LAVORABILE','STATO_LEGENDA','CAMPO_AWS'];
+  const fc = { type: 'FeatureCollection', features: features.map(f => {
+    const props = {...f.properties};
+    EXPORT_EXCLUDE_PROPS.forEach(k => delete props[k]);
+    return {...f, properties: props};
+  }) };
   const blob = new Blob([JSON.stringify(fc)], { type: 'application/geo+json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
