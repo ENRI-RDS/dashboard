@@ -848,7 +848,7 @@ async function _loadCantieri() {
       // Cluster/province/comuni: preferisci CSV permessi (copre tutti i 12 lotti in modo coerente),
       // fallback su MongoDB solo se il lotto non è presente nel CSV
       const cluster = p && p.cluster && p.cluster !== '?' ? String(p.cluster) : (c ? String(c.cl) : '?');
-      const prov    = p && p.province.length > 0 ? p.province : (c ? [...c.provSet] : []);
+      const prov    = (p && p.province.length > 0 ? p.province : (c ? [...c.provSet] : [])).slice().sort();
       const nComuni = p && p.comuni.length > 0 ? p.comuni.length : (c ? c.comuniSet.size : 0);
       return {
         cl:      cluster,
@@ -1267,7 +1267,10 @@ function _renderPageSubtitle() {
       `<br>Avanzamento permessi (da Progettazione) e avanzamento fisico scavi (da rendicontazione imprese)`;
   }
   const lottiSub = document.getElementById('lottiSubtitle');
-  if (lottiSub) lottiSub.textContent = 'permessi (sopra) · % metri scavati (sotto)';
+  if (lottiSub) {
+    const totMetriLotti = LOTTI.reduce((s, r) => s + (r.metri || 0), 0);
+    lottiSub.innerHTML = `<span class="cc-num">${fmt(totMetriLotti)}</span> m totali · permessi (sopra) · % metri scavati (sotto)`;
+  }
 }
 
 function _renderRiepilogo() {
@@ -1621,8 +1624,10 @@ LOTTI.forEach(r => {
   lbl.className = 'bar-lotto-wrap';
   lbl.style.cssText = 'width:140px;flex-shrink:0;';
   const provPills = (r.prov||[]).map(p => provPill(p)).join('');
+  const impresaLotto = IMPRESE_PER_LOTTO[r.id] || '?';
   lbl.innerHTML = `
     <span class="bar-lotto-num">${r.id}</span>
+    <div style="font-size:12px;font-weight:700;color:var(--accent);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${impresaLotto}">${impresaLotto}</div>
     <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:2px;">${provPills}</div>`;
   permRow.appendChild(lbl);
 
