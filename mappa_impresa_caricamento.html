@@ -1773,12 +1773,14 @@ async function exportGeoJSONLotti(){
   const btn = document.querySelector('[onclick="exportGeoJSONLotti()"]');
   if (!allFeatures || !allFeatures.length) { await prAlert('Nessun dato caricato ancora, riprova tra qualche secondo.', {title:'Attenzione'}); return; }
   const vuoiSed = await prConfirm('Vuoi includere anche gli attraversamenti (SED) nel file esportato?', {title:'Esporta GeoJSON', okText:'Sì, includi SED', cancelText:'No, solo lotto', kind:'warn'});
-  let features = allFeatures.slice();
+  let features = allFeatures.slice().map(f => ({...f, properties: {...f.properties, layer: 'TRATTA'}}));
   if (vuoiSed) {
     if (btn) { btn.textContent = '⏳...'; btn.disabled = true; }
     try {
       const sedGeojson = await fetchWithSWR('SED_classificato.geojson', { isJson: true });
-      const sedFeatures = (sedGeojson.features || []).filter(f => MY_LOTTI.includes(f.properties.LOTTO));
+      const sedFeatures = (sedGeojson.features || [])
+        .filter(f => MY_LOTTI.includes(f.properties.LOTTO))
+        .map(f => ({...f, properties: {...f.properties, layer: 'SED'}}));
       features = features.concat(sedFeatures);
     } catch(e) {
       console.warn('Export GeoJSON: SED non disponibile,', e.message);
@@ -1790,6 +1792,9 @@ async function exportGeoJSONLotti(){
   const EXPORT_EXCLUDE_PROPS = ['MOTIVO_NO','STATO_AUTORIZZAZIONE','STATO_NULLAOSTA','STATO_ORDINANZA','PROTOCOLLO_AUT','PRATICA','LAVORABILE','STATO_LEGENDA','CAMPO AWS'];
   const fc = { type: 'FeatureCollection', features: features.map(f => {
     const props = {...f.properties};
+    if (props.layer !== 'SED') {
+      props.CLUSTER = f.properties.CLUSTER ?? f.properties.ID_CLUSTER ?? f.properties.cluster ?? null;
+    }
     EXPORT_EXCLUDE_PROPS.forEach(k => delete props[k]);
     return {...f, properties: props};
   }) };
