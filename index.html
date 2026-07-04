@@ -2421,17 +2421,19 @@ function buildDateParts(p) {
   if (invioDate) parts.push('Invio: ' + fmtDateIT(invioDate));
 
   if (p.stato === 'PROTOCOLLATO' || p.stato === 'PROTOCOLLATO INTEGRAZIONE') {
-    // dum = data protocollo (diversa dall'invio)
-    if (p.dum && p.dum !== invioDate) parts.push('Prot.: ' + fmtDateIT(p.dum));
+    // dum = data protocollo (mostrata sempre, anche se coincide con l'invio)
+    if (p.dum) parts.push('Prot.: ' + fmtDateIT(p.dum));
   } else if (p.stato === 'NECESSARIA INTEGRAZIONE') {
     if (p.dum) parts.push('Agg.: ' + fmtDateIT(p.dum));
   } else if (p.stato === 'OTTENUTO') {
     if (p.dum) parts.push('Ott.: ' + fmtDateIT(p.dum));
   } else if (p.stato === 'INVIO PRELIMINARE') {
-    if (p.dum && p.dum !== invioDate) parts.push('Inv.Prel.: ' + fmtDateIT(p.dum));
-  } else if (p.stato !== 'INVIATO') {
-    // IN FIRMA RDS, IN REDAZIONE, ecc. → mostra solo agg. se non è la stessa dell'invio
-    if (p.dum && p.dum !== invioDate) parts.push('Agg.: ' + fmtDateIT(p.dum));
+    if (p.dum) parts.push('Inv.Prel.: ' + fmtDateIT(p.dum));
+  } else if (p.stato === 'INVIATO') {
+    if (p.dum) parts.push('Agg.: ' + fmtDateIT(p.dum));
+  } else {
+    // IN FIRMA RDS, IN REDAZIONE, ecc.
+    if (p.dum) parts.push('Agg.: ' + fmtDateIT(p.dum));
   }
   return parts;
 }
