@@ -1769,42 +1769,55 @@ setTimeout(_fixScaleBar, 800);
 // popolato da _buildMapLayers). Niente QTS (layer catastale, non pertinente all'impresa).
 // SED (attraversamenti) incluso solo su conferma esplicita — fetch on-demand, filtrato su MY_LOTTI
 // con la stessa logica di _loadSEDInner, indipendente dallo stato del toggle SED in mappa.
+// Esportati in un FILE SEPARATO dalle tratte: geometrie diverse (MultiLineString vs Point)
+// nello stesso FeatureCollection vengono lette come un solo tipo da molti tool GIS (es. QGIS/GDAL
+// deducono il tipo dalla prima feature), causando geometrie scartate o non stilizzabili.
+function _prepareExportProps(f, isSed){
+  const props = {...f.properties};
+  if (!isSed) {
+    props.CLUSTER = f.properties.CLUSTER ?? f.properties.ID_CLUSTER ?? f.properties.cluster ?? null;
+  }
+  const EXPORT_EXCLUDE_PROPS = ['MOTIVO_NO','STATO_AUTORIZZAZIONE','STATO_NULLAOSTA','STATO_ORDINANZA','PROTOCOLLO_AUT','PRATICA','LAVORABILE','STATO_LEGENDA','CAMPO AWS'];
+  EXPORT_EXCLUDE_PROPS.forEach(k => delete props[k]);
+  return props;
+}
+function _downloadGeoJSON(features, filename){
+  const fc = { type: 'FeatureCollection', features };
+  const blob = new Blob([JSON.stringify(fc)], { type: 'application/geo+json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
 async function exportGeoJSONLotti(){
   const btn = document.querySelector('[onclick="exportGeoJSONLotti()"]');
   if (!allFeatures || !allFeatures.length) { await prAlert('Nessun dato caricato ancora, riprova tra qualche secondo.', {title:'Attenzione'}); return; }
   const vuoiSed = await prConfirm('Vuoi includere anche gli attraversamenti (SED) nel file esportato?', {title:'Esporta GeoJSON', okText:'Sì, includi SED', cancelText:'No, solo lotto', kind:'warn'});
-  let features = allFeatures.slice().map(f => ({...f, properties: {...f.properties, layer: 'TRATTA'}}));
+  const lottiSuffix = MY_LOTTI.join('-');
+  const tratteFeatures = allFeatures.map(f => ({...f, properties: _prepareExportProps(f, false)}));
+  _downloadGeoJSON(tratteFeatures, 'ENRI_Lotto_' + lottiSuffix + '_tratte.geojson');
+
   if (vuoiSed) {
     if (btn) { btn.textContent = '⏳...'; btn.disabled = true; }
     try {
       const sedGeojson = await fetchWithSWR('SED_classificato.geojson', { isJson: true });
       const sedFeatures = (sedGeojson.features || [])
         .filter(f => MY_LOTTI.includes(f.properties.LOTTO))
-        .map(f => ({...f, properties: {...f.properties, layer: 'SED'}}));
-      features = features.concat(sedFeatures);
+        .map(f => ({...f, properties: _prepareExportProps(f, true)}));
+      if (sedFeatures.length) {
+        // Piccolo ritardo tra i due download: alcuni browser bloccano download multipli simultanei.
+        await new Promise(r => setTimeout(r, 400));
+        _downloadGeoJSON(sedFeatures, 'ENRI_Lotto_' + lottiSuffix + '_sed.geojson');
+      }
     } catch(e) {
       console.warn('Export GeoJSON: SED non disponibile,', e.message);
-      await prAlert('Attraversamenti (SED) non disponibili al momento, esporto solo il tracciato del lotto.', {title:'Attenzione'});
+      await prAlert('Attraversamenti (SED) non disponibili al momento, esportato solo il tracciato del lotto.', {title:'Attenzione'});
     } finally {
       if (btn) { btn.textContent = '⬇ GeoJSON'; btn.disabled = false; }
     }
   }
-  const EXPORT_EXCLUDE_PROPS = ['MOTIVO_NO','STATO_AUTORIZZAZIONE','STATO_NULLAOSTA','STATO_ORDINANZA','PROTOCOLLO_AUT','PRATICA','LAVORABILE','STATO_LEGENDA','CAMPO AWS'];
-  const fc = { type: 'FeatureCollection', features: features.map(f => {
-    const props = {...f.properties};
-    if (props.layer !== 'SED') {
-      props.CLUSTER = f.properties.CLUSTER ?? f.properties.ID_CLUSTER ?? f.properties.cluster ?? null;
-    }
-    EXPORT_EXCLUDE_PROPS.forEach(k => delete props[k]);
-    return {...f, properties: props};
-  }) };
-  const blob = new Blob([JSON.stringify(fc)], { type: 'application/geo+json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'ENRI_Lotto_' + MY_LOTTI.join('-') + (vuoiSed ? '_con-SED' : '') + '.geojson';
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
 }
 
 function getColor(stato){ return STATO_COLORS[stato]||'#6B7685'; }
