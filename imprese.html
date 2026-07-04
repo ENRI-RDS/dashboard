@@ -194,28 +194,22 @@
           </div>
           <!-- Nulla Osta Necessario: visibile solo per AUTORIZZAZIONE -->
           <div id="wrap-upd-no-nec" style="display:none">
-            <label>Nulla Osta Necessario</label>
-            <select id="fld-no-nec">
-              <option value="">—</option>
-              <option value="SI">SI</option>
-              <option value="NO">NO</option>
-            </select>
+            <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+              <input type="checkbox" id="fld-no-nec" style="width:15px;height:15px;cursor:pointer">
+              Nulla Osta Necessario
+            </label>
           </div>
           <div id="wrap-polizza">
-            <label>Polizza necessaria</label>
-            <select id="fld-polizza">
-              <option value="">—</option>
-              <option value="SI">SI</option>
-              <option value="NO">NO</option>
-            </select>
+            <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+              <input type="checkbox" id="fld-polizza" style="width:15px;height:15px;cursor:pointer">
+              Polizza necessaria
+            </label>
           </div>
           <div id="wrap-convenzione">
-            <label>Convenzione</label>
-            <select id="fld-convenzione">
-              <option value="">—</option>
-              <option value="SI">SI</option>
-              <option value="NO">NO</option>
-            </select>
+            <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+              <input type="checkbox" id="fld-convenzione" style="width:15px;height:15px;cursor:pointer">
+              Convenzione
+            </label>
           </div>
           <div id="wrap-prev-rilascio">
             <label>Data prevista rilascio</label>
@@ -310,10 +304,6 @@
           <div id="wrap-no-nec" style="display:none">
             <label>Nulla Osta Necessario</label>
             <select id="new-no-nec"><option value=""></option><option>SI</option><option>NO</option></select>
-          </div>
-          <div>
-            <label>Ordinanza necessaria</label>
-            <select id="new-ord-nec"><option value=""></option><option>SI</option><option>NO</option></select>
           </div>
           <div style="grid-column:span 2">
             <label>Note</label>
@@ -642,9 +632,9 @@ window.addEventListener('pageshow', (e) => {
     const isAut = (SELECTED.TIPO_PERMESSO || '').trim() === 'AUTORIZZAZIONE';
     $('wrap-upd-no-nec').style.display = isAut ? '' : 'none';
     $('wrap-upd-no-tratte').style.display = 'none';
-    $('fld-no-nec').value = SELECTED['NULLA OSTA NECESSARIO'] || '';
-    $('fld-polizza').value = SELECTED['POLIZZA ']?.trim() || '';
-    $('fld-convenzione').value = SELECTED['CONVENZIONE']?.trim() || '';
+    $('fld-no-nec').checked = (SELECTED['NULLA OSTA NECESSARIO'] || '').trim() === 'SI';
+    $('fld-polizza').checked = (SELECTED['POLIZZA ']?.trim() || '') === 'SI';
+    $('fld-convenzione').checked = (SELECTED['CONVENZIONE']?.trim() || '') === 'SI';
     { // Prefill Data prevista rilascio (DD/MM/YYYY → YYYY-MM-DD per input[type=date])
       const dpr = (SELECTED['DATA_PREVISTA_RILASCIO'] || '').trim();
       const dm = dpr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
@@ -727,7 +717,7 @@ window.addEventListener('pageshow', (e) => {
   }
 
   $('fld-no-nec').addEventListener('change', function() {
-    const show = this.value === 'SI';
+    const show = this.checked;
     $('wrap-upd-no-tratte').style.display = show ? '' : 'none';
     if (!show) Array.from($('fld-no-tratte').options).forEach(o => o.selected = false);
   });
@@ -756,10 +746,10 @@ window.addEventListener('pageshow', (e) => {
         $('wrap-upd-no-tratte').style.display = 'none';
         $('wrap-polizza').style.display = 'none';
         $('wrap-convenzione').style.display = 'none';
-        $('fld-no-nec').value = '';
+        $('fld-no-nec').checked = false;
         Array.from($('fld-no-tratte').options).forEach(o => o.selected = false);
-        $('fld-polizza').value = '';
-        $('fld-convenzione').value = '';
+        $('fld-polizza').checked = false;
+        $('fld-convenzione').checked = false;
       } else {
         $('wrap-upd-no-nec').style.display = isAut ? '' : 'none';
         $('wrap-polizza').style.display = '';
@@ -858,16 +848,16 @@ window.addEventListener('pageshow', (e) => {
     const noteVal = $('fld-note').value.trim();
     if (noteVal) fields.NOTE = noteVal;
 
-    const polizza = stato === 'NO COMPETENZA' ? '' : $('fld-polizza').value;
+    const polizza = stato === 'NO COMPETENZA' ? '' : ($('fld-polizza').checked ? 'SI' : 'NO');
     if (polizza) fields['POLIZZA '] = polizza;
-    const convenzione = stato === 'NO COMPETENZA' ? '' : $('fld-convenzione').value;
+    const convenzione = stato === 'NO COMPETENZA' ? '' : ($('fld-convenzione').checked ? 'SI' : 'NO');
     if (convenzione) fields['CONVENZIONE'] = convenzione;
 
     const prevRilascio = (stato === 'OTTENUTO' || stato === 'NO COMPETENZA') ? '' : $('fld-prev-rilascio').value;
     if (prevRilascio) fields['DATA_PREVISTA_RILASCIO'] = fromInputDate(prevRilascio);
 
     // Nulla Osta Necessario (solo per AUTORIZZAZIONE, non richiesto per NO COMPETENZA)
-    const noNec = stato === 'NO COMPETENZA' ? '' : $('fld-no-nec').value;
+    const noNec = stato === 'NO COMPETENZA' ? '' : ($('fld-no-nec').checked ? 'SI' : 'NO');
     if (noNec) {
       fields['NULLA OSTA NECESSARIO'] = noNec;
       if (noNec === 'SI') {
@@ -951,7 +941,6 @@ window.addEventListener('pageshow', (e) => {
       "DATA_ULTIMA_MODIFICA": new Date().toLocaleDateString('it-IT'),
       "DATA_APPROVAZIONE":    "",
       "NULLA OSTA NECESSARIO": $('new-tipo').value === 'AUTORIZZAZIONE' ? $('new-no-nec')?.value || '' : '',
-      "ORDINANZA NECESSARIA": $('new-ord-nec').value,
       "PRATICA":              pratica,
       "N_SED":                $('new-nsed').value.trim(),
       "NOTE":                 $('new-note').value.trim(),
@@ -1183,6 +1172,7 @@ window.addEventListener('pageshow', (e) => {
             <li><b>Modifica i campi</b> necessari (stato, date, note). Le modifiche restano in bozza finché non le invii.</li>
             <li><b>Controlla il riepilogo</b> delle modifiche in coda prima di inviarle.</li>
             <li><b>Invia per approvazione</b>: l'amministratore riceve la richiesta e la valida. Solo dopo l'approvazione la pratica risulta aggiornata.</li>
+            <li>Nel tab <b>Solleciti</b> puoi inviare un sollecito per le pratiche ferme, per segnalarne l'urgenza.</li>
             <li>Usa i tasti in alto per passare a <b>Scavi</b>, alla <b>Mappa</b> o per tornare all'<b>Hub</b>.</li>
           </ol>
         </div>
