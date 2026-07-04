@@ -386,7 +386,7 @@
     <span class="page-title">Avanzamento Scavi</span>
   </div>
   <div class="topbar-right">
-    <a href="index.html" class="topbar-back">Progettazione</a>
+    <a href="index.html?direct=1" class="topbar-back">Progettazione</a>
     <a href="mappa.html" class="topbar-back">Mappa</a>
     <a href="hub.html" class="topbar-back">← Hub</a>
   </div>
@@ -1089,6 +1089,7 @@ function _renderCantieriTableHead() {
     if (c.action) {
       return `<th style="text-align:${c.align||'left'};${tightStyle}"><span class="th-label" style="cursor:default">${c.label}</span></th>`;
     }
+    const hasQuickFilter = ['lotto','stato','cluster','impresa'].includes(c.key);
     const filterActive = _cantieriColFilters[c.key] ? ' active' : '';
     const sortDir = _cantieriSort.col === c.key ? _cantieriSort.dir : 0;
     const sortActive = sortDir !== 0 ? ' active' : '';
@@ -1097,7 +1098,7 @@ function _renderCantieriTableHead() {
         <span class="th-label" onclick="_sortCantieri('${c.key}')">${c.label}</span>
         <span class="th-icons">
           <span class="th-icon-btn${sortActive}" onclick="_sortCantieri('${c.key}')" title="Ordina">${sortIcon(sortDir)}</span>
-          <span class="th-icon-btn${filterActive}" onclick="_toggleColFilter(event,'${c.key}')" title="Filtra">${filterIcon}</span>
+          ${hasQuickFilter ? '' : `<span class="th-icon-btn${filterActive}" onclick="_toggleColFilter(event,'${c.key}')" title="Filtra">${filterIcon}</span>`}
         </span>
       </div>
     </th>`;
