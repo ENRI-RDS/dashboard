@@ -1012,8 +1012,8 @@ const CANTIERI_COLS = [
   { key:'stato',           label:'Stato',         get:r => STATO_LABEL[STATO_MAP[r.stato_cantiere] || 'non-avviato'], tight:true },
   { key:'pct',             label:'Avanz.',        get:r => (r.metri_totali||0) > 0 ? Math.round((r.metri_scavati||0)/r.metri_totali*100) + '%' : '—', numeric:true,
                            sortVal:r => (r.metri_totali||0) > 0 ? Math.round((r.metri_scavati||0)/r.metri_totali*100) : -1 },
-  { key:'metri_totali',    label:'M. Tot.',       get:r => fmt(r.metri_totali||0), numeric:true, align:'right', sortVal:r => r.metri_totali||0, tight:true },
-  { key:'metri_scavati',   label:'M. Scavati',    get:r => fmt(r.metri_scavati||0), numeric:true, align:'right', sortVal:r => r.metri_scavati||0, tight:true },
+  { key:'metri_totali',    label:'M. Tot.',       get:r => fmt(r.metri_totali||0), numeric:true, align:'right', sortVal:r => r.metri_totali||0, tight:true, noFilter:true },
+  { key:'metri_scavati',   label:'M. Scavati',    get:r => fmt(r.metri_scavati||0), numeric:true, align:'right', sortVal:r => r.metri_scavati||0, tight:true, noFilter:true },
   { key:'registro',        label:'Registro',      action:true, align:'center', tight:true },
 ];
 let _cantieriSort = { col:null, dir:1 };
@@ -1030,15 +1030,15 @@ function _renderCantieriTableHead() {
   };
   const filterIcon = `<svg viewBox="0 0 16 16"><path d="M1.5 2.5h13l-4.7 5.6v4.6l-3.6 1.8v-6.4z" fill="currentColor"/></svg>`;
   tr.innerHTML = CANTIERI_COLS.map(c => {
-    const tightStyle = c.tight ? 'width:1%;max-width:70px;' : '';
+    const tightStyle = c.tight ? 'width:1%;max-width:70px;' : (c.key === 'ente' ? 'width:180px;max-width:180px;' : '');
     if (c.action) {
       return `<th style="text-align:${c.align||'left'};${tightStyle}"><span class="th-label" style="cursor:default">${c.label}</span></th>`;
     }
     const sortDir = _cantieriSort.col === c.key ? _cantieriSort.dir : 0;
     const sortActive = sortDir !== 0 ? ' active' : '';
-    // Colonne già filtrabili dai select "quick filter" sopra la tabella (Lotto/Stato/Cluster/Impresa):
-    // niente icona filtro per colonna, sarebbe ridondante e poco leggibile a fianco dell'icona sort.
-    const hasQuickFilter = CANTIERI_QUICK_FILTERS.some(f => f.key === c.key);
+    // Colonne già filtrabili dai select "quick filter" sopra la tabella (Lotto/Stato/Cluster/Impresa)
+    // o filtro poco utile su valori numerici (M. Tot./M. Scavati, v. noFilter): niente icona filtro.
+    const hasQuickFilter = CANTIERI_QUICK_FILTERS.some(f => f.key === c.key) || c.noFilter;
     const filterActive = _cantieriColFilters[c.key] ? ' active' : '';
     const filterBtn = hasQuickFilter ? '' : `<span class="th-icon-btn${filterActive}" onclick="_toggleColFilter(event,'${c.key}')" title="Filtra">${filterIcon}</span>`;
     return `<th style="${c.align === 'right' ? 'text-align:right;' : ''}${tightStyle}">
@@ -1185,7 +1185,7 @@ function _renderCantieriTable() {
     return `<tr>
       <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--accent)">${r.codice_cantiere || '—'}</span></td>
       <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:12px;color:var(--muted)" title="${(r.tratte||[]).length} tratte">${r.pratica_id || '—'}</span></td>
-      <td style="color:var(--muted)">${r.ente || '—'}</td>
+      <td style="color:var(--muted);max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${r.ente || ''}">${r.ente || '—'}</td>
       <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--accent)">${r.lotto ?? '—'}</span></td>
       <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:12px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 7px;color:var(--muted)">${(r.cluster ?? '?').toString().replace(/^[Cc]/,'')}</span></td>
       <td style="white-space:nowrap">${provPill(r.provincia)}</td>
