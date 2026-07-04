@@ -887,6 +887,7 @@
   <div class="topbar-right">
     <span class="topbar-user" id="statusBadge">⏳ Caricamento</span>
     <button class="btn" style="background:var(--retelit-teal,#1A7D99);font-size:11px;padding:5px 12px" onclick="exportPDF()">⬇ PDF</button>
+    <button class="btn secondary" style="font-size:11px;padding:5px 12px" onclick="exportGeoJSONLotti()" title="Esporta il tracciato del tuo lotto in formato GeoJSON">⬇ GeoJSON</button>
     <button class="btn secondary" style="font-size:11px;padding:5px 12px" onclick="openHelp()" title="Guida alla Mappa">?</button>
     <a href="imprese.html" class="topbar-back"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>Pratiche</a>
     <a href="mappa_impresa.html" class="topbar-back"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/></svg>Mappa</a>
@@ -1771,6 +1772,38 @@ function exportPDF(){
   btn.textContent='⏳...'; btn.disabled=true;
   map.invalidateSize();
   setTimeout(()=>{window.print();btn.textContent='⬇ PDF';btn.disabled=false;},500);
+}
+
+// Esporta il tracciato QGIS del/dei lotto/i assegnato/i all'impresa (già filtrato in allFeatures,
+// popolato da _buildMapLayers). Niente QTS (layer catastale, non pertinente all'impresa).
+// SED (attraversamenti) incluso solo su conferma esplicita — fetch on-demand, filtrato su MY_LOTTI
+// con la stessa logica di _loadSEDInner, indipendente dallo stato del toggle SED in mappa.
+async function exportGeoJSONLotti(){
+  const btn = document.querySelector('[onclick="exportGeoJSONLotti()"]');
+  if (!allFeatures || !allFeatures.length) { alert('Nessun dato caricato ancora, riprova tra qualche secondo.'); return; }
+  const vuoiSed = confirm('Vuoi includere anche gli attraversamenti (SED) nel file esportato?');
+  let features = allFeatures.slice();
+  if (vuoiSed) {
+    if (btn) { btn.textContent = '⏳...'; btn.disabled = true; }
+    try {
+      const sedGeojson = await fetchWithSWR('SED_classificato.geojson', { isJson: true });
+      const sedFeatures = (sedGeojson.features || []).filter(f => MY_LOTTI.includes(f.properties.LOTTO));
+      features = features.concat(sedFeatures);
+    } catch(e) {
+      console.warn('Export GeoJSON: SED non disponibile,', e.message);
+      alert('Attraversamenti (SED) non disponibili al momento, esporto solo il tracciato del lotto.');
+    } finally {
+      if (btn) { btn.textContent = '⬇ GeoJSON'; btn.disabled = false; }
+    }
+  }
+  const fc = { type: 'FeatureCollection', features };
+  const blob = new Blob([JSON.stringify(fc)], { type: 'application/geo+json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'ENRI_Lotto_' + MY_LOTTI.join('-') + (vuoiSed ? '_con-SED' : '') + '.geojson';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 }
 
 function getColor(stato){ return STATO_COLORS[stato]||'#6B7685'; }
