@@ -743,7 +743,8 @@ window.addEventListener('pageshow', (e) => {
 
       // NO COMPETENZA: non richiede Nulla Osta/Polizza/Convenzione, solo note
       const isAut = (SELECTED?.TIPO_PERMESSO || '').trim() === 'AUTORIZZAZIONE';
-      if (v === 'NO COMPETENZA') {
+      if (v === 'NO COMPETENZA' || v === 'OTTENUTO') {
+        $('wrap-checkboxes').style.display = 'none';
         $('wrap-upd-no-nec').style.display = 'none';
         $('wrap-upd-no-tratte').style.display = 'none';
         $('wrap-polizza').style.display = 'none';
@@ -753,6 +754,7 @@ window.addEventListener('pageshow', (e) => {
         $('fld-polizza').checked = false;
         $('fld-convenzione').checked = false;
       } else {
+        $('wrap-checkboxes').style.display = '';
         $('wrap-upd-no-nec').style.display = isAut ? '' : 'none';
         $('wrap-polizza').style.display = '';
         $('wrap-convenzione').style.display = '';
@@ -850,16 +852,19 @@ window.addEventListener('pageshow', (e) => {
     const noteVal = $('fld-note').value.trim();
     if (noteVal) fields.NOTE = noteVal;
 
-    const polizza = stato === 'NO COMPETENZA' ? '' : ($('fld-polizza').checked ? 'SI' : 'NO');
+    // Polizza/Convenzione/Nulla Osta: non richiesti per NO COMPETENZA e OTTENUTO
+    const skipChecks = (stato === 'NO COMPETENZA' || stato === 'OTTENUTO');
+
+    const polizza = skipChecks ? '' : ($('fld-polizza').checked ? 'SI' : 'NO');
     if (polizza) fields['POLIZZA '] = polizza;
-    const convenzione = stato === 'NO COMPETENZA' ? '' : ($('fld-convenzione').checked ? 'SI' : 'NO');
+    const convenzione = skipChecks ? '' : ($('fld-convenzione').checked ? 'SI' : 'NO');
     if (convenzione) fields['CONVENZIONE'] = convenzione;
 
     const prevRilascio = (stato === 'OTTENUTO' || stato === 'NO COMPETENZA') ? '' : $('fld-prev-rilascio').value;
     if (prevRilascio) fields['DATA_PREVISTA_RILASCIO'] = fromInputDate(prevRilascio);
 
-    // Nulla Osta Necessario (solo per AUTORIZZAZIONE, non richiesto per NO COMPETENZA)
-    const noNec = stato === 'NO COMPETENZA' ? '' : ($('fld-no-nec').checked ? 'SI' : 'NO');
+    // Nulla Osta Necessario (solo per AUTORIZZAZIONE, non richiesto per NO COMPETENZA/OTTENUTO)
+    const noNec = skipChecks ? '' : ($('fld-no-nec').checked ? 'SI' : 'NO');
     if (noNec) {
       fields['NULLA OSTA NECESSARIO'] = noNec;
       if (noNec === 'SI') {
