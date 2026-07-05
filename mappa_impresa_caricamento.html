@@ -117,6 +117,10 @@
   .pr-card.selected{border-color:var(--accent);background:var(--accent-light);}
   .pr-card-code{font-family:var(--font-mono);font-weight:700;color:var(--accent);font-size:11px;}
   .pr-card-row{display:flex;justify-content:space-between;gap:6px;color:var(--muted);font-size:10.5px;margin-top:3px;}
+  .pr-edit-sub{font-size:11.5px;color:var(--muted);margin-bottom:10px;line-height:1.6;}
+  .pr-edit-sub b{font-family:var(--font-mono);font-weight:700;color:var(--accent);font-size:12px;}
+  .pr-edit-sub .pr-edit-tratta{font-family:var(--font-mono);}
+  .pr-edit-sub .pr-tipo-tag{display:inline-block;background:var(--accent-light,#eef4fb);color:var(--accent);border-radius:5px;padding:1px 7px;font-weight:600;font-size:10.5px;}
   .pr-empty{padding:16px 4px;text-align:center;color:var(--muted);font-size:11.5px;font-style:italic;}
   .pr-form label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text);margin:10px 0 4px;font-weight:600;}
   .pr-form label:first-of-type{margin-top:0;}
@@ -938,7 +942,8 @@
         <div id="prList" class="pr-list"><div class="pr-empty">Caricamento…</div></div>
 
         <div id="prEditForm" class="pr-form" style="display:none">
-          <div class="pr-form-title">Aggiornamento — <span id="prEditSub" class="mono" style="font-weight:400"></span></div>
+          <div class="pr-form-title" style="margin-bottom:2px">Aggiornamento</div>
+          <div id="prEditSub" class="pr-edit-sub"></div>
           <div id="prSiblings" class="pr-siblings" style="display:none">
             <div class="pr-siblings-title">Altre tratte nella stessa pratica</div>
             <div id="prSiblingsList" style="color:var(--text)"></div>
@@ -960,7 +965,6 @@
           <div id="pr-wrap-data-prevista">
             <label>Data prevista rilascio</label>
             <input type="date" id="pr-data-prevista">
-            <div class="pr-hint">Stima fornita dall'impresa. Non richiesta se lo stato passa a OTTENUTO o NO COMPETENZA.</div>
           </div>
           <div id="pr-wrap-no-nec" style="display:none">
             <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
@@ -3739,7 +3743,8 @@ function prSelectRow(idx){
   document.querySelector(`#prList .pr-card[data-idx="${idx}"]`)?.classList.add('selected');
 
   document.getElementById('prEditForm').style.display = '';
-  document.getElementById('prEditSub').textContent = `${PR_SELECTED._codice||''} · ${PR_SELECTED.TRATTA_ID} · ${PR_SELECTED.ENTE} · ${PR_SELECTED.TIPO_PERMESSO}`;
+  document.getElementById('prEditSub').innerHTML =
+    `<b>${prEscapeHtml(PR_SELECTED._codice||'')}</b> <span class="pr-edit-tratta">${prEscapeHtml(PR_SELECTED.TRATTA_ID)}</span><br>${prEscapeHtml(PR_SELECTED.ENTE)} · <span class="pr-tipo-tag">${prEscapeHtml(PR_SELECTED.TIPO_PERMESSO)}</span>`;
   _prPopulateStatoSelect(PR_SELECTED.STATO_PERMESSO || '');
 
   document.getElementById('pr-data-rich').value = '';
@@ -3815,7 +3820,7 @@ document.getElementById('pr-stato').addEventListener('change', function(){
     document.getElementById('pr-wrap-data-prevista').style.display = (v==='OTTENUTO' || v==='NO COMPETENZA') ? 'none' : '';
 
     const isAut = (PR_SELECTED?.TIPO_PERMESSO || '').trim() === 'AUTORIZZAZIONE';
-    if (v === 'NO COMPETENZA') {
+    if (v === 'NO COMPETENZA' || v === 'OTTENUTO') {
       document.getElementById('pr-wrap-no-nec').style.display = 'none';
       document.getElementById('pr-wrap-no-tratte').style.display = 'none';
       document.getElementById('pr-wrap-polizza').style.display = 'none';
@@ -3867,11 +3872,12 @@ document.getElementById('prAddToQueue').onclick = async () => {
   }
   const noteVal = document.getElementById('pr-note').value.trim();
   if (noteVal) fields.NOTE = noteVal;
-  const polizza = stato === 'NO COMPETENZA' ? '' : (document.getElementById('pr-polizza').checked ? 'SI' : 'NO');
+  const skipChecks = (stato === 'NO COMPETENZA' || stato === 'OTTENUTO');
+  const polizza = skipChecks ? '' : (document.getElementById('pr-polizza').checked ? 'SI' : 'NO');
   if (polizza) fields['POLIZZA '] = polizza;
-  const convenzione = stato === 'NO COMPETENZA' ? '' : (document.getElementById('pr-convenzione').checked ? 'SI' : 'NO');
+  const convenzione = skipChecks ? '' : (document.getElementById('pr-convenzione').checked ? 'SI' : 'NO');
   if (convenzione) fields['CONVENZIONE'] = convenzione;
-  const noNec = stato === 'NO COMPETENZA' ? '' : (document.getElementById('pr-no-nec').checked ? 'SI' : 'NO');
+  const noNec = skipChecks ? '' : (document.getElementById('pr-no-nec').checked ? 'SI' : 'NO');
   if (noNec) {
     fields['NULLA OSTA NECESSARIO'] = noNec;
     if (noNec === 'SI') {
