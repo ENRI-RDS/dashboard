@@ -1993,10 +1993,10 @@ function exportXlsx(pratiche, filename) {
 
 function _exportXlsxImpl(pratiche, filename) {
   if (!pratiche || !pratiche.length) { alert('Nessuna pratica da esportare.'); return; }
-  const header = ['Codice', 'Tipo', 'Lotto', 'Stato', 'Ente', 'Data Invio', 'Data Aggiornamento', 'Prev. Rilascio', 'Giorni Rimanenti', 'Metri (m)'];
+  const header = ['Codice', 'Tipo', 'Lotto', 'Stato', 'Ente', 'Data Invio', 'Cambio Stato', 'Update', 'Data Ott.', 'Prev. Rilascio', 'Metri (m)'];
 
-  // Indici colonne data (0-based): 5=Data Invio, 6=Data Agg, 7=Prev. Rilascio
-  const DATE_COLS = [5, 6, 7];
+  // Indici colonne data (0-based): 5=Data Invio, 6=Cambio Stato, 7=Update, 8=Data Ott., 9=Prev. Rilascio
+  const DATE_COLS = [5, 6, 7, 8, 9];
   const DATE_FMT  = 'dd/mm/yyyy';
 
   // Converte stringa "dd/mm/yyyy" in oggetto Date (native) per SheetJS
@@ -2018,6 +2018,7 @@ function _exportXlsxImpl(pratiche, filename) {
                 : p.tipo || '';
     const prev = calcolaPrevisione(p);
     const prevDate = prev ? prev.scad : '';  // già un oggetto Date da calcolaPrevisione
+    const dataOttStr = p.stato === 'OTTENUTO' ? (p.dum || '') : '';
     return [
       p.codice,
       tipo,
@@ -2025,10 +2026,11 @@ function _exportXlsxImpl(pratiche, filename) {
       p.stato,
       p.ente || '',
       toDateObj(invioStr),          // col 5 – Data Invio → Date object
-      toDateObj(aggStr),            // col 6 – Data Aggiornamento → Date object
-      prevDate || '',               // col 7 – Prev. Rilascio → Date object
-      prev ? prev.diff : '',        // col 8 – Giorni Rimanenti → numero
-      p.metri ? Number(p.metri) : 0 // col 9 – Metri → numero
+      toDateObj(aggStr),            // col 6 – Cambio Stato → Date object
+      toDateObj(p.dataUpdate || ''),// col 7 – Update → Date object
+      toDateObj(dataOttStr),        // col 8 – Data Ott. → Date object
+      prevDate || '',               // col 9 – Prev. Rilascio → Date object
+      p.metri ? Number(p.metri) : 0 // col 10 – Metri → numero
     ];
   });
 
@@ -2045,7 +2047,7 @@ function _exportXlsxImpl(pratiche, filename) {
     });
   }
 
-  ws['!cols'] = [{wch:22},{wch:18},{wch:8},{wch:30},{wch:32},{wch:14},{wch:16},{wch:14},{wch:12},{wch:12}];
+  ws['!cols'] = [{wch:22},{wch:18},{wch:8},{wch:30},{wch:32},{wch:14},{wch:14},{wch:14},{wch:14},{wch:14},{wch:12}];
   const headerRange = XLSX.utils.decode_range(ws['!ref']);
   for (let c = headerRange.s.c; c <= headerRange.e.c; c++) {
     const cell = ws[XLSX.utils.encode_cell({r:0, c})];
