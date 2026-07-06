@@ -177,15 +177,16 @@
       <p class="sub">Excel → CSV (sep <code>;</code>) automatico. Il contenuto è salvato in MongoDB (GridFS) ed è la versione "viva" servita a tutte le pagine.</p>
 
       <form id="uploadForm">
-        <label for="project">Progetto</label>
-        <select id="project" data-testid="project-select">
-          <option value="main">main (root)</option>
-          <option value="M">M (Progetto M)</option>
-          <option value="pm">pm (Project Management)</option>
+        <label for="target">Nome file di destinazione</label>
+        <select id="target" data-testid="target-input">
+          <option value="">— seleziona il file da sostituire —</option>
+          <option value="Master.csv">Master.csv</option>
+          <option value="Riepilogo_progettazione.csv">Riepilogo_progettazione.csv</option>
+          <option value="dati.csv">dati.csv (in disuso)</option>
+          <option value="QGIS.geojson">QGIS.geojson</option>
+          <option value="QTS.geojson">QTS.geojson</option>
+          <option value="SED_classificato.geojson">SED_classificato.geojson</option>
         </select>
-
-        <label for="target">Nome file di destinazione <span style="text-transform:none;color:var(--muted);font-weight:400">(opzionale — sovrascrive un file esistente)</span></label>
-        <input type="text" id="target" placeholder="es. Master.csv  oppure  M/QGIS_3.geojson" data-testid="target-input">
 
         <label>File</label>
         <div class="dropzone" id="dropzone" data-testid="dropzone">
@@ -836,10 +837,16 @@
     const f = droppedFile || fileInput.files[0];
     if(!f) return setMsg(msg, 'Seleziona un file', false);
 
+    const target = $('target').value.trim();
+    if(!target) return setMsg(msg, 'Seleziona il file di destinazione dal menu', false);
+    if(f.name.trim().toLowerCase() !== target.toLowerCase()){
+      return setMsg(msg, `Nome file non corrispondente: hai caricato "${f.name}" ma il menu indica "${target}". Rinomina il file o cambia selezione.`, false);
+    }
+
     const fd = new FormData();
     fd.append('file', f);
-    fd.append('project', $('project').value);
-    if($('target').value.trim()) fd.append('target', $('target').value.trim());
+    fd.append('project', 'main');
+    fd.append('target', target);
     if(token()) fd.append('token', token());
 
     submitBtn.disabled = true; submitBtn.textContent = 'Caricamento…';
