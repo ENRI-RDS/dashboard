@@ -117,14 +117,17 @@ def _check_token(token: str | None) -> None:
         raise HTTPException(401, "Invalid or missing upload token")
 
 
-def _log_admin_action(azione: str, target: str, actor_nome: str | None) -> None:
+async def _log_admin_action(azione: str, target: str, actor_nome: str | None) -> None:
     """Audit trail per le azioni protette da UPLOAD_TOKEN (non da sessione, quindi
     `actor_nome` è auto-dichiarato dal client — utile per tracciare, non per provare)."""
-    asyncio.create_task(admin_actions_col.insert_one({
-        "azione": azione, "target": target,
-        "actor": (actor_nome or "").strip() or "sconosciuto",
-        "timestamp": _now_iso(),
-    }))
+    try:
+        await admin_actions_col.insert_one({
+            "azione": azione, "target": target,
+            "actor": (actor_nome or "").strip() or "sconosciuto",
+            "timestamp": _now_iso(),
+        })
+    except Exception:
+        pass  # l'audit log non deve mai far fallire l'azione principale
 
 
 def _now_iso() -> str:
@@ -434,7 +437,7 @@ async def upload_file(
     }
     res = await uploads_col.insert_one(record)
     asyncio.create_task(_prune_old_versions(rel))
-    _log_admin_action("upload", rel, x_actor_nome)
+    await _log_admin_action("upload", rel, x_actor_nome)
 
     # Se è Master.csv, rigenera anche i file derivati (Riepilogo_progettazione.csv,
     # QGIS.geojson) e sincronizza GitHub — stesso comportamento di approve/delete/restore,
@@ -479,7 +482,7 @@ async def delete_upload(
         {"_id": oid},
         {"$set": {"deleted_at": _now_iso(), "gridfs_id": None}},
     )
-    _log_admin_action("delete_version", doc["filename"], x_actor_nome)
+    await _log_admin_action("delete_version", doc["filename"], x_actor_nome)
     # Se è Master.csv, sincronizza GitHub con la versione ora corrente
     if doc.get("filename") == MASTER_FILENAME:
         asyncio.create_task(_push_current_master_to_github())
@@ -512,7 +515,7 @@ async def delete_file(
         {"filename": rel, "deleted_at": None},
         {"$set": {"deleted_at": _now_iso(), "gridfs_id": None}},
     )
-    _log_admin_action("delete_all_versions", rel, x_actor_nome)
+    await _log_admin_action("delete_all_versions", rel, x_actor_nome)
     # Se è Master.csv, sincronizza GitHub e rigenera i file derivati con la
     # versione ora corrente (il seed da disco, se non resta nessun'altra versione)
     if rel == MASTER_FILENAME:
@@ -569,7 +572,7 @@ async def restore_upload(
     if not doc.get("gridfs_id"):
         raise HTTPException(410, "Underlying content was purged; cannot restore")
     await uploads_col.update_one({"_id": oid}, {"$set": {"deleted_at": None}})
-    _log_admin_action("restore", doc["filename"], x_actor_nome)
+    await _log_admin_action("restore", doc["filename"], x_actor_nome)
     # Se è Master.csv, sincronizza GitHub con la versione ripristinata
     if doc.get("filename") == MASTER_FILENAME:
         asyncio.create_task(_push_current_master_to_github())
@@ -2549,7 +2552,7 @@ async def admin_prune_versions(
     result = {}
     for fn in filenames:
         result[fn] = await _prune_old_versions(fn)
-    _log_admin_action("prune_versions", ",".join(filenames) or "-", x_actor_nome)
+    await _log_admin_action("prune_versions", ",".join(filenames) or "-", x_actor_nome)
     return {"pruned": result, "keep_versions": KEEP_VERSIONS}
 
 
