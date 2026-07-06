@@ -2019,24 +2019,34 @@ function renderResults(pratiche, addresses, query) {
   resultsEl.style.display = 'block';
 }
 
-let _highlightedLayer = null;
+let _highlightedLayers = [];
 
 function clearHighlight() {
-  if (_highlightedLayer) {
-    _highlightedLayer.setStyle({
+  _highlightedLayers.forEach(l => {
+    l.setStyle({
       weight: 4, opacity: 0.95,
-      color: getColorForMode(_highlightedLayer.feature, currentViewMode)
+      color: getColorForMode(l.feature, currentViewMode)
     });
-    _highlightedLayer = null;
-  }
+  });
+  _highlightedLayers = [];
 }
 
 function applyHighlight(targetLayer) {
   clearHighlight();
   targetLayer.setStyle({ weight: 9, opacity: 1, color: '#f59e0b' });
   targetLayer.bringToFront();
-  _highlightedLayer = targetLayer;
+  _highlightedLayers = [targetLayer];
   targetLayer.once('popupclose', clearHighlight);
+}
+
+// Evidenzia più layer insieme (es. tutte le tratte/segmenti di una stessa pratica)
+function applyHighlightMulti(layers) {
+  clearHighlight();
+  layers.forEach(l => {
+    l.setStyle({ weight: 9, opacity: 1, color: '#f59e0b' });
+    l.bringToFront();
+  });
+  _highlightedLayers = layers.slice();
 }
 
 function zoomToFeature(feature) {
@@ -2567,7 +2577,7 @@ function _buildMapLayers(geojson, isUpdate = false) {
         `, { className:'tratta-tip', sticky:true, direction:'top', offset:[0,-4] });
         layer.on('mouseover', e => { e.target.setStyle({ weight:6, opacity:1 }); e.target.bringToFront(); });
         layer.on('mouseout', e => {
-          if (_highlightedLayer === e.target) return;
+          if (_highlightedLayers.includes(e.target)) return;
           e.target.setStyle({ weight:4, opacity:0.95, color: getColorForMode(e.target.feature, currentViewMode) });
         });
         layer.on('click', e => { applyHighlight(e.target); });
@@ -2897,6 +2907,154 @@ function goToSito(s) {
   document.getElementById('sitiPanel').classList.remove('open');
   document.getElementById('sitiBtn').classList.remove('active');
   document.removeEventListener('click', _closeSitiOutside);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ═══════════════ PANNELLO ELENCO PRATICHE (evidenzia percorso completo) ═══════
+let _pratichePanelOpen = false;
+
+function buildPraticheIndex() {
+  const idx = new Map(); // pratica (uppercase) -> {pratica, tratte:Set, lotti:Set, comuni:Set}
+  allFeatures.forEach(f => {
+    const p = f.properties;
+    const codes = (p.PRATICA || '').split(/[|;,]/).map(s => s.trim()).filter(Boolean);
+    codes.forEach(code => {
+      const key = code.toUpperCase();
+      if (!idx.has(key)) idx.set(key, { pratica: code, tratte: new Set(), lotti: new Set(), comuni: new Set() });
+      const e = idx.get(key);
+      if (p.TRATTA_ID) e.tratte.add(p.TRATTA_ID);
+      if (p.LOTTO) e.lotti.add(p.LOTTO);
+      if (p.COMUNE) e.comuni.add(p.COMUNE);
+    });
+  });
+  return [...idx.values()].sort((a, b) => a.pratica.localeCompare(b.pratica));
+}
+
+// Controllo Leaflet per il tasto Pratiche (topright, sotto Siti)
+const PraticheControl = L.Control.extend({
+  options: { position: 'topright' },
+  onAdd: function() {
+    const wrap = L.DomUtil.create('div', '');
+    wrap.style.cssText = 'position:relative;margin-top:6px;';
+    L.DomEvent.disableClickPropagation(wrap);
+    L.DomEvent.disableScrollPropagation(wrap);
+
+    const btn = L.DomUtil.create('div', 'siti-control-btn', wrap);
+    btn.id = 'praticheBtn';
+    btn.title = 'Elenco pratiche (evidenzia percorso completo)';
+    btn.innerHTML = 'Pratiche';
+
+    const panel = L.DomUtil.create('div', 'siti-panel', wrap);
+    panel.id = 'praticheListPanel';
+    panel.innerHTML = `
+      <div class="siti-panel-head">
+        <div class="siti-panel-title">🗂️ Elenco pratiche</div>
+        <input class="siti-search" id="praticheSearch" type="text"
+               placeholder="Filtra per codice, lotto o comune…" autocomplete="off">
+      </div>
+      <div class="siti-list" id="praticheListEl"></div>`;
+
+    L.DomEvent.on(btn, 'click', togglePratichePanel);
+
+    setTimeout(() => {
+      const inp = document.getElementById('praticheSearch');
+      if (inp) inp.addEventListener('input', e => filterPratiche(e.target.value));
+    }, 0);
+
+    return wrap;
+  }
+});
+new PraticheControl().addTo(map);
+
+function togglePratichePanel() {
+  _pratichePanelOpen = !_pratichePanelOpen;
+  const panel = document.getElementById('praticheListPanel');
+  const btn   = document.getElementById('praticheBtn');
+  panel.classList.toggle('open', _pratichePanelOpen);
+  btn.classList.toggle('active', _pratichePanelOpen);
+  if (_pratichePanelOpen) {
+    renderPraticheList(buildPraticheIndex());
+    setTimeout(() => {
+      const inp = document.getElementById('praticheSearch');
+      if (inp) { inp.value = ''; inp.focus(); }
+    }, 150);
+    setTimeout(() => document.addEventListener('click', _closePraticheOutside), 0);
+  } else {
+    document.removeEventListener('click', _closePraticheOutside);
+  }
+}
+
+function _closePraticheOutside(e) {
+  const panel = document.getElementById('praticheListPanel');
+  const btn   = document.getElementById('praticheBtn');
+  if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) {
+    _pratichePanelOpen = false;
+    panel.classList.remove('open');
+    btn.classList.remove('active');
+    document.removeEventListener('click', _closePraticheOutside);
+  }
+}
+
+function renderPraticheList(list) {
+  const el = document.getElementById('praticheListEl');
+  if (!el) return;
+  el.innerHTML = '';
+  if (!list.length) {
+    el.innerHTML = '<div class="sito-empty">Nessuna pratica trovata</div>';
+    return;
+  }
+  list.forEach(e => {
+    const item = document.createElement('div');
+    item.className = 'sito-item';
+    const lotti  = [...e.lotti].join(', ');
+    const comuni = [...e.comuni].join(', ');
+    const nTratte = e.tratte.size;
+    item.innerHTML = `
+      <div class="sito-icon">◎</div>
+      <div class="sito-info">
+        <div class="sito-name">${e.pratica}</div>
+        <div class="sito-note">Lotto ${lotti} · ${nTratte} tratt${nTratte===1?'a':'e'}${comuni ? ' · '+comuni : ''}</div>
+      </div>
+      <span class="sito-arrow">›</span>`;
+    item.onclick = () => selectPraticaCompleta(e.pratica);
+    el.appendChild(item);
+  });
+}
+
+function filterPratiche(query) {
+  const q = query.trim().toUpperCase();
+  const all = buildPraticheIndex();
+  if (!q) { renderPraticheList(all); return; }
+  renderPraticheList(all.filter(e =>
+    e.pratica.toUpperCase().includes(q) ||
+    [...e.lotti].some(l => (l||'').toUpperCase().includes(q)) ||
+    [...e.comuni].some(c => c.toUpperCase().includes(q))
+  ));
+}
+
+// Evidenzia sulla mappa TUTTI i segmenti/tratte associati alla pratica selezionata
+// (non solo il primo trovato) e inquadra l'intero percorso.
+function selectPraticaCompleta(pratica) {
+  const codeUp = pratica.toUpperCase();
+  const matchedLayers = [];
+  allLayers.forEach(({layer}) => {
+    layer.eachLayer(l => {
+      const raw = (l.feature?.properties?.PRATICA || '');
+      const codes = raw.split(/[|;,]/).map(s => s.trim().toUpperCase());
+      if (codes.includes(codeUp)) matchedLayers.push(l);
+    });
+  });
+  if (!matchedLayers.length) return;
+
+  applyHighlightMulti(matchedLayers);
+  const group = L.featureGroup(matchedLayers);
+  map.fitBounds(group.getBounds(), { padding: [40, 40], maxZoom: 16 });
+  setTimeout(() => { map.getContainer().style.cursor = ''; }, 0);
+
+  _pratichePanelOpen = false;
+  document.getElementById('praticheListPanel').classList.remove('open');
+  document.getElementById('praticheBtn').classList.remove('active');
+  document.removeEventListener('click', _closePraticheOutside);
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
