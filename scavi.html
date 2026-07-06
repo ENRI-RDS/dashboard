@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="it" translate="no">
+<html lang="it" translate="n">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -1904,7 +1904,7 @@ function openModalCluster(cl) {
     const m = gruppi[g.label] || 0; if (!m) return;
     const pct = totMetri > 0 ? m / totMetri * 100 : 0;
     barreStato += `<div class="modal-bar-row">
-      <span class="modal-bar-label">${g.label}</span>
+      <span class="modal-bar-label" style="color:${g.color}">${g.label}</span>
       <span style="flex:1"></span>
       <span class="modal-bar-pct" style="position:static;color:${g.color};text-shadow:none;width:48px;text-align:right">${pct.toFixed(1)}%</span>
       <span class="modal-bar-val">${fmt(m)} m</span>
@@ -1923,7 +1923,8 @@ function openModalCluster(cl) {
             <th style="text-align:left;padding:6px 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Lotto</th>
             <th style="text-align:left;padding:6px 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Impresa</th>
             <th style="text-align:right;padding:6px 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Totale</th>
-            <th style="text-align:right;padding:6px 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Scavati</th>
+            <th style="text-align:right;padding:6px 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">% Permessi</th>
+            <th style="text-align:right;padding:6px 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Metri scavati</th>
             <th style="text-align:right;padding:6px 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Progr.</th>
           </tr>
         </thead>
@@ -1931,10 +1932,13 @@ function openModalCluster(cl) {
   lottiCl.forEach(r => {
     const col = STATO_COLOR[r.stato];
     const mScav = Math.round(r.metri * r.pct / 100);
+    const permLotto = PERMESSI[r.id];
+    const pctPerm = permLotto && permLotto.totale > 0 ? ((permLotto.statiMap['OTTENUTO']||0) / permLotto.totale * 100).toFixed(1) : '0.0';
     lottiHtml += `<tr style="border-bottom:1px solid var(--border)" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
       <td style="padding:8px;font-family:var(--font-mono);font-weight:700;font-size:13px;color:var(--accent);border-left:3px solid ${col}">${r.id}</td>
       <td style="padding:8px;font-weight:700;color:var(--accent)">${IMPRESE_PER_LOTTO[r.id] || '?'}</td>
       <td style="padding:8px;text-align:right;font-weight:700;font-family:var(--font-display)">${fmt(r.metri)} m</td>
+      <td style="padding:8px;text-align:right;font-weight:700;color:#1E9E6A">${pctPerm}%</td>
       <td style="padding:8px;text-align:right;font-weight:700;font-family:var(--font-display);color:${col}">${r.pct>0?fmt(mScav)+' m':'—'}</td>
       <td style="padding:8px;text-align:right;font-weight:700;color:${col}">${r.pct}%</td>
     </tr>`;
