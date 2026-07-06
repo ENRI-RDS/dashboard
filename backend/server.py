@@ -404,8 +404,8 @@ async def upload_file(
     # altrimenti un upload manuale lascia mappa e barre ferme alla versione precedente.
     if rel == MASTER_FILENAME:
         asyncio.create_task(_push_current_master_to_github())
-
-    return JSONResponse({
+    elif rel in GITHUB_PATHS:
+        asyncio.create_task(_push_to_github(out_bytes, path=GITHUB_PATHS[rel], label=rel))
         "ok": True,
         "id": str(res.inserted_id),
         "filename": rel,
@@ -815,6 +815,8 @@ GITHUB_PATHS: dict = {
     "QGIS.geojson":                os.environ.get("GITHUB_QGIS_PATH", "QGIS.geojson"),
     "solleciti.csv":               os.environ.get("GITHUB_SOLLECITI_PATH", "solleciti.csv"),
     "sopralluoghi.csv":             os.environ.get("GITHUB_SOPRALLUOGHI_PATH", "sopralluoghi.csv"),
+    "QTS.geojson":                 os.environ.get("GITHUB_QTS_PATH", "QTS.geojson"),
+    "SED_classificato.geojson":    os.environ.get("GITHUB_SED_PATH", "SED_classificato.geojson"),
 }
 
 
