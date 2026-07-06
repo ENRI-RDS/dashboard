@@ -473,6 +473,13 @@ async def delete_upload(
     doc = await uploads_col.find_one({"_id": oid})
     if not doc:
         raise HTTPException(404, "Upload not found")
+    # Determina se questa era la versione corrente PRIMA di cancellarla:
+    # se era una versione vecchia già superata, il contenuto "corrente" non
+    # cambia e non serve pushare/rigenerare nulla su GitHub.
+    was_current = False
+    if doc.get("filename") == MASTER_FILENAME:
+        cur = await _current_upload(MASTER_FILENAME)
+        was_current = bool(cur and cur["_id"] == oid)
     if doc.get("gridfs_id"):
         try:
             await gridfs.delete(doc["gridfs_id"])
@@ -483,8 +490,8 @@ async def delete_upload(
         {"$set": {"deleted_at": _now_iso(), "gridfs_id": None}},
     )
     await _log_admin_action("delete_version", doc["filename"], x_actor_nome)
-    # Se è Master.csv, sincronizza GitHub con la versione ora corrente
-    if doc.get("filename") == MASTER_FILENAME:
+    # Sincronizza GitHub solo se era davvero la versione corrente di Master.csv
+    if was_current:
         asyncio.create_task(_push_current_master_to_github())
     return {"deleted": str(oid), "filename": doc["filename"]}
 
