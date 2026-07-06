@@ -406,6 +406,8 @@ async def upload_file(
         asyncio.create_task(_push_current_master_to_github())
     elif rel in GITHUB_PATHS:
         asyncio.create_task(_push_to_github(out_bytes, path=GITHUB_PATHS[rel], label=rel))
+
+    return JSONResponse({
         "ok": True,
         "id": str(res.inserted_id),
         "filename": rel,
