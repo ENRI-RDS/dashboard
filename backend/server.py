@@ -2008,14 +2008,15 @@ async def get_solleciti(sess: dict = Depends(_require_session)):
     assignment = await _find_assignment(nome)
     if not assignment:
         return {"solleciti": [], "count": 0}
-    lotti = [str(l) for l in (assignment.get("lotti") or [])]
+    lotti = {_lotto_from_source(l) for l in (assignment.get("lotti") or []) if str(l).strip()}
 
-    # Legge le tratte dei lotti dell'impresa dal Master.csv
+    # Legge le tratte dei lotti dell'impresa dal Master.csv (match esatto, non substring:
+    # "Lotto 2" non deve agganciare "Lotto 2A" — stesso criterio di impresa_pratiche/get_cantieri_impresa)
     try:
         df = await _read_master_csv()
         tratte_impresa: set[str] = set()
-        for lotto in lotti:
-            mask = df["Source.Name"].astype(str).str.contains(lotto, case=False, na=False)
+        if "Source.Name" in df.columns and lotti:
+            mask = df["Source.Name"].apply(lambda x: _lotto_from_source(x) in lotti)
             tratte_impresa.update(df.loc[mask, "TRATTA_ID"].astype(str).str.strip().tolist())
     except Exception:
         tratte_impresa = set()
