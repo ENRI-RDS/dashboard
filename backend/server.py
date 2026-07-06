@@ -635,6 +635,17 @@ async def _require_session(
     return sess
 
 
+async def _require_staff_session(
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+) -> dict:
+    """Come _require_session ma esclude il ruolo 'impresa' — per endpoint non
+    pensati per le pagine Area Impresa (che usano gli /api/imprese/* scoped)."""
+    sess = await _require_session(x_session_token)
+    if sess.get("ruolo") == "impresa":
+        raise HTTPException(403, "Accesso non consentito per questo ruolo")
+    return sess
+
+
 @app.post("/api/auth/login")
 async def auth_login(payload: dict):
     """Proxy server-to-server verso Google Apps Script: il browser non vede
@@ -1718,7 +1729,7 @@ async def _push_sopralluoghi_to_github() -> None:
 
 
 @app.get("/api/lotti-cantieri")
-async def get_lotti_cantieri(sess: dict = Depends(_require_session)):
+async def get_lotti_cantieri(sess: dict = Depends(_require_staff_session)):
     """Restituisce lotti distinti (da Master.csv) e i loro cantieri (da MongoDB)."""
     lotti_master = []
 
@@ -1787,7 +1798,7 @@ async def delete_sopralluogo(sop_id: str, sess: dict = Depends(_require_session)
 
 
 @app.get("/api/sopralluoghi")
-async def list_sopralluoghi(sess: dict = Depends(_require_session)):
+async def list_sopralluoghi(sess: dict = Depends(_require_staff_session)):
     """Restituisce tutti i verbali di sopralluogo, ordinati per codice decrescente."""
     verbali = []
     async for d in sopralluoghi_col.find({}).sort("codice_verbale", -1):
@@ -1797,7 +1808,7 @@ async def list_sopralluoghi(sess: dict = Depends(_require_session)):
 
 
 @app.get("/api/sopralluoghi/next-codice")
-async def sopralluogo_next_codice(sess: dict = Depends(_require_session)):
+async def sopralluogo_next_codice(sess: dict = Depends(_require_staff_session)):
     """Restituisce il prossimo codice verbale progressivo."""
     last = await sopralluoghi_col.find_one({}, sort=[("codice_verbale", -1)])
     next_n = 1
@@ -1812,7 +1823,7 @@ async def sopralluogo_next_codice(sess: dict = Depends(_require_session)):
 
 
 @app.post("/api/sopralluoghi")
-async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_session)):
+async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_session)):
     """Salva un verbale di sopralluogo su MongoDB e aggiorna sopralluoghi.csv su GitHub.
     Le foto (se presenti, come data URL base64) vengono caricate su GitHub in
     sopralluoghi/foto/{codice_verbale}/ per non saturare lo storage MongoDB gratuito."""
@@ -2418,7 +2429,7 @@ async def _push_cantieri_to_github() -> None:
 # ── Endpoint pubblico: lista cantieri ────────────────────────────────────────
 
 @app.get("/api/cantieri")
-async def get_cantieri(lotto: str = "", cluster: str = "", stato: str = ""):
+async def get_cantieri(lotto: str = "", cluster: str = "", stato: str = "", sess: dict = Depends(_require_staff_session)):
     """Lista cantieri (pubblica), uno per pratica di autorizzazione. Filtrabile
     per lotto, cluster, stato."""
     q: dict = {}
@@ -2434,7 +2445,7 @@ async def get_cantieri(lotto: str = "", cluster: str = "", stato: str = ""):
 
 
 @app.get("/api/cantieri/{cantiere_key:path}/log")
-async def get_cantiere_log_public(cantiere_key: str):
+async def get_cantiere_log_public(cantiere_key: str, sess: dict = Depends(_require_staff_session)):
     """Storico aggiornamenti di un cantiere (pubblico, sola lettura — no session).
     Usato dal 'Registro Cantiere' in scavi.html."""
     doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
