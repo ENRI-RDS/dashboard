@@ -148,6 +148,29 @@ async def _current_upload(filename: str) -> dict | None:
     )
 
 
+KEEP_VERSIONS = int(os.environ.get("KEEP_VERSIONS", "4"))
+
+
+async def _prune_old_versions(filename: str, keep: int = KEEP_VERSIONS) -> int:
+    """Mantiene solo le ultime `keep` versioni non cancellate di un file:
+    elimina il blob GridFS e soft-delete (deleted_at) delle versioni più vecchie."""
+    cur = uploads_col.find({"filename": filename, "deleted_at": None}).sort("uploaded_at", -1).skip(keep)
+    n = 0
+    async for doc in cur:
+        gid = doc.get("gridfs_id")
+        if gid:
+            try:
+                await gridfs.delete(gid)
+            except Exception:
+                pass
+        await uploads_col.update_one(
+            {"_id": doc["_id"]},
+            {"$set": {"deleted_at": _now_iso(), "gridfs_id": None}},
+        )
+        n += 1
+    return n
+
+
 async def _read_gridfs(gridfs_id: ObjectId) -> bytes:
     stream = await gridfs.open_download_stream(gridfs_id)
     try:
@@ -398,6 +421,7 @@ async def upload_file(
         "deleted_at": None,
     }
     res = await uploads_col.insert_one(record)
+    asyncio.create_task(_prune_old_versions(rel))
 
     # Se è Master.csv, rigenera anche i file derivati (Riepilogo_progettazione.csv,
     # QGIS.geojson) e sincronizza GitHub — stesso comportamento di approve/delete/restore,
@@ -1098,6 +1122,7 @@ async def _store_derived_file(filename: str, data: bytes, content_type: str, not
         "source": "derived", "note": note,
     }
     res = await uploads_col.insert_one(record)
+    asyncio.create_task(_prune_old_versions(filename))
     return str(res.inserted_id)
 
 
@@ -1211,6 +1236,7 @@ async def _write_master_csv(df: "pd.DataFrame", note: str) -> str:
         "note": note,
     }
     res = await uploads_col.insert_one(record)
+    asyncio.create_task(_prune_old_versions(MASTER_FILENAME))
     # Aggiorna Master.csv su GitHub e rigenera i file derivati (fire-and-forget)
     asyncio.create_task(_push_to_github(github_data, path=GITHUB_PATHS["Master.csv"], label="Master.csv"))
     asyncio.create_task(_regenerate_derived_files(df, note=note))
@@ -2455,6 +2481,21 @@ async def get_cantiere_log_public(cantiere_key: str, sess: dict = Depends(_requi
 
 
 # ── Endpoint impresa: aggiornamento giornaliero ───────────────────────────────
+
+@app.post("/api/admin/prune-versions")
+async def admin_prune_versions(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """One-shot: applica KEEP_VERSIONS all'arretrato già esistente (il prune
+    automatico dopo ogni upload agisce solo sui filename toccati da quel momento in poi)."""
+    _check_token(x_upload_token or token_q)
+    filenames = await uploads_col.distinct("filename", {"deleted_at": None})
+    result = {}
+    for fn in filenames:
+        result[fn] = await _prune_old_versions(fn)
+    return {"pruned": result, "keep_versions": KEEP_VERSIONS}
+
 
 @app.delete("/api/admin/sopralluoghi/reset")
 async def admin_reset_sopralluoghi(
