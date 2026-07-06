@@ -736,7 +736,7 @@ async function _loadCantieri() {
   try {
     const apiBase = (window.ENRI && window.ENRI.apiBase)
       || localStorage.getItem('enri_api_base') || '';
-    const res = await fetch(apiBase + '/api/cantieri', { cache: 'no-cache' });
+    const res = await fetch(apiBase + '/api/cantieri', { cache: 'no-cache', headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const d = await res.json();
     const cantieri = d.cantieri || [];
@@ -933,7 +933,7 @@ async function openModalRegistro(cantiereKey) {
   overlay.classList.add('open');
   try {
     const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
-    const res = await fetch(apiBase + '/api/cantieri/' + encodeURIComponent(cantiereKey) + '/log', { cache: 'no-cache' });
+    const res = await fetch(apiBase + '/api/cantieri/' + encodeURIComponent(cantiereKey) + '/log', { cache: 'no-cache', headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const d = await res.json();
     const log = (d.log || []).slice().reverse(); // più recenti in alto
