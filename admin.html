@@ -399,7 +399,10 @@
   }
   function authHeaders(){
     const t = token();
-    return t ? { 'x-upload-token': t } : {};
+    const h = t ? { 'x-upload-token': t } : {};
+    const nome = localStorage.getItem('_enri_user');
+    if (nome) h['x-actor-nome'] = nome;
+    return h;
   }
   function withTokenQuery(path){
     const t = token();
@@ -856,7 +859,8 @@
 
     submitBtn.disabled = true; submitBtn.textContent = 'Caricamento…';
     try{
-      const r = await fetch(apiBase() + '/api/upload', { method: 'POST', body: fd });
+      const nome = localStorage.getItem('_enri_user');
+      const r = await fetch(apiBase() + '/api/upload', { method: 'POST', body: fd, headers: nome ? { 'x-actor-nome': nome } : {} });
       const data = await r.json();
       if(!r.ok) throw new Error(data.detail || ('HTTP ' + r.status));
       setMsg(msg, `Caricato: ${data.filename} (${fmtSize(data.size)}${data.rows ? ', '+data.rows+' righe' : ''})`, true);
