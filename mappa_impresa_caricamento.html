@@ -2063,7 +2063,7 @@ async function fetchWithSWR(rel, { onUpdate, isJson = true } = {}) {
 
   // Fetch Render — timeout 30s tramite Promise.race
   const renderP = Promise.race([
-    fetch(rel + qs).then(r => r.ok ? r.text() : Promise.reject('render-fail')),
+    fetch(rel + qs, { headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } }).then(r => r.ok ? r.text() : Promise.reject('render-fail')),
     _timeout(30000, 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.')
   ]).catch(e => Promise.reject(e));
 
