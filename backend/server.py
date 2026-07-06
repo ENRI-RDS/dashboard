@@ -199,6 +199,66 @@ async def _read_gridfs(gridfs_id: ObjectId) -> bytes:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Sessioni firmate (usate anche da /api/data* più sotto — definite qui,
+# prima delle routes, perché Depends() valuta il default arg a import-time)
+# ─────────────────────────────────────────────────────────────────────────────
+
+SESSION_SECRET = os.environ.get("SESSION_SECRET", "")
+SESSION_TTL_SECONDS = int(os.environ.get("SESSION_TTL_SECONDS", str(12 * 3600)))  # 12h default
+APPS_SCRIPT_URL = os.environ.get("APPS_SCRIPT_URL", "")
+APPS_SCRIPT_SECRET = os.environ.get("APPS_SCRIPT_SECRET", "")
+
+
+def _sign_session(nome: str, ruolo: str) -> str:
+    if not SESSION_SECRET:
+        raise HTTPException(500, "SESSION_SECRET non configurato sul server")
+    exp = int(time.time()) + SESSION_TTL_SECONDS
+    payload = f"{nome}|{ruolo}|{exp}"
+    sig = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    raw = f"{payload}|{sig}"
+    return base64.urlsafe_b64encode(raw.encode()).decode()
+
+
+def _verify_session(token: str) -> dict | None:
+    if not token or not SESSION_SECRET:
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(token.encode()).decode()
+        nome, ruolo, exp, sig = raw.split("|", 3)
+        payload = f"{nome}|{ruolo}|{exp}"
+        expected = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return None
+        if int(exp) < int(time.time()):
+            return None
+        return {"nome": nome, "ruolo": ruolo}
+    except Exception:
+        return None
+
+
+async def _require_session(
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+) -> dict:
+    """Dependency per gli endpoint /api/imprese/*: il `nome` autenticato viene
+    SEMPRE letto dal token firmato, mai da un parametro passato dal client."""
+    sess = _verify_session(x_session_token or "")
+    if not sess:
+        raise HTTPException(401, "Sessione non valida o scaduta — effettua di nuovo il login")
+    return sess
+
+
+async def _require_staff_session(
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+) -> dict:
+    """Come _require_session ma esclude il ruolo 'impresa' — per endpoint non
+    pensati per le pagine Area Impresa (che usano gli /api/imprese/* scoped)."""
+    sess = await _require_session(x_session_token)
+    if sess.get("ruolo") == "impresa":
+        raise HTTPException(403, "Accesso non consentito per questo ruolo")
+    return sess
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Routes
 # ─────────────────────────────────────────────────────────────────────────────
 @app.get("/api/")
@@ -222,7 +282,7 @@ async def health():
 
 
 @app.get("/api/files")
-async def list_files():
+async def list_files(sess: dict = Depends(_require_staff_session)):
     """Union of:
     - files with current (non-deleted) GridFS uploads
     - seed files on disk (excluding system dirs) that aren't shadowed by a
@@ -299,7 +359,7 @@ async def list_files():
 
 
 @app.get("/api/data/{filename:path}")
-async def get_data_file(filename: str):
+async def get_data_file(filename: str, sess: dict = Depends(_require_session)):
     rel = _safe_relpath(filename)
     cur = await _current_upload(rel)
     if cur:
@@ -313,7 +373,7 @@ async def get_data_file(filename: str):
 
 
 @app.get("/api/data-text/{filename:path}", response_class=PlainTextResponse)
-async def get_data_text(filename: str):
+async def get_data_text(filename: str, sess: dict = Depends(_require_session)):
     rel = _safe_relpath(filename)
     cur = await _current_upload(rel)
     if cur:
@@ -326,7 +386,7 @@ async def get_data_text(filename: str):
 
 
 @app.get("/api/preview/{filename:path}")
-async def preview_file(filename: str, max_bytes: int = 8192):
+async def preview_file(filename: str, max_bytes: int = 8192, sess: dict = Depends(_require_staff_session)):
     """Returns a short text preview of a file (first max_bytes)."""
     rel = _safe_relpath(filename)
     max_bytes = max(256, min(max_bytes, 65536))
@@ -358,6 +418,7 @@ async def list_uploads(
     project: str | None = None,
     filename: str | None = None,
     include_deleted: bool = False,
+    sess: dict = Depends(_require_staff_session),
 ):
     q: dict = {}
     if project:
@@ -643,61 +704,6 @@ async def _on_startup():
 #      x-session-token; il `nome` viene SEMPRE preso dal token firmato,
 #      MAI dal parametro `nome` passato dal client (che viene ignorato)
 # ─────────────────────────────────────────────────────────────────────────────
-
-SESSION_SECRET = os.environ.get("SESSION_SECRET", "")
-SESSION_TTL_SECONDS = int(os.environ.get("SESSION_TTL_SECONDS", str(12 * 3600)))  # 12h default
-APPS_SCRIPT_URL = os.environ.get("APPS_SCRIPT_URL", "")
-APPS_SCRIPT_SECRET = os.environ.get("APPS_SCRIPT_SECRET", "")
-
-
-def _sign_session(nome: str, ruolo: str) -> str:
-    if not SESSION_SECRET:
-        raise HTTPException(500, "SESSION_SECRET non configurato sul server")
-    exp = int(time.time()) + SESSION_TTL_SECONDS
-    payload = f"{nome}|{ruolo}|{exp}"
-    sig = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    raw = f"{payload}|{sig}"
-    return base64.urlsafe_b64encode(raw.encode()).decode()
-
-
-def _verify_session(token: str) -> dict | None:
-    if not token or not SESSION_SECRET:
-        return None
-    try:
-        raw = base64.urlsafe_b64decode(token.encode()).decode()
-        nome, ruolo, exp, sig = raw.split("|", 3)
-        payload = f"{nome}|{ruolo}|{exp}"
-        expected = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(sig, expected):
-            return None
-        if int(exp) < int(time.time()):
-            return None
-        return {"nome": nome, "ruolo": ruolo}
-    except Exception:
-        return None
-
-
-async def _require_session(
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-) -> dict:
-    """Dependency per gli endpoint /api/imprese/*: il `nome` autenticato viene
-    SEMPRE letto dal token firmato, mai da un parametro passato dal client."""
-    sess = _verify_session(x_session_token or "")
-    if not sess:
-        raise HTTPException(401, "Sessione non valida o scaduta — effettua di nuovo il login")
-    return sess
-
-
-async def _require_staff_session(
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-) -> dict:
-    """Come _require_session ma esclude il ruolo 'impresa' — per endpoint non
-    pensati per le pagine Area Impresa (che usano gli /api/imprese/* scoped)."""
-    sess = await _require_session(x_session_token)
-    if sess.get("ruolo") == "impresa":
-        raise HTTPException(403, "Accesso non consentito per questo ruolo")
-    return sess
-
 
 LOGIN_MAX_ATTEMPTS = int(os.environ.get("LOGIN_MAX_ATTEMPTS", "5"))
 LOGIN_LOCKOUT_SECONDS = int(os.environ.get("LOGIN_LOCKOUT_SECONDS", "300"))
