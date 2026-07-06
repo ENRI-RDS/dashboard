@@ -2262,7 +2262,7 @@ async function fetchWithSWR(rel, { onUpdate, isJson = false } = {}) {
     _timeout(5000, 'static-timeout')
   ]).catch(e => Promise.reject(e));
   const renderP = Promise.race([
-    fetch(rel + qs).then(r => r.ok ? r.text() : Promise.reject('render-fail')),
+    fetch(rel + qs, { headers: { 'x-session-token': _sessionToken() } }).then(r => r.ok ? r.text() : Promise.reject('render-fail')),
     _timeout(30000, 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.')
   ]).catch(e => Promise.reject(e));
   const parse = text => isJson ? JSON.parse(text) : text;
@@ -2327,7 +2327,7 @@ async function fetchRiepilogoCSV(forceFresh = false) {
 
   // Fetch Render — timeout 30s tramite Promise.race
   const renderPromise = Promise.race([
-    fetch(RIEPILOGO_URL + qs).then(r => r.ok ? r.text() : Promise.reject('render-fail')),
+    fetch(RIEPILOGO_URL + qs, { headers: { 'x-session-token': _sessionToken() } }).then(r => r.ok ? r.text() : Promise.reject('render-fail')),
     _timeout(30000, 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.')
   ]).catch(e => Promise.reject(e));
 
