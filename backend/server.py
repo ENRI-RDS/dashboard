@@ -670,6 +670,24 @@ async def _require_staff_session(
     return sess
 
 
+LOGIN_MAX_ATTEMPTS = int(os.environ.get("LOGIN_MAX_ATTEMPTS", "5"))
+LOGIN_LOCKOUT_SECONDS = int(os.environ.get("LOGIN_LOCKOUT_SECONDS", "300"))
+_login_failures: dict[str, list[float]] = {}
+
+
+def _check_login_rate_limit(nome_key: str) -> None:
+    now = time.time()
+    attempts = [t for t in _login_failures.get(nome_key, []) if now - t < LOGIN_LOCKOUT_SECONDS]
+    _login_failures[nome_key] = attempts
+    if len(attempts) >= LOGIN_MAX_ATTEMPTS:
+        wait = int(LOGIN_LOCKOUT_SECONDS - (now - attempts[0]))
+        raise HTTPException(429, f"Troppi tentativi falliti. Riprova tra {max(wait, 1)}s")
+
+
+def _record_login_failure(nome_key: str) -> None:
+    _login_failures.setdefault(nome_key, []).append(time.time())
+
+
 @app.post("/api/auth/login")
 async def auth_login(payload: dict):
     """Proxy server-to-server verso Google Apps Script: il browser non vede
@@ -679,6 +697,8 @@ async def auth_login(payload: dict):
     codice = (payload or {}).get("codice", "").strip()
     if not nome or not codice:
         raise HTTPException(400, "Nome e codice sono richiesti")
+    nome_key = nome.lower()
+    _check_login_rate_limit(nome_key)
     if not APPS_SCRIPT_URL or not APPS_SCRIPT_SECRET:
         raise HTTPException(500, "Login non configurato sul server (APPS_SCRIPT_URL/SECRET mancanti)")
     try:
@@ -698,8 +718,10 @@ async def auth_login(payload: dict):
         raise HTTPException(502, f"Risposta non valida da Apps Script (HTTP {r.status_code}): {snippet!r}")
 
     if not data.get("ok"):
+        _record_login_failure(nome_key)
         raise HTTPException(401, data.get("msg") or "Nome o codice non riconosciuti")
 
+    _login_failures.pop(nome_key, None)
     nome_canonical = data.get("nome") or nome
     ruolo = str(data.get("ruolo") or "user").lower()
     token = _sign_session(nome_canonical, ruolo)
