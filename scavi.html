@@ -1917,12 +1917,12 @@ function openModalCluster(cl) {
   // più cluster — qui mostriamo i suoi metri totali, non solo la quota in questo cluster)
   let lottiHtml = `
     <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
-      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:12px">Lotti che attraversano questo cluster</div>
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:12px">Lotti del Cluster</div>
       <table style="width:100%;border-collapse:collapse;font-size:12px">
         <thead>
           <tr style="border-bottom:2px solid var(--border)">
             <th style="text-align:left;padding:6px 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Lotto</th>
-            <th style="text-align:left;padding:6px 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Stato cantiere</th>
+            <th style="text-align:left;padding:6px 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Impresa</th>
             <th style="text-align:left;padding:6px 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Province</th>
             <th style="text-align:right;padding:6px 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Totale lotto</th>
             <th style="text-align:right;padding:6px 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Scavati</th>
@@ -1935,7 +1935,7 @@ function openModalCluster(cl) {
     const mScav = Math.round(r.metri * r.pct / 100);
     lottiHtml += `<tr style="border-bottom:1px solid var(--border)" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
       <td style="padding:8px 10px;font-family:var(--font-mono);font-weight:700;font-size:13px;color:var(--accent);border-left:3px solid ${col}">${r.id}</td>
-      <td style="padding:8px 10px"><span style="background:${col}15;color:${col};border:1px solid ${col}30;border-radius:5px;padding:2px 8px;font-size:12px;font-weight:700">${STATO_LABEL[r.stato]}</span></td>
+      <td style="padding:8px 10px;font-weight:700;color:var(--accent)">${IMPRESE_PER_LOTTO[r.id] || '?'}</td>
       <td style="padding:8px 10px;font-size:12px">${(r.prov||[]).map(p=>provPill(p)).join('')}</td>
       <td style="padding:8px 10px;text-align:right;font-weight:700;font-family:var(--font-display)">${fmt(r.metri)} m</td>
       <td style="padding:8px 10px;text-align:right;font-weight:700;font-family:var(--font-display);color:${col}">${r.pct>0?fmt(mScav)+' m':'—'}</td>
@@ -1949,31 +1949,6 @@ function openModalCluster(cl) {
   });
   lottiHtml += '</tbody></table></div>';
 
-  // Imprese assegnate ai lotti del cluster (stessa logica delle card in _renderClusters)
-  const impreseLottiCl = [...cd.lotti].sort(_lottoCompare)
-    .map(l => ({ lotto: l, impresa: IMPRESE_PER_LOTTO[l] || '?' }));
-  const lottiPerImpresaCl = {};
-  impreseLottiCl.forEach(x => { (lottiPerImpresaCl[x.impresa] = lottiPerImpresaCl[x.impresa] || []).push(x.lotto); });
-  let impreseHtml = `
-    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
-      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:12px">Imprese e lotti del cluster</div>
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead>
-          <tr style="border-bottom:2px solid var(--border)">
-            <th style="text-align:left;padding:6px 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Impresa</th>
-            <th style="text-align:left;padding:6px 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Lotti</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${Object.keys(lottiPerImpresaCl).sort().map(imp => `
-          <tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:8px 10px;font-weight:700;color:var(--accent)">${imp}</td>
-            <td style="padding:8px 10px;font-family:var(--font-mono)">${lottiPerImpresaCl[imp].join(', ')}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>`;
-
   // Cantieri del cluster (stessa tabella di "Tutti i Cantieri" / openModalStato)
   const cantieriCl = CANTIERI_RAW.filter(r => String(r.cluster ?? '?').replace(/^[Cc]/,'') === String(cl));
   const cantieriClHtml = `
@@ -1982,7 +1957,7 @@ function openModalCluster(cl) {
       ${_cantieriTableHtml(cantieriCl)}
     </div>`;
 
-  document.getElementById('modalClusterBody').innerHTML = header + impreseHtml + barreStato + cantieriClHtml + lottiHtml;
+  document.getElementById('modalClusterBody').innerHTML = header + lottiHtml + barreStato + cantieriClHtml;
   document.getElementById('modalClusterOverlay').classList.add('open');
 }
 function closeModalCluster(e) {
