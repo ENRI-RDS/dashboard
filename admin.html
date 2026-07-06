@@ -412,7 +412,8 @@
     return path + (path.includes('?') ? '&' : '?') + 'x_upload_token=' + encodeURIComponent(t);
   }
   async function api(path, opts={}){
-    const r = await fetch(apiBase() + path, opts);
+    const headers = { 'x-session-token': localStorage.getItem('_enri_session') || '', ...(opts.headers||{}) };
+    const r = await fetch(apiBase() + path, { ...opts, headers });
     const text = await r.text();
     let data; try{ data = text ? JSON.parse(text) : {}; }catch{ data = { raw: text }; }
     if(!r.ok) throw new Error(data.detail || data.raw || ('HTTP ' + r.status));
