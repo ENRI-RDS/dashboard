@@ -1871,6 +1871,13 @@ function openModalCluster(cl) {
   // Lotti che attraversano questo cluster (dalla lista corretta, non dal cluster prevalente)
   const lottiCl = LOTTI.filter(r => cd.lotti.includes(r.id));
 
+  // Cantieri del cluster (calcolati qui per poterli usare anche nell'header stats)
+  const cantieriCl = CANTIERI_RAW.filter(r => String(r.cluster ?? '?').replace(/^[Cc]/,'') === String(cl));
+  const totMetriScaviCl = cantieriCl.reduce((s,r) => s + (r.metri_totali || 0), 0);
+  const totScavatiCl    = cantieriCl.reduce((s,r) => s + (r.metri_scavati || 0), 0);
+  const pctScaviCl      = totMetriScaviCl > 0 ? (totScavatiCl / totMetriScaviCl * 100).toFixed(1) : '0.0';
+  const cantieriAttiviCl = cantieriCl.filter(r => (STATO_MAP[r.stato_cantiere] || 'non-avviato') !== 'non-avviato').length;
+
   document.getElementById('modalClusterTitle').innerHTML =
     `<span style="background:${clCol}18;color:${clCol};border:1px solid ${clCol}40;border-radius:6px;padding:2px 10px;font-size:13px;font-weight:700;font-family:var(--font-mono);margin-right:10px">${cl}</span>Cluster ${cl}`;
 
@@ -1890,8 +1897,16 @@ function openModalCluster(cl) {
         <span class="modal-stat-val" style="color:#1E9E6A">${pctTot}%</span>
       </div>
       <div class="modal-stat">
+        <span class="modal-stat-lbl">Avanzamento scavi</span>
+        <span class="modal-stat-val" style="color:#0B3182">${pctScaviCl}%</span>
+      </div>
+      <div class="modal-stat">
         <span class="modal-stat-lbl">Lotti coinvolti</span>
         <span class="modal-stat-val">${cd.lotti.length}</span>
+      </div>
+      <div class="modal-stat">
+        <span class="modal-stat-lbl">Cantieri attivi</span>
+        <span class="modal-stat-val">${cantieriAttiviCl} <span style="font-size:13px;font-weight:600;color:var(--muted)">/ ${cantieriCl.length}</span></span>
       </div>
     </div>`;
 
@@ -1948,7 +1963,6 @@ function openModalCluster(cl) {
   const lottiPermessiRow = `<div style="display:flex;gap:24px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border);flex-wrap:wrap">${lottiHtml}${barreStato}</div>`;
 
   // Cantieri del cluster (stessa tabella di "Tutti i Cantieri" / openModalStato)
-  const cantieriCl = CANTIERI_RAW.filter(r => String(r.cluster ?? '?').replace(/^[Cc]/,'') === String(cl));
   const cantieriClHtml = `
     <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
       <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:12px">Cantieri del cluster</div>
@@ -1977,7 +1991,7 @@ function closeModalCluster(e) {
 
 <!-- Modal Dettaglio Cluster -->
 <div class="modal-overlay" id="modalClusterOverlay" onclick="closeModalCluster(event)">
-  <div class="modal" style="width:1180px;max-width:96vw">
+  <div class="modal" style="width:1420px;max-width:98vw">
     <div class="modal-title">
       <span id="modalClusterTitle">Cluster —</span>
       <button class="modal-close" onclick="closeModalCluster()">×</button>
