@@ -1813,8 +1813,8 @@ async function exportGeoJSONLotti(){
   if (vuoiSed) {
     if (btn) { btn.textContent = '⏳...'; btn.disabled = true; }
     try {
-      const sedGeojson = await fetchWithSWR('SED_classificato.geojson', { isJson: true });
-      const sedFeatures = (sedGeojson.features || [])
+      const scoped = await _loadScopedGeo();
+      const sedFeatures = ((scoped.sed && scoped.sed.features) || [])
         .filter(f => MY_LOTTI.includes(f.properties.LOTTO))
         .map(f => ({...f, properties: _prepareExportProps(f, true)}));
       if (sedFeatures.length) {
@@ -2094,8 +2094,27 @@ async function fetchWithSWR(rel, { onUpdate, isJson = true } = {}) {
   }
 }
 
+// Carica QGIS + SED già filtrati per i lotti dell'impresa dal backend
+// (endpoint scoped /api/imprese/master-sed): l'impresa non scarica mai il file
+// intero con i lotti di tutti i concorrenti. Cache in memoria per la sessione.
+function _loadScopedGeo() {
+  if (window._scopedGeoPromise) return window._scopedGeoPromise;
+  const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+  window._scopedGeoPromise = (async () => {
+    const resp = await fetch(apiBase + '/api/imprese/master-sed', {
+      headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' }
+    });
+    if (!resp.ok) throw new Error('Errore nel recupero dei dati mappa (HTTP ' + resp.status + ').');
+    return resp.json();
+  })();
+  return window._scopedGeoPromise;
+}
+
 async function loadGeoJSON(onUpdate) {
-  return fetchWithSWR('QGIS.geojson', { onUpdate, isJson: true });
+  // onUpdate (aggiornamento SWR live) non più applicabile: i dati arrivano già
+  // filtrati per lotto dal backend, in una singola risposta.
+  const scoped = await _loadScopedGeo();
+  return scoped.qgis || { type: 'FeatureCollection', features: [] };
 }
 
 function buildLottoStats(features) {
@@ -2750,80 +2769,62 @@ async function loadSED() {
 }
 
 async function _loadSEDInner() {
-  // Carica Master.csv e indicizza per N_SED (opzionale, non blocca)
+  // Indicizza per N_SED le pratiche dell'impresa. I dati permesso arrivano già
+  // filtrati per lotto dal backend (/api/imprese/pratiche): niente più download
+  // di Master.csv intero con le pratiche di tutti i concorrenti.
   if (!window._sedFromCSV) {
     try {
-      const csvResp_text = await fetchWithSWR('Master.csv', { isJson: false }).catch(() => null);
-      const csvResp = csvResp_text ? { ok: true, text: async () => csvResp_text } : { ok: false };
-      if (csvResp.ok) {
-        const csvText = await csvResp.text();
-        const rows = csvText.split('\n');
-        const _sep = rows[0].includes('\t') ? '\t' : (rows[0].includes(';') ? ';' : ',');
-        const headers = rows[0].split(_sep).map(h => h.trim().replace(/^"|"$/g,''));
-        const idx = n => headers.findIndex(h => h.toUpperCase() === n.toUpperCase());
-        const iNSed  = idx('N_SED'),    iTipo  = idx('TIPO_PERMESSO');
-        const iEnte  = idx('ENTE'),     iStato = idx('STATO_PERMESSO');
-        const iInvio = idx('DATA_RICHIESTA'), iNote = idx('NOTE');
-        const iPrat  = idx('PRATICA'),  iDum   = idx('DATA_ULTIMA_MODIFICA');
-        const iLotto = idx('LOTTO'),    iSrc   = idx('Source.Name');
-
-        const permMap = {}; // key: nSed|pratica|tipo → best row
-        rows.slice(1).forEach(row => {
-          if (!row.trim()) return;
-          const cols = row.split(_sep).map(c => c.trim().replace(/^"|"$/g,''));
-          const nSed = cols[iNSed]; if (!nSed) return;
-          const prat = iPrat >= 0 ? cols[iPrat]||'' : '';
-          const tipo = iTipo >= 0 ? cols[iTipo]||'' : '';
-          const dum  = iDum  >= 0 ? cols[iDum] ||'' : '';
-          const src  = iSrc  >= 0 ? cols[iSrc] ||'' : '';
-          const lotto= src ? src.replace(/\.xlsx$/i,'').replace(/^Lotto\s*/i,'').trim().toUpperCase()
-                           : (iLotto >= 0 ? cols[iLotto]||'' : '');
-          const key  = nSed + '|' + prat + '|' + tipo;
-          const existing = permMap[key];
-          const dumDate  = dum ? new Date(dum.split('/').reverse().join('-')) : null;
-          const exDate   = existing?.dum ? new Date(existing.dum.split('/').reverse().join('-')) : null;
-          // Costruisce codice leggibile: NO/5/2B
-          const tipoPrefix = tipo === 'AUTORIZZAZIONE' ? 'AUT'
-            : tipo === 'NULLA OSTA' ? 'NO'
-            : tipo === 'ORDINANZA'  ? 'ORD'
-            : (tipo.substring(0,3)||'?');
-          const codice = tipoPrefix + (prat ? '/'+prat : '') + (lotto ? '/'+lotto : '');
-          if (!existing || (dumDate && (!exDate || dumDate >= exDate))) {
-            permMap[key] = {
-              nSed, pratica: codice, tipo,
-              ente:  iEnte  >= 0 ? cols[iEnte] ||'' : '',
-              stato: iStato >= 0 ? cols[iStato]||'' : '',
-              invio: iInvio >= 0 ? cols[iInvio]||'' : '',
-              dum, note: iNote >= 0 ? cols[iNote]||'' : ''
-            };
-          }
+      const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+      const resp = await fetch(apiBase + '/api/imprese/pratiche', {
+        headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' }
+      });
+      const data = resp.ok ? await resp.json() : { pratiche: [] };
+      const permMap = {}; // key: nSed|pratica|tipo → best row
+      (data.pratiche || []).forEach(r => {
+        const nSed = String(r.N_SED || '').trim(); if (!nSed) return;
+        const prat = String(r.PRATICA || '').trim();
+        const tipo = String(r.TIPO_PERMESSO || '').trim();
+        const dum  = String(r.DATA_ULTIMA_MODIFICA || '').trim();
+        const src  = String(r['Source.Name'] || '').trim();
+        const lotto= src ? src.replace(/\.xlsx$/i,'').replace(/^Lotto\s*/i,'').trim().toUpperCase()
+                         : String(r.LOTTO || '').trim();
+        const key  = nSed + '|' + prat + '|' + tipo;
+        const existing = permMap[key];
+        const dumDate  = dum ? new Date(dum.split('/').reverse().join('-')) : null;
+        const exDate   = existing?.dum ? new Date(existing.dum.split('/').reverse().join('-')) : null;
+        // Costruisce codice leggibile: NO/5/2B
+        const tipoPrefix = tipo === 'AUTORIZZAZIONE' ? 'AUT'
+          : tipo === 'NULLA OSTA' ? 'NO'
+          : tipo === 'ORDINANZA'  ? 'ORD'
+          : (tipo.substring(0,3)||'?');
+        const codice = tipoPrefix + (prat ? '/'+prat : '') + (lotto ? '/'+lotto : '');
+        if (!existing || (dumDate && (!exDate || dumDate >= exDate))) {
+          permMap[key] = {
+            nSed, pratica: codice, tipo,
+            ente:  String(r.ENTE || ''),
+            stato: String(r.STATO_PERMESSO || ''),
+            invio: String(r.DATA_RICHIESTA || ''),
+            dum,   note: String(r.NOTE || '')
+          };
+        }
+      });
+      const map2 = {};
+      Object.values(permMap).forEach(r => {
+        const keys = r.nSed.split(' - ').map(k => k.trim()).filter(Boolean);
+        keys.forEach(k => {
+          if (!map2[k]) map2[k] = [];
+          map2[k].push(r);
         });
-
-        const map2 = {};
-        Object.values(permMap).forEach(r => {
-          const keys = r.nSed.split(' - ').map(k => k.trim()).filter(Boolean);
-          keys.forEach(k => {
-            if (!map2[k]) map2[k] = [];
-            map2[k].push(r);
-          });
-        });
-        window._sedFromCSV = map2;
-      }
-    } catch(e) { /* CSV non disponibile */ }
+      });
+      window._sedFromCSV = map2;
+    } catch(e) { /* dati permessi non disponibili */ }
   }
   try {
-    const geojson = await fetchWithSWR('SED_classificato.geojson', {
-      isJson: true,
-      onUpdate: (freshGeojson) => {
-        if (!sedLoaded) return;
-        const wasVisible = sedLayer && map.hasLayer(sedLayer);
-        if (sedLayer && map.hasLayer(sedLayer)) map.removeLayer(sedLayer);
-        sedLoaded = false; sedLayer = null; _sedLoading = false;
-        loadSED().then(() => { if (wasVisible && sedLayer) sedLayer.addTo(map).bringToFront(); });
-      }
-    });
-    // Filtra anche questo layer secondario sui soli lotti assegnati all'impresa
-    geojson.features = geojson.features.filter(f => MY_LOTTI.includes(f.properties.LOTTO));
+    const scoped = await _loadScopedGeo();
+    // SED già filtrato server-side sui lotti dell'impresa; il filtro client resta
+    // come difesa in profondità (non-mutante sulla cache condivisa).
+    const geojson = { type: 'FeatureCollection',
+      features: ((scoped.sed && scoped.sed.features) || []).filter(f => MY_LOTTI.includes(f.properties.LOTTO)) };
 
     sedLayer = L.geoJSON(geojson, {
       pointToLayer: (feature, latlng) => {
