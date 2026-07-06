@@ -74,8 +74,12 @@
   .lotti-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
   .lotto-chip{ border:1px solid var(--border2); border-radius:8px; padding:10px 12px; }
   .lotto-chip-id{ font-family:var(--font-display); font-size:15px; font-weight:800; color:var(--accent); margin-bottom:4px; }
-  .lotto-chip-track{ height:4px; background:var(--surface2); border-radius:2px; overflow:hidden; margin-bottom:4px; }
+  .lotto-chip-row{ display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+  .lotto-chip-mini-lbl{ font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; width:52px; flex-shrink:0; }
+  .lotto-chip-mini-val{ font-size:10px; font-family:var(--font-mono); color:var(--text); width:30px; text-align:right; flex-shrink:0; }
+  .lotto-chip-track{ height:4px; background:var(--surface2); border-radius:2px; overflow:hidden; flex:1; }
   .lotto-chip-fill{ height:100%; background:var(--accent2); border-radius:2px; }
+  .lotto-chip-fill-permessi{ background:var(--accent); }
   .lotto-chip-pct{ font-size:11px; color:var(--muted); font-family:var(--font-mono); }
 
   .imp-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
@@ -271,6 +275,7 @@ async function _loadCantieri() {
       return {
         cl: cluster, id: String(lotto), stato: c ? c.stato : 'non-avviato',
         pct: metriTotaliLotto>0 ? Math.round(scavati/metriTotaliLotto*100) : 0,
+        pctPermessi: (p && metriTotaliLotto>0) ? Math.round((p.statiMap['OTTENUTO']||0)/metriTotaliLotto*100) : 0,
         metri: Math.round(metriTotaliLotto), haCantiere: lottiConCantiere.has(lotto),
       };
     });
@@ -347,10 +352,12 @@ function _renderDetail(cl) {
     ? [...lottiIds].sort((a,b)=>(parseInt(a)||0)-(parseInt(b)||0) || String(a).localeCompare(String(b))).map(lid => {
         const l = LOTTI.find(x => String(x.id)===String(lid) && x.cl===cl) || LOTTI.find(x=>String(x.id)===String(lid));
         const pct = l ? l.pct : 0;
+        const pctP = l ? l.pctPermessi : 0;
         return `<div class="lotto-chip">
           <div class="lotto-chip-id">Lotto ${lid}</div>
-          <div class="lotto-chip-track"><div class="lotto-chip-fill" style="width:${pct}%"></div></div>
-          <div class="lotto-chip-pct">${pct}% scavato${l?` · ${fmt(l.metri)} m`:''}</div>
+          <div class="lotto-chip-row"><span class="lotto-chip-mini-lbl">Permessi</span><div class="lotto-chip-track"><div class="lotto-chip-fill lotto-chip-fill-permessi" style="width:${pctP}%"></div></div><span class="lotto-chip-mini-val">${pctP}%</span></div>
+          <div class="lotto-chip-row"><span class="lotto-chip-mini-lbl">Scavi</span><div class="lotto-chip-track"><div class="lotto-chip-fill" style="width:${pct}%"></div></div><span class="lotto-chip-mini-val">${pct}%</span></div>
+          <div class="lotto-chip-pct">${fmt(l?l.metri:0)} m totali</div>
         </div>`;
       }).join('')
     : '<div class="empty">Nessun lotto associato.</div>';
