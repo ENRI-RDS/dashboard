@@ -2447,29 +2447,8 @@ function buildPratCard(p) {
   </div>`;
 }
 
-function buildPratPanel(allPrats) {
-  if (!allPrats || !allPrats.length) return '';
-  const autP = allPrats.filter(p => p.codice.startsWith('AUT/'));
-  const noP  = allPrats.filter(p => !p.codice.startsWith('AUT/'));
-  const colT = (lbl, n) => `<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--border)">${lbl} (${n})</div>`;
-  return `<div style="flex:1;min-width:0;padding-left:20px;border-left:1px solid var(--border)">
-    <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);font-weight:600;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">
-      Dettaglio pratiche (${allPrats.length})
-    </div>
-    <div style="display:grid;grid-template-columns:${noP.length?'1fr 1fr':'1fr'};gap:12px;align-items:start">
-      <div>${autP.length?colT('Autorizzazioni',autP.length):''}${autP.map(buildPratCard).join('')}</div>
-      ${noP.length?`<div>${colT('Nulla Osta / Ordinanze',noP.length)}${noP.map(buildPratCard).join('')}</div>`:''}
-    </div>
-  </div>`;
-}
 
-function sortPratsByDate(arr) {
-  return arr.slice().sort((a,b) => {
-    const da = parseDateIT(a.dum), db = parseDateIT(b.dum);
-    if (da && db) return db - da;
-    return da ? -1 : db ? 1 : a.codice.localeCompare(b.codice);
-  });
-}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -2480,11 +2459,6 @@ function sortPratsByDate(arr) {
 const _apiBase = () => (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
 const _sessionToken = () => localStorage.getItem('_enri_session') || '';
 const _authHeaders = () => ({ 'Content-Type': 'application/json', 'x-session-token': _sessionToken() });
-
-function _formatDate(isoStr) {
-  const d = new Date(isoStr);
-  return d.toLocaleDateString('it-IT') + ' ' + d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
-}
 
 // ── LOGIN MODAL ───────────────────────────────────────────────────────────────
 function _showUserBadge(nome) {
@@ -3070,8 +3044,6 @@ function fmt(n) {
   return new Intl.NumberFormat('it-IT', {maximumFractionDigits:0}).format(r) || r.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
 function parseNum(s) { if(!s||s.trim()==='') return 0; return parseFloat(s.replace(/\./g,'').replace(',','.')); }
-function parsePct(s) { if(!s||s.trim()==='') return 0; return parseFloat(s.replace('%','').replace(',','.'))/100; }
-
 function openModal(lotto, statiMetri, totale) {
   document.getElementById('modalTitle').textContent = `Lotto ${lotto} — Dettaglio`;
   const body = document.getElementById('modalBody');
@@ -3445,44 +3417,6 @@ function openModalGruppo(titolo, lottiGruppo, lottiMap, lottiTotale) {
 }
 
 
-
-function loadCompare(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const lines = e.target.result.trim().split('\n').map(l=>l.replace(/\r/,''));
-    // Auto-detect separatore (coerente con loadData)
-    const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',');
-    const headers = lines[0].split(sep);
-    const iL = headers.findIndex(h => h.trim().toUpperCase() === 'LOTTO');
-    const iS = headers.findIndex(h => h.trim().toUpperCase() === 'STATO_AUTORIZZAZIONE' || h.trim().toUpperCase() === 'STATO_LEGENDA');
-    const iM = headers.findIndex(h => h.trim().toUpperCase() === 'METRI' || h.trim().toUpperCase() === 'LUNGHEZZA' || h.trim().toUpperCase() === 'LENGTH');
-    if (iL < 0 || iS < 0 || iM < 0) {
-      alert('Colonne non trovate nel file CSV di confronto.\nAttese: LOTTO, STATO_AUTORIZZAZIONE (o STATO_LEGENDA), Metri (o LUNGHEZZA).');
-      input.value = '';
-      return;
-    }
-    const prevMap = {};
-    for (let i=1;i<lines.length;i++) {
-      const cols = lines[i].split(sep);
-      if (!cols[iL]) continue;
-      const lotto=cols[iL].trim(), stato=cols[iS]?.trim()||'', metri=parseNum(cols[iM]);
-      if (!prevMap[lotto]) prevMap[lotto]={};
-      prevMap[lotto][stato]=(prevMap[lotto][stato]||0)+metri;
-    }
-    window._compareData = prevMap;
-
-    // Mostra banner confronto
-    const banner = document.getElementById('compareBanner');
-    banner.style.display = 'flex';
-    banner.style.cssText = 'display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;font-size:11px;color:var(--muted)';
-    banner.innerHTML = `Confronto attivo con <strong style="color:var(--text)">${file.name}</strong> — clicca su un lotto per vedere le variazioni <span onclick="window._compareData=null;this.parentElement.style.display='none'" style="margin-left:auto;cursor:pointer;color:var(--muted)">✕ Rimuovi</span>`;
-  };
-  reader.readAsText(file);
-  input.value = '';
-}
-
 async function loadData(saveSnapshot = false) {
   setLoading(10);
   document.getElementById('statusBadge').textContent = 'Caricamento';
@@ -3605,31 +3539,6 @@ function getComuniGruppoHtml(lottiGruppo, maxN = 5) {
       <span style="font-size:10px;color:var(--text2);font-family:'Raleway',sans-serif;font-weight:600">${(km/1000).toFixed(1)} km</span>
     </span>`
   ).join('');
-}
-
-function getMilestoneCountdown(data) {
-  const oggi = new Date(); oggi.setHours(0,0,0,0);
-  const scad = new Date(data);
-  const diffGiorni = Math.ceil((scad - oggi) / (1000*60*60*24));
-  let colore, label;
-  const _mesi = n => n === 1 ? '1 mese' : `${n} mesi`;
-  const _anni = n => n === 1 ? '1 anno' : `${n} anni`;
-  if (diffGiorni < 0) {
-    colore = '#1E9E6A'; label = '✓';
-  } else if (diffGiorni <= 90) {
-    colore = '#C0392B'; label = diffGiorni+' gg';
-  } else if (diffGiorni <= 180) {
-    colore = '#D08A1A'; label = _mesi(Math.floor(diffGiorni/30.44));
-  } else {
-    colore = '#41BBD9';
-    const anniR = Math.floor(diffGiorni/365.25);
-    const mesiR = Math.round((diffGiorni % 365.25) / 30.44);
-    label = anniR >= 1
-      ? (mesiR > 0 ? `${_anni(anniR)} e ${_mesi(mesiR)}` : _anni(anniR))
-      : _mesi(Math.floor(diffGiorni/30.44));
-  }
-  const dataFmt = new Date(data).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'2-digit'});
-  return { colore, label, dataFmt };
 }
 
 // Versione estesa per il modal
@@ -4086,58 +3995,6 @@ const MILESTONES_PER_LOTTO = {
   '7':  [{num:'01',titolo:'Invio richieste permessi',data:'2026-09-30'},{num:'07',titolo:'Realizzazione 50%',data:'2027-09-30'},{num:'08',titolo:'3° Rilascio — 100%',data:'2028-07-31'}],
   '8':  [{num:'01',titolo:'Invio richieste permessi',data:'2026-09-30'},{num:'07',titolo:'Realizzazione 50%',data:'2027-09-30'},{num:'07b',titolo:'2° Rilascio — 100%',data:'2028-03-31'}],
 };
-
-function renderMilestones() {
-  const grid = document.getElementById('milestoneGrid');
-  const oggi = new Date(); oggi.setHours(0,0,0,0);
-  grid.innerHTML = '';
-  MILESTONES.forEach(ms => {
-    const scad = new Date(ms.data);
-    const diffMs = scad - oggi;
-    const diffGiorni = Math.ceil(diffMs / (1000*60*60*24));
-    const diffMesi = Math.floor(Math.abs(diffGiorni) / 30.44);
-    const diffAnni = Math.floor(Math.abs(diffGiorni) / 365.25);
-
-    let classe, countdownHTML;
-    if (diffGiorni < 0) {
-      classe = 'ok';
-      countdownHTML = `<span class="ms-days">✓</span><span class="ms-days-label">Completata</span>`;
-    } else if (diffGiorni <= 90) {
-      classe = 'danger';
-      countdownHTML = `<span class="ms-days">${diffGiorni}</span><span class="ms-days-label">${diffGiorni===1?'giorno rimanente':'giorni rimanenti'}</span>`;
-    } else if (diffGiorni <= 180) {
-      classe = 'warn';
-      countdownHTML = `<span class="ms-days">${diffMesi}</span><span class="ms-days-label">${diffMesi===1?'mese rimanente':'mesi rimanenti'}</span>`;
-    } else {
-      classe = 'future';
-      let label, sublabel;
-      if (diffAnni >= 1) {
-        const anniR = Math.floor(diffGiorni/365.25);
-        const mesiR = Math.round((diffGiorni % 365.25) / 30.44);
-        const strAnni = anniR===1 ? 'anno' : 'anni';
-        const strMesi = mesiR===1 ? 'mese' : 'mesi';
-        label = anniR; sublabel = mesiR > 0 ? `${strAnni} e ${mesiR} ${strMesi} rimanenti` : `${strAnni} rimanenti`;
-      } else {
-        label = diffMesi; sublabel = diffMesi===1 ? 'mese rimanente' : 'mesi rimanenti';
-      }
-      countdownHTML = `<span class="ms-days">${label}</span><span class="ms-days-label">${sublabel}</span>`;
-    }
-
-    const dataFmt = scad.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
-    const card = document.createElement('div');
-    card.className = `ms-card ${classe}`;
-    card.innerHTML = `
-      <div class="ms-top">
-        <span class="ms-num">${ms.num}</span>
-        <span class="ms-date">📅 ${dataFmt}</span>
-      </div>
-      <div class="ms-title">${ms.titolo}</div>
-      <div class="ms-lotti">Lotti: ${ms.lotti}</div>
-      <div class="ms-bottom">${countdownHTML}</div>
-    `;
-    grid.appendChild(card);
-  });
-}
 
 
 
@@ -5011,62 +4868,6 @@ function chiudiEditManuale() {
   document.getElementById('overlayEditManuale').classList.remove('open');
 }
 
-// ── Applica modifiche manuali (in memoria, nessun DB esterno coinvolto) ───────
-function applicaEditManuale() {
-  const inputs = document.querySelectorAll('#emTableWrap .em-inp');
-  const totPerLotto = {};
-  inputs.forEach(inp => {
-    totPerLotto[inp.dataset.lotto] = (totPerLotto[inp.dataset.lotto]||0) + (parseFloat(inp.value)||0);
-  });
-
-  const lottoGruppoVal = {};
-  inputs.forEach(inp => {
-    if (!lottoGruppoVal[inp.dataset.lotto]) lottoGruppoVal[inp.dataset.lotto] = {};
-    lottoGruppoVal[inp.dataset.lotto][inp.dataset.gkey] = parseFloat(inp.value)||0;
-  });
-
-  const origMap = emBuildMap(window._csvOriginalData || window._currentData || window._lastDashData);
-  const newData = [];
-
-  Object.entries(lottoGruppoVal).forEach(([lotto, gruppi]) => {
-    const totale = totPerLotto[lotto]||0;
-    Object.entries(gruppi).forEach(([gkey, valGruppo]) => {
-      if (valGruppo <= 0) return;
-      const grp = EM_GRUPPI.find(g=>g.key===gkey);
-      if (!grp) return;
-      const origVals = grp.stati.map(st => (origMap[lotto]?.[st]||0));
-      const origTot  = origVals.reduce((a,b)=>a+b,0);
-      grp.stati.forEach((st, i) => {
-        const proportion = origTot > 0 ? origVals[i]/origTot : 1/grp.stati.length;
-        const metri = valGruppo * proportion;
-        if (metri > 0) newData.push({ lotto, stato:st, metri, totale, pct: totale>0?metri/totale:0 });
-      });
-    });
-  });
-
-  if (!newData.length) { alert('Nessun dato valido inserito.'); return; }
-
-  // Badge salvataggio
-  const badge = document.getElementById('emSaveBadge');
-  badge.textContent = 'Salvataggio…';
-  badge.style.cssText = 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#fef3cd;color:#b07d10;border:1px solid #b07d1055';
-
-  try {
-    const ts = new Date().toISOString();
-    window._currentData  = newData;
-    window._lastDashData = newData;
-    renderDashboard(newData);
-    _emAggiornaClusters(newData);
-    _emRemoveManualBadge();
-    _emShowManualBadge(ts);
-    badge.textContent = '✓ Applicato';
-    badge.style.cssText = 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#d0f0e0;color:#1E9E6A;border:1px solid #1E9E6A44';
-    setTimeout(() => chiudiEditManuale(), 1200);
-  } catch(e) {
-    badge.textContent = '✕ Errore: ' + e.message;
-    badge.style.cssText = 'display:inline-flex;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;background:#fce8e8;color:#C0392B;border:1px solid #C0392B44';
-  }
-}
 
 // ── Ripristina dati CSV originali ─────────────────────────────────────────────
 function ripristinaCSV() {
@@ -5391,9 +5192,6 @@ function _colClearFilter(col, modalType) {
   document.querySelectorAll('.col-filter-dropdown').forEach(d => d.remove());
   _colRefreshCurrent();
 }
-function _colKpiRefresh()  { _kpiApplyFilter(); }
-function _colPrevRefresh() { _prevApplyFilter(); }
-
 /* ── Lotto modal column sort/filter ─────────────────────────────────────────── */
 window._lottoModalAllPrats = [];
 window._lottoModalLotto    = null;
@@ -5834,15 +5632,6 @@ async function injectNote() {
 // SCADENZE SETTIMANA
 // ══════════════════════════════════════════════════════════════════════════════
 let _scadWindow = 7; // giorni da mostrare
-
-function setScadWindow(n) {
-  _scadWindow = n;
-  document.getElementById('scadBtn7').style.background  = n === 7  ? 'var(--accent)' : 'var(--surface2)';
-  document.getElementById('scadBtn7').style.color       = n === 7  ? '#fff' : 'var(--muted)';
-  document.getElementById('scadBtn14').style.background = n === 14 ? 'var(--accent)' : 'var(--surface2)';
-  document.getElementById('scadBtn14').style.color      = n === 14 ? '#fff' : 'var(--muted)';
-  renderScadenze();
-}
 
 function renderScadenze() {
   const container = document.getElementById('scadenzeBody');
