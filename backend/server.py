@@ -258,6 +258,29 @@ async def _require_staff_session(
     return sess
 
 
+# File "core" con dati di TUTTI i lotti/imprese. In lettura (/api/data*,
+# /api/preview, /api/files) sono riservati ai ruoli interni: le Aree Impresa
+# usano gli endpoint /api/imprese/* già scoped sui propri lotti. Inoltre NON
+# vengono più pubblicati sul repo GitHub pubblico (vedi _push_to_github).
+SENSITIVE_FILES = {
+    "Master.csv",
+    "QGIS.geojson",
+    "Riepilogo_progettazione.csv",
+    "SED_classificato.geojson",
+}
+
+
+def _guard_sensitive_read(rel: str, sess: dict) -> None:
+    """Blocca la lettura dei file core da parte del ruolo 'impresa': un token
+    impresa legittimo non deve poter scaricare il dataset intero di tutti i
+    concorrenti via /api/data. I ruoli interni (admin/admin2/user) restano ok."""
+    if Path(rel).name in SENSITIVE_FILES and sess.get("ruolo") == "impresa":
+        raise HTTPException(
+            403,
+            "Accesso non consentito per questo ruolo — le imprese usano gli endpoint /api/imprese/*",
+        )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Routes
 # ─────────────────────────────────────────────────────────────────────────────
@@ -361,6 +384,7 @@ async def list_files(sess: dict = Depends(_require_staff_session)):
 @app.get("/api/data/{filename:path}")
 async def get_data_file(filename: str, sess: dict = Depends(_require_session)):
     rel = _safe_relpath(filename)
+    _guard_sensitive_read(rel, sess)
     cur = await _current_upload(rel)
     if cur:
         data = await _read_gridfs(cur["gridfs_id"])
@@ -375,6 +399,7 @@ async def get_data_file(filename: str, sess: dict = Depends(_require_session)):
 @app.get("/api/data-text/{filename:path}", response_class=PlainTextResponse)
 async def get_data_text(filename: str, sess: dict = Depends(_require_session)):
     rel = _safe_relpath(filename)
+    _guard_sensitive_read(rel, sess)
     cur = await _current_upload(rel)
     if cur:
         data = await _read_gridfs(cur["gridfs_id"])
@@ -922,6 +947,9 @@ async def _push_to_github(file_bytes: bytes, path: str = None, label: str = None
     es. una modifica manuale in parallelo) rilegge lo sha aggiornato e riprova fino a 3 volte."""
     path  = path or GITHUB_CSV_PATH
     label = label or path
+    if os.path.basename(path) in SENSITIVE_FILES:
+        print(f"[GitHub] push disabilitato per file sensibile {path} — NON pubblicato sul repo pubblico (servito solo dal backend gated)")
+        return
     print(f"[GitHub] push avviato — {len(file_bytes)} bytes, repo={GITHUB_REPO}, path={path}, branch={GITHUB_BRANCH}")
     token = os.environ.get("GITHUB_TOKEN")
     if not token:
@@ -1355,6 +1383,34 @@ async def impresa_pratiche(sess: dict = Depends(_require_session)):
     sub = df[mask]
     pratiche = sub.fillna("").to_dict(orient="records")
     return {"pratiche": pratiche, "lotti": sorted(lotti), "total": len(pratiche)}
+
+
+@app.get("/api/imprese/master-sed")
+async def impresa_master_sed(sess: dict = Depends(_require_session)):
+    """GeoJSON (QGIS.geojson + SED_classificato.geojson) filtrati ai SOLI lotti
+    assegnati all'impresa (nome dal token firmato). Le pagine Area Impresa usano
+    questo endpoint invece di scaricare i file interi con i lotti di tutti i
+    concorrenti. Stesso pattern di scoping di /api/imprese/pratiche."""
+    doc = await _find_assignment(sess["nome"])
+    if not doc or not doc.get("active", True):
+        raise HTTPException(404, "Impresa non autorizzata")
+    lotti = {_lotto_from_source(l) for l in doc.get("lotti", []) if str(l).strip()}
+
+    def _scope(geo: "dict | None") -> dict:
+        if not geo or not isinstance(geo.get("features"), list):
+            return {"type": "FeatureCollection", "features": []}
+        feats = [
+            f for f in geo["features"]
+            if str((f.get("properties") or {}).get("LOTTO", "")).strip().upper() in lotti
+        ]
+        out = {k: v for k, v in geo.items() if k != "features"}
+        out.setdefault("type", "FeatureCollection")
+        out["features"] = feats
+        return out
+
+    qgis = _scope(await _read_current_geojson("QGIS.geojson"))
+    sed = _scope(await _read_current_geojson("SED_classificato.geojson"))
+    return {"qgis": qgis, "sed": sed, "lotti": sorted(lotti)}
 
 
 @app.post("/api/imprese/submit")
