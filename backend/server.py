@@ -2103,10 +2103,6 @@ async def _touch_data_update(tratta_id: str, pratica: str, tipo_permesso: str = 
             if "DATA_UPDATE" not in df.columns or "TRATTA_ID" not in df.columns:
                 return
             mask = df["TRATTA_ID"].astype(str).str.strip() == str(tratta_id).strip()
-            if pratica and "PRATICA" in df.columns:
-                mask = mask & (df["PRATICA"].astype(str).str.strip() == str(pratica).strip())
-            if tipo_permesso and "TIPO_PERMESSO" in df.columns:
-                mask = mask & (df["TIPO_PERMESSO"].astype(str).str.strip() == str(tipo_permesso).strip())
             if not mask.any():
                 return
             df.loc[mask, "DATA_UPDATE"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
@@ -2126,10 +2122,6 @@ async def _touch_data_update_multi(keys: list) -> None:
             any_hit = False
             for tratta_id, pratica, tipo_permesso in keys:
                 mask = df["TRATTA_ID"].astype(str).str.strip() == str(tratta_id).strip()
-                if pratica and "PRATICA" in df.columns:
-                    mask = mask & (df["PRATICA"].astype(str).str.strip() == str(pratica).strip())
-                if tipo_permesso and "TIPO_PERMESSO" in df.columns:
-                    mask = mask & (df["TIPO_PERMESSO"].astype(str).str.strip() == str(tipo_permesso).strip())
                 if mask.any():
                     df.loc[mask, "DATA_UPDATE"] = oggi
                     any_hit = True
