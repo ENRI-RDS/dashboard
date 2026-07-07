@@ -84,6 +84,7 @@ cantieri_col  = db["cantieri"]                  # stato cantiere per pratica di 
 sopralluoghi_col = db["sopralluoghi"]          # verbali di sopralluogo
 pol_conv_dates_col = db["pol_conv_dates"]      # prima data in cui CONVENZIONE/POLIZZA è comparsa per una pratica
 access_logs_col = db["access_logs"]            # log accessi (ex-JSONBin) — un documento per binId, {utenti:[...], accessi:[...]}
+gantt_overrides_col = db["gantt_overrides"]    # override manuali riga Gantt (pct/date/label) per lotto, indip. da invii impresa
 gridfs = AsyncIOMotorGridFSBucket(db, bucket_name="files")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -260,6 +261,16 @@ async def _require_staff_session(
     sess = await _require_session(x_session_token)
     if sess.get("ruolo") == "impresa":
         raise HTTPException(403, "Accesso non consentito per questo ruolo")
+    return sess
+
+
+async def _require_admin_session(
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+) -> dict:
+    """Solo ruolo 'admin' o 'admin2' — per scritture riservate (es. override Gantt)."""
+    sess = await _require_staff_session(x_session_token)
+    if sess.get("ruolo") not in ("admin", "admin2"):
+        raise HTTPException(403, "Riservato ad admin")
     return sess
 
 
@@ -2856,6 +2867,61 @@ async def get_cantiere_log(cantiere_key: str, sess: dict = Depends(_require_sess
         raise HTTPException(403, "Pratica non assegnata a questa impresa")
 
     return {"log": doc.get("log", []), "cantiere_key": cantiere_key, "pratica_id": doc.get("pratica_id")}
+
+
+# ── Gantt: override manuali per riga (pct/date/label), indipendenti dagli ───
+# invii impresa — non tutte le fasi (es. materiali) derivano da un invio.
+# Chiave riga: {lotto}|{row_id}, row_id = indice della riga nell'array
+# GANTT_ROWS lato frontend (statico, quindi stabile).
+
+@app.get("/api/gantt/overrides")
+async def get_gantt_overrides(lotto: str = "", sess: dict = Depends(_require_staff_session)):
+    if not lotto:
+        raise HTTPException(400, "lotto required")
+    cur = gantt_overrides_col.find({"lotto": lotto})
+    out = {}
+    async for d in cur:
+        out[str(d["row_id"])] = {
+            "pct": d.get("pct"),
+            "start": d.get("start"),
+            "end": d.get("end"),
+            "date": d.get("date"),
+            "label": d.get("label"),
+            "sub": d.get("sub"),
+            "updated_at": d.get("updated_at"),
+            "updated_by": d.get("updated_by"),
+        }
+    return {"lotto": lotto, "overrides": out}
+
+
+@app.put("/api/gantt/overrides/{lotto}/{row_id}")
+async def upsert_gantt_override(lotto: str, row_id: str, payload: dict, sess: dict = Depends(_require_admin_session)):
+    fields = {}
+    for k in ("pct", "start", "end", "date", "label", "sub"):
+        if k in (payload or {}):
+            fields[k] = payload[k]
+    if not fields:
+        raise HTTPException(400, "Nessun campo da aggiornare")
+    if "pct" in fields:
+        try:
+            fields["pct"] = max(0, min(100, int(fields["pct"])))
+        except (TypeError, ValueError):
+            raise HTTPException(400, "pct deve essere un intero 0-100")
+    doc = {"lotto": lotto, "row_id": row_id, **fields,
+           "updated_at": _now_iso(), "updated_by": sess["nome"]}
+    await gantt_overrides_col.update_one(
+        {"lotto": lotto, "row_id": row_id},
+        {"$set": doc, "$setOnInsert": {"created_at": _now_iso()}},
+        upsert=True,
+    )
+    return {"ok": True, "lotto": lotto, "row_id": row_id, **fields}
+
+
+@app.delete("/api/gantt/overrides/{lotto}/{row_id}")
+async def delete_gantt_override(lotto: str, row_id: str, sess: dict = Depends(_require_admin_session)):
+    """Ripristina il valore automatico/baseline per la riga (rimuove l'override manuale)."""
+    res = await gantt_overrides_col.delete_one({"lotto": lotto, "row_id": row_id})
+    return {"deleted": res.deleted_count}
 
 
 # ── Trigger sync cantieri dopo approvazione Master.csv ───────────────────────
