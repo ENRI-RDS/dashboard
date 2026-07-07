@@ -380,6 +380,14 @@ function buildKpi() {
 }
 
 /* ── Gantt render ── */
+function _groupRowCount(groupId) {
+  var idx = GANTT_ROWS.findIndex(function(r) { return r.id === groupId; });
+  if (idx === -1) return 0;
+  var n = 0;
+  for (var i = idx + 1; i < GANTT_ROWS.length && GANTT_ROWS[i].t !== 'g'; i++) n++;
+  return n;
+}
+
 function buildGantt() {
   var wrap = document.getElementById('gantt-wrap');
   if (!wrap) return;
@@ -413,7 +421,13 @@ function buildGantt() {
   var C_GRAY = '#9AA5B4';    /* --gray-400 */
 
   var totalH = HDR;
-  GANTT_ROWS.forEach(function(r) { totalH += r.t === 'g' ? GH : RH; });
+  (function() {
+    var collapsed = false;
+    GANTT_ROWS.forEach(function(r) {
+      if (r.t === 'g') { totalH += GH; collapsed = COLLAPSED_GROUPS.has(r.id); return; }
+      if (!collapsed) totalH += RH;
+    });
+  })();
 
   var parts = [];
   parts.push('<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + totalH + '" style="display:block;font-family:Raleway,sans-serif;">');
@@ -441,13 +455,20 @@ function buildGantt() {
 
   var todayD = new Date(2026,6,7);
   var rowY = HDR;
+  var groupCollapsed = false;
   GANTT_ROWS.forEach(function(row, idx) {
     if (row.t === 'g') {
-      parts.push('<rect x="0" y="' + rowY + '" width="' + W + '" height="' + GH + '" fill="#DFE4EB"/>');
-      parts.push('<text x="10" y="' + (rowY + GH/2 + 3) + '" font-size="8" font-family="JetBrains Mono,monospace" font-weight="700" fill="var(--gray-500)" letter-spacing="1.5">' + row.label + '</text>');
+      groupCollapsed = COLLAPSED_GROUPS.has(row.id);
+      parts.push('<rect x="0" y="' + rowY + '" width="' + W + '" height="' + GH + '" fill="#DFE4EB" data-group-id="' + row.id + '" style="cursor:pointer;"/>');
+      var chevPts = groupCollapsed
+        ? (10)+','+(rowY+GH/2-3)+' '+(16)+','+(rowY+GH/2)+' '+(10)+','+(rowY+GH/2+3)   /* ▸ chiusa */
+        : (7)+','+(rowY+GH/2-2)+' '+(13)+','+(rowY+GH/2-2)+' '+(10)+','+(rowY+GH/2+3); /* ▾ aperta */
+      parts.push('<polygon points="' + chevPts + '" fill="var(--gray-500)" data-group-id="' + row.id + '" style="cursor:pointer;"/>');
+      parts.push('<text x="24" y="' + (rowY + GH/2 + 3) + '" font-size="8" font-family="JetBrains Mono,monospace" font-weight="700" fill="var(--gray-500)" letter-spacing="1.5" data-group-id="' + row.id + '" style="cursor:pointer;">' + row.label + (groupCollapsed ? '  (' + _groupRowCount(row.id) + ' task nascosti)' : '') + '</text>');
       rowY += GH;
       return;
     }
+    if (groupCollapsed) return;
 
     var cy = rowY + RH / 2;
     if (idx % 2 === 0) {
@@ -479,7 +500,7 @@ function buildGantt() {
         var fill = done ? C_DARK : (overdue ? C_MID : C_LIGHT);
         var tipMs = row.label + ' — scadenza ' + row.date + (done ? ' (ottenuto)' : (overdue ? ' (scaduta, non ottenuta)' : ' (in corso)')) + (row.real ? ' · dato reale Master.csv' : ' · baseline pianificazione');
         parts.push('<polygon points="' + mx + ',' + (cy-7) + ' ' + (mx+7) + ',' + cy + ' ' + mx + ',' + (cy+7) + ' ' + (mx-7) + ',' + cy + '" fill="' + fill + '" stroke="' + C_DARK + '" stroke-width="' + (overdue?1.5:(row.real?1:0)) + '" data-tip="' + tipMs.replace(/"/g,'&quot;') + '" data-row-id="' + row.id + '"/>');
-        parts.push('<text x="' + (mx + 11) + '" y="' + (cy+3) + '" font-size="8" font-family="JetBrains Mono,monospace" fill="var(--gray-500)" style="pointer-events:none;">' + row.date + '</text>');
+        parts.push('<text x="' + (mx + 11) + '" y="' + (cy+3) + '" font-size="8" font-family="JetBrains Mono,monospace" fill="var(--gray-500)" style="pointer-events:none;">' + row.date + ' · ' + fmtIt(Math.round(row.pct)) + '%</text>');
       }
     }
 
@@ -504,6 +525,13 @@ function buildGantt() {
     });
     svg.addEventListener('mouseleave', function() { _tt.style.display = 'none'; });
     svg.addEventListener('click', function(e) {
+      var gid = e.target.getAttribute('data-group-id');
+      if (gid !== null) {
+        gid = +gid;
+        if (COLLAPSED_GROUPS.has(gid)) COLLAPSED_GROUPS.delete(gid); else COLLAPSED_GROUPS.add(gid);
+        buildGantt();
+        return;
+      }
       if (!EDIT_MODE) return;
       var rid = e.target.getAttribute('data-row-id');
       if (rid === null) return;
@@ -515,6 +543,7 @@ function buildGantt() {
 /* ── modalità modifica (solo admin/admin2): consente di editare a mano ogni
    campo di ogni riga, indipendentemente dagli invii impresa. ── */
 var EDIT_MODE = false;
+var COLLAPSED_GROUPS = new Set(); /* id delle righe 'g' (fase) attualmente collassate */
 
 function toggleEditMode() {
   EDIT_MODE = !EDIT_MODE;
