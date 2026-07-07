@@ -75,6 +75,11 @@ admin_actions_col = db["admin_actions"]  # audit: azioni protette da UPLOAD_TOKE
 assignments_col = db["assignments"]            # impresa nome -> {lotti: [...]}
 pending_col = db["pending_updates"]            # submissions from imprese pending admin review
 solleciti_col = db["solleciti"]                # registro solleciti per tratta/pratica
+
+# Lock per serializzare i cicli read-modify-write su Master.csv (GridFS).
+# Senza questo lock, due richieste concorrenti (es. solleciti di imprese diverse)
+# possono leggere la stessa versione e la seconda scrittura sovrascrive/perde la prima.
+_master_csv_lock = asyncio.Lock()
 cantieri_col  = db["cantieri"]                  # stato cantiere per pratica di autorizzazione
 sopralluoghi_col = db["sopralluoghi"]          # verbali di sopralluogo
 pol_conv_dates_col = db["pol_conv_dates"]      # prima data in cui CONVENZIONE/POLIZZA è comparsa per una pratica
@@ -1678,10 +1683,11 @@ async def approve_pending(
         raise HTTPException(404, "Submission not found")
     if sub.get("status") != "pending":
         raise HTTPException(409, f"Already {sub.get('status')}")
-    df = await _read_master_csv()
-    new_df, summary = _apply_changes_to_df(df, sub)
-    note = f"Submission {sub_id} from {sub['nome']} ({sub['type']})"
-    upload_id = await _write_master_csv(new_df, note=note)
+    async with _master_csv_lock:
+        df = await _read_master_csv()
+        new_df, summary = _apply_changes_to_df(df, sub)
+        note = f"Submission {sub_id} from {sub['nome']} ({sub['type']})"
+        upload_id = await _write_master_csv(new_df, note=note)
     await pending_col.update_one(
         {"_id": oid},
         {"$set": {"status": "approved", "reviewed_at": _now_iso(), "applied_upload_id": upload_id, "summary": summary}},
@@ -1799,37 +1805,38 @@ async def update_polizza_convenzione(
         if str(v).strip().upper() not in {s.upper() for s in _POL_CONV_ALLOWED_VALUES}:
             raise HTTPException(400, f"Valore non ammesso per {k}: '{v}'")
 
-    df = await _read_master_csv()
+    async with _master_csv_lock:
+        df = await _read_master_csv()
 
-    def _extract_lotto(src: str) -> str:
-        return src.replace(".xlsx", "").replace(".xls", "").replace("Lotto ", "").strip().upper()
+        def _extract_lotto(src: str) -> str:
+            return src.replace(".xlsx", "").replace(".xls", "").replace("Lotto ", "").strip().upper()
 
-    src_col = next((c for c in df.columns if c.strip().upper().replace(".", "").replace(" ", "") in {"SOURCENAME", "SOURCE_NAME"}), None)
-    if src_col is None:
-        raise HTTPException(500, "Colonna SOURCE.NAME non trovata nel Master CSV")
+        src_col = next((c for c in df.columns if c.strip().upper().replace(".", "").replace(" ", "") in {"SOURCENAME", "SOURCE_NAME"}), None)
+        if src_col is None:
+            raise HTTPException(500, "Colonna SOURCE.NAME non trovata nel Master CSV")
 
-    pratica_col = next((c for c in df.columns if c.strip().upper() == "PRATICA"), None)
-    if pratica_col is None:
-        raise HTTPException(500, "Colonna PRATICA non trovata nel Master CSV")
+        pratica_col = next((c for c in df.columns if c.strip().upper() == "PRATICA"), None)
+        if pratica_col is None:
+            raise HTTPException(500, "Colonna PRATICA non trovata nel Master CSV")
 
-    mask = (
-        df[src_col].astype(str).apply(_extract_lotto) == lotto
-    ) & (
-        df[pratica_col].astype(str).str.strip() == pratica
-    )
+        mask = (
+            df[src_col].astype(str).apply(_extract_lotto) == lotto
+        ) & (
+            df[pratica_col].astype(str).str.strip() == pratica
+        )
 
-    matched = int(mask.sum())
-    if matched == 0:
-        raise HTTPException(404, f"Nessuna riga trovata per lotto={lotto} pratica={pratica}")
+        matched = int(mask.sum())
+        if matched == 0:
+            raise HTTPException(404, f"Nessuna riga trovata per lotto={lotto} pratica={pratica}")
 
-    for col, val in fields.items():
-        real_col = next((c for c in df.columns if c.strip().upper() == col.upper()), None)
-        if real_col is None:
-            raise HTTPException(500, f"Colonna {col} non trovata nel Master CSV")
-        df.loc[mask, real_col] = str(val).strip()
+        for col, val in fields.items():
+            real_col = next((c for c in df.columns if c.strip().upper() == col.upper()), None)
+            if real_col is None:
+                raise HTTPException(500, f"Colonna {col} non trovata nel Master CSV")
+            df.loc[mask, real_col] = str(val).strip()
 
-    note = f"Admin update polizze/convenzioni: lotto={lotto} pratica={pratica} fields={fields}"
-    upload_id = await _write_master_csv(df, note=note)
+        note = f"Admin update polizze/convenzioni: lotto={lotto} pratica={pratica} fields={fields}"
+        upload_id = await _write_master_csv(df, note=note)
     return {"ok": True, "rows_updated": matched, "new_upload_id": upload_id}
 
 
@@ -2091,18 +2098,19 @@ async def _touch_data_update(tratta_id: str, pratica: str, tipo_permesso: str = 
     """Aggiorna DATA_UPDATE=oggi sulle righe Master.csv della pratica toccata da un sollecito.
     Scrittura diretta (fire-and-forget), coerente col modello 'solleciti senza approvazione admin'."""
     try:
-        df = await _read_master_csv()
-        if "DATA_UPDATE" not in df.columns or "TRATTA_ID" not in df.columns:
-            return
-        mask = df["TRATTA_ID"].astype(str).str.strip() == str(tratta_id).strip()
-        if pratica and "PRATICA" in df.columns:
-            mask = mask & (df["PRATICA"].astype(str).str.strip() == str(pratica).strip())
-        if tipo_permesso and "TIPO_PERMESSO" in df.columns:
-            mask = mask & (df["TIPO_PERMESSO"].astype(str).str.strip() == str(tipo_permesso).strip())
-        if not mask.any():
-            return
-        df.loc[mask, "DATA_UPDATE"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
-        await _write_master_csv(df, note=f"Sollecito tratta {tratta_id} pratica {pratica}: touch DATA_UPDATE")
+        async with _master_csv_lock:
+            df = await _read_master_csv()
+            if "DATA_UPDATE" not in df.columns or "TRATTA_ID" not in df.columns:
+                return
+            mask = df["TRATTA_ID"].astype(str).str.strip() == str(tratta_id).strip()
+            if pratica and "PRATICA" in df.columns:
+                mask = mask & (df["PRATICA"].astype(str).str.strip() == str(pratica).strip())
+            if tipo_permesso and "TIPO_PERMESSO" in df.columns:
+                mask = mask & (df["TIPO_PERMESSO"].astype(str).str.strip() == str(tipo_permesso).strip())
+            if not mask.any():
+                return
+            df.loc[mask, "DATA_UPDATE"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+            await _write_master_csv(df, note=f"Sollecito tratta {tratta_id} pratica {pratica}: touch DATA_UPDATE")
     except Exception as e:
         print(f"[_touch_data_update] {e}")
 
@@ -2110,22 +2118,23 @@ async def _touch_data_update(tratta_id: str, pratica: str, tipo_permesso: str = 
 async def _touch_data_update_multi(keys: list) -> None:
     """Come _touch_data_update ma per più pratiche in un solo read+write di Master.csv."""
     try:
-        df = await _read_master_csv()
-        if "DATA_UPDATE" not in df.columns or "TRATTA_ID" not in df.columns:
-            return
-        oggi = datetime.now(timezone.utc).strftime("%d/%m/%Y")
-        any_hit = False
-        for tratta_id, pratica, tipo_permesso in keys:
-            mask = df["TRATTA_ID"].astype(str).str.strip() == str(tratta_id).strip()
-            if pratica and "PRATICA" in df.columns:
-                mask = mask & (df["PRATICA"].astype(str).str.strip() == str(pratica).strip())
-            if tipo_permesso and "TIPO_PERMESSO" in df.columns:
-                mask = mask & (df["TIPO_PERMESSO"].astype(str).str.strip() == str(tipo_permesso).strip())
-            if mask.any():
-                df.loc[mask, "DATA_UPDATE"] = oggi
-                any_hit = True
-        if any_hit:
-            await _write_master_csv(df, note=f"Solleciti bulk ({len(keys)}): touch DATA_UPDATE")
+        async with _master_csv_lock:
+            df = await _read_master_csv()
+            if "DATA_UPDATE" not in df.columns or "TRATTA_ID" not in df.columns:
+                return
+            oggi = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+            any_hit = False
+            for tratta_id, pratica, tipo_permesso in keys:
+                mask = df["TRATTA_ID"].astype(str).str.strip() == str(tratta_id).strip()
+                if pratica and "PRATICA" in df.columns:
+                    mask = mask & (df["PRATICA"].astype(str).str.strip() == str(pratica).strip())
+                if tipo_permesso and "TIPO_PERMESSO" in df.columns:
+                    mask = mask & (df["TIPO_PERMESSO"].astype(str).str.strip() == str(tipo_permesso).strip())
+                if mask.any():
+                    df.loc[mask, "DATA_UPDATE"] = oggi
+                    any_hit = True
+            if any_hit:
+                await _write_master_csv(df, note=f"Solleciti bulk ({len(keys)}): touch DATA_UPDATE")
     except Exception as e:
         print(f"[_touch_data_update_multi] {e}")
 
