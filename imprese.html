@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="it" translate="o">
+<html lang="it" translate="no">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -156,8 +156,8 @@
       <div class="search"><input type="text" id="searchPratiche" placeholder="Cerca per codice, tratta, ente, stato…" data-testid="search-pratiche"></div>
       <div class="scroll">
         <table>
-          <thead><tr><th>Pratica</th><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th><th>Data richiesta</th><th>Data agg.</th><th style="text-align:right">Lung. (m)</th></tr></thead>
-          <tbody id="pratBody"><tr><td colspan="8"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr></tbody>
+          <thead><tr><th>Pratica</th><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th><th>Data richiesta</th><th>Data agg.</th><th>Data ottenimento</th><th style="text-align:right">Lung. (m)</th></tr></thead>
+          <tbody id="pratBody"><tr><td colspan="9"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr></tbody>
         </table>
       </div>
 
@@ -331,9 +331,10 @@
           <table>
             <thead><tr>
               <th>Pratica</th><th>Ente</th><th>Tipo</th><th>Stato</th>
+              <th>Data ultimo sollecito</th>
               <th style="text-align:center">Tratte</th>
             </tr></thead>
-            <tbody id="solPratBody"><tr><td colspan="5" class="empty">Caricamento pratiche…</td></tr></tbody>
+            <tbody id="solPratBody"><tr><td colspan="6" class="empty">Caricamento pratiche…</td></tr></tbody>
           </table>
         </div>
 
@@ -382,7 +383,7 @@
         <table>
           <thead><tr>
             <th>Pratica</th><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th>
-            <th>Data richiesta</th><th>Data agg.</th><th>Data ottenimento</th>
+            <th>Data richiesta</th><th>Data agg.</th><th>Data ultimo sollecito</th>
             <th style="text-align:right">Lung. (m)</th>
             <th style="text-align:center">N°</th><th>Tipo sollecito</th><th>Data sollecito</th><th>Note sollecito</th><th></th>
           </tr></thead>
@@ -515,7 +516,7 @@ window.addEventListener('pageshow', (e) => {
 
   // ─── load pratiche ─────────────────────────────────
   async function loadPratiche(){
-    $('pratBody').innerHTML = `<tr><td colspan="8"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr>`;
+    $('pratBody').innerHTML = `<tr><td colspan="9"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr>`;
     try {
       const d = await api(`/api/imprese/pratiche?nome=${encodeURIComponent(nome)}`);
       PRATICHE = (d.pratiche || []).map(p => ({...p, _codice: buildCodice(p)}));
@@ -523,7 +524,7 @@ window.addEventListener('pageshow', (e) => {
       await _populateEntiSelect();
       _setAutoPratica();
     } catch(e){
-      $('pratBody').innerHTML = `<tr><td colspan="8" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
+      $('pratBody').innerHTML = `<tr><td colspan="9" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
     }
   }
   $('searchPratiche').addEventListener('input', e => renderPratiche(e.target.value));
@@ -591,7 +592,7 @@ window.addEventListener('pageshow', (e) => {
       return st !== 'OTTENUTO' && st !== 'NO COMPETENZA';
     });
     const rows = deduplicated.filter(p => !f || JSON.stringify(p).toLowerCase().includes(f));
-    if (!rows.length){ $('pratBody').innerHTML = '<tr><td colspan="8" class="empty">Nessuna pratica</td></tr>'; return; }
+    if (!rows.length){ $('pratBody').innerHTML = '<tr><td colspan="9" class="empty">Nessuna pratica</td></tr>'; return; }
     // Salva l'array corrente filtrato per recuperare la riga al click
     renderPratiche._current = rows.slice(0, 500);
     $('pratBody').innerHTML = renderPratiche._current.map((p, i) => `
@@ -603,6 +604,7 @@ window.addEventListener('pageshow', (e) => {
         <td class="stato-${(p.STATO_PERMESSO||'').replace(/\s+/g,'.')}">${escapeHtml(p.STATO_PERMESSO)}</td>
         <td class="mono">${escapeHtml(p.DATA_RICHIESTA)}</td>
         <td class="mono">${escapeHtml(p.DATA_ULTIMA_MODIFICA)}</td>
+        <td class="mono">${escapeHtml(p.DATA_APPROVAZIONE || '—')}</td>
         <td style="text-align:right;background:#f0fdf4;font-family:var(--font-mono);font-size:11.5px;color:#1F7A4E;font-weight:600;border-left:2px solid #bbf7d0">${escapeHtml(String(p.LUNGHEZZA ?? '—'))}</td>
       </tr>`).join('');
   }
@@ -1223,15 +1225,22 @@ window.addEventListener('pageshow', (e) => {
     const rows  = all.filter(({ rep }) => !f ||
       [rep._codice, rep.ENTE, rep.TIPO_PERMESSO, rep.STATO_PERMESSO].join(' ').toLowerCase().includes(f));
     renderSolPratiche._current = rows;
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">Nessuna pratica disponibile per il sollecito</td></tr>'; return; }
-    tbody.innerHTML = rows.map(({ rep, tratte }, i) => `
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty">Nessuna pratica disponibile per il sollecito</td></tr>'; return; }
+    tbody.innerHTML = rows.map(({ rep, tratte }, i) => {
+      const tIds = new Set(tratte.map(t => t.TRATTA_ID));
+      const dataUltSol = SOLLECITI
+        .filter(s => tIds.has(s.tratta_id) && s.data_sollecito)
+        .reduce((max, s) => (!max || parseDate(s.data_sollecito) > parseDate(max)) ? s.data_sollecito : max, null) || '—';
+      return `
       <tr data-idx="${i}">
         <td class="mono" style="font-weight:700;color:var(--accent);background:var(--accent-light);border-left:3px solid var(--accent)">${escapeHtml(rep._codice || String(rep.PRATICA||''))}</td>
         <td>${escapeHtml(rep.ENTE)}</td>
         <td>${escapeHtml(rep.TIPO_PERMESSO)}</td>
         <td class="stato-${(rep.STATO_PERMESSO||'').replace(/\s+/g,'.')}">${escapeHtml(rep.STATO_PERMESSO)}</td>
+        <td class="mono">${escapeHtml(dataUltSol)}</td>
         <td class="mono" style="text-align:center">${tratte.length}</td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
   }
 
   $('searchSolPratiche')?.addEventListener('input', e => renderSolPratiche(e.target.value));
@@ -1333,6 +1342,7 @@ window.addEventListener('pageshow', (e) => {
       const d = await api('/api/imprese/solleciti');
       SOLLECITI = d.solleciti || [];
       renderSolleciti('');
+      renderSolPratiche($('searchSolPratiche')?.value || '');
     } catch(e) {
       $('solBody').innerHTML = `<tr><td colspan="14" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
     }
@@ -1350,7 +1360,9 @@ window.addEventListener('pageshow', (e) => {
       const stato  = s.stato_permesso       || p?.STATO_PERMESSO|| '—';
       const dataRich = s.data_richiesta     || p?.DATA_RICHIESTA       || '—';
       const dataAgg  = s.data_ultima_modifica || p?.DATA_ULTIMA_MODIFICA || '—';
-      const dataOtt  = p?.DATA_APPROVAZIONE || '—';
+      const dataUltSol = SOLLECITI
+        .filter(x => x.tratta_id === s.tratta_id && x.data_sollecito)
+        .reduce((max, x) => (!max || parseDate(x.data_sollecito) > parseDate(max)) ? x.data_sollecito : max, null) || '—';
       const lungh  = s.lunghezza            || p?.LUNGHEZZA     || '—';
       const codice = p?._codice || s.pratica || '—';
       const nSol   = s.numero_sollecito != null ? String(s.numero_sollecito) : '—';
@@ -1363,7 +1375,7 @@ window.addEventListener('pageshow', (e) => {
         <td class="${stato !== '—' ? 'stato-' + stato.replace(/\s+/g,'.') : ''}">${escapeHtml(stato)}</td>
         <td class="mono">${escapeHtml(dataRich)}</td>
         <td class="mono">${escapeHtml(dataAgg)}</td>
-        <td class="mono">${escapeHtml(dataOtt)}</td>
+        <td class="mono">${escapeHtml(dataUltSol)}</td>
         <td style="text-align:right;background:#f0fdf4;font-family:var(--font-mono);font-size:11.5px;color:#1F7A4E;font-weight:600;border-left:2px solid #bbf7d0">${escapeHtml(String(lungh))}</td>
         <td class="mono" style="text-align:center;font-weight:700">${escapeHtml(nSol)}</td>
         <td><span style="padding:2px 8px;border-radius:5px;font-size:10.5px;font-weight:700;background:var(--retelit-ice);color:var(--accent)">${escapeHtml(s.tipo_sollecito)}</span></td>
