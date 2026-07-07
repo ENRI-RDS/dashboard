@@ -2473,6 +2473,34 @@ function renderResults(pratiche, addresses, query) {
 }
 
 let _highlightedLayer = null;
+let _prHighlightLayers = [];
+
+function clearPrHighlight() {
+  _prHighlightLayers.forEach(l => {
+    l.setStyle({ weight: 4, opacity: 0.95, color: getColorForMode(l.feature, currentViewMode) });
+  });
+  _prHighlightLayers = [];
+}
+
+function highlightPrTratte(tratteIds) {
+  clearPrHighlight();
+  if (!tratteIds || !tratteIds.size) return;
+  const targets = [];
+  allLayers.forEach(({ layer }) => {
+    layer.eachLayer(l => {
+      if (l.feature && tratteIds.has(l.feature.properties.TRATTA_ID)) {
+        l.setStyle({ weight: 9, opacity: 1, color: '#f59e0b' });
+        l.bringToFront();
+        targets.push(l);
+      }
+    });
+  });
+  _prHighlightLayers = targets;
+  if (targets.length) {
+    const bounds = L.featureGroup(targets).getBounds();
+    if (bounds.isValid()) map.fitBounds(bounds, { maxZoom: 16, padding: [40, 40] });
+  }
+}
 
 function clearHighlight() {
   if (_highlightedLayer) {
@@ -3790,6 +3818,8 @@ function prSelectRow(idx){
     panel.style.display = '';
   } else { panel.style.display = 'none'; }
 
+  highlightPrTratte(new Set([PR_SELECTED.TRATTA_ID, ...PR_SIBLINGS.map(s => s.TRATTA_ID)]));
+
   document.getElementById('prEditForm').scrollIntoView({behavior:'smooth', block:'nearest'});
 }
 
@@ -3798,6 +3828,7 @@ document.getElementById('prCancelEdit').onclick = () => {
   document.getElementById('prSiblings').style.display = 'none';
   PR_SELECTED = null; PR_SIBLINGS = [];
   document.querySelectorAll('#prList .pr-card.selected').forEach(x => x.classList.remove('selected'));
+  clearPrHighlight();
 };
 
 document.getElementById('pr-no-nec').addEventListener('change', function(){
@@ -3847,6 +3878,7 @@ function _prFinalizeAdd(fields, includeSiblings){
   document.getElementById('prEditForm').style.display = 'none';
   document.getElementById('prSiblings').style.display = 'none';
   document.querySelectorAll('#prList .pr-card.selected').forEach(x => x.classList.remove('selected'));
+  clearPrHighlight();
   const n = includeSiblings ? (1+PR_SIBLINGS.length) : 1;
   prSetMsg(document.getElementById('prMsgUpd'), n>1 ? `Aggiunte ${n} tratte alla coda` : `Aggiunto alla coda (${PR_QUEUE.length} modifiche totali)`, true);
 }
