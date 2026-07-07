@@ -624,9 +624,9 @@ window.addEventListener('pageshow', (e) => {
     $('fld-data-rich').value = '';
     $('fld-data-app').value  = '';
     $('fld-note').value = '';
-    $('fld-note').disabled = true;
-    $('fld-note').style.cssText = 'background:var(--gray-100);color:var(--muted);cursor:not-allowed;resize:none';
-    $('fld-note').placeholder = 'Seleziona prima il nuovo stato…';
+    $('fld-note').disabled = false;
+    $('fld-note').style.cssText = '';
+    $('fld-note').placeholder = 'Note opzionali — puoi salvare solo una nota senza cambiare stato';
     $('wrap-data-rich').style.display = 'none';
     $('wrap-data-app').style.display  = 'none';
 
@@ -726,17 +726,10 @@ window.addEventListener('pageshow', (e) => {
 
   $('fld-stato').addEventListener('change', function() {
     const v = this.value;
-    const noteEl = $('fld-note');
     if (!v) {
-      noteEl.disabled = true;
-      noteEl.style.cssText = 'background:var(--gray-100);color:var(--muted);cursor:not-allowed;resize:none';
-      noteEl.placeholder = 'Seleziona prima il nuovo stato…';
       $('wrap-data-rich').style.display = 'none';
       $('wrap-data-app').style.display  = 'none';
     } else {
-      noteEl.disabled = false;
-      noteEl.style.cssText = '';
-      noteEl.placeholder = 'Note opzionali';
       $('wrap-data-rich').style.display = (v === 'INVIATO')   ? '' : 'none';
       $('wrap-data-app').style.display  = (v === 'OTTENUTO')  ? '' : 'none';
       $('wrap-prev-rilascio').style.display = (v === 'OTTENUTO' || v === 'NO COMPETENZA') ? 'none' : '';
@@ -834,9 +827,11 @@ window.addEventListener('pageshow', (e) => {
   $('addToQueueBtn').onclick = () => {
     if (!SELECTED) return;
     const stato = $('fld-stato').value;
-    if (!stato) return setMsg($('msgUpd'), 'Seleziona il nuovo stato prima di aggiungere alla coda', false);
+    const noteVal = $('fld-note').value.trim();
+    if (!stato && !noteVal) return setMsg($('msgUpd'), 'Seleziona un nuovo stato oppure inserisci una nota', false);
 
-    const fields = { STATO_PERMESSO: stato };
+    const fields = {};
+    if (stato) fields.STATO_PERMESSO = stato;
 
     if (stato === 'INVIATO') {
       const dr = $('fld-data-rich').value;
@@ -849,21 +844,20 @@ window.addEventListener('pageshow', (e) => {
       fields.DATA_APPROVAZIONE = fromInputDate(da);
     }
 
-    const noteVal = $('fld-note').value.trim();
     if (noteVal) fields.NOTE = noteVal;
 
-    // Polizza/Convenzione/Nulla Osta: non richiesti per NO COMPETENZA e OTTENUTO
-    const skipChecks = (stato === 'NO COMPETENZA' || stato === 'OTTENUTO');
+    // Polizza/Convenzione/Nulla Osta: solo se si sta cambiando stato (non richiesti per NO COMPETENZA/OTTENUTO, e non pertinenti per un aggiornamento di sola nota)
+    const skipChecks = !stato || stato === 'NO COMPETENZA' || stato === 'OTTENUTO';
 
     const polizza = skipChecks ? '' : ($('fld-polizza').checked ? 'SI' : 'NO');
     if (polizza) fields['POLIZZA '] = polizza;
     const convenzione = skipChecks ? '' : ($('fld-convenzione').checked ? 'SI' : 'NO');
     if (convenzione) fields['CONVENZIONE'] = convenzione;
 
-    const prevRilascio = (stato === 'OTTENUTO' || stato === 'NO COMPETENZA') ? '' : $('fld-prev-rilascio').value;
+    const prevRilascio = (!stato || stato === 'OTTENUTO' || stato === 'NO COMPETENZA') ? '' : $('fld-prev-rilascio').value;
     if (prevRilascio) fields['DATA_PREVISTA_RILASCIO'] = fromInputDate(prevRilascio);
 
-    // Nulla Osta Necessario (solo per AUTORIZZAZIONE, non richiesto per NO COMPETENZA/OTTENUTO)
+    // Nulla Osta Necessario (solo per AUTORIZZAZIONE, non richiesto per NO COMPETENZA/OTTENUTO/sola nota)
     const noNec = skipChecks ? '' : ($('fld-no-nec').checked ? 'SI' : 'NO');
     if (noNec) {
       fields['NULLA OSTA NECESSARIO'] = noNec;
