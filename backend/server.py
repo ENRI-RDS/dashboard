@@ -1702,7 +1702,11 @@ async def backfill_data_update_solleciti(
     async with _master_csv_lock:
         df = await _read_master_csv()
         if "DATA_UPDATE" not in df.columns or "TRATTA_ID" not in df.columns:
-            return {"ok": False, "error": "colonna DATA_UPDATE o TRATTA_ID assente da Master.csv"}
+            return {
+                "ok": False,
+                "error": "colonna DATA_UPDATE o TRATTA_ID assente da Master.csv",
+                "colonne_trovate": df.columns.tolist(),
+            }
 
         touched = []
         col_tratta = df["TRATTA_ID"].astype(str).str.strip()
