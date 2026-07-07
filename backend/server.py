@@ -1667,6 +1667,66 @@ async def regenerate_derived(
     return {"ok": True, "result": result}
 
 
+@app.post("/api/admin/backfill-data-update-solleciti")
+async def backfill_data_update_solleciti(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """One-off (rev.147): valorizza DATA_UPDATE per le tratte con solleciti registrati
+    PRIMA del fix del bug di matching (mask rotta su 'pratica' → touch mai avvenuto).
+    Per ogni tratta_id in 'solleciti', prende la data_sollecito più recente e la usa
+    come DATA_UPDATE se è più recente di quella già presente (o se assente).
+    Non tocca le tratte senza solleciti. Idempotente: rieseguibile senza effetti collaterali
+    (non peggiora mai una DATA_UPDATE già più recente di quella dei solleciti)."""
+    _check_token(x_upload_token or token_q)
+
+    def _parse_it(s: str):
+        try:
+            return datetime.strptime(str(s).strip(), "%d/%m/%Y")
+        except Exception:
+            return None
+
+    # Max data_sollecito per tratta_id
+    max_per_tratta: dict[str, datetime] = {}
+    async for d in solleciti_col.find({}, {"tratta_id": 1, "data_sollecito": 1}):
+        tid = str(d.get("tratta_id", "")).strip()
+        dt = _parse_it(d.get("data_sollecito", ""))
+        if not tid or not dt:
+            continue
+        if tid not in max_per_tratta or dt > max_per_tratta[tid]:
+            max_per_tratta[tid] = dt
+
+    if not max_per_tratta:
+        return {"ok": True, "touched": 0, "detail": "nessun sollecito con data valida trovato"}
+
+    async with _master_csv_lock:
+        df = await _read_master_csv()
+        if "DATA_UPDATE" not in df.columns or "TRATTA_ID" not in df.columns:
+            return {"ok": False, "error": "colonna DATA_UPDATE o TRATTA_ID assente da Master.csv"}
+
+        touched = []
+        col_tratta = df["TRATTA_ID"].astype(str).str.strip()
+        for tid, sol_dt in max_per_tratta.items():
+            mask = col_tratta == tid
+            if not mask.any():
+                continue
+            existing_raw = df.loc[mask, "DATA_UPDATE"].iloc[0]
+            existing_dt = _parse_it(existing_raw)
+            if existing_dt and existing_dt >= sol_dt:
+                continue  # già più recente (o uguale), non sovrascrivere
+            new_val = sol_dt.strftime("%d/%m/%Y")
+            df.loc[mask, "DATA_UPDATE"] = new_val
+            touched.append({"tratta_id": tid, "data_update": new_val})
+
+        if touched:
+            await _write_master_csv(
+                df,
+                note=f"Backfill one-off rev.147: DATA_UPDATE da storico solleciti ({len(touched)} tratte)",
+            )
+
+    return {"ok": True, "touched": len(touched), "detail": touched}
+
+
 @app.post("/api/admin/pending-updates/{sub_id}/approve")
 async def approve_pending(
     sub_id: str,
