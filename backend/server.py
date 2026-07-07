@@ -1696,17 +1696,19 @@ async def backfill_data_update_solleciti(
         if tid not in max_per_tratta or dt > max_per_tratta[tid]:
             max_per_tratta[tid] = dt
 
-    if not max_per_tratta:
-        return {"ok": True, "touched": 0, "detail": "nessun sollecito con data valida trovato"}
-
     async with _master_csv_lock:
         df = await _read_master_csv()
-        if "DATA_UPDATE" not in df.columns or "TRATTA_ID" not in df.columns:
+        if "TRATTA_ID" not in df.columns:
             return {
                 "ok": False,
-                "error": "colonna DATA_UPDATE o TRATTA_ID assente da Master.csv",
+                "error": "colonna TRATTA_ID assente da Master.csv",
                 "colonne_trovate": df.columns.tolist(),
             }
+        if "DATA_UPDATE" not in df.columns:
+            df["DATA_UPDATE"] = ""
+            column_created = True
+        else:
+            column_created = False
 
         touched = []
         col_tratta = df["TRATTA_ID"].astype(str).str.strip()
@@ -1722,13 +1724,14 @@ async def backfill_data_update_solleciti(
             df.loc[mask, "DATA_UPDATE"] = new_val
             touched.append({"tratta_id": tid, "data_update": new_val})
 
-        if touched:
+        if touched or column_created:
             await _write_master_csv(
                 df,
-                note=f"Backfill one-off rev.147: DATA_UPDATE da storico solleciti ({len(touched)} tratte)",
+                note=f"Backfill one-off rev.147: DATA_UPDATE da storico solleciti ({len(touched)} tratte)"
+                     + (" + colonna creata" if column_created else ""),
             )
 
-    return {"ok": True, "touched": len(touched), "detail": touched}
+    return {"ok": True, "touched": len(touched), "column_created": column_created, "detail": touched}
 
 
 @app.post("/api/admin/pending-updates/{sub_id}/approve")
