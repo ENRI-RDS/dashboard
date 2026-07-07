@@ -98,6 +98,18 @@ tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);fo
 .dp-2028{background:rgba(4,63,117,.10);color:#043F75;border:1px solid #819FB9;}
 .gantt-legend-item{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-family:var(--font-mono);}
 #gantt-wrap{min-height:200px;}
+#editModeBtn.active{background:var(--retelit-blue);color:#fff;border-color:var(--retelit-blue);}
+#gantt-wrap.edit-on svg [data-row-id]{cursor:pointer;}
+#gantt-wrap.edit-on svg [data-row-id]:hover{filter:brightness(1.15) drop-shadow(0 0 2px var(--retelit-blue));}
+#ganttEditPopover{position:fixed;z-index:9998;background:var(--surface);border:1px solid var(--border2);border-radius:10px;box-shadow:var(--shadow-lg);padding:14px 16px;width:240px;font-size:12px;display:none;}
+#ganttEditPopover .gep-title{font-weight:700;font-size:11px;margin-bottom:10px;color:var(--text);}
+#ganttEditPopover label{display:block;font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:8px 0 3px;}
+#ganttEditPopover input{width:100%;padding:5px 8px;border:1px solid var(--border2);border-radius:6px;font-size:12px;font-family:var(--font-body);}
+#ganttEditPopover .gep-actions{display:flex;gap:6px;margin-top:12px;}
+#ganttEditPopover .gep-actions button{flex:1;padding:6px 8px;border-radius:6px;font-size:10.5px;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:transparent;font-family:var(--font-body);}
+#ganttEditPopover .gep-save{background:var(--retelit-blue)!important;color:#fff!important;border-color:var(--retelit-blue)!important;}
+#ganttEditPopover .gep-reset{color:var(--danger);}
+#ganttEditPopover .gep-err{color:var(--danger);font-size:10px;margin-top:6px;display:none;}
 </style>
 </head>
 <body>
@@ -145,6 +157,10 @@ tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);fo
         <span class="gantt-legend-item" style="color:var(--retelit-teal);">
           <svg width="12" height="14"><line x1="6" y1="0" x2="6" y2="14" stroke="var(--retelit-teal)" stroke-width="2" stroke-dasharray="3,2"/></svg>Oggi
         </span>
+        <button id="editModeBtn" class="btn-sm" style="display:none;gap:6px;" onclick="toggleEditMode()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          <span id="editModeBtnLabel">Modalità modifica</span>
+        </button>
       </div>
     </div>
     <div style="padding:16px 20px 20px;overflow-x:auto;">
@@ -154,13 +170,19 @@ tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);fo
 
 </div><!-- /main -->
 
+<div id="ganttEditPopover"></div>
+
 <script>
+var IS_ADMIN = false;
 (() => {
   const _ruolo = (localStorage.getItem('_enri_role') || '').toLowerCase();
   if (!localStorage.getItem('_enri_user') || !['admin','admin2','user'].includes(_ruolo)) {
     window.location.replace('hub.html');
+    return;
   }
+  IS_ADMIN = ['admin','admin2'].includes(_ruolo);
 })();
+function _sessionToken() { return localStorage.getItem('_enri_session') || ''; }
 /* ── helpers ── */
 function parseDateStr(str) {
   if (!str || str === '-') return null;
@@ -173,6 +195,65 @@ function fmtIt(n) {
 
 /* ── dati Lotto 1A (estratti da Progetto_ENRI_GANTT_Cluster_1-2.mpp, WBS 1.1.1) ── */
 var GANTT_ROWS = [{"t":"g","label":"FASE 1 · PROGETTAZIONE/PERMESSI"},{"t":"bar","label":"Progettazione / Richiesta permessi","start":"16/02/2026","end":"10/06/2026","pct":100.0},{"t":"g","label":"FASE 2 · OTTENIMENTO PERMESSI (18 enti)"},{"t":"ms","label":"COMUNE DI CORNAREDO AUT/1/1A","date":"06/07/2026","pct":0.0},{"t":"ms","label":"COMUNE DI PERO - AUT/13/1A","date":"20/07/2026","pct":0.0},{"t":"ms","label":"COMUNE DI PERO - AUT/24/1A","date":"27/07/2026","pct":0.0},{"t":"ms","label":"COMUNE DI RHO - AUT/2/1A","date":"27/07/2026","pct":0.0},{"t":"ms","label":"COMUNE DI RHO - AUT/20/1A","date":"03/08/2026","pct":0.0},{"t":"ms","label":"COMUNE DI RHO - AUT/23/1A","date":"10/08/2026","pct":0.0},{"t":"ms","label":"PROVINCIA DI MILANO - AUT/12/1A","date":"13/07/2026","pct":0.0},{"t":"ms","label":"PROVINCIA DI MILANO - AUT/3/1A","date":"13/07/2026","pct":0.0},{"t":"ms","label":"EST VILLORESI - NO/26/1A","date":"20/07/2026","pct":0.0},{"t":"ms","label":"SATAP - NO/21/1A -","date":"20/07/2026","pct":0.0},{"t":"ms","label":"SATAP - NO/25/1A","date":"20/07/2026","pct":0.0},{"t":"ms","label":"SATAP - NO/28/1A","date":"20/07/2026","pct":0.0},{"t":"ms","label":"SATAP - NO/6/1A","date":"20/07/2026","pct":0.0},{"t":"ms","label":"SERRAVALLE - NO/10/1A","date":"20/07/2026","pct":0.0},{"t":"ms","label":"SERRAVALLE - NO/19/1A","date":"20/07/2026","pct":0.0},{"t":"ms","label":"SERRAVALLE - NO/27/1A","date":"20/07/2026","pct":0.0},{"t":"ms","label":"AIPO - NO/14/1A","date":"13/07/2026","pct":0.0},{"t":"ms","label":"AIPO - NO/16/1A","date":"13/07/2026","pct":0.0},{"t":"ms","label":"AIPO - NO/18/1A","date":"13/07/2026","pct":0.0},{"t":"ms","label":"AIPO - NO/4/1A","date":"13/07/2026","pct":0.0},{"t":"ms","label":"AIPO - NO/7/1A","date":"13/07/2026","pct":0.0},{"t":"ms","label":"AIPO - NO/8/1A","date":"13/07/2026","pct":0.0},{"t":"ms","label":"AIPO - NO/29/1A","date":"03/08/2026","pct":0.0},{"t":"ms","label":"ANAS - AUT/11/1A","date":"20/07/2026","pct":0.0},{"t":"ms","label":"ANAS - NO/17/1A","date":"20/07/2026","pct":0.0},{"t":"ms","label":"ANAS - NO/22/1A","date":"20/07/2026","pct":0.0},{"t":"ms","label":"RFI - NO/15/1A","date":"20/07/2026","pct":0.0},{"t":"ms","label":"RFI - NO/5/1A","date":"03/08/2026","pct":0.0},{"t":"ms","label":"RFI - NO/9/1A","date":"03/08/2026","pct":0.0},{"t":"g","label":"FASE 3 · APPROVVIGIONAMENTO MATERIALI"},{"t":"bar","label":"Richiesta forniture","start":"28/05/2026","end":"29/05/2026","pct":100.0},{"t":"ms","label":"Consegna materiali 1 trance","date":"15/06/2026","pct":100.0},{"t":"ms","label":"Consegna materiali 2 trance","date":"13/07/2026","pct":0.0},{"t":"ms","label":"Consegna materiali 3 trance","date":"07/09/2026","pct":0.0},{"t":"g","label":"FASE 4 · CANTIERIZZAZIONE"},{"t":"bar","label":"Cantierizzazione","start":"06/07/2026","end":"17/07/2026","pct":0.0},{"t":"g","label":"FASE 5 · OPERE CIVILI (per comune)"},{"t":"bar","label":"1 · Comune di Cornaredo","start":"20/07/2026","end":"23/10/2026","pct":0.0,"sub":"Scavo a cielo aperto, TOC, Pozzetti"},{"t":"bar","label":"2 · Comune di Pero","start":"20/07/2026","end":"01/12/2026","pct":0.0,"sub":"Scavo a cielo aperto, TOC, Pozzetti, Pozzetti (Maxi)"},{"t":"bar","label":"3 · Comune di Rho","start":"27/07/2026","end":"06/11/2026","pct":0.0,"sub":"Scavo a cielo aperto, TOC, Pozzetti, Pozzetti (Maxi)"},{"t":"g","label":"FASE 6 · TEST/COLLAUDO"},{"t":"bar","label":"1 · Comune di Cornaredo","start":"20/07/2026","end":"23/10/2026","pct":0.0},{"t":"bar","label":"2 · Comune di Pero","start":"20/07/2026","end":"01/12/2026","pct":0.0},{"t":"bar","label":"3 · Comune di Rho","start":"27/07/2026","end":"06/11/2026","pct":0.0},{"t":"g","label":"FASE 7 · AS-BUILT"},{"t":"bar","label":"1 · Comune di Cornaredo","start":"26/10/2026","end":"06/11/2026","pct":0.0},{"t":"bar","label":"2 · Comune di Pero","start":"02/12/2026","end":"15/12/2026","pct":0.0},{"t":"bar","label":"3 · Comune di Rho","start":"09/11/2026","end":"20/11/2026","pct":0.0}];
+
+var LOTTO_ID = '1A';
+GANTT_ROWS.forEach(function(r, i) { r.id = i; }); /* id stabile: indice nell'array statico */
+
+/* ── override manuali (Fase 3/4/5/6/7, o qualunque riga compilata a mano) ──
+   Non tutte le fasi derivano da un invio impresa (es. materiali, cantierizzazione):
+   un override salvato su MongoDB vince sempre su baseline e su Master.csv. ── */
+var GANTT_OVERRIDES = {}; /* row.id -> {pct,start,end,label,sub} */
+
+async function fetchGanttOverrides() {
+  try {
+    var res = await fetch((window.ENRI && window.ENRI.isEnabled ? window.ENRI.apiBase : '') + '/api/gantt/overrides?lotto=' + encodeURIComponent(LOTTO_ID), {
+      headers: { 'x-session-token': _sessionToken() }
+    });
+    if (!res.ok) return;
+    var data = await res.json();
+    GANTT_OVERRIDES = data.overrides || {};
+  } catch (e) {
+    console.warn('Override Gantt non caricati:', e.message);
+  }
+}
+
+function applyGanttOverrides() {
+  GANTT_ROWS.forEach(function(row) {
+    var ov = GANTT_OVERRIDES[String(row.id)];
+    if (!ov) return;
+    if (ov.pct !== undefined && ov.pct !== null) row.pct = ov.pct;
+    if (ov.start) row.start = ov.start;
+    if (ov.end) row.end = ov.end;
+    if (ov.date) row.date = ov.date;
+    if (ov.label) row.label = ov.label;
+    if (ov.sub !== undefined) row.sub = ov.sub;
+    row.manual = true;
+    row.real = false; /* un override manuale non è più "dato reale Master.csv" */
+  });
+}
+
+async function saveGanttOverride(rowId, fields) {
+  var res = await fetch((window.ENRI && window.ENRI.isEnabled ? window.ENRI.apiBase : '') + '/api/gantt/overrides/' + encodeURIComponent(LOTTO_ID) + '/' + encodeURIComponent(rowId), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'x-session-token': _sessionToken() },
+    body: JSON.stringify(fields)
+  });
+  if (!res.ok) {
+    var msg = 'Errore salvataggio';
+    try { msg = (await res.json()).detail || msg; } catch (e) {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+async function resetGanttOverride(rowId) {
+  var res = await fetch((window.ENRI && window.ENRI.isEnabled ? window.ENRI.apiBase : '') + '/api/gantt/overrides/' + encodeURIComponent(LOTTO_ID) + '/' + encodeURIComponent(rowId), {
+    method: 'DELETE',
+    headers: { 'x-session-token': _sessionToken() }
+  });
+  if (!res.ok) throw new Error('Errore ripristino');
+  return res.json();
+}
 
 /* ── merge con Master.csv: sostituisce pct/data baseline delle milestone Fase 2
    (permessi) con lo stato reale caricato dall'impresa, match per ENTE + n.pratica.
@@ -211,7 +292,7 @@ function splitCsvLine(line, sep) {
 
 async function mergeMasterCsv() {
   try {
-    var res = await fetch('Master.csv');
+    var res = await fetch('Master.csv', { headers: { 'x-session-token': _sessionToken() } });
     if (!res.ok) return;
     var text = await res.text();
     var lines = text.trim().split('\n').map(function(l){ return l.replace(/\r/,''); });
@@ -382,7 +463,7 @@ function buildGantt() {
         var w = Math.max(x2 - x1, 3);
         var tip = row.label + ' — ' + row.start + ' \u2192 ' + row.end + ' (' + fmtIt(row.pct) + '%)' + (row.sub ? (' | ' + row.sub) : '');
         /* traccia (outline) */
-        parts.push('<rect x="' + x1 + '" y="' + (cy-7) + '" width="' + w + '" height="14" rx="7" fill="' + C_PALE + '" opacity="0.35" stroke="' + C_LIGHT + '" stroke-width="1.2" data-tip="' + tip.replace(/"/g,'&quot;') + '"/>');
+        parts.push('<rect x="' + x1 + '" y="' + (cy-7) + '" width="' + w + '" height="14" rx="7" fill="' + C_PALE + '" opacity="0.35" stroke="' + C_LIGHT + '" stroke-width="1.2" data-tip="' + tip.replace(/"/g,'&quot;') + '" data-row-id="' + row.id + '"/>');
         /* fill % completamento */
         var fillW = w * (row.pct/100);
         if (fillW > 0) {
@@ -397,7 +478,7 @@ function buildGantt() {
         var overdue = !done && parseDateStr(row.date) && parseDateStr(row.date) < todayD;
         var fill = done ? C_DARK : (overdue ? C_MID : C_LIGHT);
         var tipMs = row.label + ' — scadenza ' + row.date + (done ? ' (ottenuto)' : (overdue ? ' (scaduta, non ottenuta)' : ' (in corso)')) + (row.real ? ' · dato reale Master.csv' : ' · baseline pianificazione');
-        parts.push('<polygon points="' + mx + ',' + (cy-7) + ' ' + (mx+7) + ',' + cy + ' ' + mx + ',' + (cy+7) + ' ' + (mx-7) + ',' + cy + '" fill="' + fill + '" stroke="' + C_DARK + '" stroke-width="' + (overdue?1.5:(row.real?1:0)) + '" data-tip="' + tipMs.replace(/"/g,'&quot;') + '"/>');
+        parts.push('<polygon points="' + mx + ',' + (cy-7) + ' ' + (mx+7) + ',' + cy + ' ' + mx + ',' + (cy+7) + ' ' + (mx-7) + ',' + cy + '" fill="' + fill + '" stroke="' + C_DARK + '" stroke-width="' + (overdue?1.5:(row.real?1:0)) + '" data-tip="' + tipMs.replace(/"/g,'&quot;') + '" data-row-id="' + row.id + '"/>');
         parts.push('<text x="' + (mx + 11) + '" y="' + (cy+3) + '" font-size="8" font-family="JetBrains Mono,monospace" fill="var(--gray-500)" style="pointer-events:none;">' + row.date + '</text>');
       }
     }
@@ -422,6 +503,98 @@ function buildGantt() {
       }
     });
     svg.addEventListener('mouseleave', function() { _tt.style.display = 'none'; });
+    svg.addEventListener('click', function(e) {
+      if (!EDIT_MODE) return;
+      var rid = e.target.getAttribute('data-row-id');
+      if (rid === null) return;
+      openGanttEditPopover(+rid, e.clientX, e.clientY);
+    });
+  }
+}
+
+/* ── modalità modifica (solo admin/admin2): consente di editare a mano ogni
+   campo di ogni riga, indipendentemente dagli invii impresa. ── */
+var EDIT_MODE = false;
+
+function toggleEditMode() {
+  EDIT_MODE = !EDIT_MODE;
+  document.getElementById('editModeBtn').classList.toggle('active', EDIT_MODE);
+  document.getElementById('editModeBtnLabel').textContent = EDIT_MODE ? 'Modifica attiva' : 'Modalità modifica';
+  document.getElementById('gantt-wrap').classList.toggle('edit-on', EDIT_MODE);
+  if (!EDIT_MODE) closeGanttEditPopover();
+}
+
+function findGanttRow(rowId) {
+  return GANTT_ROWS.filter(function(r) { return r.id === rowId; })[0];
+}
+
+function openGanttEditPopover(rowId, clientX, clientY) {
+  var row = findGanttRow(rowId);
+  if (!row) return;
+  var pop = document.getElementById('ganttEditPopover');
+  var isBar = row.t === 'bar';
+  var dateFields = isBar
+    ? '<label>Data inizio</label><input id="gepStart" value="' + (row.start||'') + '" placeholder="gg/mm/aaaa">' +
+      '<label>Data fine</label><input id="gepEnd" value="' + (row.end||'') + '" placeholder="gg/mm/aaaa">'
+    : '<label>Data</label><input id="gepDate" value="' + (row.date||'') + '" placeholder="gg/mm/aaaa">';
+  pop.innerHTML =
+    '<div class="gep-title">' + row.label.replace(/</g,'&lt;') + '</div>' +
+    '<label>% completamento</label><input id="gepPct" type="number" min="0" max="100" value="' + Math.round(row.pct) + '">' +
+    dateFields +
+    (isBar ? '<label>Note</label><input id="gepSub" value="' + (row.sub||'').replace(/"/g,'&quot;') + '">' : '') +
+    (row.manual ? '<div style="font-size:9.5px;color:var(--muted);margin-top:8px;">✓ valore manuale salvato</div>' : '') +
+    '<div class="gep-err" id="gepErr"></div>' +
+    '<div class="gep-actions">' +
+      '<button class="gep-save" onclick="saveGanttEdit(' + rowId + ')">Salva</button>' +
+      (row.manual ? '<button class="gep-reset" onclick="resetGanttEdit(' + rowId + ')">Ripristina</button>' : '') +
+      '<button onclick="closeGanttEditPopover()">Annulla</button>' +
+    '</div>';
+  pop.style.display = 'block';
+  var pw = 240, ph = pop.getBoundingClientRect().height || 220;
+  var left = Math.min(clientX + 12, window.innerWidth - pw - 12);
+  var top = Math.min(clientY + 12, window.innerHeight - ph - 12);
+  pop.style.left = Math.max(8, left) + 'px';
+  pop.style.top = Math.max(8, top) + 'px';
+}
+
+function closeGanttEditPopover() {
+  document.getElementById('ganttEditPopover').style.display = 'none';
+}
+
+async function saveGanttEdit(rowId) {
+  var row = findGanttRow(rowId);
+  var errEl = document.getElementById('gepErr');
+  errEl.style.display = 'none';
+  var fields = { pct: document.getElementById('gepPct').value };
+  if (row.t === 'bar') {
+    fields.start = document.getElementById('gepStart').value.trim();
+    fields.end = document.getElementById('gepEnd').value.trim();
+    fields.sub = document.getElementById('gepSub').value.trim();
+  } else {
+    fields.date = document.getElementById('gepDate').value.trim();
+  }
+  try {
+    await saveGanttOverride(rowId, fields);
+    GANTT_OVERRIDES[String(rowId)] = fields;
+    applyGanttOverrides();
+    buildKpi();
+    buildGantt();
+    closeGanttEditPopover();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+async function resetGanttEdit(rowId) {
+  try {
+    await resetGanttOverride(rowId);
+    closeGanttEditPopover();
+    location.reload(); /* modo più semplice/robusto per ricalcolare baseline + Master.csv senza tenerne copia in memoria */
+  } catch (e) {
+    var errEl = document.getElementById('gepErr');
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
   }
 }
 
@@ -434,7 +607,8 @@ window.addEventListener('load', function() {
     requestAnimationFrame(function() {
       buildKpi();
       buildGantt();
-      mergeMasterCsv().then(function() {
+      Promise.all([mergeMasterCsv(), fetchGanttOverrides()]).then(function() {
+        applyGanttOverrides(); /* vince sempre su baseline + Master.csv */
         buildKpi();
         buildGantt();
       });
@@ -445,4 +619,12 @@ window.addEventListener('resize', function() {
   clearTimeout(window._ganttTimer);
   window._ganttTimer = setTimeout(buildGantt, 80);
 });
+if (IS_ADMIN) document.getElementById('editModeBtn').style.display = 'inline-flex';
+document.addEventListener('click', function(e) {
+  var pop = document.getElementById('ganttEditPopover');
+  if (pop.style.display === 'block' && !pop.contains(e.target) && !e.target.closest('[data-row-id]')) {
+    closeGanttEditPopover();
+  }
+});
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeGanttEditPopover(); });
 </script>
