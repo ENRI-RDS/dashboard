@@ -3780,7 +3780,7 @@ function prSelectRow(idx){
   document.getElementById('pr-data-prevista').value = prToInputDate(PR_SELECTED.DATA_PREVISTA_RILASCIO || '');
   document.getElementById('pr-wrap-data-prevista').style.display = '';
   const noteEl = document.getElementById('pr-note');
-  noteEl.value = ''; noteEl.disabled = true; noteEl.placeholder = 'Seleziona prima il nuovo stato…';
+  noteEl.value = ''; noteEl.disabled = false; noteEl.placeholder = 'Note opzionali — puoi salvare solo una nota senza cambiare stato';
   document.getElementById('pr-wrap-data-rich').style.display = 'none';
   document.getElementById('pr-wrap-data-app').style.display  = 'none';
 
@@ -3839,13 +3839,10 @@ document.getElementById('pr-no-nec').addEventListener('change', function(){
 
 document.getElementById('pr-stato').addEventListener('change', function(){
   const v = this.value;
-  const noteEl = document.getElementById('pr-note');
   if (!v) {
-    noteEl.disabled = true; noteEl.value=''; noteEl.placeholder='Seleziona prima il nuovo stato…';
     document.getElementById('pr-wrap-data-rich').style.display='none';
     document.getElementById('pr-wrap-data-app').style.display='none';
   } else {
-    noteEl.disabled = false; noteEl.placeholder='Note opzionali';
     document.getElementById('pr-wrap-data-rich').style.display = (v==='INVIATO') ? '' : 'none';
     document.getElementById('pr-wrap-data-app').style.display  = (v==='OTTENUTO') ? '' : 'none';
     document.getElementById('pr-wrap-data-prevista').style.display = (v==='OTTENUTO' || v==='NO COMPETENZA') ? 'none' : '';
@@ -3888,7 +3885,8 @@ document.getElementById('prAddToQueue').onclick = async () => {
   const msgEl = document.getElementById('prMsgUpd');
   const stato = document.getElementById('pr-stato').value;
   const dataPrevista = (stato === 'OTTENUTO' || stato === 'NO COMPETENZA') ? '' : document.getElementById('pr-data-prevista').value;
-  if (!stato && !dataPrevista) return prSetMsg(msgEl, 'Seleziona il nuovo stato oppure imposta una data prevista rilascio', false);
+  const noteVal = document.getElementById('pr-note').value.trim();
+  if (!stato && !dataPrevista && !noteVal) return prSetMsg(msgEl, 'Seleziona il nuovo stato, imposta una data prevista rilascio, oppure inserisci una nota', false);
   const fields = {};
   if (stato) fields.STATO_PERMESSO = stato;
   if (dataPrevista) fields.DATA_PREVISTA_RILASCIO = prFromInputDate(dataPrevista);
@@ -3902,7 +3900,6 @@ document.getElementById('prAddToQueue').onclick = async () => {
     if (!da) return prSetMsg(msgEl, 'Inserisci la data ottenimento per lo stato OTTENUTO', false);
     fields.DATA_APPROVAZIONE = prFromInputDate(da);
   }
-  const noteVal = document.getElementById('pr-note').value.trim();
   if (noteVal) fields.NOTE = noteVal;
   const skipChecks = (stato === 'NO COMPETENZA' || stato === 'OTTENUTO');
   const polizza = skipChecks ? '' : (document.getElementById('pr-polizza').checked ? 'SI' : 'NO');
