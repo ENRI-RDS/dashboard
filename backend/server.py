@@ -2779,6 +2779,14 @@ async def get_cantiere_log(cantiere_key: str, sess: dict = Depends(_require_sess
     doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
     if not doc:
         raise HTTPException(404, "Cantiere non trovato")
+
+    # Verifica che la pratica appartenga ai lotti dell'impresa (stesso controllo di update_cantiere)
+    assignment = await _find_assignment(sess["nome"])
+    raw_lotti = [str(l) for l in ((assignment or {}).get("lotti") or [])]
+    lotti = [_lotto_from_source(l) for l in raw_lotti]
+    if _lotto_from_source(str(doc.get("lotto") or "")) not in lotti:
+        raise HTTPException(403, "Pratica non assegnata a questa impresa")
+
     return {"log": doc.get("log", []), "cantiere_key": cantiere_key, "pratica_id": doc.get("pratica_id")}
 
 
