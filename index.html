@@ -4125,10 +4125,13 @@ function _processMasterText(text) {
         const codiceRaw = tipoPrefixRaw + '/' + prat + '/' + lotto;
         const noteDateRaw = dum || dataUpdate || '';
         if (!praticaStatoRaw[codiceRaw]) praticaStatoRaw[codiceRaw] = [];
-        // Se esiste già una entry con stesso stato e stessa dum, questa riga è un aggiornamento
-        // SOLO-NOTA (lo stato non cambia → dum resta quello del cambio stato precedente):
-        // la vera data di questo evento è DATA_UPDATE, non dum.
-        const isNoteOnlyContinuation = praticaStatoRaw[codiceRaw].some(s => s.stato === stato && s.date === noteDateRaw);
+        // Se esiste già una entry con stesso stato e stessa dum PROVENIENTE DALLA STESSA TRATTA,
+        // questa riga è un aggiornamento SOLO-NOTA (lo stato non cambia → dum resta quello del
+        // cambio stato precedente): la vera data di questo evento è DATA_UPDATE, non dum.
+        // Se invece proviene da una tratta diversa, è il caso multi-tratta (stesso evento reale
+        // condiviso da più attraversamenti): NON è una continuazione, va accorpato più sotto
+        // senza spostare la data (altrimenti si crea una entry duplicata datata oggi/DATA_UPDATE).
+        const isNoteOnlyContinuation = praticaStatoRaw[codiceRaw].some(s => s.stato === stato && s.date === noteDateRaw && s.trattaIds.has(tratta));
         const effectiveDateRaw = (isNoteOnlyContinuation && dataUpdate) ? dataUpdate : noteDateRaw;
 
         if (note) {
@@ -4144,8 +4147,9 @@ function _processMasterText(text) {
         const mergeTarget = praticaStatoRaw[codiceRaw].find(s => s.stato === stato && s.date === effectiveDateRaw);
         if (mergeTarget) {
           if (note && note.length > (mergeTarget.note || '').length) mergeTarget.note = note;
+          mergeTarget.trattaIds.add(tratta);
         } else {
-          praticaStatoRaw[codiceRaw].push({ stato, date: effectiveDateRaw, note, upd: dataUpdate || '' });
+          praticaStatoRaw[codiceRaw].push({ stato, date: effectiveDateRaw, note, upd: dataUpdate || '', trattaIds: new Set([tratta]) });
         }
       }
 
