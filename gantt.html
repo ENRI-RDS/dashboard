@@ -396,6 +396,79 @@ async function mergeMasterCsv() {
   }
 }
 
+/* ── merge con /api/cantieri: aggiorna le barre "Opere Civili" (Fase 5, una
+   per comune) con l'avanzamento reale inserito dalle imprese di scavi in
+   scavi.html/imprese_scavi.html/mappa_impresa_caricamento.html. Stessa
+   convenzione di scavi.html per la %: metri_scavati/metri_totali sommati su
+   tutti i cantieri del comune (un lotto ha più cantieri, uno per pratica).
+   Le date del cantiere sono ISO (input type=date) mentre il Gantt usa
+   gg/mm/aaaa → conversione con isoToDmy(). Un override manuale (§ sopra)
+   vince sempre anche su questo merge, applicato dopo in applyGanttOverrides(). ── */
+function isoToDmy(iso) {
+  if (!iso) return null;
+  var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return null;
+  return m[3] + '/' + m[2] + '/' + m[1];
+}
+
+function parseComuneFromGanttLabel(label) {
+  var m = /Comune di\s+(.+)$/i.exec(label);
+  return m ? m[1].trim().toUpperCase() : null;
+}
+
+async function mergeCantieriProgress() {
+  try {
+    var res = await fetch((window.ENRI && window.ENRI.isEnabled ? window.ENRI.apiBase : '') + '/api/cantieri?lotto=' + encodeURIComponent(LOTTO_ID), {
+      headers: { 'x-session-token': _sessionToken() }
+    });
+    if (!res.ok) return;
+    var data = await res.json();
+    var cantieri = data.cantieri || [];
+    if (!cantieri.length) return; /* nessun cantiere ancora sincronizzato per questo lotto: baseline invariata */
+
+    /* raggruppa per comune */
+    var byComune = {};
+    cantieri.forEach(function(c) {
+      var comune = (c.comune || '').trim().toUpperCase();
+      if (!comune) return;
+      if (!byComune[comune]) byComune[comune] = { metriTot: 0, metriScavati: 0, iniziEff: [], fineEff: [], iniziPrev: [], finePrev: [] };
+      var g = byComune[comune];
+      g.metriTot += Number(c.metri_totali || 0);
+      g.metriScavati += Number(c.metri_scavati || 0);
+      if (c.data_inizio_effettiva) g.iniziEff.push(c.data_inizio_effettiva);
+      if (c.data_fine_effettiva) g.fineEff.push(c.data_fine_effettiva);
+      if (c.data_inizio_prevista) g.iniziPrev.push(c.data_inizio_prevista);
+      if (c.data_fine_prevista) g.finePrev.push(c.data_fine_prevista);
+    });
+
+    GANTT_ROWS.forEach(function(row) {
+      if (row.t !== 'bar') return;
+      var comune = parseComuneFromGanttLabel(row.label);
+      if (!comune || !byComune[comune]) return;
+      var g = byComune[comune];
+      if (g.metriTot > 0) {
+        row.pct = Math.round((g.metriScavati / g.metriTot) * 100);
+        row.real = true;
+      }
+      /* inizio: preferisce l'effettiva (più affidabile), poi la prevista più vecchia */
+      var iniziISO = g.iniziEff.length ? g.iniziEff : g.iniziPrev;
+      var fineISO = g.fineEff.length ? g.fineEff : g.finePrev;
+      if (iniziISO.length) {
+        var minIso = iniziISO.slice().sort()[0];
+        var dmy = isoToDmy(minIso);
+        if (dmy) row.start = dmy;
+      }
+      if (fineISO.length) {
+        var maxIso = fineISO.slice().sort().slice(-1)[0];
+        var dmy2 = isoToDmy(maxIso);
+        if (dmy2) row.end = dmy2;
+      }
+    });
+  } catch (e) {
+    console.warn('Avanzamento cantieri non caricato per il gantt:', e.message);
+  }
+}
+
 /* ── KPI header ── */
 function buildKpi() {
   var wrap = document.getElementById('kpiRow');
@@ -804,7 +877,7 @@ window.addEventListener('load', function() {
     requestAnimationFrame(function() {
       buildKpi();
       buildGantt();
-      Promise.all([mergeMasterCsv(), fetchGanttOverrides()]).then(function() {
+      Promise.all([mergeMasterCsv(), mergeCantieriProgress(), fetchGanttOverrides()]).then(function() {
         applyGanttOverrides(); /* vince sempre su baseline + Master.csv */
         buildKpi();
         buildGantt();
