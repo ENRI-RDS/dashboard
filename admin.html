@@ -280,7 +280,7 @@
     </div>
     <pre class="preview" id="previewBody"></pre>
     <div class="row" style="justify-content:flex-end">
-      <a class="btn btn-ghost" id="downloadLink" target="_blank">Apri completo</a>
+      <button class="btn btn-ghost" id="downloadLink">Scarica completo</button>
     </div>
   </div>
 </div>
@@ -410,6 +410,19 @@
     // also append as query param so it works against the OLD backend signature
     // (which read x_upload_token as a query parameter, not a header)
     return path + (path.includes('?') ? '&' : '?') + 'x_upload_token=' + encodeURIComponent(t);
+  }
+  async function downloadFile(name){
+    const url = apiBase() + '/api/data/' + encodeURIComponent(name).replace(/%2F/g,'/');
+    const r = await fetch(url, { headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } });
+    if(!r.ok) throw new Error((await r.json().catch(()=>({detail:r.statusText}))).detail || 'Download fallito');
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name.split('/').pop();
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }
   async function api(path, opts={}){
     const headers = { 'x-session-token': localStorage.getItem('_enri_session') || '', ...(opts.headers||{}) };
@@ -563,11 +576,11 @@
         $('previewTitle').textContent = name;
         $('previewSub').textContent = `${p.source.toUpperCase()} · ${fmtSize(p.size)}${p.truncated ? ' · troncato' : ''}`;
         $('previewBody').textContent = p.content;
-        $('downloadLink').href = apiBase() + '/api/data/' + encodeURIComponent(name).replace(/%2F/g,'/');
+        $('downloadLink').onclick = () => downloadFile(name);
         $('previewModal').classList.add('open');
       }
       else if(act === 'download' && name){
-        window.open(apiBase() + '/api/data/' + encodeURIComponent(name).replace(/%2F/g,'/'), '_blank');
+        await downloadFile(name);
       }
       else if(act === 'rename' && name){
         openRename(name);
