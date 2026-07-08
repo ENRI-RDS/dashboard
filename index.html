@@ -6128,7 +6128,14 @@ _hookScadenze();
       const cod = cell.dataset.cod;
       const hist = (window._praticaStatoMap[cod] || []).slice().sort((a,b) => {
         const da = parseDateIT(a.date), db = parseDateIT(b.date);
-        if (da && db) return db - da;
+        if (da && db && +da !== +db) return db - da;
+        if (da && db) {
+          // stessa data: il CSV grezzo non garantisce l'ordine cronologico infragiornaliero,
+          // uso la pipeline stati (STATI) come tie-breaker per mostrare prima lo stato più avanzato
+          const ia = STATI.indexOf(a.stato), ib = STATI.indexOf(b.stato);
+          if (ia !== -1 && ib !== -1) return ib - ia;
+          return 0;
+        }
         return da ? -1 : (db ? 1 : 0);
       });
 
