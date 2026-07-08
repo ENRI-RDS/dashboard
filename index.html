@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="it" translate="o">
+<html lang="it" translate="no">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -5436,7 +5436,15 @@ function buildCercaCard(p, query) {
   // ── Date ──────────────────────────────────────────────────────
   const invioStr = p.dr_invio || p.dr || (p.stato === 'INVIATO' ? p.dum : '');
   const invioDate = parseDateIT(invioStr);
-  const aggStr   = p.dum && p.dum !== invioStr ? p.dum : '';
+  // Cambio Stato: valorizzato se la pratica ha superato lo stato INVIATO,
+  // indipendentemente dal fatto che la data coincida con l'invio (es. invio e
+  // protocollazione nello stesso giorno) — non usare il solo confronto date.
+  // Cambio Stato: p.dum è la data in cui la pratica è entrata nello stato attuale.
+  // Va mostrato ogni volta che è avvenuta una transizione reale (redazione→firma,
+  // firma→inviato, inviato→protocollato, ecc.), non solo oltre INVIATO, e anche
+  // se coincide con la data di invio (es. invio e protocollazione stesso giorno).
+  const aggHasChanged = Array.isArray(p.statoHistory) && p.statoHistory.some(s => s.stato !== p.stato);
+  const aggStr   = p.dum && aggHasChanged ? p.dum : '';
   const aggDate  = aggStr ? parseDateIT(aggStr) : null;
 
   // ── Previsione rilascio (dato fornito dall'impresa, se presente) ───
@@ -5848,7 +5856,8 @@ _hookScadenze();
     Object.entries(window._praticheDetailPerLotto).forEach(([lotto, prats]) => {
       (prats||[]).forEach(p => {
         const invioStr = p.dr_invio || p.dr || (p.stato==='INVIATO'?p.dum:'');
-        const aggStr   = (p.dum && p.dum !== invioStr) ? p.dum : '';
+        const aggHasChanged = Array.isArray(p.statoHistory) && p.statoHistory.some(s => s.stato !== p.stato);
+        const aggStr   = p.dum && aggHasChanged ? p.dum : '';
         out.push({
           ...p,
           lotto,
@@ -6128,14 +6137,7 @@ _hookScadenze();
       const cod = cell.dataset.cod;
       const hist = (window._praticaStatoMap[cod] || []).slice().sort((a,b) => {
         const da = parseDateIT(a.date), db = parseDateIT(b.date);
-        if (da && db && +da !== +db) return db - da;
-        if (da && db) {
-          // stessa data: il CSV grezzo non garantisce l'ordine cronologico infragiornaliero,
-          // uso la pipeline stati (STATI) come tie-breaker per mostrare prima lo stato più avanzato
-          const ia = STATI.indexOf(a.stato), ib = STATI.indexOf(b.stato);
-          if (ia !== -1 && ib !== -1) return ib - ia;
-          return 0;
-        }
+        if (da && db) return db - da;
         return da ? -1 : (db ? 1 : 0);
       });
 
