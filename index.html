@@ -6061,7 +6061,11 @@ _hookScadenze();
       if (!cell) { if (!e.target.closest('#notePopoverBox')) box.style.display = 'none'; return; }
       e.stopPropagation();
       const cod  = cell.dataset.cod;
-      const notes = (window._praticaNoteMap[cod] || []).slice().sort((a,b) => (b.date||'').localeCompare(a.date||''));
+      const notes = (window._praticaNoteMap[cod] || []).slice().sort((a,b) => {
+        const da = parseDateIT(a.date), db = parseDateIT(b.date);
+        if (da && db) return db - da;
+        return da ? -1 : (db ? 1 : 0);
+      });
 
       let rows = '';
       if (notes.length) {
