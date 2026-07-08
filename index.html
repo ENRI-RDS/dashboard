@@ -4124,16 +4124,21 @@ function _processMasterText(text) {
         const tipoPrefixRaw = tipo === 'AUTORIZZAZIONE' ? 'AUT' : tipo === 'NULLA OSTA' ? 'NO' : tipo === 'ORDINANZA' ? 'ORD' : tipo.substring(0,3);
         const codiceRaw = tipoPrefixRaw + '/' + prat + '/' + lotto;
         const noteDateRaw = dum || dataUpdate || '';
+        if (!praticaStatoRaw[codiceRaw]) praticaStatoRaw[codiceRaw] = [];
+        // Se esiste già una entry con stesso stato e stessa dum, questa riga è un aggiornamento
+        // SOLO-NOTA (lo stato non cambia → dum resta quello del cambio stato precedente):
+        // la vera data di questo evento è DATA_UPDATE, non dum.
+        const isNoteOnlyContinuation = praticaStatoRaw[codiceRaw].some(s => s.stato === stato && s.date === noteDateRaw);
+        const effectiveDateRaw = (isNoteOnlyContinuation && dataUpdate) ? dataUpdate : noteDateRaw;
 
         if (note) {
           if (!praticaNotesRaw[codiceRaw]) praticaNotesRaw[codiceRaw] = [];
-          const dupeRaw = praticaNotesRaw[codiceRaw].some(n => n.note === note && n.date === noteDateRaw);
-          if (!dupeRaw) praticaNotesRaw[codiceRaw].push({ note, date: noteDateRaw });
+          const dupeRaw = praticaNotesRaw[codiceRaw].some(n => n.note === note && n.date === effectiveDateRaw);
+          if (!dupeRaw) praticaNotesRaw[codiceRaw].push({ note, date: effectiveDateRaw });
         }
 
-        if (!praticaStatoRaw[codiceRaw]) praticaStatoRaw[codiceRaw] = [];
-        const dupeStato = praticaStatoRaw[codiceRaw].some(s => s.stato === stato && s.date === noteDateRaw && s.note === note);
-        if (!dupeStato) praticaStatoRaw[codiceRaw].push({ stato, date: noteDateRaw, note });
+        const dupeStato = praticaStatoRaw[codiceRaw].some(s => s.stato === stato && s.date === effectiveDateRaw && s.note === note);
+        if (!dupeStato) praticaStatoRaw[codiceRaw].push({ stato, date: effectiveDateRaw, note, upd: dataUpdate || '' });
       }
 
       const key = tratta + '|' + prat + '|' + tipo;
@@ -5226,6 +5231,7 @@ function _colLottoRefresh() {
     const badge = prevBadgeHtml(p);
     const upd   = p.dataUpdate ? fmtDateIT(p.dataUpdate) : '';
     window._praticaNoteMap[p.codice] = p.notes || [];
+    window._praticaStatoMap[p.codice] = p.statoHistory || [];
     const hasNote = !!(p.notes && p.notes.length);
     return `<tr style="border-bottom:1px solid #DFE4EB" onmouseover="this.style.background='#EEF1F5'" onmouseout="this.style.background=''">
       <td class="tbl-codice-click" data-cod="${p.codice}" style="padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col};cursor:pointer" title="${hasNote ? 'Vedi note pratica' : 'Nessuna nota — clicca per vedere'}">
@@ -5235,7 +5241,7 @@ function _colLottoRefresh() {
         </span>
       </td>
       <td style="padding:6px 10px;font-size:9px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente||'—'}</td>
-      <td style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap">${p.stato}</td>
+      <td class="tbl-stato-click" data-cod="${p.codice}" style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap;cursor:pointer" title="Vedi storico cambi stato">${p.stato}</td>
       <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${invio}</td>
       <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${agg}</td>
       <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${upd}</td>
@@ -5296,6 +5302,7 @@ function _colClRefresh() {
     const upd   = p.dataUpdate ? fmtDateIT(p.dataUpdate) : '';
     const impresa = IMPRESE_PER_LOTTO[p.lotto] || '—';
     window._praticaNoteMap[p.codice] = p.notes || [];
+    window._praticaStatoMap[p.codice] = p.statoHistory || [];
     const hasNote = !!(p.notes && p.notes.length);
     return `<tr style="border-bottom:1px solid #DFE4EB" onmouseover="this.style.background='#EEF1F5'" onmouseout="this.style.background=''">
       <td class="tbl-codice-click" data-cod="${p.codice}" style="padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;white-space:nowrap;color:var(--text);border-left:3px solid ${col};cursor:pointer" title="${hasNote ? 'Vedi note pratica' : 'Nessuna nota — clicca per vedere'}">
@@ -5306,7 +5313,7 @@ function _colClRefresh() {
       </td>
       <td style="padding:6px 10px;font-size:9px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ente||'—'}</td>
       <td style="padding:6px 10px;font-size:9px;font-weight:600;color:var(--accent2);white-space:nowrap">${impresa}</td>
-      <td style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap">${p.stato}</td>
+      <td class="tbl-stato-click" data-cod="${p.codice}" style="padding:6px 10px;font-size:9px;font-weight:700;color:${col};white-space:nowrap;cursor:pointer" title="Vedi storico cambi stato">${p.stato}</td>
       <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${invio}</td>
       <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${agg}</td>
       <td style="padding:6px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--text2);white-space:nowrap;text-align:center">${upd}</td>
@@ -6143,7 +6150,11 @@ _hookScadenze();
           // stessa data: tie-break sull'ordine di iter (stato più avanzato = più recente)
           const ia = (typeof STATI !== 'undefined') ? STATI.indexOf(a.stato) : -1;
           const ib = (typeof STATI !== 'undefined') ? STATI.indexOf(b.stato) : -1;
-          return ib - ia;
+          if (ia !== ib) return ib - ia;
+          // stessa data e stesso stato (es. update solo-nota, dum invariato): usa DATA_UPDATE come tie-break finale
+          const ua = parseDateIT(a.upd), ub = parseDateIT(b.upd);
+          if (ua && ub) return ub - ua;
+          return ua ? -1 : (ub ? 1 : 0);
         }
         return da ? -1 : (db ? 1 : 0);
       });
