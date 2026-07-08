@@ -2888,6 +2888,9 @@ async def get_gantt_overrides(lotto: str = "", sess: dict = Depends(_require_sta
             "date": d.get("date"),
             "label": d.get("label"),
             "sub": d.get("sub"),
+            "dep_pred": d.get("dep_pred"),
+            "dep_type": d.get("dep_type"),
+            "dep_lag": d.get("dep_lag"),
             "updated_at": d.get("updated_at"),
             "updated_by": d.get("updated_by"),
         }
@@ -2897,7 +2900,7 @@ async def get_gantt_overrides(lotto: str = "", sess: dict = Depends(_require_sta
 @app.put("/api/gantt/overrides/{lotto}/{row_id}")
 async def upsert_gantt_override(lotto: str, row_id: str, payload: dict, sess: dict = Depends(_require_admin_session)):
     fields = {}
-    for k in ("pct", "start", "end", "date", "label", "sub"):
+    for k in ("pct", "start", "end", "date", "label", "sub", "dep_pred", "dep_type", "dep_lag"):
         if k in (payload or {}):
             fields[k] = payload[k]
     if not fields:
@@ -2907,6 +2910,25 @@ async def upsert_gantt_override(lotto: str, row_id: str, payload: dict, sess: di
             fields["pct"] = max(0, min(100, int(fields["pct"])))
         except (TypeError, ValueError):
             raise HTTPException(400, "pct deve essere un intero 0-100")
+    if "dep_pred" in fields:
+        dep_pred = fields["dep_pred"]
+        if dep_pred in (None, ""):
+            fields["dep_pred"] = None
+        else:
+            try:
+                dep_pred_int = int(dep_pred)
+            except (TypeError, ValueError):
+                raise HTTPException(400, "dep_pred deve essere un id riga intero")
+            if str(dep_pred_int) == str(row_id):
+                raise HTTPException(400, "Un task non può dipendere da se stesso")
+            fields["dep_pred"] = dep_pred_int
+    if "dep_type" in fields and fields["dep_type"] not in ("FS", "SS"):
+        raise HTTPException(400, "dep_type deve essere 'FS' o 'SS'")
+    if "dep_lag" in fields:
+        try:
+            fields["dep_lag"] = max(0, int(fields["dep_lag"]))
+        except (TypeError, ValueError):
+            raise HTTPException(400, "dep_lag deve essere un intero >= 0")
     doc = {"lotto": lotto, "row_id": row_id, **fields,
            "updated_at": _now_iso(), "updated_by": sess["nome"]}
     await gantt_overrides_col.update_one(
