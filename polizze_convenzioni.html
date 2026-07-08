@@ -467,8 +467,14 @@
     for (let i = 1; i < lines.length; i++) {
       if (!lines[i].trim()) continue;
       const cols = splitLine(lines[i]);
-      const conv = iConv >= 0 ? (cols[iConv] || '').trim() : '';
-      const pol  = iPol  >= 0 ? (cols[iPol]  || '').trim() : '';
+      const conv0 = iConv >= 0 ? (cols[iConv] || '').trim() : '';
+      const pol0  = iPol  >= 0 ? (cols[iPol]  || '').trim() : '';
+      // L'impresa scrive SI/NO (checkbox "è necessaria?"): SI equivale a NECESSARIA nel
+      // workflow admin (entra in questa pagina), NO significa "non necessaria" e non deve
+      // comparire qui. I valori di workflow già impostati dall'admin (NECESSARIA/RICHIESTA
+      // RDS/INVIATA/EMESSA) passano invariati.
+      const conv = conv0.toUpperCase() === 'SI' ? 'NECESSARIA' : (conv0.toUpperCase() === 'NO' ? '' : conv0);
+      const pol  = pol0.toUpperCase()  === 'SI' ? 'NECESSARIA' : (pol0.toUpperCase()  === 'NO' ? '' : pol0);
       if (!conv && !pol) continue;
 
       const tratta = iTratta >= 0 ? (cols[iTratta] || '').trim() : '';
