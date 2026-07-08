@@ -99,8 +99,8 @@ tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);fo
 .gantt-legend-item{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-family:var(--font-mono);}
 #gantt-wrap{min-height:200px;}
 #editModeBtn.active{background:var(--retelit-blue);color:#fff;border-color:var(--retelit-blue);}
-#gantt-wrap.edit-on svg [data-row-id]{cursor:pointer;}
-#gantt-wrap.edit-on svg [data-row-id]:hover{filter:brightness(1.15) drop-shadow(0 0 2px var(--retelit-blue));}
+#gantt-wrap svg [data-row-id]{cursor:pointer;}
+#gantt-wrap svg [data-row-id]:hover{filter:brightness(1.15) drop-shadow(0 0 2px var(--retelit-blue));}
 #ganttEditPopover{position:fixed;z-index:9998;background:var(--surface);border:1px solid var(--border2);border-radius:10px;box-shadow:var(--shadow-lg);padding:14px 16px;width:240px;font-size:12px;display:none;}
 #ganttEditPopover .gep-title{font-weight:700;font-size:11px;margin-bottom:10px;color:var(--text);}
 #ganttEditPopover label{display:block;font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:8px 0 3px;}
@@ -157,6 +157,9 @@ tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);fo
         <span class="gantt-legend-item" style="color:var(--retelit-teal);">
           <svg width="12" height="14"><line x1="6" y1="0" x2="6" y2="14" stroke="var(--retelit-teal)" stroke-width="2" stroke-dasharray="3,2"/></svg>Oggi
         </span>
+        <span class="gantt-legend-item" style="color:var(--gray-500);">
+          <svg width="22" height="10"><path d="M0 5 H10 V2 L16 5 L10 8 V5" fill="none" stroke="var(--retelit-teal)" stroke-width="1.1"/></svg>Dipendenza (click su un task per i dettagli)
+        </span>
         <button id="editModeBtn" class="btn-sm" style="display:none;gap:6px;" onclick="toggleEditMode()">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
           <span id="editModeBtnLabel">Modalità modifica</span>
@@ -198,6 +201,28 @@ var GANTT_ROWS = [{"t":"g","label":"FASE 1 · PROGETTAZIONE/PERMESSI"},{"t":"bar
 
 var LOTTO_ID = '1A';
 GANTT_ROWS.forEach(function(r, i) { r.id = i; }); /* id stabile: indice nell'array statico */
+
+/* ── Dipendenze reali, estratte dal .mpp originale (screenshot forniti) ──
+   Chiave = id riga successore, valore = { pred: id riga predecessore,
+   type: 'FS' (fine→inizio) | 'SS' (inizio→inizio), lagDays, approx }.
+   'approx: true' = nel .mpp il predecessore reale era una sotto-attività
+   (es. "TOC") interna a una fase che qui è rappresentata come barra
+   aggregata unica per comune — la dipendenza è riportata sulla barra
+   aggregata più vicina, non 1:1 col dato originale. */
+var GANTT_DEPS = {
+  34: { pred: 33, type: 'FS', lagDays: 10 },  // Consegna materiali 1 tranche ← Richiesta forniture (+10g)
+  35: { pred: 33, type: 'FS', lagDays: 30 },  // Consegna materiali 2 tranche ← Richiesta forniture (+30g)
+  36: { pred: 33, type: 'FS', lagDays: 70 },  // Consegna materiali 3 tranche ← Richiesta forniture (+70g)
+  44: { pred: 40, type: 'SS', lagDays: 0, approx: true }, // Test/Collaudo Cornaredo ← Opere Civili Cornaredo (nel .mpp: SS su sotto-task "TOC")
+  45: { pred: 41, type: 'SS', lagDays: 0, approx: true }, // Test/Collaudo Pero ← Opere Civili Pero (idem)
+  46: { pred: 42, type: 'SS', lagDays: 0, approx: true }, // Test/Collaudo Rho ← Opere Civili Rho (idem)
+  48: { pred: 44, type: 'FS', lagDays: 0 },   // As-built Cornaredo ← Test/Collaudo Cornaredo
+  49: { pred: 45, type: 'FS', lagDays: 0 },   // As-built Pero ← Test/Collaudo Pero
+  50: { pred: 46, type: 'FS', lagDays: 0 }    // As-built Rho ← Test/Collaudo Rho
+};
+function ganttSuccessorsOf(rowId) {
+  return Object.keys(GANTT_DEPS).filter(function(k) { return GANTT_DEPS[k].pred === rowId; }).map(Number);
+}
 
 /* ── override manuali (Fase 3/4/5/6/7, o qualunque riga compilata a mano) ──
    Non tutte le fasi derivano da un invio impresa (es. materiali, cantierizzazione):
@@ -456,6 +481,7 @@ function buildGantt() {
   var todayD = new Date(2026,6,7);
   var rowY = HDR;
   var groupCollapsed = false;
+  var ROW_GEOM = {}; /* id riga -> {x1,x2,cy} — per disegnare i connettori di dipendenza */
   GANTT_ROWS.forEach(function(row, idx) {
     if (row.t === 'g') {
       groupCollapsed = COLLAPSED_GROUPS.has(row.id);
@@ -491,6 +517,7 @@ function buildGantt() {
           parts.push('<rect x="' + x1 + '" y="' + (cy-7) + '" width="' + fillW + '" height="14" rx="7" fill="' + C_DARK + '" opacity="0.85" style="pointer-events:none;"/>');
         }
         parts.push('<text x="' + (x2 + 6) + '" y="' + (cy+3.5) + '" font-size="8.5" font-family="JetBrains Mono,monospace" font-weight="600" fill="' + (row.pct >= 100 ? C_DARK : C_GRAY) + '" style="pointer-events:none;">' + fmtIt(row.pct) + '%</text>');
+        ROW_GEOM[row.id] = { x1: x1, x2: x2, cy: cy };
       }
     } else if (row.t === 'ms') {
       var mx = xPos(row.date);
@@ -498,13 +525,32 @@ function buildGantt() {
         var done = row.pct >= 100;
         var overdue = !done && parseDateStr(row.date) && parseDateStr(row.date) < todayD;
         var fill = done ? C_DARK : (overdue ? C_MID : C_LIGHT);
-        var tipMs = row.label + ' — scadenza ' + row.date + (done ? ' (ottenuto)' : (overdue ? ' (scaduta, non ottenuta)' : ' (in corso)')) + (row.real ? ' · dato reale Master.csv' : ' · baseline pianificazione');
+        var tipMs = row.label + ' — scadenza ' + row.date + (done ? ' (ottenuto)' : (overdue ? ' (scaduta, non ottenuta)' : ' (in corso)'));
         parts.push('<polygon points="' + mx + ',' + (cy-7) + ' ' + (mx+7) + ',' + cy + ' ' + mx + ',' + (cy+7) + ' ' + (mx-7) + ',' + cy + '" fill="' + fill + '" stroke="' + C_DARK + '" stroke-width="' + (overdue?1.5:(row.real?1:0)) + '" data-tip="' + tipMs.replace(/"/g,'&quot;') + '" data-row-id="' + row.id + '"/>');
         parts.push('<text x="' + (mx + 11) + '" y="' + (cy+3) + '" font-size="8" font-family="JetBrains Mono,monospace" fill="var(--gray-500)" style="pointer-events:none;">' + row.date + ' · ' + fmtIt(Math.round(row.pct)) + '%</text>');
+        ROW_GEOM[row.id] = { x1: mx, x2: mx, cy: cy };
       }
     }
 
     rowY += RH;
+  });
+
+  /* connettori di dipendenza (predecessore → successore): disegnati solo se
+     entrambe le righe sono attualmente visibili (nessuna delle due dentro una
+     fase collassata) — vedi GANTT_DEPS in cima allo script. */
+  Object.keys(GANTT_DEPS).forEach(function(succId) {
+    succId = +succId;
+    var dep = GANTT_DEPS[succId];
+    var g1 = ROW_GEOM[dep.pred], g2 = ROW_GEOM[succId];
+    if (!g1 || !g2) return;
+    var startX = dep.type === 'SS' ? g1.x1 : g1.x2;
+    var startY = g1.cy, endX = g2.x1, endY = g2.cy;
+    var midX = startX + Math.max(10, (endX - startX) / 2);
+    var stroke = dep.approx ? 'var(--gray-400)' : 'var(--retelit-teal)';
+    var dash = dep.approx ? 'stroke-dasharray="2,3"' : '';
+    var d = 'M ' + startX + ' ' + startY + ' L ' + midX + ' ' + startY + ' L ' + midX + ' ' + endY + ' L ' + (endX - 6) + ' ' + endY;
+    parts.push('<path d="' + d + '" fill="none" stroke="' + stroke + '" stroke-width="1.1" ' + dash + ' opacity="0.75" style="pointer-events:none;"/>');
+    parts.push('<polygon points="' + (endX-6) + ',' + (endY-3) + ' ' + endX + ',' + endY + ' ' + (endX-6) + ',' + (endY+3) + '" fill="' + stroke + '" opacity="0.85" style="pointer-events:none;"/>');
   });
 
   parts.push('</svg>');
@@ -532,10 +578,13 @@ function buildGantt() {
         buildGantt();
         return;
       }
-      if (!EDIT_MODE) return;
       var rid = e.target.getAttribute('data-row-id');
       if (rid === null) return;
-      openGanttEditPopover(+rid, e.clientX, e.clientY);
+      if (EDIT_MODE) {
+        openGanttEditPopover(+rid, e.clientX, e.clientY);
+      } else {
+        openGanttDepsPopover(+rid, e.clientX, e.clientY);
+      }
     });
   }
 }
@@ -557,6 +606,50 @@ function findGanttRow(rowId) {
   return GANTT_ROWS.filter(function(r) { return r.id === rowId; })[0];
 }
 
+function ganttDepsHtml(rowId) {
+  var pred = GANTT_DEPS[rowId];
+  var succIds = ganttSuccessorsOf(rowId);
+  if (!pred && !succIds.length) return '<div style="font-size:10.5px;color:var(--muted);margin-top:8px;">Nessuna dipendenza nota per questo task.</div>';
+  var html = '<div style="margin-top:10px;border-top:1px solid var(--border2);padding-top:8px;">';
+  if (pred) {
+    var pr = findGanttRow(pred.pred);
+    html += '<div style="font-size:9.5px;font-weight:600;text-transform:uppercase;color:var(--muted);margin-bottom:2px;">Prima (predecessore)</div>' +
+      '<div style="font-size:11px;">' + (pr ? pr.label.replace(/</g,'&lt;') : '?') + '</div>' +
+      '<div style="font-size:9px;color:var(--muted);">' + (pred.type === 'SS' ? 'Inizio→Inizio' : 'Fine→Inizio') + (pred.lagDays ? (' · +' + pred.lagDays + 'g') : '') + (pred.approx ? ' · dato approssimato (vedi nota)' : '') + '</div>';
+  }
+  if (succIds.length) {
+    html += '<div style="font-size:9.5px;font-weight:600;text-transform:uppercase;color:var(--muted);margin:8px 0 2px;">Dopo (successori)</div>';
+    succIds.forEach(function(sid) {
+      var sr = findGanttRow(sid);
+      var d = GANTT_DEPS[sid];
+      html += '<div style="font-size:11px;">' + (sr ? sr.label.replace(/</g,'&lt;') : '?') + '</div>' +
+        '<div style="font-size:9px;color:var(--muted);">' + (d.type === 'SS' ? 'Inizio→Inizio' : 'Fine→Inizio') + (d.lagDays ? (' · +' + d.lagDays + 'g') : '') + '</div>';
+    });
+  }
+  html += '</div>';
+  return html;
+}
+
+function openGanttDepsPopover(rowId, clientX, clientY) {
+  var row = findGanttRow(rowId);
+  if (!row) return;
+  var pop = document.getElementById('ganttEditPopover');
+  pop.innerHTML =
+    '<div class="gep-title">' + row.label.replace(/</g,'&lt;') + '</div>' +
+    ganttDepsHtml(rowId) +
+    '<div class="gep-actions"><button onclick="closeGanttEditPopover()">Chiudi</button></div>';
+  pop.style.display = 'block';
+  _positionGanttPopover(pop, clientX, clientY);
+}
+
+function _positionGanttPopover(pop, clientX, clientY) {
+  var pw = 240, ph = pop.getBoundingClientRect().height || 220;
+  var left = Math.min(clientX + 12, window.innerWidth - pw - 12);
+  var top = Math.min(clientY + 12, window.innerHeight - ph - 12);
+  pop.style.left = Math.max(8, left) + 'px';
+  pop.style.top = Math.max(8, top) + 'px';
+}
+
 function openGanttEditPopover(rowId, clientX, clientY) {
   var row = findGanttRow(rowId);
   if (!row) return;
@@ -572,6 +665,7 @@ function openGanttEditPopover(rowId, clientX, clientY) {
     dateFields +
     (isBar ? '<label>Note</label><input id="gepSub" value="' + (row.sub||'').replace(/"/g,'&quot;') + '">' : '') +
     (row.manual ? '<div style="font-size:9.5px;color:var(--muted);margin-top:8px;">✓ valore manuale salvato</div>' : '') +
+    ganttDepsHtml(rowId) +
     '<div class="gep-err" id="gepErr"></div>' +
     '<div class="gep-actions">' +
       '<button class="gep-save" onclick="saveGanttEdit(' + rowId + ')">Salva</button>' +
@@ -579,11 +673,7 @@ function openGanttEditPopover(rowId, clientX, clientY) {
       '<button onclick="closeGanttEditPopover()">Annulla</button>' +
     '</div>';
   pop.style.display = 'block';
-  var pw = 240, ph = pop.getBoundingClientRect().height || 220;
-  var left = Math.min(clientX + 12, window.innerWidth - pw - 12);
-  var top = Math.min(clientY + 12, window.innerHeight - ph - 12);
-  pop.style.left = Math.max(8, left) + 'px';
-  pop.style.top = Math.max(8, top) + 'px';
+  _positionGanttPopover(pop, clientX, clientY);
 }
 
 function closeGanttEditPopover() {
