@@ -6137,7 +6137,14 @@ _hookScadenze();
       const cod = cell.dataset.cod;
       const hist = (window._praticaStatoMap[cod] || []).slice().sort((a,b) => {
         const da = parseDateIT(a.date), db = parseDateIT(b.date);
-        if (da && db) return db - da;
+        if (da && db) {
+          const diff = db - da;
+          if (diff !== 0) return diff;
+          // stessa data: tie-break sull'ordine di iter (stato più avanzato = più recente)
+          const ia = (typeof STATI !== 'undefined') ? STATI.indexOf(a.stato) : -1;
+          const ib = (typeof STATI !== 'undefined') ? STATI.indexOf(b.stato) : -1;
+          return ib - ia;
+        }
         return da ? -1 : (db ? 1 : 0);
       });
 
