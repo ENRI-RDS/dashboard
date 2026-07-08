@@ -4137,8 +4137,16 @@ function _processMasterText(text) {
           if (!dupeRaw) praticaNotesRaw[codiceRaw].push({ note, date: effectiveDateRaw });
         }
 
-        const dupeStato = praticaStatoRaw[codiceRaw].some(s => s.stato === stato && s.date === effectiveDateRaw && s.note === note);
-        if (!dupeStato) praticaStatoRaw[codiceRaw].push({ stato, date: effectiveDateRaw, note, upd: dataUpdate || '' });
+        // Pratiche multi-tratta: una riga per tratta fisica con lo stesso cambio stato reale
+        // (stessa data), ma nota diversa (descrizione del singolo attraversamento) → NON sono
+        // eventi distinti, vanno accorpati in un'unica riga di storico, tenendo la nota più
+        // informativa (più lunga) invece di crearne una per tratta.
+        const mergeTarget = praticaStatoRaw[codiceRaw].find(s => s.stato === stato && s.date === effectiveDateRaw);
+        if (mergeTarget) {
+          if (note && note.length > (mergeTarget.note || '').length) mergeTarget.note = note;
+        } else {
+          praticaStatoRaw[codiceRaw].push({ stato, date: effectiveDateRaw, note, upd: dataUpdate || '' });
+        }
       }
 
       const key = tratta + '|' + prat + '|' + tipo;
