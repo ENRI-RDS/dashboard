@@ -2975,7 +2975,8 @@ async function loadCluster() {
       // Mappa TRATTA_ID → lotto per join con Master.csv
       if (iTRAT !== -1 && iLOT !== -1) {
         const tratta = cols[iTRAT]?.trim().replace(/"/g,'');
-        const lotto  = cols[iLOT]?.trim().replace(/"/g,'');
+        // normalizzato come r.lotto (riga ~4117): stesso formato atteso da IMPRESE_PER_LOTTO
+        const lotto  = cols[iLOT]?.trim().replace(/"/g,'').replace(/^Lotto\s*/i,'').trim().toUpperCase();
         if (tratta && lotto) trattaLottoMap[tratta] = lotto;
         // Mappa TRATTA_ID → comune
         if (tratta && iCOM !== -1) {
@@ -6130,6 +6131,7 @@ _hookScadenze();
       if (_sortK==='comuni') { va=(va||[]).join(','); vb=(vb||[]).join(','); }
       if (_sortK==='invio'||_sortK==='agg'||_sortK==='data_ott') { va=parseDateIT(va)||new Date(0); vb=parseDateIT(vb)||new Date(0); }
       if (_sortK==='metri')  { va=+va||0; vb=+vb||0; }
+      if (_sortK==='codice') { return va.localeCompare(vb, 'it', { numeric: true }) * _sortD; }
       if (va<vb) return -_sortD; if (va>vb) return _sortD; return 0;
     });
 
