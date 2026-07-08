@@ -227,6 +227,16 @@ var GANTT_DEPS = {
 function ganttSuccessorsOf(rowId) {
   return Object.keys(GANTT_DEPS).filter(function(k) { return GANTT_DEPS[k].pred === rowId; }).map(Number);
 }
+function ganttHasFsDepartureFromEnd(rowId) {
+  /* true se questa riga è predecessore di almeno una dipendenza FS (fine→inizio):
+     il connettore parte dalla FINE di questa barra (x2), stesso punto dove di
+     default va l'etichetta %. Le dipendenze SS partono invece dall'INIZIO (x1),
+     nessun conflitto con l'etichetta in quel caso. */
+  return Object.keys(GANTT_DEPS).some(function(k) {
+    var d = GANTT_DEPS[k];
+    return d.pred === rowId && d.type !== 'SS';
+  });
+}
 
 /* ── override manuali (Fase 3/4/5/6/7, o qualunque riga compilata a mano) ──
    Non tutte le fasi derivano da un invio impresa (es. materiali, cantierizzazione):
@@ -600,7 +610,9 @@ function buildGantt() {
         if (fillW > 0) {
           parts.push('<rect x="' + x1 + '" y="' + (cy-7) + '" width="' + fillW + '" height="14" rx="7" fill="' + C_DARK + '" opacity="0.85" style="pointer-events:none;"/>');
         }
-        parts.push('<text x="' + (x2 + 6) + '" y="' + (cy+3.5) + '" font-size="8.5" font-family="JetBrains Mono,monospace" font-weight="600" fill="' + (row.pct >= 100 ? C_DARK : C_GRAY) + '" style="pointer-events:none;">' + fmtIt(row.pct) + '%</text>');
+        var pctLabelLeft = ganttHasFsDepartureFromEnd(row.id);
+        var pctX = pctLabelLeft ? (x1 - 6) : (x2 + 6);
+        parts.push('<text x="' + pctX + '" y="' + (cy+3.5) + '" font-size="8.5" font-family="JetBrains Mono,monospace" font-weight="600"' + (pctLabelLeft ? ' text-anchor="end"' : '') + ' fill="' + (row.pct >= 100 ? C_DARK : C_GRAY) + '" style="pointer-events:none;">' + fmtIt(row.pct) + '%</text>');
         ROW_GEOM[row.id] = { x1: x1, x2: x2, cy: cy };
       }
     } else if (row.t === 'ms') {
