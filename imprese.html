@@ -87,9 +87,7 @@
   .warn-modal-body{font-size:13px;color:var(--gray-700);line-height:1.5;margin-bottom:18px}
   .sub-section-label{font-size:11px;font-weight:600;color:var(--muted);margin-bottom:8px}
   .tag.pending{background:#FEF3C7;color:#B45309}.tag.approved{background:#EBFBEE;color:#2B8A3E}.tag.rejected{background:#FEE2E2;color:#B91C1C}
-  .stato-OTTENUTO{color:var(--ok);font-weight:600}
-  .stato-INVIATO,.stato-PROTOCOLLATO{color:var(--retelit-blue);font-weight:600}
-  .stato-IN.REDAZIONE,.stato-IN.FIRMA.RDS{color:#B45309;font-weight:600}
+  .stato-cell{font-weight:600}
   .empty{text-align:center;padding:30px;color:var(--muted);font-style:italic;font-size:13px}
   /* Spinner */
   .spinner-wrap{display:flex;align-items:center;justify-content:center;gap:10px;padding:30px;color:var(--muted);font-size:13px}
@@ -415,6 +413,20 @@ window.addEventListener('pageshow', (e) => {
 </script>
 <script>
 (() => {
+  // Palette stati canonica (allineata a index.html / mappa_impresa_caricamento.html)
+  const STATO_COLORS = {
+    'IN ATTESA':                  '#6B7685',
+    'IN REDAZIONE':               '#6B7685',
+    'IN FIRMA RDS':               '#D08A1A',
+    'INVIO PRELIMINARE':          '#043F75',
+    'INVIATO':                    '#41BBD9',
+    'PROTOCOLLATO':               '#41BBD9',
+    'NECESSARIA INTEGRAZIONE':    '#C0392B',
+    'IN REDAZIONE INTEGRAZIONE':  '#436A93',
+    'PROTOCOLLATO INTEGRAZIONE':  '#436A93',
+    'OTTENUTO':                   '#1E9E6A'
+  };
+  const statoColor = (s) => STATO_COLORS[(s||'').trim()] || '#6B7685';
   const $ = (id) => document.getElementById(id);
   const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
   const nome = (localStorage.getItem('_enri_user') || '').trim();
@@ -608,7 +620,7 @@ window.addEventListener('pageshow', (e) => {
         <td class="mono">${escapeHtml(p.TRATTA_ID)}</td>
         <td>${escapeHtml(p.ENTE)}</td>
         <td>${escapeHtml(p.TIPO_PERMESSO)}</td>
-        <td class="stato-${(p.STATO_PERMESSO||'').replace(/\s+/g,'.')}">${escapeHtml(p.STATO_PERMESSO)}</td>
+        <td class="stato-cell" style="color:${statoColor(p.STATO_PERMESSO)}">${escapeHtml(p.STATO_PERMESSO)}</td>
         <td class="mono">${escapeHtml(p.DATA_RICHIESTA)}</td>
         <td class="mono">${escapeHtml(p.DATA_ULTIMA_MODIFICA)}</td>
         <td class="mono">${escapeHtml(p.DATA_UPDATE || '—')}</td>
@@ -1237,7 +1249,7 @@ window.addEventListener('pageshow', (e) => {
         <td class="mono" style="font-weight:700;color:var(--accent);background:var(--accent-light);border-left:3px solid var(--accent)">${escapeHtml(rep._codice || String(rep.PRATICA||''))}</td>
         <td>${escapeHtml(rep.ENTE)}</td>
         <td>${escapeHtml(rep.TIPO_PERMESSO)}</td>
-        <td class="stato-${(rep.STATO_PERMESSO||'').replace(/\s+/g,'.')}">${escapeHtml(rep.STATO_PERMESSO)}</td>
+        <td class="stato-cell" style="color:${statoColor(rep.STATO_PERMESSO)}">${escapeHtml(rep.STATO_PERMESSO)}</td>
         <td class="mono">${escapeHtml(dataUltSol)}</td>
         <td class="mono" style="text-align:center">${tratte.length}</td>
       </tr>`;
