@@ -195,9 +195,7 @@
   .sc-storico-table th{text-align:left;font-weight:700;font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:4px 6px;border-bottom:1px solid var(--border);}
   .sc-storico-table td{padding:5px 6px;border-bottom:1px solid var(--border);vertical-align:top;}
   .mono{font-family:var(--font-mono);}
-  .stato-OTTENUTO{color:var(--ok);font-weight:600;}
-  .stato-INVIATO,.stato-PROTOCOLLATO{color:var(--accent);font-weight:600;}
-  .stato-IN.REDAZIONE,.stato-IN.FIRMA.RDS{color:var(--warn);font-weight:600;}
+  .stato-cell{font-weight:600;}
   /* ── Modal di conferma (sostituisce alert/confirm nativi) ── */
   #prConfirmOverlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:5000;padding:24px;opacity:0;pointer-events:none;transition:opacity .15s;}
   #prConfirmOverlay.open{opacity:1;pointer-events:all;}
@@ -1166,7 +1164,7 @@
 
 <script>
 const STATO_COLORS = {
-  'IN ATTESA':'#6B7685', 'IN REDAZIONE':'#6B7685', 'IN REDAZIONE INTEGRAZIONE':'#C0392B',
+  'IN ATTESA':'#6B7685', 'IN REDAZIONE':'#6B7685', 'IN REDAZIONE INTEGRAZIONE':'#436A93',
   'IN FIRMA RDS':'#D08A1A', 'INVIO PRELIMINARE':'#043F75', 'INVIATO':'#41BBD9', 'PROTOCOLLATO':'#41BBD9',
   'NECESSARIA INTEGRAZIONE':'#C0392B', 'PROTOCOLLATO INTEGRAZIONE':'#436A93', 'OTTENUTO':'#1E9E6A'
 };
@@ -3775,7 +3773,7 @@ function renderPrList(filter){
     return `
     <div class="pr-card${q?' pr-card-queued':''}" data-idx="${i}">
       <div class="pr-card-code">${prEscapeHtml(p._codice)}${q?' <span class="pr-queued-badge" title="Modifica già in coda, non ancora inviata">🕓 in coda</span>':''}</div>
-      <div class="pr-card-row"><span>${prEscapeHtml(p.TRATTA_ID)}</span><span class="stato-${(p.STATO_PERMESSO||'').replace(/\s+/g,'.')}">${prEscapeHtml(p.STATO_PERMESSO)}</span></div>
+      <div class="pr-card-row"><span>${prEscapeHtml(p.TRATTA_ID)}</span><span class="stato-cell" style="color:${getColor(p.STATO_PERMESSO)}">${prEscapeHtml(p.STATO_PERMESSO)}</span></div>
       <div class="pr-card-row"><span>${prEscapeHtml(p.ENTE)}</span><span>${prEscapeHtml(p.TIPO_PERMESSO)}</span></div>
     </div>`;
   }).join('');
