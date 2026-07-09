@@ -207,6 +207,7 @@
         <button class="tab" data-tab="uploads" data-testid="tab-uploads">Storico versioni</button>
         <button class="tab" data-tab="pending" data-testid="tab-pending">Coda imprese <span id="pendingBadge" style="display:none;background:var(--retelit-ice);color:var(--retelit-teal);border-radius:999px;padding:1px 7px;font-size:10px;margin-left:5px"></span></button>
         <button class="tab" data-tab="assign" data-testid="tab-assign">Assegnazioni imprese</button>
+        <button class="tab" data-tab="cantieri" data-testid="tab-cantieri">Cantieri</button>
       </div>
 
       <div class="panel active" id="panel-files">
@@ -267,6 +268,81 @@
           <tbody id="assignBody"><tr><td colspan="4" class="empty">Caricamento…</td></tr></tbody>
         </table>
         <div class="msg" id="assignMsg"></div>
+      </div>
+
+      <!-- CANTIERI -->
+      <div class="panel" id="panel-cantieri">
+        <p class="sub">Correggi o azzera i dati di un cantiere (scavi.html/imprese_scavi.html) inseriti per errore/test da un'impresa. Per svuotare TUTTO usa il bottone "Reset" nella tab "File correnti" — qui invece agisci su un singolo cantiere.</p>
+        <div class="row" style="margin-bottom:10px;gap:14px;align-items:center;flex-wrap:wrap">
+          <label style="margin:0">Lotto:</label>
+          <select id="cantFilterLotto" style="width:auto;padding:6px 10px" data-testid="cant-filter-lotto">
+            <option value="">Tutti</option>
+          </select>
+          <label style="margin:0">Stato:</label>
+          <select id="cantFilterStato" style="width:auto;padding:6px 10px" data-testid="cant-filter-stato">
+            <option value="">Tutti</option>
+            <option value="non_avviato">Non avviato</option>
+            <option value="allestimento">Allestimento</option>
+            <option value="in_corso">In corso</option>
+            <option value="sospeso">Sospeso</option>
+            <option value="completato">Completato</option>
+          </select>
+          <input type="text" id="cantSearch" placeholder="Cerca per codice, pratica, ente, impresa…" style="flex:1;min-width:200px" data-testid="cant-search">
+          <button class="btn btn-ghost btn-xs" id="cantRefreshBtn">Aggiorna</button>
+        </div>
+        <table>
+          <thead><tr><th>Codice</th><th>Pratica</th><th>Ente</th><th>Lotto</th><th>Impresa</th><th>Stato</th><th>Metri (scavati/tot.)</th><th>Agg.</th><th>Azioni</th></tr></thead>
+          <tbody id="cantBody"><tr><td colspan="9" class="empty">Caricamento…</td></tr></tbody>
+        </table>
+
+        <div id="cantEditPanel" style="display:none;margin-top:16px;border:1px solid var(--border);border-radius:10px;padding:14px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:10px" id="cantEditTitle">Modifica cantiere</div>
+          <div class="row" style="gap:10px;flex-wrap:wrap">
+            <div style="flex:1;min-width:160px">
+              <label style="display:block;font-size:11px;margin-bottom:5px">Stato cantiere</label>
+              <select id="cantEditStato" style="width:100%;padding:6px 10px">
+                <option value="non_avviato">Non avviato</option>
+                <option value="allestimento">Allestimento</option>
+                <option value="in_corso">In corso</option>
+                <option value="sospeso">Sospeso</option>
+                <option value="completato">Completato</option>
+              </select>
+            </div>
+            <div style="flex:1;min-width:140px">
+              <label style="display:block;font-size:11px;margin-bottom:5px">Metri scavati (valore assoluto)</label>
+              <input type="number" id="cantEditMetri" min="0" step="0.01">
+            </div>
+            <div style="flex:1;min-width:140px">
+              <label style="display:block;font-size:11px;margin-bottom:5px">Tecnica scavo</label>
+              <select id="cantEditTecnica" style="width:100%;padding:6px 10px">
+                <option value="">—</option>
+                <option value="trincea">Trincea</option>
+                <option value="no_dig">No Dig</option>
+                <option value="canaletta">Canaletta</option>
+              </select>
+            </div>
+          </div>
+          <div class="row" style="gap:10px;flex-wrap:wrap;margin-top:10px">
+            <div style="flex:1;min-width:140px">
+              <label style="display:block;font-size:11px;margin-bottom:5px">Data inizio effettiva</label>
+              <input type="date" id="cantEditDataInizio">
+            </div>
+            <div style="flex:1;min-width:140px">
+              <label style="display:block;font-size:11px;margin-bottom:5px">Data fine effettiva</label>
+              <input type="date" id="cantEditDataFine">
+            </div>
+            <div style="flex:2;min-width:200px">
+              <label style="display:block;font-size:11px;margin-bottom:5px">Note</label>
+              <input type="text" id="cantEditNote">
+            </div>
+          </div>
+          <label style="margin-top:10px;display:block"><input type="checkbox" id="cantEditClearLog"> Svuota anche lo storico giornaliero (log)</label>
+          <div class="row" style="margin-top:14px;gap:10px">
+            <button class="btn" id="cantEditSaveBtn">Salva correzione</button>
+            <button class="btn btn-ghost" id="cantEditCancelBtn">Annulla</button>
+          </div>
+          <div class="msg" id="cantEditMsg"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -447,6 +523,7 @@
       $('panel-' + t.dataset.tab).classList.add('active');
       if (t.dataset.tab === 'pending') refreshPending();
       if (t.dataset.tab === 'assign') refreshAssignments();
+      if (t.dataset.tab === 'cantieri') refreshCantieri();
     });
   });
 
@@ -1082,6 +1159,141 @@
   async function refreshPendingCount(){
     try{ const d = await api(withTokenQuery('/api/admin/pending-updates?status=pending&limit=1')); updatePendingBadge(d.count); }catch(_){}
   }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Cantieri (correzione/reset singolo cantiere — non tocca gli altri)
+  const CANT_STATO_LABEL = {
+    non_avviato: 'Non avviato', allestimento: 'Allestimento',
+    in_corso: 'In corso', sospeso: 'Sospeso', completato: 'Completato',
+  };
+  let ALL_CANTIERI = [];
+  let CANT_EDIT_KEY = null;
+
+  async function refreshCantieri(){
+    if(!apiBase()){ $('cantBody').innerHTML = '<tr><td colspan="9" class="empty">Imposta API endpoint</td></tr>'; return; }
+    $('cantBody').innerHTML = '<tr><td colspan="9" class="empty">Caricamento…</td></tr>';
+    try{
+      const d = await api('/api/cantieri');
+      ALL_CANTIERI = d.cantieri || [];
+      const lotti = [...new Set(ALL_CANTIERI.map(c => c.lotto).filter(Boolean))].sort();
+      const sel = $('cantFilterLotto');
+      const prevLotto = sel.value;
+      sel.innerHTML = '<option value="">Tutti</option>' + lotti.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
+      sel.value = prevLotto;
+      renderCantieri();
+    }catch(e){
+      $('cantBody').innerHTML = `<tr><td colspan="9" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  function renderCantieri(){
+    const lottoF = $('cantFilterLotto').value;
+    const statoF = $('cantFilterStato').value;
+    const f = ($('cantSearch').value || '').toLowerCase().trim();
+    const rows = ALL_CANTIERI.filter(c => {
+      if (lottoF && c.lotto !== lottoF) return false;
+      if (statoF && c.stato_cantiere !== statoF) return false;
+      if (f && !JSON.stringify(c).toLowerCase().includes(f)) return false;
+      return true;
+    });
+    if (!rows.length){ $('cantBody').innerHTML = '<tr><td colspan="9" class="empty">Nessun cantiere</td></tr>'; return; }
+    $('cantBody').innerHTML = rows.map(c => `
+      <tr>
+        <td class="mono" style="font-weight:700;color:var(--accent)">${escapeHtml(c.codice_cantiere || '—')}</td>
+        <td class="mono">${escapeHtml(c.pratica_id || '—')}</td>
+        <td>${escapeHtml(c.ente || '—')}</td>
+        <td class="mono">${escapeHtml(c.lotto || '—')}</td>
+        <td>${escapeHtml(c.impresa || '—')}</td>
+        <td>${escapeHtml(CANT_STATO_LABEL[c.stato_cantiere] || c.stato_cantiere || '—')}</td>
+        <td class="mono">${fmtNum(c.metri_scavati)} / ${fmtNum(c.metri_totali)}</td>
+        <td class="mono" style="font-size:11px">${escapeHtml((c.updated_at||'').slice(0,10) || '—')}</td>
+        <td class="actions">
+          <button class="btn btn-ghost btn-xs" data-act="cant-edit" data-key="${escapeHtml(c.cantiere_key)}">Modifica</button>
+          <button class="btn btn-danger btn-xs" data-act="cant-reset" data-key="${escapeHtml(c.cantiere_key)}" data-codice="${escapeHtml(c.codice_cantiere||c.cantiere_key)}">Reset</button>
+        </td>
+      </tr>`).join('');
+  }
+  function fmtNum(n){ const v = Number(n)||0; return v.toLocaleString('it-IT', {maximumFractionDigits:1}); }
+
+  $('cantFilterLotto').addEventListener('change', renderCantieri);
+  $('cantFilterStato').addEventListener('change', renderCantieri);
+  $('cantSearch').addEventListener('input', renderCantieri);
+  $('cantRefreshBtn').addEventListener('click', refreshCantieri);
+
+  function openCantEdit(cantiereKey){
+    const c = ALL_CANTIERI.find(x => x.cantiere_key === cantiereKey);
+    if (!c) return;
+    CANT_EDIT_KEY = cantiereKey;
+    $('cantEditTitle').textContent = `Modifica cantiere — ${c.codice_cantiere || c.pratica_id || cantiereKey}`;
+    $('cantEditStato').value = c.stato_cantiere || 'non_avviato';
+    $('cantEditMetri').value = c.metri_scavati || 0;
+    $('cantEditTecnica').value = c.tecnica_scavo || '';
+    $('cantEditDataInizio').value = _toInputDate(c.data_inizio_effettiva);
+    $('cantEditDataFine').value = _toInputDate(c.data_fine_effettiva);
+    $('cantEditNote').value = c.note || '';
+    $('cantEditClearLog').checked = false;
+    $('cantEditMsg').textContent = ''; $('cantEditMsg').className = 'msg';
+    $('cantEditPanel').style.display = '';
+    $('cantEditPanel').scrollIntoView({behavior:'smooth', block:'center'});
+  }
+  // Master.csv usa gg/mm/aaaa, l'input[type=date] vuole aaaa-mm-gg
+  function _toInputDate(dmy){
+    if (!dmy) return '';
+    const p = String(dmy).trim().split('/');
+    if (p.length !== 3) return '';
+    return `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
+  }
+  function _fromInputDate(iso){
+    if (!iso) return '';
+    const p = String(iso).trim().split('-');
+    if (p.length !== 3) return '';
+    return `${p[2].padStart(2,'0')}/${p[1].padStart(2,'0')}/${p[0]}`;
+  }
+
+  $('cantEditCancelBtn').addEventListener('click', () => { $('cantEditPanel').style.display = 'none'; CANT_EDIT_KEY = null; });
+
+  $('cantEditSaveBtn').addEventListener('click', async () => {
+    if (!CANT_EDIT_KEY) return;
+    const payload = {
+      stato_cantiere: $('cantEditStato').value,
+      metri_scavati:  $('cantEditMetri').value,
+      tecnica_scavo:  $('cantEditTecnica').value,
+      data_inizio_effettiva: _fromInputDate($('cantEditDataInizio').value),
+      data_fine_effettiva:   _fromInputDate($('cantEditDataFine').value),
+      note: $('cantEditNote').value,
+      clear_log: $('cantEditClearLog').checked,
+    };
+    try{
+      await api(withTokenQuery('/api/admin/cantieri/' + encodeURIComponent(CANT_EDIT_KEY)), {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(payload),
+      });
+      setMsg($('cantEditMsg'), 'Correzione salvata', true);
+      $('cantEditPanel').style.display = 'none';
+      CANT_EDIT_KEY = null;
+      refreshCantieri();
+    }catch(e){ setMsg($('cantEditMsg'), 'Errore: ' + e.message, false); }
+  });
+
+  document.body.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-act^="cant-"]');
+    if(!btn) return;
+    if (btn.dataset.act === 'cant-edit'){
+      openCantEdit(btn.dataset.key);
+    } else if (btn.dataset.act === 'cant-reset'){
+      const okReset = await showConfirm(
+        'Reset cantiere',
+        `Riportare "${btn.dataset.codice}" a Non avviato, 0 metri e storico vuoto? Le altre pratiche/cantieri non vengono toccati.`,
+        'Reset', 'btn btn-danger'
+      );
+      if (!okReset) return;
+      try{
+        await api(withTokenQuery('/api/admin/cantieri/' + encodeURIComponent(btn.dataset.key) + '/reset'), { method: 'DELETE', headers: authHeaders() });
+        toast(`Cantiere "${btn.dataset.codice}" azzerato`);
+        refreshCantieri();
+      }catch(err){ toast('Errore: ' + err.message, true); }
+    }
+  });
 
   // ──────────────────────────────────────────────────────────────────────
   // Toast (reusing msg banner)
