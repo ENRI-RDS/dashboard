@@ -58,6 +58,9 @@
   .msg.err{display:block;background:var(--danger-bg);color:var(--danger);border:1px solid rgba(185,28,28,.2)}
   table{width:100%;border-collapse:collapse;font-size:12.5px}
   th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:9px 8px;border-bottom:2px solid var(--border);text-align:left;background:var(--surface);position:sticky;top:0}
+  th.sortable-th{cursor:pointer;user-select:none;white-space:nowrap}
+  th.sortable-th:hover{color:var(--accent)}
+  .sort-arrow{display:inline-block;width:10px;font-size:9px;color:var(--accent)}
   td{padding:9px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
   tr:hover td{background:rgba(0,0,0,.015);cursor:pointer}
   tr.selected td{background:var(--accent-light)}
@@ -154,7 +157,18 @@
       <div class="search"><input type="text" id="searchPratiche" placeholder="Cerca per codice, tratta, ente, stato…" data-testid="search-pratiche"></div>
       <div class="scroll">
         <table>
-          <thead><tr><th>Pratica</th><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th><th>Data richiesta</th><th>Data agg.</th><th>Data previsione</th><th>Update</th><th style="text-align:right">Lung. (m)</th></tr></thead>
+          <thead><tr>
+            <th class="sortable-th" data-key="_codice">Pratica<span class="sort-arrow" data-key="_codice"></span></th>
+            <th class="sortable-th" data-key="TRATTA_ID">Tratta<span class="sort-arrow" data-key="TRATTA_ID"></span></th>
+            <th class="sortable-th" data-key="ENTE">Ente<span class="sort-arrow" data-key="ENTE"></span></th>
+            <th class="sortable-th" data-key="TIPO_PERMESSO">Tipo<span class="sort-arrow" data-key="TIPO_PERMESSO"></span></th>
+            <th class="sortable-th" data-key="STATO_PERMESSO">Stato<span class="sort-arrow" data-key="STATO_PERMESSO"></span></th>
+            <th class="sortable-th" data-key="DATA_RICHIESTA">Data richiesta<span class="sort-arrow" data-key="DATA_RICHIESTA"></span></th>
+            <th class="sortable-th" data-key="DATA_ULTIMA_MODIFICA">Data agg.<span class="sort-arrow" data-key="DATA_ULTIMA_MODIFICA"></span></th>
+            <th class="sortable-th" data-key="DATA_UPDATE">Update<span class="sort-arrow" data-key="DATA_UPDATE"></span></th>
+            <th class="sortable-th" data-key="DATA_PREVISTA_RILASCIO">Data previsione<span class="sort-arrow" data-key="DATA_PREVISTA_RILASCIO"></span></th>
+            <th class="sortable-th" data-key="LUNGHEZZA" style="text-align:right">Lung. (m)<span class="sort-arrow" data-key="LUNGHEZZA"></span></th>
+          </tr></thead>
           <tbody id="pratBody"><tr><td colspan="10"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr></tbody>
         </table>
       </div>
@@ -607,6 +621,27 @@ window.addEventListener('pageshow', (e) => {
     return `${p[2].padStart(2,'0')}/${p[1].padStart(2,'0')}/${p[0]}`;
   }
 
+  const PRAT_COL_TYPES = {
+    _codice:'str', TRATTA_ID:'str', ENTE:'str', TIPO_PERMESSO:'str', STATO_PERMESSO:'str',
+    DATA_RICHIESTA:'date', DATA_ULTIMA_MODIFICA:'date', DATA_UPDATE:'date', DATA_PREVISTA_RILASCIO:'date',
+    LUNGHEZZA:'num'
+  };
+  let PRAT_SORT = { key: null, dir: 1 };
+
+  function _sortPratiche(key){
+    if (PRAT_SORT.key === key) PRAT_SORT.dir *= -1;
+    else { PRAT_SORT.key = key; PRAT_SORT.dir = 1; }
+    renderPratiche($('searchPratiche')?.value || '');
+  }
+  document.querySelectorAll('#panel-aggiorna th.sortable-th').forEach(th => {
+    th.addEventListener('click', () => _sortPratiche(th.dataset.key));
+  });
+  function _updatePratSortArrows(){
+    document.querySelectorAll('#panel-aggiorna .sort-arrow').forEach(el => {
+      el.textContent = (PRAT_SORT.key === el.dataset.key) ? (PRAT_SORT.dir === 1 ? '▲' : '▼') : '';
+    });
+  }
+
   function renderPratiche(filter){
     const f = (filter || '').toLowerCase().trim();
     // Per ogni TRATTA_ID tieni solo la riga con DATA_ULTIMA_MODIFICA più recente
@@ -626,12 +661,21 @@ window.addEventListener('pageshow', (e) => {
     const rows = deduplicated
       .filter(p => !f || JSON.stringify(p).toLowerCase().includes(f))
       .sort((a, b) => {
+        if (PRAT_SORT.key) {
+          const type = PRAT_COL_TYPES[PRAT_SORT.key] || 'str';
+          let av = a[PRAT_SORT.key], bv = b[PRAT_SORT.key];
+          let cmp;
+          if (type === 'date') cmp = (parseDate(av)||0) - (parseDate(bv)||0);
+          else if (type === 'num') cmp = (parseFloat(String(av).replace(',','.'))||0) - (parseFloat(String(bv).replace(',','.'))||0);
+          else cmp = String(av||'').localeCompare(String(bv||''), 'it', {numeric:true});
+          if (cmp !== 0) return cmp * PRAT_SORT.dir;
+        }
         const ca = !!a._codice, cb = !!b._codice;
         if (ca !== cb) return ca ? -1 : 1; // pratiche con codice prima, tratte "nude" dopo
         if (ca && cb) return a._codice.localeCompare(b._codice, 'it', {numeric:true});
         return String(a.TRATTA_ID||'').localeCompare(String(b.TRATTA_ID||''), 'it', {numeric:true});
       });
-    if (!rows.length){ $('pratBody').innerHTML = '<tr><td colspan="10" class="empty">Nessuna pratica</td></tr>'; return; }
+    if (!rows.length){ $('pratBody').innerHTML = '<tr><td colspan="10" class="empty">Nessuna pratica</td></tr>'; _updatePratSortArrows(); return; }
     // Salva l'array corrente filtrato per recuperare la riga al click
     renderPratiche._current = rows.slice(0, 500);
     $('pratBody').innerHTML = renderPratiche._current.map((p, i) => `
@@ -643,10 +687,11 @@ window.addEventListener('pageshow', (e) => {
         <td class="stato-cell" style="color:${statoColor(p.STATO_PERMESSO)}">${escapeHtml(p.STATO_PERMESSO)}</td>
         <td class="mono">${escapeHtml(p.DATA_RICHIESTA)}</td>
         <td class="mono">${escapeHtml(p.DATA_ULTIMA_MODIFICA)}</td>
-        <td class="mono">${escapeHtml(p.DATA_PREVISTA_RILASCIO || '—')}</td>
         <td class="mono">${escapeHtml(p.DATA_UPDATE || '—')}</td>
+        <td class="mono">${escapeHtml(p.DATA_PREVISTA_RILASCIO || '—')}</td>
         <td style="text-align:right;background:#f0fdf4;font-family:var(--font-mono);font-size:11.5px;color:#1F7A4E;font-weight:600;border-left:2px solid #bbf7d0">${escapeHtml(String(p.LUNGHEZZA ?? '—'))}</td>
       </tr>`).join('');
+    _updatePratSortArrows();
   }
   $('pratBody').addEventListener('click', e => {
     const tr = e.target.closest('tr[data-idx]');
