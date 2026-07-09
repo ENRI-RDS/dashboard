@@ -4029,6 +4029,7 @@ async function loadMaster() {
             } catch(e) {}
             try {
               _processMasterText(refreshText);
+              _backfillComuni();
               if (typeof renderTabella === 'function') renderTabella();
             } catch(e) { console.warn('Aggiornamento Master.csv (SWR) falito:', e.message); }
           }
@@ -4115,7 +4116,11 @@ function _processMasterText(text) {
       const dr     = iDR  !== -1 ? (cols[iDR]?.trim() || '')  : '';
       const dum    = iDUM !== -1 ? (cols[iDUM]?.trim() || '') : '';
       const src    = iSrc !== -1 ? (cols[iSrc]?.trim() || '') : '';
-      const comune = iComM !== -1 ? (cols[iComM]?.trim() || '') : '';
+      // Master.csv non ha una colonna COMUNE: il dato arriva da Riepilogo_progettazione.csv,
+      // mappato per TRATTA_ID (window._trattaComuneMap, popolato da fetchRiepilogoCSV).
+      // iComM resta come fallback nel caso in futuro la colonna venga aggiunta al Master.
+      const comune = (window._trattaComuneMap && window._trattaComuneMap[tratta])
+                   || (iComM !== -1 ? (cols[iComM]?.trim() || '') : '');
       const nSed   = iNSed !== -1 ? (cols[iNSed]?.trim() || '') : '';
       const note   = iNote !== -1 ? (cols[iNote]?.trim() || '') : '';
       const dataPrevRilascio = iDataPrevRil !== -1 ? (cols[iDataPrevRil]?.trim() || '') : '';
@@ -4734,6 +4739,35 @@ function updatePrevRilascio() {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Master.csv non contiene la colonna COMUNE: il dato arriva da Riepilogo_progettazione.csv
+// (window._trattaComuneMap, per TRATTA_ID), caricato da loadData() DOPO loadMaster() (che deve
+// girare prima per _trattaLottoMap, v. sopra). Quando le pratiche vengono costruite in
+// _processMasterText il comune è quindi ancora vuoto: questa funzione lo ripopola a posteriori
+// su _masterByTratta (usato dall'export Cluster) e _praticheDetailPerLotto (usato ovunque altrove),
+// senza dover riparsire il Master.csv.
+function _backfillComuni() {
+  if (!window._trattaComuneMap || !window._masterByTratta || !window._praticheDetailPerLotto) return;
+  Object.entries(window._masterByTratta).forEach(([tratta, arr]) => {
+    const com = window._trattaComuneMap[tratta];
+    if (!com) return;
+    arr.forEach(r => { if (!r.comune) r.comune = com; });
+  });
+  const comuniByCodice = {};
+  Object.values(window._masterByTratta).forEach(arr => {
+    arr.forEach(r => {
+      if (!r.comune) return;
+      if (!comuniByCodice[r.codice]) comuniByCodice[r.codice] = new Set();
+      comuniByCodice[r.codice].add(r.comune);
+    });
+  });
+  Object.values(window._praticheDetailPerLotto).forEach(arr => {
+    arr.forEach(p => {
+      const set = comuniByCodice[p.codice];
+      if (set && set.size) p.comuni = [...set].sort();
+    });
+  });
+}
+
 window.addEventListener('load', () => {
   // loadData e loadCluster partono in parallelo.
   // loadCluster usa la cache in memoria se loadData ha già scaricato il CSV;
@@ -4743,7 +4777,7 @@ window.addEventListener('load', () => {
   loadMaster()
     .catch(e => console.warn('loadMaster error:', e))
     .finally(() => {
-      loadData().catch(() => {}).finally(() => setTimeout(updatePrevRilascio, 600));
+      loadData().catch(() => {}).finally(() => { _backfillComuni(); setTimeout(updatePrevRilascio, 600); });
     });
   loadCluster().catch(e => console.warn('loadCluster error:', e));
   setTimeout(() => { if (typeof loadSolleciti === 'function') loadSolleciti().catch(e => console.warn('loadSolleciti error:', e)); }, 0);
