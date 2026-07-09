@@ -895,6 +895,10 @@
   // Pending submissions (impresa approval queue)
   async function refreshPending(){
     if(!apiBase()){ $('pendingBody').innerHTML = '<div class="empty" style="padding:16px">Imposta API endpoint</div>'; return; }
+    const btn = $('refreshPendingBtn');
+    const btnLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⟳ Aggiorno…';
     try{
       const status = $('pendingFilter').value;
       const d = await api(withTokenQuery('/api/admin/pending-updates?status=' + encodeURIComponent(status)));
@@ -967,6 +971,9 @@
       if(status === 'pending') updatePendingBadge(d.count);
     }catch(e){
       $('pendingBody').innerHTML = `<div class="empty" style="padding:16px;color:#ef4444">Errore: ${escapeHtml(e.message)}</div>`;
+    }finally{
+      btn.disabled = false;
+      btn.textContent = btnLabel;
     }
   }
   function updatePendingBadge(n){
