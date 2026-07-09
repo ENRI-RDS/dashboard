@@ -31,7 +31,7 @@
   .topbar-user{font-size:12px;color:var(--retelit-ice);font-weight:500;background:rgba(255,255,255,.1);padding:4px 12px;border-radius:var(--radius-pill,999px);border:1px solid rgba(255,255,255,.15)}
   .topbar-back{font-size:12px;color:var(--retelit-sky);font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:var(--radius-md,8px);border:1px solid var(--retelit-sky);transition:background .15s;white-space:nowrap;background:none;font-family:inherit;cursor:pointer;appearance:none;-webkit-appearance:none}
   .topbar-back:hover{background:rgba(65,187,217,.1)}
-  .main{max-width:1400px;margin:0 auto;padding:28px 24px;display:flex;flex-direction:column;gap:20px}
+  .main{max-width:1600px;margin:0 auto;padding:28px 24px;display:flex;flex-direction:column;gap:20px}
   .hdr{border-bottom:1px solid var(--border);padding-bottom:14px}
   .eyebrow{font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:.15em;color:var(--muted);margin-bottom:6px}
   .title{font-family:var(--font-display);font-size:26px;font-weight:700;letter-spacing:-.02em}
@@ -154,8 +154,8 @@
       <div class="search"><input type="text" id="searchPratiche" placeholder="Cerca per codice, tratta, ente, stato…" data-testid="search-pratiche"></div>
       <div class="scroll">
         <table>
-          <thead><tr><th>Pratica</th><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th><th>Data richiesta</th><th>Data agg.</th><th>Update</th><th style="text-align:right">Lung. (m)</th></tr></thead>
-          <tbody id="pratBody"><tr><td colspan="9"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr></tbody>
+          <thead><tr><th>Pratica</th><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th><th>Data richiesta</th><th>Data agg.</th><th>Data previsione</th><th>Update</th><th style="text-align:right">Lung. (m)</th></tr></thead>
+          <tbody id="pratBody"><tr><td colspan="10"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr></tbody>
         </table>
       </div>
 
@@ -528,7 +528,7 @@ window.addEventListener('pageshow', (e) => {
 
   // ─── load pratiche ─────────────────────────────────
   async function loadPratiche(){
-    $('pratBody').innerHTML = `<tr><td colspan="9"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr>`;
+    $('pratBody').innerHTML = `<tr><td colspan="10"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr>`;
     try {
       const d = await api(`/api/imprese/pratiche?nome=${encodeURIComponent(nome)}`);
       PRATICHE = (d.pratiche || []).map(p => ({...p, _codice: buildCodice(p)}));
@@ -536,7 +536,7 @@ window.addEventListener('pageshow', (e) => {
       await _populateEntiSelect();
       _setAutoPratica();
     } catch(e){
-      $('pratBody').innerHTML = `<tr><td colspan="9" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
+      $('pratBody').innerHTML = `<tr><td colspan="10" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`;
     }
   }
   $('searchPratiche').addEventListener('input', e => renderPratiche(e.target.value));
@@ -631,7 +631,7 @@ window.addEventListener('pageshow', (e) => {
         if (ca && cb) return a._codice.localeCompare(b._codice, 'it', {numeric:true});
         return String(a.TRATTA_ID||'').localeCompare(String(b.TRATTA_ID||''), 'it', {numeric:true});
       });
-    if (!rows.length){ $('pratBody').innerHTML = '<tr><td colspan="9" class="empty">Nessuna pratica</td></tr>'; return; }
+    if (!rows.length){ $('pratBody').innerHTML = '<tr><td colspan="10" class="empty">Nessuna pratica</td></tr>'; return; }
     // Salva l'array corrente filtrato per recuperare la riga al click
     renderPratiche._current = rows.slice(0, 500);
     $('pratBody').innerHTML = renderPratiche._current.map((p, i) => `
@@ -643,6 +643,7 @@ window.addEventListener('pageshow', (e) => {
         <td class="stato-cell" style="color:${statoColor(p.STATO_PERMESSO)}">${escapeHtml(p.STATO_PERMESSO)}</td>
         <td class="mono">${escapeHtml(p.DATA_RICHIESTA)}</td>
         <td class="mono">${escapeHtml(p.DATA_ULTIMA_MODIFICA)}</td>
+        <td class="mono">${escapeHtml(p.DATA_PREVISTA_RILASCIO || '—')}</td>
         <td class="mono">${escapeHtml(p.DATA_UPDATE || '—')}</td>
         <td style="text-align:right;background:#f0fdf4;font-family:var(--font-mono);font-size:11.5px;color:#1F7A4E;font-weight:600;border-left:2px solid #bbf7d0">${escapeHtml(String(p.LUNGHEZZA ?? '—'))}</td>
       </tr>`).join('');
