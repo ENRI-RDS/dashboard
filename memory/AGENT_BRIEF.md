@@ -394,7 +394,16 @@ Tutti gli endpoint `/api/imprese/*` richiedono header `x-session-token`. Il `nom
 
 41. **Split tratte esistenti (nuovi TRATTA_ID) — sessione 2026-07-06**: `_regenerate_derived_files` patcha SOLO le property delle feature già presenti in `QGIS.geojson` (match per TRATTA_ID, geometria invariata) — non crea geometrie nuove. Procedura corretta: 1) split linea in QGIS, nuovi TRATTA_ID univoci, export geojson (verificato CRS export = EPSG:4326/CRS84, non UTM, altrimenti coordinate fuori scala e mappa mostra vista mondo); 2) upload con `target=QGIS.geojson` esatto — `admin.html` valida che il nome file scelto combaci col target selezionato (riga ~842), quindi niente più rischio di salvataggio sotto nome sbagliato; 3) SOLO DOPO caricare/approvare Master.csv coi nuovi TRATTA_ID. Ordine invertito = righe orfane senza geometria. ⚠️ **Rischio residuo non risolto**: nessun lock/versioning ottimistico tra upload manuale admin e `_regenerate_derived_files` triggerato da approvazione `pending_updates` impresa — se un'approvazione impresa scatta a ridosso dell'upload manuale del geojson, vince chi scrive per ultimo su `uploaded_at`. Dopo un upload critico, verificare sempre `GET /api/files` (campo `size`/`modified` dell'entry) per confermare che sia la versione servita, prima di considerare chiuso il lavoro.
 
+42. **RISOLTO (2026-07-09)** — **`imprese.html`, tab "Le mie submission": aggiunto codice pratica + fix bug "Nessun campo" sulle submission "Nuova pratica"**. Contesto: ogni `change` di una submission `update` ha forma `{tratta_id, ente, tipo_permesso, original_pratica, lunghezza, fields:{...}}`, mentre una submission `new` ha `change` = record flat completo (`Source.Name`, `TRATTA_ID`, `TIPO_PERMESSO`, `PRATICA`, ecc., **senza** wrapper `fields`). `showSubDetail()` leggeva sempre `c.fields||{}` → per le submission "Nuova pratica" risultava sempre `{}`, quindi il popup mostrava "Nessun campo" nonostante i dati fossero presenti nel `change` stesso. Fix:
+    - Nuovo helper `_codiceForChange(c, type)`: per `type==='new'` usa `buildCodice(c)` diretto (il change ha già tutti i campi); per `type==='update'` cerca in `PRATICHE` (già caricato) la riga con `TRATTA_ID`+`ENTE`+`TIPO_PERMESSO` (+ `original_pratica` se disponibile) per recuperare `_codice` (serve il lotto/`Source.Name`, assente nel change di update).
+    - Tabella "Le mie submission": nuova colonna "Codice pratica" (primo codice + `+N` se la submission raggruppa più pratiche in un solo invio).
+    - Popup dettaglio: ogni blocco `.sub-change` mostra ora il codice pratica accanto a tratta/ente/tipo; header del popup mostra la lista di tutti i codici coinvolti se >1; per `type==='new'` i campi mostrati ora sono l'intero record (esclusi i campi già in header: `Source.Name`/`TRATTA_ID`/`ENTE`/`TIPO_PERMESSO`) invece di un oggetto vuoto.
+    - Sequenziato `loadPratiche()` prima di `loadMine()` nel boot (`await`) — prima partivano in parallelo, rischio di race condition sul lookup `_codiceForChange` per le submission `update` se `PRATICHE` non era ancora popolato al primo render.
+
 ⚠️ **Segnalato, non risolto**: font-size sotto i 12px in decine di punti di `scavi.html` (9px/10px/10.5px/11px su badge, chip, celle tabella, eyebrow) — viola la regola brand kit §4.6 "mai sotto 12px in interfaccia". Font-family/pesi (Raleway + JetBrains Mono) invece corretti e caricati bene. In attesa di conferma utente prima di un pass esteso (60+ punti, rischio di rompere il layout di badge/tabelle compatte).
+
+43. **RISOLTO (2026-07-09)** — **`imprese.html`, tab Solleciti: `PROTOCOLLATO INTEGRAZIONE` escluso per errore dalla lista pratiche sollecitabili**. `SOL_STATI_ESCLUSI` lo trattava come uno stato "chiuso" (insieme a `NECESSARIA INTEGRAZIONE`/`IN REDAZIONE INTEGRAZIONE`), ma in `STATO_TRANSITIONS` ha lo stesso ruolo di `PROTOCOLLATO`: pratica (di integrazione) inviata all'ente, in attesa di risposta (→ `NECESSARIA INTEGRAZIONE` o `OTTENUTO`) — quindi va sollecitato esattamente come `PROTOCOLLATO`. Rimosso dall'esclusione. Effetto visibile: prima la lista "Nuovo sollecito" mostrava quasi solo pratiche `INVIATO`/`PROTOCOLLATO` (segnalato dall'utente via screenshot), ora include anche le integrazioni protocollate.
+⚠️ Non verificato in questo giro: logica del numero sollecito automatico (`sol-numero`).
 
 
 ---
@@ -409,11 +418,16 @@ Usata da `STATO_COLORS` (mappa/scavi) e `COLORS`/`STATI_COLORI_MAP` (index). Se 
 | IN FIRMA RDS | `#D08A1A` | `--warn` |
 | INVIO PRELIMINARE | `#043F75` | `--retelit-blue` |
 | INVIATO / PROTOCOLLATO | `#41BBD9` | `--retelit-sky` |
-| NECESSARIA INTEGRAZIONE / IN REDAZIONE INTEGRAZIONE | `#C0392B` | `--err` |
-| PROTOCOLLATO INTEGRAZIONE | `#436A93` | `--retelit-blue-75` |
+| NECESSARIA INTEGRAZIONE | `#C0392B` | `--err` |
+| IN REDAZIONE INTEGRAZIONE / PROTOCOLLATO INTEGRAZIONE | `#436A93` | `--retelit-blue-75` |
 | OTTENUTO | `#1E9E6A` | `--ok` |
 
-File allineati: `index.html`, `mappa.html`, `mappa_impresa_caricamento.html`, `scavi.html`.
+File allineati: `index.html`, `mappa.html`, `mappa_impresa_caricamento.html`, `scavi.html`, `imprese.html`.
+
+**2026-07-09** — fix colori stato (bug, non allineamento di routine):
+- `mappa_impresa_caricamento.html`: `STATO_COLORS['IN REDAZIONE INTEGRAZIONE']` era `#C0392B` (rosso, sbagliato) invece di `#436A93` (blu) → corretto.
+- `imprese.html`: non aveva alcuna `STATO_COLORS`. Le celle stato usavano `class="stato-${stato.replace(/\s+/g,'.')}"` con regole CSS tipo `.stato-IN.REDAZIONE` — selettore composto che richiede DUE classi separate (`stato-IN` AND `REDAZIONE`), non matcha mai un'unica classe col punto letterale generata dal replace. Risultato: tutti gli stati multi-parola (`NECESSARIA INTEGRAZIONE`, `PROTOCOLLATO INTEGRAZIONE`, `IN REDAZIONE INTEGRAZIONE`) non prendevano MAI il colore dal CSS. Fix: aggiunta `STATO_COLORS` locale (identica alla tabella sopra) + `color` inline via helper `statoColor()`, rimosse le classi `.stato-X` rotte. Stesso fix di pattern applicato alla card pratiche sidebar in `mappa_impresa_caricamento.html` (usava lo stesso selettore rotto nonostante avesse già `STATO_COLORS`/`getColor()` disponibili — ora usa `getColor()` inline).
+- Verificato: `scavi.html`, `mappa.html`, `hub.html` non usano questo pattern — bug isolato a queste due pagine.
 
 ---
 
