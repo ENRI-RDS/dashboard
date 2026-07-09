@@ -156,7 +156,7 @@
       <div class="search"><input type="text" id="searchPratiche" placeholder="Cerca per codice, tratta, ente, stato…" data-testid="search-pratiche"></div>
       <div class="scroll">
         <table>
-          <thead><tr><th>Pratica</th><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th><th>Data richiesta</th><th>Data agg.</th><th>Data ottenimento</th><th style="text-align:right">Lung. (m)</th></tr></thead>
+          <thead><tr><th>Pratica</th><th>Tratta</th><th>Ente</th><th>Tipo</th><th>Stato</th><th>Data richiesta</th><th>Data agg.</th><th>Update</th><th style="text-align:right">Lung. (m)</th></tr></thead>
           <tbody id="pratBody"><tr><td colspan="9"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr></tbody>
         </table>
       </div>
@@ -591,7 +591,14 @@ window.addEventListener('pageshow', (e) => {
       const st = (p.STATO_PERMESSO || '').trim();
       return st !== 'OTTENUTO' && st !== 'NO COMPETENZA';
     });
-    const rows = deduplicated.filter(p => !f || JSON.stringify(p).toLowerCase().includes(f));
+    const rows = deduplicated
+      .filter(p => !f || JSON.stringify(p).toLowerCase().includes(f))
+      .sort((a, b) => {
+        const ca = !!a._codice, cb = !!b._codice;
+        if (ca !== cb) return ca ? -1 : 1; // pratiche con codice prima, tratte "nude" dopo
+        if (ca && cb) return a._codice.localeCompare(b._codice, 'it', {numeric:true});
+        return String(a.TRATTA_ID||'').localeCompare(String(b.TRATTA_ID||''), 'it', {numeric:true});
+      });
     if (!rows.length){ $('pratBody').innerHTML = '<tr><td colspan="9" class="empty">Nessuna pratica</td></tr>'; return; }
     // Salva l'array corrente filtrato per recuperare la riga al click
     renderPratiche._current = rows.slice(0, 500);
@@ -604,7 +611,7 @@ window.addEventListener('pageshow', (e) => {
         <td class="stato-${(p.STATO_PERMESSO||'').replace(/\s+/g,'.')}">${escapeHtml(p.STATO_PERMESSO)}</td>
         <td class="mono">${escapeHtml(p.DATA_RICHIESTA)}</td>
         <td class="mono">${escapeHtml(p.DATA_ULTIMA_MODIFICA)}</td>
-        <td class="mono">${escapeHtml(p.DATA_APPROVAZIONE || '—')}</td>
+        <td class="mono">${escapeHtml(p.DATA_UPDATE || '—')}</td>
         <td style="text-align:right;background:#f0fdf4;font-family:var(--font-mono);font-size:11.5px;color:#1F7A4E;font-weight:600;border-left:2px solid #bbf7d0">${escapeHtml(String(p.LUNGHEZZA ?? '—'))}</td>
       </tr>`).join('');
   }
