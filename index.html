@@ -2300,7 +2300,7 @@ async function fetchRiepilogoCSV(forceFresh = false) {
   // 1. Usa cache in memoria (stessa sessione).
   //    Se _swrUpdating è attivo, usa sempre la cache anche se forceFresh=true:
   //    evita che loadData() rilanciato dall'aggiornamento SWR faccia altri fetch.
-  if (_riepilogoCsvText && (!forceFresh || _swrUpdating)) return _riepilogoCsvText;
+  if (_riepilogoCsvText && (!forceFresh || _swrUpdating)) { console.log('[Riepilogo] fonte: cache in memoria (nessun fetch).'); return _riepilogoCsvText; }
 
   // 2. Usa sessionStorage se non è scaduta
   if (!forceFresh) {
@@ -2308,7 +2308,7 @@ async function fetchRiepilogoCSV(forceFresh = false) {
       const ts = parseInt(sessionStorage.getItem(_CSV_CACHE_TS) || '0', 10);
       if (Date.now() - ts < _CSV_CACHE_TTL) {
         const cached = sessionStorage.getItem(_CSV_CACHE_KEY);
-        if (cached) { _riepilogoCsvText = cached; return _riepilogoCsvText; }
+        if (cached) { _riepilogoCsvText = cached; console.log('[Riepilogo] fonte: sessionStorage (cache valida, età ' + Math.round((Date.now()-ts)/1000) + 's, TTL 300s).'); return _riepilogoCsvText; }
       }
     } catch(e) { /* sessionStorage non disponibile, ignora */ }
   }
@@ -2337,13 +2337,15 @@ async function fetchRiepilogoCSV(forceFresh = false) {
   try {
     staticText = await staticPromise;
     _saveCsvCache(staticText);
+    console.log('[Riepilogo] fonte iniziale: GitHub statico (cache) — verifica in background con Render/Mongo in corso...');
 
     // Aggiorna in background con i dati freschi di Render
     renderPromise.then(renderText => {
-      if (!renderText || renderText === _riepilogoCsvText) return; // nessuna differenza
+      if (!renderText || renderText === _riepilogoCsvText) { console.log('[Riepilogo] Render/Mongo: nessuna differenza rispetto al file statico, resto sulla cache.'); return; }
       if (_swrUpdating) return; // già in aggiornamento, evita loop
       _swrUpdating = true;
       _saveCsvCache(renderText);
+      console.log('[Riepilogo] Render/Mongo ha dati diversi dal file statico → aggiornamento silenzioso in corso...');
       // Ricarica la dashboard silenziosamente; _swrUpdating blocca nuovi fetch dentro loadData
       if (typeof loadData === 'function') {
         loadData(false).catch(() => {}).finally(() => {
@@ -2352,6 +2354,7 @@ async function fetchRiepilogoCSV(forceFresh = false) {
           // pratiche già costruite restano con comune vuoto anche dopo l'arrivo dei dati freschi.
           if (typeof _backfillComuni === 'function') _backfillComuni();
           _swrUpdating = false;
+          console.log('[Riepilogo] aggiornamento da Render/Mongo completato, comuni ricalcolati.');
         });
       } else {
         _swrUpdating = false;
