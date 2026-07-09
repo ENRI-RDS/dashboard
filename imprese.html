@@ -395,8 +395,8 @@
       <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Storico delle tue richieste — vedi lo stato di approvazione.</p>
       <div class="scroll">
         <table>
-          <thead><tr><th>Quando</th><th>Tipo</th><th>Modifiche</th><th>Stato</th><th>Note revisione</th></tr></thead>
-          <tbody id="mineBody"><tr><td colspan="5" class="empty">—</td></tr></tbody>
+          <thead><tr><th>Codice pratica</th><th>Quando</th><th>Tipo</th><th>Modifiche</th><th>Stato</th><th>Note revisione</th></tr></thead>
+          <tbody id="mineBody"><tr><td colspan="6" class="empty">—</td></tr></tbody>
     </table>
           <div style="margin-top:10px;display:flex;justify-content:flex-end">
         <button class="btn btn-ghost btn-xs" id="refreshMineBtn">Aggiorna</button>
@@ -455,7 +455,7 @@ window.addEventListener('pageshow', (e) => {
       const sel = $('new-lotto');
       sel.innerHTML = MY_LOTTI.map(l => `<option value="${escapeHtml(l)}.xlsx">${escapeHtml(l)}</option>`).join('');
       $('app').style.display = '';
-      loadPratiche();
+      await loadPratiche();
       loadMine();
     } catch(e) {
       if(String(e.message).includes('401')) {
@@ -569,6 +569,26 @@ window.addEventListener('pageshow', (e) => {
     const prat = String(p.PRATICA||'').trim();
     if (!prefix || !prat) return '';
     return `${prefix}/${prat}/${lotto}`;
+  }
+
+  // Risolve il codice pratica (es. AUT/13/1A) per un 'change' di una submission.
+  // - type 'new': il change ha già Source.Name/TIPO_PERMESSO/PRATICA → buildCodice diretto.
+  // - type 'update': il change ha solo tratta_id/ente/tipo_permesso/original_pratica →
+  //   serve trovare la riga corrispondente in PRATICHE per recuperare il lotto (Source.Name).
+  function _codiceForChange(c, type) {
+    if (type === 'new') return buildCodice(c) || (c.PRATICA ? String(c.PRATICA) : '—');
+    const tratta = c.tratta_id || c.TRATTA_ID;
+    const ente = c.ente || c.ENTE;
+    const tipo = c.tipo_permesso || c.TIPO_PERMESSO;
+    const origPratica = c.original_pratica != null ? String(c.original_pratica).trim() : '';
+    const candidates = PRATICHE.filter(p => p.TRATTA_ID === tratta);
+    let match = null;
+    if (origPratica) {
+      match = candidates.find(p => String(p.PRATICA).trim() === origPratica && p.ENTE === ente && p.TIPO_PERMESSO === tipo);
+    }
+    if (!match) match = candidates.find(p => p.ENTE === ente && p.TIPO_PERMESSO === tipo);
+    if (match && match._codice) return match._codice;
+    return origPratica || '—';
   }
 
   function parseDate(s){
@@ -997,11 +1017,16 @@ window.addEventListener('pageshow', (e) => {
   async function loadMine(){
     try {
       const d = await api(`/api/imprese/my-submissions?nome=${encodeURIComponent(nome)}`);
-      if (!d.submissions || !d.submissions.length){ $('mineBody').innerHTML = '<tr><td colspan="5" class="empty">Nessuna submission ancora</td></tr>'; return; }
+      if (!d.submissions || !d.submissions.length){ $('mineBody').innerHTML = '<tr><td colspan="6" class="empty">Nessuna submission ancora</td></tr>'; return; }
       $('mineBody').innerHTML = d.submissions.map(s => {
         const payload = JSON.stringify(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         const nMod = (s.changes||[]).length;
+        const codici = [...new Set((s.changes||[]).map(c => _codiceForChange(c, s.type)).filter(c => c && c !== '—'))];
+        const codiceCell = !codici.length ? '—'
+          : codici.length === 1 ? escapeHtml(codici[0])
+          : `${escapeHtml(codici[0])} <span style="color:var(--muted);font-weight:400">+${codici.length - 1}</span>`;
         return `<tr data-sub="${payload}" style="cursor:pointer" title="Clicca per vedere i dettagli">
+          <td class="mono" style="font-weight:700;color:var(--accent)" title="${escapeHtml(codici.join(', '))}">${codiceCell}</td>
           <td class="mono">${new Date(s.submitted_at).toLocaleString('it-IT')}</td>
           <td>${s.type === 'update' ? 'Aggiornamento' : 'Nuova pratica'}</td>
           <td>${nMod === 1 ? '1 modifica' : nMod + ' modifiche'}</td>
@@ -1009,7 +1034,7 @@ window.addEventListener('pageshow', (e) => {
           <td>${escapeHtml(s.reviewed_note || s.note || '')}</td>
         </tr>`;
       }).join('');
-    } catch(e){ $('mineBody').innerHTML = `<tr><td colspan="5" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`; }
+    } catch(e){ $('mineBody').innerHTML = `<tr><td colspan="6" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`; }
   }
   $('refreshMineBtn').onclick = loadMine;
 
@@ -1104,17 +1129,24 @@ window.addEventListener('pageshow', (e) => {
     const fieldLabels = {
       STATO_PERMESSO:'Nuovo stato', DATA_RICHIESTA:'Data richiesta',
       DATA_APPROVAZIONE:'Data approvazione', PRATICA:'Pratica', NOTE:'Note',
-      DATA_ULTIMA_MODIFICA:'Ultima modifica'
+      DATA_ULTIMA_MODIFICA:'Ultima modifica', N_SED:'N. SED',
+      'NULLA OSTA NECESSARIO':'Nulla osta necessario', DATA_PREVISTA_RILASCIO:'Data prevista rilascio'
     };
+    const excludeKeys = new Set(['Source.Name','TRATTA_ID','ENTE','TIPO_PERMESSO']);
     const statusColor = {pending:'#f59e0b',approved:'#10b981',rejected:'#ef4444'}[s.status]||'#6b7280';
     const typeLabel = s.type === 'update' ? 'Aggiornamento' : 'Nuova pratica';
     const nMod = (s.changes||[]).length;
+    const codici = [...new Set((s.changes||[]).map(c => _codiceForChange(c, s.type)).filter(c => c && c !== '—'))];
 
     const changesHtml = (s.changes||[]).map(c => {
       const tratta = c.tratta_id || c.TRATTA_ID || '—';
       const ente   = c.ente   || c.ENTE   || '';
       const tipo   = c.tipo_permesso || c.TIPO_PERMESSO || '';
-      const fields = c.fields || {};
+      const codice = _codiceForChange(c, s.type);
+      // 'update': i campi modificati sono in c.fields. 'new': il change è già il record completo.
+      const fields = s.type === 'new'
+        ? Object.fromEntries(Object.entries(c).filter(([k]) => !excludeKeys.has(k)))
+        : (c.fields || {});
       const cols   = Object.entries(fields).map(([k,v]) => `
         <div class="sub-field">
           <span class="sub-field-key">${escapeHtml(fieldLabels[k]||k)}</span>
@@ -1122,7 +1154,9 @@ window.addEventListener('pageshow', (e) => {
         </div>`).join('');
       return `<div class="sub-change">
         <div class="sub-change-header">
+          ${codice && codice !== '—' ? `<span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${escapeHtml(codice)}</span>` : ''}
           <span style="font-family:var(--font-mono)">${escapeHtml(tratta)}</span>
+          ${c.lunghezza != null && c.lunghezza !== '—' ? `<span style="color:var(--muted);font-weight:400;font-size:11px">${escapeHtml(String(c.lunghezza))} m</span>` : ''}
           ${ente ? `<span style="color:var(--muted);font-weight:400;font-size:11px">${escapeHtml(ente)}</span>` : ''}
           ${tipo ? `<span style="padding:1px 7px;border-radius:20px;font-size:10px;font-weight:600;background:var(--retelit-ice);color:var(--retelit-blue)">${escapeHtml(tipo)}</span>` : ''}
         </div>
@@ -1146,6 +1180,7 @@ window.addEventListener('pageshow', (e) => {
             <div class="sub-modal-sub">
               ${new Date(s.submitted_at).toLocaleString('it-IT')}
               &nbsp;<span style="display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:600;background:${statusColor}22;color:${statusColor}">${s.status}</span>
+              ${codici.length ? `<br><span style="font-family:var(--font-mono);margin-top:4px;display:inline-block">${escapeHtml(codici.join(', '))}</span>` : ''}
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:8px">
