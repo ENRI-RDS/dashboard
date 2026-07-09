@@ -2747,6 +2747,91 @@ async def admin_sync_cantieri(
     return {"created": created, "total_cantieri": total}
 
 
+@app.put("/api/admin/cantieri/{cantiere_key:path}")
+async def admin_update_cantiere(
+    cantiere_key: str,
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Correzione admin di un cantiere: a differenza di POST /api/imprese/cantieri/{key}
+    (scrittura impresa, metri_scavati SEMPRE in accumulo via $inc), qui i campi passati
+    vengono impostati DIRETTAMENTE — utile per correggere dati di test/errati senza dover
+    passare da un valore negativo (non ammesso) o azzerare tutto il cantiere.
+    Non tocca il log storico salvo che 'clear_log' sia True."""
+    _check_token(x_upload_token or token_q)
+    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
+    if not doc:
+        raise HTTPException(404, "Cantiere non trovato")
+
+    allowed = {
+        "stato_cantiere", "tecnica_scavo", "metri_scavati",
+        "data_inizio_prevista", "data_inizio_effettiva",
+        "data_fine_prevista", "data_fine_effettiva",
+        "note", "motivo_blocco", "data_ripresa_stimata", "impresa",
+    }
+    mongo_set: dict = {}
+    for k, v in (payload or {}).items():
+        if k not in allowed:
+            continue
+        if k == "stato_cantiere" and v not in STATO_CANTIERE_VALUES:
+            raise HTTPException(400, f"stato_cantiere non valido: {v}")
+        if k == "tecnica_scavo" and v and v not in TECNICA_SCAVO_VALUES:
+            raise HTTPException(400, f"tecnica_scavo non valida: {v}")
+        if k == "metri_scavati":
+            try:
+                v = max(0.0, float(v))
+            except Exception:
+                raise HTTPException(400, "metri_scavati deve essere un numero")
+        mongo_set[k] = v
+
+    mongo_update: dict = {"$set": mongo_set} if mongo_set else {}
+    if payload.get("clear_log"):
+        mongo_update["$set"] = {**mongo_set, "log": []}
+    if not mongo_update:
+        raise HTTPException(400, "Nessun campo valido da aggiornare")
+    mongo_update["$set"]["updated_at"] = _now_iso()
+
+    await cantieri_col.update_one({"cantiere_key": cantiere_key}, mongo_update)
+    await _log_admin_action("update_cantiere", cantiere_key, x_actor_nome)
+    asyncio.create_task(_push_cantieri_to_github())
+    return {"ok": True, "cantiere_key": cantiere_key}
+
+
+@app.delete("/api/admin/cantieri/{cantiere_key:path}/reset")
+async def admin_reset_single_cantiere(
+    cantiere_key: str,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Riporta UN SOLO cantiere allo stato 'pristino' (non_avviato, 0 metri, log
+    vuoto) senza toccare gli altri e senza ricrearlo — a differenza di
+    DELETE /api/admin/cantieri/reset che svuota TUTTA la collection. Utile per
+    rimuovere avanzamenti di test inseriti per errore da un'impresa. Metadati
+    (cantiere_key, codice_cantiere, pratica_id, ente, lotto, metri_totali, impresa)
+    restano invariati."""
+    _check_token(x_upload_token or token_q)
+    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
+    if not doc:
+        raise HTTPException(404, "Cantiere non trovato")
+    await cantieri_col.update_one(
+        {"cantiere_key": cantiere_key},
+        {"$set": {
+            "stato_cantiere": "non_avviato", "tecnica_scavo": "",
+            "data_inizio_prevista": "", "data_inizio_effettiva": "",
+            "data_fine_prevista": "", "data_fine_effettiva": "",
+            "metri_scavati": 0.0, "note": "",
+            "motivo_blocco": "", "data_ripresa_stimata": "",
+            "log": [], "updated_at": _now_iso(),
+        }},
+    )
+    await _log_admin_action("reset_single_cantiere", cantiere_key, x_actor_nome)
+    asyncio.create_task(_push_cantieri_to_github())
+    return {"ok": True, "cantiere_key": cantiere_key}
+
+
 @app.get("/api/imprese/cantieri")
 async def get_cantieri_impresa(sess: dict = Depends(_require_session)):
     """Cantieri (per pratica) nei lotti dell'impresa autenticata."""
