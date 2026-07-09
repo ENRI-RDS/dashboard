@@ -1254,13 +1254,23 @@ window.addEventListener('pageshow', (e) => {
     const tbody = $('solPratBody');
     if (!tbody) return;
     const f = (filter || '').toLowerCase().trim();
-    const praticaMap = new Map();
+    // Dedup: per ogni tratta tieni solo la riga più recente (Master.csv è append-only,
+    // PRATICHE contiene tutta la storia degli stati) — stessa logica di renderPratiche()
+    const latestMap = new Map();
     PRATICHE.forEach(p => {
+      const tKey = p.TRATTA_ID + '|' + p.ENTE + '|' + p.TIPO_PERMESSO;
+      const existing = latestMap.get(tKey);
+      if (!existing || parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(existing.DATA_ULTIMA_MODIFICA)) {
+        latestMap.set(tKey, p);
+      }
+    });
+    const praticaMap = new Map();
+    Array.from(latestMap.values()).forEach(p => {
       const stato = (p.STATO_PERMESSO || '').trim();
       if (SOL_STATI_ESCLUSI.has(stato)) return;
       const pNum = String(p.PRATICA || '').trim();
       if (!pNum) return;
-      const key = pNum + '|' + String(p.ENTE||'').trim() + '|' + String(p.TIPO_PERMESSO||'').trim();
+      const key = (p._codice || pNum) + '|' + String(p.ENTE||'').trim() + '|' + String(p.TIPO_PERMESSO||'').trim();
       if (!praticaMap.has(key)) {
         praticaMap.set(key, { rep: p, tratte: [p] });
       } else {
@@ -1405,9 +1415,9 @@ window.addEventListener('pageshow', (e) => {
     $('solBody').innerHTML = rows.map(({s, p}) => {
       const ente   = s.ente                 || p?.ENTE          || '—';
       const tipo   = s.tipo_permesso        || p?.TIPO_PERMESSO || '—';
-      const stato  = s.stato_permesso       || p?.STATO_PERMESSO|| '—';
+      const stato  = p?.STATO_PERMESSO      || s.stato_permesso || '—';
       const dataRich = s.data_richiesta     || p?.DATA_RICHIESTA       || '—';
-      const dataAgg  = s.data_ultima_modifica || p?.DATA_ULTIMA_MODIFICA || '—';
+      const dataAgg  = p?.DATA_ULTIMA_MODIFICA || s.data_ultima_modifica || '—';
       const dataUltSol = SOLLECITI
         .filter(x => x.tratta_id === s.tratta_id && x.data_sollecito)
         .reduce((max, x) => (!max || parseDate(x.data_sollecito) > parseDate(max)) ? x.data_sollecito : max, null) || '—';
