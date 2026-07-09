@@ -150,9 +150,21 @@
   .pr-tag.pending{background:var(--warn-bg);color:var(--warn);}
   .pr-tag.approved{background:var(--ok-bg);color:var(--ok);}
   .pr-tag.rejected{background:var(--danger-bg);color:var(--danger);}
-  .pr-mine-card{border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:11px;margin-bottom:6px;}
+  .pr-mine-card{border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:11px;margin-bottom:6px;cursor:pointer;}
+  .pr-mine-card:hover{background:var(--surface2);}
   .pr-mine-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;}
   .pr-mine-del{background:none;border:1px solid var(--danger);color:var(--danger);border-radius:5px;font-size:10px;padding:2px 7px;cursor:pointer;margin-top:6px;font-weight:600;}
+  .pr-mine-codici{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px;}
+  .pr-mine-codice{font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-light);border-radius:5px;padding:1px 6px;}
+  .pr-detail-box{max-width:520px;max-height:80vh;overflow-y:auto;}
+  .pr-detail-list{display:flex;flex-direction:column;gap:8px;}
+  .pr-detail-change{border:1px solid var(--border);border-radius:8px;padding:8px 10px;}
+  .pr-detail-change-head{font-family:var(--font-mono);font-weight:700;color:var(--accent);font-size:11.5px;margin-bottom:6px;}
+  .pr-detail-tratta{font-weight:400;color:var(--muted);}
+  .pr-detail-field{display:flex;justify-content:space-between;gap:10px;font-size:11px;padding:2px 0;border-top:1px dashed var(--border);}
+  .pr-detail-field:first-of-type{border-top:none;}
+  .pr-detail-key{color:var(--muted);font-family:var(--font-mono);}
+  .pr-detail-val{font-weight:600;text-align:right;word-break:break-word;}
   .pr-popup-actions{display:flex;gap:6px;padding:0 16px 12px;flex-wrap:wrap;}
   /* ── Pannello Scavi in sidebar ────────────────────────────────────────────── */
   .sc-card{border:1px solid var(--border);border-radius:8px;padding:8px 10px;cursor:pointer;font-size:11.5px;background:var(--surface);margin-bottom:6px;position:relative;overflow:hidden;}
@@ -3583,7 +3595,7 @@ window.addEventListener('load', () => {
 
 <!-- ── PANNELLO PRATICHE (aggiorna/nuova/mie) — input diretto da mappa ──────── -->
 <script>
-let PR_PRATICHE = [], PR_QUEUE = [], PR_SELECTED = null, PR_SIBLINGS = [], PR_LOTTI_RAW = [];
+let PR_PRATICHE = [], PR_QUEUE = [], PR_SELECTED = null, PR_SIBLINGS = [], PR_LOTTI_RAW = [], PR_MINE = [];
 let PR_INIT_PROMISE = null;
 
 function _prApiBase(){ return (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || ''; }
@@ -3643,6 +3655,22 @@ function prBuildCodice(p){
   const prat = String(p.PRATICA||'').trim();
   if (!prefix || !prat) return '';
   return `${prefix}/${prat}/${lotto}`;
+}
+// Ricostruisce il codice pratica (es. AUT/24/1A) per una singola modifica dentro
+// una submission salvata in 'mie richieste': per 'new' i dati sono già nel change,
+// per 'update' bisogna incrociare con PR_PRATICHE (già caricato da prEnsureInit)
+// per recuperare lotto/pratica non presenti nel change stesso.
+function _prCodiceForChange(ch, type){
+  if (type === 'new') return prBuildCodice(ch) || ch.TRATTA_ID || '';
+  const match = PR_PRATICHE.find(p => p.TRATTA_ID===ch.tratta_id && p.ENTE===ch.ente && p.TIPO_PERMESSO===ch.tipo_permesso);
+  if (match) {
+    const prat = (ch.fields && ch.fields.PRATICA) || ch.original_pratica || match.PRATICA;
+    return prBuildCodice({...match, PRATICA: prat}) || ch.tratta_id || '';
+  }
+  const tipoMap = {'AUTORIZZAZIONE':'AUT','NULLA OSTA':'NO'};
+  const prefix = tipoMap[(ch.tipo_permesso||'').trim()] || (ch.tipo_permesso||'').trim().substring(0,3);
+  const prat = String(ch.original_pratica || (ch.fields && ch.fields.PRATICA) || '').trim();
+  return (prefix && prat) ? `${prefix}/${prat}` : (ch.tratta_id || '');
 }
 
 // ── tab principali sidebar: Mappa | Pratiche ──
@@ -4068,13 +4096,19 @@ async function prLoadMine(){
   try {
     const d = await prApi('/api/imprese/my-submissions');
     if (!d.submissions || !d.submissions.length) { wrap.innerHTML = '<div class="pr-empty">Nessuna submission ancora</div>'; return; }
-    wrap.innerHTML = d.submissions.map(s => {
-      const nMod = (s.changes||[]).length;
-      return `<div class="pr-mine-card">
+    PR_MINE = d.submissions;
+    wrap.innerHTML = d.submissions.map((s,i) => {
+      const changes = s.changes||[];
+      const codici = [...new Set(changes.map(ch => _prCodiceForChange(ch, s.type)).filter(Boolean))];
+      const codiciHtml = codici.length
+        ? `<div class="pr-mine-codici">${codici.slice(0,6).map(c=>`<span class="pr-mine-codice">${prEscapeHtml(c)}</span>`).join('')}${codici.length>6?` +${codici.length-6}`:''}</div>`
+        : '';
+      return `<div class="pr-mine-card" data-mine-idx="${i}">
         <div class="pr-mine-head">
-          <span>${s.type==='update'?'Aggiornamento':'Nuova pratica'} · ${nMod} mod.</span>
+          <span>${s.type==='update'?'Aggiornamento':'Nuova pratica'} · ${changes.length} mod.</span>
           <span class="pr-tag ${s.status}">${s.status}</span>
         </div>
+        ${codiciHtml}
         <div style="color:var(--muted);font-size:10px">${new Date(s.submitted_at).toLocaleString('it-IT')}</div>
         ${(s.reviewed_note||s.note) ? `<div style="margin-top:4px;color:var(--warn)">${prEscapeHtml(s.reviewed_note||s.note)}</div>` : ''}
         ${s.status==='pending' ? `<button class="pr-mine-del" data-delsub="${s._id}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>Elimina richiesta</button>` : ''}
@@ -4085,12 +4119,45 @@ async function prLoadMine(){
 document.getElementById('prRefreshMine').onclick = prLoadMine;
 document.getElementById('prMineList').addEventListener('click', async e => {
   const b = e.target.closest('button[data-delsub]');
-  if (!b) return;
-  const ok = await prConfirm("L'operazione non è reversibile.", {title:'Eliminare questa richiesta?', okText:'Elimina', kind:'danger'});
-  if (!ok) return;
-  try { await prApi(`/api/imprese/submissions/${b.dataset.delsub}`, { method:'DELETE' }); await prLoadMine(); }
-  catch(e2) { await prAlert(e2.message, {title:'Errore', kind:'danger'}); }
+  if (b) {
+    const ok = await prConfirm("L'operazione non è reversibile.", {title:'Eliminare questa richiesta?', okText:'Elimina', kind:'danger'});
+    if (!ok) return;
+    try { await prApi(`/api/imprese/submissions/${b.dataset.delsub}`, { method:'DELETE' }); await prLoadMine(); }
+    catch(e2) { await prAlert(e2.message, {title:'Errore', kind:'danger'}); }
+    return;
+  }
+  const card = e.target.closest('.pr-mine-card[data-mine-idx]');
+  if (card) _prShowMineDetail(PR_MINE[+card.dataset.mineIdx]);
 });
+
+// Mostra il dettaglio completo di una submission ("mie richieste"): per ogni
+// modifica, codice pratica + tutti i campi inviati con quella richiesta.
+function _prShowMineDetail(s){
+  if (!s) return;
+  const changes = s.changes||[];
+  const rows = changes.map(ch => {
+    const codice = _prCodiceForChange(ch, s.type);
+    const fields = s.type === 'update' ? (ch.fields||{}) : ch;
+    const skip = new Set(['Source.Name']);
+    const fieldsHtml = Object.entries(fields).filter(([k])=>!skip.has(k)).map(([k,v]) =>
+      `<div class="pr-detail-field"><span class="pr-detail-key">${prEscapeHtml(k)}</span><span class="pr-detail-val">${prEscapeHtml(v)||'—'}</span></div>`
+    ).join('') || '<div class="pr-detail-field"><span class="pr-detail-val">Nessun campo</span></div>';
+    return `<div class="pr-detail-change">
+      <div class="pr-detail-change-head">${prEscapeHtml(codice || ch.tratta_id || ch.TRATTA_ID || '—')} <span class="pr-detail-tratta">${prEscapeHtml(ch.tratta_id || ch.TRATTA_ID || '')}</span></div>
+      ${fieldsHtml}
+    </div>`;
+  }).join('');
+  const ov = document.getElementById('prConfirmOverlay');
+  ov.innerHTML = `<div class="pr-confirm-box pr-detail-box">
+    <div class="pr-confirm-title">${s.type==='update'?'Aggiornamento':'Nuova pratica'} · ${changes.length} mod. <span class="pr-tag ${s.status}">${s.status}</span></div>
+    <div style="color:var(--muted);font-size:10px;margin-bottom:12px">Inviata il ${new Date(s.submitted_at).toLocaleString('it-IT')}${s.reviewed_at ? ' · revisionata il '+new Date(s.reviewed_at).toLocaleString('it-IT') : ''}</div>
+    ${(s.reviewed_note||s.note) ? `<div style="margin-bottom:12px;color:var(--warn);font-size:11.5px">${prEscapeHtml(s.reviewed_note||s.note)}</div>` : ''}
+    <div class="pr-detail-list">${rows}</div>
+    <div class="pr-confirm-actions"><button class="btn" id="prConfirmOk">Chiudi</button></div>
+  </div>`;
+  ov.classList.add('open');
+  document.getElementById('prConfirmOk').onclick = () => _prCloseConfirm();
+}
 
 // ── azioni dal popup mappa ("✎ Aggiorna pratica" / "+ Nuova pratica") ──
 function _prOpenDrawerIfMobile(){
