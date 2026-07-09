@@ -3614,6 +3614,17 @@ function prSetMsg(el, txt, ok){ el.className = 'pr-msg ' + (ok?'ok':'err'); el.t
 const ICON_ALERT_TRIANGLE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
 const ICON_BAN = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>';
 function _prCloseConfirm(){ document.getElementById('prConfirmOverlay').classList.remove('open'); }
+// ESC chiude l'overlay attivo: se c'è un bottone "Annulla" lo clicca (stesso esito
+// di un cancel esplicito, risolve correttamente le promise di prConfirm), altrimenti
+// clicca "Ok/Chiudi" (copre prAlert e il pannello di dettaglio "mie richieste").
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  const ov = document.getElementById('prConfirmOverlay');
+  if (!ov || !ov.classList.contains('open')) return;
+  const cancelBtn = document.getElementById('prConfirmCancel');
+  const okBtn = document.getElementById('prConfirmOk');
+  (cancelBtn || okBtn)?.click();
+});
 function prAlert(message, {title='Attenzione', kind='warn'}={}){
   return new Promise(resolve => {
     const ov = document.getElementById('prConfirmOverlay');
@@ -3748,7 +3759,14 @@ function renderPrList(filter){
     const st = (p.STATO_PERMESSO||'').trim();
     return st !== 'OTTENUTO' && st !== 'NO COMPETENZA';
   });
-  const rows = deduplicated.filter(p => !f || JSON.stringify(p).toLowerCase().includes(f));
+  const rows = deduplicated
+    .filter(p => !f || JSON.stringify(p).toLowerCase().includes(f))
+    .sort((a, b) => {
+      const ca = !!a._codice, cb = !!b._codice;
+      if (ca !== cb) return ca ? -1 : 1; // pratiche con codice prima, tratte "nude" dopo
+      if (ca && cb) return a._codice.localeCompare(b._codice, 'it', {numeric:true});
+      return String(a.TRATTA_ID||'').localeCompare(String(b.TRATTA_ID||''), 'it', {numeric:true});
+    });
   const list = document.getElementById('prList');
   if (!rows.length) { list.innerHTML = '<div class="pr-empty">Nessuna pratica</div>'; renderPrList._current = []; return; }
   renderPrList._current = rows.slice(0,500);
