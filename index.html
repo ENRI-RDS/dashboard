@@ -2346,7 +2346,13 @@ async function fetchRiepilogoCSV(forceFresh = false) {
       _saveCsvCache(renderText);
       // Ricarica la dashboard silenziosamente; _swrUpdating blocca nuovi fetch dentro loadData
       if (typeof loadData === 'function') {
-        loadData(false).catch(() => {}).finally(() => { _swrUpdating = false; });
+        loadData(false).catch(() => {}).finally(() => {
+          // loadData ricostruisce _trattaComuneMap ma NON _praticheDetailPerLotto/_masterByTratta
+          // (costruiti da Master.csv in _processMasterText): serve un backfill esplicito, altrimenti
+          // pratiche già costruite restano con comune vuoto anche dopo l'arrivo dei dati freschi.
+          if (typeof _backfillComuni === 'function') _backfillComuni();
+          _swrUpdating = false;
+        });
       } else {
         _swrUpdating = false;
       }
@@ -2942,6 +2948,27 @@ async function loadCluster() {
 
     for (let i = 1; i < lines.length; i++) {
       const cols = splitLine(lines[i]);
+
+      // Mappature TRATTA_ID → lotto/comune: indipendenti dalle statistiche cluster,
+      // vanno popolate per OGNI riga con TRATTA_ID valido, anche se CLUSTER o LUNGHEZZA
+      // sono vuoti/zero (altrimenti tratte con questi campi mancanti restano senza comune —
+      // causa bug Lotto 8: righe scartate dai controlli sotto prima di arrivare qui).
+      if (iTRAT !== -1) {
+        const tratta = cols[iTRAT]?.trim().replace(/"/g,'');
+        if (tratta) {
+          if (iLOT !== -1) {
+            const lottoRaw = cols[iLOT]?.trim().replace(/"/g,'');
+            // normalizzato come r.lotto (riga ~4117): stesso formato atteso da IMPRESE_PER_LOTTO
+            const lotto = lottoRaw.replace(/^Lotto\s*/i,'').trim().toUpperCase();
+            if (lotto) trattaLottoMap[tratta] = lotto;
+          }
+          if (iCOM !== -1) {
+            const comune = cols[iCOM]?.trim().replace(/"/g,'');
+            if (comune) trattaComuneMap[tratta] = comune;
+          }
+        }
+      }
+
       const cl = cols[iC]?.trim().replace(/"/g,'');
       if (!cl || cl === '') continue;
       const stato = (iS !== -1 ? cols[iS]?.trim() : '') || 'IN ATTESA';
@@ -2970,19 +2997,6 @@ async function loadCluster() {
             if (!comuniKmPerLotto[lotto]) comuniKmPerLotto[lotto] = {};
             comuniKmPerLotto[lotto][comune] = (comuniKmPerLotto[lotto][comune] || 0) + lungh;
           }
-        }
-      }
-
-      // Mappa TRATTA_ID → lotto per join con Master.csv
-      if (iTRAT !== -1 && iLOT !== -1) {
-        const tratta = cols[iTRAT]?.trim().replace(/"/g,'');
-        // normalizzato come r.lotto (riga ~4117): stesso formato atteso da IMPRESE_PER_LOTTO
-        const lotto  = cols[iLOT]?.trim().replace(/"/g,'').replace(/^Lotto\s*/i,'').trim().toUpperCase();
-        if (tratta && lotto) trattaLottoMap[tratta] = lotto;
-        // Mappa TRATTA_ID → comune
-        if (tratta && iCOM !== -1) {
-          const comune = cols[iCOM]?.trim().replace(/"/g,'');
-          if (comune) trattaComuneMap[tratta] = comune;
         }
       }
 
