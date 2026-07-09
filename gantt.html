@@ -161,9 +161,6 @@ tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);fo
         <span class="gantt-legend-item" style="color:var(--retelit-teal);">
           <svg width="12" height="14"><line x1="6" y1="0" x2="6" y2="14" stroke="var(--retelit-teal)" stroke-width="2" stroke-dasharray="3,2"/></svg>Oggi
         </span>
-        <span class="gantt-legend-item" style="color:var(--gray-500);">
-          <svg width="22" height="10"><path d="M0 5 H10 V2 L16 5 L10 8 V5" fill="none" stroke="var(--retelit-teal)" stroke-width="1.1"/></svg>Dipendenza (click su un task per i dettagli)
-        </span>
         <button id="editModeBtn" class="btn-sm" style="display:none;gap:6px;" onclick="toggleEditMode()">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
           <span id="editModeBtnLabel">Modalità modifica</span>
@@ -517,7 +514,7 @@ function buildGantt() {
   var LW = 250;   /* label column width — nomi enti/comuni piu' lunghi */
   var RH = 30;    /* row height */
   var GH = 24;    /* group header height */
-  var HDR = 40;   /* time axis header height */
+  var HDR = 50;   /* time axis header height (+10 per la riga anno sopra i mesi) */
 
   var T0 = new Date(2026, 1, 1);   /* 01/02/2026 */
   var T1 = new Date(2027, 0, 15);  /* 15/01/2027 — padding fine anno */
@@ -560,6 +557,24 @@ function buildGantt() {
     if (mx === null) return;
     parts.push('<line x1="' + mx + '" y1="' + HDR + '" x2="' + mx + '" y2="' + totalH + '" stroke="#DFE4EB" stroke-width="0.6" stroke-dasharray="3,3"/>');
     parts.push('<text x="' + (mx + 4) + '" y="' + (HDR - 6) + '" font-size="9" font-family="JetBrains Mono,monospace" font-weight="600" fill="' + C_MID + '">' + mLabels[i] + '</text>');
+  });
+  /* anno di riferimento, sopra i mesi: raggruppa i mesi consecutivi dello stesso
+     anno e centra l'etichetta sull'intervallo (qui: 2026 su FEB-DIC, 2027 solo su GEN). */
+  var yearGroups = [];
+  months.forEach(function(mDate) {
+    var mx = xPos(mDate);
+    if (mx === null) return;
+    var yr = mDate.split('/')[2];
+    if (!yearGroups.length || yearGroups[yearGroups.length - 1].year !== yr) {
+      yearGroups.push({ year: yr, x1: mx });
+    }
+  });
+  yearGroups.forEach(function(yg, i) {
+    yg.x2 = (i + 1 < yearGroups.length) ? yearGroups[i + 1].x1 : W;
+  });
+  yearGroups.forEach(function(yg, i) {
+    if (i > 0) parts.push('<line x1="' + yg.x1 + '" y1="4" x2="' + yg.x1 + '" y2="' + (HDR-16) + '" stroke="#C4CDD8" stroke-width="0.8"/>');
+    parts.push('<text x="' + ((yg.x1 + yg.x2) / 2) + '" y="17" font-size="10" font-family="JetBrains Mono,monospace" font-weight="700" letter-spacing="1.5" text-anchor="middle" fill="' + C_DARK + '">' + yg.year + '</text>');
   });
   parts.push('<line x1="0" y1="' + HDR + '" x2="' + W + '" y2="' + HDR + '" stroke="#C4CDD8" stroke-width="1.5"/>');
   parts.push('<rect x="0" y="0" width="' + LW + '" height="' + totalH + '" fill="#EEF1F5"/>');
