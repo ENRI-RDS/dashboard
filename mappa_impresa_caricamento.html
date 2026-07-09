@@ -117,6 +117,8 @@
   .pr-card.selected{border-color:var(--accent);background:var(--accent-light);}
   .pr-card-code{font-family:var(--font-mono);font-weight:700;color:var(--accent);font-size:11px;}
   .pr-card-row{display:flex;justify-content:space-between;gap:6px;color:var(--muted);font-size:10.5px;margin-top:3px;}
+  .pr-card-queued{border-color:#D08A1A;background:#FFF7EB;}
+  .pr-queued-badge{font-size:9.5px;font-weight:600;color:#D08A1A;}
   .pr-edit-sub{font-size:11.5px;color:var(--muted);margin-bottom:10px;line-height:1.6;}
   .pr-edit-sub b{font-family:var(--font-mono);font-weight:700;color:var(--accent);font-size:12px;}
   .pr-edit-sub .pr-edit-tratta{font-family:var(--font-mono);}
@@ -3722,12 +3724,25 @@ function renderPrList(filter){
   const list = document.getElementById('prList');
   if (!rows.length) { list.innerHTML = '<div class="pr-empty">Nessuna pratica</div>'; renderPrList._current = []; return; }
   renderPrList._current = rows.slice(0,500);
-  list.innerHTML = renderPrList._current.map((p,i) => `
-    <div class="pr-card" data-idx="${i}">
-      <div class="pr-card-code">${prEscapeHtml(p._codice)}</div>
+  list.innerHTML = renderPrList._current.map((p,i) => {
+    const q = _prQueuedFor(p);
+    return `
+    <div class="pr-card${q?' pr-card-queued':''}" data-idx="${i}">
+      <div class="pr-card-code">${prEscapeHtml(p._codice)}${q?' <span class="pr-queued-badge" title="Modifica già in coda, non ancora inviata">🕓 in coda</span>':''}</div>
       <div class="pr-card-row"><span>${prEscapeHtml(p.TRATTA_ID)}</span><span class="stato-${(p.STATO_PERMESSO||'').replace(/\s+/g,'.')}">${prEscapeHtml(p.STATO_PERMESSO)}</span></div>
       <div class="pr-card-row"><span>${prEscapeHtml(p.ENTE)}</span><span>${prEscapeHtml(p.TIPO_PERMESSO)}</span></div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+}
+
+// Trova, se esiste, una modifica già accodata (non ancora inviata) per questa riga.
+// Evita che riselezionando la stessa pratica il form si ripopoli dai dati originali
+// del server (ancora senza la modifica, in attesa di approvazione admin), dando
+// l'impressione che i dati inseriti (es. DATA_PREVISTA_RILASCIO) siano stati persi.
+function _prQueuedFor(row){
+  const pratNum = String(row.PRATICA||'').trim();
+  return PR_QUEUE.find(q => q.tratta_id === row.TRATTA_ID && q.ente === row.ENTE && q.tipo_permesso === row.TIPO_PERMESSO
+    && (!pratNum || String(q.original_pratica||'').trim() === pratNum)) || null;
 }
 
 document.getElementById('prList').addEventListener('click', e => {
@@ -3777,12 +3792,20 @@ function prSelectRow(idx){
 
   document.getElementById('pr-data-rich').value = '';
   document.getElementById('pr-data-app').value  = '';
-  document.getElementById('pr-data-prevista').value = prToInputDate(PR_SELECTED.DATA_PREVISTA_RILASCIO || '');
+  const queued = _prQueuedFor(PR_SELECTED);
+  const dataPrevistaVal = (queued && queued.fields && queued.fields.DATA_PREVISTA_RILASCIO) || PR_SELECTED.DATA_PREVISTA_RILASCIO || '';
+  document.getElementById('pr-data-prevista').value = prToInputDate(dataPrevistaVal);
   document.getElementById('pr-wrap-data-prevista').style.display = '';
   const noteEl = document.getElementById('pr-note');
   noteEl.value = ''; noteEl.disabled = false; noteEl.placeholder = 'Note opzionali — puoi salvare solo una nota senza cambiare stato';
   document.getElementById('pr-wrap-data-rich').style.display = 'none';
   document.getElementById('pr-wrap-data-app').style.display  = 'none';
+  const queuedMsgEl = document.getElementById('prMsgUpd');
+  if (queued) {
+    prSetMsg(queuedMsgEl, `Attenzione: questa tratta ha già una modifica in coda non ancora inviata (${Object.entries(queued.fields).map(([k,v])=>`${k}=${v}`).join(', ')}). Aggiungendo di nuovo, si accoderà una seconda modifica.`, false);
+  } else {
+    queuedMsgEl.textContent = '';
+  }
 
   const isAut = (PR_SELECTED.TIPO_PERMESSO||'').trim() === 'AUTORIZZAZIONE';
   document.getElementById('pr-wrap-no-nec').style.display = isAut ? '' : 'none';
