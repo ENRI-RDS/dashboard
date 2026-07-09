@@ -240,6 +240,10 @@
             <option value="all">Tutti</option>
           </select>
           <button class="btn btn-ghost btn-xs" id="refreshPendingBtn">Aggiorna</button>
+          <label style="margin:0">Impresa:</label>
+          <select id="pendingImpresaFilter" style="width:auto;padding:6px 10px" data-testid="pending-impresa-filter">
+            <option value="">Tutte</option>
+          </select>
         </div>
         <div id="pendingBody"><div class="empty" style="padding:16px">Caricamento…</div></div>
       </div>
@@ -894,12 +898,24 @@
     try{
       const status = $('pendingFilter').value;
       const d = await api(withTokenQuery('/api/admin/pending-updates?status=' + encodeURIComponent(status)));
-      if(!d.submissions || !d.submissions.length){
+
+      // Popola/aggiorna la select Impresa dalle submission del batch corrente,
+      // mantenendo la selezione attiva se ancora presente tra le opzioni.
+      const impSel = $('pendingImpresaFilter');
+      const impreseAttuali = [...new Set((d.submissions||[]).map(s => s.nome).filter(Boolean))].sort();
+      const impSelected = impSel.value;
+      impSel.innerHTML = '<option value="">Tutte</option>' +
+        impreseAttuali.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+      if (impreseAttuali.includes(impSelected)) impSel.value = impSelected;
+
+      const submissions = impSel.value ? (d.submissions||[]).filter(s => s.nome === impSel.value) : (d.submissions||[]);
+
+      if(!submissions.length){
         $('pendingBody').innerHTML = '<div class="empty" style="padding:24px;text-align:center">Nessuna submission</div>';
-        updatePendingBadge(0);
+        if(status === 'pending') updatePendingBadge(d.count);
         return;
       }
-      $('pendingBody').innerHTML = d.submissions.map(s => {
+      $('pendingBody').innerHTML = submissions.map(s => {
         const isUpdate = s.type === 'update';
         const accentColor = isUpdate ? 'var(--retelit-blue)' : 'var(--retelit-teal)';
         const typeIcon = isUpdate ? '+' : '';
@@ -959,6 +975,7 @@
     else b.style.display = 'none';
   }
   $('pendingFilter').addEventListener('change', refreshPending);
+  $('pendingImpresaFilter').addEventListener('change', refreshPending);
   $('refreshPendingBtn').addEventListener('click', refreshPending);
 
   // Pending actions
