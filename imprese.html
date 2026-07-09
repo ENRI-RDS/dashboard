@@ -580,15 +580,15 @@ window.addEventListener('pageshow', (e) => {
     const tratta = c.tratta_id || c.TRATTA_ID;
     const ente = c.ente || c.ENTE;
     const tipo = c.tipo_permesso || c.TIPO_PERMESSO;
-    const origPratica = c.original_pratica != null ? String(c.original_pratica).trim() : '';
-    const candidates = PRATICHE.filter(p => p.TRATTA_ID === tratta);
-    let match = null;
-    if (origPratica) {
-      match = candidates.find(p => String(p.PRATICA).trim() === origPratica && p.ENTE === ente && p.TIPO_PERMESSO === tipo);
+    const match = PRATICHE.find(p => p.TRATTA_ID === tratta && p.ENTE === ente && p.TIPO_PERMESSO === tipo);
+    if (match) {
+      const prat = (c.fields && c.fields.PRATICA) || c.original_pratica || match.PRATICA;
+      return buildCodice({...match, PRATICA: prat}) || tratta || '—';
     }
-    if (!match) match = candidates.find(p => p.ENTE === ente && p.TIPO_PERMESSO === tipo);
-    if (match && match._codice) return match._codice;
-    return origPratica || '—';
+    const tipoMap = {'AUTORIZZAZIONE':'AUT','NULLA OSTA':'NO'};
+    const prefix = tipoMap[(tipo||'').trim()] || (tipo||'').trim().substring(0,3);
+    const prat = String(c.original_pratica || (c.fields && c.fields.PRATICA) || '').trim();
+    return (prefix && prat) ? `${prefix}/${prat}` : (tratta || '—');
   }
 
   function parseDate(s){
@@ -1246,7 +1246,7 @@ window.addEventListener('pageshow', (e) => {
   const SOL_STATI_ESCLUSI = new Set([
     'IN REDAZIONE', 'IN FIRMA RDS',
     'OTTENUTO',
-    'NECESSARIA INTEGRAZIONE', 'IN REDAZIONE INTEGRAZIONE', 'PROTOCOLLATO INTEGRAZIONE',
+    'NECESSARIA INTEGRAZIONE', 'IN REDAZIONE INTEGRAZIONE',
     'NO COMPETENZA'
   ]);
 
@@ -1420,7 +1420,7 @@ window.addEventListener('pageshow', (e) => {
         <td class="mono">${escapeHtml(s.tratta_id)}</td>
         <td>${escapeHtml(ente)}</td>
         <td>${escapeHtml(tipo)}</td>
-        <td class="${stato !== '—' ? 'stato-' + stato.replace(/\s+/g,'.') : ''}">${escapeHtml(stato)}</td>
+        <td class="stato-cell" style="color:${stato !== '—' ? statoColor(stato) : ''}">${escapeHtml(stato)}</td>
         <td class="mono">${escapeHtml(dataRich)}</td>
         <td class="mono">${escapeHtml(dataAgg)}</td>
         <td class="mono">${escapeHtml(dataUltSol)}</td>
