@@ -1581,7 +1581,11 @@ async def list_pending(
                 rows = df[mask]
                 if rows.empty:
                     continue
-                row = rows.sort_values("DATA_ULTIMA_MODIFICA", ascending=False).iloc[0]
+                # NB: DATA_ULTIMA_MODIFICA è testo DD/MM/YYYY — ordinare come stringa
+                # è sbagliato (es. "26/03/2026" > "02/07/2026" lessicograficamente pur
+                # essendo antecedente). Serve un parsing esplicito a datetime.
+                _dum_dt = pd.to_datetime(rows["DATA_ULTIMA_MODIFICA"], format="%d/%m/%Y", errors="coerce")
+                row = rows.loc[_dum_dt.sort_values(ascending=False, na_position="last").index[0]]
                 ch["_stato_attuale"]     = str(row.get("STATO_PERMESSO", "") or "")
                 ch["_data_richiesta"]    = str(row.get("DATA_RICHIESTA", "") or "")
                 ch["_data_ult_mod"]      = str(row.get("DATA_ULTIMA_MODIFICA", "") or "")
