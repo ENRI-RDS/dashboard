@@ -1532,7 +1532,12 @@ window.loadXLSX = (function(){
   async function loadSED() {
     loadLS();
     try {
-      var geojson = await fetchWithSWR('SED_classificato.geojson', { isJson: true });
+      var qs = '?t=' + Date.now();
+      var geojson = await Promise.race([
+        fetch('SED_classificato.geojson' + qs, { headers: { 'x-session-token': _sessionToken() } })
+          .then(function(r){ return r.ok ? r.json() : Promise.reject(new Error('render-fail ' + r.status)); }),
+        _timeout(30000, 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.')
+      ]);
       _sedData = geojson.features.map(function(f) {
         var p = f.properties || {};
         var g = f.geometry || {};
@@ -2233,22 +2238,18 @@ function renderBarre(gruppiMap, totale, tooltip, onHover) {
 const RIEPILOGO_URL = 'Riepilogo_progettazione.csv';
 const MASTER_URL = 'Master.csv';
 
-// Cache CSV condivisa tra loadData() e loadCluster() — evita doppio fetch
-// sessionStorage cache: evita re-fetch ad ogni cambio pagina (TTL 5 minuti)
-const _CSV_CACHE_KEY = 'enri_riepilogo_csv';
-const _CSV_CACHE_TS  = 'enri_riepilogo_ts';
-const _CSV_CACHE_TTL = 5 * 60 * 1000; // 5 minuti
-
 let _riepilogoCsvText = null;
-// Flag anti-loop: impedisce che l'aggiornamento SWR rilanci un altro ciclo fetch
+// Flag anti-loop: evita che due chiamate concorrenti a fetchRiepilogoCSV(forceFresh) rifacciano il fetch
 let _swrUpdating = false;
 
-// URL statico GitHub: assoluto, bypassa il rewrite di api-config.js verso Render
+// URL statico GitHub: assoluto, bypassa il rewrite di api-config.js verso Render.
+// Usato solo per file NON in SENSITIVE_FILES (es. solleciti.csv), dove il push
+// GitHub è ancora attivo. Master.csv/Riepilogo_progettazione.csv/SED_classificato.geojson
+// sono SENSITIVE_FILES: il backend salta sempre il push (vedi server.py), quindi per
+// quei file si legge sempre e solo da Render/Mongo.
 function _staticFileUrl(rel) {
   return window.location.href.replace(/[?#].*$/, '').replace(/[^/]+$/, '') + rel;
 }
-// Alias per compatibilità con il codice esistente
-function _staticCsvUrl() { return _staticFileUrl(RIEPILOGO_URL); }
 
 function _timeout(ms, msg) {
   return new Promise((_, reject) =>
@@ -2256,121 +2257,26 @@ function _timeout(ms, msg) {
   );
 }
 
-async function fetchWithSWR(rel, { onUpdate, isJson = false } = {}) {
-  const qs = '?t=' + Math.floor(Date.now() / 300000); // slot da 5 min
-  const staticP = Promise.race([
-    fetch(_staticFileUrl(rel)).then(r => r.ok ? r.text() : Promise.reject('static-fail')),
-    _timeout(5000, 'static-timeout')
-  ]).catch(e => Promise.reject(e));
-  const renderP = Promise.race([
-    fetch(rel + qs, { headers: { 'x-session-token': _sessionToken() } }).then(r => r.ok ? r.text() : Promise.reject('render-fail')),
-    _timeout(30000, 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.')
-  ]).catch(e => Promise.reject(e));
-  const parse = text => isJson ? JSON.parse(text) : text;
-  let staticText = null;
-  try {
-    staticText = await staticP;
-    if (onUpdate) {
-      renderP.then(renderText => {
-        if (renderText && renderText !== staticText) {
-          try { onUpdate(parse(renderText)); } catch(_) {}
-        }
-      }).catch(() => {});
-    } else { renderP.catch(() => {}); }
-    return parse(staticText);
-  } catch(_) {
-    try {
-      return parse(await renderP);
-    } catch(e) {
-      throw new Error(e.message || 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.');
-    }
-  }
-}
-
-// Salva il testo CSV in memoria + sessionStorage
-function _saveCsvCache(text) {
-  _riepilogoCsvText = text;
-  try {
-    sessionStorage.setItem(_CSV_CACHE_KEY, text);
-    sessionStorage.setItem(_CSV_CACHE_TS, Date.now().toString());
-  } catch(e) { /* quota o privacy mode, ignora */ }
-}
-
 async function fetchRiepilogoCSV(forceFresh = false) {
-  // 1. Usa cache in memoria (stessa sessione).
-  //    Se _swrUpdating è attivo, usa sempre la cache anche se forceFresh=true:
-  //    evita che loadData() rilanciato dall'aggiornamento SWR faccia altri fetch.
-  if (_riepilogoCsvText && (!forceFresh || _swrUpdating)) { console.log('[Riepilogo] fonte: cache in memoria (nessun fetch).'); return _riepilogoCsvText; }
+  // Cache in memoria (stessa sessione pagina): evita doppio fetch quando
+  // loadData() e loadCluster() partono in parallelo allo stesso load.
+  // Se _swrUpdating è attivo, usa sempre la cache anche se forceFresh=true.
+  if (_riepilogoCsvText && (!forceFresh || _swrUpdating)) return _riepilogoCsvText;
 
-  // 2. Usa sessionStorage se non è scaduta
-  if (!forceFresh) {
-    try {
-      const ts = parseInt(sessionStorage.getItem(_CSV_CACHE_TS) || '0', 10);
-      if (Date.now() - ts < _CSV_CACHE_TTL) {
-        const cached = sessionStorage.getItem(_CSV_CACHE_KEY);
-        if (cached) { _riepilogoCsvText = cached; console.log('[Riepilogo] fonte: sessionStorage (cache valida, età ' + Math.round((Date.now()-ts)/1000) + 's, TTL 300s).'); return _riepilogoCsvText; }
-      }
-    } catch(e) { /* sessionStorage non disponibile, ignora */ }
-  }
-
-  // 3. STALE-WHILE-REVALIDATE
-  //    a) Fetch statico GitHub (assoluto → non passa per Render, risponde subito)
-  //    b) Fetch Render in parallelo (dati aggiornati, ma cold start lento)
-  //    → Mostra subito i dati GitHub, aggiorna silenziosamente quando arriva Render
-
-  const qs = forceFresh ? '?t=' + Date.now() : '';
-
-  // Fetch statico GitHub — timeout 5s tramite Promise.race (no AbortSignal)
-  const staticPromise = Promise.race([
-    fetch(_staticCsvUrl()).then(r => r.ok ? r.text() : Promise.reject('static-fail')),
-    _timeout(5000, 'static-timeout')
-  ]).catch(e => Promise.reject(e));
-
-  // Fetch Render — timeout 30s tramite Promise.race
-  const renderPromise = Promise.race([
-    fetch(RIEPILOGO_URL + qs, { headers: { 'x-session-token': _sessionToken() } }).then(r => r.ok ? r.text() : Promise.reject('render-fail')),
-    _timeout(30000, 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.')
-  ]).catch(e => Promise.reject(e));
-
-  // Prova a usare il file statico subito
-  let staticText = null;
+  // Riepilogo_progettazione.csv è in SENSITIVE_FILES lato backend:
+  // _push_to_github lo salta sempre (vedi server.py), quindi il file su
+  // GitHub è permanentemente stantio. Lettura diretta da Render/Mongo.
+  const qs = '?t=' + Date.now();
   try {
-    staticText = await staticPromise;
-    _saveCsvCache(staticText);
-    console.log('[Riepilogo] fonte iniziale: GitHub statico (cache) — verifica in background con Render/Mongo in corso...');
-
-    // Aggiorna in background con i dati freschi di Render
-    renderPromise.then(renderText => {
-      if (!renderText || renderText === _riepilogoCsvText) { console.log('[Riepilogo] Render/Mongo: nessuna differenza rispetto al file statico, resto sulla cache.'); return; }
-      if (_swrUpdating) return; // già in aggiornamento, evita loop
-      _swrUpdating = true;
-      _saveCsvCache(renderText);
-      console.log('[Riepilogo] Render/Mongo ha dati diversi dal file statico → aggiornamento silenzioso in corso...');
-      // Ricarica la dashboard silenziosamente; _swrUpdating blocca nuovi fetch dentro loadData
-      if (typeof loadData === 'function') {
-        loadData(false).catch(() => {}).finally(() => {
-          // loadData ricostruisce _trattaComuneMap ma NON _praticheDetailPerLotto/_masterByTratta
-          // (costruiti da Master.csv in _processMasterText): serve un backfill esplicito, altrimenti
-          // pratiche già costruite restano con comune vuoto anche dopo l'arrivo dei dati freschi.
-          if (typeof _backfillComuni === 'function') _backfillComuni();
-          _swrUpdating = false;
-          console.log('[Riepilogo] aggiornamento da Render/Mongo completato, comuni ricalcolati.');
-        });
-      } else {
-        _swrUpdating = false;
-      }
-    }).catch(() => { /* Render non disponibile — dati GitHub già mostrati, ok */ });
-
+    const text = await Promise.race([
+      fetch(RIEPILOGO_URL + qs, { headers: { 'x-session-token': _sessionToken() } })
+        .then(r => r.ok ? r.text() : Promise.reject(new Error('render-fail'))),
+      _timeout(30000, 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.')
+    ]);
+    _riepilogoCsvText = text;
     return _riepilogoCsvText;
-  } catch(_staticErr) {
-    // File statico non disponibile: aspetta Render (fallback classico)
-    try {
-      const renderText = await renderPromise;
-      _saveCsvCache(renderText);
-      return _riepilogoCsvText;
-    } catch(e) {
-      throw new Error(e.message || 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.');
-    }
+  } catch(e) {
+    throw new Error(e.message || 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.');
   }
 }
 
@@ -4024,40 +3930,17 @@ const MILESTONES_PER_LOTTO = {
 // ── CARICAMENTO MASTER.CSV ───────────────────────────────────────────────────
 async function loadMaster() {
   try {
-    // sessionStorage cache per Master.csv (stesso TTL del riepilogo)
-    let text = null;
-    try {
-      const ts = parseInt(sessionStorage.getItem('enri_master_ts') || '0', 10);
-      if (Date.now() - ts < _CSV_CACHE_TTL) {
-        text = sessionStorage.getItem('enri_master_csv') || null;
-      }
-    } catch(e) {}
-
-    if (!text) {
-      try {
-        text = await fetchWithSWR(MASTER_URL, {
-          isJson: false,
-          onUpdate: refreshText => {
-            // Render ha dati piu freschi: aggiorna la cache E ri-elabora subito
-            // la tabella / pannello SED, senza aspettare un reload della pagina.
-            try {
-              sessionStorage.setItem('enri_master_csv', refreshText);
-              sessionStorage.setItem('enri_master_ts', Date.now().toString());
-            } catch(e) {}
-            try {
-              _processMasterText(refreshText);
-              _backfillComuni();
-              if (typeof renderTabella === 'function') renderTabella();
-            } catch(e) { console.warn('Aggiornamento Master.csv (SWR) falito:', e.message); }
-          }
-        });
-      } catch(e) { return; }
-      if (!text) return;
-      try {
-        sessionStorage.setItem('enri_master_csv', text);
-        sessionStorage.setItem('enri_master_ts',  Date.now().toString());
-      } catch(e) {}
-    }
+    // Master.csv è in SENSITIVE_FILES lato backend: _push_to_github lo salta
+    // sempre (vedi server.py), quindi il file su GitHub è permanentemente
+    // stantio. Lettura diretta da Render/Mongo, niente più fetch-first su
+    // GitHub né cache sessionStorage.
+    const qs = '?t=' + Date.now();
+    const text = await Promise.race([
+      fetch(MASTER_URL + qs, { headers: { 'x-session-token': _sessionToken() } })
+        .then(r => r.ok ? r.text() : Promise.reject(new Error('render-fail ' + r.status))),
+      _timeout(30000, 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.')
+    ]);
+    if (!text) return;
     _processMasterText(text);
   } catch(e) {
     console.warn('Master.csv non caricato:', e.message);
