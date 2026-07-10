@@ -1749,6 +1749,39 @@ async def backfill_data_update_solleciti(
     return {"ok": True, "touched": len(touched), "column_created": column_created, "detail": touched}
 
 
+@app.put("/api/admin/pending-updates/{sub_id}")
+async def edit_pending(
+    sub_id: str,
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Corregge i dati (`changes`) di una submission impresa ancora in stato 'pending',
+    prima di approvarla — es. errori di digitazione o dati di test inviati per sbaglio.
+    Non è modificabile una submission già approvata/rifiutata (usare direttamente
+    la tabella Cantieri/Master per correzioni post-approvazione)."""
+    _check_token(x_upload_token or token_q)
+    try:
+        oid = ObjectId(sub_id)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    sub = await pending_col.find_one({"_id": oid})
+    if not sub:
+        raise HTTPException(404, "Submission not found")
+    if sub.get("status") != "pending":
+        raise HTTPException(409, f"Non modificabile: già {sub.get('status')}")
+    changes = payload.get("changes")
+    if not isinstance(changes, list):
+        raise HTTPException(400, "'changes' deve essere una lista")
+    await pending_col.update_one(
+        {"_id": oid},
+        {"$set": {"changes": changes, "edited_at": _now_iso(), "edited_by": x_actor_nome or "admin"}},
+    )
+    await _log_admin_action("edit_pending_update", sub_id, x_actor_nome)
+    return {"ok": True}
+
+
 @app.post("/api/admin/pending-updates/{sub_id}/approve")
 async def approve_pending(
     sub_id: str,
