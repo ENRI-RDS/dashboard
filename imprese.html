@@ -917,7 +917,10 @@ window.addEventListener('pageshow', (e) => {
     const stato = $('fld-stato').value;
     const noteVal = $('fld-note').value.trim();
     const prevRilascio = (stato === 'OTTENUTO' || stato === 'NO COMPETENZA') ? '' : $('fld-prev-rilascio').value;
-    if (!stato && !noteVal && !prevRilascio) return setMsg($('msgUpd'), 'Seleziona un nuovo stato, imposta una data prevista rilascio, oppure inserisci una nota', false);
+    const checksVisibleGuard = $('wrap-convenzione').style.display !== 'none';
+    const polizzaChanged = checksVisibleGuard && $('fld-polizza').checked !== ((SELECTED['POLIZZA ']?.trim() || '') === 'SI');
+    const convenzioneChanged = checksVisibleGuard && $('fld-convenzione').checked !== ((SELECTED['CONVENZIONE']?.trim() || '') === 'SI');
+    if (!stato && !noteVal && !prevRilascio && !polizzaChanged && !convenzioneChanged) return setMsg($('msgUpd'), 'Seleziona un nuovo stato, imposta una data prevista rilascio, inserisci una nota, oppure aggiorna Polizza/Convenzione', false);
 
     const fields = {};
     if (stato) fields.STATO_PERMESSO = stato;
@@ -935,12 +938,14 @@ window.addEventListener('pageshow', (e) => {
 
     if (noteVal) fields.NOTE = noteVal;
 
-    // Polizza/Convenzione/Nulla Osta: solo se si sta cambiando stato (non richiesti per NO COMPETENZA/OTTENUTO, e non pertinenti per un aggiornamento di sola nota)
+    // Nulla Osta: solo se si sta cambiando stato (non richiesto per NO COMPETENZA/OTTENUTO/sola nota)
     const skipChecks = !stato || stato === 'NO COMPETENZA' || stato === 'OTTENUTO';
 
-    const polizza = skipChecks ? '' : ($('fld-polizza').checked ? 'SI' : 'NO');
+    // Polizza/Convenzione: indipendenti dallo stato, vanno inviati ogni volta che i campi sono visibili (wrap non 'none')
+    const checksVisible = $('wrap-convenzione').style.display !== 'none';
+    const polizza = checksVisible ? ($('fld-polizza').checked ? 'SI' : 'NO') : '';
     if (polizza) fields['POLIZZA '] = polizza;
-    const convenzione = skipChecks ? '' : ($('fld-convenzione').checked ? 'SI' : 'NO');
+    const convenzione = checksVisible ? ($('fld-convenzione').checked ? 'SI' : 'NO') : '';
     if (convenzione) fields['CONVENZIONE'] = convenzione;
 
     if (prevRilascio) fields['DATA_PREVISTA_RILASCIO'] = fromInputDate(prevRilascio);
