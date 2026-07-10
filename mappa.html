@@ -1454,17 +1454,38 @@ map.on('zoomend moveend', function(){ setTimeout(_fixScaleBar, 30); });
 setTimeout(_fixScaleBar, 800);
 
 // Esporta il tracciato QGIS (tutte le tratte, o solo i lotti attualmente filtrati in
-// sidebar se selectedLotti non è vuoto). SED (attraversamenti) incluso solo su conferma
-// esplicita, in un FILE SEPARATO dalle tratte: geometrie diverse (MultiLineString vs Point)
-// nello stesso FeatureCollection vengono lette come un solo tipo da molti tool GIS
-// (es. QGIS/GDAL deducono il tipo dalla prima feature), causando geometrie scartate.
-function _prepareExportProps(f, isSed){
+// sidebar se selectedLotti non è vuoto), con le info pratica già presenti in QGIS.geojson
+// (STATO_AUTORIZZAZIONE, PRATICA, ecc. — qui NON escluse: a differenza dell'export impresa,
+// questa è la vista staff, senza motivo di nasconderle) e i dati cantiere (RO_CANTIERI,
+// caricato da /api/cantieri) aggiunti per TRATTA_ID con prefisso CANTIERE_*.
+// SED (attraversamenti) incluso solo su conferma esplicita, in un FILE SEPARATO dalle tratte:
+// geometrie diverse (MultiLineString vs Point) nello stesso FeatureCollection vengono lette
+// come un solo tipo da molti tool GIS (es. QGIS/GDAL deducono il tipo dalla prima feature),
+// causando geometrie scartate.
+function _cantiereByTratta(){
+  const map = {};
+  (RO_CANTIERI || []).forEach(c => {
+    (c.tratte || []).forEach(t => { if (t.tratta_id) map[t.tratta_id] = c; });
+  });
+  return map;
+}
+function _prepareExportProps(f, isSed, cantiereMap){
   const props = {...f.properties};
   if (!isSed) {
     props.CLUSTER = f.properties.CLUSTER ?? f.properties.ID_CLUSTER ?? f.properties.cluster ?? null;
+    const c = cantiereMap ? cantiereMap[f.properties.TRATTA_ID] : null;
+    if (c) {
+      props.CANTIERE_CODICE                 = c.codice_cantiere || null;
+      props.CANTIERE_STATO                  = c.stato_cantiere || null;
+      props.CANTIERE_IMPRESA                = c.impresa || null;
+      props.CANTIERE_TECNICA_SCAVO          = c.tecnica_scavo || null;
+      props.CANTIERE_METRI_TOTALI           = c.metri_totali ?? null;
+      props.CANTIERE_METRI_SCAVATI          = c.metri_scavati ?? null;
+      props.CANTIERE_DATA_INIZIO_EFFETTIVA  = c.data_inizio_effettiva || null;
+      props.CANTIERE_DATA_FINE_EFFETTIVA    = c.data_fine_effettiva || null;
+      props.CANTIERE_NOTE                   = c.note || null;
+    }
   }
-  const EXPORT_EXCLUDE_PROPS = ['MOTIVO_NO','STATO_AUTORIZZAZIONE','STATO_NULLAOSTA','STATO_ORDINANZA','PROTOCOLLO_AUT','PRATICA','LAVORABILE','STATO_LEGENDA','CAMPO AWS'];
-  EXPORT_EXCLUDE_PROPS.forEach(k => delete props[k]);
   return props;
 }
 function _downloadGeoJSON(features, filename){
@@ -1480,10 +1501,12 @@ function _downloadGeoJSON(features, filename){
 async function exportGeoJSON(){
   const btn = document.querySelector('[onclick="exportGeoJSON()"]');
   if (!allFeatures || !allFeatures.length) { alert('Nessun dato caricato ancora, riprova tra qualche secondo.'); return; }
+  if (!RO_CANTIERI.length) { await _roLoadCantieri(); } // di norma già caricato all'avvio pagina, fallback di sicurezza
+  const cantiereMap = _cantiereByTratta();
   const lottiScope = selectedLotti.size ? [...selectedLotti] : null; // null = tutti i lotti
   const lottiSuffix = lottiScope ? lottiScope.join('-') : 'Tutti';
   const tratte = lottiScope ? allFeatures.filter(f => lottiScope.includes(f.properties.LOTTO)) : allFeatures;
-  const tratteFeatures = tratte.map(f => ({...f, properties: _prepareExportProps(f, false)}));
+  const tratteFeatures = tratte.map(f => ({...f, properties: _prepareExportProps(f, false, cantiereMap)}));
   _downloadGeoJSON(tratteFeatures, 'ENRI_Lotto_' + lottiSuffix + '_tratte.geojson');
 
   const vuoiSed = confirm('Vuoi includere anche gli attraversamenti (SED) in un secondo file?');
@@ -1493,7 +1516,7 @@ async function exportGeoJSON(){
       const geojson = await fetchWithSWR('SED_classificato.geojson', { isJson: true });
       const sedFeatures = (geojson.features || [])
         .filter(f => !lottiScope || lottiScope.includes(f.properties.LOTTO))
-        .map(f => ({...f, properties: _prepareExportProps(f, true)}));
+        .map(f => ({...f, properties: _prepareExportProps(f, true, null)}));
       if (sedFeatures.length) {
         // Piccolo ritardo tra i due download: alcuni browser bloccano download multipli simultanei.
         await new Promise(r => setTimeout(r, 400));
@@ -3252,7 +3275,7 @@ window.addEventListener('load', () => {
 
     <div class="help-section">
       <h4>⬇ Esporta GeoJSON</h4>
-      <p>Il pulsante <strong>GeoJSON</strong> in alto esporta il tracciato in un file da salvare sul tuo computer: se hai un filtro lotto attivo in sidebar esporta solo quei lotti, altrimenti esporta tutto il tracciato. Su richiesta puoi includere anche gli attraversamenti (SED) in un secondo file separato.</p>
+      <p>Il pulsante <strong>GeoJSON</strong> in alto esporta il tracciato in un file da salvare sul tuo computer, con tutte le info pratica (stato autorizzativo, ente, codici pratica, ecc.) e cantiere (stato, metri scavati/totali, impresa, date) associate a ogni tratta: se hai un filtro lotto attivo in sidebar esporta solo quei lotti, altrimenti esporta tutto il tracciato. Su richiesta puoi includere anche gli attraversamenti (SED) in un secondo file separato.</p>
     </div>
 
     <div class="help-section">
