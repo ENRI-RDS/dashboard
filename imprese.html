@@ -916,7 +916,8 @@ window.addEventListener('pageshow', (e) => {
     if (!SELECTED) return;
     const stato = $('fld-stato').value;
     const noteVal = $('fld-note').value.trim();
-    if (!stato && !noteVal) return setMsg($('msgUpd'), 'Seleziona un nuovo stato oppure inserisci una nota', false);
+    const prevRilascio = (stato === 'OTTENUTO' || stato === 'NO COMPETENZA') ? '' : $('fld-prev-rilascio').value;
+    if (!stato && !noteVal && !prevRilascio) return setMsg($('msgUpd'), 'Seleziona un nuovo stato, imposta una data prevista rilascio, oppure inserisci una nota', false);
 
     const fields = {};
     if (stato) fields.STATO_PERMESSO = stato;
@@ -942,7 +943,6 @@ window.addEventListener('pageshow', (e) => {
     const convenzione = skipChecks ? '' : ($('fld-convenzione').checked ? 'SI' : 'NO');
     if (convenzione) fields['CONVENZIONE'] = convenzione;
 
-    const prevRilascio = (!stato || stato === 'OTTENUTO' || stato === 'NO COMPETENZA') ? '' : $('fld-prev-rilascio').value;
     if (prevRilascio) fields['DATA_PREVISTA_RILASCIO'] = fromInputDate(prevRilascio);
 
     // Nulla Osta Necessario (solo per AUTORIZZAZIONE, non richiesto per NO COMPETENZA/OTTENUTO/sola nota)
