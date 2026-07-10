@@ -411,6 +411,27 @@
   </div>
 </div>
 
+<!-- Edit pending changes modal -->
+<div class="modal" id="editPendingModal" data-testid="edit-pending-modal">
+  <div class="modal-card" style="max-width:720px;max-height:88vh;display:flex;flex-direction:column">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="editPendingTitle">Modifica dati inviati</div>
+        <div class="modal-sub">Correggi i valori prima di approvare. Formato JSON dell'array <code>changes</code> — stessa struttura mostrata in "Dettagli".</div>
+      </div>
+      <button class="modal-close" id="editPendingClose">&times;</button>
+    </div>
+    <div style="overflow-y:auto;flex:1;padding:16px 20px">
+      <textarea id="editPendingTextarea" style="width:100%;min-height:360px;font-family:var(--font-mono);font-size:12px;padding:10px;border:1px solid var(--border);border-radius:8px;resize:vertical"></textarea>
+      <div class="msg" id="editPendingMsg" style="margin-top:8px"></div>
+      <div class="row" style="margin-top:12px;gap:10px">
+        <button class="btn" id="editPendingSaveBtn">Salva correzione</button>
+        <button class="btn btn-ghost" id="editPendingCancelBtn">Annulla</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Rename modal -->
 <div class="modal" id="renameModal" data-testid="rename-modal">
   <div class="modal-card" style="max-width:520px">
@@ -1024,6 +1045,7 @@
         }
         const actions = s.status === 'pending' ? `
           <button class="btn btn-xs" data-act="approve" data-id="${s._id}" style="background:var(--ok);font-size:11px" data-testid="approve-${s._id}">✓ Approva</button>
+          <button class="btn btn-ghost btn-xs" data-act="edit-pending" data-id="${s._id}" style="font-size:11px" data-testid="edit-${s._id}">✎ Modifica</button>
           <button class="btn btn-danger btn-xs" data-act="reject" data-id="${s._id}" style="font-size:11px" data-testid="reject-${s._id}">✗ Rifiuta</button>` : '';
         return `<div class="pend-card" style="border-left:3px solid ${accentColor}${isUpdate ? '' : ';background:var(--retelit-ice)'}">
           <div class="pend-card-head">
@@ -1091,9 +1113,41 @@
         toast('Errore: ' + err.message, true);
         refreshPending(); refreshPendingCount();
       }
+    } else if(act === 'edit-pending' && btn.dataset.id){
+      const detailsBtn = btn.closest('.pend-card')?.querySelector('[data-act="details"]'); if(!detailsBtn){toast('Errore: dati non trovati',true);return;} const sub = JSON.parse(detailsBtn.dataset.payload.replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>'));
+      openEditPending(sub);
     } else if(act === 'details' && btn.dataset.payload){
       try { showDetails(JSON.parse(btn.dataset.payload.replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>'))); } catch(_){}
     }
+  });
+
+  // Modifica dati submission pending prima dell'approvazione
+  let EDIT_PENDING_ID = null;
+  function openEditPending(sub){
+    EDIT_PENDING_ID = sub._id;
+    $('editPendingTitle').textContent = `Modifica dati inviati — ${sub.nome}`;
+    $('editPendingTextarea').value = JSON.stringify(sub.changes || [], null, 2);
+    $('editPendingMsg').textContent = ''; $('editPendingMsg').className = 'msg';
+    $('editPendingModal').classList.add('open');
+  }
+  $('editPendingClose').addEventListener('click', () => $('editPendingModal').classList.remove('open'));
+  $('editPendingCancelBtn').addEventListener('click', () => $('editPendingModal').classList.remove('open'));
+  $('editPendingSaveBtn').addEventListener('click', async () => {
+    if (!EDIT_PENDING_ID) return;
+    let parsed;
+    try{ parsed = JSON.parse($('editPendingTextarea').value); }
+    catch(e){ setMsg($('editPendingMsg'), 'JSON non valido: ' + e.message, false); return; }
+    if (!Array.isArray(parsed)){ setMsg($('editPendingMsg'), 'Deve essere un array', false); return; }
+    try{
+      await api(withTokenQuery('/api/admin/pending-updates/' + EDIT_PENDING_ID), {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ changes: parsed }),
+      });
+      $('editPendingModal').classList.remove('open');
+      EDIT_PENDING_ID = null;
+      refreshPending();
+      toast('Dati corretti — controlla i "Dettagli" prima di approvare');
+    }catch(err){ setMsg($('editPendingMsg'), 'Errore: ' + err.message, false); }
   });
 
   // ──────────────────────────────────────────────────────────────────────
