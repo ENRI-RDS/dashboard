@@ -202,6 +202,7 @@ var GANTT_ROWS = [{"t":"g","label":"FASE 1 · PROGETTAZIONE/PERMESSI"},{"t":"bar
 
 var LOTTO_ID = '1A';
 GANTT_ROWS.forEach(function(r, i) { r.id = i; }); /* id stabile: indice nell'array statico */
+GANTT_ROWS.forEach(function(r) { r._baseDate = r.date || null; r._baseStart = r.start || null; r._baseEnd = r.end || null; }); /* baseline .mpp, pre-merge: serve a propagateGanttDatesFromPermits() per calcolare lo scostamento */
 
 /* ── Dipendenze reali, estratte 1:1 dal .mpp originale (Gantt_Cluster_1_e_2.mpp,
    letto via mpxj/UniversalProjectReader) — non più approssimate: ogni riga di
@@ -601,6 +602,51 @@ async function mergeCantieriProgress() {
   } catch (e) {
     console.warn('Avanzamento cantieri non caricato per il gantt:', e.message);
   }
+}
+
+/* ── propagazione date reali lungo la catena di dipendenze ──
+   mergeMasterCsv() aggiorna solo le milestone Fase 2 (data reale/prevista dalla
+   pratica). Finché una pratica scivola, però, anche Opere Civili/Test-Collaudo/
+   As-Built dello stesso ente dovrebbero slittare di conseguenza — altrimenti
+   le frecce di dipendenza (GANTT_DEPS) risultano visivamente scollegate dalle
+   date mostrate. Per ogni milestone con dato reale (row.real, impostato da
+   mergeMasterCsv), calcola lo scostamento in giorni rispetto alla baseline
+   .mpp (row._baseDate) e lo applica in cascata ai successori (Fase 5→6→7),
+   preservando la durata di ciascuna fase (tutte le dipendenze sono FS lag
+   0/10/30/70, quindi uno spostamento uniforme del predecessore trasla
+   l'intera catena a valle senza ricalcoli di durata). Non tocca righe già
+   aggiornate da mergeCantieriProgress() (avanzamento scavi reale, più
+   autorevole di uno spostamento inferito dal solo permesso) né gli override
+   manuali admin (applicati sempre dopo, in applyGanttOverrides()). */
+function propagateGanttDatesFromPermits() {
+  var byId = {};
+  GANTT_ROWS.forEach(function(r) { byId[r.id] = r; });
+  GANTT_ROWS.forEach(function(msRow) {
+    if (msRow.t !== 'ms' || !msRow.real || !msRow.date || !msRow._baseDate) return;
+    var baseD = parseDateStr(msRow._baseDate), realD = parseDateStr(msRow.date);
+    if (!baseD || !realD) return;
+    var deltaDays = Math.round((realD - baseD) / 86400000);
+    if (!deltaDays) return; /* nessuno scostamento, niente da propagare */
+    var queue = ganttSuccessorsOf(msRow.id);
+    var visited = {};
+    while (queue.length) {
+      var sid = queue.shift();
+      if (visited[sid]) continue;
+      visited[sid] = true;
+      var row = byId[sid];
+      if (!row || row.t !== 'bar') continue;
+      if (!row.real) { /* non sovrascrive righe già aggiornate da mergeCantieriProgress (dato scavi reale) */
+        if (row._baseStart) { var s = parseDateStr(row._baseStart); if (s) row.start = shiftDmy(s, deltaDays); }
+        if (row._baseEnd) { var e = parseDateStr(row._baseEnd); if (e) row.end = shiftDmy(e, deltaDays); }
+        row.shiftedFromPermit = true;
+      }
+      ganttSuccessorsOf(sid).forEach(function(next) { queue.push(next); });
+    }
+  });
+}
+function shiftDmy(d, days) {
+  var nd = new Date(d.getTime() + days * 86400000);
+  return ('0' + nd.getDate()).slice(-2) + '/' + ('0' + (nd.getMonth() + 1)).slice(-2) + '/' + nd.getFullYear();
 }
 
 /* ── KPI header ── */
@@ -1032,6 +1078,7 @@ window.addEventListener('load', function() {
       buildKpi();
       buildGantt();
       Promise.all([mergeMasterCsv(), mergeCantieriProgress(), fetchGanttOverrides()]).then(function() {
+        propagateGanttDatesFromPermits(); /* Fase 5/6/7 slittano con le previsioni impresa sulla pratica corrispondente */
         applyGanttOverrides(); /* vince sempre su baseline + Master.csv */
         buildKpi();
         buildGantt();
