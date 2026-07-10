@@ -3953,7 +3953,10 @@ document.getElementById('prAddToQueue').onclick = async () => {
   const stato = document.getElementById('pr-stato').value;
   const dataPrevista = (stato === 'OTTENUTO' || stato === 'NO COMPETENZA') ? '' : document.getElementById('pr-data-prevista').value;
   const noteVal = document.getElementById('pr-note').value.trim();
-  if (!stato && !dataPrevista && !noteVal) return prSetMsg(msgEl, 'Seleziona il nuovo stato, imposta una data prevista rilascio, oppure inserisci una nota', false);
+  const checksVisibleGuard = document.getElementById('pr-wrap-convenzione').style.display !== 'none';
+  const polizzaChanged = checksVisibleGuard && document.getElementById('pr-polizza').checked !== ((PR_SELECTED['POLIZZA ']||'').trim() === 'SI');
+  const convenzioneChanged = checksVisibleGuard && document.getElementById('pr-convenzione').checked !== ((PR_SELECTED['CONVENZIONE']||'').trim() === 'SI');
+  if (!stato && !dataPrevista && !noteVal && !polizzaChanged && !convenzioneChanged) return prSetMsg(msgEl, 'Seleziona il nuovo stato, imposta una data prevista rilascio, inserisci una nota, oppure aggiorna Polizza/Convenzione', false);
   const fields = {};
   if (stato) fields.STATO_PERMESSO = stato;
   if (dataPrevista) fields.DATA_PREVISTA_RILASCIO = prFromInputDate(dataPrevista);
