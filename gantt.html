@@ -165,6 +165,10 @@ tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);fo
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
           <span id="editModeBtnLabel">Modalità modifica</span>
         </button>
+        <button id="ratesBtn" class="btn-sm" style="display:none;gap:6px;" onclick="openGanttRatesPanel()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
+          Tassi di produzione
+        </button>
       </div>
     </div>
     <div style="padding:16px 20px 20px;overflow-x:auto;">
@@ -173,6 +177,43 @@ tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);fo
   </div>
 
 </div><!-- /main -->
+
+<div id="ganttRatesOverlay" style="display:none;position:fixed;inset:0;background:rgba(4,63,117,.35);z-index:9998;" onclick="if(event.target===this) closeGanttRatesPanel();">
+  <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:12px;box-shadow:0 12px 40px rgba(4,63,117,.3);width:560px;max-width:92vw;max-height:82vh;overflow-y:auto;font-family:Raleway,sans-serif;">
+    <div style="padding:18px 22px;border-bottom:1px solid var(--gray-200);display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <div style="font-size:14px;font-weight:700;color:var(--gray-700);">Tassi di produzione scavo</div>
+        <div style="font-size:11px;color:var(--gray-500);margin-top:2px;">Metri/giorno per il calcolo di Opere Civili — priorità: Permesso &gt; Impresa &gt; Lotto &gt; Default</div>
+      </div>
+      <button onclick="closeGanttRatesPanel()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--gray-500);line-height:1;">×</button>
+    </div>
+    <div id="ganttRatesList" style="padding:14px 22px;"></div>
+    <div style="padding:14px 22px 20px;border-top:1px solid var(--gray-200);">
+      <div style="font-size:10.5px;font-weight:700;color:var(--gray-500);letter-spacing:.04em;margin-bottom:8px;">NUOVA REGOLA</div>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+        <div>
+          <label style="display:block;font-size:10px;color:var(--gray-500);margin-bottom:3px;">Ambito</label>
+          <select id="grpScopeType" style="padding:6px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;font-family:Raleway,sans-serif;">
+            <option value="global">Default (globale)</option>
+            <option value="lotto">Lotto</option>
+            <option value="impresa">Impresa</option>
+            <option value="pratica">Permesso</option>
+          </select>
+        </div>
+        <div id="grpScopeKeyWrap" style="display:none;">
+          <label style="display:block;font-size:10px;color:var(--gray-500);margin-bottom:3px;">Valore (es. 1A / ROSSI SPA / AUT/1/1A)</label>
+          <input id="grpScopeKey" style="padding:6px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;width:170px;font-family:JetBrains Mono,monospace;">
+        </div>
+        <div>
+          <label style="display:block;font-size:10px;color:var(--gray-500);margin-bottom:3px;">m/giorno</label>
+          <input id="grpMGiorno" type="number" min="1" max="10000" step="1" style="padding:6px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;width:80px;font-family:JetBrains Mono,monospace;">
+        </div>
+        <button class="btn-sm" style="background:var(--retelit-blue);color:#fff;border-color:var(--retelit-blue);" onclick="saveGanttRate()">Salva</button>
+      </div>
+      <div id="grpErr" style="display:none;color:#C0392B;font-size:11px;margin-top:8px;"></div>
+    </div>
+  </div>
+</div>
 
 <div id="ganttEditPopover"></div>
 
@@ -198,153 +239,255 @@ function fmtIt(n) {
 }
 
 /* ── dati Lotto 1A (estratti da Progetto_ENRI_GANTT_Cluster_1-2.mpp, WBS 1.1.1) ── */
-var GANTT_ROWS = [{"t":"g","label":"FASE 1 · PROGETTAZIONE/PERMESSI"},{"t":"bar","label":"Progettazione e presentazione permesso","start":"29/04/2026","end":"09/06/2026","pct":100.0},{"t":"g","label":"FASE 2 · OTTENIMENTO PERMESSI (31 pratiche)"},{"t":"ms","label":"COMUNE DI CORNAREDO - AUT/1/1A","date":"21/07/2026","pct":0.0,"sub":"5,13 km"},{"t":"ms","label":"PROVINCIA DI MILANO - AUT/3/1A","date":"21/07/2026","pct":0.0,"sub":"0,81 km"},{"t":"ms","label":"AIPO - NO/4/1A","date":"21/07/2026","pct":0.0,"sub":"0,05 km"},{"t":"ms","label":"RFI - NO/5/1A","date":"21/07/2026","pct":0.0,"sub":"0,15 km"},{"t":"ms","label":"SATAP - NO/6/1A","date":"21/07/2026","pct":0.0,"sub":"0,15 km"},{"t":"ms","label":"COMUNE DI PERO - AUT/13/1A","date":"21/07/2026","pct":0.0,"sub":"1,75 km"},{"t":"ms","label":"COMUNE DI PERO - AUT/24/1A","date":"21/07/2026","pct":0.0,"sub":"2,76 km"},{"t":"ms","label":"COMUNE DI RHO - AUT/23/1A","date":"21/07/2026","pct":0.0,"sub":"0,36 km"},{"t":"ms","label":"AIPO - NO/7/1A","date":"21/07/2026","pct":0.0,"sub":"0,04 km"},{"t":"ms","label":"ANAS - NO/11/1A","date":"21/07/2026","pct":0.0,"sub":"0,15 km"},{"t":"ms","label":"ANAS - NO/22/1A","date":"21/07/2026","pct":0.0,"sub":"0,70 km"},{"t":"ms","label":"EST VILLORESI - NO/26/1A","date":"21/07/2026","pct":0.0,"sub":"0,81 km"},{"t":"ms","label":"RFI - NO/9/1A","date":"21/07/2026","pct":0.0,"sub":"0,23 km"},{"t":"ms","label":"SATAP - NO/21/1A","date":"21/07/2026","pct":0.0,"sub":"0,10 km"},{"t":"ms","label":"SATAP - NO/25/1A","date":"21/07/2026","pct":0.0,"sub":"0,15 km"},{"t":"ms","label":"SATAP - NO/28/1A","date":"21/07/2026","pct":0.0,"sub":"0,70 km"},{"t":"ms","label":"SERRAVALLE - NO/10/1A","date":"21/07/2026","pct":0.0,"sub":"0,15 km"},{"t":"ms","label":"SERRAVALLE - NO/27/1A","date":"21/07/2026","pct":0.0,"sub":"0,10 km"},{"t":"ms","label":"COMUNE DI RHO - AUT/2/1A","date":"21/07/2026","pct":0.0,"sub":"2,01 km"},{"t":"ms","label":"COMUNE DI RHO - AUT/20/1A","date":"21/07/2026","pct":0.0,"sub":"3,16 km"},{"t":"ms","label":"COMUNE DI RHO - AUT/23/1A","date":"21/07/2026","pct":0.0,"sub":"0,22 km"},{"t":"ms","label":"COMUNE DI PERO - AUT/13/1A","date":"21/07/2026","pct":0.0,"sub":"0,22 km"},{"t":"ms","label":"PROVINCIA DI MILANO - AUT/12/1A","date":"21/07/2026","pct":0.0,"sub":"0,46 km"},{"t":"ms","label":"AIPO - NO/8/1A","date":"21/07/2026","pct":0.0,"sub":"0,46 km"},{"t":"ms","label":"AIPO - NO/14/1A","date":"21/07/2026","pct":0.0,"sub":"0,03 km"},{"t":"ms","label":"AIPO - NO/16/1A","date":"21/07/2026","pct":0.0,"sub":"0,03 km"},{"t":"ms","label":"AIPO - NO/18/1A","date":"21/07/2026","pct":0.0,"sub":"0,01 km"},{"t":"ms","label":"AIPO - NO/29/1A","date":"21/07/2026","pct":0.0,"sub":"0,03 km"},{"t":"ms","label":"ANAS - NO/17/1A","date":"21/07/2026","pct":0.0,"sub":"0,05 km"},{"t":"ms","label":"RFI - NO/15/1A","date":"21/07/2026","pct":0.0,"sub":"0,02 km"},{"t":"ms","label":"SERRAVALLE - NO/19/1A","date":"21/07/2026","pct":0.0,"sub":"0,23 km"},{"t":"g","label":"FASE 3 · APPROVVIGIONAMENTO MATERIALI"},{"t":"bar","label":"Richiesta forniture","start":"28/05/2026","end":"29/05/2026","pct":100.0},{"t":"ms","label":"Consegna materiali 1 trance","date":"15/06/2026","pct":100.0},{"t":"ms","label":"Consegna materiali 2 trance","date":"13/07/2026","pct":0.0},{"t":"ms","label":"Consegna materiali 3 trance","date":"07/09/2026","pct":0.0},{"t":"g","label":"FASE 4 · CANTIERIZZAZIONE"},{"t":"bar","label":"Cantierizzazione","start":"06/07/2026","end":"17/07/2026","pct":0.0},{"t":"g","label":"FASE 5 · OPERE CIVILI (31 pratiche, per ente/permesso)"},{"t":"bar","label":"1 · COMUNE DI CORNAREDO - AUT/1/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"2 · PROVINCIA DI MILANO - AUT/3/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"3 · AIPO - NO/4/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"4 · RFI - NO/5/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"5 · SATAP - NO/6/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"6 · COMUNE DI PERO - AUT/13/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"7 · COMUNE DI PERO - AUT/24/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"8 · COMUNE DI RHO - AUT/23/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"9 · AIPO - NO/7/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"10 · ANAS - NO/11/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"11 · ANAS - NO/22/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"12 · EST VILLORESI - NO/26/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"13 · RFI - NO/9/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"14 · SATAP - NO/21/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"15 · SATAP - NO/25/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"16 · SATAP - NO/28/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"17 · SERRAVALLE - NO/10/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"18 · SERRAVALLE - NO/27/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"19 · COMUNE DI RHO - AUT/2/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"20 · COMUNE DI RHO - AUT/20/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"21 · COMUNE DI RHO - AUT/23/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"22 · COMUNE DI PERO - AUT/13/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"23 · PROVINCIA DI MILANO - AUT/12/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"24 · AIPO - NO/8/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"25 · AIPO - NO/14/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"26 · AIPO - NO/16/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"27 · AIPO - NO/18/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"28 · AIPO - NO/29/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"29 · ANAS - NO/17/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"30 · RFI - NO/15/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"bar","label":"31 · SERRAVALLE - NO/19/1A","start":"22/07/2026","end":"25/08/2026","pct":0.0,"sub":"Accantieramento, scavo tradizionale, scavo no dig, pozzetti"},{"t":"g","label":"FASE 6 · TEST/COLLAUDO (31 pratiche, per ente/permesso)"},{"t":"bar","label":"1 · COMUNE DI CORNAREDO - AUT/1/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"2 · PROVINCIA DI MILANO - AUT/3/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"3 · AIPO - NO/4/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"4 · RFI - NO/5/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"5 · SATAP - NO/6/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"6 · COMUNE DI PERO - AUT/13/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"7 · COMUNE DI PERO - AUT/24/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"8 · COMUNE DI RHO - AUT/23/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"9 · AIPO - NO/7/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"10 · ANAS - NO/11/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"11 · ANAS - NO/22/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"12 · EST VILLORESI - NO/26/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"13 · RFI - NO/9/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"14 · SATAP - NO/21/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"15 · SATAP - NO/25/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"16 · SATAP - NO/28/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"17 · SERRAVALLE - NO/10/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"18 · SERRAVALLE - NO/27/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"19 · COMUNE DI RHO - AUT/2/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"20 · COMUNE DI RHO - AUT/20/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"21 · COMUNE DI RHO - AUT/23/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"22 · COMUNE DI PERO - AUT/13/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"23 · PROVINCIA DI MILANO - AUT/12/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"24 · AIPO - NO/8/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"25 · AIPO - NO/14/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"26 · AIPO - NO/16/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"27 · AIPO - NO/18/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"28 · AIPO - NO/29/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"29 · ANAS - NO/17/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"30 · RFI - NO/15/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"bar","label":"31 · SERRAVALLE - NO/19/1A","start":"26/08/2026","end":"28/08/2026","pct":0.0},{"t":"g","label":"FASE 7 · AS-BUILT (31 pratiche, per ente/permesso)"},{"t":"bar","label":"1 · COMUNE DI CORNAREDO - AUT/1/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"2 · PROVINCIA DI MILANO - AUT/3/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"3 · AIPO - NO/4/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"4 · RFI - NO/5/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"5 · SATAP - NO/6/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"6 · COMUNE DI PERO - AUT/13/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"7 · COMUNE DI PERO - AUT/24/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"8 · COMUNE DI RHO - AUT/23/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"9 · AIPO - NO/7/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"10 · ANAS - NO/11/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"11 · ANAS - NO/22/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"12 · EST VILLORESI - NO/26/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"13 · RFI - NO/9/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"14 · SATAP - NO/21/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"15 · SATAP - NO/25/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"16 · SATAP - NO/28/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"17 · SERRAVALLE - NO/10/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"18 · SERRAVALLE - NO/27/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"19 · COMUNE DI RHO - AUT/2/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"20 · COMUNE DI RHO - AUT/20/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"21 · COMUNE DI RHO - AUT/23/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"22 · COMUNE DI PERO - AUT/13/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"23 · PROVINCIA DI MILANO - AUT/12/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"24 · AIPO - NO/8/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"25 · AIPO - NO/14/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"26 · AIPO - NO/16/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"27 · AIPO - NO/18/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"28 · AIPO - NO/29/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"29 · ANAS - NO/17/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"30 · RFI - NO/15/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0},{"t":"bar","label":"31 · SERRAVALLE - NO/19/1A","start":"31/08/2026","end":"02/09/2026","pct":0.0}];
+var GANTT_ROWS = [{"t": "g", "label": "MATERIALI (LOTTO 1A)"},{"t": "ms", "label": "Tubi", "date": "29/04/2026", "pct": 0.0},{"t": "ms", "label": "Pozzetti", "date": "29/04/2026", "pct": 0.0},{"t": "g", "label": "COMUNE DI CORNAREDO (5,94 km totali)"},{"t": "g2", "label": "COMUNE DI CORNAREDO · AUT/1/1A · 5,13 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "COMUNE DI CORNAREDO", "_pratica": "1", "_inPratica": true, "_km": 5.13, "_praticaCode": "AUT/1/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "COMUNE DI CORNAREDO", "_pratica": "1", "_inPratica": true, "_km": 5.13, "_praticaCode": "AUT/1/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": "COMUNE DI CORNAREDO", "_inPratica": true, "_km": 5.13, "_praticaCode": "AUT/1/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 5.13, "_praticaCode": "AUT/1/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 5.13, "_praticaCode": "AUT/1/1A"},{"t": "g2", "label": "PROVINCIA DI MILANO · AUT/3/1A · 0,81 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "PROVINCIA DI MILANO", "_pratica": "3", "_inPratica": true, "_km": 0.81, "_praticaCode": "AUT/3/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "PROVINCIA DI MILANO", "_pratica": "3", "_inPratica": true, "_km": 0.81, "_praticaCode": "AUT/3/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.81, "_praticaCode": "AUT/3/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.81, "_praticaCode": "AUT/3/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.81, "_praticaCode": "AUT/3/1A"},{"t": "g2", "label": "AIPO · NO/4/1A · 0,05 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "AIPO", "_pratica": "4", "_inPratica": true, "_km": 0.05, "_praticaCode": "NO/4/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "AIPO", "_pratica": "4", "_inPratica": true, "_km": 0.05, "_praticaCode": "NO/4/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.05, "_praticaCode": "NO/4/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.05, "_praticaCode": "NO/4/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.05, "_praticaCode": "NO/4/1A"},{"t": "g2", "label": "RFI · NO/5/1A · 0,15 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "RFI", "_pratica": "5", "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/5/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "RFI", "_pratica": "5", "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/5/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/5/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/5/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/5/1A"},{"t": "g2", "label": "SATAP · NO/6/1A · 0,15 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "SATAP", "_pratica": "6", "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/6/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "SATAP", "_pratica": "6", "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/6/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/6/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/6/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/6/1A"},{"t": "g", "label": "COMUNE DI PERO (4,87 km totali)"},{"t": "g2", "label": "COMUNE DI PERO · AUT/13/1A · 1,75 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "COMUNE DI PERO", "_pratica": "13", "_inPratica": true, "_km": 1.75, "_praticaCode": "AUT/13/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "COMUNE DI PERO", "_pratica": "13", "_inPratica": true, "_km": 1.75, "_praticaCode": "AUT/13/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": "COMUNE DI PERO", "_inPratica": true, "_km": 1.75, "_praticaCode": "AUT/13/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 1.75, "_praticaCode": "AUT/13/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 1.75, "_praticaCode": "AUT/13/1A"},{"t": "g2", "label": "COMUNE DI PERO · AUT/24/1A · 2,76 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "COMUNE DI PERO", "_pratica": "24", "_inPratica": true, "_km": 2.76, "_praticaCode": "AUT/24/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "COMUNE DI PERO", "_pratica": "24", "_inPratica": true, "_km": 2.76, "_praticaCode": "AUT/24/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": "COMUNE DI PERO", "_inPratica": true, "_km": 2.76, "_praticaCode": "AUT/24/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 2.76, "_praticaCode": "AUT/24/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 2.76, "_praticaCode": "AUT/24/1A"},{"t": "g2", "label": "COMUNE DI RHO · AUT/23/1A · 0,36 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "COMUNE DI RHO", "_pratica": "23", "_inPratica": true, "_km": 0.36, "_praticaCode": "AUT/23/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "COMUNE DI RHO", "_pratica": "23", "_inPratica": true, "_km": 0.36, "_praticaCode": "AUT/23/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": "COMUNE DI RHO", "_inPratica": true, "_km": 0.36, "_praticaCode": "AUT/23/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.36, "_praticaCode": "AUT/23/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.36, "_praticaCode": "AUT/23/1A"},{"t": "g2", "label": "AIPO · NO/7/1A · 0,04 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "AIPO", "_pratica": "7", "_inPratica": true, "_km": 0.04, "_praticaCode": "NO/7/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "AIPO", "_pratica": "7", "_inPratica": true, "_km": 0.04, "_praticaCode": "NO/7/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.04, "_praticaCode": "NO/7/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.04, "_praticaCode": "NO/7/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.04, "_praticaCode": "NO/7/1A"},{"t": "g2", "label": "ANAS · NO/11/1A · 0,15 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "ANAS", "_pratica": "11", "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/11/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "ANAS", "_pratica": "11", "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/11/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/11/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/11/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/11/1A"},{"t": "g2", "label": "ANAS · NO/22/1A · 0,70 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "ANAS", "_pratica": "22", "_inPratica": true, "_km": 0.7, "_praticaCode": "NO/22/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "ANAS", "_pratica": "22", "_inPratica": true, "_km": 0.7, "_praticaCode": "NO/22/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.7, "_praticaCode": "NO/22/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.7, "_praticaCode": "NO/22/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.7, "_praticaCode": "NO/22/1A"},{"t": "g2", "label": "EST VILLORESI · NO/26/1A · 0,81 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "EST VILLORESI", "_pratica": "26", "_inPratica": true, "_km": 0.81, "_praticaCode": "NO/26/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "EST VILLORESI", "_pratica": "26", "_inPratica": true, "_km": 0.81, "_praticaCode": "NO/26/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.81, "_praticaCode": "NO/26/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.81, "_praticaCode": "NO/26/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.81, "_praticaCode": "NO/26/1A"},{"t": "g2", "label": "RFI · NO/9/1A · 0,23 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "RFI", "_pratica": "9", "_inPratica": true, "_km": 0.23, "_praticaCode": "NO/9/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "RFI", "_pratica": "9", "_inPratica": true, "_km": 0.23, "_praticaCode": "NO/9/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.23, "_praticaCode": "NO/9/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.23, "_praticaCode": "NO/9/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.23, "_praticaCode": "NO/9/1A"},{"t": "g2", "label": "SATAP · NO/21/1A · 0,10 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "SATAP", "_pratica": "21", "_inPratica": true, "_km": 0.1, "_praticaCode": "NO/21/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "SATAP", "_pratica": "21", "_inPratica": true, "_km": 0.1, "_praticaCode": "NO/21/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.1, "_praticaCode": "NO/21/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.1, "_praticaCode": "NO/21/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.1, "_praticaCode": "NO/21/1A"},{"t": "g2", "label": "SATAP · NO/25/1A · 0,15 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "SATAP", "_pratica": "25", "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/25/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "SATAP", "_pratica": "25", "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/25/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/25/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/25/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/25/1A"},{"t": "g2", "label": "SATAP · NO/28/1A · 0,70 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "SATAP", "_pratica": "28", "_inPratica": true, "_km": 0.7, "_praticaCode": "NO/28/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "SATAP", "_pratica": "28", "_inPratica": true, "_km": 0.7, "_praticaCode": "NO/28/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.7, "_praticaCode": "NO/28/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.7, "_praticaCode": "NO/28/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.7, "_praticaCode": "NO/28/1A"},{"t": "g2", "label": "SERRAVALLE · NO/10/1A · 0,15 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "SERRAVALLE", "_pratica": "10", "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/10/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "SERRAVALLE", "_pratica": "10", "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/10/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/10/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/10/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.15, "_praticaCode": "NO/10/1A"},{"t": "g2", "label": "SERRAVALLE · NO/27/1A · 0,10 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "SERRAVALLE", "_pratica": "27", "_inPratica": true, "_km": 0.1, "_praticaCode": "NO/27/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "SERRAVALLE", "_pratica": "27", "_inPratica": true, "_km": 0.1, "_praticaCode": "NO/27/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.1, "_praticaCode": "NO/27/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.1, "_praticaCode": "NO/27/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.1, "_praticaCode": "NO/27/1A"},{"t": "g", "label": "COMUNE DI RHO (6,07 km totali)"},{"t": "g2", "label": "COMUNE DI RHO · AUT/2/1A · 2,01 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "COMUNE DI RHO", "_pratica": "2", "_inPratica": true, "_km": 2.01, "_praticaCode": "AUT/2/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "COMUNE DI RHO", "_pratica": "2", "_inPratica": true, "_km": 2.01, "_praticaCode": "AUT/2/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": "COMUNE DI RHO", "_inPratica": true, "_km": 2.01, "_praticaCode": "AUT/2/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 2.01, "_praticaCode": "AUT/2/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 2.01, "_praticaCode": "AUT/2/1A"},{"t": "g2", "label": "COMUNE DI RHO · AUT/20/1A · 3,16 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "COMUNE DI RHO", "_pratica": "20", "_inPratica": true, "_km": 3.16, "_praticaCode": "AUT/20/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "COMUNE DI RHO", "_pratica": "20", "_inPratica": true, "_km": 3.16, "_praticaCode": "AUT/20/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": "COMUNE DI RHO", "_inPratica": true, "_km": 3.16, "_praticaCode": "AUT/20/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 3.16, "_praticaCode": "AUT/20/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 3.16, "_praticaCode": "AUT/20/1A"},{"t": "g2", "label": "COMUNE DI RHO · AUT/23/1A · 0,22 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "COMUNE DI RHO", "_pratica": "23", "_inPratica": true, "_km": 0.22, "_praticaCode": "AUT/23/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "COMUNE DI RHO", "_pratica": "23", "_inPratica": true, "_km": 0.22, "_praticaCode": "AUT/23/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": "COMUNE DI RHO", "_inPratica": true, "_km": 0.22, "_praticaCode": "AUT/23/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.22, "_praticaCode": "AUT/23/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.22, "_praticaCode": "AUT/23/1A"},{"t": "g2", "label": "COMUNE DI PERO · AUT/13/1A · 0,22 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "COMUNE DI PERO", "_pratica": "13", "_inPratica": true, "_km": 0.22, "_praticaCode": "AUT/13/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "COMUNE DI PERO", "_pratica": "13", "_inPratica": true, "_km": 0.22, "_praticaCode": "AUT/13/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": "COMUNE DI PERO", "_inPratica": true, "_km": 0.22, "_praticaCode": "AUT/13/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.22, "_praticaCode": "AUT/13/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.22, "_praticaCode": "AUT/13/1A"},{"t": "g2", "label": "PROVINCIA DI MILANO · AUT/12/1A · 0,46 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "PROVINCIA DI MILANO", "_pratica": "12", "_inPratica": true, "_km": 0.46, "_praticaCode": "AUT/12/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "PROVINCIA DI MILANO", "_pratica": "12", "_inPratica": true, "_km": 0.46, "_praticaCode": "AUT/12/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.46, "_praticaCode": "AUT/12/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.46, "_praticaCode": "AUT/12/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.46, "_praticaCode": "AUT/12/1A"},{"t": "g2", "label": "AIPO · NO/8/1A · 0,46 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "AIPO", "_pratica": "8", "_inPratica": true, "_km": 0.46, "_praticaCode": "NO/8/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "AIPO", "_pratica": "8", "_inPratica": true, "_km": 0.46, "_praticaCode": "NO/8/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.46, "_praticaCode": "NO/8/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.46, "_praticaCode": "NO/8/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.46, "_praticaCode": "NO/8/1A"},{"t": "g2", "label": "AIPO · NO/14/1A · 0,03 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "AIPO", "_pratica": "14", "_inPratica": true, "_km": 0.03, "_praticaCode": "NO/14/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "AIPO", "_pratica": "14", "_inPratica": true, "_km": 0.03, "_praticaCode": "NO/14/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.03, "_praticaCode": "NO/14/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.03, "_praticaCode": "NO/14/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.03, "_praticaCode": "NO/14/1A"},{"t": "g2", "label": "AIPO · NO/16/1A · 0,03 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "AIPO", "_pratica": "16", "_inPratica": true, "_km": 0.03, "_praticaCode": "NO/16/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "AIPO", "_pratica": "16", "_inPratica": true, "_km": 0.03, "_praticaCode": "NO/16/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.03, "_praticaCode": "NO/16/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.03, "_praticaCode": "NO/16/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.03, "_praticaCode": "NO/16/1A"},{"t": "g2", "label": "AIPO · NO/18/1A · 0,01 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "AIPO", "_pratica": "18", "_inPratica": true, "_km": 0.01, "_praticaCode": "NO/18/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "AIPO", "_pratica": "18", "_inPratica": true, "_km": 0.01, "_praticaCode": "NO/18/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.01, "_praticaCode": "NO/18/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.01, "_praticaCode": "NO/18/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.01, "_praticaCode": "NO/18/1A"},{"t": "g2", "label": "AIPO · NO/29/1A · 0,03 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "AIPO", "_pratica": "29", "_inPratica": true, "_km": 0.03, "_praticaCode": "NO/29/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "AIPO", "_pratica": "29", "_inPratica": true, "_km": 0.03, "_praticaCode": "NO/29/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.03, "_praticaCode": "NO/29/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.03, "_praticaCode": "NO/29/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.03, "_praticaCode": "NO/29/1A"},{"t": "g2", "label": "ANAS · NO/17/1A · 0,05 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "ANAS", "_pratica": "17", "_inPratica": true, "_km": 0.05, "_praticaCode": "NO/17/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "ANAS", "_pratica": "17", "_inPratica": true, "_km": 0.05, "_praticaCode": "NO/17/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.05, "_praticaCode": "NO/17/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.05, "_praticaCode": "NO/17/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.05, "_praticaCode": "NO/17/1A"},{"t": "g2", "label": "RFI · NO/15/1A · 0,02 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "RFI", "_pratica": "15", "_inPratica": true, "_km": 0.02, "_praticaCode": "NO/15/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "RFI", "_pratica": "15", "_inPratica": true, "_km": 0.02, "_praticaCode": "NO/15/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.02, "_praticaCode": "NO/15/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.02, "_praticaCode": "NO/15/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.02, "_praticaCode": "NO/15/1A"},{"t": "g2", "label": "SERRAVALLE · NO/19/1A · 0,23 km"},{"t": "bar", "label": "Progettazione e presentazione permesso", "start": "29/04/2026", "end": "09/06/2026", "pct": 0.0, "_ente": "SERRAVALLE", "_pratica": "19", "_inPratica": true, "_km": 0.23, "_praticaCode": "NO/19/1A"},{"t": "ms", "label": "Ottenimento permesso", "date": "21/07/2026", "pct": 0.0, "_ente": "SERRAVALLE", "_pratica": "19", "_inPratica": true, "_km": 0.23, "_praticaCode": "NO/19/1A"},{"t": "bar", "label": "Opere Civili", "start": "22/07/2026", "end": "25/08/2026", "pct": 0.0, "sub": "Accantieramento, scavo tradizionale, scavo no dig, pozzetti", "_comune": null, "_inPratica": true, "_km": 0.23, "_praticaCode": "NO/19/1A"},{"t": "bar", "label": "Test e collaudo", "start": "26/08/2026", "end": "28/08/2026", "pct": 0.0, "_inPratica": true, "_km": 0.23, "_praticaCode": "NO/19/1A"},{"t": "bar", "label": "As Built", "start": "31/08/2026", "end": "02/09/2026", "pct": 0.0, "_inPratica": true, "_km": 0.23, "_praticaCode": "NO/19/1A"}];
 
 var LOTTO_ID = '1A';
 GANTT_ROWS.forEach(function(r, i) { r.id = i; }); /* id stabile: indice nell'array statico */
-GANTT_ROWS.forEach(function(r) { r._baseDate = r.date || null; r._baseStart = r.start || null; r._baseEnd = r.end || null; }); /* baseline .mpp, pre-merge: serve a propagateGanttDatesFromPermits() per calcolare lo scostamento */
+function addWorkDaysDmy(d, workDays) {
+  /* ritorna la data (dd/mm/yyyy) del workDays-esimo giorno lavorativo (lun-ven) a partire
+     da d incluso — salta sabato e domenica. Se d cade di sabato/domenica il conteggio
+     parte dal lunedì successivo (il cantiere non lavora nel weekend di partenza). */
+  var cur = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  var count = 0;
+  while (true) {
+    var dow = cur.getDay(); /* 0=domenica, 6=sabato */
+    if (dow !== 0 && dow !== 6) {
+      count++;
+      if (count >= workDays) break;
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  return ('0' + cur.getDate()).slice(-2) + '/' + ('0' + (cur.getMonth() + 1)).slice(-2) + '/' + cur.getFullYear();
+}
+
+/* ── durata Opere Civili da metri (regola utente, non dal .mpp) ──
+   Il .mpp assegna a tutte le 31 pratiche la stessa durata di Opere Civili
+   (baseline uniforme, indipendente dai km — es. AIPO 0,05 km e Cornaredo
+   5,13 km duravano identicamente ~34gg). Corretta qui una volta sola,
+   PRIMA della cattura baseline sotto: la nuova durata diventa essa stessa
+   la "baseline" che propagateGanttDatesFromPermits() trasla quando il
+   permesso slitta (start segue comunque il permesso; solo la durata cambia). */
+var SCAVO_M_GIORNO = 100;    /* metri di scavo/giorno — default globale di fallback se nessuna regola è configurata */
+var POZZETTI_OGNI_M = 500;   /* metri per coppia di pozzetti */
+var POZZETTI_PER_COPPIA = 2;
+var GANTT_RATES = {};        /* scope ("global"/"lotto:X"/"impresa:X"/"pratica:X") -> {m_giorno,...}, popolato da fetchGanttRates() */
+
+function _computeOpereCiviliDuration(row, mGiorno, sourceLabel) {
+  var start = parseDateStr(row.start);
+  if (!start) return;
+  var giorni = Math.max(1, Math.ceil(row._km * 1000 / mGiorno));
+  row.end = addWorkDaysDmy(start, giorni); /* solo lun-ven: il cantiere non scava sabato e domenica */
+  var nPozzetti = Math.max(2, Math.round(row._km * 1000 / POZZETTI_OGNI_M) * POZZETTI_PER_COPPIA);
+  row.sub = 'Accantieramento, scavo tradizionale, scavo no dig · ' + giorni + ' gg lavorativi a ' + fmtIt(mGiorno) + ' m/g (' + sourceLabel + ', lun-ven) · ' + nPozzetti + ' pozzetti stimati (posati in parallelo, non allungano la fase)';
+  row._rateApplied = { mGiorno: mGiorno, source: sourceLabel, giorni: giorni };
+}
+
+(function applyKmBasedOpereCiviliDurations() {
+  /* prima passata, sincrona, col tasso di default — garantisce un primo render
+     immediato coerente anche prima che fetchGanttRates()/applyGanttRates() (asincrone)
+     completino. Se esistono regole per-lotto/impresa/pratica, applyGanttRates() le
+     applica poco dopo e ridisegna. */
+  GANTT_ROWS.forEach(function(row) {
+    if (row.t !== 'bar' || row.label !== 'Opere Civili' || row._km == null) return;
+    _computeOpereCiviliDuration(row, SCAVO_M_GIORNO, 'default');
+  });
+})();
+GANTT_ROWS.forEach(function(r) { r._baseDate = r.date || null; r._baseStart = r.start || null; r._baseEnd = r.end || null; }); /* baseline .mpp (o ricalcolata per Opere Civili), pre-merge: serve a propagateGanttDatesFromPermits() per calcolare lo scostamento */
+
+async function fetchGanttRates() {
+  try {
+    var res = await fetch((window.ENRI && window.ENRI.isEnabled ? window.ENRI.apiBase : '') + '/api/gantt/rates', {
+      headers: { 'x-session-token': _sessionToken() }
+    });
+    if (!res.ok) return;
+    var data = await res.json();
+    GANTT_RATES = data.rates || {};
+  } catch (e) { console.warn('Tassi scavo non caricati:', e.message); }
+}
+
+async function applyGanttRates() {
+  /* Risolve, per ciascuna pratica, il tasso di scavo (m/giorno) con priorità
+     PERMESSO > IMPRESA > LOTTO > DEFAULT (il più specifico vince) e ricalcola
+     durata/fine di Opere Civili. Aggiorna anche _baseEnd: la nuova durata diventa
+     essa stessa la baseline che propagateGanttDatesFromPermits() trasla quando il
+     permesso slitta — non quella di default della prima passata sincrona sopra. */
+  await fetchGanttRates();
+
+  /* mappa comune -> impresa, dagli stessi cantieri che mergeCantieriProgress()
+     interroga separatamente per l'avanzamento — fetch indipendente e ridondante
+     ma innocuo, per non toccare la logica già in produzione di quella funzione.
+     Copre solo gli enti comunali (unico livello a cui i cantieri sono tracciati,
+     stessa convenzione di mergeCantieriProgress); per enti non comunali (AIPO,
+     RFI, ecc.) lo scope "impresa" non è risolvibile e si ricade su lotto/default. */
+  var enteImpresaMap = {};
+  try {
+    var res = await fetch((window.ENRI && window.ENRI.isEnabled ? window.ENRI.apiBase : '') + '/api/cantieri?lotto=' + encodeURIComponent(LOTTO_ID), {
+      headers: { 'x-session-token': _sessionToken() }
+    });
+    if (res.ok) {
+      var data = await res.json();
+      (data.cantieri || []).forEach(function(c) {
+        var comune = (c.comune || '').trim().toUpperCase();
+        if (comune && c.impresa) enteImpresaMap[comune] = c.impresa;
+      });
+    }
+  } catch (e) { console.warn('Mappa comune→impresa non caricata:', e.message); }
+
+  GANTT_ROWS.forEach(function(row) {
+    if (row.t !== 'bar' || row.label !== 'Opere Civili' || row._km == null) return;
+    var mGiorno = SCAVO_M_GIORNO, source = 'default';
+    if (GANTT_RATES['global']) { mGiorno = GANTT_RATES['global'].m_giorno; source = 'default globale'; }
+    var loKey = 'lotto:' + LOTTO_ID;
+    if (GANTT_RATES[loKey]) { mGiorno = GANTT_RATES[loKey].m_giorno; source = 'lotto ' + LOTTO_ID; }
+    var impresa = row._comune ? enteImpresaMap[row._comune.toUpperCase()] : null;
+    if (impresa) {
+      var impKey = 'impresa:' + impresa;
+      if (GANTT_RATES[impKey]) { mGiorno = GANTT_RATES[impKey].m_giorno; source = 'impresa ' + impresa; }
+    }
+    var praKey = 'pratica:' + row._praticaCode;
+    if (row._praticaCode && GANTT_RATES[praKey]) { mGiorno = GANTT_RATES[praKey].m_giorno; source = 'permesso ' + row._praticaCode; }
+
+    _computeOpereCiviliDuration(row, mGiorno, source);
+    row._baseEnd = row.end;
+  });
+}
 
 /* ── Dipendenze reali, estratte 1:1 dal .mpp originale (Gantt_Cluster_1_e_2.mpp,
-   letto via mpxj/UniversalProjectReader) — non più approssimate: ogni riga di
-   Fase 5/6/7 corrisponde ora a un singolo ente/permesso (non più aggregata per
-   comune), quindi la catena Progettazione→Ottenimento→Accantieramento→Scavo
-   tradizionale→Scavo no dig→Pozzetti→Test e collaudo→As Built del .mpp si
-   mappa esattamente sulle 4 fasi mostrate (Ottenimento permesso=Fase2,
-   Opere Civili=Fase5 dalla prima all'ultima sotto-attività di scavo,
-   Test/Collaudo=Fase6, As-Built=Fase7), tutte FS lag 0 come nel .mpp.
+   letto via mpxj/UniversalProjectReader). Struttura gerarchica Comune/zona → Pratica →
+   fasi lavorative (rev. corrente): ogni pratica (riga 'g2') ha una catena locale FS lag 0
+   Progettazione → Ottenimento permesso → Opere Civili (Accantieramento..Pozzetti aggregati)
+   → Test e collaudo → As Built, identica per tutte le 31 pratiche del Lotto 1A. "Materiali"
+   (Tubi/Pozzetti) è a livello Lotto, fuori dalle pratiche, senza dipendenze nel .mpp.
    Chiave = id riga successore, valore = { pred: id riga predecessore,
-   type: 'FS' (fine→inizio) | 'SS' (inizio→inizio), lagDays }.
-   Uniche dipendenze rimaste "manuali" (non nel .mpp, che non modella Fase 3/4
-   con date reali): le 3 consegne materiali (+10/+30/+70g da Richiesta forniture). */
+   type: 'FS' (fine→inizio) | 'SS' (inizio→inizio), lagDays }. */
 var GANTT_DEPS = {
-  3: { pred: 1, type: 'FS', lagDays: 0 },
-  4: { pred: 1, type: 'FS', lagDays: 0 },
-  5: { pred: 1, type: 'FS', lagDays: 0 },
-  6: { pred: 1, type: 'FS', lagDays: 0 },
-  7: { pred: 1, type: 'FS', lagDays: 0 },
-  8: { pred: 1, type: 'FS', lagDays: 0 },
-  9: { pred: 1, type: 'FS', lagDays: 0 },
-  10: { pred: 1, type: 'FS', lagDays: 0 },
-  11: { pred: 1, type: 'FS', lagDays: 0 },
-  12: { pred: 1, type: 'FS', lagDays: 0 },
-  13: { pred: 1, type: 'FS', lagDays: 0 },
-  14: { pred: 1, type: 'FS', lagDays: 0 },
-  15: { pred: 1, type: 'FS', lagDays: 0 },
-  16: { pred: 1, type: 'FS', lagDays: 0 },
-  17: { pred: 1, type: 'FS', lagDays: 0 },
-  18: { pred: 1, type: 'FS', lagDays: 0 },
-  19: { pred: 1, type: 'FS', lagDays: 0 },
-  20: { pred: 1, type: 'FS', lagDays: 0 },
-  21: { pred: 1, type: 'FS', lagDays: 0 },
-  22: { pred: 1, type: 'FS', lagDays: 0 },
-  23: { pred: 1, type: 'FS', lagDays: 0 },
-  24: { pred: 1, type: 'FS', lagDays: 0 },
-  25: { pred: 1, type: 'FS', lagDays: 0 },
-  26: { pred: 1, type: 'FS', lagDays: 0 },
-  27: { pred: 1, type: 'FS', lagDays: 0 },
-  28: { pred: 1, type: 'FS', lagDays: 0 },
-  29: { pred: 1, type: 'FS', lagDays: 0 },
-  30: { pred: 1, type: 'FS', lagDays: 0 },
-  31: { pred: 1, type: 'FS', lagDays: 0 },
-  32: { pred: 1, type: 'FS', lagDays: 0 },
-  33: { pred: 1, type: 'FS', lagDays: 0 },
-  36: { pred: 35, type: 'FS', lagDays: 10 },
-  37: { pred: 35, type: 'FS', lagDays: 30 },
-  38: { pred: 35, type: 'FS', lagDays: 70 },
-  42: { pred: 3, type: 'FS', lagDays: 0 },
-  43: { pred: 4, type: 'FS', lagDays: 0 },
-  44: { pred: 5, type: 'FS', lagDays: 0 },
-  45: { pred: 6, type: 'FS', lagDays: 0 },
-  46: { pred: 7, type: 'FS', lagDays: 0 },
-  47: { pred: 8, type: 'FS', lagDays: 0 },
-  48: { pred: 9, type: 'FS', lagDays: 0 },
-  49: { pred: 10, type: 'FS', lagDays: 0 },
-  50: { pred: 11, type: 'FS', lagDays: 0 },
-  51: { pred: 12, type: 'FS', lagDays: 0 },
-  52: { pred: 13, type: 'FS', lagDays: 0 },
-  53: { pred: 14, type: 'FS', lagDays: 0 },
-  54: { pred: 15, type: 'FS', lagDays: 0 },
-  55: { pred: 16, type: 'FS', lagDays: 0 },
-  56: { pred: 17, type: 'FS', lagDays: 0 },
-  57: { pred: 18, type: 'FS', lagDays: 0 },
-  58: { pred: 19, type: 'FS', lagDays: 0 },
-  59: { pred: 20, type: 'FS', lagDays: 0 },
-  60: { pred: 21, type: 'FS', lagDays: 0 },
-  61: { pred: 22, type: 'FS', lagDays: 0 },
-  62: { pred: 23, type: 'FS', lagDays: 0 },
-  63: { pred: 24, type: 'FS', lagDays: 0 },
-  64: { pred: 25, type: 'FS', lagDays: 0 },
-  65: { pred: 26, type: 'FS', lagDays: 0 },
-  66: { pred: 27, type: 'FS', lagDays: 0 },
-  67: { pred: 28, type: 'FS', lagDays: 0 },
-  68: { pred: 29, type: 'FS', lagDays: 0 },
-  69: { pred: 30, type: 'FS', lagDays: 0 },
-  70: { pred: 31, type: 'FS', lagDays: 0 },
-  71: { pred: 32, type: 'FS', lagDays: 0 },
-  72: { pred: 33, type: 'FS', lagDays: 0 },
-  74: { pred: 42, type: 'FS', lagDays: 0 },
-  75: { pred: 43, type: 'FS', lagDays: 0 },
-  76: { pred: 44, type: 'FS', lagDays: 0 },
-  77: { pred: 45, type: 'FS', lagDays: 0 },
-  78: { pred: 46, type: 'FS', lagDays: 0 },
-  79: { pred: 47, type: 'FS', lagDays: 0 },
-  80: { pred: 48, type: 'FS', lagDays: 0 },
-  81: { pred: 49, type: 'FS', lagDays: 0 },
-  82: { pred: 50, type: 'FS', lagDays: 0 },
-  83: { pred: 51, type: 'FS', lagDays: 0 },
-  84: { pred: 52, type: 'FS', lagDays: 0 },
-  85: { pred: 53, type: 'FS', lagDays: 0 },
-  86: { pred: 54, type: 'FS', lagDays: 0 },
-  87: { pred: 55, type: 'FS', lagDays: 0 },
-  88: { pred: 56, type: 'FS', lagDays: 0 },
-  89: { pred: 57, type: 'FS', lagDays: 0 },
-  90: { pred: 58, type: 'FS', lagDays: 0 },
-  91: { pred: 59, type: 'FS', lagDays: 0 },
-  92: { pred: 60, type: 'FS', lagDays: 0 },
-  93: { pred: 61, type: 'FS', lagDays: 0 },
-  94: { pred: 62, type: 'FS', lagDays: 0 },
-  95: { pred: 63, type: 'FS', lagDays: 0 },
-  96: { pred: 64, type: 'FS', lagDays: 0 },
-  97: { pred: 65, type: 'FS', lagDays: 0 },
-  98: { pred: 66, type: 'FS', lagDays: 0 },
-  99: { pred: 67, type: 'FS', lagDays: 0 },
-  100: { pred: 68, type: 'FS', lagDays: 0 },
-  101: { pred: 69, type: 'FS', lagDays: 0 },
-  102: { pred: 70, type: 'FS', lagDays: 0 },
-  103: { pred: 71, type: 'FS', lagDays: 0 },
-  104: { pred: 72, type: 'FS', lagDays: 0 },
-  106: { pred: 74, type: 'FS', lagDays: 0 },
-  107: { pred: 75, type: 'FS', lagDays: 0 },
-  108: { pred: 76, type: 'FS', lagDays: 0 },
-  109: { pred: 77, type: 'FS', lagDays: 0 },
-  110: { pred: 78, type: 'FS', lagDays: 0 },
-  111: { pred: 79, type: 'FS', lagDays: 0 },
-  112: { pred: 80, type: 'FS', lagDays: 0 },
-  113: { pred: 81, type: 'FS', lagDays: 0 },
-  114: { pred: 82, type: 'FS', lagDays: 0 },
-  115: { pred: 83, type: 'FS', lagDays: 0 },
-  116: { pred: 84, type: 'FS', lagDays: 0 },
-  117: { pred: 85, type: 'FS', lagDays: 0 },
-  118: { pred: 86, type: 'FS', lagDays: 0 },
-  119: { pred: 87, type: 'FS', lagDays: 0 },
-  120: { pred: 88, type: 'FS', lagDays: 0 },
-  121: { pred: 89, type: 'FS', lagDays: 0 },
-  122: { pred: 90, type: 'FS', lagDays: 0 },
-  123: { pred: 91, type: 'FS', lagDays: 0 },
-  124: { pred: 92, type: 'FS', lagDays: 0 },
-  125: { pred: 93, type: 'FS', lagDays: 0 },
-  126: { pred: 94, type: 'FS', lagDays: 0 },
-  127: { pred: 95, type: 'FS', lagDays: 0 },
-  128: { pred: 96, type: 'FS', lagDays: 0 },
-  129: { pred: 97, type: 'FS', lagDays: 0 },
-  130: { pred: 98, type: 'FS', lagDays: 0 },
-  131: { pred: 99, type: 'FS', lagDays: 0 },
-  132: { pred: 100, type: 'FS', lagDays: 0 },
-  133: { pred: 101, type: 'FS', lagDays: 0 },
-  134: { pred: 102, type: 'FS', lagDays: 0 },
-  135: { pred: 103, type: 'FS', lagDays: 0 },
-  136: { pred: 104, type: 'FS', lagDays: 0 }
+  6: { pred: 5, type: 'FS', lagDays: 0 },
+  7: { pred: 6, type: 'FS', lagDays: 0 },
+  8: { pred: 7, type: 'FS', lagDays: 0 },
+  9: { pred: 8, type: 'FS', lagDays: 0 },
+  12: { pred: 11, type: 'FS', lagDays: 0 },
+  13: { pred: 12, type: 'FS', lagDays: 0 },
+  14: { pred: 13, type: 'FS', lagDays: 0 },
+  15: { pred: 14, type: 'FS', lagDays: 0 },
+  18: { pred: 17, type: 'FS', lagDays: 0 },
+  19: { pred: 18, type: 'FS', lagDays: 0 },
+  20: { pred: 19, type: 'FS', lagDays: 0 },
+  21: { pred: 20, type: 'FS', lagDays: 0 },
+  24: { pred: 23, type: 'FS', lagDays: 0 },
+  25: { pred: 24, type: 'FS', lagDays: 0 },
+  26: { pred: 25, type: 'FS', lagDays: 0 },
+  27: { pred: 26, type: 'FS', lagDays: 0 },
+  30: { pred: 29, type: 'FS', lagDays: 0 },
+  31: { pred: 30, type: 'FS', lagDays: 0 },
+  32: { pred: 31, type: 'FS', lagDays: 0 },
+  33: { pred: 32, type: 'FS', lagDays: 0 },
+  37: { pred: 36, type: 'FS', lagDays: 0 },
+  38: { pred: 37, type: 'FS', lagDays: 0 },
+  39: { pred: 38, type: 'FS', lagDays: 0 },
+  40: { pred: 39, type: 'FS', lagDays: 0 },
+  43: { pred: 42, type: 'FS', lagDays: 0 },
+  44: { pred: 43, type: 'FS', lagDays: 0 },
+  45: { pred: 44, type: 'FS', lagDays: 0 },
+  46: { pred: 45, type: 'FS', lagDays: 0 },
+  49: { pred: 48, type: 'FS', lagDays: 0 },
+  50: { pred: 49, type: 'FS', lagDays: 0 },
+  51: { pred: 50, type: 'FS', lagDays: 0 },
+  52: { pred: 51, type: 'FS', lagDays: 0 },
+  55: { pred: 54, type: 'FS', lagDays: 0 },
+  56: { pred: 55, type: 'FS', lagDays: 0 },
+  57: { pred: 56, type: 'FS', lagDays: 0 },
+  58: { pred: 57, type: 'FS', lagDays: 0 },
+  61: { pred: 60, type: 'FS', lagDays: 0 },
+  62: { pred: 61, type: 'FS', lagDays: 0 },
+  63: { pred: 62, type: 'FS', lagDays: 0 },
+  64: { pred: 63, type: 'FS', lagDays: 0 },
+  67: { pred: 66, type: 'FS', lagDays: 0 },
+  68: { pred: 67, type: 'FS', lagDays: 0 },
+  69: { pred: 68, type: 'FS', lagDays: 0 },
+  70: { pred: 69, type: 'FS', lagDays: 0 },
+  73: { pred: 72, type: 'FS', lagDays: 0 },
+  74: { pred: 73, type: 'FS', lagDays: 0 },
+  75: { pred: 74, type: 'FS', lagDays: 0 },
+  76: { pred: 75, type: 'FS', lagDays: 0 },
+  79: { pred: 78, type: 'FS', lagDays: 0 },
+  80: { pred: 79, type: 'FS', lagDays: 0 },
+  81: { pred: 80, type: 'FS', lagDays: 0 },
+  82: { pred: 81, type: 'FS', lagDays: 0 },
+  85: { pred: 84, type: 'FS', lagDays: 0 },
+  86: { pred: 85, type: 'FS', lagDays: 0 },
+  87: { pred: 86, type: 'FS', lagDays: 0 },
+  88: { pred: 87, type: 'FS', lagDays: 0 },
+  91: { pred: 90, type: 'FS', lagDays: 0 },
+  92: { pred: 91, type: 'FS', lagDays: 0 },
+  93: { pred: 92, type: 'FS', lagDays: 0 },
+  94: { pred: 93, type: 'FS', lagDays: 0 },
+  97: { pred: 96, type: 'FS', lagDays: 0 },
+  98: { pred: 97, type: 'FS', lagDays: 0 },
+  99: { pred: 98, type: 'FS', lagDays: 0 },
+  100: { pred: 99, type: 'FS', lagDays: 0 },
+  103: { pred: 102, type: 'FS', lagDays: 0 },
+  104: { pred: 103, type: 'FS', lagDays: 0 },
+  105: { pred: 104, type: 'FS', lagDays: 0 },
+  106: { pred: 105, type: 'FS', lagDays: 0 },
+  109: { pred: 108, type: 'FS', lagDays: 0 },
+  110: { pred: 109, type: 'FS', lagDays: 0 },
+  111: { pred: 110, type: 'FS', lagDays: 0 },
+  112: { pred: 111, type: 'FS', lagDays: 0 },
+  116: { pred: 115, type: 'FS', lagDays: 0 },
+  117: { pred: 116, type: 'FS', lagDays: 0 },
+  118: { pred: 117, type: 'FS', lagDays: 0 },
+  119: { pred: 118, type: 'FS', lagDays: 0 },
+  122: { pred: 121, type: 'FS', lagDays: 0 },
+  123: { pred: 122, type: 'FS', lagDays: 0 },
+  124: { pred: 123, type: 'FS', lagDays: 0 },
+  125: { pred: 124, type: 'FS', lagDays: 0 },
+  128: { pred: 127, type: 'FS', lagDays: 0 },
+  129: { pred: 128, type: 'FS', lagDays: 0 },
+  130: { pred: 129, type: 'FS', lagDays: 0 },
+  131: { pred: 130, type: 'FS', lagDays: 0 },
+  134: { pred: 133, type: 'FS', lagDays: 0 },
+  135: { pred: 134, type: 'FS', lagDays: 0 },
+  136: { pred: 135, type: 'FS', lagDays: 0 },
+  137: { pred: 136, type: 'FS', lagDays: 0 },
+  140: { pred: 139, type: 'FS', lagDays: 0 },
+  141: { pred: 140, type: 'FS', lagDays: 0 },
+  142: { pred: 141, type: 'FS', lagDays: 0 },
+  143: { pred: 142, type: 'FS', lagDays: 0 },
+  146: { pred: 145, type: 'FS', lagDays: 0 },
+  147: { pred: 146, type: 'FS', lagDays: 0 },
+  148: { pred: 147, type: 'FS', lagDays: 0 },
+  149: { pred: 148, type: 'FS', lagDays: 0 },
+  152: { pred: 151, type: 'FS', lagDays: 0 },
+  153: { pred: 152, type: 'FS', lagDays: 0 },
+  154: { pred: 153, type: 'FS', lagDays: 0 },
+  155: { pred: 154, type: 'FS', lagDays: 0 },
+  158: { pred: 157, type: 'FS', lagDays: 0 },
+  159: { pred: 158, type: 'FS', lagDays: 0 },
+  160: { pred: 159, type: 'FS', lagDays: 0 },
+  161: { pred: 160, type: 'FS', lagDays: 0 },
+  164: { pred: 163, type: 'FS', lagDays: 0 },
+  165: { pred: 164, type: 'FS', lagDays: 0 },
+  166: { pred: 165, type: 'FS', lagDays: 0 },
+  167: { pred: 166, type: 'FS', lagDays: 0 },
+  170: { pred: 169, type: 'FS', lagDays: 0 },
+  171: { pred: 170, type: 'FS', lagDays: 0 },
+  172: { pred: 171, type: 'FS', lagDays: 0 },
+  173: { pred: 172, type: 'FS', lagDays: 0 },
+  176: { pred: 175, type: 'FS', lagDays: 0 },
+  177: { pred: 176, type: 'FS', lagDays: 0 },
+  178: { pred: 177, type: 'FS', lagDays: 0 },
+  179: { pred: 178, type: 'FS', lagDays: 0 },
+  182: { pred: 181, type: 'FS', lagDays: 0 },
+  183: { pred: 182, type: 'FS', lagDays: 0 },
+  184: { pred: 183, type: 'FS', lagDays: 0 },
+  185: { pred: 184, type: 'FS', lagDays: 0 },
+  188: { pred: 187, type: 'FS', lagDays: 0 },
+  189: { pred: 188, type: 'FS', lagDays: 0 },
+  190: { pred: 189, type: 'FS', lagDays: 0 },
+  191: { pred: 190, type: 'FS', lagDays: 0 }
 };
+
+
 function ganttSuccessorsOf(rowId) {
   return Object.keys(GANTT_DEPS).filter(function(k) { return GANTT_DEPS[k].pred === rowId; }).map(Number);
 }
@@ -437,14 +580,6 @@ function statoToPct(stato) {
   return Math.round((idx / (STATI_ORDER.length - 1)) * 100);
 }
 
-function parsePraticaFromLabel(label) {
-  var m = label.match(/(AUT|NO)\/(\d+)\/1A/i);
-  if (!m) return null;
-  var pratica = m[2];
-  var ente = label.slice(0, m.index).replace(/[-–]\s*$/, '').trim();
-  return { ente: ente, pratica: pratica };
-}
-
 function splitCsvLine(line, sep) {
   var result = [], cur = '', inQ = false;
   for (var i = 0; i < line.length; i++) {
@@ -502,14 +637,12 @@ async function mergeMasterCsv() {
     }
 
     GANTT_ROWS.forEach(function(row) {
-      if (row.t !== 'ms') return;
-      var parsed = parsePraticaFromLabel(row.label);
-      if (!parsed) return;
+      if (row.t !== 'ms' || !row._pratica) return;
       /* match tollerante: ENTE Master.csv può non coincidere al 100% col testo del .mpp (es. RFI/AIPO/SATAP brevi) */
       var matchKey = null;
       for (var k in best) {
         var kp = k.split('|')[0], kEnte = k.split('|')[1];
-        if (kp === parsed.pratica && (kEnte.indexOf(parsed.ente.toUpperCase()) !== -1 || parsed.ente.toUpperCase().indexOf(kEnte) !== -1)) {
+        if (kp === row._pratica && (kEnte.indexOf(row._ente.toUpperCase()) !== -1 || row._ente.toUpperCase().indexOf(kEnte) !== -1)) {
           matchKey = k; break;
         }
       }
@@ -521,6 +654,23 @@ async function mergeMasterCsv() {
       row.real = true;
       var newDate = (pct === 100 && rec.dappr) ? rec.dappr : (rec.dprev || null);
       if (newDate) row.date = newDate.trim();
+
+      /* Progettazione (fase precedente, stessa pratica): non ha un proprio STATO_PERMESSO
+         in Master.csv (che traccia solo l'iter del permesso), ma è concettualmente conclusa
+         appena la pratica esce dalla fase di redazione — quindi la deduciamo dallo stesso
+         STATO_PERMESSO: IN ATTESA/IN REDAZIONE → non ancora completata (0%), qualunque stato
+         successivo (IN FIRMA RDS in su, incluso OTTENUTO) → 100%. Match esplicito per
+         _pratica+_ente (non offset posizionale nell'array): resta valido anche quando si
+         aggiungeranno gli altri lotti/pagine, indipendentemente dall'ordine di generazione. */
+      var progettRow = GANTT_ROWS.find(function(r) {
+        return r.t === 'bar' && r.label === 'Progettazione e presentazione permesso' &&
+          r._pratica === row._pratica && r._ente === row._ente;
+      });
+      if (progettRow) {
+        var statoUp = (rec.stato || '').trim().toUpperCase();
+        progettRow.pct = (statoUp !== 'IN ATTESA' && statoUp !== 'IN REDAZIONE') ? 100 : 0;
+        progettRow.real = true;
+      }
     });
   } catch (e) {
     console.warn('Master.csv non caricato per il gantt:', e.message);
@@ -540,15 +690,6 @@ function isoToDmy(iso) {
   var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
   if (!m) return null;
   return m[3] + '/' + m[2] + '/' + m[1];
-}
-
-function parseComuneFromGanttLabel(label) {
-  /* label Fase 5 ora per-ente/permesso, es. "9 · COMUNE DI PERO - AUT/13/1A":
-     estrae il nome comune ovunque nella label, non solo a fine stringa (rev.176).
-     Per enti non-comunali (AIPO, RFI, SATAP, ecc.) non matcha: nessun merge cantieri,
-     restano a baseline — coerente, i cantieri sono tracciati solo per comune. */
-  var m = /COMUNE DI\s+([^\-]+)/i.exec(label);
-  return m ? m[1].trim().toUpperCase() : null;
 }
 
 async function mergeCantieriProgress() {
@@ -577,10 +718,8 @@ async function mergeCantieriProgress() {
     });
 
     GANTT_ROWS.forEach(function(row) {
-      if (row.t !== 'bar') return;
-      var comune = parseComuneFromGanttLabel(row.label);
-      if (!comune || !byComune[comune]) return;
-      var g = byComune[comune];
+      if (row.t !== 'bar' || !row._comune || !byComune[row._comune]) return;
+      var g = byComune[row._comune];
       if (g.metriTot > 0) {
         row.pct = Math.round((g.metriScavati / g.metriTot) * 100);
         row.real = true;
@@ -653,17 +792,27 @@ function shiftDmy(d, days) {
 function buildKpi() {
   var wrap = document.getElementById('kpiRow');
   var bars = GANTT_ROWS.filter(function(r){ return r.t === 'bar'; });
-  var ms = GANTT_ROWS.filter(function(r){ return r.t === 'ms'; });
-  var topBar = bars[0]; /* Fase 1, rappresentativo dell'avanzamento aggregato non e' disponibile: usiamo pct medio pesato sulle fasi con bar */
+  var permits = GANTT_ROWS.filter(function(r){ return r.t === 'ms' && r._pratica; }); /* solo "Ottenimento permesso" per pratica, esclude le milestone Materiali (Tubi/Pozzetti) che non sono permessi */
   var avgPct = Math.round(bars.reduce(function(s,r){return s+r.pct;},0) / bars.length);
-  var msDone = ms.filter(function(r){ return r.pct >= 100; }).length;
+  var msDone = permits.filter(function(r){ return r.pct >= 100; }).length;
   var todayD = new Date(2026,6,7);
-  var msOverdue = ms.filter(function(r){ var d = parseDateStr(r.date); return d && d < todayD && r.pct < 100; }).length;
+  var msOverdue = permits.filter(function(r){ var d = parseDateStr(r.date); return d && d < todayD && r.pct < 100; }).length;
   var lastFinish = bars.reduce(function(mx,r){ var d = parseDateStr(r.end); return (d && d > mx) ? d : mx; }, new Date(2026,0,1));
   var lastFinishStr = ('0'+lastFinish.getDate()).slice(-2)+'/'+('0'+(lastFinish.getMonth()+1)).slice(-2)+'/'+lastFinish.getFullYear();
+
+  /* Progettazione: % pesata sui metri (km), non sul semplice conteggio di pratiche —
+     coerente con la convenzione ENRI (donut/avanzamento scavi già km-weighted altrove,
+     NO COMPETENZA mai sommato). progettDone = km delle pratiche uscite da IN ATTESA/IN
+     REDAZIONE (row.pct===100, impostato da mergeMasterCsv) / km totali del lotto. */
+  var progettRows = GANTT_ROWS.filter(function(r){ return r.t === 'bar' && r.label === 'Progettazione e presentazione permesso' && r._km != null; });
+  var kmTot = progettRows.reduce(function(s,r){ return s + r._km; }, 0);
+  var kmDone = progettRows.filter(function(r){ return r.pct >= 100; }).reduce(function(s,r){ return s + r._km; }, 0);
+  var progettKmPct = kmTot > 0 ? Math.round((kmDone / kmTot) * 100) : 0;
+
   wrap.innerHTML =
     '<div class="legend-chip chip-2026">Avanzamento medio fasi: ' + avgPct + '%</div>' +
-    '<div class="legend-chip chip-2026">Permessi ottenuti: ' + msDone + '/' + ms.length + '</div>' +
+    '<div class="legend-chip chip-2026">Progettazione (km): ' + progettKmPct + '%</div>' +
+    '<div class="legend-chip chip-2026">Permessi ottenuti: ' + msDone + '/' + permits.length + '</div>' +
     '<div class="legend-chip' + (msOverdue > 0 ? ' chip-overdue' : ' chip-2026') + '">Scadenze superate: ' + msOverdue + '</div>' +
     '<div class="legend-chip chip-2026">Fine prevista: ' + lastFinishStr + '</div>';
 }
@@ -672,8 +821,17 @@ function buildKpi() {
 function _groupRowCount(groupId) {
   var idx = GANTT_ROWS.findIndex(function(r) { return r.id === groupId; });
   if (idx === -1) return 0;
+  var row = GANTT_ROWS[idx];
   var n = 0;
-  for (var i = idx + 1; i < GANTT_ROWS.length && GANTT_ROWS[i].t !== 'g'; i++) n++;
+  /* per un gruppo di livello 1 ('g', comune/zona) conta fino al prossimo 'g' (include le
+     'g2'/pratiche annidate); per un sotto-gruppo ('g2', pratica) conta solo le sue righe
+     foglia, fermandosi alla prossima 'g2' o 'g'. */
+  for (var i = idx + 1; i < GANTT_ROWS.length; i++) {
+    var rr = GANTT_ROWS[i];
+    if (row.t === 'g' && rr.t === 'g') break;
+    if (row.t === 'g2' && (rr.t === 'g2' || rr.t === 'g')) break;
+    n++;
+  }
   return n;
 }
 
@@ -686,7 +844,8 @@ function buildGantt() {
 
   var LW = 250;   /* label column width — nomi enti/comuni piu' lunghi */
   var RH = 30;    /* row height */
-  var GH = 24;    /* group header height */
+  var GH = 24;    /* group header height (livello 1: comune/zona) */
+  var GH2 = 20;   /* sub-group header height (livello 2: pratica), indentato */
   var HDR = 50;   /* time axis header height (+10 per la riga anno sopra i mesi) */
 
   var T0 = new Date(2026, 1, 1);   /* 01/02/2026 */
@@ -711,10 +870,16 @@ function buildGantt() {
 
   var totalH = HDR;
   (function() {
-    var collapsed = false;
+    /* collasso a 2 livelli: 'g' = comune/zona (livello 1), 'g2' = pratica (livello 2, nidificata dentro 'g').
+       Un 'g' collassato nasconde tutto il suo contenuto, incluse le 'g2' figlie; una 'g2' collassata
+       nasconde solo le proprie righe foglia (bar/ms), la sua intestazione resta visibile. */
+    var topCollapsed = false, subCollapsed = false;
     GANTT_ROWS.forEach(function(r) {
-      if (r.t === 'g') { totalH += GH; collapsed = COLLAPSED_GROUPS.has(r.id); return; }
-      if (!collapsed) totalH += RH;
+      if (r.t === 'g') { totalH += GH; topCollapsed = COLLAPSED_GROUPS.has(r.id); subCollapsed = false; return; }
+      if (topCollapsed) return;
+      if (r.t === 'g2') { totalH += GH2; subCollapsed = COLLAPSED_GROUPS.has(r.id); return; }
+      if (subCollapsed) return;
+      totalH += RH;
     });
   })();
 
@@ -762,28 +927,45 @@ function buildGantt() {
 
   var todayD = new Date(2026,6,7);
   var rowY = HDR;
-  var groupCollapsed = false;
+  var topCollapsed = false, subCollapsed = false;
   var ROW_GEOM = {}; /* id riga -> {x1,x2,cy} — per disegnare i connettori di dipendenza */
   GANTT_ROWS.forEach(function(row, idx) {
     if (row.t === 'g') {
-      groupCollapsed = COLLAPSED_GROUPS.has(row.id);
+      topCollapsed = COLLAPSED_GROUPS.has(row.id);
+      subCollapsed = false;
       parts.push('<rect x="0" y="' + rowY + '" width="' + W + '" height="' + GH + '" fill="#DFE4EB" data-group-id="' + row.id + '" style="cursor:pointer;"/>');
-      var chevPts = groupCollapsed
+      var chevPts = topCollapsed
         ? (10)+','+(rowY+GH/2-3)+' '+(16)+','+(rowY+GH/2)+' '+(10)+','+(rowY+GH/2+3)   /* ▸ chiusa */
         : (7)+','+(rowY+GH/2-2)+' '+(13)+','+(rowY+GH/2-2)+' '+(10)+','+(rowY+GH/2+3); /* ▾ aperta */
       parts.push('<polygon points="' + chevPts + '" fill="var(--gray-500)" data-group-id="' + row.id + '" style="cursor:pointer;"/>');
-      parts.push('<text x="24" y="' + (rowY + GH/2 + 3) + '" font-size="8" font-family="JetBrains Mono,monospace" font-weight="700" fill="var(--gray-500)" letter-spacing="1.5" data-group-id="' + row.id + '" style="cursor:pointer;">' + row.label + (groupCollapsed ? '  (' + _groupRowCount(row.id) + ' task nascosti)' : '') + '</text>');
+      parts.push('<text x="24" y="' + (rowY + GH/2 + 3) + '" font-size="8" font-family="JetBrains Mono,monospace" font-weight="700" fill="var(--gray-500)" letter-spacing="1.5" data-group-id="' + row.id + '" style="cursor:pointer;">' + row.label + (topCollapsed ? '  (' + _groupRowCount(row.id) + ' task nascosti)' : '') + '</text>');
       rowY += GH;
       return;
     }
-    if (groupCollapsed) return;
+    if (topCollapsed) return;
 
+    if (row.t === 'g2') {
+      /* sotto-intestazione "pratica", nidificata dentro il comune/zona corrente: indentata,
+         sfondo più chiaro del livello 1, collasso indipendente (nasconde solo le sue righe foglia). */
+      subCollapsed = COLLAPSED_GROUPS.has(row.id);
+      parts.push('<rect x="0" y="' + rowY + '" width="' + W + '" height="' + GH2 + '" fill="#E9EDF2" data-group-id="' + row.id + '" style="cursor:pointer;"/>');
+      var chevPts2 = subCollapsed
+        ? (26)+','+(rowY+GH2/2-2.5)+' '+(31)+','+(rowY+GH2/2)+' '+(26)+','+(rowY+GH2/2+2.5)
+        : (23.5)+','+(rowY+GH2/2-2)+' '+(28.5)+','+(rowY+GH2/2-2)+' '+(26)+','+(rowY+GH2/2+2.5);
+      parts.push('<polygon points="' + chevPts2 + '" fill="' + C_MID + '" data-group-id="' + row.id + '" style="cursor:pointer;"/>');
+      parts.push('<text x="38" y="' + (rowY + GH2/2 + 3) + '" font-size="8.5" font-family="Raleway,sans-serif" font-weight="700" fill="' + C_DARK + '" data-group-id="' + row.id + '" style="cursor:pointer;">' + row.label + (subCollapsed ? '  (' + _groupRowCount(row.id) + ')' : '') + '</text>');
+      rowY += GH2;
+      return;
+    }
+    if (subCollapsed) return;
+
+    var labelIndent = row._inPratica ? 26 : 10; /* righe foglia dentro una pratica: indentate rispetto a quelle dirette sotto un comune/zona (es. Materiali) */
     var cy = rowY + RH / 2;
     if (idx % 2 === 0) {
       parts.push('<rect x="' + (LW+1) + '" y="' + rowY + '" width="' + (CW-1) + '" height="' + RH + '" fill="rgba(4,63,117,0.013)"/>');
     }
     parts.push('<line x1="0" y1="' + (rowY + RH) + '" x2="' + W + '" y2="' + (rowY + RH) + '" stroke="#DFE4EB" stroke-width="0.5"/>');
-    parts.push('<text x="10" y="' + (cy + 3) + '" font-size="9.5" font-family="Raleway,sans-serif" font-weight="600" fill="var(--gray-700)">' + row.label + '</text>');
+    parts.push('<text x="' + labelIndent + '" y="' + (cy + 3) + '" font-size="9.5" font-family="Raleway,sans-serif" font-weight="600" fill="var(--gray-700)">' + row.label + '</text>');
 
     if (row.t === 'bar') {
       var x1 = xPos(row.start);
@@ -904,6 +1086,95 @@ function toggleEditMode() {
   document.getElementById('editModeBtnLabel').textContent = EDIT_MODE ? 'Modifica attiva' : 'Modalità modifica';
   document.getElementById('gantt-wrap').classList.toggle('edit-on', EDIT_MODE);
   if (!EDIT_MODE) closeGanttEditPopover();
+}
+
+document.getElementById('grpScopeType').addEventListener('change', function() {
+  document.getElementById('grpScopeKeyWrap').style.display = this.value === 'global' ? 'none' : 'block';
+});
+
+function _scopeLabel(scope) {
+  if (scope === 'global') return 'Default (globale)';
+  var parts = scope.split(':');
+  var kind = { lotto: 'Lotto', impresa: 'Impresa', pratica: 'Permesso' }[parts[0]] || parts[0];
+  return kind + ' · ' + parts.slice(1).join(':');
+}
+
+function renderGanttRatesList() {
+  var wrap = document.getElementById('ganttRatesList');
+  var scopes = Object.keys(GANTT_RATES);
+  if (!scopes.length) {
+    wrap.innerHTML = '<div style="font-size:12px;color:var(--gray-500);padding:8px 0;">Nessuna regola configurata — in uso il default di sistema (' + SCAVO_M_GIORNO + ' m/g).</div>';
+    return;
+  }
+  var order = { global: 0, lotto: 1, impresa: 2, pratica: 3 };
+  scopes.sort(function(a, b) { return (order[a.split(':')[0]] || 9) - (order[b.split(':')[0]] || 9); });
+  wrap.innerHTML = scopes.map(function(scope) {
+    var r = GANTT_RATES[scope];
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--gray-100);">' +
+      '<div><div style="font-size:12px;font-weight:600;color:var(--gray-700);">' + _scopeLabel(scope) + '</div>' +
+      '<div style="font-size:10px;color:var(--gray-400);font-family:JetBrains Mono,monospace;">' + (r.updated_by ? (r.updated_by + ' · ' + (r.updated_at || '').slice(0, 10)) : '') + '</div></div>' +
+      '<div style="display:flex;align-items:center;gap:10px;">' +
+      '<span style="font-family:JetBrains Mono,monospace;font-weight:700;color:var(--retelit-blue);font-size:13px;">' + fmtIt(r.m_giorno) + ' m/g</span>' +
+      '<button onclick="deleteGanttRate(\'' + scope.replace(/'/g, "\\'") + '\')" style="background:none;border:none;cursor:pointer;color:var(--gray-400);font-size:14px;line-height:1;" title="Rimuovi regola">×</button>' +
+      '</div></div>';
+  }).join('');
+}
+
+function openGanttRatesPanel() {
+  document.getElementById('ganttRatesOverlay').style.display = 'block';
+  document.getElementById('grpErr').style.display = 'none';
+  renderGanttRatesList();
+}
+
+function closeGanttRatesPanel() {
+  document.getElementById('ganttRatesOverlay').style.display = 'none';
+}
+
+async function saveGanttRate() {
+  var errEl = document.getElementById('grpErr');
+  errEl.style.display = 'none';
+  var scopeType = document.getElementById('grpScopeType').value;
+  var scopeKey = document.getElementById('grpScopeKey').value.trim();
+  var mGiorno = document.getElementById('grpMGiorno').value;
+  if (scopeType !== 'global' && !scopeKey) {
+    errEl.textContent = 'Inserisci il valore dell\'ambito (es. 1A, ROSSI SPA, AUT/1/1A).';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!mGiorno || +mGiorno <= 0) {
+    errEl.textContent = 'Inserisci un valore di m/giorno positivo.';
+    errEl.style.display = 'block';
+    return;
+  }
+  var scope = scopeType === 'global' ? 'global' : (scopeType + ':' + scopeKey);
+  try {
+    var res = await fetch((window.ENRI && window.ENRI.isEnabled ? window.ENRI.apiBase : '') + '/api/gantt/rates/' + encodeURIComponent(scope), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-session-token': _sessionToken() },
+      body: JSON.stringify({ m_giorno: +mGiorno })
+    });
+    if (!res.ok) { var e = await res.json().catch(function(){return {};}); throw new Error(e.detail || 'Salvataggio fallito'); }
+    document.getElementById('grpScopeKey').value = '';
+    document.getElementById('grpMGiorno').value = '';
+    await applyGanttRates();
+    renderGanttRatesList();
+    buildGantt();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+async function deleteGanttRate(scope) {
+  try {
+    await fetch((window.ENRI && window.ENRI.isEnabled ? window.ENRI.apiBase : '') + '/api/gantt/rates/' + encodeURIComponent(scope), {
+      method: 'DELETE',
+      headers: { 'x-session-token': _sessionToken() }
+    });
+    await applyGanttRates();
+    renderGanttRatesList();
+    buildGantt();
+  } catch (e) { console.warn('Rimozione regola fallita:', e.message); }
 }
 
 function _applyGanttDepHighlight(svg, hoverId) {
@@ -1077,7 +1348,13 @@ window.addEventListener('load', function() {
     requestAnimationFrame(function() {
       buildKpi();
       buildGantt();
-      Promise.all([mergeMasterCsv(), mergeCantieriProgress(), fetchGanttOverrides()]).then(function() {
+      applyGanttRates().then(function() {
+        /* sequenziale, non nel Promise.all sotto: deve completare PRIMA di mergeCantieriProgress,
+           altrimenti in parallelo l'ordine di arrivo delle due fetch non è garantito e la stima
+           km-based potrebbe sovrascrivere per corsa dati scavi reali già arrivati (o viceversa
+           mancare l'aggiornamento _baseEnd corretto prima della propagazione). */
+        return Promise.all([mergeMasterCsv(), mergeCantieriProgress(), fetchGanttOverrides()]);
+      }).then(function() {
         propagateGanttDatesFromPermits(); /* Fase 5/6/7 slittano con le previsioni impresa sulla pratica corrispondente */
         applyGanttOverrides(); /* vince sempre su baseline + Master.csv */
         buildKpi();
@@ -1091,6 +1368,7 @@ window.addEventListener('resize', function() {
   window._ganttTimer = setTimeout(buildGantt, 80);
 });
 if (IS_ADMIN) document.getElementById('editModeBtn').style.display = 'inline-flex';
+if (IS_ADMIN) document.getElementById('ratesBtn').style.display = 'inline-flex';
 document.addEventListener('click', function(e) {
   var pop = document.getElementById('ganttEditPopover');
   if (pop.style.display === 'block' && !pop.contains(e.target) && !e.target.closest('[data-row-id]')) {
