@@ -85,6 +85,7 @@ sopralluoghi_col = db["sopralluoghi"]          # verbali di sopralluogo
 pol_conv_dates_col = db["pol_conv_dates"]      # prima data in cui CONVENZIONE/POLIZZA è comparsa per una pratica
 access_logs_col = db["access_logs"]            # log accessi (ex-JSONBin) — un documento per binId, {utenti:[...], accessi:[...]}
 gantt_overrides_col = db["gantt_overrides"]    # override manuali riga Gantt (pct/date/label) per lotto, indip. da invii impresa
+gantt_rates_col = db["gantt_rates"]            # regole tasso scavo (m/giorno) per scope: "global" | "lotto:<ID>" | "impresa:<NOME>" | "pratica:<CODICE>"
 gridfs = AsyncIOMotorGridFSBucket(db, bucket_name="files")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -704,6 +705,7 @@ async def _on_startup():
         await cantieri_col.create_index([("pratica_id", 1), ("ente", 1)])
         await cantieri_col.create_index("lotto")
         await sopralluoghi_col.create_index("codice_verbale")
+        await gantt_rates_col.create_index("scope", unique=True)
         print("[enri-dashboard] Indici MongoDB verificati/creati")
     except Exception as e:
         print(f"[startup] creazione indici: {e}")
@@ -3065,6 +3067,61 @@ async def upsert_gantt_override(lotto: str, row_id: str, payload: dict, sess: di
 async def delete_gantt_override(lotto: str, row_id: str, sess: dict = Depends(_require_admin_session)):
     """Ripristina il valore automatico/baseline per la riga (rimuove l'override manuale)."""
     res = await gantt_overrides_col.delete_one({"lotto": lotto, "row_id": row_id})
+    return {"deleted": res.deleted_count}
+
+
+# ── Tasso di produzione scavo (m/giorno), configurabile per scope ────────────
+# scope è una stringa libera con 4 forme valide:
+#   "global"              → default di fallback, usato se nessuna regola più specifica esiste
+#   "lotto:<ID>"           es. "lotto:1A"
+#   "impresa:<NOME>"       es. "impresa:ROSSI SPA" (nome esatto come in assignments_col)
+#   "pratica:<CODICE>"     es. "pratica:AUT/1/1A" (codice pratica completo, univoco anche tra lotti)
+# Il frontend risolve la priorità (pratica > impresa > lotto > global) leggendo tutte le
+# regole in un colpo solo via GET e applicando la più specifica per ciascuna pratica.
+_GANTT_RATE_SCOPE_PREFIXES = ("lotto:", "impresa:", "pratica:")
+
+
+def _validate_gantt_rate_scope(scope: str) -> None:
+    if scope == "global" or scope.startswith(_GANTT_RATE_SCOPE_PREFIXES):
+        return
+    raise HTTPException(400, "scope deve essere 'global', 'lotto:<ID>', 'impresa:<NOME>' o 'pratica:<CODICE>'")
+
+
+@app.get("/api/gantt/rates")
+async def get_gantt_rates(sess: dict = Depends(_require_staff_session)):
+    cur = gantt_rates_col.find({})
+    out = {}
+    async for d in cur:
+        out[d["scope"]] = {
+            "m_giorno": d.get("m_giorno"),
+            "updated_at": d.get("updated_at"),
+            "updated_by": d.get("updated_by"),
+        }
+    return {"rates": out}
+
+
+@app.put("/api/gantt/rates/{scope:path}")
+async def upsert_gantt_rate(scope: str, payload: dict, sess: dict = Depends(_require_admin_session)):
+    _validate_gantt_rate_scope(scope)
+    try:
+        m_giorno = float((payload or {}).get("m_giorno"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "m_giorno deve essere un numero")
+    if m_giorno <= 0 or m_giorno > 10000:
+        raise HTTPException(400, "m_giorno deve essere un valore positivo plausibile (0-10000)")
+    doc = {"scope": scope, "m_giorno": m_giorno, "updated_at": _now_iso(), "updated_by": sess["nome"]}
+    await gantt_rates_col.update_one(
+        {"scope": scope},
+        {"$set": doc, "$setOnInsert": {"created_at": _now_iso()}},
+        upsert=True,
+    )
+    return {"ok": True, "scope": scope, "m_giorno": m_giorno}
+
+
+@app.delete("/api/gantt/rates/{scope:path}")
+async def delete_gantt_rate(scope: str, sess: dict = Depends(_require_admin_session)):
+    """Rimuove la regola per questo scope: la pratica ricade sul livello meno specifico successivo."""
+    res = await gantt_rates_col.delete_one({"scope": scope})
     return {"deleted": res.deleted_count}
 
 
