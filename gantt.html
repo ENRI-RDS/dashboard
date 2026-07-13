@@ -941,7 +941,21 @@ function buildGantt() {
   var GH2 = 20;   /* sub-group header height (livello 2: pratica), indentato */
   var HDR = 50;   /* time axis header height (+10 per la riga anno sopra i mesi) */
 
-  var T0 = new Date(2026, 1, 1);   /* 01/02/2026 */
+  var T0 = (function() {
+    /* T0 dinamico: parte dal mese della data più antica realmente presente nei dati
+       (barre 'bar'.start o milestone 'ms'.date), invece di un 01/02/2026 fisso — se i
+       task iniziano ad aprile non ha senso mostrare gennaio/febbraio/marzo vuoti.
+       Fallback al 01/02/2026 se per qualche motivo non si trova nessuna data valida. */
+    var min = null;
+    GANTT_ROWS.forEach(function(r) {
+      var d = null;
+      if (r.t === 'bar' && r.start) d = parseDateStr(r.start);
+      else if (r.t === 'ms' && r.date) d = parseDateStr(r.date);
+      if (d && (!min || d < min)) min = d;
+    });
+    if (!min) return new Date(2026, 1, 1);
+    return new Date(min.getFullYear(), min.getMonth(), 1);
+  })();
   var T1 = new Date(2027, 0, 15);  /* 15/01/2027 — padding fine anno */
   var SPAN = T1 - T0;
   var CW = W - LW;
@@ -984,9 +998,20 @@ function buildGantt() {
   parts.push('<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + totalH + '" style="display:block;font-family:Raleway,sans-serif;">');
   parts.push('<rect width="' + W + '" height="' + totalH + '" fill="#F7F8FA"/>');
 
-  /* griglia mensile */
-  var months = ['01/02/2026','01/03/2026','01/04/2026','01/05/2026','01/06/2026','01/07/2026','01/08/2026','01/09/2026','01/10/2026','01/11/2026','01/12/2026','01/01/2027'];
-  var mLabels = ['FEB','MAR','APR','MAG','GIU','LUG','AGO','SET','OTT','NOV','DIC','GEN'];
+  /* griglia mensile: generata dinamicamente da T0 (già ancorato al mese della data
+     più antica reale) fino a fine 2026 + gennaio 2027 di padding, invece di un array
+     fisso FEB→GEN che mostrava mesi vuoti se i dati partivano più avanti nell'anno. */
+  var MESI_IT = ['GEN','FEB','MAR','APR','MAG','GIU','LUG','AGO','SET','OTT','NOV','DIC'];
+  var months = [], mLabels = [];
+  (function() {
+    var cur = new Date(T0.getFullYear(), T0.getMonth(), 1);
+    var end = new Date(2027, 0, 1); /* fino a gennaio 2027 incluso */
+    while (cur <= end) {
+      months.push(('0' + cur.getDate()).slice(-2) + '/' + ('0' + (cur.getMonth() + 1)).slice(-2) + '/' + cur.getFullYear());
+      mLabels.push(MESI_IT[cur.getMonth()]);
+      cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+    }
+  })();
   months.forEach(function(mDate, i) {
     var mx = xPos(mDate);
     if (mx === null) return;
