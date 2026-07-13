@@ -686,15 +686,18 @@ async function mergeMasterCsv() {
          storico (everAdvanced) invece del solo ultimo stato evita che una pratica chiusa
          come NO COMPETENZA resti erroneamente bloccata a 0%. Match esplicito per
          _pratica+_ente (non offset posizionale nell'array): resta valido anche quando si
-         aggiungeranno gli altri lotti/pagine, indipendentemente dall'ordine di generazione. */
-      var progettRow = GANTT_ROWS.find(function(r) {
+         aggiungeranno gli altri lotti/pagine, indipendentemente dall'ordine di generazione.
+         IMPORTANTE: usare filter (non find) — una stessa pratica può coprire più tratte
+         fisiche separate (es. AUT/13/1A compare sia come 1,75 km che come 0,22 km, stesso
+         _pratica="13"/_ente="COMUNE DI PERO"): find() si fermava al primo match e lasciava
+         i segmenti successivi bloccati a 0% (bug osservato su RHO/23 e PERO/13). */
+      GANTT_ROWS.filter(function(r) {
         return r.t === 'bar' && r.label === 'Progettazione e presentazione permesso' &&
           r._pratica === row._pratica && r._ente === row._ente;
-      });
-      if (progettRow) {
+      }).forEach(function(progettRow) {
         progettRow.pct = everAdvanced[matchKey] ? 100 : 0;
         progettRow.real = true;
-      }
+      });
     });
   } catch (e) {
     console.warn('Master.csv non caricato per il gantt:', e.message);
