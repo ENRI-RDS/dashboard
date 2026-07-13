@@ -151,6 +151,7 @@ tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);fo
         <div class="section-tag" style="color:var(--retelit-teal);">Lotto 1A · Valtellina</div>
         <div class="section-title">Gantt operativo — fasi, permessi ed opere civili</div>
       </div>
+      <div id="scaviRangeCard" style="display:flex;gap:10px;align-items:center;flex-shrink:0;"></div>
       <div style="display:flex;gap:14px;align-items:center;flex-shrink:0;">
         <span class="gantt-legend-item" style="color:var(--retelit-blue);">
           <svg width="22" height="10"><rect x="0" y="1" width="22" height="8" rx="4" fill="var(--retelit-ice)" stroke="var(--retelit-blue)" stroke-width="1.5"/></svg>Avanzamento fase
@@ -880,6 +881,33 @@ function buildKpi() {
     '<div class="legend-chip chip-2026">Permessi ottenuti: ' + msDone + '/' + permits.length + '</div>' +
     '<div class="legend-chip' + (msOverdue > 0 ? ' chip-overdue' : ' chip-2026') + '">Scadenze superate: ' + msOverdue + '</div>' +
     '<div class="legend-chip chip-2026">Fine prevista: ' + lastFinishStr + '</div>';
+
+  buildScaviRangeCard();
+}
+
+/* Card "Primo scavo" / "Fine lavori": ricalcolata ad ogni buildKpi() (baseline .mpp, dopo
+   mergeMasterCsv/mergeCantieriProgress, dopo propagateGanttDatesFromPermits/cascadeOpereCivili
+   Durations e dopo applyGanttOverrides), quindi riflette sempre lo stato corrente del Gantt,
+   non un valore statico. "Primo scavo" = min(start) tra le barre "Opere Civili" (è la fase che
+   comprende lo scavo, vedi sub-label "Accantieramento, scavo tradizionale, scavo no dig,
+   pozzetti"). "Fine lavori" = max(end) tra le barre "As Built", ultima fase del ciclo. */
+function buildScaviRangeCard() {
+  var card = document.getElementById('scaviRangeCard');
+  if (!card) return;
+  var scaviBars = GANTT_ROWS.filter(function(r) { return r.t === 'bar' && r.label === 'Opere Civili' && r.start; });
+  var asBuiltBars = GANTT_ROWS.filter(function(r) { return r.t === 'bar' && r.label === 'As Built' && r.end; });
+  var firstScavo = scaviBars.reduce(function(mn, r) {
+    var d = parseDateStr(r.start);
+    return (d && (!mn || d < mn)) ? d : mn;
+  }, null);
+  var lastAsBuilt = asBuiltBars.reduce(function(mx, r) {
+    var d = parseDateStr(r.end);
+    return (d && (!mx || d > mx)) ? d : mx;
+  }, null);
+  var fmt = function(d) { return d ? ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + '/' + d.getFullYear() : '—'; };
+  card.innerHTML =
+    '<div class="legend-chip chip-2026" style="font-weight:700;">Inizio scavi: ' + fmt(firstScavo) + '</div>' +
+    '<div class="legend-chip chip-2026" style="font-weight:700;">Fine lavori (As Built): ' + fmt(lastAsBuilt) + '</div>';
 }
 
 /* ── Gantt render ── */
