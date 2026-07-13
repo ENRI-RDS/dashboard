@@ -669,7 +669,15 @@ async function mergeMasterCsv() {
         everAdvanced[key] = true;
       }
       var dum = iDum !== -1 ? parseDMY(cols[iDum]) : null;
-      if (!best[key] || (dum && (!best[key]._dum || dum > best[key]._dum))) {
+      /* >= e non >: a parità di DATA_ULTIMA_MODIFICA (frequente: più righe stesso giorno,
+         es. cambio stato + compilazione DATA_PREVISTA_RILASCIO in un secondo momento, o
+         passaggio a OTTENUTO subito dopo un altro stato) vince l'ultima riga del file per
+         quella pratica/ente, che è la più aggiornata. Con solo ">" la riga più recente a
+         parità di data veniva scartata, perdendo sia stati OTTENUTO sia DATA_PREVISTA_RILASCIO
+         compilate in un secondo passaggio (bug segnalato: "Permessi ottenuti" a 0/31 e date
+         di scadenza ferme al default 21/07/2026). Righe senza dum (vuoto) restano ignorate
+         come prima, per non sovrascrivere con dati privi di data. */
+      if (!best[key] || (dum && (!best[key]._dum || dum >= best[key]._dum))) {
         best[key] = {
           stato: iStato !== -1 ? cols[iStato] : '',
           dappr: iDappr !== -1 ? cols[iDappr] : '',
