@@ -49,6 +49,16 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);min-hei
 .page-sub{font-size:12px;color:var(--muted);margin-top:3px;}
 .legend-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .legend-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:10px;font-weight:600;font-family:var(--font-mono);letter-spacing:.04em;}
+.kpi-stat{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border2);border-left:3px solid var(--retelit-blue-50);border-radius:var(--radius-md);padding:6px 13px 6px 11px;box-shadow:var(--shadow-sm);}
+.kpi-stat svg{flex-shrink:0;color:var(--retelit-blue-75);}
+.kpi-text{display:flex;flex-direction:column;line-height:1.2;}
+.kpi-eyebrow{font-family:var(--font-mono);font-size:8.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);white-space:nowrap;}
+.kpi-value{font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;}
+.kpi-stat.kpi-danger{border-left-color:var(--danger);}
+.kpi-stat.kpi-danger svg{color:var(--danger);}
+.kpi-stat.kpi-danger .kpi-value{color:var(--danger);}
+.kpi-stat.kpi-finish{border-left-color:var(--ok);}
+.kpi-stat.kpi-finish svg{color:var(--ok);}
 .src-card{display:flex;align-items:center;background:linear-gradient(90deg,rgba(4,63,117,.055),rgba(30,158,106,.055));border:1px solid var(--border2);border-radius:var(--radius-lg);padding:7px 16px;box-shadow:var(--shadow-sm);}
 .src-seg{display:flex;align-items:center;gap:7px;}
 .src-text{display:flex;flex-direction:column;line-height:1.2;}
@@ -885,11 +895,26 @@ function buildKpi() {
   var progettKmPct = kmTot > 0 ? Math.round((kmDone / kmTot) * 100) : 0;
 
   wrap.innerHTML =
-    '<div class="legend-chip chip-2026">Avanzamento medio fasi: ' + avgPct + '%</div>' +
-    '<div class="legend-chip chip-2026">Progettazione (km): ' + progettKmPct + '%</div>' +
-    '<div class="legend-chip chip-2026">Permessi ottenuti: ' + msDone + '/' + permits.length + '</div>' +
-    '<div class="legend-chip' + (msOverdue > 0 ? ' chip-overdue' : ' chip-2026') + '">Scadenze superate: ' + msOverdue + '</div>' +
-    '<div class="legend-chip chip-2026">Fine prevista: ' + lastFinishStr + '</div>';
+    '<div class="kpi-stat">' +
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 14h4M7 10h10"/></svg>' +
+      '<div class="kpi-text"><span class="kpi-eyebrow">Avanzamento medio fasi</span><span class="kpi-value">' + avgPct + '%</span></div>' +
+    '</div>' +
+    '<div class="kpi-stat">' +
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5a2 2 0 0 1 2-2h8l6 6v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/><path d="M14 3v6h6"/></svg>' +
+      '<div class="kpi-text"><span class="kpi-eyebrow">Progettazione (km)</span><span class="kpi-value">' + progettKmPct + '%</span></div>' +
+    '</div>' +
+    '<div class="kpi-stat">' +
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/></svg>' +
+      '<div class="kpi-text"><span class="kpi-eyebrow">Permessi ottenuti</span><span class="kpi-value">' + msDone + '/' + permits.length + '</span></div>' +
+    '</div>' +
+    '<div class="kpi-stat' + (msOverdue > 0 ? ' kpi-danger' : '') + '">' +
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4"/><circle cx="12" cy="17" r="0.6" fill="currentColor"/></svg>' +
+      '<div class="kpi-text"><span class="kpi-eyebrow">Scadenze superate</span><span class="kpi-value">' + msOverdue + '</span></div>' +
+    '</div>' +
+    '<div class="kpi-stat kpi-finish">' +
+      '<svg width="11" height="13" viewBox="0 0 11 13"><path d="M1 0v13M1 1h8l-2 2.3L9 5.6H1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>' +
+      '<div class="kpi-text"><span class="kpi-eyebrow">Fine prevista</span><span class="kpi-value">' + lastFinishStr + '</span></div>' +
+    '</div>';
 
   buildScaviRangeCard();
 }
