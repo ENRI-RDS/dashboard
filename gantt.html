@@ -49,6 +49,15 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);min-hei
 .page-sub{font-size:12px;color:var(--muted);margin-top:3px;}
 .legend-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .legend-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:10px;font-weight:600;font-family:var(--font-mono);letter-spacing:.04em;}
+.src-card{display:flex;align-items:center;background:linear-gradient(90deg,rgba(4,63,117,.055),rgba(30,158,106,.055));border:1px solid var(--border2);border-radius:var(--radius-lg);padding:7px 16px;box-shadow:var(--shadow-sm);}
+.src-seg{display:flex;align-items:center;gap:7px;}
+.src-text{display:flex;flex-direction:column;line-height:1.2;}
+.src-eyebrow{font-family:var(--font-mono);font-size:8.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);white-space:nowrap;}
+.src-value{font-family:var(--font-mono);font-size:12.5px;font-weight:700;white-space:nowrap;}
+.src-start .src-value{color:var(--retelit-blue);}
+.src-end .src-value{color:var(--ok);}
+.src-track{position:relative;width:46px;height:2px;margin:0 12px;border-radius:2px;flex-shrink:0;background:linear-gradient(90deg,var(--retelit-blue),var(--ok));}
+.src-dur{position:absolute;left:50%;top:-13px;transform:translateX(-50%);font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:.03em;color:var(--muted);white-space:nowrap;}
 .chip-2026{background:rgba(65,187,217,.12);color:#1A7D99;border:1px solid #ADCAD6;}
 .chip-2027{background:rgba(30,158,106,.10);color:#1E9E6A;border:1px solid #bbf7d0;}
 .chip-2028{background:rgba(4,63,117,.10);color:#043F75;border:1px solid #819FB9;}
@@ -905,9 +914,19 @@ function buildScaviRangeCard() {
     return (d && (!mx || d > mx)) ? d : mx;
   }, null);
   var fmt = function(d) { return d ? ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + '/' + d.getFullYear() : '—'; };
+  var durDays = (firstScavo && lastAsBuilt) ? Math.round((lastAsBuilt - firstScavo) / 86400000) : null;
   card.innerHTML =
-    '<div class="legend-chip chip-2026" style="font-weight:700;">Inizio scavi: ' + fmt(firstScavo) + '</div>' +
-    '<div class="legend-chip chip-2026" style="font-weight:700;">Fine lavori (As Built): ' + fmt(lastAsBuilt) + '</div>';
+    '<div class="src-card">' +
+      '<div class="src-seg src-start">' +
+        '<svg width="11" height="11" viewBox="0 0 11 11"><circle cx="5.5" cy="5.5" r="5" fill="var(--retelit-blue)"/></svg>' +
+        '<div class="src-text"><span class="src-eyebrow">Inizio scavi</span><span class="src-value">' + fmt(firstScavo) + '</span></div>' +
+      '</div>' +
+      '<div class="src-track">' + (durDays != null ? '<span class="src-dur">' + durDays + ' gg</span>' : '') + '</div>' +
+      '<div class="src-seg src-end">' +
+        '<svg width="11" height="13" viewBox="0 0 11 13"><path d="M1 0v13M1 1h8l-2 2.3L9 5.6H1" fill="none" stroke="var(--ok)" stroke-width="1.4" stroke-linejoin="round"/></svg>' +
+        '<div class="src-text"><span class="src-eyebrow">Fine lavori (As Built)</span><span class="src-value">' + fmt(lastAsBuilt) + '</span></div>' +
+      '</div>' +
+    '</div>';
 }
 
 /* ── Gantt render ── */
