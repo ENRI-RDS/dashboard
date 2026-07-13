@@ -243,6 +243,7 @@ var GANTT_ROWS = [{"t": "g", "label": "MATERIALI (LOTTO 1A)"},{"t": "ms", "label
 
 var LOTTO_ID = '1A';
 GANTT_ROWS.forEach(function(r, i) { r.id = i; }); /* id stabile: indice nell'array statico */
+GANTT_ROWS.forEach(function(r) { if (r.t === 'bar' && r.label === 'Opere Civili') r._mppBaseEnd = r.end; }); /* fine ORIGINALE .mpp, immutabile — riferimento per calcolare lo scostamento da cascare su Test e collaudo/As Built quando la durata viene ricalcolata a metri (sotto) */
 function addWorkDaysDmy(d, workDays) {
   /* ritorna la data (dd/mm/yyyy) del workDays-esimo giorno lavorativo (lun-ven) a partire
      da d incluso — salta sabato e domenica. Se d cade di sabato/domenica il conteggio
@@ -350,6 +351,8 @@ async function applyGanttRates() {
     _computeOpereCiviliDuration(row, mGiorno, source);
     row._baseEnd = row.end;
   });
+
+  cascadeOpereCiviliDurations(); /* ripropaga a Test e collaudo/As Built con le durate ora basate sui tassi risolti (permesso>impresa>lotto>default), non più quelle di default della prima passata */
 }
 
 /* ── Dipendenze reali, estratte 1:1 dal .mpp originale (Gantt_Cluster_1_e_2.mpp,
@@ -486,6 +489,8 @@ var GANTT_DEPS = {
   190: { pred: 189, type: 'FS', lagDays: 0 },
   191: { pred: 190, type: 'FS', lagDays: 0 }
 };
+
+cascadeOpereCiviliDurations(); /* corregge Test e collaudo/As Built in base alla durata di Opere Civili appena calcolata (passata sincrona di default) — v. fix rev.185 */
 
 
 function ganttSuccessorsOf(rowId) {
@@ -757,6 +762,37 @@ async function mergeCantieriProgress() {
    aggiornate da mergeCantieriProgress() (avanzamento scavi reale, più
    autorevole di uno spostamento inferito dal solo permesso) né gli override
    manuali admin (applicati sempre dopo, in applyGanttOverrides()). */
+function _applyAccumulatedDeltaToRow(row) {
+  var totalDelta = (row._deltaKm || 0) + (row._deltaPermesso || 0);
+  if (row._baseStart) { var s = parseDateStr(row._baseStart); if (s) row.start = shiftDmy(s, totalDelta); }
+  if (row._baseEnd) { var e = parseDateStr(row._baseEnd); if (e) row.end = shiftDmy(e, totalDelta); }
+}
+
+function _cascadeDeltaFromRow(rowId, deltaDays, byId, deltaKey) {
+  /* trasla in cascata (BFS su GANTT_DEPS/ganttSuccessorsOf) tutti i successori a valle di
+     rowId. deltaKey distingue la FONTE dello scostamento ('_deltaPermesso' da uno slittamento
+     di permesso, '_deltaKm' da un ricalcolo di durata Opere Civili): una riga può ricevere
+     entrambi i tipi di scostamento contemporaneamente (es. Test e collaudo dipende sia dal
+     quando parte Opere Civili — legato al permesso — sia da quanto dura — legato ai km), quindi
+     si SOMMANO su campi separati invece di sovrascriversi a vicenda. Non tocca righe con dato
+     reale (row.real, da mergeCantieriProgress) — quello vince sempre. */
+  var queue = ganttSuccessorsOf(rowId);
+  var visited = {};
+  while (queue.length) {
+    var sid = queue.shift();
+    if (visited[sid]) continue;
+    visited[sid] = true;
+    var row = byId[sid];
+    if (!row || row.t !== 'bar') continue;
+    if (!row.real) {
+      row[deltaKey] = deltaDays;
+      _applyAccumulatedDeltaToRow(row);
+      row.shiftedFromPermit = true;
+    }
+    ganttSuccessorsOf(sid).forEach(function(next) { queue.push(next); });
+  }
+}
+
 function propagateGanttDatesFromPermits() {
   var byId = {};
   GANTT_ROWS.forEach(function(r) { byId[r.id] = r; });
@@ -765,24 +801,31 @@ function propagateGanttDatesFromPermits() {
     var baseD = parseDateStr(msRow._baseDate), realD = parseDateStr(msRow.date);
     if (!baseD || !realD) return;
     var deltaDays = Math.round((realD - baseD) / 86400000);
-    if (!deltaDays) return; /* nessuno scostamento, niente da propagare */
-    var queue = ganttSuccessorsOf(msRow.id);
-    var visited = {};
-    while (queue.length) {
-      var sid = queue.shift();
-      if (visited[sid]) continue;
-      visited[sid] = true;
-      var row = byId[sid];
-      if (!row || row.t !== 'bar') continue;
-      if (!row.real) { /* non sovrascrive righe già aggiornate da mergeCantieriProgress (dato scavi reale) */
-        if (row._baseStart) { var s = parseDateStr(row._baseStart); if (s) row.start = shiftDmy(s, deltaDays); }
-        if (row._baseEnd) { var e = parseDateStr(row._baseEnd); if (e) row.end = shiftDmy(e, deltaDays); }
-        row.shiftedFromPermit = true;
-      }
-      ganttSuccessorsOf(sid).forEach(function(next) { queue.push(next); });
-    }
+    _cascadeDeltaFromRow(msRow.id, deltaDays, byId, '_deltaPermesso');
   });
 }
+
+function cascadeOpereCiviliDurations() {
+  /* Bug rev.185: Opere Civili viene ricalcolata a metri/giorno (rev.182-184), ma senza
+     questa funzione Test e collaudo/As Built restavano ancorate alla vecchia data uniforme
+     del .mpp (baseline pensata per una durata di Opere Civili diversa) — risultava un gap
+     di settimane tra la fine di Opere Civili e l'inizio di Test e collaudo. Per ogni Opere
+     Civili, calcola lo scostamento tra la nuova fine (ricalcolata a metri) e quella
+     ORIGINALE del .mpp (_mppBaseEnd, immutabile), e lo trasla sui successori (campo
+     '_deltaKm', si somma a un eventuale '_deltaPermesso' già presente, non lo sovrascrive).
+     Chiamata sia dopo la prima passata sincrona (default) sia dopo applyGanttRates() (tassi
+     risolti) — idempotente, il riferimento _mppBaseEnd non cambia mai. */
+  var byId = {};
+  GANTT_ROWS.forEach(function(r) { byId[r.id] = r; });
+  GANTT_ROWS.forEach(function(row) {
+    if (row.t !== 'bar' || row.label !== 'Opere Civili' || !row._mppBaseEnd) return;
+    var mppEnd = parseDateStr(row._mppBaseEnd), newEnd = parseDateStr(row.end);
+    if (!mppEnd || !newEnd) return;
+    var deltaDays = Math.round((newEnd - mppEnd) / 86400000);
+    _cascadeDeltaFromRow(row.id, deltaDays, byId, '_deltaKm');
+  });
+}
+
 function shiftDmy(d, days) {
   var nd = new Date(d.getTime() + days * 86400000);
   return ('0' + nd.getDate()).slice(-2) + '/' + ('0' + (nd.getMonth() + 1)).slice(-2) + '/' + nd.getFullYear();
