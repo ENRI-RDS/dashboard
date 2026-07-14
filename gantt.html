@@ -123,6 +123,7 @@ tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);fo
 #gantt-wrap{min-height:200px;}
 #editModeBtn.active{background:var(--retelit-blue);color:#fff;border-color:var(--retelit-blue);}
 #gantt-wrap svg [data-row-id]{cursor:pointer;}
+#gantt-wrap.edit-on svg [data-row-id]{cursor:grab;}
 #gantt-wrap svg [data-row-id]:hover{filter:brightness(1.15) drop-shadow(0 0 2px var(--retelit-blue));}
 #ganttEditPopover{position:fixed;z-index:9998;background:var(--surface);border:1px solid var(--border2);border-radius:10px;box-shadow:var(--shadow-lg);padding:14px 16px;width:240px;font-size:12px;display:none;}
 #ganttEditPopover .gep-title{font-weight:700;font-size:11px;margin-bottom:10px;color:var(--text);}
@@ -273,6 +274,34 @@ var GANTT_ROWS = [{"t": "g", "label": "MATERIALI (LOTTO 1A)"},{"t": "ms", "label
 var LOTTO_ID = '1A';
 GANTT_ROWS.forEach(function(r, i) { r.id = i; }); /* id stabile: indice nell'array statico */
 GANTT_ROWS.forEach(function(r) { if (r.t === 'bar' && r.label === 'Opere Civili') r._mppBaseEnd = r.end; }); /* fine ORIGINALE .mpp, immutabile — riferimento per calcolare lo scostamento da cascare su Test e collaudo/As Built quando la durata viene ricalcolata a metri (sotto) */
+
+/* ── Numerazione pratica/fase: richiesta utente per rendere usabile la select
+   "Predecessore" nel popover di modifica (prima: elenco piatto di ~150 righe con
+   etichette identiche ripetute — es. "Progettazione e presentazione permesso" comparso
+   31 volte — impossibile capire quale riga corrispondesse a quale pratica). Numero
+   pratica assegnato in ordine di comparsa nel Gantt (stabile, non l'id numerico della
+   pratica stessa che non è mai mostrato all'utente); numero fase 1-5 fisso per tutte
+   le pratiche (Progettazione→Ottenimento→Opere Civili→Test e collaudo→As Built). Le
+   2 righe "Materiali" (Tubi/Pozzetti, fuori pratica) restano fuori numerazione, gruppo
+   a parte nella select. ── */
+var GANTT_PHASE_NUM = {
+  'Progettazione e presentazione permesso': 1,
+  'Ottenimento permesso': 2,
+  'Opere Civili': 3,
+  'Test e collaudo': 4,
+  'As Built': 5
+};
+var _ganttPraticaNumCache = null;
+function ganttPraticaNumbers() {
+  if (_ganttPraticaNumCache) return _ganttPraticaNumCache;
+  var map = {}, n = 0;
+  GANTT_ROWS.forEach(function(r) {
+    var code = r._praticaCode;
+    if (code && !map[code]) { n++; map[code] = n; }
+  });
+  _ganttPraticaNumCache = map;
+  return map;
+}
 function addWorkDaysDmy(d, workDays) {
   /* ritorna la data (dd/mm/yyyy) del workDays-esimo giorno lavorativo (lun-ven) a partire
      da d incluso — salta sabato e domenica. Se d cade di sabato/domenica il conteggio
@@ -1272,6 +1301,12 @@ function buildGantt() {
   var svg = wrap.querySelector('svg');
   if (svg) {
     var _lastHoverRow = null;
+    svg.addEventListener('mousedown', function(e) {
+      if (!EDIT_MODE) return;
+      var rowEl = e.target.closest && e.target.closest('[data-row-id]');
+      if (!rowEl) return;
+      _ganttDrag = { fromId: rowEl.getAttribute('data-row-id'), downX: e.clientX, downY: e.clientY, moved: false };
+    });
     svg.addEventListener('mousemove', function(e) {
       var tip = e.target.getAttribute('data-tip');
       if (tip) {
@@ -1288,6 +1323,15 @@ function buildGantt() {
         _lastHoverRow = hoverId;
         _applyGanttDepHighlight(svg, hoverId);
       }
+      if (_ganttDrag) {
+        if (!_ganttDrag.moved && (Math.abs(e.clientX - _ganttDrag.downX) > 5 || Math.abs(e.clientY - _ganttDrag.downY) > 5)) {
+          _ganttDrag.moved = true;
+        }
+        if (_ganttDrag.moved) {
+          _tt.style.display = 'none';
+          _drawGanttDragLine(_ganttDrag.downX, _ganttDrag.downY, e.clientX, e.clientY);
+        }
+      }
     });
     svg.addEventListener('mouseleave', function() {
       _tt.style.display = 'none';
@@ -1295,6 +1339,7 @@ function buildGantt() {
       _applyGanttDepHighlight(svg, null);
     });
     svg.addEventListener('click', function(e) {
+      if (_ganttSuppressNextClick) { _ganttSuppressNextClick = false; return; }
       var gid = e.target.getAttribute('data-group-id');
       if (gid !== null) {
         gid = +gid;
@@ -1317,6 +1362,67 @@ function buildGantt() {
    campo di ogni riga, indipendentemente dagli invii impresa. ── */
 var EDIT_MODE = false;
 var COLLAPSED_GROUPS = new Set(); /* id delle righe 'g' (fase) attualmente collassate */
+
+/* ── drag&drop per collegare predecessore→successore trascinando da una barra
+   all'altra (richiesta utente, in alternativa/aggiunta alla select numerata):
+   mousedown su una barra/milestone in EDIT_MODE avvia il trascinamento (linea
+   tratteggiata di feedback su un overlay SVG a schermo intero, coordinate client
+   dirette — non serve alcuna conversione perché è "position:fixed" sopra tutto),
+   mouseup su un'altra barra/milestone apre il popover di modifica di
+   quest'ultima con "Predecessore" già preselezionato sulla riga di partenza —
+   l'utente deve comunque premere "Salva" per confermare, un semplice click sopra
+   la stessa barra (senza spostamento) continua a funzionare come prima (apre il
+   popover normale, senza precompilare nulla). ── */
+var _ganttDrag = null;
+var _ganttSuppressNextClick = false;
+
+function _ganttDragLineEl() {
+  var el = document.getElementById('ganttDragLine');
+  if (!el) {
+    el = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    el.id = 'ganttDragLine';
+    el.style.cssText = 'position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:9997;';
+    var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.id = 'ganttDragLineInner';
+    line.setAttribute('stroke', 'var(--retelit-blue)');
+    line.setAttribute('stroke-width', '2');
+    line.setAttribute('stroke-dasharray', '5,4');
+    el.appendChild(line);
+    var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    dot.id = 'ganttDragLineDot';
+    dot.setAttribute('r', '4');
+    dot.setAttribute('fill', 'var(--retelit-blue)');
+    el.appendChild(dot);
+    document.body.appendChild(el);
+  }
+  return el;
+}
+function _drawGanttDragLine(x1, y1, x2, y2) {
+  var el = _ganttDragLineEl();
+  el.style.display = 'block';
+  document.getElementById('ganttDragLineInner').setAttribute('x1', x1);
+  document.getElementById('ganttDragLineInner').setAttribute('y1', y1);
+  document.getElementById('ganttDragLineInner').setAttribute('x2', x2);
+  document.getElementById('ganttDragLineInner').setAttribute('y2', y2);
+  document.getElementById('ganttDragLineDot').setAttribute('cx', x1);
+  document.getElementById('ganttDragLineDot').setAttribute('cy', y1);
+}
+function _removeGanttDragLine() {
+  var el = document.getElementById('ganttDragLine');
+  if (el) el.style.display = 'none';
+}
+document.addEventListener('mouseup', function(e) {
+  if (!_ganttDrag) return;
+  var drag = _ganttDrag;
+  _ganttDrag = null;
+  _removeGanttDragLine();
+  if (!drag.moved) return; /* nessuno spostamento: era un click normale, lascialo gestire al listener 'click' del svg */
+  var targetEl = e.target.closest && e.target.closest('[data-row-id]');
+  var targetRid = targetEl ? targetEl.getAttribute('data-row-id') : null;
+  if (targetRid === null || targetRid === drag.fromId) return;
+  _ganttSuppressNextClick = true;
+  openGanttEditPopover(+targetRid, e.clientX, e.clientY, +drag.fromId);
+});
 
 function toggleEditMode() {
   EDIT_MODE = !EDIT_MODE;
@@ -1453,14 +1559,33 @@ function ganttDepsHtml(rowId) {
   return html;
 }
 
-function ganttDepsEditHtml(rowId) {
+function ganttDepsEditHtml(rowId, presetPredId) {
   var cur = GANTT_DEPS[rowId];
-  var options = '<option value="">— nessuna —</option>' + GANTT_ROWS.filter(function(r) {
-    return r.t !== 'g' && r.id !== rowId;
-  }).map(function(r) {
-    var sel = cur && cur.pred === r.id ? ' selected' : '';
-    return '<option value="' + r.id + '"' + sel + '>' + r.label.replace(/</g, '&lt;').slice(0, 42) + '</option>';
-  }).join('');
+  var selectedId = presetPredId !== undefined && presetPredId !== null ? String(presetPredId) : (cur ? String(cur.pred) : '');
+  var pnums = ganttPraticaNumbers();
+  var groups = {}; /* key: _praticaCode oppure 'MATERIALI' → { num, order, ente, items:[row,...] } */
+  GANTT_ROWS.forEach(function(r) {
+    if ((r.t !== 'bar' && r.t !== 'ms') || r.id === rowId) return;
+    var key = r._praticaCode || 'MATERIALI';
+    if (!groups[key]) groups[key] = { num: r._praticaCode ? pnums[key] : 0, ente: r._ente || r._comune || '', items: [] };
+    if (!groups[key].ente && (r._ente || r._comune)) groups[key].ente = r._ente || r._comune;
+    groups[key].items.push(r);
+  });
+  var groupKeys = Object.keys(groups).sort(function(a, b) { return groups[a].num - groups[b].num; });
+  var options = '<option value="">— nessuna —</option>';
+  groupKeys.forEach(function(key) {
+    var g = groups[key];
+    var label = (key === 'MATERIALI') ? 'Materiali (fuori pratica)' : (g.num + '. ' + key + (g.ente ? ' · ' + g.ente : ''));
+    g.items.sort(function(a, b) { return (GANTT_PHASE_NUM[a.label] || 9) - (GANTT_PHASE_NUM[b.label] || 9); });
+    options += '<optgroup label="' + label.replace(/</g, '&lt;').replace(/"/g, '&quot;') + '">';
+    g.items.forEach(function(r) {
+      var ph = GANTT_PHASE_NUM[r.label];
+      var tag = (key === 'MATERIALI') ? r.label : (g.num + '.' + (ph || '?') + ' — ' + r.label);
+      var sel = selectedId === String(r.id) ? ' selected' : '';
+      options += '<option value="' + r.id + '"' + sel + '>' + tag.replace(/</g, '&lt;') + '</option>';
+    });
+    options += '</optgroup>';
+  });
   var succIds = ganttSuccessorsOf(rowId);
   var succHtml = '';
   if (succIds.length) {
@@ -1502,7 +1627,7 @@ function _positionGanttPopover(pop, clientX, clientY) {
   pop.style.top = Math.max(8, top) + 'px';
 }
 
-function openGanttEditPopover(rowId, clientX, clientY) {
+function openGanttEditPopover(rowId, clientX, clientY, presetPredId) {
   var row = findGanttRow(rowId);
   if (!row) return;
   var pop = document.getElementById('ganttEditPopover');
@@ -1513,11 +1638,12 @@ function openGanttEditPopover(rowId, clientX, clientY) {
     : '<label>Data</label><input id="gepDate" value="' + (row.date||'') + '" placeholder="gg/mm/aaaa">';
   pop.innerHTML =
     '<div class="gep-title">' + row.label.replace(/</g,'&lt;') + '</div>' +
+    (presetPredId !== undefined && presetPredId !== null ? '<div style="font-size:9.5px;color:var(--ok);font-weight:600;margin-bottom:4px;">↳ Predecessore impostato trascinando — verifica e salva</div>' : '') +
     '<label>% completamento</label><input id="gepPct" type="number" min="0" max="100" value="' + Math.round(row.pct) + '">' +
     dateFields +
     (isBar ? '<label>Note</label><input id="gepSub" value="' + (row.sub||'').replace(/"/g,'&quot;') + '">' : '') +
     (row.manual ? '<div style="font-size:9.5px;color:var(--muted);margin-top:8px;">✓ valore manuale salvato</div>' : '') +
-    ganttDepsEditHtml(rowId) +
+    ganttDepsEditHtml(rowId, presetPredId) +
     '<div class="gep-err" id="gepErr"></div>' +
     '<div class="gep-actions">' +
       '<button class="gep-save" onclick="saveGanttEdit(' + rowId + ')">Salva</button>' +
