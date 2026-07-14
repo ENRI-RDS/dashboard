@@ -1351,7 +1351,7 @@ function buildGantt() {
       _applyGanttDepHighlight(svg, null);
     });
     svg.addEventListener('click', function(e) {
-      if (_ganttSuppressNextClick) { _ganttSuppressNextClick = false; return; }
+      if (_ganttSuppressNextClick) { return; }
       var gid = e.target.getAttribute('data-group-id');
       if (gid !== null) {
         gid = +gid;
@@ -1439,7 +1439,18 @@ document.addEventListener('mouseup', function(e) {
   var targetEl = dropEl && dropEl.closest && dropEl.closest('[data-row-id]');
   var targetRid = targetEl ? targetEl.getAttribute('data-row-id') : null;
   if (targetRid === null || targetRid === drag.fromId) return;
+  /* Il click sintetico generato dal rilascio, quando mousedown e mouseup sono
+     avvenuti su due elementi diversi (che è esattamente il nostro caso: barra di
+     partenza ≠ barra di arrivo), spesso non è mirato sulla barra ma sul <svg>
+     contenitore (ancestor comune) — e questo click continua comunque a bubblare
+     fino a document, dove un ALTRO listener (chiudi popover se clicco fuori,
+     più sotto nel file) lo intercetta e chiude il popover appena aperto, perché
+     non trova un [data-row-id] sul target. Il flag deve restare true per TUTTA
+     la gestione sincrona di questo click (letto sia dal listener 'click' del
+     svg sia da quello globale di chiusura), quindi non lo resetto subito dentro
+     il primo handler che lo controlla: lo rimetto a false in modo asincrono. */
   _ganttSuppressNextClick = true;
+  setTimeout(function() { _ganttSuppressNextClick = false; }, 0);
   openGanttEditPopover(+targetRid, e.clientX, e.clientY, +drag.fromId);
 });
 
@@ -1753,6 +1764,7 @@ window.addEventListener('resize', function() {
 if (IS_ADMIN) document.getElementById('editModeBtn').style.display = 'inline-flex';
 if (IS_ADMIN) document.getElementById('ratesBtn').style.display = 'inline-flex';
 document.addEventListener('click', function(e) {
+  if (_ganttSuppressNextClick) return; /* click sintetico di fine-trascinamento drag&drop: non è un click "fuori", ignoralo */
   var pop = document.getElementById('ganttEditPopover');
   if (pop.style.display === 'block' && !pop.contains(e.target) && !e.target.closest('[data-row-id]')) {
     closeGanttEditPopover();
