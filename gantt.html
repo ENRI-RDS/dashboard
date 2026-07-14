@@ -302,6 +302,25 @@ function ganttPraticaNumbers() {
   _ganttPraticaNumCache = map;
   return map;
 }
+/* Prefisso "N." (intestazione pratica, riga 'g2') o "N.F — " (riga foglia bar/ms dentro
+   una pratica) mostrato DIRETTAMENTE nella vista Gantt, con la stessa numerazione usata
+   nella select "Predecessore" del popover — altrimenti il numero è visibile solo aprendo
+   il popover e non c'è modo di ritrovarlo scorrendo il Gantt (bug segnalato dall'utente). */
+function _ganttPraticaLabelPrefix(row) {
+  var pnums = ganttPraticaNumbers();
+  if (row.t === 'g2') {
+    var segs = row.label.split(' · ');
+    var code = segs.length >= 2 ? segs[1].trim() : null;
+    var num = code ? pnums[code] : null;
+    return num ? (num + '. ') : '';
+  }
+  if (row._praticaCode) {
+    var num2 = pnums[row._praticaCode];
+    var ph = GANTT_PHASE_NUM[row.label];
+    if (num2 && ph) return num2 + '.' + ph + ' — ';
+  }
+  return '';
+}
 function addWorkDaysDmy(d, workDays) {
   /* ritorna la data (dd/mm/yyyy) del workDays-esimo giorno lavorativo (lun-ven) a partire
      da d incluso — salta sabato e domenica. Se d cade di sabato/domenica il conteggio
@@ -964,37 +983,28 @@ function buildKpi() {
   buildScaviRangeCard();
 }
 
-/* Card "Primo scavo" / "Fine lavori": ricalcolata ad ogni buildKpi() (baseline .mpp, dopo
+/* Card "Inizio scavi": ricalcolata ad ogni buildKpi() (baseline .mpp, dopo
    mergeMasterCsv/mergeCantieriProgress, dopo propagateGanttDatesFromPermits/cascadeOpereCivili
    Durations e dopo applyGanttOverrides), quindi riflette sempre lo stato corrente del Gantt,
    non un valore statico. "Primo scavo" = min(start) tra le barre "Opere Civili" (è la fase che
    comprende lo scavo, vedi sub-label "Accantieramento, scavo tradizionale, scavo no dig,
-   pozzetti"). "Fine lavori" = max(end) tra le barre "As Built", ultima fase del ciclo. */
+   pozzetti"). La data di fine lavori NON è più mostrata qui: è già la card "Fine prevista"
+   nella riga KPI sopra (rev.191) — mostrarla anche qui era una ripetizione, segnalata
+   dall'utente. */
 function buildScaviRangeCard() {
   var card = document.getElementById('scaviRangeCard');
   if (!card) return;
   var scaviBars = GANTT_ROWS.filter(function(r) { return r.t === 'bar' && r.label === 'Opere Civili' && r.start; });
-  var asBuiltBars = GANTT_ROWS.filter(function(r) { return r.t === 'bar' && r.label === 'As Built' && r.end; });
   var firstScavo = scaviBars.reduce(function(mn, r) {
     var d = parseDateStr(r.start);
     return (d && (!mn || d < mn)) ? d : mn;
   }, null);
-  var lastAsBuilt = asBuiltBars.reduce(function(mx, r) {
-    var d = parseDateStr(r.end);
-    return (d && (!mx || d > mx)) ? d : mx;
-  }, null);
   var fmt = function(d) { return d ? ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + '/' + d.getFullYear() : '—'; };
-  var durDays = (firstScavo && lastAsBuilt) ? Math.round((lastAsBuilt - firstScavo) / 86400000) : null;
   card.innerHTML =
     '<div class="src-card">' +
       '<div class="src-seg src-start">' +
         '<svg width="11" height="11" viewBox="0 0 11 11"><circle cx="5.5" cy="5.5" r="5" fill="var(--retelit-blue)"/></svg>' +
         '<div class="src-text"><span class="src-eyebrow">Inizio scavi</span><span class="src-value">' + fmt(firstScavo) + '</span></div>' +
-      '</div>' +
-      '<div class="src-track">' + (durDays != null ? '<span class="src-dur">' + durDays + ' gg</span>' : '') + '</div>' +
-      '<div class="src-seg src-end">' +
-        '<svg width="11" height="13" viewBox="0 0 11 13"><path d="M1 0v13M1 1h8l-2 2.3L9 5.6H1" fill="none" stroke="var(--ok)" stroke-width="1.4" stroke-linejoin="round"/></svg>' +
-        '<div class="src-text"><span class="src-eyebrow">Fine lavori (As Built)</span><span class="src-value">' + fmt(lastAsBuilt) + '</span></div>' +
       '</div>' +
     '</div>';
 }
@@ -1206,7 +1216,7 @@ function buildGantt() {
         ? (26)+','+(rowY+GH2/2-2.5)+' '+(31)+','+(rowY+GH2/2)+' '+(26)+','+(rowY+GH2/2+2.5)
         : (23.5)+','+(rowY+GH2/2-2)+' '+(28.5)+','+(rowY+GH2/2-2)+' '+(26)+','+(rowY+GH2/2+2.5);
       parts.push('<polygon points="' + chevPts2 + '" fill="' + C_MID + '" data-group-id="' + row.id + '" style="cursor:pointer;"/>');
-      parts.push('<text x="38" y="' + (rowY + GH2/2 + 3) + '" font-size="8.5" font-family="Raleway,sans-serif" font-weight="700" fill="' + C_DARK + '" data-group-id="' + row.id + '" style="cursor:pointer;">' + row.label + (subCollapsed ? '  (' + _groupRowCount(row.id) + ')' : '') + '</text>');
+      parts.push('<text x="38" y="' + (rowY + GH2/2 + 3) + '" font-size="8.5" font-family="Raleway,sans-serif" font-weight="700" fill="' + C_DARK + '" data-group-id="' + row.id + '" style="cursor:pointer;">' + _ganttPraticaLabelPrefix(row) + row.label + (subCollapsed ? '  (' + _groupRowCount(row.id) + ')' : '') + '</text>');
       if (subCollapsed) {
         var roll2 = _groupRollup(row.id);
         if (roll2) {
@@ -1232,7 +1242,7 @@ function buildGantt() {
       parts.push('<rect x="' + (LW+1) + '" y="' + rowY + '" width="' + (CW-1) + '" height="' + RH + '" fill="rgba(4,63,117,0.013)"/>');
     }
     parts.push('<line x1="0" y1="' + (rowY + RH) + '" x2="' + W + '" y2="' + (rowY + RH) + '" stroke="#DFE4EB" stroke-width="0.5"/>');
-    parts.push('<text x="' + labelIndent + '" y="' + (cy + 3) + '" font-size="9.5" font-family="Raleway,sans-serif" font-weight="600" fill="var(--gray-700)">' + row.label + '</text>');
+    parts.push('<text x="' + labelIndent + '" y="' + (cy + 3) + '" font-size="9.5" font-family="Raleway,sans-serif" font-weight="600" fill="var(--gray-700)">' + _ganttPraticaLabelPrefix(row) + row.label + '</text>');
 
     if (row.t === 'bar') {
       var x1 = xPos(row.start);
@@ -1417,7 +1427,14 @@ document.addEventListener('mouseup', function(e) {
   _ganttDrag = null;
   _removeGanttDragLine();
   if (!drag.moved) return; /* nessuno spostamento: era un click normale, lascialo gestire al listener 'click' del svg */
-  var targetEl = e.target.closest && e.target.closest('[data-row-id]');
+  /* elementFromPoint invece di e.target: su alcuni browser il target di un evento
+     mouseup che segue un mousedown su un elemento SVG resta "agganciato" all'elemento
+     di partenza (comportamento di cattura implicita del mouse), quindi e.target
+     risulterebbe sempre uguale alla barra di origine — sintomo esatto segnalato
+     ("si vede il collegamento ma non aggancia il task"). elementFromPoint guarda
+     sempre l'elemento effettivamente sotto il cursore alle coordinate di rilascio. */
+  var dropEl = document.elementFromPoint(e.clientX, e.clientY);
+  var targetEl = dropEl && dropEl.closest && dropEl.closest('[data-row-id]');
   var targetRid = targetEl ? targetEl.getAttribute('data-row-id') : null;
   if (targetRid === null || targetRid === drag.fromId) return;
   _ganttSuppressNextClick = true;
