@@ -877,7 +877,8 @@
     const typeLabel = s.type === 'update' ? 'Aggiornamento' : 'Nuova pratica';
     $('detailsTitle').textContent = `${typeLabel} — ${s.nome}`;
     const statusColor = {pending:'#f59e0b',approved:'var(--retelit-sky)',rejected:'#ef4444'}[s.status]||'var(--gray-500)';
-    $('detailsSub').innerHTML = `Inviato: ${new Date(s.submitted_at).toLocaleString('it-IT')}  <span style="display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:600;background:${statusColor}22;color:${statusColor}">${s.status}</span>`;
+    const reviewedHtml = s.reviewed_at ? `  ${s.status==='approved'?'Approvato':'Rifiutato'}: ${new Date(s.reviewed_at).toLocaleString('it-IT')}` : '';
+    $('detailsSub').innerHTML = `Inviato: ${new Date(s.submitted_at).toLocaleString('it-IT')}${reviewedHtml}  <span style="display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:600;background:${statusColor}22;color:${statusColor}">${s.status}</span>`;
     const fieldLabels = {
       STATO_PERMESSO:'Nuovo stato', DATA_RICHIESTA:'Data richiesta',
       DATA_APPROVAZIONE:'Data approvazione', PRATICA:'Pratica', NOTE:'Note',
@@ -1123,7 +1124,8 @@
           <div class="pend-card-head">
             <span class="pend-tag" style="background:${accentColor}18;color:${accentColor}">${typeIcon} ${escapeHtml(typeLabel)}</span>
             <span style="font-weight:700;font-size:13px">${escapeHtml(s.nome)}</span>
-            <span style="color:var(--muted);font-size:11px">${fmtDate(s.submitted_at)}</span>
+            <span style="color:var(--muted);font-size:11px">Inviato: ${fmtDate(s.submitted_at)}</span>
+            ${s.reviewed_at ? `<span style="color:var(--muted);font-size:11px">· ${s.status==='approved'?'Approvato':'Rifiutato'}: ${fmtDate(s.reviewed_at)}</span>` : ''}
             <span class="pend-tag" style="background:${stBg};color:${stFg};margin-left:auto">${stLabel}</span>
           </div>
           <div class="pend-card-body">
