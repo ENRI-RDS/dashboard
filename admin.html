@@ -129,6 +129,16 @@
   .tabbar{display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid var(--border)}
   .tab{padding:8px 14px;font-size:12.5px;font-weight:600;color:var(--muted);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
   .tab.active{color:var(--accent);border-color:var(--accent)}
+  .guida-note{background:var(--bg-3);border:1px solid var(--retelit-blue-25);border-radius:var(--radius-md);padding:14px 16px;font-size:12.5px;line-height:1.6;color:var(--fg-2);margin-bottom:20px}
+  .guida-note code{font-family:var(--font-mono);font-size:11.5px;background:rgba(4,63,117,.08);padding:1px 5px;border-radius:4px}
+  .guida-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  @media(max-width:900px){.guida-grid{grid-template-columns:1fr}}
+  .guida-card{position:relative;border:1px solid var(--border-1);border-radius:var(--radius-lg);padding:18px 18px 18px 20px;background:var(--bg-1)}
+  .guida-card h3{font-family:var(--font-display);font-size:13.5px;font-weight:700;color:var(--fg-1);margin:0 0 10px;padding-right:8px}
+  .guida-num{position:absolute;top:-10px;left:-10px;width:26px;height:26px;border-radius:var(--radius-pill);background:var(--retelit-blue);color:#fff;font-family:var(--font-mono);font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center}
+  .guida-card ol{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:8px}
+  .guida-card li{font-size:12.5px;line-height:1.55;color:var(--text)}
+  .guida-card code{font-family:var(--font-mono);font-size:11px;background:var(--bg-2);border:1px solid var(--border-1);padding:1px 5px;border-radius:4px}
   .panel{display:none}
   .panel.active{display:block}
   .pillstat{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:var(--muted)}
@@ -208,6 +218,7 @@
         <button class="tab" data-tab="pending" data-testid="tab-pending">Coda imprese <span id="pendingBadge" style="display:none;background:var(--retelit-ice);color:var(--retelit-teal);border-radius:999px;padding:1px 7px;font-size:10px;margin-left:5px"></span></button>
         <button class="tab" data-tab="assign" data-testid="tab-assign">Assegnazioni imprese</button>
         <button class="tab" data-tab="cantieri" data-testid="tab-cantieri">Cantieri</button>
+        <button class="tab" data-tab="guida" data-testid="tab-guida">Guida procedure</button>
       </div>
 
       <div class="panel active" id="panel-files">
@@ -344,6 +355,67 @@
           <div class="msg" id="cantEditMsg"></div>
         </div>
       </div>
+
+      <!-- GUIDA PROCEDURE -->
+      <div class="panel" id="panel-guida">
+        <p class="sub">Riferimento rapido per le operazioni che coinvolgono <code>QGIS.geojson</code> e <code>Master.csv</code>. Il backend non sincronizza mai automaticamente i due file tra loro nella direzione geometria→dati: ogni scenario richiede un ordine preciso.</p>
+
+        <div class="guida-note">
+          <strong>Regola di base</strong> — <code>Master.csv</code> è autoritativo per lo stato/iter delle pratiche (STATO_AUTORIZZAZIONE, LAVORABILE, PRATICA, ecc.): ad ogni upload/approvazione, il backend rigenera queste proprietà su <code>QGIS.geojson</code> a parità di geometria esistente (match per TRATTA_ID), senza mai creare nuove feature.
+          <br><br>
+          <code>QGIS.geojson</code> è invece autoritativo per la geometria e per <strong>LUNGHEZZA</strong>: il campo <code>LUNGHEZZA</code> nel geojson <u>non viene mai sovrascritto</u> dal Master.csv durante la rigenerazione. Se le due lunghezze divergono, resta così finché non le allinei manualmente (in un verso o nell'altro, a seconda di quale sia corretta).
+        </div>
+
+        <div class="guida-grid">
+
+          <div class="guida-card">
+            <div class="guida-num">1</div>
+            <h3>Modificare/aggiungere tratte in QGIS (split, nuova geometria, nuovi TRATTA_ID)</h3>
+            <ol>
+              <li>Esegui lo split/la modifica in QGIS. Assegna <strong>TRATTA_ID univoci</strong> ai nuovi segmenti.</li>
+              <li>Esporta in GeoJSON con <strong>CRS = EPSG:4326 / CRS84</strong> (non UTM — coordinate in metri farebbero uscire la mappa fuori scala).</li>
+              <li>Tab <em>File correnti</em> → carica il file scegliendo <code>QGIS.geojson</code> dal menu di destinazione. Il nome del file selezionato dal disco deve combaciare col target scelto, altrimenti il caricamento viene bloccato.</li>
+              <li><strong>Solo dopo</strong>, carica/approva <code>Master.csv</code> con le righe dei nuovi TRATTA_ID (via upload diretto o via coda imprese). Se l'ordine viene invertito, le nuove righe restano orfane senza geometria fino al prossimo upload del geojson.</li>
+              <li>Verifica in tab <em>File correnti</em> che <code>modificato</code>/<code>dimensione</code> di entrambi i file riflettano l'upload appena fatto, prima di considerare chiusa l'operazione.</li>
+            </ol>
+          </div>
+
+          <div class="guida-card">
+            <div class="guida-num">2</div>
+            <h3>Correggere la LUNGHEZZA di una o più tratte</h3>
+            <ol>
+              <li>Stabilisci quale valore è corretto: di norma la geometria in QGIS (misurata) è la fonte primaria.</li>
+              <li>Se la geometria non cambia ma solo il valore era sbagliato: aggiorna il campo <code>LUNGHEZZA</code> direttamente nelle proprietà della feature in QGIS, poi esporta e carica <code>QGIS.geojson</code> (stesso identico TRATTA_ID, il resto delle proprietà di stato viene comunque ripatchato al prossimo giro da Master.csv, invariato).</li>
+              <li>Aggiorna manualmente il campo <code>LUNGHEZZA</code> nelle righe corrispondenti di <code>Master.csv</code> (stesso TRATTA_ID — possono essere più righe, una per pratica/ente). <strong>Nessuna sincronizzazione automatica in questo verso</strong>: se salti questo passo, Master.csv resta con il valore vecchio e i due file restano disallineati (mostrato in mappa correttamente, ma sbagliato in tabelle/export basati su Master.csv).</li>
+              <li>Carica <code>Master.csv</code> aggiornato (tab <em>File correnti</em>, target <code>Master.csv</code>).</li>
+              <li>Verifica: apri l'anteprima di entrambi i file (icona occhio in tab <em>File correnti</em>) e confronta il valore LUNGHEZZA sulla stessa TRATTA_ID.</li>
+            </ol>
+          </div>
+
+          <div class="guida-card">
+            <div class="guida-num">3</div>
+            <h3>Aggiornare solo stato/iter pratica (nessuna modifica a geometria/lunghezza)</h3>
+            <ol>
+              <li>Flusso normale via impresa: invio da <code>imprese.html</code>/<code>mappa_impresa_caricamento.html</code> → coda in tab <em>Coda imprese</em> → Approva.</li>
+              <li>Oppure, come admin: modifica <code>Master.csv</code> offline e ricaricalo (tab <em>File correnti</em>, target <code>Master.csv</code>).</li>
+              <li>In entrambi i casi il backend rigenera automaticamente <code>QGIS.geojson</code> (solo le proprietà di stato: STATO_AUTORIZZAZIONE, STATO_NULLAOSTA, STATO_ORDINANZA, LAVORABILE, MOTIVO_NO, PRATICA, ENTE) e <code>Riepilogo_progettazione.csv</code>, poi pusha entrambi su GitHub — nessuna azione manuale aggiuntiva richiesta.</li>
+              <li>Se serve rigenerare i derivati senza toccare Master.csv (es. dopo un fix di logica), usa <code>POST /api/admin/regenerate-derived</code>.</li>
+            </ol>
+          </div>
+
+          <div class="guida-card">
+            <div class="guida-num">4</div>
+            <h3>Dopo qualunque upload critico</h3>
+            <ol>
+              <li>Controlla tab <em>File correnti</em>: colonna <em>Sorgente</em> deve indicare <code>mongo</code> (non <code>disk</code>) e <em>Ultima modifica</em> deve essere recente.</li>
+              <li>Se due persone caricano lo stesso file in parallelo (es. upload manuale QGIS mentre un'approvazione impresa rigenera i derivati), vince chi scrive per ultimo — non c'è lock. In caso di dubbio ricarica la pagina e riverifica dopo qualche minuto.</li>
+              <li>In tab <em>Storico versioni</em> puoi sempre confrontare/ripristinare una versione precedente se qualcosa non torna.</li>
+            </ol>
+          </div>
+
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
