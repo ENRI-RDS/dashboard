@@ -139,6 +139,8 @@
   .guida-card ol{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:8px}
   .guida-card li{font-size:12.5px;line-height:1.55;color:var(--text)}
   .guida-card code{font-family:var(--font-mono);font-size:11px;background:var(--bg-2);border:1px solid var(--border-1);padding:1px 5px;border-radius:4px}
+  .guida-warn{margin-top:12px;background:var(--danger-bg);border:1px solid rgba(192,57,43,.25);border-radius:var(--radius-md);padding:10px 12px;font-size:12px;line-height:1.5;color:var(--danger)}
+  .guida-warn strong{font-weight:700}
   .panel{display:none}
   .panel.active{display:block}
   .pillstat{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:var(--muted)}
@@ -361,9 +363,11 @@
         <p class="sub">Riferimento rapido per le operazioni che coinvolgono <code>QGIS.geojson</code> e <code>Master.csv</code>. Il backend non sincronizza mai automaticamente i due file tra loro nella direzione geometria→dati: ogni scenario richiede un ordine preciso.</p>
 
         <div class="guida-note">
-          <strong>Regola di base</strong> — <code>Master.csv</code> è autoritativo per lo stato/iter delle pratiche (STATO_AUTORIZZAZIONE, LAVORABILE, PRATICA, ecc.): ad ogni upload/approvazione, il backend rigenera queste proprietà su <code>QGIS.geojson</code> a parità di geometria esistente (match per TRATTA_ID), senza mai creare nuove feature.
+          <strong>Regola di base #1 — chi comanda cosa.</strong> <code>Master.csv</code> è autoritativo per lo stato/iter delle pratiche (STATO_AUTORIZZAZIONE, LAVORABILE, PRATICA, ecc.): ad ogni upload/approvazione, il backend riscrive queste proprietà su <code>QGIS.geojson</code>, feature per feature, abbinando lo stesso TRATTA_ID — non crea mai nuove feature.
           <br><br>
-          <code>QGIS.geojson</code> è invece autoritativo per la geometria e per <strong>LUNGHEZZA</strong>: il campo <code>LUNGHEZZA</code> nel geojson <u>non viene mai sovrascritto</u> dal Master.csv durante la rigenerazione. Se le due lunghezze divergono, resta così finché non le allinei manualmente (in un verso o nell'altro, a seconda di quale sia corretta).
+          <code>QGIS.geojson</code> è invece autoritativo per la geometria e per <strong>LUNGHEZZA</strong>: questo campo non viene mai toccato dal Master.csv durante la rigenerazione. Se le due lunghezze divergono, restano disallineate finché non le correggi tu a mano.
+          <br><br>
+          <strong>Regola di base #2 — un upload sostituisce, non aggiunge.</strong> Quando carichi un file in tab <em>File correnti</em>, quel file <u>rimpiazza per intero</u> la versione attuale — non viene fatto nessun merge con quanto già presente. Il file che carichi deve quindi contenere <strong>tutti i dati che vuoi restino visibili</strong>, non solo quelli nuovi o modificati. Questo vale sia per <code>QGIS.geojson</code> sia per <code>Master.csv</code>.
         </div>
 
         <div class="guida-grid">
@@ -372,12 +376,16 @@
             <div class="guida-num">1</div>
             <h3>Modificare/aggiungere tratte in QGIS (split, nuova geometria, nuovi TRATTA_ID)</h3>
             <ol>
-              <li>Esegui lo split/la modifica in QGIS. Assegna <strong>TRATTA_ID univoci</strong> ai nuovi segmenti.</li>
-              <li>Esporta in GeoJSON con <strong>CRS = EPSG:4326 / CRS84</strong> (non UTM — coordinate in metri farebbero uscire la mappa fuori scala).</li>
-              <li>Tab <em>File correnti</em> → carica il file scegliendo <code>QGIS.geojson</code> dal menu di destinazione. Il nome del file selezionato dal disco deve combaciare col target scelto, altrimenti il caricamento viene bloccato.</li>
+              <li>In QGIS lavori su un <strong>layer</strong> (lo strato vettoriale con tutte le tratte del progetto). Apri quello già allineato con l'attuale <code>QGIS.geojson</code> della dashboard — non crearne uno nuovo da zero.</li>
+              <li>Dentro quel layer, esegui lo split/la modifica solo sulle tratte che ti interessano. Assegna <strong>TRATTA_ID univoci</strong> ai nuovi segmenti generati dallo split (mai duplicare un TRATTA_ID già esistente).</li>
+              <li>Esporta il layer in GeoJSON (<em>Esporta → Salva elementi come...</em>) con <strong>CRS = EPSG:4326 / CRS84</strong> (non UTM — coordinate in metri farebbero uscire la mappa fuori scala).</li>
+              <li>Tab <em>File correnti</em> → carica quel file scegliendo <code>QGIS.geojson</code> dal menu di destinazione. Il nome del file selezionato dal disco deve combaciare col target scelto, altrimenti il caricamento viene bloccato.</li>
               <li><strong>Solo dopo</strong>, carica/approva <code>Master.csv</code> con le righe dei nuovi TRATTA_ID (via upload diretto o via coda imprese). Se l'ordine viene invertito, le nuove righe restano orfane senza geometria fino al prossimo upload del geojson.</li>
               <li>Verifica in tab <em>File correnti</em> che <code>modificato</code>/<code>dimensione</code> di entrambi i file riflettano l'upload appena fatto, prima di considerare chiusa l'operazione.</li>
             </ol>
+            <div class="guida-warn">
+              <strong>Punto critico — esporta l'INTERO file, non solo le tratte toccate.</strong> Il file che esporti al passo 3 deve contenere <strong>tutte</strong> le feature del layer: quelle vecchie invariate + quelle nuove/modificate dallo split. L'upload sostituisce l'intero <code>QGIS.geojson</code> — non aggiunge le feature nuove a quelle già online. Se esporti/carichi solo le tratte modificate, tutte le altre spariscono dalla mappa al prossimo caricamento.
+            </div>
           </div>
 
           <div class="guida-card">
@@ -385,9 +393,9 @@
             <h3>Correggere la LUNGHEZZA di una o più tratte</h3>
             <ol>
               <li>Stabilisci quale valore è corretto: di norma la geometria in QGIS (misurata) è la fonte primaria.</li>
-              <li>Se la geometria non cambia ma solo il valore era sbagliato: aggiorna il campo <code>LUNGHEZZA</code> direttamente nelle proprietà della feature in QGIS, poi esporta e carica <code>QGIS.geojson</code> (stesso identico TRATTA_ID, il resto delle proprietà di stato viene comunque ripatchato al prossimo giro da Master.csv, invariato).</li>
+              <li>Se la geometria non cambia ma solo il valore era sbagliato: aggiorna il campo <code>LUNGHEZZA</code> direttamente nelle proprietà della feature, nello stesso layer completo usato al riquadro 1. Poi esporta di nuovo <strong>l'intero layer</strong> (stesso identico TRATTA_ID sulla feature corretta, tutte le altre feature invariate incluse) e carica come <code>QGIS.geojson</code> — vale lo stesso avviso del riquadro 1: file parziale = tratte mancanti.</li>
               <li>Aggiorna manualmente il campo <code>LUNGHEZZA</code> nelle righe corrispondenti di <code>Master.csv</code> (stesso TRATTA_ID — possono essere più righe, una per pratica/ente). <strong>Nessuna sincronizzazione automatica in questo verso</strong>: se salti questo passo, Master.csv resta con il valore vecchio e i due file restano disallineati (mostrato in mappa correttamente, ma sbagliato in tabelle/export basati su Master.csv).</li>
-              <li>Carica <code>Master.csv</code> aggiornato (tab <em>File correnti</em>, target <code>Master.csv</code>).</li>
+              <li>Carica <code>Master.csv</code> aggiornato (tab <em>File correnti</em>, target <code>Master.csv</code> — anche qui il file caricato deve contenere tutte le righe, non solo quelle corrette).</li>
               <li>Verifica: apri l'anteprima di entrambi i file (icona occhio in tab <em>File correnti</em>) e confronta il valore LUNGHEZZA sulla stessa TRATTA_ID.</li>
             </ol>
           </div>
@@ -396,8 +404,8 @@
             <div class="guida-num">3</div>
             <h3>Aggiornare solo stato/iter pratica (nessuna modifica a geometria/lunghezza)</h3>
             <ol>
-              <li>Flusso normale via impresa: invio da <code>imprese.html</code>/<code>mappa_impresa_caricamento.html</code> → coda in tab <em>Coda imprese</em> → Approva.</li>
-              <li>Oppure, come admin: modifica <code>Master.csv</code> offline e ricaricalo (tab <em>File correnti</em>, target <code>Master.csv</code>).</li>
+              <li>Flusso normale via impresa: invio da <code>imprese.html</code>/<code>mappa_impresa_caricamento.html</code> → coda in tab <em>Coda imprese</em> → Approva. In questo caso il backend applica solo le righe modificate al Master.csv esistente — <strong>non</strong> è un caso di sostituzione totale, qui il merge lo fa il backend stesso.</li>
+              <li>Oppure, come admin: modifica <code>Master.csv</code> offline (export/import completo) e ricaricalo (tab <em>File correnti</em>, target <code>Master.csv</code>) — qui invece il file caricato sostituisce per intero quello attuale, deve quindi contenere tutte le righe, non solo quelle cambiate.</li>
               <li>In entrambi i casi il backend rigenera automaticamente <code>QGIS.geojson</code> (solo le proprietà di stato: STATO_AUTORIZZAZIONE, STATO_NULLAOSTA, STATO_ORDINANZA, LAVORABILE, MOTIVO_NO, PRATICA, ENTE) e <code>Riepilogo_progettazione.csv</code>, poi pusha entrambi su GitHub — nessuna azione manuale aggiuntiva richiesta.</li>
               <li>Se serve rigenerare i derivati senza toccare Master.csv (es. dopo un fix di logica), usa <code>POST /api/admin/regenerate-derived</code>.</li>
             </ol>
@@ -408,6 +416,7 @@
             <h3>Dopo qualunque upload critico</h3>
             <ol>
               <li>Controlla tab <em>File correnti</em>: colonna <em>Sorgente</em> deve indicare <code>mongo</code> (non <code>disk</code>) e <em>Ultima modifica</em> deve essere recente.</li>
+              <li>Apri l'anteprima del file appena caricato (icona occhio) e controlla che il numero di tratte/righe sia quello atteso — è il modo più rapido per accorgersi di un upload parziale.</li>
               <li>Se due persone caricano lo stesso file in parallelo (es. upload manuale QGIS mentre un'approvazione impresa rigenera i derivati), vince chi scrive per ultimo — non c'è lock. In caso di dubbio ricarica la pagina e riverifica dopo qualche minuto.</li>
               <li>In tab <em>Storico versioni</em> puoi sempre confrontare/ripristinare una versione precedente se qualcosa non torna.</li>
             </ol>
