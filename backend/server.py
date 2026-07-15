@@ -1878,7 +1878,7 @@ def _tag_note(note: str, tag: str) -> str:
 @app.get("/api/admin/pratiche-search")
 async def search_pratiche_admin(
     q: str = "",
-    limit: int = 20,
+    limit: int = 800,
     sess: dict = Depends(_require_staff_session),
 ):
     """Cerca pratiche in Master.csv per TRATTA_ID / codice pratica / ente / lotto,
@@ -1924,7 +1924,7 @@ async def search_pratiche_admin(
             "note_attuale": str(r.get("NOTE", "")).strip(),
         })
     out.sort(key=lambda x: x["codice"])
-    return {"results": out[:max(1, min(limit, 50))]}
+    return {"results": out[:max(1, min(limit, 800))]}
 
 
 @app.post("/api/admin/pratiche/note")
