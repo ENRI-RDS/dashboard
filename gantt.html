@@ -865,10 +865,64 @@ async function mergeCantieriProgress() {
    autorevole di uno spostamento inferito dal solo permesso) né gli override
    manuali admin (applicati sempre dopo, in applyGanttOverrides()). */
 function _applyAccumulatedDeltaToRow(row) {
-  var totalDelta = (row._deltaKm || 0) + (row._deltaPermesso || 0);
+  var totalDelta = (row._deltaKm || 0) + (row._deltaPermesso || 0) + (row._deltaManualDep || 0);
   if (row._baseStart) { var s = parseDateStr(row._baseStart); if (s) row.start = shiftDmy(s, totalDelta); }
   if (row._baseEnd) { var e = parseDateStr(row._baseEnd); if (e) row.end = shiftDmy(e, totalDelta); }
 }
+
+/* ── Bug segnalato dall'utente: collegare un predecessore da popover/drag&drop
+   disegnava la freccia ma non spostava la barra agganciata. Causa doppia:
+   (1) nessuna funzione traduceva mai "nuovo predecessore" in una data di inizio
+   coerente — GANTT_DEPS veniva aggiornato ma nessuno lo usava per riposizionare
+   la riga; (2) saveGanttEdit() salva SEMPRE anche gli input data (precompilati
+   con le date correnti), quindi applyGanttOverrides() li riapplicava a ogni
+   render congelando la riga sulla vecchia posizione anche dopo un eventuale
+   ricalcolo — vedi fix parallelo in saveGanttEdit()/openGanttEditPopover() più
+   sotto, che smette di congelare start/end/date se l'utente non li ha toccati.
+   Questa funzione, da chiamare DOPO applyGanttOverrides() (quando GANTT_DEPS
+   riflette già l'eventuale nuovo predecessore) e dopo le altre cascate data
+   (permesso/km, già risolte), riposiziona ogni riga con un predecessore
+   impostato manualmente subito dopo la fine (FS) o l'inizio (SS) + ritardo del
+   suo predecessore — la cui posizione, a questo punto della pipeline, è già
+   quella definitiva — e propaga lo scostamento ai propri successori con lo
+   stesso meccanismo BFS già in uso per permesso/km ('_deltaManualDep', si
+   somma agli altri due invece di sovrascriverli). ── */
+function applyManualDependencyShifts() {
+  var byId = {};
+  GANTT_ROWS.forEach(function(r) { byId[r.id] = r; });
+  Object.keys(GANTT_OVERRIDES).forEach(function(ridStr) {
+    var ov = GANTT_OVERRIDES[ridStr];
+    if (!ov || ov.dep_pred === undefined || ov.dep_pred === '' || ov.dep_pred === null) return;
+    var rid = Number(ridStr);
+    var row = byId[rid];
+    var dep = GANTT_DEPS[rid];
+    if (!row || !dep) return;
+    var predRow = byId[dep.pred];
+    if (!predRow) return;
+    var predRef = predRow.t === 'ms' ? predRow.date : (dep.type === 'SS' ? predRow.start : predRow.end);
+    var refD = parseDateStr(predRef);
+    if (!refD) return;
+    /* posizione "senza scostamento manuale" (baseline .mpp + km/permesso già risolti,
+       MAI la posizione corrente già spostata): serve per restare idempotente — se questa
+       funzione viene richiamata più volte (ogni render successivo) il delta calcolato deve
+       essere sempre lo stesso, non sommarsi ad ogni chiamata facendo "scappare" la barra. */
+    var preDepDelta = (row._deltaKm || 0) + (row._deltaPermesso || 0);
+    var baseD = parseDateStr(row.t === 'bar' ? row._baseStart : row._baseDate);
+    if (!baseD) return;
+    var curDateNoManualDep = new Date(baseD.getTime() + preDepDelta * 86400000);
+    var expectedStr = shiftDmy(refD, dep.lagDays || 0);
+    var expectedD = parseDateStr(expectedStr);
+    var deltaDays = Math.round((expectedD - curDateNoManualDep) / 86400000);
+    if (row.t === 'bar') {
+      row._deltaManualDep = deltaDays;
+      _applyAccumulatedDeltaToRow(row);
+    } else if (deltaDays !== 0) {
+      row.date = shiftDmy(curDateNoManualDep, deltaDays);
+    }
+    if (deltaDays !== 0) _cascadeDeltaFromRow(row.id, deltaDays, byId, '_deltaManualDep');
+  });
+}
+
 
 function _cascadeDeltaFromRow(rowId, deltaDays, byId, deltaKey) {
   /* trasla in cascata (BFS su GANTT_DEPS/ganttSuccessorsOf) tutti i successori a valle di
@@ -1681,6 +1735,9 @@ function openGanttEditPopover(rowId, clientX, clientY, presetPredId) {
       '<button onclick="closeGanttEditPopover()">Annulla</button>' +
     '</div>';
   pop.style.display = 'block';
+  pop.dataset.origStart = row.start || '';
+  pop.dataset.origEnd = row.end || '';
+  pop.dataset.origDate = row.date || '';
   _positionGanttPopover(pop, clientX, clientY);
 }
 
@@ -1692,13 +1749,21 @@ async function saveGanttEdit(rowId) {
   var row = findGanttRow(rowId);
   var errEl = document.getElementById('gepErr');
   errEl.style.display = 'none';
+  var pop = document.getElementById('ganttEditPopover');
   var fields = { pct: document.getElementById('gepPct').value };
   if (row.t === 'bar') {
-    fields.start = document.getElementById('gepStart').value.trim();
-    fields.end = document.getElementById('gepEnd').value.trim();
+    /* start/end inviati SOLO se l'utente li ha effettivamente modificati rispetto a
+       quanto mostrato all'apertura del popover — altrimenti applyGanttOverrides()
+       li congelerebbe per sempre su questi valori, impedendo ad applyManualDependencyShifts()
+       di riposizionare la barra quando si cambia solo il predecessore (bug segnalato). */
+    var newStart = document.getElementById('gepStart').value.trim();
+    var newEnd = document.getElementById('gepEnd').value.trim();
+    if (newStart !== (pop.dataset.origStart || '')) fields.start = newStart;
+    if (newEnd !== (pop.dataset.origEnd || '')) fields.end = newEnd;
     fields.sub = document.getElementById('gepSub').value.trim();
   } else {
-    fields.date = document.getElementById('gepDate').value.trim();
+    var newDate = document.getElementById('gepDate').value.trim();
+    if (newDate !== (pop.dataset.origDate || '')) fields.date = newDate;
   }
   fields.dep_pred = document.getElementById('gepDepPred').value;
   fields.dep_type = document.getElementById('gepDepType').value;
@@ -1712,6 +1777,7 @@ async function saveGanttEdit(rowId) {
     await saveGanttOverride(rowId, fields);
     GANTT_OVERRIDES[String(rowId)] = fields;
     applyGanttOverrides();
+    applyManualDependencyShifts();
     buildKpi();
     buildGantt();
     closeGanttEditPopover();
@@ -1751,6 +1817,7 @@ window.addEventListener('load', function() {
       }).then(function() {
         propagateGanttDatesFromPermits(); /* Fase 5/6/7 slittano con le previsioni impresa sulla pratica corrispondente */
         applyGanttOverrides(); /* vince sempre su baseline + Master.csv */
+        applyManualDependencyShifts(); /* riposiziona le righe con un predecessore impostato manualmente (popover/drag&drop) subito dopo il predecessore, e propaga ai loro successori */
         buildKpi();
         buildGantt();
       });
