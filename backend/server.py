@@ -1906,22 +1906,40 @@ async def search_pratiche_admin(
         work["TIPO_PERMESSO"].astype(str).str.strip() + "|" + work["PRATICA"].astype(str).str.strip()
     ))
     latest = work.drop_duplicates(subset="_key", keep="last")
+    # Righe senza numero PRATICA non sono rappresentabili come "pratica" e non
+    # possono ricevere note (add_admin_note richiede una pratica valida) →
+    # escluse dalla tabella, come richiesto dall'utente.
+    latest = latest[latest["PRATICA"].astype(str).str.strip() != ""]
+    if latest.empty:
+        return {"results": []}
+    # Raggruppa per pratica (ENTE+TIPO_PERMESSO+PRATICA): una pratica AUTORIZZAZIONE
+    # copre piu' tratte, e la nota va condivisa su tutte come fa imprese.html
+    # (PR_SIBLINGS).
+    latest = latest.assign(_gkey=(
+        latest["ENTE"].astype(str).str.strip() + "|" + latest["TIPO_PERMESSO"].astype(str).str.strip() + "|" +
+        latest["PRATICA"].astype(str).str.strip()
+    ))
     PREFIX = {"AUTORIZZAZIONE": "AUT", "NULLA OSTA": "NO", "ORDINANZA": "ORD"}
     out = []
-    for _, r in latest.iterrows():
-        tipo = str(r.get("TIPO_PERMESSO", "")).strip()
-        pratica_num = str(r.get("PRATICA", "")).strip()
-        lotto = _lotto_from_source(r.get("Source.Name", ""))
+    for _, grp in latest.groupby("_gkey", sort=False):
+        with_note = grp[grp["NOTE"].astype(str).str.strip() != ""]
+        rep = with_note.iloc[-1] if not with_note.empty else grp.iloc[0]
+        tipo = str(rep.get("TIPO_PERMESSO", "")).strip()
+        pratica_num = str(rep.get("PRATICA", "")).strip()
+        lotto = _lotto_from_source(rep.get("Source.Name", ""))
         pref = PREFIX.get(tipo, (tipo[:3] or "").upper())
+        tratta_ids = sorted({t for t in grp["TRATTA_ID"].astype(str).str.strip() if t})
         out.append({
-            "tratta_id": str(r.get("TRATTA_ID", "")).strip(),
-            "ente": str(r.get("ENTE", "")).strip(),
+            "tratta_ids": tratta_ids,
+            "tratta_id": tratta_ids[0] if tratta_ids else "",
+            "n_tratte": len(tratta_ids),
+            "ente": str(rep.get("ENTE", "")).strip(),
             "tipo_permesso": tipo,
             "pratica": pratica_num,
             "lotto": lotto,
             "codice": f"{pref}/{pratica_num}/{lotto}" if pratica_num else "",
-            "stato_permesso": str(r.get("STATO_PERMESSO", "")).strip(),
-            "note_attuale": str(r.get("NOTE", "")).strip(),
+            "stato_permesso": str(rep.get("STATO_PERMESSO", "")).strip(),
+            "note_attuale": str(rep.get("NOTE", "")).strip(),
         })
     out.sort(key=lambda x: x["codice"])
     return {"results": out[:max(1, min(limit, 800))]}
@@ -1939,21 +1957,24 @@ async def add_admin_note(
     nessuna approvazione richiesta (l'admin è già l'autorità), scrittura diretta."""
     _check_token(x_upload_token or token_q)
     p = payload or {}
-    tratta = str(p.get("tratta_id") or "").strip()
     ente = str(p.get("ente") or "").strip()
     tipo = str(p.get("tipo_permesso") or "").strip()
     pratica = str(p.get("pratica") or "").strip()
     note = str(p.get("note") or "").strip()
-    if not tratta or not note:
-        raise HTTPException(400, "tratta_id e note sono obbligatori")
+    tratte = [str(t).strip() for t in (p.get("tratta_ids") or []) if str(t).strip()]
+    single = str(p.get("tratta_id") or "").strip()
+    if single and single not in tratte:
+        tratte.append(single)
+    if not tratte or not note:
+        raise HTTPException(400, "tratta_ids (o tratta_id) e note sono obbligatori")
     note = _tag_note(note, "RETELIT")
     submission = {
         "type": "update",
         "changes": [{
-            "tratta_id": tratta, "ente": ente, "tipo_permesso": tipo,
+            "tratta_id": t, "ente": ente, "tipo_permesso": tipo,
             "original_pratica": pratica,
             "fields": {"NOTE": note},
-        }],
+        } for t in tratte],
     }
     async with _master_csv_lock:
         df = await _read_master_csv()
@@ -1961,8 +1982,8 @@ async def add_admin_note(
         if summary.get("updated", 0) == 0:
             raise HTTPException(404, "Nessuna riga trovata per TRATTA_ID/ENTE/TIPO_PERMESSO/PRATICA indicati")
         reviewer = x_actor_nome or "admin"
-        upload_id = await _write_master_csv(new_df, note=f"Admin note by {reviewer} on TRATTA_ID={tratta}")
-    await _log_admin_action("add_note", f"{tratta}|{ente}|{tipo}|{pratica}", x_actor_nome)
+        upload_id = await _write_master_csv(new_df, note=f"Admin note by {reviewer} on {len(tratte)} tratta/e ({tratte[0]}{'…' if len(tratte)>1 else ''})")
+    await _log_admin_action("add_note", f"{'+'.join(tratte)}|{ente}|{tipo}|{pratica}", x_actor_nome)
     return {"ok": True, "summary": summary, "new_upload_id": upload_id}
 
 
