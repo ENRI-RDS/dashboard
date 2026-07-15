@@ -3852,7 +3852,8 @@ function prSelectRow(idx){
   }
 
   const isAut = (PR_SELECTED.TIPO_PERMESSO||'').trim() === 'AUTORIZZAZIONE';
-  document.getElementById('pr-wrap-no-nec').style.display = isAut ? '' : 'none';
+  const noNecLocked = (PR_SELECTED['NULLA OSTA NECESSARIO']||'').trim() === 'SI';
+  document.getElementById('pr-wrap-no-nec').style.display = (isAut && !noNecLocked) ? '' : 'none';
   document.getElementById('pr-wrap-no-tratte').style.display = 'none';
   document.getElementById('pr-no-nec').checked = (PR_SELECTED['NULLA OSTA NECESSARIO']||'').trim() === 'SI';
   document.getElementById('pr-polizza').checked = (PR_SELECTED['POLIZZA ']||'').trim() === 'SI';
@@ -3915,6 +3916,7 @@ document.getElementById('pr-stato').addEventListener('change', function(){
     document.getElementById('pr-wrap-data-prevista').style.display = (v==='OTTENUTO' || v==='NO COMPETENZA') ? 'none' : '';
 
     const isAut = (PR_SELECTED?.TIPO_PERMESSO || '').trim() === 'AUTORIZZAZIONE';
+    const noNecLocked = (PR_SELECTED?.['NULLA OSTA NECESSARIO'] || '').trim() === 'SI';
     if (v === 'NO COMPETENZA' || v === 'OTTENUTO') {
       document.getElementById('pr-wrap-no-nec').style.display = 'none';
       document.getElementById('pr-wrap-no-tratte').style.display = 'none';
@@ -3925,7 +3927,7 @@ document.getElementById('pr-stato').addEventListener('change', function(){
       document.getElementById('pr-polizza').checked = false;
       document.getElementById('pr-convenzione').checked = false;
     } else {
-      document.getElementById('pr-wrap-no-nec').style.display = isAut ? '' : 'none';
+      document.getElementById('pr-wrap-no-nec').style.display = (isAut && !noNecLocked) ? '' : 'none';
       document.getElementById('pr-wrap-polizza').style.display = '';
       document.getElementById('pr-wrap-convenzione').style.display = '';
     }
@@ -3976,7 +3978,10 @@ document.getElementById('prAddToQueue').onclick = async () => {
   if (polizza) fields['POLIZZA '] = polizza;
   const convenzione = skipChecks ? '' : (document.getElementById('pr-convenzione').checked ? 'SI' : 'NO');
   if (convenzione) fields['CONVENZIONE'] = convenzione;
-  const noNec = skipChecks ? '' : (document.getElementById('pr-no-nec').checked ? 'SI' : 'NO');
+  // Nulla Osta Necessario: una volta confermato SI resta definitivo, non si invia piu'
+  // (il backend copia il valore esistente dalla riga precedente).
+  const noNecAlreadySi = (PR_SELECTED?.['NULLA OSTA NECESSARIO'] || '').trim() === 'SI';
+  const noNec = (skipChecks || noNecAlreadySi) ? '' : (document.getElementById('pr-no-nec').checked ? 'SI' : 'NO');
   if (noNec) {
     fields['NULLA OSTA NECESSARIO'] = noNec;
     if (noNec === 'SI') {
