@@ -52,9 +52,9 @@
   .eyebrow{font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:.15em;color:var(--muted);margin-bottom:6px}
   .title{font-family:var(--font-display);font-size:26px;font-weight:700;letter-spacing:-.02em}
   .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-  .grid{display:grid;grid-template-columns:1.05fr 1.95fr;gap:24px;align-items:start}
+  .grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1.95fr);gap:24px;align-items:start}
   @media(max-width:1100px){.grid{grid-template-columns:1fr}}
-  .card{background:var(--bg-1);border:1px solid var(--border-1);border-radius:var(--radius-lg);padding:22px;box-shadow:var(--shadow-sm)}
+  .card{background:var(--bg-1);border:1px solid var(--border-1);border-radius:var(--radius-lg);padding:22px;box-shadow:var(--shadow-sm);overflow-x:auto}
   .card h2{font-family:var(--font-display);font-size:16px;font-weight:700;margin-bottom:4px}
   .card .sub{font-size:12.5px;color:var(--muted);margin-bottom:18px;line-height:1.5}
   label{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;margin-top:14px}
@@ -382,7 +382,7 @@
             <thead>
               <tr>
                 <th class="note-th-sort" data-key="codice">Codice <span class="sort-arrow" data-key="codice">⇕</span></th>
-                <th class="note-th-sort" data-key="tratta_id">Tratta <span class="sort-arrow" data-key="tratta_id">⇕</span></th>
+                <th class="note-th-sort" data-key="tratta_id">Tratte <span class="sort-arrow" data-key="tratta_id">⇕</span></th>
                 <th class="note-th-sort" data-key="ente">Ente <span class="sort-arrow" data-key="ente">⇕</span></th>
                 <th class="note-th-sort" data-key="lotto">Lotto <span class="sort-arrow" data-key="lotto">⇕</span></th>
                 <th class="note-th-sort" data-key="stato_permesso">Stato <span class="sort-arrow" data-key="stato_permesso">⇕</span></th>
@@ -1529,7 +1529,7 @@
     const tbody = $('noteResults');
     const f = (noteSearchEl?.value || '').trim().toLowerCase();
     let rows = !f ? NOTE_ALL : NOTE_ALL.filter(r => (
-      (r.codice||'') + ' ' + (r.tratta_id||'') + ' ' + (r.ente||'') + ' ' + (r.lotto||'') + ' ' + (r.stato_permesso||'')
+      (r.codice||'') + ' ' + (r.tratta_ids||[r.tratta_id]).join(' ') + ' ' + (r.ente||'') + ' ' + (r.lotto||'') + ' ' + (r.stato_permesso||'')
     ).toLowerCase().includes(f));
     if (NOTE_SORT.key) {
       const key = NOTE_SORT.key;
@@ -1543,9 +1543,11 @@
     if (!rows.length){ tbody.innerHTML = '<tr><td colspan="7" class="empty">Nessuna pratica trovata</td></tr>'; return; }
     tbody.innerHTML = rows.map((r, i) => {
       const { chip, txt } = _noteAuthorChip(r.note_attuale);
+      const tratte = r.tratta_ids || [r.tratta_id];
+      const tratteTxt = tratte.join(', ');
       return `<tr>
         <td style="font-weight:700">${escapeHtml(r.codice || '—')}</td>
-        <td>${escapeHtml(r.tratta_id)}</td>
+        <td title="${escapeHtml(tratteTxt)}">${escapeHtml(tratteTxt)}${tratte.length > 1 ? ` <span style="color:var(--muted);font-weight:600">(${tratte.length})</span>` : ''}</td>
         <td>${escapeHtml(r.ente || '—')}</td>
         <td>${escapeHtml(r.lotto || '—')}</td>
         <td>${escapeHtml(r.stato_permesso || '—')}</td>
@@ -1560,8 +1562,9 @@
     const r = NOTE_VIEW[Number(btn.dataset.notePick)];
     if (!r) return;
     _noteSelected = r;
-    $('noteFormTitle').textContent = `Nota su ${r.codice || r.tratta_id}`;
-    $('noteFormSub').textContent = `${r.tratta_id} · ${r.ente} · ${r.tipo_permesso} · Lotto ${r.lotto}`;
+    const tratte = r.tratta_ids || [r.tratta_id];
+    $('noteFormTitle').textContent = `Nota su ${r.codice || tratte.join(', ')}`;
+    $('noteFormSub').textContent = `${tratte.join(', ')}${tratte.length > 1 ? ` (${tratte.length} tratte)` : ''} · ${r.ente} · ${r.tipo_permesso} · Lotto ${r.lotto}`;
     $('noteText').value = '';
     $('noteMsg').className = 'msg';
     $('noteFormWrap').style.display = 'block';
@@ -1583,7 +1586,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
-          tratta_id: _noteSelected.tratta_id,
+          tratta_ids: _noteSelected.tratta_ids || [_noteSelected.tratta_id],
           ente: _noteSelected.ente,
           tipo_permesso: _noteSelected.tipo_permesso,
           pratica: _noteSelected.pratica,
