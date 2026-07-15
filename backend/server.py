@@ -1789,6 +1789,7 @@ async def approve_pending(
     sub_id: str,
     x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
     token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
 ):
     _check_token(x_upload_token or token_q)
     try:
@@ -1805,10 +1806,12 @@ async def approve_pending(
         new_df, summary = _apply_changes_to_df(df, sub)
         note = f"Submission {sub_id} from {sub['nome']} ({sub['type']})"
         upload_id = await _write_master_csv(new_df, note=note)
+    reviewer = x_actor_nome or "admin"
     await pending_col.update_one(
         {"_id": oid},
-        {"$set": {"status": "approved", "reviewed_at": _now_iso(), "applied_upload_id": upload_id, "summary": summary}},
+        {"$set": {"status": "approved", "reviewed_at": _now_iso(), "reviewed_by": reviewer, "applied_upload_id": upload_id, "summary": summary}},
     )
+    await _log_admin_action("approve_pending_update", sub_id, x_actor_nome)
     # Sync cantieri: crea automaticamente cantieri non_avviato per le nuove tratte lavorabili
     asyncio.create_task(_sync_cantieri())
     asyncio.create_task(_push_cantieri_to_github())
@@ -1821,6 +1824,7 @@ async def reject_pending(
     payload: dict | None = None,
     x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
     token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
 ):
     _check_token(x_upload_token or token_q)
     try:
@@ -1828,12 +1832,14 @@ async def reject_pending(
     except Exception:
         raise HTTPException(400, "Invalid id")
     note = ((payload or {}).get("note") or "").strip()
+    reviewer = x_actor_nome or "admin"
     res = await pending_col.update_one(
         {"_id": oid, "status": "pending"},
-        {"$set": {"status": "rejected", "reviewed_at": _now_iso(), "reviewed_note": note}},
+        {"$set": {"status": "rejected", "reviewed_at": _now_iso(), "reviewed_by": reviewer, "reviewed_note": note}},
     )
     if res.matched_count == 0:
         raise HTTPException(404, "Submission not found or not pending")
+    await _log_admin_action("reject_pending_update", sub_id, x_actor_nome)
     return {"ok": True}
 
 
