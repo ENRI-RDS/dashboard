@@ -1451,6 +1451,18 @@ async def impresa_submit(payload: dict, sess: dict = Depends(_require_session)):
     if not doc or not doc.get("active", True):
         raise HTTPException(403, "Impresa non autorizzata")
 
+    # Tagga le eventuali note con [IMPRESA] cosi' index.html/admin.html possono
+    # distinguerle dalle note admin (v. _tag_note / add_admin_note)
+    if typ == "update":
+        for ch in changes:
+            fields = ch.get("fields") or {}
+            if str(fields.get("NOTE") or "").strip():
+                fields["NOTE"] = _tag_note(fields["NOTE"], "IMPRESA")
+    elif typ == "new":
+        for row in changes:
+            if isinstance(row, dict) and str(row.get("NOTE") or "").strip():
+                row["NOTE"] = _tag_note(row["NOTE"], "IMPRESA")
+
     record = {
         "nome": nome,
         "type": typ,
@@ -1846,9 +1858,23 @@ async def reject_pending(
 # ─────────────────────────────────────────────────────────────────────────────
 # NOTE ADMIN — l'admin annota una pratica con lo stesso meccanismo delle imprese
 # (stessa pipeline _apply_changes_to_df: nuova riga copiata dall'ultima esistente,
-# NOTE valorizzata, DATA_UPDATE stampata — indistinguibile da una nota impresa
-# quando poi index.html la mostra nel popup "Note").
+# NOTE valorizzata, DATA_UPDATE stampata). Distinguibile da una nota impresa via
+# prefisso [RETELIT]/[IMPRESA] (_tag_note) — index.html/admin.html lo parsano
+# per mostrare l'etichetta "Retelit"/"Impresa" e nascondono il prefisso grezzo.
 # ─────────────────────────────────────────────────────────────────────────────
+_NOTE_TAG_RE = re.compile(r"^\[(RETELIT|IMPRESA)\]\s*")
+
+
+def _tag_note(note: str, tag: str) -> str:
+    """Prefissa una NOTE con [RETELIT]/[IMPRESA] per distinguerne l'autore in
+    index.html/admin.html. Rimuove un eventuale tag preesistente prima di
+    riapplicarlo, cosi' un admin che modifica una submission impresa (PUT
+    /api/admin/pending-updates/{id}) non produce prefissi impilati."""
+    note = (note or "").strip()
+    if not note:
+        return note
+    note = _NOTE_TAG_RE.sub("", note)
+    return f"[{tag}] {note}"
 @app.get("/api/admin/pratiche-search")
 async def search_pratiche_admin(
     q: str = "",
@@ -1920,6 +1946,7 @@ async def add_admin_note(
     note = str(p.get("note") or "").strip()
     if not tratta or not note:
         raise HTTPException(400, "tratta_id e note sono obbligatori")
+    note = _tag_note(note, "RETELIT")
     submission = {
         "type": "update",
         "changes": [{
