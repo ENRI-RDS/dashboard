@@ -131,6 +131,12 @@
   .tab.active{color:var(--accent);border-color:var(--accent)}
   .sort-arrow{display:inline-block;width:10px;font-size:9px;color:var(--border);opacity:.7}
   .sort-arrow.active{color:var(--accent);opacity:1}
+  .note-table{table-layout:fixed;width:100%;border-collapse:separate;border-spacing:0}
+  .note-table th{position:sticky;top:0;background:var(--surface2);box-shadow:inset 0 -2px 0 var(--border-1);z-index:1;cursor:default}
+  .note-table th.note-th-sort{cursor:pointer}
+  .note-table td,.note-table th{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .note-table td.note-cell{white-space:normal;word-break:break-word}
+  .note-table tbody tr:hover td{background:var(--surface2)}
   .guida-note{background:var(--bg-3);border:1px solid var(--retelit-blue-25);border-radius:var(--radius-md);padding:14px 16px;font-size:12.5px;line-height:1.6;color:var(--fg-2);margin-bottom:20px}
   .guida-note code{font-family:var(--font-mono);font-size:11.5px;background:rgba(4,63,117,.08);padding:1px 5px;border-radius:4px}
   .guida-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
@@ -368,14 +374,18 @@
           <button class="btn btn-ghost btn-xs" id="noteRefreshBtn">Aggiorna</button>
         </div>
         <div style="max-height:520px;overflow-y:auto;border:1px solid var(--border);border-radius:10px">
-          <table style="margin:0">
-            <thead style="position:sticky;top:0;background:var(--surface2);z-index:1">
+          <table class="note-table">
+            <colgroup>
+              <col style="width:13%"><col style="width:11%"><col style="width:17%"><col style="width:8%">
+              <col style="width:12%"><col style="width:27%"><col style="width:12%">
+            </colgroup>
+            <thead>
               <tr>
-                <th class="note-th-sort" data-key="codice" style="cursor:pointer">Codice <span class="sort-arrow" data-key="codice">⇕</span></th>
-                <th class="note-th-sort" data-key="tratta_id" style="cursor:pointer">Tratta <span class="sort-arrow" data-key="tratta_id">⇕</span></th>
-                <th class="note-th-sort" data-key="ente" style="cursor:pointer">Ente <span class="sort-arrow" data-key="ente">⇕</span></th>
-                <th class="note-th-sort" data-key="lotto" style="cursor:pointer">Lotto <span class="sort-arrow" data-key="lotto">⇕</span></th>
-                <th class="note-th-sort" data-key="stato_permesso" style="cursor:pointer">Stato <span class="sort-arrow" data-key="stato_permesso">⇕</span></th>
+                <th class="note-th-sort" data-key="codice">Codice <span class="sort-arrow" data-key="codice">⇕</span></th>
+                <th class="note-th-sort" data-key="tratta_id">Tratta <span class="sort-arrow" data-key="tratta_id">⇕</span></th>
+                <th class="note-th-sort" data-key="ente">Ente <span class="sort-arrow" data-key="ente">⇕</span></th>
+                <th class="note-th-sort" data-key="lotto">Lotto <span class="sort-arrow" data-key="lotto">⇕</span></th>
+                <th class="note-th-sort" data-key="stato_permesso">Stato <span class="sort-arrow" data-key="stato_permesso">⇕</span></th>
                 <th>Nota attuale</th>
                 <th>Azioni</th>
               </tr>
@@ -1539,7 +1549,7 @@
         <td>${escapeHtml(r.ente || '—')}</td>
         <td>${escapeHtml(r.lotto || '—')}</td>
         <td>${escapeHtml(r.stato_permesso || '—')}</td>
-        <td style="max-width:280px">${chip}${escapeHtml(txt)}</td>
+        <td class="note-cell">${chip}${escapeHtml(txt)}</td>
         <td><button class="btn btn-ghost btn-xs" data-note-pick="${i}">+ Nota</button></td>
       </tr>`;
     }).join('');
