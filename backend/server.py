@@ -1844,6 +1844,102 @@ async def reject_pending(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# NOTE ADMIN — l'admin annota una pratica con lo stesso meccanismo delle imprese
+# (stessa pipeline _apply_changes_to_df: nuova riga copiata dall'ultima esistente,
+# NOTE valorizzata, DATA_UPDATE stampata — indistinguibile da una nota impresa
+# quando poi index.html la mostra nel popup "Note").
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/api/admin/pratiche-search")
+async def search_pratiche_admin(
+    q: str = "",
+    limit: int = 20,
+    sess: dict = Depends(_require_staff_session),
+):
+    """Cerca pratiche in Master.csv per TRATTA_ID / codice pratica / ente / lotto,
+    deduplicate all'ultima riga (Master.csv è append-only, storico incluso).
+    Usata da admin.html per trovare la pratica a cui aggiungere una nota."""
+    df = await _read_master_csv()
+    if df is None or df.empty:
+        return {"results": []}
+    needed = {"TRATTA_ID", "ENTE", "TIPO_PERMESSO", "PRATICA", "Source.Name", "STATO_PERMESSO", "NOTE"}
+    missing = needed - set(df.columns)
+    if missing:
+        return {"results": [], "error": f"Colonne mancanti in Master.csv: {sorted(missing)}"}
+    work = df.fillna("")
+    q_norm = q.strip().lower()
+    if q_norm:
+        hay = (
+            work["TRATTA_ID"].astype(str) + " " + work["PRATICA"].astype(str) + " " +
+            work["ENTE"].astype(str) + " " + work["Source.Name"].astype(str)
+        ).str.lower()
+        work = work[hay.str.contains(re.escape(q_norm), na=False)]
+    if work.empty:
+        return {"results": []}
+    work = work.assign(_key=(
+        work["TRATTA_ID"].astype(str).str.strip() + "|" + work["ENTE"].astype(str).str.strip() + "|" +
+        work["TIPO_PERMESSO"].astype(str).str.strip() + "|" + work["PRATICA"].astype(str).str.strip()
+    ))
+    latest = work.drop_duplicates(subset="_key", keep="last")
+    PREFIX = {"AUTORIZZAZIONE": "AUT", "NULLA OSTA": "NO", "ORDINANZA": "ORD"}
+    out = []
+    for _, r in latest.iterrows():
+        tipo = str(r.get("TIPO_PERMESSO", "")).strip()
+        pratica_num = str(r.get("PRATICA", "")).strip()
+        lotto = _lotto_from_source(r.get("Source.Name", ""))
+        pref = PREFIX.get(tipo, (tipo[:3] or "").upper())
+        out.append({
+            "tratta_id": str(r.get("TRATTA_ID", "")).strip(),
+            "ente": str(r.get("ENTE", "")).strip(),
+            "tipo_permesso": tipo,
+            "pratica": pratica_num,
+            "lotto": lotto,
+            "codice": f"{pref}/{pratica_num}/{lotto}" if pratica_num else "",
+            "stato_permesso": str(r.get("STATO_PERMESSO", "")).strip(),
+            "note_attuale": str(r.get("NOTE", "")).strip(),
+        })
+    out.sort(key=lambda x: x["codice"])
+    return {"results": out[:max(1, min(limit, 50))]}
+
+
+@app.post("/api/admin/pratiche/note")
+async def add_admin_note(
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Aggiunge una nota a una pratica esattamente come farebbe un'impresa da
+    imprese.html (stessa fields={'NOTE': ...} attraverso _apply_changes_to_df):
+    nessuna approvazione richiesta (l'admin è già l'autorità), scrittura diretta."""
+    _check_token(x_upload_token or token_q)
+    p = payload or {}
+    tratta = str(p.get("tratta_id") or "").strip()
+    ente = str(p.get("ente") or "").strip()
+    tipo = str(p.get("tipo_permesso") or "").strip()
+    pratica = str(p.get("pratica") or "").strip()
+    note = str(p.get("note") or "").strip()
+    if not tratta or not note:
+        raise HTTPException(400, "tratta_id e note sono obbligatori")
+    submission = {
+        "type": "update",
+        "changes": [{
+            "tratta_id": tratta, "ente": ente, "tipo_permesso": tipo,
+            "original_pratica": pratica,
+            "fields": {"NOTE": note},
+        }],
+    }
+    async with _master_csv_lock:
+        df = await _read_master_csv()
+        new_df, summary = _apply_changes_to_df(df, submission)
+        if summary.get("updated", 0) == 0:
+            raise HTTPException(404, "Nessuna riga trovata per TRATTA_ID/ENTE/TIPO_PERMESSO/PRATICA indicati")
+        reviewer = x_actor_nome or "admin"
+        upload_id = await _write_master_csv(new_df, note=f"Admin note by {reviewer} on TRATTA_ID={tratta}")
+    await _log_admin_action("add_note", f"{tratta}|{ente}|{tipo}|{pratica}", x_actor_nome)
+    return {"ok": True, "summary": summary, "new_upload_id": upload_id}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # POLIZZE & CONVENZIONI — modifica diretta admin
 # ─────────────────────────────────────────────────────────────────────────────
 _POL_CONV_ALLOWED_FIELDS = {"CONVENZIONE", "POLIZZA"}
