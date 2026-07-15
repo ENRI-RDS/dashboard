@@ -720,7 +720,8 @@ window.addEventListener('pageshow', (e) => {
 
     // Nulla Osta Necessario — solo per AUTORIZZAZIONE
     const isAut = (SELECTED.TIPO_PERMESSO || '').trim() === 'AUTORIZZAZIONE';
-    $('wrap-upd-no-nec').style.display = isAut ? '' : 'none';
+    const noNecLocked = (SELECTED['NULLA OSTA NECESSARIO'] || '').trim() === 'SI';
+    $('wrap-upd-no-nec').style.display = (isAut && !noNecLocked) ? '' : 'none';
     $('wrap-upd-no-tratte').style.display = 'none';
     $('fld-no-nec').checked = (SELECTED['NULLA OSTA NECESSARIO'] || '').trim() === 'SI';
     $('fld-polizza').checked = (SELECTED['POLIZZA ']?.trim() || '') === 'SI';
@@ -824,6 +825,7 @@ window.addEventListener('pageshow', (e) => {
 
       // NO COMPETENZA: non richiede Nulla Osta/Polizza/Convenzione, solo note
       const isAut = (SELECTED?.TIPO_PERMESSO || '').trim() === 'AUTORIZZAZIONE';
+      const noNecLocked = (SELECTED?.['NULLA OSTA NECESSARIO'] || '').trim() === 'SI';
       if (v === 'NO COMPETENZA' || v === 'OTTENUTO') {
         $('wrap-checkboxes').style.display = 'none';
         $('wrap-upd-no-nec').style.display = 'none';
@@ -836,7 +838,7 @@ window.addEventListener('pageshow', (e) => {
         $('fld-convenzione').checked = false;
       } else {
         $('wrap-checkboxes').style.display = '';
-        $('wrap-upd-no-nec').style.display = isAut ? '' : 'none';
+        $('wrap-upd-no-nec').style.display = (isAut && !noNecLocked) ? '' : 'none';
         $('wrap-polizza').style.display = '';
         $('wrap-convenzione').style.display = '';
       }
@@ -950,8 +952,11 @@ window.addEventListener('pageshow', (e) => {
 
     if (prevRilascio) fields['DATA_PREVISTA_RILASCIO'] = fromInputDate(prevRilascio);
 
-    // Nulla Osta Necessario (solo per AUTORIZZAZIONE, non richiesto per NO COMPETENZA/OTTENUTO/sola nota)
-    const noNec = skipChecks ? '' : ($('fld-no-nec').checked ? 'SI' : 'NO');
+    // Nulla Osta Necessario (solo per AUTORIZZAZIONE, non richiesto per NO COMPETENZA/OTTENUTO/sola nota).
+    // Una volta confermato SI resta definitivo: non si invia piu' (il backend copia il valore
+    // esistente dalla riga precedente, quindi resta SI per sempre senza bisogno del campo).
+    const noNecAlreadySi = (SELECTED?.['NULLA OSTA NECESSARIO'] || '').trim() === 'SI';
+    const noNec = (skipChecks || noNecAlreadySi) ? '' : ($('fld-no-nec').checked ? 'SI' : 'NO');
     if (noNec) {
       fields['NULLA OSTA NECESSARIO'] = noNec;
       if (noNec === 'SI') {
