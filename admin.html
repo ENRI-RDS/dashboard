@@ -129,6 +129,8 @@
   .tabbar{display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid var(--border)}
   .tab{padding:8px 14px;font-size:12.5px;font-weight:600;color:var(--muted);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
   .tab.active{color:var(--accent);border-color:var(--accent)}
+  .sort-arrow{display:inline-block;width:10px;font-size:9px;color:var(--border);opacity:.7}
+  .sort-arrow.active{color:var(--accent);opacity:1}
   .guida-note{background:var(--bg-3);border:1px solid var(--retelit-blue-25);border-radius:var(--radius-md);padding:14px 16px;font-size:12.5px;line-height:1.6;color:var(--fg-2);margin-bottom:20px}
   .guida-note code{font-family:var(--font-mono);font-size:11.5px;background:rgba(4,63,117,.08);padding:1px 5px;border-radius:4px}
   .guida-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
@@ -361,11 +363,26 @@
 
       <!-- NOTE PRATICHE (admin) -->
       <div class="panel" id="panel-note">
-        <p class="sub">Aggiungi una nota a una pratica con lo stesso meccanismo delle imprese: scrittura diretta su <code>Master.csv</code>, compare nel popup "Note" di <code>index.html</code> esattamente come una nota impresa. Nessuna approvazione richiesta.</p>
         <div class="row" style="gap:10px;margin-bottom:14px">
-          <input type="text" id="noteSearch" placeholder="Cerca per TRATTA_ID, codice pratica (es. AUT/24/1A), ente o lotto…" style="flex:1" data-testid="note-search">
+          <input type="text" id="noteSearch" placeholder="Filtra per TRATTA_ID, codice pratica (es. AUT/24/1A), ente o lotto…" style="flex:1" data-testid="note-search">
+          <button class="btn btn-ghost btn-xs" id="noteRefreshBtn">Aggiorna</button>
         </div>
-        <div id="noteResults"></div>
+        <div style="max-height:520px;overflow-y:auto;border:1px solid var(--border);border-radius:10px">
+          <table style="margin:0">
+            <thead style="position:sticky;top:0;background:var(--surface2);z-index:1">
+              <tr>
+                <th class="note-th-sort" data-key="codice" style="cursor:pointer">Codice <span class="sort-arrow" data-key="codice">⇕</span></th>
+                <th class="note-th-sort" data-key="tratta_id" style="cursor:pointer">Tratta <span class="sort-arrow" data-key="tratta_id">⇕</span></th>
+                <th class="note-th-sort" data-key="ente" style="cursor:pointer">Ente <span class="sort-arrow" data-key="ente">⇕</span></th>
+                <th class="note-th-sort" data-key="lotto" style="cursor:pointer">Lotto <span class="sort-arrow" data-key="lotto">⇕</span></th>
+                <th class="note-th-sort" data-key="stato_permesso" style="cursor:pointer">Stato <span class="sort-arrow" data-key="stato_permesso">⇕</span></th>
+                <th>Nota attuale</th>
+                <th>Azioni</th>
+              </tr>
+            </thead>
+            <tbody id="noteResults"><tr><td colspan="7" class="empty">Caricamento…</td></tr></tbody>
+          </table>
+        </div>
 
         <div id="noteFormWrap" style="display:none;margin-top:16px;border:1px solid var(--border);border-radius:10px;padding:14px">
           <div style="font-weight:700;font-size:13px;margin-bottom:4px" id="noteFormTitle">Nuova nota</div>
@@ -641,6 +658,7 @@
       if (t.dataset.tab === 'pending') refreshPending();
       if (t.dataset.tab === 'assign') refreshAssignments();
       if (t.dataset.tab === 'cantieri') refreshCantieri();
+      if (t.dataset.tab === 'note') loadNotePratiche();
     });
   });
 
@@ -1450,49 +1468,86 @@
   // ──────────────────────────────────────────────────────────────────────
   // Note pratiche (admin) — stessa pipeline delle note impresa
   let _noteSelected = null;
-  let _noteSearchTimer = null;
+  let _noteFilterTimer = null;
+  let NOTE_ALL = [];      // elenco completo (non filtrato) dall'ultima fetch
+  let NOTE_VIEW = [];     // elenco filtrato+ordinato attualmente renderizzato (indici usati da data-note-pick)
+  let NOTE_SORT = { key: null, dir: 1 };
   const noteSearchEl = $('noteSearch');
   if (noteSearchEl) {
     noteSearchEl.addEventListener('input', () => {
-      clearTimeout(_noteSearchTimer);
-      _noteSearchTimer = setTimeout(runNoteSearch, 300);
+      clearTimeout(_noteFilterTimer);
+      _noteFilterTimer = setTimeout(renderNoteTable, 150);
     });
   }
-  async function runNoteSearch(){
-    const q = (noteSearchEl?.value || '').trim();
-    const box = $('noteResults');
-    if (!q) { box.innerHTML = ''; box._results = []; return; }
-    box.innerHTML = '<div class="empty" style="padding:12px">Cerco…</div>';
+  $('noteRefreshBtn').addEventListener('click', loadNotePratiche);
+  document.querySelectorAll('#panel-note .note-th-sort').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.key;
+      if (NOTE_SORT.key === key) NOTE_SORT.dir *= -1;
+      else { NOTE_SORT.key = key; NOTE_SORT.dir = 1; }
+      renderNoteTable();
+    });
+  });
+  function _updateNoteSortArrows(){
+    document.querySelectorAll('#panel-note .sort-arrow').forEach(el => {
+      const isActive = NOTE_SORT.key === el.dataset.key;
+      el.textContent = isActive ? (NOTE_SORT.dir === 1 ? '▲' : '▼') : '⇕';
+      el.classList.toggle('active', isActive);
+    });
+  }
+  function _noteAuthorChip(noteAttuale){
+    if (!noteAttuale) return { chip: '', txt: '' };
+    const m = /^\[(RETELIT|IMPRESA)\]\s*/.exec(noteAttuale);
+    const author = m ? (m[1] === 'RETELIT' ? 'Retelit' : 'Impresa') : '';
+    const bg = m && m[1] === 'RETELIT' ? 'var(--retelit-blue)' : 'var(--retelit-teal)';
+    const txt = noteAttuale.slice(m ? m[0].length : 0);
+    const chip = author ? `<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;margin-right:6px;background:${bg};color:#fff">${author}</span>` : '';
+    return { chip, txt };
+  }
+  async function loadNotePratiche(){
+    const tbody = $('noteResults');
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">Caricamento…</td></tr>';
     try{
-      const d = await api('/api/admin/pratiche-search?q=' + encodeURIComponent(q) + '&limit=20');
-      const results = d.results || [];
-      box._results = results;
-      if (!results.length){ box.innerHTML = '<div class="empty" style="padding:12px">Nessuna pratica trovata</div>'; return; }
-      box.innerHTML = results.map((r, i) => `
-        <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <div style="flex:1;min-width:200px">
-            <div style="font-weight:700;font-size:12.5px">${escapeHtml(r.codice || r.tratta_id)}</div>
-            <div style="font-size:11px;color:var(--muted)">${escapeHtml(r.tratta_id)} · ${escapeHtml(r.ente)} · ${escapeHtml(r.tipo_permesso)} · Lotto ${escapeHtml(r.lotto)} · ${escapeHtml(r.stato_permesso || '—')}</div>
-            ${r.note_attuale ? (() => {
-              const m = /^\[(RETELIT|IMPRESA)\]\s*/.exec(r.note_attuale);
-              const author = m ? (m[1] === 'RETELIT' ? 'Retelit' : 'Impresa') : '';
-              const bg = m && m[1] === 'RETELIT' ? 'var(--retelit-blue)' : 'var(--retelit-teal)';
-              const txt = r.note_attuale.slice(m ? m[0].length : 0);
-              const chip = author ? `<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;margin-right:6px;background:${bg};color:#fff">${author}</span>` : '';
-              return `<div style="font-size:11px;color:var(--retelit-teal);margin-top:3px">Nota attuale: ${chip}${escapeHtml(txt)}</div>`;
-            })() : ''}
-          </div>
-          <button class="btn btn-ghost btn-xs" data-note-pick="${i}">+ Nota</button>
-        </div>
-      `).join('');
+      const d = await api('/api/admin/pratiche-search?limit=800');
+      NOTE_ALL = d.results || [];
+      renderNoteTable();
     }catch(err){
-      box.innerHTML = `<div class="empty" style="padding:12px;color:#ef4444">Errore: ${escapeHtml(err.message)}</div>`;
+      tbody.innerHTML = `<tr><td colspan="7" class="empty" style="color:#ef4444">Errore: ${escapeHtml(err.message)}</td></tr>`;
     }
+  }
+  function renderNoteTable(){
+    const tbody = $('noteResults');
+    const f = (noteSearchEl?.value || '').trim().toLowerCase();
+    let rows = !f ? NOTE_ALL : NOTE_ALL.filter(r => (
+      (r.codice||'') + ' ' + (r.tratta_id||'') + ' ' + (r.ente||'') + ' ' + (r.lotto||'') + ' ' + (r.stato_permesso||'')
+    ).toLowerCase().includes(f));
+    if (NOTE_SORT.key) {
+      const key = NOTE_SORT.key;
+      rows = rows.slice().sort((a, b) => {
+        const cmp = String(a[key]||'').localeCompare(String(b[key]||''), 'it', {numeric:true});
+        return cmp * NOTE_SORT.dir;
+      });
+    }
+    NOTE_VIEW = rows;
+    _updateNoteSortArrows();
+    if (!rows.length){ tbody.innerHTML = '<tr><td colspan="7" class="empty">Nessuna pratica trovata</td></tr>'; return; }
+    tbody.innerHTML = rows.map((r, i) => {
+      const { chip, txt } = _noteAuthorChip(r.note_attuale);
+      return `<tr>
+        <td style="font-weight:700">${escapeHtml(r.codice || '—')}</td>
+        <td>${escapeHtml(r.tratta_id)}</td>
+        <td>${escapeHtml(r.ente || '—')}</td>
+        <td>${escapeHtml(r.lotto || '—')}</td>
+        <td>${escapeHtml(r.stato_permesso || '—')}</td>
+        <td style="max-width:280px">${chip}${escapeHtml(txt)}</td>
+        <td><button class="btn btn-ghost btn-xs" data-note-pick="${i}">+ Nota</button></td>
+      </tr>`;
+    }).join('');
   }
   $('noteResults').addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-note-pick]');
     if (!btn) return;
-    const r = $('noteResults')._results?.[Number(btn.dataset.notePick)];
+    const r = NOTE_VIEW[Number(btn.dataset.notePick)];
     if (!r) return;
     _noteSelected = r;
     $('noteFormTitle').textContent = `Nota su ${r.codice || r.tratta_id}`;
@@ -1527,7 +1582,7 @@
       });
       setMsg(noteMsg, 'Nota salvata su Master.csv', true);
       setTimeout(() => { $('noteFormWrap').style.display = 'none'; _noteSelected = null; }, 1200);
-      runNoteSearch();
+      loadNotePratiche();
     }catch(err){
       setMsg(noteMsg, 'Errore: ' + err.message, false);
     }finally{
