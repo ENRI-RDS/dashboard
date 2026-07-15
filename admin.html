@@ -360,65 +360,59 @@
 
       <!-- GUIDA PROCEDURE -->
       <div class="panel" id="panel-guida">
-        <p class="sub">Riferimento rapido per le operazioni che coinvolgono <code>QGIS.geojson</code> e <code>Master.csv</code>. Il backend non sincronizza mai automaticamente i due file tra loro nella direzione geometria→dati: ogni scenario richiede un ordine preciso.</p>
-
         <div class="guida-note">
-          <strong>Regola di base #1 — chi comanda cosa.</strong> <code>Master.csv</code> è autoritativo per lo stato/iter delle pratiche (STATO_AUTORIZZAZIONE, LAVORABILE, PRATICA, ecc.): ad ogni upload/approvazione, il backend riscrive queste proprietà su <code>QGIS.geojson</code>, feature per feature, abbinando lo stesso TRATTA_ID — non crea mai nuove feature.
-          <br><br>
-          <code>QGIS.geojson</code> è invece autoritativo per la geometria e per <strong>LUNGHEZZA</strong>: questo campo non viene mai toccato dal Master.csv durante la rigenerazione. Se le due lunghezze divergono, restano disallineate finché non le correggi tu a mano.
-          <br><br>
-          <strong>Regola di base #2 — un upload sostituisce, non aggiunge.</strong> Quando carichi un file in tab <em>File correnti</em>, quel file <u>rimpiazza per intero</u> la versione attuale — non viene fatto nessun merge con quanto già presente. Il file che carichi deve quindi contenere <strong>tutti i dati che vuoi restino visibili</strong>, non solo quelli nuovi o modificati. Questo vale sia per <code>QGIS.geojson</code> sia per <code>Master.csv</code>.
+          <strong>2 regole fisse.</strong> ① <code>Master.csv</code> comanda lo stato pratiche (auto-riscritto su QGIS ad ogni approvazione); <code>QGIS.geojson</code> comanda geometria e <strong>LUNGHEZZA</strong> (mai toccata da Master.csv — se sbagliata va corretta a mano su entrambi). ② Ogni upload <strong>sostituisce l'intero file</strong>, non fa merge: se carichi solo le righe/tratte modificate, tutte le altre spariscono.
+        </div>
+        <div class="guida-warn" style="margin-bottom:20px">
+          <strong>Prima di modificare qualsiasi cosa</strong>: scarica sempre la versione attuale da qui (tab <em>File correnti</em> → bottone <em>Scarica</em>), mai da una copia locale vecchia — la dashboard è l'unica fonte aggiornata.
         </div>
 
         <div class="guida-grid">
 
           <div class="guida-card">
             <div class="guida-num">1</div>
-            <h3>Modificare/aggiungere tratte in QGIS (split, nuova geometria, nuovi TRATTA_ID)</h3>
+            <h3>Nuove tratte / split in QGIS</h3>
             <ol>
-              <li>In QGIS lavori su un <strong>layer</strong> (lo strato vettoriale con tutte le tratte del progetto). Apri quello già allineato con l'attuale <code>QGIS.geojson</code> della dashboard — non crearne uno nuovo da zero.</li>
-              <li>Dentro quel layer, esegui lo split/la modifica solo sulle tratte che ti interessano. Assegna <strong>TRATTA_ID univoci</strong> ai nuovi segmenti generati dallo split (mai duplicare un TRATTA_ID già esistente).</li>
-              <li>Esporta il layer in GeoJSON (<em>Esporta → Salva elementi come...</em>) con <strong>CRS = EPSG:4326 / CRS84</strong> (non UTM — coordinate in metri farebbero uscire la mappa fuori scala).</li>
-              <li>Tab <em>File correnti</em> → carica quel file scegliendo <code>QGIS.geojson</code> dal menu di destinazione. Il nome del file selezionato dal disco deve combaciare col target scelto, altrimenti il caricamento viene bloccato.</li>
-              <li><strong>Solo dopo</strong>, carica/approva <code>Master.csv</code> con le righe dei nuovi TRATTA_ID (via upload diretto o via coda imprese). Se l'ordine viene invertito, le nuove righe restano orfane senza geometria fino al prossimo upload del geojson.</li>
-              <li>Verifica in tab <em>File correnti</em> che <code>modificato</code>/<code>dimensione</code> di entrambi i file riflettano l'upload appena fatto, prima di considerare chiusa l'operazione.</li>
+              <li>Scarica <code>QGIS.geojson</code> attuale, aprilo in QGIS.</li>
+              <li>Split/modifica solo le tratte interessate. TRATTA_ID nuovi e univoci.</li>
+              <li>Esporta <strong>tutto</strong> in GeoJSON, CRS EPSG:4326/CRS84 (non UTM).</li>
+              <li>Carica come <code>QGIS.geojson</code> (il nome file deve combaciare col target selezionato).</li>
+              <li><strong>Solo dopo</strong>, carica/approva <code>Master.csv</code> con le righe dei nuovi TRATTA_ID — ordine invertito = righe orfane.</li>
             </ol>
             <div class="guida-warn">
-              <strong>Punto critico — esporta l'INTERO file, non solo le tratte toccate.</strong> Il file che esporti al passo 3 deve contenere <strong>tutte</strong> le feature del layer: quelle vecchie invariate + quelle nuove/modificate dallo split. L'upload sostituisce l'intero <code>QGIS.geojson</code> — non aggiunge le feature nuove a quelle già online. Se esporti/carichi solo le tratte modificate, tutte le altre spariscono dalla mappa al prossimo caricamento.
+              File parziale = tratte mancanti in mappa. L'export del passo 3 deve contenere tutte le tratte, vecchie e nuove insieme.
             </div>
           </div>
 
           <div class="guida-card">
             <div class="guida-num">2</div>
-            <h3>Correggere la LUNGHEZZA di una o più tratte</h3>
+            <h3>Correggere una LUNGHEZZA</h3>
             <ol>
-              <li>Stabilisci quale valore è corretto: di norma la geometria in QGIS (misurata) è la fonte primaria.</li>
-              <li>Se la geometria non cambia ma solo il valore era sbagliato: aggiorna il campo <code>LUNGHEZZA</code> direttamente nelle proprietà della feature, nello stesso layer completo usato al riquadro 1. Poi esporta di nuovo <strong>l'intero layer</strong> (stesso identico TRATTA_ID sulla feature corretta, tutte le altre feature invariate incluse) e carica come <code>QGIS.geojson</code> — vale lo stesso avviso del riquadro 1: file parziale = tratte mancanti.</li>
-              <li>Aggiorna manualmente il campo <code>LUNGHEZZA</code> nelle righe corrispondenti di <code>Master.csv</code> (stesso TRATTA_ID — possono essere più righe, una per pratica/ente). <strong>Nessuna sincronizzazione automatica in questo verso</strong>: se salti questo passo, Master.csv resta con il valore vecchio e i due file restano disallineati (mostrato in mappa correttamente, ma sbagliato in tabelle/export basati su Master.csv).</li>
-              <li>Carica <code>Master.csv</code> aggiornato (tab <em>File correnti</em>, target <code>Master.csv</code> — anche qui il file caricato deve contenere tutte le righe, non solo quelle corrette).</li>
-              <li>Verifica: apri l'anteprima di entrambi i file (icona occhio in tab <em>File correnti</em>) e confronta il valore LUNGHEZZA sulla stessa TRATTA_ID.</li>
+              <li>Scarica <code>QGIS.geojson</code> attuale e correggi il campo LUNGHEZZA sulla feature (stesso TRATTA_ID).</li>
+              <li>Esporta tutto, ricarica come <code>QGIS.geojson</code>.</li>
+              <li>Scarica <code>Master.csv</code>, correggi <code>LUNGHEZZA</code> sulle righe con lo stesso TRATTA_ID (nessuna sincronizzazione automatica: se salti questo passo restano disallineati).</li>
+              <li>Ricarica come <code>Master.csv</code>.</li>
+              <li>Verifica con l'anteprima di entrambi (icona occhio) sullo stesso TRATTA_ID.</li>
             </ol>
           </div>
 
           <div class="guida-card">
             <div class="guida-num">3</div>
-            <h3>Aggiornare solo stato/iter pratica (nessuna modifica a geometria/lunghezza)</h3>
+            <h3>Solo stato/iter pratica (nessuna modifica a geometria)</h3>
             <ol>
-              <li>Flusso normale via impresa: invio da <code>imprese.html</code>/<code>mappa_impresa_caricamento.html</code> → coda in tab <em>Coda imprese</em> → Approva. In questo caso il backend applica solo le righe modificate al Master.csv esistente — <strong>non</strong> è un caso di sostituzione totale, qui il merge lo fa il backend stesso.</li>
-              <li>Oppure, come admin: modifica <code>Master.csv</code> offline (export/import completo) e ricaricalo (tab <em>File correnti</em>, target <code>Master.csv</code>) — qui invece il file caricato sostituisce per intero quello attuale, deve quindi contenere tutte le righe, non solo quelle cambiate.</li>
-              <li>In entrambi i casi il backend rigenera automaticamente <code>QGIS.geojson</code> (solo le proprietà di stato: STATO_AUTORIZZAZIONE, STATO_NULLAOSTA, STATO_ORDINANZA, LAVORABILE, MOTIVO_NO, PRATICA, ENTE) e <code>Riepilogo_progettazione.csv</code>, poi pusha entrambi su GitHub — nessuna azione manuale aggiuntiva richiesta.</li>
-              <li>Se serve rigenerare i derivati senza toccare Master.csv (es. dopo un fix di logica), usa <code>POST /api/admin/regenerate-derived</code>.</li>
+              <li><strong>Da impresa</strong>: coda in tab <em>Coda imprese</em> → Approva — qui il backend fa il merge da solo, non serve il file completo.</li>
+              <li><strong>Da admin</strong>: scarica <code>Master.csv</code>, modificalo, ricaricalo per intero (qui vale la regola sostituzione totale).</li>
+              <li>In entrambi i casi <code>QGIS.geojson</code> e <code>Riepilogo_progettazione.csv</code> si rigenerano da soli — nessuna azione extra.</li>
             </ol>
           </div>
 
           <div class="guida-card">
             <div class="guida-num">4</div>
-            <h3>Dopo qualunque upload critico</h3>
+            <h3>Dopo ogni upload critico</h3>
             <ol>
-              <li>Controlla tab <em>File correnti</em>: colonna <em>Sorgente</em> deve indicare <code>mongo</code> (non <code>disk</code>) e <em>Ultima modifica</em> deve essere recente.</li>
-              <li>Apri l'anteprima del file appena caricato (icona occhio) e controlla che il numero di tratte/righe sia quello atteso — è il modo più rapido per accorgersi di un upload parziale.</li>
-              <li>Se due persone caricano lo stesso file in parallelo (es. upload manuale QGIS mentre un'approvazione impresa rigenera i derivati), vince chi scrive per ultimo — non c'è lock. In caso di dubbio ricarica la pagina e riverifica dopo qualche minuto.</li>
-              <li>In tab <em>Storico versioni</em> puoi sempre confrontare/ripristinare una versione precedente se qualcosa non torna.</li>
+              <li>Tab <em>File correnti</em>: sorgente = <code>mongo</code>, data recente.</li>
+              <li>Anteprima → controlla che il numero di righe/tratte sia quello atteso.</li>
+              <li>Se qualcosa non torna, tab <em>Storico versioni</em> per confrontare/ripristinare.</li>
             </ol>
           </div>
 
@@ -886,7 +880,7 @@
     const typeLabel = s.type === 'update' ? 'Aggiornamento' : 'Nuova pratica';
     $('detailsTitle').textContent = `${typeLabel} — ${s.nome}`;
     const statusColor = {pending:'#f59e0b',approved:'var(--retelit-sky)',rejected:'#ef4444'}[s.status]||'var(--gray-500)';
-    const reviewedHtml = s.reviewed_at ? `  ${s.status==='approved'?'Approvato':'Rifiutato'}: ${new Date(s.reviewed_at).toLocaleString('it-IT')}` : '';
+    const reviewedHtml = s.reviewed_at ? `  ${s.status==='approved'?'Approvato':'Rifiutato'}: ${new Date(s.reviewed_at).toLocaleString('it-IT')}${s.reviewed_by ? ` da ${escapeHtml(s.reviewed_by)}` : ''}` : '';
     $('detailsSub').innerHTML = `Inviato: ${new Date(s.submitted_at).toLocaleString('it-IT')}${reviewedHtml}  <span style="display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:600;background:${statusColor}22;color:${statusColor}">${s.status}</span>`;
     const fieldLabels = {
       STATO_PERMESSO:'Nuovo stato', DATA_RICHIESTA:'Data richiesta',
@@ -1134,7 +1128,7 @@
             <span class="pend-tag" style="background:${accentColor}18;color:${accentColor}">${typeIcon} ${escapeHtml(typeLabel)}</span>
             <span style="font-weight:700;font-size:13px">${escapeHtml(s.nome)}</span>
             <span style="color:var(--muted);font-size:11px">Inviato: ${fmtDate(s.submitted_at)}</span>
-            ${s.reviewed_at ? `<span style="color:var(--muted);font-size:11px">· ${s.status==='approved'?'Approvato':'Rifiutato'}: ${fmtDate(s.reviewed_at)}</span>` : ''}
+            ${s.reviewed_at ? `<span style="color:var(--muted);font-size:11px">· ${s.status==='approved'?'Approvato':'Rifiutato'}: ${fmtDate(s.reviewed_at)}${s.reviewed_by ? ` da <b>${escapeHtml(s.reviewed_by)}</b>` : ''}</span>` : ''}
             <span class="pend-tag" style="background:${stBg};color:${stFg};margin-left:auto">${stLabel}</span>
           </div>
           <div class="pend-card-body">
