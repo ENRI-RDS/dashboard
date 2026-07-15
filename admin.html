@@ -132,11 +132,12 @@
   .sort-arrow{display:inline-block;width:10px;font-size:9px;color:var(--border);opacity:.7}
   .sort-arrow.active{color:var(--accent);opacity:1}
   .note-table{table-layout:fixed;width:100%;border-collapse:separate;border-spacing:0}
-  .note-table th{position:sticky;top:0;background:var(--surface2);box-shadow:inset 0 -2px 0 var(--border-1);z-index:1;cursor:default}
+  .note-table th{position:sticky;top:0;background:var(--surface);box-shadow:inset 0 -2px 0 var(--border-1);z-index:1;cursor:default}
   .note-table th.note-th-sort{cursor:pointer}
   .note-table td,.note-table th{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .note-table td.note-cell{white-space:normal;word-break:break-word}
-  .note-table tbody tr:hover td{background:var(--surface2)}
+  .note-table td.stato-cell{white-space:normal;word-break:break-word}
+  .note-table tbody tr:hover td{background:var(--surface)}
   .guida-note{background:var(--bg-3);border:1px solid var(--retelit-blue-25);border-radius:var(--radius-md);padding:14px 16px;font-size:12.5px;line-height:1.6;color:var(--fg-2);margin-bottom:20px}
   .guida-note code{font-family:var(--font-mono);font-size:11.5px;background:rgba(4,63,117,.08);padding:1px 5px;border-radius:4px}
   .guida-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
@@ -376,13 +377,12 @@
         <div style="max-height:520px;overflow-y:auto;border:1px solid var(--border);border-radius:10px">
           <table class="note-table">
             <colgroup>
-              <col style="width:13%"><col style="width:11%"><col style="width:17%"><col style="width:8%">
-              <col style="width:12%"><col style="width:27%"><col style="width:12%">
+              <col style="width:14%"><col style="width:20%"><col style="width:8%">
+              <col style="width:20%"><col style="width:24%"><col style="width:14%">
             </colgroup>
             <thead>
               <tr>
                 <th class="note-th-sort" data-key="codice">Codice <span class="sort-arrow" data-key="codice">⇕</span></th>
-                <th class="note-th-sort" data-key="tratta_id">Tratte <span class="sort-arrow" data-key="tratta_id">⇕</span></th>
                 <th class="note-th-sort" data-key="ente">Ente <span class="sort-arrow" data-key="ente">⇕</span></th>
                 <th class="note-th-sort" data-key="lotto">Lotto <span class="sort-arrow" data-key="lotto">⇕</span></th>
                 <th class="note-th-sort" data-key="stato_permesso">Stato <span class="sort-arrow" data-key="stato_permesso">⇕</span></th>
@@ -390,7 +390,7 @@
                 <th>Azioni</th>
               </tr>
             </thead>
-            <tbody id="noteResults"><tr><td colspan="7" class="empty">Caricamento…</td></tr></tbody>
+            <tbody id="noteResults"><tr><td colspan="6" class="empty">Caricamento…</td></tr></tbody>
           </table>
         </div>
 
@@ -1481,7 +1481,7 @@
   let _noteFilterTimer = null;
   let NOTE_ALL = [];      // elenco completo (non filtrato) dall'ultima fetch
   let NOTE_VIEW = [];     // elenco filtrato+ordinato attualmente renderizzato (indici usati da data-note-pick)
-  let NOTE_SORT = { key: null, dir: 1 };
+  let NOTE_SORT = { key: 'codice', dir: 1 };
   const noteSearchEl = $('noteSearch');
   if (noteSearchEl) {
     noteSearchEl.addEventListener('input', () => {
@@ -1514,15 +1514,30 @@
     const chip = author ? `<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;margin-right:6px;background:${bg};color:#fff">${author}</span>` : '';
     return { chip, txt };
   }
+  // Palette canonica stato (v. AGENT_BRIEF §8bis) — allineata a index/mappa/scavi/imprese,
+  // solo token brandkit, nessun colore arbitrario.
+  const NOTE_STATO_COLORS = {
+    'IN ATTESA': 'var(--gray-500)', 'IN REDAZIONE': 'var(--gray-500)',
+    'IN FIRMA RDS': 'var(--warn)',
+    'INVIO PRELIMINARE': 'var(--retelit-blue)',
+    'INVIATO': 'var(--retelit-sky)', 'PROTOCOLLATO': 'var(--retelit-sky)',
+    'NECESSARIA INTEGRAZIONE': 'var(--err)',
+    'IN REDAZIONE INTEGRAZIONE': 'var(--retelit-blue-75)', 'PROTOCOLLATO INTEGRAZIONE': 'var(--retelit-blue-75)',
+    'OTTENUTO': 'var(--ok)',
+    'NO COMPETENZA': 'var(--err)',
+  };
+  function _noteStatoColor(stato){
+    return NOTE_STATO_COLORS[(stato||'').trim()] || 'var(--muted)';
+  }
   async function loadNotePratiche(){
     const tbody = $('noteResults');
-    tbody.innerHTML = '<tr><td colspan="7" class="empty">Caricamento…</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">Caricamento…</td></tr>';
     try{
       const d = await api('/api/admin/pratiche-search?limit=800');
       NOTE_ALL = d.results || [];
       renderNoteTable();
     }catch(err){
-      tbody.innerHTML = `<tr><td colspan="7" class="empty" style="color:#ef4444">Errore: ${escapeHtml(err.message)}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" class="empty" style="color:#ef4444">Errore: ${escapeHtml(err.message)}</td></tr>`;
     }
   }
   function renderNoteTable(){
@@ -1540,17 +1555,14 @@
     }
     NOTE_VIEW = rows;
     _updateNoteSortArrows();
-    if (!rows.length){ tbody.innerHTML = '<tr><td colspan="7" class="empty">Nessuna pratica trovata</td></tr>'; return; }
+    if (!rows.length){ tbody.innerHTML = '<tr><td colspan="6" class="empty">Nessuna pratica trovata</td></tr>'; return; }
     tbody.innerHTML = rows.map((r, i) => {
       const { chip, txt } = _noteAuthorChip(r.note_attuale);
-      const tratte = r.tratta_ids || [r.tratta_id];
-      const tratteTxt = tratte.join(', ');
       return `<tr>
         <td style="font-weight:700">${escapeHtml(r.codice || '—')}</td>
-        <td title="${escapeHtml(tratteTxt)}">${escapeHtml(tratteTxt)}${tratte.length > 1 ? ` <span style="color:var(--muted);font-weight:600">(${tratte.length})</span>` : ''}</td>
         <td>${escapeHtml(r.ente || '—')}</td>
         <td>${escapeHtml(r.lotto || '—')}</td>
-        <td>${escapeHtml(r.stato_permesso || '—')}</td>
+        <td class="stato-cell" style="color:${_noteStatoColor(r.stato_permesso)};font-weight:600">${escapeHtml(r.stato_permesso || '—')}</td>
         <td class="note-cell">${chip}${escapeHtml(txt)}</td>
         <td><button class="btn btn-ghost btn-xs" data-note-pick="${i}">+ Nota</button></td>
       </tr>`;
