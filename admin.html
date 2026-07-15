@@ -1473,7 +1473,14 @@
           <div style="flex:1;min-width:200px">
             <div style="font-weight:700;font-size:12.5px">${escapeHtml(r.codice || r.tratta_id)}</div>
             <div style="font-size:11px;color:var(--muted)">${escapeHtml(r.tratta_id)} · ${escapeHtml(r.ente)} · ${escapeHtml(r.tipo_permesso)} · Lotto ${escapeHtml(r.lotto)} · ${escapeHtml(r.stato_permesso || '—')}</div>
-            ${r.note_attuale ? `<div style="font-size:11px;color:var(--retelit-teal);margin-top:3px">Nota attuale: ${escapeHtml(r.note_attuale)}</div>` : ''}
+            ${r.note_attuale ? (() => {
+              const m = /^\[(RETELIT|IMPRESA)\]\s*/.exec(r.note_attuale);
+              const author = m ? (m[1] === 'RETELIT' ? 'Retelit' : 'Impresa') : '';
+              const bg = m && m[1] === 'RETELIT' ? 'var(--retelit-blue)' : 'var(--retelit-teal)';
+              const txt = r.note_attuale.slice(m ? m[0].length : 0);
+              const chip = author ? `<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;margin-right:6px;background:${bg};color:#fff">${author}</span>` : '';
+              return `<div style="font-size:11px;color:var(--retelit-teal);margin-top:3px">Nota attuale: ${chip}${escapeHtml(txt)}</div>`;
+            })() : ''}
           </div>
           <button class="btn btn-ghost btn-xs" data-note-pick="${i}">+ Nota</button>
         </div>
