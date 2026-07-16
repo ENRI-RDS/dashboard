@@ -1910,6 +1910,9 @@ async def search_pratiche_admin(
     # possono ricevere note (add_admin_note richiede una pratica valida) →
     # escluse dalla tabella, come richiesto dall'utente.
     latest = latest[latest["PRATICA"].astype(str).str.strip() != ""]
+    # Le pratiche già OTTENUTO non necessitano più di note (emesse, chiuse) →
+    # escluse dalla tabella, come richiesto dall'utente.
+    latest = latest[latest["STATO_PERMESSO"].astype(str).str.strip().str.upper() != "OTTENUTO"]
     if latest.empty:
         return {"results": []}
     # Raggruppa per pratica (ENTE+TIPO_PERMESSO+PRATICA): una pratica AUTORIZZAZIONE
