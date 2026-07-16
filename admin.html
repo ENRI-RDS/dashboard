@@ -74,8 +74,8 @@
   .btn-danger{background:var(--danger);color:#fff}
   .btn-warn{background:var(--warn);color:#fff}
   .btn-xs{padding:6px 10px;font-size:11.5px;border-radius:6px}
-  td.actions{white-space:nowrap}
-  .actions-row{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
+  td.actions{white-space:normal}
+  .actions-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .menu-wrap{position:relative;display:inline-block}
   .menu-dots{width:30px;height:30px;border-radius:6px;border:1px solid var(--border);background:#fff;cursor:pointer;font-size:14px;color:var(--muted);line-height:1}
   .menu-dots:hover{background:var(--bg)}
@@ -236,6 +236,10 @@
       <div class="panel active" id="panel-files">
         <p class="sub">Vista unificata: file caricati su MongoDB e file "seed" presenti nel repo GitHub. Il backend serve sempre la versione MongoDB se esiste, altrimenti il file del repo.</p>
         <table>
+          <colgroup>
+            <col style="width:20%"><col style="width:10%"><col style="width:9%">
+            <col style="width:15%"><col style="width:13%"><col style="width:33%">
+          </colgroup>
           <thead><tr><th>File</th><th>Sorgente</th><th>Versioni</th><th>Ultima modifica</th><th>Origine</th><th>Azioni</th></tr></thead>
           <tbody id="filesBody"><tr><td colspan="6" class="empty">Caricamento…</td></tr></tbody>
         </table>
@@ -699,11 +703,12 @@
         filesBody.innerHTML = '<tr><td colspan="6" class="empty">Nessun file</td></tr>';
         return;
       }
-      const originLabel = { impresa: 'Approvazione impresa', derived: 'Rigenerato automaticamente', admin: 'Upload manuale' };
+      const originLabel = { impresa: 'Approvazione impresa', derived: 'Rigenerato aut.', admin: 'Upload manuale' };
+      const originTitleLabel = { impresa: 'Approvazione impresa', derived: 'Rigenerato automaticamente', admin: 'Upload manuale' };
       const originColor  = { impresa: 'var(--retelit-blue)', derived: 'var(--retelit-teal)', admin: 'var(--gray-500)' };
       filesBody.innerHTML = d.files.map(f => {
         const origin = f.upload_source || 'admin';
-        const originTitle = f.note ? `${originLabel[origin] || origin} — ${escapeHtml(f.note)}` : (originLabel[origin] || origin);
+        const originTitle = f.note ? `${originTitleLabel[origin] || origin} — ${escapeHtml(f.note)}` : (originTitleLabel[origin] || origin);
         return `
         <tr>
           <td class="mono" style="white-space:nowrap">${escapeHtml(f.name)}</td>
