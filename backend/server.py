@@ -275,6 +275,19 @@ async def _require_admin_session(
     return sess
 
 
+async def _require_milestone_session(
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+) -> dict:
+    """Come _require_staff_session ma esclude anche il ruolo 'dl' (Direzione
+    Lavori): vede tutto come 'user' tranne la pagina Milestone di Progetto,
+    su richiesta esplicita utente. Il ruolo è letto dal token firmato
+    (HMAC/SESSION_SECRET), non falsificabile lato client."""
+    sess = await _require_staff_session(x_session_token)
+    if sess.get("ruolo") == "dl":
+        raise HTTPException(403, "Milestone di progetto non disponibili per questo ruolo")
+    return sess
+
+
 # File "core" con dati di TUTTI i lotti/imprese. In lettura (/api/data*,
 # /api/preview, /api/files) sono riservati ai ruoli interni: le Aree Impresa
 # usano gli endpoint /api/imprese/* già scoped sui propri lotti. Inoltre NON
@@ -1360,6 +1373,45 @@ async def _find_assignment(nome: str) -> dict | None:
     return await assignments_col.find_one(
         {"nome": {"$regex": f"^{re.escape(nome.strip())}$", "$options": "i"}}
     )
+
+
+# ── Milestone di Progetto — dati serviti da qui (non più embedded in
+# milestone.html) così il controllo di accesso per ruolo è reale lato server,
+# non solo un redirect client-side aggirabile forzando localStorage.
+MILESTONE_IMPRESE_ROWS = [
+    {"lotto": "1A", "cluster": "1–3", "invio": "-", "ottenim": "-", "avvio": "31/05/2026", "p50": "-", "p90": "31/10/2026", "p100": "31/12/2026"},
+    {"lotto": "1B", "cluster": "1", "invio": "-", "ottenim": "-", "avvio": "31/05/2026", "p50": "-", "p90": "31/10/2026", "p100": "31/12/2026"},
+    {"lotto": "2A", "cluster": "2", "invio": "-", "ottenim": "-", "avvio": "31/05/2026", "p50": "-", "p90": "31/10/2026", "p100": "31/12/2026"},
+    {"lotto": "2B", "cluster": "2", "invio": "-", "ottenim": "-", "avvio": "31/05/2026", "p50": "-", "p90": "31/10/2026", "p100": "31/12/2026"},
+    {"lotto": "1", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
+    {"lotto": "2", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
+    {"lotto": "3", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
+    {"lotto": "4", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
+    {"lotto": "5", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
+    {"lotto": "6", "cluster": "3–4", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/10/2026", "p50": "31/05/2027", "p90": "-", "p100": "15/11/2027"},
+    {"lotto": "7", "cluster": "6–7", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/01/2027", "p50": "30/09/2027", "p90": "-", "p100": "31/03/2028"},
+    {"lotto": "8", "cluster": "5", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/01/2027", "p50": "30/09/2027", "p90": "-", "p100": "31/07/2028"},
+]
+
+MILESTONE_CONTRACT_ROWS = [
+    {"milestone": "Permits submission", "p50": "-", "p70": "-", "p100": "31/12/2026"},
+    {"milestone": "Authorizations received", "p50": "-", "p70": "-", "p100": "31/12/2027"},
+    {"milestone": "Cluster 1", "p50": "-", "p70": "31/12/2026", "p100": "30/04/2027"},
+    {"milestone": "Cluster 2", "p50": "31/12/2026", "p70": "-", "p100": "31/05/2027"},
+    {"milestone": "Cluster 3", "p50": "31/05/2027", "p70": "-", "p100": "31/03/2028"},
+    {"milestone": "Cluster 4", "p50": "-", "p70": "-", "p100": "31/03/2028"},
+    {"milestone": "Cluster 5", "p50": "-", "p70": "-", "p100": "30/06/2028"},
+    {"milestone": "Cluster 6", "p50": "-", "p70": "-", "p100": "31/12/2028"},
+    {"milestone": "Cluster 7", "p50": "-", "p70": "-", "p100": "31/12/2028"},
+]
+
+
+@app.get("/api/milestone")
+async def get_milestone(sess: dict = Depends(_require_milestone_session)):
+    """Dati di milestone.html. Accesso negato (403) al ruolo 'dl', in aggiunta
+    al redirect client-side già presente sulla pagina — qui il controllo è
+    reale perché il ruolo viene dal token firmato server-side."""
+    return {"imprese": MILESTONE_IMPRESE_ROWS, "contract": MILESTONE_CONTRACT_ROWS}
 
 
 @app.get("/api/enti")
