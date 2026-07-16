@@ -3903,6 +3903,11 @@ document.getElementById('pr-no-nec').addEventListener('change', function(){
   const show = this.checked;
   document.getElementById('pr-wrap-no-tratte').style.display = show ? '' : 'none';
   if (!show) Array.from(document.getElementById('pr-no-tratte').options).forEach(o => o.selected=false);
+  // NULLA OSTA NECESSARIO è un bisogno della singola tratta selezionata, non
+  // dell'intera pratica: spuntandolo si disattiva "aggiorna tutte insieme" cosi'
+  // l'aggiornamento resta sulla sola tratta corrente. L'impresa può comunque
+  // riattivare manualmente il flag se il nulla osta serve davvero per tutte le tratte.
+  if (show && PR_SIBLINGS.length > 0) document.getElementById('prSibToggle').checked = false;
 });
 
 document.getElementById('pr-stato').addEventListener('change', function(){
