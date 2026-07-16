@@ -1135,7 +1135,13 @@
         impreseAttuali.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
       if (impreseAttuali.includes(impSelected)) impSel.value = impSelected;
 
-      const submissions = impSel.value ? (d.submissions||[]).filter(s => s.nome === impSel.value) : (d.submissions||[]);
+      const submissions = (impSel.value ? (d.submissions||[]).filter(s => s.nome === impSel.value) : (d.submissions||[]))
+        .slice()
+        .sort((a, b) => {
+          const da = new Date(a.reviewed_at || a.submitted_at || 0).getTime();
+          const db = new Date(b.reviewed_at || b.submitted_at || 0).getTime();
+          return db - da;
+        });
 
       if(!submissions.length){
         $('pendingBody').innerHTML = '<div class="empty" style="padding:24px;text-align:center">Nessuna submission</div>';
