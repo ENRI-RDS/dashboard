@@ -53,6 +53,23 @@
         else input = new Request(rewritten, input);
       }
     } catch (_) { /* fall through */ }
+
+    // Inietta x-session-token su ogni chiamata diretta al nostro backend
+    // (data-file riscritti sopra + /api/... espliciti), a meno che il
+    // chiamante non l'abbia già impostato esplicitamente. Evita la classe di
+    // bug "fetch senza header token → 401 silenzioso" ricorsa più volte nello
+    // storico (v. AGENT_BRIEF rev.129/130/135/136/149).
+    try {
+      const finalUrl = typeof input === 'string' ? input : input.url;
+      if (API_BASE && finalUrl && finalUrl.startsWith(API_BASE)) {
+        const token = localStorage.getItem('_enri_session') || '';
+        const existingHeaders = (init && init.headers) || (input instanceof Request ? input.headers : undefined);
+        const headers = new Headers(existingHeaders);
+        if (token && !headers.has('x-session-token')) headers.set('x-session-token', token);
+        init = { ...(init || {}), headers };
+      }
+    } catch (_) { /* fall through */ }
+
     return origFetch(input, init);
   };
 
