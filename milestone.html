@@ -250,74 +250,73 @@ function pill(str) {
 }
 
 /* ── data ── */
-var IMPRESE_ROWS = [
-  {lotto:'1A', cluster:'1–3', invio:'-', ottenim:'-', avvio:'31/05/2026', p50:'-', p90:'31/10/2026', p100:'31/12/2026'},
-  {lotto:'1B', cluster:'1',   invio:'-', ottenim:'-', avvio:'31/05/2026', p50:'-', p90:'31/10/2026', p100:'31/12/2026'},
-  {lotto:'2A', cluster:'2',   invio:'-', ottenim:'-', avvio:'31/05/2026', p50:'-', p90:'31/10/2026', p100:'31/12/2026'},
-  {lotto:'2B', cluster:'2',   invio:'-', ottenim:'-', avvio:'31/05/2026', p50:'-', p90:'31/10/2026', p100:'31/12/2026'},
-  {lotto:'1',  cluster:'3',   invio:'30/09/2026', ottenim:'30/09/2027', avvio:'31/08/2026', p50:'30/04/2027', p90:'-', p100:'15/11/2027'},
-  {lotto:'2',  cluster:'3',   invio:'30/09/2026', ottenim:'30/09/2027', avvio:'31/08/2026', p50:'30/04/2027', p90:'-', p100:'15/11/2027'},
-  {lotto:'3',  cluster:'3',   invio:'30/09/2026', ottenim:'30/09/2027', avvio:'31/08/2026', p50:'30/04/2027', p90:'-', p100:'15/11/2027'},
-  {lotto:'4',  cluster:'3',   invio:'30/09/2026', ottenim:'30/09/2027', avvio:'31/08/2026', p50:'30/04/2027', p90:'-', p100:'15/11/2027'},
-  {lotto:'5',  cluster:'3',   invio:'30/09/2026', ottenim:'30/09/2027', avvio:'31/08/2026', p50:'30/04/2027', p90:'-', p100:'15/11/2027'},
-  {lotto:'6',  cluster:'3–4', invio:'30/09/2026', ottenim:'30/09/2027', avvio:'31/10/2026', p50:'31/05/2027', p90:'-', p100:'15/11/2027'},
-  {lotto:'7',  cluster:'6–7', invio:'30/09/2026', ottenim:'30/09/2027', avvio:'31/01/2027', p50:'30/09/2027', p90:'-', p100:'31/03/2028'},
-  {lotto:'8',  cluster:'5',   invio:'30/09/2026', ottenim:'30/09/2027', avvio:'31/01/2027', p50:'30/09/2027', p90:'-', p100:'31/07/2028'},
-];
+/* I dati (IMPRESE_ROWS/CONTRACT) non sono più hardcoded qui: vengono
+   caricati da GET /api/milestone, gated server-side (dependency
+   _require_milestone_session, esclude il ruolo 'dl' — controllo reale sul
+   token firmato, non solo il redirect client-side sopra). */
+var IMPRESE_ROWS = [];
+var CONTRACT = [];
+var GANTT_ROWS = [];
 
-var CONTRACT = [
-  {milestone:'Permits submission',    p50:'-',           p70:'-',           p100:'31/12/2026'},
-  {milestone:'Authorizations received',p50:'-',          p70:'-',           p100:'31/12/2027'},
-  {milestone:'Cluster 1',             p50:'-',           p70:'31/12/2026',  p100:'30/04/2027'},
-  {milestone:'Cluster 2',             p50:'31/12/2026',  p70:'-',           p100:'31/05/2027'},
-  {milestone:'Cluster 3',             p50:'31/05/2027',  p70:'-',           p100:'31/03/2028'},
-  {milestone:'Cluster 4',             p50:'-',           p70:'-',           p100:'31/03/2028'},
-  {milestone:'Cluster 5',             p50:'-',           p70:'-',           p100:'30/06/2028'},
-  {milestone:'Cluster 6',             p50:'-',           p70:'-',           p100:'31/12/2028'},
-  {milestone:'Cluster 7',             p50:'-',           p70:'-',           p100:'31/12/2028'},
-];
+function _buildGanttRows() {
+  var rows = [{t:'g', label:'LOTTI · IMPRESE'}];
+  IMPRESE_ROWS.forEach(function(r) {
+    rows.push({t:'i', label:'Lotto ' + r.lotto, sub:'cl.' + r.cluster, avvio:r.avvio, p50:(r.p50==='-'?null:r.p50), p90:(r.p90==='-'?null:r.p90), p100:r.p100});
+  });
+  rows.push({t:'g', label:'CONTRACT MILESTONE'});
+  CONTRACT.forEach(function(c) {
+    rows.push({t:'c', label:c.milestone, p50:(c.p50==='-'?null:c.p50), p70:(c.p70==='-'?null:c.p70), p100:c.p100});
+  });
+  return rows;
+}
 
-/* ── build tables ── */
-var tb1 = document.getElementById('tbody-imprese');
-IMPRESE_ROWS.forEach(function(r) {
-  var tr = document.createElement('tr');
-  tr.innerHTML = '<td class="col-id">' + r.lotto + '</td><td class="cluster-cell">' + r.cluster + '</td><td class="col-permit-first">' + pill(r.invio) + '</td><td>' + pill(r.ottenim) + '</td><td class="col-avvio">' + pill(r.avvio) + '</td><td class="col-compl">' + pill(r.p50) + '</td><td class="col-compl">' + pill(r.p90) + '</td><td class="col-compl">' + pill(r.p100) + '</td>';
-  tb1.appendChild(tr);
-});
+function _renderMilestoneData() {
+  /* ── build tables ── */
+  var tb1 = document.getElementById('tbody-imprese');
+  IMPRESE_ROWS.forEach(function(r) {
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td class="col-id">' + r.lotto + '</td><td class="cluster-cell">' + r.cluster + '</td><td class="col-permit-first">' + pill(r.invio) + '</td><td>' + pill(r.ottenim) + '</td><td class="col-avvio">' + pill(r.avvio) + '</td><td class="col-compl">' + pill(r.p50) + '</td><td class="col-compl">' + pill(r.p90) + '</td><td class="col-compl">' + pill(r.p100) + '</td>';
+    tb1.appendChild(tr);
+  });
 
-var tb2 = document.getElementById('tbody-contract');
-CONTRACT.forEach(function(c) {
-  var tr = document.createElement('tr');
-  tr.innerHTML = '<td class="col-left">' + c.milestone + '</td><td>' + pill(c.p50) + '</td><td>' + pill(c.p70) + '</td><td>' + pill(c.p100) + '</td>';
-  tb2.appendChild(tr);
-});
+  var tb2 = document.getElementById('tbody-contract');
+  CONTRACT.forEach(function(c) {
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td class="col-left">' + c.milestone + '</td><td>' + pill(c.p50) + '</td><td>' + pill(c.p70) + '</td><td>' + pill(c.p100) + '</td>';
+    tb2.appendChild(tr);
+  });
 
-/* ── Gantt ── */
-var GANTT_ROWS = [
-  {t:'g', label:'LOTTI · IMPRESE'},
-  {t:'i', label:'Lotto 1A', sub:'cl.1–3', avvio:'31/05/2026', p50:null, p90:'31/10/2026', p100:'31/12/2026'},
-  {t:'i', label:'Lotto 1B', sub:'cl.1',   avvio:'31/05/2026', p50:null, p90:'31/10/2026', p100:'31/12/2026'},
-  {t:'i', label:'Lotto 2A', sub:'cl.2',   avvio:'31/05/2026', p50:null, p90:'31/10/2026', p100:'31/12/2026'},
-  {t:'i', label:'Lotto 2B', sub:'cl.2',   avvio:'31/05/2026', p50:null, p90:'31/10/2026', p100:'31/12/2026'},
-  {t:'i', label:'Lotto 1',  sub:'cl.3',   avvio:'31/08/2026', p50:'30/04/2027', p90:null, p100:'15/11/2027'},
-  {t:'i', label:'Lotto 2',  sub:'cl.3',   avvio:'31/08/2026', p50:'30/04/2027', p90:null, p100:'15/11/2027'},
-  {t:'i', label:'Lotto 3',  sub:'cl.3',   avvio:'31/08/2026', p50:'30/04/2027', p90:null, p100:'15/11/2027'},
-  {t:'i', label:'Lotto 4',  sub:'cl.3',   avvio:'31/08/2026', p50:'30/04/2027', p90:null, p100:'15/11/2027'},
-  {t:'i', label:'Lotto 5',  sub:'cl.3',   avvio:'31/08/2026', p50:'30/04/2027', p90:null, p100:'15/11/2027'},
-  {t:'i', label:'Lotto 6',  sub:'cl.3–4', avvio:'31/10/2026', p50:'31/05/2027', p90:null, p100:'15/11/2027'},
-  {t:'i', label:'Lotto 7',  sub:'cl.6–7', avvio:'31/01/2027', p50:'30/09/2027', p90:null, p100:'31/03/2028'},
-  {t:'i', label:'Lotto 8',  sub:'cl.5',   avvio:'31/01/2027', p50:'30/09/2027', p90:null, p100:'31/07/2028'},
-  {t:'g', label:'CONTRACT MILESTONE'},
-  {t:'c', label:'Permits submission',    p50:null,          p70:null,          p100:'31/12/2026'},
-  {t:'c', label:'Auth. received',        p50:null,          p70:null,          p100:'31/12/2027'},
-  {t:'c', label:'Cluster 1',             p50:null,          p70:'31/12/2026',  p100:'30/04/2027'},
-  {t:'c', label:'Cluster 2',             p50:'31/12/2026',  p70:null,          p100:'31/05/2027'},
-  {t:'c', label:'Cluster 3',             p50:'31/05/2027',  p70:null,          p100:'31/03/2028'},
-  {t:'c', label:'Cluster 4',             p50:null,          p70:null,          p100:'31/03/2028'},
-  {t:'c', label:'Cluster 5',             p50:null,          p70:null,          p100:'30/06/2028'},
-  {t:'c', label:'Cluster 6',             p50:null,          p70:null,          p100:'31/12/2028'},
-  {t:'c', label:'Cluster 7',             p50:null,          p70:null,          p100:'31/12/2028'},
-];
+  GANTT_ROWS = _buildGanttRows();
+  buildGantt();
+}
+
+(function _loadMilestoneData() {
+  var apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+  fetch(apiBase + '/api/milestone', {
+    headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' }
+  })
+    .then(function(r) {
+      if (r.status === 403) { window.location.replace('hub.html'); return null; }
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(d) {
+      if (!d) return;
+      IMPRESE_ROWS = d.imprese || [];
+      CONTRACT = d.contract || [];
+      _renderMilestoneData();
+    })
+    .catch(function(err) {
+      console.error('Errore caricamento milestone:', err);
+      var main = document.querySelector('.main');
+      if (main) {
+        var errBox = document.createElement('div');
+        errBox.style.cssText = 'padding:16px;color:var(--danger);font-size:13px';
+        errBox.textContent = 'Impossibile caricare i dati delle milestone. Riprova più tardi.';
+        main.prepend(errBox);
+      }
+    });
+})();
 
 function buildGantt() {
   var wrap = document.getElementById('gantt-wrap');
