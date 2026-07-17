@@ -453,6 +453,14 @@
     const iSrc    = idx('SOURCE.NAME');
     const iConv   = hdr.findIndex(h => h.toUpperCase().trim() === 'CONVENZIONE');
     const iPol    = hdr.findIndex(h => h.toUpperCase().trim() === 'POLIZZA');
+    const iDum    = idx('DATA_ULTIMA_MODIFICA');
+
+    // DATA_ULTIMA_MODIFICA è testo DD/MM/YYYY — non ordinabile come stringa
+    // (stesso bug già corretto in server.py _compute_tratta_summary / pending-updates).
+    function parseDum(s) {
+      const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec((s||'').trim());
+      return m ? new Date(+m[3], +m[2]-1, +m[1]).getTime() : -Infinity;
+    }
 
     console.log('[Polizze&Convenzioni] Colonne CSV trovate:', hdr.join(', '));
     console.log('[Polizze&Convenzioni] iConv=', iConv, ' iPol=', iPol);
@@ -492,13 +500,19 @@
         lotto,  impresa: IMPRESE[lotto] || '',
       };
       const key = lotto + '|' + prat;
-      if (conv && !seenConv[key]) {
-        seenConv[key] = true;
-        convRows.push({...entry, convStato: conv, dataRichiesta: DATE_MAP[`${lotto}|${prat}|CONVENZIONE`] || ''});
+      const dum = iDum >= 0 ? (cols[iDum] || '').trim() : '';
+      const dumTs = parseDum(dum);
+      if (conv && (!seenConv[key] || dumTs > seenConv[key])) {
+        seenConv[key] = dumTs;
+        const rowEntry = {...entry, convStato: conv, dataRichiesta: DATE_MAP[`${lotto}|${prat}|CONVENZIONE`] || ''};
+        const existingIdx = convRows.findIndex(r => r.lotto === lotto && r.pratica === prat);
+        if (existingIdx >= 0) convRows[existingIdx] = rowEntry; else convRows.push(rowEntry);
       }
-      if (pol  && !seenPol[key])  {
-        seenPol[key]  = true;
-        polRows.push({...entry, polStato: pol, dataRichiesta: DATE_MAP[`${lotto}|${prat}|POLIZZA`] || ''});
+      if (pol && (!seenPol[key] || dumTs > seenPol[key])) {
+        seenPol[key] = dumTs;
+        const rowEntry = {...entry, polStato: pol, dataRichiesta: DATE_MAP[`${lotto}|${prat}|POLIZZA`] || ''};
+        const existingIdx = polRows.findIndex(r => r.lotto === lotto && r.pratica === prat);
+        if (existingIdx >= 0) polRows[existingIdx] = rowEntry; else polRows.push(rowEntry);
       }
     }
 
