@@ -2054,7 +2054,7 @@ _POL_CONV_ALLOWED_VALUES = {"NECESSARIA", "RICHIESTA RDS", "INVIATA", "EMESSA", 
 
 
 @app.get("/api/admin/polizze-convenzioni/data-richiesta")
-async def get_pol_conv_date_richiesta():
+async def get_pol_conv_date_richiesta(sess: dict = Depends(_require_staff_session)):
     """Per ogni pratica con CONVENZIONE/POLIZZA valorizzata, fissa la data
     DATA_ULTIMA_MODIFICA dal Master.csv come data di prima richiesta.
     La data viene salvata una sola volta — i giri successivi non la toccano."""
