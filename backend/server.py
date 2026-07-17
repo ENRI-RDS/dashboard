@@ -1660,6 +1660,7 @@ async def list_pending(
                 ch["_data_richiesta"]    = str(row.get("DATA_RICHIESTA", "") or "")
                 ch["_data_ult_mod"]      = str(row.get("DATA_ULTIMA_MODIFICA", "") or "")
                 ch["_data_approvazione"] = str(row.get("DATA_APPROVAZIONE", "") or "")
+                ch["_nulla_osta"] = str(row.get("NULLA OSTA NECESSARIO", "") or "").strip()
                 # Ricava lotto da Source.Name (es. "Lotto1.xlsx" → "1A", "Lotto3.xlsx" → "3A")
                 src = str(row.get("Source.Name", "") or "")
                 import re as _re
