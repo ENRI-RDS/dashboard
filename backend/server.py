@@ -727,12 +727,16 @@ async def _on_startup():
         {"deleted_at": {"$exists": False}}, {"$set": {"deleted_at": None}}
     )
     # Sync cantieri: crea automaticamente cantieri non_avviato per tratte LAVORABILE=SI
-    try:
-        created = await _sync_cantieri()
-        if created:
-            asyncio.create_task(_push_cantieri_to_github())
-    except Exception as e:
-        print(f"[startup] _sync_cantieri: {e}")
+    # Eseguita in background (non awaitata) per non ritardare l'accettazione
+    # delle richieste HTTP (es. /api/health) durante il boot dopo un cold-start.
+    async def _startup_sync_cantieri():
+        try:
+            created = await _sync_cantieri()
+            if created:
+                asyncio.create_task(_push_cantieri_to_github())
+        except Exception as e:
+            print(f"[startup] _sync_cantieri: {e}")
+    asyncio.create_task(_startup_sync_cantieri())
 
 
 # ═════════════════════════════════════════════════════════════════════════════
