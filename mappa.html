@@ -2440,15 +2440,32 @@ async function _loadSEDInner() {
     const geojson = await fetchWithSWR('SED_classificato.geojson', {
       isJson: true,
       onUpdate: (freshGeojson) => {
-        if (!sedLoaded) return;
+        // IMPORTANTE: qui NON richiamare loadSED()/fetchWithSWR — riaprirebbe
+        // un nuovo ciclo SWR con un nuovo onUpdate agganciato, e se statico e
+        // Render differiscono sempre (anche solo per whitespace/ordine chiavi
+        // tra file su disco e GridFS) si genera un loop infinito di fetch
+        // (bug osservato: centinaia di richieste ripetute). Si ricostruisce
+        // il layer direttamente dai dati già ricevuti, senza altra rete.
         const wasVisible = sedLayer && map.hasLayer(sedLayer);
         if (sedLayer && map.hasLayer(sedLayer)) map.removeLayer(sedLayer);
-        sedLoaded = false; sedLayer = null; _sedLoading = false;
-        loadSED().then(() => { if (wasVisible && sedLayer) sedLayer.addTo(map).bringToFront(); });
+        sedLayer = _buildSedLayer(freshGeojson);
+        sedLoaded = true;
+        if (wasVisible) sedLayer.addTo(map).bringToFront();
       }
     });
 
-    sedLayer = L.geoJSON(geojson, {
+    sedLayer = _buildSedLayer(geojson);
+    sedLoaded = true;
+
+  } catch (e) {
+    console.warn('SED layer:', e.message);
+    const btn = document.getElementById('sedBtn');
+    if (btn) { btn.style.opacity = '0.45'; btn.style.pointerEvents = 'none'; btn.title = 'SED_classificato.geojson non disponibile'; }
+  }
+}
+
+function _buildSedLayer(geojson) {
+  return L.geoJSON(geojson, {
       pointToLayer: (feature, latlng) => {
         const tipo = feature.properties.TIPO_ATTRAVERSAMENTO || 'IDRICO';
         return L.marker(latlng, { icon: sedDivIcon(tipo) });
@@ -2527,14 +2544,6 @@ async function _loadSEDInner() {
         });
       }
     });
-
-    sedLoaded = true;
-
-  } catch (e) {
-    console.warn('SED layer:', e.message);
-    const btn = document.getElementById('sedBtn');
-    if (btn) { btn.style.opacity = '0.45'; btn.style.pointerEvents = 'none'; btn.title = 'SED_classificato.geojson non disponibile'; }
-  }
 }
 
 function toggleSED(forcedState) {
