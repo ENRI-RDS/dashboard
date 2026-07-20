@@ -472,6 +472,32 @@
     const seenConv = {}, seenPol = {};
     const convRows = [], polRows = [];
 
+    // BUG FIX: il loop sotto salta (`continue`) le righe dove CONVENZIONE e
+    // POLIZZA sono entrambe vuote — ma se una pratica riceve un aggiornamento
+    // di STATO_PERMESSO senza ripetere il valore CONVENZIONE/POLIZZA nella
+    // stessa riga (comune quando lo stato viene aggiornato da un altro punto
+    // del workflow), quella riga veniva ignorata e lo stato mostrato qui
+    // restava quello della riga più vecchia in cui CONVENZIONE era stata
+    // valorizzata — disallineato rispetto a index.html, che invece considera
+    // sempre la riga più recente in assoluto per pratica (stessa logica già
+    // corretta lato server in _compute_tratta_summary). Pre-pass su TUTTE le
+    // righe per trovare lo stato davvero più recente per ogni pratica.
+    const latestStato = {};
+    for (let i = 1; i < lines.length; i++) {
+      if (!lines[i].trim()) continue;
+      const cols = splitLine(lines[i]);
+      const prat0  = iPrat >= 0 ? (cols[iPrat] || '').trim() : '';
+      const src0   = iSrc  >= 0 ? (cols[iSrc]  || '').trim() : '';
+      const lotto0 = src0.replace(/\.xlsx$/i,'').replace(/^Lotto\s*/i,'').trim().toUpperCase() || '';
+      const key0 = lotto0 + '|' + prat0;
+      const dum0 = iDum >= 0 ? (cols[iDum] || '').trim() : '';
+      const ts0  = parseDum(dum0);
+      const stato0 = iStato >= 0 ? (cols[iStato] || '').trim() : '';
+      if (stato0 && (!latestStato[key0] || ts0 >= latestStato[key0].ts)) {
+        latestStato[key0] = { ts: ts0, stato: stato0 };
+      }
+    }
+
     for (let i = 1; i < lines.length; i++) {
       if (!lines[i].trim()) continue;
       const cols = splitLine(lines[i]);
@@ -495,20 +521,20 @@
       const codicePratica = (prefix && prat) ? `${prefix}/${prat}/${lotto}` : (prat || '—');
       const entry  = {
         tratta, pratica: prat, codicePratica, tipo,
-        stato:  iStato    >= 0 ? (cols[iStato]    || '').trim() : '',
+        stato:  latestStato[lotto + '|' + prat] ? latestStato[lotto + '|' + prat].stato : (iStato >= 0 ? (cols[iStato] || '').trim() : ''),
         ente:   iEnte     >= 0 ? (cols[iEnte]     || '').trim() : '',
         lotto,  impresa: IMPRESE[lotto] || '',
       };
       const key = lotto + '|' + prat;
       const dum = iDum >= 0 ? (cols[iDum] || '').trim() : '';
       const dumTs = parseDum(dum);
-      if (conv && (!seenConv[key] || dumTs > seenConv[key])) {
+      if (conv && (!seenConv[key] || dumTs >= seenConv[key])) {
         seenConv[key] = dumTs;
         const rowEntry = {...entry, convStato: conv, dataRichiesta: DATE_MAP[`${lotto}|${prat}|CONVENZIONE`] || ''};
         const existingIdx = convRows.findIndex(r => r.lotto === lotto && r.pratica === prat);
         if (existingIdx >= 0) convRows[existingIdx] = rowEntry; else convRows.push(rowEntry);
       }
-      if (pol && (!seenPol[key] || dumTs > seenPol[key])) {
+      if (pol && (!seenPol[key] || dumTs >= seenPol[key])) {
         seenPol[key] = dumTs;
         const rowEntry = {...entry, polStato: pol, dataRichiesta: DATE_MAP[`${lotto}|${prat}|POLIZZA`] || ''};
         const existingIdx = polRows.findIndex(r => r.lotto === lotto && r.pratica === prat);
