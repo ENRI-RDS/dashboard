@@ -191,7 +191,7 @@
   .cant-meta strong { color:var(--text); font-weight:600; }
   .cant-card-footer {
     margin-top:12px; padding-top:10px; border-top:1px solid var(--border);
-    display:flex; justify-content:flex-end;
+    display:flex; justify-content:flex-end; gap:6px;
   }
 
   /* ── Form aggiornamento ──────────────────────────────────────────────────── */
@@ -671,6 +671,7 @@ window.addEventListener('pageshow', (e) => {
           <span>${r.motivo_blocco ? '⏸ '+escapeHtml(r.motivo_blocco) : ''}${r.data_ripresa_stimata ? (r.motivo_blocco?' · ':'')+'Ripresa stimata '+escapeHtml(r.data_ripresa_stimata) : ''}</span>
         </div>` : ''}
         <div class="cant-card-footer">
+          <button class="btn btn-ghost btn-sm" data-storico="${i}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>Storico</button>
           <button class="btn btn-sm" data-open="${i}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>Aggiorna</button>
         </div>
       </div>`;
@@ -703,15 +704,20 @@ window.addEventListener('pageshow', (e) => {
   $('filterStato').addEventListener('change', applyFilter);
   $('btnRefresh').addEventListener('click', loadCantieri);
 
-  // ── Click su card / pulsante Aggiorna ─────────────────────────────────────
+  // ── Click su card / pulsante Aggiorna / Storico ─────────────────────────────
   $('cantieriGrid').addEventListener('click', e => {
-    const btn = e.target.closest('[data-open]');
-    if (!btn) return;
+    const openBtn = e.target.closest('[data-open]');
+    const storicoBtn = e.target.closest('[data-storico]');
+    if (!openBtn && !storicoBtn) return;
     const f = $('filterStato').value;
     const items = f ? ALL_CANTIERI.filter(r => r.stato_cantiere === f) : ALL_CANTIERI;
-    const r = items[+btn.dataset.open];
-    if (!r) return;
-    openForm(r);
+    if (openBtn) {
+      const r = items[+openBtn.dataset.open];
+      if (r) openForm(r);
+    } else {
+      const r = items[+storicoBtn.dataset.storico];
+      if (r) { SELECTED = r; showStorico(r); }
+    }
   });
 
   // ── Apri form ─────────────────────────────────────────────────────────────
@@ -871,14 +877,13 @@ window.addEventListener('pageshow', (e) => {
   });
 
   // ── Storico ───────────────────────────────────────────────────────────────
-  $('fStorico').addEventListener('click', async () => {
-    if (!SELECTED) return;
-    $('storicoTitle').textContent = `Storico · ${SELECTED.codice_cantiere || SELECTED.pratica_id}`;
+  async function showStorico(r) {
+    $('storicoTitle').textContent = `Storico · ${r.codice_cantiere || r.pratica_id}`;
     $('storicoPanel').style.display = 'block';
     $('storicoBody').innerHTML = '<div class="empty">Caricamento…</div>';
     $('storicoPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     try {
-      const d = await api(`/api/imprese/cantieri/${encodeURIComponent(SELECTED.cantiere_key)}/log`);
+      const d = await api(`/api/imprese/cantieri/${encodeURIComponent(r.cantiere_key)}/log`);
       const log = (d.log || []).slice().reverse();
       if (!log.length) {
         $('storicoBody').innerHTML = '<div class="empty">Nessun aggiornamento registrato.</div>';
@@ -907,6 +912,11 @@ window.addEventListener('pageshow', (e) => {
     } catch(e) {
       $('storicoBody').innerHTML = `<div class="empty">Errore: ${escapeHtml(e.message)}</div>`;
     }
+  }
+
+  $('fStorico').addEventListener('click', () => {
+    if (!SELECTED) return;
+    showStorico(SELECTED);
   });
 
   $('storicoClose').addEventListener('click', () => {
