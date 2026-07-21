@@ -2088,20 +2088,23 @@ async def get_pol_conv_date_richiesta(sess: dict = Depends(_require_staff_sessio
                 continue
             seen_keys.add(key)
             data_mod = str(row.get(data_col, "")).strip() if data_col else ""
-            # Fissa solo alla prima rilevazione ($setOnInsert)
-            await pol_conv_dates_col.update_one(
-                {"_id": key},
-                {"$setOnInsert": {"data_richiesta": data_mod}},
-                upsert=True,
-            )
+            # Fissa solo alla prima rilevazione, anche se il documento esiste
+            # già (es. creato prima da un data_invio su INVIATA).
+            existing = await pol_conv_dates_col.find_one({"_id": key})
+            if existing is None:
+                await pol_conv_dates_col.insert_one({"_id": key, "data_richiesta": data_mod})
+            elif not existing.get("data_richiesta"):
+                await pol_conv_dates_col.update_one({"_id": key}, {"$set": {"data_richiesta": data_mod}})
 
     # Rimuove chiavi non più presenti nel Master
     await pol_conv_dates_col.delete_many({"_id": {"$nin": list(seen_keys)}})
 
-    dates = {}
+    dates, dates_invio, dates_rds = {}, {}, {}
     async for d in pol_conv_dates_col.find({}):
         dates[d["_id"]] = d.get("data_richiesta", "")
-    return {"date": dates}
+        dates_invio[d["_id"]] = d.get("data_invio", "")
+        dates_rds[d["_id"]] = d.get("data_richiesta_rds", "")
+    return {"date": dates, "date_invio": dates_invio, "date_richiesta_rds": dates_rds}
 
 
 @app.post("/api/admin/polizze-convenzioni/update")
@@ -2164,6 +2167,20 @@ async def update_polizza_convenzione(
 
         note = f"Admin update polizze/convenzioni: lotto={lotto} pratica={pratica} fields={fields}"
         upload_id = await _write_master_csv(df, note=note)
+
+    today_str = datetime.now().strftime("%d/%m/%Y")
+    STATO_DATE_FIELD = {"INVIATA": "data_invio", "RICHIESTA RDS": "data_richiesta_rds"}
+    for col, val in fields.items():
+        date_field = STATO_DATE_FIELD.get(str(val).strip().upper())
+        if not date_field:
+            continue
+        key = f"{lotto}|{pratica}|{col.upper()}"
+        existing = await pol_conv_dates_col.find_one({"_id": key})
+        if existing is None:
+            await pol_conv_dates_col.insert_one({"_id": key, date_field: today_str})
+        elif not existing.get(date_field):
+            await pol_conv_dates_col.update_one({"_id": key}, {"$set": {date_field: today_str}})
+
     return {"ok": True, "rows_updated": matched, "new_upload_id": upload_id}
 
 
