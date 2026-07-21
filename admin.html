@@ -1425,27 +1425,14 @@
     $('cantEditStato').value = c.stato_cantiere || 'non_avviato';
     $('cantEditMetri').value = c.metri_scavati || 0;
     $('cantEditTecnica').value = c.tecnica_scavo || '';
-    $('cantEditDataInizioPrev').value = _toInputDate(c.data_inizio_prevista);
-    $('cantEditDataInizio').value = _toInputDate(c.data_inizio_effettiva);
-    $('cantEditDataFine').value = _toInputDate(c.data_fine_effettiva);
+    $('cantEditDataInizioPrev').value = c.data_inizio_prevista || '';
+    $('cantEditDataInizio').value = c.data_inizio_effettiva || '';
+    $('cantEditDataFine').value = c.data_fine_effettiva || '';
     $('cantEditNote').value = c.note || '';
     $('cantEditClearLog').checked = false;
     $('cantEditMsg').textContent = ''; $('cantEditMsg').className = 'msg';
     $('cantEditPanel').style.display = '';
     $('cantEditPanel').scrollIntoView({behavior:'smooth', block:'center'});
-  }
-  // Master.csv usa gg/mm/aaaa, l'input[type=date] vuole aaaa-mm-gg
-  function _toInputDate(dmy){
-    if (!dmy) return '';
-    const p = String(dmy).trim().split('/');
-    if (p.length !== 3) return '';
-    return `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
-  }
-  function _fromInputDate(iso){
-    if (!iso) return '';
-    const p = String(iso).trim().split('-');
-    if (p.length !== 3) return '';
-    return `${p[2].padStart(2,'0')}/${p[1].padStart(2,'0')}/${p[0]}`;
   }
 
   $('cantEditCancelBtn').addEventListener('click', () => { $('cantEditPanel').style.display = 'none'; CANT_EDIT_KEY = null; });
@@ -1456,9 +1443,9 @@
       stato_cantiere: $('cantEditStato').value,
       metri_scavati:  $('cantEditMetri').value,
       tecnica_scavo:  $('cantEditTecnica').value,
-      data_inizio_prevista:  _fromInputDate($('cantEditDataInizioPrev').value),
-      data_inizio_effettiva: _fromInputDate($('cantEditDataInizio').value),
-      data_fine_effettiva:   _fromInputDate($('cantEditDataFine').value),
+      data_inizio_prevista:  $('cantEditDataInizioPrev').value,
+      data_inizio_effettiva: $('cantEditDataInizio').value,
+      data_fine_effettiva:   $('cantEditDataFine').value,
       note: $('cantEditNote').value,
       clear_log: $('cantEditClearLog').checked,
     };
