@@ -838,6 +838,7 @@ function fmtD(iso){ if(!iso) return null; const p = iso.split('-'); return p.len
 // ── Cella "Date" (tabella cantieri): mostra la data più rilevante per lo stato corrente
 // + scostamento rispetto al previsto, con tooltip su tutte le date registrate.
 function _scavoDatePlain(r) {
+  if (!r.log_count) return ''; // nessun caricamento impresa: nessuna data attendibile da mostrare
   const s = r.stato_cantiere;
   if (s === 'completato') return r.data_fine_effettiva || '';
   if (s === 'sospeso')    return r.data_ripresa_stimata || '';
@@ -845,6 +846,9 @@ function _scavoDatePlain(r) {
   return r.data_inizio_prevista || '';
 }
 function _scavoDateCell(r) {
+  if (!r.log_count) {
+    return `<div style="font-size:11px;color:var(--muted2)" title="Nessun caricamento registrato dall'impresa per questo cantiere">nessuna data</div>`;
+  }
   const oggi = new Date().toISOString().slice(0, 10);
   const ip = r.data_inizio_prevista, ie = r.data_inizio_effettiva;
   const fp = r.data_fine_prevista,   fe = r.data_fine_effettiva;
@@ -989,7 +993,7 @@ async function openModalRegistro(cantiereKey) {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const d = await res.json();
     const log = (d.log || []).slice().reverse(); // più recenti in alto
-    const datesPanel = r ? `<div class="modal-stat-grid" style="margin-bottom:14px">
+    const datesPanel = (r && log.length) ? `<div class="modal-stat-grid" style="margin-bottom:14px">
       <div class="modal-stat"><span class="modal-stat-lbl">Inizio previsto</span><span class="modal-stat-val" style="font-size:13px">${fmtD(r.data_inizio_prevista) || '—'}</span></div>
       <div class="modal-stat"><span class="modal-stat-lbl">Inizio effettivo</span><span class="modal-stat-val" style="font-size:13px">${fmtD(r.data_inizio_effettiva) || '—'}</span></div>
       <div class="modal-stat"><span class="modal-stat-lbl">Fine prevista</span><span class="modal-stat-val" style="font-size:13px">${fmtD(r.data_fine_prevista) || '—'}</span></div>
