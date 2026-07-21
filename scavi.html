@@ -1856,48 +1856,68 @@ function _renderRadar() {
 function openModalLotto(r) {
   const col       = STATO_COLOR[r.stato];
   const metriScav = r.scavati || 0;
-  const metriRim  = r.metri - metriScav;
   const chip      = `<span style="background:${col}18;color:${col};border:1px solid ${col}40;border-radius:6px;padding:2px 10px;font-size:12px;font-weight:700">${STATO_LABEL[r.stato]}</span>`;
 
   document.getElementById('modalLottoTitle').innerHTML =
     `Lotto ${r.id} &nbsp;${chip}`;
 
-  // Barra progresso (2 segmenti come in pagina)
-  const barHtml = `
-    <div class="modal-bar-row" style="margin-bottom:20px">
-      <div class="modal-bar-track" style="height:28px;border-radius:8px">
-        ${r.pct > 0 ? `<div class="modal-bar-fill" style="width:${r.pct}%;background:${col};float:left;border-radius:0"></div>` : ''}
-        <div class="modal-bar-fill" style="width:${100-r.pct}%;background:${STATO_COLOR['non-avviato']};float:left;opacity:.4;border-radius:0"></div>
-        ${r.pct >= 6 ? `<span class="modal-bar-pct">${r.pct}%</span>` : ''}
-      </div>
-    </div>`;
+  const ottenutoM     = r.permessi ? (r.permessi['OTTENUTO'] || 0) : 0;
+  const pctPermessi   = r.permessiTot > 0 ? (ottenutoM / r.permessiTot * 100).toFixed(1) : '0.0';
+  const pctScavi      = r.metri > 0 ? (metriScav / r.metri * 100).toFixed(1) : '0.0';
+  const cantieriLotto  = CANTIERI_RAW.filter(x => String(x.lotto ?? '?') === String(r.id));
+  const cantieriAttivi = cantieriLotto.filter(x => (STATO_MAP[x.stato_cantiere] || 'non-avviato') !== 'non-avviato').length;
 
-  // Stat grid
-  const statGrid = `
+  // Header stats (stesso schema/stile del modal Cluster)
+  const header = `
     <div class="modal-stat-grid">
       <div class="modal-stat">
-        <span class="modal-stat-lbl">Totale tratta</span>
+        <span class="modal-stat-lbl">Totale lotto</span>
         <span class="modal-stat-val">${fmt(r.metri)} m</span>
       </div>
       <div class="modal-stat">
-        <span class="modal-stat-lbl">⛏ Scavati</span>
-        <span class="modal-stat-val" style="color:${col}">${fmt(metriScav)} m</span>
+        <span class="modal-stat-lbl">✓ Permessi ottenuti</span>
+        <span class="modal-stat-val" style="color:#1E9E6A">${fmt(ottenutoM)} m</span>
       </div>
       <div class="modal-stat">
-        <span class="modal-stat-lbl">Rimanenti</span>
-        <span class="modal-stat-val" style="color:var(--muted)">${fmt(metriRim)} m</span>
+        <span class="modal-stat-lbl">Avanzamento permessi</span>
+        <span class="modal-stat-val" style="color:#1E9E6A">${pctPermessi}%</span>
+      </div>
+      <div class="modal-stat">
+        <span class="modal-stat-lbl">Avanzamento scavi</span>
+        <span class="modal-stat-val" style="color:${col}">${pctScavi}%</span>
+      </div>
+      <div class="modal-stat">
+        <span class="modal-stat-lbl">Cluster</span>
+        <span class="modal-stat-val" style="font-family:var(--font-mono)">${r.cl}</span>
+      </div>
+      <div class="modal-stat">
+        <span class="modal-stat-lbl">Cantieri attivi</span>
+        <span class="modal-stat-val">${cantieriAttivi} <span style="font-size:13px;font-weight:600;color:var(--muted)">/ ${cantieriLotto.length}</span></span>
       </div>
     </div>`;
 
-  // Info lotto
-  const infoHtml = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px">
+  // Distribuzione permessi per stato (stesso schema del modal Cluster)
+  const gruppi = buildGruppiMapPermessi(r.permessi || {});
+  let barreStato = `<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:10px">Distribuzione permessi per stato</div>`;
+  ORDINE_WORKFLOW_PERMESSI.forEach(label => {
+    const g = STATI_GRUPPI_PERMESSI.find(x => x.label === label);
+    if (!g) return;
+    const m = gruppi[g.label] || 0; if (!m) return;
+    const pct = r.permessiTot > 0 ? m / r.permessiTot * 100 : 0;
+    barreStato += `<div class="modal-bar-row">
+      <span class="modal-bar-label" style="color:${g.color};font-weight:700;display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:${g.color};flex-shrink:0"></span>${g.label}</span>
+      <span style="flex:1"></span>
+      <span class="modal-bar-pct" style="position:static;color:${g.color};text-shadow:none;width:48px;text-align:right">${pct.toFixed(1)}%</span>
+      <span class="modal-bar-val">${fmt(m)} m</span>
+    </div>`;
+  });
+  barreStato += '</div>';
+
+  // Territorio
+  const territorioHtml = `
+    <div style="flex:1;min-width:0">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:10px">Territorio</div>
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px">
-        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:8px">Cluster</div>
-        <span style="font-size:13px;font-weight:700;font-family:var(--font-mono);color:var(--accent)">${r.cl}</span>
-      </div>
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px">
-        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:8px">Territorio</div>
         <div style="font-size:12px;font-weight:600;color:var(--text)">${r.comuni} comuni</div>
         <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">
           ${(r.prov||[]).map(p=>provPill(p)).join('')}
@@ -1905,15 +1925,16 @@ function openModalLotto(r) {
       </div>
     </div>`;
 
+  const middleRow = `<div style="display:flex;gap:24px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border);flex-wrap:wrap">${territorioHtml}${barreStato}</div>`;
+
   // Cantieri del lotto (stessa tabella di "Tutti i Cantieri" / openModalCluster)
-  const cantieriLotto = CANTIERI_RAW.filter(x => String(x.lotto ?? '?') === String(r.id));
   const cantieriLottoHtml = `
     <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
       <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:12px">Cantieri del lotto</div>
       ${_cantieriTableHtml(cantieriLotto)}
     </div>`;
 
-  document.getElementById('modalLottoBody').innerHTML = statGrid + barHtml + infoHtml + cantieriLottoHtml;
+  document.getElementById('modalLottoBody').innerHTML = header + middleRow + cantieriLottoHtml;
   document.getElementById('modalLottoOverlay').classList.add('open');
 }
 function closeModalLotto(e) {
