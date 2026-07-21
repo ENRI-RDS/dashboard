@@ -154,6 +154,17 @@
   .panel.active{display:block}
   .pillstat{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:var(--muted)}
   .pillstat b{color:var(--text);font-weight:700}
+  .chip{font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;white-space:nowrap;display:inline-block;text-transform:uppercase;letter-spacing:.04em}
+  .chip.non_avviato {background:#8A91B418;color:#4A5078;border:1px solid #8A91B440}
+  .chip.allestimento{background:#C08A1418;color:#7A5500;border:1px solid #C08A1440}
+  .chip.in_corso    {background:#0B318218;color:#0B3182;border:1px solid #0B318240}
+  .chip.sospeso     {background:#C23B2218;color:#8B1A1A;border:1px solid #C23B2240}
+  .chip.completato  {background:#1F7A4E18;color:#1F7A4E;border:1px solid #1F7A4E40}
+  .prog-wrap{display:flex;align-items:center;gap:7px}
+  .prog-track{flex:1;height:5px;border-radius:3px;background:var(--bg-2);border:1px solid var(--border);overflow:hidden;min-width:50px}
+  .prog-fill{height:100%;border-radius:3px}
+  .prog-val{font-size:11px;font-weight:700;font-family:var(--font-mono);color:var(--muted);width:34px;text-align:right}
+  select.stato-select{border-width:1.5px;font-weight:700;font-size:12.5px;text-transform:uppercase;letter-spacing:.03em;transition:background-color .15s,color .15s,border-color .15s}
 </style>
 </head>
 <body>
@@ -327,7 +338,7 @@
           <div class="row" style="gap:10px;flex-wrap:wrap">
             <div style="flex:1;min-width:160px">
               <label style="display:block;font-size:11px;margin-bottom:5px">Stato cantiere</label>
-              <select id="cantEditStato" style="width:100%;padding:6px 10px">
+              <select id="cantEditStato" class="stato-select" style="width:100%;padding:6px 10px">
                 <option value="non_avviato">Non avviato</option>
                 <option value="allestimento">Allestimento</option>
                 <option value="in_corso">In corso</option>
@@ -337,7 +348,7 @@
             </div>
             <div style="flex:1;min-width:140px">
               <label style="display:block;font-size:11px;margin-bottom:5px">Metri scavati (valore assoluto)</label>
-              <input type="number" id="cantEditMetri" min="0" step="0.01">
+              <input type="number" id="cantEditMetri" min="0" step="0.01" style="font-family:var(--font-mono)">
             </div>
             <div style="flex:1;min-width:140px">
               <label style="display:block;font-size:11px;margin-bottom:5px">Tecnica scavo</label>
@@ -1363,6 +1374,11 @@
     non_avviato: 'Non avviato', allestimento: 'Allestimento',
     in_corso: 'In corso', sospeso: 'Sospeso', completato: 'Completato',
   };
+  // Stessa palette di scavi.html, per coerenza visiva stato cantiere ovunque nell'app
+  const CANT_STATO_COLOR = {
+    non_avviato: '#8A91B4', allestimento: '#C08A14',
+    in_corso: '#0B3182', sospeso: '#C23B22', completato: '#1F7A4E',
+  };
   let ALL_CANTIERI = [];
   let CANT_EDIT_KEY = null;
 
@@ -1394,21 +1410,30 @@
       return true;
     });
     if (!rows.length){ $('cantBody').innerHTML = '<tr><td colspan="9" class="empty">Nessun cantiere</td></tr>'; return; }
-    $('cantBody').innerHTML = rows.map(c => `
+    $('cantBody').innerHTML = rows.map(c => {
+      const stato = c.stato_cantiere || 'non_avviato';
+      const tot   = c.metri_totali || 0;
+      const scav  = c.metri_scavati || 0;
+      const pct   = tot > 0 ? Math.round(scav / tot * 100) : 0;
+      const metriCell = tot > 0
+        ? `<div class="prog-wrap"><span style="font-family:var(--font-mono);font-size:11.5px;color:#495057;white-space:nowrap">${fmtNum(scav)} / ${fmtNum(tot)}</span><div class="prog-track" style="min-width:40px"><div class="prog-fill" style="width:${pct}%;background:${CANT_STATO_COLOR[stato]}"></div></div><div class="prog-val">${pct}%</div></div>`
+        : `<span style="font-family:var(--font-mono);font-size:11.5px;color:#495057">${fmtNum(scav)} / ${fmtNum(tot)}</span>`;
+      return `
       <tr>
         <td class="mono" style="font-weight:700;color:var(--accent)">${escapeHtml(c.codice_cantiere || '—')}</td>
         <td class="mono">${escapeHtml(c.pratica_id || '—')}</td>
         <td>${escapeHtml(c.ente || '—')}</td>
         <td class="mono">${escapeHtml(c.lotto || '—')}</td>
         <td>${escapeHtml(c.impresa || '—')}</td>
-        <td>${escapeHtml(CANT_STATO_LABEL[c.stato_cantiere] || c.stato_cantiere || '—')}</td>
-        <td class="mono">${fmtNum(c.metri_scavati)} / ${fmtNum(c.metri_totali)}</td>
+        <td style="white-space:nowrap"><span class="chip ${stato}">${escapeHtml(CANT_STATO_LABEL[stato] || stato)}</span></td>
+        <td style="min-width:150px">${metriCell}</td>
         <td class="mono" style="font-size:11px">${escapeHtml((c.updated_at||'').slice(0,10) || '—')}</td>
         <td class="actions">
           <button class="btn btn-ghost btn-xs" data-act="cant-edit" data-key="${escapeHtml(c.cantiere_key)}">Modifica</button>
           <button class="btn btn-danger btn-xs" data-act="cant-reset" data-key="${escapeHtml(c.cantiere_key)}" data-codice="${escapeHtml(c.codice_cantiere||c.cantiere_key)}">Reset</button>
         </td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
   }
   function fmtNum(n){ const v = Number(n)||0; return v.toLocaleString('it-IT', {maximumFractionDigits:1}); }
 
@@ -1417,12 +1442,21 @@
   $('cantSearch').addEventListener('input', renderCantieri);
   $('cantRefreshBtn').addEventListener('click', refreshCantieri);
 
+  function _paintStatoSelect(sel){
+    const c = CANT_STATO_COLOR[sel.value] || CANT_STATO_COLOR.non_avviato;
+    sel.style.color = c;
+    sel.style.borderColor = c + '66';
+    sel.style.background = c + '14';
+  }
+  $('cantEditStato').addEventListener('change', () => _paintStatoSelect($('cantEditStato')));
+
   function openCantEdit(cantiereKey){
     const c = ALL_CANTIERI.find(x => x.cantiere_key === cantiereKey);
     if (!c) return;
     CANT_EDIT_KEY = cantiereKey;
     $('cantEditTitle').textContent = `Modifica cantiere — ${c.codice_cantiere || c.pratica_id || cantiereKey}`;
     $('cantEditStato').value = c.stato_cantiere || 'non_avviato';
+    _paintStatoSelect($('cantEditStato'));
     $('cantEditMetri').value = c.metri_scavati || 0;
     $('cantEditTecnica').value = c.tecnica_scavo || '';
     $('cantEditDataInizioPrev').value = c.data_inizio_prevista || '';
