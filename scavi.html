@@ -795,6 +795,7 @@ async function _loadCantieri() {
       const cluster = p && p.cluster && p.cluster !== '?' ? String(p.cluster) : (c ? String(c.cl) : '?');
       const prov    = (p && p.province.length > 0 ? p.province : (c ? [...c.provSet] : [])).slice().sort();
       const nComuni = p && p.comuni.length > 0 ? p.comuni.length : (c ? c.comuniSet.size : 0);
+      const comuniList = (p && p.comuni.length > 0 ? p.comuni : (c ? [...c.comuniSet] : [])).slice().sort();
       return {
         cl:      cluster,
         id:      String(lotto),
@@ -805,6 +806,7 @@ async function _loadCantieri() {
         tratte:  c ? c.tratte : [],
         prov:    prov,
         comuni:  nComuni,
+        comuniList: comuniList,
         permessi: p ? p.statiMap : null,
         permessiTot: p ? p.totale : 0,
         haCantiere: lottiConCantiere.has(lotto),
@@ -1922,6 +1924,7 @@ function openModalLotto(r) {
         <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">
           ${(r.prov||[]).map(p=>provPill(p)).join('')}
         </div>
+        ${(r.comuniList && r.comuniList.length) ? `<div style="margin-top:10px;font-size:12px;color:var(--muted);line-height:1.6">${r.comuniList.join(' · ')}</div>` : ''}
       </div>
     </div>`;
 
