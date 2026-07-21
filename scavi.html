@@ -834,6 +834,57 @@ const STATO_ORDER = ['in-corso','allestimento','sospeso','completato','non-avvia
 
 function fmt(n){ return Math.round(n).toLocaleString('it-IT'); }
 function fmtD(iso){ if(!iso) return null; const p = iso.split('-'); return p.length===3 ? `${p[2]}/${p[1]}/${p[0]}` : iso; }
+
+// ── Cella "Date" (tabella cantieri): mostra la data più rilevante per lo stato corrente
+// + scostamento rispetto al previsto, con tooltip su tutte le date registrate.
+function _scavoDatePlain(r) {
+  const s = r.stato_cantiere;
+  if (s === 'completato') return r.data_fine_effettiva || '';
+  if (s === 'sospeso')    return r.data_ripresa_stimata || '';
+  if (s === 'in_corso')   return r.data_inizio_effettiva || '';
+  return r.data_inizio_prevista || '';
+}
+function _scavoDateCell(r) {
+  const oggi = new Date().toISOString().slice(0, 10);
+  const ip = r.data_inizio_prevista, ie = r.data_inizio_effettiva;
+  const fp = r.data_fine_prevista,   fe = r.data_fine_effettiva;
+  const s  = r.stato_cantiere;
+  let label = '—', sub = '', color = 'var(--muted)';
+  if (s === 'completato') {
+    label = fe ? fmtD(fe) : '—';
+    if (fe && fp) {
+      const gg = Math.round((new Date(fe) - new Date(fp)) / 86400000);
+      if (gg > 0)      { sub = `+${gg}gg vs previsto`; color = 'var(--err)'; }
+      else if (gg < 0) { sub = `${gg}gg vs previsto`;  color = 'var(--ok)'; }
+      else             { sub = 'in linea con previsto'; color = 'var(--ok)'; }
+    } else sub = fe ? 'fine effettiva' : 'data mancante';
+  } else if (s === 'sospeso') {
+    label = 'Sospeso'; color = 'var(--err)';
+    sub = r.data_ripresa_stimata ? `ripresa ${fmtD(r.data_ripresa_stimata)}` : (r.motivo_blocco ? 'motivo indicato' : 'nessuna stima ripresa');
+  } else if (s === 'in_corso') {
+    label = ie ? fmtD(ie) : '—';
+    if (!ie) { sub = 'inizio eff. mancante'; color = 'var(--err)'; }
+    else if (fp && fp < oggi) { sub = `scad. ${fmtD(fp)} superata`; color = 'var(--err)'; }
+    else if (fp) sub = `fine prev. ${fmtD(fp)}`;
+    else sub = 'fine prevista mancante';
+  } else { // non_avviato, allestimento
+    label = ip ? fmtD(ip) : '—';
+    if (!ip) { sub = 'nessuna data'; color = 'var(--muted2)'; }
+    else if (ip < oggi) { sub = 'inizio in ritardo'; color = 'var(--err)'; }
+    else sub = 'inizio previsto';
+  }
+  const tooltip = [
+    ip ? `Inizio previsto: ${fmtD(ip)}` : null,
+    ie ? `Inizio effettivo: ${fmtD(ie)}` : null,
+    fp ? `Fine prevista: ${fmtD(fp)}` : null,
+    fe ? `Fine effettiva: ${fmtD(fe)}` : null,
+    r.data_ripresa_stimata ? `Ripresa stimata: ${fmtD(r.data_ripresa_stimata)}` : null,
+  ].filter(Boolean).join(' · ') || 'Nessuna data registrata';
+  return `<div title="${tooltip.replace(/"/g,'&quot;')}" style="font-size:11px;line-height:1.3;white-space:nowrap;cursor:help">
+    <div style="font-weight:600;${label==='—'?'color:var(--muted2)':''}">${label}</div>
+    ${sub ? `<div style="font-size:10px;color:${color}">${sub}</div>` : ''}
+  </div>`;
+}
 const TECNICA_LABEL = { trincea:'Trincea', no_dig:'No Dig', canaletta:'Canaletta' };
 
 // ── RENDER ALL (chiamata dopo fetch sia permessi che cantieri) ──────────────
@@ -866,7 +917,7 @@ function _cantieriTableHtml(rows) {
         <thead>
           <tr>
             <th>Cod. Cantiere</th><th>Pratica</th><th>Ente</th><th>Lotto</th><th>Cluster</th>
-            <th>Prov.</th><th>Comune</th><th>Impresa</th><th>Stato</th><th>Avanzamento</th>
+            <th>Prov.</th><th>Comune</th><th>Impresa</th><th>Stato</th><th>Date</th><th>Avanzamento</th>
             <th style="text-align:right">M. Tot.</th><th style="text-align:right">M. Scavati</th>
             <th style="text-align:center">Registro</th>
           </tr>
@@ -891,6 +942,7 @@ function _cantieriTableHtml(rows) {
               <td style="color:var(--muted)">${r.comune || '—'}</td>
               <td style="color:var(--muted);white-space:nowrap">${r.impresa || '—'}</td>
               <td style="white-space:nowrap"><span class="chip ${statoUI}">${STATO_LABEL[statoUI]}</span></td>
+              <td>${_scavoDateCell(r)}</td>
               <td style="max-width:150px">${prog}</td>
               <td style="text-align:right;font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(metriTot)}</td>
               <td style="text-align:right;color:var(--muted)">${fmt(scavati)}</td>
@@ -937,11 +989,18 @@ async function openModalRegistro(cantiereKey) {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const d = await res.json();
     const log = (d.log || []).slice().reverse(); // più recenti in alto
+    const datesPanel = r ? `<div class="modal-stat-grid" style="margin-bottom:14px">
+      <div class="modal-stat"><span class="modal-stat-lbl">Inizio previsto</span><span class="modal-stat-val" style="font-size:13px">${fmtD(r.data_inizio_prevista) || '—'}</span></div>
+      <div class="modal-stat"><span class="modal-stat-lbl">Inizio effettivo</span><span class="modal-stat-val" style="font-size:13px">${fmtD(r.data_inizio_effettiva) || '—'}</span></div>
+      <div class="modal-stat"><span class="modal-stat-lbl">Fine prevista</span><span class="modal-stat-val" style="font-size:13px">${fmtD(r.data_fine_prevista) || '—'}</span></div>
+      <div class="modal-stat"><span class="modal-stat-lbl">Fine effettiva</span><span class="modal-stat-val" style="font-size:13px">${fmtD(r.data_fine_effettiva) || '—'}</span></div>
+      ${r.stato_cantiere === 'sospeso' ? `<div class="modal-stat"><span class="modal-stat-lbl">Ripresa stimata</span><span class="modal-stat-val" style="font-size:13px;color:var(--err)">${fmtD(r.data_ripresa_stimata) || '—'}</span></div>` : ''}
+    </div>${r.stato_cantiere === 'sospeso' && r.motivo_blocco ? `<div style="font-size:12px;color:var(--err);margin:-8px 0 14px">⏸ ${r.motivo_blocco}</div>` : ''}` : '';
     if (!log.length) {
-      bodyEl.innerHTML = `<div style="text-align:center;color:var(--muted);padding:20px">Nessun aggiornamento registrato per questo cantiere.</div>`;
+      bodyEl.innerHTML = datesPanel + `<div style="text-align:center;color:var(--muted);padding:20px">Nessun aggiornamento registrato per questo cantiere.</div>`;
       return;
     }
-    bodyEl.innerHTML = `<div style="overflow-x:auto"><table class="cant-table"><thead><tr>
+    bodyEl.innerHTML = datesPanel + `<div style="overflow-x:auto"><table class="cant-table"><thead><tr>
         <th>Data</th><th>Stato</th><th>Tecnica</th><th style="text-align:right">Metri</th><th>Note</th>
       </tr></thead><tbody>${log.map(e => {
         const statoUI = STATO_MAP[e.stato_cantiere] || e.stato_cantiere || '—';
@@ -1010,6 +1069,7 @@ const CANTIERI_COLS = [
   { key:'comune',          label:'Comune',        get:r => r.comune || '—' },
   { key:'impresa',         label:'Impresa',       get:r => r.impresa || '—', tight:true },
   { key:'stato',           label:'Stato',         get:r => STATO_LABEL[STATO_MAP[r.stato_cantiere] || 'non-avviato'], tight:true },
+  { key:'dateInfo',        label:'Date',          get:r => _scavoDatePlain(r), sortVal:r => _scavoDatePlain(r), noFilter:true, tight:true },
   { key:'pct',             label:'Avanz.',        get:r => (r.metri_totali||0) > 0 ? Math.round((r.metri_scavati||0)/r.metri_totali*100) + '%' : '—', numeric:true,
                            sortVal:r => (r.metri_totali||0) > 0 ? Math.round((r.metri_scavati||0)/r.metri_totali*100) : -1 },
   { key:'metri_totali',    label:'M. Tot.',       get:r => fmt(r.metri_totali||0), numeric:true, align:'right', sortVal:r => r.metri_totali||0, tight:true, noFilter:true },
@@ -1032,6 +1092,7 @@ function _renderCantieriTableHead() {
   tr.innerHTML = CANTIERI_COLS.map(c => {
     const tightStyle = c.key === 'ente' ? 'width:240px;max-width:240px;'
       : (c.key === 'metri_totali' || c.key === 'metri_scavati') ? 'width:1%;max-width:100px;'
+      : c.key === 'dateInfo' ? 'width:1%;max-width:120px;'
       : c.tight ? 'width:1%;max-width:70px;' : '';
     if (c.action) {
       return `<th style="text-align:${c.align||'left'};${tightStyle}"><span class="th-label" style="cursor:default">${c.label}</span></th>`;
@@ -1194,12 +1255,13 @@ function _renderCantieriTable() {
       <td style="color:var(--muted)">${r.comune || '—'}</td>
       <td style="color:var(--muted);white-space:nowrap">${r.impresa || '—'}</td>
       <td style="white-space:nowrap"><span class="chip ${statoUI}">${STATO_LABEL[statoUI]}</span></td>
+      <td>${_scavoDateCell(r)}</td>
       <td style="max-width:150px">${prog}</td>
       <td style="text-align:right;font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(metriTot)}</td>
       <td style="text-align:right;color:var(--muted)">${fmt(scavati)}</td>
       <td style="text-align:center"><button class="btn-registro" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Registro</button></td>
     </tr>`;
-  }).join('') || `<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px">Nessun cantiere trovato.</td></tr>`;
+  }).join('') || `<tr><td colspan="14" style="text-align:center;color:var(--muted);padding:20px">Nessun cantiere trovato.</td></tr>`;
 }
 
 function _renderPageSubtitle() {
