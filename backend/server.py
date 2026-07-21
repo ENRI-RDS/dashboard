@@ -2924,6 +2924,7 @@ async def get_cantieri(lotto: str = "", cluster: str = "", stato: str = "", sess
     items = []
     async for d in cantieri_col.find(q).sort("pratica_id", 1):
         d["_id"] = str(d["_id"])
+        d["log_count"] = len(d.get("log") or [])   # segnala se l'impresa ha mai fatto un aggiornamento
         d.pop("log", None)   # non esporre lo storico nel listing
         items.append(d)
     return {"cantieri": items, "count": len(items)}
@@ -3107,6 +3108,7 @@ async def get_cantieri_impresa(sess: dict = Depends(_require_session)):
     items = []
     async for d in cantieri_col.find({}).sort("pratica_id", 1):
         d["_id"] = str(d["_id"])
+        d["log_count"] = len(d.get("log") or [])
         d.pop("log", None)
         cant_lotto = _lotto_from_source(str(d.get("lotto") or ""))
         if cant_lotto in lotti:
