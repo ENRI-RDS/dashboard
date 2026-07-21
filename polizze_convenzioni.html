@@ -81,6 +81,14 @@
   .empty{padding:36px;text-align:center;color:var(--muted);font-size:12px}
   .loading-row{padding:28px;text-align:center;color:var(--muted);font-size:12px}
 
+  /* SUB-PANEL DATE (sotto tabella Polizze) */
+  .dates-panel{border-top:1px solid var(--border);background:var(--gray-50)}
+  .dates-panel-head{padding:12px 20px 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .dates-panel table{font-size:11px}
+  .dates-panel th{padding:6px 10px;font-size:9.5px}
+  .dates-panel td{padding:6px 10px;font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+  .dates-panel td:first-child{font-family:var(--font-mono);font-weight:600;color:var(--accent);text-align:right}
+
   /* EDIT INLINE — §7.1 Button, §5.2 radius, §5.4 motion */
   .edit-btn{
     background:none;border:none;cursor:pointer;
@@ -331,11 +339,26 @@
               <th>Ente</th>
               <th>Stato permesso</th>
               <th>Polizza</th>
-              <th>Data Richiesta</th>
             </tr>
           </thead>
-          <tbody id="polBody"><tr><td colspan="6" class="loading-row">Caricamento in corso...</td></tr></tbody>
+          <tbody id="polBody"><tr><td colspan="5" class="loading-row">Caricamento in corso...</td></tr></tbody>
         </table>
+      </div>
+      <div class="dates-panel">
+        <div class="dates-panel-head">Date pratiche polizza</div>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th style="text-align:right">Pratica</th>
+                <th>Data Richiesta</th>
+                <th>Data Richiesta RDS</th>
+                <th>Data Invio</th>
+              </tr>
+            </thead>
+            <tbody id="polDatesBody"><tr><td colspan="4" class="loading-row">Caricamento in corso...</td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -379,6 +402,8 @@
   let CONV_ROWS = [];
   let POL_ROWS  = [];
   let DATE_MAP  = {};
+  let DATE_INVIO_MAP = {};
+  let DATE_RDS_MAP = {};
 
   async function loadDates() {
     try {
@@ -388,6 +413,8 @@
       if (r.ok) {
         const data = await r.json();
         DATE_MAP = data.date || {};
+        DATE_INVIO_MAP = data.date_invio || {};
+        DATE_RDS_MAP = data.date_richiesta_rds || {};
       }
     } catch(e) { console.warn('[Polizze&Convenzioni] date non caricate:', e); }
   }
@@ -425,7 +452,8 @@
     }
     banner.textContent = msg;
     document.getElementById('convBody').innerHTML = '<tr><td colspan="6" class="empty">' + msg + '</td></tr>';
-    document.getElementById('polBody').innerHTML  = '<tr><td colspan="6" class="empty">' + msg + '</td></tr>';
+    document.getElementById('polBody').innerHTML  = '<tr><td colspan="5" class="empty">' + msg + '</td></tr>';
+    document.getElementById('polDatesBody').innerHTML = '<tr><td colspan="4" class="empty">' + msg + '</td></tr>';
   }
 
   function parseAndRender(text) {
@@ -536,7 +564,7 @@
       }
       if (pol && (!seenPol[key] || dumTs >= seenPol[key])) {
         seenPol[key] = dumTs;
-        const rowEntry = {...entry, polStato: pol, dataRichiesta: DATE_MAP[`${lotto}|${prat}|POLIZZA`] || ''};
+        const rowEntry = {...entry, polStato: pol, dataRichiesta: DATE_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataInvio: DATE_INVIO_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataRichiestaRds: DATE_RDS_MAP[`${lotto}|${prat}|POLIZZA`] || ''};
         const existingIdx = polRows.findIndex(r => r.lotto === lotto && r.pratica === prat);
         if (existingIdx >= 0) polRows[existingIdx] = rowEntry; else polRows.push(rowEntry);
       }
@@ -607,9 +635,19 @@
             <button class="btn-ghost-sm" onclick="cancelEdit(this)">Annulla</button>
           </span>
         </td>
-        <td style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${r.dataRichiesta||'—'}</td>
+        ${field === 'CONVENZIONE' ? `<td style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${r.dataRichiesta||'—'}</td>` : ''}
       </tr>`;
     }).join('');
+  }
+
+  function buildDatesRows(rows) {
+    if (!rows.length) return '<tr><td colspan="4" class="empty">Nessuna pratica trovata.</td></tr>';
+    return rows.map(r => `<tr>
+        <td>${r.codicePratica||'—'}</td>
+        <td>${r.dataRichiesta||'—'}</td>
+        <td>${r.dataRichiestaRds||'—'}</td>
+        <td>${r.dataInvio||'—'}</td>
+      </tr>`).join('');
   }
 
   // ── EDIT INLINE ────────────────────────────────────────────────────────────
@@ -737,7 +775,8 @@
       'polStato'
     );
     document.getElementById('polCount').textContent = rows.length + ' pratiche';
-    document.getElementById('polBody').innerHTML = buildRows(rows, 'polStato', 6, 'POLIZZA');
+    document.getElementById('polBody').innerHTML = buildRows(rows, 'polStato', 5, 'POLIZZA');
+    document.getElementById('polDatesBody').innerHTML = buildDatesRows(rows);
   };
 
   window.addEventListener('pageshow', (e) => {
