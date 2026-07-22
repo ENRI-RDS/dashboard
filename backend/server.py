@@ -2067,6 +2067,17 @@ async def get_pol_conv_date_richiesta(sess: dict = Depends(_require_staff_sessio
     data_col   = next((c for c in df.columns if c.strip().upper() == "DATA_ULTIMA_MODIFICA"), None)
     if src_col is None or pratica_col is None:
         return {"date": {}}
+    if conv_col is None and pol_col is None:
+        # Nessuna delle 2 colonne è nel Master: NON toccare la collection esistente
+        # (altrimenti il delete_many sotto, con seen_keys vuoto, cancellerebbe
+        # tutte le date già raccolte in precedenza).
+        dates, dates_invio, dates_rds, dates_emissione = {}, {}, {}, {}
+        async for d in pol_conv_dates_col.find({}):
+            dates[d["_id"]] = d.get("data_richiesta", "")
+            dates_invio[d["_id"]] = d.get("data_invio", "")
+            dates_rds[d["_id"]] = d.get("data_richiesta_rds", "")
+            dates_emissione[d["_id"]] = d.get("data_emissione", "")
+        return {"date": dates, "date_invio": dates_invio, "date_richiesta_rds": dates_rds, "date_emissione": dates_emissione}
 
     def _extract_lotto(src: str) -> str:
         return str(src).replace(".xlsx", "").replace(".xls", "").replace("Lotto ", "").strip().upper()
@@ -2096,15 +2107,19 @@ async def get_pol_conv_date_richiesta(sess: dict = Depends(_require_staff_sessio
             elif not existing.get("data_richiesta"):
                 await pol_conv_dates_col.update_one({"_id": key}, {"$set": {"data_richiesta": data_mod}})
 
-    # Rimuove chiavi non più presenti nel Master
-    await pol_conv_dates_col.delete_many({"_id": {"$nin": list(seen_keys)}})
+    # Rimuove chiavi non più presenti nel Master — solo se ne abbiamo trovate
+    # di nuove: seen_keys vuoto per un problema transitorio (CSV non ancora
+    # sincronizzato, colonne rinominate) non deve azzerare la collection.
+    if seen_keys:
+        await pol_conv_dates_col.delete_many({"_id": {"$nin": list(seen_keys)}})
 
-    dates, dates_invio, dates_rds = {}, {}, {}
+    dates, dates_invio, dates_rds, dates_emissione = {}, {}, {}, {}
     async for d in pol_conv_dates_col.find({}):
         dates[d["_id"]] = d.get("data_richiesta", "")
         dates_invio[d["_id"]] = d.get("data_invio", "")
         dates_rds[d["_id"]] = d.get("data_richiesta_rds", "")
-    return {"date": dates, "date_invio": dates_invio, "date_richiesta_rds": dates_rds}
+        dates_emissione[d["_id"]] = d.get("data_emissione", "")
+    return {"date": dates, "date_invio": dates_invio, "date_richiesta_rds": dates_rds, "date_emissione": dates_emissione}
 
 
 @app.post("/api/admin/polizze-convenzioni/update")
@@ -2169,7 +2184,7 @@ async def update_polizza_convenzione(
         upload_id = await _write_master_csv(df, note=note)
 
     today_str = datetime.now().strftime("%d/%m/%Y")
-    STATO_DATE_FIELD = {"INVIATA": "data_invio", "RICHIESTA RDS": "data_richiesta_rds"}
+    STATO_DATE_FIELD = {"INVIATA": "data_invio", "RICHIESTA RDS": "data_richiesta_rds", "EMESSA": "data_emissione"}
     for col, val in fields.items():
         date_field = STATO_DATE_FIELD.get(str(val).strip().upper())
         if not date_field:
