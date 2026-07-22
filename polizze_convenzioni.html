@@ -296,9 +296,10 @@
               <th>Data Richiesta</th>
               <th>Data Richiesta RDS</th>
               <th>Data Invio</th>
+              <th>Data Emissione</th>
             </tr>
           </thead>
-          <tbody id="convBody"><tr><td colspan="8" class="loading-row">Caricamento in corso...</td></tr></tbody>
+          <tbody id="convBody"><tr><td colspan="9" class="loading-row">Caricamento in corso...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -338,9 +339,10 @@
               <th>Data Richiesta</th>
               <th>Data Richiesta RDS</th>
               <th>Data Invio</th>
+              <th>Data Emissione</th>
             </tr>
           </thead>
-          <tbody id="polBody"><tr><td colspan="8" class="loading-row">Caricamento in corso...</td></tr></tbody>
+          <tbody id="polBody"><tr><td colspan="9" class="loading-row">Caricamento in corso...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -387,6 +389,7 @@
   let DATE_MAP  = {};
   let DATE_INVIO_MAP = {};
   let DATE_RDS_MAP = {};
+  let DATE_EMISSIONE_MAP = {};
 
   async function loadDates() {
     try {
@@ -398,6 +401,7 @@
         DATE_MAP = data.date || {};
         DATE_INVIO_MAP = data.date_invio || {};
         DATE_RDS_MAP = data.date_richiesta_rds || {};
+        DATE_EMISSIONE_MAP = data.date_emissione || {};
       }
     } catch(e) { console.warn('[Polizze&Convenzioni] date non caricate:', e); }
   }
@@ -434,8 +438,8 @@
       document.querySelector('.main').insertBefore(banner, document.querySelector('.split'));
     }
     banner.textContent = msg;
-    document.getElementById('convBody').innerHTML = '<tr><td colspan="8" class="empty">' + msg + '</td></tr>';
-    document.getElementById('polBody').innerHTML  = '<tr><td colspan="8" class="empty">' + msg + '</td></tr>';
+    document.getElementById('convBody').innerHTML = '<tr><td colspan="9" class="empty">' + msg + '</td></tr>';
+    document.getElementById('polBody').innerHTML  = '<tr><td colspan="9" class="empty">' + msg + '</td></tr>';
   }
 
   function parseAndRender(text) {
@@ -540,13 +544,13 @@
       const dumTs = parseDum(dum);
       if (conv && (!seenConv[key] || dumTs >= seenConv[key])) {
         seenConv[key] = dumTs;
-        const rowEntry = {...entry, convStato: conv, dataRichiesta: DATE_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', dataInvio: DATE_INVIO_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', dataRichiestaRds: DATE_RDS_MAP[`${lotto}|${prat}|CONVENZIONE`] || ''};
+        const rowEntry = {...entry, convStato: conv, dataRichiesta: DATE_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', dataInvio: DATE_INVIO_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', dataRichiestaRds: DATE_RDS_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', dataEmissione: DATE_EMISSIONE_MAP[`${lotto}|${prat}|CONVENZIONE`] || ''};
         const existingIdx = convRows.findIndex(r => r.lotto === lotto && r.pratica === prat);
         if (existingIdx >= 0) convRows[existingIdx] = rowEntry; else convRows.push(rowEntry);
       }
       if (pol && (!seenPol[key] || dumTs >= seenPol[key])) {
         seenPol[key] = dumTs;
-        const rowEntry = {...entry, polStato: pol, dataRichiesta: DATE_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataInvio: DATE_INVIO_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataRichiestaRds: DATE_RDS_MAP[`${lotto}|${prat}|POLIZZA`] || ''};
+        const rowEntry = {...entry, polStato: pol, dataRichiesta: DATE_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataInvio: DATE_INVIO_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataRichiestaRds: DATE_RDS_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataEmissione: DATE_EMISSIONE_MAP[`${lotto}|${prat}|POLIZZA`] || ''};
         const existingIdx = polRows.findIndex(r => r.lotto === lotto && r.pratica === prat);
         if (existingIdx >= 0) polRows[existingIdx] = rowEntry; else polRows.push(rowEntry);
       }
@@ -647,6 +651,7 @@
         <td style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${r.dataRichiesta||'—'}</td>
         <td style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${r.dataRichiestaRds||'—'}</td>
         <td style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${r.dataInvio||'—'}</td>
+        <td style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${r.dataEmissione||'—'}</td>
       </tr>`;
     }).join('');
   }
@@ -765,7 +770,7 @@
       'convStato'
     );
     document.getElementById('convCount').textContent = rows.length + ' pratiche';
-    document.getElementById('convBody').innerHTML = buildRows(rows, 'convStato', 8, 'CONVENZIONE');
+    document.getElementById('convBody').innerHTML = buildRows(rows, 'convStato', 9, 'CONVENZIONE');
   };
 
   window.renderPol = function() {
@@ -776,7 +781,7 @@
       'polStato'
     );
     document.getElementById('polCount').textContent = rows.length + ' pratiche';
-    document.getElementById('polBody').innerHTML = buildRows(rows, 'polStato', 8, 'POLIZZA');
+    document.getElementById('polBody').innerHTML = buildRows(rows, 'polStato', 9, 'POLIZZA');
   };
 
   window.addEventListener('pageshow', (e) => {
