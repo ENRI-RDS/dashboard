@@ -1107,6 +1107,28 @@ def _lotto_from_source(source_name: str) -> str:
     return s.upper()
 
 
+def _it_date_to_iso(s: str) -> str:
+    """'17/03/2026' -> '2026-03-17'. Stringa vuota/non parsabile -> ''."""
+    s = str(s or "").strip()
+    if not s:
+        return ""
+    try:
+        return datetime.strptime(s, "%d/%m/%Y").strftime("%Y-%m-%d")
+    except Exception:
+        return ""
+
+
+def _iso_date_to_it(s: str) -> str:
+    """'2026-03-17' -> '17/03/2026'. Stringa vuota/non parsabile -> ''."""
+    s = str(s or "").strip()
+    if not s:
+        return ""
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").strftime("%d/%m/%Y")
+    except Exception:
+        return ""
+
+
 def _build_pratica(rows: list) -> str:
     """'AUT/24/1A | NO/22/1A | NO/26/1A' — AUT prima, poi NO, poi ORD."""
     parts, seen = [], set()
@@ -2001,40 +2023,84 @@ async def search_pratiche_admin(
             "codice": f"{pref}/{pratica_num}/{lotto}" if pratica_num else "",
             "stato_permesso": str(rep.get("STATO_PERMESSO", "")).strip(),
             "note_attuale": str(rep.get("NOTE", "")).strip(),
+            "data_richiesta": _it_date_to_iso(rep.get("DATA_RICHIESTA", "")),
+            "data_prevista_rilascio": _it_date_to_iso(rep.get("DATA_PREVISTA_RILASCIO", "")),
+            "data_approvazione": _it_date_to_iso(rep.get("DATA_APPROVAZIONE", "")),
+            "n_sed": str(rep.get("N_SED", "")).strip(),
         })
     out.sort(key=lambda x: x["codice"])
     return {"results": out[:max(1, min(limit, 800))]}
 
 
-@app.post("/api/admin/pratiche/note")
-async def add_admin_note(
+PRATICA_STATO_VALUES = [
+    "IN ATTESA", "IN REDAZIONE", "IN FIRMA RDS", "INVIO PRELIMINARE",
+    "INVIATO", "PROTOCOLLATO", "NECESSARIA INTEGRAZIONE",
+    "IN REDAZIONE INTEGRAZIONE", "PROTOCOLLATO INTEGRAZIONE",
+    "OTTENUTO", "NO COMPETENZA",
+]
+
+
+@app.post("/api/admin/pratiche/update")
+async def update_admin_pratica(
     payload: dict,
     x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
     token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
     x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
 ):
-    """Aggiunge una nota a una pratica esattamente come farebbe un'impresa da
-    imprese.html (stessa fields={'NOTE': ...} attraverso _apply_changes_to_df):
-    nessuna approvazione richiesta (l'admin è già l'autorità), scrittura diretta."""
+    """Modifica diretta dei dati di una pratica (stato, date, nota, n. SED)
+    esattamente come farebbe un'impresa da imprese.html, attraverso
+    _apply_changes_to_df: nessuna approvazione richiesta (l'admin è già
+    l'autorità), scrittura diretta su Master.csv, applicata a TUTTE le tratte
+    della pratica (stessa pipeline già usata da add_admin_note, generalizzata
+    a più campi)."""
     _check_token(x_upload_token or token_q)
     p = payload or {}
     ente = str(p.get("ente") or "").strip()
     tipo = str(p.get("tipo_permesso") or "").strip()
     pratica = str(p.get("pratica") or "").strip()
-    note = str(p.get("note") or "").strip()
     tratte = [str(t).strip() for t in (p.get("tratta_ids") or []) if str(t).strip()]
     single = str(p.get("tratta_id") or "").strip()
     if single and single not in tratte:
         tratte.append(single)
-    if not tratte or not note:
-        raise HTTPException(400, "tratta_ids (o tratta_id) e note sono obbligatori")
-    note = _tag_note(note, "RETELIT")
+    if not tratte:
+        raise HTTPException(400, "tratta_ids (o tratta_id) è obbligatorio")
+
+    raw = p.get("fields") or {}
+    fields: dict = {}
+    if "stato_permesso" in raw:
+        v = str(raw["stato_permesso"] or "").strip()
+        if v and v not in PRATICA_STATO_VALUES:
+            raise HTTPException(400, f"stato_permesso non valido: {v}")
+        if v:
+            fields["STATO_PERMESSO"] = v
+    if "data_richiesta" in raw:
+        v = _iso_date_to_it(raw["data_richiesta"])
+        if raw["data_richiesta"] and not v:
+            raise HTTPException(400, "data_richiesta non valida")
+        fields["DATA_RICHIESTA"] = v
+    if "data_prevista_rilascio" in raw:
+        v = _iso_date_to_it(raw["data_prevista_rilascio"])
+        if raw["data_prevista_rilascio"] and not v:
+            raise HTTPException(400, "data_prevista_rilascio non valida")
+        fields["DATA_PREVISTA_RILASCIO"] = v
+    if "data_approvazione" in raw:
+        v = _iso_date_to_it(raw["data_approvazione"])
+        if raw["data_approvazione"] and not v:
+            raise HTTPException(400, "data_approvazione non valida")
+        fields["DATA_APPROVAZIONE"] = v
+    if "n_sed" in raw:
+        fields["N_SED"] = str(raw["n_sed"] or "").strip()
+    if "note" in raw and str(raw["note"] or "").strip():
+        fields["NOTE"] = _tag_note(str(raw["note"]).strip(), "RETELIT")
+    if not fields:
+        raise HTTPException(400, "Nessun campo valido da aggiornare")
+
     submission = {
         "type": "update",
         "changes": [{
             "tratta_id": t, "ente": ente, "tipo_permesso": tipo,
             "original_pratica": pratica,
-            "fields": {"NOTE": note},
+            "fields": dict(fields),
         } for t in tratte],
     }
     async with _master_csv_lock:
@@ -2043,8 +2109,8 @@ async def add_admin_note(
         if summary.get("updated", 0) == 0:
             raise HTTPException(404, "Nessuna riga trovata per TRATTA_ID/ENTE/TIPO_PERMESSO/PRATICA indicati")
         reviewer = x_actor_nome or "admin"
-        upload_id = await _write_master_csv(new_df, note=f"Admin note by {reviewer} on {len(tratte)} tratta/e ({tratte[0]}{'…' if len(tratte)>1 else ''})")
-    await _log_admin_action("add_note", f"{'+'.join(tratte)}|{ente}|{tipo}|{pratica}", x_actor_nome)
+        upload_id = await _write_master_csv(new_df, note=f"Admin update by {reviewer} on {len(tratte)} tratta/e ({tratte[0]}{'…' if len(tratte)>1 else ''})")
+    await _log_admin_action("update_pratica", f"{'+'.join(tratte)}|{ente}|{tipo}|{pratica}", x_actor_nome)
     return {"ok": True, "summary": summary, "new_upload_id": upload_id}
 
 
