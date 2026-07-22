@@ -46,14 +46,16 @@
   .title{font-family:var(--font-display);font-size:26px;font-weight:700;letter-spacing:-.02em}
 
   /* KPI globali */
-  .kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-  .kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;text-align:center}
-  .kpi-val{font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1}
-  .kpi-lbl{font-size:11px;color:var(--muted);margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  .kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:10px 14px}
+  .kpi-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+  .kpi-val{font-size:20px;font-weight:700;letter-spacing:-.02em;line-height:1}
+  .kpi-lbl{font-size:9.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+  .kpi-breakdown{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+  .kpi-chip{font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;white-space:nowrap}
 
-  /* DUE COLONNE */
-  .split{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
-  @media(max-width:900px){.split{grid-template-columns:1fr}}
+  /* DUE TABELLE IMPILATE VERTICALMENTE */
+  .split{display:flex;flex-direction:column;gap:20px}
 
   /* PANEL */
   .panel{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow-md);overflow:hidden}
@@ -80,14 +82,6 @@
   tr:hover td{background:rgba(4,63,117,.03)}
   .empty{padding:36px;text-align:center;color:var(--muted);font-size:12px}
   .loading-row{padding:28px;text-align:center;color:var(--muted);font-size:12px}
-
-  /* SUB-PANEL DATE (sotto tabella Polizze) */
-  .dates-panel{border-top:1px solid var(--border);background:var(--gray-50)}
-  .dates-panel-head{padding:12px 20px 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-  .dates-panel table{font-size:11px}
-  .dates-panel th{padding:6px 10px;font-size:9.5px}
-  .dates-panel td{padding:6px 10px;font-family:var(--font-mono);font-size:11px;color:var(--muted)}
-  .dates-panel td:first-child{font-family:var(--font-mono);font-weight:600;color:var(--accent);text-align:right}
 
   /* EDIT INLINE — §7.1 Button, §5.2 radius, §5.4 motion */
   .edit-btn{
@@ -251,16 +245,16 @@
   <!-- KPI globali -->
   <div class="kpi-row" id="kpiRow" style="display:none">
     <div class="kpi-card">
-      <div class="kpi-val" id="kpiTot">—</div>
-      <div class="kpi-lbl">Totale pratiche</div>
+      <div class="kpi-top"><div class="kpi-val" id="kpiTot">—</div><div class="kpi-lbl">Totale</div></div>
+      <div class="kpi-breakdown" id="kpiTotBreak"></div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-val" style="color:var(--retelit-teal)" id="kpiConv">—</div>
-      <div class="kpi-lbl">Richiedono Convenzione</div>
+      <div class="kpi-top"><div class="kpi-val" style="color:var(--retelit-teal)" id="kpiConv">—</div><div class="kpi-lbl">Convenzione</div></div>
+      <div class="kpi-breakdown" id="kpiConvBreak"></div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-val" style="color:var(--retelit-blue-75)" id="kpiPol">—</div>
-      <div class="kpi-lbl">Richiedono Polizza</div>
+      <div class="kpi-top"><div class="kpi-val" style="color:var(--retelit-blue-75)" id="kpiPol">—</div><div class="kpi-lbl">Polizza</div></div>
+      <div class="kpi-breakdown" id="kpiPolBreak"></div>
     </div>
   </div>
 
@@ -300,9 +294,11 @@
               <th>Stato permesso</th>
               <th>Convenzione</th>
               <th>Data Richiesta</th>
+              <th>Data Richiesta RDS</th>
+              <th>Data Invio</th>
             </tr>
           </thead>
-          <tbody id="convBody"><tr><td colspan="6" class="loading-row">Caricamento in corso...</td></tr></tbody>
+          <tbody id="convBody"><tr><td colspan="8" class="loading-row">Caricamento in corso...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -339,26 +335,13 @@
               <th>Ente</th>
               <th>Stato permesso</th>
               <th>Polizza</th>
+              <th>Data Richiesta</th>
+              <th>Data Richiesta RDS</th>
+              <th>Data Invio</th>
             </tr>
           </thead>
-          <tbody id="polBody"><tr><td colspan="5" class="loading-row">Caricamento in corso...</td></tr></tbody>
+          <tbody id="polBody"><tr><td colspan="8" class="loading-row">Caricamento in corso...</td></tr></tbody>
         </table>
-      </div>
-      <div class="dates-panel">
-        <div class="dates-panel-head">Date pratiche polizza</div>
-        <div class="scroll">
-          <table>
-            <thead>
-              <tr>
-                <th style="text-align:right">Pratica</th>
-                <th>Data Richiesta</th>
-                <th>Data Richiesta RDS</th>
-                <th>Data Invio</th>
-              </tr>
-            </thead>
-            <tbody id="polDatesBody"><tr><td colspan="4" class="loading-row">Caricamento in corso...</td></tr></tbody>
-          </table>
-        </div>
       </div>
     </div>
 
@@ -451,9 +434,8 @@
       document.querySelector('.main').insertBefore(banner, document.querySelector('.split'));
     }
     banner.textContent = msg;
-    document.getElementById('convBody').innerHTML = '<tr><td colspan="6" class="empty">' + msg + '</td></tr>';
-    document.getElementById('polBody').innerHTML  = '<tr><td colspan="5" class="empty">' + msg + '</td></tr>';
-    document.getElementById('polDatesBody').innerHTML = '<tr><td colspan="4" class="empty">' + msg + '</td></tr>';
+    document.getElementById('convBody').innerHTML = '<tr><td colspan="8" class="empty">' + msg + '</td></tr>';
+    document.getElementById('polBody').innerHTML  = '<tr><td colspan="8" class="empty">' + msg + '</td></tr>';
   }
 
   function parseAndRender(text) {
@@ -558,7 +540,7 @@
       const dumTs = parseDum(dum);
       if (conv && (!seenConv[key] || dumTs >= seenConv[key])) {
         seenConv[key] = dumTs;
-        const rowEntry = {...entry, convStato: conv, dataRichiesta: DATE_MAP[`${lotto}|${prat}|CONVENZIONE`] || ''};
+        const rowEntry = {...entry, convStato: conv, dataRichiesta: DATE_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', dataInvio: DATE_INVIO_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', dataRichiestaRds: DATE_RDS_MAP[`${lotto}|${prat}|CONVENZIONE`] || ''};
         const existingIdx = convRows.findIndex(r => r.lotto === lotto && r.pratica === prat);
         if (existingIdx >= 0) convRows[existingIdx] = rowEntry; else convRows.push(rowEntry);
       }
@@ -584,8 +566,35 @@
     document.getElementById('kpiTot').textContent = allPrat.size;
     document.getElementById('kpiRow').style.display = '';
 
+    const convCounts = countByStato(convRows, 'convStato');
+    const polCounts  = countByStato(polRows,  'polStato');
+    const totCounts  = {};
+    [convCounts, polCounts].forEach(c => Object.entries(c).forEach(([k, n]) => { totCounts[k] = (totCounts[k]||0) + n; }));
+    renderKpiBreakdown('kpiTotBreak',  totCounts);
+    renderKpiBreakdown('kpiConvBreak', convCounts);
+    renderKpiBreakdown('kpiPolBreak',  polCounts);
+
     renderConv();
     renderPol();
+  }
+
+  function countByStato(rows, key) {
+    const counts = {};
+    rows.forEach(r => {
+      const v = (r[key] || '').toUpperCase();
+      if (!v) return;
+      counts[v] = (counts[v] || 0) + 1;
+    });
+    return counts;
+  }
+
+  function renderKpiBreakdown(elId, counts) {
+    const el = document.getElementById(elId);
+    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    el.innerHTML = entries.map(([stato, n]) => {
+      const c = STATI_COLORS[stato] || { bg: 'var(--gray-100)', color: 'var(--gray-500)' };
+      return `<span class="kpi-chip" style="background:${c.bg};color:${c.color}">${stato} ${n}</span>`;
+    }).join('');
   }
 
   function buildStatoFilter(rows, selId, statoKey) {
@@ -635,19 +644,11 @@
             <button class="btn-ghost-sm" onclick="cancelEdit(this)">Annulla</button>
           </span>
         </td>
-        ${field === 'CONVENZIONE' ? `<td style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${r.dataRichiesta||'—'}</td>` : ''}
+        <td style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${r.dataRichiesta||'—'}</td>
+        <td style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${r.dataRichiestaRds||'—'}</td>
+        <td style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${r.dataInvio||'—'}</td>
       </tr>`;
     }).join('');
-  }
-
-  function buildDatesRows(rows) {
-    if (!rows.length) return '<tr><td colspan="4" class="empty">Nessuna pratica trovata.</td></tr>';
-    return rows.map(r => `<tr>
-        <td>${r.codicePratica||'—'}</td>
-        <td>${r.dataRichiesta||'—'}</td>
-        <td>${r.dataRichiestaRds||'—'}</td>
-        <td>${r.dataInvio||'—'}</td>
-      </tr>`).join('');
   }
 
   // ── EDIT INLINE ────────────────────────────────────────────────────────────
@@ -764,7 +765,7 @@
       'convStato'
     );
     document.getElementById('convCount').textContent = rows.length + ' pratiche';
-    document.getElementById('convBody').innerHTML = buildRows(rows, 'convStato', 6, 'CONVENZIONE');
+    document.getElementById('convBody').innerHTML = buildRows(rows, 'convStato', 8, 'CONVENZIONE');
   };
 
   window.renderPol = function() {
@@ -775,8 +776,7 @@
       'polStato'
     );
     document.getElementById('polCount').textContent = rows.length + ' pratiche';
-    document.getElementById('polBody').innerHTML = buildRows(rows, 'polStato', 5, 'POLIZZA');
-    document.getElementById('polDatesBody').innerHTML = buildDatesRows(rows);
+    document.getElementById('polBody').innerHTML = buildRows(rows, 'polStato', 8, 'POLIZZA');
   };
 
   window.addEventListener('pageshow', (e) => {
