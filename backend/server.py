@@ -1975,9 +1975,10 @@ async def search_pratiche_admin(
     # Raggruppa per pratica (ENTE+TIPO_PERMESSO+PRATICA): una pratica AUTORIZZAZIONE
     # copre piu' tratte, e la nota va condivisa su tutte come fa imprese.html
     # (PR_SIBLINGS).
+    latest = latest.assign(_lotto=latest["Source.Name"].apply(_lotto_from_source))
     latest = latest.assign(_gkey=(
         latest["ENTE"].astype(str).str.strip() + "|" + latest["TIPO_PERMESSO"].astype(str).str.strip() + "|" +
-        latest["PRATICA"].astype(str).str.strip()
+        latest["PRATICA"].astype(str).str.strip() + "|" + latest["_lotto"]
     ))
     PREFIX = {"AUTORIZZAZIONE": "AUT", "NULLA OSTA": "NO", "ORDINANZA": "ORD"}
     out = []
@@ -1986,7 +1987,7 @@ async def search_pratiche_admin(
         rep = with_note.iloc[-1] if not with_note.empty else grp.iloc[0]
         tipo = str(rep.get("TIPO_PERMESSO", "")).strip()
         pratica_num = str(rep.get("PRATICA", "")).strip()
-        lotto = _lotto_from_source(rep.get("Source.Name", ""))
+        lotto = rep.get("_lotto", "") or _lotto_from_source(rep.get("Source.Name", ""))
         pref = PREFIX.get(tipo, (tipo[:3] or "").upper())
         tratta_ids = sorted({t for t in grp["TRATTA_ID"].astype(str).str.strip() if t})
         out.append({
