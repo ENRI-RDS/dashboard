@@ -55,6 +55,10 @@
   .grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1.95fr);gap:24px;align-items:start}
   @media(max-width:1100px){.grid{grid-template-columns:1fr}}
   .card{background:var(--bg-1);border:1px solid var(--border-1);border-radius:var(--radius-lg);padding:22px;box-shadow:var(--shadow-sm);overflow-x:auto}
+  .card-compact{padding:12px 16px}
+  .card-compact label{margin-top:0;margin-bottom:4px;font-size:10px}
+  .card-compact input[type=text],.card-compact input[type=password]{padding:6px 10px;font-size:12.5px}
+  .card-compact .row+.row{margin-top:8px}
   .card h2{font-family:var(--font-display);font-size:16px;font-weight:700;margin-bottom:4px}
   .card .sub{font-size:12.5px;color:var(--muted);margin-bottom:18px;line-height:1.5}
   label{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;margin-top:14px}
@@ -181,7 +185,7 @@
   </div>
 
   <!-- Connection bar -->
-  <div class="card" data-testid="conn-card">
+  <div class="card card-compact" data-testid="conn-card">
     <div class="row" style="gap:16px">
       <div style="flex:2;min-width:260px">
         <label>API endpoint</label>
@@ -192,13 +196,13 @@
         <input type="password" id="token" placeholder="••••••••" data-testid="token-input">
       </div>
       <div style="align-self:end">
-        <button class="btn" id="saveConnBtn" data-testid="save-conn-btn">Salva &amp; aggiorna</button>
+        <button class="btn btn-xs" id="saveConnBtn" data-testid="save-conn-btn">Salva &amp; aggiorna</button>
       </div>
-    </div>
-    <div class="row" style="margin-top:14px;gap:18px">
-      <span class="pillstat">Stato API: <b id="apiStatus">—</b></span>
-      <span class="pillstat">File totali: <b id="statFiles">—</b></span>
-      <span class="pillstat">Versioni in MongoDB: <b id="statVersions">—</b></span>
+      <div style="align-self:end;display:flex;gap:14px;margin-left:auto">
+        <span class="pillstat">Stato API: <b id="apiStatus">—</b></span>
+        <span class="pillstat">File totali: <b id="statFiles">—</b></span>
+        <span class="pillstat">Versioni in MongoDB: <b id="statVersions">—</b></span>
+      </div>
     </div>
   </div>
 
@@ -240,7 +244,7 @@
         <button class="tab" data-tab="pending" data-testid="tab-pending">Coda imprese <span id="pendingBadge" style="display:none;background:var(--retelit-ice);color:var(--retelit-teal);border-radius:999px;padding:1px 7px;font-size:10px;margin-left:5px"></span></button>
         <button class="tab" data-tab="assign" data-testid="tab-assign">Assegnazioni imprese</button>
         <button class="tab" data-tab="cantieri" data-testid="tab-cantieri">Cantieri</button>
-        <button class="tab" data-tab="note" data-testid="tab-note">Note pratiche</button>
+        <button class="tab" data-tab="note" data-testid="tab-note">Dati pratiche</button>
         <button class="tab" data-tab="guida" data-testid="tab-guida">Guida procedure</button>
       </div>
 
@@ -387,8 +391,9 @@
         </div>
       </div>
 
-      <!-- NOTE PRATICHE (admin) -->
+      <!-- DATI PRATICHE (admin) -->
       <div class="panel" id="panel-note">
+        <p class="sub">Correggi stato, date e note di una pratica (autorizzazione/nulla osta/ordinanza). La modifica si applica a tutte le tratte coperte dalla pratica, come una nota. Le pratiche già OTTENUTO non compaiono qui.</p>
         <div class="row" style="gap:10px;margin-bottom:14px">
           <input type="text" id="noteSearch" placeholder="Filtra per TRATTA_ID, codice pratica (es. AUT/24/1A), ente o lotto…" style="flex:1" data-testid="note-search">
           <button class="btn btn-ghost btn-xs" id="noteRefreshBtn">Aggiorna</button>
@@ -414,11 +419,50 @@
         </div>
 
         <div id="noteFormWrap" style="display:none;margin-top:16px;border:1px solid var(--border);border-radius:10px;padding:14px">
-          <div style="font-weight:700;font-size:13px;margin-bottom:4px" id="noteFormTitle">Nuova nota</div>
+          <div style="font-weight:700;font-size:13px;margin-bottom:4px" id="noteFormTitle">Modifica pratica</div>
           <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px" id="noteFormSub"></div>
-          <textarea id="noteText" style="width:100%;min-height:80px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical;box-sizing:border-box" placeholder="Testo della nota…"></textarea>
-          <div class="row" style="margin-top:10px;gap:10px">
-            <button class="btn" id="noteSaveBtn">Salva nota</button>
+          <div class="row" style="gap:10px;flex-wrap:wrap">
+            <div style="flex:1;min-width:180px">
+              <label style="display:block;font-size:11px;margin-bottom:5px">Stato permesso</label>
+              <select id="noteEditStato" style="width:100%;padding:6px 10px">
+                <option value="IN ATTESA">In attesa</option>
+                <option value="IN REDAZIONE">In redazione</option>
+                <option value="IN FIRMA RDS">In firma RDS</option>
+                <option value="INVIO PRELIMINARE">Invio preliminare</option>
+                <option value="INVIATO">Inviato</option>
+                <option value="PROTOCOLLATO">Protocollato</option>
+                <option value="NECESSARIA INTEGRAZIONE">Necessaria integrazione</option>
+                <option value="IN REDAZIONE INTEGRAZIONE">In redazione integrazione</option>
+                <option value="PROTOCOLLATO INTEGRAZIONE">Protocollato integrazione</option>
+                <option value="OTTENUTO">Ottenuto</option>
+                <option value="NO COMPETENZA">No competenza</option>
+              </select>
+            </div>
+            <div style="flex:1;min-width:140px">
+              <label style="display:block;font-size:11px;margin-bottom:5px">N. SED</label>
+              <input type="text" id="noteEditNSed">
+            </div>
+          </div>
+          <div class="row" style="gap:10px;flex-wrap:wrap;margin-top:10px">
+            <div style="flex:1;min-width:140px">
+              <label style="display:block;font-size:11px;margin-bottom:5px">Data invio</label>
+              <input type="date" id="noteEditDataInvio">
+            </div>
+            <div style="flex:1;min-width:140px">
+              <label style="display:block;font-size:11px;margin-bottom:5px">Prev. rilascio</label>
+              <input type="date" id="noteEditDataPrev">
+            </div>
+            <div style="flex:1;min-width:140px">
+              <label style="display:block;font-size:11px;margin-bottom:5px">Data ottenimento</label>
+              <input type="date" id="noteEditDataOtt">
+            </div>
+          </div>
+          <div style="margin-top:10px">
+            <label style="display:block;font-size:11px;margin-bottom:5px">Nuova nota (opzionale — lasciare vuoto per non toccare la nota attuale)</label>
+            <textarea id="noteText" style="width:100%;min-height:70px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical;box-sizing:border-box" placeholder="Testo della nota…"></textarea>
+          </div>
+          <div class="row" style="margin-top:14px;gap:10px">
+            <button class="btn" id="noteSaveBtn">Salva modifiche</button>
             <button class="btn btn-ghost" id="noteCancelBtn">Annulla</button>
           </div>
           <div class="msg" id="noteMsg"></div>
@@ -1615,13 +1659,17 @@
     if (!r) return;
     _noteSelected = r;
     const tratte = r.tratta_ids || [r.tratta_id];
-    $('noteFormTitle').textContent = `Nota su ${r.codice || tratte.join(', ')}`;
+    $('noteFormTitle').textContent = `Modifica pratica ${r.codice || tratte.join(', ')}`;
     $('noteFormSub').textContent = `${tratte.join(', ')}${tratte.length > 1 ? ` (${tratte.length} tratte)` : ''} · ${r.ente} · ${r.tipo_permesso} · Lotto ${r.lotto}`;
+    $('noteEditStato').value = r.stato_permesso || 'IN ATTESA';
+    $('noteEditNSed').value = r.n_sed || '';
+    $('noteEditDataInvio').value = r.data_richiesta || '';
+    $('noteEditDataPrev').value = r.data_prevista_rilascio || '';
+    $('noteEditDataOtt').value = r.data_approvazione || '';
     $('noteText').value = '';
     $('noteMsg').className = 'msg';
     $('noteFormWrap').style.display = 'block';
     $('noteFormWrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    $('noteText').focus();
   });
   $('noteCancelBtn').addEventListener('click', () => {
     $('noteFormWrap').style.display = 'none';
@@ -1631,10 +1679,9 @@
     const noteMsg = $('noteMsg');
     if (!_noteSelected) return;
     const text = $('noteText').value.trim();
-    if (!text) return setMsg(noteMsg, 'Scrivi il testo della nota', false);
     $('noteSaveBtn').disabled = true;
     try{
-      await api(withTokenQuery('/api/admin/pratiche/note'), {
+      await api(withTokenQuery('/api/admin/pratiche/update'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
@@ -1642,10 +1689,17 @@
           ente: _noteSelected.ente,
           tipo_permesso: _noteSelected.tipo_permesso,
           pratica: _noteSelected.pratica,
-          note: text,
+          fields: {
+            stato_permesso: $('noteEditStato').value,
+            n_sed: $('noteEditNSed').value.trim(),
+            data_richiesta: $('noteEditDataInvio').value,
+            data_prevista_rilascio: $('noteEditDataPrev').value,
+            data_approvazione: $('noteEditDataOtt').value,
+            note: text,
+          },
         }),
       });
-      setMsg(noteMsg, 'Nota salvata su Master.csv', true);
+      setMsg(noteMsg, 'Modifiche salvate su Master.csv', true);
       setTimeout(() => { $('noteFormWrap').style.display = 'none'; _noteSelected = null; }, 1200);
       loadNotePratiche();
     }catch(err){
