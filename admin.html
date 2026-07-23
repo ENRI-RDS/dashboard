@@ -396,6 +396,7 @@
         <div class="row" style="gap:10px;margin-bottom:14px">
           <input type="text" id="noteSearch" placeholder="Filtra per TRATTA_ID, codice pratica (es. AUT/24/1A), ente o lotto…" style="flex:1" data-testid="note-search">
           <button class="btn btn-ghost btn-xs" id="noteRefreshBtn">Aggiorna</button>
+          <button class="btn btn-ghost btn-xs" id="noteBackfillTagBtn" title="Una tantum: tagga [IMPRESA] tutte le note storiche senza etichetta, per uniformarle a quelle recenti">Uniforma etichette note storiche</button>
         </div>
         <div style="max-height:520px;overflow-y:auto;border:1px solid var(--border);border-radius:10px">
           <table class="note-table">
@@ -1584,6 +1585,25 @@
     });
   }
   $('noteRefreshBtn').addEventListener('click', loadNotePratiche);
+  $('noteBackfillTagBtn').addEventListener('click', async () => {
+    if (!confirm('Taggare [IMPRESA] tutte le note storiche prive di etichetta, per uniformarle a quelle recenti?\n\nOperazione una tantum e idempotente: le note già taggate non vengono toccate, puoi rilanciarla senza rischi.')) return;
+    const btn = $('noteBackfillTagBtn');
+    btn.disabled = true;
+    const prevLabel = btn.textContent;
+    btn.textContent = 'Attendere…';
+    try {
+      const res = await api(withTokenQuery('/api/admin/backfill-note-tags'), { method: 'POST', headers: authHeaders() });
+      toast(res.righe_taggate > 0
+        ? `${res.righe_taggate} note storiche taggate [IMPRESA].`
+        : 'Nessuna nota da taggare: già tutte uniformate.', false);
+      loadNotePratiche();
+    } catch (err) {
+      toast('Errore: ' + err.message, true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = prevLabel;
+    }
+  });
   document.querySelectorAll('#panel-note .note-th-sort').forEach(th => {
     th.addEventListener('click', () => {
       const key = th.dataset.key;
