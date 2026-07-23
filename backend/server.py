@@ -1695,9 +1695,21 @@ async def list_pending(
 
 
 def _apply_changes_to_df(df, submission: dict) -> tuple:
-    """Returns (new_df, summary). Raises HTTPException on errors."""
+    """Returns (new_df, summary). Raises HTTPException on errors.
+
+    Comportamento di default (in_place=False, usato da imprese.html e dalle
+    NOTE admin): copia l'ultima riga e inserisce una nuova riga subito dopo,
+    per mantenere lo storico di chi ha scritto cosa e quando.
+
+    in_place=True (usato dalla correzione dati admin — stato/date/N_SED):
+    sovrascrive i campi direttamente sulla riga esistente, senza duplicarla.
+    Una correzione di un dato inesatto non è un evento di business da
+    storicizzare come le note o gli aggiornamenti di stato dell'impresa: se
+    duplicassimo la riga, il dato sbagliato originale resterebbe comunque nel
+    CSV (anche se ignorato dalle pagine che leggono solo l'ultima riga)."""
     typ = submission["type"]
     changes = submission["changes"]
+    in_place = bool(submission.get("in_place"))
     summary = {"updated": 0, "added": 0, "not_found": 0}
     if typ == "update":
         for ch in changes:
@@ -1736,9 +1748,23 @@ def _apply_changes_to_df(df, submission: dict) -> tuple:
             # DATA_UPDATE: qualsiasi tocco dell'impresa sulla pratica (stato, nota, o altro campo), non solo cambio stato
             if "DATA_UPDATE" in df.columns and "DATA_UPDATE" not in fields:
                 fields["DATA_UPDATE"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+            last_idx = idx[-1]
+            if in_place:
+                # Correzione: sovrascrive i campi sulla riga esistente, nessuna nuova riga
+                if ch.get("preserve_note_tag") and "NOTE" in fields and fields["NOTE"]:
+                    # Non cambiare l'autore mostrato (RETELIT/IMPRESA): si sta
+                    # solo correggendo il testo di una nota già esistente.
+                    existing = str(df.loc[last_idx, "NOTE"]) if "NOTE" in df.columns else ""
+                    m = _NOTE_TAG_RE.match(existing or "")
+                    tag_prefix = m.group(0) if m else ""
+                    fields["NOTE"] = f"{tag_prefix}{fields['NOTE']}"
+                for col, val in fields.items():
+                    if col in df.columns:
+                        df.loc[last_idx, col] = str(val)
+                summary["updated"] += 1
+                continue
             # Copia l'ultima riga esistente e inserisce la nuova SUBITO DOPO
             # in modo da mantenere le righe dello stesso iter vicine
-            last_idx = idx[-1]
             last_row = df.loc[last_idx].copy()
             for col, val in fields.items():
                 if col in df.columns:
@@ -2066,40 +2092,62 @@ async def update_admin_pratica(
         raise HTTPException(400, "tratta_ids (o tratta_id) è obbligatorio")
 
     raw = p.get("fields") or {}
+    mode = str(p.get("mode") or "").strip().lower()
+    if mode not in ("data", "note"):
+        # Fallback per eventuali chiamate legacy senza mode esplicito
+        mode = "note" if set(raw.keys()) <= {"note"} else "data"
+
     fields: dict = {}
-    if "stato_permesso" in raw:
-        v = str(raw["stato_permesso"] or "").strip()
-        if v and v not in PRATICA_STATO_VALUES:
-            raise HTTPException(400, f"stato_permesso non valido: {v}")
-        if v:
-            fields["STATO_PERMESSO"] = v
-    if "data_richiesta" in raw:
-        v = _iso_date_to_it(raw["data_richiesta"])
-        if raw["data_richiesta"] and not v:
-            raise HTTPException(400, "data_richiesta non valida")
-        fields["DATA_RICHIESTA"] = v
-    if "data_prevista_rilascio" in raw:
-        v = _iso_date_to_it(raw["data_prevista_rilascio"])
-        if raw["data_prevista_rilascio"] and not v:
-            raise HTTPException(400, "data_prevista_rilascio non valida")
-        fields["DATA_PREVISTA_RILASCIO"] = v
-    if "data_approvazione" in raw:
-        v = _iso_date_to_it(raw["data_approvazione"])
-        if raw["data_approvazione"] and not v:
-            raise HTTPException(400, "data_approvazione non valida")
-        fields["DATA_APPROVAZIONE"] = v
-    if "n_sed" in raw:
-        fields["N_SED"] = str(raw["n_sed"] or "").strip()
-    if "note" in raw and str(raw["note"] or "").strip():
-        fields["NOTE"] = _tag_note(str(raw["note"]).strip(), "RETELIT")
-    if not fields:
-        raise HTTPException(400, "Nessun campo valido da aggiornare")
+    if mode == "data":
+        if "stato_permesso" in raw:
+            v = str(raw["stato_permesso"] or "").strip()
+            if v and v not in PRATICA_STATO_VALUES:
+                raise HTTPException(400, f"stato_permesso non valido: {v}")
+            if v:
+                fields["STATO_PERMESSO"] = v
+        if "data_richiesta" in raw:
+            v = _iso_date_to_it(raw["data_richiesta"])
+            if raw["data_richiesta"] and not v:
+                raise HTTPException(400, "data_richiesta non valida")
+            fields["DATA_RICHIESTA"] = v
+        if "data_prevista_rilascio" in raw:
+            v = _iso_date_to_it(raw["data_prevista_rilascio"])
+            if raw["data_prevista_rilascio"] and not v:
+                raise HTTPException(400, "data_prevista_rilascio non valida")
+            fields["DATA_PREVISTA_RILASCIO"] = v
+        if "data_approvazione" in raw:
+            v = _iso_date_to_it(raw["data_approvazione"])
+            if raw["data_approvazione"] and not v:
+                raise HTTPException(400, "data_approvazione non valida")
+            fields["DATA_APPROVAZIONE"] = v
+        if "n_sed" in raw:
+            fields["N_SED"] = str(raw["n_sed"] or "").strip()
+        if "note" in raw:
+            # Correzione diretta della nota esistente: NON si ritagga come
+            # RETELIT — chi l'ha scritta in origine (Impresa o Retelit) resta
+            # l'autore mostrato, si corregge solo il testo.
+            # _apply_changes_to_df preserva il tag esistente sulla riga.
+            fields["NOTE"] = str(raw["note"] or "").strip()
+        if not fields:
+            raise HTTPException(400, "Nessun campo valido da aggiornare")
+        in_place = True
+        preserve_note_tag = True
+    else:
+        text = str(raw.get("note") or "").strip()
+        if not text:
+            raise HTTPException(400, "note è obbligatoria")
+        # Nuova nota: sempre taggata RETELIT, sempre una nuova riga di storico
+        fields["NOTE"] = _tag_note(text, "RETELIT")
+        in_place = False
+        preserve_note_tag = False
 
     submission = {
         "type": "update",
+        "in_place": in_place,
         "changes": [{
             "tratta_id": t, "ente": ente, "tipo_permesso": tipo,
             "original_pratica": pratica,
+            "preserve_note_tag": preserve_note_tag,
             "fields": dict(fields),
         } for t in tratte],
     }
