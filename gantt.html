@@ -849,20 +849,19 @@ async function mergeCantieriProgress() {
     cantieri.forEach(function(c) {
       var comune = (c.comune || '').trim().toUpperCase();
       if (!comune) return;
-      if (!byComune[comune]) byComune[comune] = { metriTot: 0, metriScavati: 0, iniziEff: [], fineEff: [], iniziPrev: [], finePrev: [] };
+      if (!byComune[comune]) byComune[comune] = { metriTot: 0, metriScavati: 0, iniziEff: [], fineEff: [] };
       var g = byComune[comune];
       g.metriTot += Number(c.metri_totali || 0);
       g.metriScavati += Number(c.metri_scavati || 0);
-      /* data_inizio/fine_prevista può essere valorizzata dal seed/import prima di
-         qualunque caricamento reale da parte dell'impresa (stesso bug corretto in
-         scavi.html rev.199-200): la usiamo solo se il cantiere ha almeno un evento
-         in log (log_count>0), altrimenti è solo un placeholder di pianificazione e
-         il Gantt deve continuare a mostrare le date calcolate dalla cascata permessi. */
-      var hasLog = (c.log_count || 0) > 0;
+      /* SOLO data_inizio/fine_effettiva: "prevista" resta un campo di pianificazione
+         di scavi.html che può essere valorizzato da seed/import (o comunque non
+         riflettere un inizio scavo reale) anche a log_count>0 — il gate su log_count
+         (rev.206) si è rivelato insufficiente (bug ancora presente, segnalato
+         dall'utente). Se non c'è ancora una data effettiva confermata, il Gantt
+         continua a mostrare la data calcolata dalla cascata permessi, mai un
+         placeholder esterno non verificato. */
       if (c.data_inizio_effettiva) g.iniziEff.push(c.data_inizio_effettiva);
       if (c.data_fine_effettiva) g.fineEff.push(c.data_fine_effettiva);
-      if (c.data_inizio_prevista && hasLog) g.iniziPrev.push(c.data_inizio_prevista);
-      if (c.data_fine_prevista && hasLog) g.finePrev.push(c.data_fine_prevista);
     });
 
     GANTT_ROWS.forEach(function(row) {
@@ -873,10 +872,9 @@ async function mergeCantieriProgress() {
         row.pct = isFinite(pctCalc) ? Math.min(100, Math.max(0, Math.round(pctCalc))) : row.pct;
         row.real = true;
       }
-      /* inizio: preferisce l'effettiva (più affidabile), poi la prevista più vecchia
-         — solo se già filtrata sopra da hasLog, mai un puro placeholder di seed */
-      var iniziISO = g.iniziEff.length ? g.iniziEff : g.iniziPrev;
-      var fineISO = g.fineEff.length ? g.fineEff : g.finePrev;
+      /* inizio/fine: solo se confermati da data_inizio/fine_effettiva */
+      var iniziISO = g.iniziEff;
+      var fineISO = g.fineEff;
       if (iniziISO.length) {
         var minIso = iniziISO.slice().sort()[0];
         var dmy = isoToDmy(minIso);
@@ -1559,30 +1557,67 @@ document.addEventListener('mouseup', function(e) {
    utile se si vuole ricostruire l'outline in Project), Inizio, Fine,
    Durata (gg), % Completamento. Le righe 'g'/'g2' (intestazioni di gruppo)
    non hanno date/durata/%, solo il nome. */
+/* Numero WBS di una riga (bar/ms → "N.F", g2 → "N", g/materiali → ''), stessa
+   numerazione già mostrata in pagina da _ganttPraticaLabelPrefix()/select
+   Predecessore — riusata qui per compilare le colonne Numero/Predecessori
+   dell'export (bug segnalato dall'utente: mancavano del tutto). */
+function _ganttRowNumero(row) {
+  var pnums = ganttPraticaNumbers();
+  if (row.t === 'g2') {
+    var segs = row.label.split(' · ');
+    var code = segs.length >= 2 ? segs[1].trim() : null;
+    var num = code ? pnums[code] : null;
+    return num ? String(num) : '';
+  }
+  if ((row.t === 'bar' || row.t === 'ms') && row._praticaCode) {
+    var num2 = pnums[row._praticaCode];
+    var ph = GANTT_PHASE_NUM[row.label];
+    if (num2 && ph) return num2 + '.' + ph;
+  }
+  return '';
+}
+function _ganttDepLabel(dep) {
+  if (!dep) return '';
+  var predRow = findGanttRow(dep.pred);
+  var num = predRow ? _ganttRowNumero(predRow) : '';
+  if (!num) return '';
+  return num + (dep.type === 'SS' ? 'SS' : 'FS') + (dep.lagDays ? ('+' + dep.lagDays) : '');
+}
+function _ganttRowPredecessori(row) {
+  var parts = [];
+  var l1 = _ganttDepLabel(GANTT_DEPS[row.id]);
+  if (l1) parts.push(l1);
+  var l2 = _ganttDepLabel(GANTT_EXTRA_DEPS[row.id]);
+  if (l2) parts.push(l2);
+  return parts.join(', ');
+}
+
 function exportGanttExcel() {
   if (typeof XLSX === 'undefined') {
     alert('Libreria di export non disponibile: verificare la connessione (cdn.sheetjs.com).');
     return;
   }
-  var rows = [['Nome attività', 'Livello', 'Inizio', 'Fine', 'Durata (gg)', '% Completamento']];
+  var rows = [['Numero', 'Nome attività', 'Livello', 'Inizio', 'Fine', 'Durata (gg)', '% Completamento', 'Predecessori']];
   var indent = 0;
   GANTT_ROWS.forEach(function(r) {
-    if (r.t === 'g') { indent = 0; rows.push([r.label, 0, '', '', '', '']); return; }
-    if (r.t === 'g2') { indent = 1; rows.push(['  ' + r.label, 1, '', '', '', '']); return; }
+    if (r.t === 'g') { indent = 0; rows.push(['', r.label, 0, '', '', '', '', '']); return; }
+    if (r.t === 'g2') { indent = 1; rows.push([_ganttRowNumero(r), '  ' + r.label, 1, '', '', '', '', '']); return; }
     var lvl = indent + 1;
     var prefix = '';
     for (var i = 0; i < lvl; i++) prefix += '  ';
     var pctClamped = isFinite(Number(r.pct)) ? Math.min(100, Math.max(0, Math.round(Number(r.pct)))) : 0;
+    var numero = _ganttRowNumero(r);
+    var pred = _ganttRowPredecessori(r);
     if (r.t === 'bar') {
       var d1 = parseDateStr(r.start), d2 = parseDateStr(r.end);
       var dur = (d1 && d2) ? Math.round((d2 - d1) / 86400000) + 1 : '';
-      rows.push([prefix + r.label, lvl, r.start || '', r.end || '', dur, pctClamped + '%']);
+      rows.push([numero, prefix + r.label, lvl, r.start || '', r.end || '', dur, pctClamped + '%', pred]);
     } else if (r.t === 'ms') {
-      rows.push([prefix + r.label, lvl, r.date || '', r.date || '', 0, pctClamped + '%']);
+      rows.push([numero, prefix + r.label, lvl, r.date || '', r.date || '', 0, pctClamped + '%', pred]);
     }
   });
   var ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 46 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }];
+  ws['!cols'] = [{ wch: 8 }, { wch: 46 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 14 }];
   var wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Gantt');
   var oggi = new Date();
