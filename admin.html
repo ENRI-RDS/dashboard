@@ -466,15 +466,19 @@
         <div id="noteFormWrap" style="display:none;margin-top:16px;border:1px solid var(--border);border-radius:10px;padding:14px">
           <div style="font-weight:700;font-size:13px;margin-bottom:4px" id="noteFormTitle">Nuova nota</div>
           <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px" id="noteFormSub"></div>
-          <div>
-            <textarea id="noteText" style="width:100%;min-height:70px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical;box-sizing:border-box" placeholder="Testo della nota…"></textarea>
-          </div>
-          <div class="row" style="margin-top:10px;gap:10px">
-            <button class="btn" id="noteSaveBtn">Salva nota</button>
-            <button class="btn btn-ghost" id="noteCancelBtn">Annulla</button>
-          </div>
           <div class="msg" id="noteMsg"></div>
+        <div>
+          <textarea id="noteText" style="width:100%;min-height:70px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical;box-sizing:border-box" placeholder="Testo della nota…"></textarea>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11.5px;font-weight:400;text-transform:none;color:var(--muted)">
+            <input type="checkbox" id="noteCorrection" style="width:auto">
+            Sto correggendo un errore in questa nota (sovrascrive senza creare una nuova riga di storico)
+          </label>
         </div>
+        <div class="row" style="margin-top:10px;gap:10px">
+          <button class="btn" id="noteSaveBtn">Salva nota</button>
+          <button class="btn btn-ghost" id="noteCancelBtn">Annulla</button>
+        </div>
+      </div>
       </div>
 
       <!-- GUIDA PROCEDURE -->
@@ -1728,9 +1732,10 @@
     if (!r) return;
     _noteSelected = r;
     const tratte = r.tratta_ids || [r.tratta_id];
-    $('noteFormTitle').textContent = `Nuova nota su ${r.codice || tratte.join(', ')}`;
+    $('noteFormTitle').textContent = `Nota su ${r.codice || tratte.join(', ')}`;
     $('noteFormSub').textContent = `${tratte.join(', ')}${tratte.length > 1 ? ` (${tratte.length} tratte)` : ''} · ${r.ente} · ${r.tipo_permesso} · Lotto ${r.lotto}`;
-    $('noteText').value = '';
+    $('noteText').value = _noteAuthorChip(r.note_attuale).txt || '';
+    $('noteCorrection').checked = false;
     $('noteMsg').className = 'msg';
     $('noteDataFormWrap').style.display = 'none';
     $('noteFormWrap').style.display = 'block';
@@ -1746,6 +1751,7 @@
     if (!_noteSelected) return;
     const text = $('noteText').value.trim();
     if (!text) return setMsg(noteMsg, 'Scrivi il testo della nota', false);
+    const correction = $('noteCorrection').checked;
     $('noteSaveBtn').disabled = true;
     try{
       await api(withTokenQuery('/api/admin/pratiche/update'), {
@@ -1756,10 +1762,11 @@
           ente: _noteSelected.ente,
           tipo_permesso: _noteSelected.tipo_permesso,
           pratica: _noteSelected.pratica,
+          in_place: correction,
           fields: { note: text },
         }),
       });
-      setMsg(noteMsg, 'Nota salvata su Master.csv', true);
+      setMsg(noteMsg, correction ? 'Nota corretta su Master.csv' : 'Nota salvata su Master.csv', true);
       setTimeout(() => { $('noteFormWrap').style.display = 'none'; _noteSelected = null; }, 1200);
       loadNotePratiche();
     }catch(err){
