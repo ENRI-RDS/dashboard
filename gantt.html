@@ -65,6 +65,9 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);min-hei
 .kpi-stat.kpi-ok .kpi-badge svg{color:var(--ok);}
 .kpi-stat.kpi-ok .kpi-bar-fill{background:var(--ok);}
 .src-card{display:flex;align-items:center;background:linear-gradient(90deg,rgba(4,63,117,.055),rgba(30,158,106,.055));border:1px solid var(--border2);border-radius:var(--radius-lg);padding:7px 16px;box-shadow:var(--shadow-sm);}
+.src-value.src-clickable{cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;}
+@keyframes ganttRowFlash{0%,100%{filter:none;}25%,75%{filter:brightness(1.6) drop-shadow(0 0 4px var(--retelit-blue));}50%{filter:brightness(1.9) drop-shadow(0 0 6px var(--retelit-blue));}}
+.gantt-row-flash{animation:ganttRowFlash 0.6s ease-in-out 3;}
 .src-seg{display:flex;align-items:center;gap:7px;}
 .src-text{display:flex;flex-direction:column;line-height:1.2;}
 .src-eyebrow{font-family:var(--font-mono);font-size:8.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);white-space:nowrap;}
@@ -1088,18 +1091,58 @@ function buildScaviRangeCard() {
   var card = document.getElementById('scaviRangeCard');
   if (!card) return;
   var scaviBars = GANTT_ROWS.filter(function(r) { return r.t === 'bar' && r.label === 'Opere Civili' && r.start; });
-  var firstScavo = scaviBars.reduce(function(mn, r) {
+  var firstScavo = null, firstRow = null;
+  scaviBars.forEach(function(r) {
     var d = parseDateStr(r.start);
-    return (d && (!mn || d < mn)) ? d : mn;
-  }, null);
+    if (d && (!firstScavo || d < firstScavo)) { firstScavo = d; firstRow = r; }
+  });
   var fmt = function(d) { return d ? ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + '/' + d.getFullYear() : '—'; };
+  /* Se la data più vecchia arriva da un override manuale (row.manual, impostato da
+     applyGanttOverrides — es. un vecchio test in "Modalità modifica" mai ripristinato)
+     e non da un dato reale di scavo (row.real) o dalla cascata permessi, è la causa più
+     probabile di una "Inizio scavi" persistentemente sbagliata anche dopo i fix rev.206-208
+     su mergeCantieriProgress: quei fix non toccano gli override, che vincono sempre e
+     vengono applicati DOPO. Rendo il valore cliccabile per individuare ed eventualmente
+     ripristinare la riga incriminata direttamente nel Gantt (bug segnalato dall'utente:
+     "Inizio scavi" rimasta al 17/04 anche dopo rev.208). */
+  var warn = firstRow && firstRow.manual ? ' <span title="Data impostata da un override manuale in Modalità modifica — non da un dato reale di scavo. Clicca per individuare la riga e ripristinarla." style="color:var(--warn,#b45309);cursor:help;">⚠︎</span>' : '';
+  var titleAttr = firstRow ? (firstRow._praticaCode || firstRow._comune || firstRow.label) + (firstRow.manual ? ' — override manuale, clicca per individuarla' : '') : '';
   card.innerHTML =
     '<div class="src-card">' +
       '<div class="src-seg src-start">' +
         '<svg width="11" height="11" viewBox="0 0 11 11"><circle cx="5.5" cy="5.5" r="5" fill="var(--retelit-blue)"/></svg>' +
-        '<div class="src-text"><span class="src-eyebrow">Inizio scavi</span><span class="src-value">' + fmt(firstScavo) + '</span></div>' +
+        '<div class="src-text"><span class="src-eyebrow">Inizio scavi</span><span class="src-value' + (firstRow ? ' src-clickable' : '') + '" title="' + titleAttr.replace(/"/g,'&quot;') + '"' + (firstRow ? ' onclick="_locateGanttRow(' + firstRow.id + ')"' : '') + '">' + fmt(firstScavo) + '</span>' + warn + '</div>' +
       '</div>' +
     '</div>';
+}
+
+/* Scrolla la riga nel Gantt e la fa lampeggiare 3 volte, per individuare a colpo d'occhio
+   quale task sta determinando un valore mostrato in una card riepilogativa (es. "Inizio
+   scavi"). Se la riga è dentro un gruppo/pratica collassata, la espande prima. */
+function _locateGanttRow(rowId) {
+  var row = findGanttRow(rowId);
+  var changed = false;
+  if (row) {
+    var ancestors = [];
+    var idx = GANTT_ROWS.indexOf(row);
+    for (var i = idx - 1; i >= 0; i--) {
+      var r = GANTT_ROWS[i];
+      if (r.t === 'g2') { ancestors.push(r.id); break; }
+    }
+    for (var j = idx - 1; j >= 0; j--) {
+      var r2 = GANTT_ROWS[j];
+      if (r2.t === 'g') { ancestors.push(r2.id); break; }
+    }
+    ancestors.forEach(function(gid) { if (COLLAPSED_GROUPS.has(gid)) { COLLAPSED_GROUPS.delete(gid); changed = true; } });
+    if (changed) buildGantt();
+  }
+  setTimeout(function() {
+    var el = document.querySelector('#gantt-wrap svg [data-row-id="' + rowId + '"]');
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('gantt-row-flash');
+    setTimeout(function() { el.classList.remove('gantt-row-flash'); }, 2000);
+  }, changed ? 60 : 0);
 }
 
 /* ── Gantt render ── */
