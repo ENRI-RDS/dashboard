@@ -53,6 +53,7 @@
   .title{font-family:var(--font-display);font-size:26px;font-weight:700;letter-spacing:-.02em}
   .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
   .grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1.95fr);gap:24px;align-items:start}
+  .grid.grid-1col{grid-template-columns:1fr}
   @media(max-width:1100px){.grid{grid-template-columns:1fr}}
   .card{background:var(--bg-1);border:1px solid var(--border-1);border-radius:var(--radius-lg);padding:22px;box-shadow:var(--shadow-sm);overflow-x:auto}
   .card-compact{padding:12px 16px}
@@ -71,6 +72,8 @@
   input[type=text],input[type=password],input[type=number],select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);font-family:inherit;font-size:13px;color:var(--text)}
   input:focus,select:focus{outline:none;border-color:var(--retelit-sky);background:var(--bg-1);box-shadow:var(--shadow-focus)}
   .dropzone{border:2px dashed #CED4DA;border-radius:10px;padding:22px;text-align:center;background:var(--bg);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px}
+  .dropzone.dropzone-inline{padding:6px 12px;flex-direction:row;justify-content:center;min-height:34px}
+  .dropzone.dropzone-inline .filename{font-size:11.5px}
   .dropzone:hover,.dropzone.drag{border-color:var(--border-focus);background:var(--accent-light)}
   .dropzone .filename{font-family:var(--font-mono);font-size:11px;color:var(--muted)}
   .dropzone input[type=file]{display:none}
@@ -209,38 +212,29 @@
         <span class="pillstat">Versioni in MongoDB: <b id="statVersions">—</b></span>
       </div>
     </div>
+    <form id="uploadForm" class="row" style="gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:nowrap;align-items:stretch">
+      <div style="flex:0 0 auto;align-self:end">
+        <label style="margin-bottom:4px">Nuovo upload</label>
+      </div>
+      <select id="target" data-testid="target-input" style="flex:1 1 220px;min-width:180px">
+        <option value="">— seleziona il file da sostituire —</option>
+        <option value="Master.csv">Master.csv</option>
+        <option value="Riepilogo_progettazione.csv">Riepilogo_progettazione.csv</option>
+        <option value="dati.csv">dati.csv (in disuso)</option>
+        <option value="QGIS.geojson">QGIS.geojson</option>
+        <option value="QTS.geojson">QTS.geojson</option>
+        <option value="SED_classificato.geojson">SED_classificato.geojson</option>
+      </select>
+      <div class="dropzone dropzone-inline" id="dropzone" data-testid="dropzone" style="flex:2 1 280px">
+        <div class="filename" id="fileName">Trascina un file o <strong>clicca per selezionare</strong> — .xlsx, .xls, .csv, .geojson, .json, max 25 MB</div>
+        <input type="file" id="file" accept=".xlsx,.xls,.csv,.geojson,.json" data-testid="file-input">
+      </div>
+      <button type="submit" class="btn btn-xs" id="submitBtn" data-testid="upload-btn" style="flex:0 0 auto">Carica</button>
+    </form>
+    <div class="msg" id="msg"></div>
   </div>
 
-  <div class="grid">
-    <!-- Upload card -->
-    <div class="card card-compact" data-testid="upload-card">
-      <h2>Nuovo upload / Sostituisci</h2>
-      <p class="sub">Excel → CSV (sep <code>;</code>) automatico. Il contenuto è salvato in MongoDB (GridFS) ed è la versione "viva" servita a tutte le pagine.</p>
-
-      <form id="uploadForm">
-        <label for="target">Nome file di destinazione</label>
-        <select id="target" data-testid="target-input">
-          <option value="">— seleziona il file da sostituire —</option>
-          <option value="Master.csv">Master.csv</option>
-          <option value="Riepilogo_progettazione.csv">Riepilogo_progettazione.csv</option>
-          <option value="dati.csv">dati.csv (in disuso)</option>
-          <option value="QGIS.geojson">QGIS.geojson</option>
-          <option value="QTS.geojson">QTS.geojson</option>
-          <option value="SED_classificato.geojson">SED_classificato.geojson</option>
-        </select>
-
-        <label>File</label>
-        <div class="dropzone" id="dropzone" data-testid="dropzone">
-          <div>Trascina qui un file o <strong>clicca per selezionare</strong></div>
-          <div class="filename" id="fileName">.xlsx, .xls, .csv, .geojson, .json — max 25 MB</div>
-          <input type="file" id="file" accept=".xlsx,.xls,.csv,.geojson,.json" data-testid="file-input">
-        </div>
-
-        <button type="submit" class="btn btn-block" id="submitBtn" data-testid="upload-btn">Carica</button>
-        <div class="msg" id="msg"></div>
-      </form>
-    </div>
-
+  <div class="grid grid-1col">
     <!-- Files card -->
     <div class="card" data-testid="files-card">
       <div class="tabbar">
@@ -416,16 +410,16 @@
                 <th class="note-th-sort" data-key="lotto">Lotto <span class="sort-arrow" data-key="lotto">⇕</span></th>
                 <th class="note-th-sort" data-key="stato_permesso">Stato <span class="sort-arrow" data-key="stato_permesso">⇕</span></th>
                 <th>Nota attuale</th>
-                <th>Azioni</th>
+                <th style="width:180px">Azioni</th>
               </tr>
             </thead>
             <tbody id="noteResults"><tr><td colspan="6" class="empty">Caricamento…</td></tr></tbody>
           </table>
         </div>
 
-        <div id="noteFormWrap" style="display:none;margin-top:16px;border:1px solid var(--border);border-radius:10px;padding:14px">
-          <div style="font-weight:700;font-size:13px;margin-bottom:4px" id="noteFormTitle">Modifica pratica</div>
-          <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px" id="noteFormSub"></div>
+        <div id="noteDataFormWrap" style="display:none;margin-top:16px;border:1px solid var(--border);border-radius:10px;padding:14px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:4px" id="noteDataFormTitle">Modifica dati pratica</div>
+          <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px" id="noteDataFormSub"></div>
           <div class="row" style="gap:10px;flex-wrap:wrap">
             <div style="flex:1;min-width:180px">
               <label style="display:block;font-size:11px;margin-bottom:5px">Stato permesso</label>
@@ -462,12 +456,21 @@
               <input type="date" id="noteEditDataOtt">
             </div>
           </div>
-          <div style="margin-top:10px">
-            <label style="display:block;font-size:11px;margin-bottom:5px">Nuova nota (opzionale — lasciare vuoto per non toccare la nota attuale)</label>
+          <div class="row" style="margin-top:14px;gap:10px">
+            <button class="btn" id="noteDataSaveBtn">Salva dati</button>
+            <button class="btn btn-ghost" id="noteDataCancelBtn">Annulla</button>
+          </div>
+          <div class="msg" id="noteDataMsg"></div>
+        </div>
+
+        <div id="noteFormWrap" style="display:none;margin-top:16px;border:1px solid var(--border);border-radius:10px;padding:14px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:4px" id="noteFormTitle">Nuova nota</div>
+          <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px" id="noteFormSub"></div>
+          <div>
             <textarea id="noteText" style="width:100%;min-height:70px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical;box-sizing:border-box" placeholder="Testo della nota…"></textarea>
           </div>
-          <div class="row" style="margin-top:14px;gap:10px">
-            <button class="btn" id="noteSaveBtn">Salva modifiche</button>
+          <div class="row" style="margin-top:10px;gap:10px">
+            <button class="btn" id="noteSaveBtn">Salva nota</button>
             <button class="btn btn-ghost" id="noteCancelBtn">Annulla</button>
           </div>
           <div class="msg" id="noteMsg"></div>
@@ -1147,7 +1150,7 @@
   fileInput.addEventListener('change', () => { droppedFile = null; updateName(); });
   function updateName(){
     const f = droppedFile || fileInput.files[0];
-    fileName.textContent = f ? `${f.name} — ${fmtSize(f.size)}` : '.xlsx, .xls, .csv, .geojson, .json — max 25 MB';
+    fileName.textContent = f ? `${f.name} — ${fmtSize(f.size)}` : 'Trascina un file o clicca per selezionare — max 25 MB';
   }
 
   form.addEventListener('submit', async e => {
@@ -1653,38 +1656,42 @@
         <td>${escapeHtml(r.lotto || '—')}</td>
         <td class="stato-cell" style="color:${_noteStatoColor(r.stato_permesso)};font-weight:600">${escapeHtml(r.stato_permesso || '—')}</td>
         <td class="note-cell">${chip}${escapeHtml(txt)}</td>
-        <td><button class="btn btn-ghost btn-xs" data-note-pick="${i}">Modifica</button></td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-ghost btn-xs" data-note-data-pick="${i}">Modifica dati</button>
+          <button class="btn btn-ghost btn-xs" data-note-pick="${i}">+ Nota</button>
+        </td>
       </tr>`;
     }).join('');
   }
+
+  // --- Modifica dati (stato/date/N.SED) — MAI il campo NOTE, nessun tag RETELIT ---
   $('noteResults').addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-note-pick]');
+    const btn = e.target.closest('button[data-note-data-pick]');
     if (!btn) return;
-    const r = NOTE_VIEW[Number(btn.dataset.notePick)];
+    const r = NOTE_VIEW[Number(btn.dataset.noteDataPick)];
     if (!r) return;
     _noteSelected = r;
     const tratte = r.tratta_ids || [r.tratta_id];
-    $('noteFormTitle').textContent = `Modifica pratica ${r.codice || tratte.join(', ')}`;
-    $('noteFormSub').textContent = `${tratte.join(', ')}${tratte.length > 1 ? ` (${tratte.length} tratte)` : ''} · ${r.ente} · ${r.tipo_permesso} · Lotto ${r.lotto}`;
+    $('noteDataFormTitle').textContent = `Modifica dati pratica ${r.codice || tratte.join(', ')}`;
+    $('noteDataFormSub').textContent = `${tratte.join(', ')}${tratte.length > 1 ? ` (${tratte.length} tratte)` : ''} · ${r.ente} · ${r.tipo_permesso} · Lotto ${r.lotto}`;
     $('noteEditStato').value = r.stato_permesso || 'IN ATTESA';
     $('noteEditNSed').value = r.n_sed || '';
     $('noteEditDataInvio').value = r.data_richiesta || '';
     $('noteEditDataPrev').value = r.data_prevista_rilascio || '';
     $('noteEditDataOtt').value = r.data_approvazione || '';
-    $('noteText').value = '';
-    $('noteMsg').className = 'msg';
-    $('noteFormWrap').style.display = 'block';
-    $('noteFormWrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  });
-  $('noteCancelBtn').addEventListener('click', () => {
+    $('noteDataMsg').className = 'msg';
     $('noteFormWrap').style.display = 'none';
+    $('noteDataFormWrap').style.display = 'block';
+    $('noteDataFormWrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+  $('noteDataCancelBtn').addEventListener('click', () => {
+    $('noteDataFormWrap').style.display = 'none';
     _noteSelected = null;
   });
-  $('noteSaveBtn').addEventListener('click', async () => {
-    const noteMsg = $('noteMsg');
+  $('noteDataSaveBtn').addEventListener('click', async () => {
+    const msg = $('noteDataMsg');
     if (!_noteSelected) return;
-    const text = $('noteText').value.trim();
-    $('noteSaveBtn').disabled = true;
+    $('noteDataSaveBtn').disabled = true;
     try{
       await api(withTokenQuery('/api/admin/pratiche/update'), {
         method: 'POST',
@@ -1700,11 +1707,59 @@
             data_richiesta: $('noteEditDataInvio').value,
             data_prevista_rilascio: $('noteEditDataPrev').value,
             data_approvazione: $('noteEditDataOtt').value,
-            note: text,
           },
         }),
       });
-      setMsg(noteMsg, 'Modifiche salvate su Master.csv', true);
+      setMsg(msg, 'Dati salvati su Master.csv', true);
+      setTimeout(() => { $('noteDataFormWrap').style.display = 'none'; _noteSelected = null; }, 1200);
+      loadNotePratiche();
+    }catch(err){
+      setMsg(msg, 'Errore: ' + err.message, false);
+    }finally{
+      $('noteDataSaveBtn').disabled = false;
+    }
+  });
+
+  // --- Nota (tag RETELIT) — tocca SOLO il campo NOTE, mai stato/date/N.SED ---
+  $('noteResults').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-note-pick]');
+    if (!btn) return;
+    const r = NOTE_VIEW[Number(btn.dataset.notePick)];
+    if (!r) return;
+    _noteSelected = r;
+    const tratte = r.tratta_ids || [r.tratta_id];
+    $('noteFormTitle').textContent = `Nuova nota su ${r.codice || tratte.join(', ')}`;
+    $('noteFormSub').textContent = `${tratte.join(', ')}${tratte.length > 1 ? ` (${tratte.length} tratte)` : ''} · ${r.ente} · ${r.tipo_permesso} · Lotto ${r.lotto}`;
+    $('noteText').value = '';
+    $('noteMsg').className = 'msg';
+    $('noteDataFormWrap').style.display = 'none';
+    $('noteFormWrap').style.display = 'block';
+    $('noteFormWrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    $('noteText').focus();
+  });
+  $('noteCancelBtn').addEventListener('click', () => {
+    $('noteFormWrap').style.display = 'none';
+    _noteSelected = null;
+  });
+  $('noteSaveBtn').addEventListener('click', async () => {
+    const noteMsg = $('noteMsg');
+    if (!_noteSelected) return;
+    const text = $('noteText').value.trim();
+    if (!text) return setMsg(noteMsg, 'Scrivi il testo della nota', false);
+    $('noteSaveBtn').disabled = true;
+    try{
+      await api(withTokenQuery('/api/admin/pratiche/update'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({
+          tratta_ids: _noteSelected.tratta_ids || [_noteSelected.tratta_id],
+          ente: _noteSelected.ente,
+          tipo_permesso: _noteSelected.tipo_permesso,
+          pratica: _noteSelected.pratica,
+          fields: { note: text },
+        }),
+      });
+      setMsg(noteMsg, 'Nota salvata su Master.csv', true);
       setTimeout(() => { $('noteFormWrap').style.display = 'none'; _noteSelected = null; }, 1200);
       loadNotePratiche();
     }catch(err){
