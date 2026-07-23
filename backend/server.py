@@ -1980,6 +1980,39 @@ def _tag_note(note: str, tag: str) -> str:
         return note
     note = _NOTE_TAG_RE.sub("", note)
     return f"[{tag}] {note}"
+
+
+@app.post("/api/admin/backfill-note-tags")
+async def backfill_note_tags(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """One-off (rev.210): prima dell'introduzione di _tag_note (rev.188) le NOTE
+    in Master.csv non avevano alcun prefisso [RETELIT]/[IMPRESA] — index.html le
+    mostra quindi senza etichetta, disomogenee rispetto alle note più recenti.
+    Storicamente l'unico canale di inserimento nota era lato impresa (mappa_impresa_
+    caricamento.html/imprese.html): tagga retroattivamente come [IMPRESA] ogni NOTE
+    non vuota che non abbia già un prefisso [RETELIT]/[IMPRESA]. Idempotente: righe
+    già taggate (regex _NOTE_TAG_RE) vengono saltate, rieseguibile senza effetti
+    collaterali. Non cambia la regola per le note nuove (_tag_note resta invariata,
+    chiamata da imprese/admin ad ogni submission)."""
+    _check_token(x_upload_token or token_q)
+
+    async with _master_csv_lock:
+        df = await _read_master_csv()
+        if df is None or "NOTE" not in df.columns:
+            return {"ok": False, "error": "colonna NOTE assente da Master.csv"}
+
+        note_col = df["NOTE"].fillna("").astype(str)
+        mask = (note_col.str.strip() != "") & (~note_col.str.match(_NOTE_TAG_RE))
+        touched = int(mask.sum())
+        if touched:
+            df.loc[mask, "NOTE"] = note_col.loc[mask].apply(lambda n: _tag_note(n, "IMPRESA"))
+            await _write_master_csv(
+                df,
+                note=f"Backfill one-off rev.210: {touched} NOTE storiche taggate [IMPRESA] retroattivamente",
+            )
+    return {"ok": True, "righe_taggate": touched}
 @app.get("/api/admin/pratiche-search")
 async def search_pratiche_admin(
     q: str = "",
