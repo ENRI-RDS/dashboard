@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ENRI — Gantt Lotto 1A</title>
 <script src="js/api-config.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -186,6 +187,10 @@ tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);fo
         <span class="gantt-legend-item" style="color:var(--retelit-teal);">
           <svg width="12" height="14"><line x1="6" y1="0" x2="6" y2="14" stroke="var(--retelit-teal)" stroke-width="2" stroke-dasharray="3,2"/></svg>Oggi
         </span>
+        <button id="exportExcelBtn" class="btn-sm" style="gap:6px;" onclick="exportGanttExcel()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg>
+          Esporta Excel
+        </button>
         <button id="editModeBtn" class="btn-sm" style="display:none;gap:6px;" onclick="toggleEditMode()">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
           <span id="editModeBtnLabel">Modalità modifica</span>
@@ -633,7 +638,10 @@ function applyGanttOverrides() {
   GANTT_ROWS.forEach(function(row) {
     var ov = GANTT_OVERRIDES[String(row.id)];
     if (!ov) return;
-    if (ov.pct !== undefined && ov.pct !== null) row.pct = ov.pct;
+    if (ov.pct !== undefined && ov.pct !== null) {
+      var ovPct = Number(ov.pct);
+      row.pct = isFinite(ovPct) ? Math.min(100, Math.max(0, ovPct)) : row.pct;
+    }
     if (ov.start) row.start = ov.start;
     if (ov.end) row.end = ov.end;
     if (ov.date) row.date = ov.date;
@@ -845,20 +853,28 @@ async function mergeCantieriProgress() {
       var g = byComune[comune];
       g.metriTot += Number(c.metri_totali || 0);
       g.metriScavati += Number(c.metri_scavati || 0);
+      /* data_inizio/fine_prevista può essere valorizzata dal seed/import prima di
+         qualunque caricamento reale da parte dell'impresa (stesso bug corretto in
+         scavi.html rev.199-200): la usiamo solo se il cantiere ha almeno un evento
+         in log (log_count>0), altrimenti è solo un placeholder di pianificazione e
+         il Gantt deve continuare a mostrare le date calcolate dalla cascata permessi. */
+      var hasLog = (c.log_count || 0) > 0;
       if (c.data_inizio_effettiva) g.iniziEff.push(c.data_inizio_effettiva);
       if (c.data_fine_effettiva) g.fineEff.push(c.data_fine_effettiva);
-      if (c.data_inizio_prevista) g.iniziPrev.push(c.data_inizio_prevista);
-      if (c.data_fine_prevista) g.finePrev.push(c.data_fine_prevista);
+      if (c.data_inizio_prevista && hasLog) g.iniziPrev.push(c.data_inizio_prevista);
+      if (c.data_fine_prevista && hasLog) g.finePrev.push(c.data_fine_prevista);
     });
 
     GANTT_ROWS.forEach(function(row) {
       if (row.t !== 'bar' || !row._comune || !byComune[row._comune]) return;
       var g = byComune[row._comune];
       if (g.metriTot > 0) {
-        row.pct = Math.round((g.metriScavati / g.metriTot) * 100);
+        var pctCalc = (g.metriScavati / g.metriTot) * 100;
+        row.pct = isFinite(pctCalc) ? Math.min(100, Math.max(0, Math.round(pctCalc))) : row.pct;
         row.real = true;
       }
-      /* inizio: preferisce l'effettiva (più affidabile), poi la prevista più vecchia */
+      /* inizio: preferisce l'effettiva (più affidabile), poi la prevista più vecchia
+         — solo se già filtrata sopra da hasLog, mai un puro placeholder di seed */
       var iniziISO = g.iniziEff.length ? g.iniziEff : g.iniziPrev;
       var fineISO = g.fineEff.length ? g.fineEff : g.finePrev;
       if (iniziISO.length) {
@@ -1017,9 +1033,9 @@ function buildKpi() {
   var wrap = document.getElementById('kpiRow');
   var bars = GANTT_ROWS.filter(function(r){ return r.t === 'bar'; });
   var permits = GANTT_ROWS.filter(function(r){ return r.t === 'ms' && r._pratica; }); /* solo "Ottenimento permesso" per pratica, esclude le milestone Materiali (Tubi/Pozzetti) che non sono permessi */
-  var avgPct = Math.round(bars.reduce(function(s,r){return s+r.pct;},0) / bars.length);
+  var avgPct = Math.round(bars.reduce(function(s,r){ var p = Number(r.pct); return s + (isFinite(p) ? Math.min(100, Math.max(0, p)) : 0); },0) / bars.length);
   var msDone = permits.filter(function(r){ return r.pct >= 100; }).length;
-  var todayD = new Date(2026,6,7);
+  var todayD = new Date();
   var msOverdue = permits.filter(function(r){ var d = parseDateStr(r.date); return d && d < todayD && r.pct < 100; }).length;
   var lastFinish = bars.reduce(function(mx,r){ var d = parseDateStr(r.end); return (d && d > mx) ? d : mx; }, new Date(2026,0,1));
   var lastFinishStr = ('0'+lastFinish.getDate()).slice(-2)+'/'+('0'+(lastFinish.getMonth()+1)).slice(-2)+'/'+lastFinish.getFullYear();
@@ -1037,7 +1053,7 @@ function buildKpi() {
   wrap.innerHTML =
     '<div class="kpi-stat">' +
       '<div class="kpi-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 14h4M7 10h10"/></svg></div>' +
-      '<div class="kpi-text"><span class="kpi-eyebrow">Avanzamento medio fasi</span><span class="kpi-value">' + avgPct + '%</span></div>' +
+      '<div class="kpi-text"><span class="kpi-eyebrow">Avanzamento complessivo</span><span class="kpi-value">' + avgPct + '%</span></div>' +
       '<div class="kpi-bar-track"><div class="kpi-bar-fill" style="width:' + avgPct + '%;"></div></div>' +
     '</div>' +
     '<div class="kpi-stat">' +
@@ -1246,14 +1262,16 @@ function buildGantt() {
   parts.push('<rect x="0" y="0" width="' + LW + '" height="' + totalH + '" fill="#EEF1F5"/>');
   parts.push('<line x1="' + LW + '" y1="0" x2="' + LW + '" y2="' + totalH + '" stroke="#C4CDD8" stroke-width="1"/>');
 
-  /* oggi: 07/07/2026 */
-  var todayX = xPos('07/07/2026');
+  /* oggi: data reale corrente (era hardcoded al 07/07/2026, mai aggiornata) */
+  var _today = new Date();
+  var todayDmy = ('0' + _today.getDate()).slice(-2) + '/' + ('0' + (_today.getMonth() + 1)).slice(-2) + '/' + _today.getFullYear();
+  var todayX = xPos(todayDmy);
   if (todayX !== null) {
     parts.push('<line x1="' + todayX + '" y1="' + HDR + '" x2="' + todayX + '" y2="' + totalH + '" stroke="var(--retelit-teal)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.9"/>');
     parts.push('<polygon points="' + (todayX-5) + ',' + HDR + ' ' + (todayX+5) + ',' + HDR + ' ' + todayX + ',' + (HDR+9) + '" fill="var(--retelit-teal)"/>');
   }
 
-  var todayD = new Date(2026,6,7);
+  var todayD = _today;
   var rowY = HDR;
   var topCollapsed = false, subCollapsed = false;
   var ROW_GEOM = {}; /* id riga -> {x1,x2,cy} — per disegnare i connettori di dipendenza */
@@ -1533,6 +1551,44 @@ document.addEventListener('mouseup', function(e) {
   setTimeout(function() { _ganttSuppressNextClick = false; }, 0);
   openGanttEditPopover(+targetRid, e.clientX, e.clientY, +drag.fromId);
 });
+
+/* ── Esportazione Excel (per incollare su MS Project) ──
+   Colonne pensate per il paste diretto nella tabella Gantt di MS Project:
+   Nome attività (indentato coi livelli MATERIALI/COMUNE/Pratica/Fase per
+   leggibilità), Livello (0=lotto/gruppo, 1=pratica, 2=fase/milestone —
+   utile se si vuole ricostruire l'outline in Project), Inizio, Fine,
+   Durata (gg), % Completamento. Le righe 'g'/'g2' (intestazioni di gruppo)
+   non hanno date/durata/%, solo il nome. */
+function exportGanttExcel() {
+  if (typeof XLSX === 'undefined') {
+    alert('Libreria di export non disponibile: verificare la connessione (cdn.sheetjs.com).');
+    return;
+  }
+  var rows = [['Nome attività', 'Livello', 'Inizio', 'Fine', 'Durata (gg)', '% Completamento']];
+  var indent = 0;
+  GANTT_ROWS.forEach(function(r) {
+    if (r.t === 'g') { indent = 0; rows.push([r.label, 0, '', '', '', '']); return; }
+    if (r.t === 'g2') { indent = 1; rows.push(['  ' + r.label, 1, '', '', '', '']); return; }
+    var lvl = indent + 1;
+    var prefix = '';
+    for (var i = 0; i < lvl; i++) prefix += '  ';
+    var pctClamped = isFinite(Number(r.pct)) ? Math.min(100, Math.max(0, Math.round(Number(r.pct)))) : 0;
+    if (r.t === 'bar') {
+      var d1 = parseDateStr(r.start), d2 = parseDateStr(r.end);
+      var dur = (d1 && d2) ? Math.round((d2 - d1) / 86400000) + 1 : '';
+      rows.push([prefix + r.label, lvl, r.start || '', r.end || '', dur, pctClamped + '%']);
+    } else if (r.t === 'ms') {
+      rows.push([prefix + r.label, lvl, r.date || '', r.date || '', 0, pctClamped + '%']);
+    }
+  });
+  var ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{ wch: 46 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }];
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Gantt');
+  var oggi = new Date();
+  var stamp = oggi.getFullYear() + ('0' + (oggi.getMonth() + 1)).slice(-2) + ('0' + oggi.getDate()).slice(-2);
+  XLSX.writeFile(wb, 'Gantt_Lotto' + LOTTO_ID + '_' + stamp + '.xlsx');
+}
 
 function toggleEditMode() {
   EDIT_MODE = !EDIT_MODE;
