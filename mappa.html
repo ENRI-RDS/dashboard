@@ -1513,7 +1513,7 @@ async function exportGeoJSON(){
   if (vuoiSed) {
     if (btn) { btn.textContent = '⏳...'; btn.disabled = true; }
     try {
-      const geojson = await fetchWithSWR('SED_classificato.geojson', { isJson: true });
+      const geojson = await fetchWithSWR('SED_classificato.geojson', { isJson: true, direct: true });
       const sedFeatures = (geojson.features || [])
         .filter(f => !lottiScope || lottiScope.includes(f.properties.LOTTO))
         .map(f => ({...f, properties: _prepareExportProps(f, true, null)}));
@@ -1722,8 +1722,24 @@ function _timeout(ms, msg) {
   );
 }
 
-async function fetchWithSWR(rel, { onUpdate, isJson = true } = {}) {
+async function fetchWithSWR(rel, { onUpdate, isJson = true, direct = false } = {}) {
   const qs = '?t=' + Math.floor(Date.now() / 300000); // slot da 5 min
+
+  // File sensibili (Master.csv, QGIS.geojson, SED_classificato.geojson): il backend
+  // NON li pubblica più su GitHub (SENSITIVE_FILES in server.py, per non esporre
+  // i dati imprese senza autenticazione) — quindi la copia statica è congelata
+  // per sempre. Per questi file si va sempre e solo su Render.
+  if (direct) {
+    try {
+      const text = await Promise.race([
+        fetch(rel + qs, { headers: { 'x-session-token': _sessionToken() } }).then(r => r.ok ? r.text() : Promise.reject('render-fail')),
+        _timeout(30000, 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.')
+      ]);
+      return isJson ? JSON.parse(text) : text;
+    } catch(e) {
+      throw new Error(e.message || 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.');
+    }
+  }
 
   // Fetch GitHub statico — timeout 5s tramite Promise.race (no AbortSignal)
   const staticP = Promise.race([
@@ -1764,8 +1780,8 @@ async function fetchWithSWR(rel, { onUpdate, isJson = true } = {}) {
   }
 }
 
-async function loadGeoJSON(onUpdate) {
-  return fetchWithSWR('QGIS.geojson', { onUpdate, isJson: true });
+async function loadGeoJSON() {
+  return fetchWithSWR('QGIS.geojson', { isJson: true, direct: true });
 }
 
 function buildLottoStats(features) {
@@ -2380,7 +2396,7 @@ async function _loadSEDInner() {
   // Carica Master.csv e indicizza per N_SED (opzionale, non blocca)
   if (!window._sedFromCSV) {
     try {
-      const csvResp_text = await fetchWithSWR('Master.csv', { isJson: false }).catch(() => null);
+      const csvResp_text = await fetchWithSWR('Master.csv', { isJson: false, direct: true }).catch(() => null);
       const csvResp = csvResp_text ? { ok: true, text: async () => csvResp_text } : { ok: false };
       if (csvResp.ok) {
         const csvText = await csvResp.text();
@@ -2439,22 +2455,11 @@ async function _loadSEDInner() {
     } catch(e) { /* CSV non disponibile */ }
   }
   try {
-    const geojson = await fetchWithSWR('SED_classificato.geojson', {
-      isJson: true,
-      onUpdate: (freshGeojson) => {
-        // IMPORTANTE: qui NON richiamare loadSED()/fetchWithSWR — riaprirebbe
-        // un nuovo ciclo SWR con un nuovo onUpdate agganciato, e se statico e
-        // Render differiscono sempre (anche solo per whitespace/ordine chiavi
-        // tra file su disco e GridFS) si genera un loop infinito di fetch
-        // (bug osservato: centinaia di richieste ripetute). Si ricostruisce
-        // il layer direttamente dai dati già ricevuti, senza altra rete.
-        const wasVisible = sedLayer && map.hasLayer(sedLayer);
-        if (sedLayer && map.hasLayer(sedLayer)) map.removeLayer(sedLayer);
-        sedLayer = _buildSedLayer(freshGeojson);
-        sedLoaded = true;
-        if (wasVisible) sedLayer.addTo(map).bringToFront();
-      }
-    });
+    // File sensibile: niente fast-path GitHub (congelato, mai aggiornato per
+    // questi file — vedi loadGeoJSON), si va diretti su Render. Elimina anche
+    // il rischio di loop di fetch già osservato quando statico e Render
+    // differivano sempre (whitespace/ordine chiavi tra disco e GridFS).
+    const geojson = await fetchWithSWR('SED_classificato.geojson', { isJson: true, direct: true });
 
     sedLayer = _buildSedLayer(geojson);
     sedLoaded = true;
@@ -2684,9 +2689,7 @@ async function _roLoadCantieri(){
 (async()=>{
   try{
     _roLoadCantieri();
-    const geojson = await loadGeoJSON(freshGeojson => {
-      _buildMapLayers(freshGeojson, true);
-    });
+    const geojson = await loadGeoJSON();
     const features=geojson.features.filter(f=>f.properties.LOTTO!=='P');
     allFeatures = features;
     lottoStats=buildLottoStats(features);
