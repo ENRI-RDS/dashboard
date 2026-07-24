@@ -856,19 +856,25 @@ async function mergeCantieriProgress() {
     cantieri.forEach(function(c) {
       var comune = (c.comune || '').trim().toUpperCase();
       if (!comune) return;
-      if (!byComune[comune]) byComune[comune] = { metriTot: 0, metriScavati: 0, iniziEff: [], fineEff: [] };
+      if (!byComune[comune]) byComune[comune] = { metriTot: 0, metriScavati: 0, iniziEff: [], fineEff: [], iniziPrev: [], finePrev: [] };
       var g = byComune[comune];
       g.metriTot += Number(c.metri_totali || 0);
       g.metriScavati += Number(c.metri_scavati || 0);
-      /* SOLO data_inizio/fine_effettiva: "prevista" resta un campo di pianificazione
+      /* SOLO data_inizio/fine_effettiva posiziona la barra: "prevista" resta un campo di pianificazione
          di scavi.html che può essere valorizzato da seed/import (o comunque non
          riflettere un inizio scavo reale) anche a log_count>0 — il gate su log_count
          (rev.206) si è rivelato insufficiente (bug ancora presente, segnalato
          dall'utente). Se non c'è ancora una data effettiva confermata, il Gantt
          continua a mostrare la data calcolata dalla cascata permessi, mai un
-         placeholder esterno non verificato. */
+         placeholder esterno non verificato.
+         "prevista" viene comunque raccolta qui sotto SOLO per la nota informativa
+         (tooltip + colonna Note negli export): non decide mai la posizione della
+         barra, ma resta visibile/controllabile per confrontarla con l'effettiva
+         e con la data di ottenimento del permesso (v. checkCantiereDatesVsPermesso). */
       if (c.data_inizio_effettiva) g.iniziEff.push(c.data_inizio_effettiva);
       if (c.data_fine_effettiva) g.fineEff.push(c.data_fine_effettiva);
+      if (c.data_inizio_prevista) g.iniziPrev.push(c.data_inizio_prevista);
+      if (c.data_fine_prevista) g.finePrev.push(c.data_fine_prevista);
     });
 
     GANTT_ROWS.forEach(function(row) {
@@ -879,9 +885,19 @@ async function mergeCantieriProgress() {
         row.pct = isFinite(pctCalc) ? Math.min(100, Math.max(0, Math.round(pctCalc))) : row.pct;
         row.real = true;
       }
-      /* inizio/fine: solo se confermati da data_inizio/fine_effettiva */
+      /* inizio/fine barra: solo se confermati da data_inizio/fine_effettiva (invariato) */
       var iniziISO = g.iniziEff;
       var fineISO = g.fineEff;
+      /* nota leggibile con ENTRAMBE le date del cantiere, se presenti — previsto
+         vs effettivo sono informazioni diverse (scostamento cantiere) che
+         altrimenti andrebbero perse, dato che solo l'effettiva sposta la barra. */
+      var notaCantiere = '';
+      if (g.iniziPrev.length) notaCantiere += 'Inizio lavori previsto: ' + isoToDmy(g.iniziPrev.slice().sort()[0]);
+      if (g.iniziEff.length) notaCantiere += (notaCantiere ? ' · ' : '') + 'Inizio lavori effettivo: ' + isoToDmy(g.iniziEff.slice().sort()[0]);
+      if (notaCantiere) {
+        row.sub = row.sub ? (row.sub + ' | ' + notaCantiere) : notaCantiere;
+        row._cantiereDate = true;
+      }
       if (iniziISO.length) {
         var minIso = iniziISO.slice().sort()[0];
         var dmy = isoToDmy(minIso);
@@ -896,6 +912,30 @@ async function mergeCantieriProgress() {
   } catch (e) {
     console.warn('Avanzamento cantieri non caricato per il gantt:', e.message);
   }
+}
+
+/* ── check coerenza: un cantiere non dovrebbe avere una data di inizio lavori
+   (prevista o effettiva) precedente alla data di ottenimento del permesso
+   corrispondente — quasi sempre è un errore di inserimento data più che
+   un'anomalia reale di processo (non si può aprire un cantiere senza
+   permesso). Segnala nella nota della riga (tooltip a schermo + colonna
+   Note negli export Excel/MS Project), senza bloccare nulla — va eseguita
+   DOPO che tutte le altre fasi di merge/override sono state applicate, così
+   controlla le date effettivamente mostrate/esportate, non quelle grezze. ── */
+function checkCantiereDatesVsPermesso() {
+  GANTT_ROWS.forEach(function(row) {
+    if (row.t !== 'bar' || row.label !== 'Opere Civili' || !row._cantiereDate || !row._praticaCode) return;
+    var msRow = GANTT_ROWS.filter(function(r) {
+      return r.t === 'ms' && r.label === 'Ottenimento permesso' && r._praticaCode === row._praticaCode;
+    })[0];
+    if (!msRow || !msRow.date) return;
+    var dOtt = parseDateStr(msRow.date), dInizio = parseDateStr(row.start);
+    if (dOtt && dInizio && dInizio < dOtt) {
+      var warn = '\u26A0 Inizio lavori (' + row.start + ') precedente all\'ottenimento del permesso (' + msRow.date + ')';
+      row.sub = row.sub ? (row.sub + ' | ' + warn) : warn;
+      row._dateWarn = true;
+    }
+  });
 }
 
 /* ── propagazione date reali lungo la catena di dipendenze ──
@@ -1644,11 +1684,11 @@ function exportGanttExcel() {
     alert('Libreria di export non disponibile: verificare la connessione (cdn.sheetjs.com).');
     return;
   }
-  var rows = [['Numero', 'Nome attività', 'Livello', 'Inizio', 'Fine', 'Durata (gg)', '% Completamento', 'Predecessori']];
+  var rows = [['Numero', 'Nome attività', 'Livello', 'Inizio', 'Fine', 'Durata (gg)', '% Completamento', 'Predecessori', 'Note']];
   var indent = 0;
   GANTT_ROWS.forEach(function(r) {
-    if (r.t === 'g') { indent = 0; rows.push(['', r.label, 0, '', '', '', '', '']); return; }
-    if (r.t === 'g2') { indent = 1; rows.push([_ganttRowNumero(r), '  ' + r.label, 1, '', '', '', '', '']); return; }
+    if (r.t === 'g') { indent = 0; rows.push(['', r.label, 0, '', '', '', '', '', '']); return; }
+    if (r.t === 'g2') { indent = 1; rows.push([_ganttRowNumero(r), '  ' + r.label, 1, '', '', '', '', '', '']); return; }
     var lvl = indent + 1;
     var prefix = '';
     for (var i = 0; i < lvl; i++) prefix += '  ';
@@ -1658,13 +1698,13 @@ function exportGanttExcel() {
     if (r.t === 'bar') {
       var d1 = parseDateStr(r.start), d2 = parseDateStr(r.end);
       var dur = (d1 && d2) ? Math.round((d2 - d1) / 86400000) + 1 : '';
-      rows.push([numero, prefix + r.label, lvl, r.start || '', r.end || '', dur, pctClamped + '%', pred]);
+      rows.push([numero, prefix + r.label, lvl, r.start || '', r.end || '', dur, pctClamped + '%', pred, r.sub || '']);
     } else if (r.t === 'ms') {
-      rows.push([numero, prefix + r.label, lvl, r.date || '', r.date || '', 0, pctClamped + '%', pred]);
+      rows.push([numero, prefix + r.label, lvl, r.date || '', r.date || '', 0, pctClamped + '%', pred, r.sub || '']);
     }
   });
   var ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 8 }, { wch: 46 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 14 }];
+  ws['!cols'] = [{ wch: 8 }, { wch: 46 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 60 }];
   var wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Gantt');
   var oggi = new Date();
@@ -2148,6 +2188,7 @@ window.addEventListener('load', function() {
         propagateGanttDatesFromPermits(); /* Fase 5/6/7 slittano con le previsioni impresa sulla pratica corrispondente */
         applyGanttOverrides(); /* vince sempre su baseline + Master.csv */
         applyManualDependencyShifts(); /* riposiziona le righe con un predecessore impostato manualmente (popover/drag&drop) subito dopo il predecessore, e propaga ai loro successori */
+        checkCantiereDatesVsPermesso(); /* segnala eventuali cantieri con data di inizio lavori precedente all'ottenimento del permesso */
         buildKpi();
         buildGantt();
       });
