@@ -510,6 +510,7 @@ async def upload_file(
         raise HTTPException(400, f"Unsupported file type {ext!r}. Allowed: {sorted(ALLOWED_EXT)}")
 
     rows = None
+    df = None
     out_name = target.strip() or (file.filename or "uploaded")
     out_bytes = raw
 
@@ -533,6 +534,34 @@ async def upload_file(
 
     rel = _safe_relpath(out_name)
 
+    # Se stiamo sostituendo Master.csv, preserva eventuale stato CONVENZIONE/POLIZZA
+    # già avanzato (RICHIESTA RDS/INVIATA/EMESSA) rispetto a quanto porta il nuovo
+    # file — fix bug: un nuovo export esterno (QGIS/Excel) porta solo SI/NO e
+    # retrocederebbe silenziosamente il workflow tracciato da polizze_convenzioni.html.
+    pol_conv_preserved = 0
+    if rel == MASTER_FILENAME:
+        try:
+            sep_new = _detect_sep(out_bytes)
+            if df is None:
+                new_df = None
+                for enc in ("utf-8", "cp1252", "latin-1"):
+                    try:
+                        new_df = pd.read_csv(io.BytesIO(out_bytes), sep=sep_new, dtype=str, keep_default_na=False, encoding=enc, on_bad_lines="warn")
+                        break
+                    except (UnicodeDecodeError, UnicodeError):
+                        continue
+            else:
+                new_df = df.astype(str)
+            if new_df is not None:
+                old_df = await _read_master_csv()
+                pol_conv_preserved = _preserve_pol_conv_state(old_df, new_df)
+                if pol_conv_preserved:
+                    buf2 = io.StringIO()
+                    new_df.to_csv(buf2, index=False, sep=sep_new)
+                    out_bytes = buf2.getvalue().encode("utf-8")
+        except Exception as e:
+            print(f"[_preserve_pol_conv_state] fallita, procedo senza (upload non bloccato): {e}")
+
     # Store content in GridFS
     gridfs_id = await gridfs.upload_from_stream(
         rel,
@@ -553,7 +582,10 @@ async def upload_file(
     }
     res = await uploads_col.insert_one(record)
     asyncio.create_task(_prune_old_versions(rel))
-    await _log_admin_action("upload", rel, x_actor_nome)
+    await _log_admin_action(
+        "upload" + (f" (+{pol_conv_preserved} CONVENZIONE/POLIZZA preservate)" if pol_conv_preserved else ""),
+        rel, x_actor_nome,
+    )
 
     # Se è Master.csv, rigenera anche i file derivati (Riepilogo_progettazione.csv,
     # QGIS.geojson) e sincronizza GitHub — stesso comportamento di approve/delete/restore,
@@ -570,6 +602,7 @@ async def upload_file(
         "size": len(out_bytes),
         "rows": rows,
         "converted_from_excel": ext in {".xlsx", ".xls"} and convert_to_csv,
+        "pol_conv_preserved": pol_conv_preserved,
     })
 
 
@@ -2167,6 +2200,74 @@ async def update_admin_pratica(
 # ─────────────────────────────────────────────────────────────────────────────
 _POL_CONV_ALLOWED_FIELDS = {"CONVENZIONE", "POLIZZA"}
 _POL_CONV_ALLOWED_VALUES = {"NECESSARIA", "RICHIESTA RDS", "INVIATA", "EMESSA", ""}
+# SI/NO sono i soli valori che l'impresa può scrivere (checkbox "è necessaria?"),
+# usati anche come default nelle esportazioni esterne (QGIS/Excel) che alimentano
+# nuovi upload di Master.csv. NECESSARIA/RICHIESTA RDS/INVIATA/EMESSA sono invece
+# lo stato di workflow avanzato manualmente da polizze_convenzioni.html: un nuovo
+# upload che porta solo SI/NO per una pratica già oltre NECESSARIA non deve mai
+# retrocederla (bug segnalato dall'utente: polizze/convenzioni tornate a
+# "NECESSARIA" dopo un caricamento di Master.csv aggiornato).
+_POL_CONV_RANK = {"": 0, "NO": 0, "SI": 1, "NECESSARIA": 1, "RICHIESTA RDS": 2, "INVIATA": 3, "EMESSA": 4}
+
+
+def _preserve_pol_conv_state(old_df: "pd.DataFrame", new_df: "pd.DataFrame") -> int:
+    """Prima di sostituire Master.csv con un nuovo upload, riporta nel nuovo file
+    lo stato CONVENZIONE/POLIZZA più avanzato già presente nel file corrente, per
+    ogni lotto+pratica, se il nuovo file porterebbe una retrocessione (es. SI/NO
+    grezzo dalla fonte esterna sopra un INVIATA/EMESSA impostato a mano). Non tocca
+    nulla se il nuovo valore è uguale o più avanzato. Ritorna il numero di celle
+    corrette, per il log di audit."""
+    def _extract_lotto(src) -> str:
+        return str(src).replace(".xlsx", "").replace(".xls", "").replace("Lotto ", "").strip().upper()
+
+    src_col_old = next((c for c in old_df.columns if c.strip().upper().replace(".", "").replace(" ", "") in {"SOURCENAME", "SOURCE_NAME"}), None)
+    prat_col_old = next((c for c in old_df.columns if c.strip().upper() == "PRATICA"), None)
+    if src_col_old is None or prat_col_old is None:
+        return 0
+
+    # stato più avanzato già visto nel file corrente, per (lotto, pratica, campo)
+    best: dict[tuple, str] = {}
+    for col_name, field in (("CONVENZIONE", "CONVENZIONE"), ("POLIZZA", "POLIZZA")):
+        real_old = next((c for c in old_df.columns if c.strip().upper() == col_name), None)
+        if real_old is None:
+            continue
+        for _, row in old_df.iterrows():
+            val = str(row.get(real_old, "")).strip().upper()
+            if _POL_CONV_RANK.get(val, 0) < 2:  # sotto RICHIESTA RDS: niente da preservare
+                continue
+            lotto = _extract_lotto(row.get(src_col_old, ""))
+            pratica = str(row.get(prat_col_old, "")).strip()
+            if not lotto or not pratica:
+                continue
+            key = (lotto, pratica, field)
+            if key not in best or _POL_CONV_RANK.get(val, 0) > _POL_CONV_RANK.get(best[key], 0):
+                best[key] = val
+
+    if not best:
+        return 0
+
+    src_col_new = next((c for c in new_df.columns if c.strip().upper().replace(".", "").replace(" ", "") in {"SOURCENAME", "SOURCE_NAME"}), None)
+    prat_col_new = next((c for c in new_df.columns if c.strip().upper() == "PRATICA"), None)
+    if src_col_new is None or prat_col_new is None:
+        return 0
+
+    touched = 0
+    for col_name, field in (("CONVENZIONE", "CONVENZIONE"), ("POLIZZA", "POLIZZA")):
+        real_new = next((c for c in new_df.columns if c.strip().upper() == col_name), None)
+        if real_new is None:
+            continue
+        lotti_new = new_df[src_col_new].astype(str).apply(_extract_lotto)
+        pratiche_new = new_df[prat_col_new].astype(str).str.strip()
+        for i in new_df.index:
+            key = (lotti_new.loc[i], pratiche_new.loc[i], field)
+            preserved = best.get(key)
+            if preserved is None:
+                continue
+            cur = str(new_df.at[i, real_new]).strip().upper()
+            if _POL_CONV_RANK.get(cur, 0) < _POL_CONV_RANK.get(preserved, 0):
+                new_df.at[i, real_new] = preserved
+                touched += 1
+    return touched
 
 
 @app.get("/api/admin/polizze-convenzioni/data-richiesta")
