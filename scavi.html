@@ -99,8 +99,8 @@
 
   .main { padding:22px 28px; display:flex; flex-direction:column; gap:20px; }
 
-  .exec-strip { display:grid; grid-template-columns:repeat(4, minmax(160px,1fr)); gap:10px; width:100%; }
-  @media(max-width:900px){ .exec-strip{ grid-template-columns:repeat(2, 1fr); } }
+  .exec-strip { display:grid; grid-template-columns:repeat(4, minmax(140px,190px)); gap:12px; width:auto; justify-content:end; }
+  @media(max-width:900px){ .exec-strip{ grid-template-columns:repeat(2, minmax(140px,190px)); justify-content:center; } }
   .exec-card {
     position:relative; overflow:hidden;
     border-radius:12px; padding:10px 14px 11px; color:#fff; box-shadow:var(--sh-xs);
@@ -120,8 +120,8 @@
   .exec-view-btn { border:none; background:transparent; font-size:12px; font-weight:700; padding:6px 14px; border-radius:999px; cursor:pointer; color:#5B6472; font-family:inherit; }
   .exec-view-btn.active { background:#fff; color:#0B3182; box-shadow:var(--sh-xs); }
 
-  .exec-strip-v2 { display:grid; grid-template-columns:repeat(4, minmax(200px,1fr)); gap:14px; width:100%; }
-  @media(max-width:900px){ .exec-strip-v2{ grid-template-columns:repeat(2, 1fr); } }
+  .exec-strip-v2 { display:grid; grid-template-columns:repeat(4, minmax(140px,190px)); gap:12px; width:auto; justify-content:end; }
+  @media(max-width:900px){ .exec-strip-v2{ grid-template-columns:repeat(2, minmax(140px,190px)); justify-content:center; } }
   .exec-card-v2 { position:relative; background:#fff; border-radius:14px; padding:18px 20px; box-shadow:var(--sh-xs); border:1px solid #EEF1F5; }
   .exec-card-v2-head { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
   .exec-card-v2-icon { width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
@@ -377,7 +377,7 @@
       <button class="exec-view-btn active" data-mode="classic" onclick="_setExecCardStyle('classic')">Classica</button>
       <button class="exec-view-btn" data-mode="compact" onclick="_setExecCardStyle('compact')">Compatta</button>
     </div>
-    <div class="exec-strip" id="execStrip" style="flex:1;">
+    <div class="exec-strip" id="execStrip" style="flex:0 1 auto;">
       <div class="exec-card teal">
         <span class="exec-card-label">Numero Cantieri Tot.</span>
         <span class="exec-card-val" id="execCantieriTot">—</span>
@@ -412,7 +412,7 @@
       </div>
     </div>
 
-    <div class="exec-strip-v2" id="execStripV2" style="display:none;flex:1;">
+    <div class="exec-strip-v2" id="execStripV2" style="display:none;flex:0 1 auto;">
       <div class="exec-card-v2 teal">
         <div class="exec-card-v2-head">
           <span class="exec-card-v2-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-6h6v6M9 12h.01M15 12h.01M9 8h.01M15 8h.01"/></svg></span>
@@ -620,35 +620,7 @@
     <!-- RIGHT sidebar -->
     <div class="side">
 
-      <div class="card">
-        <div class="card-header"><span class="card-title">Riepilogo Operativo</span></div>
-        <div class="card-body">
-          <div class="stat-row">
-            <span class="stat-label">Tracciato totale</span>
-            <span class="stat-val" id="repTracciato">—</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-label">Permessi ottenuti</span>
-            <span class="stat-val" style="color:#1E9E6A" id="repPermessi">—</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-label">Metri scavati</span>
-            <span class="stat-val" style="color:#0B3182" id="repScavati">—</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-label">Lotti attivi</span>
-            <span class="stat-val" id="repLottiAttivi">—</span>
-          </div>
-          <div class="stat-row">
-            <span class="stat-label">Comuni attraversati</span>
-            <span class="stat-val" id="repComuni">—</span>
-          </div>
-          <div class="stat-row" style="align-items:flex-start;border-bottom:none;padding-bottom:0">
-            <span class="stat-label">Metri scavati per provincia</span>
-          </div>
-          <div id="repProv" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px;margin-top:6px">—</div>
-        </div>
-      </div>
+      <div class="card" style="visibility:hidden;min-height:320px;"></div>
 
       <div class="card">
         <div class="card-header"><span class="card-title">Distribuzione Stati</span></div>
@@ -1449,18 +1421,8 @@ function _renderRiepilogo() {
   const totMetri   = LOTTI.reduce((s, r) => s + r.metri, 0);
   const totScavati = LOTTI.reduce((s, r) => s + (r.scavati || 0), 0);
   const pctGlob    = totMetri > 0 ? (totScavati / totMetri * 100).toFixed(1) : '0.0';
-  const lottiAttivi= LOTTI.filter(r => r.haCantiere && Object.entries(r.statoMetri||{}).some(([k,v]) => k !== 'non-avviato' && v > 0)).length;
-  const totComuni  = LOTTI.reduce((s, r) => s + (r.comuni || 0), 0);
   const totOttenuto= LOTTI.reduce((s, r) => s + (r.permessi ? (r.permessi['OTTENUTO'] || 0) : 0), 0);
   const pctPermessi= totMetri > 0 ? (totOttenuto / totMetri * 100).toFixed(1) : '0.0';
-
-  const provScavati = {};
-  LOTTI.forEach(r => (r.prov || []).forEach(p => { if (!(p in provScavati)) provScavati[p] = 0; }));
-  CANTIERI_RAW.forEach(r => {
-    const p = r.provincia || 'N/D';
-    provScavati[p] = (provScavati[p] || 0) + (r.metri_scavati || 0);
-  });
-  const provEntries = Object.entries(provScavati).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 
   const el = id => document.getElementById(id);
   if (el('execPctScavi'))    el('execPctScavi').textContent    = pctGlob + '%';
@@ -1469,20 +1431,6 @@ function _renderRiepilogo() {
   if (el('execMetriScaviSub2')) el('execMetriScaviSub2').textContent = 'di ' + fmt(totMetri) + ' m';
   if (el('execMetriPermessi')) el('execMetriPermessi').textContent = fmt(totOttenuto) + ' m';
   _syncExecV2();
-  if (el('repTracciato'))  el('repTracciato').textContent  = fmt(Math.round(totMetri / 1000)) + ' km';
-  if (el('repPermessi'))   el('repPermessi').textContent   = pctPermessi + '% (' + fmt(Math.round(totOttenuto/1000)) + ' km)';
-  if (el('repScavati'))    el('repScavati').textContent    = fmt(Math.round(totScavati / 1000)) + ' km';
-  if (el('repLottiAttivi'))el('repLottiAttivi').textContent= lottiAttivi;
-  if (el('repComuni'))     el('repComuni').textContent     = totComuni > 0 ? totComuni : LOTTI.length + ' cantieri';
-  if (el('repProv')) {
-    el('repProv').innerHTML = provEntries.length > 0
-      ? provEntries.map(([p, m]) => `
-          <div style="background:${provColor(p)}12;border:1px solid ${provColor(p)}55;border-radius:6px;padding:6px 8px;text-align:center">
-            <div style="font-size:12px;color:${provColor(p)};font-weight:700">${p}</div>
-            <div style="font-family:var(--font-display);font-weight:700;font-size:13px;color:${m>0?'var(--text)':'var(--muted)'}">${fmt(Math.round(m))} m</div>
-          </div>`).join('')
-      : '<span style="color:var(--muted);font-size:12px">—</span>';
-  }
 }
 
 // ── PERFORMANCE IMPRESE ──────────────────────────────────────────────────────
