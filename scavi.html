@@ -707,31 +707,20 @@ function provPill(p) {
   return `<span class="prov-pill" style="background:${c}1f;color:${c};border-color:${c}55">${p}</span>`;
 }
 
-// Gruppi di stato permesso, in ordine di avanzamento workflow (stesso schema di index.html)
+// Gruppi di stato permesso: solo 2 macro-stati (Ottenuto vs tutto il resto)
 const STATI_GRUPPI_PERMESSI = [
-  { label: 'In Attesa / Redazione',     stati: ['IN ATTESA','IN REDAZIONE'],          color: '#6B7685' },
-  { label: 'Invio Preliminare',         stati: ['INVIO PRELIMINARE'],                                  color: '#043F75' },
-  { label: 'In Verifica / In Firma',    stati: ['IN FIRMA RDS'],                                       color: '#D08A1A' },
-  { label: 'Inviato / Protocollato',    stati: ['INVIATO','PROTOCOLLATO'],                             color: '#41BBD9' },
-  { label: 'Necessaria Integrazione',   stati: ['NECESSARIA INTEGRAZIONE','IN REDAZIONE INTEGRAZIONE'],color: '#C0392B' },
-  { label: 'Protocollato Integrazione', stati: ['PROTOCOLLATO INTEGRAZIONE'],                          color: '#436A93' },
-  { label: 'Ottenuto',                  stati: ['OTTENUTO'],                                           color: '#1E9E6A' },
-  { label: 'Altro',                     stati: [],                                                      color: '#8a8a96' },
+  { label: 'Ottenuto',                  stati: ['OTTENUTO'], color: '#1E9E6A' },
+  { label: 'In Fase di Autorizzazione', stati: [],           color: '#8a8a96' },
 ];
-const ORDINE_WORKFLOW_PERMESSI = [
-  'Invio Preliminare','In Verifica / In Firma','Inviato / Protocollato',
-  'Necessaria Integrazione','Protocollato Integrazione','Ottenuto','Altro','In Attesa / Redazione'
-];
+const ORDINE_WORKFLOW_PERMESSI = ['Ottenuto', 'In Fase di Autorizzazione'];
 
 function buildGruppiMapPermessi(statiMap) {
   const out = {};
-  const statiCoperti = new Set();
-  STATI_GRUPPI_PERMESSI.forEach(g => {
-    const tot = g.stati.reduce((s, st) => { statiCoperti.add(st); return s + (statiMap[st] || 0); }, 0);
-    if (tot > 0) out[g.label] = tot;
-  });
-  const nonMappato = Object.entries(statiMap).reduce((s, [st, m]) => s + (statiCoperti.has(st) ? 0 : m), 0);
-  if (nonMappato > 0) out['Altro'] = nonMappato;
+  const totale = Object.values(statiMap).reduce((s, m) => s + (m || 0), 0);
+  const ottenuto = statiMap['OTTENUTO'] || 0;
+  if (ottenuto > 0) out['Ottenuto'] = ottenuto;
+  const resto = totale - ottenuto;
+  if (resto > 0) out['In Fase di Autorizzazione'] = resto;
   return out;
 }
 
