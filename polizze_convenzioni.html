@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ENRI — Polizze &amp; Convenzioni</title>
 <script src="js/api-config.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root{
@@ -104,6 +105,17 @@
     background:var(--surface);color:var(--text);cursor:pointer
   }
   .edit-select:focus{outline:none;box-shadow:var(--shadow-focus)}
+
+  .date-input{
+    width:92px;padding:3px 6px;
+    border:1.5px solid var(--retelit-sky);
+    border-radius:var(--radius-md);
+    font-family:var(--font-mono);font-size:11px;
+    background:var(--surface);color:var(--text)
+  }
+  .date-input:focus{outline:none;box-shadow:var(--shadow-focus)}
+  .date-cell{white-space:nowrap}
+  .date-cell .edit-btn{padding:2px 4px}
 
   /* Bottoni inline — variante sm §7.1 */
   .btn-save{
@@ -284,6 +296,7 @@
           <option value="">Tutti gli stati convenzione</option>
         </select>
         <input id="convSearch" placeholder="Cerca..." style="min-width:130px;flex:1" oninput="renderConv()">
+        <button class="btn-ghost-sm" onclick="exportPolConvExcel('conv')" title="Esporta la vista filtrata in Excel">Esporta Excel</button>
       </div>
       <div class="scroll">
         <table>
@@ -327,6 +340,7 @@
           <option value="">Tutti gli stati polizza</option>
         </select>
         <input id="polSearch" placeholder="Cerca..." style="min-width:130px;flex:1" oninput="renderPol()">
+        <button class="btn-ghost-sm" onclick="exportPolConvExcel('pol')" title="Esporta la vista filtrata in Excel">Esporta Excel</button>
       </div>
       <div class="scroll">
         <table>
@@ -624,6 +638,20 @@
   const CONV_VALUES = ['', 'NECESSARIA', 'RICHIESTA RDS', 'INVIATA', 'EMESSA'];
   const POL_VALUES  = ['', 'NECESSARIA', 'RICHIESTA RDS', 'INVIATA', 'EMESSA'];
 
+  function _dateCellHtml(dateKey, value) {
+    return `<td class="date-cell" data-date-key="${dateKey}">
+      <span class="date-value" style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${value || '—'}</span>
+      <button class="edit-btn" title="Modifica data" onclick="startDateEdit(this)" aria-label="Modifica data">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </button>
+      <span class="edit-controls-date" style="display:none;gap:5px;align-items:center">
+        <input type="text" class="date-input" placeholder="GG/MM/AAAA" value="${value || ''}">
+        <button class="btn-save" onclick="saveDateEdit(this)">Salva</button>
+        <button class="btn-ghost-sm" onclick="cancelDateEdit(this)">Annulla</button>
+      </span>
+    </td>`;
+  }
+
   function buildRows(rows, statoKey, colSpan, field) {
     if (!rows.length) return '<tr><td colspan="' + colSpan + '" class="empty">Nessuna pratica trovata.</td></tr>';
     const values = field === 'CONVENZIONE' ? CONV_VALUES : POL_VALUES;
@@ -653,10 +681,10 @@
             <button class="btn-ghost-sm" onclick="cancelEdit(this)">Annulla</button>
           </span>
         </td>
-        <td style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${r.dataRichiesta||'—'}</td>
-        <td style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${r.dataRichiestaRds||'—'}</td>
-        <td style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${r.dataInvio||'—'}</td>
-        <td style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${r.dataEmissione||'—'}</td>
+        ${_dateCellHtml('richiesta', r.dataRichiesta)}
+        ${_dateCellHtml('richiesta_rds', r.dataRichiestaRds)}
+        ${_dateCellHtml('invio', r.dataInvio)}
+        ${_dateCellHtml('emissione', r.dataEmissione)}
       </tr>`;
     }).join('');
   }
@@ -730,6 +758,78 @@
     }
   }
 
+  window.startDateEdit = function(btn) {
+    const cell = btn.closest('.date-cell');
+    cell.querySelector('.date-value').style.display = 'none';
+    btn.style.display = 'none';
+    const ctrl = cell.querySelector('.edit-controls-date');
+    ctrl.style.display = 'inline-flex';
+    const input = ctrl.querySelector('.date-input');
+    input.focus();
+    input.select();
+  };
+
+  window.cancelDateEdit = function(btn) {
+    const cell = btn.closest('.date-cell');
+    cell.querySelector('.date-value').style.display = '';
+    cell.querySelector('.edit-btn').style.display = '';
+    cell.querySelector('.edit-controls-date').style.display = 'none';
+  };
+
+  const DATE_RE = /^\d{2}\/\d{2}\/\d{4}$/;
+
+  window.saveDateEdit = function(btn) {
+    const row  = btn.closest('tr');
+    const cell = btn.closest('.date-cell');
+    const val  = cell.querySelector('.date-input').value.trim();
+    if (val && !DATE_RE.test(val)) {
+      showToast('Formato data non valido: usare GG/MM/AAAA (o lasciare vuoto per cancellare).', 'err');
+      return;
+    }
+    const lotto    = row.dataset.lotto;
+    const pratica  = row.dataset.pratica;
+    const field    = row.dataset.field;
+    const dateKey  = cell.dataset.dateKey;
+    _doSaveDate(lotto, pratica, field, dateKey, val, btn, cell);
+  };
+
+  function _doSaveDate(lotto, pratica, field, dateKey, val, btn, cell) {
+    const token = localStorage.getItem('enri_upload_token') || '';
+    if (!token) {
+      _pendingSave = { kind: 'date', lotto, pratica, field, dateKey, val, btn, cell };
+      openTokenModal();
+      return;
+    }
+    _execSaveDate(lotto, pratica, field, dateKey, val, token, btn, cell);
+  }
+
+  async function _execSaveDate(lotto, pratica, field, dateKey, val, token, btn, cell) {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    if (!apiBase) { showToast('API base non configurata.', 'err'); return; }
+    btn.disabled = true;
+    try {
+      const r = await fetch(apiBase + '/api/admin/polizze-convenzioni/set-date', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-upload-token': token },
+        body: JSON.stringify({ lotto, pratica, field, date_key: dateKey, value: val })
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || r.statusText);
+      cell.querySelector('.date-value').textContent = val || '—';
+      cancelDateEdit(btn);
+      showToast(val ? 'Data aggiornata.' : 'Data cancellata.', 'ok');
+    } catch(e) {
+      if (e.message && e.message.includes('401')) {
+        localStorage.removeItem('enri_upload_token');
+        showToast('Token non valido. Riprovare.', 'err');
+      } else {
+        showToast('Si è verificato un problema. ' + e.message, 'err');
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   // ── TOKEN MODAL ────────────────────────────────────────────────────────────
   let _pendingSave = null;
 
@@ -740,7 +840,11 @@
   window.closeTokenModal = function() {
     document.getElementById('tokenModal').classList.remove('open');
     document.getElementById('tokenInput').value = '';
-    if (_pendingSave) { cancelEdit(_pendingSave.btn); _pendingSave = null; }
+    if (_pendingSave) {
+      if (_pendingSave.kind === 'date') cancelDateEdit(_pendingSave.btn);
+      else cancelEdit(_pendingSave.btn);
+      _pendingSave = null;
+    }
   };
   window.confirmToken = function() {
     const t = document.getElementById('tokenInput').value.trim();
@@ -749,9 +853,10 @@
     document.getElementById('tokenModal').classList.remove('open');
     document.getElementById('tokenInput').value = '';
     if (_pendingSave) {
-      const { lotto, pratica, field, val, btn, cell } = _pendingSave;
+      const p = _pendingSave;
       _pendingSave = null;
-      _execSave(lotto, pratica, field, val, t, btn, cell);
+      if (p.kind === 'date') _execSaveDate(p.lotto, p.pratica, p.field, p.dateKey, p.val, t, p.btn, p.cell);
+      else _execSave(p.lotto, p.pratica, p.field, p.val, t, p.btn, p.cell);
     }
   };
   document.getElementById('tokenInput').addEventListener('keydown', e => { if (e.key === 'Enter') window.confirmToken(); });
@@ -765,6 +870,35 @@
     t.className = 'show ' + type;
     clearTimeout(_toastTimer);
     _toastTimer = setTimeout(() => { t.className = ''; }, 3500);
+  }
+
+  window.exportPolConvExcel = function(kind) {
+    if (typeof XLSX === 'undefined') {
+      showToast('Libreria di export non disponibile: verificare la connessione (cdn.sheetjs.com).', 'err');
+      return;
+    }
+    const isConv = kind === 'conv';
+    const rows = filter(
+      isConv ? CONV_ROWS : POL_ROWS,
+      document.getElementById(isConv ? 'convFiltLotto' : 'polFiltLotto').value,
+      document.getElementById(isConv ? 'convFiltStato' : 'polFiltStato').value,
+      document.getElementById(isConv ? 'convSearch' : 'polSearch').value.toLowerCase(),
+      isConv ? 'convStato' : 'polStato'
+    );
+    const statoKey = isConv ? 'convStato' : 'polStato';
+    const label = isConv ? 'Convenzione' : 'Polizza';
+    const aoa = [['Pratica', 'Lotto', 'Ente', 'Stato permesso', label, 'Data Richiesta', 'Data Richiesta RDS', 'Data Invio', 'Data Emissione']];
+    rows.forEach(r => aoa.push([
+      r.codicePratica || '', r.lotto || '', r.ente || '', r.stato || '',
+      r[statoKey] || '', r.dataRichiesta || '', r.dataRichiestaRds || '', r.dataInvio || '', r.dataEmissione || ''
+    ]));
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 12 }, { wch: 7 }, { wch: 26 }, { wch: 22 }, { wch: 18 }, { wch: 13 }, { wch: 16 }, { wch: 13 }, { wch: 14 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, label);
+    const oggi = new Date();
+    const stamp = oggi.getFullYear() + ('0' + (oggi.getMonth() + 1)).slice(-2) + ('0' + oggi.getDate()).slice(-2);
+    XLSX.writeFile(wb, (isConv ? 'Convenzioni' : 'Polizze') + '_' + stamp + '.xlsx');
   }
 
   window.renderConv = function() {
