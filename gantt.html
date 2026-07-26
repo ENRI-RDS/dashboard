@@ -1821,8 +1821,13 @@ function exportGanttProjectXML() {
       if (predUid === undefined) return '';
       var type = (p.type === 'SS') ? 3 : 1; // 3=Start-to-Start, 1=Finish-to-Start
       var lagDays = Number(p.lagDays) || 0;
+      /* Solo i campi essenziali: CrossProject/LinkLag/LagFormat SOLO se serve un
+         ritardo — meno campi da interpretare = meno rischio che Project scarti
+         la pianificazione del task (visto: con un predecessore, la durata del
+         task collassava a 0 in Project pur essendo corretta a schermo). */
       return '<PredecessorLink><PredecessorUID>' + predUid + '</PredecessorUID><Type>' + type + '</Type>' +
-        '<CrossProject>0</CrossProject><LinkLag>' + (lagDays * 4800) + '</LinkLag><LagFormat>7</LagFormat></PredecessorLink>';
+        (lagDays ? '<LinkLag>' + (lagDays * 4800) + '</LinkLag><LagFormat>7</LagFormat>' : '') +
+        '</PredecessorLink>';
     }).join('');
     if (r.t === 'bar') {
       var d1 = parseDateStr(r.start), d2 = parseDateStr(r.end);
@@ -1832,7 +1837,7 @@ function exportGanttProjectXML() {
         '<Type>1</Type>' +
         (r.start ? '<Start>' + _projIso(r.start, '08:00:00') + '</Start>' : '') +
         (r.end ? '<Finish>' + _projIso(r.end, '17:00:00') + '</Finish>' : '') +
-        '<Duration>PT' + (durDays * 8) + 'H0M0S</Duration><DurationFormat>7</DurationFormat>' +
+        '<Duration>PT' + (durDays * 8) + 'H0M0S</Duration>' +
         '<PercentComplete>' + pctClamped + '</PercentComplete>' +
         (r.sub ? '<Notes>' + _xmlEsc(r.sub) + '</Notes>' : '') +
         predXml + '</Task>');
@@ -1841,7 +1846,7 @@ function exportGanttProjectXML() {
         '<OutlineLevel>' + lvl + '</OutlineLevel><Summary>0</Summary><Milestone>1</Milestone><Priority>500</Priority>' +
         '<Type>1</Type>' +
         (r.date ? '<Start>' + _projIso(r.date, '08:00:00') + '</Start><Finish>' + _projIso(r.date, '08:00:00') + '</Finish>' : '') +
-        '<Duration>PT0H0M0S</Duration><DurationFormat>7</DurationFormat>' +
+        '<Duration>PT0H0M0S</Duration>' +
         '<PercentComplete>' + pctClamped + '</PercentComplete>' +
         (r.sub ? '<Notes>' + _xmlEsc(r.sub) + '</Notes>' : '') +
         predXml + '</Task>');
