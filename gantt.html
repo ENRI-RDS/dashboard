@@ -1872,9 +1872,21 @@ function exportGanttProjectXML() {
     if (r.t === 'bar') {
       var d1 = parseDateStr(r.start), d2 = parseDateStr(r.end);
       var durDays = _countWorkdays(d1, d2);
+      /* bug segnalato dall'utente: con un PredecessorLink, Project (auto-pianificato,
+         ConstraintType di default = "Il più presto possibile") ricalcola lo Start dal
+         link stesso e SCARTA lo Start/Finish/Duration che gli passiamo qui — risultato:
+         durata collassata a 0, identica alla data del predecessore, anche se in
+         GANTT_ROWS/dashboard i dati sono corretti. Fix: quando c'è almeno un
+         predecessore, forziamo ConstraintType=2 (Must Start On) + ConstraintDate = il
+         nostro Start (già coerente col predecessore grazie a _exportSafeDates sopra) —
+         così Project mantiene lo Start/Duration espliciti invece di ricalcolarli dal
+         solo link. Nessun vincolo per i task senza predecessore (es. Progettazione),
+         dove non c'è nulla con cui entrare in conflitto. */
+      var constraintXml = (preds.length && r.start) ?
+        '<ConstraintType>2</ConstraintType><ConstraintDate>' + _projIso(r.start, '08:00:00') + '</ConstraintDate>' : '';
       xml.push('<Task><UID>' + uid + '</UID><ID>' + uid + '</ID><Name>' + _xmlEsc(r.label) + '</Name>' +
         '<OutlineLevel>' + lvl + '</OutlineLevel><Summary>0</Summary><Milestone>0</Milestone><Priority>500</Priority>' +
-        '<Type>1</Type>' +
+        '<Type>1</Type>' + constraintXml +
         (r.start ? '<Start>' + _projIso(r.start, '08:00:00') + '</Start>' : '') +
         (r.end ? '<Finish>' + _projIso(r.end, '17:00:00') + '</Finish>' : '') +
         '<Duration>PT' + (durDays * 8) + 'H0M0S</Duration>' +
@@ -1882,9 +1894,11 @@ function exportGanttProjectXML() {
         (r.sub ? '<Notes>' + _xmlEsc(r.sub) + '</Notes>' : '') +
         predXml + '</Task>');
     } else if (r.t === 'ms') {
+      var constraintXmlMs = (preds.length && r.date) ?
+        '<ConstraintType>2</ConstraintType><ConstraintDate>' + _projIso(r.date, '08:00:00') + '</ConstraintDate>' : '';
       xml.push('<Task><UID>' + uid + '</UID><ID>' + uid + '</ID><Name>' + _xmlEsc(r.label) + '</Name>' +
         '<OutlineLevel>' + lvl + '</OutlineLevel><Summary>0</Summary><Milestone>1</Milestone><Priority>500</Priority>' +
-        '<Type>1</Type>' +
+        '<Type>1</Type>' + constraintXmlMs +
         (r.date ? '<Start>' + _projIso(r.date, '08:00:00') + '</Start><Finish>' + _projIso(r.date, '08:00:00') + '</Finish>' : '') +
         '<Duration>PT0H0M0S</Duration>' +
         '<PercentComplete>' + pctClamped + '</PercentComplete>' +
