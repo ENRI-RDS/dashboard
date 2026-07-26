@@ -99,17 +99,21 @@
 
   .main { padding:22px 28px; display:flex; flex-direction:column; gap:20px; }
 
-  .exec-strip { display:flex; gap:10px; flex-wrap:wrap; }
-  .exec-stat {
-    display:flex; flex-direction:column; align-items:flex-end; text-align:right; gap:2px;
-    padding:8px 18px; border-radius:10px; background:var(--surface); border:1px solid var(--border2);
-    min-width:118px; box-shadow:var(--sh-xs);
+  .exec-strip { display:flex; gap:14px; flex-wrap:wrap; }
+  .exec-card {
+    position:relative; overflow:hidden; flex:1 1 200px; min-width:190px;
+    border-radius:14px; padding:16px 20px 18px; color:#fff; box-shadow:var(--sh-xs);
   }
-  .exec-stat-label { font-size:12px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); font-weight:700; }
-  .exec-stat-val { font-family:var(--font-display); font-size:27px; font-weight:800; letter-spacing:-.02em; color:var(--retelit-blue); line-height:1.15; margin-top:1px; }
-  .exec-stat-sub { align-self:flex-start; font-family:var(--font-mono); font-size:11px; color:var(--muted); font-weight:600; }
-  .exec-stat.warn { border-color:#C0392B55; background:#C0392B0A; }
-  .exec-stat.warn .exec-stat-val { color:#C0392B; }
+  .exec-card-label { position:relative; z-index:1; display:block; font-size:11.5px; text-transform:uppercase; letter-spacing:.08em; font-weight:700; opacity:.92; }
+  .exec-card-val { position:relative; z-index:1; display:block; font-family:var(--font-display); font-size:32px; font-weight:800; letter-spacing:-.02em; line-height:1.15; margin-top:6px; }
+  .exec-card-divider { position:relative; z-index:1; height:1px; background:rgba(255,255,255,.3); margin:12px 0 9px; width:60%; }
+  .exec-card-sub { position:relative; z-index:1; display:block; font-family:var(--font-mono); font-size:13px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .exec-card-sub2 { position:relative; z-index:1; display:block; font-size:11.5px; opacity:.82; margin-top:1px; }
+  .exec-card-icon { position:absolute; right:12px; bottom:10px; width:50px; height:50px; opacity:.16; z-index:0; }
+  .exec-card.teal  { background:var(--retelit-teal); }
+  .exec-card.blue  { background:var(--retelit-blue); }
+  .exec-card.green { background:var(--ok); }
+  .exec-card.red   { background:var(--err); }
   /* ── KPI CARDS ─────────────────────────────────────────────────── */
   .phase-panel {
     border-radius:14px; padding:14px 16px 16px;
@@ -345,26 +349,37 @@
   <!-- HEADER -->
   <div style="display:flex;align-items:flex-start;justify-content:flex-end;gap:16px;flex-wrap:wrap;">
     <div class="exec-strip" id="execStrip">
-      <div class="exec-stat">
-        <span class="exec-stat-label">Numero Cantieri Tot.</span>
-        <span class="exec-stat-sub" id="execMetriCantieriTot">—</span>
-        <span class="exec-stat-val" id="execCantieriTot">—</span>
+      <div class="exec-card teal">
+        <span class="exec-card-label">Numero Cantieri Tot.</span>
+        <span class="exec-card-val" id="execCantieriTot">—</span>
+        <div class="exec-card-divider"></div>
+        <span class="exec-card-sub" id="execMetriCantieriTot">—</span>
+        <span class="exec-card-sub2">metri totali</span>
+        <svg class="exec-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-6h6v6M9 12h.01M15 12h.01M9 8h.01M15 8h.01"/></svg>
       </div>
-      <div class="exec-stat">
-        <span class="exec-stat-label">Avanzamento globale</span>
-        <span class="exec-stat-sub" id="execMetriScavi">—</span>
-        <span class="exec-stat-val" id="execPctScavi">—</span>
+      <div class="exec-card blue">
+        <span class="exec-card-label">Avanzamento globale</span>
+        <span class="exec-card-val" id="execPctScavi">—</span>
+        <div class="exec-card-divider"></div>
+        <span class="exec-card-sub" id="execMetriScavi">—</span>
+        <span class="exec-card-sub2" id="execMetriScaviSub2">di — m</span>
+        <svg class="exec-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 17l6-6 4 4 8-8M21 7v6M21 7h-6"/></svg>
       </div>
-      <div class="exec-stat">
-        <span class="exec-stat-label">Permessi Ottenuti</span>
-        <span class="exec-stat-sub" id="execMetriPermessi">—</span>
-        <span class="exec-stat-val" id="execPctPermessi">—</span>
+      <div class="exec-card green">
+        <span class="exec-card-label">Permessi Ottenuti</span>
+        <span class="exec-card-val" id="execPctPermessi">—</span>
+        <div class="exec-card-divider"></div>
+        <span class="exec-card-sub" id="execMetriPermessi">—</span>
+        <span class="exec-card-sub2">autorizzati</span>
+        <svg class="exec-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2l8 3v6c0 5-3.4 8.7-8 11-4.6-2.3-8-6-8-11V5l8-3z"/><path d="M8.5 12l2.3 2.3L15.5 9.5"/></svg>
       </div>
-      <div class="exec-stat" id="execRischioCard">
-        <span class="exec-stat-label">Cantieri in Sospeso</span>
-        <span class="exec-stat-sub" id="execMetriSospesi">—</span>
-        <span class="exec-stat-val" id="execSospesi">—</span>
-      </div>
+      <div class="exec-card red" id="execRischioCard">
+        <span class="exec-card-label">Cantieri in Sospeso</span>
+        <span class="exec-card-val" id="execSospesi">—</span>
+        <div class="exec-card-divider"></div>
+        <span class="exec-card-sub" id="execMetriSospesi">—</span>
+        <span class="exec-card-sub2" id="execSospesiSub2"></span>
+        <svg class="exec-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l9 16H3l9-16z"/><path d="M12 10v4M12 17h.01"/></svg>
       </div>
     </div>
   </div>
@@ -1323,7 +1338,8 @@ function _renderRiepilogo() {
   const el = id => document.getElementById(id);
   if (el('execPctScavi'))    el('execPctScavi').textContent    = pctGlob + '%';
   if (el('execPctPermessi')) el('execPctPermessi').textContent = pctPermessi + '%';
-  if (el('execMetriScavi'))    el('execMetriScavi').textContent    = fmt(totScavati) + ' / ' + fmt(totMetri) + ' m';
+  if (el('execMetriScavi'))    el('execMetriScavi').textContent    = fmt(totScavati) + ' m';
+  if (el('execMetriScaviSub2')) el('execMetriScaviSub2').textContent = 'di ' + fmt(totMetri) + ' m';
   if (el('execMetriPermessi')) el('execMetriPermessi').textContent = fmt(totOttenuto) + ' m';
   if (el('repTracciato'))  el('repTracciato').textContent  = fmt(Math.round(totMetri / 1000)) + ' km';
   if (el('repPermessi'))   el('repPermessi').textContent   = pctPermessi + '% (' + fmt(Math.round(totOttenuto/1000)) + ' km)';
@@ -1452,9 +1468,9 @@ document.getElementById('kpiSos').textContent = counts['sospeso'];
 if (document.getElementById('execCantieriTot')) document.getElementById('execCantieriTot').textContent = CANTIERI_RAW.length;
 if (document.getElementById('execMetriCantieriTot')) document.getElementById('execMetriCantieriTot').textContent = fmt(totaleMetri) + ' m';
 const execSospesiEl = document.getElementById('execSospesi');
-const execRischioCard = document.getElementById('execRischioCard');
+const execSospesiSub2El = document.getElementById('execSospesiSub2');
 if (execSospesiEl) execSospesiEl.textContent = counts['sospeso'];
-if (execRischioCard) execRischioCard.classList.toggle('warn', counts['sospeso'] > 0);
+if (execSospesiSub2El) execSospesiSub2El.textContent = counts['sospeso'] > 0 ? 'cantieri sospesi' : 'nessuna sospensione';
 const execMetriSospesiEl = document.getElementById('execMetriSospesi');
 if (execMetriSospesiEl) execMetriSospesiEl.textContent = fmt(metri['sospeso']) + ' m';
 const SUB_ID = { 'non-avviato':'kpiNavSub', 'allestimento':'kpiAllSub', 'in-corso':'kpiCorSub', 'completato':'kpiComSub', 'sospeso':'kpiSosSub' };
