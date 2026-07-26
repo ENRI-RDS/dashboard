@@ -107,6 +107,7 @@
   }
   .exec-stat-label { font-size:12px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); font-weight:700; }
   .exec-stat-val { font-family:var(--font-display); font-size:27px; font-weight:800; letter-spacing:-.02em; color:var(--retelit-blue); line-height:1.15; }
+  .exec-stat-sub { font-family:var(--font-mono); font-size:11px; color:var(--muted); font-weight:600; }
   .exec-stat.warn { border-color:#C0392B55; background:#C0392B0A; }
   .exec-stat.warn .exec-stat-val { color:#C0392B; }
   /* ── KPI CARDS ─────────────────────────────────────────────────── */
@@ -345,14 +346,17 @@
       <div class="exec-stat">
         <span class="exec-stat-label">Avanzamento globale</span>
         <span class="exec-stat-val" id="execPctScavi">—</span>
+        <span class="exec-stat-sub" id="execMetriScavi">—</span>
       </div>
       <div class="exec-stat">
         <span class="exec-stat-label">Permessi Ottenuti</span>
         <span class="exec-stat-val" id="execPctPermessi">—</span>
+        <span class="exec-stat-sub" id="execMetriPermessi">—</span>
       </div>
       <div class="exec-stat" id="execRischioCard">
         <span class="exec-stat-label">Cantieri in Sospeso</span>
         <span class="exec-stat-val" id="execSospesi">—</span>
+        <span class="exec-stat-sub" id="execMetriSospesi">—</span>
       </div>
     </div>
   </div>
@@ -1311,6 +1315,8 @@ function _renderRiepilogo() {
   const el = id => document.getElementById(id);
   if (el('execPctScavi'))    el('execPctScavi').textContent    = pctGlob + '%';
   if (el('execPctPermessi')) el('execPctPermessi').textContent = pctPermessi + '%';
+  if (el('execMetriScavi'))    el('execMetriScavi').textContent    = fmt(totScavati) + ' / ' + fmt(totMetri) + ' m';
+  if (el('execMetriPermessi')) el('execMetriPermessi').textContent = fmt(totOttenuto) + ' m';
   if (el('repTracciato'))  el('repTracciato').textContent  = fmt(Math.round(totMetri / 1000)) + ' km';
   if (el('repPermessi'))   el('repPermessi').textContent   = pctPermessi + '% (' + fmt(Math.round(totOttenuto/1000)) + ' km)';
   if (el('repScavati'))    el('repScavati').textContent    = fmt(Math.round(totScavati / 1000)) + ' km';
@@ -1439,6 +1445,8 @@ const execSospesiEl = document.getElementById('execSospesi');
 const execRischioCard = document.getElementById('execRischioCard');
 if (execSospesiEl) execSospesiEl.textContent = counts['sospeso'];
 if (execRischioCard) execRischioCard.classList.toggle('warn', counts['sospeso'] > 0);
+const execMetriSospesiEl = document.getElementById('execMetriSospesi');
+if (execMetriSospesiEl) execMetriSospesiEl.textContent = fmt(metri['sospeso']) + ' m';
 const SUB_ID = { 'non-avviato':'kpiNavSub', 'allestimento':'kpiAllSub', 'in-corso':'kpiCorSub', 'completato':'kpiComSub', 'sospeso':'kpiSosSub' };
 Object.keys(SUB_ID).forEach(stato => {
   const pct = totaleMetri > 0 ? Math.round(metri[stato] / totaleMetri * 100) : 0;
