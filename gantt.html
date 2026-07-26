@@ -902,6 +902,17 @@ async function mergeCantieriProgress() {
         var maxIso = fineISO.slice().sort().slice(-1)[0];
         var dmy2 = isoToDmy(maxIso);
         if (dmy2) row.end = dmy2;
+      } else if (iniziISO.length && row._km != null) {
+        /* bug segnalato dall'utente (export MS Project: Opere Civili/Test e collaudo/
+           As Built a "0 g?", stessa data di Ottenimento permesso): senza fine_effettiva
+           confermata, row.end restava ancorato alla vecchia fine calcolata sul vecchio
+           start (permesso/baseline) — se il permesso slitta e il nuovo start reale cade
+           DOPO quella vecchia fine, la barra si inverte/collassa (fine < inizio).
+           Ricalcola qui la fine dal nuovo start con la stessa durata già risolta
+           (_rateApplied da applyGanttRates(), tasso permesso>impresa>lotto>default),
+           così la barra resta coerente anche a cantiere non ancora concluso. */
+        var giorniReali = row._rateApplied ? row._rateApplied.giorni : Math.max(1, Math.ceil(row._km * 1000 / SCAVO_M_GIORNO));
+        row.end = addWorkDaysDmy(parseDateStr(row.start), giorniReali);
       }
     });
   } catch (e) {
@@ -2168,6 +2179,7 @@ window.addEventListener('load', function() {
         return Promise.all([mergeMasterCsv(), mergeCantieriProgress(), fetchGanttOverrides()]);
       }).then(function() {
         propagateGanttDatesFromPermits(); /* Fase 5/6/7 slittano con le previsioni impresa sulla pratica corrispondente */
+        cascadeOpereCiviliDurations(); /* ripropaga a Test e collaudo/As Built l'eventuale nuova fine di Opere Civili ricalcolata in mergeCantieriProgress() (fix bug "0 g?" in export MS Project) */
         applyGanttOverrides(); /* vince sempre su baseline + Master.csv */
         applyManualDependencyShifts(); /* riposiziona le righe con un predecessore impostato manualmente (popover/drag&drop) subito dopo il predecessore, e propaga ai loro successori */
         checkCantiereDatesVsPermesso(); /* segnala eventuali cantieri con data di inizio lavori precedente all'ottenimento del permesso */
