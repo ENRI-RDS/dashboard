@@ -406,9 +406,10 @@
               <th class="imp-th-sort" onclick="_sortImprese('lotti')">Lotto</th>
               <th class="imp-th-sort" onclick="_sortImprese('cluster')">Cluster</th>
               <th class="imp-th-sort" style="text-align:right" onclick="_sortImprese('cantieri')">Cantieri Totali</th>
-              <th class="imp-th-sort" style="text-align:right" onclick="_sortImprese('nonAvviati')">Cantieri Non Avviati</th>
-              <th style="text-align:right">Completati</th>
+              <th class="imp-th-sort" style="text-align:right" onclick="_sortImprese('nonAvviati')">Non Avviati</th>
+              <th class="imp-th-sort" style="text-align:right" onclick="_sortImprese('allestimento')">In Allestimento</th>
               <th style="text-align:right">In Corso</th>
+              <th style="text-align:right">Completati</th>
               <th style="text-align:right">Sospesi</th>
               <th class="imp-th-sort" style="text-align:right" onclick="_sortImprese('metriTot')">Metri Tot.</th>
               <th class="imp-th-sort" style="text-align:right" onclick="_sortImprese('pct')">Avanzamento</th>
@@ -1340,7 +1341,7 @@ function _renderImprese() {
   const byImpresa = {};
   CANTIERI_RAW.forEach(r => {
     const nome = r.impresa || 'N/D';
-    if (!byImpresa[nome]) byImpresa[nome] = { impresa: nome, cantieri:0, nonAvviati:0, completati:0, corso:0, sospesi:0, metriTot:0, metriScav:0, lotti:new Set(), cluster:new Set(), metriTotByLotto:{} };
+    if (!byImpresa[nome]) byImpresa[nome] = { impresa: nome, cantieri:0, nonAvviati:0, allestimento:0, completati:0, corso:0, sospesi:0, metriTot:0, metriScav:0, lotti:new Set(), cluster:new Set(), metriTotByLotto:{} };
     const g = byImpresa[nome];
     const lottoKey = String(r.lotto || '?'); // stessa normalizzazione di PERMESSI/byLotto
     g.lotti.add(String(r.lotto ?? '—'));
@@ -1348,6 +1349,7 @@ function _renderImprese() {
     const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
     g.cantieri++;
     if (statoUI === 'non-avviato') g.nonAvviati++;
+    if (statoUI === 'allestimento') g.allestimento++;
     if (statoUI === 'completato') g.completati++;
     if (statoUI === 'in-corso') g.corso++;
     if (statoUI === 'sospeso') g.sospesi++;
@@ -1373,7 +1375,7 @@ function _renderImprese() {
     };
   });
 
-  const IMP_SORT_LABEL = { impresa:'Impresa', lotti:'Lotto', cluster:'Cluster', cantieri:'Cantieri Totali', nonAvviati:'Cantieri Non Avviati', metriTot:'Metri Tot.', pct:'Avanzamento' };
+  const IMP_SORT_LABEL = { impresa:'Impresa', lotti:'Lotto', cluster:'Cluster', cantieri:'Cantieri Totali', nonAvviati:'Non Avviati', allestimento:'In Allestimento', metriTot:'Metri Tot.', pct:'Avanzamento' };
   const sub = document.getElementById('impreseSubtitle');
   if (sub) {
     const sortLabel = IMP_SORT_LABEL[_impreseSort.key] || _impreseSort.key;
@@ -1401,8 +1403,9 @@ function _renderImprese() {
         <td style="font-family:var(--font-mono);font-size:12px">${[...r.cluster].sort().join(', ')}</td>
         <td style="text-align:right;font-family:var(--font-mono)">${r.cantieri}</td>
         <td style="text-align:right;font-family:var(--font-mono)">${r.nonAvviati}</td>
-        <td style="text-align:right"><span class="imp-badge" style="background:#1F7A4E1A;color:#1F7A4E">${r.completati}</span></td>
+        <td style="text-align:right;font-family:var(--font-mono)">${r.allestimento}</td>
         <td style="text-align:right"><span class="imp-badge" style="background:#0B31821A;color:#0B3182">${r.corso}</span></td>
+        <td style="text-align:right"><span class="imp-badge" style="background:#1F7A4E1A;color:#1F7A4E">${r.completati}</span></td>
         <td style="text-align:right">${r.sospesi > 0 ? `<span class="imp-badge" style="background:#C23B221A;color:#C23B22">${r.sospesi}</span>` : '<span style="color:var(--muted)">0</span>'}</td>
         <td style="text-align:right;font-family:var(--font-mono)">${fmt(r.metriTot)} m</td>
         <td style="text-align:right;white-space:nowrap">
