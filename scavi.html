@@ -631,16 +631,17 @@
 
       <div class="card">
         <div class="card-header">
-          <span class="card-title">Mappa Cantieri Attivi</span>
+          <span class="card-title">Mappa Cantieri</span>
           <span class="card-caption" id="miniMapCount">caricamento…</span>
         </div>
         <div class="card-body" style="padding:0;display:flex;flex-direction:column;gap:0;">
           <div class="mini-map-wrap"><div id="miniMapCantieri"></div></div>
           <div class="legend" style="padding:10px 16px;flex-wrap:wrap;row-gap:6px;">
+            <div class="legend-item"><div class="legend-dot" style="background:#8A91B4"></div>Non avviato</div>
             <div class="legend-item"><div class="legend-dot" style="background:#C08A14"></div>Allestimento</div>
             <div class="legend-item"><div class="legend-dot" style="background:#0B3182"></div>In corso</div>
-            <div class="legend-item"><div class="legend-dot" style="background:#C23B22"></div>Sospeso</div>
             <div class="legend-item"><div class="legend-dot" style="background:#1F7A4E"></div>Completato</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#C23B22"></div>Sospeso</div>
           </div>
         </div>
       </div>
@@ -1046,8 +1047,9 @@ function _renderAll() {
   _renderMappaCantieri().catch(e => console.error('[ENRI] _renderMappaCantieri fallito:', e));
 }
 
-// ── MAPPA CANTIERI ATTIVI (mini-mappa Leaflet, sidebar sotto "Distribuzione Stati") ──
-// "Attivo" = stesso criterio già usato altrove in questa pagina (STATO_MAP diverso da 'non-avviato').
+// ── MAPPA CANTIERI (mini-mappa Leaflet, sidebar sotto "Distribuzione Stati") ──
+// Vista dell'intero progetto: un marker circolare numerato per lotto (centroide delle
+// sue tratte), colorato per stato lotto (STATO_COLOR), senza disegnare le singole tratte.
 async function _loadQgisGeojsonForMappa() {
   if (QGIS_GEOJSON_CACHE) return QGIS_GEOJSON_CACHE;
   try {
@@ -1061,13 +1063,26 @@ async function _loadQgisGeojsonForMappa() {
   return QGIS_GEOJSON_CACHE;
 }
 
+// Centroide di una geometria GeoJSON (Point/LineString/Polygon e varianti Multi*), media dei vertici.
+function _geometryCentroid(geometry) {
+  if (!geometry) return null;
+  const DEPTH = { Point: 0, MultiPoint: 1, LineString: 1, MultiLineString: 2, Polygon: 2, MultiPolygon: 3 };
+  const depth = DEPTH[geometry.type];
+  if (depth === undefined) return null;
+  let sumLat = 0, sumLng = 0, n = 0;
+  (function walk(coords, d) {
+    if (d === 0) { sumLng += coords[0]; sumLat += coords[1]; n++; }
+    else coords.forEach(c => walk(c, d - 1));
+  })(geometry.coordinates, depth);
+  return n ? [sumLat / n, sumLng / n] : null;
+}
+
 async function _renderMappaCantieri() {
   const el = document.getElementById('miniMapCantieri');
   if (!el || typeof L === 'undefined') return;
 
-  const attivi = CANTIERI_RAW.filter(r => (STATO_MAP[r.stato_cantiere] || 'non-avviato') !== 'non-avviato');
   const countEl = document.getElementById('miniMapCount');
-  if (countEl) countEl.textContent = attivi.length + ' cantieri attivi';
+  if (countEl) countEl.textContent = CANTIERI_RAW.length + ' cantieri';
 
   const geo = await _loadQgisGeojsonForMappa();
   const byTratta = {};
@@ -1076,36 +1091,56 @@ async function _renderMappaCantieri() {
     if (tid) byTratta[tid] = f;
   });
 
-  const features = [];
-  attivi.forEach(r => {
-    const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
-    const color = STATO_COLOR[statoUI] || '#8A91B4';
-    (r.tratte || []).forEach(t => {
-      const f = byTratta[t.tratta_id];
-      if (f) features.push({ type: 'Feature', geometry: f.geometry, properties: { ...f.properties, _color: color, _statoUI: statoUI } });
+  const countByLotto = {};
+  CANTIERI_RAW.forEach(r => {
+    const lotto = String(r.lotto || '?');
+    countByLotto[lotto] = (countByLotto[lotto] || 0) + 1;
+  });
+
+  const markers = [];
+  LOTTI.forEach(l => {
+    const count = countByLotto[l.id] || 0;
+    if (!count) return;
+    let sumLat = 0, sumLng = 0, n = 0;
+    (l.tratte || []).forEach(tid => {
+      const f = byTratta[tid];
+      const c = f && _geometryCentroid(f.geometry);
+      if (c) { sumLat += c[0]; sumLng += c[1]; n++; }
     });
+    if (!n) return;
+    markers.push({ lat: sumLat / n, lng: sumLng / n, count, stato: l.stato, lottoId: l.id });
   });
 
   if (!MINI_MAP) {
-    MINI_MAP = L.map('miniMapCantieri', { zoomControl: false, attributionControl: false, scrollWheelZoom: false, dragging: true });
+    MINI_MAP = L.map('miniMapCantieri', { zoomControl: false, attributionControl: false, scrollWheelZoom: false });
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 18, subdomains: 'abcd' }).addTo(MINI_MAP);
   }
   if (MINI_MAP_LAYER) { MINI_MAP.removeLayer(MINI_MAP_LAYER); MINI_MAP_LAYER = null; }
 
-  if (!features.length) {
-    MINI_MAP.setView([45.5, 9.3], 8);
-    return;
+  const group = L.layerGroup();
+  markers.forEach(m => {
+    const color = STATO_COLOR[m.stato] || '#8A91B4';
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="width:26px;height:26px;border-radius:50%;background:${color};color:#fff;display:flex;align-items:center;justify-content:center;font:700 12px var(--font-mono,monospace);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)">${m.count}</div>`,
+      iconSize: [26, 26], iconAnchor: [13, 13],
+    });
+    const marker = L.marker([m.lat, m.lng], { icon });
+    marker.bindTooltip(`Lotto ${m.lottoId} · ${STATO_LABEL[m.stato] || ''}`, { direction: 'top', offset: [0, -13] });
+    marker.on('click', () => {
+      const r = LOTTI.find(x => x.id === m.lottoId);
+      if (r) openModalLotto(r);
+    });
+    group.addLayer(marker);
+  });
+  group.addTo(MINI_MAP);
+  MINI_MAP_LAYER = group;
+
+  if (markers.length) {
+    MINI_MAP.fitBounds(L.latLngBounds(markers.map(m => [m.lat, m.lng])), { padding: [24, 24] });
+  } else {
+    MINI_MAP.setView([45.5, 9.3], 9);
   }
-
-  MINI_MAP_LAYER = L.geoJSON({ type: 'FeatureCollection', features }, {
-    style: f => ({ color: f.properties._color, weight: 3, opacity: .85 }),
-    onEachFeature: (f, layer) => {
-      const p = f.properties;
-      layer.bindTooltip(`Lotto ${p.LOTTO ?? '—'} · ${p.COMUNE || ''} · ${STATO_LABEL[p._statoUI] || ''}`, { sticky: true });
-    }
-  }).addTo(MINI_MAP);
-
-  MINI_MAP.fitBounds(MINI_MAP_LAYER.getBounds(), { padding: [14, 14] });
   setTimeout(() => MINI_MAP && MINI_MAP.invalidateSize(), 200);
 }
 
