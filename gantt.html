@@ -1062,7 +1062,12 @@ function cascadeOpereCiviliDurations() {
      ORIGINALE del .mpp (_mppBaseEnd, immutabile), e lo trasla sui successori (campo
      '_deltaKm', si somma a un eventuale '_deltaPermesso' già presente, non lo sovrascrive).
      Chiamata sia dopo la prima passata sincrona (default) sia dopo applyGanttRates() (tassi
-     risolti) — idempotente, il riferimento _mppBaseEnd non cambia mai. */
+     risolti) — idempotente, il riferimento _mppBaseEnd non cambia mai.
+     NOTA: NON richiamare questa funzione dopo mergeCantieriProgress()/dati cantiere reali —
+     a quel punto row.start di Opere Civili riflette già uno scostamento "permesso reale"
+     oltre a quello di durata, quindi il confronto con _mppBaseEnd includerebbe ENTRAMBI
+     e sommandolo a '_deltaPermesso' (già presente) lo conterebbe due volte. Per quel caso
+     v. _realignSuccessorsAfterRealCantieri(), sotto. */
   var byId = {};
   GANTT_ROWS.forEach(function(r) { byId[r.id] = r; });
   GANTT_ROWS.forEach(function(row) {
@@ -1071,6 +1076,53 @@ function cascadeOpereCiviliDurations() {
     if (!mppEnd || !newEnd) return;
     var deltaDays = Math.round((newEnd - mppEnd) / 86400000);
     _cascadeDeltaFromRow(row.id, deltaDays, byId, '_deltaKm');
+  });
+}
+
+/* ── Bug segnalato dall'utente (screenshot): dopo il fix di mergeCantieriProgress
+   (rev.211, ricalcolo fine Opere Civili sul nuovo start reale), Test e collaudo/
+   As Built su alcune pratiche finivano PRIMA di Opere Civili (frecce che tornano
+   indietro nel tempo). Causa: avevo richiamato cascadeOpereCiviliDurations() anche
+   dopo mergeCantieriProgress, ma quella funzione confronta col baseline .mpp
+   ORIGINALE (immutabile, mai spostato) — se Opere Civili ha già un dato reale
+   (permesso ottenuto molto prima/dopo il previsto), quel confronto include SIA lo
+   scostamento di posizione SIA quello di durata, e sommandolo a '_deltaPermesso'
+   (già applicato da propagateGanttDatesFromPermits per lo stesso motivo) conta due
+   volte lo scostamento di posizione — risultato: successori spinti troppo indietro
+   (o avanti) nel tempo, in casi estremi prima del proprio predecessore.
+   Fix corretto: quando Opere Civili ha un dato reale (row.real), i successori
+   strutturali diretti vengono riposizionati qui in modo ASSOLUTO subito dopo la
+   fine reale (mai per delta cumulativo), preservando ciascuno la propria durata
+   originale. Cammina un solo passo alla volta sui successori DIRETTI (GANTT_DEPS,
+   non transitivo) e si ferma se incontra un successore con dato reale proprio
+   (quello vince, non va toccato). */
+function _realignSuccessorsAfterRealCantieri() {
+  var byId = {};
+  GANTT_ROWS.forEach(function(r) { byId[r.id] = r; });
+  GANTT_ROWS.forEach(function(opRow) {
+    if (opRow.t !== 'bar' || opRow.label !== 'Opere Civili' || !opRow.real || !opRow.end) return;
+    var predFinish = parseDateStr(opRow.end);
+    var predId = opRow.id;
+    while (predFinish) {
+      var nextIds = ganttSuccessorsOf(predId);
+      if (!nextIds.length) break;
+      var succRow = byId[nextIds[0]]; // catena lineare 1:1 per pratica (Opere Civili→Test→As Built)
+      if (!succRow || succRow.real) break;
+      var dep = GANTT_DEPS[nextIds[0]];
+      var minStart = (dep && dep.lagDays) ? new Date(predFinish.getTime() + dep.lagDays * 86400000) : predFinish;
+      if (succRow.t === 'ms') {
+        succRow.date = fmtDate(minStart);
+        predFinish = minStart;
+      } else if (succRow.t === 'bar') {
+        var s = parseDateStr(succRow.start), e = parseDateStr(succRow.end);
+        if (!s || !e) break;
+        var durMs = e.getTime() - s.getTime();
+        succRow.start = fmtDate(minStart);
+        succRow.end = fmtDate(new Date(minStart.getTime() + durMs));
+        predFinish = parseDateStr(succRow.end);
+      } else break;
+      predId = succRow.id;
+    }
   });
 }
 
@@ -2179,7 +2231,7 @@ window.addEventListener('load', function() {
         return Promise.all([mergeMasterCsv(), mergeCantieriProgress(), fetchGanttOverrides()]);
       }).then(function() {
         propagateGanttDatesFromPermits(); /* Fase 5/6/7 slittano con le previsioni impresa sulla pratica corrispondente */
-        cascadeOpereCiviliDurations(); /* ripropaga a Test e collaudo/As Built l'eventuale nuova fine di Opere Civili ricalcolata in mergeCantieriProgress() (fix bug "0 g?" in export MS Project) */
+        _realignSuccessorsAfterRealCantieri(); /* riposiziona Test e collaudo/As Built subito dopo la fine REALE di Opere Civili (fix bug "0 g?"/successori prima del predecessore in export MS Project) */
         applyGanttOverrides(); /* vince sempre su baseline + Master.csv */
         applyManualDependencyShifts(); /* riposiziona le righe con un predecessore impostato manualmente (popover/drag&drop) subito dopo il predecessore, e propaga ai loro successori */
         checkCantiereDatesVsPermesso(); /* segnala eventuali cantieri con data di inizio lavori precedente all'ottenimento del permesso */
