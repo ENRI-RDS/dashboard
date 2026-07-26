@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ENRI — Gantt Lotto 1A</title>
 <script src="js/api-config.js"></script>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -190,10 +189,6 @@ tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);fo
         <span class="gantt-legend-item" style="color:var(--retelit-teal);">
           <svg width="12" height="14"><line x1="6" y1="0" x2="6" y2="14" stroke="var(--retelit-teal)" stroke-width="2" stroke-dasharray="3,2"/></svg>Oggi
         </span>
-        <button id="exportExcelBtn" class="btn-sm" style="gap:6px;" onclick="exportGanttExcel()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg>
-          Esporta Excel
-        </button>
         <button id="exportProjectBtn" class="btn-sm" style="gap:6px;" onclick="exportGanttProjectXML()">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg>
           Esporta per MS Project
@@ -1637,81 +1632,6 @@ document.addEventListener('mouseup', function(e) {
   openGanttEditPopover(+targetRid, e.clientX, e.clientY, +drag.fromId);
 });
 
-/* ── Esportazione Excel (per incollare su MS Project) ──
-   Colonne pensate per il paste diretto nella tabella Gantt di MS Project:
-   Nome attività (indentato coi livelli MATERIALI/COMUNE/Pratica/Fase per
-   leggibilità), Livello (0=lotto/gruppo, 1=pratica, 2=fase/milestone —
-   utile se si vuole ricostruire l'outline in Project), Inizio, Fine,
-   Durata (gg), % Completamento. Le righe 'g'/'g2' (intestazioni di gruppo)
-   non hanno date/durata/%, solo il nome. */
-/* Numero WBS di una riga (bar/ms → "N.F", g2 → "N", g/materiali → ''), stessa
-   numerazione già mostrata in pagina da _ganttPraticaLabelPrefix()/select
-   Predecessore — riusata qui per compilare le colonne Numero/Predecessori
-   dell'export (bug segnalato dall'utente: mancavano del tutto). */
-function _ganttRowNumero(row) {
-  var pnums = ganttPraticaNumbers();
-  if (row.t === 'g2') {
-    var segs = row.label.split(' · ');
-    var code = segs.length >= 2 ? segs[1].trim() : null;
-    var num = code ? pnums[code] : null;
-    return num ? String(num) : '';
-  }
-  if ((row.t === 'bar' || row.t === 'ms') && row._praticaCode) {
-    var num2 = pnums[row._praticaCode];
-    var ph = GANTT_PHASE_NUM[row.label];
-    if (num2 && ph) return num2 + '.' + ph;
-  }
-  return '';
-}
-function _ganttDepLabel(dep) {
-  if (!dep) return '';
-  var predRow = findGanttRow(dep.pred);
-  var num = predRow ? _ganttRowNumero(predRow) : '';
-  if (!num) return '';
-  return num + (dep.type === 'SS' ? 'SS' : 'FS') + (dep.lagDays ? ('+' + dep.lagDays) : '');
-}
-function _ganttRowPredecessori(row) {
-  var parts = [];
-  var l1 = _ganttDepLabel(GANTT_DEPS[row.id]);
-  if (l1) parts.push(l1);
-  var l2 = _ganttDepLabel(GANTT_EXTRA_DEPS[row.id]);
-  if (l2) parts.push(l2);
-  return parts.join(', ');
-}
-
-function exportGanttExcel() {
-  if (typeof XLSX === 'undefined') {
-    alert('Libreria di export non disponibile: verificare la connessione (cdn.sheetjs.com).');
-    return;
-  }
-  var rows = [['Numero', 'Nome attività', 'Livello', 'Inizio', 'Fine', 'Durata (gg)', '% Completamento', 'Predecessori', 'Note']];
-  var indent = 0;
-  GANTT_ROWS.forEach(function(r) {
-    if (r.t === 'g') { indent = 0; rows.push(['', r.label, 0, '', '', '', '', '', '']); return; }
-    if (r.t === 'g2') { indent = 1; rows.push([_ganttRowNumero(r), '  ' + r.label, 1, '', '', '', '', '', '']); return; }
-    var lvl = indent + 1;
-    var prefix = '';
-    for (var i = 0; i < lvl; i++) prefix += '  ';
-    var pctClamped = isFinite(Number(r.pct)) ? Math.min(100, Math.max(0, Math.round(Number(r.pct)))) : 0;
-    var numero = _ganttRowNumero(r);
-    var pred = _ganttRowPredecessori(r);
-    if (r.t === 'bar') {
-      var d1 = parseDateStr(r.start), d2 = parseDateStr(r.end);
-      var dur = (d1 && d2) ? Math.round((d2 - d1) / 86400000) + 1 : '';
-      rows.push([numero, prefix + r.label, lvl, r.start || '', r.end || '', dur, pctClamped + '%', pred, r.sub || '']);
-    } else if (r.t === 'ms') {
-      rows.push([numero, prefix + r.label, lvl, r.date || '', r.date || '', 0, pctClamped + '%', pred, r.sub || '']);
-    }
-  });
-  var ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 8 }, { wch: 46 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 60 }];
-  var wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Gantt');
-  var oggi = new Date();
-  var stamp = oggi.getFullYear() + ('0' + (oggi.getMonth() + 1)).slice(-2) + ('0' + oggi.getDate()).slice(-2);
-  XLSX.writeFile(wb, 'Gantt_Lotto' + LOTTO_ID + '_' + stamp + '.xlsx');
-}
-
 /* ────────────────────────────────────────────────────────────────────────
    Export MS Project (formato MSPDI / Project XML — schema
    http://schemas.microsoft.com/project, stabile dal 2003 e usato da MS
@@ -1766,12 +1686,24 @@ function exportGanttProjectXML() {
   var idToUid = {};
   GANTT_ROWS.forEach(function(r, i) { idToUid[r.id] = i + 1; });
 
+  /* Data di inizio progetto: la più vecchia tra tutte le date del Gantt.
+     Se non impostata esplicitamente, Project ne usa una di default (in
+     pratica la data odierna) che può cadere DOPO le date dei task già
+     schedulati — Project segnala l'errore "l'inizio dell'attività precede
+     l'inizio del progetto" ed è quello che succedeva qui. */
+  var projMin = null;
+  GANTT_ROWS.forEach(function(r) {
+    var d = (r.t === 'bar') ? parseDateStr(r.start) : (r.t === 'ms') ? parseDateStr(r.date) : null;
+    if (d && (!projMin || d < projMin)) projMin = d;
+  });
+
   var xml = [];
   xml.push('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>');
   xml.push('<Project xmlns="http://schemas.microsoft.com/project">');
   xml.push('<Name>Gantt_Lotto' + _xmlEsc(LOTTO_ID) + '</Name>');
   xml.push('<Title>Gantt Lotto ' + _xmlEsc(LOTTO_ID) + '</Title>');
   xml.push('<ScheduleFromStart>1</ScheduleFromStart>');
+  if (projMin) xml.push('<StartDate>' + _projIsoFromDate(projMin, '08:00:00') + '</StartDate>');
   xml.push('<CalendarUID>1</CalendarUID>');
   xml.push('<DefaultStartTime>08:00:00</DefaultStartTime>');
   xml.push('<DefaultFinishTime>17:00:00</DefaultFinishTime>');
