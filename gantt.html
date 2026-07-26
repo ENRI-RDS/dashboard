@@ -1668,10 +1668,10 @@ function _countWorkdays(d1, d2) {
   }
   return count || 1;
 }
-function _projRollupRange(startIdx, stopTypes) {
+function _projRollupRange(rows, startIdx, stopTypes) {
   var minD = null, maxD = null;
-  for (var j = startIdx + 1; j < GANTT_ROWS.length; j++) {
-    var rr = GANTT_ROWS[j];
+  for (var j = startIdx + 1; j < rows.length; j++) {
+    var rr = rows[j];
     if (stopTypes.indexOf(rr.t) !== -1) break;
     if (rr.t === 'bar' || rr.t === 'ms') {
       var s = parseDateStr(rr.t === 'bar' ? rr.start : rr.date);
@@ -1682,9 +1682,54 @@ function _projRollupRange(startIdx, stopTypes) {
   }
   return { start: minD, end: maxD };
 }
+/* ── Bug segnalato dall'utente: aprendo l'XML esportato in MS Project, Opere Civili/
+   Test e collaudo/As Built risultano collassati a "0 g?" sulla stessa data di
+   Ottenimento permesso, mentre la dashboard mostra correttamente barre distese nel
+   tempo. Causa: la dashboard disegna Start/Finish di ogni riga così come sono in
+   GANTT_ROWS SENZA verificare che siano coerenti con il predecessore (può succedere
+   che una riga "reale" — es. Opere Civili con dati cantiere già inseriti, vedi
+   mergeCantieriProgress() — resti con uno Start precedente alla Finish del proprio
+   permesso quando questo slitta in avanti dopo l'inserimento; la dashboard lo
+   segnala solo con un'icona di warning, checkCantiereDatesVsPermesso(), senza
+   bloccare nulla). MS Project, che invece IMPONE il vincolo Fine→Inizio, in quel
+   caso ricalcola da solo lo Start portandolo alla Finish del predecessore e — dato
+   che riceve anche una Finish esplicita ormai incoerente con quel nuovo Start —
+   collassa la durata a 0. Questa funzione produce, SOLO per l'export (mai per
+   GANTT_ROWS live: la dashboard a schermo resta invariata, warning incluso), una
+   copia con Start/Finish "clampati" in modo che nessuna riga con un predecessore FS
+   parta prima della Finish del predecessore stesso — preservando la durata
+   originale del task (si trasla per intero, non si comprime). */
+function _exportSafeDates(rows) {
+  var clones = rows.map(function(r) { return Object.assign({}, r); });
+  var byId = {};
+  clones.forEach(function(r) { byId[r.id] = r; });
+  clones.forEach(function(row) {
+    if (row.t !== 'bar' && row.t !== 'ms') return;
+    var dep = GANTT_DEPS[row.id] || GANTT_EXTRA_DEPS[row.id];
+    if (!dep) return;
+    var predRow = byId[dep.pred];
+    if (!predRow) return;
+    var predFinish = parseDateStr(predRow.t === 'ms' ? predRow.date : predRow.end);
+    if (!predFinish) return;
+    var minStart = dep.lagDays ? new Date(predFinish.getTime() + dep.lagDays * 86400000) : predFinish;
+    if (row.t === 'ms') {
+      var d = parseDateStr(row.date);
+      if (d && d < minStart) row.date = fmtDate(minStart);
+      return;
+    }
+    var s = parseDateStr(row.start), e = parseDateStr(row.end);
+    if (s && s < minStart) {
+      var deltaMs = minStart.getTime() - s.getTime();
+      row.start = fmtDate(minStart);
+      if (e) row.end = fmtDate(new Date(e.getTime() + deltaMs));
+    }
+  });
+  return clones;
+}
 function exportGanttProjectXML() {
   var idToUid = {};
   GANTT_ROWS.forEach(function(r, i) { idToUid[r.id] = i + 1; });
+  var EXPORT_ROWS = _exportSafeDates(GANTT_ROWS); /* Start/Finish coerenti coi predecessori, solo per l'export */
 
   /* Data di inizio progetto: la più vecchia tra tutte le date del Gantt.
      Se non impostata esplicitamente, Project ne usa una di default (in
@@ -1692,7 +1737,7 @@ function exportGanttProjectXML() {
      schedulati — Project segnala l'errore "l'inizio dell'attività precede
      l'inizio del progetto" ed è quello che succedeva qui. */
   var projMin = null;
-  GANTT_ROWS.forEach(function(r) {
+  EXPORT_ROWS.forEach(function(r) {
     var d = (r.t === 'bar') ? parseDateStr(r.start) : (r.t === 'ms') ? parseDateStr(r.date) : null;
     if (d && (!projMin || d < projMin)) projMin = d;
   });
@@ -1728,12 +1773,12 @@ function exportGanttProjectXML() {
 
   xml.push('<Tasks>');
   var indent = 0;
-  GANTT_ROWS.forEach(function(r, i) {
+  EXPORT_ROWS.forEach(function(r, i) {
     var uid = i + 1;
     if (r.t === 'g' || r.t === 'g2') {
       indent = (r.t === 'g') ? 0 : 1;
       var outlineLevel = (r.t === 'g') ? 1 : 2;
-      var range = _projRollupRange(i, r.t === 'g' ? ['g'] : ['g', 'g2']);
+      var range = _projRollupRange(EXPORT_ROWS, i, r.t === 'g' ? ['g'] : ['g', 'g2']);
       xml.push('<Task><UID>' + uid + '</UID><ID>' + uid + '</ID><Name>' + _xmlEsc(r.label) + '</Name>' +
         '<OutlineLevel>' + outlineLevel + '</OutlineLevel><Summary>1</Summary><Milestone>0</Milestone><Priority>500</Priority>' +
         (range.start ? '<Start>' + _projIsoFromDate(range.start, '08:00:00') + '</Start>' : '') +
