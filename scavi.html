@@ -7,6 +7,8 @@
 <meta http-equiv="Content-Language" content="it">
 <title>ENRI — Avanzamento Scavi</title>
 <script src="js/api-config.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -137,6 +139,10 @@
   .exec-card-v2.blue  .exec-card-v2-val  { color:var(--retelit-blue); }
   .exec-card-v2.green .exec-card-v2-val  { color:var(--ok); }
   .exec-card-v2.red   .exec-card-v2-val  { color:var(--err); }
+
+  .mini-map-wrap { width:100%; height:230px; border-radius:0 0 12px 12px; overflow:hidden; }
+  #miniMapCantieri { width:100%; height:100%; background:#eef1f5; }
+  .mini-map-empty { display:flex; align-items:center; justify-content:center; height:230px; color:var(--muted); font-size:12.5px; text-align:center; padding:0 16px; }
   /* ── KPI CARDS ─────────────────────────────────────────────────── */
   .phase-panel {
     border-radius:14px; padding:14px 16px 16px;
@@ -623,7 +629,21 @@
         </div>
       </div>
 
-      <div class="card" style="visibility:hidden;min-height:320px;"></div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Mappa Cantieri Attivi</span>
+          <span class="card-caption" id="miniMapCount">caricamento…</span>
+        </div>
+        <div class="card-body" style="padding:0;display:flex;flex-direction:column;gap:0;">
+          <div class="mini-map-wrap"><div id="miniMapCantieri"></div></div>
+          <div class="legend" style="padding:10px 16px;flex-wrap:wrap;row-gap:6px;">
+            <div class="legend-item"><div class="legend-dot" style="background:#C08A14"></div>Allestimento</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#0B3182"></div>In corso</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#C23B22"></div>Sospeso</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#1F7A4E"></div>Completato</div>
+          </div>
+        </div>
+      </div>
 
 
 
@@ -673,6 +693,9 @@
 // ── DATI LOTTI — caricati da API /api/cantieri (scavi) + Riepilogo_progettazione.csv (permessi) ──
 let LOTTI = [];          // dati scavi aggregati per lotto (da MongoDB)
 let CANTIERI_RAW = [];    // singoli cantieri (tratte) non aggregati, da MongoDB
+let QGIS_GEOJSON_CACHE = null; // cache geometrie tratte (QGIS.geojson) per mappetta cantieri attivi
+let MINI_MAP = null;
+let MINI_MAP_LAYER = null;
 let _cantieriQuickFilters = { lotto:'all', stato:'all', cluster:'all', impresa:'all' };
 let PERMESSI = {};        // { lotto: { statiMap: {STATO: metri}, totale: metri } }  (da CSV permessi)
 let CLUSTER_PERMESSI = {}; // { cluster: { statiMap: {STATO: metri}, totale: metri, lotti: Set } } — aggregato per tratta, non per lotto: un lotto può attraversare più cluster
@@ -1020,6 +1043,70 @@ function _renderAll() {
   steps.forEach(fn => {
     try { fn(); } catch (e) { console.error('[ENRI] render step fallito:', fn.name, e); }
   });
+  _renderMappaCantieri().catch(e => console.error('[ENRI] _renderMappaCantieri fallito:', e));
+}
+
+// ── MAPPA CANTIERI ATTIVI (mini-mappa Leaflet, sidebar sotto "Distribuzione Stati") ──
+// "Attivo" = stesso criterio già usato altrove in questa pagina (STATO_MAP diverso da 'non-avviato').
+async function _loadQgisGeojsonForMappa() {
+  if (QGIS_GEOJSON_CACHE) return QGIS_GEOJSON_CACHE;
+  try {
+    const res = await fetch('QGIS.geojson', { cache: 'no-cache', headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    QGIS_GEOJSON_CACHE = await res.json();
+  } catch (e) {
+    console.warn('[ENRI] _loadQgisGeojsonForMappa fallito:', e.message);
+    QGIS_GEOJSON_CACHE = { type: 'FeatureCollection', features: [] };
+  }
+  return QGIS_GEOJSON_CACHE;
+}
+
+async function _renderMappaCantieri() {
+  const el = document.getElementById('miniMapCantieri');
+  if (!el || typeof L === 'undefined') return;
+
+  const attivi = CANTIERI_RAW.filter(r => (STATO_MAP[r.stato_cantiere] || 'non-avviato') !== 'non-avviato');
+  const countEl = document.getElementById('miniMapCount');
+  if (countEl) countEl.textContent = attivi.length + ' cantieri attivi';
+
+  const geo = await _loadQgisGeojsonForMappa();
+  const byTratta = {};
+  (geo.features || []).forEach(f => {
+    const tid = f.properties && f.properties.TRATTA_ID;
+    if (tid) byTratta[tid] = f;
+  });
+
+  const features = [];
+  attivi.forEach(r => {
+    const statoUI = STATO_MAP[r.stato_cantiere] || 'non-avviato';
+    const color = STATO_COLOR[statoUI] || '#8A91B4';
+    (r.tratte || []).forEach(t => {
+      const f = byTratta[t.tratta_id];
+      if (f) features.push({ type: 'Feature', geometry: f.geometry, properties: { ...f.properties, _color: color, _statoUI: statoUI } });
+    });
+  });
+
+  if (!MINI_MAP) {
+    MINI_MAP = L.map('miniMapCantieri', { zoomControl: false, attributionControl: false, scrollWheelZoom: false, dragging: true });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 18, subdomains: 'abcd' }).addTo(MINI_MAP);
+  }
+  if (MINI_MAP_LAYER) { MINI_MAP.removeLayer(MINI_MAP_LAYER); MINI_MAP_LAYER = null; }
+
+  if (!features.length) {
+    MINI_MAP.setView([45.5, 9.3], 8);
+    return;
+  }
+
+  MINI_MAP_LAYER = L.geoJSON({ type: 'FeatureCollection', features }, {
+    style: f => ({ color: f.properties._color, weight: 3, opacity: .85 }),
+    onEachFeature: (f, layer) => {
+      const p = f.properties;
+      layer.bindTooltip(`Lotto ${p.LOTTO ?? '—'} · ${p.COMUNE || ''} · ${STATO_LABEL[p._statoUI] || ''}`, { sticky: true });
+    }
+  }).addTo(MINI_MAP);
+
+  MINI_MAP.fitBounds(MINI_MAP_LAYER.getBounds(), { padding: [14, 14] });
+  setTimeout(() => MINI_MAP && MINI_MAP.invalidateSize(), 200);
 }
 
 // Click su una card KPI in alto: apre popup con tutti i cantieri di quello stato
