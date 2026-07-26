@@ -99,7 +99,7 @@
 
   .main { padding:22px 28px; display:flex; flex-direction:column; gap:20px; }
 
-  .exec-strip { display:flex; flex-wrap:wrap; gap:12px; width:auto; justify-content:flex-end; }
+  .exec-strip { display:flex; flex-wrap:nowrap; gap:12px; width:fit-content; flex:0 0 auto; justify-content:flex-end; }
   .exec-card {
     position:relative; overflow:hidden; flex:0 0 172px; width:172px; box-sizing:border-box;
     border-radius:12px; padding:10px 14px 11px; color:#fff; box-shadow:var(--sh-xs);
@@ -119,7 +119,7 @@
   .exec-view-btn { border:none; background:transparent; font-size:12px; font-weight:700; padding:6px 14px; border-radius:999px; cursor:pointer; color:#5B6472; font-family:inherit; }
   .exec-view-btn.active { background:#fff; color:#0B3182; box-shadow:var(--sh-xs); }
 
-  .exec-strip-v2 { display:flex; flex-wrap:wrap; gap:12px; width:auto; justify-content:flex-end; }
+  .exec-strip-v2 { display:flex; flex-wrap:nowrap; gap:12px; width:fit-content; flex:0 0 auto; justify-content:flex-end; }
   .exec-card-v2 { position:relative; background:#fff; flex:0 0 172px; width:172px; box-sizing:border-box; border-radius:12px; padding:11px 14px; box-shadow:var(--sh-xs); border:1px solid #EEF1F5; }
   .exec-card-v2-head { display:flex; align-items:flex-start; gap:8px; margin-bottom:8px; }
   .exec-card-v2-icon { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
@@ -375,7 +375,7 @@
       <button class="exec-view-btn active" data-mode="classic" onclick="_setExecCardStyle('classic')">Classica</button>
       <button class="exec-view-btn" data-mode="compact" onclick="_setExecCardStyle('compact')">Compatta</button>
     </div>
-    <div class="exec-strip" id="execStrip" style="flex:0 1 auto;">
+    <div class="exec-strip" id="execStrip">
       <div class="exec-card blue">
         <span class="exec-card-label">Avanzamento globale</span>
         <span class="exec-card-val" id="execPctScavi">—</span>
@@ -410,7 +410,7 @@
       </div>
     </div>
 
-    <div class="exec-strip-v2" id="execStripV2" style="display:none;flex:0 1 auto;">
+    <div class="exec-strip-v2" id="execStripV2" style="display:none;">
       <div class="exec-card-v2 blue">
         <div class="exec-card-v2-head">
           <span class="exec-card-v2-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 17l6-6 4 4 8-8M21 7v6M21 7h-6"/></svg></span>
@@ -475,8 +475,8 @@
     function _setExecCardStyle(mode){
       const classic = document.getElementById('execStrip');
       const compact = document.getElementById('execStripV2');
-      if (classic) classic.style.display = mode === 'compact' ? 'none' : 'grid';
-      if (compact) compact.style.display = mode === 'compact' ? 'grid' : 'none';
+      if (classic) classic.style.display = mode === 'compact' ? 'none' : 'flex';
+      if (compact) compact.style.display = mode === 'compact' ? 'flex' : 'none';
       document.querySelectorAll('.exec-view-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
       try { localStorage.setItem('execCardStyle', mode); } catch(e){}
     }
@@ -618,8 +618,6 @@
     <!-- RIGHT sidebar -->
     <div class="side">
 
-      <div class="card" style="visibility:hidden;min-height:320px;"></div>
-
       <div class="card">
         <div class="card-header"><span class="card-title">Distribuzione Stati</span></div>
         <div class="card-body" style="display:flex;flex-direction:column;align-items:center;gap:16px;">
@@ -627,6 +625,8 @@
           <div style="display:flex;flex-direction:column;gap:7px;width:100%" id="donutLegend"></div>
         </div>
       </div>
+
+      <div class="card" style="visibility:hidden;min-height:320px;"></div>
 
 
 
