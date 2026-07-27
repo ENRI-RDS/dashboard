@@ -1872,33 +1872,42 @@ function exportGanttProjectXML() {
     if (r.t === 'bar') {
       var d1 = parseDateStr(r.start), d2 = parseDateStr(r.end);
       var durDays = _countWorkdays(d1, d2);
-      /* bug segnalato dall'utente: con un PredecessorLink, Project (auto-pianificato,
-         ConstraintType di default = "Il più presto possibile") ricalcola lo Start dal
-         link stesso e SCARTA lo Start/Finish/Duration che gli passiamo qui — risultato:
-         durata collassata a 0, identica alla data del predecessore, anche se in
-         GANTT_ROWS/dashboard i dati sono corretti. Fix: quando c'è almeno un
-         predecessore, forziamo ConstraintType=2 (Must Start On) + ConstraintDate = il
-         nostro Start (già coerente col predecessore grazie a _exportSafeDates sopra) —
-         così Project mantiene lo Start/Duration espliciti invece di ricalcolarli dal
-         solo link. Nessun vincolo per i task senza predecessore (es. Progettazione),
-         dove non c'è nulla con cui entrare in conflitto. */
-      var constraintXml = (preds.length && r.start) ?
-        '<ConstraintType>2</ConstraintType><ConstraintDate>' + _projIso(r.start, '08:00:00') + '</ConstraintDate>' : '';
+      /* Bug segnalato dall'utente, 3 tentativi precedenti insufficienti:
+         - rev.213 (ConstraintType/ConstraintDate): risolve la SEQUENZA ma Project
+           ricalcolava comunque Finish=Start prima di applicare il Duration.
+         - rev.214 (Manual=1): scartato — confermato via ricerca che lo schema XML
+           d'interscambio (MSPDI) non supporta le proprietà Manual/ManualStart/
+           ManualFinish/ManualDuration (sono solo nel modello COM, MAI nello schema
+           XML), quindi Project le ignora e mostra un default (1 giorno).
+         Fix corretto: per un bar con predecessore, il nostro stesso modello dati
+         (GANTT_DEPS, FS lag configurabile) dice già che deve iniziare esattamente
+         alla fine del predecessore — è ESATTAMENTE quello che fa di default
+         l'auto-pianificazione "Il più presto possibile" di Project da un
+         PredecessorLink. Quindi qui NON diamo più uno Start/Finish espliciti (nulla
+         con cui l'engine di Project possa entrare in conflitto): solo Duration +
+         il link, e lo Start/Finish li calcola Project stesso, sempre coerenti.
+         Solo il primo task di ogni pratica (Progettazione, nessun predecessore)
+         mantiene uno Start esplicito, perché non c'è alcun link da cui calcolarlo. */
+      var noPred = !preds.length;
       xml.push('<Task><UID>' + uid + '</UID><ID>' + uid + '</ID><Name>' + _xmlEsc(r.label) + '</Name>' +
         '<OutlineLevel>' + lvl + '</OutlineLevel><Summary>0</Summary><Milestone>0</Milestone><Priority>500</Priority>' +
-        '<Type>1</Type><Manual>1</Manual>' + constraintXml +
-        (r.start ? '<Start>' + _projIso(r.start, '08:00:00') + '</Start>' : '') +
-        (r.end ? '<Finish>' + _projIso(r.end, '17:00:00') + '</Finish>' : '') +
+        '<Type>1</Type>' +
+        (noPred && r.start ? '<Start>' + _projIso(r.start, '08:00:00') + '</Start>' : '') +
+        (noPred && r.end ? '<Finish>' + _projIso(r.end, '17:00:00') + '</Finish>' : '') +
         '<Duration>PT' + (durDays * 8) + 'H0M0S</Duration>' +
         '<PercentComplete>' + pctClamped + '</PercentComplete>' +
         (r.sub ? '<Notes>' + _xmlEsc(r.sub) + '</Notes>' : '') +
         predXml + '</Task>');
     } else if (r.t === 'ms') {
+      /* Le milestone rappresentano una data REALE (permesso ottenuto/previsto), non
+         semplicemente "subito dopo" il predecessore — qui lo Start esplicito va
+         mantenuto, col vincolo Must Start On (rev.213) perché non c'è rischio di
+         collasso durata (una milestone dura sempre 0). */
       var constraintXmlMs = (preds.length && r.date) ?
         '<ConstraintType>2</ConstraintType><ConstraintDate>' + _projIso(r.date, '08:00:00') + '</ConstraintDate>' : '';
       xml.push('<Task><UID>' + uid + '</UID><ID>' + uid + '</ID><Name>' + _xmlEsc(r.label) + '</Name>' +
         '<OutlineLevel>' + lvl + '</OutlineLevel><Summary>0</Summary><Milestone>1</Milestone><Priority>500</Priority>' +
-        '<Type>1</Type><Manual>1</Manual>' + constraintXmlMs +
+        '<Type>1</Type>' + constraintXmlMs +
         (r.date ? '<Start>' + _projIso(r.date, '08:00:00') + '</Start><Finish>' + _projIso(r.date, '08:00:00') + '</Finish>' : '') +
         '<Duration>PT0H0M0S</Duration>' +
         '<PercentComplete>' + pctClamped + '</PercentComplete>' +
