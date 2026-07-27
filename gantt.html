@@ -1872,26 +1872,23 @@ function exportGanttProjectXML() {
     if (r.t === 'bar') {
       var d1 = parseDateStr(r.start), d2 = parseDateStr(r.end);
       var durDays = _countWorkdays(d1, d2);
-      /* Bug segnalato dall'utente, tentativi precedenti insufficienti:
-         - rev.213 (ConstraintType/ConstraintDate): risolve la sequenza ma la
-           singola riga mostrava comunque "0 g?".
-         - rev.214 (Manual=1): scartato, non supportato dallo schema XML MSPDI.
-         - rev.216 (omettere Start/Finish sui bar collegati, solo Duration+link):
-           PEGGIORE — un vero export di MS Project (verificato via ricerca, esempio
-           Microsoft ufficiale) include SEMPRE Start/Finish espliciti insieme a
-           Duration anche con un PredecessorLink; ometterli ha fatto collassare
-           l'intera catena sulla stessa data del predecessore, nessuna progressione.
-         Causa reale, mai notata finora: mancava <DurationFormat> — l'elemento che
-         dice a Project in che unità leggere <Duration> (7 = giorni lavorativi da
-         8h, coerente con durDays*8 usato qui). Senza, Project non lo interpreta e
-         la durata resta ambigua/collassata. Fix: ripristinati Start/Finish +
-         ConstraintType=2/ConstraintDate (rev.213) su ogni bar con predecessore, e
-         aggiunto DurationFormat=7 subito dopo Duration su bar E milestone. */
+      /* Fix EMPIRICO (bug "0 g?" in export, rev.213/214/216/217 insufficienti —
+         cronologia completa in memory/AGENT_BRIEF.md rev.218): generati 3 file XML
+         minimi (4 task lineari) con Type diversi, aperti in un vero MS Project,
+         risalvati .mpp e riletti con MPXJ per confronto diretto — Type=1 (Durata
+         fissa) collassava SEMPRE Opere Civili/Test e collaudo a milestone/0gg
+         anche col vincolo Must Start On; Type=0 (Unità fisse, il default reale di
+         Project) con lo STESSO vincolo preserva correttamente la durata (verificato:
+         50gg/2gg). Type=1 resta invece corretto (confermato in ogni screenshot
+         precedente) per Progettazione (nessun predecessore) e per le milestone
+         (dove la durata è comunque sempre 0) — cambiamo Type SOLO per i bar con
+         predecessore, che sono l'unico caso rotto. */
+      var taskType = preds.length ? 0 : 1;
       var constraintXml = (preds.length && r.start) ?
         '<ConstraintType>2</ConstraintType><ConstraintDate>' + _projIso(r.start, '08:00:00') + '</ConstraintDate>' : '';
       xml.push('<Task><UID>' + uid + '</UID><ID>' + uid + '</ID><Name>' + _xmlEsc(r.label) + '</Name>' +
         '<OutlineLevel>' + lvl + '</OutlineLevel><Summary>0</Summary><Milestone>0</Milestone><Priority>500</Priority>' +
-        '<Type>1</Type>' + constraintXml +
+        '<Type>' + taskType + '</Type>' + constraintXml +
         (r.start ? '<Start>' + _projIso(r.start, '08:00:00') + '</Start>' : '') +
         (r.end ? '<Finish>' + _projIso(r.end, '17:00:00') + '</Finish>' : '') +
         '<Duration>PT' + (durDays * 8) + 'H0M0S</Duration><DurationFormat>7</DurationFormat>' +
