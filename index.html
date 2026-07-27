@@ -4455,6 +4455,7 @@ const PREV_WARN_DAYS = 7;
 
 function calcolaPrevisione(p) {
   if (!p.dataPrevRilascio) return null;
+  if (p.stato === 'OTTENUTO') return null; /* bug segnalato dall'utente: pratica già ottenuta (esito reale arrivato) mostrata come "scaduta" solo perché la data PREVISTA di rilascio è nel passato — la previsione non ha più senso una volta che l'esito reale è noto, va ignorata */
   const scad = parseDateIT(p.dataPrevRilascio);
   if (!scad) return null;
   const oggi = new Date(); oggi.setHours(0,0,0,0);
