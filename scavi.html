@@ -1214,7 +1214,7 @@ function _cantieriTableHtml(rows) {
           <tr>
             <th>Cod. Cantiere</th><th>Pratica</th><th>Ente</th><th>Lotto</th><th>Cluster</th>
             <th>Prov.</th><th>Comune</th><th>Impresa</th><th>Stato</th><th>Date</th><th>Avanzamento</th>
-            <th style="text-align:right">M. Tot.</th><th style="text-align:right">M. Scavati</th>
+            <th style="text-align:right">M. Scavati/Tot.</th>
             <th style="text-align:center">Registro</th>
           </tr>
         </thead>
@@ -1240,8 +1240,7 @@ function _cantieriTableHtml(rows) {
               <td style="white-space:nowrap"><span class="chip ${statoUI}">${STATO_LABEL[statoUI]}</span></td>
               <td>${_scavoDateCell(r)}</td>
               <td style="max-width:150px">${prog}</td>
-              <td style="text-align:right;font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(metriTot)}</td>
-              <td style="text-align:right;color:var(--muted)">${fmt(scavati)}</td>
+              <td style="text-align:right;white-space:nowrap"><span style="font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(scavati)}</span><span style="color:var(--muted)"> / ${fmt(metriTot)}</span></td>
               <td style="text-align:center"><span style="position:relative;display:inline-block">${_registroDotHtml(r)}<button class="btn-registro" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Registro</button></span></td>
             </tr>`;
           }).join('')}
@@ -1368,8 +1367,7 @@ const CANTIERI_COLS = [
   { key:'dateInfo',        label:'Date',          get:r => _scavoDatePlain(r), sortVal:r => _scavoDatePlain(r), noFilter:true, tight:true },
   { key:'pct',             label:'Avanz.',        get:r => (r.metri_totali||0) > 0 ? Math.round((r.metri_scavati||0)/r.metri_totali*100) + '%' : '—', numeric:true,
                            sortVal:r => (r.metri_totali||0) > 0 ? Math.round((r.metri_scavati||0)/r.metri_totali*100) : -1 },
-  { key:'metri_totali',    label:'M. Tot.',       get:r => fmt(r.metri_totali||0), numeric:true, align:'right', sortVal:r => r.metri_totali||0, tight:true, noFilter:true },
-  { key:'metri_scavati',   label:'M. Scavati',    get:r => fmt(r.metri_scavati||0), numeric:true, align:'right', sortVal:r => r.metri_scavati||0, tight:true, noFilter:true },
+  { key:'metri',           label:'M. Scavati/Tot.', get:r => `${fmt(r.metri_scavati||0)} / ${fmt(r.metri_totali||0)}`, numeric:true, align:'right', sortVal:r => r.metri_scavati||0, tight:true, noFilter:true },
   { key:'registro',        label:'Registro',      action:true, align:'center', tight:true },
 ];
 let _cantieriSort = { col:null, dir:1 };
@@ -1387,7 +1385,7 @@ function _renderCantieriTableHead() {
   const filterIcon = `<svg viewBox="0 0 16 16"><path d="M1.5 2.5h13l-4.7 5.6v4.6l-3.6 1.8v-6.4z" fill="currentColor"/></svg>`;
   tr.innerHTML = CANTIERI_COLS.map(c => {
     const tightStyle = c.key === 'ente' ? 'width:240px;max-width:240px;'
-      : (c.key === 'metri_totali' || c.key === 'metri_scavati') ? 'width:1%;max-width:100px;'
+      : c.key === 'metri' ? 'width:1%;max-width:120px;'
       : c.key === 'dateInfo' ? 'width:1%;max-width:120px;'
       : c.tight ? 'width:1%;max-width:70px;' : '';
     if (c.action) {
@@ -1553,8 +1551,7 @@ function _renderCantieriTable() {
       <td style="white-space:nowrap"><span class="chip ${statoUI}">${STATO_LABEL[statoUI]}</span></td>
       <td>${_scavoDateCell(r)}</td>
       <td style="max-width:150px">${prog}</td>
-      <td style="text-align:right;font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(metriTot)}</td>
-      <td style="text-align:right;color:var(--muted)">${fmt(scavati)}</td>
+      <td style="text-align:right;white-space:nowrap"><span style="font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(scavati)}</span><span style="color:var(--muted)"> / ${fmt(metriTot)}</span></td>
       <td style="text-align:center"><span style="position:relative;display:inline-block">${_registroDotHtml(r)}<button class="btn-registro" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Registro</button></span></td>
     </tr>`;
   }).join('') || `<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px">Nessun cantiere trovato.</td></tr>`;
