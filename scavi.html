@@ -1081,7 +1081,8 @@ function _registroStatus(r) {
 }
 function _registroDotHtml(r) {
   const s = _registroStatus(r);
-  return `<span title="${s.label.replace(/"/g,'&quot;')}" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${s.color};margin-right:6px;flex-shrink:0;vertical-align:middle;cursor:help"></span>`;
+  const tip = JSON.stringify({ color: s.color, label: s.label }).replace(/'/g, '&#39;');
+  return `<span class="registro-dot" data-tip='${tip}' style="position:absolute;top:-3px;left:-3px;width:8px;height:8px;border-radius:50%;background:${s.color};border:1.5px solid var(--surface);z-index:2;cursor:help"></span>`;
 }
 
 // ── RENDER ALL (chiamata dopo fetch sia permessi che cantieri) ──────────────
@@ -1241,7 +1242,7 @@ function _cantieriTableHtml(rows) {
               <td style="max-width:150px">${prog}</td>
               <td style="text-align:right;font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(metriTot)}</td>
               <td style="text-align:right;color:var(--muted)">${fmt(scavati)}</td>
-              <td style="text-align:center;white-space:nowrap">${_registroDotHtml(r)}<button class="btn-registro" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Registro</button></td>
+              <td style="text-align:center"><span style="position:relative;display:inline-block">${_registroDotHtml(r)}<button class="btn-registro" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Registro</button></span></td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -1554,7 +1555,7 @@ function _renderCantieriTable() {
       <td style="max-width:150px">${prog}</td>
       <td style="text-align:right;font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(metriTot)}</td>
       <td style="text-align:right;color:var(--muted)">${fmt(scavati)}</td>
-      <td style="text-align:center;white-space:nowrap">${_registroDotHtml(r)}<button class="btn-registro" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Registro</button></td>
+      <td style="text-align:center"><span style="position:relative;display:inline-block">${_registroDotHtml(r)}<button class="btn-registro" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Registro</button></span></td>
     </tr>`;
   }).join('') || `<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px">Nessun cantiere trovato.</td></tr>`;
 }
@@ -1722,6 +1723,31 @@ Object.keys(SUB_ID).forEach(stato => {
 
 // ── HELPERS (portati da index.html) ─────────────────────────────────────────
 const tooltip = document.getElementById('tooltip');
+
+// Popup ricco (stesso #tooltip riusato dalle barre) per il pallino stato
+// accanto al bottone Registro — mostra il motivo esatto del colore.
+function _showRegistroTip(dot, e) {
+  let d;
+  try { d = JSON.parse(dot.getAttribute('data-tip')); } catch(_) { return; }
+  const tw = 240;
+  const left = e.clientX + 14 + tw > window.innerWidth ? e.clientX - tw - 4 : e.clientX + 14;
+  tooltip.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;max-width:${tw}px">
+      <span style="width:9px;height:9px;border-radius:50%;background:${d.color};flex-shrink:0"></span>
+      <span style="font-size:12px;line-height:1.4;color:var(--text);font-family:var(--font-display)">${d.label}</span>
+    </div>`;
+  tooltip.style.opacity = '1';
+  tooltip.style.left = left + 'px';
+  tooltip.style.top = Math.max(4, e.clientY - 30) + 'px';
+}
+document.addEventListener('mousemove', (e) => {
+  const dot = e.target.closest('.registro-dot');
+  if (dot) _showRegistroTip(dot, e);
+});
+document.addEventListener('mouseout', (e) => {
+  const dot = e.target.closest('.registro-dot');
+  if (dot && !dot.contains(e.relatedTarget)) tooltip.style.opacity = '0';
+});
 
 function _showBarTip(seg, e) {
   let d;
