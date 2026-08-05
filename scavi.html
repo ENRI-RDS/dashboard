@@ -1033,19 +1033,24 @@ const TECNICA_LABEL = { trincea:'Trincea', no_dig:'No Dig', canaletta:'Canaletta
 // ── Pallino stato "Ultimo agg." accanto al bottone Registro ─────────────────
 // Non è un semplice indicatore di freschezza del log: per allestimento/in_corso
 // guarda la scadenza pianificata (inizio/fine previsti), non solo l'ultimo caricamento.
-function _logRecencyStatus(r, th, context) {
-  if (!r.log_count || !r.updated_at) {
-    return { color: 'var(--muted2)', label: `${context} — nessun caricamento registrato` };
-  }
+// Nota: il tooltip NON ripete lo stato del cantiere (già visibile in colonna "Stato") —
+// mostra solo ultimo caricamento e, se presente, la scadenza superata.
+function _lastUploadLabel(r) {
+  if (!r.log_count || !r.updated_at) return 'Nessun caricamento registrato';
   const d = new Date(r.updated_at);
-  if (isNaN(d)) return { color: 'var(--muted2)', label: `${context} — data aggiornamento non valida` };
+  if (isNaN(d)) return 'Data aggiornamento non valida';
   const giorni = Math.floor((new Date() - d) / 86400000);
   const dataStr = fmtD(r.updated_at.slice(0, 10));
-  const chi = r.impresa ? ` (${r.impresa})` : '';
   const ggTxt = giorni <= 0 ? 'oggi' : giorni === 1 ? 'ieri' : `${giorni}gg fa`;
-  if (giorni <= th.verdeMax)  return { color: 'var(--ok)',   label: `${context} — ultimo caricamento ${dataStr}${chi}, ${ggTxt}` };
-  if (giorni <= th.gialloMax) return { color: 'var(--warn)', label: `${context} — ultimo caricamento ${dataStr}${chi}, ${ggTxt}` };
-  return { color: 'var(--err)', label: `${context} — ultimo caricamento ${dataStr}${chi}, ${ggTxt}` };
+  return `Ultimo caricamento ${dataStr}, ${ggTxt}`;
+}
+function _logRecencyStatus(r, th) {
+  if (!r.log_count || !r.updated_at) return { color: 'var(--muted2)', label: _lastUploadLabel(r) };
+  const giorni = Math.floor((new Date() - new Date(r.updated_at)) / 86400000);
+  const base = _lastUploadLabel(r);
+  if (giorni <= th.verdeMax)  return { color: 'var(--ok)',   label: `In linea — ${base}` };
+  if (giorni <= th.gialloMax) return { color: 'var(--warn)', label: base };
+  return { color: 'var(--err)', label: base };
 }
 function _registroStatus(r) {
   const oggi = new Date().toISOString().slice(0, 10);
@@ -1053,31 +1058,31 @@ function _registroStatus(r) {
   const stato = r.stato_cantiere;
 
   if (stato === 'completato') {
-    return { color: 'var(--ok)', label: 'Cantiere completato' };
+    return { color: 'var(--ok)', label: _lastUploadLabel(r) };
   }
   if (stato === 'non_avviato') {
-    return { color: 'var(--muted2)', label: 'Non ancora avviato' };
+    return { color: 'var(--muted2)', label: _lastUploadLabel(r) };
   }
   if (stato === 'allestimento') {
     const ip = r.data_inizio_prevista;
-    if (!ip) return { color: 'var(--muted2)', label: 'Allestimento — nessuna data di inizio prevista' };
+    if (!ip) return { color: 'var(--muted2)', label: 'Nessuna data di inizio prevista' };
     const gg = giorniScaduti(ip);
-    if (gg <= 0)  return { color: 'var(--ok)',   label: `Allestimento — inizio previsto ${fmtD(ip)}, non ancora scaduto` };
-    if (gg <= 2)  return { color: 'var(--warn)', label: `Allestimento — inizio previsto ${fmtD(ip)}, scaduto da ${gg}gg` };
-    return { color: 'var(--err)', label: `Allestimento — inizio previsto ${fmtD(ip)}, scaduto da ${gg}gg` };
+    if (gg <= 0)  return { color: 'var(--ok)',   label: `In linea — inizio previsto ${fmtD(ip)}` };
+    if (gg <= 2)  return { color: 'var(--warn)', label: `Scaduto da ${gg}gg — inizio previsto ${fmtD(ip)}` };
+    return { color: 'var(--err)', label: `Scaduto da ${gg}gg — inizio previsto ${fmtD(ip)}` };
   }
   if (stato === 'in_corso') {
     const fp = r.data_fine_prevista;
     if (fp) {
       const gg = giorniScaduti(fp);
-      if (gg > 0) return { color: 'var(--err)', label: `In corso — fine prevista ${fmtD(fp)}, superata da ${gg}gg` };
+      if (gg > 0) return { color: 'var(--err)', label: `Scaduto da ${gg}gg — fine prevista ${fmtD(fp)}` };
     }
-    return _logRecencyStatus(r, { verdeMax: 1, gialloMax: 2 }, 'In corso');
+    return _logRecencyStatus(r, { verdeMax: 1, gialloMax: 2 });
   }
   if (stato === 'sospeso') {
-    return _logRecencyStatus(r, { verdeMax: 2, gialloMax: 7 }, 'Sospeso');
+    return _logRecencyStatus(r, { verdeMax: 2, gialloMax: 7 });
   }
-  return { color: 'var(--muted2)', label: 'Stato non riconosciuto' };
+  return { color: 'var(--muted2)', label: 'Nessuna informazione disponibile' };
 }
 function _registroDotHtml(r) {
   // Pallino inline a sinistra del bottone Registro (non più sovrapposto/absolute sull'angolo del bottone).
