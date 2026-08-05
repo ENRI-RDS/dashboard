@@ -2301,6 +2301,63 @@ async def correct_pratica_note(
     return {"ok": True, "updated": len(idx), "new_upload_id": upload_id}
 
 
+@app.post("/api/admin/pratiche/note/delete")
+async def delete_pratica_note(
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Elimina (svuota) una nota STORICA su tutte le righe grezze di Master.csv che
+    la condividono — stesso matching di /pratiche/note/correct (ente+tipo+pratica+
+    lotto+testo[+data]), ma il campo NOTE viene azzerato invece che riscritto. Non
+    rimuove la riga fisica del CSV (Master.csv resta append-only), solo il testo
+    della nota su quell'evento storico."""
+    _check_token(x_upload_token or token_q)
+    p = payload or {}
+    ente = str(p.get("ente") or "").strip()
+    tipo = str(p.get("tipo_permesso") or "").strip()
+    pratica = str(p.get("pratica") or "").strip()
+    lotto = str(p.get("lotto") or "").strip()
+    old_note = str(p.get("old_note") or "").strip()
+    old_date = str(p.get("old_date") or "").strip()
+    if not (ente and tipo and pratica and lotto and old_note):
+        raise HTTPException(400, "ente, tipo_permesso, pratica, lotto e old_note sono obbligatori")
+
+    async with _master_csv_lock:
+        df = await _read_master_csv()
+        if df is None or df.empty:
+            raise HTTPException(404, "Master.csv non disponibile")
+        needed = {"ENTE", "TIPO_PERMESSO", "PRATICA", "Source.Name", "NOTE"}
+        if needed - set(df.columns):
+            raise HTTPException(400, "Colonne mancanti in Master.csv")
+        mask = (
+            (df["ENTE"].astype(str).str.strip() == ente) &
+            (df["TIPO_PERMESSO"].astype(str).str.strip() == tipo) &
+            (df["PRATICA"].astype(str).str.strip() == pratica) &
+            (df["Source.Name"].apply(_lotto_from_source) == lotto) &
+            (df["NOTE"].astype(str).str.strip() == old_note)
+        )
+        if old_date:
+            cols_present = [c for c in ("DATA_ULTIMA_MODIFICA", "DATA_UPDATE") if c in df.columns]
+            if cols_present:
+                date_mask = df[cols_present[0]].astype(str).str.strip() == old_date
+                for c in cols_present[1:]:
+                    date_mask = date_mask | (df[c].astype(str).str.strip() == old_date)
+                mask = mask & date_mask
+        idx = df.index[mask].tolist()
+        if not idx:
+            raise HTTPException(404, "Nessuna riga trovata per quella nota/data — verifica che il testo combaci esattamente")
+        for i in idx:
+            df.loc[i, "NOTE"] = ""
+        reviewer = x_actor_nome or "admin"
+        upload_id = await _write_master_csv(
+            df, note=f"Admin note-delete by {reviewer} on {len(idx)} riga/e ({ente}|{tipo}|{pratica}|{lotto})"
+        )
+    await _log_admin_action("delete_pratica_note", f"{ente}|{tipo}|{pratica}|{lotto}", x_actor_nome)
+    return {"ok": True, "updated": len(idx), "new_upload_id": upload_id}
+
+
 
 _POL_CONV_ALLOWED_FIELDS = {"CONVENZIONE", "POLIZZA"}
 _POL_CONV_ALLOWED_VALUES = {"NECESSARIA", "RICHIESTA RDS", "INVIATA", "EMESSA", ""}
