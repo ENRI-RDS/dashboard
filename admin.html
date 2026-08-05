@@ -1869,7 +1869,10 @@
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
           <div style="font-size:10.5px;color:var(--muted);white-space:nowrap">${escapeHtml(n.date || '—')}</div>
           <div style="flex:1;font-size:12.5px" class="note-hist-view">${chip}${escapeHtml(txt)}</div>
-          <button class="btn btn-ghost btn-xs" data-hist-edit="${i}">Modifica</button>
+          <div style="display:flex;gap:6px;flex:0 0 auto">
+            <button class="btn btn-ghost btn-xs" data-hist-edit="${i}">Modifica</button>
+            <button class="btn btn-danger btn-xs" data-hist-delete="${i}">Elimina</button>
+          </div>
         </div>
         <div class="note-hist-edit" style="display:none;margin-top:8px">
           <textarea data-hist-textarea="${i}" style="width:100%;min-height:60px;padding:8px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:12.5px;resize:vertical;box-sizing:border-box">${escapeHtml(txt)}</textarea>
@@ -1895,6 +1898,38 @@
     if (cancelBtn) {
       const row = cancelBtn.closest('.note-hist-row');
       row.querySelector('.note-hist-edit').style.display = 'none';
+      return;
+    }
+    const delBtn = e.target.closest('button[data-hist-delete]');
+    if (delBtn) {
+      const idx = Number(delBtn.dataset.histDelete);
+      const n = notes[idx];
+      const msg = $('noteHistMsg');
+      const ok = await showConfirm('Elimina nota', 'Eliminare questa nota da tutte le tratte che la condividono? Non elimina la riga di Master.csv, solo il testo della nota.', 'Elimina', 'btn btn-danger');
+      if (!ok) return;
+      delBtn.disabled = true;
+      try {
+        const res = await api(withTokenQuery('/api/admin/pratiche/note/delete'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({
+            ente: _noteSelected.ente,
+            tipo_permesso: _noteSelected.tipo_permesso,
+            pratica: _noteSelected.pratica,
+            lotto: _noteSelected.lotto,
+            old_note: n.note,
+            old_date: n.date,
+          }),
+        });
+        setMsg(msg, `Nota eliminata su ${res.updated} riga/e di Master.csv`, true);
+        const remaining = notes.filter((_, j) => j !== idx);
+        _renderNoteHist(remaining);
+        loadNotePratiche();
+      } catch (err) {
+        setMsg(msg, 'Errore: ' + err.message, false);
+      } finally {
+        delBtn.disabled = false;
+      }
       return;
     }
     const saveBtn = e.target.closest('button[data-hist-save]');
