@@ -398,7 +398,7 @@
 
       <!-- DATI PRATICHE (admin) -->
       <div class="panel" id="panel-note">
-        <p class="sub">Correggi stato, date e note di una pratica (autorizzazione/nulla osta/ordinanza). La modifica si applica a tutte le tratte coperte dalla pratica, come una nota. Le pratiche già OTTENUTO non compaiono qui.</p>
+        <p class="sub">Correggi stato, date e note di una pratica (autorizzazione/nulla osta/ordinanza). "Modifica dati" corregge lo stato attuale su tutte le tratte; "Storico note" mostra ogni nota inserita nel tempo (anche vecchia, di più caricamenti fa) e permette di correggerne il testo, propagando la correzione su tutte le tratte associate a quella nota. Le pratiche già OTTENUTO non compaiono qui.</p>
         <div class="row" style="gap:10px;margin-bottom:14px">
           <input type="text" id="noteSearch" placeholder="Filtra per TRATTA_ID, codice pratica (es. AUT/24/1A), ente o lotto…" style="flex:1" data-testid="note-search">
           <button class="btn btn-ghost btn-xs" id="noteRefreshBtn">Aggiorna</button>
@@ -406,8 +406,8 @@
         <div style="max-height:520px;overflow-y:auto;border:1px solid var(--border);border-radius:10px">
           <table class="note-table">
             <colgroup>
-              <col style="width:14%"><col style="width:20%"><col style="width:8%">
-              <col style="width:20%"><col style="width:24%"><col style="width:14%">
+              <col style="width:14%"><col style="width:18%"><col style="width:7%">
+              <col style="width:18%"><col style="width:20%"><col style="width:23%">
             </colgroup>
             <thead>
               <tr>
@@ -416,7 +416,7 @@
                 <th class="note-th-sort" data-key="lotto">Lotto <span class="sort-arrow" data-key="lotto">⇕</span></th>
                 <th class="note-th-sort" data-key="stato_permesso">Stato <span class="sort-arrow" data-key="stato_permesso">⇕</span></th>
                 <th>Nota attuale</th>
-                <th style="width:180px">Azioni</th>
+                <th style="width:210px">Azioni</th>
               </tr>
             </thead>
             <tbody id="noteResults"><tr><td colspan="6" class="empty">Caricamento…</td></tr></tbody>
@@ -471,6 +471,16 @@
             <button class="btn btn-ghost" id="noteDataCancelBtn">Annulla</button>
           </div>
           <div class="msg" id="noteDataMsg"></div>
+        </div>
+
+        <div id="noteHistWrap" style="display:none;margin-top:16px;border:1px solid var(--border);border-radius:10px;padding:14px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:4px" id="noteHistTitle">Storico note</div>
+          <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px" id="noteHistSub">Ogni nota inserita nel tempo (anche di più caricamenti fa). Correggendone una, la modifica si applica a tutte le tratte che condividono quella nota storica.</div>
+          <div id="noteHistList" style="display:flex;flex-direction:column;gap:8px"></div>
+          <div class="msg" id="noteHistMsg"></div>
+          <div class="row" style="margin-top:14px;gap:10px">
+            <button class="btn btn-ghost" id="noteHistCloseBtn">Chiudi</button>
+          </div>
         </div>
 
         <div id="noteFormWrap" style="display:none;margin-top:16px;border:1px solid var(--border);border-radius:10px;padding:14px">
@@ -1755,6 +1765,7 @@
         <td class="note-cell">${chip}${escapeHtml(txt)}</td>
         <td style="white-space:nowrap">
           <button class="btn btn-ghost btn-xs" data-note-data-pick="${i}">Modifica dati</button>
+          <button class="btn btn-ghost btn-xs" data-note-hist-pick="${i}">Storico note</button>
           <button class="btn btn-ghost btn-xs" data-note-pick="${i}">+ Nota</button>
         </td>
       </tr>`;
@@ -1781,6 +1792,7 @@
     $('noteEditNote').value = _noteAuthorChip(r.note_attuale).txt || '';
     $('noteDataMsg').className = 'msg';
     $('noteFormWrap').style.display = 'none';
+    $('noteHistWrap').style.display = 'none';
     $('noteDataFormWrap').style.display = 'block';
     $('noteDataFormWrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
@@ -1822,6 +1834,108 @@
     }
   });
 
+  // --- Storico note: mostra ogni nota inserita nel tempo (anche vecchia) e
+  // permette di correggerne il testo, propagando la correzione su tutte le
+  // tratte che condividono quella nota storica (Master.csv è append-only e
+  // duplica la stessa nota su ogni tratta attraversata dall'evento) ---
+  $('noteResults').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-note-hist-pick]');
+    if (!btn) return;
+    const r = NOTE_VIEW[Number(btn.dataset.noteHistPick)];
+    if (!r) return;
+    _noteSelected = r;
+    const tratte = r.tratta_ids || [r.tratta_id];
+    $('noteHistTitle').textContent = `Storico note ${r.codice || tratte.join(', ')}`;
+    $('noteFormWrap').style.display = 'none';
+    $('noteDataFormWrap').style.display = 'none';
+    $('noteHistMsg').className = 'msg';
+    $('noteHistList').innerHTML = '<div class="empty" style="padding:10px">Caricamento…</div>';
+    $('noteHistWrap').style.display = 'block';
+    $('noteHistWrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    try {
+      const qs = new URLSearchParams({ ente: r.ente || '', tipo_permesso: r.tipo_permesso || '', pratica: r.pratica || '', lotto: r.lotto || '' });
+      const d = await api(`/api/admin/pratiche/note-history?${qs.toString()}`);
+      _renderNoteHist(d.notes || []);
+    } catch (err) {
+      $('noteHistList').innerHTML = `<div class="empty" style="color:#ef4444;padding:10px">Errore: ${escapeHtml(err.message)}</div>`;
+    }
+  });
+  function _renderNoteHist(notes) {
+    const list = $('noteHistList');
+    if (!notes.length) { list.innerHTML = '<div class="empty" style="padding:10px">Nessuna nota storica per questa pratica</div>'; return; }
+    list.innerHTML = notes.map((n, i) => {
+      const { chip, txt } = _noteAuthorChip(n.note);
+      return `<div class="note-hist-row" data-hist-idx="${i}" style="border:1px solid var(--border);border-radius:8px;padding:10px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+          <div style="font-size:10.5px;color:var(--muted);white-space:nowrap">${escapeHtml(n.date || '—')}</div>
+          <div style="flex:1;font-size:12.5px" class="note-hist-view">${chip}${escapeHtml(txt)}</div>
+          <button class="btn btn-ghost btn-xs" data-hist-edit="${i}">Modifica</button>
+        </div>
+        <div class="note-hist-edit" style="display:none;margin-top:8px">
+          <textarea data-hist-textarea="${i}" style="width:100%;min-height:60px;padding:8px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:12.5px;resize:vertical;box-sizing:border-box">${escapeHtml(txt)}</textarea>
+          <div class="row" style="margin-top:8px;gap:8px">
+            <button class="btn btn-xs" data-hist-save="${i}">Salva correzione</button>
+            <button class="btn btn-ghost btn-xs" data-hist-edit-cancel="${i}">Annulla</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+    list._notes = notes;
+  }
+  $('noteHistList').addEventListener('click', async (e) => {
+    const list = $('noteHistList');
+    const notes = list._notes || [];
+    const editBtn = e.target.closest('button[data-hist-edit]');
+    if (editBtn) {
+      const row = editBtn.closest('.note-hist-row');
+      row.querySelector('.note-hist-edit').style.display = 'block';
+      return;
+    }
+    const cancelBtn = e.target.closest('button[data-hist-edit-cancel]');
+    if (cancelBtn) {
+      const row = cancelBtn.closest('.note-hist-row');
+      row.querySelector('.note-hist-edit').style.display = 'none';
+      return;
+    }
+    const saveBtn = e.target.closest('button[data-hist-save]');
+    if (saveBtn) {
+      const idx = Number(saveBtn.dataset.histSave);
+      const n = notes[idx];
+      const row = saveBtn.closest('.note-hist-row');
+      const newText = row.querySelector(`textarea[data-hist-textarea="${idx}"]`).value.trim();
+      const msg = $('noteHistMsg');
+      if (!newText) { setMsg(msg, 'Scrivi il testo della nota', false); return; }
+      saveBtn.disabled = true;
+      try {
+        const res = await api(withTokenQuery('/api/admin/pratiche/note/correct'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({
+            ente: _noteSelected.ente,
+            tipo_permesso: _noteSelected.tipo_permesso,
+            pratica: _noteSelected.pratica,
+            lotto: _noteSelected.lotto,
+            old_note: n.note,
+            old_date: n.date,
+            new_note: newText,
+          }),
+        });
+        setMsg(msg, `Nota corretta su ${res.updated} riga/e di Master.csv`, true);
+        n.note = (n.note.match(/^\[(RETELIT|IMPRESA)\]\s*/) || [''])[0] + newText;
+        _renderNoteHist(notes);
+        loadNotePratiche();
+      } catch (err) {
+        setMsg(msg, 'Errore: ' + err.message, false);
+      } finally {
+        saveBtn.disabled = false;
+      }
+    }
+  });
+  $('noteHistCloseBtn').addEventListener('click', () => {
+    $('noteHistWrap').style.display = 'none';
+    _noteSelected = null;
+  });
+
   // --- + Nota (sempre tag RETELIT, sempre una nuova riga di storico) ---
   $('noteResults').addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-note-pick]');
@@ -1835,6 +1949,7 @@
     $('noteText').value = '';
     $('noteMsg').className = 'msg';
     $('noteDataFormWrap').style.display = 'none';
+    $('noteHistWrap').style.display = 'none';
     $('noteFormWrap').style.display = 'block';
     $('noteFormWrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     $('noteText').focus();
