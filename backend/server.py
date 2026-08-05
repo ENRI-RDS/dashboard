@@ -2219,18 +2219,40 @@ async def pratica_note_history(
     )
     work = work[mask]
     work = work[work["Source.Name"].apply(_lotto_from_source) == lotto]
+    has_stato = "STATO_PERMESSO" in work.columns
+    has_tratta = "TRATTA_ID" in work.columns
+    # Replica esatta di effectiveDateRaw in index.html (praticaNotesRaw): se una riga è un
+    # aggiornamento SOLO-NOTA (stessa tratta, stesso STATO_PERMESSO, stessa DATA_ULTIMA_MODIFICA
+    # già vista prima), la vera data dell'evento è DATA_UPDATE, non DATA_ULTIMA_MODIFICA.
+    # Senza questo fallback due note distinte con stessa dum collassano sulla stessa data.
+    stato_seen = []  # lista di {stato, date, tratta_ids: set()}
     seen = set()
     notes = []
     for _, row in work.iterrows():
+        stato = str(row.get("STATO_PERMESSO", "")).strip() if has_stato else ""
+        tratta = str(row.get("TRATTA_ID", "")).strip() if has_tratta else ""
+        dum = str(row.get("DATA_ULTIMA_MODIFICA", "")).strip()
+        data_update = str(row.get("DATA_UPDATE", "")).strip()
+        note_date_raw = dum or data_update
+        is_continuation = any(
+            s["stato"] == stato and s["date"] == note_date_raw and tratta in s["tratta_ids"]
+            for s in stato_seen
+        )
+        effective_date = data_update if (is_continuation and data_update) else note_date_raw
+        merge_target = next((s for s in stato_seen if s["stato"] == stato and s["date"] == effective_date), None)
+        if merge_target is not None:
+            merge_target["tratta_ids"].add(tratta)
+        else:
+            stato_seen.append({"stato": stato, "date": effective_date, "tratta_ids": {tratta}})
+
         note = str(row.get("NOTE", "")).strip()
         if not note:
             continue
-        date = str(row.get("DATA_ULTIMA_MODIFICA", "")).strip() or str(row.get("DATA_UPDATE", "")).strip()
-        key = (note, date)
+        key = (note, effective_date)
         if key in seen:
             continue
         seen.add(key)
-        notes.append({"note": note, "date": date})
+        notes.append({"note": note, "date": effective_date})
     notes.sort(key=lambda n: _it_date_to_iso(n["date"]), reverse=True)
     return {"notes": notes}
 
