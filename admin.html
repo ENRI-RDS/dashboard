@@ -387,6 +387,12 @@
             <button class="btn btn-ghost" id="cantEditCancelBtn">Annulla</button>
           </div>
           <div class="msg" id="cantEditMsg"></div>
+
+          <div style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px">
+            <div style="font-weight:700;font-size:13px;margin-bottom:8px">Storico caricamenti (tutti gli invii impresa)</div>
+            <div id="cantLogList" style="display:flex;flex-direction:column;gap:8px"></div>
+            <div class="msg" id="cantLogMsg"></div>
+          </div>
         </div>
       </div>
 
@@ -1504,6 +1510,94 @@
   }
   $('cantEditStato').addEventListener('change', () => _paintStatoSelect($('cantEditStato')));
 
+  const STATO_OPTS = ['non_avviato','allestimento','in_corso','sospeso','completato'];
+  const STATO_LABELS = {non_avviato:'Non avviato', allestimento:'Allestimento', in_corso:'In corso', sospeso:'Sospeso', completato:'Completato'};
+  const TECNICA_OPTS = ['','trincea','no_dig','canaletta'];
+  const TECNICA_LABELS = {'':'—', trincea:'Trincea', no_dig:'No Dig', canaletta:'Canaletta'};
+  function _selectHtml(opts, labels, value, cls){
+    return opts.map(o => `<option value="${o}" ${o===value?'selected':''}>${labels[o]}</option>`).join('');
+  }
+
+  function renderCantLog(log){
+    const box = $('cantLogList');
+    if (!log || !log.length){ box.innerHTML = '<div class="empty" style="padding:8px 0">Nessun caricamento registrato per questo cantiere.</div>'; return; }
+    box.innerHTML = log.map((e, i) => `
+      <div class="cant-log-row" data-idx="${i}" style="border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
+        <div style="min-width:130px"><label style="display:block;font-size:10px;margin-bottom:4px">Data</label>
+          <input type="date" class="log-data" value="${e.data || ''}" style="font-family:var(--font-mono)"></div>
+        <div style="min-width:120px"><label style="display:block;font-size:10px;margin-bottom:4px">Impresa</label>
+          <input type="text" class="log-impresa" value="${escapeHtml(e.impresa || '')}"></div>
+        <div style="min-width:140px"><label style="display:block;font-size:10px;margin-bottom:4px">Stato</label>
+          <select class="log-stato">${_selectHtml(STATO_OPTS, STATO_LABELS, e.stato_cantiere || 'non_avviato')}</select></div>
+        <div style="min-width:120px"><label style="display:block;font-size:10px;margin-bottom:4px">Tecnica</label>
+          <select class="log-tecnica">${_selectHtml(TECNICA_OPTS, TECNICA_LABELS, e.tecnica_scavo || '')}</select></div>
+        <div style="min-width:110px"><label style="display:block;font-size:10px;margin-bottom:4px">Metri realizzati</label>
+          <input type="number" min="0" step="0.01" class="log-metri" value="${e.metri_realizzati ?? 0}" style="font-family:var(--font-mono)"></div>
+        <div style="flex:1;min-width:160px"><label style="display:block;font-size:10px;margin-bottom:4px">Note</label>
+          <input type="text" class="log-note" value="${escapeHtml(e.note || '')}"></div>
+        <div style="flex:1;min-width:160px"><label style="display:block;font-size:10px;margin-bottom:4px">Motivo blocco</label>
+          <input type="text" class="log-motivo" value="${escapeHtml(e.motivo_blocco || '')}"></div>
+        <div style="min-width:130px"><label style="display:block;font-size:10px;margin-bottom:4px">Data ripresa stimata</label>
+          <input type="date" class="log-ripresa" value="${e.data_ripresa_stimata || ''}"></div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-xs" data-log-act="save">Salva</button>
+          <button class="btn btn-danger btn-xs" data-log-act="delete">Elimina</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  async function refreshCantLog(cantiereKey){
+    $('cantLogList').innerHTML = '<div class="empty" style="padding:8px 0">Caricamento…</div>';
+    try{
+      const d = await api('/api/cantieri/' + encodeURIComponent(cantiereKey) + '/log');
+      renderCantLog(d.log || []);
+    }catch(e){
+      $('cantLogList').innerHTML = '';
+      setMsg($('cantLogMsg'), 'Errore caricamento storico: ' + e.message, false);
+    }
+  }
+
+  $('cantLogList').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-log-act]');
+    if (!btn || !CANT_EDIT_KEY) return;
+    const row = btn.closest('.cant-log-row');
+    const idx = row.dataset.idx;
+    setMsg($('cantLogMsg'), '', true);
+    if (btn.dataset.logAct === 'save'){
+      const payload = {
+        data: row.querySelector('.log-data').value,
+        impresa: row.querySelector('.log-impresa').value,
+        stato_cantiere: row.querySelector('.log-stato').value,
+        tecnica_scavo: row.querySelector('.log-tecnica').value,
+        metri_realizzati: row.querySelector('.log-metri').value,
+        note: row.querySelector('.log-note').value,
+        motivo_blocco: row.querySelector('.log-motivo').value,
+        data_ripresa_stimata: row.querySelector('.log-ripresa').value,
+      };
+      try{
+        await api(withTokenQuery('/api/admin/cantieri/' + encodeURIComponent(CANT_EDIT_KEY) + '/log/' + idx), {
+          method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify(payload),
+        });
+        setMsg($('cantLogMsg'), 'Riga aggiornata', true);
+        refreshCantLog(CANT_EDIT_KEY);
+        refreshCantieri();
+      }catch(err){ setMsg($('cantLogMsg'), 'Errore: ' + err.message, false); }
+    } else if (btn.dataset.logAct === 'delete'){
+      const ok = await showConfirm('Elimina riga storico', 'Eliminare questo caricamento? I metri scavati verranno ricalcolati sulle righe rimaste.', 'Elimina', 'btn btn-danger');
+      if (!ok) return;
+      try{
+        await api(withTokenQuery('/api/admin/cantieri/' + encodeURIComponent(CANT_EDIT_KEY) + '/log/' + idx), {
+          method: 'DELETE', headers: authHeaders(),
+        });
+        setMsg($('cantLogMsg'), 'Riga eliminata', true);
+        refreshCantLog(CANT_EDIT_KEY);
+        refreshCantieri();
+      }catch(err){ setMsg($('cantLogMsg'), 'Errore: ' + err.message, false); }
+    }
+  });
+
   function openCantEdit(cantiereKey){
     const c = ALL_CANTIERI.find(x => x.cantiere_key === cantiereKey);
     if (!c) return;
@@ -1521,6 +1615,7 @@
     $('cantEditMsg').textContent = ''; $('cantEditMsg').className = 'msg';
     $('cantEditPanel').style.display = '';
     $('cantEditPanel').scrollIntoView({behavior:'smooth', block:'center'});
+    refreshCantLog(cantiereKey);
   }
 
   $('cantEditCancelBtn').addEventListener('click', () => { $('cantEditPanel').style.display = 'none'; CANT_EDIT_KEY = null; });
