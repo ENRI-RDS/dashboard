@@ -1030,6 +1030,60 @@ function _scavoDateCell(r) {
 }
 const TECNICA_LABEL = { trincea:'Trincea', no_dig:'No Dig', canaletta:'Canaletta' };
 
+// ── Pallino stato "Ultimo agg." accanto al bottone Registro ─────────────────
+// Non è un semplice indicatore di freschezza del log: per allestimento/in_corso
+// guarda la scadenza pianificata (inizio/fine previsti), non solo l'ultimo caricamento.
+function _logRecencyStatus(r, th, context) {
+  if (!r.log_count || !r.updated_at) {
+    return { color: 'var(--muted2)', label: `${context} — nessun caricamento registrato` };
+  }
+  const d = new Date(r.updated_at);
+  if (isNaN(d)) return { color: 'var(--muted2)', label: `${context} — data aggiornamento non valida` };
+  const giorni = Math.floor((new Date() - d) / 86400000);
+  const dataStr = fmtD(r.updated_at.slice(0, 10));
+  const chi = r.impresa ? ` (${r.impresa})` : '';
+  const ggTxt = giorni <= 0 ? 'oggi' : giorni === 1 ? 'ieri' : `${giorni}gg fa`;
+  if (giorni <= th.verdeMax)  return { color: 'var(--ok)',   label: `${context} — ultimo caricamento ${dataStr}${chi}, ${ggTxt}` };
+  if (giorni <= th.gialloMax) return { color: 'var(--warn)', label: `${context} — ultimo caricamento ${dataStr}${chi}, ${ggTxt}` };
+  return { color: 'var(--err)', label: `${context} — ultimo caricamento ${dataStr}${chi}, ${ggTxt}` };
+}
+function _registroStatus(r) {
+  const oggi = new Date().toISOString().slice(0, 10);
+  const giorniScaduti = (dataPrevista) => Math.floor((new Date(oggi) - new Date(dataPrevista)) / 86400000);
+  const stato = r.stato_cantiere;
+
+  if (stato === 'completato') {
+    return { color: 'var(--ok)', label: 'Cantiere completato' };
+  }
+  if (stato === 'non_avviato') {
+    return { color: 'var(--muted2)', label: 'Non ancora avviato' };
+  }
+  if (stato === 'allestimento') {
+    const ip = r.data_inizio_prevista;
+    if (!ip) return { color: 'var(--muted2)', label: 'Allestimento — nessuna data di inizio prevista' };
+    const gg = giorniScaduti(ip);
+    if (gg <= 0)  return { color: 'var(--ok)',   label: `Allestimento — inizio previsto ${fmtD(ip)}, non ancora scaduto` };
+    if (gg <= 2)  return { color: 'var(--warn)', label: `Allestimento — inizio previsto ${fmtD(ip)}, scaduto da ${gg}gg` };
+    return { color: 'var(--err)', label: `Allestimento — inizio previsto ${fmtD(ip)}, scaduto da ${gg}gg` };
+  }
+  if (stato === 'in_corso') {
+    const fp = r.data_fine_prevista;
+    if (fp) {
+      const gg = giorniScaduti(fp);
+      if (gg > 0) return { color: 'var(--err)', label: `In corso — fine prevista ${fmtD(fp)}, superata da ${gg}gg` };
+    }
+    return _logRecencyStatus(r, { verdeMax: 1, gialloMax: 2 }, 'In corso');
+  }
+  if (stato === 'sospeso') {
+    return _logRecencyStatus(r, { verdeMax: 2, gialloMax: 7 }, 'Sospeso');
+  }
+  return { color: 'var(--muted2)', label: 'Stato non riconosciuto' };
+}
+function _registroDotHtml(r) {
+  const s = _registroStatus(r);
+  return `<span title="${s.label.replace(/"/g,'&quot;')}" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${s.color};margin-right:6px;flex-shrink:0;vertical-align:middle;cursor:help"></span>`;
+}
+
 // ── RENDER ALL (chiamata dopo fetch sia permessi che cantieri) ──────────────
 async function _loadAndRenderAll() {
   await _loadPermessi();   // deve completare prima: _loadCantieri legge PERMESSI
@@ -1187,7 +1241,7 @@ function _cantieriTableHtml(rows) {
               <td style="max-width:150px">${prog}</td>
               <td style="text-align:right;font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(metriTot)}</td>
               <td style="text-align:right;color:var(--muted)">${fmt(scavati)}</td>
-              <td style="text-align:center"><button class="btn-registro" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Registro</button></td>
+              <td style="text-align:center;white-space:nowrap">${_registroDotHtml(r)}<button class="btn-registro" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Registro</button></td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -1500,7 +1554,7 @@ function _renderCantieriTable() {
       <td style="max-width:150px">${prog}</td>
       <td style="text-align:right;font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(metriTot)}</td>
       <td style="text-align:right;color:var(--muted)">${fmt(scavati)}</td>
-      <td style="text-align:center"><button class="btn-registro" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Registro</button></td>
+      <td style="text-align:center;white-space:nowrap">${_registroDotHtml(r)}<button class="btn-registro" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Registro</button></td>
     </tr>`;
   }).join('') || `<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px">Nessun cantiere trovato.</td></tr>`;
 }
