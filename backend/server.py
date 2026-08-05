@@ -2195,9 +2195,113 @@ async def update_admin_pratica(
     return {"ok": True, "summary": summary, "new_upload_id": upload_id}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# POLIZZE & CONVENZIONI — modifica diretta admin
-# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/api/admin/pratiche/note-history")
+async def pratica_note_history(
+    ente: str, tipo_permesso: str, pratica: str, lotto: str,
+    sess: dict = Depends(_require_staff_session),
+):
+    """Storico di TUTTE le note inserite nel tempo su una pratica, raccolte da OGNI
+    riga grezza di Master.csv (non solo l'ultima per tratta) e deduplicate per
+    (testo, data) — stessa logica di praticaNotesRaw in index.html. Serve a mostrare
+    anche le note vecchie di più caricamenti fa, non solo quella corrente, così da
+    poterle correggere con /pratiche/note/correct."""
+    df = await _read_master_csv()
+    if df is None or df.empty:
+        return {"notes": []}
+    needed = {"ENTE", "TIPO_PERMESSO", "PRATICA", "Source.Name", "NOTE"}
+    if needed - set(df.columns):
+        return {"notes": []}
+    work = df.fillna("")
+    mask = (
+        (work["ENTE"].astype(str).str.strip() == ente) &
+        (work["TIPO_PERMESSO"].astype(str).str.strip() == tipo_permesso) &
+        (work["PRATICA"].astype(str).str.strip() == pratica)
+    )
+    work = work[mask]
+    work = work[work["Source.Name"].apply(_lotto_from_source) == lotto]
+    seen = set()
+    notes = []
+    for _, row in work.iterrows():
+        note = str(row.get("NOTE", "")).strip()
+        if not note:
+            continue
+        date = str(row.get("DATA_ULTIMA_MODIFICA", "")).strip() or str(row.get("DATA_UPDATE", "")).strip()
+        key = (note, date)
+        if key in seen:
+            continue
+        seen.add(key)
+        notes.append({"note": note, "date": date})
+    notes.sort(key=lambda n: _it_date_to_iso(n["date"]), reverse=True)
+    return {"notes": notes}
+
+
+@app.post("/api/admin/pratiche/note/correct")
+async def correct_pratica_note(
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Corregge il testo di una nota STORICA (anche non l'ultima) su una pratica.
+    A differenza di /pratiche/update (mode=data), che tocca solo l'ultima riga per
+    tratta, qui si cerca per testo+data della nota su TUTTE le righe grezze di
+    Master.csv del gruppo pratica (ente+tipo+pratica+lotto) — la stessa nota storica
+    è duplicata su ogni tratta attraversata dalla pratica in quell'evento, quindi la
+    correzione va propagata su tutte, non solo sull'ultima riga di ciascuna tratta."""
+    _check_token(x_upload_token or token_q)
+    p = payload or {}
+    ente = str(p.get("ente") or "").strip()
+    tipo = str(p.get("tipo_permesso") or "").strip()
+    pratica = str(p.get("pratica") or "").strip()
+    lotto = str(p.get("lotto") or "").strip()
+    old_note = str(p.get("old_note") or "").strip()
+    old_date = str(p.get("old_date") or "").strip()
+    new_text = str(p.get("new_note") or "").strip()
+    if not (ente and tipo and pratica and lotto and old_note):
+        raise HTTPException(400, "ente, tipo_permesso, pratica, lotto e old_note sono obbligatori")
+    if not new_text:
+        raise HTTPException(400, "new_note è obbligatoria")
+
+    async with _master_csv_lock:
+        df = await _read_master_csv()
+        if df is None or df.empty:
+            raise HTTPException(404, "Master.csv non disponibile")
+        needed = {"ENTE", "TIPO_PERMESSO", "PRATICA", "Source.Name", "NOTE"}
+        if needed - set(df.columns):
+            raise HTTPException(400, "Colonne mancanti in Master.csv")
+        mask = (
+            (df["ENTE"].astype(str).str.strip() == ente) &
+            (df["TIPO_PERMESSO"].astype(str).str.strip() == tipo) &
+            (df["PRATICA"].astype(str).str.strip() == pratica) &
+            (df["Source.Name"].apply(_lotto_from_source) == lotto) &
+            (df["NOTE"].astype(str).str.strip() == old_note)
+        )
+        if old_date:
+            cols_present = [c for c in ("DATA_ULTIMA_MODIFICA", "DATA_UPDATE") if c in df.columns]
+            if cols_present:
+                date_mask = df[cols_present[0]].astype(str).str.strip() == old_date
+                for c in cols_present[1:]:
+                    date_mask = date_mask | (df[c].astype(str).str.strip() == old_date)
+                mask = mask & date_mask
+        idx = df.index[mask].tolist()
+        if not idx:
+            raise HTTPException(404, "Nessuna riga trovata per quella nota/data — verifica che il testo combaci esattamente")
+        # Preserva il tag [RETELIT]/[IMPRESA] esistente su ciascuna riga: si corregge
+        # solo il testo, non l'autore mostrato.
+        for i in idx:
+            existing = str(df.loc[i, "NOTE"]) if "NOTE" in df.columns else ""
+            m = _NOTE_TAG_RE.match(existing or "")
+            tag_prefix = m.group(0) if m else ""
+            df.loc[i, "NOTE"] = f"{tag_prefix}{new_text}"
+        reviewer = x_actor_nome or "admin"
+        upload_id = await _write_master_csv(
+            df, note=f"Admin note-correct by {reviewer} on {len(idx)} riga/e ({ente}|{tipo}|{pratica}|{lotto})"
+        )
+    await _log_admin_action("correct_pratica_note", f"{ente}|{tipo}|{pratica}|{lotto}", x_actor_nome)
+    return {"ok": True, "updated": len(idx), "new_upload_id": upload_id}
+
+
+
 _POL_CONV_ALLOWED_FIELDS = {"CONVENZIONE", "POLIZZA"}
 _POL_CONV_ALLOWED_VALUES = {"NECESSARIA", "RICHIESTA RDS", "INVIATA", "EMESSA", ""}
 # SI/NO sono i soli valori che l'impresa può scrivere (checkbox "è necessaria?"),
