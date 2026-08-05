@@ -1080,9 +1080,10 @@ function _registroStatus(r) {
   return { color: 'var(--muted2)', label: 'Stato non riconosciuto' };
 }
 function _registroDotHtml(r) {
+  // Pallino inline a sinistra del bottone Registro (non più sovrapposto/absolute sull'angolo del bottone).
   const s = _registroStatus(r);
   const tip = JSON.stringify({ color: s.color, label: s.label }).replace(/'/g, '&#39;');
-  return `<span class="registro-dot" data-tip='${tip}' style="position:absolute;top:-3px;left:-3px;width:8px;height:8px;border-radius:50%;background:${s.color};border:1.5px solid var(--surface);z-index:2;cursor:help"></span>`;
+  return `<span class="registro-dot" data-tip='${tip}' style="width:7px;height:7px;border-radius:50%;background:${s.color};flex-shrink:0;cursor:help"></span>`;
 }
 
 // ── RENDER ALL (chiamata dopo fetch sia permessi che cantieri) ──────────────
@@ -1214,7 +1215,7 @@ function _cantieriTableHtml(rows) {
           <tr>
             <th>Cod. Cantiere</th><th>Pratica</th><th>Ente</th><th>Lotto</th><th>Cluster</th>
             <th>Prov.</th><th>Comune</th><th>Impresa</th><th>Stato</th><th>Date</th><th>Avanzamento</th>
-            <th style="text-align:right">M. Scavati/Tot.</th>
+            <th style="text-align:right">M. Scavati</th>
             <th style="text-align:center">Registro</th>
           </tr>
         </thead>
@@ -1241,7 +1242,7 @@ function _cantieriTableHtml(rows) {
               <td>${_scavoDateCell(r)}</td>
               <td style="max-width:150px">${prog}</td>
               <td style="text-align:right;white-space:nowrap"><span style="font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(scavati)}</span><span style="color:var(--muted)"> / ${fmt(metriTot)}</span></td>
-              <td style="text-align:center"><span style="position:relative;display:inline-block">${_registroDotHtml(r)}<button class="btn-registro" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Registro</button></span></td>
+              <td style="text-align:center"><span style="display:inline-flex;align-items:center;justify-content:center;gap:6px">${_registroDotHtml(r)}<button class="btn-registro" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Registro</button></span></td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -1367,7 +1368,7 @@ const CANTIERI_COLS = [
   { key:'dateInfo',        label:'Date',          get:r => _scavoDatePlain(r), sortVal:r => _scavoDatePlain(r), noFilter:true, tight:true },
   { key:'pct',             label:'Avanz.',        get:r => (r.metri_totali||0) > 0 ? Math.round((r.metri_scavati||0)/r.metri_totali*100) + '%' : '—', numeric:true,
                            sortVal:r => (r.metri_totali||0) > 0 ? Math.round((r.metri_scavati||0)/r.metri_totali*100) : -1 },
-  { key:'metri',           label:'M. Scavati/Tot.', get:r => `${fmt(r.metri_scavati||0)} / ${fmt(r.metri_totali||0)}`, numeric:true, align:'right', sortVal:r => r.metri_scavati||0, tight:true, noFilter:true },
+  { key:'metri',           label:'M. Scavati',    get:r => `${fmt(r.metri_scavati||0)} / ${fmt(r.metri_totali||0)}`, numeric:true, align:'right', sortVal:r => r.metri_scavati||0, tight:true, noFilter:true },
   { key:'registro',        label:'Registro',      action:true, align:'center', tight:true },
 ];
 let _cantieriSort = { col:null, dir:1 };
@@ -1387,6 +1388,7 @@ function _renderCantieriTableHead() {
     const tightStyle = c.key === 'ente' ? 'width:240px;max-width:240px;'
       : c.key === 'metri' ? 'width:1%;max-width:120px;'
       : c.key === 'dateInfo' ? 'width:1%;max-width:120px;'
+      : c.key === 'registro' ? 'width:1%;max-width:95px;'
       : c.tight ? 'width:1%;max-width:70px;' : '';
     if (c.action) {
       return `<th style="text-align:${c.align||'left'};${tightStyle}"><span class="th-label" style="cursor:default">${c.label}</span></th>`;
@@ -1552,7 +1554,7 @@ function _renderCantieriTable() {
       <td>${_scavoDateCell(r)}</td>
       <td style="max-width:150px">${prog}</td>
       <td style="text-align:right;white-space:nowrap"><span style="font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(scavati)}</span><span style="color:var(--muted)"> / ${fmt(metriTot)}</span></td>
-      <td style="text-align:center"><span style="position:relative;display:inline-block">${_registroDotHtml(r)}<button class="btn-registro" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Registro</button></span></td>
+      <td style="text-align:center"><span style="display:inline-flex;align-items:center;justify-content:center;gap:6px">${_registroDotHtml(r)}<button class="btn-registro" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Registro</button></span></td>
     </tr>`;
   }).join('') || `<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px">Nessun cantiere trovato.</td></tr>`;
 }
