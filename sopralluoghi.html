@@ -378,6 +378,11 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('topbarUser').textContent = u;
   document.getElementById('redattore').value = u;
   document.getElementById('data').value = new Date().toISOString().split('T')[0];
+
+  // Deep-link da mappa.html (bottone "Sopralluogo" nel popup tratta)
+  const dlParams = new URLSearchParams(location.search);
+  const dlIndirizzo = dlParams.get('indirizzo');
+  if (dlIndirizzo) document.getElementById('indirizzo').value = dlIndirizzo;
 });
 
 function v(id){ return document.getElementById(id).value.trim()||'—'; }
@@ -458,12 +463,23 @@ async function _loadLottiCantieri() {
     _lottiData    = data.lotti || {};
     _lottoImpresa = data.lotto_impresa || {};
     const sel = document.getElementById('lotto');
-    const current = sel.value;
+    const params = new URLSearchParams(location.search);
+    const preLotto = params.get('lotto');
+    const current = (preLotto && !_deepLinkApplied) ? preLotto : sel.value;
     sel.innerHTML = '<option value="">— seleziona —</option>' +
       Object.keys(_lottiData).map(l => `<option value="${l}"${l===current?' selected':''}>${l}</option>`).join('');
     if (current) onLottoChange();
+    if (preLotto && !_deepLinkApplied) {
+      _deepLinkApplied = true;
+      const preCantiere = params.get('cantiere');
+      if (preCantiere) {
+        const selCant = document.getElementById('n_cantiere');
+        if ([...selCant.options].some(o => o.value === preCantiere)) selCant.value = preCantiere;
+      }
+    }
   } catch(e) { console.warn('Lotti non caricati:', e); }
 }
+let _deepLinkApplied = false;
 
 function onLottoChange() {
   const lotto = document.getElementById('lotto').value;
