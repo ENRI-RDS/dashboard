@@ -3065,6 +3065,24 @@ async def admin_get_solleciti(
         items.append(d)
     return {"solleciti": items, "count": len(items)}
 
+
+@app.get("/api/staff/solleciti")
+async def staff_get_solleciti(sess: dict = Depends(_require_staff_session)):
+    """Restituisce tutti i solleciti per le pagine staff (index.html ecc.), letti
+    direttamente da MongoDB — non dipende dal push/deploy su GitHub Pages, a
+    differenza del vecchio solleciti.csv statico (vedi AGENT_BRIEF rev.215)."""
+    items = []
+    async for d in solleciti_col.find({}).sort("created_at", -1):
+        items.append({
+            "pratica":  str(d.get("pratica", "") or ""),
+            "tratta":   str(d.get("tratta_id", "") or ""),
+            "tipo":     str(d.get("tipo_sollecito", "") or ""),
+            "data":     str(d.get("data_sollecito", "") or ""),
+            "note":     str(d.get("note", "") or ""),
+            "impresa":  str(d.get("impresa", "") or ""),
+        })
+    return {"solleciti": items, "count": len(items)}
+
 @app.post("/api/imprese/solleciti/bulk-delete")
 async def bulk_delete_solleciti(payload: dict, sess: dict = Depends(_require_session)):
     """Elimina più solleciti in una sola chiamata e fa un unico push GitHub."""
