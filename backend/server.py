@@ -2659,6 +2659,7 @@ SOPRALLUOGHI_COLS = [
     "codice_verbale", "data_sopralluogo", "lotto", "tratta_id", "impresa",
     "referente_impresa", "referente_retelit", "comune", "localita",
     "tipo_intervento", "esito", "note", "segnalazioni", "azioni_richieste",
+    "scadenza_azioni", "prossimo_sopralluogo",
     "firma_impresa", "firma_retelit", "foto_urls", "created_at",
 ]
 
@@ -2832,6 +2833,8 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
         "note":                str((payload or {}).get("note", "")).strip(),
         "segnalazioni":        str((payload or {}).get("segnalazioni", "")).strip(),
         "azioni_richieste":    str((payload or {}).get("azioni_richieste", "")).strip(),
+        "scadenza_azioni":     str((payload or {}).get("scadenza_azioni", "")).strip(),
+        "prossimo_sopralluogo": str((payload or {}).get("prossimo_sopralluogo", "")).strip(),
         "firma_impresa":       str((payload or {}).get("firma_impresa", "")).strip(),
         "firma_retelit":       str((payload or {}).get("firma_retelit", "")).strip(),
         "foto_urls":           ", ".join(foto_urls),
