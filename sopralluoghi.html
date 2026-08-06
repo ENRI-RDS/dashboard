@@ -341,12 +341,26 @@
     <span style="font-family:'Raleway',sans-serif;font-weight:700;font-size:15px;color:#043F75">Verbali inviati</span>
     <button onclick="document.getElementById('verbali-panel').style.display='none';document.getElementById('btn-storico').style.display='';" style="background:none;border:none;cursor:pointer;color:#888;font-size:20px;line-height:1">&times;</button>
   </div>
-  <div style="padding:10px 14px">
+  <div style="padding:10px 14px 0">
     <input type="text" id="verbali-search" placeholder="Cerca per codice, cantiere, lotto…"
-           oninput="filterVerbali(this.value)"
+           oninput="applyVerbaliFilters()"
            style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d0d8e4;border-radius:7px;font-size:12px;font-family:'Raleway',sans-serif">
   </div>
-  <div id="verbali-list" style="flex:1;overflow-y:auto;padding:0 14px 14px"></div>
+  <div style="padding:8px 14px 0;display:grid;grid-template-columns:1fr 1fr;gap:6px">
+    <select id="filtro-impresa" onchange="applyVerbaliFilters()"
+      style="padding:6px 7px;border:1px solid #d0d8e4;border-radius:7px;font-size:11.5px;font-family:'Raleway',sans-serif;color:#333">
+      <option value="">Tutte le imprese</option>
+    </select>
+    <select id="filtro-lotto" onchange="applyVerbaliFilters()"
+      style="padding:6px 7px;border:1px solid #d0d8e4;border-radius:7px;font-size:11.5px;font-family:'Raleway',sans-serif;color:#333">
+      <option value="">Tutti i lotti</option>
+    </select>
+    <select id="filtro-mese" onchange="applyVerbaliFilters()"
+      style="grid-column:1/-1;padding:6px 7px;border:1px solid #d0d8e4;border-radius:7px;font-size:11.5px;font-family:'Raleway',sans-serif;color:#333">
+      <option value="">Tutti i mesi</option>
+    </select>
+  </div>
+  <div id="verbali-list" style="flex:1;overflow-y:auto;padding:8px 14px 14px"></div>
 </div>
 
 <!-- Bottone apri pannello -->
@@ -870,18 +884,58 @@ async function loadVerbali() {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     _verbaliAll = (data.verbali || []).sort((a,b) => b.codice_verbale.localeCompare(a.codice_verbale));
-    filterVerbali(document.getElementById('verbali-search')?.value || '');
+    _populateVerbaliFilterOptions();
+    applyVerbaliFilters();
   } catch(e) {
     list.innerHTML = `<div style="color:#c0392b;font-size:12px;padding:20px 0;text-align:center">Errore: ${e.message}</div>`;
   }
 }
 
-function filterVerbali(q) {
+// ── Filtri (impresa/lotto/mese) ──────────────────────────────────────────────
+function _populateVerbaliFilterOptions() {
+  const fill = (id, values, placeholder) => {
+    const sel = document.getElementById(id);
+    const current = sel.value;
+    sel.innerHTML = `<option value="">${placeholder}</option>` +
+      values.map(v => `<option value="${v}">${v}</option>`).join('');
+    if (values.includes(current)) sel.value = current;
+  };
+  const distinct = key => [...new Set(_verbaliAll.map(v => (v[key] || '').trim()).filter(Boolean))].sort();
+  fill('filtro-impresa', distinct('impresa'), 'Tutte le imprese');
+  fill('filtro-lotto',   distinct('lotto'),   'Tutti i lotti');
+
+  const mesiIt = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+  const mesi = [...new Set(_verbaliAll.map(v => (v.data_sopralluogo || '').slice(0,7)).filter(m => /^\d{4}-\d{2}$/.test(m)))]
+    .sort().reverse();
+  const selMese = document.getElementById('filtro-mese');
+  const currentMese = selMese.value;
+  selMese.innerHTML = '<option value="">Tutti i mesi</option>' +
+    mesi.map(m => `<option value="${m}">${mesiIt[+m.slice(5,7)-1]} ${m.slice(0,4)}</option>`).join('');
+  if (mesi.includes(currentMese)) selMese.value = currentMese;
+}
+
+function applyVerbaliFilters() {
+  const q = (document.getElementById('verbali-search')?.value || '').toLowerCase().trim();
+  const impresa = document.getElementById('filtro-impresa')?.value || '';
+  const lotto   = document.getElementById('filtro-lotto')?.value || '';
+  const mese    = document.getElementById('filtro-mese')?.value || '';
+
+  const rows = _verbaliAll.filter(v => {
+    if (impresa && v.impresa !== impresa) return false;
+    if (lotto && v.lotto !== lotto) return false;
+    if (mese && (v.data_sopralluogo || '').slice(0,7) !== mese) return false;
+    if (q && ![v.codice_verbale, v.tratta_id, v.lotto, v.impresa, v.data_sopralluogo, v.comune, v.segnalazioni, v.azioni_richieste]
+              .join(' ').toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  _renderVerbaliList(rows);
+}
+
+function filterVerbali(q) { applyVerbaliFilters(); }
+
+function _renderVerbaliList(rows) {
   const list = document.getElementById('verbali-list');
-  const f = (q || '').toLowerCase().trim();
-  const rows = _verbaliAll.filter(v =>
-    !f || [v.codice_verbale, v.tratta_id, v.lotto, v.impresa, v.data_sopralluogo, v.comune, v.segnalazioni, v.azioni_richieste].join(' ').toLowerCase().includes(f)
-  );
   if (!rows.length) {
     list.innerHTML = '<div style="color:#888;font-size:12px;padding:20px 0;text-align:center">Nessun verbale trovato</div>';
     return;
