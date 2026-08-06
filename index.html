@@ -5837,31 +5837,27 @@ _hookScadenze();
 
   async function loadSolleciti() {
     try {
-      const url = _staticFileUrl('solleciti.csv');
-      const text = await fetch(url, { cache: 'no-cache' }).then(r => r.ok ? r.text() : '');
-      if (!text.trim()) return;
-      const lines = text.trim().split(/\r?\n/);
-      if (lines.length < 2) return;
-      const sep = lines[0].includes(';') ? ';' : ',';
-      const hdr = lines[0].split(sep).map(h => h.trim().toLowerCase().replace(/"/g,''));
-      const idx = k => hdr.indexOf(k);
-      const iCod  = idx('pratica'),  iTratta = idx('tratta_id'),
-            iTipo = idx('tipo_sollecito'), iData = idx('data_sollecito'),
-            iNote = idx('note'),          iImp  = idx('impresa');
+      // rev.215: letti via API da MongoDB (non più da solleciti.csv su GitHub
+      // Pages, che dipendeva dal deploy Pages spesso bloccato/in coda — vedi
+      // AGENT_BRIEF). Endpoint staff-autenticato, passa sempre per Render.
+      const apiUrl = (window.ENRI && ENRI.isEnabled ? ENRI.apiBase : 'https://enri-dashboard-api.onrender.com') + '/api/staff/solleciti';
+      const token = localStorage.getItem('_enri_session') || '';
+      const r = await fetch(apiUrl, { cache: 'no-cache', headers: { 'x-session-token': token } });
+      if (!r.ok) return;
+      const data = await r.json();
       window._solByPratica = {};
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(sep).map(c => c.replace(/^"|"$/g,'').trim());
-        const cod = cols[iCod] || '';
-        if (!cod) continue;
+      (data.solleciti || []).forEach(s => {
+        const cod = s.pratica || '';
+        if (!cod) return;
         if (!window._solByPratica[cod]) window._solByPratica[cod] = [];
         window._solByPratica[cod].push({
-          tratta:  cols[iTratta]  || '',
-          tipo:    cols[iTipo]    || '',
-          data:    cols[iData]    || '',
-          note:    cols[iNote]    || '',
-          impresa: cols[iImp]     || '',
+          tratta:  s.tratta  || '',
+          tipo:    s.tipo    || '',
+          data:    s.data    || '',
+          note:    s.note    || '',
+          impresa: s.impresa || '',
         });
-      }
+      });
       // ridisegna la tabella se già renderizzata
       console.log('[Solleciti] caricati:', Object.keys(window._solByPratica).length, 'tratte', Object.keys(window._solByPratica).slice(0,5));
       // Deduplica per codice pratica: stessa data+tipo = stesso sollecito
