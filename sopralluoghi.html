@@ -48,7 +48,7 @@
   @media(max-width:500px){.field-row{grid-template-columns:1fr;}}
 
   /* ── Layout largo: KPI + colonna form / colonna archivio ── */
-  .main-wide{max-width:1360px;margin:0 auto;padding:28px 24px 40px;display:flex;flex-direction:column;gap:18px;}
+  .main-wide{max-width:1440px;margin:0 auto;padding:28px 24px 40px;display:flex;flex-direction:column;gap:18px;}
 
   .kpi-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;}
   @media(max-width:1100px){.kpi-strip{grid-template-columns:repeat(3,1fr);}}
@@ -60,7 +60,7 @@
   .kpi-card.kpi-warn .kpi-value{color:var(--warn);}
   .kpi-card.kpi-ok .kpi-value{color:var(--ok);}
 
-  .layout-grid{display:grid;grid-template-columns:minmax(360px,440px) 1fr;gap:20px;align-items:start;}
+  .layout-grid{display:grid;grid-template-columns:minmax(440px,560px) 1fr;gap:20px;align-items:start;}
   @media(max-width:980px){.layout-grid{grid-template-columns:1fr;}}
 
   .right-col{display:flex;flex-direction:column;gap:18px;min-width:0;}
@@ -76,10 +76,10 @@
   .archive-filter-wide{grid-column:1/-1;}
   @media(max-width:640px){.archive-filters{grid-template-columns:1fr;}}
 
-  .archive-table-head{display:grid;grid-template-columns:1.1fr .9fr 1.6fr 1.3fr .5fr;gap:8px;padding:0 10px 6px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2);border-bottom:1px solid var(--border);margin-bottom:2px;}
+  .archive-table-head{display:grid;grid-template-columns:1fr .8fr 1.4fr 1.2fr .8fr;gap:8px;padding:0 10px 6px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2);border-bottom:1px solid var(--border);margin-bottom:2px;}
   @media(max-width:760px){.archive-table-head{display:none;}}
 
-  .verbale-row{display:grid;grid-template-columns:1.1fr .9fr 1.6fr 1.3fr .5fr;gap:8px;align-items:center;padding:9px 10px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;font-size:12px;}
+  .verbale-row{display:grid;grid-template-columns:1fr .8fr 1.4fr 1.2fr .8fr;gap:8px;align-items:center;padding:9px 10px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;font-size:12px;}
   .verbale-row:hover{background:var(--surface2);}
   .verbale-row.is-selected{background:#EAF2F8;}
   .verbale-row .vr-codice{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11.5px;color:var(--accent);}
@@ -94,7 +94,7 @@
   .stato-chip.err{background:#FDECEA;color:var(--err);}
   .stato-chip.neutral{background:var(--surface2);color:var(--muted);}
 
-  .vr-actions{display:flex;justify-content:flex-end;}
+  .vr-actions{display:flex;justify-content:flex-end;gap:5px;}
   .vr-actions button{background:none;border:1px solid var(--border2);border-radius:6px;color:var(--accent2);cursor:pointer;padding:3px 6px;display:flex;align-items:center;}
   .vr-actions button:hover{background:var(--surface2);}
 
@@ -278,7 +278,7 @@
     </div>
     <div class="kpi-card kpi-warn">
       <div class="kpi-value" id="kpi-anomalie">0</div>
-      <div class="kpi-label">Con anomalia aperta</div>
+      <div class="kpi-label">Con anomalia</div>
     </div>
     <div class="kpi-card kpi-ok">
       <div class="kpi-value" id="kpi-chiusi">0</div>
@@ -447,8 +447,8 @@
           <select id="filtro-stato" onchange="applyVerbaliFilters()">
             <option value="">Tutti gli stati</option>
             <option value="Nessuna anomalia">Nessuna anomalia</option>
-            <option value="Anomalia aperta">Anomalia aperta</option>
-            <option value="Anomalia chiusa">Anomalia chiusa</option>
+            <option value="Anomalia media">Anomalia media</option>
+            <option value="Anomalia critica">Anomalia critica</option>
           </select>
           <select id="filtro-mese" onchange="applyVerbaliFilters()" class="archive-filter-wide">
             <option value="">Tutti i mesi</option>
@@ -706,10 +706,8 @@ function resetVerbaleForm() {
 }
 
 /* ══ PDF via html2canvas ══ */
-async function generatePdf(){
-  const f = getF();
+async function _generatePdfCore(f, photos){
   const nc = f.n_cantiere !== '—' ? f.n_cantiere.replace(/\s/g,'_') : 'cantiere';
-  const photos = uploadedPhotos;
 
   // ── helpers ──────────────────────────────────────────────
   function makePrintDiv(innerHTML){
@@ -898,7 +896,38 @@ async function generatePdf(){
     if (photoDiv && photoDiv.parentNode) photoDiv.parentNode.removeChild(photoDiv);
   }
 }
-</script>
+
+async function generatePdf(){
+  await _generatePdfCore(getF(), uploadedPhotos);
+}
+
+// Rigenera il PDF a partire da un verbale già archiviato (record Mongo),
+// riusando lo stesso motore html2canvas/jsPDF di generatePdf(). Le foto sono
+// caricate dagli URL GitHub raw (CORS aperto, come già avviene per le anteprime).
+async function generatePdfForRecord(id){
+  const v = _verbaliAll.find(x => x._id === id);
+  if (!v) { showToast('✗ Verbale non trovato'); return; }
+  const fmtIt = iso => iso ? new Date(iso).toLocaleDateString('it-IT') : '—';
+  const urls = (v.foto_urls || '').split(',').map(u => u.trim()).filter(Boolean);
+  const f = {
+    codice_verbale: v.codice_verbale || '—',
+    n_cantiere: v.tratta_id || '—',
+    data: v.data_sopralluogo ? fmtIt(v.data_sopralluogo) : '—',
+    indirizzo: v.comune || '—',
+    lotto: v.lotto || '—',
+    impresa: v.impresa || '—',
+    ruolo: v.referente_retelit || '—',
+    redattore: v.referente_impresa || '—',
+    n_foto: String(urls.length),
+    gravita: v.esito || '—',
+    segnalazioni: v.segnalazioni || '—',
+    azioni: v.azioni_richieste || '—',
+    scadenza_azioni: fmtIt(v.scadenza_azioni),
+    prossimo_sopr: fmtIt(v.prossimo_sopralluogo),
+    note: v.note || '—',
+  };
+  await _generatePdfCore(f, urls.map(u => ({ dataUrl: u })));
+}</script>
 <!-- ── TRACKING ACCESSI (sopralluoghi) — usa proxy backend sicuro (no secret in chiaro) ── -->
 <script>
 (function(){
@@ -1003,7 +1032,7 @@ async function loadVerbali() {
 function _populateKpis() {
   const oggi = new Date().toISOString().slice(0,10);
   const nOggi     = _verbaliAll.filter(v => v.data_sopralluogo === oggi).length;
-  const nAnomalie = _verbaliAll.filter(v => v.esito === 'Anomalia aperta').length;
+  const nAnomalie = _verbaliAll.filter(v => v.esito === 'Anomalia media' || v.esito === 'Anomalia critica').length;
   const nNessuna  = _verbaliAll.filter(v => v.esito === 'Nessuna anomalia').length;
   const ultimo    = _verbaliAll.slice().sort((a,b) => (b.created_at||'').localeCompare(a.created_at||''))[0];
 
@@ -1069,8 +1098,8 @@ function applyVerbaliFilters() {
 function filterVerbali(q) { applyVerbaliFilters(); }
 
 function _statoChip(esito) {
-  if (esito === 'Anomalia aperta') return '<span class="stato-chip warn">Anomalia aperta</span>';
-  if (esito === 'Anomalia chiusa') return '<span class="stato-chip err">Anomalia chiusa</span>';
+  if (esito === 'Anomalia critica') return '<span class="stato-chip err">Anomalia critica</span>';
+  if (esito === 'Anomalia media') return '<span class="stato-chip warn">Anomalia media</span>';
   if (esito === 'Nessuna anomalia') return '<span class="stato-chip ok">Nessuna anomalia</span>';
   return '<span class="stato-chip neutral">—</span>';
 }
@@ -1096,6 +1125,9 @@ function _renderVerbaliList(rows) {
       <span class="vr-actions">
         <button title="Anteprima" onclick="event.stopPropagation();_selectVerbale('${v._id}')">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+        <button title="Scarica PDF" onclick="event.stopPropagation();generatePdfForRecord('${v._id}')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         </button>
       </span>
     </div>`).join('');
