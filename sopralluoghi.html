@@ -451,7 +451,7 @@
             <option value="Anomalia critica">Anomalia critica</option>
           </select>
           <select id="filtro-mese" onchange="applyVerbaliFilters()" class="archive-filter-wide">
-            <option value="">Tutti i mesi</option>
+            <option value="">Filtra mese</option>
           </select>
         </div>
 
@@ -653,7 +653,7 @@ async function inviaVerbale(){
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-session-token': token },
       body: JSON.stringify({
-        data_sopralluogo:  f.data,
+        data_sopralluogo:  document.getElementById('data').value || '',
         lotto:             f.lotto,
         tratta_id:         f.n_cantiere,
         impresa:           f.impresa,
@@ -912,7 +912,7 @@ async function generatePdfForRecord(id){
   const f = {
     codice_verbale: v.codice_verbale || '—',
     n_cantiere: v.tratta_id || '—',
-    data: v.data_sopralluogo ? fmtIt(v.data_sopralluogo) : '—',
+    data: _soprDateDisplay(v.data_sopralluogo),
     indirizzo: v.comune || '—',
     lotto: v.lotto || '—',
     impresa: v.impresa || '—',
@@ -1007,6 +1007,21 @@ async function generatePdfForRecord(id){
 // ── Storico verbali ──────────────────────────────────────────────────────────
 let _verbaliAll = [];
 
+// data_sopralluogo è ISO (yyyy-mm-dd) sui verbali nuovi, ma i record salvati
+// prima del fix erano in formato it-IT (dd/mm/yyyy) — gestiamo entrambi.
+function _soprDateISO(str) {
+  if (!str) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  const m = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+}
+function _soprDateDisplay(str) {
+  const iso = _soprDateISO(str);
+  if (!iso) return str || '—';
+  const [y,mo,d] = iso.split('-');
+  return `${d}/${mo}/${y}`;
+}
+
 async function loadVerbali() {
   const list = document.getElementById('verbali-list');
   list.innerHTML = '<div style="color:#888;font-size:12px;padding:20px 0;text-align:center">Caricamento…</div>';
@@ -1031,7 +1046,7 @@ async function loadVerbali() {
 // ── KPI ───────────────────────────────────────────────────────────────────
 function _populateKpis() {
   const oggi = new Date().toISOString().slice(0,10);
-  const nOggi     = _verbaliAll.filter(v => v.data_sopralluogo === oggi).length;
+  const nOggi     = _verbaliAll.filter(v => _soprDateISO(v.data_sopralluogo) === oggi).length;
   const nAnomalie = _verbaliAll.filter(v => v.esito === 'Anomalia media' || v.esito === 'Anomalia critica').length;
   const nNessuna  = _verbaliAll.filter(v => v.esito === 'Nessuna anomalia').length;
   const ultimo    = _verbaliAll.slice().sort((a,b) => (b.created_at||'').localeCompare(a.created_at||''))[0];
@@ -1060,11 +1075,11 @@ function _populateVerbaliFilterOptions() {
   fill('filtro-comune',  distinct('comune'),  'Tutti i comuni');
 
   const mesiIt = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
-  const mesi = [...new Set(_verbaliAll.map(v => (v.data_sopralluogo || '').slice(0,7)).filter(m => /^\d{4}-\d{2}$/.test(m)))]
+  const mesi = [...new Set(_verbaliAll.map(v => _soprDateISO(v.data_sopralluogo).slice(0,7)).filter(m => /^\d{4}-\d{2}$/.test(m)))]
     .sort().reverse();
   const selMese = document.getElementById('filtro-mese');
   const currentMese = selMese.value;
-  selMese.innerHTML = '<option value="">Tutti i mesi</option>' +
+  selMese.innerHTML = '<option value="">Filtra mese</option>' +
     mesi.map(m => `<option value="${m}">${mesiIt[+m.slice(5,7)-1]} ${m.slice(0,4)}</option>`).join('');
   if (mesi.includes(currentMese)) selMese.value = currentMese;
 }
@@ -1085,7 +1100,7 @@ function applyVerbaliFilters() {
     if (lotto && v.lotto !== lotto) return false;
     if (comune && v.comune !== comune) return false;
     if (stato && v.esito !== stato) return false;
-    if (mese && (v.data_sopralluogo || '').slice(0,7) !== mese) return false;
+    if (mese && _soprDateISO(v.data_sopralluogo).slice(0,7) !== mese) return false;
     if (q && ![v.codice_verbale, v.tratta_id, v.lotto, v.impresa, v.data_sopralluogo, v.comune, v.segnalazioni, v.azioni_richieste]
               .join(' ').toLowerCase().includes(q)) return false;
     return true;
@@ -1119,7 +1134,7 @@ function _renderVerbaliList(rows) {
   list.innerHTML = pageRows.map(v => `
     <div data-id="${v._id}" class="verbale-row${v._id === _selectedVerbaleId ? ' is-selected' : ''}">
       <span class="vr-codice">${v.codice_verbale}</span>
-      <span class="vr-data">${v.data_sopralluogo || '—'}</span>
+      <span class="vr-data">${_soprDateDisplay(v.data_sopralluogo)}</span>
       <span class="vr-comune">${v.comune || '—'}<small>${v.tratta_id || '—'} · ${v.lotto || '—'}</small></span>
       <span>${_statoChip(v.esito)}</span>
       <span class="vr-actions">
