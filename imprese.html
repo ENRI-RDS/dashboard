@@ -245,9 +245,16 @@
             <div style="font-size:10.5px;color:var(--muted);margin-top:3px">Ctrl+click per selezione multipla · Le tratte selezionate genereranno una nuova pratica Nulla Osta</div>
           </div>
           <div style="grid-column:span 2">
-            <label>Note <span style="color:var(--danger)">*</span></label>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <label style="margin:0">Note <span style="color:var(--danger)">*</span></label>
+              <button type="button" class="btn btn-ghost btn-xs" id="noteHistBtn" data-testid="note-hist-btn">Registro note</button>
+            </div>
             <textarea id="fld-note" placeholder="Seleziona prima il nuovo stato…" data-testid="fld-note"
               disabled style="background:var(--gray-100);color:var(--muted);cursor:not-allowed;resize:none"></textarea>
+            <div id="noteHistPanel" style="display:none;margin-top:8px;border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--gray-50);max-height:260px;overflow-y:auto">
+              <div style="font-weight:700;font-size:11.5px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.02em">Note precedenti</div>
+              <div id="noteHistList"></div>
+            </div>
           </div>
         </div>
         <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
@@ -584,6 +591,54 @@ window.addEventListener('pageshow', (e) => {
       '<option value="__altro__">✏ Altro (scrivi manualmente)…</option>';
   }
 
+  // Estrae il codice lotto da Source.Name con la stessa logica di _lotto_from_source
+  // nel backend ('Lotto 1A.xlsx' -> '1A'), per allineare i parametri di note-history.
+  function lottoFromSource(src) {
+    return String(src || '').replace(/\.xlsx?$/i, '').replace(/^Lotto\s*/i, '').trim().toUpperCase();
+  }
+
+  function _noteAuthorChip(note) {
+    if (!note) return { chip: '', txt: '' };
+    const m = /^\[(RETELIT|IMPRESA)\]\s*/.exec(note);
+    const author = m ? (m[1] === 'RETELIT' ? 'Retelit' : 'Impresa') : '';
+    const bg = m && m[1] === 'RETELIT' ? 'var(--retelit-blue)' : 'var(--retelit-teal)';
+    const txt = note.slice(m ? m[0].length : 0);
+    const chip = author ? `<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;margin-right:6px;background:${bg};color:#fff">${author}</span>` : '';
+    return { chip, txt };
+  }
+
+  $('noteHistBtn').addEventListener('click', async () => {
+    const panel = $('noteHistPanel');
+    if (panel.style.display !== 'none') { panel.style.display = 'none'; return; }
+    if (!SELECTED) return;
+    const list = $('noteHistList');
+    panel.style.display = '';
+    list.innerHTML = '<div style="font-size:12px;color:var(--muted)">Caricamento…</div>';
+    try {
+      const qs = new URLSearchParams({
+        ente: SELECTED.ENTE || '',
+        tipo_permesso: SELECTED.TIPO_PERMESSO || '',
+        pratica: String(SELECTED.PRATICA || ''),
+        lotto: lottoFromSource(SELECTED['Source.Name']),
+      });
+      const d = await api(`/api/imprese/pratiche/note-history?${qs.toString()}`);
+      const notes = d.notes || [];
+      if (!notes.length) {
+        list.innerHTML = '<div style="font-size:12px;color:var(--muted)">Nessuna nota precedente per questa pratica</div>';
+        return;
+      }
+      list.innerHTML = notes.map(n => {
+        const { chip, txt } = _noteAuthorChip(n.note);
+        return `<div style="border-bottom:1px solid var(--border);padding:8px 0">
+          <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px">${escapeHtml(n.date || '—')}</div>
+          <div style="font-size:12.5px;line-height:1.4">${chip}${escapeHtml(txt)}</div>
+        </div>`;
+      }).join('');
+    } catch (err) {
+      list.innerHTML = `<div style="font-size:12px;color:var(--danger)">Errore: ${escapeHtml(err.message)}</div>`;
+    }
+  });
+
   function buildCodice(p) {
     const tipoMap = {'AUTORIZZAZIONE':'AUT','NULLA OSTA':'NO'};
     const prefix = tipoMap[(p.TIPO_PERMESSO||'').trim()] || (p.TIPO_PERMESSO||'').trim().substring(0,3);
@@ -786,6 +841,7 @@ window.addEventListener('pageshow', (e) => {
     $('fld-note').disabled = false;
     $('fld-note').style.cssText = '';
     $('fld-note').placeholder = 'Obbligatoria: descrivi cosa è cambiato in questo aggiornamento';
+    $('noteHistPanel').style.display = 'none';
     $('wrap-data-rich').style.display = 'none';
     $('wrap-data-app').style.display  = 'none';
 
