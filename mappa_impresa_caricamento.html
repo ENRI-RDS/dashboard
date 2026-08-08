@@ -3801,6 +3801,12 @@ async function _prPopulateEntiSelect(){
 
 document.getElementById('prSearch').addEventListener('input', e => renderPrList(e.target.value));
 
+function prFormatLunghezza(val) {
+  const n = parseFloat(String(val ?? '').replace(',', '.'));
+  if (!isFinite(n)) return '—';
+  return n.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' m';
+}
+
 function renderPrList(filter){
   const f = (filter||'').toLowerCase().trim();
   const latestMap = new Map();
@@ -3813,7 +3819,29 @@ function renderPrList(filter){
     const st = (p.STATO_PERMESSO||'').trim();
     return st !== 'OTTENUTO' && st !== 'NO COMPETENZA';
   });
-  const rows = deduplicated
+  // Raggruppa per PRATICA (stesso codice ENTE+TIPO_PERMESSO+PRATICA+lotto): l'aggiornamento
+  // si applica comunque a tutte le tratte della pratica insieme (vedi PR_SIBLINGS in prSelectRow),
+  // quindi in lista mostriamo una card per pratica e non una per singola tratta — stessa logica
+  // di renderPratiche() in imprese.html.
+  const pratMap = new Map();
+  deduplicated.forEach(p => {
+    const codice = p._codice || prBuildCodice(p);
+    // Tratte senza pratica associata (codice vuoto) restano singole card
+    const key = codice || ('__t__' + p.TRATTA_ID + '|' + p.ENTE + '|' + p.TIPO_PERMESSO);
+    const len = parseFloat(String(p.LUNGHEZZA || '').replace(',', '.')) || 0;
+    const g = pratMap.get(key);
+    if (!g) {
+      pratMap.set(key, { ...p, _nTratte: 1, _lunghezzaTot: len });
+    } else {
+      const isNewer = prParseDate(p.DATA_ULTIMA_MODIFICA) >= prParseDate(g.DATA_ULTIMA_MODIFICA);
+      const nTratte = g._nTratte + 1;
+      const lunghezzaTot = g._lunghezzaTot + len;
+      if (isNewer) Object.assign(g, p);
+      g._nTratte = nTratte;
+      g._lunghezzaTot = lunghezzaTot;
+    }
+  });
+  const rows = Array.from(pratMap.values())
     .filter(p => !f || JSON.stringify(p).toLowerCase().includes(f))
     .sort((a, b) => {
       const ca = !!a._codice, cb = !!b._codice;
@@ -3829,8 +3857,9 @@ function renderPrList(filter){
     return `
     <div class="pr-card${q?' pr-card-queued':''}" data-idx="${i}">
       <div class="pr-card-code">${prEscapeHtml(p._codice)}${q?' <span class="pr-queued-badge" title="Modifica già in coda, non ancora inviata">🕓 in coda</span>':''}</div>
-      <div class="pr-card-row"><span>${prEscapeHtml(p.TRATTA_ID)}</span><span class="stato-cell" style="color:${getColor(p.STATO_PERMESSO)}">${prEscapeHtml(p.STATO_PERMESSO)}</span></div>
+      <div class="pr-card-row"><span>${p._nTratte > 1 ? `${p._nTratte} tratte` : prEscapeHtml(p.TRATTA_ID)}</span><span class="stato-cell" style="color:${getColor(p.STATO_PERMESSO)}">${prEscapeHtml(p.STATO_PERMESSO)}</span></div>
       <div class="pr-card-row"><span>${prEscapeHtml(p.ENTE)}</span><span>${prEscapeHtml(p.TIPO_PERMESSO)}</span></div>
+      <div class="pr-card-row"><span></span><span style="color:#1F7A4E;font-weight:600;font-family:var(--font-mono)">${prFormatLunghezza(p._lunghezzaTot ?? p.LUNGHEZZA)}</span></div>
     </div>`;
   }).join('');
 }
