@@ -194,11 +194,18 @@
     font-size:12px; color:var(--muted); pointer-events:none;
   }
   .cant-stats-row {
-    display:grid; grid-template-columns:repeat(3,1fr); gap:8px;
+    display:grid; grid-template-columns:1fr 1fr; gap:8px;
     margin-top:10px; padding-top:10px; border-top:1px solid var(--border);
   }
-  .cant-stat-label { font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:2px; }
-  .cant-stat-value { font-size:12px; font-weight:700; color:var(--text); }
+  .cant-stat-label { font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:3px; font-weight:700; }
+  .cant-stat-value { font-size:13px; font-weight:700; color:var(--text); font-family:var(--font-mono); }
+  .cant-update-row {
+    display:flex; align-items:baseline; gap:6px; margin-top:8px;
+    font-size:11px; color:var(--muted);
+  }
+  .cant-update-row .lbl { text-transform:uppercase; letter-spacing:.06em; font-size:9px; font-weight:700; }
+  .cant-update-row .val { font-family:var(--font-mono); color:var(--text); font-weight:600; }
+  .cant-update-row .val.never { font-family:var(--font-body); font-weight:500; font-style:italic; color:var(--muted); }
 
   /* ── Cantieri grid ───────────────────────────────────────────────────────── */
   #cantieriGrid {
@@ -739,6 +746,7 @@ window.addEventListener('pageshow', (e) => {
       const agg    = (r.updated_at || '').slice(0, 10) || '—';
       const ds     = daysSince(r.updated_at);
       const aggSub = isFinite(ds) ? (ds <= 0 ? 'oggi' : `${ds} giorn${ds!==1?'i':'o'} fa`) : '';
+      const maiAggiornato = scav === 0 && stato === 'non_avviato';
       const tratte  = r.tratte || [];
       const nLav    = tratte.filter(t => t.lavorabile).length || tratte.length;
       const nBlocc  = tratte.filter(t => !t.lavorabile).length;
@@ -787,10 +795,12 @@ window.addEventListener('pageshow', (e) => {
             <div class="cant-stat-label">Tratte</div>
             <div class="cant-stat-value">${tratte.length}</div>
           </div>
-          <div>
-            <div class="cant-stat-label">Ultimo aggiornamento</div>
-            <div class="cant-stat-value" style="font-size:11px">${agg}${aggSub?` <span style="color:var(--muted);font-weight:500">(${aggSub})</span>`:''}</div>
-          </div>
+        </div>
+        <div class="cant-update-row">
+          <span class="lbl">Ultimo aggiornamento</span>
+          ${maiAggiornato
+            ? `<span class="val never">Mai aggiornato</span>`
+            : `<span class="val">${agg}</span>${aggSub ? `<span>(${aggSub})</span>` : ''}`}
         </div>
         <div class="cant-card-footer">
           <button class="btn btn-ghost btn-sm" data-storico="${i}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>Storico aggiornamenti</button>
