@@ -1802,6 +1802,12 @@ def _apply_changes_to_df(df, submission: dict) -> tuple:
             for col, val in fields.items():
                 if col in df.columns:
                     last_row[col] = str(val)
+            # La nota NON deve mai essere ereditata implicitamente dalla riga precedente:
+            # se questo aggiornamento non la include esplicitamente, la nuova riga resta
+            # senza nota (il frontend imprese.html la rende comunque obbligatoria, questo
+            # è un secondo livello di sicurezza per qualsiasi altro chiamante).
+            if "NOTE" in df.columns and "NOTE" not in fields:
+                last_row["NOTE"] = ""
             new_row_df = pd.DataFrame([last_row])
             # Dividi il DataFrame prima e dopo il punto di inserimento
             top    = df.iloc[:last_idx + 1]
