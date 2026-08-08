@@ -161,6 +161,10 @@
           <input type="checkbox" id="filterPrevisioneScaduta" data-testid="filter-previsione-scaduta" style="width:15px;height:15px;cursor:pointer">
           Previsione scaduta
         </label>
+        <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--gray-700);cursor:pointer;white-space:nowrap">
+          <input type="checkbox" id="filterUpdateScaduto" data-testid="filter-update-scaduto" style="width:15px;height:15px;cursor:pointer">
+          Update oltre 5gg
+        </label>
       </div>
       <div class="scroll">
         <table>
@@ -558,6 +562,7 @@ window.addEventListener('pageshow', (e) => {
   }
   $('searchPratiche').addEventListener('input', e => renderPratiche(e.target.value));
   $('filterPrevisioneScaduta').addEventListener('change', () => renderPratiche($('searchPratiche').value));
+  $('filterUpdateScaduto').addEventListener('change', () => renderPratiche($('searchPratiche').value));
 
   // Popola il select degli enti con tutti i valori unici presenti in Master.csv
   async function _populateEntiSelect() {
@@ -601,6 +606,14 @@ window.addEventListener('pageshow', (e) => {
     const d = parseDate(p.DATA_PREVISTA_RILASCIO);
     if (!d) return false;
     return d < new Date().setHours(0,0,0,0);
+  }
+
+  // Vero se DATA_UPDATE è vuota o più vecchia di 5 giorni da oggi
+  function _isUpdateScaduto(p) {
+    const d = parseDate(p.DATA_UPDATE);
+    if (!d) return true; // mai aggiornata -> considerata scaduta
+    const giorni = Math.floor((new Date().setHours(0,0,0,0) - d) / 86400000);
+    return giorni > 5;
   }
 
   // Risolve il codice pratica (es. AUT/13/1A) per un 'change' di una submission.
@@ -715,9 +728,11 @@ window.addEventListener('pageshow', (e) => {
       }
     });
     const soloScadute = $('filterPrevisioneScaduta')?.checked;
+    const soloUpdateScaduto = $('filterUpdateScaduto')?.checked;
     const rows = Array.from(pratMap.values())
       .filter(p => !f || JSON.stringify(p).toLowerCase().includes(f))
       .filter(p => !soloScadute || _isDataPrevistaScaduta(p))
+      .filter(p => !soloUpdateScaduto || _isUpdateScaduto(p))
       .sort((a, b) => {
         if (PRAT_SORT.key) {
           const type = PRAT_COL_TYPES[PRAT_SORT.key] || 'str';
@@ -746,7 +761,7 @@ window.addEventListener('pageshow', (e) => {
         <td class="stato-cell" style="color:${statoColor(p.STATO_PERMESSO)}">${escapeHtml(p.STATO_PERMESSO)}</td>
         <td class="mono">${escapeHtml(p.DATA_RICHIESTA)}</td>
         <td class="mono">${escapeHtml(p.DATA_ULTIMA_MODIFICA)}</td>
-        <td class="mono">${escapeHtml(p.DATA_UPDATE || '—')}</td>
+        <td class="mono"${_isUpdateScaduto(p) ? ' style="color:var(--warn);font-weight:700"' : ''}>${escapeHtml(p.DATA_UPDATE || '—')}</td>
         <td class="mono"${_isDataPrevistaScaduta(p) ? ' style="color:var(--danger);font-weight:700"' : ''}>${escapeHtml(p.DATA_PREVISTA_RILASCIO || '—')}</td>
         <td style="text-align:right;background:#f0fdf4;font-family:var(--font-mono);font-size:11.5px;color:#1F7A4E;font-weight:600;border-left:2px solid #bbf7d0">${formatLunghezza(p._lunghezzaTot ?? p.LUNGHEZZA)}</td>
       </tr>`).join('');
