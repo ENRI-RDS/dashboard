@@ -956,9 +956,8 @@
           <div class="pr-form-title" style="margin-bottom:2px">Aggiornamento</div>
           <div id="prEditSub" class="pr-edit-sub"></div>
           <div id="prSiblings" class="pr-siblings" style="display:none">
-            <div class="pr-siblings-title">Altre tratte nella stessa pratica</div>
+            <div class="pr-siblings-title">Questa pratica include le seguenti tratte</div>
             <div id="prSiblingsList" style="color:var(--text)"></div>
-            <label class="pr-check"><input type="checkbox" id="prSibToggle" checked style="width:14px;height:14px"> Aggiorna tutte insieme</label>
           </div>
 
           <label>Nuovo stato</label>
@@ -3967,8 +3966,7 @@ function prSelectRow(idx){
   PR_SIBLINGS = Array.from(siblingsMap.values());
   const panel = document.getElementById('prSiblings');
   if (PR_SIBLINGS.length) {
-    document.getElementById('prSiblingsList').textContent = `Tratte collegate: ${PR_SIBLINGS.map(s=>s.TRATTA_ID).join(', ')} (${PR_SIBLINGS.length+1} tratte totali)`;
-    document.getElementById('prSibToggle').checked = true;
+    document.getElementById('prSiblingsList').textContent = `Verranno aggiornate insieme: ${PR_SIBLINGS.map(s=>s.TRATTA_ID).join(', ')} (${PR_SIBLINGS.length+1} tratte totali in questa pratica)`;
     panel.style.display = '';
   } else { panel.style.display = 'none'; }
 
@@ -3989,11 +3987,6 @@ document.getElementById('pr-no-nec').addEventListener('change', function(){
   const show = this.checked;
   document.getElementById('pr-wrap-no-tratte').style.display = show ? '' : 'none';
   if (!show) Array.from(document.getElementById('pr-no-tratte').options).forEach(o => o.selected=false);
-  // NULLA OSTA NECESSARIO è un bisogno della singola tratta selezionata, non
-  // dell'intera pratica: spuntandolo si disattiva "aggiorna tutte insieme" cosi'
-  // l'aggiornamento resta sulla sola tratta corrente. L'impresa può comunque
-  // riattivare manualmente il flag se il nulla osta serve davvero per tutte le tratte.
-  if (show && PR_SIBLINGS.length > 0) document.getElementById('prSibToggle').checked = false;
 });
 
 document.getElementById('pr-stato').addEventListener('change', function(){
@@ -4084,18 +4077,7 @@ document.getElementById('prAddToQueue').onclick = async () => {
       if (tratte.length) fields['TRATTE_NO'] = tratte.join(', ');
     }
   }
-  const wantsAllTogether = PR_SIBLINGS.length > 0 && document.getElementById('prSibToggle').checked;
-  const wantsSingleOnly  = PR_SIBLINGS.length > 0 && !document.getElementById('prSibToggle').checked;
-  if (wantsSingleOnly) {
-    if ('STATO_PERMESSO' in fields) {
-      await prAlert(`Questa pratica include altre ${PR_SIBLINGS.length} tratte (${PR_SIBLINGS.map(s=>s.TRATTA_ID).join(', ')}). Quando si cambia lo stato, tutte le tratte della stessa pratica devono essere aggiornate insieme. Attiva "Aggiorna tutte insieme" prima di procedere.`, {title:'Impossibile aggiornare solo questa tratta', kind:'danger'});
-      return;
-    }
-    const ok = await prConfirm(`Questa pratica include anche ${PR_SIBLINGS.length} altra/e tratta/e (${PR_SIBLINGS.map(s=>s.TRATTA_ID).join(', ')}) che non verranno aggiornate.`, {title:'Aggiornare solo questa tratta?', okText:'Procedi solo con questa'});
-    if (ok) _prFinalizeAdd(fields, false);
-  } else {
-    _prFinalizeAdd(fields, wantsAllTogether);
-  }
+  _prFinalizeAdd(fields, PR_SIBLINGS.length > 0);
 };
 
 function prRenderQueue(){
