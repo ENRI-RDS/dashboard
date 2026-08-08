@@ -158,8 +158,8 @@
       <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;flex-wrap:wrap">
         <div class="search" style="margin-bottom:0;max-width:320px;flex:1 1 220px"><input type="text" id="searchPratiche" placeholder="Cerca…" data-testid="search-pratiche"></div>
         <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--gray-700);cursor:pointer;white-space:nowrap">
-          <input type="checkbox" id="filterUpdateScaduto" data-testid="filter-update-scaduto" style="width:15px;height:15px;cursor:pointer">
-          Update scaduto (oltre <input type="number" id="filterUpdateGiorni" value="15" min="1" data-testid="filter-update-giorni" style="width:52px;padding:4px 6px;display:inline-block;text-align:center"> gg)
+          <input type="checkbox" id="filterPrevisioneScaduta" data-testid="filter-previsione-scaduta" style="width:15px;height:15px;cursor:pointer">
+          Previsione scaduta
         </label>
       </div>
       <div class="scroll">
@@ -557,8 +557,7 @@ window.addEventListener('pageshow', (e) => {
     }
   }
   $('searchPratiche').addEventListener('input', e => renderPratiche(e.target.value));
-  $('filterUpdateScaduto').addEventListener('change', () => renderPratiche($('searchPratiche').value));
-  $('filterUpdateGiorni').addEventListener('input', () => { if ($('filterUpdateScaduto').checked) renderPratiche($('searchPratiche').value); });
+  $('filterPrevisioneScaduta').addEventListener('change', () => renderPratiche($('searchPratiche').value));
 
   // Popola il select degli enti con tutti i valori unici presenti in Master.csv
   async function _populateEntiSelect() {
@@ -700,18 +699,10 @@ window.addEventListener('pageshow', (e) => {
         g._lunghezzaTot = lunghezzaTot;
       }
     });
-    const soloScaduti = $('filterUpdateScaduto')?.checked;
-    const sogliaGiorni = parseInt($('filterUpdateGiorni')?.value, 10) || 15;
-    const oggiTs = new Date().setHours(0,0,0,0);
+    const soloScadute = $('filterPrevisioneScaduta')?.checked;
     const rows = Array.from(pratMap.values())
       .filter(p => !f || JSON.stringify(p).toLowerCase().includes(f))
-      .filter(p => {
-        if (!soloScaduti) return true;
-        const du = parseDate(p.DATA_UPDATE);
-        if (!du) return true; // mai aggiornata -> considerata scaduta
-        const giorni = Math.floor((oggiTs - du) / 86400000);
-        return giorni >= sogliaGiorni;
-      })
+      .filter(p => !soloScadute || _isDataPrevistaScaduta(p))
       .sort((a, b) => {
         if (PRAT_SORT.key) {
           const type = PRAT_COL_TYPES[PRAT_SORT.key] || 'str';
