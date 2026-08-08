@@ -664,17 +664,32 @@ window.addEventListener('pageshow', (e) => {
 
   function renderPratiche(filter){
     const f = (filter || '').toLowerCase().trim();
-    // Per ogni TRATTA_ID tieni solo la riga con DATA_ULTIMA_MODIFICA più recente
+    // Per ogni TRATTA_ID tieni solo la riga con DATA_ULTIMA_MODIFICA più recente,
+    // e in parallelo l'ultima DATA_RICHIESTA non vuota vista nello storico della tratta
+    // (il pipeline dati la valorizza solo sulla riga in cui si passa a INVIATO,
+    // le righe successive della stessa tratta la lasciano vuota).
     const latestMap = new Map();
+    const lastRichiestaMap = new Map();
     PRATICHE.forEach(p => {
       const key = p.TRATTA_ID + '|' + p.ENTE + '|' + p.TIPO_PERMESSO;
       const existing = latestMap.get(key);
       if (!existing || parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(existing.DATA_ULTIMA_MODIFICA)) {
         latestMap.set(key, p);
       }
+      if ((p.DATA_RICHIESTA || '').trim()) {
+        const d = parseDate(p.DATA_ULTIMA_MODIFICA);
+        const cur = lastRichiestaMap.get(key);
+        if (!cur || d >= cur.date) lastRichiestaMap.set(key, { date: d, val: p.DATA_RICHIESTA });
+      }
     });
     // Escludi pratiche già ottenute o non di competenza — non hanno senso da aggiornare
-    const deduplicated = Array.from(latestMap.values()).filter(p => {
+    const deduplicated = Array.from(latestMap.entries()).map(([key, p]) => {
+      if (!(p.DATA_RICHIESTA || '').trim()) {
+        const fallback = lastRichiestaMap.get(key);
+        if (fallback) return { ...p, DATA_RICHIESTA: fallback.val };
+      }
+      return p;
+    }).filter(p => {
       const st = (p.STATO_PERMESSO || '').trim();
       return st !== 'OTTENUTO' && st !== 'NO COMPETENZA';
     });
