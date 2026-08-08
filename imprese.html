@@ -160,7 +160,7 @@
         <table>
           <thead><tr>
             <th class="sortable-th" data-key="_codice">Pratica<span class="sort-arrow" data-key="_codice"></span></th>
-            <th class="sortable-th" data-key="TRATTA_ID">Tratta<span class="sort-arrow" data-key="TRATTA_ID"></span></th>
+            <th class="sortable-th" data-key="TRATTA_ID">Tratte<span class="sort-arrow" data-key="TRATTA_ID"></span></th>
             <th class="sortable-th" data-key="ENTE">Ente<span class="sort-arrow" data-key="ENTE"></span></th>
             <th class="sortable-th" data-key="TIPO_PERMESSO">Tipo<span class="sort-arrow" data-key="TIPO_PERMESSO"></span></th>
             <th class="sortable-th" data-key="STATO_PERMESSO">Stato<span class="sort-arrow" data-key="STATO_PERMESSO"></span></th>
@@ -178,11 +178,7 @@
         <div style="font-weight:700;margin-bottom:10px;font-size:14px">Aggiornamento — <span id="editRowSub" class="mono" style="color:var(--muted);font-size:12px"></span></div>
         <div id="siblingsPanel" style="display:none;background:var(--accent-light);border:1px solid var(--retelit-blue-25);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12.5px">
           <div style="font-weight:700;color:var(--accent);margin-bottom:4px">Questa pratica include altre tratte</div>
-          <div id="siblingsList" style="color:var(--gray-700);margin-bottom:8px"></div>
-          <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-weight:600;color:var(--accent)">
-            <input type="checkbox" id="siblingsToggle" checked style="width:15px;height:15px;cursor:pointer">
-            Aggiorna tutte insieme (consigliato)
-          </label>
+          <div id="siblingsList" style="color:var(--gray-700)"></div>
         </div>
         <div class="grid2">
           <div>
@@ -661,12 +657,34 @@ window.addEventListener('pageshow', (e) => {
       const st = (p.STATO_PERMESSO || '').trim();
       return st !== 'OTTENUTO' && st !== 'NO COMPETENZA';
     });
-    const rows = deduplicated
+    // Raggruppa per PRATICA (stesso codice ENTE+TIPO_PERMESSO+PRATICA+lotto): l'aggiornamento
+    // si applica comunque a tutte le tratte della pratica insieme (vedi SIBLINGS più sotto),
+    // quindi in tabella mostriamo una riga per pratica e non una per singola tratta.
+    const pratMap = new Map();
+    deduplicated.forEach(p => {
+      const codice = p._codice || buildCodice(p);
+      // Tratte senza pratica associata (codice vuoto) restano singole righe
+      const key = codice || ('__t__' + p.TRATTA_ID + '|' + p.ENTE + '|' + p.TIPO_PERMESSO);
+      const len = parseFloat(String(p.LUNGHEZZA || '').replace(',', '.')) || 0;
+      const g = pratMap.get(key);
+      if (!g) {
+        pratMap.set(key, { ...p, _nTratte: 1, _lunghezzaTot: len });
+      } else {
+        const isNewer = parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(g.DATA_ULTIMA_MODIFICA);
+        const nTratte = g._nTratte + 1;
+        const lunghezzaTot = g._lunghezzaTot + len;
+        if (isNewer) Object.assign(g, p);
+        g._nTratte = nTratte;
+        g._lunghezzaTot = lunghezzaTot;
+      }
+    });
+    const rows = Array.from(pratMap.values())
       .filter(p => !f || JSON.stringify(p).toLowerCase().includes(f))
       .sort((a, b) => {
         if (PRAT_SORT.key) {
           const type = PRAT_COL_TYPES[PRAT_SORT.key] || 'str';
-          let av = a[PRAT_SORT.key], bv = b[PRAT_SORT.key];
+          let av = PRAT_SORT.key === 'LUNGHEZZA' ? a._lunghezzaTot : a[PRAT_SORT.key];
+          let bv = PRAT_SORT.key === 'LUNGHEZZA' ? b._lunghezzaTot : b[PRAT_SORT.key];
           let cmp;
           if (type === 'date') cmp = (parseDate(av)||0) - (parseDate(bv)||0);
           else if (type === 'num') cmp = (parseFloat(String(av).replace(',','.'))||0) - (parseFloat(String(bv).replace(',','.'))||0);
@@ -684,7 +702,7 @@ window.addEventListener('pageshow', (e) => {
     $('pratBody').innerHTML = renderPratiche._current.map((p, i) => `
       <tr data-idx="${i}">
         <td class="mono" style="font-weight:700;color:var(--accent);background:var(--accent-light);border-left:3px solid var(--accent)">${escapeHtml(p._codice)}</td>
-        <td class="mono">${escapeHtml(p.TRATTA_ID)}</td>
+        <td class="mono">${p._nTratte > 1 ? `${p._nTratte} tratte` : escapeHtml(p.TRATTA_ID)}</td>
         <td>${escapeHtml(p.ENTE)}</td>
         <td>${escapeHtml(p.TIPO_PERMESSO)}</td>
         <td class="stato-cell" style="color:${statoColor(p.STATO_PERMESSO)}">${escapeHtml(p.STATO_PERMESSO)}</td>
@@ -692,7 +710,7 @@ window.addEventListener('pageshow', (e) => {
         <td class="mono">${escapeHtml(p.DATA_ULTIMA_MODIFICA)}</td>
         <td class="mono">${escapeHtml(p.DATA_UPDATE || '—')}</td>
         <td class="mono">${escapeHtml(p.DATA_PREVISTA_RILASCIO || '—')}</td>
-        <td style="text-align:right;background:#f0fdf4;font-family:var(--font-mono);font-size:11.5px;color:#1F7A4E;font-weight:600;border-left:2px solid #bbf7d0">${escapeHtml(String(p.LUNGHEZZA ?? '—'))}</td>
+        <td style="text-align:right;background:#f0fdf4;font-family:var(--font-mono);font-size:11.5px;color:#1F7A4E;font-weight:600;border-left:2px solid #bbf7d0">${escapeHtml(String(p._lunghezzaTot || p.LUNGHEZZA || '—'))}</td>
       </tr>`).join('');
     _updatePratSortArrows();
   }
@@ -764,8 +782,7 @@ window.addEventListener('pageshow', (e) => {
 
     const panel = $('siblingsPanel');
     if (SIBLINGS.length) {
-      $('siblingsList').textContent = `Tratte collegate: ${SIBLINGS.map(s => s.TRATTA_ID).join(', ')} (${SIBLINGS.length + 1} tratte totali in questa pratica)`;
-      $('siblingsToggle').checked = true;
+      $('siblingsList').textContent = `Verranno aggiornate insieme: ${SIBLINGS.map(s => s.TRATTA_ID).join(', ')} (${SIBLINGS.length + 1} tratte totali in questa pratica)`;
       panel.style.display = '';
     } else {
       panel.style.display = 'none';
@@ -811,11 +828,6 @@ window.addEventListener('pageshow', (e) => {
     const show = this.checked;
     $('wrap-upd-no-tratte').style.display = show ? '' : 'none';
     if (!show) Array.from($('fld-no-tratte').options).forEach(o => o.selected = false);
-    // NULLA OSTA NECESSARIO è un bisogno della singola tratta selezionata, non
-    // dell'intera pratica: spuntandolo si disattiva "aggiorna tutte insieme" cosi'
-    // l'aggiornamento resta sulla sola tratta corrente. L'impresa può comunque
-    // riattivare manualmente il flag se il nulla osta serve davvero per tutte le tratte.
-    if (show && SIBLINGS.length > 0) $('siblingsToggle').checked = false;
   });
 
   $('fld-stato').addEventListener('change', function() {
@@ -874,51 +886,6 @@ window.addEventListener('pageshow', (e) => {
     setMsg($('msgUpd'), n > 1 ? `Aggiunte ${n} tratte alla coda` : `Aggiunto alla coda (${QUEUE.length} modifiche totali)`, true);
   }
 
-  // Modale di avviso quando si aggiorna solo una tratta pur avendo altre nella stessa pratica
-  function _showSingleTrattaWarning(fields) {
-    const statoInChanges = 'STATO_PERMESSO' in fields;
-    const overlay = document.createElement('div');
-    overlay.className = 'warn-modal-overlay';
-    if (statoInChanges) {
-      // Cambio di stato: blocco vero — non si può aggiornare solo una tratta
-      overlay.innerHTML = `
-        <div class="warn-modal">
-          <div class="warn-modal-icon danger"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg></div>
-          <div class="warn-modal-title">Impossibile aggiornare solo questa tratta</div>
-          <div class="warn-modal-body">
-            Questa pratica include altre <b>${SIBLINGS.length}</b> tratt${SIBLINGS.length===1?'a':'e'}
-            (${SIBLINGS.map(s=>escapeHtml(s.TRATTA_ID)).join(', ')}).
-            Quando si cambia lo <strong>stato</strong> di un permesso, tutte le tratte della stessa pratica
-            devono essere aggiornate insieme, altrimenti lo stato complessivo risulta incoerente.
-            <br><br>Attiva <em>"Aggiorna tutte insieme"</em> prima di procedere.
-          </div>
-          <div style="display:flex;gap:10px;justify-content:flex-end">
-            <button class="btn" id="_warnCancel">Capito</button>
-          </div>
-        </div>`;
-      document.body.appendChild(overlay);
-      overlay.querySelector('#_warnCancel').onclick = () => overlay.remove();
-    } else {
-      // Solo date/note: avviso non bloccante, l'utente può scegliere
-      overlay.innerHTML = `
-        <div class="warn-modal">
-          <div class="warn-modal-icon warn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div>
-          <div class="warn-modal-title">Aggiornare solo questa tratta?</div>
-          <div class="warn-modal-body">
-            Questa pratica include anche <b>${SIBLINGS.length}</b> altr${SIBLINGS.length===1?'a tratta':'e tratte'}
-            (${SIBLINGS.map(s=>escapeHtml(s.TRATTA_ID)).join(', ')}) che non verranno aggiornate.
-          </div>
-          <div style="display:flex;gap:10px;justify-content:flex-end">
-            <button class="btn btn-ghost" id="_warnCancel">Annulla</button>
-            <button class="btn" id="_warnConfirm">Procedi solo con questa</button>
-          </div>
-        </div>`;
-      document.body.appendChild(overlay);
-      overlay.querySelector('#_warnCancel').onclick = () => overlay.remove();
-      overlay.querySelector('#_warnConfirm').onclick = () => { overlay.remove(); _finalizeAdd(fields, false); };
-    }
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  }
   $('addToQueueBtn').onclick = () => {
     if (!SELECTED) return;
     const stato = $('fld-stato').value;
@@ -970,14 +937,7 @@ window.addEventListener('pageshow', (e) => {
       }
     }
 
-    const wantsAllTogether = SIBLINGS.length > 0 && $('siblingsToggle').checked;
-    const wantsSingleOnly  = SIBLINGS.length > 0 && !$('siblingsToggle').checked;
-
-    if (wantsSingleOnly) {
-      _showSingleTrattaWarning(fields);
-    } else {
-      _finalizeAdd(fields, wantsAllTogether);
-    }
+    _finalizeAdd(fields, SIBLINGS.length > 0);
   };
 
   function renderQueue(){
