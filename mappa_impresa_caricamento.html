@@ -1000,7 +1000,7 @@
             <select id="pr-no-tratte" multiple size="4" style="font-family:var(--font-mono);font-size:11px"></select>
           </div>
           <div style="display:flex;align-items:center;gap:10px">
-            <label style="margin:0">Note</label>
+            <label style="margin:0">Note <span style="color:var(--danger,#DC2626)">*</span></label>
             <button type="button" class="btn" id="prNoteHistBtn" style="background:var(--retelit-teal);gap:5px">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
               Registro note
@@ -3926,7 +3926,7 @@ function prSelectRow(idx){
   document.getElementById('pr-data-prevista').value = prToInputDate(dataPrevistaVal);
   document.getElementById('pr-wrap-data-prevista').style.display = '';
   const noteEl = document.getElementById('pr-note');
-  noteEl.value = ''; noteEl.disabled = false; noteEl.placeholder = 'Note opzionali — puoi salvare solo una nota senza cambiare stato';
+  noteEl.value = ''; noteEl.disabled = false; noteEl.placeholder = 'Obbligatoria: descrivi cosa è cambiato in questo aggiornamento';
   document.getElementById('prNoteHistPanel').style.display = 'none';
   document.getElementById('pr-wrap-data-rich').style.display = 'none';
   document.getElementById('pr-wrap-data-app').style.display  = 'none';
@@ -4050,6 +4050,10 @@ document.getElementById('prAddToQueue').onclick = async () => {
   const polizzaChanged = checksVisibleGuard && document.getElementById('pr-polizza').checked !== ((PR_SELECTED['POLIZZA ']||'').trim() === 'SI');
   const convenzioneChanged = checksVisibleGuard && document.getElementById('pr-convenzione').checked !== ((PR_SELECTED['CONVENZIONE']||'').trim() === 'SI');
   if (!stato && !dataPrevista && !noteVal && !polizzaChanged && !convenzioneChanged) return prSetMsg(msgEl, 'Seleziona il nuovo stato, imposta una data prevista rilascio, inserisci una nota, oppure aggiorna Polizza/Convenzione', false);
+  // La nota è sempre obbligatoria per ogni aggiornamento — non deve mai essere
+  // possibile salvare un cambio stato/data senza descrivere cosa è cambiato
+  // (stesso vincolo di imprese.html, evita note storiche ambigue/ripetute).
+  if (!noteVal) return prSetMsg(msgEl, 'Inserisci una nota: è obbligatoria per ogni aggiornamento', false);
   const fields = {};
   if (stato) fields.STATO_PERMESSO = stato;
   if (dataPrevista) fields.DATA_PREVISTA_RILASCIO = prFromInputDate(dataPrevista);
