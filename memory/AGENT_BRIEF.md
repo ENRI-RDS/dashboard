@@ -591,6 +591,53 @@ Fonte: checklist Excel utente. Solo voci non "Completato" (34/59 già completate
 
 ---
 
+_Ultimo aggiornamento: 2026-08-08 (rev. 224)_
+
+- **rev.224** — `imprese.html`: causa reale del disallineamento dei filtri (non lo stile del checkbox in sé, era il CSS globale `label{margin-top:12px;margin-bottom:5px;display:block}` che si applica a QUALSIASI `<label>`, incluse le nostre label-wrapper dei filtri, spostandole verticalmente rispetto alla barra di ricerca). Aggiunto `margin:0` esplicito inline su entrambe le label filtro per neutralizzare l'eredità globale.
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 223)_
+
+- **rev.223** — richiesta utente dopo aver notato note ripetute su righe consecutive nel Master.csv (screenshot TR_0813): confermato che era il comportamento standard (copia riga precedente, sovrascrive solo i campi passati). Fix su due livelli:
+  1. `imprese.html`: nota ora **obbligatoria** per ogni aggiornamento in coda (`addToQueueBtn`) — validazione esplicita, `fields.NOTE = noteVal` sempre valorizzato (non più condizionale). Label "Note *" in rosso, placeholder aggiornato, textarea non più descritta come opzionale.
+  2. `backend/server.py`, `_apply_changes_to_df` (ramo append/non in_place): se `"NOTE" not in fields`, la nuova riga copiata azzera esplicitamente `NOTE` invece di ereditare quella della riga precedente — rete di sicurezza lato server indipendente dal frontend chiamante (copre eventuali altri path che creano submission "update" senza passare da imprese.html).
+  - Corretto anche stile checkbox filtri (accent-color/margin espliciti) per uniformità visiva tra "Previsione scaduta" e "Update oltre 5gg", segnalata come disallineata.
+  - ⚠️ nota: il ramo `in_place=True` (correzioni admin "Modifica dati") non è stato toccato — lì il pre-fill della nota esistente in modifica è intenzionale (è una correzione del testo, non un nuovo evento).
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 222)_
+
+- **rev.222** — `imprese.html`: cella DATA_UPDATE evidenziata in arancione/grassetto (`var(--warn)`) quando `_isUpdateScaduto(p)` è vero (stessa soglia 5gg del filtro rev.221).
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 221)_
+
+- **rev.221** — `imprese.html`: aggiunto secondo filtro checkbox "Update oltre 5gg" (`filterUpdateScaduto`) accanto a "Previsione scaduta". Helper `_isUpdateScaduto(p)`: vero se `DATA_UPDATE` vuota (mai aggiornata) o più vecchia di 5 giorni da oggi. Soglia fissa a 5gg (non configurabile, a differenza del tentativo in rev.218 poi rimosso).
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 220)_
+
+- **rev.220** — `imprese.html`, `renderPratiche()`: fix reale del problema DATA_RICHIESTA vuota (rev.218 l'aveva solo diagnosticato). Confermato su Master.csv aggiornato fornito dall'utente: il campo è valorizzato dal pipeline dati SOLO sulla riga in cui la tratta passa a INVIATO, le righe successive della stessa tratta (NECESSARIA INTEGRAZIONE, nuovo INVIATO, PROTOCOLLATO INTEGRAZIONE...) lo riportano vuoto — mostrando solo l'ultima riga per tratta la dashboard perdeva il dato pur essendo presente nello storico. Aggiunta `lastRichiestaMap` costruita in parallelo a `latestMap`: tiene per ogni tratta l'ultimo DATA_RICHIESTA non vuoto visto (per DATA_ULTIMA_MODIFICA), usato come fallback quando la riga rappresentativa ha il campo vuoto. Verificato su TR_0372: recupera correttamente 17/03/2026.
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 219)_
+
+- **rev.219** — `imprese.html`: correzione richiesta utente — il filtro era sbagliato (era su DATA_UPDATE con soglia giorni configurabile, volevano DATA_PREVISTA_RILASCIO senza soglia). Sostituito con checkbox unica "Previsione scaduta" → `filterPrevisioneScaduta`, filtra su `_isDataPrevistaScaduta(p)` (stesso helper già usato per l'evidenziazione rossa), nessun input giorni. Verificato: l'evidenziazione rossa era già corretta, semplicemente 0/1532 righe in Master.csv hanno oggi DATA_PREVISTA_RILASCIO scaduta (non un bug, mancanza di dati con quel caso nel dataset attuale).
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 218)_
+
+- **rev.218** — `imprese.html`, tab "Aggiorna pratiche":
+  1. Data prevista rilascio scaduta (< oggi) evidenziata in rosso/grassetto (`_isDataPrevistaScaduta()`).
+  2. Barra ricerca ridotta (max-width 320px) + nuovo filtro "Update scaduto (oltre N gg)": checkbox `filterUpdateScaduto` + input numerico `filterUpdateGiorni` (default 15); filtra su `DATA_UPDATE` mancante o più vecchia della soglia.
+  3. Verificato (non modificato) perché DATA_RICHIESTA non compare su tutte le righe: **431/590** righe Master.csv con stato post-INVIATO hanno DATA_RICHIESTA vuoto. Causa: il form impresa (`imprese.html`) la richiede obbligatoriamente solo quando si imposta stato=INVIATO da qui; il pannello admin "Modifica dati" (`admin.html`, mode:'data') ha il campo ma è editabile a mano e spesso lasciato vuoto/non compilato — probabile impatto di dati storici pre-esistenti a questa logica. Non è un bug del frontend imprese.html: è dato mancante a monte. Se serve, si può rendere DATA_RICHIESTA obbligatoria anche nel form admin quando stato passa a INVIATO.
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 217)_
+
+- **rev.217** — `imprese.html`, tab "Aggiorna pratiche": colonna "Lung. (m)" mostrava float grezzi non arrotondati (es. `5131.079999999999`, somma di più tratte in virgola mobile). Aggiunta `formatLunghezza(val)` — parse + `toLocaleString('it-IT', {min/maxFractionDigits:2})` → `5.131,08`. Applicata alla cella lunghezza in `renderPratiche()` al posto del cast a stringa diretto.
+
+_Ultimo aggiornamento: 2026-08-07 (rev. 216)_
+
+- **rev.216** — `imprese.html`, tab "Aggiorna pratiche": rimossa la checkbox "Aggiorna tutte insieme (consigliato)" dal pannello SIBLINGS — richiesta utente: l'unione degli aggiornamenti di tutte le tratte di una pratica non è più opzionale, è sempre lo standard. `siblingsPanel` ora è solo informativo (elenco tratte collegate, nessun controllo). `addToQueueBtn` chiama sempre `_finalizeAdd(fields, SIBLINGS.length > 0)`. Rimossi: `_showSingleTrattaWarning()` (modale di blocco/conferma per update solo-tratta, non più raggiungibile) e l'eccezione in `fld-no-nec` che disattivava il toggle quando si spuntava NULLA OSTA NECESSARIO su una singola tratta. Confermato con utente: nessun problema di propagazione — la tratta/e a cui si applica il nulla osta resta comunque scelta esplicitamente via `fld-no-tratte`/`TRATTE_NO`, indipendente dall'unione pratica.
+
+_Ultimo aggiornamento: 2026-08-07 (rev. 215)_
+
+- **rev.215** — `imprese.html`, tab "Aggiorna pratiche" (`renderPratiche()`): richiesta utente — la tabella mostrava una riga per ogni singola tratta (`TRATTA_ID+ENTE+TIPO_PERMESSO`), ma l'aggiornamento è comunque associato/propagato a tutta la pratica (logica SIBLINGS già esistente più sotto nello stesso file). Aggiunto un secondo livello di raggruppamento **dopo** il dedup per-tratta esistente: chiave = `p._codice`/`buildCodice(p)` (ENTE+TIPO_PERMESSO+PRATICA+lotto); tratte senza pratica associata (codice vuoto) restano righe singole (fallback su chiave tratta). Per ogni gruppo: riga rappresentativa = quella con `DATA_ULTIMA_MODIFICA` più recente (stato/date mostrate sono le più aggiornate della pratica); nuova colonna derivata `_lunghezzaTot` (somma `LUNGHEZZA` di tutte le tratte del gruppo, sostituisce il vecchio valore singolo in tabella e nel sort); colonna "Tratta"→"Tratte", cella mostra `N tratte` se il gruppo ne contiene più di una, altrimenti il TRATTA_ID come prima. Click-to-select e logica SIBLINGS invariati (SELECTED resta compatibile, la propagazione a tutte le tratte della pratica funzionava già). `node --check` OK.
+
 _Ultimo aggiornamento: 2026-08-06 (rev. 213)_
 
 - **rev.214** — Deploy GitHub Pages: bug reale trovato e corretto — mancava il file `.nojekyll` nella root del repo. Senza di esso, Pages tenta un build **Jekyll** anche su un sito statico vanilla JS/HTML; con file grandi in root (`Master.csv` 215K, `QGIS.geojson` 754K, HTML da 300-400K) il parser Jekyll si blocca, il job `build` gira ~45 min e il runner viene ucciso ("lost communication with the server"), facendo fallire il deploy pur restando online l'ultima versione pubblicata con successo (da cui l'apparente incoerenza "ci sono deploy falliti ma il sito è aggiornato"). Fix: aggiunto `.nojekyll` vuoto in root — deploy successivo completato subito. Nota per il futuro: verificare che non venga rimosso da script di sync/pulizia del repo (essendo un file senza estensione, "invisibile" a un controllo superficiale). — **Nota collegata (non un bug, comportamento confermato)**: le foto dei sopralluoghi (`sopralluoghi/foto/{codice}/foto_N.{ext}`) **non** passano da GridFS/Mongo — vengono caricate come data URL base64 dal frontend, decodificate e pushate **direttamente nel repo GitHub** via `_push_to_github()` (`server.py` ~riga 2798-2814, endpoint sopralluoghi). Questo fa crescere permanentemente la dimensione del repo Git ad ogni sopralluogo caricato (attualmente ~6.2MB in `sopralluoghi/foto`); da tenere presente come possibile causa futura di rallentamenti/limiti di dimensione repo, distinta dal bug `.nojekyll` di cui sopra.
