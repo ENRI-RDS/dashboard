@@ -158,11 +158,11 @@
       <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;flex-wrap:wrap">
         <div class="search" style="margin-bottom:0;max-width:320px;flex:1 1 220px"><input type="text" id="searchPratiche" placeholder="Cerca…" data-testid="search-pratiche"></div>
         <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--gray-700);cursor:pointer;white-space:nowrap">
-          <input type="checkbox" id="filterPrevisioneScaduta" data-testid="filter-previsione-scaduta" style="width:15px;height:15px;cursor:pointer">
+          <input type="checkbox" id="filterPrevisioneScaduta" data-testid="filter-previsione-scaduta" style="width:15px;height:15px;cursor:pointer;accent-color:var(--accent);margin:0">
           Previsione scaduta
         </label>
         <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--gray-700);cursor:pointer;white-space:nowrap">
-          <input type="checkbox" id="filterUpdateScaduto" data-testid="filter-update-scaduto" style="width:15px;height:15px;cursor:pointer">
+          <input type="checkbox" id="filterUpdateScaduto" data-testid="filter-update-scaduto" style="width:15px;height:15px;cursor:pointer;accent-color:var(--accent);margin:0">
           Update oltre 5gg
         </label>
       </div>
@@ -245,7 +245,7 @@
             <div style="font-size:10.5px;color:var(--muted);margin-top:3px">Ctrl+click per selezione multipla · Le tratte selezionate genereranno una nuova pratica Nulla Osta</div>
           </div>
           <div style="grid-column:span 2">
-            <label>Note</label>
+            <label>Note <span style="color:var(--danger)">*</span></label>
             <textarea id="fld-note" placeholder="Seleziona prima il nuovo stato…" data-testid="fld-note"
               disabled style="background:var(--gray-100);color:var(--muted);cursor:not-allowed;resize:none"></textarea>
           </div>
@@ -785,7 +785,7 @@ window.addEventListener('pageshow', (e) => {
     $('fld-note').value = '';
     $('fld-note').disabled = false;
     $('fld-note').style.cssText = '';
-    $('fld-note').placeholder = 'Note opzionali — puoi salvare solo una nota senza cambiare stato';
+    $('fld-note').placeholder = 'Obbligatoria: descrivi cosa è cambiato in questo aggiornamento';
     $('wrap-data-rich').style.display = 'none';
     $('wrap-data-app').style.display  = 'none';
 
@@ -948,6 +948,9 @@ window.addEventListener('pageshow', (e) => {
     const polizzaChanged = checksVisibleGuard && $('fld-polizza').checked !== ((SELECTED['POLIZZA ']?.trim() || '') === 'SI');
     const convenzioneChanged = checksVisibleGuard && $('fld-convenzione').checked !== ((SELECTED['CONVENZIONE']?.trim() || '') === 'SI');
     if (!stato && !noteVal && !prevRilascio && !polizzaChanged && !convenzioneChanged) return setMsg($('msgUpd'), 'Seleziona un nuovo stato, imposta una data prevista rilascio, inserisci una nota, oppure aggiorna Polizza/Convenzione', false);
+    // La nota è sempre obbligatoria per ogni aggiornamento — non deve mai essere
+    // ereditata implicitamente da quella precedente (vedi anche fix backend).
+    if (!noteVal) return setMsg($('msgUpd'), 'Inserisci una nota: è obbligatoria per ogni aggiornamento', false);
 
     const fields = {};
     if (stato) fields.STATO_PERMESSO = stato;
@@ -963,7 +966,7 @@ window.addEventListener('pageshow', (e) => {
       fields.DATA_APPROVAZIONE = fromInputDate(da);
     }
 
-    if (noteVal) fields.NOTE = noteVal;
+    fields.NOTE = noteVal;
 
     // Nulla Osta: solo se si sta cambiando stato (non richiesto per NO COMPETENZA/OTTENUTO/sola nota)
     const skipChecks = !stato || stato === 'NO COMPETENZA' || stato === 'OTTENUTO';
