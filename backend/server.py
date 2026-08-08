@@ -2201,22 +2201,15 @@ async def update_admin_pratica(
     return {"ok": True, "summary": summary, "new_upload_id": upload_id}
 
 
-@app.get("/api/admin/pratiche/note-history")
-async def pratica_note_history(
-    ente: str, tipo_permesso: str, pratica: str, lotto: str,
-    sess: dict = Depends(_require_staff_session),
-):
-    """Storico di TUTTE le note inserite nel tempo su una pratica, raccolte da OGNI
-    riga grezza di Master.csv (non solo l'ultima per tratta) e deduplicate per
-    (testo, data) — stessa logica di praticaNotesRaw in index.html. Serve a mostrare
-    anche le note vecchie di più caricamenti fa, non solo quella corrente, così da
-    poterle correggere con /pratiche/note/correct."""
-    df = await _read_master_csv()
+def _pratica_note_history_core(df: "pd.DataFrame", ente: str, tipo_permesso: str, pratica: str, lotto: str) -> list[dict]:
+    """Logica condivisa: storico di TUTTE le note inserite nel tempo su una pratica,
+    raccolte da OGNI riga grezza di Master.csv (non solo l'ultima per tratta) e
+    deduplicate per (testo, data) — stessa logica di praticaNotesRaw in index.html."""
     if df is None or df.empty:
-        return {"notes": []}
+        return []
     needed = {"ENTE", "TIPO_PERMESSO", "PRATICA", "Source.Name", "NOTE"}
     if needed - set(df.columns):
-        return {"notes": []}
+        return []
     work = df.fillna("")
     mask = (
         (work["ENTE"].astype(str).str.strip() == ente) &
@@ -2260,7 +2253,35 @@ async def pratica_note_history(
         seen.add(key)
         notes.append({"note": note, "date": effective_date})
     notes.sort(key=lambda n: _it_date_to_iso(n["date"]), reverse=True)
-    return {"notes": notes}
+    return notes
+
+
+@app.get("/api/admin/pratiche/note-history")
+async def pratica_note_history(
+    ente: str, tipo_permesso: str, pratica: str, lotto: str,
+    sess: dict = Depends(_require_staff_session),
+):
+    """Storico note per staff/admin. Serve anche a poterle correggere con /pratiche/note/correct."""
+    df = await _read_master_csv()
+    return {"notes": _pratica_note_history_core(df, ente, tipo_permesso, pratica, lotto)}
+
+
+@app.get("/api/imprese/pratiche/note-history")
+async def impresa_pratica_note_history(
+    ente: str, tipo_permesso: str, pratica: str, lotto: str,
+    sess: dict = Depends(_require_session),
+):
+    """Come /api/admin/pratiche/note-history ma per l'Area Impresa: sola lettura,
+    nessuna correzione/eliminazione, e ristretto ai soli lotti assegnati all'impresa
+    (nome preso dal token di sessione firmato, stesso pattern di /api/imprese/pratiche)."""
+    doc = await _find_assignment(sess["nome"])
+    if not doc or not doc.get("active", True):
+        raise HTTPException(404, "Impresa non autorizzata")
+    lotti = {_lotto_from_source(l) for l in doc.get("lotti", []) if str(l).strip()}
+    if lotto not in lotti:
+        raise HTTPException(403, "Lotto non assegnato a questa impresa")
+    df = await _read_master_csv()
+    return {"notes": _pratica_note_history_core(df, ente, tipo_permesso, pratica, lotto)}
 
 
 @app.post("/api/admin/pratiche/note/correct")
