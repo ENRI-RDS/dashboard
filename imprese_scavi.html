@@ -94,8 +94,9 @@
   .page-sub { font-size:13px; color:var(--muted); margin-top:6px; }
 
   /* ── KPI row ─────────────────────────────────────────────────────────────── */
-  .kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:24px; }
-  @media(max-width:800px){ .kpi-row{ grid-template-columns:repeat(2,1fr); } }
+  .kpi-row { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:24px; }
+  @media(max-width:1000px){ .kpi-row{ grid-template-columns:repeat(3,1fr); } }
+  @media(max-width:640px){ .kpi-row{ grid-template-columns:repeat(2,1fr); } }
   .kpi {
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--radius-lg); padding:14px 16px;
@@ -118,11 +119,13 @@
   .kpi-icon { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-bottom:10px; }
   .kpi.k-late .kpi-icon  { background:var(--danger); color:#fff; box-shadow:0 0 0 5px var(--danger-bg); }
   .kpi.k-soon .kpi-icon  { background:var(--warn); color:#fff; box-shadow:0 0 0 5px var(--warn-bg); }
+  .kpi.k-none .kpi-icon  { background:var(--gray-500); color:#fff; box-shadow:0 0 0 5px var(--gray-100); }
   .kpi.k-done .kpi-icon  { background:var(--ok); color:#fff; box-shadow:0 0 0 5px var(--ok-bg); }
   .kpi-label { font-size:11.5px; text-transform:uppercase; letter-spacing:.02em; color:var(--gray-700); font-weight:700; margin-bottom:8px; }
   .kpi-value { font-size:28px; font-weight:800; line-height:1; letter-spacing:-.02em; }
   .kpi.k-late .kpi-value  { color:var(--danger); }
   .kpi.k-soon .kpi-value  { color:var(--warn); }
+  .kpi.k-none .kpi-value  { color:var(--gray-600); }
   .kpi.k-done .kpi-value  { color:var(--ok); }
   .kpi-sub { font-size:10.5px; color:var(--muted); margin-top:4px; }
 
@@ -207,6 +210,7 @@
   .cant-urgency.u-late { background:var(--danger-bg); color:var(--danger); border:1px solid var(--danger); }
   .cant-urgency.u-soon { background:var(--warn-bg); color:var(--warn); border:1px solid var(--warn); }
   .cant-urgency.u-done { background:var(--ok-bg); color:var(--ok); border:1px solid var(--ok); }
+  .cant-urgency.u-non_aggiornato { background:var(--gray-100); color:var(--gray-600); border:1px solid var(--gray-300); }
   .cant-edit-btn {
     background:none; border:none; cursor:pointer; color:var(--muted);
     padding:2px; display:flex; align-items:center; flex-shrink:0;
@@ -509,7 +513,7 @@
         <div class="kpi-label">In ritardo</div>
       </div>
       <div class="kpi-value" id="kpiLate">—</div>
-      <div class="kpi-sub">aggiornamento &gt; 7 giorni</div>
+      <div class="kpi-sub">fine lavori prevista scaduta</div>
     </div>
     <div class="kpi k-soon">
       <div class="kpi-top">
@@ -517,7 +521,15 @@
         <div class="kpi-label">Da aggiornare</div>
       </div>
       <div class="kpi-value" id="kpiSoon">—</div>
-      <div class="kpi-sub">aggiornamento ≤ 7 giorni</div>
+      <div class="kpi-sub">aggiornamento &gt; 2 giorni</div>
+    </div>
+    <div class="kpi k-none">
+      <div class="kpi-top">
+        <div class="kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg></div>
+        <div class="kpi-label">Non aggiornato</div>
+      </div>
+      <div class="kpi-value" id="kpiNone">—</div>
+      <div class="kpi-sub">avviato, nessun dato caricato</div>
     </div>
     <div class="kpi k-done">
       <div class="kpi-top">
@@ -795,9 +807,9 @@ window.addEventListener('pageshow', (e) => {
     }
     if (stato === 'in_corso') {
       const ggFine = daysOverdue(r.data_fine_prevista);
-      if (ggFine !== null && ggFine > 0) return 'late'; // scaduta la fine prevista
-      if (dsUpdate > 7) return 'late';
-      if (dsUpdate > 1) return 'soon';
+      if (ggFine !== null && ggFine > 0) return 'late'; // scaduta la fine prevista: vero ritardo
+      if (!(r.log_count > 0)) return 'non_aggiornato'; // avviato ma nessun dato mai caricato
+      if (dsUpdate > 1) return 'soon'; // aggiornamento mancante da più di 2 giorni
       return 'done';
     }
     if (stato === 'sospeso') {
@@ -808,25 +820,28 @@ window.addEventListener('pageshow', (e) => {
     return 'done';
   }
   function renderKpi(items) {
-    let late = 0, soon = 0, done = 0;
+    let late = 0, soon = 0, done = 0, none = 0;
     items.forEach(r => {
       const u = urgencyOf(r);
       if (u === 'late') late++;
       else if (u === 'soon') soon++;
       else if (u === 'done') done++;
+      else if (u === 'non_aggiornato') none++;
     });
-    $('kpiToday').textContent = late + soon;
+    $('kpiToday').textContent = late + soon + none;
     $('kpiLate').textContent  = late;
     $('kpiSoon').textContent  = soon;
+    $('kpiNone').textContent  = none;
     $('kpiDone').textContent  = done;
   }
 
   // ── Grid cantieri ─────────────────────────────────────────────────────────
-  const URGENCY_LABEL = { late:'In ritardo', soon:'Da aggiornare', done:'Aggiornato' };
+  const URGENCY_LABEL = { late:'In ritardo', soon:'Da aggiornare', done:'Aggiornato', non_aggiornato:'Non aggiornato' };
   const URGENCY_ICON = {
     late: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>',
     soon: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
     done: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+    non_aggiornato: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>',
   };
   function fmtDateIT(isoDate) {
     if (!isoDate || isoDate === '—') return '—';
