@@ -591,6 +591,34 @@ Fonte: checklist Excel utente. Solo voci non "Completato" (34/59 già completate
 
 ---
 
+_Ultimo aggiornamento: 2026-08-09 (rev. 231)_
+
+- **rev.231** — `imprese_scavi.html`, `urgencyOf()`: seguito rev.230 — richiesta utente da screenshot, i flag badge sulle card erano scomparsi per i cantieri "in linea" (nessuna scadenza ancora dovuta), perché la funzione tornava `null` in quei casi e il badge non veniva renderizzato affatto. Aggiunto un 4° stato `'ok'` ("In linea", badge blu `--retelit-blue`/`--retelit-ice`, nuova classe `.cant-urgency.u-ok`) restituito al posto di `null` in tutti i casi "a posto" (non_avviato/allestimento con inizio non ancora scaduto, in_corso senza scadenze superate e aggiornato di recente, sospeso aggiornato ≤2gg fa) — così ogni cantiere non completato mostra sempre un badge. `completato` resta senza badge (già ridondante con lo stato principale). `renderKpi()`/contatori KPI invariati: continuano a contare solo late/soon/done, `'ok'` non vi rientra. `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 230)_
+
+- **rev.230** — `imprese_scavi.html`, `urgencyOf()`: **bug reale segnalato dall'utente da screenshot** — un cantiere in `allestimento`/`non_avviato` con `data_inizio_prevista` nel **futuro** (es. 24/08/2026 con oggi 09/08/2026) veniva comunque segnalato "IN RITARDO"/"DA AGGIORNARE", perché la funzione guardava solo i giorni dall'ultimo `updated_at` (mai aggiornato → `Infinity` → sempre in ritardo), ignorando che il cantiere non è ancora dovuto partire. Riscritta con logica deadline-aware per stato, stesso principio già usato in `scavi.html`/`_registroStatus()` (rev.10-33): non_avviato/allestimento → urgenza basata su `daysOverdue(data_inizio_prevista)` (nessun badge se non ancora scaduta, poi soon ≤2gg oltre / late oltre); in_corso → `data_fine_prevista` scaduta = late immediato, altrimenti fallback su giorni da `updated_at` (done/soon/late con soglie 1/7gg anziché 0/7 generiche); sospeso → soglie più permissive sui giorni da `updated_at` (2/7gg, non genera falsi allarmi durante un blocco). Nuovo helper `daysOverdue(dateStr)` (positivo=scaduta, negativo=futura, null se assente). `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 229)_
+
+- **rev.229** — `imprese_scavi.html`: richiesta utente — rimossi i riferimenti al dettaglio tratte, non necessari su questa pagina (livello di dettaglio impresa, non tecnico). Card: eliminato "N tratte (M in attesa N.O.)" dalla `.cant-info-line`, mantenuto solo "+X m in attesa N.O." (avviso sui metri, non sulle tratte). Form aggiornamento (`openForm()`): rimosso interamente `formTratteInfo` che elencava gli ID delle singole tratte lavorabili/bloccate (`tratta_id`). Rimosse variabili JS ora inutilizzate: `nBlocc`/`tratte` in `renderGrid()`, `totPot`/`tratte`/`lav`/`bloc` in `openForm()`. Nota: la classe CSS `.cant-tratta` (stile del codice cantiere) è rimasta — è solo un nome di classe interno, non mostra testo "tratte" all'utente.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 228)_
+
+- **rev.228** — `imprese_scavi.html`: richiesta utente — il formato data deve essere sempre italiano (gg/mm/aaaa), mai ISO grezzo. Trovate e corrette 3 date che sfuggivano a `fmtDateIT()`: colonna "Data" della tabella Storico (`e.data`), "Ripresa stimata" nelle note storico (`e.data_ripresa_stimata`), "Ripresa stimata" nel box sospeso della card cantiere (`r.data_ripresa_stimata`) — tutte mostravano `aaaa-mm-gg` grezzo. `scavi.html` già conforme (usa `fmtD()`, stesso pattern). Aggiunta convenzione permanente in memoria: date sempre in formato IT su tutta la dashboard.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 227)_
+
+- **rev.227** — `imprese_scavi.html`, `showStorico()`: richiesta utente da screenshot — il modal "Storico" mostrava solo il log caricamenti impresa (data/stato/tecnica/metri/note), non le 5 date pianificate/effettive del cantiere (`data_inizio/fine_prevista/effettiva`, `data_ripresa_stimata`), già salvate ma invisibili qui. Aggiunto pannello riepilogo (`.storico-dates`) sopra la tabella log, stesso pattern già usato in `scavi.html`/`openModalRegistro()` (rev.199) lato staff — 4 date sempre mostrate + Ripresa stimata se `stato_cantiere==='sospeso'`, visibile solo se almeno un campo è valorizzato.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 226)_
+
+- **rev.226** — `imprese_scavi.html`: richiesta utente da screenshot — card cantiere confuse. Rimosso `#lastAccess` ("Ultimo accesso: HH:MM:SS", CSS `.last-access` incluso). Redesign card cantiere: eliminata la `cant-stats-row` a 3 colonne in fondo (era ridondante — Tot. lavorabili/Tratte/Ultimo aggiornamento duplicavano dati già mostrati sopra), % avanzamento ora badge colorato (classe `fill-${stato}`) allineato a destra sopra la barra invece di testo piccolo affiancato ai metri; tratte/attesa N.O./date previste-effettive unificate in un'unica riga secondaria (`.cant-info-line`, separatore "·") al posto di 3-4 div separati; box "sospeso" ora evidenziato con sfondo invece di testo semplice. Stesso trattamento sui chip "Avanzamento per lotto" in alto (`agg-chip`): percentuale come badge prominente a destra (`.agg-chip-pct`, pill blu), nome+metri raggruppati a sinistra, barra sotto su riga propria.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 225)_
+
+- **rev.225** — `imprese_scavi.html`: richiesta utente. Rimosso l'hint-banner sopra il form aggiornamento ("Inserisci i metri realizzati dall'ultimo aggiornamento. I campi con * sono obbligatori."). Aggiunta nelle card cantiere una riga compatta (`.cant-dates-row`, 10px) con le date disponibili — `data_inizio/fine_prevista` ed `effettiva` — sotto il badge stato, visibile solo se almeno un campo è valorizzato; nessuna modifica a padding/grid/dimensioni della card (era già ad altezza automatica).
+
 _Ultimo aggiornamento: 2026-08-08 (rev. 224)_
 
 - **rev.224** — `imprese.html`: causa reale del disallineamento dei filtri (non lo stile del checkbox in sé, era il CSS globale `label{margin-top:12px;margin-bottom:5px;display:block}` che si applica a QUALSIASI `<label>`, incluse le nostre label-wrapper dei filtri, spostandole verticalmente rispetto alla barra di ricerca). Aggiunto `margin:0` esplicito inline su entrambe le label filtro per neutralizzare l'eredità globale.
