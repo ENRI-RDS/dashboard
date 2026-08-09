@@ -170,6 +170,11 @@
     background:var(--surface); border:1px solid var(--border2);
     border-left:3px solid var(--stato-c, var(--gray-400));
     border-radius:var(--radius-md); padding:7px 7px; min-width:0;
+    cursor:pointer; transition:background .12s, box-shadow .12s;
+  }
+  .stato-chip:hover { background:var(--gray-50); }
+  .stato-chip.active {
+    background:var(--retelit-ice); box-shadow:0 0 0 1.5px var(--stato-c, var(--gray-400)) inset;
   }
   .stato-chip-count { font-size:16px; font-weight:800; color:var(--text); line-height:1.1; }
   .stato-chip-label { font-size:9.8px; font-weight:600; color:var(--gray-600); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
@@ -1003,13 +1008,23 @@ window.addEventListener('pageshow', (e) => {
       const s = r.stato_cantiere || 'non_avviato';
       statoCounts[s] = (statoCounts[s] || 0) + 1;
     });
+    const curStato = $('filterStato').value;
     $('statoChips').innerHTML = Object.keys(STATO_LABEL).map(s => {
       const n = statoCounts[s] || 0;
-      return `<div class="stato-chip" style="--stato-c:${STATO_COLOR[s]}">
+      const active = s === curStato ? ' active' : '';
+      return `<div class="stato-chip${active}" data-stato="${s}" style="--stato-c:${STATO_COLOR[s]}">
         <div class="stato-chip-count">${n}</div>
         <div class="stato-chip-label">${STATO_LABEL[s]}</div>
       </div>`;
     }).join('');
+    $('statoChips').querySelectorAll('.stato-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const s = chip.dataset.stato;
+        $('filterStato').value = ($('filterStato').value === s) ? '' : s;
+        applyFilter();
+        renderAggIndicators(ALL_CANTIERI);
+      });
+    });
 
     section.style.display = 'flex';
   }
@@ -1063,13 +1078,14 @@ window.addEventListener('pageshow', (e) => {
     renderGrid(getFilteredItems());
   }
 
-  $('filterStato').addEventListener('change', applyFilter);
+  $('filterStato').addEventListener('change', () => { applyFilter(); renderAggIndicators(ALL_CANTIERI); });
   $('filterLotto').addEventListener('change', applyFilter);
   $('filterComune').addEventListener('change', applyFilter);
   $('filterSearch').addEventListener('input', applyFilter);
   $('btnClearFilters').addEventListener('click', () => {
     $('filterStato').value = ''; $('filterLotto').value = ''; $('filterComune').value = ''; $('filterSearch').value = '';
     applyFilter();
+    renderAggIndicators(ALL_CANTIERI);
   });
   $('btnRefresh').addEventListener('click', loadCantieri);
 
