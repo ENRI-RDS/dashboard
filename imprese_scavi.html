@@ -207,7 +207,6 @@
   .cant-urgency.u-late { background:var(--danger-bg); color:var(--danger); border:1px solid var(--danger); }
   .cant-urgency.u-soon { background:var(--warn-bg); color:var(--warn); border:1px solid var(--warn); }
   .cant-urgency.u-done { background:var(--ok-bg); color:var(--ok); border:1px solid var(--ok); }
-  .cant-urgency.u-ok   { background:var(--retelit-ice); color:var(--retelit-blue); border:1px solid var(--retelit-blue-50); }
   .cant-edit-btn {
     background:none; border:none; cursor:pointer; color:var(--muted);
     padding:2px; display:flex; align-items:center; flex-shrink:0;
@@ -526,7 +525,7 @@
         <div class="kpi-label">Aggiornati</div>
       </div>
       <div class="kpi-value" id="kpiDone">—</div>
-      <div class="kpi-sub">oggi</div>
+      <div class="kpi-sub">nessuna azione richiesta</div>
     </div>
   </div>
 
@@ -787,27 +786,26 @@ window.addEventListener('pageshow', (e) => {
 
     // Non avviato / in allestimento: l'urgenza dipende dalla data di inizio prevista,
     // non dai giorni dall'ultimo aggiornamento — se l'inizio non è ancora dovuto,
-    // il cantiere è "in linea" (nessun lavoro/aggiornamento atteso finché non scade).
+    // il cantiere è "aggiornato" (nessun lavoro/aggiornamento atteso finché non scade).
     if (stato === 'non_avviato' || stato === 'allestimento') {
       const gg = daysOverdue(r.data_inizio_prevista);
-      if (gg === null || gg <= 0) return 'ok';
+      if (gg === null || gg <= 0) return 'done';
       if (gg <= 2) return 'soon';
       return 'late';
     }
     if (stato === 'in_corso') {
       const ggFine = daysOverdue(r.data_fine_prevista);
       if (ggFine !== null && ggFine > 0) return 'late'; // scaduta la fine prevista
-      if (dsUpdate <= 0) return 'done';
       if (dsUpdate > 7) return 'late';
       if (dsUpdate > 1) return 'soon';
-      return 'ok';
+      return 'done';
     }
     if (stato === 'sospeso') {
-      if (dsUpdate <= 2) return 'ok';
+      if (dsUpdate <= 2) return 'done';
       if (dsUpdate <= 7) return 'soon';
       return 'late';
     }
-    return 'ok';
+    return 'done';
   }
   function renderKpi(items) {
     let late = 0, soon = 0, done = 0;
@@ -824,12 +822,11 @@ window.addEventListener('pageshow', (e) => {
   }
 
   // ── Grid cantieri ─────────────────────────────────────────────────────────
-  const URGENCY_LABEL = { late:'In ritardo', soon:'Da aggiornare', done:'Aggiornato', ok:'In linea' };
+  const URGENCY_LABEL = { late:'In ritardo', soon:'Da aggiornare', done:'Aggiornato' };
   const URGENCY_ICON = {
     late: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>',
     soon: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
     done: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
-    ok:   '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>',
   };
   function fmtDateIT(isoDate) {
     if (!isoDate || isoDate === '—') return '—';
