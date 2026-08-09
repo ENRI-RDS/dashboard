@@ -372,6 +372,14 @@
   .storico-table td { padding:8px 10px; border-bottom:1px solid var(--gray-100); }
   .storico-table tr:last-child td { border-bottom:none; }
   .storico-table tr:hover td { background:var(--gray-50); }
+  .storico-dates {
+    display:flex; flex-wrap:wrap; gap:10px;
+    background:var(--gray-50); border:1px solid var(--border);
+    border-radius:var(--radius-md); padding:10px 14px; margin-bottom:16px;
+  }
+  .storico-date-item { display:flex; flex-direction:column; gap:2px; min-width:90px; }
+  .storico-date-lbl { font-size:9.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; }
+  .storico-date-val { font-size:12.5px; font-weight:600; color:var(--text); font-family:var(--font-mono); }
 
   /* ── Help footer ─────────────────────────────────────────────────────────── */
   .help-footer {
@@ -851,7 +859,7 @@ window.addEventListener('pageshow', (e) => {
           ${(r.data_inizio_effettiva || r.data_fine_effettiva) ? `<span class="dot">·</span><span>Eff: <b>${fmtDateIT(r.data_inizio_effettiva)}</b> → <b>${fmtDateIT(r.data_fine_effettiva)}</b></span>` : ''}
         </div>
         ${stato === 'sospeso' && (r.motivo_blocco || r.data_ripresa_stimata) ? `<div style="font-size:10px;margin-top:6px;padding:6px 8px;background:var(--danger-bg);border-radius:var(--radius-md);color:var(--danger)">
-          ${r.motivo_blocco ? '⏸ '+escapeHtml(r.motivo_blocco) : ''}${r.data_ripresa_stimata ? (r.motivo_blocco?' · ':'')+'Ripresa stimata '+escapeHtml(r.data_ripresa_stimata) : ''}
+          ${r.motivo_blocco ? '⏸ '+escapeHtml(r.motivo_blocco) : ''}${r.data_ripresa_stimata ? (r.motivo_blocco?' · ':'')+'Ripresa stimata '+fmtDateIT(r.data_ripresa_stimata) : ''}
         </div>` : ''}
         <div class="cant-quick-wrap">
           <label class="cant-quick-label">Metri realizzati dall'ultimo aggiornamento *</label>
@@ -1190,11 +1198,18 @@ window.addEventListener('pageshow', (e) => {
     try {
       const d = await api(`/api/imprese/cantieri/${encodeURIComponent(r.cantiere_key)}/log`);
       const log = (d.log || []).slice().reverse();
+      const datesPanel = (r.data_inizio_prevista || r.data_fine_prevista || r.data_inizio_effettiva || r.data_fine_effettiva || r.data_ripresa_stimata) ? `<div class="storico-dates">
+        <div class="storico-date-item"><span class="storico-date-lbl">Inizio previsto</span><span class="storico-date-val">${fmtDateIT(r.data_inizio_prevista) || '—'}</span></div>
+        <div class="storico-date-item"><span class="storico-date-lbl">Inizio effettivo</span><span class="storico-date-val">${fmtDateIT(r.data_inizio_effettiva) || '—'}</span></div>
+        <div class="storico-date-item"><span class="storico-date-lbl">Fine prevista</span><span class="storico-date-val">${fmtDateIT(r.data_fine_prevista) || '—'}</span></div>
+        <div class="storico-date-item"><span class="storico-date-lbl">Fine effettiva</span><span class="storico-date-val">${fmtDateIT(r.data_fine_effettiva) || '—'}</span></div>
+        ${r.stato_cantiere === 'sospeso' ? `<div class="storico-date-item"><span class="storico-date-lbl">Ripresa stimata</span><span class="storico-date-val" style="color:var(--danger)">${fmtDateIT(r.data_ripresa_stimata) || '—'}</span></div>` : ''}
+      </div>` : '';
       if (!log.length) {
-        $('storicoBody').innerHTML = '<div class="empty">Nessun aggiornamento registrato.</div>';
+        $('storicoBody').innerHTML = datesPanel + '<div class="empty">Nessun aggiornamento registrato.</div>';
         return;
       }
-      $('storicoBody').innerHTML = `<table class="storico-table">
+      $('storicoBody').innerHTML = datesPanel + `<table class="storico-table">
         <thead><tr>
           <th>Data</th><th>Stato</th><th>Tecnica</th><th>Metri</th><th>Note</th>
         </tr></thead>
@@ -1202,9 +1217,9 @@ window.addEventListener('pageshow', (e) => {
           const noteParts = [];
           if (e.note) noteParts.push(escapeHtml(e.note));
           if (e.motivo_blocco) noteParts.push('Blocco: '+escapeHtml(e.motivo_blocco));
-          if (e.data_ripresa_stimata) noteParts.push('Ripresa stimata '+escapeHtml(e.data_ripresa_stimata));
+          if (e.data_ripresa_stimata) noteParts.push('Ripresa stimata '+fmtDateIT(e.data_ripresa_stimata));
           return `<tr>
-          <td style="font-family:var(--font-mono);font-size:11px;white-space:nowrap">${escapeHtml(e.data||'—')}</td>
+          <td style="font-family:var(--font-mono);font-size:11px;white-space:nowrap">${fmtDateIT((e.data||'').slice(0,10)) || '—'}</td>
           <td style="white-space:nowrap"><span class="cant-stato-badge s-${(e.stato_cantiere||'').replace(/\s/g,'_')} " style="font-size:9.5px">
             ${escapeHtml(STATO_LABEL[e.stato_cantiere] || e.stato_cantiere || '—')}</span></td>
           <td style="font-size:11px;white-space:nowrap">${escapeHtml(TECNICA_LABEL[e.tecnica_scavo] || e.tecnica_scavo || '—')}</td>
