@@ -254,6 +254,8 @@
     transition:box-shadow .15s, border-color .15s;
     position:relative; overflow:hidden;
   }
+  .cant-dates-row { display:flex; flex-wrap:wrap; gap:4px 10px; font-size:10px; color:var(--muted); margin:2px 0 6px; }
+  .cant-dates-row b { color:var(--text,#12161B); font-weight:600; }
   .cant-card:hover { box-shadow:var(--shadow-md); border-color:var(--retelit-sky); }
   .cant-card.selected { border-color:var(--retelit-blue); box-shadow:var(--shadow-focus); }
   .cant-card.urg-late { border-left:3px solid var(--danger); }
@@ -551,11 +553,6 @@
     <button class="btn btn-ghost btn-sm" id="btnRefresh" style="margin-left:auto"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>Aggiorna</button>
   </div>
 
-  <div class="hint-banner">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-    <span>Inserisci i metri realizzati dall'ultimo aggiornamento. I campi con * sono obbligatori.</span>
-  </div>
-
   <!-- Form aggiornamento (sticky sopra le card) -->
   <div id="formPanel">
     <div class="form-header">
@@ -842,6 +839,10 @@ window.addEventListener('pageshow', (e) => {
           ${!maiAggiornato ? `<div class="cant-agg-info">Ultimo agg.: ${aggFmt}${aggSub ? `<div class="cant-agg-sub${urg ? ' u-'+urg : ''}">${aggSub}</div>` : ''}</div>` : ''}
         </div>
         <span class="cant-stato-badge s-${stato}">${escapeHtml(lbl)}</span>
+        ${(r.data_inizio_prevista || r.data_fine_prevista || r.data_inizio_effettiva || r.data_fine_effettiva) ? `<div class="cant-dates-row">
+          ${(r.data_inizio_prevista || r.data_fine_prevista) ? `<span>Prev: <b>${fmtDateIT(r.data_inizio_prevista)}</b> → <b>${fmtDateIT(r.data_fine_prevista)}</b></span>` : ''}
+          ${(r.data_inizio_effettiva || r.data_fine_effettiva) ? `<span>Eff: <b>${fmtDateIT(r.data_inizio_effettiva)}</b> → <b>${fmtDateIT(r.data_fine_effettiva)}</b></span>` : ''}
+        </div>` : ''}
         <div class="cant-progress-wrap">
           <div class="cant-progress-label">
             <span>${fmt(scav)} m / ${fmt(tot)} m</span>
