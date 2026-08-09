@@ -771,12 +771,42 @@ window.addEventListener('pageshow', (e) => {
     if (isNaN(d)) return Infinity;
     return Math.floor((Date.now() - d.getTime()) / 86400000);
   }
+  function daysOverdue(dateStr) {
+    // Positivo = scaduta (nel passato), negativo = non ancora dovuta (nel futuro). null se assente/non valida.
+    if (!dateStr) return null;
+    const d = new Date(dateStr.length === 10 ? dateStr + 'T00:00:00' : dateStr);
+    if (isNaN(d)) return null;
+    const oggi0 = new Date(); oggi0.setHours(0,0,0,0);
+    return Math.floor((oggi0 - d) / 86400000);
+  }
   function urgencyOf(r) {
-    if ((r.stato_cantiere || '') === 'completato') return null;
-    const ds = daysSince(r.updated_at);
-    if (ds <= 0) return 'done';
-    if (ds > 7) return 'late';
-    return 'soon';
+    const stato = r.stato_cantiere || 'non_avviato';
+    if (stato === 'completato') return null;
+    const dsUpdate = daysSince(r.updated_at);
+
+    // Non avviato / in allestimento: l'urgenza dipende dalla data di inizio prevista,
+    // non dai giorni dall'ultimo aggiornamento — se l'inizio non è ancora dovuto,
+    // non c'è nulla da segnalare (nessun lavoro/aggiornamento atteso).
+    if (stato === 'non_avviato' || stato === 'allestimento') {
+      const gg = daysOverdue(r.data_inizio_prevista);
+      if (gg === null || gg <= 0) return null;
+      if (gg <= 2) return 'soon';
+      return 'late';
+    }
+    if (stato === 'in_corso') {
+      const ggFine = daysOverdue(r.data_fine_prevista);
+      if (ggFine !== null && ggFine > 0) return 'late'; // scaduta la fine prevista
+      if (dsUpdate <= 0) return 'done';
+      if (dsUpdate > 7) return 'late';
+      if (dsUpdate > 1) return 'soon';
+      return null;
+    }
+    if (stato === 'sospeso') {
+      if (dsUpdate <= 2) return null;
+      if (dsUpdate <= 7) return 'soon';
+      return 'late';
+    }
+    return null;
   }
   function renderKpi(items) {
     let late = 0, soon = 0, done = 0;
