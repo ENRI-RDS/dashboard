@@ -143,25 +143,35 @@
     border-radius:var(--radius-md); padding:9px 14px; margin-bottom:16px;
     font-size:12px; color:var(--muted);
   }
-  .agg-section { display:flex; gap:16px; flex-wrap:wrap; flex:2 1 420px; max-width:760px; }
-  .agg-group { flex:1 1 320px; min-width:280px; }
-  .agg-title { font-size:10.5px; font-weight:700; color:var(--gray-700); margin-bottom:6px; }
-  .agg-chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .agg-section { display:flex; gap:14px; flex-wrap:wrap; flex:2 1 420px; max-width:760px; }
+  .agg-group { flex:1 1 220px; min-width:200px; }
+  .agg-title { font-size:9.5px; font-weight:700; color:var(--gray-700); margin-bottom:5px; text-transform:uppercase; letter-spacing:.04em; }
+  .agg-chips { display:flex; flex-wrap:wrap; gap:6px; }
   .agg-chip {
-    flex:1 1 170px; min-width:150px; background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--radius-md); padding:9px 12px;
+    flex:1 1 130px; min-width:110px; background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius-md); padding:6px 9px;
   }
-  .agg-chip-row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:7px; }
-  .agg-chip-info { display:flex; flex-direction:column; gap:2px; min-width:0; }
-  .agg-chip-name { font-size:11.5px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .agg-chip-meta { font-size:10.5px; color:var(--muted); font-family:var(--font-mono); }
+  .agg-chip-row { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px; }
+  .agg-chip-info { display:flex; flex-direction:column; gap:1px; min-width:0; }
+  .agg-chip-name { font-size:10px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .agg-chip-meta { font-size:9px; color:var(--muted); font-family:var(--font-mono); }
   .agg-chip-pct {
-    font-size:14px; font-weight:800; color:var(--retelit-blue);
-    background:var(--retelit-ice); padding:3px 11px; border-radius:var(--radius-pill);
+    font-size:11px; font-weight:800; color:var(--retelit-blue);
+    background:var(--retelit-ice); padding:2px 8px; border-radius:var(--radius-pill);
     flex-shrink:0; line-height:1.3;
   }
-  .agg-chip-track { height:5px; border-radius:99px; background:var(--gray-100); overflow:hidden; }
+  .agg-chip-track { height:3px; border-radius:99px; background:var(--gray-100); overflow:hidden; }
   .agg-chip-fill { height:100%; border-radius:99px; background:var(--retelit-blue); }
+
+  /* ── Card compatte stato cantiere (nel blocco Avanzamento) ─────────────── */
+  .stato-chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .stato-chip {
+    flex:1 1 90px; min-width:78px; background:var(--surface); border:1px solid var(--border);
+    border-left:3px solid var(--stato-c, var(--gray-400));
+    border-radius:var(--radius-md); padding:6px 9px;
+  }
+  .stato-chip-count { font-size:15px; font-weight:800; color:var(--text); line-height:1.1; }
+  .stato-chip-label { font-size:9px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
 
   /* ── Toolbar ─────────────────────────────────────────────────────────────── */
   .toolbar {
@@ -458,6 +468,23 @@
   .fill-sospeso      { background:var(--danger); }
   .fill-completato   { background:var(--ok); }
   .cant-progress-pct-badge.fill-non_avviato  { color:var(--gray-700); background:var(--gray-100); }
+
+  /* ── HELP MODAL ── */
+  #helpOverlay {
+    position:fixed;inset:0;background:#0007;display:flex;align-items:center;
+    justify-content:center;z-index:3000;opacity:0;pointer-events:none;transition:opacity .2s;
+  }
+  #helpOverlay.open { opacity:1; pointer-events:all; }
+  #helpOverlay .help-modal {
+    background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    width:620px;max-width:94vw;max-height:82vh;overflow-y:auto;padding:28px 32px;
+    box-shadow:0 20px 60px #0005;
+  }
+  #helpOverlay h3 { font-size:16px;font-weight:700;color:var(--text);margin:0 0 4px; }
+  #helpOverlay .help-section { margin-top:18px; }
+  #helpOverlay .help-section h4 { font-size:11px;font-weight:700;text-transform:uppercase;
+    letter-spacing:.08em;color:var(--accent2, var(--retelit-teal));margin:0 0 8px; }
+  #helpOverlay .help-section p { font-size:12px;color:var(--muted);line-height:1.6;margin:0; }
 </style>
 </head>
 <body>
@@ -493,9 +520,13 @@
       <p class="page-sub" id="pageSubtitle">Caricamento in corso…</p>
     </div>
     <div class="agg-section" id="aggSection" style="display:none">
-      <div class="agg-group" style="flex:1 1 100%">
+      <div class="agg-group">
         <div class="agg-title">Avanzamento per lotto</div>
         <div class="agg-chips" id="lottoChips"></div>
+      </div>
+      <div class="agg-group">
+        <div class="agg-title">Cantieri per stato</div>
+        <div class="stato-chips" id="statoChips"></div>
       </div>
     </div>
   </div>
@@ -690,7 +721,7 @@
       </div>
     </div>
     <div class="help-footer-actions">
-      <a href="#" class="btn btn-secondary btn-sm"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Guida rapida</a>
+      <button class="btn btn-secondary btn-sm" onclick="openHelp()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Guida rapida</button>
     </div>
   </div>
 </main>
@@ -954,6 +985,21 @@ window.addEventListener('pageshow', (e) => {
     const FALLBACK_LOTTO = 'Senza lotto';
     const lottoEntries = groupBy('lotto', FALLBACK_LOTTO);
     $('lottoChips').innerHTML = renderChips(lottoEntries, 'Lotto', FALLBACK_LOTTO);
+
+    // Card compatte per stato cantiere
+    const statoCounts = {};
+    items.forEach(r => {
+      const s = r.stato_cantiere || 'non_avviato';
+      statoCounts[s] = (statoCounts[s] || 0) + 1;
+    });
+    $('statoChips').innerHTML = Object.keys(STATO_LABEL).map(s => {
+      const n = statoCounts[s] || 0;
+      return `<div class="stato-chip" style="--stato-c:${STATO_COLOR[s]}">
+        <div class="stato-chip-count">${n}</div>
+        <div class="stato-chip-label">${STATO_LABEL[s]}</div>
+      </div>`;
+    }).join('');
+
     section.style.display = 'flex';
   }
 
@@ -1281,7 +1327,47 @@ window.addEventListener('pageshow', (e) => {
   // ── Init ──────────────────────────────────────────────────────────────────
   loadCantieri();
 
+  window.openHelp = function() { $('helpOverlay').classList.add('open'); };
+  window.closeHelp = function() { $('helpOverlay').classList.remove('open'); };
+
 })();
 </script>
+
+<!-- Help Modal -->
+<div id="helpOverlay" onclick="if(event.target===this)closeHelp()">
+  <div class="help-modal">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <h3>⛏ Guida — Avanzamento Scavi</h3>
+      <span onclick="closeHelp()"
+        style="cursor:pointer;color:var(--muted);font-size:22px;line-height:1">×</span>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Come aggiornare i tuoi cantieri da questa pagina</div>
+
+    <div class="help-section">
+      <h4>📊 Panoramica in alto</h4>
+      <p>Le card KPI mostrano quanti cantieri vanno aggiornati oggi, quali non hanno mai ricevuto dati, quali sono in ritardo e quali sono a posto. A destra trovi l'avanzamento in metri per lotto e il conteggio dei cantieri per stato.</p>
+    </div>
+
+    <div class="help-section">
+      <h4>⛏ Aggiornare l'avanzamento di un cantiere</h4>
+      <p>Nella card del cantiere inserisci i <strong>metri realizzati dall'ultimo aggiornamento</strong> e premi <strong>Salva avanzamento</strong>. Il salvataggio è diretto: non serve approvazione. Usa il campo <strong>Modifica dati cantiere</strong> (icona matita) per aggiornare stato, tecnica di scavo e date.</p>
+    </div>
+
+    <div class="help-section">
+      <h4>🔄 Stati del cantiere</h4>
+      <p>Un cantiere passa da <strong>Non avviato</strong> ad <strong>Allestimento</strong>, poi <strong>In corso</strong>, fino a <strong>Completato</strong>. Può essere messo in <strong>Sospeso</strong> (indicando motivo e data di ripresa stimata) e poi rimesso In corso.</p>
+    </div>
+
+    <div class="help-section">
+      <h4>📋 Storico aggiornamenti</h4>
+      <p>Il bottone <strong>Storico aggiornamenti</strong> in ciascuna card mostra tutte le registrazioni di avanzamento fatte per quel cantiere, con data e metri inseriti.</p>
+    </div>
+
+    <div class="help-section">
+      <h4>🔎 Filtri e ricerca</h4>
+      <p>Usa la barra di ricerca e i filtri per stato, lotto e comune per trovare rapidamente i cantieri da aggiornare. <strong>Pulisci filtri</strong> azzera tutte le selezioni.</p>
+    </div>
+  </div>
+</div>
 </body>
 </html>
