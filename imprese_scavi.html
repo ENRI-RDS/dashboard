@@ -84,13 +84,9 @@
   }
 
   /* ── Main layout ─────────────────────────────────────────────────────────── */
-  main { flex:1; max-width:1100px; width:100%; margin:0 auto; padding:28px 20px 60px; }
+  main { flex:1; max-width:1440px; width:100%; margin:0 auto; padding:28px 40px 60px; }
 
-  .page-header { margin-bottom:24px; }
-  .page-eyebrow {
-    font-size:10px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
-    color:var(--retelit-teal); margin-bottom:6px;
-  }
+  .page-header { flex:0 0 auto; }
   .page-title {
     font-size:24px; font-weight:800; letter-spacing:-.02em;
     color:var(--retelit-blue); line-height:1.1;
@@ -98,31 +94,78 @@
   .page-sub { font-size:13px; color:var(--muted); margin-top:6px; }
 
   /* ── KPI row ─────────────────────────────────────────────────────────────── */
-  .kpi-row { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:24px; }
-  @media(max-width:800px){ .kpi-row{ grid-template-columns:repeat(3,1fr); } }
-  @media(max-width:500px){ .kpi-row{ grid-template-columns:repeat(2,1fr); } }
+  .kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:24px; }
+  @media(max-width:800px){ .kpi-row{ grid-template-columns:repeat(2,1fr); } }
   .kpi {
     background:var(--surface); border:1px solid var(--border);
     border-radius:var(--radius-lg); padding:14px 16px;
     box-shadow:var(--shadow-sm); position:relative; overflow:hidden;
   }
-  .kpi::before {
-    content:''; position:absolute; top:0; left:0; bottom:0; width:3px;
-    border-radius:var(--radius-lg) 0 0 var(--radius-lg);
+  /* Card 1 "today": highlighted — big solid icon beside a stacked text block */
+  .kpi.k-today {
+    background:var(--retelit-ice); border-color:var(--retelit-mist);
+    display:flex; align-items:center; gap:14px;
   }
-  .kpi.k-nav::before  { background:var(--gray-400); }
-  .kpi.k-all::before  { background:var(--warn); }
-  .kpi.k-cor::before  { background:var(--retelit-blue); }
-  .kpi.k-sos::before  { background:var(--danger); }
-  .kpi.k-com::before  { background:var(--ok); }
-  .kpi-label { font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); font-weight:700; margin-bottom:8px; }
+  .kpi.k-today .kpi-icon {
+    width:56px; height:56px; border-radius:50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--retelit-blue); color:#fff; margin-bottom:0;
+  }
+  .kpi.k-today .kpi-label { color:var(--retelit-blue); margin-bottom:4px; }
+  .kpi.k-today .kpi-value { color:var(--retelit-blue); }
+  /* Cards 2-4: small icon inline with label, number + caption below */
+  .kpi:not(.k-today) .kpi-top { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .kpi-icon { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-bottom:10px; }
+  .kpi.k-late .kpi-icon  { background:var(--danger); color:#fff; box-shadow:0 0 0 5px var(--danger-bg); }
+  .kpi.k-soon .kpi-icon  { background:var(--warn); color:#fff; box-shadow:0 0 0 5px var(--warn-bg); }
+  .kpi.k-done .kpi-icon  { background:var(--ok); color:#fff; box-shadow:0 0 0 5px var(--ok-bg); }
+  .kpi-label { font-size:11.5px; text-transform:uppercase; letter-spacing:.02em; color:var(--gray-700); font-weight:700; margin-bottom:8px; }
   .kpi-value { font-size:28px; font-weight:800; line-height:1; letter-spacing:-.02em; }
-  .kpi.k-nav .kpi-value { color:var(--gray-400); }
-  .kpi.k-all .kpi-value { color:var(--warn); }
-  .kpi.k-cor .kpi-value { color:var(--retelit-blue); }
-  .kpi.k-sos .kpi-value { color:var(--danger); }
-  .kpi.k-com .kpi-value { color:var(--ok); }
+  .kpi.k-late .kpi-value  { color:var(--danger); }
+  .kpi.k-soon .kpi-value  { color:var(--warn); }
+  .kpi.k-done .kpi-value  { color:var(--ok); }
   .kpi-sub { font-size:10.5px; color:var(--muted); margin-top:4px; }
+
+  /* ── Header row (title + info banner + last access, side by side) ─────────── */
+  .header-row {
+    display:flex; align-items:flex-start; justify-content:space-between;
+    gap:20px; margin-bottom:24px; flex-wrap:wrap;
+  }
+  .last-access {
+    display:flex; align-items:center; gap:6px; white-space:nowrap;
+    font-size:11px; color:var(--muted); padding-top:6px; flex-shrink:0;
+  }
+
+  /* ── Info banner ─────────────────────────────────────────────────────────── */
+  .info-banner {
+    display:flex; align-items:center; gap:8px;
+    background:var(--retelit-ice); border:1px solid var(--retelit-mist);
+    border-radius:var(--radius-md); padding:10px 16px;
+    font-size:12.5px; color:var(--retelit-teal);
+    flex:2 1 420px; max-width:640px;
+  }
+  .hint-banner {
+    display:flex; align-items:center; gap:8px;
+    background:var(--gray-50); border:1px solid var(--border);
+    border-radius:var(--radius-md); padding:9px 14px; margin-bottom:16px;
+    font-size:12px; color:var(--muted);
+  }
+
+  /* ── Indicatori cluster/lotto ────────────────────────────────────────────── */
+  .agg-section { display:flex; gap:20px; margin-bottom:20px; flex-wrap:wrap; }
+  .agg-group { flex:1 1 320px; min-width:280px; }
+  .agg-title { font-size:11.5px; font-weight:700; color:var(--gray-700); margin-bottom:8px; }
+  .agg-chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .agg-chip {
+    flex:1 1 200px; min-width:180px; background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius-md); padding:9px 12px;
+  }
+  .agg-chip-head { display:flex; align-items:baseline; justify-content:space-between; gap:6px; margin-bottom:6px; }
+  .agg-chip-name { font-size:12px; font-weight:700; color:var(--text); }
+  .agg-chip-pct { font-size:11px; font-weight:700; color:var(--retelit-blue); }
+  .agg-chip-meta { font-size:10.5px; color:var(--muted); margin-bottom:6px; font-family:var(--font-mono); }
+  .agg-chip-track { height:5px; border-radius:99px; background:var(--gray-100); overflow:hidden; }
+  .agg-chip-fill { height:100%; border-radius:99px; background:var(--retelit-blue); }
 
   /* ── Toolbar ─────────────────────────────────────────────────────────────── */
   .toolbar {
@@ -130,6 +173,81 @@
     margin-bottom:16px;
   }
   .toolbar-label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+  .toolbar-search {
+    flex:1 1 220px; min-width:180px; display:flex; align-items:center; gap:8px;
+    background:var(--surface); border:1px solid var(--border2); border-radius:var(--radius-md);
+    padding:0 12px;
+  }
+  .toolbar-search svg { color:var(--muted); flex-shrink:0; }
+  .toolbar-search input {
+    border:none; padding:8px 0; font-size:13px; background:transparent; width:100%;
+  }
+  .toolbar-search input:focus { outline:none; box-shadow:none; }
+  .select-wrap {
+    position:relative; border:1px solid var(--border2); border-radius:var(--radius-md);
+    background:var(--surface); padding:4px 26px 4px 12px;
+    flex:0 0 auto; min-width:140px;
+  }
+  .select-wrap label {
+    display:block; font-size:9.5px; color:var(--muted); font-weight:600; line-height:1.3;
+    text-transform:none; letter-spacing:0; margin-bottom:0;
+  }
+  .select-wrap select {
+    border:none; padding:0; margin:0; font-size:13px; font-weight:700; color:var(--text);
+    background:transparent; font-family:var(--font-body); width:100%;
+    appearance:none; -webkit-appearance:none; -moz-appearance:none;
+  }
+  .select-wrap select:focus { outline:none; box-shadow:none; }
+  .select-wrap::after {
+    content:''; position:absolute; right:11px; top:56%; width:7px; height:7px;
+    border-right:2px solid var(--muted); border-bottom:2px solid var(--muted);
+    transform:translateY(-50%) rotate(45deg); pointer-events:none;
+  }
+
+  /* ── Cantiere card: urgency badge + quick update ────────────────────────── */
+  .cant-urgency {
+    display:inline-flex; align-items:center; gap:4px;
+    padding:3px 9px; border-radius:var(--radius-pill);
+    font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em;
+    white-space:nowrap;
+  }
+  .cant-urgency.u-late { background:var(--danger-bg); color:var(--danger); border:1px solid var(--danger); }
+  .cant-urgency.u-soon { background:var(--warn-bg); color:var(--warn); border:1px solid var(--warn); }
+  .cant-urgency.u-done { background:var(--ok-bg); color:var(--ok); border:1px solid var(--ok); }
+  .cant-edit-btn {
+    background:none; border:none; cursor:pointer; color:var(--muted);
+    padding:2px; display:flex; align-items:center; flex-shrink:0;
+  }
+  .cant-edit-btn:hover { color:var(--retelit-blue); }
+  .cant-card-top { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:6px; }
+  .cant-meta-row { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:10px; }
+  .cant-ente { font-size:11.5px; color:var(--muted); }
+  .cant-agg-info { text-align:right; font-size:10.5px; color:var(--muted); white-space:nowrap; flex-shrink:0; }
+  .cant-agg-sub { font-weight:700; margin-top:2px; }
+  .cant-agg-sub.u-late { color:var(--danger); }
+  .cant-agg-sub.u-soon { color:var(--warn); }
+  .cant-agg-sub.u-done { color:var(--ok); }
+  .cant-quick-wrap { margin:10px 0; }
+  .cant-quick-label {
+    font-size:11.5px; font-weight:500; color:var(--muted); margin-bottom:5px; display:block;
+    text-transform:none; letter-spacing:0;
+  }
+  .cant-quick-input-row { position:relative; }
+  .cant-quick-input-row input {
+    padding-right:32px; font-family:var(--font-mono); font-size:13px;
+  }
+  .cant-quick-input-row span {
+    position:absolute; right:12px; top:50%; transform:translateY(-50%);
+    font-size:12px; color:var(--muted); pointer-events:none;
+  }
+  .cant-stats-row {
+    display:grid; grid-template-columns:1fr 1fr; gap:8px;
+    margin-top:10px; padding-top:10px; border-top:1px solid var(--border);
+  }
+  .cant-stats-row.cols-3 { grid-template-columns:1fr 1fr 1fr; }
+  .cant-stat-label { font-size:10px; text-transform:none; letter-spacing:0; color:var(--muted); margin-bottom:3px; font-weight:600; }
+  .cant-stat-value { font-size:13px; font-weight:700; color:var(--text); font-family:var(--font-mono); }
+  .cant-stat-value.never { font-family:var(--font-body); font-weight:500; font-style:italic; font-size:11.5px; color:var(--muted); }
 
   /* ── Cantieri grid ───────────────────────────────────────────────────────── */
   #cantieriGrid {
@@ -147,26 +265,14 @@
   }
   .cant-card:hover { box-shadow:var(--shadow-md); border-color:var(--retelit-sky); }
   .cant-card.selected { border-color:var(--retelit-blue); box-shadow:var(--shadow-focus); }
-  .cant-card-accent {
-    position:absolute; top:0; left:0; right:0; height:3px;
-    border-radius:var(--radius-lg) var(--radius-lg) 0 0;
-  }
-  .cant-card-head {
-    display:flex; align-items:flex-start; justify-content:space-between;
-    gap:8px; margin-bottom:10px; margin-top:4px;
-  }
+  .cant-card.urg-late { border-left:3px solid var(--danger); }
   .cant-tratta {
-    font-family:var(--font-mono); font-size:13px; font-weight:700;
+    font-family:var(--font-mono); font-size:15px; font-weight:700;
     color:var(--retelit-blue);
-  }
-  .cant-lotto {
-    font-size:10px; color:var(--muted); font-weight:500;
-    background:var(--gray-100); padding:2px 8px;
-    border-radius:var(--radius-pill); border:1px solid var(--border);
   }
   .cant-stato-badge {
     display:inline-flex; align-items:center;
-    padding:3px 10px; border-radius:var(--radius-pill);
+    padding:3px 10px; border-radius:var(--radius-pill); border:1px solid transparent;
     font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
   }
   .cant-progress-wrap { margin:10px 0 6px; }
@@ -274,6 +380,22 @@
   .storico-table tr:last-child td { border-bottom:none; }
   .storico-table tr:hover td { background:var(--gray-50); }
 
+  /* ── Help footer ─────────────────────────────────────────────────────────── */
+  .help-footer {
+    display:flex; align-items:center; justify-content:space-between;
+    gap:16px; flex-wrap:wrap; background:var(--gray-50); border:1px solid var(--border);
+    border-radius:var(--radius-lg); padding:16px 20px; margin-top:4px;
+  }
+  .help-footer-left { display:flex; align-items:center; gap:14px; }
+  .help-icon {
+    width:34px; height:34px; border-radius:50%; flex-shrink:0;
+    border:1.5px solid var(--retelit-blue); color:var(--retelit-blue);
+    display:flex; align-items:center; justify-content:center; font-weight:700;
+  }
+  .help-title { font-size:13.5px; font-weight:700; color:var(--text); }
+  .help-sub { font-size:11.5px; color:var(--muted); margin-top:2px; }
+  .help-footer-actions { display:flex; gap:10px; flex-wrap:wrap; }
+
   /* ── Buttons ─────────────────────────────────────────────────────────────── */
   .btn {
     display:inline-flex; align-items:center; justify-content:center; gap:6px;
@@ -316,17 +438,11 @@
   .empty { text-align:center; color:var(--muted); padding:32px; font-size:13px; }
 
   /* ── Stato colors ────────────────────────────────────────────────────────── */
-  .s-non_avviato  { background:var(--gray-100); color:var(--gray-600); }
-  .s-allestimento { background:var(--warn-bg); color:var(--warn); }
-  .s-in_corso     { background:rgba(4,63,117,.08); color:var(--retelit-blue); }
-  .s-sospeso      { background:var(--danger-bg); color:var(--danger); }
-  .s-completato   { background:var(--ok-bg); color:var(--ok); }
-
-  .accent-non_avviato  { background:var(--gray-300); }
-  .accent-allestimento { background:var(--warn); }
-  .accent-in_corso     { background:var(--retelit-blue); }
-  .accent-sospeso      { background:var(--danger); }
-  .accent-completato   { background:var(--ok); }
+  .s-non_avviato  { background:#fff; color:var(--retelit-blue); border-color:var(--retelit-blue-50); }
+  .s-allestimento { background:var(--warn-bg); color:var(--warn); border-color:var(--warn); }
+  .s-in_corso     { background:rgba(4,63,117,.08); color:var(--retelit-blue); border-color:var(--retelit-blue); }
+  .s-sospeso      { background:var(--danger-bg); color:var(--danger); border-color:var(--danger); }
+  .s-completato   { background:var(--ok-bg); color:var(--ok); border-color:var(--ok); }
 
   .fill-non_avviato  { background:var(--gray-300); }
   .fill-allestimento { background:var(--warn); }
@@ -362,54 +478,97 @@
 <!-- MAIN -->
 <main>
   <!-- Header pagina -->
-  <div class="page-header">
-    <div class="page-eyebrow">Cantieri · Avanzamento scavi</div>
-    <h1 class="page-title">I miei cantieri</h1>
-    <p class="page-sub" id="pageSubtitle">Caricamento in corso…</p>
+  <div class="header-row">
+    <div class="page-header">
+      <h1 class="page-title">I miei cantieri</h1>
+      <p class="page-sub" id="pageSubtitle">Caricamento in corso…</p>
+    </div>
+    <div class="info-banner">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+      <span>Ricorda di salvare i tuoi aggiornamenti. I dati vengono salvati solo dopo la conferma.</span>
+    </div>
+    <div class="last-access">
+      <span id="lastAccess"></span>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+    </div>
   </div>
 
   <!-- KPI -->
   <div class="kpi-row">
-    <div class="kpi k-nav">
-      <div class="kpi-label">Non avviati</div>
-      <div class="kpi-value" id="kpiNav">—</div>
-      <div class="kpi-sub">in attesa di apertura</div>
+    <div class="kpi k-today">
+      <div class="kpi-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></div>
+      <div>
+        <div class="kpi-label">Da aggiornare oggi</div>
+        <div class="kpi-value" id="kpiToday">—</div>
+        <div class="kpi-sub">cantieri</div>
+      </div>
     </div>
-    <div class="kpi k-all">
-      <div class="kpi-label">Allestimento</div>
-      <div class="kpi-value" id="kpiAll">—</div>
-      <div class="kpi-sub">cantieri in preparazione</div>
+    <div class="kpi k-late">
+      <div class="kpi-top">
+        <div class="kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg></div>
+        <div class="kpi-label">In ritardo</div>
+      </div>
+      <div class="kpi-value" id="kpiLate">—</div>
+      <div class="kpi-sub">aggiornamento &gt; 7 giorni</div>
     </div>
-    <div class="kpi k-cor">
-      <div class="kpi-label">In corso</div>
-      <div class="kpi-value" id="kpiCor">—</div>
-      <div class="kpi-sub">scavo attivo</div>
+    <div class="kpi k-soon">
+      <div class="kpi-top">
+        <div class="kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+        <div class="kpi-label">Da aggiornare</div>
+      </div>
+      <div class="kpi-value" id="kpiSoon">—</div>
+      <div class="kpi-sub">aggiornamento ≤ 7 giorni</div>
     </div>
-    <div class="kpi k-sos">
-      <div class="kpi-label">Sospesi</div>
-      <div class="kpi-value" id="kpiSos">—</div>
-      <div class="kpi-sub">interruzione temporanea</div>
+    <div class="kpi k-done">
+      <div class="kpi-top">
+        <div class="kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+        <div class="kpi-label">Aggiornati</div>
+      </div>
+      <div class="kpi-value" id="kpiDone">—</div>
+      <div class="kpi-sub">oggi</div>
     </div>
-    <div class="kpi k-com">
-      <div class="kpi-label">Completati</div>
-      <div class="kpi-value" id="kpiCom">—</div>
-      <div class="kpi-sub">scavo ultimato</div>
+  </div>
+
+  <!-- Indicatori per lotto -->
+  <div class="agg-section" id="aggSection" style="display:none">
+    <div class="agg-group" style="flex:1 1 100%">
+      <div class="agg-title">Avanzamento per lotto</div>
+      <div class="agg-chips" id="lottoChips"></div>
     </div>
   </div>
 
   <!-- Toolbar -->
   <div class="toolbar">
-    <span class="toolbar-label">Filtra stato:</span>
-    <select id="filterStato" style="font-size:12px;padding:5px 10px;border-radius:var(--radius-md);border:1px solid var(--border2);background:var(--surface);font-family:var(--font-body)">
-      <option value="">Tutti</option>
-      <option value="non_avviato">Non avviati</option>
-      <option value="allestimento">Allestimento</option>
-      <option value="in_corso">In corso</option>
-      <option value="sospeso">Sospesi</option>
-      <option value="completato">Completati</option>
-    </select>
-    <button class="btn btn-ghost btn-sm" id="btnRefresh"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>Aggiorna</button>
-    <span id="lastUpdate" style="font-size:10.5px;color:var(--muted);margin-left:auto"></span>
+    <div class="toolbar-search">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="text" id="filterSearch" placeholder="Cerca cantiere (codice, comune…)">
+    </div>
+    <div class="select-wrap">
+      <label for="filterStato">Stato</label>
+      <select id="filterStato">
+        <option value="">Tutti</option>
+        <option value="non_avviato">Non avviato</option>
+        <option value="allestimento">Allestimento</option>
+        <option value="in_corso">In corso</option>
+        <option value="sospeso">Sospeso</option>
+        <option value="completato">Completato</option>
+      </select>
+    </div>
+    <div class="select-wrap">
+      <label for="filterLotto">Lotto</label>
+      <select id="filterLotto"><option value="">Tutti</option></select>
+    </div>
+    <div class="select-wrap">
+      <label for="filterComune">Comune</label>
+      <select id="filterComune"><option value="">Tutti</option></select>
+    </div>
+    <button class="btn btn-ghost btn-sm" id="btnClearFilters"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><path d="M3 6h18"/><path d="m19 6-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>Pulisci filtri</button>
+    <button class="btn btn-ghost btn-sm" id="btnRefresh" style="margin-left:auto"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>Aggiorna</button>
+  </div>
+
+  <div class="hint-banner">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    <span>Inserisci i metri realizzati dall'ultimo aggiornamento. I campi con * sono obbligatori.</span>
   </div>
 
   <!-- Form aggiornamento (sticky sopra le card) -->
@@ -519,6 +678,20 @@
       <span class="spinner"></span><span>Caricamento cantieri…</span>
     </div>
   </div>
+
+  <!-- Aiuto -->
+  <div class="help-footer">
+    <div class="help-footer-left">
+      <div class="help-icon">?</div>
+      <div>
+        <div class="help-title">Hai bisogno di aiuto?</div>
+        <div class="help-sub">Consulta la guida rapida per l'inserimento dei dati o contatta il supporto.</div>
+      </div>
+    </div>
+    <div class="help-footer-actions">
+      <a href="#" class="btn btn-secondary btn-sm"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Guida rapida</a>
+    </div>
+  </div>
 </main>
 
 <script src="js/api-config.js"></script>
@@ -606,17 +779,45 @@ window.addEventListener('pageshow', (e) => {
   let SELECTED = null;
 
   // ── KPI ───────────────────────────────────────────────────────────────────
+  function daysSince(dateStr) {
+    if (!dateStr) return Infinity;
+    const d = new Date(dateStr.length === 10 ? dateStr + 'T00:00:00' : dateStr);
+    if (isNaN(d)) return Infinity;
+    return Math.floor((Date.now() - d.getTime()) / 86400000);
+  }
+  function urgencyOf(r) {
+    if ((r.stato_cantiere || '') === 'completato') return null;
+    const ds = daysSince(r.updated_at);
+    if (ds <= 0) return 'done';
+    if (ds > 7) return 'late';
+    return 'soon';
+  }
   function renderKpi(items) {
-    const c = { non_avviato:0, allestimento:0, in_corso:0, sospeso:0, completato:0 };
-    items.forEach(r => { if (r.stato_cantiere in c) c[r.stato_cantiere]++; });
-    $('kpiNav').textContent = c.non_avviato;
-    $('kpiAll').textContent = c.allestimento;
-    $('kpiCor').textContent = c.in_corso;
-    $('kpiSos').textContent = c.sospeso;
-    $('kpiCom').textContent = c.completato;
+    let late = 0, soon = 0, done = 0;
+    items.forEach(r => {
+      const u = urgencyOf(r);
+      if (u === 'late') late++;
+      else if (u === 'soon') soon++;
+      else if (u === 'done') done++;
+    });
+    $('kpiToday').textContent = late + soon;
+    $('kpiLate').textContent  = late;
+    $('kpiSoon').textContent  = soon;
+    $('kpiDone').textContent  = done;
   }
 
   // ── Grid cantieri ─────────────────────────────────────────────────────────
+  const URGENCY_LABEL = { late:'In ritardo', soon:'Da aggiornare', done:'Aggiornato' };
+  const URGENCY_ICON = {
+    late: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>',
+    soon: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
+    done: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  };
+  function fmtDateIT(isoDate) {
+    if (!isoDate || isoDate === '—') return '—';
+    const [y, m, d] = isoDate.split('-');
+    return (y && m && d) ? `${d}/${m}/${y}` : isoDate;
+  }
   function renderGrid(items) {
     const grid = $('cantieriGrid');
     if (!items.length) {
@@ -625,57 +826,114 @@ window.addEventListener('pageshow', (e) => {
     }
     grid.innerHTML = items.map((r, i) => {
       const stato  = r.stato_cantiere || 'non_avviato';
-      const col    = STATO_COLOR[stato] || '#9AA5B4';
       const lbl    = STATO_LABEL[stato] || stato;
       const tot    = r.metri_totali || 0;
       const totPot = r.metri_totali_potenziali || tot;
       const scav   = r.metri_scavati || 0;
+      const rimanenti = Math.max(0, tot - scav);
       const pct    = tot > 0 ? Math.min(100, Math.round(scav / tot * 100)) : 0;
       const fmt    = n => Math.round(n).toLocaleString('it-IT');
       const agg    = (r.updated_at || '').slice(0, 10) || '—';
-      const tecnica = r.tecnica_scavo || '—';
+      const ds     = daysSince(r.updated_at);
+      const aggSub = isFinite(ds) ? (ds <= 0 ? 'oggi' : `${ds} giorn${ds!==1?'i':'o'} fa`) : '';
+      const maiAggiornato = !(r.log_count > 0);
       const tratte  = r.tratte || [];
       const nLav    = tratte.filter(t => t.lavorabile).length || tratte.length;
       const nBlocc  = tratte.filter(t => !t.lavorabile).length;
+      const urg     = urgencyOf(r);
 
-      return `<div class="cant-card${SELECTED && SELECTED.cantiere_key === r.cantiere_key ? ' selected' : ''}"
-        data-idx="${i}" role="button" tabindex="0">
-        <div class="cant-card-accent accent-${stato}"></div>
-        <div class="cant-card-head">
+      const aggFmt = fmtDateIT(agg);
+      return `<div class="cant-card${urg ? ' urg-'+urg : ''}${SELECTED && SELECTED.cantiere_key === r.cantiere_key ? ' selected' : ''}"
+        data-idx="${i}">
+        <div class="cant-card-top">
           <span class="cant-tratta">${escapeHtml(r.codice_cantiere || '—')}</span>
-          <span class="cant-lotto">Lotto ${escapeHtml(r.lotto)}</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            ${urg ? `<span class="cant-urgency u-${urg}">${URGENCY_ICON[urg]}${URGENCY_LABEL[urg]}</span>` : ''}
+            <button class="cant-edit-btn" data-open="${i}" title="Modifica dati cantiere"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></button>
+          </div>
         </div>
-        <div style="font-size:10px;color:var(--muted);margin:-4px 0 2px">Pratica ${escapeHtml(r.pratica_id)}
+        <div class="cant-meta-row">
+          <div class="cant-ente">${escapeHtml(r.ente||'')}</div>
+          ${!maiAggiornato ? `<div class="cant-agg-info">Ultimo agg.: ${aggFmt}${aggSub ? `<div class="cant-agg-sub${urg ? ' u-'+urg : ''}">${aggSub}</div>` : ''}</div>` : ''}
         </div>
-        <div style="font-size:10px;color:var(--muted);margin:-4px 0 6px">${escapeHtml(r.ente||'')}</div>
         <span class="cant-stato-badge s-${stato}">${escapeHtml(lbl)}</span>
         <div class="cant-progress-wrap">
           <div class="cant-progress-label">
-            <span>${fmt(scav)} m scavati</span>
+            <span>${fmt(scav)} m / ${fmt(tot)} m</span>
             <span class="cant-progress-pct">${pct}%</span>
           </div>
           <div class="cant-progress-track">
             <div class="cant-progress-fill fill-${stato}" style="width:${pct}%"></div>
           </div>
         </div>
-        <div class="cant-meta">
-          <span>Tot. lavorabili <strong>${fmt(tot)} m</strong></span>
-          ${totPot > tot ? `<span style="color:var(--warn,#D08A1A)">+${fmt(totPot-tot)} m in attesa N.O.</span>` : ''}
-          ${tecnica !== '—' ? `<span>Tecnica <strong>${escapeHtml(tecnica)}</strong></span>` : ''}
-          <span style="margin-left:auto">Agg. <strong>${agg}</strong></span>
-        </div>
-        <div class="cant-meta" style="margin-top:4px">
-          <span>${tratte.length} tratt${tratte.length!==1?'e':'a'}${nBlocc ? ` (${nLav} lavorabil${nLav!==1?'i':'e'}, ${nBlocc} in attesa nulla osta)` : ''}</span>
-        </div>
-        ${stato === 'sospeso' && (r.motivo_blocco || r.data_ripresa_stimata) ? `<div class="cant-meta" style="margin-top:4px;color:var(--danger)">
-          <span>${r.motivo_blocco ? '⏸ '+escapeHtml(r.motivo_blocco) : ''}${r.data_ripresa_stimata ? (r.motivo_blocco?' · ':'')+'Ripresa stimata '+escapeHtml(r.data_ripresa_stimata) : ''}</span>
+        ${totPot > tot ? `<div style="font-size:10px;color:var(--warn,#D08A1A);margin-top:2px">+${fmt(totPot-tot)} m in attesa N.O.</div>` : ''}
+        ${nBlocc ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">${tratte.length} tratt${tratte.length!==1?'e':'a'} (${nLav} lavorabil${nLav!==1?'i':'e'}, ${nBlocc} in attesa nulla osta)</div>` : ''}
+        ${stato === 'sospeso' && (r.motivo_blocco || r.data_ripresa_stimata) ? `<div style="font-size:10px;margin-top:4px;color:var(--danger)">
+          ${r.motivo_blocco ? '⏸ '+escapeHtml(r.motivo_blocco) : ''}${r.data_ripresa_stimata ? (r.motivo_blocco?' · ':'')+'Ripresa stimata '+escapeHtml(r.data_ripresa_stimata) : ''}
         </div>` : ''}
+        <div class="cant-quick-wrap">
+          <label class="cant-quick-label">Metri realizzati dall'ultimo aggiornamento *</label>
+          <div class="cant-quick-input-row">
+            <input type="number" min="0" step="0.1" max="${rimanenti}" placeholder="Inserisci metri" data-metri="${i}" ${stato==='allestimento'||stato==='completato'?'disabled':''}>
+            <span>m</span>
+          </div>
+        </div>
+        <div class="cant-stats-row cols-3">
+          <div>
+            <div class="cant-stat-label">Tot. lavorabili</div>
+            <div class="cant-stat-value">${fmt(tot)} m</div>
+          </div>
+          <div>
+            <div class="cant-stat-label">Tratte</div>
+            <div class="cant-stat-value">${tratte.length}</div>
+          </div>
+          <div>
+            <div class="cant-stat-label">Ultimo aggiornamento</div>
+            <div class="cant-stat-value${maiAggiornato ? ' never' : ''}">${maiAggiornato ? 'Mai aggiornato' : aggFmt}</div>
+          </div>
+        </div>
         <div class="cant-card-footer">
-          <button class="btn btn-ghost btn-sm" data-storico="${i}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>Storico</button>
-          <button class="btn btn-sm" data-open="${i}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>Aggiorna</button>
+          <button class="btn btn-ghost btn-sm" data-storico="${i}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>Storico aggiornamenti</button>
+          <button class="btn btn-sm" data-quicksave="${i}" ${stato==='allestimento'||stato==='completato'?'disabled':''}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7H7v7"/><path d="M7 3v4h8"/></svg>Salva avanzamento</button>
         </div>
       </div>`;
     }).join('');
+  }
+
+
+  function renderAggIndicators(items) {
+    const section = $('aggSection');
+    if (!items.length) { section.style.display = 'none'; return; }
+    const fmt = n => Math.round(n).toLocaleString('it-IT');
+    function groupBy(key, fallbackLabel) {
+      const map = new Map();
+      items.forEach(r => {
+        const k = r[key] || fallbackLabel;
+        if (!map.has(k)) map.set(k, { tot: 0, scav: 0 });
+        const g = map.get(k);
+        g.tot  += r.metri_totali || 0;
+        g.scav += r.metri_scavati || 0;
+      });
+      return [...map.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'it', { numeric: true }));
+    }
+    function renderChips(entries, prefix, fallbackLabel) {
+      return entries.map(([key, g]) => {
+        const pct = g.tot > 0 ? Math.min(100, Math.round(g.scav / g.tot * 100)) : 0;
+        const label = key === fallbackLabel ? fallbackLabel : `${prefix} ${key}`;
+        return `<div class="agg-chip">
+          <div class="agg-chip-head">
+            <span class="agg-chip-name">${escapeHtml(label)}</span>
+            <span class="agg-chip-pct">${pct}%</span>
+          </div>
+          <div class="agg-chip-meta">${fmt(g.scav)} m / ${fmt(g.tot)} m</div>
+          <div class="agg-chip-track"><div class="agg-chip-fill" style="width:${pct}%"></div></div>
+        </div>`;
+      }).join('');
+    }
+    const FALLBACK_LOTTO = 'Senza lotto';
+    const lottoEntries = groupBy('lotto', FALLBACK_LOTTO);
+    $('lottoChips').innerHTML = renderChips(lottoEntries, 'Lotto', FALLBACK_LOTTO);
+    section.style.display = 'flex';
   }
 
   // ── Load cantieri ─────────────────────────────────────────────────────────
@@ -685,40 +943,118 @@ window.addEventListener('pageshow', (e) => {
       const d = await api('/api/imprese/cantieri');
       ALL_CANTIERI = d.cantieri || [];
       renderKpi(ALL_CANTIERI);
+      renderAggIndicators(ALL_CANTIERI);
+      populateFilterOptions();
       applyFilter();
       const tot = ALL_CANTIERI.length;
       const lottiSet = [...new Set(ALL_CANTIERI.map(r => r.lotto).filter(Boolean))];
       $('pageSubtitle').textContent = `${tot} pratic${tot!==1?'he':'a'} · Lott${lottiSet.length!==1?'i':'o'} ${lottiSet.join(', ')}`;
-      $('lastUpdate').textContent = 'Aggiornato: ' + new Date().toLocaleTimeString('it-IT');
+      $('lastAccess').textContent = 'Ultimo accesso: ' + new Date().toLocaleTimeString('it-IT');
     } catch(e) {
       $('cantieriGrid').innerHTML = `<div class="empty" style="grid-column:1/-1">Errore: ${escapeHtml(e.message)}</div>`;
     }
   }
 
+  function populateFilterOptions() {
+    const lottoSel = $('filterLotto'), comuneSel = $('filterComune');
+    const curLotto = lottoSel.value, curComune = comuneSel.value;
+    const lotti = [...new Set(ALL_CANTIERI.map(r => r.lotto).filter(Boolean))].sort();
+    const comuni = [...new Set(ALL_CANTIERI.map(r => r.ente).filter(Boolean))].sort();
+    lottoSel.innerHTML = '<option value="">Tutti</option>' + lotti.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
+    comuneSel.innerHTML = '<option value="">Tutti</option>' + comuni.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+    lottoSel.value = curLotto; comuneSel.value = curComune;
+  }
+
+  function getFilteredItems() {
+    const stato  = $('filterStato').value;
+    const lotto  = $('filterLotto').value;
+    const comune = $('filterComune').value;
+    const q      = $('filterSearch').value.trim().toLowerCase();
+    return ALL_CANTIERI.filter(r => {
+      if (stato && r.stato_cantiere !== stato) return false;
+      if (lotto && r.lotto !== lotto) return false;
+      if (comune && r.ente !== comune) return false;
+      if (q) {
+        const hay = `${r.codice_cantiere||''} ${r.pratica_id||''} ${r.ente||''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }
+
   function applyFilter() {
-    const f = $('filterStato').value;
-    const items = f ? ALL_CANTIERI.filter(r => r.stato_cantiere === f) : ALL_CANTIERI;
-    renderGrid(items);
+    renderGrid(getFilteredItems());
   }
 
   $('filterStato').addEventListener('change', applyFilter);
+  $('filterLotto').addEventListener('change', applyFilter);
+  $('filterComune').addEventListener('change', applyFilter);
+  $('filterSearch').addEventListener('input', applyFilter);
+  $('btnClearFilters').addEventListener('click', () => {
+    $('filterStato').value = ''; $('filterLotto').value = ''; $('filterComune').value = ''; $('filterSearch').value = '';
+    applyFilter();
+  });
   $('btnRefresh').addEventListener('click', loadCantieri);
 
-  // ── Click su card / pulsante Aggiorna / Storico ─────────────────────────────
+  // ── Click su card / pulsante Aggiorna / Storico / Salva avanzamento ────────
   $('cantieriGrid').addEventListener('click', e => {
     const openBtn = e.target.closest('[data-open]');
     const storicoBtn = e.target.closest('[data-storico]');
-    if (!openBtn && !storicoBtn) return;
-    const f = $('filterStato').value;
-    const items = f ? ALL_CANTIERI.filter(r => r.stato_cantiere === f) : ALL_CANTIERI;
+    const quickBtn = e.target.closest('[data-quicksave]');
+    if (!openBtn && !storicoBtn && !quickBtn) return;
+    const items = getFilteredItems();
     if (openBtn) {
       const r = items[+openBtn.dataset.open];
       if (r) openForm(r);
-    } else {
+    } else if (storicoBtn) {
       const r = items[+storicoBtn.dataset.storico];
       if (r) { SELECTED = r; showStorico(r); }
+    } else if (quickBtn) {
+      const idx = +quickBtn.dataset.quicksave;
+      const r = items[idx];
+      const input = document.querySelector(`[data-metri="${idx}"]`);
+      if (r && input) quickSaveAvanzamento(r, input, quickBtn);
     }
   });
+
+  // ── Salva avanzamento rapido (solo metri, stato/tecnica invariati) ─────────
+  async function quickSaveAvanzamento(r, input, btn) {
+    const raw = input.value.trim();
+    if (raw === '') { input.focus(); input.style.borderColor = 'var(--danger)'; return; }
+    const metriVal = parseFloat(raw);
+    if (isNaN(metriVal) || metriVal < 0) { input.focus(); input.style.borderColor = 'var(--danger)'; return; }
+    const rimanenti = Math.max(0, (r.metri_totali||0) - (r.metri_scavati||0));
+    if ((r.metri_totali||0) > 0 && metriVal > rimanenti) {
+      input.focus(); input.style.borderColor = 'var(--danger)';
+      input.title = `Superi i metri rimanenti (${rimanenti.toLocaleString('it-IT',{maximumFractionDigits:0})} m)`;
+      return;
+    }
+    input.style.borderColor = '';
+    const payload = {
+      stato_cantiere: r.stato_cantiere || 'non_avviato',
+      tecnica_scavo:  r.tecnica_scavo  || '',
+      data_inizio_prevista: r.data_inizio_prevista || '',
+      data_fine_prevista:   r.data_fine_prevista   || '',
+      note: '',
+      metri_realizzati_oggi: metriVal,
+    };
+    btn.disabled = true;
+    try {
+      await api(`/api/imprese/cantieri/${encodeURIComponent(r.cantiere_key)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      await loadCantieri();
+    } catch(e) {
+      input.title = 'Errore: ' + e.message;
+      input.style.borderColor = 'var(--danger)';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+
 
   // ── Apri form ─────────────────────────────────────────────────────────────
   function openForm(r) {
