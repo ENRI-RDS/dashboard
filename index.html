@@ -2108,25 +2108,24 @@ document.addEventListener('click', function(e) {
 });
 
 // Giorni trascorsi dall'ultimo aggiornamento (data_update). Ritorna null se non calcolabile.
-// Le pratiche senza data_update contano come "mai aggiornate" (Infinity) solo se in IN REDAZIONE o IN FIRMA RDS.
 function _staleDays(r) {
-  if (r.data_update) {
-    const d = parseDateIT(r.data_update);
-    if (!d) return null;
-    const diffMs = new Date().setHours(0,0,0,0) - new Date(d).setHours(0,0,0,0);
-    return Math.floor(diffMs / 86400000);
-  }
-  if (r.stato === 'IN REDAZIONE' || r.stato === 'IN FIRMA RDS') return Infinity;
-  return null;
+  if (!r.data_update) return null;
+  const d = parseDateIT(r.data_update);
+  if (!d) return null;
+  const diffMs = new Date().setHours(0,0,0,0) - new Date(d).setHours(0,0,0,0);
+  return Math.floor(diffMs / 86400000);
 }
-// Applica il filtro select tblAgg (soglie cumulative, escluse OTTENUTO/NO COMPETENZA)
+// Applica il filtro select tblAgg (soglie cumulative). Escluse dal filtro:
+// OTTENUTO/NO COMPETENZA (richiesta iniziale) + IN REDAZIONE/IN FIRMA RDS (stati pre-invio, "aggiornamento" non pertinente).
+const _AGG_EXCLUDED_STATI = ['OTTENUTO', 'NO COMPETENZA', 'IN REDAZIONE', 'IN FIRMA RDS'];
 function _matchAggFilter(r, fAgg) {
   if (!fAgg) return true;
-  if (r.stato === 'OTTENUTO' || r.stato === 'NO COMPETENZA') return false;
+  if (_AGG_EXCLUDED_STATI.includes(r.stato)) return false;
   const days = _staleDays(r);
   if (days === null) return false;
   return days >= Number(fAgg);
 }
+
 
 function exportVistaCorrente() {
   // Raccoglie le righe attualmente visibili nel tbody della tabella
