@@ -697,7 +697,7 @@ let CANTIERI_RAW = [];    // singoli cantieri (tratte) non aggregati, da MongoDB
 let QGIS_GEOJSON_CACHE = null; // cache geometrie tratte (QGIS.geojson) per mappetta cantieri attivi
 let MINI_MAP = null;
 let MINI_MAP_LAYER = null;
-let _cantieriQuickFilters = { lotto:'all', stato:'all', cluster:'all', impresa:'all' };
+let _cantieriQuickFilters = { lotto:'all', stato:'all', cluster:'all', impresa:'all', aggiornamento:'all' };
 let PERMESSI = {};        // { lotto: { statiMap: {STATO: metri}, totale: metri } }  (da CSV permessi)
 let CLUSTER_PERMESSI = {}; // { cluster: { statiMap: {STATO: metri}, totale: metri, lotti: Set } } — aggregato per tratta, non per lotto: un lotto può attraversare più cluster
 
@@ -1090,6 +1090,13 @@ function _registroDotHtml(r) {
   const tip = JSON.stringify({ color: s.color, label: s.label }).replace(/'/g, '&#39;');
   return `<span class="registro-dot" data-tip='${tip}' style="width:7px;height:7px;border-radius:50%;background:${s.color};flex-shrink:0;cursor:help"></span>`;
 }
+function _registroFilterLabel(r) {
+  const c = _registroStatus(r).color;
+  if (c === 'var(--ok)')   return 'In linea';
+  if (c === 'var(--warn)') return 'In scadenza';
+  if (c === 'var(--err)')  return 'Scaduto';
+  return 'N/D';
+}
 
 // ── RENDER ALL (chiamata dopo fetch sia permessi che cantieri) ──────────────
 async function _loadAndRenderAll() {
@@ -1334,6 +1341,8 @@ const CANTIERI_QUICK_FILTERS = [
   { key:'stato',    label:'Stato',    all:'Tutti gli stati',  get:r => STATO_LABEL[STATO_MAP[r.stato_cantiere] || 'non-avviato'] },
   { key:'cluster',  label:'Cluster',  all:'Tutti i cluster',  get:r => (r.cluster ?? '?').toString().replace(/^[Cc]/,'') },
   { key:'impresa',  label:'Impresa',  all:'Tutte le imprese', get:r => r.impresa || '—' },
+  { key:'aggiornamento', label:'Aggiornamento', all:'Tutti gli aggiornamenti', get:r => _registroFilterLabel(r),
+    sort:(a,b) => ['In linea','In scadenza','Scaduto','N/D'].indexOf(a) - ['In linea','In scadenza','Scaduto','N/D'].indexOf(b) },
 ];
 
 function _cantieriQuickFilterMatch(r) {
