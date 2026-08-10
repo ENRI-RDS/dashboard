@@ -806,6 +806,10 @@ window.loadXLSX = (function(){
   /* Riga */
   .tbl-row { border-bottom:1px solid var(--border); transition:background .1s; }
   .tbl-row:hover { background:var(--surface2); }
+  .tbl-row-ottenuto td:nth-child(n+6) { background:rgba(30,158,106,.12); }
+  .tbl-row-ottenuto:hover td:nth-child(n+6) { background:rgba(30,158,106,.20); }
+  .tbl-row-nocompetenza td:nth-child(n+6) { background:rgba(107,118,133,.14); }
+  .tbl-row-nocompetenza:hover td:nth-child(n+6) { background:rgba(107,118,133,.22); }
 
   /* Celle */
   .tbl-td   { padding:7px 9px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -6218,7 +6222,8 @@ _hookScadenze();
       window._praticaNoteMap[r.codice] = r.notes || [];
       window._praticaStatoMap[r.codice] = r.statoHistory || [];
       const hasNote = !!(r.notes && r.notes.length);
-      return `<tr class="tbl-row">
+      const rowStateClass = r.stato === 'OTTENUTO' ? ' tbl-row-ottenuto' : r.stato === 'NO COMPETENZA' ? ' tbl-row-nocompetenza' : '';
+      return `<tr class="tbl-row${rowStateClass}">
         <td class="tbl-td tbl-codice-click" data-cod="${r.codice}" style="cursor:pointer" title="${hasNote ? 'Vedi note pratica' : 'Nessuna nota — clicca per aggiungere/vedere'}">
           <span class="tbl-codice-wrap">
             <span class="tbl-codice">${r.codice}</span>
