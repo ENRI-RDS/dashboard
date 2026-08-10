@@ -806,10 +806,18 @@ window.loadXLSX = (function(){
   /* Riga */
   .tbl-row { border-bottom:1px solid var(--border); transition:background .1s; }
   .tbl-row:hover { background:var(--surface2); }
-  .tbl-row-ottenuto td:nth-child(n+6) { background:rgba(30,158,106,.12); }
-  .tbl-row-ottenuto:hover td:nth-child(n+6) { background:rgba(30,158,106,.20); }
-  .tbl-row-nocompetenza td:nth-child(n+6) { background:rgba(107,118,133,.14); }
-  .tbl-row-nocompetenza:hover td:nth-child(n+6) { background:rgba(107,118,133,.22); }
+
+  /* Badge "Data ottenimento" — pill sul solo testo, coerente con lo stile del chip STATO */
+  .tbl-date-ott-pill {
+    display:inline-block; font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:700;
+    padding:2px 7px; border-radius:4px;
+  }
+  .tbl-date-ott-pill.ott {
+    color:#1E9E6A; background:rgba(30,158,106,.10); border:1px solid rgba(30,158,106,.28);
+  }
+  .tbl-date-ott-pill.noc {
+    color:#6B7685; background:rgba(107,118,133,.10); border:1px solid rgba(107,118,133,.28);
+  }
 
   /* Celle */
   .tbl-td   { padding:7px 9px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -6222,8 +6230,12 @@ _hookScadenze();
       window._praticaNoteMap[r.codice] = r.notes || [];
       window._praticaStatoMap[r.codice] = r.statoHistory || [];
       const hasNote = !!(r.notes && r.notes.length);
-      const rowStateClass = r.stato === 'OTTENUTO' ? ' tbl-row-ottenuto' : r.stato === 'NO COMPETENZA' ? ' tbl-row-nocompetenza' : '';
-      return `<tr class="tbl-row${rowStateClass}">
+      const dataOttHtml = r.stato === 'OTTENUTO'
+        ? `<span class="tbl-date-ott-pill ott">${r.data_ott?fmtDateIT(r.data_ott):'—'}</span>`
+        : r.stato === 'NO COMPETENZA'
+        ? `<span class="tbl-date-ott-pill noc">${r.data_ott?fmtDateIT(r.data_ott):'—'}</span>`
+        : (r.data_ott?fmtDateIT(r.data_ott):'—');
+      return `<tr class="tbl-row">
         <td class="tbl-td tbl-codice-click" data-cod="${r.codice}" style="cursor:pointer" title="${hasNote ? 'Vedi note pratica' : 'Nessuna nota — clicca per aggiungere/vedere'}">
           <span class="tbl-codice-wrap">
             <span class="tbl-codice">${r.codice}</span>
@@ -6238,7 +6250,7 @@ _hookScadenze();
         <td class="tbl-td tbl-date">${r.invio?fmtDateIT(r.invio):'—'}</td>
         <td class="tbl-td tbl-date">${r.agg?fmtDateIT(r.agg):'—'}</td>
         <td class="tbl-td tbl-date">${r.data_update?fmtDateIT(r.data_update):'—'}</td>
-        <td class="tbl-td tbl-date-ott">${r.data_ott?fmtDateIT(r.data_ott):'—'}</td>
+        <td class="tbl-td tbl-date-ott">${dataOttHtml}</td>
         <td class="tbl-td">${_prevCellHtml(r)}</td>
         <td class="tbl-td tbl-td-r tbl-metri">${fmt(r.metri)}</td>
         <td class="tbl-td tbl-td-r">${_solBadge(r.codice)}</td>
