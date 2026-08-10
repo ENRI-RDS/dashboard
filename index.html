@@ -5909,7 +5909,8 @@ _hookScadenze();
     const box = document.getElementById('solSedPopoverBox');
     if (!box) return;
     const nSed = badge.dataset.sedNsed;
-    const arr  = (window._solBySed || {})[nSed] || [];
+    const arr  = ((window._solBySed || {})[nSed] || [])
+      .slice().sort((a,b) => (parseDateIT(b.data)||0) - (parseDateIT(a.data)||0));
     const rows = arr.map(function(s) {
       const bg = s.tipo && s.tipo.includes('DIFFIDA') ? '#fef2f2' : '#fef9ec';
       const fg = s.tipo && s.tipo.includes('DIFFIDA') ? '#b91c1c' : '#b45309';
@@ -5982,7 +5983,7 @@ _hookScadenze();
       e.stopPropagation();
       const cod = badge.dataset.solCod;
       const arr = ((window._solByPratica || {})[cod] || [])
-        .slice().sort((a,b) => b.data.localeCompare(a.data));
+        .slice().sort((a,b) => (parseDateIT(b.data)||0) - (parseDateIT(a.data)||0));
       const rows = arr.map(s => {
         const bg = s.tipo==='PEC'?'#043F7522':s.tipo==='MAIL'?'#043F7522':'#4f46e522';
         const fg = s.tipo==='PEC'?'#043F75':s.tipo==='MAIL'?'#043F75':'#4f46e5';
