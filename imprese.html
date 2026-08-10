@@ -232,9 +232,9 @@
             </div>
           </div>
           <div id="wrap-prev-rilascio">
-            <label>Data prevista rilascio</label>
+            <label>Data prevista rilascio <span id="prev-rilascio-req" style="color:var(--danger);display:none">*</span></label>
             <input type="date" id="fld-prev-rilascio">
-            <div style="font-size:10px;color:var(--muted);margin-top:2px">Stima della data di rilascio dell'autorizzazione. Non richiesta se lo stato passa a OTTENUTO o NO COMPETENZA.</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px" id="prev-rilascio-hint">Stima della data di rilascio dell'autorizzazione. Obbligatoria dallo stato INVIATO in poi (fino a PROTOCOLLATO INTEGRAZIONE); non richiesta per OTTENUTO, NO COMPETENZA o gli stati precedenti l'invio.</div>
           </div>
           <!-- Tratte NO: visibile solo se Nulla Osta Necessario = SI -->
           <div id="wrap-upd-no-tratte" style="display:none;grid-column:span 2">
@@ -863,6 +863,7 @@ window.addEventListener('pageshow', (e) => {
       $('fld-prev-rilascio').value = dm ? `${dm[3]}-${dm[2]}-${dm[1]}` : '';
     }
     $('wrap-prev-rilascio').style.display = '';
+    $('prev-rilascio-req').style.display = PREV_RILASCIO_REQUIRED_STATI.includes((SELECTED.STATO_PERMESSO||'').trim()) ? '' : 'none';
     if (isAut) {
       const pratNum = String(SELECTED.PRATICA || '').trim();
       const tutteTratte = pratNum ? [...new Set(PRATICHE
@@ -920,6 +921,9 @@ window.addEventListener('pageshow', (e) => {
     'NO COMPETENZA':             [],
   };
 
+  // Stati dallo INVIATO in poi (incluso) per cui la Data prevista rilascio è obbligatoria
+  const PREV_RILASCIO_REQUIRED_STATI = ['INVIATO', 'PROTOCOLLATO', 'NECESSARIA INTEGRAZIONE', 'IN REDAZIONE INTEGRAZIONE', 'PROTOCOLLATO INTEGRAZIONE'];
+
   function _populateStatoSelect(statoCorrente) {
     const sel = $('fld-stato');
     let allowed = STATO_TRANSITIONS[statoCorrente.trim()] || Object.keys(STATO_TRANSITIONS);
@@ -952,6 +956,7 @@ window.addEventListener('pageshow', (e) => {
       $('wrap-data-rich').style.display = (v === 'INVIATO')   ? '' : 'none';
       $('wrap-data-app').style.display  = (v === 'OTTENUTO')  ? '' : 'none';
       $('wrap-prev-rilascio').style.display = (v === 'OTTENUTO' || v === 'NO COMPETENZA') ? 'none' : '';
+      $('prev-rilascio-req').style.display = PREV_RILASCIO_REQUIRED_STATI.includes(v) ? '' : 'none';
 
       // NO COMPETENZA: non richiede Nulla Osta/Polizza/Convenzione, solo note
       const isAut = (SELECTED?.TIPO_PERMESSO || '').trim() === 'AUTORIZZAZIONE';
@@ -1011,6 +1016,12 @@ window.addEventListener('pageshow', (e) => {
     // La nota è sempre obbligatoria per ogni aggiornamento — non deve mai essere
     // ereditata implicitamente da quella precedente (vedi anche fix backend).
     if (!noteVal) return setMsg($('msgUpd'), 'Inserisci una nota: è obbligatoria per ogni aggiornamento', false);
+
+    // Data prevista rilascio obbligatoria da INVIATO in poi (anche su sola-nota, se la pratica è già in quello stato)
+    const effStato = stato || (SELECTED.STATO_PERMESSO || '').trim();
+    if (PREV_RILASCIO_REQUIRED_STATI.includes(effStato) && !prevRilascio) {
+      return setMsg($('msgUpd'), `Inserisci la data prevista rilascio: obbligatoria per lo stato ${effStato}`, false);
+    }
 
     const fields = {};
     if (stato) fields.STATO_PERMESSO = stato;
