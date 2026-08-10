@@ -982,8 +982,9 @@
             <input type="date" id="pr-data-app">
           </div>
           <div id="pr-wrap-data-prevista">
-            <label>Data prevista rilascio</label>
+            <label>Data prevista rilascio <span id="pr-prev-rilascio-req" style="color:var(--danger);display:none">*</span></label>
             <input type="date" id="pr-data-prevista">
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Stima della data di rilascio dell'autorizzazione. Obbligatoria dallo stato INVIATO in poi (fino a PROTOCOLLATO INTEGRAZIONE); non richiesta per OTTENUTO, NO COMPETENZA o gli stati precedenti l'invio.</div>
           </div>
           <div id="pr-wrap-no-nec" style="display:none">
             <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
@@ -3919,6 +3920,10 @@ const PR_STATO_TRANSITIONS = {
   'NO COMPETENZA':             [],
 };
 
+// Stati dallo INVIATO in poi (incluso) per cui la Data prevista rilascio è obbligatoria
+// (stesso vincolo di imprese.html)
+const PR_PREV_RILASCIO_REQUIRED_STATI = ['INVIATO', 'PROTOCOLLATO', 'NECESSARIA INTEGRAZIONE', 'IN REDAZIONE INTEGRAZIONE', 'PROTOCOLLATO INTEGRAZIONE'];
+
 function _prPopulateStatoSelect(statoCorrente){
   const sel = document.getElementById('pr-stato');
   let allowed = PR_STATO_TRANSITIONS[statoCorrente.trim()] || Object.keys(PR_STATO_TRANSITIONS);
@@ -3951,6 +3956,7 @@ function prSelectRow(idx){
   const dataPrevistaVal = (queued && queued.fields && queued.fields.DATA_PREVISTA_RILASCIO) || PR_SELECTED.DATA_PREVISTA_RILASCIO || '';
   document.getElementById('pr-data-prevista').value = prToInputDate(dataPrevistaVal);
   document.getElementById('pr-wrap-data-prevista').style.display = '';
+  document.getElementById('pr-prev-rilascio-req').style.display = PR_PREV_RILASCIO_REQUIRED_STATI.includes((PR_SELECTED.STATO_PERMESSO||'').trim()) ? '' : 'none';
   const noteEl = document.getElementById('pr-note');
   noteEl.value = ''; noteEl.disabled = false; noteEl.placeholder = 'Obbligatoria: descrivi cosa è cambiato in questo aggiornamento';
   document.getElementById('prNoteHistPanel').style.display = 'none';
@@ -4025,6 +4031,7 @@ document.getElementById('pr-stato').addEventListener('change', function(){
     document.getElementById('pr-wrap-data-rich').style.display = (v==='INVIATO') ? '' : 'none';
     document.getElementById('pr-wrap-data-app').style.display  = (v==='OTTENUTO') ? '' : 'none';
     document.getElementById('pr-wrap-data-prevista').style.display = (v==='OTTENUTO' || v==='NO COMPETENZA') ? 'none' : '';
+    document.getElementById('pr-prev-rilascio-req').style.display = PR_PREV_RILASCIO_REQUIRED_STATI.includes(v) ? '' : 'none';
 
     const isAut = (PR_SELECTED?.TIPO_PERMESSO || '').trim() === 'AUTORIZZAZIONE';
     const noNecLocked = (PR_SELECTED?.['NULLA OSTA NECESSARIO'] || '').trim() === 'SI';
@@ -4074,6 +4081,11 @@ document.getElementById('prAddToQueue').onclick = async () => {
   // possibile salvare un cambio stato/data senza descrivere cosa è cambiato
   // (stesso vincolo di imprese.html, evita note storiche ambigue/ripetute).
   if (!noteVal) return prSetMsg(msgEl, 'Inserisci una nota: è obbligatoria per ogni aggiornamento', false);
+  // Data prevista rilascio obbligatoria da INVIATO in poi (anche su sola-nota, se la pratica è già in quello stato)
+  const effStato = stato || (PR_SELECTED.STATO_PERMESSO || '').trim();
+  if (PR_PREV_RILASCIO_REQUIRED_STATI.includes(effStato) && !dataPrevista) {
+    return prSetMsg(msgEl, `Inserisci la data prevista rilascio: obbligatoria per lo stato ${effStato}`, false);
+  }
   const fields = {};
   if (stato) fields.STATO_PERMESSO = stato;
   if (dataPrevista) fields.DATA_PREVISTA_RILASCIO = prFromInputDate(dataPrevista);
