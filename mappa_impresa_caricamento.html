@@ -3444,12 +3444,20 @@ function openHelp() { document.getElementById("helpOverlay").classList.add("open
 // ─── MOBILE DRAWER ──────────────────────────────────────────────────────────
 function _isMobile() { return window.innerWidth <= 768; }
 
+let _sbCurrentTab = 'mappa';
+function _syncDrawerToggleBtn(){
+  const sidebar   = document.getElementById('sidebarEl');
+  const toggleBtn = document.getElementById('drawerToggleBtn');
+  if (!toggleBtn || !sidebar) return;
+  const isOpen = sidebar.classList.contains('drawer-open');
+  toggleBtn.style.display = (!isOpen && _sbCurrentTab === 'mappa') ? '' : 'none';
+}
+
 function toggleDrawer() {
   const sidebar = document.getElementById('sidebarEl');
   const overlay = document.getElementById('drawerOverlay');
   const label   = document.getElementById('drawerToggleLabel');
   const icon    = document.querySelector('.drawer-toggle-icon');
-  const toggleBtn = document.getElementById('drawerToggleBtn');
   if (!sidebar) return;
   const isOpen = sidebar.classList.contains('drawer-open');
   if (isOpen) {
@@ -3457,7 +3465,7 @@ function toggleDrawer() {
     if (overlay) overlay.classList.remove('open');
     if (label)   label.textContent = 'Lotti e filtri';
     if (icon)    icon.textContent  = '☰';
-    if (toggleBtn) toggleBtn.style.display = '';
+    _syncDrawerToggleBtn();
     // Nasconde dopo la transizione
     setTimeout(() => {
       if (!sidebar.classList.contains('drawer-open')) {
@@ -3471,7 +3479,7 @@ function toggleDrawer() {
     if (antifouc) antifouc.remove();
     sidebar.style.visibility = '';
     sidebar.style.display = 'flex'; // mostra prima della transizione
-    if (toggleBtn) toggleBtn.style.display = 'none';
+    _syncDrawerToggleBtn();
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         sidebar.classList.add('drawer-open');
@@ -3486,13 +3494,12 @@ function closeDrawer() {
   const overlay = document.getElementById('drawerOverlay');
   const label   = document.getElementById('drawerToggleLabel');
   const icon    = document.querySelector('.drawer-toggle-icon');
-  const toggleBtn = document.getElementById('drawerToggleBtn');
   if (!sidebar) return;
   sidebar.classList.remove('drawer-open');
   if (overlay) overlay.classList.remove('open');
   if (label)   label.textContent = 'Lotti e filtri';
   if (icon)    icon.textContent  = '☰';
-  if (toggleBtn) toggleBtn.style.display = '';
+  _syncDrawerToggleBtn();
   setTimeout(() => {
     if (!sidebar.classList.contains('drawer-open')) {
       sidebar.style.display = 'none';
@@ -3747,6 +3754,7 @@ function _prCodiceForChange(ch, type){
 
 // ── tab principali sidebar: Mappa | Pratiche ──
 function _sbSwitchMain(tab){
+  _sbCurrentTab = tab;
   document.getElementById('sbtab-mappa').classList.toggle('active', tab==='mappa');
   document.getElementById('sbtab-pratiche').classList.toggle('active', tab==='pratiche');
   document.getElementById('sbtab-scavi').classList.toggle('active', tab==='scavi');
@@ -3757,6 +3765,7 @@ function _sbSwitchMain(tab){
   document.getElementById('scaviBodyPanel').style.display = tab==='scavi' ? '' : 'none';
   const lbl = document.getElementById('drawerToggleLabel');
   if (lbl) lbl.textContent = tab==='pratiche' ? 'Pratiche' : tab==='scavi' ? 'Scavi' : 'Lotti e filtri';
+  _syncDrawerToggleBtn();
   if (tab === 'pratiche') prEnsureInit();
   if (tab === 'scavi') scEnsureInit();
 }
