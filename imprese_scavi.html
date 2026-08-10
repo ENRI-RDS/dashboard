@@ -109,7 +109,25 @@
     #storicoPanel{ padding:12px; }
     .storico-dates{ gap:8px; padding:8px 10px; }
     .storico-date-item{ min-width:76px; }
-    .storico-table th, .storico-table td{ padding:7px 8px; }
+    .storico-table{ table-layout:fixed; }
+    .storico-table th, .storico-table td{ padding:5px 4px; font-size:9.5px; }
+    .storico-table th{ font-size:7.5px; }
+    .storico-td-data{ font-size:9px; width:15%; }
+    .storico-td-stato{ width:16%; white-space:normal; }
+    .storico-td-stato .cant-stato-badge{ font-size:7.5px; padding:2px 5px; white-space:normal; }
+    .storico-td-tecnica{ font-size:9px; white-space:normal; word-break:break-word; width:17%; }
+    .storico-td-metri{ font-size:9px; width:13%; }
+    .storico-td-note{ font-size:8.8px; white-space:normal; word-break:break-word; }
+    .kpi{ padding:9px 10px; }
+    .kpi.k-today{ gap:9px; }
+    .kpi.k-today .kpi-icon{ width:38px; height:38px; }
+    .kpi.k-today .kpi-icon svg{ width:18px; height:18px; }
+    .kpi:not(.k-today) .kpi-top{ gap:5px; margin-bottom:4px; }
+    .kpi-icon{ width:22px; height:22px; margin-bottom:5px; }
+    .kpi-icon svg{ width:12px; height:12px; }
+    .kpi-label{ font-size:9px; margin-bottom:3px; letter-spacing:0; }
+    .kpi-value{ font-size:19px; }
+    .kpi-sub{ font-size:8.5px; margin-top:2px; }
   }
   @media(max-width:420px){
     .stato-chips{ grid-template-columns:repeat(5, minmax(0,1fr)); gap:3px; }
@@ -413,6 +431,12 @@
   .storico-table td { padding:8px 10px; border-bottom:1px solid var(--gray-100); }
   .storico-table tr:last-child td { border-bottom:none; }
   .storico-table tr:hover td { background:var(--gray-50); }
+  .storico-td-data { font-family:var(--font-mono); font-size:11px; white-space:nowrap; }
+  .storico-td-stato { white-space:nowrap; }
+  .storico-td-stato .cant-stato-badge { font-size:9.5px; }
+  .storico-td-tecnica { font-size:11px; white-space:nowrap; }
+  .storico-td-metri { font-family:var(--font-mono); font-weight:700; text-align:right; white-space:nowrap; }
+  .storico-td-note { color:var(--muted); font-size:11px; }
   .storico-dates {
     display:flex; flex-wrap:wrap; gap:10px;
     background:var(--gray-50); border:1px solid var(--border);
@@ -1341,7 +1365,7 @@ window.addEventListener('pageshow', (e) => {
         $('storicoBody').innerHTML = datesPanel + '<div class="empty">Nessun aggiornamento registrato.</div>';
         return;
       }
-      $('storicoBody').innerHTML = datesPanel + `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><table class="storico-table">
+      $('storicoBody').innerHTML = datesPanel + `<table class="storico-table">
         <thead><tr>
           <th>Data</th><th>Stato</th><th>Tecnica</th><th>Metri</th><th>Note</th>
         </tr></thead>
@@ -1351,16 +1375,16 @@ window.addEventListener('pageshow', (e) => {
           if (e.motivo_blocco) noteParts.push('Blocco: '+escapeHtml(e.motivo_blocco));
           if (e.data_ripresa_stimata) noteParts.push('Ripresa stimata '+fmtDateIT(e.data_ripresa_stimata));
           return `<tr>
-          <td style="font-family:var(--font-mono);font-size:11px;white-space:nowrap">${fmtDateIT((e.data||'').slice(0,10)) || '—'}</td>
-          <td style="white-space:nowrap"><span class="cant-stato-badge s-${(e.stato_cantiere||'').replace(/\s/g,'_')} " style="font-size:9.5px">
+          <td class="storico-td-data">${fmtDateIT((e.data||'').slice(0,10)) || '—'}</td>
+          <td class="storico-td-stato"><span class="cant-stato-badge s-${(e.stato_cantiere||'').replace(/\s/g,'_')}">
             ${escapeHtml(STATO_LABEL[e.stato_cantiere] || e.stato_cantiere || '—')}</span></td>
-          <td style="font-size:11px;white-space:nowrap">${escapeHtml(TECNICA_LABEL[e.tecnica_scavo] || e.tecnica_scavo || '—')}</td>
-          <td style="font-family:var(--font-mono);font-weight:700;text-align:right;white-space:nowrap">
+          <td class="storico-td-tecnica">${escapeHtml(TECNICA_LABEL[e.tecnica_scavo] || e.tecnica_scavo || '—')}</td>
+          <td class="storico-td-metri">
             ${e.metri_realizzati > 0 ? (e.metri_realizzati).toLocaleString('it-IT',{maximumFractionDigits:1})+' m' : '—'}</td>
-          <td style="color:var(--muted);font-size:11px;min-width:140px">${noteParts.join(' · ') || '—'}</td>
+          <td class="storico-td-note">${noteParts.join(' · ') || '—'}</td>
         </tr>`;
         }).join('')}</tbody>
-      </table></div>`;
+      </table>`;
     } catch(e) {
       $('storicoBody').innerHTML = `<div class="empty">Errore: ${escapeHtml(e.message)}</div>`;
     }
