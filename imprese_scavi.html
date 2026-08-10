@@ -102,6 +102,19 @@
     .topbar-right{ flex-wrap:wrap; row-gap:6px; }
     input[type=text], input[type=number], input[type=date], select, textarea { font-size:16px; }
     .toolbar-search input[type=text] { font-size:16px; }
+    .stato-chips{ gap:4px; }
+    .stato-chip{ padding:5px 4px; border-radius:8px; border-left-width:2px; }
+    .stato-chip-count{ font-size:13px; }
+    .stato-chip-label{ font-size:8px; margin-top:1px; }
+    #storicoPanel{ padding:12px; }
+    .storico-dates{ gap:8px; padding:8px 10px; }
+    .storico-date-item{ min-width:76px; }
+    .storico-table th, .storico-table td{ padding:7px 8px; }
+  }
+  @media(max-width:420px){
+    .stato-chips{ grid-template-columns:repeat(5, minmax(0,1fr)); gap:3px; }
+    .stato-chip{ padding:4px 2px; }
+    .stato-chip-label{ font-size:7.2px; }
   }
   .kpi {
     background:var(--surface); border:1px solid var(--border);
@@ -1328,7 +1341,7 @@ window.addEventListener('pageshow', (e) => {
         $('storicoBody').innerHTML = datesPanel + '<div class="empty">Nessun aggiornamento registrato.</div>';
         return;
       }
-      $('storicoBody').innerHTML = datesPanel + `<table class="storico-table">
+      $('storicoBody').innerHTML = datesPanel + `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><table class="storico-table">
         <thead><tr>
           <th>Data</th><th>Stato</th><th>Tecnica</th><th>Metri</th><th>Note</th>
         </tr></thead>
@@ -1344,10 +1357,10 @@ window.addEventListener('pageshow', (e) => {
           <td style="font-size:11px;white-space:nowrap">${escapeHtml(TECNICA_LABEL[e.tecnica_scavo] || e.tecnica_scavo || '—')}</td>
           <td style="font-family:var(--font-mono);font-weight:700;text-align:right;white-space:nowrap">
             ${e.metri_realizzati > 0 ? (e.metri_realizzati).toLocaleString('it-IT',{maximumFractionDigits:1})+' m' : '—'}</td>
-          <td style="color:var(--muted);font-size:11px">${noteParts.join(' · ') || '—'}</td>
+          <td style="color:var(--muted);font-size:11px;min-width:140px">${noteParts.join(' · ') || '—'}</td>
         </tr>`;
         }).join('')}</tbody>
-      </table>`;
+      </table></div>`;
     } catch(e) {
       $('storicoBody').innerHTML = `<div class="empty">Errore: ${escapeHtml(e.message)}</div>`;
     }
