@@ -1971,6 +1971,15 @@ window.loadXLSX = (function(){
         <option value="">Tutti gli enti</option>
       </select>
 
+      <!-- filtro data update -->
+      <select id="tblAgg" onchange="renderTabella()" aria-label="Filtra per giorni senza aggiornamento"
+        style="background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:7px 10px;font-family:inherit;font-size:12px;color:var(--text);outline:none;cursor:pointer">
+        <option value="">Ultimo update: tutti</option>
+        <option value="2">Non aggiornata ≥ 2 gg</option>
+        <option value="5">Non aggiornata ≥ 5 gg</option>
+        <option value="10">Non aggiornata ≥ 10 gg</option>
+      </select>
+
       <!-- reset -->
       <button onclick="tblReset()" aria-label="Azzera tutti i filtri"
         style="font-size:10px;font-weight:600;padding:6px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--muted);cursor:pointer;font-family:inherit;transition:all .15s"
@@ -2098,6 +2107,27 @@ document.addEventListener('click', function(e) {
   if (!document.getElementById('xlsDropdown')?.contains(e.target)) closeXlsDropdown();
 });
 
+// Giorni trascorsi dall'ultimo aggiornamento (data_update). Ritorna null se non calcolabile.
+// Le pratiche senza data_update contano come "mai aggiornate" (Infinity) solo se in IN REDAZIONE o IN FIRMA RDS.
+function _staleDays(r) {
+  if (r.data_update) {
+    const d = parseDateIT(r.data_update);
+    if (!d) return null;
+    const diffMs = new Date().setHours(0,0,0,0) - new Date(d).setHours(0,0,0,0);
+    return Math.floor(diffMs / 86400000);
+  }
+  if (r.stato === 'IN REDAZIONE' || r.stato === 'IN FIRMA RDS') return Infinity;
+  return null;
+}
+// Applica il filtro select tblAgg (soglie cumulative, escluse OTTENUTO/NO COMPETENZA)
+function _matchAggFilter(r, fAgg) {
+  if (!fAgg) return true;
+  if (r.stato === 'OTTENUTO' || r.stato === 'NO COMPETENZA') return false;
+  const days = _staleDays(r);
+  if (days === null) return false;
+  return days >= Number(fAgg);
+}
+
 function exportVistaCorrente() {
   // Raccoglie le righe attualmente visibili nel tbody della tabella
   const tbody = document.getElementById('tabellaTbody');
@@ -2112,12 +2142,14 @@ function exportVistaCorrente() {
     const fLotto   = document.getElementById('tblLotto')?.value||'';
     const fImpresa = document.getElementById('tblImpresa')?.value||'';
     const fEnte    = document.getElementById('tblEnte')?.value||'';
+    const fAgg     = document.getElementById('tblAgg')?.value||'';
 
   let rows = all.filter(r => {
     if (fStato   && r.stato   !== fStato)   return false;
     if (fLotto   && r.lotto   !== fLotto)   return false;
     if (fImpresa && r.impresa !== fImpresa) return false;
     if (fEnte    && r.ente    !== fEnte)    return false;
+    if (!_matchAggFilter(r, fAgg)) return false;
     if (q) {
       const hay = [r.codice,r.stato,r.ente,...(r.comuni||[]),r.impresa].join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
@@ -6177,9 +6209,10 @@ _hookScadenze();
     const fLotto  = document.getElementById('tblLotto')?.value||'';
     const fImpresa= document.getElementById('tblImpresa')?.value||'';
     const fEnte   = document.getElementById('tblEnte')?.value||'';
+    const fAgg    = document.getElementById('tblAgg')?.value||'';
 
     // reset pagina se i filtri sono cambiati
-    const filterKey = q + '|' + fStato + '|' + fLotto + '|' + fImpresa + '|' + fEnte;
+    const filterKey = q + '|' + fStato + '|' + fLotto + '|' + fImpresa + '|' + fEnte + '|' + fAgg;
     if (filterKey !== window._tblLastFilter) { _page = 0; window._tblLastFilter = filterKey; }
 
     let rows = all.filter(r => {
@@ -6187,6 +6220,7 @@ _hookScadenze();
       if (fLotto   && r.lotto   !== fLotto)   return false;
       if (fImpresa && r.impresa !== fImpresa) return false;
       if (fEnte    && r.ente    !== fEnte)    return false;
+      if (!_matchAggFilter(r, fAgg)) return false;
       if (q) {
         const hay = [r.codice,r.stato,r.ente,...r.comuni,r.impresa].join(' ').toLowerCase();
         if (!hay.includes(q)) return false;
@@ -6214,7 +6248,7 @@ _hookScadenze();
     const SC = STATI_COLORI_MAP || {};
 
     // paginazione: se nessun filtro attivo, limita a PAGE_SIZE righe per pagina
-    const hasFilter = q || fStato || fLotto || fImpresa;
+    const hasFilter = q || fStato || fLotto || fImpresa || fEnte || fAgg;
     const totalRows = rows.length;
     if (!hasFilter) {
       // resetta pagina se ordine/filtri cambiano
@@ -6288,6 +6322,7 @@ _hookScadenze();
     document.getElementById('tblLotto').value = '';
     document.getElementById('tblImpresa').value = '';
     document.getElementById('tblEnte').value = '';
+    document.getElementById('tblAgg').value = '';
     renderTabella();
   };
 
