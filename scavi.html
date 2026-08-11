@@ -1080,6 +1080,12 @@ function _registroStatus(r) {
     return _logRecencyStatus(r, { verdeMax: 1, gialloMax: 2 });
   }
   if (stato === 'sospeso') {
+    const ripresa = r.data_ripresa_stimata;
+    if (ripresa) {
+      const gg = giorniScaduti(ripresa);
+      if (gg > 0) return { color: 'var(--err)', label: `Ripresa scaduta da ${gg}gg — prevista ${fmtD(ripresa)}` };
+      return { color: 'var(--ok)', label: `In linea — ripresa prevista ${fmtD(ripresa)}` };
+    }
     return _logRecencyStatus(r, { verdeMax: 2, gialloMax: 7 });
   }
   return { color: 'var(--muted2)', label: 'Nessuna informazione disponibile' };
