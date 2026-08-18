@@ -1221,14 +1221,21 @@ map.on('popupopen', (e) => {
     const obstacles = [
       document.getElementById('legendContainer'),
       document.querySelector('.leaflet-top.leaflet-right'),
+      document.querySelector('.topbar'),
     ].filter(Boolean);
     obstacles.forEach(el => {
       const r = el.getBoundingClientRect();
       const overlapX = popupRect.right > r.left && popupRect.left < r.right;
       const overlapY = popupRect.bottom > r.top && popupRect.top < r.bottom;
       if (overlapX && overlapY) {
-        const shift = popupRect.right - r.left + margin;
-        if (shift > dx) dx = shift;
+        const isTopbar = el.classList.contains('topbar');
+        if (isTopbar) {
+          const shiftY = r.bottom - popupRect.top + margin;
+          if (shiftY > dy) dy = -shiftY; // panBy negativo in y = mappa/popup si sposta in basso
+        } else {
+          const shift = popupRect.right - r.left + margin;
+          if (shift > dx) dx = shift;
+        }
       }
     });
 
@@ -2660,7 +2667,7 @@ function _buildMapLayers(geojson, isUpdate = false) {
         const isMobile = window.innerWidth <= 768;
         layer.bindPopup(makePopupHtml(f.properties, gmapsUrl), {
           maxWidth: isMobile ? Math.min(window.innerWidth - 40, 320) : 640,
-          autoPanPaddingTopLeft:  isMobile ? L.point(10, 180) : L.point(10, 10),
+          autoPanPaddingTopLeft:  isMobile ? L.point(10, 180) : L.point(10, 70),
           autoPanPaddingBottomRight: isMobile ? L.point(10, 160) : L.point(10, 10),
           // Offset >= metà larghezza max (640/2=320) + margine, così il bordo
           // sinistro del popup resta sempre a destra del punto cliccato.
