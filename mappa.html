@@ -1203,6 +1203,34 @@ function updateLegend(mode) {
 map = L.map('map',{center:[45.48,9.30],zoom:10,zoomControl:true,attributionControl:true,preferCanvas:true,zoomSnap:0.5,zoomDelta:0.5});
 // Chiudi il drawer mobile quando si apre un popup
 map.on('popupopen', () => { if (_isMobile()) closeDrawer(); });
+
+// Evita che il popup finisca sotto elementi fissi sopra la mappa
+// (legenda "Stato", pulsanti "Siti ENRI"/"Pratiche"): controllo reale via
+// getBoundingClientRect dopo l'apertura, non offset statici legati al breakpoint.
+map.on('popupopen', (e) => {
+  const popupEl = e.popup && e.popup._container;
+  if (!popupEl) return;
+  requestAnimationFrame(() => {
+    const popupRect = popupEl.getBoundingClientRect();
+    const obstacles = [
+      document.getElementById('legendContainer'),
+      document.querySelector('.leaflet-top.leaflet-right'),
+    ].filter(Boolean);
+    let dx = 0, dy = 0;
+    const margin = 12;
+    obstacles.forEach(el => {
+      const r = el.getBoundingClientRect();
+      const overlapX = popupRect.right > r.left && popupRect.left < r.right;
+      const overlapY = popupRect.bottom > r.top && popupRect.top < r.bottom;
+      if (overlapX && overlapY) {
+        // sposta la mappa a sinistra quanto basta per liberare l'ostacolo
+        const shift = popupRect.right - r.left + margin;
+        if (shift > dx) dx = shift;
+      }
+    });
+    if (dx > 0) map.panBy([dx, dy], { animate: true, duration: 0.2 });
+  });
+});
 // Renderer separati: outlineRenderer NON interattivo, mainRenderer interattivo
 const outlineRenderer = L.canvas({ tolerance: 0 });
 const mainRenderer   = L.canvas({ tolerance: 5 });
@@ -1567,11 +1595,8 @@ function makePopupHtml(p, gmapsUrl) {
     ? `<div class="popup-detail-row"><span class="dl">Motivo</span><span class="dv" style="color:#c0392b">${p.MOTIVO_NO}</span></div>` : '';
   const noHtml = p.STATO_NULLAOSTA && p.STATO_NULLAOSTA !== 'NON NECESSARIO'
     ? `<div class="popup-detail-row"><span class="dl">Nulla Osta</span><span class="dv" style="color:${getColor(p.STATO_NULLAOSTA)}">${p.STATO_NULLAOSTA}</span></div>` : '';
-  const ordHtml = p.STATO_ORDINANZA && p.STATO_ORDINANZA !== 'IN ATTESA'
-    ? `<div class="popup-detail-row"><span class="dl">Ordinanza</span><span class="dv" style="color:${getColor(p.STATO_ORDINANZA)}">${p.STATO_ORDINANZA}</span></div>` : '';
-
   const enti = [p.ENTE, p['ENTE 2']].filter(Boolean).join(', ') || '—';
-  const hasDetail = motivoHtml || noHtml || ordHtml;
+  const hasDetail = motivoHtml || noHtml;
 
   // Cantiere collegato a questa tratta — sola lettura, nessuna azione
   const cantiere = (typeof RO_CANTIERI !== 'undefined')
@@ -1694,7 +1719,7 @@ function makePopupHtml(p, gmapsUrl) {
         </div>
         ${hasDetail ? `<div class="popup-section">
           <div class="popup-section-title">Dettaglio stato</div>
-          ${motivoHtml}${noHtml}${ordHtml}
+          ${motivoHtml}${noHtml}
         </div>` : ''}
         ${pratiche.length ? `<div class="popup-section">
           <div class="popup-section-title">Pratiche</div>
