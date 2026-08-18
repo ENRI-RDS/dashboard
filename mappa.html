@@ -1684,7 +1684,12 @@ function makePopupHtml(p, gmapsUrl) {
           <span class="popup-lotto">Lotto ${p.LOTTO||'—'}</span>
           ${IMPRESE[p.LOTTO]?`<span class="popup-impresa">${IMPRESE[p.LOTTO]}</span>`:''}
         </span>
-        <button class="popup-close-btn" onclick="this.closest('.leaflet-popup').querySelector('.leaflet-popup-close-button').click()">✕</button>
+        <span style="display:flex;align-items:center;gap:6px">
+          ${gmapsUrl ? `<a class="popup-close-btn" href="${gmapsUrl}" target="_blank" rel="noopener" title="Apri in Google Maps">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="var(--retelit-blue)"/></svg>
+          </a>` : ''}
+          <button class="popup-close-btn" onclick="this.closest('.leaflet-popup').querySelector('.leaflet-popup-close-button').click()">✕</button>
+        </span>
       </div>
       <div class="popup-meta">
         ${p.TRATTA_ID?`<span class="popup-tratta">${p.TRATTA_ID}</span>`:''}
@@ -1706,16 +1711,23 @@ function makePopupHtml(p, gmapsUrl) {
             <span class="popup-field-label">Lunghezza</span>
             <span class="popup-field-val">${fmtM(p.LUNGHEZZA)}</span>
           </div>
-          <div class="popup-field full">
+          <div class="popup-field" style="grid-column:span 2">
             <span class="popup-field-label">Ente</span>
             <span class="popup-field-val" style="font-size:11px">${enti}</span>
           </div>
-          <div class="popup-field">
+          ${pratiche.length ? `<div class="popup-field">
+            <span class="popup-field-label">Pratiche</span>
+            <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:1px">${praticheHtml}</div>
+          </div>` : `<div class="popup-field">
             <span class="popup-field-label">Tipologia</span>
             <span class="popup-field-val">${p.TIPOLOGIA||'—'}</span>
-          </div>
+          </div>`}
+          ${pratiche.length ? `<div class="popup-field">
+            <span class="popup-field-label">Tipologia</span>
+            <span class="popup-field-val">${p.TIPOLOGIA||'—'}</span>
+          </div>` : ''}
         </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:${hasDetail||pratiche.length?'10px':'0'}">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:${hasDetail||cantiereHtml?'10px':'0'}">
           <span class="popup-stato" style="background:${color}18;color:${color};border:1.5px solid ${color}44">
             <span class="popup-stato-dot" style="background:${color}"></span>${statoDisplay}
           </span>
@@ -1725,19 +1737,10 @@ function makePopupHtml(p, gmapsUrl) {
           <div class="popup-section-title">Dettaglio stato</div>
           ${motivoHtml}${noHtml}
         </div>` : ''}
-        ${pratiche.length ? `<div class="popup-section">
-          <div class="popup-section-title">Pratiche</div>
-          <div>${praticheHtml}</div>
-        </div>` : ''}
+        ${cantiereHtml}
       </div>
-      ${ls || cantiereHtml ? `<div class="popup-body-right">${lottoProgressRightHtml}${cantiereHtml}</div>` : ''}
+      ${ls ? `<div class="popup-body-right">${lottoProgressRightHtml}</div>` : ''}
     </div>
-    ${gmapsUrl ? `<div style="padding:0 16px 12px">
-      <a class="popup-gmaps-btn" href="${gmapsUrl}" target="_blank" rel="noopener">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="var(--retelit-blue)"/></svg>
-        Apri in Google Maps
-      </a>
-    </div>` : ''}
   </div>`;
 }
 
