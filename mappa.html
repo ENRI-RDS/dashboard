@@ -1212,23 +1212,27 @@ map.on('popupopen', (e) => {
   if (!popupEl) return;
   requestAnimationFrame(() => {
     const popupRect = popupEl.getBoundingClientRect();
+    const margin = 16;
+    let dx = 0, dy = 0;
+
+    // Legenda "Stato" / pulsanti "Siti ENRI" - "Pratiche": sono elementi fissi
+    // sullo schermo (non legati a coordinate geografiche), quindi un panBy
+    // della mappa li allontana efficacemente dal popup.
     const obstacles = [
       document.getElementById('legendContainer'),
       document.querySelector('.leaflet-top.leaflet-right'),
     ].filter(Boolean);
-    let dx = 0, dy = 0;
-    const margin = 12;
     obstacles.forEach(el => {
       const r = el.getBoundingClientRect();
       const overlapX = popupRect.right > r.left && popupRect.left < r.right;
       const overlapY = popupRect.bottom > r.top && popupRect.top < r.bottom;
       if (overlapX && overlapY) {
-        // sposta la mappa a sinistra quanto basta per liberare l'ostacolo
         const shift = popupRect.right - r.left + margin;
         if (shift > dx) dx = shift;
       }
     });
-    if (dx > 0) map.panBy([dx, dy], { animate: true, duration: 0.2 });
+
+    if (dx !== 0) map.panBy([dx, dy], { animate: true, duration: 0.2 });
   });
 });
 // Renderer separati: outlineRenderer NON interattivo, mainRenderer interattivo
@@ -1725,9 +1729,8 @@ function makePopupHtml(p, gmapsUrl) {
           <div class="popup-section-title">Pratiche</div>
           <div>${praticheHtml}</div>
         </div>` : ''}
-        ${cantiereHtml}
       </div>
-      ${ls ? `<div class="popup-body-right">${lottoProgressRightHtml}</div>` : ''}
+      ${ls || cantiereHtml ? `<div class="popup-body-right">${lottoProgressRightHtml}${cantiereHtml}</div>` : ''}
     </div>
     ${gmapsUrl ? `<div style="padding:0 16px 12px">
       <a class="popup-gmaps-btn" href="${gmapsUrl}" target="_blank" rel="noopener">
@@ -2656,7 +2659,9 @@ function _buildMapLayers(geojson, isUpdate = false) {
           maxWidth: isMobile ? Math.min(window.innerWidth - 40, 320) : 640,
           autoPanPaddingTopLeft:  isMobile ? L.point(10, 180) : L.point(10, 10),
           autoPanPaddingBottomRight: isMobile ? L.point(10, 160) : L.point(10, 10),
-          offset: isMobile ? L.point(0, -10) : L.point(150, -10),
+          // Offset >= metà larghezza max (640/2=320) + margine, così il bordo
+          // sinistro del popup resta sempre a destra del punto cliccato.
+          offset: isMobile ? L.point(0, -10) : L.point(360, -10),
         });
         const stato = f.properties.STATO_LEGENDA || f.properties.STATO_AUTORIZZAZIONE || 'IN ATTESA';
         const comune = f.properties.COMUNE || '';
