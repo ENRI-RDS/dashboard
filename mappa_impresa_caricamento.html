@@ -1557,6 +1557,42 @@ function updateLegend(mode) {
 map = L.map('map',{center:[45.48,9.30],zoom:10,zoomControl:true,attributionControl:true,preferCanvas:true,zoomSnap:0.5,zoomDelta:0.5});
 // Chiudi il drawer mobile quando si apre un popup
 map.on('popupopen', () => { _mapHasSelection = true; _syncDrawerToggleBtn(); if (_isMobile()) closeDrawer(); });
+
+// Evita che il popup finisca sotto elementi fissi sopra la mappa
+// (legenda "Stato", pulsanti "Siti ENRI"/"Pratiche", topbar): controllo reale
+// via getBoundingClientRect dopo l'apertura, non offset statici legati al breakpoint.
+map.on('popupopen', (e) => {
+  const popupEl = e.popup && e.popup._container;
+  if (!popupEl) return;
+  requestAnimationFrame(() => {
+    const popupRect = popupEl.getBoundingClientRect();
+    const margin = 16;
+    let dx = 0, dy = 0;
+
+    const obstacles = [
+      document.getElementById('legendContainer'),
+      document.querySelector('.leaflet-top.leaflet-right'),
+      document.querySelector('.topbar'),
+    ].filter(Boolean);
+    obstacles.forEach(el => {
+      const r = el.getBoundingClientRect();
+      const overlapX = popupRect.right > r.left && popupRect.left < r.right;
+      const overlapY = popupRect.bottom > r.top && popupRect.top < r.bottom;
+      if (overlapX && overlapY) {
+        const isTopbar = el.classList.contains('topbar');
+        if (isTopbar) {
+          const shiftY = r.bottom - popupRect.top + margin;
+          if (shiftY > dy) dy = -shiftY; // panBy negativo in y = mappa/popup si sposta in basso
+        } else {
+          const shift = popupRect.right - r.left + margin;
+          if (shift > dx) dx = shift;
+        }
+      }
+    });
+
+    if (dx !== 0 || dy !== 0) map.panBy([dx, dy], { animate: true, duration: 0.2 });
+  });
+});
 map.on('popupclose', () => { _mapHasSelection = false; _syncDrawerToggleBtn(); });
 // Renderer separati: outlineRenderer NON interattivo, mainRenderer interattivo
 const outlineRenderer = L.canvas({ tolerance: 0 });
@@ -1897,11 +1933,8 @@ function makePopupHtml(p, gmapsUrl) {
     ? `<div class="popup-detail-row"><span class="dl">Motivo</span><span class="dv" style="color:#c0392b">${p.MOTIVO_NO}</span></div>` : '';
   const noHtml = p.STATO_NULLAOSTA && p.STATO_NULLAOSTA !== 'NON NECESSARIO'
     ? `<div class="popup-detail-row"><span class="dl">Nulla Osta</span><span class="dv" style="color:${getColor(p.STATO_NULLAOSTA)}">${p.STATO_NULLAOSTA}</span></div>` : '';
-  const ordHtml = p.STATO_ORDINANZA && p.STATO_ORDINANZA !== 'IN ATTESA'
-    ? `<div class="popup-detail-row"><span class="dl">Ordinanza</span><span class="dv" style="color:${getColor(p.STATO_ORDINANZA)}">${p.STATO_ORDINANZA}</span></div>` : '';
-
   const enti = [p.ENTE, p['ENTE 2']].filter(Boolean).join(', ') || '—';
-  const hasDetail = motivoHtml || noHtml || ordHtml;
+  const hasDetail = motivoHtml || noHtml;
 
   // Cantiere collegato a questa tratta (se già avviato un iter scavi)
   const cantiere = (typeof SC_CANTIERI !== 'undefined')
@@ -2007,7 +2040,12 @@ function makePopupHtml(p, gmapsUrl) {
     <div class="popup-head">
       <div class="popup-head-top">
         <span class="popup-lotto">Lotto ${p.LOTTO||'—'}</span>
-        <button class="popup-close-btn" onclick="this.closest('.leaflet-popup').querySelector('.leaflet-popup-close-button').click()">✕</button>
+        <span style="display:flex;align-items:center;gap:6px">
+          ${gmapsUrl ? `<a class="popup-close-btn" href="${gmapsUrl}" target="_blank" rel="noopener" title="Apri in Google Maps">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="var(--retelit-blue)"/></svg>
+          </a>` : ''}
+          <button class="popup-close-btn" onclick="this.closest('.leaflet-popup').querySelector('.leaflet-popup-close-button').click()">✕</button>
+        </span>
       </div>
       <div class="popup-meta">
         ${IMPRESE[p.LOTTO]?`<span class="popup-impresa">${IMPRESE[p.LOTTO]}</span>`:''}
@@ -2030,16 +2068,23 @@ function makePopupHtml(p, gmapsUrl) {
             <span class="popup-field-label">Lunghezza</span>
             <span class="popup-field-val">${fmtM(p.LUNGHEZZA)}</span>
           </div>
-          <div class="popup-field full">
+          <div class="popup-field" style="grid-column:span 2">
             <span class="popup-field-label">Ente</span>
             <span class="popup-field-val" style="font-size:11px">${enti}</span>
           </div>
-          <div class="popup-field">
+          ${pratiche.length ? `<div class="popup-field">
+            <span class="popup-field-label">Pratiche</span>
+            <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:1px">${praticheHtml}</div>
+          </div>` : `<div class="popup-field">
             <span class="popup-field-label">Tipologia</span>
             <span class="popup-field-val">${p.TIPOLOGIA||'—'}</span>
-          </div>
+          </div>`}
+          ${pratiche.length ? `<div class="popup-field">
+            <span class="popup-field-label">Tipologia</span>
+            <span class="popup-field-val">${p.TIPOLOGIA||'—'}</span>
+          </div>` : ''}
         </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:${hasDetail||pratiche.length?'10px':'0'}">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:${hasDetail||cantiereHtml?'10px':'0'}">
           <span class="popup-stato" style="background:${color}18;color:${color};border:1.5px solid ${color}44">
             <span class="popup-stato-dot" style="background:${color}"></span>${statoDisplay}
           </span>
@@ -2047,22 +2092,12 @@ function makePopupHtml(p, gmapsUrl) {
         </div>
         ${hasDetail ? `<div class="popup-section">
           <div class="popup-section-title">Dettaglio stato</div>
-          ${motivoHtml}${noHtml}${ordHtml}
-        </div>` : ''}
-        ${pratiche.length ? `<div class="popup-section">
-          <div class="popup-section-title">Pratiche</div>
-          <div>${praticheHtml}</div>
+          ${motivoHtml}${noHtml}
         </div>` : ''}
         ${cantiereHtml}
       </div>
       ${ls ? `<div class="popup-body-right">${lottoProgressRightHtml}</div>` : ''}
     </div>
-    ${gmapsUrl ? `<div style="padding:0 16px 12px">
-      <a class="popup-gmaps-btn" href="${gmapsUrl}" target="_blank" rel="noopener">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="var(--retelit-blue)"/></svg>
-        Apri in Google Maps
-      </a>
-    </div>` : ''}
     <div class="pr-popup-actions">
       <button class="btn pr-popup-btn" data-pr-action="aggiorna" data-tratta="${p.TRATTA_ID||''}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>Aggiorna pratica</button>
       <button class="btn secondary pr-popup-btn" data-pr-action="nuova" data-tratta="${p.TRATTA_ID||''}" data-lotto="${p.LOTTO||''}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="vertical-align:-1px;margin-right:3px"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Nuova pratica</button>
@@ -3076,8 +3111,11 @@ function _buildMapLayers(geojson, isUpdate = false) {
         layer.bindPopup(makePopupHtml(f.properties, gmapsUrl), {
           maxWidth: isMobile ? Math.min(window.innerWidth - 40, 320) : 640,
           autoPan: !isMobile,
-          autoPanPaddingTopLeft:  isMobile ? L.point(10, 180) : L.point(10, 10),
+          autoPanPaddingTopLeft:  isMobile ? L.point(10, 180) : L.point(10, 62),
           autoPanPaddingBottomRight: isMobile ? L.point(10, 160) : L.point(10, 10),
+          // Offset >= metà larghezza max (640/2=320) + margine, così il bordo
+          // sinistro del popup resta sempre a destra del punto cliccato.
+          offset: isMobile ? L.point(0, -10) : L.point(360, -10),
         });
         const stato = f.properties.STATO_LEGENDA || f.properties.STATO_AUTORIZZAZIONE || 'IN ATTESA';
         const comune = f.properties.COMUNE || '';
