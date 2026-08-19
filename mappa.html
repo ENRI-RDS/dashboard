@@ -144,6 +144,7 @@
   .popup-detail-row .dl{color:var(--muted);}
   .popup-detail-row .dv{font-family:var(--font-mono);font-size:11px;font-weight:600;}
   .popup-pratica{display:inline-block;font-family:var(--font-mono);font-size:10px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:3px 8px;margin:2px 3px 2px 0;}
+  .popup-pratica-ente{font-family:var(--font-body);font-weight:500;color:var(--muted);}
   .popup-tag{display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:600;padding:3px 9px;border-radius:20px;margin-right:4px;}
   .popup-tag.ok{background:#e8f5ee;color:#2e7d52;border:1px solid #2e7d5233;}
   .popup-tag.warn{background:#fef9ec;color:#a07820;border:1px solid #a0782033;}
@@ -1594,8 +1595,14 @@ function makePopupHtml(p, gmapsUrl) {
   }[stato] || stato;
 
   const pratiche = p.PRATICA ? p.PRATICA.split('|').map(s=>s.trim()).filter(Boolean) : [];
+  const tidUp = (p.TRATTA_ID||'').trim().toUpperCase();
+  const praticaEnteList = RO_PRATICA_ENTE[tidUp] || [];
   const praticheHtml = pratiche.length
-    ? pratiche.map(pr=>`<span class="popup-pratica">${pr}</span>`).join('') : '';
+    ? pratiche.map(pr=>{
+        const match = praticaEnteList.find(x => x.codice.toUpperCase() === pr.toUpperCase());
+        const enteLabel = match ? match.ente : '';
+        return `<span class="popup-pratica">${pr}${enteLabel?`<span class="popup-pratica-ente"> · ${enteLabel}</span>`:''}</span>`;
+      }).join('') : '';
 
   const lav = p.LAVORABILE;
   const lavHtml = lav === 'SI'
@@ -2428,6 +2435,52 @@ let sedLoaded  = false;
 let _sedActive = false;
 let _sedLoading = false; // guard anti race-condition
 
+// Indice pratica → ente, costruito da Master.csv (TRATTA_ID + ENTE + TIPO_PERMESSO + PRATICA).
+// Necessario perché QGIS.geojson aggrega già le pratiche di più righe/enti in un'unica
+// stringa p.PRATICA ("AUT/3/1A | NO/5/1A | ..."), perdendo quale ente corrisponde a quale codice.
+let RO_PRATICA_ENTE = {}; // key: TRATTA_ID upper → [{codice, ente}]
+let _praticaEnteLoading = null;
+function loadPraticaEnteIndex() {
+  if (_praticaEnteLoading) return _praticaEnteLoading;
+  _praticaEnteLoading = (async () => {
+    try {
+      const csvText = await fetchWithSWR('Master.csv', { isJson: false, direct: true }).catch(() => null);
+      if (!csvText) return;
+      const rows = csvText.split('\n');
+      const _sep = rows[0].includes('\t') ? '\t' : (rows[0].includes(';') ? ';' : ',');
+      const headers = rows[0].split(_sep).map(h => h.trim().replace(/^"|"$/g,''));
+      const idx = n => headers.findIndex(h => h.toUpperCase() === n.toUpperCase());
+      const iTid = idx('TRATTA_ID'), iEnte = idx('ENTE'), iTipo = idx('TIPO_PERMESSO');
+      const iPrat = idx('PRATICA'), iLotto = idx('LOTTO'), iSrc = idx('Source.Name');
+      if (iTid < 0 || iEnte < 0) return;
+      const idxMap = {};
+      rows.slice(1).forEach(row => {
+        if (!row.trim()) return;
+        const cols = row.split(_sep).map(c => c.trim().replace(/^"|"$/g,''));
+        const tid = (cols[iTid]||'').trim().toUpperCase(); if (!tid) return;
+        const ente = cols[iEnte]||'';
+        const tipo = iTipo >= 0 ? cols[iTipo]||'' : '';
+        const prat = iPrat >= 0 ? cols[iPrat]||'' : '';
+        if (!prat) return;
+        const src   = iSrc  >= 0 ? cols[iSrc] ||'' : '';
+        const lotto = src ? src.replace(/\.xlsx$/i,'').replace(/^Lotto\s*/i,'').trim().toUpperCase()
+                         : (iLotto >= 0 ? cols[iLotto]||'' : '');
+        const tipoPrefix = tipo === 'AUTORIZZAZIONE' ? 'AUT'
+          : tipo === 'NULLA OSTA' ? 'NO'
+          : tipo === 'ORDINANZA'  ? 'ORD'
+          : (tipo.substring(0,3)||'?');
+        const codice = tipoPrefix + '/' + prat + (lotto ? '/'+lotto : '');
+        if (!idxMap[tid]) idxMap[tid] = [];
+        if (!idxMap[tid].some(e => e.codice.toUpperCase() === codice.toUpperCase())) {
+          idxMap[tid].push({ codice, ente });
+        }
+      });
+      RO_PRATICA_ENTE = idxMap;
+    } catch(_) {}
+  })();
+  return _praticaEnteLoading;
+}
+
 async function loadSED() {
   if (sedLoaded || _sedLoading) return;
   _sedLoading = true;
@@ -2734,6 +2787,7 @@ async function _roLoadCantieri(){
 (async()=>{
   try{
     _roLoadCantieri();
+    loadPraticaEnteIndex();
     const geojson = await loadGeoJSON();
     const features=geojson.features.filter(f=>f.properties.LOTTO!=='P');
     allFeatures = features;
