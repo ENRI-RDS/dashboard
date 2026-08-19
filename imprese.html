@@ -5,6 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ENRI — Area Impresa</title>
 <script src="js/api-config.js"></script>
+<!-- xlsx caricato lazy on demand (vedi loadXLSX()) — risparmio ~900KB al primo load -->
+<script>
+window.loadXLSX = (function(){
+  let _p = null;
+  return function(){
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    if (_p) return _p;
+    _p = new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload = () => res(window.XLSX);
+      s.onerror = () => { _p = null; rej(new Error('xlsx load failed')); };
+      document.head.appendChild(s);
+    });
+    return _p;
+  };
+})();
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root{
@@ -165,6 +183,7 @@
           <input type="checkbox" id="filterUpdateScaduto" data-testid="filter-update-scaduto" style="width:15px;height:15px;cursor:pointer;accent-color:var(--accent);margin:0">
           Update oltre 5gg
         </label>
+        <button class="btn btn-ghost btn-xs" id="exportPraticheBtn" data-testid="export-pratiche" style="margin-left:auto;white-space:nowrap">⬇ Esporta Excel</button>
       </div>
       <div class="scroll">
         <table>
@@ -659,6 +678,90 @@ window.addEventListener('pageshow', (e) => {
     if (!isFinite(n)) return '—';
     return n.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
+
+  // ─── export Excel elenco permessi impresa ─────────────────────────────
+  // A differenza della tabella "Aggiorna pratiche" (che esclude OTTENUTO/NO
+  // COMPETENZA perché non ha senso aggiornarle), l'export include TUTTE le
+  // pratiche dell'impresa, raggruppate per codice pratica come in renderPratiche().
+  function _buildExportRows() {
+    const latestMap = new Map();
+    PRATICHE.forEach(p => {
+      const key = p.TRATTA_ID + '|' + p.ENTE + '|' + p.TIPO_PERMESSO;
+      const existing = latestMap.get(key);
+      if (!existing || parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(existing.DATA_ULTIMA_MODIFICA)) {
+        latestMap.set(key, p);
+      }
+    });
+    const pratMap = new Map();
+    Array.from(latestMap.values()).forEach(p => {
+      const codice = p._codice || buildCodice(p);
+      const key = codice || ('__t__' + p.TRATTA_ID + '|' + p.ENTE + '|' + p.TIPO_PERMESSO);
+      const len = parseFloat(String(p.LUNGHEZZA || '').replace(',', '.')) || 0;
+      const g = pratMap.get(key);
+      if (!g) {
+        pratMap.set(key, { ...p, _nTratte: 1, _lunghezzaTot: len, _tratte: [p.TRATTA_ID] });
+      } else {
+        const isNewer = parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(g.DATA_ULTIMA_MODIFICA);
+        const nTratte = g._nTratte + 1;
+        const lunghezzaTot = g._lunghezzaTot + len;
+        const tratte = [...g._tratte, p.TRATTA_ID];
+        if (isNewer) Object.assign(g, p);
+        g._nTratte = nTratte;
+        g._lunghezzaTot = lunghezzaTot;
+        g._tratte = tratte;
+      }
+    });
+    return Array.from(pratMap.values()).sort((a, b) => {
+      const ca = !!a._codice, cb = !!b._codice;
+      if (ca !== cb) return ca ? -1 : 1;
+      if (ca && cb) return a._codice.localeCompare(b._codice, 'it', {numeric:true});
+      return String(a.TRATTA_ID||'').localeCompare(String(b.TRATTA_ID||''), 'it', {numeric:true});
+    });
+  }
+
+  function exportPraticheXlsx() {
+    return window.loadXLSX().then(() => {
+      const rows = _buildExportRows();
+      if (!rows.length) { alert('Nessuna pratica da esportare.'); return; }
+      const header = ['Codice', 'Tratte', 'Ente', 'Tipo', 'Stato', 'Data richiesta', 'Data agg.', 'Data previsione', 'Lung. (m)'];
+      const DATE_COLS = [5, 6, 7];
+      const DATE_FMT = 'dd/mm/yyyy';
+      function toDateObj(s) {
+        if (!s || !String(s).trim()) return '';
+        const p = String(s).trim().split('/');
+        if (p.length === 3) return new Date(+p[2], +p[1]-1, +p[0]);
+        return '';
+      }
+      const aoa = rows.map(p => [
+        p._codice || '',
+        p._nTratte > 1 ? p._tratte.join(', ') : (p.TRATTA_ID || ''),
+        p.ENTE || '',
+        p.TIPO_PERMESSO || '',
+        p.STATO_PERMESSO || '',
+        toDateObj(p.DATA_RICHIESTA),
+        toDateObj(p.DATA_ULTIMA_MODIFICA),
+        toDateObj(p.DATA_PREVISTA_RILASCIO),
+        Number((p._lunghezzaTot ?? p.LUNGHEZZA) || 0),
+      ]);
+      const ws = XLSX.utils.aoa_to_sheet([header, ...aoa], { cellDates: true });
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for (let r = 1; r <= range.e.r; r++) {
+        DATE_COLS.forEach(c => {
+          const addr = XLSX.utils.encode_cell({r, c});
+          if (ws[addr] && ws[addr].t === 'd') ws[addr].z = DATE_FMT;
+        });
+      }
+      ws['!cols'] = [{wch:20},{wch:24},{wch:30},{wch:16},{wch:26},{wch:14},{wch:14},{wch:14},{wch:12}];
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const cell = ws[XLSX.utils.encode_cell({r:0, c})];
+        if (cell) cell.s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '043F75' } }, alignment: { horizontal: 'center' } };
+      }
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Permessi');
+      XLSX.writeFile(wb, `Permessi_${nome.replace(/[^\w\d]+/g,'_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    }).catch(e => alert('Errore export: ' + e.message));
+  }
+  $('exportPraticheBtn').addEventListener('click', exportPraticheXlsx);
 
   // Vero se DATA_PREVISTA_RILASCIO è nel passato rispetto a oggi
   function _isDataPrevistaScaduta(p) {
