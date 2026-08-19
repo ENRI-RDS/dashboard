@@ -593,7 +593,12 @@ Fonte: checklist Excel utente. Solo voci non "Completato" (34/59 già completate
 
 ---
 
-_Ultimo aggiornamento: 2026-08-09 (rev. 235)_
+_Ultimo aggiornamento: 2026-08-19 (rev. 236)_
+
+- **rev.236** — `mappa.html`, popup tratta (2 richieste utente).
+  1. **Bug reale**: la nuova feature "ente per pratica" nel popup (indice `RO_PRATICA_ENTE` da `Master.csv`, badge `AUT/24/1A · COMUNE DI PERO`) non compariva mai. Causa: `fetchWithSWR(rel, {direct:true})` faceva `fetch(rel + qs, ...)` con `rel` nudo (es. `'Master.csv'`), senza prefisso `apiBase` né path `/api/data-text/` — il backend espone solo route `/api/...` (nessuna route bare in `server.py`), quindi la fetch falliva silenziosamente (`.catch(()=>null)`) e `RO_PRATICA_ENTE` restava `{}` per sempre. Pattern corretto già presente in `polizze_convenzioni.html` (`apiBase + '/api/data-text/Master.csv'`). Fix applicato al branch `direct` di `fetchWithSWR`: ora costruisce `apiBase() + '/api/data-text/' + rel`. Effetto collaterale positivo: stesso branch usato anche da `QGIS.geojson`/`SED_classificato.geojson`, che ora vanno sempre a dati freschi da Render invece che a un'eventuale copia statica congelata su GitHub Pages da prima del giro di sicurezza (rev.139).
+  2. Layout popup: rimosso il campo "Ente" standalone (grid-column:span 2) — informazione ridondante ora che ogni codice pratica mostra già il proprio ente nella badge. Il blocco "Pratiche" passa da colonna stretta a `popup-field full` (riga intera), così con 3-4 pratiche le badge scorrono su tutta la larghezza invece di impilarsi in una colonna lunga.
+  `node --check` non eseguito in questa sessione (nessun ambiente node disponibile) — verificare al prossimo giro prima del deploy.
 
 - **rev.235** — `imprese_scavi.html`: 2 richieste utente da screenshot.
   1. Card cantieri ora ordinate per `codice_cantiere` crescente (`localeCompare` con `numeric:true`, stesso pattern già usato altrove nel file per l'ordinamento dei lotti) — aggiunto in `getFilteredItems()`, applicato dopo i filtri. Prima non c'era alcun ordinamento, veniva mostrato l'ordine grezzo restituito dal backend.
