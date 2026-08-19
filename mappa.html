@@ -1779,9 +1779,11 @@ async function fetchWithSWR(rel, { onUpdate, isJson = true, direct = false } = {
   // i dati imprese senza autenticazione) — quindi la copia statica è congelata
   // per sempre. Per questi file si va sempre e solo su Render.
   if (direct) {
+    const _apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    const _url = _apiBase + '/api/data-text/' + rel;
     try {
       const text = await Promise.race([
-        fetch(rel + qs, { headers: { 'x-session-token': _sessionToken() } }).then(r => r.ok ? r.text() : Promise.reject('render-fail')),
+        fetch(_url + qs, { headers: { 'x-session-token': _sessionToken() } }).then(r => r.ok ? r.text() : Promise.reject('render-fail')),
         _timeout(30000, 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.')
       ]);
       return isJson ? JSON.parse(text) : text;
