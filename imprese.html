@@ -183,7 +183,8 @@ window.loadXLSX = (function(){
           <input type="checkbox" id="filterUpdateScaduto" data-testid="filter-update-scaduto" style="width:15px;height:15px;cursor:pointer;accent-color:var(--accent);margin:0">
           Update oltre 5gg
         </label>
-        <button class="btn btn-ghost btn-xs" id="exportPraticheBtn" data-testid="export-pratiche" style="margin-left:auto;white-space:nowrap">⬇ Esporta Excel</button>
+        <select id="filterLotto" data-testid="filter-lotto" style="display:none;font-size:12.5px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer"></select>
+        <button class="btn btn-xs" id="exportPraticheBtn" data-testid="export-pratiche" style="margin-left:auto;white-space:nowrap;background:var(--ok);color:#fff">⬇ Esporta Excel</button>
       </div>
       <div class="scroll">
         <table>
@@ -583,6 +584,7 @@ window.addEventListener('pageshow', (e) => {
     try {
       const d = await api(`/api/imprese/pratiche?nome=${encodeURIComponent(nome)}`);
       PRATICHE = (d.pratiche || []).map(p => ({...p, _codice: buildCodice(p)}));
+      _populateLottoFilter();
       renderPratiche('');
       await _populateEntiSelect();
       _setAutoPratica();
@@ -593,6 +595,16 @@ window.addEventListener('pageshow', (e) => {
   $('searchPratiche').addEventListener('input', e => renderPratiche(e.target.value));
   $('filterPrevisioneScaduta').addEventListener('change', () => renderPratiche($('searchPratiche').value));
   $('filterUpdateScaduto').addEventListener('change', () => renderPratiche($('searchPratiche').value));
+  $('filterLotto').addEventListener('change', () => renderPratiche($('searchPratiche').value));
+
+  // Mostra il filtro lotto solo se l'impresa ha più di un lotto assegnato
+  function _populateLottoFilter() {
+    const sel = $('filterLotto');
+    if (MY_LOTTI.length <= 1) { sel.style.display = 'none'; sel.innerHTML = ''; return; }
+    sel.innerHTML = '<option value="">Tutti i lotti</option>' +
+      MY_LOTTI.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
+    sel.style.display = '';
+  }
 
   // Popola il select degli enti con tutti i valori unici presenti in Master.csv
   async function _populateEntiSelect() {
@@ -891,10 +903,12 @@ window.addEventListener('pageshow', (e) => {
     });
     const soloScadute = $('filterPrevisioneScaduta')?.checked;
     const soloUpdateScaduto = $('filterUpdateScaduto')?.checked;
+    const lottoSel = $('filterLotto')?.value || '';
     const rows = Array.from(pratMap.values())
       .filter(p => !f || JSON.stringify(p).toLowerCase().includes(f))
       .filter(p => !soloScadute || _isDataPrevistaScaduta(p))
       .filter(p => !soloUpdateScaduto || _isUpdateScaduto(p))
+      .filter(p => !lottoSel || lottoFromSource(p['Source.Name']) === lottoSel)
       .sort((a, b) => {
         if (PRAT_SORT.key) {
           const type = PRAT_COL_TYPES[PRAT_SORT.key] || 'str';
