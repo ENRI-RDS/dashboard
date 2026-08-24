@@ -80,6 +80,12 @@ solleciti_col = db["solleciti"]                # registro solleciti per tratta/p
 # Senza questo lock, due richieste concorrenti (es. solleciti di imprese diverse)
 # possono leggere la stessa versione e la seconda scrittura sovrascrive/perde la prima.
 _master_csv_lock = asyncio.Lock()
+# Lock per serializzare _sync_cantieri(): senza di esso due esecuzioni concorrenti
+# (es. startup + trigger da approve_pending_update, o due approvazioni ravvicinate,
+# entrambe lanciate come asyncio.create_task non awaitate) possono leggere lo stesso
+# _max_codice_per_lotto() prima che l'altra abbia inserito il proprio documento,
+# assegnando lo stesso codice_cantiere (es. "CA/2/1A") a due pratiche diverse.
+_cantieri_sync_lock = asyncio.Lock()
 cantieri_col  = db["cantieri"]                  # stato cantiere per pratica di autorizzazione
 sopralluoghi_col = db["sopralluoghi"]          # verbali di sopralluogo
 pol_conv_dates_col = db["pol_conv_dates"]      # prima data in cui CONVENZIONE/POLIZZA è comparsa per una pratica
@@ -3218,7 +3224,43 @@ async def _backfill_codici_cantiere(cache: dict) -> int:
     return n
 
 
+async def _dedupe_codici_cantiere(cache: dict) -> int:
+    """Ripara codice_cantiere duplicati già presenti in Mongo (causati dalla race
+    condition di _sync_cantieri risolta con _cantieri_sync_lock — v. commento sopra
+    la definizione del lock: due esecuzioni concorrenti potevano leggere lo stesso
+    _max_codice_per_lotto() e assegnare lo stesso codice a due pratiche diverse).
+    Per ogni codice duplicato mantiene invariato il documento più vecchio (_id più
+    basso) e riassegna un nuovo codice progressivo ai restanti."""
+    groups: dict[str, list] = {}
+    async for d in cantieri_col.find(
+        {"codice_cantiere": {"$regex": "^CA/"}}, {"lotto": 1, "codice_cantiere": 1}
+    ):
+        groups.setdefault(d["codice_cantiere"], []).append(d)
+
+    n = 0
+    for codice, docs in groups.items():
+        if len(docs) < 2:
+            continue
+        docs.sort(key=lambda d: d["_id"])
+        for d in docs[1:]:  # il primo (più vecchio) mantiene il codice originale
+            lotto = d.get("lotto", "")
+            cache[lotto] = cache.get(lotto, 0) + 1
+            nuovo = f"CA/{cache[lotto]}/{lotto}"
+            await cantieri_col.update_one({"_id": d["_id"]}, {"$set": {"codice_cantiere": nuovo}})
+            print(f"[sync_cantieri] riassegnato codice duplicato {codice} → {nuovo} (_id={d['_id']})")
+            n += 1
+    return n
+
+
 async def _sync_cantieri() -> int:
+    """Wrapper serializzato: vedi _sync_cantieri_impl per la logica. Il lock evita
+    che due esecuzioni concorrenti assegnino lo stesso codice_cantiere (v. commento
+    su _cantieri_sync_lock)."""
+    async with _cantieri_sync_lock:
+        return await _sync_cantieri_impl()
+
+
+async def _sync_cantieri_impl() -> int:
     """Raggruppa le tratte con AUTORIZZAZIONE OTTENUTA per pratica (ente, numero,
     lotto) e crea/aggiorna un documento cantiere per pratica. metri_totali conta
     TUTTE le tratte della pratica (autorizzazione ottenuta), indipendentemente
@@ -3255,6 +3297,7 @@ async def _sync_cantieri() -> int:
 
     codice_cache = await _max_codice_per_lotto()
     await _backfill_codici_cantiere(codice_cache)
+    await _dedupe_codici_cantiere(codice_cache)
 
     # Mappa lotto → impresa assegnata (stessa fonte di /api/lotti-cantieri) per
     # popolare/backfillare 'impresa' sia sui cantieri esistenti che su quelli nuovi.
