@@ -623,6 +623,20 @@
   </div>
 </div>
 
+<!-- Tratte modal: elenco tratte di una pratica -->
+<div class="modal" id="tratteModal" data-testid="tratte-modal">
+  <div class="modal-card" style="max-width:520px;max-height:80vh;display:flex;flex-direction:column">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="tratteTitle">Tratte</div>
+        <div class="modal-sub" id="tratteSub"></div>
+      </div>
+      <button class="modal-close" id="tratteClose">&times;</button>
+    </div>
+    <div style="overflow-y:auto;flex:1" id="tratteBody"></div>
+  </div>
+</div>
+
 <!-- Edit pending changes modal -->
 <div class="modal" id="editPendingModal" data-testid="edit-pending-modal">
   <div class="modal-card" style="max-width:720px;max-height:88vh;display:flex;flex-direction:column">
@@ -1766,6 +1780,7 @@
         <td style="white-space:nowrap">
           <button class="btn btn-ghost btn-xs" data-note-data-pick="${i}">Modifica dati</button>
           <button class="btn btn-ghost btn-xs" data-note-hist-pick="${i}">Storico note</button>
+          <button class="btn btn-ghost btn-xs" data-note-tratte-pick="${i}">Tratte</button>
           <button class="btn btn-ghost btn-xs" data-note-pick="${i}">+ Nota</button>
         </td>
       </tr>`;
@@ -1833,6 +1848,24 @@
       $('noteDataSaveBtn').disabled = false;
     }
   });
+
+  // --- Tratte: elenco semplice delle TRATTA_ID che compongono la pratica ---
+  $('noteResults').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-note-tratte-pick]');
+    if (!btn) return;
+    const r = NOTE_VIEW[Number(btn.dataset.noteTrattePick)];
+    if (!r) return;
+    const tratte = r.tratta_ids || [r.tratta_id];
+    $('tratteTitle').textContent = `Tratte ${r.codice || ''}`;
+    $('tratteSub').textContent = `${r.ente} · ${r.tipo_permesso} · Lotto ${r.lotto} · ${tratte.length} tratt${tratte.length!==1?'e':'a'}`;
+    $('tratteBody').innerHTML = tratte.length
+      ? `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:16px 20px">${tratte.map(t =>
+          `<span style="background:var(--gray-50);border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:12px;font-family:var(--font-mono)">${escapeHtml(t)}</span>`
+        ).join('')}</div>`
+      : '<div class="empty" style="padding:20px">Nessuna tratta</div>';
+    $('tratteModal').classList.add('open');
+  });
+  $('tratteClose').addEventListener('click', () => $('tratteModal').classList.remove('open'));
 
   // --- Storico note: mostra ogni nota inserita nel tempo (anche vecchia) e
   // permette di correggerne il testo, propagando la correzione su tutte le
