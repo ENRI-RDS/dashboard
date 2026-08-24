@@ -593,6 +593,11 @@ Fonte: checklist Excel utente. Solo voci non "Completato" (34/59 già completate
 
 ---
 
+_Ultimo aggiornamento: 2026-08-24 (rev. 238)_
+
+- **rev.238** — `hub.html`, card "Avanzamento Lavori" (`#scaviCard`): rimossa la dicitura statica "In arrivo" (`#scaviBadge`), non più corretta ora che `scavi.html`/`imprese_scavi.html` sono operativi. Badge ora nascosto di default (`style="display:none"`) e mostrato solo per ruoli non abilitati (`SCAVI_ALLOWED_ROLES`), con testo cambiato in "Accesso riservato" (era comunque "In arrivo" anche in quel ramo, fuorviante — non è una feature futura ma una restrizione di ruolo).
+- **rev.237** — `imprese_scavi.html`, `urgencyOf()`: **bug reale segnalato dall'utente da screenshot** — un cantiere `sospeso` con `data_ripresa_stimata` **futura** (es. Sielte/Rozzano, ripresa 14/09/2026) veniva comunque segnalato "Da aggiornare" solo perché l'ultimo caricamento risaliva a >7gg fa, mentre in `scavi.html` (`_registroStatus()`) risultava correttamente "in linea" perché quella pagina guarda `data_ripresa_stimata` invece della staleness del log per lo stato sospeso. Le due pagine avevano quindi logiche divergenti sullo stesso stato (nota già lasciata aperta in rev.233: "sospeso — lì non esiste un check di scadenza reale... nota per l'utente se in futuro si vuole allineare"). Fix: allineato a `scavi.html` — se `data_ripresa_stimata` è presente, l'allarme dipende solo dal suo superamento (`late` se scaduta, altrimenti `done` a prescindere dai giorni di inattività); il fallback su soglie giorni-da-update (2/7gg) resta invariato solo quando `data_ripresa_stimata` è assente. `mappa_impresa_caricamento.html` verificato: nessuna logica KPI/urgenza propria (solo form inserimento dati), nessuna modifica necessaria lì.
+
 _Ultimo aggiornamento: 2026-08-19 (rev. 236)_
 
 - **rev.236** — `mappa.html`, popup tratta (2 richieste utente).
