@@ -1547,6 +1547,13 @@ function _renderCantieriTable() {
       else cmp = String(va).localeCompare(String(vb), undefined, { numeric:true });
       return cmp * _cantieriSort.dir;
     });
+  } else {
+    // Nessun ordinamento scelto dall'utente: default per codice_cantiere crescente
+    // (CA/1/lotto, CA/2/lotto, ...), non l'ordine grezzo del backend — altrimenti
+    // filtrando per impresa/lotto/stato l'elenco appare "mescolato" (es. CA/1,CA/3,CA/2).
+    rows = rows.slice().sort((a, b) =>
+      String(a.codice_cantiere || '').localeCompare(String(b.codice_cantiere || ''), undefined, { numeric:true })
+    );
   }
   const countEl = document.getElementById('cantieriCount');
   if (countEl) countEl.innerHTML = `<span class="cc-num">${rows.length}</span> / <span class="cc-num">${CANTIERI_RAW.length}</span> cantieri`;
