@@ -911,6 +911,14 @@ window.addEventListener('pageshow', (e) => {
       return 'done';
     }
     if (stato === 'sospeso') {
+      // Allineato a scavi.html: se c'è una ripresa stimata, l'allarme dipende
+      // solo dal suo superamento, non dai giorni dall'ultimo aggiornamento
+      // (in sospensione non è richiesto un aggiornamento periodico).
+      const ripresa = r.data_ripresa_stimata;
+      if (ripresa) {
+        const gg = daysOverdue(ripresa);
+        return (gg !== null && gg > 0) ? 'late' : 'done';
+      }
       if (dsUpdate <= 2) return 'done';
       if (dsUpdate <= 7) return 'soon';
       return 'late';
