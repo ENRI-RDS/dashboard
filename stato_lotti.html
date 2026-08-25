@@ -125,14 +125,6 @@ tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);fo
 .stato-table tbody td{padding:10px;vertical-align:top;}
 .lotto-code{font-family:var(--font-display);font-size:14px;font-weight:700;color:var(--text);}
 .lotto-cluster{font-size:9.5px;color:var(--muted);font-family:var(--font-mono);}
-.mini-metric{display:flex;flex-direction:column;gap:1px;font-size:10.5px;min-width:92px;}
-.mini-metric .mm-row{display:flex;justify-content:space-between;gap:8px;color:var(--muted);}
-.mini-metric .mm-row b{color:var(--text);font-weight:600;font-family:var(--font-mono);}
-.mini-metric .mm-gap{font-family:var(--font-mono);font-weight:700;font-size:11px;margin-top:2px;}
-.mini-metric .mm-gap.mm-neg{color:var(--danger);}
-.mini-metric .mm-gap.mm-pos{color:var(--ok);}
-.mini-metric .mm-gap.mm-flat{color:var(--muted);}
-.mini-metric .mm-none{color:var(--muted2);font-size:10px;}
 .delay-badge{display:inline-flex;flex-direction:column;align-items:center;gap:0;font-family:var(--font-mono);font-weight:700;font-size:14px;padding:4px 10px;border-radius:10px;min-width:56px;}
 .delay-badge small{font-family:var(--font-mono);font-size:8px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;}
 .delay-badge.db-err{background:var(--danger-bg);color:var(--danger);}
@@ -140,7 +132,6 @@ tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);fo
 .delay-badge.db-ok{background:var(--ok-bg);color:var(--ok);}
 .ms-chip{display:block;font-family:var(--font-mono);font-size:9.5px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap;margin-bottom:3px;}
 .ms-chip:last-child{margin-bottom:0;}
-.ms-chip.ms-err{background:var(--danger-bg);color:var(--danger);}
 .ms-chip.ms-warn{background:var(--warn-bg);color:var(--warn);}
 .ms-chip.ms-none{color:var(--muted2);font-family:var(--font-body);font-size:11px;font-weight:400;}
 .risk-badge{display:inline-flex;flex-direction:column;gap:1px;font-size:9.5px;font-weight:700;padding:5px 10px;border-radius:10px;letter-spacing:.03em;text-transform:uppercase;font-family:var(--font-mono);white-space:nowrap;}
@@ -155,6 +146,9 @@ tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);fo
 .action-pill.ap-squadre{background:var(--danger-bg);color:var(--danger);}
 .action-pill.ap-sospesi{background:var(--danger-bg);color:var(--danger);}
 .action-pill.ap-nessuna{background:var(--ok-bg);color:var(--ok);}
+.causa-text{font-size:11.5px;color:var(--text2);line-height:1.45;max-width:280px;}
+.causa-text.ct-muted{color:var(--muted2);}
+.causa-text b{color:var(--text);font-weight:600;font-family:var(--font-mono);}
 /* modal */
 .modal-backdrop{display:none;position:fixed;inset:0;background:rgba(4,63,117,.35);z-index:100;align-items:center;justify-content:center;padding:20px;}
 .modal-backdrop.open{display:flex;}
@@ -204,10 +198,9 @@ tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);fo
         <thead>
           <tr>
             <th>Lotto</th>
-            <th>Progettazione<br>reale / previsto</th>
-            <th>Scavi<br>reale / previsto</th>
+            <th class="tc-center">Stato</th>
+            <th>Causa principale</th>
             <th class="tc-center">Ritardo stimato</th>
-            <th>Milestone in ritardo</th>
             <th>Prossima milestone (30gg)</th>
             <th class="tc-center">Rischio ROS</th>
             <th>Azione suggerita</th>
@@ -464,6 +457,51 @@ function computeRischioROS(r) {
   return { flag: 'err', label: 'Critico', sub: fmtDateShort(p100) };
 }
 
+// Spiega SEMPRE il motivo dello stato di una fase, anche quando nessuna
+// milestone nominale è ancora scaduta: in quel caso il motivo è "ritmo
+// insufficiente per la prossima scadenza", non un generico "nessuna" che
+// contraddirebbe visivamente un badge di rischio già arancione/rosso.
+function causaFase(f, label) {
+  if (f.flag === 'none' || f.flag === 'ok') return null;
+  if (f.milestoneRitardo.length) {
+    const worst = f.milestoneRitardo[f.milestoneRitardo.length - 1];
+    return `${label} ferma al <b>${fmtPct(f.pct)}</b>: ${worst.label} scaduta senza raggiungere il target.`;
+  }
+  if (f.prossima) {
+    return `${label} al <b>${fmtPct(f.pct)}</b> (atteso ${fmtPct(f.plannedToday)} oggi) — ritmo insufficiente per ${f.prossima.label}.`;
+  }
+  return `${label} al <b>${fmtPct(f.pct)}</b>, ${fmtGapPct(f.gap)} sotto il piano.`;
+}
+
+function computeCausaPrincipale(r) {
+  const pC = causaFase(r.pFlag, 'Progettazione');
+  const sC = causaFase(r.sFlag, 'Scavi');
+  if (!pC && !sC) {
+    const noMs = [];
+    if (r.pFlag.flag === 'none') noMs.push('progettazione');
+    if (r.sFlag.flag === 'none') noMs.push('scavi');
+    if (noMs.length) return { html: `Nessuna criticità — milestone non definite per ${noMs.join(' e ')} (reale progettazione <b>${fmtPct(r.pFlag.pct)}</b>, scavi <b>${fmtPct(r.sFlag.pct)}</b>).`, muted: true };
+    return { html: 'In linea con il piano su entrambe le fasi.', muted: true };
+  }
+  if (pC && sC) {
+    const pWorse = FLAG_RANK[r.pFlag.flag] > FLAG_RANK[r.sFlag.flag] ||
+      (FLAG_RANK[r.pFlag.flag] === FLAG_RANK[r.sFlag.flag] && (r.pFlag.delayDays || 0) >= (r.sFlag.delayDays || 0));
+    return { html: (pWorse ? pC + ' ' + sC : sC + ' ' + pC), muted: false };
+  }
+  return { html: pC || sC, muted: false };
+}
+
+function renderStato(r) {
+  const flag = r.overall === 'none' ? 'ok' : r.overall;
+  const label = flag === 'err' ? 'Critico' : flag === 'warn' ? 'Attenzione' : 'In linea';
+  return `<div class="risk-badge risk-${flag}">${label}</div>`;
+}
+
+function renderCausa(r) {
+  const c = r.causa;
+  return `<div class="causa-text${c.muted ? ' ct-muted' : ''}">${c.html}</div>`;
+}
+
 let LOTTI_DATA = {};
 
 function render(prog, scavi, milestoneByLotto) {
@@ -498,6 +536,7 @@ function render(prog, scavi, milestoneByLotto) {
     const row = { lotto, cluster: m ? m.cluster : '—', p, s, m, pFlag, sFlag, overall };
     row.rischioROS = computeRischioROS(row);
     row.azione = computeAzione(row);
+    row.causa = computeCausaPrincipale(row);
     if (row.rischioROS.flag === 'err') row.overallSort = 4;
     else row.overallSort = FLAG_RANK[overall];
     row.maxDelay = Math.max(pFlag.delayDays || -9999, sFlag.delayDays || -9999);
@@ -524,25 +563,14 @@ function render(prog, scavi, milestoneByLotto) {
   tbody.innerHTML = rows.map(r => `
     <tr class="row-${r.overall === 'none' ? 'ok' : r.overall}" onclick="openModal('${r.lotto}')">
       <td><div class="lotto-code">Lotto ${r.lotto}</div><div class="lotto-cluster">cluster ${r.cluster}</div></td>
-      <td>${renderMiniMetric(r.pFlag)}</td>
-      <td>${renderMiniMetric(r.sFlag)}</td>
+      <td class="tc-center">${renderStato(r)}</td>
+      <td>${renderCausa(r)}</td>
       <td class="tc-center">${renderDelayBadge(r.pFlag, r.sFlag)}</td>
-      <td>${renderMilestoneChips(r.pFlag, r.sFlag)}</td>
       <td>${renderProssima(r.pFlag, r.sFlag)}</td>
       <td class="tc-center"><div class="risk-badge risk-${r.rischioROS.flag}">${r.rischioROS.label}<span class="rb-date">${r.rischioROS.sub}</span></div></td>
       <td><span class="action-pill ${r.azione.cls}">${r.azione.label}</span></td>
     </tr>
   `).join('');
-}
-
-function renderMiniMetric(f) {
-  if (f.flag === 'none' || f.plannedToday === null) return `<div class="mini-metric"><div class="mm-row"><span>Reale</span><b>${fmtPct(f.pct)}</b></div><div class="mm-none">nessuna milestone</div></div>`;
-  const gapCls = f.gap > 0.5 ? 'mm-pos' : (f.gap < -0.5 ? 'mm-neg' : 'mm-flat');
-  return `<div class="mini-metric">
-    <div class="mm-row"><span>Reale</span><b>${fmtPct(f.pct)}</b></div>
-    <div class="mm-row"><span>Previsto</span><b>${fmtPct(f.plannedToday)}</b></div>
-    <div class="mm-gap ${gapCls}">${fmtGapPct(f.gap)}</div>
-  </div>`;
 }
 
 function renderDelayBadge(pFlag, sFlag) {
@@ -554,12 +582,6 @@ function renderDelayBadge(pFlag, sFlag) {
   const worst = cands[0];
   const cls = worst.gg > 15 ? 'db-err' : (worst.gg > 0 ? 'db-warn' : 'db-ok');
   return `<div class="delay-badge ${cls}">${fmtDelay(worst.gg)}<small>${worst.tag}</small></div>`;
-}
-
-function renderMilestoneChips(pFlag, sFlag) {
-  const all = [...pFlag.milestoneRitardo, ...sFlag.milestoneRitardo];
-  if (!all.length) return `<span class="ms-chip ms-none">nessuna</span>`;
-  return all.map(p => `<span class="ms-chip ms-err">${p.label}</span>`).join('');
 }
 
 function renderProssima(pFlag, sFlag) {
