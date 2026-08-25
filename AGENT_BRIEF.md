@@ -1,0 +1,831 @@
+> Documento di onboarding per agenti AI / sviluppatori. Spiega architettura, flussi, file e convenzioni della dashboard ENRI **senza dover leggere tutto il codice**.
+
+---
+
+## 1. Cos'è questo progetto
+
+Dashboard di project management per **ENRI** — un progetto infrastrutturale di posa fibra/cavidotti (12 lotti, 7 cluster, province BG/MI/MB/PV/CR). Mostra l'avanzamento di:
+- **Fase 1 – Progettazione**: iter autorizzativo (richieste, scadenze, pratiche per cluster/lotto/ente).
+- **Fase 2 – Avanzamento Lavori (Scavi)**: stato cantieri, % completamento, metri scavati.
+- **Sopralluoghi, Mappa georeferenziata, Milestone, AI Alerts**.
+- **Area Impresa**: portale per le imprese appaltatrici (vista pratiche dei propri lotti + workflow di approvazione admin).
+
+È una **dashboard solo-frontend statica** (HTML + JS vanilla, niente React/Vue) servita da **GitHub Pages**, con un **backend FastAPI** (Render) che permette di aggiornare i dataset senza re-pushare su GitHub e che — dopo ogni approvazione — committa anche la versione aggiornata direttamente nel repo.
+
+---
+
+## 2. Architettura a colpo d'occhio
+
+```
+┌──────────────────────────────┐    ┌────────────────────────────┐    ┌──────────────────────┐
+│  GitHub Pages                │    │  Render (FastAPI)          │    │  MongoDB Atlas       │
+│  enri-rds.github.io/dashboard│───▶│  enri-dashboard-api.       │───▶│  DB: enri_dashboard  │
+│  HTML + JS vanilla           │    │  onrender.com              │    │   - uploads (GridFS) │
+│  Pagine: hub, index, mappa,… │    │  /api/* endpoints          │    │   - assignments      │
+└──────────────────────────────┘    └────────────────────────────┘    │   - pending_updates  │
+        │                                       ▲                      └──────────────────────┘
+        │ js/api-config.js                      │ multipart upload + workflow imprese
+        │ intercetta fetch('Master.csv') e la   │
+        │ riscrive in fetch(API/api/data/…)     │
+        └───────────────────────────────────────┘
+                                                │
+                                                ▼ commit automatico (GitHub API, fine-grained PAT)
+                                       Master.csv / QGIS.geojson / Riepilogo_progettazione.csv
+
+Auth login: hub.html → POST /api/auth/login → backend chiama Google Apps Script server-to-server →
+            restituisce token HMAC firmato (nome|ruolo|exp) salvato in localStorage._enri_token.
+            Ogni chiamata /api/imprese/* o /api/auth/* richiede l'header `x-session-token`.
+```
+
+**Tre modi di girare:**
+1. **Production**: GitHub Pages + Render + Atlas.
+2. **Preview**: static HTML servito da `frontend/server.js` su :3000, FastAPI su :8001, MongoDB locale.
+3. **Solo statico**: GitHub Pages senza backend (le pagine fanno `fetch('Master.csv')` direttamente sui file committati nel repo — sempre presenti perché il backend ri-pusha dopo ogni approvazione).
+
+---
+
+## 3. Struttura del repository
+
+```
+/app/
+├── hub.html                    # PORTALE — entrypoint con login (via /api/auth/login) + griglia di card
+├── index.html                  # FASE 1 — Progettazione (KPI, GANTT, tabella pratiche) — SWR su Master.csv
+├── scavi.html                  # FASE 2 — Avanzamento scavi (lotti, cluster, donut)
+├── mappa.html                  # Mappa Leaflet con SWR su QGIS / QTS / SED / Master
+├── ~~mappa_impresa.html~~         # RIMOSSA (rev.126) — sola-vista, superset da mappa_impresa_caricamento.html. File non più nel repo.
+├── ~~executive_summary.html~~     # RIMOSSA — non più nel progetto. Il pulsante "Executive" è stato rimosso dalla topbar di index.html. Nessun CSS residuo né link attivi.
+├── sopralluoghi.html           # Redazione verbali di sopralluogo cantiere
+├── milestone.html              # Milestone di progetto
+├── stato_lotti.html            # NEW (rev.239) — per lotto: % progettazione ottenuta e % scavi vs milestone contrattuali, flag ritardo
+├── ai_alerts.html              # Beta — alert predittivi
+├── admin.html                  # PANNELLO ADMIN — upload + coda imprese + assegnazioni + storico versioni
+├── imprese.html                # PORTALE IMPRESE — aggiorna pratiche / nuova tratta / mie submission
+├── imprese_scavi.html          # Area Impresa: avanzamento scavi giornaliero (stato cantiere, metri, log)
+├── mappa_impresa_caricamento.html  # Area Impresa: mappa Leaflet filtrata sui lotti assegnati, con possibilità di aggiornare/inserire pratiche direttamente dalla tratta selezionata
+├── polizze_convenzioni.html    # NEW — pratiche con CONVENZIONE/POLIZZA richiesta: filtro lotto/impresa/stato + KPI aggregati
+│
+├── js/
+│   └── api-config.js           # **CRUCIALE** — intercetta fetch() e li reindirizza al backend
+│
+├── Master.csv                  # Dataset principale pratiche — separatore auto-rilevato (TAB o ;)
+├── Riepilogo_progettazione.csv # Riepilogo cluster — RIGENERATO automaticamente da Master.csv
+├── dati.csv                    # Dati ausiliari (in disuso — index.html calcola la stessa aggregazione lato client)
+├── QGIS.geojson                # Tracciato lotti — RIGENERATO automaticamente (properties di stato) da Master.csv
+├── QTS.geojson                 # Tracciato secondario
+├── SED_classificato.geojson    # Attraversamenti (Stradali / Ferroviari / Idrici)
+│
+├── backend/
+│   ├── server.py               # FastAPI app v2.0.0 — vedi §5
+│   ├── requirements.txt        # include httpx (chiamate GitHub API + Apps Script)
+│   ├── .env                    # MONGO_URL, DB_NAME, UPLOAD_TOKEN, SESSION_SECRET, APPS_SCRIPT_*, GITHUB_*
+│   └── .env.example
+│
+├── frontend/                   # Server statico per preview Emergent (NON in produzione)
+│   ├── server.js
+│   └── package.json
+│
+├── DEPLOY.md                   # Guida deploy Render + Atlas + GitHub Pages
+├── Procfile                    # `web: uvicorn server:app --host 0.0.0.0 --port $PORT`
+└── memory/
+    ├── PRD.md                  # Stato avanzamento del progetto
+    ├── test_credentials.md     # Credenziali backend per preview
+    └── AGENT_BRIEF.md          # ← QUESTO FILE
+```
+
+---
+
+## 4. Pagine — cosa fa ognuna
+
+| Pagina | Ruolo necessario | Cosa mostra / fa |
+|---|---|---|
+| **hub.html** | nessuno (login obbligatorio) | Login server-side (POST `/api/auth/login`) + griglia card. Mostra card "Area Impresa" solo se backend conferma assegnazione. Anti-FOUC: card nascoste finché non torna il ruolo. Cold-start Render: timeout 10s e pannello "Riprova" |
+| **index.html** | `admin`/`admin2`/`user` (tutti tranne `impresa`) | KPI, GANTT, tabella filtrabile, modal pratiche, grafici Chart.js. **SWR**: legge GitHub statico + Render in parallelo, ridisegna live se il backend ha dati più freschi. XLSX caricato lazy al primo "Esporta Excel" |
+| **scavi.html** | `admin`/`admin2`/`user` (tutti tranne `impresa`) | KPI scavi (non avviati/in corso/sospeso/completati) con metri+% sul totale (rev.8), barre per lotto e per cluster a segmenti multi-stato reali (rev.8, non più blob binario), donut chart, modal lotto/cluster, tabella "Tutti i Cantieri" con `codice_cantiere`/`impresa` (rev.10: rimossa colonna `tecnica_scavo`, resta solo nella card modal). ⚠️ Ruolo cambiato: in precedenza era ristretto a `admin`/`admin2`, ora `SCAVI_ALLOWED_ROLES` include anche `user`. ✅ Topbar uniformata al brand kit Retelit (§8.11 pattern: navy, logo base64, `.topbar-back`) — sostituita la vecchia topbar chiara con `.logo`/`.btn-nav`. Rimosso il badge "Struttura reale · avanzamento di esempio". **(sessione 2026-07-03)**: exec-strip con 3 KPI grandi (avanzamento fisico/permessi/sospesi) in header; titolo/eyebrow/sottotitolo pagina rimossi su richiesta utente, `#pageSubDyn` di nuovo assente dal markup |
+| **mappa.html** | `admin`/`admin2`/`user` (tutti tranne `impresa`) | Leaflet — SWR su `QGIS.geojson`, `QTS.geojson`, `SED_classificato.geojson`, `Master.csv`; ricostruzione live dei layer se cambiano. Basemaps Google-style, ricerca, misurazione distanze, esportazione PDF |
+| **mappa_impresa_caricamento.html** | impresa loggata | Mappa filtrata sui lotti assegnati (usa `/api/imprese/pratiche` e session token), con possibilità di aggiornare lo stato di una pratica o inserirne una nuova direttamente cliccando sulla tratta (`/api/imprese/submit`, `/api/imprese/my-submissions`, `/api/imprese/cantieri*`). Include il blocco "tracking accessi" (vedi §5.9). Unica pagina mappa lato impresa (sostituisce l'ex `mappa_impresa.html`, rimossa rev.126) |
+| **milestone.html** | `admin`/`admin2`/`user` (tutti tranne `impresa`) | Milestone contrattuali e di impresa |
+| **sopralluoghi.html** | `admin`/`admin2`/`user` (tutti tranne `impresa`) | Form di redazione verbale. ⚠️ Non è più solo client-side: i verbali sono ora persistiti su MongoDB (`POST/GET/DELETE /api/sopralluoghi`) con codice progressivo `VBS-AAAA-NNNN` e foto caricate su GitHub (`sopralluoghi/foto/{codice}/`) invece che generare solo un PDF locale |
+| **ai_alerts.html** | tutti (Beta) | Pagina placeholder per future analisi AI |
+| **polizze_convenzioni.html** | `admin`/`admin2`/`user` (tutti tranne `impresa`) | Pratiche con CONVENZIONE e/o POLIZZA richiesta: filtro per lotto/impresa/stato, KPI aggregati. Legge `/api/admin/polizze-convenzioni/data-richiesta`, con fallback diretto a Master.csv su GitHub Pages se l'API non risponde. ✅ **RISOLTO**: guardia di login (`_enri_user`) aggiunta, stesso pattern overlay usato in scavi.html/sopralluoghi.html. La sola scrittura (`POST /api/admin/polizze-convenzioni/update`) richiede un `UPLOAD_TOKEN` chiesto al volo via modale, salvato in `localStorage['enri_upload_token']` — stessa chiave di admin.html (§8.15) |
+| **admin.html** | richiede `UPLOAD_TOKEN` | 4 tabs (File correnti, Storico versioni, **Coda imprese**, **Assegnazioni imprese**). Badge live conteggio pending, modali HTML custom (no `alert/confirm/prompt` nativi), date in formato `gg/mm/aa, hh:mm`, righe coda colorate per tipo. Upload: select `target` a scelta fissa (no testo libero), JS blocca l'invio se il nome del file selezionato dal disco non combacia (case-insensitive) col `target` scelto — messaggio "Nome file non corrispondente" (riga ~842) |
+| **imprese.html** | impresa assegnata + session token | 3 tabs (Aggiorna pratiche / Nuova pratica / Le mie submission). Campo **Ente** = select dinamica via `/api/enti` + opzione "Altro"; **Pratica** in nuova tratta = solo numero progressivo editabile (prefisso AUT/NO + suffisso lotto calcolati). Selezionando una tratta, se altre tratte condividono ENTE+TIPO+PRATICA il sistema propone di aggiornarle tutte insieme |
+| **imprese_scavi.html** | impresa assegnata + session token | "Avanzamento Scavi" lato impresa: aggiornamento giornaliero per pratica/cantiere (stato cantiere, tecnica di scavo, date inizio/fine, metri realizzati **oggi** — accumulati su `metri_scavati`), storico log consultabile. Scrittura diretta, **senza** workflow di approvazione admin (a differenza di `imprese.html`) |
+
+Tutte le pagine fanno guardia: `if (!localStorage.getItem('_enri_user')) → mostra overlay/redirect a hub.html`. Le pagine impresa controllano anche `localStorage._enri_session`.
+
+⚠️ **Rinominata la chiave di sessione**: il token firmato in localStorage non si chiama più `_enri_token` ma **`_enri_session`** (verificato in hub.html, mappa_impresa_caricamento.html). Se trovi ancora `_enri_token` in qualche file non aggiornato, è codice vecchio.
+
+---
+
+## 5. Backend FastAPI (`backend/server.py` v2.0.0)
+
+**Modello di storage**: MongoDB GridFS è AUTORITATIVO per i file caricati. I CSV/GeoJSON
+nel repo (`/app/Master.csv`, ecc.) sono usati come SEED FALLBACK quando non esiste
+ancora un upload per quel nome. Dopo ogni approvazione/eliminazione/ripristino il
+backend pusha anche su GitHub via API (token fine-grained, scope `Contents: Read and write`)
+così la copia statica del repo non va più in deriva da quella servita live.
+
+**Tutte le rotte iniziano con `/api/`**.
+
+### 5.1 File / dataset
+
+| Metodo | Endpoint | Auth | Descrizione |
+|---|---|---|---|
+| GET | `/api/` | — | Health JSON di servizio |
+| GET | `/api/health` | — | Ping a MongoDB |
+| GET | `/api/files` | session token, **solo staff** | Lista unificata: Mongo + seed disco. Ogni file: `source: 'mongo'\|'disk'`, `versions`, `size`, `modified` |
+| GET | `/api/data/{path}` | session token | Scarica file (Mongo se presente, altrimenti disco). Usato da `js/api-config.js` |
+| GET | `/api/data-text/{path}` | session token | Idem in `text/plain` |
+| GET | `/api/preview/{path}?max_bytes=N` | session token, **solo staff** | Anteprima primi N byte (256–65536, default 8192) |
+| GET | `/api/uploads?limit=&project=&filename=&include_deleted=` | session token, **solo staff** | Storico upload (filtri + audit cancellati) |
+| POST | `/api/upload` | `UPLOAD_TOKEN` (form `token` o header `x-upload-token`) | Multipart: `file`, `target` opz., `project`, `convert_to_csv`. Salva in GridFS + record `uploads`. Excel → CSV auto. **Se il target è `Master.csv` pusha su GitHub e rigenera QGIS/Riepilogo**. ⚠️ Se `target` è vuoto, `out_name` ricade sul filename originale del file caricato (`server.py` riga ~359) — da `admin.html` non capita mai (guardia lato client, v. riga 110), ma qualunque altro chiamante di questo endpoint senza passare `target` esplicito rischia di salvare sotto nome sbagliato senza errore. `GET /api/data/{filename}` e `GET /api/files` selezionano sempre l'upload con `uploaded_at` più recente per quel filename (nessun lock/versioning ottimistico tra scritture concorrenti, v. §8.41) |
+| DELETE | `/api/uploads/{id}` | `UPLOAD_TOKEN` | Soft-delete singola versione + purge GridFS. Se era Master.csv ri-pusha lo stato corrente |
+| DELETE | `/api/files/{path}` | `UPLOAD_TOKEN` | Soft-delete di TUTTE le versioni — se esiste un seed disco, torna a essere servito |
+| PATCH | `/api/files/{old}` | `UPLOAD_TOKEN` | Body JSON `{"new_name": "..."}` (409 se collide) |
+| POST | `/api/uploads/{id}/restore` | `UPLOAD_TOKEN` | Ripristina versione cancellata (410 se i byte GridFS sono già stati purgati) |
+| GET | `/api/enti` | session token | NEW — elenco enti unici presenti in Master.csv, ordinati alfabeticamente (popola la select "Ente" in imprese.html) |
+
+### 5.2 Auth firmata (HMAC)
+
+Risolve la falla per cui chiunque poteva fare `localStorage.setItem('_enri_user', 'Nome Impresa')`
+e impersonare quel nome senza conoscere il codice. Ora il codice è verificato dal backend e ogni
+chiamata successiva richiede un token firmato non falsificabile.
+
+| Metodo | Endpoint | Auth | Descrizione |
+|---|---|---|---|
+| POST | `/api/auth/login` | — | Body `{nome, codice}` → backend chiama Apps Script server-to-server (segreto MAI esposto al browser) → restituisce `{ok, token, nome, ruolo}` |
+| GET | `/api/auth/verify` | session token | Rivalidazione silenziosa (usata da index.html) |
+| POST | `/api/logs/get` / `/api/logs/put` | session token | Log accessi — MongoDB (`access_logs`), non più JSONBin/Apps Script (vedi §5.12) |
+
+**Schema token** (base64 urlsafe): `nome | ruolo | exp_unix | HMAC-SHA256(payload, SESSION_SECRET)`
+con TTL configurabile via `SESSION_TTL_SECONDS` (default 12h).
+
+### 5.3 Imprese (richiedono `x-session-token` — il `nome` è SEMPRE preso dal token, MAI da un parametro client)
+
+> Nota: l'header resta `x-session-token`; è solo la chiave **localStorage** lato client che è stata rinominata da `_enri_token` a `_enri_session` (vedi §4 e §7).
+
+| Metodo | Endpoint | Descrizione |
+|---|---|---|
+| GET | `/api/imprese/me` | Profilo + lotti assegnati (404 se non assegnata) |
+| GET | `/api/imprese/pratiche` | Master.csv filtrato per i lotti dell'impresa. Confronto per **codice lotto esatto** (non substring — "Lotto 2" non aggancia "Lotto 2A") |
+| POST | `/api/imprese/submit` | Body `{type:'update'\|'new', changes:[...]}` → record in `pending_updates`, status `pending` |
+| GET | `/api/imprese/my-submissions` | Storico delle proprie submission |
+| DELETE | `/api/imprese/submissions/{id}` | L'impresa cancella SOLO le proprie submission ancora `pending` |
+| GET | `/api/lotti-cantieri` | NEW — lotti distinti (da Master.csv) + cantieri associati (da MongoDB) + mappa lotto→impresa assegnata. Usato per popolare select a cascata |
+| GET | `/api/imprese/cantieri` | NEW — cantieri (uno per pratica di autorizzazione) nei lotti dell'impresa autenticata |
+| POST | `/api/imprese/cantieri/{cantiere_key}` | NEW — aggiorna stato cantiere, tecnica scavo, date, **metri_realizzati_oggi** (si accumula su `metri_scavati`, non sovrascrive), note. Push automatico su GitHub. **Scrittura diretta, nessuna approvazione admin** (a differenza di `/api/imprese/submit`) |
+| GET | `/api/imprese/cantieri/{cantiere_key}/log` | NEW — storico aggiornamenti giornalieri di un cantiere |
+| GET | `/api/imprese/solleciti` | NEW — solleciti dell'impresa, filtrati per le tratte dei suoi lotti |
+| POST | `/api/imprese/solleciti` | NEW — inserisce un sollecito. Scrittura diretta, nessuna approvazione |
+| POST | `/api/imprese/solleciti/bulk-insert` / `bulk-delete` | NEW — inserimento/cancellazione massiva |
+| DELETE | `/api/imprese/solleciti/{id}` | NEW — elimina un sollecito |
+
+### 5.4 Admin (richiedono `UPLOAD_TOKEN`)
+
+| Metodo | Endpoint | Descrizione |
+|---|---|---|
+| GET / PUT / DELETE | `/api/admin/assignments[/{nome}]` | CRUD nome impresa ↔ lotti (lookup case-insensitive) |
+| GET | `/api/admin/pending-updates?status=pending\|approved\|rejected\|all` | Lista coda |
+| POST | `/api/admin/pending-updates/{id}/approve` | Applica le modifiche a Master.csv (nuova versione GridFS), **rigenera QGIS.geojson + Riepilogo_progettazione.csv** e pusha tutti e tre su GitHub. Da qui parte anche `_sync_cantieri()` (vedi §5.12) |
+| POST | `/api/admin/pending-updates/{id}/reject` | Body `{note}` |
+| GET | `/api/admin/polizze-convenzioni/data-richiesta` | NEW — per ogni pratica con CONVENZIONE/POLIZZA valorizzata, fissa (una sola volta, `$setOnInsert`) la data di prima richiesta nella collection `pol_conv_dates` |
+| POST | `/api/admin/polizze-convenzioni/update` | NEW — Body `{lotto, pratica, fields:{CONVENZIONE?, POLIZZA?}}`. Valori ammessi: `NECESSARIA\|RICHIESTA RDS\|INVIATA\|OTTENUTA\|""`. Scrive su Master.csv (tutte le righe lotto+pratica) e pusha su GitHub |
+| GET | `/api/admin/sync-cantieri` | NEW — forza la sincronizzazione cantieri↔Master.csv (crea cantieri mancanti, uno per pratica AUTORIZZAZIONE) |
+| GET | `/api/admin/solleciti` | NEW — vista admin di tutti i solleciti |
+
+### 5.5 Auto-push GitHub + rigenerazione derivati
+
+`_push_to_github(file_bytes, path, label)` — commit via API GitHub (GET sha → PUT contents), fire-and-forget, retry su conflitto sha (409) fino a 3 volte. Skip silenzioso se `GITHUB_TOKEN` mancante: MongoDB resta comunque autoritativo.
+
+`_regenerate_derived_files(master_df, note)` — Scoperta chiave: `Riepilogo_progettazione.csv` è esattamente la tabella attributi di `QGIS.geojson` esportata in CSV (stesse 21 colonne, stesso ordine, stessi valori, verificato riga per riga). Per questo:
+
+```
+Master.csv (dinamico)
+    │
+    ▼
+_compute_tratta_summary() — per ogni TRATTA_ID:
+   • STATO_AUTORIZZAZIONE ← ultima riga AUTORIZZAZIONE attiva (le pratiche
+     con STATO_PERMESSO=NO COMPETENZA vengono saltate se esistono alternative)
+   • STATO_NULLAOSTA / STATO_ORDINANZA ← peggiore tra l'ultimo stato di ciascun ente
+   • LAVORABILE ← SI solo se AUTORIZZAZIONE=OTTENUTO e, se richiesti,
+     anche NULLA OSTA/ORDINANZA=OTTENUTO
+   • PRATICA ← "AUT/24/1A | NO/22/1A | …" (AUT, poi NO, poi ORD)
+    │
+    ▼
+PATCH UNICA sulle properties di QGIS.geojson (geometria invariata)
+    │
+    ▼
+Riepilogo_progettazione.csv = derivato direttamente da quelle properties
+```
+
+Campi **mai derivati automaticamente** (provenienti da sistemi esterni o senza regola certa): `CAMPO AWS`, `PROTOCOLLO_AUT`, `ENTE 2`, `fid`, `TIPOLOGIA`, `PROVINCIA`, `ROUTE`, `SPAN`. Restano quelli già presenti in QGIS.geojson.
+
+### 5.6 Approvazione: come viene applicata una `update`
+
+`_apply_changes_to_df`:
+1. Match per `TRATTA_ID + ENTE + TIPO_PERMESSO` (+ `PRATICA` se fornita come discriminante: utile quando sulla stessa tratta+ente+tipo esistono pratiche diverse).
+2. **Copia l'ultima riga esistente** e la inserisce **subito DOPO** la stessa (non in fondo al file) — così le righe dello stesso iter restano vicine.
+3. Auto-set `DATA_ULTIMA_MODIFICA = oggi` se non fornito e c'è un cambio di `STATO_PERMESSO`.
+4. Per le submission `type:'new'` aggiunge una riga vuota popolata con i campi inviati.
+
+### 5.7 Variabili d'ambiente (`backend/.env`)
+
+| Key | Significato |
+|---|---|
+| `MONGO_URL` | URI Mongo (locale o Atlas) |
+| `DB_NAME` | `enri_dashboard` |
+| `DATA_DIR` | Cartella seed (default: parent di `/backend`, in preview `/app`) |
+| `ALLOWED_ORIGINS` | CSV di origini CORS |
+| `UPLOAD_TOKEN` | Token admin (upload/delete/assignments/approve). Generare con `openssl rand -hex 32` |
+| `MAX_UPLOAD_MB` | Default `25` |
+| `SESSION_SECRET` | **OBBLIGATORIO** — chiave HMAC per i session token (`openssl rand -hex 32`) |
+| `SESSION_TTL_SECONDS` | Default `43200` (12h) |
+| `APPS_SCRIPT_URL` | URL del Google Apps Script di login |
+| `APPS_SCRIPT_SECRET` | Segreto condiviso con Apps Script (MAI esposto al client) |
+| `GITHUB_TOKEN` | Fine-grained PAT, repo `ENRI-RDS/dashboard`, `Contents: Read and write`. Se assente il push viene skippato |
+| `GITHUB_REPO` | Default `ENRI-RDS/dashboard` |
+| `GITHUB_BRANCH` | Default `main` |
+| `GITHUB_CSV_PATH` / `GITHUB_QGIS_PATH` / `GITHUB_RIEPILOGO_PATH` | Override path nel repo se servono sottocartelle |
+
+### 5.8 Vincoli di sicurezza
+- `_safe_relpath()` impedisce path-traversal (`..`, `\`, caratteri fuori `[A-Za-z0-9_\-./]`).
+- Estensioni accettate: `.csv`, `.xlsx`, `.xls`, `.geojson`, `.json`.
+- Limite dimensione = `MAX_UPLOAD_MB`.
+- HMAC compare con `hmac.compare_digest` (timing-safe).
+- Le rotte impresa **ignorano qualunque parametro `nome`** passato dal client e usano sempre quello firmato nel token.
+
+### 5.9 Sopralluoghi (collection `sopralluoghi`)
+
+| Metodo | Endpoint | Auth | Descrizione |
+|---|---|---|---|
+| GET | `/api/sopralluoghi` | session token | Tutti i verbali, ordinati per `codice_verbale` decrescente |
+| GET | `/api/sopralluoghi/next-codice` | session token | Prossimo codice progressivo `VBS-{anno}-{NNNN}` |
+| POST | `/api/sopralluoghi` | session token | Salva verbale su MongoDB + aggiorna `sopralluoghi.csv` su GitHub. Le foto (data URL base64) vengono caricate su GitHub in `sopralluoghi/foto/{codice}/` per non saturare lo storage Mongo gratuito |
+| DELETE | `/api/sopralluoghi/{id}` | session token, **solo ruolo `admin`** | Elimina un verbale |
+
+### 5.10 Cantieri / Avanzamento Scavi impresa (collection `cantieri`)
+
+Un cantiere = una pratica AUTORIZZAZIONE (chiave `cantiere_key`, **non** `pratica_id`, perché quest'ultimo non è garantito univoco tra enti diversi sullo stesso lotto/numero).
+
+- **`codice_cantiere`** (`CA/{progressivo}/{lotto}`, rev.5): identificativo "ufficiale" mostrato all'impresa e in `scavi.html`, distinto da `cantiere_key` (chiave tecnica) e `pratica_id` (riferimento pratica). Assegnato **una sola volta** alla creazione in `_sync_cantieri()`, mai riassegnato; `_max_codice_per_lotto()`+`_backfill_codici_cantiere()` garantiscono continuità anche sui cantieri storici. Esposto su `/api/cantieri`, `/api/imprese/cantieri`, `cantieri.csv`.
+- ✅ **RISOLTO (rev.10)**: `impresa` sui cantieri era popolato **solo** da migrazione best-effort dal vecchio schema pre-raggruppamento (`old_docs`) — per qualsiasi cantiere creato dopo, restava sempre `""`. `_sync_cantieri()` ora costruisce all'inizio una mappa `lotto_impresa` dalla collection `assignments` (stessa fonte/logica di `GET /api/lotti-cantieri`) e la usa per popolare `impresa` sia in creazione sia in update (backfill automatico sui cantieri esistenti privi del campo, senza sovrascrivere se un lotto non ha assegnazione).
+- **Transizioni stato** (`STATO_TRANSITIONS`, JS, rev.5): la select stato in `mappa_impresa_caricamento.html`/`imprese_scavi.html` mostra solo stato corrente + transizioni valide (`non_avviato→allestimento→in_corso→{sospeso,completato}`, `sospeso→in_corso`). Su `allestimento`: `tecnica_scavo`/`metri_realizzati_oggi` disabilitati e non richiesti (né in UI né in payload). `data_inizio_effettiva` lockata permanentemente una volta valorizzata.
+- `GET /api/cantieri?lotto=&cluster=&stato=` — lista pubblica, usata da `scavi.html` (lo storico `log` viene tolto dal listing per non appesantire la risposta).
+- L'impresa aggiorna via `POST /api/imprese/cantieri/{cantiere_key}` (vedi §5.3): **scrittura diretta senza approvazione**, a differenza del flusso `imprese.html`/`pending_updates`. Ogni update accumula `metri_realizzati_oggi` su `metri_scavati` (`$inc`) e appende una riga a `log[]` (data, impresa, stato, **tecnica_scavo** [rev.6], metri, note, motivo blocco). ⚠️ Bug corretto (rev.5): il check assegnazione confrontava `lotto` non normalizzato (`"1A"` vs `"Lotto 1A"`) → 403 spurio; ora entrambi i lati passano da `_lotto_from_source()`.
+- `_sync_cantieri()` crea i cantieri mancanti a partire da Master.csv; viene rilanciata sia da `/api/admin/sync-cantieri` sia automaticamente dopo ogni approvazione di `pending_updates`. **`metri_totali` = somma di TUTTE le tratte della pratica (autorizzazione ottenuta), indipendentemente da `lavorabile`** (rev.9, §8.33): quel flag per-tratta è solo indicativo per la mappa (NULLA OSTA/ORDINANZA ottenuti), non deve e non limita cosa l'impresa può rendicontare come scavato.
+- Dopo ogni scrittura, push fire-and-forget su GitHub (`_push_cantieri_to_github`).
+
+### 5.11 Solleciti (collection `solleciti`)
+
+Sistema di "promemoria/follow-up" per pratiche in attesa, associato alle tratte dei lotti dell'impresa. Scrittura diretta (no workflow di approvazione), CRUD completo lato impresa (`/api/imprese/solleciti*`) e vista aggregata lato admin (`/api/admin/solleciti`).
+
+### 5.12 ✅ Tracking accessi — RISOLTO + migrato da JSONBin a MongoDB
+
+Tutte le 4 pagine con blocco `<!-- TRACKING ACCESSI -->` (`scavi.html`, `mappa.html`, `mappa_impresa_caricamento.html`, `sopralluoghi.html`) chiamano `POST /api/logs/get` e `POST /api/logs/put` (header `x-session-token`). **Il backend non chiama più Apps Script/JSONBin per questo**: legge/scrive dalla collection Mongo `access_logs` (un documento per `binId`, campi `utenti[]`/`accessi[]`). Contratto richiesta/risposta lasciato identico apposta (`{binId}` → `{record:{utenti,accessi}}`), quindi **le pagine non sono state toccate di nuovo** — solo il backend è cambiato.
+
+`APPS_SCRIPT_URL`/`APPS_SCRIPT_SECRET` restano in uso **solo per il login** (`action: "login"` verso il Google Sheet), non più per i log.
+
+⚠️ **Dati storici non migrati**: gli accessi già registrati sul vecchio bin JSONBin non sono stati copiati automaticamente su MongoDB (nessun accesso di rete disponibile per farlo in questa sessione). Se serve conservare lo storico, va fatto un import una tantum leggendo il bin esistente e scrivendolo in `access_logs`. Da questo deploy in poi, il log riparte vuoto su Mongo.
+
+`index.html` conteneva anche codice/commenti morti che nominavano JSONBin per una funzione "Note per pratica" già disattivata (stub `noteLoad`/`noteSave` no-op) e per due commenti descrittivi non più accurati — ripuliti (rinominati, nessuna funzionalità toccata).
+
+---
+
+## 6. Come i file caricati arrivano sul frontend — `js/api-config.js`
+
+Ogni pagina HTML include `<script src="js/api-config.js"></script>` in `<head>`. Lo script:
+
+1. Legge `window.ENRI_API_BASE` **oppure** `localStorage.getItem('enri_api_base')`.
+2. Se vuoto → non fa nulla, le pagine leggono i CSV/GeoJSON statici committati nel repo.
+3. Se valorizzato → **monkey-patcha `window.fetch`**: ogni `fetch('Master.csv')` viene riscritta in `fetch(`${API_BASE}/api/data/Master.csv`)`.
+
+**Pattern SWR (stale-while-revalidate)** in `index.html`, `mappa.html`, `mappa_impresa_caricamento.html`:
+- fetch parallelo del file statico GitHub (istantaneo, sempre disponibile) E del backend Render (può essere lento al cold-start);
+- la UI mostra subito il dato statico;
+- se Render risponde con un contenuto diverso, **la UI si aggiorna live senza reload** (callback ridisegna tabella, ricostruisce layer Leaflet, ecc.).
+
+**Flusso completo upload/approvazione:**
+1. Impresa apre `imprese.html` (auth: token in `_enri_session`), compila modifiche, invia.
+2. Backend salva in `pending_updates` (status `pending`).
+3. Admin apre `admin.html` → tab "Coda imprese" (badge live) → Approva.
+4. Backend: legge Master.csv corrente → applica `changes` con pandas (riga inserita dopo l'ultima della stessa pratica) → crea nuova versione GridFS → **rigenera QGIS.geojson + Riepilogo_progettazione.csv** → pusha tutti e tre su GitHub.
+5. Tutte le pagine, alla prossima `fetch('Master.csv')`, ricevono la nuova versione dal backend; le SWR aggiornano la UI live senza reload.
+
+---
+
+## 7. Auth & ruoli
+
+### 7.1 Login utente (hub.html → /api/auth/login)
+Implementato come **proxy server-to-server** verso Google Apps Script. Il browser invia `{nome, codice}`; il backend verifica con Apps Script (segreto MAI esposto) e firma un token HMAC che viene salvato in localStorage:
+
+```js
+localStorage._enri_user    // nome canonico
+localStorage._enri_role    // 'admin' | 'admin2' | 'user' | 'impresa'
+localStorage._enri_session // session token firmato (HMAC, scade dopo SESSION_TTL_SECONDS) — ⚠️ rinominata da _enri_token
+```
+
+L'admin gestisce gli accessi modificando lo sheet Google collegato all'Apps Script (requisito esplicito del committente).
+
+In `hub.html` tre liste filtrano le card:
+- `SCAVI_ALLOWED_ROLES = ['admin', 'admin2', 'user']` → mostra/blocca card "Avanzamento Lavori". ⚠️ Ora include anche `user`, non più solo admin
+- `ADMIN_ALLOWED_ROLES = ['admin', 'admin2']` → mostra/nasconde card "Pannello Admin".
+- `IMPRESA_ROLES = ['impresa']` → attiva la modalità "Area Impresa": nasconde tutte le card normali e mostra fino a 3 card dedicate (`impresaCardsWrap`), ciascuna condizionata a `display:none` finché non si conferma l'assegnazione via `/api/imprese/me`:
+  - `impresaCard` → `imprese.html` (aggiorna pratiche)
+  - `impresaMapUpdCard` → `mappa_impresa_caricamento.html` (mappa con aggiornamento pratiche)
+  - `impresaScaviCard` → `imprese_scavi.html` (avanzamento scavi)
+
+Nota minor: la chiamata `fetch(apiBase + '/api/imprese/me?nome=' + ...)` in `hub.html` passa ancora un parametro `?nome=` in query string, ma il backend (`impresa_me`) lo ignora completamente e legge sempre il nome dal token firmato — il parametro è innocuo ma andrebbe rimosso dal client per coerenza con quanto dichiarato in §7.3.
+
+### 7.2 Upload backend e azioni admin
+Tutte le scritture admin (`POST /api/upload`, `DELETE /api/uploads/*`, `PUT /api/admin/assignments/*`, `POST /api/admin/pending-updates/*/approve|reject`, `POST /api/admin/polizze-convenzioni/update`, `GET /api/admin/sync-cantieri`) richiedono `UPLOAD_TOKEN`. In `admin.html` l'admin lo incolla manualmente nel form.
+
+### 7.3 Azioni impresa
+Tutti gli endpoint `/api/imprese/*` richiedono header `x-session-token`. Il `nome` viene SEMPRE letto dal token firmato, mai da un parametro `?nome=` lato server (vedi nota sopra: il client a volte lo invia ancora, ma viene ignorato).
+
+---
+
+## 8. Convenzioni & gotchas
+
+1. **Separatore CSV auto-rilevato**: `Master.csv` può essere tab o `;` (Excel italiano vs export). `_detect_sep()` lo determina sulla prima riga; lettura/scrittura lo preservano. Il push su GitHub usa SEMPRE tab (formato originale del file nel repo).
+2. **Encoding-robust**: Master.csv viene letto provando `utf-8`, `cp1252`, `latin-1` prima di fallback a `errors='replace'`. Le righe malformate (es. virgola non quotata in NOTE) usano `on_bad_lines='warn'` invece di fallire.
+3. **CORS**: il backend espone solo le origini in `ALLOWED_ORIGINS`. Aggiungere il dominio preview/Render quando cambia.
+4. **Path con sotto-cartelle**: `target=M/QGIS_3.geojson` salva in `DATA_DIR/M/QGIS_3.geojson`. La regex `_SAFE_NAME_RE` accetta `/` ma rifiuta `..`.
+5. **Render free tier**: il servizio si spegne dopo 15min di inattività, prima chiamata ~30s di cold-start → frontend usa timeout 10s + pannello "Riprova". ⚠️ **`.github/workflows/keepalive.yml` abbandonato (rev.28)**: gli scheduled workflow di GitHub Actions non sono affidabili al minuto (ritardi 10-15+min documentati, causavano comunque sleep intermittenti) — sostituito con **cron-job.org** (ping `/api/health` ogni 13min, precisione al minuto, alert email su fallimento). Il file su GitHub resta solo con `workflow_dispatch` per test manuali, `schedule` rimosso. ✅ Confermato attivo in orario lavorativo (2026-07-06) — zero cold-start diurno per le imprese.
+6. **AbortController → Promise.race**: l'anteprima Claude non supporta la clonazione di `AbortSignal` via `postMessage`; i timeout sui fetch usano `Promise.race` ovunque (compatibile sia in anteprima che in produzione).
+7. **NO COMPETENZA**: le pratiche AUTORIZZAZIONE chiuse con STATO_PERMESSO=NO COMPETENZA sono "superate" — se esiste una pratica attiva successiva sulla stessa tratta, è quella a contare; se NO COMPETENZA è l'unica presente, la tratta è IN ATTESA della prossima pratica.
+8. **Conflitti GitHub (409)**: `_push_to_github` rilegge lo sha aggiornato e riprova fino a 3 volte se qualcuno scrive sullo stesso file in parallelo.
+9. **Lookup impresa case-insensitive**: `_find_assignment` cerca con regex `^nome$` case-insensitive — `sertori`, `Sertori`, `SERTORI` trovano tutti lo stesso record.
+10. **`dati.csv` è in disuso**: `index.html` calcola la stessa aggregazione LOTTO×STATO×Metri/Percentuale lato client da `Riepilogo_progettazione.csv` (variabili `aggMap`/`totMap` in `loadData()`).
+11. **Rebranding "Retelit" — COMPLETATO su TUTTE le pagine (rev.3)**: topbar navy (`--retelit-blue`, 58px, padding 28px) con logo Retelit embeddato come base64 bianco (50px) su tutte le pagine: `hub`, `index`, `mappa`, `sopralluoghi`, `polizze_convenzioni`, `milestone`. Bottone Hub unificato come `.topbar-back` (bordo `--retelit-sky`, hover trasparente). `<title>` aggiornati a `Retelit — …` su tutte le pagine. Tutti i token brand CSS (`--retelit-blue-50`, `--retelit-ice`, `--retelit-sky`, `--accent2`, `--border2`, `--muted2`, `--text2`, `--radius-*`, `--shadow-*`, `--dur-*`, `--ease-*`) definiti nel `:root` di ogni file. Emoji vietate dal brand kit rimosse da topbar, placeholder, export buttons e JS (restano solo simboli funzionali in pannelli tecnici Leaflet).
+12. **Token rinominato**: `_enri_token` → `_enri_session` in localStorage (vedi §7.1). Se incontri ancora `_enri_token` in una pagina, è codice non aggiornato.
+13. **Scrittura diretta vs workflow di approvazione**: occhio a non confondere i due modelli — `imprese.html`/`mappa_impresa_caricamento.html` (pratiche) passano sempre da `pending_updates` + approvazione admin; `imprese_scavi.html` (cantieri) e i solleciti scrivono **direttamente** su MongoDB/GitHub senza step di revisione.
+14. ✅ **RISOLTO** — Tracking accessi con segreto esposto: vedi §5.12. Tutte le 5 pagine ora usano il proxy `/api/logs/*`, nessun secret in chiaro nel client.
+15. ✅ **RISOLTO** — `polizze_convenzioni.html` ora legge/scrive il token nella stessa chiave `localStorage['enri_upload_token']` usata da `admin.html` (prima usava `sessionStorage['_enri_upload_token']`). Se il token è già stato inserito una volta in una delle due pagine, l'altra non lo richiede più. Scelta deliberata: si è mantenuto il modello a doppio secret (login + UPLOAD_TOKEN), non si è passati a un controllo basato solo sul ruolo — nessuna modifica al backend.
+16. **Login duplicato in `index.html`**: oltre al login "ufficiale" su `hub.html`, `index.html` ha un proprio overlay di login che chiama anch'esso `POST /api/auth/login` e poi reindirizza a `hub.html` dopo aver salvato `_enri_user/_enri_role/_enri_session`. Serve da fallback per chi atterra direttamente su `index.html?direct=1` (link diretto dalla card "Fase 1" in hub.html) senza essere già loggato.
+17. **`executive_summary.html` rimosso dal progetto** (confermato dall'utente): non c'è più una card collegata in `hub.html`. Se trovi ancora riferimenti al file in vecchie versioni di documentazione o in altri repo collegati, sono obsoleti.
+18. **"Lotti in Progettazione" (ex "Lotti in Avvio")**: i lotti 1–8 non ancora avviati sono ora etichettati "Lotti in Progettazione" ovunque in `index.html` (label visuale, riga totale, modale riepilogo, export). La colonna milestone "Invio Perm./Scadenza" è stata rimossa da quella sezione (ora c'è `milestone.html` dedicata).
+19. **`IMPRESE_PER_LOTTO` estesa a tutti i 12 lotti**: in `index.html` l'oggetto include ora anche i lotti 1–8 (`1→Valtellina`, `2→Sertori`, `3→Valtellina`, `4→Sielte`, `5→Circet`, `6→Sertori`, `7→Valtellina`, `8→Sielte`). Il nome impresa compare sotto il numero lotto nelle barre di avanzamento.
+20. **SED — bottoni Excel unificati**: la sezione "Attraversamenti SED" in `index.html` aveva due pulsanti separati ("Scarica Vista" / "Scarica Tutti"). Ora è un unico dropdown `sedXlsDropdown` identico a `xlsDropdown` di "Tutte le Pratiche" (con opzioni "Tutti gli attraversamenti" e "Vista corrente").
+21. **`debug_dashboard.py`**: script Python di audit automatico per i file HTML della dashboard. Controlla: CSS vars mancanti/undefined, topbar navy, logo, hub button style, div balance, emoji UI vietate vs funzionali Leaflet, gradienti decorativi, backdrop-filter, colori fuori palette, funzioni JS duplicate e dead, variabili JS inutilizzate, DOM ID mancanti, console.log in produzione, segreti hardcoded. Output con score /100 per file. Uso: `python3 debug_dashboard.py file.html [...]`.
+22. **Card modal cantieri in `scavi.html` (rev.7)**: `openModalStato()` mostrava solo `pratica_id`/lotto/ente/comune/progresso. Ora mostra tutti i dati disponibili: `codice_cantiere` (primario), cluster, tecnica scavo, impresa, conteggio tratte lavorabili/bloccate (derivato da `r.tratte[]`, **non** da `tratte_lavorabili`/`tratte_bloccate` — quei campi esistono solo nella riga CSV, non nel doc Mongo), le 4 date se valorizzate, motivo blocco+ripresa stimata se `sospeso`, note.
+23. ✅ **RISOLTO** — **Palette colori stato fuori brandkit Retelit**: `STATO_COLORS`/`COLORS`/`STATI_COLORI_MAP` usavano hex arbitrari non a palette (viola `#9b59b6`/`#7A3DAA`, rosa `#B5657A`, verde/rosso/blu/arancio non-token). Mappa canonica ora identica su `index.html`, `mappa.html`, `mappa_impresa_caricamento.html`, `scavi.html` (v. §8bis; includeva anche `mappa_impresa.html`, poi rimossa rev.126). **Esclusi deliberatamente**: palette per-lotto/cluster (`LOTTO_COLORS`, rainbow array) e marker misura/ricerca — servono a distinguere entità diverse, non rappresentano uno "stato", restano arbitrari.
+24. ✅ **RISOLTO** — **Nesting HTML rotto in `mappa_impresa_caricamento.html`**: `</div>` di troppo chiudeva `#sidebarEl` prima che `#scaviBodyPanel` venisse aperto → il pannello scavi diventava fratello della sidebar invece che figlio, causava "doppia finestra" (mappa schiacciata, legenda sovrapposta al form). Verificare sempre il nesting con `html.parser` prima di assumere che un problema visivo sia CSS quando coinvolge un intero pannello.
+25. ✅ **RISOLTO** — **`.pr-form-actions` senza `flex-wrap`**: su sidebar 300px i 3 pulsanti (Annulla/Storico/Salva aggiornamento) andavano in overflow orizzontale e venivano tagliati da `.sidebar{overflow:hidden}` (es. "Annulla" → "nnulla"). Aggiunto `flex-wrap:wrap` in `mappa_impresa_caricamento.html`.
+26. ✅ **RISOLTO** — **"Aggiorna Scavi" apriva cantiere sbagliato**: il fallback quando non c'era match esatto sulla tratta prendeva "il primo cantiere dello stesso lotto" alla cieca. Ora: match esatto → apri; nessun match + lotto con 1 solo cantiere → apri; nessun match + lotto con più cantieri → messaggio, nessuna apertura automatica; nessun match + nessun cantiere sul lotto → messaggio "autorizzazione non ancora ottenuta". File: `mappa_impresa_caricamento.html`.
+27. ✅ **RISOLTO** — **Bug `LAVORABILE` in `_compute_tratta_summary` (`server.py`)**: `need_no`/`need_ord` venivano letti SOLO dal flag `NULLA OSTA NECESSARIO`/`ORDINANZA NECESSARIA` sulla riga AUT. Se il flag era vuoto/NO ma esistevano comunque righe reali NULLA OSTA/ORDINANZA non ottenute per la tratta, `LAVORABILE` risultava `SI` per errore. Fix: `no_effettivo = (need_no=="SI") or bool(no_latest)` (idem `ord_effettivo`) — vincolante se il flag lo dichiara O se la pratica esiste davvero nei dati.
+28. ✅ **RISOLTO** — Integrata la tabella "Tutti i Cantieri" di `scavi.html`: aggiunte colonne `codice_cantiere`, `impresa`, `tecnica_scavo` (label via `TECNICA_LABEL`) — dati già esposti da `GET /api/cantieri` ma non renderizzati. Aggiunti anche a `haystack` di ricerca.
+29. ✅ **RISOLTO** — Nuovo endpoint `POST /api/admin/regenerate-derived` (auth `x-upload-token`): rilegge il Master.csv corrente e richiama `_regenerate_derived_files` senza upload — serve a riprocessare i dati esistenti dopo un fix a `_compute_tratta_summary` senza toccare Master.csv.
+30. ✅ **RISOLTO** — **Popup mappa: info cantiere integrate** (prima mostravano solo dati pratica/autorizzazione).
+    - `mappa_impresa_caricamento.html`: sezione "Cantiere" completa (stato+colore, tecnica, metri scavati/totali+%, impedimento), dati da `SC_CANTIERI` precaricato all'avvio (`scEnsureInit()` fire-and-forget in testa alla IIFE di init mappa).
+    - `mappa.html` (già allora anche `mappa_impresa.html`, rimossa rev.126): stessa sezione ma **sola lettura** (nessun bottone azione), dati da `GET /api/cantieri` (pubblico, no auth) in `RO_CANTIERI` (costanti locali `RO_SC_STATO_LABEL/COLOR/TECNICA_LABEL`, funzione `_roLoadCantieri()`).
+    - Lookup in tutti e 3 i casi: `cantieri.find(c => (c.tratte||[]).some(t => t.tratta_id === p.TRATTA_ID))`.
+31. ✅ **RISOLTO** — `.btn.secondary{color:var(--muted)}` faceva sembrare disabilitati i pulsanti secondari (es. "Nuova pratica"/"Aggiorna Scavi" nel popup mappa apparivano "spenti" accanto al primario blu). Cambiato a `color:var(--text)` + hover `border-color/color:var(--accent)` in tutti e 3 i file mappa.
+32. ✅ **RISOLTO** — **`scavi.html`: 3 bug segnalati dall'utente su KPI/barre/tabella (rev.8)**:
+    - **KPI cards**: contavano solo i lotti aggregati sul "peggiore" stato, senza metri né %. Ora `_renderKpi()` conta i cantieri reali da `CANTIERI_RAW` e popola `#kpi{Nav,All,Cor,Com,Sos}Sub` con `metri m · pct% sul totale`.
+    - **Barre "Avanzamento per Cluster" e "per Lotto"**: la riga scavi era binaria (un unico segmento colorato `in-corso`/stato-peggiore + grigio "non scavato"), non rifletteva i singoli stati dei cantieri che compongono cluster/lotto. Ora `_loadCantieri()` traccia `statoMetri{stato:metri}` per lotto e cluster (propagato in `LOTTI[].statoMetri` e `window._CLUSTER_SCAVI[cl].statoMetri`); `_renderClusters()`/`_renderBars()` disegnano un segmento per ogni stato reale (ordine/colori da `STATO_ORDER`/`STATO_COLOR`) + eventuale segmento grigio "Non tracciato" per i metri senza cantiere associato.
+    - **Tabella "Tutti i Cantieri"**: vedi voce 28.
+33. ✅ **RISOLTO (rev.9)** — **Bug `metri_totali` incoerente in `_sync_cantieri()` (`server.py`)**: `metri_totali` veniva ricalcolato ad ogni sync sommando solo le tratte con `lavorabile==True` (riga ~2229) e sovrascritto con `$set` senza mai controllare `metri_scavati` già accumulato. Siccome `lavorabile` dipende anche da NULLA OSTA/ORDINANZA (non solo dall'AUTORIZZAZIONE), un cantiere già "in corso" con metri regolarmente rendicontati poteva vedersi azzerare `metri_totali` a un sync successivo (visto in produzione: `CA/3/2A`, 0 totali / 600 scavati). **Chiarito dall'utente**: `lavorabile` è un flag SOLO per la visualizzazione in mappa, non deve limitare cosa un'impresa può rendicontare. Fix: `metri_totali` ora somma **tutte** le tratte della pratica (autorizzazione ottenuta), indipendentemente da `lavorabile` — di fatto uguale a `metri_totali_potenziali` (campo lasciato per compatibilità con pagine che lo leggono separatamente). ⚠️ **Da fare manualmente una tantum**: i documenti `cantieri` già in Mongo restano con il vecchio `metri_totali` finché non gira un sync — chiamare `GET /api/admin/sync-cantieri` (auth `x-upload-token`) per riallinearli subito, altrimenti si autocorreggono al prossimo upload/approvazione di Master.csv.
+34. **RISOLTO (rev.21)** — **Tabella "Tutti i Cantieri" in `scavi.html`: header non andava a capo**: `white-space:nowrap` globale su `.cant-table thead th` + `tight:true` che lo riforzava inline → 13 colonne in overflow orizzontale anche con label corte, nonostante gli aggiustamenti di rev.18/rev.20. Fix: `white-space:normal` sugli header (con `line-height:1.35`), `tight` ora `max-width:70px` invece di `nowrap`, `.th-cell` allineato `flex-start` (serve per header su 2 righe), label accorciate (Prov., Stato, Avanz., M. Tot., M. Scavati, Registro). Bottone "Registro" per riga: rimossa emoji 📋 (vietata da brand kit §8.11) e stile inline generico, sostituiti con classe `.btn-registro` (bordo/hover accent Retelit, icona SVG inline al posto dell'emoji).
+35. **RISOLTO (rev.22)** — **Card "Registro Lotti · Stato Cantiere" rimossa da `scavi.html`** (ridondante con "Avanzamento per Lotto" + tabella "Tutti i Cantieri"): eliminato il markup della card, la funzione `_renderTabella()` e la sua chiamata in `_renderAll()`. I pill province (`.prov-pill`, stesso stile già usato nella tabella rimossa) sono stati spostati sotto al numero lotto in `_renderBars()` (card "Avanzamento per Lotto"), dentro `.bar-lotto-wrap`.
+36. **RISOLTO (rev.23)** — **Colore distintivo per provincia in tutta `scavi.html`**: nuovo `provColor(p)`/`provPill(p)` (hash deterministico su palette di 10 colori brand-coerenti — stessa provincia = stesso colore sempre, non serve enumerare le province a mano). Applicato a: pill "Avanzamento per Lotto", card modal cantiere, colonna "Prov." tabella "Tutti i Cantieri", modal Lotto (era hardcoded su `--accent`), modal Cluster (era testo semplice `MI / PV`), card "Metri scavati per provincia". `.prov-pill` CSS ora senza colori fissi (solo forma), il colore è sempre inline via `provColor()`.
+37. **RISOLTO (rev.24)** — **Redesign card cantiere nel modal stato (`openModalStato`)**: erano righe separate da bordo inferiore con testo semplice "Label: valore" — ora card vere (`.msc-*`, bordo+radius+padding), chip invece di label:valore, provincia con `provPill()`, icone SVG al posto delle emoji 📍/⏸/📝 (vietate da brand kit §8.11). ⚠️ Bug corretto nello stesso giro: `background:var(--danger)0d` non è CSS valido (non si concatena testo dopo `var()`) e `--danger` non è nemmeno definita in `scavi.html` — sostituito con hex diretto `#C0392B` (stesso token brand kit). **(rev.25)**: rimossi chip "Tecnica" e "Tratte lavorabili/bloccate" dalla card (giudicati privi di senso in questo contesto dall'utente) — resta solo "Impresa".
+38. **Redesign vista dirigenti `scavi.html` (sessione 2026-07-03, no rev.-tag per evitare collisione col rev.38 changelog sotto)**: (a) `.phase-header` ("Stato Cantieri") portato da 9px a 13px, allineato a `.page-title`; (b) **exec-strip** in header: 3 numeri grandi (Avanzamento Fisico %, Permessi Ottenuti %, Cantieri in Sospeso — rosso se >0) — alimentati da `pctGlob`/`pctPermessi`, calcolati in `_renderRiepilogo()` ma prima mai scritti a video (dead code); titolo/eyebrow/sottotitolo pagina rimossi su richiesta utente, resta solo l'exec-strip allineata a destra (`#pageSubDyn` di nuovo assente dal markup, `_renderPageSubtitle()` esce per guard `if(!el)return`, nessun errore); (c) nuova card **"Performance Imprese"** subito sotto i KPI: aggregazione per `impresa` con colonne Lotto/Cluster (multi-valore, Set ordinato con `_lottoCompare`), Cantieri, Completati/In Corso/Sospesi, Metri Tot., % Avanzamento (bar+colore), Ritmo m/gg (da `data_inizio_effettiva`→oggi o `data_fine_effettiva`) — ordinabile per colonna (`_sortImprese()`, funzione `_renderImprese()` in pipeline `_renderAll()`); (d) rimossa legenda duplicata identica tra "Avanzamento per Cluster" e "Avanzamento per Lotto" (resta una sola, con rimando testuale nella seconda). ⚠️ Ritmo m/gg è vuoto per i cantieri senza `data_inizio_effettiva` valorizzata — verificare copertura dato in produzione.
+39. **`scavi.html` — bug/rifiniture "Performance Imprese" + modal "Stato Cantieri" (rev.77)**: (a) ✅ **RISOLTO — bug % avanzamento non coerente con la vista "per Lotto"**: `_renderImprese()` calcolava il denominatore sommando `metri_totali` dai soli cantieri già sincronizzati in Mongo per quell'impresa (es. Sielte/lotto 2A = 7852m) invece del totale da PERMESSI (Riepilogo_progettazione.csv, 11.589m per lo stesso lotto — più completo, copre tutte le tratte autorizzate anche se non ancora un cantiere Mongo), come fa correttamente `byLotto`/`LOTTI`. Risultato: stessa `metriScav`, denominatori diversi → 8% mostrato invece di 5,5%. Fix: nuovo `g.metriTotByLotto{}` per-impresa-per-lotto, `metriTotReale` = somma di `PERMESSI[lotto].totale` (fallback sul dato cantieri se il lotto non è in PERMESSI) — usato sia per il denominatore di `pct` sia per la colonna "Metri Tot." visualizzata (prima disallineata rispetto al nuovo pct). (b) ✅ **RISOLTO** — colonne Lotto/Cluster della tabella non erano ordinabili: mancavano `class="imp-th-sort"`+`onclick="_sortImprese(...)"` sui `<th>`, e il comparator confrontava direttamente due `Set` JS (`a.lotti < b.lotti` è sempre `false` → nessun ordinamento) — ora le due chiavi vengono convertite alla stessa stringa ordinata mostrata a video (`[...set].sort(...).join(', ')`) prima del confronto. Ordinamento di default per "miglior avanzamento" (`{key:'pct', dir:'desc'}`) era già corretto, il sort rotto sulle altre colonne dava probabilmente l'impressione che l'intera tabella non si riordinasse. (c) Rinominata label header "Avanzamento Fisico" → "Avanzamento globale" (solo testo, chiave dato `execPctScavi` invariata). (d) Card "Avanzamento per Cluster": rimosso il nome descrittivo del cluster (es. "Milano urbano", da `CLUSTER_LABEL`) — resta solo il badge "Cluster N"; `CLUSTER_LABEL` lasciata invariata altrove (modal cluster, dove il nome resta utile). (e) `openModalStato()` (modal aperta cliccando le card KPI "Stato Cantieri"): sostituita la lista a card `.msc-*` con la stessa tabella/colonne di "Tutti i Cantieri" (Cod. Cantiere, Pratica, Ente, Lotto, Cluster, Prov., Comune, **Impresa**, Stato, Avanz., M. Tot., M. Scavati, bottone Registro) — chiude anche TODO §11 12.1/12.2 (impresa ora visibile sia in "Performance Imprese" sia nelle card modal cantiere). ⚠️ **Trade-off non richiesto esplicitamente**: la vecchia card mostrava anche `motivo_blocco`/`data_ripresa_stimata` (solo per stato Sospeso) e `note` libere, assenti nella tabella "Tutti i Cantieri" — questi due dati non sono più visibili da questa modal. Segnalato all'utente, non reintegrato salvo richiesta. (f) ✅ **RISOLTO (rev.78, follow-up immediato)** — dopo il punto (e) il div `.modal` di `#modalStatoOverlay` era rimasto a `width:560px` inline (dimensionato per la vecchia lista card), causando scroll orizzontale forzato con la tabella a 13 colonne (screenshot utente: solo le prime 7 colonne visibili). Portato a `width:1180px;max-width:96vw` — stesso pattern già usato per il modal Cluster di `index.html` in rev.75 quando gli fu aggiunta una colonna.
+40. **Formato reale di `Master.csv`**: il file di produzione è **tab-separated** (non comma, non semicolon) — `server.py` lo scrive sempre con `sep="\t"` verso GitHub/derivati. Qualsiasi `Master.csv` ricevuto per editing va verificato con `head -1 file | cat -A` prima di assumerne la struttura: se ogni riga appare come un unico blob tra virgolette, è corrotto (visto in rev.50, archiviato) e va riconvertito prima di qualunque modifica. Occhio anche a varianti `;`-separated/latin-1/CRLF (viste in rev.63-64, archiviato) e a nomi colonna quasi-identici (`DATA_PREVISTO_RILASCIO` vs `DATA_PREVISTA_RILASCIO`, femminile è quello corretto usato dal codice).
+
+41. **Split tratte esistenti (nuovi TRATTA_ID) — sessione 2026-07-06**: `_regenerate_derived_files` patcha SOLO le property delle feature già presenti in `QGIS.geojson` (match per TRATTA_ID, geometria invariata) — non crea geometrie nuove. Procedura corretta: 1) split linea in QGIS, nuovi TRATTA_ID univoci, export geojson (verificato CRS export = EPSG:4326/CRS84, non UTM, altrimenti coordinate fuori scala e mappa mostra vista mondo); 2) upload con `target=QGIS.geojson` esatto — `admin.html` valida che il nome file scelto combaci col target selezionato (riga ~842), quindi niente più rischio di salvataggio sotto nome sbagliato; 3) SOLO DOPO caricare/approvare Master.csv coi nuovi TRATTA_ID. Ordine invertito = righe orfane senza geometria. ⚠️ **Rischio residuo non risolto**: nessun lock/versioning ottimistico tra upload manuale admin e `_regenerate_derived_files` triggerato da approvazione `pending_updates` impresa — se un'approvazione impresa scatta a ridosso dell'upload manuale del geojson, vince chi scrive per ultimo su `uploaded_at`. Dopo un upload critico, verificare sempre `GET /api/files` (campo `size`/`modified` dell'entry) per confermare che sia la versione servita, prima di considerare chiuso il lavoro.
+
+42b. **RISOLTO (2026-08-19)** — **`mappa.html`: popup tratta non mostrava corrispondenza pratica↔ente**. Causa: `QGIS.geojson` aggrega più righe Master.csv in un'unica stringa `PRATICA` per feature, perdendo quale ente appartiene a quale codice; il popup mostrava quindi `ENTE`/`ENTE 2` come lista piatta separata dalle pill `Pratiche`. Fix: nuovo `loadPraticaEnteIndex()` (stesso pattern SWR di `loadSED`) che legge `Master.csv` e indicizza `TRATTA_ID → [{codice, ente}]` ricostruendo il codice con la stessa logica `tipoPrefix+prat+lotto` già usata per SED; caricato in parallelo a `loadGeoJSON()` all'avvio. In `makePopupHtml()` ogni pill pratica ora mostra `CODICE · Ente` quando trovato match su `TRATTA_ID`+codice (classe CSS `.popup-pratica-ente`); il campo "Ente" aggregato in alto resta invariato come fallback. ⚠️ Limite noto: essendo async, un popup aperto nei primissimi istanti dopo il load pagina (prima che `Master.csv` risponda) può mostrare le pratiche senza ente per quel click.
+
+42. **RISOLTO (2026-07-09)** — **`imprese.html`, tab "Le mie submission": aggiunto codice pratica + fix bug "Nessun campo" sulle submission "Nuova pratica"**. Contesto: ogni `change` di una submission `update` ha forma `{tratta_id, ente, tipo_permesso, original_pratica, lunghezza, fields:{...}}`, mentre una submission `new` ha `change` = record flat completo (`Source.Name`, `TRATTA_ID`, `TIPO_PERMESSO`, `PRATICA`, ecc., **senza** wrapper `fields`). `showSubDetail()` leggeva sempre `c.fields||{}` → per le submission "Nuova pratica" risultava sempre `{}`, quindi il popup mostrava "Nessun campo" nonostante i dati fossero presenti nel `change` stesso. Fix:
+    - Nuovo helper `_codiceForChange(c, type)`: per `type==='new'` usa `buildCodice(c)` diretto (il change ha già tutti i campi); per `type==='update'` cerca in `PRATICHE` (già caricato) la riga con `TRATTA_ID`+`ENTE`+`TIPO_PERMESSO` (+ `original_pratica` se disponibile) per recuperare `_codice` (serve il lotto/`Source.Name`, assente nel change di update).
+    - Tabella "Le mie submission": nuova colonna "Codice pratica" (primo codice + `+N` se la submission raggruppa più pratiche in un solo invio).
+    - Popup dettaglio: ogni blocco `.sub-change` mostra ora il codice pratica accanto a tratta/ente/tipo; header del popup mostra la lista di tutti i codici coinvolti se >1; per `type==='new'` i campi mostrati ora sono l'intero record (esclusi i campi già in header: `Source.Name`/`TRATTA_ID`/`ENTE`/`TIPO_PERMESSO`) invece di un oggetto vuoto.
+    - Sequenziato `loadPratiche()` prima di `loadMine()` nel boot (`await`) — prima partivano in parallelo, rischio di race condition sul lookup `_codiceForChange` per le submission `update` se `PRATICHE` non era ancora popolato al primo render.
+
+⚠️ **Segnalato, non risolto**: font-size sotto i 12px in decine di punti di `scavi.html` (9px/10px/10.5px/11px su badge, chip, celle tabella, eyebrow) — viola la regola brand kit §4.6 "mai sotto 12px in interfaccia". Font-family/pesi (Raleway + JetBrains Mono) invece corretti e caricati bene. In attesa di conferma utente prima di un pass esteso (60+ punti, rischio di rompere il layout di badge/tabelle compatte).
+
+43. **RISOLTO (2026-07-09)** — **`imprese.html`, tab Solleciti: `PROTOCOLLATO INTEGRAZIONE` escluso per errore dalla lista pratiche sollecitabili**. `SOL_STATI_ESCLUSI` lo trattava come uno stato "chiuso" (insieme a `NECESSARIA INTEGRAZIONE`/`IN REDAZIONE INTEGRAZIONE`), ma in `STATO_TRANSITIONS` ha lo stesso ruolo di `PROTOCOLLATO`: pratica (di integrazione) inviata all'ente, in attesa di risposta (→ `NECESSARIA INTEGRAZIONE` o `OTTENUTO`) — quindi va sollecitato esattamente come `PROTOCOLLATO`. Rimosso dall'esclusione. Effetto visibile: prima la lista "Nuovo sollecito" mostrava quasi solo pratiche `INVIATO`/`PROTOCOLLATO` (segnalato dall'utente via screenshot), ora include anche le integrazioni protocollate.
+⚠️ Non verificato in questo giro: logica del numero sollecito automatico (`sol-numero`).
+
+
+---
+
+## 8bis. Palette colori stato — mapping canonico (tutte le pagine)
+
+Usata da `STATO_COLORS` (mappa/scavi) e `COLORS`/`STATI_COLORI_MAP` (index). Se aggiungi/tocchi uno di questi dizionari in una pagina, allinealo a questi valori:
+
+| Stato | Hex | Token brandkit |
+|---|---|---|
+| IN ATTESA / IN REDAZIONE | `#6B7685` | `--gray-500` |
+| IN FIRMA RDS | `#D08A1A` | `--warn` |
+| INVIO PRELIMINARE | `#043F75` | `--retelit-blue` |
+| INVIATO / PROTOCOLLATO | `#41BBD9` | `--retelit-sky` |
+| NECESSARIA INTEGRAZIONE | `#C0392B` | `--err` |
+| IN REDAZIONE INTEGRAZIONE / PROTOCOLLATO INTEGRAZIONE | `#436A93` | `--retelit-blue-75` |
+| OTTENUTO | `#1E9E6A` | `--ok` |
+
+File allineati: `index.html`, `mappa.html`, `mappa_impresa_caricamento.html`, `scavi.html`, `imprese.html`.
+
+**2026-07-09** — fix colori stato (bug, non allineamento di routine):
+- `mappa_impresa_caricamento.html`: `STATO_COLORS['IN REDAZIONE INTEGRAZIONE']` era `#C0392B` (rosso, sbagliato) invece di `#436A93` (blu) → corretto.
+- `imprese.html`: non aveva alcuna `STATO_COLORS`. Le celle stato usavano `class="stato-${stato.replace(/\s+/g,'.')}"` con regole CSS tipo `.stato-IN.REDAZIONE` — selettore composto che richiede DUE classi separate (`stato-IN` AND `REDAZIONE`), non matcha mai un'unica classe col punto letterale generata dal replace. Risultato: tutti gli stati multi-parola (`NECESSARIA INTEGRAZIONE`, `PROTOCOLLATO INTEGRAZIONE`, `IN REDAZIONE INTEGRAZIONE`) non prendevano MAI il colore dal CSS. Fix: aggiunta `STATO_COLORS` locale (identica alla tabella sopra) + `color` inline via helper `statoColor()`, rimosse le classi `.stato-X` rotte. Stesso fix di pattern applicato alla card pratiche sidebar in `mappa_impresa_caricamento.html` (usava lo stesso selettore rotto nonostante avesse già `STATO_COLORS`/`getColor()` disponibili — ora usa `getColor()` inline).
+- Verificato: `scavi.html`, `mappa.html`, `hub.html` non usano questo pattern — bug isolato a queste due pagine.
+
+---
+
+## 9. Modello dati MongoDB
+
+```jsonc
+// collection: uploads (storico versioni file)
+// source: "impresa" (Master.csv da approvazione) | "derived" (QGIS.geojson/Riepilogo
+// rigenerati automaticamente) | assente per upload manuali da admin.html
+{
+  "_id": ObjectId,
+  "filename": "Master.csv",            // path relativo a DATA_DIR
+  "original_name": "Master_v2.xlsx",
+  "size": 192167,
+  "content_type": "text/csv",
+  "project": "main",                   // "main" | "M" | "pm"
+  "rows": 3120,
+  "uploaded_at": "2026-06-23T11:30:00+00:00",
+  "gridfs_id": ObjectId,               // → fs.files (None se cancellato)
+  "deleted_at": null | "ISO",
+  "source": "impresa" | "derived" | null,
+  "note": "Submission <id> from <nome> (update)" | "restore/delete Master.csv" | null
+}
+
+// collection: assignments (impresa → lotti)
+{
+  "_id": ObjectId,
+  "nome": "Costruzioni Alfa Srl",
+  "lotti": ["Lotto 1", "Lotto 1A"],
+  "active": true,
+  "created_at": "ISO",
+  "updated_at": "ISO"
+}
+
+// collection: pending_updates (workflow approvazione)
+{
+  "_id": ObjectId,
+  "nome": "Costruzioni Alfa Srl",
+  "type": "update" | "new",
+  "changes": [
+    // type=update
+    {"tratta_id": "TR_0103", "ente": "...", "tipo_permesso": "AUTORIZZAZIONE",
+     "fields": {"STATO_PERMESSO": "OTTENUTO", ...}},
+    // type=new
+    {"TRATTA_ID": "...", "ENTE": "...", ...}
+  ],
+  "status": "pending" | "approved" | "rejected",
+  "submitted_at": "ISO",
+  "reviewed_at": "ISO" | null,
+  "reviewed_by": null,
+  "applied_upload_id": "<id Master.csv versione generata>" | null,
+  "summary": {"updated": 3, "added": 0, "not_found": 0} | null,
+  "reviewed_note": "motivo rifiuto" | null,
+  "note": "nota libera dell'impresa"
+}
+```
+
+File content in `fs.files` / `fs.chunks` (motor `AsyncIOMotorGridFSBucket`, bucket `files`).
+
+```jsonc
+// collection: cantieri (NEW — un documento per pratica di autorizzazione)
+{
+  "_id": ObjectId,
+  "cantiere_key": "24|1A",          // num pratica | lotto — NON pratica_id (non univoco tra enti)
+  "codice_cantiere": "CA/3/1A",     // NEW — identificativo cantiere mostrato in UI, distinto da pratica_id
+  "codice_progressivo": 3,          // NEW — contatore progressivo per lotto, assegnato una sola volta alla creazione
+  "pratica_id": "AUT/24/1A",        // resta come riferimento pratica, non più usato come nome del cantiere in UI
+  "lotto": "1A",
+  "cluster": "...",
+  "ente": "...",
+  "stato_cantiere": "...",          // valori in STATO_CANTIERE_VALUES
+  "tecnica_scavo": "...",           // valori in TECNICA_SCAVO_VALUES
+  "data_inizio_prevista": "ISO" | null,
+  "data_inizio_effettiva": "ISO" | null,
+  "data_fine_prevista": "ISO" | null,
+  "data_fine_effettiva": "ISO" | null,
+  "metri_scavati": 0,                // accumulato via $inc da metri_realizzati_oggi
+  "note": "...",
+  "motivo_blocco": "...",
+  "data_ripresa_stimata": "ISO" | null,
+  "impresa": "Costruzioni Alfa Srl",
+  "updated_at": "ISO",
+  "log": [ {"data": "AAAA-MM-GG", "impresa": "...", "stato_cantiere": "...",
+            "metri_realizzati": 0, "note": "...", "motivo_blocco": "...",
+            "data_ripresa_stimata": "..."} ]
+}
+
+// collection: sopralluoghi (NEW)
+{
+  "_id": ObjectId,
+  "codice_verbale": "VBS-2026-0042",
+  // + campi del form (cantiere, segnalazioni, azioni richieste, firme, riferimenti foto su GitHub)
+}
+
+// collection: solleciti (NEW)
+{
+  "_id": ObjectId,
+  "tratta_id": "...",
+  "pratica": "...",
+  "impresa": "Costruzioni Alfa Srl",
+  "tipo_sollecito": "...",
+  "created_at": "ISO"
+}
+
+// collection: pol_conv_dates (NEW — chiave: "{lotto}|{pratica}|CONVENZIONE|POLIZZA")
+{
+  "_id": "1A|11|CONVENZIONE",
+  "data_richiesta": "AAAA-MM-GG"   // fissata una sola volta con $setOnInsert
+}
+
+// collection: access_logs (NEW — ex JSONBin, un documento per binId)
+{
+  "_id": "69c8fbdced015c742bc8e978",   // il vecchio LOG_BIN_ID, riusato come chiave Mongo
+  "utenti":  ["Mario Rossi", "Costruzioni Alfa Srl", "..."],
+  "accessi": [ {"ts":"ISO","utente":"...","ruolo":"...","ip":"...","ua":"...",
+                "durata":0,"lotti":[],"nAperture":0,"pagina":"scavi"} ]
+}
+```
+
+---
+
+## 10. Flusso impresa end-to-end (riepilogo)
+
+1. Admin → `admin.html` tab "Assegnazioni imprese" → aggiunge `Costruzioni Alfa Srl` con lotti `Lotto 1, Lotto 1A`.
+2. L'impresa accede su `hub.html` con nome esattamente `Costruzioni Alfa Srl` + codice → backend verifica con Apps Script → restituisce session token (`_enri_session`).
+3. Hub entra in "modalità impresa" (check `/api/imprese/me`) e mostra fino a 4 card: Aggiorna Pratiche, Mappa (sola vista), Mappa con aggiornamento, Avanzamento Scavi.
+4a. **Flusso pratiche** (con approvazione): Click → `imprese.html` o `mappa_impresa_caricamento.html` → coda modifiche → "Invia per approvazione" → Admin tab "Coda imprese" → Approva → Backend applica `changes` a Master.csv, crea nuova versione GridFS, rigenera QGIS+Riepilogo, **pusha tutti e tre su GitHub** → `_sync_cantieri()` riallinea i cantieri.
+4b. **Flusso scavi** (scrittura diretta, NEW): Click → `imprese_scavi.html` → aggiorna stato cantiere/metri giornalieri → `POST /api/imprese/cantieri/{key}` scrive subito su MongoDB e pusha su GitHub, **senza passare da `pending_updates`**.
+5. Dashboard (`/api/data/Master.csv`, `/api/cantieri`) serve immediatamente la nuova versione; SWR sulle pagine aggiorna la UI live senza reload.
+
+## 11. TODO aperti (da Checklist Bug e Migliorie, importata 2026-07-02)
+
+**Regola permanente**: dopo ogni modifica (in questa sessione o future), verificare se corrisponde a una voce di questa tabella e aggiornarne subito lo Stato (es. "Chiuso (rev.NN)" + breve nota), anche se non era quella la richiesta esplicita dell'utente.
+
+Fonte: checklist Excel utente. Solo voci non "Completato" (34/59 già completate, non riportate qui — vedi file originale per lo storico completo).
+
+| ID | Pagina | Descrizione | Stato | Priorità | Note |
+|---|---|---|---|---|---|
+| 6.1 | imprese_scavi | Implementare modello strutturato caricamento dati scavi | In corso | Alta | |
+| 6.3 | imprese_scavi | Identificare informazioni da visualizzare nella pagina dedicata | In corso | Alta | |
+| 6.4 | imprese_scavi | Migliorare la visibilità delle card dei cantieri | In corso | Alta | |
+| 10 | NEW | Pagina Gantt progetto + tabella associazione impresa/lotti/cluster (%design, %perm, %delivery, metri totali) | Da fare | Alta | ENTRO MERCOLEDÌ |
+| 11.6 | Master | Pratica NO/27/1A: correggere data invio (da quando è partito ENRI) | Da fare | Alta | |
+| — | server.py | `SESSION_SECRET` a 8 cifre numeriche | Aperto (voluto) | Bassa | Bruteforce offline HMAC in tempi brevi se un token viene intercettato — rischio accettato dall'utente per la minaccia target ("smanettone", non attaccante dedicato) |
+| 11.1 | Index | Eliminare previsione "mia" e richiederla all'impresa | Chiuso (rev.48) | — | Campo compilato dall'impresa, non più calcolato |
+| 11.2 | Index | Creare nuova colonna "update" | Già presente (rev.44) | — | |
+| — | All | Rename `COORDINAMENTO`→`INVIO PRELIMINARE` | Risolto (rev.43) | — | |
+| 11.4 | Index | Portare i solleciti nei popup insieme alle note | Chiuso (rev.167) | — | Badge dedicati (`_solBadge`/`_solSedBadge`), popup separato da Note |
+| 11.9 | Master | % ottenuto Valtellina non compare (lotto piccolo?) | Risolto (rev.49) | — | Soglia `pct>=5` nascondeva la % su segmenti piccoli |
+| 12.1/12.2 | Scavi | Associazione/visibilità lotto-impresa nelle card cantiere | Chiuso (rev.77) | — | Card "Performance Imprese" + colonna Impresa nei modal |
+| 12.3 | Scavi | Stato cantieri in topbar più grande | Chiuso (rev.76) | — | |
+| 12.4/13 | Scavi | Tabella imprese + vista dirigenziale | Chiuso (rev.76) | — | |
+| — | Scavi | Font-size sotto i 12px fuori brand kit | Chiuso (rev.101) | — | |
+| — | Mappa_imprese_caricamento | Export geojson lotti impresa | Chiuso (rev.78-80) | — | `exportGeoJSONLotti()` |
+| — | Imprese | Stato ex-coordinamento (Invio Preliminare) | Chiuso (rev.112) | — | Già in `STATO_TRANSITIONS` |
+| — | Master/server | Colonna `DATA_UPDATE` mancante | Chiuso (rev.114-115) | — | Colonna + `_touch_data_update*` per i solleciti |
+| — | milestone.html/admin.html | Guardia auth mancante | Chiuso (rev.131-132) | Sicurezza | Guardia client-side; per le pagine dati la vera barriera è `_require_staff_session` server-side (rev.129) |
+| — | server.py | Endpoint staff senza controllo ruolo | Chiuso (rev.129-130) | Sicurezza | `_require_staff_session` su 6 endpoint (v. changelog) |
+| — | server.py | GridFS senza limite versioni | Chiuso (rev.130-131bis) | — | `KEEP_VERSIONS=4` + prune automatico |
+| — | server.py | Login senza rate limit | Chiuso (2026-07-06) | — | Lockout 429/300s dopo 5 tentativi falliti (in-memory) |
+
+---
+
+_Ultimo aggiornamento: 2026-08-24 (rev. 238)_
+
+- **rev.238** — `hub.html`, card "Avanzamento Lavori" (`#scaviCard`): rimossa la dicitura statica "In arrivo" (`#scaviBadge`), non più corretta ora che `scavi.html`/`imprese_scavi.html` sono operativi. Badge ora nascosto di default (`style="display:none"`) e mostrato solo per ruoli non abilitati (`SCAVI_ALLOWED_ROLES`), con testo cambiato in "Accesso riservato" (era comunque "In arrivo" anche in quel ramo, fuorviante — non è una feature futura ma una restrizione di ruolo).
+- **rev.237** — `imprese_scavi.html`, `urgencyOf()`: **bug reale segnalato dall'utente da screenshot** — un cantiere `sospeso` con `data_ripresa_stimata` **futura** (es. Sielte/Rozzano, ripresa 14/09/2026) veniva comunque segnalato "Da aggiornare" solo perché l'ultimo caricamento risaliva a >7gg fa, mentre in `scavi.html` (`_registroStatus()`) risultava correttamente "in linea" perché quella pagina guarda `data_ripresa_stimata` invece della staleness del log per lo stato sospeso. Le due pagine avevano quindi logiche divergenti sullo stesso stato (nota già lasciata aperta in rev.233: "sospeso — lì non esiste un check di scadenza reale... nota per l'utente se in futuro si vuole allineare"). Fix: allineato a `scavi.html` — se `data_ripresa_stimata` è presente, l'allarme dipende solo dal suo superamento (`late` se scaduta, altrimenti `done` a prescindere dai giorni di inattività); il fallback su soglie giorni-da-update (2/7gg) resta invariato solo quando `data_ripresa_stimata` è assente. `mappa_impresa_caricamento.html` verificato: nessuna logica KPI/urgenza propria (solo form inserimento dati), nessuna modifica necessaria lì.
+
+_Ultimo aggiornamento: 2026-08-19 (rev. 236)_
+
+- **rev.236** — `mappa.html`, popup tratta (2 richieste utente).
+  1. **Bug reale**: la nuova feature "ente per pratica" nel popup (indice `RO_PRATICA_ENTE` da `Master.csv`, badge `AUT/24/1A · COMUNE DI PERO`) non compariva mai. Causa: `fetchWithSWR(rel, {direct:true})` faceva `fetch(rel + qs, ...)` con `rel` nudo (es. `'Master.csv'`), senza prefisso `apiBase` né path `/api/data-text/` — il backend espone solo route `/api/...` (nessuna route bare in `server.py`), quindi la fetch falliva silenziosamente (`.catch(()=>null)`) e `RO_PRATICA_ENTE` restava `{}` per sempre. Pattern corretto già presente in `polizze_convenzioni.html` (`apiBase + '/api/data-text/Master.csv'`). Fix applicato al branch `direct` di `fetchWithSWR`: ora costruisce `apiBase() + '/api/data-text/' + rel`. Effetto collaterale positivo: stesso branch usato anche da `QGIS.geojson`/`SED_classificato.geojson`, che ora vanno sempre a dati freschi da Render invece che a un'eventuale copia statica congelata su GitHub Pages da prima del giro di sicurezza (rev.139).
+  2. Layout popup: rimosso il campo "Ente" standalone (grid-column:span 2) — informazione ridondante ora che ogni codice pratica mostra già il proprio ente nella badge. Il blocco "Pratiche" passa da colonna stretta a `popup-field full` (riga intera), così con 3-4 pratiche le badge scorrono su tutta la larghezza invece di impilarsi in una colonna lunga.
+  `node --check` non eseguito in questa sessione (nessun ambiente node disponibile) — verificare al prossimo giro prima del deploy.
+
+- **rev.235** — `imprese_scavi.html`: 2 richieste utente da screenshot.
+  1. Card cantieri ora ordinate per `codice_cantiere` crescente (`localeCompare` con `numeric:true`, stesso pattern già usato altrove nel file per l'ordinamento dei lotti) — aggiunto in `getFilteredItems()`, applicato dopo i filtri. Prima non c'era alcun ordinamento, veniva mostrato l'ordine grezzo restituito dal backend.
+  2. **Bug reale segnalato** ("il carattere è orrendo" sull'input "Inserisci metri"): il campo aveva il font previsto (`--font-body`/Raleway, brand kit §Typography) sovrascritto silenziosamente da una regola globale `input[type=number] { font-family:var(--font-mono) }` — applicata a **tutti** i campi numerici del sito, non solo quello segnalato, per via di una specificità CSS identica alla regola più recente che vinceva in cascata. Rimossa la regola globale (i campi number ora ereditano font-body come testo/data/select, coerente col resto della UI). Non toccato `.input-big` (usato nel form di modifica cantiere) che mantiene volutamente il mono per enfasi su un valore numerico grande. `node --check` OK.
+
+- **rev.234** — `imprese_scavi.html`: 2 richieste utente da screenshot.
+  1. Riordinate le card KPI: "Non aggiornato" spostata prima di "In ritardo" (ordine ora: Da aggiornare oggi → Non aggiornato → In ritardo → Da aggiornare → Aggiornati). Solo ordine markup, nessuna modifica a logica/conteggi.
+  2. **Bug reale segnalato**: la barra di ricerca (`.toolbar-search`) aveva un'altezza diversa dai filtri select (`.select-wrap`, 2 righe label+valore) e dai bottoni "Pulisci filtri"/"Aggiorna" (`.btn-sm`) — nessuno dei tre aveva un'altezza esplicita, ognuno si dimensionava sul proprio contenuto/padding (~34px/~38px/~28px), risultando visibilmente disallineati sulla riga toolbar nonostante `align-items:center`. Fix: `min-height:40px` + `box-sizing:border-box` su tutti e tre; `.select-wrap` passato a `display:flex;flex-direction:column;justify-content:center` per centrare verticalmente label+select nella nuova altezza fissa. `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 233)_
+
+- **rev.233** — `imprese_scavi.html`, `urgencyOf()`: richiesta utente — ridefinito il significato di "In ritardo" per lo stato `in_corso`: prima scattava anche per semplice staleness (`dsUpdate>7`, incluso il caso mai-aggiornato → `Infinity`); ora scatta **solo** per vera scadenza superata (`data_fine_prevista` scaduta). Nuovo 5° stato `'non_aggiornato'` ("Non aggiornato", badge/KPI grigio neutro `--gray-500`/`--gray-100`, nuova classe `.cant-urgency.u-non_aggiornato`): cantiere avviato (`in_corso`) ma con `log_count===0` (nessun caricamento impresa mai avvenuto) — prima ricadeva in "In ritardo" via staleness infinita, ora è categoria propria. Cantiere avviato **con** dati ma stale >2gg → resta "Da aggiornare" **senza più scalare** a "In ritardo" dopo 7gg (rimossa la soglia `dsUpdate>7`). Nuova 5ª card KPI "Non aggiornato" (`kpiNone`, grid `.kpi-row` 4→5 colonne, breakpoint responsive aggiornati 800px→1000px/640px); "Da aggiornare oggi" ora somma late+soon+non_aggiornato. Sottotitoli KPI aggiornati di conseguenza: "In ritardo" → "fine lavori prevista scaduta", "Da aggiornare" → "aggiornamento > 2 giorni". **Non toccato**: `non_avviato`/`allestimento` (logica su `data_inizio_prevista` invariata) e `sospeso` (soglie 2/7gg su staleness invariate — lì non esiste un check di scadenza reale come `data_fine_prevista`, quindi la staleness resta l'unico segnale disponibile; nota per l'utente se in futuro si vuole allineare anche questo stato). `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 232)_
+
+- **rev.232** — `imprese_scavi.html`, `urgencyOf()`: richiesta utente — unito lo stato `'ok'` ("In linea", rev.231) dentro `'done'` ("Aggiornato"): un cantiere non ancora dovuto (inizio non scaduto), aggiornato di recente (in_corso, ≤1gg), o sospeso da ≤2gg ora mostra badge/colore "Aggiornato" invece di un 4° stato blu separato. Rimossi `URGENCY_LABEL.ok`/`URGENCY_ICON.ok`/`.cant-urgency.u-ok` (dead code). KPI: card "Aggiornati" ora conta anche i cantieri "in linea" (non solo quelli aggiornati oggi) — sottotitolo cambiato da "oggi" a "nessuna azione richiesta" per riflettere il nuovo significato. Le altre 3 card (Da aggiornare oggi/In ritardo/Da aggiornare) e le rispettive soglie non toccate. `node --check` OK.
+- **Manutenzione file**: trovata e rimossa una duplicazione integrale nel log sotto — i 3 blocchi rev.206/207/208 (`gantt.html`) erano incollati due volte, identici. Segnalata (non rinumerata) una collisione di numerazione rev.209–213 tra due sessioni diverse — v. nota nel log.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 231)_
+
+- **rev.231** — `imprese_scavi.html`, `urgencyOf()`: seguito rev.230 — richiesta utente da screenshot, i flag badge sulle card erano scomparsi per i cantieri "in linea" (nessuna scadenza ancora dovuta), perché la funzione tornava `null` in quei casi e il badge non veniva renderizzato affatto. Aggiunto un 4° stato `'ok'` ("In linea", badge blu `--retelit-blue`/`--retelit-ice`, nuova classe `.cant-urgency.u-ok`) restituito al posto di `null` in tutti i casi "a posto" (non_avviato/allestimento con inizio non ancora scaduto, in_corso senza scadenze superate e aggiornato di recente, sospeso aggiornato ≤2gg fa) — così ogni cantiere non completato mostra sempre un badge. `completato` resta senza badge (già ridondante con lo stato principale). `renderKpi()`/contatori KPI invariati: continuano a contare solo late/soon/done, `'ok'` non vi rientra. `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 230)_
+
+- **rev.230** — `imprese_scavi.html`, `urgencyOf()`: **bug reale segnalato dall'utente da screenshot** — un cantiere in `allestimento`/`non_avviato` con `data_inizio_prevista` nel **futuro** (es. 24/08/2026 con oggi 09/08/2026) veniva comunque segnalato "IN RITARDO"/"DA AGGIORNARE", perché la funzione guardava solo i giorni dall'ultimo `updated_at` (mai aggiornato → `Infinity` → sempre in ritardo), ignorando che il cantiere non è ancora dovuto partire. Riscritta con logica deadline-aware per stato, stesso principio già usato in `scavi.html`/`_registroStatus()` (rev.10-33): non_avviato/allestimento → urgenza basata su `daysOverdue(data_inizio_prevista)` (nessun badge se non ancora scaduta, poi soon ≤2gg oltre / late oltre); in_corso → `data_fine_prevista` scaduta = late immediato, altrimenti fallback su giorni da `updated_at` (done/soon/late con soglie 1/7gg anziché 0/7 generiche); sospeso → soglie più permissive sui giorni da `updated_at` (2/7gg, non genera falsi allarmi durante un blocco). Nuovo helper `daysOverdue(dateStr)` (positivo=scaduta, negativo=futura, null se assente). `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 229)_
+
+- **rev.229** — `imprese_scavi.html`: richiesta utente — rimossi i riferimenti al dettaglio tratte, non necessari su questa pagina (livello di dettaglio impresa, non tecnico). Card: eliminato "N tratte (M in attesa N.O.)" dalla `.cant-info-line`, mantenuto solo "+X m in attesa N.O." (avviso sui metri, non sulle tratte). Form aggiornamento (`openForm()`): rimosso interamente `formTratteInfo` che elencava gli ID delle singole tratte lavorabili/bloccate (`tratta_id`). Rimosse variabili JS ora inutilizzate: `nBlocc`/`tratte` in `renderGrid()`, `totPot`/`tratte`/`lav`/`bloc` in `openForm()`. Nota: la classe CSS `.cant-tratta` (stile del codice cantiere) è rimasta — è solo un nome di classe interno, non mostra testo "tratte" all'utente.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 228)_
+
+- **rev.228** — `imprese_scavi.html`: richiesta utente — il formato data deve essere sempre italiano (gg/mm/aaaa), mai ISO grezzo. Trovate e corrette 3 date che sfuggivano a `fmtDateIT()`: colonna "Data" della tabella Storico (`e.data`), "Ripresa stimata" nelle note storico (`e.data_ripresa_stimata`), "Ripresa stimata" nel box sospeso della card cantiere (`r.data_ripresa_stimata`) — tutte mostravano `aaaa-mm-gg` grezzo. `scavi.html` già conforme (usa `fmtD()`, stesso pattern). Aggiunta convenzione permanente in memoria: date sempre in formato IT su tutta la dashboard.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 227)_
+
+- **rev.227** — `imprese_scavi.html`, `showStorico()`: richiesta utente da screenshot — il modal "Storico" mostrava solo il log caricamenti impresa (data/stato/tecnica/metri/note), non le 5 date pianificate/effettive del cantiere (`data_inizio/fine_prevista/effettiva`, `data_ripresa_stimata`), già salvate ma invisibili qui. Aggiunto pannello riepilogo (`.storico-dates`) sopra la tabella log, stesso pattern già usato in `scavi.html`/`openModalRegistro()` (rev.199) lato staff — 4 date sempre mostrate + Ripresa stimata se `stato_cantiere==='sospeso'`, visibile solo se almeno un campo è valorizzato.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 226)_
+
+- **rev.226** — `imprese_scavi.html`: richiesta utente da screenshot — card cantiere confuse. Rimosso `#lastAccess` ("Ultimo accesso: HH:MM:SS", CSS `.last-access` incluso). Redesign card cantiere: eliminata la `cant-stats-row` a 3 colonne in fondo (era ridondante — Tot. lavorabili/Tratte/Ultimo aggiornamento duplicavano dati già mostrati sopra), % avanzamento ora badge colorato (classe `fill-${stato}`) allineato a destra sopra la barra invece di testo piccolo affiancato ai metri; tratte/attesa N.O./date previste-effettive unificate in un'unica riga secondaria (`.cant-info-line`, separatore "·") al posto di 3-4 div separati; box "sospeso" ora evidenziato con sfondo invece di testo semplice. Stesso trattamento sui chip "Avanzamento per lotto" in alto (`agg-chip`): percentuale come badge prominente a destra (`.agg-chip-pct`, pill blu), nome+metri raggruppati a sinistra, barra sotto su riga propria.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 225)_
+
+- **rev.225** — `imprese_scavi.html`: richiesta utente. Rimosso l'hint-banner sopra il form aggiornamento ("Inserisci i metri realizzati dall'ultimo aggiornamento. I campi con * sono obbligatori."). Aggiunta nelle card cantiere una riga compatta (`.cant-dates-row`, 10px) con le date disponibili — `data_inizio/fine_prevista` ed `effettiva` — sotto il badge stato, visibile solo se almeno un campo è valorizzato; nessuna modifica a padding/grid/dimensioni della card (era già ad altezza automatica).
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 224)_
+
+- **rev.224** — `imprese.html`: causa reale del disallineamento dei filtri (non lo stile del checkbox in sé, era il CSS globale `label{margin-top:12px;margin-bottom:5px;display:block}` che si applica a QUALSIASI `<label>`, incluse le nostre label-wrapper dei filtri, spostandole verticalmente rispetto alla barra di ricerca). Aggiunto `margin:0` esplicito inline su entrambe le label filtro per neutralizzare l'eredità globale.
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 223)_
+
+- **rev.223** — richiesta utente dopo aver notato note ripetute su righe consecutive nel Master.csv (screenshot TR_0813): confermato che era il comportamento standard (copia riga precedente, sovrascrive solo i campi passati). Fix su due livelli:
+  1. `imprese.html`: nota ora **obbligatoria** per ogni aggiornamento in coda (`addToQueueBtn`) — validazione esplicita, `fields.NOTE = noteVal` sempre valorizzato (non più condizionale). Label "Note *" in rosso, placeholder aggiornato, textarea non più descritta come opzionale.
+  2. `backend/server.py`, `_apply_changes_to_df` (ramo append/non in_place): se `"NOTE" not in fields`, la nuova riga copiata azzera esplicitamente `NOTE` invece di ereditare quella della riga precedente — rete di sicurezza lato server indipendente dal frontend chiamante (copre eventuali altri path che creano submission "update" senza passare da imprese.html).
+  - Corretto anche stile checkbox filtri (accent-color/margin espliciti) per uniformità visiva tra "Previsione scaduta" e "Update oltre 5gg", segnalata come disallineata.
+  - ⚠️ nota: il ramo `in_place=True` (correzioni admin "Modifica dati") non è stato toccato — lì il pre-fill della nota esistente in modifica è intenzionale (è una correzione del testo, non un nuovo evento).
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 222)_
+
+- **rev.222** — `imprese.html`: cella DATA_UPDATE evidenziata in arancione/grassetto (`var(--warn)`) quando `_isUpdateScaduto(p)` è vero (stessa soglia 5gg del filtro rev.221).
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 221)_
+
+- **rev.221** — `imprese.html`: aggiunto secondo filtro checkbox "Update oltre 5gg" (`filterUpdateScaduto`) accanto a "Previsione scaduta". Helper `_isUpdateScaduto(p)`: vero se `DATA_UPDATE` vuota (mai aggiornata) o più vecchia di 5 giorni da oggi. Soglia fissa a 5gg (non configurabile, a differenza del tentativo in rev.218 poi rimosso).
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 223)_
+
+- **rev.223** — `imprese_scavi.html` + `imprese.html` + nuova cartella `docs/guide/`: richiesta utente — rendere scaricabili le 2 guide PDF create fuori sistema ("Guida rapida per le Imprese" testuale e "ENRI Guida Illustrata Area Impresa" con screenshot), dato che coprono anche `imprese.html` (non solo Scavi). File aggiunti al repo in `docs/guide/Dashboard_ENRI_Guida.pdf` e `docs/guide/ENRI_Guida_Illustrata_Area_Impresa.pdf` (link relativi da root, coerenti col fatto che il sito è servito da GitHub Pages). Aggiunta sezione "Guide scaricabili" in fondo a entrambi i modal guida esistenti: `#helpOverlay` di `imprese_scavi.html` (nuova sezione `.help-downloads`/`.help-download-link`) e il modal `_openHelp()` di `imprese.html` (stessa struttura ma inline, dato che qui il modal è generato via template string JS, non markup statico — nessuna nuova classe CSS globale per non toccare lo stile esistente della pagina). Non toccato `mappa_impresa_caricamento.html`: la guida copre anche quella pagina (pag. 9-12) ma non è stato richiesto esplicitamente — da valutare se allinearla allo stesso pattern in un prossimo giro. `node --check` OK su entrambi i file.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 222)_
+
+- **rev.222** — `imprese_scavi.html`: 2 fix da screenshot su rev.221. (1) "Cantieri per stato" andava su 2 righe (3+2) — `.stato-chips` da `flex-wrap` a `display:grid; grid-template-columns:repeat(5, minmax(0,1fr))`, sempre 5 colonne fisse su una riga indipendentemente dalla larghezza disponibile (si restringono invece di andare a capo); nuova classe `.agg-group-stato` (`flex:1.4 1 320px`) per dare più spazio a questo gruppo rispetto a "Avanzamento per lotto" nello stesso `.agg-section` (`max-width` 760→900px). (2) Sezione "Stati del cantiere" della guida rapida ampliata: spiega l'ordine delle tappe (Non avviato→Allestimento→In corso→{Sospeso,Completato}), perché in Allestimento i campi metri/tecnica sono disattivati, cosa richiede il passaggio a Sospeso (motivo+data ripresa stimata) e che Completato è uno stato finale. `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 221)_
+
+- **rev.221** — `imprese_scavi.html`: 2 richieste utente da screenshot. (1) Il bottone "Guida rapida" in fondo pagina era un `<a href="#">` morto, senza handler. Portato lo stesso pattern di `mappa_impresa_caricamento.html` (§rev.precedenti): nuovo `#helpOverlay`/`.help-modal` (CSS + markup a fondo body) con `openHelp()`/`closeHelp()` esposte su `window`, contenuto specifico per questa pagina (aggiornare avanzamento, stati cantiere, storico, filtri). (2) Il blocco "Avanzamento per lotto" in header era giudicato troppo ingombrante: `.agg-chip`/`.agg-title` rimpiccioliti (padding, font-size, gap ridotti), `.agg-group` da `flex:1 1 320px` a `flex:1 1 220px`. Aggiunta nuova card compatta "Cantieri per stato" (`.stato-chip`, bordo sinistro colorato da `STATO_COLOR`) accanto ad "Avanzamento per lotto" nello stesso `.agg-section`, popolata in `renderAggIndicators()` contando `stato_cantiere` sugli item visibili. `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 220)_
+
+- **rev.220** — `imprese.html`, `renderPratiche()`: fix reale del problema DATA_RICHIESTA vuota (rev.218 l'aveva solo diagnosticato). Confermato su Master.csv aggiornato fornito dall'utente: il campo è valorizzato dal pipeline dati SOLO sulla riga in cui la tratta passa a INVIATO, le righe successive della stessa tratta (NECESSARIA INTEGRAZIONE, nuovo INVIATO, PROTOCOLLATO INTEGRAZIONE...) lo riportano vuoto — mostrando solo l'ultima riga per tratta la dashboard perdeva il dato pur essendo presente nello storico. Aggiunta `lastRichiestaMap` costruita in parallelo a `latestMap`: tiene per ogni tratta l'ultimo DATA_RICHIESTA non vuoto visto (per DATA_ULTIMA_MODIFICA), usato come fallback quando la riga rappresentativa ha il campo vuoto. Verificato su TR_0372: recupera correttamente 17/03/2026.
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 219)_
+
+- **rev.219** — `imprese.html`: correzione richiesta utente — il filtro era sbagliato (era su DATA_UPDATE con soglia giorni configurabile, volevano DATA_PREVISTA_RILASCIO senza soglia). Sostituito con checkbox unica "Previsione scaduta" → `filterPrevisioneScaduta`, filtra su `_isDataPrevistaScaduta(p)` (stesso helper già usato per l'evidenziazione rossa), nessun input giorni. Verificato: l'evidenziazione rossa era già corretta, semplicemente 0/1532 righe in Master.csv hanno oggi DATA_PREVISTA_RILASCIO scaduta (non un bug, mancanza di dati con quel caso nel dataset attuale).
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 218)_
+
+- **rev.218** — `imprese.html`, tab "Aggiorna pratiche":
+  1. Data prevista rilascio scaduta (< oggi) evidenziata in rosso/grassetto (`_isDataPrevistaScaduta()`).
+  2. Barra ricerca ridotta (max-width 320px) + nuovo filtro "Update scaduto (oltre N gg)": checkbox `filterUpdateScaduto` + input numerico `filterUpdateGiorni` (default 15); filtra su `DATA_UPDATE` mancante o più vecchia della soglia.
+  3. Verificato (non modificato) perché DATA_RICHIESTA non compare su tutte le righe: **431/590** righe Master.csv con stato post-INVIATO hanno DATA_RICHIESTA vuoto. Causa: il form impresa (`imprese.html`) la richiede obbligatoriamente solo quando si imposta stato=INVIATO da qui; il pannello admin "Modifica dati" (`admin.html`, mode:'data') ha il campo ma è editabile a mano e spesso lasciato vuoto/non compilato — probabile impatto di dati storici pre-esistenti a questa logica. Non è un bug del frontend imprese.html: è dato mancante a monte. Se serve, si può rendere DATA_RICHIESTA obbligatoria anche nel form admin quando stato passa a INVIATO.
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 217)_
+
+- **rev.217** — `imprese.html`, tab "Aggiorna pratiche": colonna "Lung. (m)" mostrava float grezzi non arrotondati (es. `5131.079999999999`, somma di più tratte in virgola mobile). Aggiunta `formatLunghezza(val)` — parse + `toLocaleString('it-IT', {min/maxFractionDigits:2})` → `5.131,08`. Applicata alla cella lunghezza in `renderPratiche()` al posto del cast a stringa diretto.
+
+_Ultimo aggiornamento: 2026-08-07 (rev. 216)_
+
+- **rev.216** — `imprese.html`, tab "Aggiorna pratiche": rimossa la checkbox "Aggiorna tutte insieme (consigliato)" dal pannello SIBLINGS — richiesta utente: l'unione degli aggiornamenti di tutte le tratte di una pratica non è più opzionale, è sempre lo standard. `siblingsPanel` ora è solo informativo (elenco tratte collegate, nessun controllo). `addToQueueBtn` chiama sempre `_finalizeAdd(fields, SIBLINGS.length > 0)`. Rimossi: `_showSingleTrattaWarning()` (modale di blocco/conferma per update solo-tratta, non più raggiungibile) e l'eccezione in `fld-no-nec` che disattivava il toggle quando si spuntava NULLA OSTA NECESSARIO su una singola tratta. Confermato con utente: nessun problema di propagazione — la tratta/e a cui si applica il nulla osta resta comunque scelta esplicitamente via `fld-no-tratte`/`TRATTE_NO`, indipendente dall'unione pratica.
+
+_Ultimo aggiornamento: 2026-08-07 (rev. 215)_
+
+- **rev.215** — `imprese.html`, tab "Aggiorna pratiche" (`renderPratiche()`): richiesta utente — la tabella mostrava una riga per ogni singola tratta (`TRATTA_ID+ENTE+TIPO_PERMESSO`), ma l'aggiornamento è comunque associato/propagato a tutta la pratica (logica SIBLINGS già esistente più sotto nello stesso file). Aggiunto un secondo livello di raggruppamento **dopo** il dedup per-tratta esistente: chiave = `p._codice`/`buildCodice(p)` (ENTE+TIPO_PERMESSO+PRATICA+lotto); tratte senza pratica associata (codice vuoto) restano righe singole (fallback su chiave tratta). Per ogni gruppo: riga rappresentativa = quella con `DATA_ULTIMA_MODIFICA` più recente (stato/date mostrate sono le più aggiornate della pratica); nuova colonna derivata `_lunghezzaTot` (somma `LUNGHEZZA` di tutte le tratte del gruppo, sostituisce il vecchio valore singolo in tabella e nel sort); colonna "Tratta"→"Tratte", cella mostra `N tratte` se il gruppo ne contiene più di una, altrimenti il TRATTA_ID come prima. Click-to-select e logica SIBLINGS invariati (SELECTED resta compatibile, la propagazione a tutte le tratte della pratica funzionava già). `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-06 (rev. 213)_
+
+- **rev.214** — Deploy GitHub Pages: bug reale trovato e corretto — mancava il file `.nojekyll` nella root del repo. Senza di esso, Pages tenta un build **Jekyll** anche su un sito statico vanilla JS/HTML; con file grandi in root (`Master.csv` 215K, `QGIS.geojson` 754K, HTML da 300-400K) il parser Jekyll si blocca, il job `build` gira ~45 min e il runner viene ucciso ("lost communication with the server"), facendo fallire il deploy pur restando online l'ultima versione pubblicata con successo (da cui l'apparente incoerenza "ci sono deploy falliti ma il sito è aggiornato"). Fix: aggiunto `.nojekyll` vuoto in root — deploy successivo completato subito. Nota per il futuro: verificare che non venga rimosso da script di sync/pulizia del repo (essendo un file senza estensione, "invisibile" a un controllo superficiale). — **Nota collegata (non un bug, comportamento confermato)**: le foto dei sopralluoghi (`sopralluoghi/foto/{codice}/foto_N.{ext}`) **non** passano da GridFS/Mongo — vengono caricate come data URL base64 dal frontend, decodificate e pushate **direttamente nel repo GitHub** via `_push_to_github()` (`server.py` ~riga 2798-2814, endpoint sopralluoghi). Questo fa crescere permanentemente la dimensione del repo Git ad ogni sopralluogo caricato (attualmente ~6.2MB in `sopralluoghi/foto`); da tenere presente come possibile causa futura di rallentamenti/limiti di dimensione repo, distinta dal bug `.nojekyll` di cui sopra.
+
+_Ultimo aggiornamento: 2026-08-05 (rev. 212)_
+
+- **rev.213** — `server.py`, `GET /api/admin/pratiche/note-history`: bug reale segnalato dall'utente da screenshot — lo storico note in admin (bottone "Storico note", rev.211) mostrava date/righe diverse rispetto al popup Note di `index.html` per la stessa pratica (es. mancavano occorrenze ripetute della stessa nota a date diverse). Causa: l'endpoint usava sempre `date = DATA_ULTIMA_MODIFICA or DATA_UPDATE`, senza replicare il fallback `effectiveDateRaw` di `praticaNotesRaw` in `index.html` — quando una riga è un aggiornamento SOLO-NOTA (stessa tratta, stesso STATO_PERMESSO, stesso DUM già visto in una riga precedente), `index.html` sposta la data effettiva a `DATA_UPDATE`; il backend no. Risultato: due note distinte con lo stesso `dum` finivano sulla stessa chiave `(note, date)` e venivano dedupate/collassate nello storico admin. Portata la stessa logica (tracking `stato_seen` per stato+data+tratta, merge multi-tratta senza spostare la data, swap a `DATA_UPDATE` per le continuation) in Python nell'endpoint — ora `/api/admin/pratiche/note-history` produce lo stesso storico del popup Note di `index.html`. `py_compile` OK.
+- **rev.212** — solo documentazione, nessuna modifica al codice: l'utente segnalava come mancante in admin la possibilità di correggere ogni singolo aggiornamento (ogni riga di storico caricato da un'impresa) di un cantiere — in realtà **la funzione esiste già** nel repo attuale mentre in questa sessione era stato dato per errore per mancante, quindi la documento qui perché non era mai stata riportata nel brief. In `admin.html` tab "Cantieri" → "Modifica" apre il pannello correzione (stato attuale/metri/tecnica/date) **e** sotto, "Storico caricamenti (tutti gli invii impresa)" (`cantLogList`/`refreshCantLog`): ogni riga del log (`data`, `impresa`, `stato_cantiere`, `tecnica_scavo`, `metri_realizzati`, `note`, `motivo_blocco`, `data_ripresa_stimata`) è editabile singolarmente con bottoni "Salva"/"Elimina" per riga. Backend: `PUT`/`DELETE /api/admin/cantieri/{cantiere_key}/log/{idx}` — corregge o elimina la singola voce di storico (indice nell'array `log` del documento Mongo), `metri_scavati` del cantiere viene sempre ricalcolato come somma di tutte le righe di log rimaste (coerente con l'accumulo fatto da `POST /api/imprese/cantieri/{key}`), push GitHub asincrono dopo ogni modifica, audit log (`update_cantiere_log`/`delete_cantiere_log`). Nota concettuale per non confondersi in futuro: per i **cantieri** la correzione di uno storico è già per-singola-riga (ogni caricamento impresa è un evento indipendente); per le **note delle pratiche** (rev.211) è invece per-nota-condivisa-su-più-tratte, perché lì lo stesso evento storico è duplicato su più righe fisiche di Master.csv — sono due modelli dati diversi, non applicare per analogia l'uno all'altro.
+
+_Ultimo aggiornamento: 2026-08-05 (rev. 211)_
+
+- **rev.211** — `admin.html` tab "Dati pratiche" + `server.py`: richiesta utente — poter correggere una nota SBAGLIATA ma VECCHIA (es. di 3 caricamenti fa), non solo quella corrente, e che la correzione si propaghi a tutte le tratte della pratica che condividono quella nota storica (Master.csv è append-only: la stessa nota, alla stessa data, è duplicata su ogni tratta attraversata dall'evento — v. `praticaNotesRaw` in `index.html`). Chiarimento importante nel corso della richiesta: la prima interpretazione (una riga per TRATTA_ID, editabile singolarmente come in Cantieri) NON era quella corretta — l'utente intendeva "ogni caricamento di nota" nel tempo, non "ogni tratta fisica"; l'implementazione basata su TRATTA_ID è stata scartata prima di essere consegnata. Nuovo bottone "Storico note" per ogni pratica (accanto a "Modifica dati"/"+ Nota"): apre un pannello con tutte le note storiche (data+testo, stessa dedup per (testo,data) usata in `index.html`), ciascuna con un bottone "Modifica" inline che apre una textarea e salva la correzione. Backend: 2 nuovi endpoint — `GET /api/admin/pratiche/note-history` (ente/tipo_permesso/pratica/lotto → lista note storiche uniche) e `POST /api/admin/pratiche/note/correct` (match esatto su NOTE+ente+tipo+pratica+lotto, opzionalmente anche su DATA_ULTIMA_MODIFICA/DATA_UPDATE se `old_date` è passato, sovrascrive il testo **in place su tutte le righe grezze che matchano**, non solo l'ultima per tratta — a differenza di `/pratiche/update` mode=data che tocca solo l'ultima riga). Tag `[RETELIT]`/`[IMPRESA]` preservato per-riga (non ritaggato). Segnalato subito dopo dall'utente: mancava la possibilità di **eliminare** una nota storica, non solo correggerla — aggiunto bottone "Elimina" per riga (con conferma `showConfirm`) e nuovo endpoint `POST /api/admin/pratiche/note/delete`, stesso matching di `/note/correct` ma svuota il campo NOTE invece di riscriverlo (non elimina la riga fisica di Master.csv, resta append-only). `py_compile`/`node --check`/HTML parser OK.
+
+_Ultimo aggiornamento: 2026-07-23 (rev. 210)_
+
+- **rev.210** — `server.py`: richiesta utente da screenshot `index.html` (popup Note) — l'etichetta "Impresa"/"Retelit" (rev.188, `_tag_note()`) compare solo sull'ultima nota di ogni pratica, tutte quelle storiche precedenti restano senza badge (disomogeneo). Motivo: `_tag_note()` prefissa solo le NOTE scritte **da rev.188 in poi**; quelle storiche in Master.csv non hanno mai avuto un prefisso perché all'epoca l'unico canale di inserimento nota era lato impresa. Nuovo endpoint one-off `POST /api/admin/backfill-note-tags` (stesso pattern di `backfill-data-update-solleciti` rev.147: `_check_token`, `_master_csv_lock`, idempotente): tagga retroattivamente `[IMPRESA]` ogni NOTE non vuota priva di prefisso `[RETELIT]`/`[IMPRESA]` (regex `_NOTE_TAG_RE` già esistente). Le note già taggate vengono saltate, rieseguibile senza effetti collaterali. La regola per le note **nuove** resta invariata (`_tag_note()` non toccata, chiamata come prima da imprese/admin ad ogni submission) — richiesto esplicitamente dall'utente ("per i prossimi manteniamo la regola attuale"). Da lanciare una tantum (richiesta `POST` con `x-upload-token`), poi non serve più. `py_compile` OK.
+
+
+- **rev.209** — `gantt.html`: "Inizio scavi" segnalata **ancora** al 17/04/2026 dall'utente anche dopo rev.208 (che ora usa solo `data_inizio_effettiva`, mai più `prevista`). Causa più probabile a questo punto: un **override manuale** (`applyGanttOverrides()`, salvato in passato da "Modalità modifica" e mai ripristinato) — gli override vengono applicati per ultimi nella sequenza di boot, dopo tutti i merge/cascade, quindi vincono sempre e i fix rev.206-208 su `mergeCantieriProgress()` non li toccano. Non potendo ispezionare Mongo da qui, aggiunto uno **strumento diagnostico self-service** invece di continuare a indovinare: `buildScaviRangeCard()` ora traccia anche la riga sorgente del valore mostrato; se `row.manual` (= viene da un override, non da un dato reale) mostra un'icona ⚠︎ con tooltip; il valore è cliccabile (`_locateGanttRow()`) e scrolla/espande i gruppi necessari/fa lampeggiare 3 volte la riga incriminata direttamente nel Gantt, cosi da poterla individuare e ripristinare (bottone "Ripristina" già esistente nel popover di modifica, `resetGanttOverride()`). **Da verificare anche**: che sia stato effettivamente ridistribuito rev.208 (deploy) prima di testare di nuovo — nella sessione precedente il ritardo di deploy ha causato un falso allarme simile su `polizze_convenzioni.html` rev.197/198. `node --check` OK.
+
+
+- **rev.208** — `gantt.html`, `mergeCantieriProgress()`: fix rev.206 ("Inizio scavi") **insufficiente** — l'utente ha ricontrollato con l'estrazione Excel (nessuna Opere Civili inizia ad aprile nei dati) e la card mostrava ancora 17/04/2026, valore che non esiste da nessuna parte nel `.mpp`/baseline statica del file → confermato che arriva a runtime da `data_inizio_prevista` in Mongo. Il gate `log_count>0` introdotto in rev.206 non basta: un cantiere può avere log entries (foto, note, sopralluoghi) senza che quello specifico log rifletta un inizio scavo reale confermato. Fix più netto: rimossa del tutto la fallback su `data_inizio_prevista`/`data_fine_prevista` — `mergeCantieriProgress()` ora aggiorna `row.start`/`row.end` **solo** con `data_inizio_effettiva`/`data_fine_effettiva` (mai un campo di pianificazione/preventivo). Se non c'è ancora una data effettiva confermata, il Gantt continua a mostrare la data calcolata dalla cascata permessi (mai un placeholder esterno non verificato). `node --check` OK.
+
+
+- **rev.207** — `gantt.html`, `exportGanttExcel()` (rev.206): segnalato dall'utente da screenshot — mancavano dipendenze/predecessori nell'export, e ogni task doveva avere il numero visibile in pagina (WBS "N.F", es. "1.2"). Aggiunte 2 colonne: **Numero** (stessa numerazione già mostrata a schermo e nella select "Predecessore" del popover — nuova `_ganttRowNumero()`, che replica la logica di `_ganttPraticaLabelPrefix()` senza il testo di contorno) e **Predecessori** (`_ganttRowPredecessori()`, unisce `GANTT_DEPS[row.id]` strutturale + `GANTT_EXTRA_DEPS[row.id]` extra se presenti entrambi, formattati come MS Project si aspetta: `"1.2FS"`/`"1.2SS+3"`). `node --check` OK.
+
+
+- **rev.206** — `gantt.html`: 3 bug reali segnalati dall'utente da screenshot + 1 feature.
+  1. **KPI "Avanzamento medio fasi" mostrava un valore assurdo** (es. `1.6129838710483387e+175%`): `avgPct` sommava `r.pct` di tutte le bar senza validarne il valore — un solo `pct` corrotto (fonte più probabile: override admin non validato via `ov.pct`, rev.135/gantt_overrides_col, mai stato clampato) basta a far esplodere la media. Aggiunto clamp 0-100 (valori non finiti → 0) in 3 punti indipendenti, difesa in profondità: applicazione override (riga ~640), `mergeCantieriProgress()` (calcolo da metri scavati/totali), e come rete di sicurezza finale nel calcolo di `avgPct` stesso. Rinominata l'etichetta in "Avanzamento complessivo" (richiesto dall'utente, "fasi" era ambiguo).
+  2. **"Inizio scavi" mostrava una data (17/04/2026) quando nessun cantiere era realmente partito**: stesso bug già corretto in `scavi.html` rev.199-200 — `mergeCantieriProgress()` usava `data_inizio_prevista`/`data_fine_prevista` (seed/import, possono essere valorizzate prima di qualunque lavoro reale) come fallback quando mancava l'effettiva, senza verificare se il cantiere avesse mai avuto un aggiornamento reale. Ora gated su `log_count > 0` (stesso campo aggiunto in rev.200 a `GET /api/cantieri`/`GET /api/imprese/cantieri`): le date "previste" da seed non confermate non vengono più usate per spostare le barre del Gantt.
+  3. **Bug non segnalato, trovato lavorandoci**: il marcatore verticale "Oggi" nel timeline e il calcolo "Scadenze superate" usavano `new Date(2026,6,7)`/`'07/07/2026'` **hardcoded** invece della data reale — probabilmente un residuo di test mai rimosso. Ora entrambi usano `new Date()`.
+  4. **Nuovo pulsante "Esporta Excel"** in toolbar: `exportGanttExcel()` genera un `.xlsx` (SheetJS via CDN, `cdn.sheetjs.com`) con l'intera gerarchia `GANTT_ROWS` (Nome attività indentato/Livello/Inizio/Fine/Durata gg/% Completamento), pensato per essere copiato e incollato nella tabella Gantt di MS Project. Nome file dinamico `Gantt_Lotto{LOTTO_ID}_{data}.xlsx`.
+
+> ⚠️ **Collisione di numerazione (rev.209–213)**: i 5 blocchi che seguono (su `mappa_impresa_caricamento.html`/`imprese.html`, datati 2026-08-08) riusano per errore gli stessi numeri già assegnati sopra a un'altra sessione su `gantt.html`/`server.py` (datata 2026-07-23/08-05/08-06). Contenuti diversi, nessuna sovrapposizione — usare la **data** per disambiguare, non il numero. Non rinumerato per non falsificare la cronologia reale.
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 213)_
+
+- **rev.213** — `mappa_impresa_caricamento.html`: rimosso il toggle "Aggiorna tutte insieme" (checkbox `prSibToggle`, deselezionabile) — l'impresa poteva ancora aggiornare una sola tratta lasciando indietro le altre della stessa pratica, comportamento diverso da `imprese.html` dove l'aggiornamento sibling è sempre forzato. Allineato 1:1: pannello `#prSiblings` ora solo informativo ("Verranno aggiornate insieme: ...", stesso testo di `imprese.html`), nessuna checkbox; `prAddToQueue` applica sempre `_prFinalizeAdd(fields, PR_SIBLINGS.length > 0)` senza rami `wantsSingleOnly`/conferme popup; rimossa la logica collaterale che disattivava il toggle quando si spuntava "Nulla Osta Necessario" (non esiste in `imprese.html`, dove il campo si applica comunque a tutte le tratte della pratica). `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 212)_
+
+- **rev.212** — `mappa_impresa_caricamento.html`: segnalato dall'utente da screenshot — il campo Note nel form di aggiornamento mostrava ancora "Note opzionali" mentre in `imprese.html` è obbligatoria su ogni aggiornamento. Allineato: label ora "Note *" (asterisco rosso), placeholder in `prSelectRow()` cambiato in "Obbligatoria: descrivi cosa è cambiato in questo aggiornamento", e nuovo guard in `prAddToQueue` che blocca il salvataggio con "Inserisci una nota: è obbligatoria per ogni aggiornamento" se il campo è vuoto — stessa validazione di `imprese.html`. `node --check` OK. Note aperte per l'utente: restano da allineare l'aggiornamento sibling forzato (qui ancora toggle opzionale) e i 2 filtri rapidi (previsione scaduta / update oltre 5gg), già segnalati come mancanti in rev.211.
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 211)_
+
+- **rev.211** — `mappa_impresa_caricamento.html`, `renderPrList()`: segnalato dall'utente da screenshot — a differenza di `imprese.html` (accorpamento per pratica già presente), qui ogni tratta compariva come card separata anche quando condivideva lo stesso codice pratica (es. 7 card `AUT/1/1A` invece di 1). Portata la stessa logica di raggruppamento di `renderPratiche()` in `imprese.html`: le tratte deduplicate vengono raggruppate per `_codice`/`prBuildCodice()` in una `pratMap`, sommando `_lunghezzaTot` e contando `_nTratte`; la card mostra "N tratte" invece del singolo `TRATTA_ID` quando N>1, più una riga con la lunghezza totale formattata (nuovo helper `prFormatLunghezza()`). Tratte senza pratica associata restano card singole, stesso comportamento di `imprese.html`. `prSelectRow()` non toccata: già ricalcola i siblings da `PR_PRATICHE` grezzo indipendentemente dal raggruppamento in vista. `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 210)_
+
+- **rev.210** — `mappa_impresa_caricamento.html`: portata la feature "Registro note" di rev.209 anche qui (pannello pratiche aggiorna/nuova, form parallelo a `imprese.html` con prefisso `pr-`). Bottone "Registro note" (stesso stile `--retelit-teal`) accanto al label "Note" nel form di aggiornamento pratica, pannello `#prNoteHistPanel` con lo storico note via `GET /api/imprese/pratiche/note-history` (già esposto da rev.209, nessuna modifica backend necessaria). Nuovi helper JS `prLottoFromSource()`/`_prNoteAuthorChip()`, analoghi a quelli di `imprese.html` ma con naming `pr*` per non collidere con lo scope globale della pagina; pannello si resetta (`display:none`) a ogni nuova selezione pratica in `prSelectRow()`. `node --check` OK.
+
+- **rev.209** — `imprese.html`+`server.py`: nuovo bottone "Registro note" accanto al campo Note nel form di aggiornamento pratica — apre un pannello con lo storico completo delle note passate della pratica (data + testo + chip Retelit/Impresa), stesso identico dato di `_pratica_note_history_core()`. Backend: logica di `/api/admin/pratiche/note-history` estratta in helper condiviso `_pratica_note_history_core(df, ente, tipo_permesso, pratica, lotto)`; nuovo endpoint scoped per Area Impresa `GET /api/imprese/pratiche/note-history` (`_require_session`, sola lettura, 403 se il `lotto` richiesto non è tra quelli assegnati all'impresa — stesso pattern di scoping di `/api/imprese/pratiche`/`/api/imprese/master-sed`). Frontend: nuovo helper `lottoFromSource()` in `imprese.html` allineato 1:1 a `_lotto_from_source()` server-side, per garantire che il parametro `lotto` combaci sempre. Bottone spostato a sinistra vicino al titolo "Note", colore `--retelit-teal` con icona, per maggiore visibilità (richiesta utente da screenshot). `py_compile`/`node --check` OK.
+
+- **rev.205** — `polizze_convenzioni.html`: rev.204 (chip inline) ancora "poco chiara" secondo l'utente. Proposte 2 alternative via mockup (Visualizer), scelta l'opzione B: numero+etichetta tornano in alto (`.kpi-top`, come rev.201), il breakdown per stato sotto è ora una **barra segmentata** (`.kpi-bar`, un `<div>` per stato larghezza proporzionale al conteggio, colore da `STATI_COLORS[stato].color`) con una riga di legenda testuale sotto (`.kpi-legend`, es. "6 INVIATA · 2 EMESSA · 1 RICHIESTA RDS"). `renderKpiBreakdown()` riscritta di conseguenza. `node --check` OK.
+
+_Ultimo aggiornamento: 2026-07-22 (rev. 204)_
+
+- **rev.204** — `polizze_convenzioni.html`: segnalato dall'utente da screenshot — card KPI (rev.201) troppo grandi, spazio sprecato (numero e label su una riga con `justify-content:space-between` che li spingeva agli estremi, chip breakdown su riga separata sotto). Card ora a riga singola: numero+etichetta compatti a sinistra (`.kpi-num`, non più `.kpi-top`), chip breakdown affiancati sulla stessa riga (wrap se lo spazio non basta) invece che sotto. Padding 10px 14px→8px 12px, valore 20px→16px, chip 10px→9.5px con padding ridotto. `node --check` OK.
+
+
+- **rev.203** — `server.py`, `GET /api/admin/polizze-convenzioni/data-richiesta`: segnalato dall'utente — Data Richiesta e Data Emissione risultavano **tutte non popolate**. Trovato e corretto un bug reale di robustezza: `delete_many({"_id": {"$nin": list(seen_keys)}})` girava anche quando `seen_keys` era vuoto (es. `CONVENZIONE`/`POLIZZA` non trovate nel Master in quel momento) — con `seen_keys` vuoto, `$nin: []` fa match su **tutti** i documenti e azzera l'intera collection `pol_conv_dates_col`, comprese le date già raccolte. Ora la funzione esce prima (senza toccare la collection) se nessuna delle 2 colonne è nel Master, e il `delete_many` viene saltato se `seen_keys` è vuoto per qualunque altro motivo. **Nota per l'utente**, causa più probabile del problema riportato: 1) Data Emissione era assente perché il `server.py` in uso non aveva ancora il fix rev.202 (mancava `"EMESSA": "data_emissione"` in `STATO_DATE_FIELD` e il campo nella response) — risolto qui. 2) Queste date si popolano solo **da ora in poi**, al momento in cui una pratica passa di stato tramite il pulsante "Salva" in questa pagina — non possono essere ricostruite retroattivamente per pratiche già `EMESSA`/`INVIATA` prima che la feature esistesse (nessuno storico da cui recuperarle). 3) Data Richiesta dipende dalla colonna `DATA_ULTIMA_MODIFICA` di Master.csv: se è vuota per quelle righe (es. righe caricate/importate senza passare da un update tracciato), resta vuota — nessun fix di codice può inventare quella data, va verificato/valorizzato a monte nel CSV se serve.
+- **rev.202** — `polizze_convenzioni.html` + `server.py`: aggiunta 4ª colonna data "Data Emissione", stesso pattern di rev.197/198 — si fissa (una sola volta) al primo salvataggio con stato `EMESSA`. Backend: `STATO_DATE_FIELD` esteso con `"EMESSA": "data_emissione"`; `GET .../data-richiesta` risponde ora `{date, date_invio, date_richiesta_rds, date_emissione}`. Frontend: entrambe le tabelle (Convenzioni e Polizze) a 9 colonne (Pratica/Lotto/Ente/Stato permesso/Convenzione o Polizza/Data Richiesta/Data Richiesta RDS/Data Invio/Data Emissione), colspan aggiornati ovunque.
+- **rev.201** — `polizze_convenzioni.html`: revisione layout su richiesta utente (screenshot) — non voleva le due tabelle affiancate. `.split` da grid 2 colonne a flex verticale (Convenzioni sopra, Polizze sotto, entrambe piena larghezza) per lasciare spazio a più colonne in futuro. Rimosso il sub-panel `.dates-panel` introdotto in rev.197/198: le 3 colonne data (Data Richiesta / Data Richiesta RDS / Data Invio) tornano in riga nella tabella principale, ora su **entrambe** le tabelle (Convenzioni prima ne aveva solo 1, Polizze le aveva nel sub-panel). Nessuna modifica backend necessaria per questa parte: `STATO_DATE_FIELD`/`get_pol_conv_date_richiesta` erano già generici per campo, bastava leggere `DATE_INVIO_MAP`/`DATE_RDS_MAP` anche lato Convenzioni in `parseAndRender()`. KPI in alto ridisegnate: card più piccole (val 28px→20px) con breakdown per stato sotto il numero (`countByStato()`+`renderKpiBreakdown()`, chip colorati riusando `STATI_COLORS`). Confermato con mockup (Visualizer) prima di implementare. ⚠️ Nota di processo: numerati 201-203 anziché 199-200 (già usati in questa sessione dall'utente per `scavi.html`) per evitare collisione — nessun lavoro duplicato, confermato via diff. `py_compile`/`node --check` OK.
+
+_Ultimo aggiornamento: 2026-07-21 (rev. 200)_
+
+- **rev.200** — fix rev.199: la colonna "Date" di `scavi.html` mostrava "in ritardo"/date anche per cantieri **mai toccati dall'impresa**, perché `data_inizio_prevista` può già essere valorizzata dal seed/import (`cantieri.csv`) prima di qualunque caricamento reale. `server.py`: `GET /api/cantieri` e `GET /api/imprese/cantieri` ora restituiscono `log_count` (lunghezza dell'array `log`, senza esporne il contenuto) invece di limitarsi a fare `pop("log")`. `scavi.html`: `_scavoDateCell()`/`_scavoDatePlain()` mostrano "nessuna data" se `log_count` è 0/assente, ignorando eventuali date di seed non confermate da un aggiornamento impresa; il pannello riepilogo date nel modal Registro (rev.199) ora appare solo se `log.length > 0`.
+
+
+_Ultimo aggiornamento: 2026-07-21 (rev. 199)_
+
+- **rev.199** — `scavi.html`: le 5 date cantiere (`data_inizio_prevista/effettiva`, `data_fine_prevista/effettiva`, `data_ripresa_stimata`) erano salvate da `imprese_scavi.html`/`admin.html` ma **mai mostrate** nella vista staff — nuova colonna "Date" in tabella "Tutti i Cantieri" (`CANTIERI_COLS`+render riga, colspan 13→14) e nei modal Stato/Cluster (`_cantieriTableHtml`): mostra la data più rilevante per lo stato corrente (inizio previsto/effettivo, fine effettiva, ripresa se sospeso) con scostamento gg vs previsto colorato (`--ok`/`--err`) e tooltip con tutte le date. Helper `_scavoDateCell()`/`_scavoDatePlain()`. Modal "Registro" (`openModalRegistro`): aggiunto pannello riepilogo date pianificate/effettive sopra il log eventi (prima mostrava solo la data dell'ultimo aggiornamento, non le date di pianificazione). Nessuna modifica backend: i dati esistevano già in Mongo, mancava solo la visualizzazione. TODO aperto (prossimo giro, da decidere con l'utente): rendere le date più obbligatorie/visibili lato `imprese_scavi.html` e calcolare scostamenti/ritardi aggregati a livello lotto/cluster.
+
+- **rev.198** — `polizze_convenzioni.html` + `server.py`: tabella Polizze, tracciata anche "Data Richiesta RDS" (stato `RICHIESTA RDS`), oltre a Data Richiesta/Data Invio (rev.197). Le 3 date spostate fuori dalla tabella principale in un sub-panel sotto (`.dates-panel`, `buildDatesRows()`), per fare spazio — tabella Polizze torna a 5 colonne. Backend: `STATO_DATE_FIELD = {"INVIATA": "data_invio", "RICHIESTA RDS": "data_richiesta_rds"}` in `update_polizza_convenzione`, fissate una sola volta (non sovrascritte da transizioni successive). `GET .../data-richiesta` → `{date, date_invio, date_richiesta_rds}`. Tabella Convenzioni non toccata.
+- **rev.197** — stessi file: aggiunta "Data Invio", popolata al primo salvataggio con stato `INVIATA`. Fix bug collaterale: il vecchio `$setOnInsert` su `data_richiesta` non valorizzava documenti Mongo già esistenti — sostituito con `find_one`+insert/update esplicito.
+- **rev.196/195/194/193** (`admin.html` tab Cantieri, `imprese_scavi.html`) — allineamento visivo cantieri a `scavi.html`: chip stato colorati + barra avanzamento metri nella tabella elenco, select stato colorato nel pannello edit; bottone "Storico" spostato direttamente in ogni card; fix nowrap colonne Codice/Pratica; aggiunto campo mancante "Data inizio prevista" e **fix bug**: le 3 date cantiere sono salvate in Mongo in ISO (`aaaa-mm-gg`), non `gg/mm/aaaa` come Master.csv — il pannello applicava comunque la conversione dd/mm/yyyy e le mostrava sempre vuote; ora lette/scritte native.
+- **rev.192** — audit di conferma (nessun nuovo lavoro): confermato che 4 fix di sicurezza (proxy Google Apps Script → backend Mongo, auth su `data-richiesta`, header sessione, sync cantieri non bloccante) erano già presenti nel repo corrente rispetto a uno snapshot precedente ricaricato per errore dall'utente.
+- **rev.191** — `mappa.html`+`mappa_impresa_caricamento.html`: fix arrotondamento "Metri scavati" (decimali float infiniti). `hub.html`+`ai_alerts.html`: pagina Alert Predittivi nascosta per ruolo `dl` (solo redirect client-side, non gated server-side — gap noto).
+- **rev.190** — **fix strutturale** `js/api-config.js`: il wrapper `window.fetch` inietta ora automaticamente `x-session-token` su ogni chiamata `API_BASE`-prefixed priva di header esplicito, per chiudere la classe di bug "fetch senza token → 401 silenzioso" ricorsa più volte (rev.129/130/135/136/149). Corretto anche 1 caso reale residuo in `scavi.html`.
+- **rev.189** — nuovo ruolo `dl` (Direzione Lavori): vede tutto come `user` tranne Milestone. Gating reso reale **lato server** (non solo redirect client-side): dati Milestone spostati in `server.py` dietro `GET /api/milestone` + nuova dependency `_require_milestone_session` (403 se `ruolo=='dl'`), ruolo letto dal token HMAC firmato.
+- **rev.188** — `server.py`+`index.html`+`admin.html`: le note su una pratica ora taggate `[RETELIT]`/`[IMPRESA]` in Master.csv (`_tag_note()`), mostrate come chip colorato invece di testo indistinguibile.
+
+_Ultimo aggiornamento: 2026-07-13 (rev. 187)_
+
+- **rev.187/186** — `gantt.html`: **bug reale in `mergeMasterCsv()`** (regressione rev.180) — quando l'ultimo stato Master.csv di una pratica è `NO COMPETENZA`, la funzione usciva prima di valutare la riga Progettazione anche se la pratica era realmente avanzata prima di chiudersi così. Fix: nuova mappa `everAdvanced[pratica|ente]` costruita su **tutto** lo storico, non solo l'ultima riga. Nota collegata: una stessa pratica può avere più segmenti fisici distinti nel Gantt (stesso `_pratica`+`_ente`) — il fix di aggiornamento va applicato con `filter().forEach()`, non `find()` (si fermava al primo segmento). Aggiunta anche barra di riepilogo (rollup stile MS Project) sui gruppi collassati.
+- **rev.185** — `gantt.html`: **bug reale** — da rev.182 Opere Civili è ricalcolata a metri/giorno ma Test/As Built restavano ancorate alle vecchie date fisse del `.mpp`, aprendo gap di settimane per pratiche piccole. Fix: `cascadeOpereCiviliDurations()` trasla i successori dello scostamento reale rispetto alla baseline `.mpp` (`_mppBaseEnd`). Refactor collegato: le cascate da spostamento-permesso e da ricalcolo-durata si sovrascrivevano a vicenda invece di sommarsi — ora accumulano in `_deltaPermesso`+`_deltaKm` separati e sommati prima di applicarli.
+- **rev.184** — `server.py`+`gantt.html`: tasso di scavo (100 m/g) reso configurabile da UI, con priorità PERMESSO > IMPRESA > LOTTO > DEFAULT. Nuova collection `gantt_rates_col` (scope libero `"lotto:X"`/`"impresa:X"`/`"pratica:X"`/`"global"`), endpoint `GET/PUT/DELETE /api/gantt/rates/{scope}`. Race condition trovata e corretta: la risoluzione tassi deve completare **prima** di `mergeCantieriProgress()` (dati scavi reali devono sempre vincere sulla stima).
+- **rev.183/182/181/180** — `gantt.html`, evoluzione calcolo Opere Civili/Progettazione: durata Opere Civili da km reali invece di baseline uniforme `.mpp` (`ceil(km*1000/100m)`, minimo 1gg), poi corretta a soli giorni lavorativi lun-ven (`addWorkDaysDmy`); % Progettazione dedotta da `STATO_PERMESSO` (IN ATTESA/IN REDAZIONE→0%, oltre→100%) e aggregata **in km** (non a conteggio pratiche), coerente con le altre metriche km-weighted della dashboard.
+- **rev.179/178/177** — `gantt.html`: **riscrittura strutturale** da gerarchia piatta a Lotto→Comune→Pratica→5 Fasi (`GANTT_ROWS` 137→192 righe, metadati `_ente`/`_pratica`/`_comune` diretti invece di regex sulla label); nuova `propagateGanttDatesFromPermits()` (propaga in cascata via `GANTT_DEPS`/BFS lo scostamento quando un permesso slitta, senza toccare righe con dato scavi reale o override admin); fix bug KPI "Permessi ottenuti" che contava anche le milestone Materiali.
+
+_Ultimo aggiornamento: 2026-07-07 (rev. 154–176)_ — `gantt.html`: dipendenze reali tra fasi estratte dal `.mpp` (`GANTT_DEPS`, connettori SVG, popover sola-lettura); modalità "modifica" (admin) con popover edit + persistenza override su Mongo (`gantt_overrides_col`, `_require_admin_session`); collassa/espandi per fase/pratica; KPI e tooltip milestone raffinati. `hub.html`: riposizionamento card Gantt/Milestone/Alert Predittivi/Pannello Gestione (3 iterazioni di layout). `imprese.html`: tabella Solleciti/Aggiorna pratiche — colonna "Data ottenimento" morta sostituita da "Data ultimo sollecito"; submit di sola nota permesso senza obbligo di cambiare stato. `server.py`: fix `DATA_UPDATE` mai aggiornato sui solleciti (mask troppo stretta, matchava anche su `pratica`/`tipo_permesso` invece che solo `TRATTA_ID`) + endpoint one-off di backfill.
+
+_Ultimo aggiornamento: 2026-07-06/07 (rev. 129–148) — hardening sicurezza + isolamento dati impresa_
+
+Sessione dedicata, in vista del go-live delle credenziali impresa. Falle trovate e chiuse in sequenza:
+- **rev.129/130**: molti endpoint staff erano protetti solo da token valido, non da ruolo — un account `impresa` poteva chiamarli direttamente bypassando l'hub. Nuova dependency `_require_staff_session` (403 su ruolo impresa) su 6 endpoint (`lotti-cantieri`, `sopralluoghi`×3, `cantieri`, `cantieri/{key}/log`).
+- **rev.135**: `/api/data*`, `/api/files`, `/api/preview`, `/api/uploads` erano **senza alcuna autenticazione** — chiunque poteva scaricare Master.csv/QGIS/Riepilogo dal backend. Gated con `_require_session`/`_require_staff_session`.
+- **rev.139**: gap residuo di rev.135 — `_require_session` validava solo il token, non il ruolo: un token impresa poteva comunque scaricare i file interi (Master/QGIS/SED/Riepilogo di **tutti** i lotti). Fix: `SENSITIVE_FILES` + `_guard_sensitive_read()` (403 su ruolo impresa) + nuovo endpoint scoped `GET /api/imprese/master-sed` che filtra server-side sui lotti assegnati; questi 4 file non vengono più pubblicati sul repo pubblico GitHub (restano solo su GridFS). TODO operativo aperto: la storia git pubblica resta scaricabile finché non si fa un purge (git filter-repo/BFG) o si rende il repo privato.
+- **rev.138/140**: 2 bug di isolamento dati cross-impresa — `get_solleciti` filtrava il lotto per substring invece di match esatto (un'impresa vedeva solleciti di lotti simili ma non suoi); `GET /api/imprese/cantieri/{key}/log` non verificava ownership sul lotto (leggibile lo storico di cantieri di altre imprese).
+- **rev.131/132**: guardia auth client-side aggiunta a `admin.html`/`milestone.html` (redirect `hub.html` se ruolo non consentito) — resta bypassabile forzando `localStorage`, la vera barriera per le scritture resta `UPLOAD_TOKEN`/i controlli server sopra.
+- **rev.133/134**: audit log azioni admin (`admin_actions_col`, `_log_admin_action`); fix `delete_upload` che rigenerava/pushava file ridondantemente anche cancellando versioni non correnti.
+- **rev.136/137**: verifica TODO + audit pre-produzione sulle 3 pagine impresa (nessun bug bloccante residuo).
+
+Nello stesso arco: rimozione pagina ridondante `mappa_impresa.html` (rev.126-128, superata da `mappa_impresa_caricamento.html`); `imprese.html`/`mappa_impresa_caricamento.html` — stato `NO COMPETENZA`/`OTTENUTO` nasconde campi Nulla Osta/Polizza/Convenzione non pertinenti, select→checkbox per quei 3 campi, rimosso campo "Ordinanza necessaria", fix bug di scope (`_openHelp`/`_retryBoot` non esposte su `window`, `onclick` falliva) (rev.113-125).
+
+---
+
+_Storico rev.65–rev.113 compattato_ (dettagli completi nei backup di sessione, non riportati qui):
+- **`scavi.html`** (rev.65,77-91,96,101-110): iterazioni stile/larghezze colonne tabella cantieri, raggruppamento imprese per cluster/lotto, modal Cluster/Lotto, pulizia CSS morto.
+- **`index.html`** (rev.65-75,97-100): fix header/popup Note (bug dati mancanti, note multiple, rimozione solleciti dal popup — riapre TODO 11.4), colonna Impresa nei modal, rimozione colonna "Prev. Rilascio", icone sort SVG.
+- **`imprese.html`** (rev.111-123): tasto guida "?" (bug scope IIFE), NO COMPETENZA nasconde campi non pertinenti, select→checkbox, rimozione campo Ordinanza.
+- **`mappa_impresa_caricamento.html`** (rev.78-80,122): export GeoJSON con esclusione campi gestionali, allineamento form a `imprese.html`.
+
+_Storico rev.10–rev.64 archiviato in `AGENT_BRIEF_ARCHIVE.md`_:
+- Rename `COORDINAMENTO`→`INVIO PRELIMINARE` (rev.34-43); eliminata previsione calcolata, sostituita da campo compilato dall'impresa (rev.44-48); corruzione ricorrente `Master.csv` diagnosticata/riparata più volte (rev.50,63-64 — v. §8.40); iterazioni barra % nei modal lotto/cluster (rev.49,51-59); colonna `DATA_UPDATE` (rev.60-62); fix storici `scavi.html` — sort/filtro, donut KPI, rebranding, keepalive Render, guardia bfcache (rev.10-33, ha scoperto il gap auth chiuso poi in rev.131/132).
+
+_Note di compattazione: rev.65-113 compattato 2026-07-06 (rev.10-64 già archiviato in precedenza). rev.114-187 compattato 2026-07-21 con lo stesso criterio (dettagli originali recuperabili dai backup di sessione se serve un audit puntuale). Restano inline solo rev.188-198 (più recenti/actionable)._
+
+- **rev.239** — nuova pagina `stato_lotti.html` (link in `hub.html`, visibile solo ruoli `admin`/`admin2`, stesso pattern/badge "Riservato" di `ganttCard`). Aggrega per lotto: % km progettazione OTTENUTO (da `Riepilogo_progettazione.csv`) e % metri scavati (da `GET /api/cantieri`), confrontati con le date target `invio/ottenim/p50/p90/p100` di `/api/milestone` → flag ok/warn/err per progettazione e per scavi separatamente + risk badge complessivo (il peggiore dei due). Card cliccabile apre modal con elenco pratiche non ottenute, cantieri sospesi e cantieri con scadenza superata per quel lotto. Riusa la cautela `log_count` di rev.200 (non segnala ritardo "inizio previsto" su cantieri mai aggiornati dall'impresa — data seed non confermata). **Nota**: la cartella `pm/` (DASHBOARD_PM.html, allocazione.html, integrazioni.html, panoramica_portfolio/progetti.html) è un template "Nexus Dashboard" scollegato da brand/dati ENRI, non integrato in questa pagina né altrove — lasciata invariata su richiesta esplicita dell'utente, da valutare in seguito (rimozione o riuso).
