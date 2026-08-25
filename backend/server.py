@@ -520,6 +520,11 @@ async def upload_file(
     out_name = target.strip() or (file.filename or "uploaded")
     out_bytes = raw
 
+    # Safety net: anche se il client non passa convert_to_csv=false, il file
+    # parametri (multi-foglio) non va MAI appiattito in CSV a un solo foglio.
+    if out_name == PARAMETRI_FILENAME:
+        convert_to_csv = False
+
     if ext in {".xlsx", ".xls"} and convert_to_csv:
         try:
             df = pd.read_excel(io.BytesIO(raw))
@@ -895,6 +900,252 @@ async def logs_put(payload: dict, sess: dict = Depends(_require_session)):
         upsert=True,
     )
     return {"ok": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Parametri di configurazione (rischio ROS, squadre, capacità, azioni) — rev.??
+# Fonte unica: xlsx caricato da admin.html tramite /api/upload (stesso
+# meccanismo GridFS di Master.csv). Il parsing avviene qui, server-side:
+# il frontend (stato_lotti.html) consuma solo /api/parametri (JSON), mai
+# l'xlsx direttamente — nessuna soglia/peso/produttività è hardcoded in JS.
+# ─────────────────────────────────────────────────────────────────────────────
+PARAMETRI_FILENAME = "Parametri_configurazione_dashboard_ENRI.xlsx"
+
+
+def _pf(row: dict, key: str, default=None):
+    v = row.get(key)
+    return default if v is None else v
+
+
+def _pf_bool_si(row: dict, key: str) -> bool:
+    v = row.get(key)
+    return str(v).strip().lower() == "sì" or str(v).strip().lower() == "si"
+
+
+def _find_header_row(ws, anchor_text: str, max_scan: int = 20) -> int | None:
+    """Cerca nella colonna A, entro le prime `max_scan` righe, la cella che
+    contiene esattamente `anchor_text` e ne restituisce l'indice (1-based).
+    Usato invece di numeri di riga fissi così lo sheet resta parsabile anche
+    se il PM inserisce/rimuove righe di intestazione o note sopra la tabella."""
+    for i in range(1, max_scan + 1):
+        v = ws.cell(row=i, column=1).value
+        if v is not None and str(v).strip() == anchor_text:
+            return i
+    return None
+
+
+def _sheet_table(ws, anchor_text: str, max_scan: int = 20) -> list[dict]:
+    """Legge la tabella che inizia con l'header trovato da `_find_header_row`.
+    Ferma la lettura alla prima riga completamente vuota. Le chiavi del dict
+    sono le intestazioni originali (testo colonna A..N), non rinominate qui —
+    la rinomina in snake_case avviene nel parser specifico di ogni sezione."""
+    hdr_row = _find_header_row(ws, anchor_text, max_scan)
+    if hdr_row is None:
+        return []
+    headers = [c.value for c in ws[hdr_row]]
+    rows = []
+    r = hdr_row + 1
+    while True:
+        cells = [ws.cell(row=r, column=ci + 1).value for ci in range(len(headers))]
+        if all(c is None for c in cells):
+            break
+        row = {}
+        for h, v in zip(headers, cells):
+            if h is not None:
+                row[str(h).strip()] = v
+        rows.append(row)
+        r += 1
+        if r > hdr_row + 500:  # safety stop
+            break
+    return rows
+
+
+def _parse_parametri_xlsx(raw: bytes) -> dict:
+    import openpyxl
+    wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
+
+    out: dict = {}
+
+    # ── Parametri globali ──
+    globali = {}
+    for row in _sheet_table(wb["Parametri globali"], "Codice"):
+        codice = row.get("Codice")
+        if not codice:
+            continue
+        globali[str(codice).strip()] = {
+            "ambito": row.get("Ambito"),
+            "parametro": row.get("Parametro"),
+            "valore": row.get("Valore"),
+            "unita": row.get("Unità"),
+            "tipo_dato": row.get("Tipo dato"),
+            "modificabile": _pf_bool_si(row, "Modificabile"),
+            "descrizione": row.get("Descrizione / regola"),
+        }
+    out["globali"] = globali
+
+    # ── Regole squadre per stato cantiere ──
+    regole_squadre = {}
+    for row in _sheet_table(wb["Regole squadre cantiere"], "Stato cantiere"):
+        stato = row.get("Stato cantiere")
+        if not stato:
+            continue
+        regole_squadre[str(stato).strip()] = {
+            "squadre_standard": row.get("Squadre standard"),
+            "operativo": _pf_bool_si(row, "Conta come operativo"),
+            "modificabile": _pf_bool_si(row, "Modificabile"),
+            "regola": row.get("Regola"),
+            "note": row.get("Note"),
+        }
+    out["regole_squadre_cantiere"] = regole_squadre
+
+    # ── Eccezioni squadre per singolo cantiere ──
+    eccezioni = []
+    for row in _sheet_table(wb["Eccezioni per cantiere"], "Codice cantiere"):
+        if not row.get("Codice cantiere"):
+            continue
+        eccezioni.append({
+            "codice_cantiere": row.get("Codice cantiere"),
+            "lotto": row.get("Lotto"),
+            "impresa": row.get("Impresa"),
+            "stato_cantiere": row.get("Stato cantiere"),
+            "squadre_standard": row.get("Squadre standard"),
+            "squadre_override": row.get("Squadre override"),
+            "squadre_effettive": row.get("Squadre effettive"),
+            "data_validita": row.get("Data validità"),
+            "motivazione": row.get("Motivazione"),
+        })
+    out["eccezioni_cantiere"] = eccezioni
+
+    # ── Tempi autorizzativi ──
+    tempi = {}
+    for row in _sheet_table(wb["Tempi autorizzativi"], "Codice"):
+        codice = row.get("Codice")
+        if not codice:
+            continue
+        tempi[str(codice).strip()] = {
+            "tipologia": row.get("Tipologia ente / pratica"),
+            "giorni_attesi": row.get("Giorni attesi"),
+            "soglia_attenzione": row.get("Soglia attenzione"),
+            "soglia_critica": row.get("Soglia critica"),
+            "unita": row.get("Unità"),
+            "peso_milestone_30gg": row.get("Peso se milestone ≤30gg"),
+            "modificabile": _pf_bool_si(row, "Modificabile"),
+            "note": row.get("Note"),
+        }
+    out["tempi_autorizzativi"] = tempi
+
+    # ── Rischio ROS: fattori (pesi) + classi ──
+    ws_ros = wb["Rischio ROS"]
+    fattori = []
+    for row in _sheet_table(ws_ros, "Codice fattore"):
+        if not row.get("Codice fattore"):
+            continue
+        fattori.append({
+            "codice": row.get("Codice fattore"),
+            "fattore": row.get("Fattore"),
+            "peso": row.get("Peso"),
+            "misura": row.get("Misura utilizzata"),
+            "soglia_attenzione": row.get("Soglia attenzione"),
+            "soglia_critica": row.get("Soglia critica"),
+            "normalizzazione": row.get("Normalizzazione proposta"),
+            "attivo": _pf_bool_si(row, "Attivo"),
+            "note": row.get("Note"),
+        })
+    peso_totale_attivi = round(sum(float(f["peso"] or 0) for f in fattori if f["attivo"]), 6)
+    classi = []
+    for row in _sheet_table(ws_ros, "Classe"):
+        if not row.get("Classe"):
+            continue
+        classi.append({
+            "classe": row.get("Classe"),
+            "punteggio_min": row.get("Punteggio minimo"),
+            "punteggio_max": row.get("Punteggio massimo"),
+            "colore": row.get("Colore"),
+            "descrizione": row.get("Descrizione"),
+            "azione": row.get("Azione dashboard"),
+        })
+    out["rischio_ros"] = {
+        "fattori": fattori,
+        "peso_totale_attivi": peso_totale_attivi,
+        "peso_valido": abs(peso_totale_attivi - 1.0) < 0.001,
+        "classi": classi,
+    }
+
+    # ── Regole azioni ──
+    azioni = []
+    for row in _sheet_table(wb["Regole azioni"], "Priorità"):
+        if row.get("Codice") is None:
+            continue
+        azioni.append({
+            "priorita": row.get("Priorità"),
+            "codice": row.get("Codice"),
+            "condizione": row.get("Condizione oggettiva"),
+            "dato_da_mostrare": row.get("Dato da mostrare"),
+            "azione": row.get("Azione suggerita"),
+            "responsabile": row.get("Responsabile"),
+            "calcolo_quantita": row.get("Calcolo quantità"),
+            "affidabilita_minima": row.get("Affidabilità minima"),
+            "note": row.get("Note"),
+        })
+    azioni.sort(key=lambda a: (a["priorita"] if isinstance(a["priorita"], (int, float)) else 999))
+    out["regole_azioni"] = azioni
+
+    # ── Parametri per lotto (override globali) ──
+    per_lotto = {}
+    for row in _sheet_table(wb["Parametri per lotto"], "Lotto"):
+        lotto = row.get("Lotto")
+        if lotto is None or str(lotto).strip() == "":
+            continue
+        per_lotto[str(lotto).strip()] = {
+            "cluster": row.get("Cluster"),
+            "impresa": row.get("Impresa"),
+            "milestone_contrattuale": row.get("Milestone contrattuale"),
+            "produttivita_standard_squadra": row.get("Produttività standard squadra"),
+            "squadre_lotto_override": row.get("Squadre lotto (override manuale)"),
+            "giorni_lavorativi_settimana": row.get("Giorni lavorativi/settimana"),
+            "efficienza_prevista": row.get("Efficienza prevista"),
+            "produttivita_disponibile": row.get("Produttività disponibile (da squadre effettive)"),
+            "fonte": row.get("Fonte / motivazione"),
+            "data_validita": row.get("Data validità"),
+            "note": row.get("Note"),
+        }
+    out["parametri_lotto"] = per_lotto
+
+    # Nota: lo sheet "Esempio calcolo" è una sandbox del PM per validare le
+    # formule a mano (contiene ipotesi/celle di prova, non parametri) — non
+    # viene esposto da /api/parametri e non è usato dal motore di calcolo.
+
+    return out
+
+
+# Cache in-process: rifà il parsing solo se cambia la versione (gridfs_id/mtime).
+_parametri_cache: dict = {"key": None, "data": None}
+
+
+async def _load_parametri() -> tuple[dict, dict]:
+    """Restituisce (parametri_json, meta). meta include source/uploaded_at
+    per far vedere in dashboard da dove arrivano i numeri."""
+    cur = await _current_upload(PARAMETRI_FILENAME)
+    if cur:
+        cache_key = str(cur.get("gridfs_id"))
+        meta = {"source": "mongo", "filename": PARAMETRI_FILENAME, "uploaded_at": cur.get("uploaded_at")}
+        if _parametri_cache["key"] != cache_key:
+            raw = await _read_gridfs(cur["gridfs_id"])
+            _parametri_cache["key"] = cache_key
+            _parametri_cache["data"] = _parse_parametri_xlsx(raw)
+        return _parametri_cache["data"], meta
+
+    # Fallback: file seed committato nel repo (nessun upload ancora fatto)
+    path = DATA_DIR / PARAMETRI_FILENAME
+    if path.exists() and path.is_file():
+        cache_key = f"disk:{path.stat().st_mtime}"
+        meta = {"source": "disk", "filename": PARAMETRI_FILENAME, "uploaded_at": None}
+        if _parametri_cache["key"] != cache_key:
+            _parametri_cache["key"] = cache_key
+            _parametri_cache["data"] = _parse_parametri_xlsx(path.read_bytes())
+        return _parametri_cache["data"], meta
+
+    raise HTTPException(404, f"Nessun file parametri caricato ({PARAMETRI_FILENAME}) — caricalo da admin.html")
 
 
 MASTER_FILENAME = "Master.csv"
@@ -1477,6 +1728,16 @@ async def get_milestone(sess: dict = Depends(_require_milestone_session)):
     al redirect client-side già presente sulla pagina — qui il controllo è
     reale perché il ruolo viene dal token firmato server-side."""
     return {"imprese": MILESTONE_IMPRESE_ROWS, "contract": MILESTONE_CONTRACT_ROWS}
+
+
+@app.get("/api/parametri")
+async def get_parametri(sess: dict = Depends(_require_staff_session)):
+    """Parametri di configurazione (rischio ROS, squadre, capacità, azioni,
+    tempi autorizzativi) usati da stato_lotti.html. Parsati server-side dallo
+    xlsx caricato via admin.html — nessun valore è hardcoded nel frontend.
+    403 per il ruolo 'impresa' (dato interno di pianificazione, non pratiche)."""
+    data, meta = await _load_parametri()
+    return {**data, "_meta": meta}
 
 
 @app.get("/api/enti")
