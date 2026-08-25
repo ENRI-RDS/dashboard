@@ -1828,7 +1828,7 @@ Object.keys(CLUSTER_PERMESSI).sort((a,b)=>+a-+b).forEach(cl => {
   const gruppi = buildGruppiMapPermessi(statiMap);
   const sc = scaviMap[cl] || { metri: 0, scavati: 0, statoMetri: {}, imprese: new Set() };
   const haScavo = sc.metri > 0;
-  const pctScavo = haScavo ? Math.round(sc.scavati / sc.metri * 100) : 0;
+  const pctScavo = tot > 0 ? Math.round(sc.scavati / tot * 100) : 0;
   // Imprese del cluster: derivate da TUTTI i lotti del cluster via IMPRESE_PER_LOTTO,
   // non solo da r.impresa dei cantieri già censiti (che possono mancare per lotti non ancora avviati)
   const impreseLottiCl = [...cd.lotti].sort(_lottoCompare)
@@ -2288,7 +2288,7 @@ function openModalCluster(cl) {
   const cantieriCl = CANTIERI_RAW.filter(r => String(r.cluster ?? '?').replace(/^[Cc]/,'') === String(cl));
   const totMetriScaviCl = cantieriCl.reduce((s,r) => s + (r.metri_totali || 0), 0);
   const totScavatiCl    = cantieriCl.reduce((s,r) => s + (r.metri_scavati || 0), 0);
-  const pctScaviCl      = totMetriScaviCl > 0 ? (totScavatiCl / totMetriScaviCl * 100).toFixed(1) : '0.0';
+  const pctScaviCl      = totMetri > 0 ? (totScavatiCl / totMetri * 100).toFixed(1) : '0.0';
   const cantieriAttiviCl = cantieriCl.filter(r => (STATO_MAP[r.stato_cantiere] || 'non-avviato') !== 'non-avviato').length;
 
   document.getElementById('modalClusterTitle').innerHTML =
