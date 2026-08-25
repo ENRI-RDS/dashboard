@@ -224,6 +224,7 @@
         <option value="QGIS.geojson">QGIS.geojson</option>
         <option value="QTS.geojson">QTS.geojson</option>
         <option value="SED_classificato.geojson">SED_classificato.geojson</option>
+        <option value="Parametri_configurazione_dashboard_ENRI.xlsx">Parametri_configurazione_dashboard_ENRI.xlsx</option>
       </select>
       <div class="dropzone dropzone-inline" id="dropzone" data-testid="dropzone" style="flex:2 1 280px">
         <div class="filename" id="fileName">Trascina un file o <strong>clicca per selezionare</strong> — .xlsx, .xls, .csv, .geojson, .json, max 25 MB</div>
@@ -1202,6 +1203,10 @@
     fd.append('file', f);
     fd.append('project', 'main');
     fd.append('target', target);
+    // Il file parametri ROS è un xlsx multi-foglio: NON va convertito in CSV
+    // (la conversione automatica tiene solo il primo foglio e distruggerebbe
+    // regole squadre, tempi autorizzativi, pesi rischio ROS ecc.).
+    if(target === 'Parametri_configurazione_dashboard_ENRI.xlsx') fd.append('convert_to_csv', 'false');
     if(token()) fd.append('token', token());
 
     submitBtn.disabled = true; submitBtn.textContent = 'Caricamento…';
