@@ -333,7 +333,8 @@ async function loadAll() {
       prog[lotto].blocchi.push({
         comune: r.COMUNE || '—', tratta: r.TRATTA_ID || '', km, ente,
         tipo: noBlocca ? 'nulla_osta' : 'ordinanza',
-        stato: noBlocca ? statoNO : statoOrd
+        stato: noBlocca ? statoNO : statoOrd,
+        pratica: r.PRATICA || null
       });
     }
   });
@@ -349,7 +350,7 @@ async function loadAll() {
     scavi[lotto].cantieri.push(c);
     const oggiISO = oggi.toISOString().slice(0, 10);
     if (c.stato_cantiere === 'sospeso') {
-      scavi[lotto].sospesi.push({ codice: c.codice_cantiere, motivo: c.motivo_blocco || 'motivo non indicato', ripresa: c.data_ripresa_stimata || null, metriResiduo: (c.metri_totali || 0) - (c.metri_scavati || 0) });
+      scavi[lotto].sospesi.push({ codice: c.codice_cantiere, motivo: c.motivo_blocco || 'motivo non indicato', ripresa: c.data_ripresa_stimata || null, metriResiduo: (c.metri_totali || 0) - (c.metri_scavati || 0), pratica: c.pratica_id || null });
     } else if (!c.log_count) {
       // nessun caricamento impresa: data_inizio_prevista può essere seed non confermata (v. AGENT_BRIEF rev.200) — non segnalare ritardo
     } else if (c.stato_cantiere === 'in_corso' && c.data_fine_prevista && c.data_fine_prevista < oggiISO) {
@@ -783,6 +784,21 @@ function computeCausaOperativa(row, rischio) {
 }
 function capForRow(f) { return f.rapporto === null ? ' (ROS già scaduta)' : ` (squadre necessarie ${(f.rapporto * 100).toFixed(0)}% delle disponibili)`; }
 
+// R_SOSP (effetto: cantiere fermo) e R_BLOCCHI (causa: atto amministrativo
+// pendente) restano fattori distinti per scelta di modello — ma quando lo
+// stesso numero di pratica genera sia la sospensione che il blocco, va
+// dichiarato esplicitamente: non sono due problemi, sono causa+effetto dello
+// stesso procedimento. Match sul campo PRATICA (può contenere più codici
+// separati da "|": es. "AUT/2/2B | NO/6/2B").
+function collegamentiSospesiBlocchi(row) {
+  const blocchi = row.p.blocchi || [];
+  return (row.s.sospesi || []).map(c => {
+    if (!c.pratica) return { ...c, collegamento: null };
+    const match = blocchi.filter(b => b.pratica && String(b.pratica).split('|').map(x => x.trim()).includes(c.pratica));
+    return { ...c, collegamento: match.length ? { tratte: match.map(m => m.tratta), km: match.reduce((s, m) => s + m.km, 0) } : null };
+  });
+}
+
 function renderStato(r) {
   const flag = r.overall === 'none' ? 'ok' : r.overall;
   const label = flag === 'err' ? 'Critico' : flag === 'warn' ? 'Attenzione' : 'In linea';
@@ -922,6 +938,16 @@ function openModal(lotto) {
   if (r.rischio.renormalizzato) {
     const mancanti = Object.values(r.rischio.fattori).filter(f => !f.disponibile);
     html += `<div class="empty-note">Punteggio calcolato sul ${Math.round(r.rischio.pesoAttivoTotale*100)}% del modello (pesi rinormalizzati). Non disponibili: ${mancanti.map(f => `${f.codice} — ${f.motivo}`).join('; ')}.</div>`;
+  }
+
+  const collegamenti = collegamentiSospesiBlocchi(r);
+  if (collegamenti.some(c => c.collegamento)) {
+    html += `<div class="trasp-block"><span class="tb-label">R_SOSP ↔ R_BLOCCHI — causa e conseguenza operativa</span>`;
+    html += collegamenti.map(c => {
+      if (!c.collegamento) return `<div>${c.codice} — sospeso, nessun collegamento con pratiche in R_BLOCCHI (${c.pratica ? 'pratica ' + c.pratica : 'pratica non indicata'}).</div>`;
+      return `<div><b>${c.codice}</b> sospeso (${c.motivo.slice(0, 90)}${c.motivo.length > 90 ? '…' : ''})<br>→ collegato alla pratica <b>${c.pratica}</b>, già conteggiata in R_BLOCCHI sulla tratta ${c.collegamento.tratte.join(', ')} (${fmtNum(c.collegamento.km)} m). Stesso procedimento amministrativo: R_SOSP ne misura l'effetto operativo (cantiere fermo), R_BLOCCHI la causa autorizzativa (nulla osta/ordinanza pendente) — contati entrambi di proposito, non sono due problemi indipendenti.</div>`;
+    }).join('<div style="height:6px"></div>');
+    html += `</div>`;
   }
 
   const nonInviate = r.p.issues.filter(i => ['IN ATTESA', 'IN REDAZIONE', 'INVIO PRELIMINARE'].includes(i.stato));
