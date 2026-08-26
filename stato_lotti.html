@@ -140,6 +140,17 @@ tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);fo
 .risk-badge.risk-warn{background:var(--warn-bg);color:var(--warn);}
 .risk-badge.risk-ok{background:var(--ok-bg);color:var(--ok);}
 .risk-badge.risk-none{background:var(--gray-100);color:var(--muted2);}
+.risk-badge.risk-alto{background:#FDF0E2;color:#C2680C;}
+.risk-badge.risk-medio{background:var(--warn-bg);color:var(--warn);}
+.risk-badge.risk-basso{background:var(--ok-bg);color:var(--ok);}
+.factor-row{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:11.5px;padding:6px 0;border-bottom:1px solid var(--gray-100);}
+.factor-row .fr-name{color:var(--text);font-weight:600;}
+.factor-row .fr-formula{display:block;font-family:var(--font-mono);font-size:9.5px;color:var(--muted2);font-weight:400;margin-top:1px;}
+.factor-row .fr-score{font-family:var(--font-mono);font-weight:700;white-space:nowrap;}
+.factor-row .fr-na{color:var(--muted2);font-style:italic;font-weight:400;}
+.trasp-block{background:var(--gray-50);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:11px;color:var(--text2);line-height:1.5;}
+.trasp-block b{color:var(--text);}
+.trasp-block .tb-label{font-family:var(--font-mono);font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px;display:block;}
 .action-pill{display:inline-block;font-size:10.5px;font-weight:600;padding:5px 11px;border-radius:8px;white-space:normal;max-width:160px;line-height:1.3;}
 .action-pill.ap-progettazione{background:var(--warn-bg);color:var(--warn);}
 .action-pill.ap-enti{background:var(--danger-bg);color:var(--danger);}
@@ -275,34 +286,55 @@ const oggi = new Date();
 
 async function loadAll() {
   const apiBase = _apiBase();
-  const [riepilogoText, cantieriRes, milestoneRes] = await Promise.all([
+  const [riepilogoText, cantieriRes, milestoneRes, parametriRes] = await Promise.all([
     fetch('Riepilogo_progettazione.csv?t=' + Date.now(), { headers: { 'x-session-token': _sessionToken() } }).then(r => r.text()),
     fetch(apiBase + '/api/cantieri', { headers: { 'x-session-token': _sessionToken() } }).then(r => r.json()),
-    fetch(apiBase + '/api/milestone', { headers: { 'x-session-token': _sessionToken() } }).then(r => r.ok ? r.json() : { imprese: [] })
+    fetch(apiBase + '/api/milestone', { headers: { 'x-session-token': _sessionToken() } }).then(r => r.ok ? r.json() : { imprese: [] }),
+    fetch(apiBase + '/api/parametri', { headers: { 'x-session-token': _sessionToken() } }).then(r => r.ok ? r.json() : null)
   ]);
   const riepilogo = parseGenericCSV(riepilogoText);
   const cantieri = cantieriRes.cantieri || [];
   const milestoneByLotto = {};
   (milestoneRes.imprese || []).forEach(m => { milestoneByLotto[m.lotto] = m; });
+  if (!parametriRes) {
+    document.getElementById('loadState').textContent = 'Parametri di configurazione non caricati (admin.html → carica Parametri_configurazione_dashboard_ENRI.xlsx). Il motore rischio ROS/squadre/azioni non può calcolare nulla senza.';
+    return;
+  }
+  PARAMETRI = parametriRes;
 
   // ── aggregazione progettazione (km-weighted, coerente col resto della dashboard) ──
   // breakdown causa ritardo: NON_INVIATO = pratica non ancora protocollata/inviata all'ente
   // (responsabilità interna progettazione); BLOCCATO_ENTE = già inviata, in attesa risposta ente.
   const NON_INVIATO_STATI = ['IN ATTESA', 'IN REDAZIONE', 'INVIO PRELIMINARE'];
   const BLOCCATO_ENTE_STATI = ['INVIATO', 'PROTOCOLLATO', 'PROTOCOLLATO INTEGRAZIONE', 'NECESSARIA INTEGRAZIONE'];
-  const prog = {}; // lotto -> {kmTot, kmOtt, kmNonInviato, kmBloccato, issues:[]}
+  const prog = {}; // lotto -> {kmTot, kmOtt, kmNonInviato, kmBloccato, issues:[], blocchi:[]}
   riepilogo.forEach(r => {
     const lotto = (r.LOTTO || '').trim();
     if (!lotto) return;
     const km = parseFloat((r.LUNGHEZZA || '0').replace(',', '.')) || 0;
     const stato = (r.STATO_AUTORIZZAZIONE || 'IN ATTESA').trim();
-    if (!prog[lotto]) prog[lotto] = { kmTot: 0, kmOtt: 0, kmNonInviato: 0, kmBloccato: 0, issues: [] };
+    const ente = (r.ENTE || '').trim();
+    if (!prog[lotto]) prog[lotto] = { kmTot: 0, kmOtt: 0, kmNonInviato: 0, kmBloccato: 0, issues: [], blocchi: [] };
     prog[lotto].kmTot += km;
     if (stato === 'OTTENUTO') { prog[lotto].kmOtt += km; }
     else {
       if (NON_INVIATO_STATI.includes(stato)) prog[lotto].kmNonInviato += km;
       else if (BLOCCATO_ENTE_STATI.includes(stato)) prog[lotto].kmBloccato += km;
-      prog[lotto].issues.push({ comune: r.COMUNE || '—', tratta: r.TRATTA_ID || '', stato, km });
+      prog[lotto].issues.push({ comune: r.COMUNE || '—', tratta: r.TRATTA_ID || '', stato, km, ente });
+    }
+    // R_BLOCCHI: nulla osta / ordinanza necessari e non ottenuti — indipendente
+    // dallo STATO_AUTORIZZAZIONE (una tratta può avere l'autorizzazione
+    // principale ottenuta e restare comunque bloccata da un nulla osta pendente).
+    const statoNO = (r.STATO_NULLAOSTA || '').trim();
+    const statoOrd = (r.STATO_ORDINANZA || '').trim();
+    const noBlocca = statoNO && !['NON NECESSARIO', 'OTTENUTO'].includes(statoNO);
+    const ordBlocca = statoOrd && !['NON NECESSARIO', 'OTTENUTO'].includes(statoOrd);
+    if (noBlocca || ordBlocca) {
+      prog[lotto].blocchi.push({
+        comune: r.COMUNE || '—', tratta: r.TRATTA_ID || '', km, ente,
+        tipo: noBlocca ? 'nulla_osta' : 'ordinanza',
+        stato: noBlocca ? statoNO : statoOrd
+      });
     }
   });
 
@@ -311,12 +343,13 @@ async function loadAll() {
   cantieri.forEach(c => {
     const lotto = (c.lotto || '').trim();
     if (!lotto) return;
-    if (!scavi[lotto]) scavi[lotto] = { metriTot: 0, metriScavati: 0, sospesi: [], ritardi: [] };
+    if (!scavi[lotto]) scavi[lotto] = { metriTot: 0, metriScavati: 0, sospesi: [], ritardi: [], cantieri: [] };
     scavi[lotto].metriTot += c.metri_totali || 0;
     scavi[lotto].metriScavati += c.metri_scavati || 0;
+    scavi[lotto].cantieri.push(c);
     const oggiISO = oggi.toISOString().slice(0, 10);
     if (c.stato_cantiere === 'sospeso') {
-      scavi[lotto].sospesi.push({ codice: c.codice_cantiere, motivo: c.motivo_blocco || 'motivo non indicato', ripresa: c.data_ripresa_stimata || null });
+      scavi[lotto].sospesi.push({ codice: c.codice_cantiere, motivo: c.motivo_blocco || 'motivo non indicato', ripresa: c.data_ripresa_stimata || null, metriResiduo: (c.metri_totali || 0) - (c.metri_scavati || 0) });
     } else if (!c.log_count) {
       // nessun caricamento impresa: data_inizio_prevista può essere seed non confermata (v. AGENT_BRIEF rev.200) — non segnalare ritardo
     } else if (c.stato_cantiere === 'in_corso' && c.data_fine_prevista && c.data_fine_prevista < oggiISO) {
@@ -422,74 +455,296 @@ function evalMetric(curve, realPct, milestonePoints) {
   return { pct: realPct, plannedToday, gap, delayDays, flag, milestoneRitardo, prossima };
 }
 
-function computeAzione(r) {
-  // Sceglie l'azione correttiva in base alla causa dominante del ritardo,
-  // dando priorità al problema più critico (rango FLAG più alto, poi gg ritardo).
-  const candidates = [];
-  if (r.s.sospesi.length > 0) {
-    candidates.push({ rank: 4, cls: 'ap-sospesi', label: `Sblocco cantieri sospesi (${r.s.sospesi.length})` });
+// ══════════════════════════════════════════════════════════════════════
+// MOTORE PARAMETRICO — rischio ROS, squadre/capacità, azioni, causa
+// Tutte le soglie/pesi/produttività/tempi vengono da PARAMETRI (/api/parametri,
+// parsato server-side dall'xlsx caricato in admin.html). Nessun valore di
+// business è hardcoded qui: se un parametro manca, il fattore/dato che ne
+// dipende è marcato "dato insufficiente", mai un numero inventato.
+// Formule concordate con Andrea Indino, rif. thread "stato lotti" 2026-08-26.
+// ══════════════════════════════════════════════════════════════════════
+
+let PARAMETRI = null;
+
+function interpLin(v, att, crit) {
+  if (v === null || v === undefined || !isFinite(v)) return null;
+  if (crit === att) return v >= crit ? 100 : 0;
+  if (v <= att) return 0;
+  if (v >= crit) return 100;
+  return (v - att) / (crit - att) * 100;
+}
+
+// ggSettimana: 5=Lun-Ven, 6=Lun-Sab, 7=tutti. Indice lun-based: Lun=1..Dom=7.
+function giorniLavorativi(d1, d2, ggSettimana) {
+  if (!d1 || !d2 || d2 <= d1) return 0;
+  let n = 0;
+  let cur = new Date(d1.getFullYear(), d1.getMonth(), d1.getDate());
+  const end = new Date(d2.getFullYear(), d2.getMonth(), d2.getDate());
+  while (cur < end) {
+    cur = new Date(cur.getTime() + 86400000);
+    const idx = cur.getDay() === 0 ? 7 : cur.getDay();
+    if (idx <= ggSettimana) n++;
   }
-  if (r.sFlag.flag !== 'none' && (r.sFlag.delayDays || 0) > 0) {
-    candidates.push({ rank: 3, cls: 'ap-squadre', label: 'Aumento squadre scavo', gg: r.sFlag.delayDays });
-  }
-  if (r.pFlag.flag !== 'none' && (r.pFlag.delayDays || 0) > 0) {
-    if (r.p.kmBloccato >= r.p.kmNonInviato && r.p.kmBloccato > 0) {
-      candidates.push({ rank: 3, cls: 'ap-enti', label: 'Escalation enti (pratiche ferme)', gg: r.pFlag.delayDays });
-    } else if (r.p.kmNonInviato > 0) {
-      candidates.push({ rank: 2, cls: 'ap-progettazione', label: 'Accelerare progettazione', gg: r.pFlag.delayDays });
+  return n;
+}
+
+// Coefficiente urgenza per distanza dalla milestone (R_AUTH, e R_BLOCCHI se ROS scaduta)
+function bracketDistanzaMilestone(giorniResidui) {
+  if (giorniResidui === null || giorniResidui === undefined) return null;
+  if (giorniResidui < 30) return { coef: 2, banda: giorniResidui <= 0 ? 'milestone scaduta' : '<30gg' };
+  if (giorniResidui < 60) return { coef: 1.5, banda: '30-60gg' };
+  if (giorniResidui < 90) return { coef: 1.25, banda: '60-90gg' };
+  return { coef: 1, banda: '>90gg' };
+}
+// Coefficiente urgenza per rapporto giorni_residui/tempo_atteso (R_BLOCCHI)
+function bracketRapportoUrgenza(rapporto) {
+  if (rapporto === null || rapporto === undefined) return null;
+  if (rapporto >= 1.5) return { coef: 1, banda: '≥1,50' };
+  if (rapporto >= 1.0) return { coef: 1.25, banda: '1,00–1,49' };
+  if (rapporto >= 0.5) return { coef: 1.5, banda: '0,50–0,99' };
+  return { coef: 2, banda: '<0,50' };
+}
+
+// Ente (testo libero da Riepilogo_progettazione) → codice "Tempi autorizzativi".
+// Nessuna tabella di mapping esplicita nell'xlsx: match per prefisso/substring
+// sui codici noti, altrimenti AUTH_CONSORZIO (fallback dichiarato, mai silenzioso).
+function lookupTempoEnte(enteRaw, tempi) {
+  const e = (enteRaw || '').toUpperCase();
+  let codice = null;
+  if (e.startsWith('COMUNE')) codice = 'AUTH_COMUNE';
+  else if (e.startsWith('PROVINCIA')) codice = 'AUTH_PROVINCIA';
+  else if (e.includes('ANAS')) codice = 'AUTH_ANAS';
+  else if (e.includes('AIPO')) codice = 'AUTH_AIPO';
+  else if (e.includes('SATAP')) codice = 'AUTH_SATAP';
+  else if (e.includes('VILLORESI')) codice = 'AUTH_VILLORESI';
+  else if (e.includes('RFI')) codice = 'AUTH_RFI';
+  let fallback = false;
+  if (!codice || !tempi[codice]) { codice = 'AUTH_CONSORZIO'; fallback = true; }
+  return { codice, fallback, ...(tempi[codice] || {}) };
+}
+
+function computeSquadre(lotto, cantieriLotto, parametri) {
+  const regole = parametri.regole_squadre_cantiere || {};
+  const eccezioni = {};
+  (parametri.eccezioni_cantiere || []).forEach(e => { if (e.codice_cantiere) eccezioni[e.codice_cantiere] = e; });
+  const dettaglio = cantieriLotto.map(c => {
+    const ecc = eccezioni[c.codice_cantiere];
+    let squadre, fonte;
+    if (ecc && ecc.squadre_override !== null && ecc.squadre_override !== undefined && ecc.squadre_override !== '') {
+      squadre = Number(ecc.squadre_override); fonte = `override cantiere (${ecc.motivazione || 'eccezione in Eccezioni per cantiere'})`;
+    } else {
+      const reg = regole[c.stato_cantiere] || regole['altro'] || { squadre_standard: 0 };
+      squadre = Number(reg.squadre_standard) || 0; fonte = `Regole squadre cantiere → stato "${c.stato_cantiere}"`;
     }
-  }
-  if (!candidates.length) return { cls: 'ap-nessuna', label: 'Nessuna azione — in linea' };
-  candidates.sort((a, b) => b.rank - a.rank || (b.gg || 0) - (a.gg || 0));
-  return candidates[0];
+    return { codice: c.codice_cantiere, stato: c.stato_cantiere, squadre, fonte };
+  });
+  const sommaCantieri = dettaglio.reduce((s, d) => s + d.squadre, 0);
+  const pl = (parametri.parametri_lotto || {})[lotto] || {};
+  const hasOverrideLotto = pl.squadre_lotto_override !== null && pl.squadre_lotto_override !== undefined && pl.squadre_lotto_override !== '';
+  const disponibili = hasOverrideLotto ? Number(pl.squadre_lotto_override) : sommaCantieri;
+  return { disponibili, dettaglio, overrideLotto: hasOverrideLotto ? Number(pl.squadre_lotto_override) : null };
 }
 
-function computeRischioROS(r) {
-  const p100 = r.m ? parseDateIT(r.m.p100) : null;
-  if (!p100) return { flag: 'none', label: 'N/D', sub: 'nessuna data ROS' };
-  const giorniResidui = Math.round((p100 - oggi) / 86400000);
-  const scaviPct = r.s.pFlagPct;
-  if (scaviPct >= 99.5) return { flag: 'ok', label: 'Completato', sub: fmtDateShort(p100) };
-  const delay = r.sFlag.delayDays || 0;
-  if (giorniResidui < 0) return { flag: 'err', label: 'ROS mancata', sub: fmtDateShort(p100) };
-  if (delay <= 0) return { flag: 'ok', label: 'In linea', sub: fmtDateShort(p100) };
-  if (delay < giorniResidui * 0.5) return { flag: 'warn', label: 'Attenzione', sub: fmtDateShort(p100) };
-  return { flag: 'err', label: 'Critico', sub: fmtDateShort(p100) };
+function computeCapacita(lotto, row, parametri) {
+  const pl = (parametri.parametri_lotto || {})[lotto] || {};
+  const glob = parametri.globali || {};
+  const gv = k => (glob[k] ? glob[k].valore : null);
+
+  const prodStd = pl.produttivita_standard_squadra != null ? Number(pl.produttivita_standard_squadra) : Number(gv('SCAVO_PROD_STD'));
+  const efficienza = pl.efficienza_prevista != null ? Number(pl.efficienza_prevista) : 1;
+  const prodEffettiva = prodStd * efficienza;
+  const squadre = computeSquadre(lotto, row.s.cantieri || [], parametri);
+  const metriResiduiScavo = Math.max(0, (row.s.metriTot || 0) - (row.s.metriScavati || 0));
+
+  let milestoneROS = pl.milestone_contrattuale ? parseDateIT(pl.milestone_contrattuale) : null;
+  let fonteMilestone = 'Parametri per lotto → Milestone contrattuale (override)';
+  if (!milestoneROS) {
+    milestoneROS = row.m ? parseDateIT(row.m.p100) : null;
+    fonteMilestone = 'milestone.html → p100 scavi (fallback, nessun override per lotto)';
+  }
+
+  const base = { squadre, metriResiduiScavo, prodStd, efficienza, prodEffettiva };
+  if (!milestoneROS) {
+    return { ...base, insufficiente: true, motivo: 'Nessuna milestone ROS disponibile (né override "Milestone contrattuale" nel foglio Parametri per lotto, né p100 in milestone.html)' };
+  }
+
+  const ggSettimana = pl.giorni_lavorativi_settimana != null ? Number(pl.giorni_lavorativi_settimana) : Number(gv('SCAVO_GG_SETT'));
+  const calendarioTipo = gv('CALENDARIO_TIPO') || 'Lavorativi';
+  const giorniResiduiCal = Math.round((milestoneROS - oggi) / 86400000);
+  const giorniUtili = calendarioTipo === 'Lavorativi' ? giorniLavorativi(oggi, milestoneROS, ggSettimana) : Math.max(0, giorniResiduiCal);
+  const rosScaduta = giorniResiduiCal <= 0;
+  const produttivitaRichiesta = giorniUtili > 0 ? metriResiduiScavo / giorniUtili : null;
+  const arrotonda = gv('ARROTONDA_SQUADRE') || 'Eccesso';
+  const squadreNecessarie = produttivitaRichiesta !== null
+    ? (arrotonda === 'Eccesso' ? Math.ceil(produttivitaRichiesta / prodEffettiva) : Math.round(produttivitaRichiesta / prodEffettiva))
+    : null;
+  const squadreAggiuntive = squadreNecessarie !== null ? Math.max(0, squadreNecessarie - squadre.disponibili) : null;
+
+  return { ...base, insufficiente: false, milestoneROS, fonteMilestone, ggSettimana, calendarioTipo,
+    giorniResiduiCal, giorniUtili, rosScaduta, produttivitaRichiesta, squadreNecessarie, squadreAggiuntive };
 }
 
-// Spiega SEMPRE il motivo dello stato di una fase, anche quando nessuna
-// milestone nominale è ancora scaduta: in quel caso il motivo è "ritmo
-// insufficiente per la prossima scadenza", non un generico "nessuna" che
-// contraddirebbe visivamente un badge di rischio già arancione/rosso.
-function causaFase(f, label) {
-  if (f.flag === 'none' || f.flag === 'ok') return null;
-  if (f.milestoneRitardo.length) {
-    const worst = f.milestoneRitardo[f.milestoneRitardo.length - 1];
-    return `${label} ferma al <b>${fmtPct(f.pct)}</b>: ${worst.label} scaduta senza raggiungere il target.`;
-  }
-  if (f.prossima) {
-    return `${label} al <b>${fmtPct(f.pct)}</b> (atteso ${fmtPct(f.plannedToday)} oggi) — ritmo insufficiente per ${f.prossima.label}.`;
-  }
-  return `${label} al <b>${fmtPct(f.pct)}</b>, ${fmtGapPct(f.gap)} sotto il piano.`;
+// ── I 5 fattori di rischio ROS (peso e soglie da PARAMETRI.rischio_ros.fattori) ──
+
+function fattoreRScavi(capacita, f) {
+  if (capacita.insufficiente) return { disponibile: false, motivo: capacita.motivo };
+  if (capacita.rosScaduta) return { disponibile: true, punti: 100, rapporto: null, note: 'ROS già scaduta → punteggio massimo per definizione' };
+  const rapporto = capacita.squadre.disponibili > 0
+    ? capacita.squadreNecessarie / capacita.squadre.disponibili
+    : (capacita.squadreNecessarie > 0 ? null : 0); // 0 disponibili e 0 necessarie: nessun rischio da questo fattore
+  const punti = rapporto === null ? 100 : interpLin(rapporto, 1.0, 1.5);
+  return { disponibile: true, punti, rapporto };
 }
 
-function computeCausaPrincipale(r) {
-  const pC = causaFase(r.pFlag, 'Progettazione');
-  const sC = causaFase(r.sFlag, 'Scavi');
-  if (!pC && !sC) {
-    const noMs = [];
-    if (r.pFlag.flag === 'none') noMs.push('progettazione');
-    if (r.sFlag.flag === 'none') noMs.push('scavi');
-    if (noMs.length) return { html: `Nessuna criticità — milestone non definite per ${noMs.join(' e ')} (reale progettazione <b>${fmtPct(r.pFlag.pct)}</b>, scavi <b>${fmtPct(r.sFlag.pct)}</b>).`, muted: true };
-    return { html: 'In linea con il piano su entrambe le fasi.', muted: true };
-  }
-  if (pC && sC) {
-    const pWorse = FLAG_RANK[r.pFlag.flag] > FLAG_RANK[r.sFlag.flag] ||
-      (FLAG_RANK[r.pFlag.flag] === FLAG_RANK[r.sFlag.flag] && (r.pFlag.delayDays || 0) >= (r.sFlag.delayDays || 0));
-    return { html: (pWorse ? pC + ' ' + sC : sC + ' ' + pC), muted: false };
-  }
-  return { html: pC || sC, muted: false };
+function fattoreRAuth(row, capacita, parametri, f) {
+  if (capacita.insufficiente) return { disponibile: false, motivo: capacita.motivo };
+  const tempi = parametri.tempi_autorizzativi || {};
+  const kmTot = row.p.kmTot || 0;
+  const banda = bracketDistanzaMilestone(capacita.giorniResiduiCal);
+  if (kmTot <= 0 || !(row.p.issues || []).length) return { disponibile: true, punti: 0, kmPesati: 0, pctPesata: 0, banda, dettaglio: [] };
+  const dettaglio = (row.p.issues || []).map(iss => {
+    const t = lookupTempoEnte(iss.ente, tempi);
+    const pesoEnte = t.peso_milestone_30gg != null ? Number(t.peso_milestone_30gg) : 1;
+    const kmPesati = iss.km * pesoEnte * banda.coef;
+    return { ente: iss.ente, tratta: iss.tratta, km: iss.km, codiceTempo: t.codice, fallback: t.fallback, pesoEnte, kmPesati };
+  });
+  const kmPesati = dettaglio.reduce((s, d) => s + d.kmPesati, 0);
+  const pctPesata = kmPesati / kmTot;
+  const punti = interpLin(pctPesata, f.soglia_attenzione, f.soglia_critica);
+  return { disponibile: true, punti, kmPesati, pctPesata, banda, dettaglio };
 }
+
+function fattoreRSosp(row, capacita, f) {
+  const metriResidui = capacita.metriResiduiScavo;
+  const metriSospesi = (row.s.sospesi || []).reduce((s, c) => s + (c.metriResiduo || 0), 0);
+  if (metriResidui <= 0) return { disponibile: true, punti: 0, note: 'metri residui scavo = 0', metriSospesi, metriResidui };
+  const rapporto = metriSospesi / metriResidui;
+  let punti = interpLin(rapporto, f.soglia_attenzione, f.soglia_critica);
+  const senzaRipresa = (row.s.sospesi || []).some(c => !c.ripresa);
+  let penalita = false;
+  if ((row.s.sospesi || []).length > 0 && senzaRipresa) { punti = Math.min(100, punti * 1.2); penalita = true; }
+  return { disponibile: true, punti, rapporto, metriSospesi, metriResidui, penalita };
+}
+
+function fattoreRMS(row, f) {
+  const scadute = [...(row.pFlag.milestoneRitardo || []), ...(row.sFlag.milestoneRitardo || [])];
+  if (!scadute.length) return { disponibile: true, punti: 0, tutte: [] };
+  const tutte = scadute.map(m => {
+    const giorni = Math.round((oggi - m.date) / 86400000);
+    return { label: m.label, giorni, punti: interpLin(giorni, f.soglia_attenzione, f.soglia_critica) };
+  });
+  const peggiore = tutte.reduce((a, b) => (b.punti > a.punti ? b : a));
+  return { disponibile: true, punti: peggiore.punti, peggiore, tutte };
+}
+
+function fattoreRBlocchi(row, capacita, parametri, f) {
+  if (capacita.insufficiente) return { disponibile: false, motivo: capacita.motivo };
+  const tempi = parametri.tempi_autorizzativi || {};
+  const blocchi = row.p.blocchi || [];
+  const metriBloccati = blocchi.reduce((s, b) => s + b.km, 0);
+  const metriResiduiProg = Math.max(0, (row.p.kmTot || 0) - (row.p.kmOtt || 0));
+  if (metriResiduiProg <= 0) return { disponibile: true, punti: 0, note: 'metri residui progettazione = 0', metriBloccati, metriResiduiProg };
+  if (!metriBloccati) return { disponibile: true, punti: 0, metriBloccati: 0, metriResiduiProg };
+
+  const rapportoBlocco = metriBloccati / metriResiduiProg;
+  const puntiBase = interpLin(rapportoBlocco, f.soglia_attenzione, f.soglia_critica);
+
+  // Tempo atteso "dominante": tipo di blocco (nulla osta ha codice dedicato
+  // AUTH_NULLA_OSTA; l'ordinanza non ha un codice specifico nel foglio Tempi
+  // autorizzativi → fallback AUTH_CONSORZIO, dichiarato) sui km maggiori.
+  const kmPerTipo = {};
+  blocchi.forEach(b => {
+    const key = b.tipo === 'nulla_osta' ? 'AUTH_NULLA_OSTA' : 'AUTH_CONSORZIO';
+    kmPerTipo[key] = (kmPerTipo[key] || 0) + b.km;
+  });
+  let tempoCodice = null, maxKm = -1;
+  Object.entries(kmPerTipo).forEach(([k, km]) => { if (km > maxKm) { tempoCodice = k; maxKm = km; } });
+  const fallbackUsato = tempoCodice === 'AUTH_CONSORZIO';
+  const tempoAtteso = (tempi[tempoCodice] && Number(tempi[tempoCodice].giorni_attesi)) || 90;
+
+  let coefUrgenza, bandaUrgenza, rapportoUrgenza = null;
+  if (capacita.rosScaduta) { coefUrgenza = 2; bandaUrgenza = 'milestone scaduta'; }
+  else {
+    rapportoUrgenza = capacita.giorniResiduiCal / tempoAtteso;
+    const b = bracketRapportoUrgenza(rapportoUrgenza);
+    coefUrgenza = b.coef; bandaUrgenza = b.banda;
+  }
+  const punti = Math.min(100, puntiBase * coefUrgenza);
+  return { disponibile: true, punti, metriBloccati, metriResiduiProg, rapportoBlocco, puntiBase, tempoCodice, tempoAtteso, fallbackUsato, coefUrgenza, bandaUrgenza, rapportoUrgenza };
+}
+
+function computeRischioComposito(row, capacita, parametri) {
+  const fattoriDef = (parametri.rischio_ros.fattori || []).filter(x => x.attivo);
+  const fattori = {};
+  fattoriDef.forEach(f => {
+    let r;
+    if (f.codice === 'R_SCAVI') r = fattoreRScavi(capacita, f);
+    else if (f.codice === 'R_AUTH') r = fattoreRAuth(row, capacita, parametri, f);
+    else if (f.codice === 'R_SOSP') r = fattoreRSosp(row, capacita, f);
+    else if (f.codice === 'R_MS') r = fattoreRMS(row, f);
+    else if (f.codice === 'R_BLOCCHI') r = fattoreRBlocchi(row, capacita, parametri, f);
+    else r = { disponibile: false, motivo: 'fattore non implementato nel motore' };
+    fattori[f.codice] = { ...f, ...r };
+  });
+  const attivi = Object.values(fattori).filter(r => r.disponibile);
+  const pesoAttivoTotale = attivi.reduce((s, r) => s + Number(r.peso), 0);
+  let punteggio = null, classe = null;
+  if (pesoAttivoTotale > 0) {
+    attivi.forEach(r => { r.pesoEffettivo = Number(r.peso) / pesoAttivoTotale; r.contributo = r.pesoEffettivo * r.punti; });
+    punteggio = attivi.reduce((s, r) => s + r.contributo, 0);
+    classe = (parametri.rischio_ros.classi || []).find(c => punteggio >= c.punteggio_min && punteggio <= c.punteggio_max) || null;
+  }
+  return { fattori, punteggio, classe, pesoAttivoTotale, renormalizzato: pesoAttivoTotale > 0 && pesoAttivoTotale < 0.999 };
+}
+
+// ── Azione suggerita: prima regola che matcha, in ordine di priorità (Regole azioni) ──
+function computeAzioneParametrica(row, capacita, parametri) {
+  const regole = (parametri.regole_azioni || []).slice().sort((a, b) => a.priorita - b.priorita);
+  const glob = parametri.globali || {};
+  const finestraImpatto = Number(glob.PERMESSI_FINESTRA_IMPATTO ? glob.PERMESSI_FINESTRA_IMPATTO.valore : 30);
+  for (const reg of regole) {
+    let match = false, dettaglio = {};
+    if (reg.codice === 'ACT_SOSP') {
+      match = row.s.sospesi.length > 0;
+      dettaglio = { numero: row.s.sospesi.length, metri: row.s.sospesi.reduce((s, c) => s + c.metriResiduo, 0) };
+    } else if (reg.codice === 'ACT_AUTH_MS') {
+      const entro = !capacita.insufficiente && capacita.giorniResiduiCal <= finestraImpatto;
+      match = entro && (row.p.issues || []).length > 0;
+      dettaglio = { giorniResiduiMilestone: capacita.insufficiente ? null : capacita.giorniResiduiCal, finestraImpatto, pratiche: row.p.issues.length };
+    } else if (reg.codice === 'ACT_CAP_SCAVI') {
+      match = !capacita.insufficiente && capacita.squadreNecessarie !== null && capacita.squadreNecessarie > capacita.squadre.disponibili;
+      dettaglio = { squadreNecessarie: capacita.squadreNecessarie, squadreDisponibili: capacita.squadre.disponibili, squadreAggiuntive: capacita.squadreAggiuntive };
+    } else if (reg.codice === 'ACT_PROG') {
+      match = (row.p.kmNonInviato || 0) > 0;
+      dettaglio = { kmNonInviato: row.p.kmNonInviato };
+    } else if (reg.codice === 'ACT_ORD') {
+      const metriBloccati = (row.p.blocchi || []).reduce((s, b) => s + b.km, 0);
+      match = metriBloccati > 0;
+      dettaglio = { metriBloccati, numBlocchi: row.p.blocchi.length };
+    } else if (reg.codice === 'ACT_NONE') {
+      match = true;
+    }
+    if (match) return { regola: reg, dettaglio };
+  }
+  return null;
+}
+
+// ── Causa operativa: fattori attivi ordinati per contributo pesato (§5) ──
+function computeCausaOperativa(row, rischio) {
+  const attivi = Object.values(rischio.fattori).filter(f => f.disponibile && f.contributo > 0.01);
+  attivi.sort((a, b) => b.contributo - a.contributo);
+  const frasi = attivi.slice(0, 3).map(f => {
+    if (f.codice === 'R_SCAVI') return `Capacità scavi insufficiente${capForRow(f)}`;
+    if (f.codice === 'R_AUTH') return `${f.dettaglio.length} pratiche non autorizzate (${fmtNum(f.dettaglio.reduce((s, d) => s + d.km, 0))} m)`;
+    if (f.codice === 'R_SOSP') return `${row.s.sospesi.length} cantiere${row.s.sospesi.length === 1 ? '' : 'i'} sospeso${row.s.sospesi.length === 1 ? '' : 'i'} (${fmtNum(f.metriSospesi)} m residui)`;
+    if (f.codice === 'R_MS') return `Milestone "${f.peggiore.label}" scaduta da ${f.peggiore.giorni} gg`;
+    if (f.codice === 'R_BLOCCHI') return `${row.p.blocchi.length} tratte bloccate da nulla osta/ordinanza (${fmtNum(f.metriBloccati)} m)`;
+    return f.fattore;
+  });
+  if (!frasi.length) return { html: 'Nessun fattore di rischio ROS attivo — in linea con il piano.', muted: true };
+  return { html: frasi.join(' · '), muted: false };
+}
+function capForRow(f) { return f.rapporto === null ? ' (ROS già scaduta)' : ` (squadre necessarie ${(f.rapporto * 100).toFixed(0)}% delle disponibili)`; }
 
 function renderStato(r) {
   const flag = r.overall === 'none' ? 'ok' : r.overall;
@@ -534,20 +789,21 @@ function render(prog, scavi, milestoneByLotto) {
     const overall = FLAG_RANK[pFlag.flag] >= FLAG_RANK[sFlag.flag] ? pFlag.flag : sFlag.flag;
 
     const row = { lotto, cluster: m ? m.cluster : '—', p, s, m, pFlag, sFlag, overall };
-    row.rischioROS = computeRischioROS(row);
-    row.azione = computeAzione(row);
-    row.causa = computeCausaPrincipale(row);
-    if (row.rischioROS.flag === 'err') row.overallSort = 4;
-    else row.overallSort = FLAG_RANK[overall];
-    row.maxDelay = Math.max(pFlag.delayDays || -9999, sFlag.delayDays || -9999);
+    row.capacita = computeCapacita(lotto, row, PARAMETRI);
+    row.rischio = computeRischioComposito(row, row.capacita, PARAMETRI);
+    row.azioneInfo = computeAzioneParametrica(row, row.capacita, PARAMETRI);
+    row.causa = computeCausaOperativa(row, row.rischio);
+    const classeSort = { Critico: 4, Alto: 3, Medio: 2, Basso: 1 };
+    row.overallSort = row.rischio.classe ? (classeSort[row.rischio.classe.classe] || 0) : FLAG_RANK[overall];
+    row.maxDelay = row.rischio.punteggio !== null ? row.rischio.punteggio : -9999;
     rows.push(row);
   });
   rows.sort((a, b) => b.overallSort - a.overallSort || b.maxDelay - a.maxDelay || a.lotto.localeCompare(b.lotto, 'it', { numeric: true }));
   LOTTI_DATA = {}; rows.forEach(r => LOTTI_DATA[r.lotto] = r);
 
   // ── KPI strip ──
-  const nCritici = rows.filter(r => r.overall === 'err' || r.rischioROS.flag === 'err').length;
-  const nAttenzione = rows.filter(r => r.overall !== 'err' && r.rischioROS.flag !== 'err' && (r.overall === 'warn' || r.rischioROS.flag === 'warn')).length;
+  const nCritici = rows.filter(r => r.overall === 'err' || (r.rischio.classe && r.rischio.classe.classe === 'Critico')).length;
+  const nAttenzione = rows.filter(r => !(r.overall === 'err' || (r.rischio.classe && r.rischio.classe.classe === 'Critico')) && (r.overall === 'warn' || (r.rischio.classe && ['Alto', 'Medio'].includes(r.rischio.classe.classe)))).length;
   const nProssime30 = rows.filter(r => r.pFlag.prossima || r.sFlag.prossima).length;
   document.getElementById('kpiStrip').style.display = 'grid';
   document.getElementById('kpiStrip').innerHTML = `
@@ -567,10 +823,24 @@ function render(prog, scavi, milestoneByLotto) {
       <td>${renderCausa(r)}</td>
       <td class="tc-center">${renderDelayBadge(r.pFlag, r.sFlag)}</td>
       <td>${renderProssima(r.pFlag, r.sFlag)}</td>
-      <td class="tc-center"><div class="risk-badge risk-${r.rischioROS.flag}">${r.rischioROS.label}<span class="rb-date">${r.rischioROS.sub}</span></div></td>
-      <td><span class="action-pill ${r.azione.cls}">${r.azione.label}</span></td>
+      <td class="tc-center">${renderRischioBadge(r.rischio)}</td>
+      <td>${renderAzionePill(r.azioneInfo)}</td>
     </tr>
   `).join('');
+}
+
+const ACT_CLS = { ACT_SOSP: 'ap-sospesi', ACT_AUTH_MS: 'ap-enti', ACT_CAP_SCAVI: 'ap-squadre', ACT_PROG: 'ap-progettazione', ACT_ORD: 'ap-enti', ACT_NONE: 'ap-nessuna' };
+const CLASSE_CLS = { Basso: 'risk-basso', Medio: 'risk-medio', Alto: 'risk-alto', Critico: 'risk-err' };
+
+function renderRischioBadge(rischio) {
+  if (!rischio.classe) return `<div class="risk-badge risk-none">N/D<span class="rb-date">nessun fattore calcolabile</span></div>`;
+  const sub = rischio.renormalizzato ? `${Math.round(rischio.pesoAttivoTotale * 100)}% del modello` : `${Math.round(rischio.punteggio)}/100`;
+  return `<div class="risk-badge ${CLASSE_CLS[rischio.classe.classe] || 'risk-none'}">${rischio.classe.classe}<span class="rb-date">${sub}</span></div>`;
+}
+function renderAzionePill(azioneInfo) {
+  if (!azioneInfo) return `<span class="action-pill ap-nessuna">Nessuna azione</span>`;
+  const cls = ACT_CLS[azioneInfo.regola.codice] || 'ap-nessuna';
+  return `<span class="action-pill ${cls}">${azioneInfo.regola.azione}</span>`;
 }
 
 function renderDelayBadge(pFlag, sFlag) {
@@ -599,10 +869,23 @@ function openModal(lotto) {
   let html = '';
 
   html += `<div class="modal-section-title">Riepilogo decisionale</div>`;
-  html += `<div class="issue-row"><span>Scostamento progettazione</span><span class="issue-tag ${r.pFlag.flag === 'err' ? 'risk-err' : 'risk-warn'}">${r.pFlag.gap === null ? 'n/d' : fmtGapPct(r.pFlag.gap)} (${fmtDelay(r.pFlag.delayDays)})</span></div>`;
-  html += `<div class="issue-row"><span>Scostamento scavi</span><span class="issue-tag ${r.sFlag.flag === 'err' ? 'risk-err' : 'risk-warn'}">${r.sFlag.gap === null ? 'n/d' : fmtGapPct(r.sFlag.gap)} (${fmtDelay(r.sFlag.delayDays)})</span></div>`;
-  html += `<div class="issue-row"><span>Rischio ROS (${r.rischioROS.sub})</span><span class="issue-tag risk-${r.rischioROS.flag === 'ok' ? 'warn' : 'err'}" style="${r.rischioROS.flag === 'ok' ? 'background:var(--ok-bg);color:var(--ok);' : ''}">${r.rischioROS.label}</span></div>`;
-  html += `<div class="issue-row"><span>Azione suggerita</span><span class="issue-tag risk-err">${r.azione.label}</span></div>`;
+  html += `<div class="issue-row"><span>Progettazione — previsto/reale oggi</span><span class="issue-tag ${r.pFlag.flag === 'err' ? 'risk-err' : 'risk-warn'}">${r.pFlag.plannedToday === null ? 'n/d' : fmtPct(r.pFlag.plannedToday) + ' / ' + fmtPct(r.pFlag.pct)} (${r.pFlag.gap === null ? 'n/d' : fmtGapPct(r.pFlag.gap)}, ${fmtDelay(r.pFlag.delayDays)})</span></div>`;
+  html += `<div class="issue-row"><span>Scavi — previsto/reale oggi</span><span class="issue-tag ${r.sFlag.flag === 'err' ? 'risk-err' : 'risk-warn'}">${r.sFlag.plannedToday === null ? 'n/d' : fmtPct(r.sFlag.plannedToday) + ' / ' + fmtPct(r.sFlag.pct)} (${r.sFlag.gap === null ? 'n/d' : fmtGapPct(r.sFlag.gap)}, ${fmtDelay(r.sFlag.delayDays)})</span></div>`;
+  html += `<div class="issue-row"><span>Rischio ROS</span>${renderRischioBadge(r.rischio)}</div>`;
+  html += `<div class="issue-row"><span>Azione suggerita</span>${renderAzionePill(r.azioneInfo)}</div>`;
+
+  html += `<div class="modal-section-title">Rischio ROS — breakdown per fattore</div>`;
+  html += Object.values(r.rischio.fattori).map(f => {
+    if (!f.disponibile) {
+      return `<div class="factor-row"><span class="fr-name">${f.fattore}<span class="fr-formula">peso ${(f.peso*100).toFixed(0)}% — ${f.misura}</span></span><span class="fr-score fr-na">Dato insufficiente</span></div>`;
+    }
+    return `<div class="factor-row"><span class="fr-name">${f.fattore}<span class="fr-formula">peso ${(f.pesoEffettivo*100).toFixed(1)}%${r.rischio.renormalizzato ? ' (rinormalizzato)' : ''} × ${f.punti.toFixed(1)} pt</span></span><span class="fr-score">${f.contributo.toFixed(1)} pt</span></div>`;
+  }).join('');
+  html += `<div class="factor-row" style="border-top:2px solid var(--border2);margin-top:2px;padding-top:8px;"><span class="fr-name">Totale</span><span class="fr-score">${r.rischio.punteggio === null ? 'N/D' : r.rischio.punteggio.toFixed(1) + '/100 — ' + (r.rischio.classe ? r.rischio.classe.classe : 'n/d')}</span></div>`;
+  if (r.rischio.renormalizzato) {
+    const mancanti = Object.values(r.rischio.fattori).filter(f => !f.disponibile);
+    html += `<div class="empty-note">Punteggio calcolato sul ${Math.round(r.rischio.pesoAttivoTotale*100)}% del modello (pesi rinormalizzati). Non disponibili: ${mancanti.map(f => `${f.codice} — ${f.motivo}`).join('; ')}.</div>`;
+  }
 
   const nonInviate = r.p.issues.filter(i => ['IN ATTESA', 'IN REDAZIONE', 'INVIO PRELIMINARE'].includes(i.stato));
   const bloccate = r.p.issues.filter(i => ['INVIATO', 'PROTOCOLLATO', 'PROTOCOLLATO INTEGRAZIONE', 'NECESSARIA INTEGRAZIONE'].includes(i.stato));
@@ -629,9 +912,54 @@ function openModal(lotto) {
     .map(c => `<div class="issue-row"><span>${c.codice} — ${c.tipo}</span><span class="issue-tag risk-err">${c.data}</span></div>`).join('')
     : '<div class="empty-note">Nessuna scadenza cantiere superata.</div>';
 
+  html += buildTrasparenzaPanel(r);
+
   body.innerHTML = html;
   document.getElementById('modalBackdrop').classList.add('open');
 }
+// "Come è stato calcolato" — dati/parametri/formule/motivazioni per lotto,
+// come richiesto: nessuna cifra in tabella senza un modo per risalirci.
+function buildTrasparenzaPanel(r) {
+  const c = r.capacita, glob = PARAMETRI.globali || {};
+  let h = `<div class="modal-section-title">Come è stato calcolato</div>`;
+
+  h += `<div class="trasp-block"><span class="tb-label">Dati oggettivi utilizzati</span>
+    Progettazione: <b>${fmtNum(r.p.kmTot)} m</b> totali, <b>${fmtNum(r.p.kmOtt)} m</b> autorizzati, <b>${r.p.issues.length}</b> pratiche non ottenute, <b>${r.p.blocchi.length}</b> tratte con nulla osta/ordinanza pendente.<br>
+    Scavi: <b>${fmtNum(r.s.metriTot)} m</b> totali, <b>${fmtNum(r.s.metriScavati)} m</b> scavati, <b>${r.s.sospesi.length}</b> cantieri sospesi, <b>${c.squadre.dettaglio.length}</b> cantieri censiti.
+  </div>`;
+
+  h += `<div class="trasp-block"><span class="tb-label">Milestone considerata (ROS)</span>
+    ${c.insufficiente ? `<i>${c.motivo}</i>` : `<b>${fmtDateShort(c.milestoneROS)}</b> — fonte: ${c.fonteMilestone} — ${c.giorniResiduiCal} giorni di calendario residui, ${c.giorniUtili} giorni lavorativi (${c.calendarioTipo}, ${c.ggSettimana} gg/settimana)${c.rosScaduta ? ' — <b>ROS già scaduta</b>' : ''}.`}
+  </div>`;
+
+  h += `<div class="trasp-block"><span class="tb-label">Squadre e capacità produttiva</span>
+    Squadre disponibili: <b>${c.squadre.disponibili}</b> (${c.squadre.overrideLotto !== null ? 'override manuale di lotto' : c.squadre.dettaglio.map(d => `${d.codice}: ${d.squadre} — ${d.fonte}`).join('; ') || 'nessun cantiere censito'}).<br>
+    Produttività standard squadra: <b>${c.prodStd} m/g</b> × efficienza <b>${c.efficienza}</b> = <b>${c.prodEffettiva} m/g</b> effettivi.<br>
+    ${c.insufficiente ? '' : `Metri residui scavo: <b>${fmtNum(c.metriResiduiScavo)} m</b> / giorni utili <b>${c.giorniUtili}</b> = produttività richiesta <b>${c.produttivitaRichiesta.toFixed(1)} m/g</b>.<br>
+    Squadre necessarie: CEILING(${c.produttivitaRichiesta.toFixed(1)} / ${c.prodEffettiva}) = <b>${c.squadreNecessarie}</b>. Squadre aggiuntive: <b>${c.squadreAggiuntive}</b>.`}
+  </div>`;
+
+  h += `<div class="trasp-block"><span class="tb-label">Formule rischio ROS (pesi da foglio "Rischio ROS")</span>
+    R_SCAVI = interpola(squadre necessarie/disponibili, 1,00→0pt, 1,50→100pt), peso 35%.<br>
+    R_AUTH = interpola(Σ km×peso_ente×coeff_urgenza / km totali, 10%→0pt, 30%→100pt), peso 25%.<br>
+    R_SOSP = interpola(m sospesi residui/m residui scavo, 5%→0pt, 20%→100pt) ×1,2 se manca data ripresa, peso 15%.<br>
+    R_MS = peggiore tra interpola(gg superamento milestone, 1→0pt, 30→100pt), peso 15%.<br>
+    R_BLOCCHI = interpola(m bloccati/m residui progettazione, 5%→0pt, 20%→100pt) × coeff_urgenza(gg residui/tempo atteso ente), peso 10%.<br>
+    Punteggio totale = Σ(peso × punti) sui fattori disponibili, pesi rinormalizzati a 1 se manca un fattore.
+  </div>`;
+
+  h += `<div class="trasp-block"><span class="tb-label">Motivazione azione suggerita</span>
+    ${r.azioneInfo ? `Regola <b>${r.azioneInfo.regola.codice}</b> (priorità ${r.azioneInfo.regola.priorita}): "${r.azioneInfo.regola.condizione}" → <b>${r.azioneInfo.regola.azione}</b>. Responsabile: ${r.azioneInfo.regola.responsabile}.` : 'Nessuna regola applicabile.'}
+  </div>`;
+
+  h += `<div class="trasp-block"><span class="tb-label">Parametri globali applicati</span>
+    Produttività standard: ${glob.SCAVO_PROD_STD ? glob.SCAVO_PROD_STD.valore : '—'} m/g · Giorni/settimana: ${glob.SCAVO_GG_SETT ? glob.SCAVO_GG_SETT.valore : '—'} · Calendario: ${glob.CALENDARIO_TIPO ? glob.CALENDARIO_TIPO.valore : '—'} · Finestra impatto permessi: ${glob.PERMESSI_FINESTRA_IMPATTO ? glob.PERMESSI_FINESTRA_IMPATTO.valore : '—'} gg · Arrotondamento squadre: ${glob.ARROTONDA_SQUADRE ? glob.ARROTONDA_SQUADRE.valore : '—'}.<br>
+    Fonte parametri: ${PARAMETRI._meta ? `${PARAMETRI._meta.source === 'mongo' ? 'file caricato' : 'file seed su disco'} (${PARAMETRI._meta.filename})` : 'n/d'}.
+  </div>`;
+
+  return h;
+}
+
 function closeModal() { document.getElementById('modalBackdrop').classList.remove('open'); }
 document.getElementById('modalBackdrop').addEventListener('click', e => { if (e.target.id === 'modalBackdrop') closeModal(); });
 
