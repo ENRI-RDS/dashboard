@@ -320,7 +320,7 @@ async function loadAll() {
     else {
       if (NON_INVIATO_STATI.includes(stato)) prog[lotto].kmNonInviato += km;
       else if (BLOCCATO_ENTE_STATI.includes(stato)) prog[lotto].kmBloccato += km;
-      prog[lotto].issues.push({ comune: r.COMUNE || '—', tratta: r.TRATTA_ID || '', stato, km, ente });
+      prog[lotto].issues.push({ comune: r.COMUNE || '—', tratta: r.TRATTA_ID || '', stato, km, ente, pratica: r.PRATICA || null });
     }
     // R_BLOCCHI: nulla osta / ordinanza necessari e non ottenuti — indipendente
     // dallo STATO_AUTORIZZAZIONE (una tratta può avere l'autorizzazione
@@ -596,23 +596,59 @@ function fattoreRScavi(capacita, f) {
   return { disponibile: true, punti, rapporto };
 }
 
-function fattoreRAuth(row, capacita, parametri, f) {
-  if (capacita.insufficiente) return { disponibile: false, motivo: capacita.motivo };
+// Conta pratiche distinte quando il campo PRATICA è valorizzato (una pratica
+// può coprire più tratte/righe CSV); altrimenti dichiara che sta contando
+// tratte, non pratiche — mai un numero che sembra "pratiche" ma non lo è.
+function countPratiche(issues) {
+  if (!issues.length) return { n: 0, label: 'pratiche', esatto: true };
+  const conPratica = issues.filter(i => i.pratica);
+  if (conPratica.length === issues.length) {
+    return { n: new Set(issues.map(i => i.pratica)).size, label: 'pratiche', esatto: true, tratte: issues.length };
+  }
+  return { n: issues.length, label: 'tratte', esatto: false, nota: 'campo PRATICA non valorizzato per questo lotto — conteggio a livello di tratta, non di pratica' };
+}
+
+// Fase autorizzativa del lotto rispetto alla PROPRIA curva progettazione
+// (invio → ottenimento) — dominio autorizzativo puro, nessun riferimento a
+// scavi/ROS. Condiviso da R_AUTH e dalla regola azione ACT_AUTH_MS.
+function computeFaseAutorizzativa(row) {
+  const invio = row.m ? parseDateIT(row.m.invio) : null;
+  const ottenim = row.m ? parseDateIT(row.m.ottenim) : null;
+  if (invio && ottenim) {
+    if (oggi < invio) {
+      return { disponibile: true, coefFase: 0, giorniResiduiOttenimento: Math.round((ottenim - oggi) / 86400000),
+        fase: 'non_iniziata', info: `Fase non ancora iniziata — milestone invio (${row.m.invio}) non raggiunta: il 100% non autorizzato è fisiologico, coefficiente 0.` };
+    }
+    const giorniResiduiOtt = Math.round((ottenim - oggi) / 86400000);
+    const banda = bracketDistanzaMilestone(giorniResiduiOtt);
+    return { disponibile: true, coefFase: banda.coef, giorniResiduiOttenimento: giorniResiduiOtt,
+      fase: 'in_corso', info: `In corso — ${giorniResiduiOtt} gg a ottenimento (${row.m.ottenim}), banda ${banda.banda}.` };
+  }
+  if ((row.p.kmOtt || 0) > 0) {
+    return { disponibile: true, coefFase: 1, giorniResiduiOttenimento: null, fase: 'non_tracciata_prudenziale',
+      info: 'Milestone invio/ottenimento non tracciate per questo lotto — coefficiente pieno (1) per prudenza, sulla base dell\'evidenza autorizzativa esistente (km ottenuti > 0).' };
+  }
+  return { disponibile: false, motivo: 'Nessuna milestone invio/ottenimento tracciata e nessun km autorizzato: impossibile determinare la fase autorizzativa (dato dichiarato insufficiente, non dedotto dai dati scavi)' };
+}
+
+function fattoreRAuth(row, parametri, f) {
+  const fase = computeFaseAutorizzativa(row);
+  if (!fase.disponibile) return { disponibile: false, motivo: fase.motivo };
   const tempi = parametri.tempi_autorizzativi || {};
   const kmTot = row.p.kmTot || 0;
-  const banda = bracketDistanzaMilestone(capacita.giorniResiduiCal);
-  if (kmTot <= 0 || !(row.p.issues || []).length) return { disponibile: true, punti: 0, kmPesati: 0, pctPesata: 0, banda, dettaglio: [] };
+  if (kmTot <= 0 || !(row.p.issues || []).length) return { disponibile: true, punti: 0, kmPesati: 0, pctPesata: 0, fase, dettaglio: [] };
   const dettaglio = (row.p.issues || []).map(iss => {
     const t = lookupTempoEnte(iss.ente, tempi);
     const pesoEnte = t.peso_milestone_30gg != null ? Number(t.peso_milestone_30gg) : 1;
-    const kmPesati = iss.km * pesoEnte * banda.coef;
-    return { ente: iss.ente, tratta: iss.tratta, km: iss.km, codiceTempo: t.codice, fallback: t.fallback, pesoEnte, kmPesati };
+    const kmPesati = iss.km * pesoEnte * fase.coefFase;
+    return { ente: iss.ente, tratta: iss.tratta, km: iss.km, pratica: iss.pratica, codiceTempo: t.codice, fallback: t.fallback, pesoEnte, kmPesati };
   });
   const kmPesati = dettaglio.reduce((s, d) => s + d.kmPesati, 0);
   const pctPesata = kmPesati / kmTot;
   const punti = interpLin(pctPesata, f.soglia_attenzione, f.soglia_critica);
-  return { disponibile: true, punti, kmPesati, pctPesata, banda, dettaglio };
+  return { disponibile: true, punti, kmPesati, pctPesata, fase, dettaglio };
 }
+
 
 function fattoreRSosp(row, capacita, f) {
   const metriResidui = capacita.metriResiduiScavo;
@@ -679,7 +715,7 @@ function computeRischioComposito(row, capacita, parametri) {
   fattoriDef.forEach(f => {
     let r;
     if (f.codice === 'R_SCAVI') r = fattoreRScavi(capacita, f);
-    else if (f.codice === 'R_AUTH') r = fattoreRAuth(row, capacita, parametri, f);
+    else if (f.codice === 'R_AUTH') r = fattoreRAuth(row, parametri, f);
     else if (f.codice === 'R_SOSP') r = fattoreRSosp(row, capacita, f);
     else if (f.codice === 'R_MS') r = fattoreRMS(row, f);
     else if (f.codice === 'R_BLOCCHI') r = fattoreRBlocchi(row, capacita, parametri, f);
@@ -708,9 +744,10 @@ function computeAzioneParametrica(row, capacita, parametri) {
       match = row.s.sospesi.length > 0;
       dettaglio = { numero: row.s.sospesi.length, metri: row.s.sospesi.reduce((s, c) => s + c.metriResiduo, 0) };
     } else if (reg.codice === 'ACT_AUTH_MS') {
-      const entro = !capacita.insufficiente && capacita.giorniResiduiCal <= finestraImpatto;
+      const fase = computeFaseAutorizzativa(row);
+      const entro = fase.disponibile && fase.giorniResiduiOttenimento !== null && fase.giorniResiduiOttenimento <= finestraImpatto;
       match = entro && (row.p.issues || []).length > 0;
-      dettaglio = { giorniResiduiMilestone: capacita.insufficiente ? null : capacita.giorniResiduiCal, finestraImpatto, pratiche: row.p.issues.length };
+      dettaglio = { giorniResiduiOttenimento: fase.disponibile ? fase.giorniResiduiOttenimento : null, finestraImpatto, pratiche: row.p.issues.length };
     } else if (reg.codice === 'ACT_CAP_SCAVI') {
       match = !capacita.insufficiente && capacita.squadreNecessarie !== null && capacita.squadreNecessarie > capacita.squadre.disponibili;
       dettaglio = { squadreNecessarie: capacita.squadreNecessarie, squadreDisponibili: capacita.squadre.disponibili, squadreAggiuntive: capacita.squadreAggiuntive };
@@ -735,7 +772,7 @@ function computeCausaOperativa(row, rischio) {
   attivi.sort((a, b) => b.contributo - a.contributo);
   const frasi = attivi.slice(0, 3).map(f => {
     if (f.codice === 'R_SCAVI') return `Capacità scavi insufficiente${capForRow(f)}`;
-    if (f.codice === 'R_AUTH') return `${f.dettaglio.length} pratiche non autorizzate (${fmtNum(f.dettaglio.reduce((s, d) => s + d.km, 0))} m)`;
+    if (f.codice === 'R_AUTH') { const c = countPratiche(f.dettaglio); return `${c.n} ${c.label} non autorizzate (${fmtNum(f.dettaglio.reduce((s, d) => s + d.km, 0))} m)${c.esatto ? '' : ' — pratiche non distinguibili, dato PRATICA assente'}`; }
     if (f.codice === 'R_SOSP') return `${row.s.sospesi.length} cantiere${row.s.sospesi.length === 1 ? '' : 'i'} sospeso${row.s.sospesi.length === 1 ? '' : 'i'} (${fmtNum(f.metriSospesi)} m residui)`;
     if (f.codice === 'R_MS') return `Milestone "${f.peggiore.label}" scaduta da ${f.peggiore.giorni} gg`;
     if (f.codice === 'R_BLOCCHI') return `${row.p.blocchi.length} tratte bloccate da nulla osta/ordinanza (${fmtNum(f.metriBloccati)} m)`;
@@ -889,18 +926,19 @@ function openModal(lotto) {
 
   const nonInviate = r.p.issues.filter(i => ['IN ATTESA', 'IN REDAZIONE', 'INVIO PRELIMINARE'].includes(i.stato));
   const bloccate = r.p.issues.filter(i => ['INVIATO', 'PROTOCOLLATO', 'PROTOCOLLATO INTEGRAZIONE', 'NECESSARIA INTEGRAZIONE'].includes(i.stato));
+  const cNonInviate = countPratiche(nonInviate), cBloccate = countPratiche(bloccate);
 
-  html += `<div class="modal-section-title">Progettazione — pratiche non ancora inviate all'ente (${nonInviate.length})</div>`;
+  html += `<div class="modal-section-title">Progettazione — non ancora inviate all'ente (${nonInviate.length} tratte${cNonInviate.esatto ? ', ' + cNonInviate.n + ' pratiche' : ''})</div>`;
   html += nonInviate.length ? nonInviate
     .sort((a, b) => b.km - a.km)
-    .map(i => `<div class="issue-row"><span>${i.comune} · ${i.tratta}</span><span class="issue-tag risk-warn">${i.stato}</span></div>`).join('')
-    : '<div class="empty-note">Nessuna pratica in ritardo di invio.</div>';
+    .map(i => `<div class="issue-row"><span>${i.comune} · ${i.tratta}${i.pratica ? ' · ' + i.pratica : ''}</span><span class="issue-tag risk-warn">${i.stato}</span></div>`).join('')
+    : '<div class="empty-note">Nessuna tratta in ritardo di invio.</div>';
 
-  html += `<div class="modal-section-title">Progettazione — pratiche inviate, in attesa dell'ente (${bloccate.length})</div>`;
+  html += `<div class="modal-section-title">Progettazione — inviate, in attesa dell'ente (${bloccate.length} tratte${cBloccate.esatto ? ', ' + cBloccate.n + ' pratiche' : ''})</div>`;
   html += bloccate.length ? bloccate
     .sort((a, b) => b.km - a.km)
-    .map(i => `<div class="issue-row"><span>${i.comune} · ${i.tratta}</span><span class="issue-tag risk-err">${i.stato}</span></div>`).join('')
-    : '<div class="empty-note">Nessuna pratica bloccata presso l\'ente.</div>';
+    .map(i => `<div class="issue-row"><span>${i.comune} · ${i.tratta}${i.pratica ? ' · ' + i.pratica : ''}</span><span class="issue-tag risk-err">${i.stato}</span></div>`).join('')
+    : '<div class="empty-note">Nessuna tratta bloccata presso l\'ente.</div>';
 
   html += `<div class="modal-section-title">Scavi — cantieri sospesi (${r.s.sospesi.length})</div>`;
   html += r.s.sospesi.length ? r.s.sospesi
@@ -924,7 +962,7 @@ function buildTrasparenzaPanel(r) {
   let h = `<div class="modal-section-title">Come è stato calcolato</div>`;
 
   h += `<div class="trasp-block"><span class="tb-label">Dati oggettivi utilizzati</span>
-    Progettazione: <b>${fmtNum(r.p.kmTot)} m</b> totali, <b>${fmtNum(r.p.kmOtt)} m</b> autorizzati, <b>${r.p.issues.length}</b> pratiche non ottenute, <b>${r.p.blocchi.length}</b> tratte con nulla osta/ordinanza pendente.<br>
+    Progettazione: <b>${fmtNum(r.p.kmTot)} m</b> totali, <b>${fmtNum(r.p.kmOtt)} m</b> autorizzati, <b>${countPratiche(r.p.issues).n} ${countPratiche(r.p.issues).label}</b> non ottenute (${r.p.issues.length} tratte), <b>${r.p.blocchi.length}</b> tratte con nulla osta/ordinanza pendente.<br>
     Scavi: <b>${fmtNum(r.s.metriTot)} m</b> totali, <b>${fmtNum(r.s.metriScavati)} m</b> scavati, <b>${r.s.sospesi.length}</b> cantieri sospesi, <b>${c.squadre.dettaglio.length}</b> cantieri censiti.
   </div>`;
 
@@ -941,10 +979,10 @@ function buildTrasparenzaPanel(r) {
 
   h += `<div class="trasp-block"><span class="tb-label">Formule rischio ROS (pesi da foglio "Rischio ROS")</span>
     R_SCAVI = interpola(squadre necessarie/disponibili, 1,00→0pt, 1,50→100pt), peso 35%.<br>
-    R_AUTH = interpola(Σ km×peso_ente×coeff_urgenza / km totali, 10%→0pt, 30%→100pt), peso 25%.<br>
+    R_AUTH = interpola(Σ km×peso_ente×coeff_fase(invio→ottenimento) / km totali, 10%→0pt, 30%→100pt), peso 25%. Coeff_fase = 0 prima di "invio" (100% non autorizzato è fisiologico), poi a bande sulla distanza da "ottenimento".<br>
     R_SOSP = interpola(m sospesi residui/m residui scavo, 5%→0pt, 20%→100pt) ×1,2 se manca data ripresa, peso 15%.<br>
     R_MS = peggiore tra interpola(gg superamento milestone, 1→0pt, 30→100pt), peso 15%.<br>
-    R_BLOCCHI = interpola(m bloccati/m residui progettazione, 5%→0pt, 20%→100pt) × coeff_urgenza(gg residui/tempo atteso ente), peso 10%.<br>
+    R_BLOCCHI = interpola(m bloccati/m residui progettazione, 5%→0pt, 20%→100pt) × coeff_urgenza(gg residui ROS/tempo atteso ente), peso 10%.<br>
     Punteggio totale = Σ(peso × punti) sui fattori disponibili, pesi rinormalizzati a 1 se manca un fattore.
   </div>`;
 
