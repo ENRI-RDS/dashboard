@@ -594,6 +594,84 @@ Fonte: checklist Excel utente. Solo voci non "Completato" (34/59 già completate
 
 ---
 
+## 12. Decisioni architetturali del 26/08/2026 — motore Stato Lotti / Rischio ROS
+
+Sessione di revisione completa del motore parametrico in `stato_lotti.html`. Decisioni **definitive**, da rispettare in ogni modifica futura al motore.
+
+### 12.1 Endpoint parametri
+
+- `GET /api/parametri` (staff-only, `_require_staff_session`) — parsa server-side (openpyxl) l'xlsx `Parametri_configurazione_dashboard_ENRI.xlsx`, caricato via `admin.html` con lo stesso meccanismo upload/GridFS di `Master.csv`.
+- **Safety net in `upload_file()`**: se `out_name == PARAMETRI_FILENAME`, `convert_to_csv` è forzato a `False` anche se il client non lo passa — altrimenti la conversione automatica xlsx→csv (default `True`, non esposta in `admin.html`) terrebbe solo il primo dei 9 fogli, distruggendo il resto.
+- Tutte le soglie, pesi, produttività, tempi autorizzativi, regole azione vengono da lì. **Nessuna logica di business hardcoded** nel motore JS.
+- Cache in-process (`_parametri_cache`), invalidata su cambio `gridfs_id`.
+- **Principio**: in assenza di un parametro, il fattore/dato che ne dipende è marcato "dato insufficiente" — mai un default silenzioso.
+
+### 12.2 Motore rischio ROS — 5 fattori
+
+`R_SCAVI` (peso 35%), `R_AUTH` (25%), `R_SOSP` (15%), `R_MS` (15%), `R_BLOCCHI` (10%). Formule dettagliate in `buildTrasparenzaPanel()`, riassunto:
+
+| Fattore | Misura | Interpolazione |
+|---|---|---|
+| R_SCAVI | squadre necessarie / squadre disponibili | 1,00→0pt, 1,50→100pt |
+| R_AUTH | vedi §12.3 | — |
+| R_SOSP | metri sospesi residui / metri residui scavo | 5%→0pt, 20%→100pt (×1,2 se manca data ripresa, cap 100) |
+| R_MS | giorni superamento milestone (peggiore tra tutte, non media) | 1gg→0pt, 30gg→100pt |
+| R_BLOCCHI | metri bloccati nulla osta/ordinanza / metri residui **progettazione** (non scavo) | 5%→0pt, 20%→100pt, × coeff. urgenza (giorni residui ROS / tempo atteso ente) |
+
+- Punteggio finale = **media pesata** dei fattori disponibili.
+- Fattore non disponibile → **escluso dal calcolo**, pesi **rinormalizzati** sui rimanenti (mai punti arbitrari).
+- Pannello "Come è stato calcolato" (`buildTrasparenzaPanel()`) sempre presente: dati oggettivi, milestone usata, squadre/capacità, formule, motivazione azione, parametri globali.
+
+### 12.3 R_AUTH — revisione architetturale definitiva
+
+**Non usa più** milestone ROS di scavo (p100) né alcun dato scavi. Basato **esclusivamente** sulla curva autorizzativa propria del lotto (invio → ottenimento), via `computeFaseAutorizzativa()`:
+
+```
+oggi < invio            → coef_fase = 0   (100% non autorizzato è fisiologico, non genera rischio)
+oggi ≥ invio             → coef_fase a bande sulla distanza da "ottenimento":
+                            >90gg→1 · 60-90gg→1,25 · 30-60gg→1,5 · <30gg/scaduta→2
+invio/ottenim assenti:
+  kmOtt > 0              → coef_fase = 1 (prudenziale, dichiarato nel pannello)
+  kmOtt = 0 e no milestone → R_AUTH = "dato insufficiente" (mai dedotto dai dati scavi)
+```
+
+Motivo: la versione precedente usava la milestone ROS di scavo come proxy di urgenza, appiattendo **8 lotti su 12** a un punteggio fisso di 25/100 (0,25×100) perché non ancora arrivati a "invio" — 100% non autorizzato veniva letto come rischio massimo anche per lotti semplicemente non ancora iniziati. Dopo il fix quegli 8 lotti scendono correttamente a 0/100 su questo fattore, e il modello torna discriminante (verificato lotto per lotto sui 12 lotti reali).
+
+**Principio guida**: mai dedurre lo stato di un dominio (autorizzativo) dai dati di un altro dominio (scavi) — v. §12.6.
+
+### 12.4 ACT_AUTH_MS — stessa correzione di dominio
+
+La regola azione `ACT_AUTH_MS` (in `computeAzioneParametrica()`) usava anch'essa la milestone ROS scavi. Corretta per usare `computeFaseAutorizzativa()` (milestone invio/ottenimento), coerente con R_AUTH.
+
+### 12.5 Conteggio pratiche vs tratte
+
+Bug: il motore contava le righe di `Riepilogo_progettazione.csv` (tratte) come se fossero "pratiche" — una pratica può coprire più tratte (campo `PRATICA`, es. `AUT/24/1A | NO/22/1A | NO/26/1A | NO/28/1A`). Fix in `countPratiche()`:
+- campo `PRATICA` valorizzato su **tutte** le righe del lotto → conteggio di pratiche distinte (dedup sull'intera stringa del campo, dichiarato come tale nel pannello);
+- campo assente/parziale → dichiarato esplicitamente **"tratte"**, mai spacciato per "pratiche".
+
+### 12.6 Nulla osta vs ordinanze in R_BLOCCHI
+
+`STATO_ORDINANZA` è oggi scarsamente/non affidabilmente alimentato nei dataset. R_BLOCCHI tratta come riferimento primario i **nulla osta** (codice dedicato `AUTH_NULLA_OSTA` nel foglio "Tempi autorizzativi"); le ordinanze restano supportate nello stesso fattore ma senza codice tempo dedicato — usano fallback `AUTH_CONSORZIO` (dichiarato nel pannello), e non guidano le scelte di soglia/peso del modello finché il dato non migliora a monte.
+
+### 12.7 Relazione R_SOSP ↔ R_BLOCCHI — causa e conseguenza, non deduplicati
+
+Decisione confermata: restano **due fattori distinti**, **nessuna deduplicazione automatica**, anche quando la stessa `pratica_id` genera sia un cantiere sospeso (R_SOSP, effetto operativo) sia una tratta bloccata (R_BLOCCHI, causa autorizzativa) — è normale che lo stesso procedimento amministrativo produca entrambe le conseguenze, e un PM in SAL deve vederle entrambe.
+
+`collegamentiSospesiBlocchi()` incrocia `pratica_id` del cantiere sospeso con `PRATICA` delle tratte in R_BLOCCHI (split su `|`, match esatto sui token) e mostra il collegamento nel pannello di trasparenza quando esiste, così l'utente capisce che non sono due criticità indipendenti.
+
+### 12.8 Principi guida del motore (validi per ogni estensione futura)
+
+1. Separare sempre **causa** (es. R_BLOCCHI, atto amministrativo) da **conseguenza** (es. R_SOSP, effetto operativo) — non deduplicare, ma dichiarare la relazione.
+2. **Mai** usare dati scavi per dedurre stati autorizzativi, né viceversa (dati autorizzativi per dedurre capacità operativa/squadre).
+3. Preferire sempre "dato insufficiente" dichiarato a un'inferenza indiretta non supportata dai dati.
+4. Ogni punteggio ROS deve essere ricostruibile dal pannello "Come è stato calcolato" — dati oggettivi, parametri, formula, motivazione.
+
+---
+
+_Ultimo aggiornamento: 2026-08-26 (rev. 240)_
+
+- **rev.240** — `stato_lotti.html`+`admin.html`+`backend/server.py`: motore Stato Lotti riscritto da zero come **motore parametrico** (nessuna soglia/peso/produttività hardcoded). Nuovo endpoint `GET /api/parametri` (parsing server-side xlsx multi-foglio). 5 fattori rischio ROS (R_SCAVI/R_AUTH/R_SOSP/R_MS/R_BLOCCHI) con pesi rinormalizzati sui fattori disponibili, azioni suggerite da tabella regole (non più if/else), causa operativa ranked per contributo pesato, squadre/capacità produttiva calcolate da parametri di lotto, pannello "Come è stato calcolato" per ogni lotto. Iterazione di validazione con l'utente su dati reali (12 lotti) ha corretto 2 bug (conteggio pratiche vs tratte contate come pratiche; campo `pratica` non propagato nel dettaglio R_AUTH) e portato a una revisione architetturale di R_AUTH (dominio autorizzativo puro, non più agganciato alla milestone ROS scavi — appiattiva 8/12 lotti a punteggio fisso). Dettaglio completo delle decisioni in **§12**.
+
 _Ultimo aggiornamento: 2026-08-24 (rev. 238)_
 
 - **rev.238** — `hub.html`, card "Avanzamento Lavori" (`#scaviCard`): rimossa la dicitura statica "In arrivo" (`#scaviBadge`), non più corretta ora che `scavi.html`/`imprese_scavi.html` sono operativi. Badge ora nascosto di default (`style="display:none"`) e mostrato solo per ruoli non abilitati (`SCAVI_ALLOWED_ROLES`), con testo cambiato in "Accesso riservato" (era comunque "In arrivo" anche in quel ramo, fuorviante — non è una feature futura ma una restrizione di ruolo).
