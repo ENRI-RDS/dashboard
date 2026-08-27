@@ -1,909 +1,1047 @@
-> Documento di onboarding per agenti AI / sviluppatori. Spiega architettura, flussi, file e convenzioni della dashboard ENRI **senza dover leggere tutto il codice**.
-
----
-
-## 1. Cos'è questo progetto
-
-Dashboard di project management per **ENRI** — un progetto infrastrutturale di posa fibra/cavidotti (12 lotti, 7 cluster, province BG/MI/MB/PV/CR). Mostra l'avanzamento di:
-- **Fase 1 – Progettazione**: iter autorizzativo (richieste, scadenze, pratiche per cluster/lotto/ente).
-- **Fase 2 – Avanzamento Lavori (Scavi)**: stato cantieri, % completamento, metri scavati.
-- **Sopralluoghi, Mappa georeferenziata, Milestone, AI Alerts**.
-- **Area Impresa**: portale per le imprese appaltatrici (vista pratiche dei propri lotti + workflow di approvazione admin).
-
-È una **dashboard solo-frontend statica** (HTML + JS vanilla, niente React/Vue) servita da **GitHub Pages**, con un **backend FastAPI** (Render) che permette di aggiornare i dataset senza re-pushare su GitHub e che — dopo ogni approvazione — committa anche la versione aggiornata direttamente nel repo.
-
----
-
-## 2. Architettura a colpo d'occhio
-
-```
-┌──────────────────────────────┐    ┌────────────────────────────┐    ┌──────────────────────┐
-│  GitHub Pages                │    │  Render (FastAPI)          │    │  MongoDB Atlas       │
-│  enri-rds.github.io/dashboard│───▶│  enri-dashboard-api.       │───▶│  DB: enri_dashboard  │
-│  HTML + JS vanilla           │    │  onrender.com              │    │   - uploads (GridFS) │
-│  Pagine: hub, index, mappa,… │    │  /api/* endpoints          │    │   - assignments      │
-└──────────────────────────────┘    └────────────────────────────┘    │   - pending_updates  │
-        │                                       ▲                      └──────────────────────┘
-        │ js/api-config.js                      │ multipart upload + workflow imprese
-        │ intercetta fetch('Master.csv') e la   │
-        │ riscrive in fetch(API/api/data/…)     │
-        └───────────────────────────────────────┘
-                                                │
-                                                ▼ commit automatico (GitHub API, fine-grained PAT)
-                                       Master.csv / QGIS.geojson / Riepilogo_progettazione.csv
-
-Auth login: hub.html → POST /api/auth/login → backend chiama Google Apps Script server-to-server →
-            restituisce token HMAC firmato (nome|ruolo|exp) salvato in localStorage._enri_token.
-            Ogni chiamata /api/imprese/* o /api/auth/* richiede l'header `x-session-token`.
-```
-
-**Tre modi di girare:**
-1. **Production**: GitHub Pages + Render + Atlas.
-2. **Preview**: static HTML servito da `frontend/server.js` su :3000, FastAPI su :8001, MongoDB locale.
-3. **Solo statico**: GitHub Pages senza backend (le pagine fanno `fetch('Master.csv')` direttamente sui file committati nel repo — sempre presenti perché il backend ri-pusha dopo ogni approvazione).
-
----
-
-## 3. Struttura del repository
-
-```
-/app/
-├── hub.html                    # PORTALE — entrypoint con login (via /api/auth/login) + griglia di card
-├── index.html                  # FASE 1 — Progettazione (KPI, GANTT, tabella pratiche) — SWR su Master.csv
-├── scavi.html                  # FASE 2 — Avanzamento scavi (lotti, cluster, donut)
-├── mappa.html                  # Mappa Leaflet con SWR su QGIS / QTS / SED / Master
-├── ~~mappa_impresa.html~~         # RIMOSSA (rev.126) — sola-vista, superset da mappa_impresa_caricamento.html. File non più nel repo.
-├── ~~executive_summary.html~~     # RIMOSSA — non più nel progetto. Il pulsante "Executive" è stato rimosso dalla topbar di index.html. Nessun CSS residuo né link attivi.
-├── sopralluoghi.html           # Redazione verbali di sopralluogo cantiere
-├── milestone.html              # Milestone di progetto
-├── stato_lotti.html            # NEW (rev.239) — per lotto: % progettazione ottenuta e % scavi vs milestone contrattuali, flag ritardo
-├── ai_alerts.html              # Beta — alert predittivi
-├── admin.html                  # PANNELLO ADMIN — upload + coda imprese + assegnazioni + storico versioni
-├── imprese.html                # PORTALE IMPRESE — aggiorna pratiche / nuova tratta / mie submission
-├── imprese_scavi.html          # Area Impresa: avanzamento scavi giornaliero (stato cantiere, metri, log)
-├── mappa_impresa_caricamento.html  # Area Impresa: mappa Leaflet filtrata sui lotti assegnati, con possibilità di aggiornare/inserire pratiche direttamente dalla tratta selezionata
-├── polizze_convenzioni.html    # NEW — pratiche con CONVENZIONE/POLIZZA richiesta: filtro lotto/impresa/stato + KPI aggregati
-│
-├── js/
-│   └── api-config.js           # **CRUCIALE** — intercetta fetch() e li reindirizza al backend
-│
-├── Master.csv                  # Dataset principale pratiche — separatore auto-rilevato (TAB o ;)
-├── Riepilogo_progettazione.csv # Riepilogo cluster — RIGENERATO automaticamente da Master.csv
-├── dati.csv                    # Dati ausiliari (in disuso — index.html calcola la stessa aggregazione lato client)
-├── QGIS.geojson                # Tracciato lotti — RIGENERATO automaticamente (properties di stato) da Master.csv
-├── QTS.geojson                 # Tracciato secondario
-├── SED_classificato.geojson    # Attraversamenti (Stradali / Ferroviari / Idrici)
-│
-├── backend/
-│   ├── server.py               # FastAPI app v2.0.0 — vedi §5
-│   ├── requirements.txt        # include httpx (chiamate GitHub API + Apps Script)
-│   ├── .env                    # MONGO_URL, DB_NAME, UPLOAD_TOKEN, SESSION_SECRET, APPS_SCRIPT_*, GITHUB_*
-│   └── .env.example
-│
-├── frontend/                   # Server statico per preview Emergent (NON in produzione)
-│   ├── server.js
-│   └── package.json
-│
-├── DEPLOY.md                   # Guida deploy Render + Atlas + GitHub Pages
-├── Procfile                    # `web: uvicorn server:app --host 0.0.0.0 --port $PORT`
-└── memory/
-    ├── PRD.md                  # Stato avanzamento del progetto
-    ├── test_credentials.md     # Credenziali backend per preview
-    └── AGENT_BRIEF.md          # ← QUESTO FILE
-```
-
----
-
-## 4. Pagine — cosa fa ognuna
-
-| Pagina | Ruolo necessario | Cosa mostra / fa |
-|---|---|---|
-| **hub.html** | nessuno (login obbligatorio) | Login server-side (POST `/api/auth/login`) + griglia card. Mostra card "Area Impresa" solo se backend conferma assegnazione. Anti-FOUC: card nascoste finché non torna il ruolo. Cold-start Render: timeout 10s e pannello "Riprova" |
-| **index.html** | `admin`/`admin2`/`user` (tutti tranne `impresa`) | KPI, GANTT, tabella filtrabile, modal pratiche, grafici Chart.js. **SWR**: legge GitHub statico + Render in parallelo, ridisegna live se il backend ha dati più freschi. XLSX caricato lazy al primo "Esporta Excel" |
-| **scavi.html** | `admin`/`admin2`/`user` (tutti tranne `impresa`) | KPI scavi (non avviati/in corso/sospeso/completati) con metri+% sul totale (rev.8), barre per lotto e per cluster a segmenti multi-stato reali (rev.8, non più blob binario), donut chart, modal lotto/cluster, tabella "Tutti i Cantieri" con `codice_cantiere`/`impresa` (rev.10: rimossa colonna `tecnica_scavo`, resta solo nella card modal). ⚠️ Ruolo cambiato: in precedenza era ristretto a `admin`/`admin2`, ora `SCAVI_ALLOWED_ROLES` include anche `user`. ✅ Topbar uniformata al brand kit Retelit (§8.11 pattern: navy, logo base64, `.topbar-back`) — sostituita la vecchia topbar chiara con `.logo`/`.btn-nav`. Rimosso il badge "Struttura reale · avanzamento di esempio". **(sessione 2026-07-03)**: exec-strip con 3 KPI grandi (avanzamento fisico/permessi/sospesi) in header; titolo/eyebrow/sottotitolo pagina rimossi su richiesta utente, `#pageSubDyn` di nuovo assente dal markup |
-| **mappa.html** | `admin`/`admin2`/`user` (tutti tranne `impresa`) | Leaflet — SWR su `QGIS.geojson`, `QTS.geojson`, `SED_classificato.geojson`, `Master.csv`; ricostruzione live dei layer se cambiano. Basemaps Google-style, ricerca, misurazione distanze, esportazione PDF |
-| **mappa_impresa_caricamento.html** | impresa loggata | Mappa filtrata sui lotti assegnati (usa `/api/imprese/pratiche` e session token), con possibilità di aggiornare lo stato di una pratica o inserirne una nuova direttamente cliccando sulla tratta (`/api/imprese/submit`, `/api/imprese/my-submissions`, `/api/imprese/cantieri*`). Include il blocco "tracking accessi" (vedi §5.9). Unica pagina mappa lato impresa (sostituisce l'ex `mappa_impresa.html`, rimossa rev.126) |
-| **milestone.html** | `admin`/`admin2`/`user` (tutti tranne `impresa`) | Milestone contrattuali e di impresa |
-| **sopralluoghi.html** | `admin`/`admin2`/`user` (tutti tranne `impresa`) | Form di redazione verbale. ⚠️ Non è più solo client-side: i verbali sono ora persistiti su MongoDB (`POST/GET/DELETE /api/sopralluoghi`) con codice progressivo `VBS-AAAA-NNNN` e foto caricate su GitHub (`sopralluoghi/foto/{codice}/`) invece che generare solo un PDF locale |
-| **ai_alerts.html** | tutti (Beta) | Pagina placeholder per future analisi AI |
-| **polizze_convenzioni.html** | `admin`/`admin2`/`user` (tutti tranne `impresa`) | Pratiche con CONVENZIONE e/o POLIZZA richiesta: filtro per lotto/impresa/stato, KPI aggregati. Legge `/api/admin/polizze-convenzioni/data-richiesta`, con fallback diretto a Master.csv su GitHub Pages se l'API non risponde. ✅ **RISOLTO**: guardia di login (`_enri_user`) aggiunta, stesso pattern overlay usato in scavi.html/sopralluoghi.html. La sola scrittura (`POST /api/admin/polizze-convenzioni/update`) richiede un `UPLOAD_TOKEN` chiesto al volo via modale, salvato in `localStorage['enri_upload_token']` — stessa chiave di admin.html (§8.15) |
-| **admin.html** | richiede `UPLOAD_TOKEN` | 4 tabs (File correnti, Storico versioni, **Coda imprese**, **Assegnazioni imprese**). Badge live conteggio pending, modali HTML custom (no `alert/confirm/prompt` nativi), date in formato `gg/mm/aa, hh:mm`, righe coda colorate per tipo. Upload: select `target` a scelta fissa (no testo libero), JS blocca l'invio se il nome del file selezionato dal disco non combacia (case-insensitive) col `target` scelto — messaggio "Nome file non corrispondente" (riga ~842) |
-| **imprese.html** | impresa assegnata + session token | 3 tabs (Aggiorna pratiche / Nuova pratica / Le mie submission). Campo **Ente** = select dinamica via `/api/enti` + opzione "Altro"; **Pratica** in nuova tratta = solo numero progressivo editabile (prefisso AUT/NO + suffisso lotto calcolati). Selezionando una tratta, se altre tratte condividono ENTE+TIPO+PRATICA il sistema propone di aggiornarle tutte insieme |
-| **imprese_scavi.html** | impresa assegnata + session token | "Avanzamento Scavi" lato impresa: aggiornamento giornaliero per pratica/cantiere (stato cantiere, tecnica di scavo, date inizio/fine, metri realizzati **oggi** — accumulati su `metri_scavati`), storico log consultabile. Scrittura diretta, **senza** workflow di approvazione admin (a differenza di `imprese.html`) |
-
-Tutte le pagine fanno guardia: `if (!localStorage.getItem('_enri_user')) → mostra overlay/redirect a hub.html`. Le pagine impresa controllano anche `localStorage._enri_session`.
-
-⚠️ **Rinominata la chiave di sessione**: il token firmato in localStorage non si chiama più `_enri_token` ma **`_enri_session`** (verificato in hub.html, mappa_impresa_caricamento.html). Se trovi ancora `_enri_token` in qualche file non aggiornato, è codice vecchio.
-
----
-
-## 5. Backend FastAPI (`backend/server.py` v2.0.0)
-
-**Modello di storage**: MongoDB GridFS è AUTORITATIVO per i file caricati. I CSV/GeoJSON
-nel repo (`/app/Master.csv`, ecc.) sono usati come SEED FALLBACK quando non esiste
-ancora un upload per quel nome. Dopo ogni approvazione/eliminazione/ripristino il
-backend pusha anche su GitHub via API (token fine-grained, scope `Contents: Read and write`)
-così la copia statica del repo non va più in deriva da quella servita live.
-
-**Tutte le rotte iniziano con `/api/`**.
-
-### 5.1 File / dataset
-
-| Metodo | Endpoint | Auth | Descrizione |
-|---|---|---|---|
-| GET | `/api/` | — | Health JSON di servizio |
-| GET | `/api/health` | — | Ping a MongoDB |
-| GET | `/api/files` | session token, **solo staff** | Lista unificata: Mongo + seed disco. Ogni file: `source: 'mongo'\|'disk'`, `versions`, `size`, `modified` |
-| GET | `/api/data/{path}` | session token | Scarica file (Mongo se presente, altrimenti disco). Usato da `js/api-config.js` |
-| GET | `/api/data-text/{path}` | session token | Idem in `text/plain` |
-| GET | `/api/preview/{path}?max_bytes=N` | session token, **solo staff** | Anteprima primi N byte (256–65536, default 8192) |
-| GET | `/api/uploads?limit=&project=&filename=&include_deleted=` | session token, **solo staff** | Storico upload (filtri + audit cancellati) |
-| POST | `/api/upload` | `UPLOAD_TOKEN` (form `token` o header `x-upload-token`) | Multipart: `file`, `target` opz., `project`, `convert_to_csv`. Salva in GridFS + record `uploads`. Excel → CSV auto. **Se il target è `Master.csv` pusha su GitHub e rigenera QGIS/Riepilogo**. ⚠️ Se `target` è vuoto, `out_name` ricade sul filename originale del file caricato (`server.py` riga ~359) — da `admin.html` non capita mai (guardia lato client, v. riga 110), ma qualunque altro chiamante di questo endpoint senza passare `target` esplicito rischia di salvare sotto nome sbagliato senza errore. `GET /api/data/{filename}` e `GET /api/files` selezionano sempre l'upload con `uploaded_at` più recente per quel filename (nessun lock/versioning ottimistico tra scritture concorrenti, v. §8.41) |
-| DELETE | `/api/uploads/{id}` | `UPLOAD_TOKEN` | Soft-delete singola versione + purge GridFS. Se era Master.csv ri-pusha lo stato corrente |
-| DELETE | `/api/files/{path}` | `UPLOAD_TOKEN` | Soft-delete di TUTTE le versioni — se esiste un seed disco, torna a essere servito |
-| PATCH | `/api/files/{old}` | `UPLOAD_TOKEN` | Body JSON `{"new_name": "..."}` (409 se collide) |
-| POST | `/api/uploads/{id}/restore` | `UPLOAD_TOKEN` | Ripristina versione cancellata (410 se i byte GridFS sono già stati purgati) |
-| GET | `/api/enti` | session token | NEW — elenco enti unici presenti in Master.csv, ordinati alfabeticamente (popola la select "Ente" in imprese.html) |
-
-### 5.2 Auth firmata (HMAC)
-
-Risolve la falla per cui chiunque poteva fare `localStorage.setItem('_enri_user', 'Nome Impresa')`
-e impersonare quel nome senza conoscere il codice. Ora il codice è verificato dal backend e ogni
-chiamata successiva richiede un token firmato non falsificabile.
-
-| Metodo | Endpoint | Auth | Descrizione |
-|---|---|---|---|
-| POST | `/api/auth/login` | — | Body `{nome, codice}` → backend chiama Apps Script server-to-server (segreto MAI esposto al browser) → restituisce `{ok, token, nome, ruolo}` |
-| GET | `/api/auth/verify` | session token | Rivalidazione silenziosa (usata da index.html) |
-| POST | `/api/logs/get` / `/api/logs/put` | session token | Log accessi — MongoDB (`access_logs`), non più JSONBin/Apps Script (vedi §5.12) |
-
-**Schema token** (base64 urlsafe): `nome | ruolo | exp_unix | HMAC-SHA256(payload, SESSION_SECRET)`
-con TTL configurabile via `SESSION_TTL_SECONDS` (default 12h).
-
-### 5.3 Imprese (richiedono `x-session-token` — il `nome` è SEMPRE preso dal token, MAI da un parametro client)
-
-> Nota: l'header resta `x-session-token`; è solo la chiave **localStorage** lato client che è stata rinominata da `_enri_token` a `_enri_session` (vedi §4 e §7).
-
-| Metodo | Endpoint | Descrizione |
-|---|---|---|
-| GET | `/api/imprese/me` | Profilo + lotti assegnati (404 se non assegnata) |
-| GET | `/api/imprese/pratiche` | Master.csv filtrato per i lotti dell'impresa. Confronto per **codice lotto esatto** (non substring — "Lotto 2" non aggancia "Lotto 2A") |
-| POST | `/api/imprese/submit` | Body `{type:'update'\|'new', changes:[...]}` → record in `pending_updates`, status `pending` |
-| GET | `/api/imprese/my-submissions` | Storico delle proprie submission |
-| DELETE | `/api/imprese/submissions/{id}` | L'impresa cancella SOLO le proprie submission ancora `pending` |
-| GET | `/api/lotti-cantieri` | NEW — lotti distinti (da Master.csv) + cantieri associati (da MongoDB) + mappa lotto→impresa assegnata. Usato per popolare select a cascata |
-| GET | `/api/imprese/cantieri` | NEW — cantieri (uno per pratica di autorizzazione) nei lotti dell'impresa autenticata |
-| POST | `/api/imprese/cantieri/{cantiere_key}` | NEW — aggiorna stato cantiere, tecnica scavo, date, **metri_realizzati_oggi** (si accumula su `metri_scavati`, non sovrascrive), note. Push automatico su GitHub. **Scrittura diretta, nessuna approvazione admin** (a differenza di `/api/imprese/submit`) |
-| GET | `/api/imprese/cantieri/{cantiere_key}/log` | NEW — storico aggiornamenti giornalieri di un cantiere |
-| GET | `/api/imprese/solleciti` | NEW — solleciti dell'impresa, filtrati per le tratte dei suoi lotti |
-| POST | `/api/imprese/solleciti` | NEW — inserisce un sollecito. Scrittura diretta, nessuna approvazione |
-| POST | `/api/imprese/solleciti/bulk-insert` / `bulk-delete` | NEW — inserimento/cancellazione massiva |
-| DELETE | `/api/imprese/solleciti/{id}` | NEW — elimina un sollecito |
-
-### 5.4 Admin (richiedono `UPLOAD_TOKEN`)
-
-| Metodo | Endpoint | Descrizione |
-|---|---|---|
-| GET / PUT / DELETE | `/api/admin/assignments[/{nome}]` | CRUD nome impresa ↔ lotti (lookup case-insensitive) |
-| GET | `/api/admin/pending-updates?status=pending\|approved\|rejected\|all` | Lista coda |
-| POST | `/api/admin/pending-updates/{id}/approve` | Applica le modifiche a Master.csv (nuova versione GridFS), **rigenera QGIS.geojson + Riepilogo_progettazione.csv** e pusha tutti e tre su GitHub. Da qui parte anche `_sync_cantieri()` (vedi §5.12) |
-| POST | `/api/admin/pending-updates/{id}/reject` | Body `{note}` |
-| GET | `/api/admin/polizze-convenzioni/data-richiesta` | NEW — per ogni pratica con CONVENZIONE/POLIZZA valorizzata, fissa (una sola volta, `$setOnInsert`) la data di prima richiesta nella collection `pol_conv_dates` |
-| POST | `/api/admin/polizze-convenzioni/update` | NEW — Body `{lotto, pratica, fields:{CONVENZIONE?, POLIZZA?}}`. Valori ammessi: `NECESSARIA\|RICHIESTA RDS\|INVIATA\|OTTENUTA\|""`. Scrive su Master.csv (tutte le righe lotto+pratica) e pusha su GitHub |
-| GET | `/api/admin/sync-cantieri` | NEW — forza la sincronizzazione cantieri↔Master.csv (crea cantieri mancanti, uno per pratica AUTORIZZAZIONE) |
-| GET | `/api/admin/solleciti` | NEW — vista admin di tutti i solleciti |
-
-### 5.5 Auto-push GitHub + rigenerazione derivati
-
-`_push_to_github(file_bytes, path, label)` — commit via API GitHub (GET sha → PUT contents), fire-and-forget, retry su conflitto sha (409) fino a 3 volte. Skip silenzioso se `GITHUB_TOKEN` mancante: MongoDB resta comunque autoritativo.
-
-`_regenerate_derived_files(master_df, note)` — Scoperta chiave: `Riepilogo_progettazione.csv` è esattamente la tabella attributi di `QGIS.geojson` esportata in CSV (stesse 21 colonne, stesso ordine, stessi valori, verificato riga per riga). Per questo:
-
-```
-Master.csv (dinamico)
-    │
-    ▼
-_compute_tratta_summary() — per ogni TRATTA_ID:
-   • STATO_AUTORIZZAZIONE ← ultima riga AUTORIZZAZIONE attiva (le pratiche
-     con STATO_PERMESSO=NO COMPETENZA vengono saltate se esistono alternative)
-   • STATO_NULLAOSTA / STATO_ORDINANZA ← peggiore tra l'ultimo stato di ciascun ente
-   • LAVORABILE ← SI solo se AUTORIZZAZIONE=OTTENUTO e, se richiesti,
-     anche NULLA OSTA/ORDINANZA=OTTENUTO
-   • PRATICA ← "AUT/24/1A | NO/22/1A | …" (AUT, poi NO, poi ORD)
-    │
-    ▼
-PATCH UNICA sulle properties di QGIS.geojson (geometria invariata)
-    │
-    ▼
-Riepilogo_progettazione.csv = derivato direttamente da quelle properties
-```
-
-Campi **mai derivati automaticamente** (provenienti da sistemi esterni o senza regola certa): `CAMPO AWS`, `PROTOCOLLO_AUT`, `ENTE 2`, `fid`, `TIPOLOGIA`, `PROVINCIA`, `ROUTE`, `SPAN`. Restano quelli già presenti in QGIS.geojson.
-
-### 5.6 Approvazione: come viene applicata una `update`
-
-`_apply_changes_to_df`:
-1. Match per `TRATTA_ID + ENTE + TIPO_PERMESSO` (+ `PRATICA` se fornita come discriminante: utile quando sulla stessa tratta+ente+tipo esistono pratiche diverse).
-2. **Copia l'ultima riga esistente** e la inserisce **subito DOPO** la stessa (non in fondo al file) — così le righe dello stesso iter restano vicine.
-3. Auto-set `DATA_ULTIMA_MODIFICA = oggi` se non fornito e c'è un cambio di `STATO_PERMESSO`.
-4. Per le submission `type:'new'` aggiunge una riga vuota popolata con i campi inviati.
-
-### 5.7 Variabili d'ambiente (`backend/.env`)
-
-| Key | Significato |
-|---|---|
-| `MONGO_URL` | URI Mongo (locale o Atlas) |
-| `DB_NAME` | `enri_dashboard` |
-| `DATA_DIR` | Cartella seed (default: parent di `/backend`, in preview `/app`) |
-| `ALLOWED_ORIGINS` | CSV di origini CORS |
-| `UPLOAD_TOKEN` | Token admin (upload/delete/assignments/approve). Generare con `openssl rand -hex 32` |
-| `MAX_UPLOAD_MB` | Default `25` |
-| `SESSION_SECRET` | **OBBLIGATORIO** — chiave HMAC per i session token (`openssl rand -hex 32`) |
-| `SESSION_TTL_SECONDS` | Default `43200` (12h) |
-| `APPS_SCRIPT_URL` | URL del Google Apps Script di login |
-| `APPS_SCRIPT_SECRET` | Segreto condiviso con Apps Script (MAI esposto al client) |
-| `GITHUB_TOKEN` | Fine-grained PAT, repo `ENRI-RDS/dashboard`, `Contents: Read and write`. Se assente il push viene skippato |
-| `GITHUB_REPO` | Default `ENRI-RDS/dashboard` |
-| `GITHUB_BRANCH` | Default `main` |
-| `GITHUB_CSV_PATH` / `GITHUB_QGIS_PATH` / `GITHUB_RIEPILOGO_PATH` | Override path nel repo se servono sottocartelle |
-
-### 5.8 Vincoli di sicurezza
-- `_safe_relpath()` impedisce path-traversal (`..`, `\`, caratteri fuori `[A-Za-z0-9_\-./]`).
-- Estensioni accettate: `.csv`, `.xlsx`, `.xls`, `.geojson`, `.json`.
-- Limite dimensione = `MAX_UPLOAD_MB`.
-- HMAC compare con `hmac.compare_digest` (timing-safe).
-- Le rotte impresa **ignorano qualunque parametro `nome`** passato dal client e usano sempre quello firmato nel token.
-
-### 5.9 Sopralluoghi (collection `sopralluoghi`)
-
-| Metodo | Endpoint | Auth | Descrizione |
-|---|---|---|---|
-| GET | `/api/sopralluoghi` | session token | Tutti i verbali, ordinati per `codice_verbale` decrescente |
-| GET | `/api/sopralluoghi/next-codice` | session token | Prossimo codice progressivo `VBS-{anno}-{NNNN}` |
-| POST | `/api/sopralluoghi` | session token | Salva verbale su MongoDB + aggiorna `sopralluoghi.csv` su GitHub. Le foto (data URL base64) vengono caricate su GitHub in `sopralluoghi/foto/{codice}/` per non saturare lo storage Mongo gratuito |
-| DELETE | `/api/sopralluoghi/{id}` | session token, **solo ruolo `admin`** | Elimina un verbale |
-
-### 5.10 Cantieri / Avanzamento Scavi impresa (collection `cantieri`)
-
-Un cantiere = una pratica AUTORIZZAZIONE (chiave `cantiere_key`, **non** `pratica_id`, perché quest'ultimo non è garantito univoco tra enti diversi sullo stesso lotto/numero).
-
-- **`codice_cantiere`** (`CA/{progressivo}/{lotto}`, rev.5): identificativo "ufficiale" mostrato all'impresa e in `scavi.html`, distinto da `cantiere_key` (chiave tecnica) e `pratica_id` (riferimento pratica). Assegnato **una sola volta** alla creazione in `_sync_cantieri()`, mai riassegnato; `_max_codice_per_lotto()`+`_backfill_codici_cantiere()` garantiscono continuità anche sui cantieri storici. Esposto su `/api/cantieri`, `/api/imprese/cantieri`, `cantieri.csv`.
-- ✅ **RISOLTO (rev.10)**: `impresa` sui cantieri era popolato **solo** da migrazione best-effort dal vecchio schema pre-raggruppamento (`old_docs`) — per qualsiasi cantiere creato dopo, restava sempre `""`. `_sync_cantieri()` ora costruisce all'inizio una mappa `lotto_impresa` dalla collection `assignments` (stessa fonte/logica di `GET /api/lotti-cantieri`) e la usa per popolare `impresa` sia in creazione sia in update (backfill automatico sui cantieri esistenti privi del campo, senza sovrascrivere se un lotto non ha assegnazione).
-- **Transizioni stato** (`STATO_TRANSITIONS`, JS, rev.5): la select stato in `mappa_impresa_caricamento.html`/`imprese_scavi.html` mostra solo stato corrente + transizioni valide (`non_avviato→allestimento→in_corso→{sospeso,completato}`, `sospeso→in_corso`). Su `allestimento`: `tecnica_scavo`/`metri_realizzati_oggi` disabilitati e non richiesti (né in UI né in payload). `data_inizio_effettiva` lockata permanentemente una volta valorizzata.
-- `GET /api/cantieri?lotto=&cluster=&stato=` — lista pubblica, usata da `scavi.html` (lo storico `log` viene tolto dal listing per non appesantire la risposta).
-- L'impresa aggiorna via `POST /api/imprese/cantieri/{cantiere_key}` (vedi §5.3): **scrittura diretta senza approvazione**, a differenza del flusso `imprese.html`/`pending_updates`. Ogni update accumula `metri_realizzati_oggi` su `metri_scavati` (`$inc`) e appende una riga a `log[]` (data, impresa, stato, **tecnica_scavo** [rev.6], metri, note, motivo blocco). ⚠️ Bug corretto (rev.5): il check assegnazione confrontava `lotto` non normalizzato (`"1A"` vs `"Lotto 1A"`) → 403 spurio; ora entrambi i lati passano da `_lotto_from_source()`.
-- `_sync_cantieri()` crea i cantieri mancanti a partire da Master.csv; viene rilanciata sia da `/api/admin/sync-cantieri` sia automaticamente dopo ogni approvazione di `pending_updates`. **`metri_totali` = somma di TUTTE le tratte della pratica (autorizzazione ottenuta), indipendentemente da `lavorabile`** (rev.9, §8.33): quel flag per-tratta è solo indicativo per la mappa (NULLA OSTA/ORDINANZA ottenuti), non deve e non limita cosa l'impresa può rendicontare come scavato.
-- Dopo ogni scrittura, push fire-and-forget su GitHub (`_push_cantieri_to_github`).
-
-### 5.11 Solleciti (collection `solleciti`)
-
-Sistema di "promemoria/follow-up" per pratiche in attesa, associato alle tratte dei lotti dell'impresa. Scrittura diretta (no workflow di approvazione), CRUD completo lato impresa (`/api/imprese/solleciti*`) e vista aggregata lato admin (`/api/admin/solleciti`).
-
-### 5.12 ✅ Tracking accessi — RISOLTO + migrato da JSONBin a MongoDB
-
-Tutte le 4 pagine con blocco `<!-- TRACKING ACCESSI -->` (`scavi.html`, `mappa.html`, `mappa_impresa_caricamento.html`, `sopralluoghi.html`) chiamano `POST /api/logs/get` e `POST /api/logs/put` (header `x-session-token`). **Il backend non chiama più Apps Script/JSONBin per questo**: legge/scrive dalla collection Mongo `access_logs` (un documento per `binId`, campi `utenti[]`/`accessi[]`). Contratto richiesta/risposta lasciato identico apposta (`{binId}` → `{record:{utenti,accessi}}`), quindi **le pagine non sono state toccate di nuovo** — solo il backend è cambiato.
-
-`APPS_SCRIPT_URL`/`APPS_SCRIPT_SECRET` restano in uso **solo per il login** (`action: "login"` verso il Google Sheet), non più per i log.
-
-⚠️ **Dati storici non migrati**: gli accessi già registrati sul vecchio bin JSONBin non sono stati copiati automaticamente su MongoDB (nessun accesso di rete disponibile per farlo in questa sessione). Se serve conservare lo storico, va fatto un import una tantum leggendo il bin esistente e scrivendolo in `access_logs`. Da questo deploy in poi, il log riparte vuoto su Mongo.
-
-`index.html` conteneva anche codice/commenti morti che nominavano JSONBin per una funzione "Note per pratica" già disattivata (stub `noteLoad`/`noteSave` no-op) e per due commenti descrittivi non più accurati — ripuliti (rinominati, nessuna funzionalità toccata).
-
----
-
-## 6. Come i file caricati arrivano sul frontend — `js/api-config.js`
-
-Ogni pagina HTML include `<script src="js/api-config.js"></script>` in `<head>`. Lo script:
-
-1. Legge `window.ENRI_API_BASE` **oppure** `localStorage.getItem('enri_api_base')`.
-2. Se vuoto → non fa nulla, le pagine leggono i CSV/GeoJSON statici committati nel repo.
-3. Se valorizzato → **monkey-patcha `window.fetch`**: ogni `fetch('Master.csv')` viene riscritta in `fetch(`${API_BASE}/api/data/Master.csv`)`.
-
-**Pattern SWR (stale-while-revalidate)** in `index.html`, `mappa.html`, `mappa_impresa_caricamento.html`:
-- fetch parallelo del file statico GitHub (istantaneo, sempre disponibile) E del backend Render (può essere lento al cold-start);
-- la UI mostra subito il dato statico;
-- se Render risponde con un contenuto diverso, **la UI si aggiorna live senza reload** (callback ridisegna tabella, ricostruisce layer Leaflet, ecc.).
-
-**Flusso completo upload/approvazione:**
-1. Impresa apre `imprese.html` (auth: token in `_enri_session`), compila modifiche, invia.
-2. Backend salva in `pending_updates` (status `pending`).
-3. Admin apre `admin.html` → tab "Coda imprese" (badge live) → Approva.
-4. Backend: legge Master.csv corrente → applica `changes` con pandas (riga inserita dopo l'ultima della stessa pratica) → crea nuova versione GridFS → **rigenera QGIS.geojson + Riepilogo_progettazione.csv** → pusha tutti e tre su GitHub.
-5. Tutte le pagine, alla prossima `fetch('Master.csv')`, ricevono la nuova versione dal backend; le SWR aggiornano la UI live senza reload.
-
----
-
-## 7. Auth & ruoli
-
-### 7.1 Login utente (hub.html → /api/auth/login)
-Implementato come **proxy server-to-server** verso Google Apps Script. Il browser invia `{nome, codice}`; il backend verifica con Apps Script (segreto MAI esposto) e firma un token HMAC che viene salvato in localStorage:
-
-```js
-localStorage._enri_user    // nome canonico
-localStorage._enri_role    // 'admin' | 'admin2' | 'user' | 'impresa'
-localStorage._enri_session // session token firmato (HMAC, scade dopo SESSION_TTL_SECONDS) — ⚠️ rinominata da _enri_token
-```
-
-L'admin gestisce gli accessi modificando lo sheet Google collegato all'Apps Script (requisito esplicito del committente).
-
-In `hub.html` tre liste filtrano le card:
-- `SCAVI_ALLOWED_ROLES = ['admin', 'admin2', 'user']` → mostra/blocca card "Avanzamento Lavori". ⚠️ Ora include anche `user`, non più solo admin
-- `ADMIN_ALLOWED_ROLES = ['admin', 'admin2']` → mostra/nasconde card "Pannello Admin".
-- `IMPRESA_ROLES = ['impresa']` → attiva la modalità "Area Impresa": nasconde tutte le card normali e mostra fino a 3 card dedicate (`impresaCardsWrap`), ciascuna condizionata a `display:none` finché non si conferma l'assegnazione via `/api/imprese/me`:
-  - `impresaCard` → `imprese.html` (aggiorna pratiche)
-  - `impresaMapUpdCard` → `mappa_impresa_caricamento.html` (mappa con aggiornamento pratiche)
-  - `impresaScaviCard` → `imprese_scavi.html` (avanzamento scavi)
-
-Nota minor: la chiamata `fetch(apiBase + '/api/imprese/me?nome=' + ...)` in `hub.html` passa ancora un parametro `?nome=` in query string, ma il backend (`impresa_me`) lo ignora completamente e legge sempre il nome dal token firmato — il parametro è innocuo ma andrebbe rimosso dal client per coerenza con quanto dichiarato in §7.3.
-
-### 7.2 Upload backend e azioni admin
-Tutte le scritture admin (`POST /api/upload`, `DELETE /api/uploads/*`, `PUT /api/admin/assignments/*`, `POST /api/admin/pending-updates/*/approve|reject`, `POST /api/admin/polizze-convenzioni/update`, `GET /api/admin/sync-cantieri`) richiedono `UPLOAD_TOKEN`. In `admin.html` l'admin lo incolla manualmente nel form.
-
-### 7.3 Azioni impresa
-Tutti gli endpoint `/api/imprese/*` richiedono header `x-session-token`. Il `nome` viene SEMPRE letto dal token firmato, mai da un parametro `?nome=` lato server (vedi nota sopra: il client a volte lo invia ancora, ma viene ignorato).
-
----
-
-## 8. Convenzioni & gotchas
-
-1. **Separatore CSV auto-rilevato**: `Master.csv` può essere tab o `;` (Excel italiano vs export). `_detect_sep()` lo determina sulla prima riga; lettura/scrittura lo preservano. Il push su GitHub usa SEMPRE tab (formato originale del file nel repo).
-2. **Encoding-robust**: Master.csv viene letto provando `utf-8`, `cp1252`, `latin-1` prima di fallback a `errors='replace'`. Le righe malformate (es. virgola non quotata in NOTE) usano `on_bad_lines='warn'` invece di fallire.
-3. **CORS**: il backend espone solo le origini in `ALLOWED_ORIGINS`. Aggiungere il dominio preview/Render quando cambia.
-4. **Path con sotto-cartelle**: `target=M/QGIS_3.geojson` salva in `DATA_DIR/M/QGIS_3.geojson`. La regex `_SAFE_NAME_RE` accetta `/` ma rifiuta `..`.
-5. **Render free tier**: il servizio si spegne dopo 15min di inattività, prima chiamata ~30s di cold-start → frontend usa timeout 10s + pannello "Riprova". ⚠️ **`.github/workflows/keepalive.yml` abbandonato (rev.28)**: gli scheduled workflow di GitHub Actions non sono affidabili al minuto (ritardi 10-15+min documentati, causavano comunque sleep intermittenti) — sostituito con **cron-job.org** (ping `/api/health` ogni 13min, precisione al minuto, alert email su fallimento). Il file su GitHub resta solo con `workflow_dispatch` per test manuali, `schedule` rimosso. ✅ Confermato attivo in orario lavorativo (2026-07-06) — zero cold-start diurno per le imprese.
-6. **AbortController → Promise.race**: l'anteprima Claude non supporta la clonazione di `AbortSignal` via `postMessage`; i timeout sui fetch usano `Promise.race` ovunque (compatibile sia in anteprima che in produzione).
-7. **NO COMPETENZA**: le pratiche AUTORIZZAZIONE chiuse con STATO_PERMESSO=NO COMPETENZA sono "superate" — se esiste una pratica attiva successiva sulla stessa tratta, è quella a contare; se NO COMPETENZA è l'unica presente, la tratta è IN ATTESA della prossima pratica.
-8. **Conflitti GitHub (409)**: `_push_to_github` rilegge lo sha aggiornato e riprova fino a 3 volte se qualcuno scrive sullo stesso file in parallelo.
-9. **Lookup impresa case-insensitive**: `_find_assignment` cerca con regex `^nome$` case-insensitive — `sertori`, `Sertori`, `SERTORI` trovano tutti lo stesso record.
-10. **`dati.csv` è in disuso**: `index.html` calcola la stessa aggregazione LOTTO×STATO×Metri/Percentuale lato client da `Riepilogo_progettazione.csv` (variabili `aggMap`/`totMap` in `loadData()`).
-11. **Rebranding "Retelit" — COMPLETATO su TUTTE le pagine (rev.3)**: topbar navy (`--retelit-blue`, 58px, padding 28px) con logo Retelit embeddato come base64 bianco (50px) su tutte le pagine: `hub`, `index`, `mappa`, `sopralluoghi`, `polizze_convenzioni`, `milestone`. Bottone Hub unificato come `.topbar-back` (bordo `--retelit-sky`, hover trasparente). `<title>` aggiornati a `Retelit — …` su tutte le pagine. Tutti i token brand CSS (`--retelit-blue-50`, `--retelit-ice`, `--retelit-sky`, `--accent2`, `--border2`, `--muted2`, `--text2`, `--radius-*`, `--shadow-*`, `--dur-*`, `--ease-*`) definiti nel `:root` di ogni file. Emoji vietate dal brand kit rimosse da topbar, placeholder, export buttons e JS (restano solo simboli funzionali in pannelli tecnici Leaflet).
-12. **Token rinominato**: `_enri_token` → `_enri_session` in localStorage (vedi §7.1). Se incontri ancora `_enri_token` in una pagina, è codice non aggiornato.
-13. **Scrittura diretta vs workflow di approvazione**: occhio a non confondere i due modelli — `imprese.html`/`mappa_impresa_caricamento.html` (pratiche) passano sempre da `pending_updates` + approvazione admin; `imprese_scavi.html` (cantieri) e i solleciti scrivono **direttamente** su MongoDB/GitHub senza step di revisione.
-14. ✅ **RISOLTO** — Tracking accessi con segreto esposto: vedi §5.12. Tutte le 5 pagine ora usano il proxy `/api/logs/*`, nessun secret in chiaro nel client.
-15. ✅ **RISOLTO** — `polizze_convenzioni.html` ora legge/scrive il token nella stessa chiave `localStorage['enri_upload_token']` usata da `admin.html` (prima usava `sessionStorage['_enri_upload_token']`). Se il token è già stato inserito una volta in una delle due pagine, l'altra non lo richiede più. Scelta deliberata: si è mantenuto il modello a doppio secret (login + UPLOAD_TOKEN), non si è passati a un controllo basato solo sul ruolo — nessuna modifica al backend.
-16. **Login duplicato in `index.html`**: oltre al login "ufficiale" su `hub.html`, `index.html` ha un proprio overlay di login che chiama anch'esso `POST /api/auth/login` e poi reindirizza a `hub.html` dopo aver salvato `_enri_user/_enri_role/_enri_session`. Serve da fallback per chi atterra direttamente su `index.html?direct=1` (link diretto dalla card "Fase 1" in hub.html) senza essere già loggato.
-17. **`executive_summary.html` rimosso dal progetto** (confermato dall'utente): non c'è più una card collegata in `hub.html`. Se trovi ancora riferimenti al file in vecchie versioni di documentazione o in altri repo collegati, sono obsoleti.
-18. **"Lotti in Progettazione" (ex "Lotti in Avvio")**: i lotti 1–8 non ancora avviati sono ora etichettati "Lotti in Progettazione" ovunque in `index.html` (label visuale, riga totale, modale riepilogo, export). La colonna milestone "Invio Perm./Scadenza" è stata rimossa da quella sezione (ora c'è `milestone.html` dedicata).
-19. **`IMPRESE_PER_LOTTO` estesa a tutti i 12 lotti**: in `index.html` l'oggetto include ora anche i lotti 1–8 (`1→Valtellina`, `2→Sertori`, `3→Valtellina`, `4→Sielte`, `5→Circet`, `6→Sertori`, `7→Valtellina`, `8→Sielte`). Il nome impresa compare sotto il numero lotto nelle barre di avanzamento.
-20. **SED — bottoni Excel unificati**: la sezione "Attraversamenti SED" in `index.html` aveva due pulsanti separati ("Scarica Vista" / "Scarica Tutti"). Ora è un unico dropdown `sedXlsDropdown` identico a `xlsDropdown` di "Tutte le Pratiche" (con opzioni "Tutti gli attraversamenti" e "Vista corrente").
-21. **`debug_dashboard.py`**: script Python di audit automatico per i file HTML della dashboard. Controlla: CSS vars mancanti/undefined, topbar navy, logo, hub button style, div balance, emoji UI vietate vs funzionali Leaflet, gradienti decorativi, backdrop-filter, colori fuori palette, funzioni JS duplicate e dead, variabili JS inutilizzate, DOM ID mancanti, console.log in produzione, segreti hardcoded. Output con score /100 per file. Uso: `python3 debug_dashboard.py file.html [...]`.
-22. **Card modal cantieri in `scavi.html` (rev.7)**: `openModalStato()` mostrava solo `pratica_id`/lotto/ente/comune/progresso. Ora mostra tutti i dati disponibili: `codice_cantiere` (primario), cluster, tecnica scavo, impresa, conteggio tratte lavorabili/bloccate (derivato da `r.tratte[]`, **non** da `tratte_lavorabili`/`tratte_bloccate` — quei campi esistono solo nella riga CSV, non nel doc Mongo), le 4 date se valorizzate, motivo blocco+ripresa stimata se `sospeso`, note.
-23. ✅ **RISOLTO** — **Palette colori stato fuori brandkit Retelit**: `STATO_COLORS`/`COLORS`/`STATI_COLORI_MAP` usavano hex arbitrari non a palette (viola `#9b59b6`/`#7A3DAA`, rosa `#B5657A`, verde/rosso/blu/arancio non-token). Mappa canonica ora identica su `index.html`, `mappa.html`, `mappa_impresa_caricamento.html`, `scavi.html` (v. §8bis; includeva anche `mappa_impresa.html`, poi rimossa rev.126). **Esclusi deliberatamente**: palette per-lotto/cluster (`LOTTO_COLORS`, rainbow array) e marker misura/ricerca — servono a distinguere entità diverse, non rappresentano uno "stato", restano arbitrari.
-24. ✅ **RISOLTO** — **Nesting HTML rotto in `mappa_impresa_caricamento.html`**: `</div>` di troppo chiudeva `#sidebarEl` prima che `#scaviBodyPanel` venisse aperto → il pannello scavi diventava fratello della sidebar invece che figlio, causava "doppia finestra" (mappa schiacciata, legenda sovrapposta al form). Verificare sempre il nesting con `html.parser` prima di assumere che un problema visivo sia CSS quando coinvolge un intero pannello.
-25. ✅ **RISOLTO** — **`.pr-form-actions` senza `flex-wrap`**: su sidebar 300px i 3 pulsanti (Annulla/Storico/Salva aggiornamento) andavano in overflow orizzontale e venivano tagliati da `.sidebar{overflow:hidden}` (es. "Annulla" → "nnulla"). Aggiunto `flex-wrap:wrap` in `mappa_impresa_caricamento.html`.
-26. ✅ **RISOLTO** — **"Aggiorna Scavi" apriva cantiere sbagliato**: il fallback quando non c'era match esatto sulla tratta prendeva "il primo cantiere dello stesso lotto" alla cieca. Ora: match esatto → apri; nessun match + lotto con 1 solo cantiere → apri; nessun match + lotto con più cantieri → messaggio, nessuna apertura automatica; nessun match + nessun cantiere sul lotto → messaggio "autorizzazione non ancora ottenuta". File: `mappa_impresa_caricamento.html`.
-27. ✅ **RISOLTO** — **Bug `LAVORABILE` in `_compute_tratta_summary` (`server.py`)**: `need_no`/`need_ord` venivano letti SOLO dal flag `NULLA OSTA NECESSARIO`/`ORDINANZA NECESSARIA` sulla riga AUT. Se il flag era vuoto/NO ma esistevano comunque righe reali NULLA OSTA/ORDINANZA non ottenute per la tratta, `LAVORABILE` risultava `SI` per errore. Fix: `no_effettivo = (need_no=="SI") or bool(no_latest)` (idem `ord_effettivo`) — vincolante se il flag lo dichiara O se la pratica esiste davvero nei dati.
-28. ✅ **RISOLTO** — Integrata la tabella "Tutti i Cantieri" di `scavi.html`: aggiunte colonne `codice_cantiere`, `impresa`, `tecnica_scavo` (label via `TECNICA_LABEL`) — dati già esposti da `GET /api/cantieri` ma non renderizzati. Aggiunti anche a `haystack` di ricerca.
-29. ✅ **RISOLTO** — Nuovo endpoint `POST /api/admin/regenerate-derived` (auth `x-upload-token`): rilegge il Master.csv corrente e richiama `_regenerate_derived_files` senza upload — serve a riprocessare i dati esistenti dopo un fix a `_compute_tratta_summary` senza toccare Master.csv.
-30. ✅ **RISOLTO** — **Popup mappa: info cantiere integrate** (prima mostravano solo dati pratica/autorizzazione).
-    - `mappa_impresa_caricamento.html`: sezione "Cantiere" completa (stato+colore, tecnica, metri scavati/totali+%, impedimento), dati da `SC_CANTIERI` precaricato all'avvio (`scEnsureInit()` fire-and-forget in testa alla IIFE di init mappa).
-    - `mappa.html` (già allora anche `mappa_impresa.html`, rimossa rev.126): stessa sezione ma **sola lettura** (nessun bottone azione), dati da `GET /api/cantieri` (pubblico, no auth) in `RO_CANTIERI` (costanti locali `RO_SC_STATO_LABEL/COLOR/TECNICA_LABEL`, funzione `_roLoadCantieri()`).
-    - Lookup in tutti e 3 i casi: `cantieri.find(c => (c.tratte||[]).some(t => t.tratta_id === p.TRATTA_ID))`.
-31. ✅ **RISOLTO** — `.btn.secondary{color:var(--muted)}` faceva sembrare disabilitati i pulsanti secondari (es. "Nuova pratica"/"Aggiorna Scavi" nel popup mappa apparivano "spenti" accanto al primario blu). Cambiato a `color:var(--text)` + hover `border-color/color:var(--accent)` in tutti e 3 i file mappa.
-32. ✅ **RISOLTO** — **`scavi.html`: 3 bug segnalati dall'utente su KPI/barre/tabella (rev.8)**:
-    - **KPI cards**: contavano solo i lotti aggregati sul "peggiore" stato, senza metri né %. Ora `_renderKpi()` conta i cantieri reali da `CANTIERI_RAW` e popola `#kpi{Nav,All,Cor,Com,Sos}Sub` con `metri m · pct% sul totale`.
-    - **Barre "Avanzamento per Cluster" e "per Lotto"**: la riga scavi era binaria (un unico segmento colorato `in-corso`/stato-peggiore + grigio "non scavato"), non rifletteva i singoli stati dei cantieri che compongono cluster/lotto. Ora `_loadCantieri()` traccia `statoMetri{stato:metri}` per lotto e cluster (propagato in `LOTTI[].statoMetri` e `window._CLUSTER_SCAVI[cl].statoMetri`); `_renderClusters()`/`_renderBars()` disegnano un segmento per ogni stato reale (ordine/colori da `STATO_ORDER`/`STATO_COLOR`) + eventuale segmento grigio "Non tracciato" per i metri senza cantiere associato.
-    - **Tabella "Tutti i Cantieri"**: vedi voce 28.
-33. ✅ **RISOLTO (rev.9)** — **Bug `metri_totali` incoerente in `_sync_cantieri()` (`server.py`)**: `metri_totali` veniva ricalcolato ad ogni sync sommando solo le tratte con `lavorabile==True` (riga ~2229) e sovrascritto con `$set` senza mai controllare `metri_scavati` già accumulato. Siccome `lavorabile` dipende anche da NULLA OSTA/ORDINANZA (non solo dall'AUTORIZZAZIONE), un cantiere già "in corso" con metri regolarmente rendicontati poteva vedersi azzerare `metri_totali` a un sync successivo (visto in produzione: `CA/3/2A`, 0 totali / 600 scavati). **Chiarito dall'utente**: `lavorabile` è un flag SOLO per la visualizzazione in mappa, non deve limitare cosa un'impresa può rendicontare. Fix: `metri_totali` ora somma **tutte** le tratte della pratica (autorizzazione ottenuta), indipendentemente da `lavorabile` — di fatto uguale a `metri_totali_potenziali` (campo lasciato per compatibilità con pagine che lo leggono separatamente). ⚠️ **Da fare manualmente una tantum**: i documenti `cantieri` già in Mongo restano con il vecchio `metri_totali` finché non gira un sync — chiamare `GET /api/admin/sync-cantieri` (auth `x-upload-token`) per riallinearli subito, altrimenti si autocorreggono al prossimo upload/approvazione di Master.csv.
-34. **RISOLTO (rev.21)** — **Tabella "Tutti i Cantieri" in `scavi.html`: header non andava a capo**: `white-space:nowrap` globale su `.cant-table thead th` + `tight:true` che lo riforzava inline → 13 colonne in overflow orizzontale anche con label corte, nonostante gli aggiustamenti di rev.18/rev.20. Fix: `white-space:normal` sugli header (con `line-height:1.35`), `tight` ora `max-width:70px` invece di `nowrap`, `.th-cell` allineato `flex-start` (serve per header su 2 righe), label accorciate (Prov., Stato, Avanz., M. Tot., M. Scavati, Registro). Bottone "Registro" per riga: rimossa emoji 📋 (vietata da brand kit §8.11) e stile inline generico, sostituiti con classe `.btn-registro` (bordo/hover accent Retelit, icona SVG inline al posto dell'emoji).
-35. **RISOLTO (rev.22)** — **Card "Registro Lotti · Stato Cantiere" rimossa da `scavi.html`** (ridondante con "Avanzamento per Lotto" + tabella "Tutti i Cantieri"): eliminato il markup della card, la funzione `_renderTabella()` e la sua chiamata in `_renderAll()`. I pill province (`.prov-pill`, stesso stile già usato nella tabella rimossa) sono stati spostati sotto al numero lotto in `_renderBars()` (card "Avanzamento per Lotto"), dentro `.bar-lotto-wrap`.
-36. **RISOLTO (rev.23)** — **Colore distintivo per provincia in tutta `scavi.html`**: nuovo `provColor(p)`/`provPill(p)` (hash deterministico su palette di 10 colori brand-coerenti — stessa provincia = stesso colore sempre, non serve enumerare le province a mano). Applicato a: pill "Avanzamento per Lotto", card modal cantiere, colonna "Prov." tabella "Tutti i Cantieri", modal Lotto (era hardcoded su `--accent`), modal Cluster (era testo semplice `MI / PV`), card "Metri scavati per provincia". `.prov-pill` CSS ora senza colori fissi (solo forma), il colore è sempre inline via `provColor()`.
-37. **RISOLTO (rev.24)** — **Redesign card cantiere nel modal stato (`openModalStato`)**: erano righe separate da bordo inferiore con testo semplice "Label: valore" — ora card vere (`.msc-*`, bordo+radius+padding), chip invece di label:valore, provincia con `provPill()`, icone SVG al posto delle emoji 📍/⏸/📝 (vietate da brand kit §8.11). ⚠️ Bug corretto nello stesso giro: `background:var(--danger)0d` non è CSS valido (non si concatena testo dopo `var()`) e `--danger` non è nemmeno definita in `scavi.html` — sostituito con hex diretto `#C0392B` (stesso token brand kit). **(rev.25)**: rimossi chip "Tecnica" e "Tratte lavorabili/bloccate" dalla card (giudicati privi di senso in questo contesto dall'utente) — resta solo "Impresa".
-38. **Redesign vista dirigenti `scavi.html` (sessione 2026-07-03, no rev.-tag per evitare collisione col rev.38 changelog sotto)**: (a) `.phase-header` ("Stato Cantieri") portato da 9px a 13px, allineato a `.page-title`; (b) **exec-strip** in header: 3 numeri grandi (Avanzamento Fisico %, Permessi Ottenuti %, Cantieri in Sospeso — rosso se >0) — alimentati da `pctGlob`/`pctPermessi`, calcolati in `_renderRiepilogo()` ma prima mai scritti a video (dead code); titolo/eyebrow/sottotitolo pagina rimossi su richiesta utente, resta solo l'exec-strip allineata a destra (`#pageSubDyn` di nuovo assente dal markup, `_renderPageSubtitle()` esce per guard `if(!el)return`, nessun errore); (c) nuova card **"Performance Imprese"** subito sotto i KPI: aggregazione per `impresa` con colonne Lotto/Cluster (multi-valore, Set ordinato con `_lottoCompare`), Cantieri, Completati/In Corso/Sospesi, Metri Tot., % Avanzamento (bar+colore), Ritmo m/gg (da `data_inizio_effettiva`→oggi o `data_fine_effettiva`) — ordinabile per colonna (`_sortImprese()`, funzione `_renderImprese()` in pipeline `_renderAll()`); (d) rimossa legenda duplicata identica tra "Avanzamento per Cluster" e "Avanzamento per Lotto" (resta una sola, con rimando testuale nella seconda). ⚠️ Ritmo m/gg è vuoto per i cantieri senza `data_inizio_effettiva` valorizzata — verificare copertura dato in produzione.
-39. **`scavi.html` — bug/rifiniture "Performance Imprese" + modal "Stato Cantieri" (rev.77)**: (a) ✅ **RISOLTO — bug % avanzamento non coerente con la vista "per Lotto"**: `_renderImprese()` calcolava il denominatore sommando `metri_totali` dai soli cantieri già sincronizzati in Mongo per quell'impresa (es. Sielte/lotto 2A = 7852m) invece del totale da PERMESSI (Riepilogo_progettazione.csv, 11.589m per lo stesso lotto — più completo, copre tutte le tratte autorizzate anche se non ancora un cantiere Mongo), come fa correttamente `byLotto`/`LOTTI`. Risultato: stessa `metriScav`, denominatori diversi → 8% mostrato invece di 5,5%. Fix: nuovo `g.metriTotByLotto{}` per-impresa-per-lotto, `metriTotReale` = somma di `PERMESSI[lotto].totale` (fallback sul dato cantieri se il lotto non è in PERMESSI) — usato sia per il denominatore di `pct` sia per la colonna "Metri Tot." visualizzata (prima disallineata rispetto al nuovo pct). (b) ✅ **RISOLTO** — colonne Lotto/Cluster della tabella non erano ordinabili: mancavano `class="imp-th-sort"`+`onclick="_sortImprese(...)"` sui `<th>`, e il comparator confrontava direttamente due `Set` JS (`a.lotti < b.lotti` è sempre `false` → nessun ordinamento) — ora le due chiavi vengono convertite alla stessa stringa ordinata mostrata a video (`[...set].sort(...).join(', ')`) prima del confronto. Ordinamento di default per "miglior avanzamento" (`{key:'pct', dir:'desc'}`) era già corretto, il sort rotto sulle altre colonne dava probabilmente l'impressione che l'intera tabella non si riordinasse. (c) Rinominata label header "Avanzamento Fisico" → "Avanzamento globale" (solo testo, chiave dato `execPctScavi` invariata). (d) Card "Avanzamento per Cluster": rimosso il nome descrittivo del cluster (es. "Milano urbano", da `CLUSTER_LABEL`) — resta solo il badge "Cluster N"; `CLUSTER_LABEL` lasciata invariata altrove (modal cluster, dove il nome resta utile). (e) `openModalStato()` (modal aperta cliccando le card KPI "Stato Cantieri"): sostituita la lista a card `.msc-*` con la stessa tabella/colonne di "Tutti i Cantieri" (Cod. Cantiere, Pratica, Ente, Lotto, Cluster, Prov., Comune, **Impresa**, Stato, Avanz., M. Tot., M. Scavati, bottone Registro) — chiude anche TODO §11 12.1/12.2 (impresa ora visibile sia in "Performance Imprese" sia nelle card modal cantiere). ⚠️ **Trade-off non richiesto esplicitamente**: la vecchia card mostrava anche `motivo_blocco`/`data_ripresa_stimata` (solo per stato Sospeso) e `note` libere, assenti nella tabella "Tutti i Cantieri" — questi due dati non sono più visibili da questa modal. Segnalato all'utente, non reintegrato salvo richiesta. (f) ✅ **RISOLTO (rev.78, follow-up immediato)** — dopo il punto (e) il div `.modal` di `#modalStatoOverlay` era rimasto a `width:560px` inline (dimensionato per la vecchia lista card), causando scroll orizzontale forzato con la tabella a 13 colonne (screenshot utente: solo le prime 7 colonne visibili). Portato a `width:1180px;max-width:96vw` — stesso pattern già usato per il modal Cluster di `index.html` in rev.75 quando gli fu aggiunta una colonna.
-40. **Formato reale di `Master.csv`**: il file di produzione è **tab-separated** (non comma, non semicolon) — `server.py` lo scrive sempre con `sep="\t"` verso GitHub/derivati. Qualsiasi `Master.csv` ricevuto per editing va verificato con `head -1 file | cat -A` prima di assumerne la struttura: se ogni riga appare come un unico blob tra virgolette, è corrotto (visto in rev.50, archiviato) e va riconvertito prima di qualunque modifica. Occhio anche a varianti `;`-separated/latin-1/CRLF (viste in rev.63-64, archiviato) e a nomi colonna quasi-identici (`DATA_PREVISTO_RILASCIO` vs `DATA_PREVISTA_RILASCIO`, femminile è quello corretto usato dal codice).
-
-41. **Split tratte esistenti (nuovi TRATTA_ID) — sessione 2026-07-06**: `_regenerate_derived_files` patcha SOLO le property delle feature già presenti in `QGIS.geojson` (match per TRATTA_ID, geometria invariata) — non crea geometrie nuove. Procedura corretta: 1) split linea in QGIS, nuovi TRATTA_ID univoci, export geojson (verificato CRS export = EPSG:4326/CRS84, non UTM, altrimenti coordinate fuori scala e mappa mostra vista mondo); 2) upload con `target=QGIS.geojson` esatto — `admin.html` valida che il nome file scelto combaci col target selezionato (riga ~842), quindi niente più rischio di salvataggio sotto nome sbagliato; 3) SOLO DOPO caricare/approvare Master.csv coi nuovi TRATTA_ID. Ordine invertito = righe orfane senza geometria. ⚠️ **Rischio residuo non risolto**: nessun lock/versioning ottimistico tra upload manuale admin e `_regenerate_derived_files` triggerato da approvazione `pending_updates` impresa — se un'approvazione impresa scatta a ridosso dell'upload manuale del geojson, vince chi scrive per ultimo su `uploaded_at`. Dopo un upload critico, verificare sempre `GET /api/files` (campo `size`/`modified` dell'entry) per confermare che sia la versione servita, prima di considerare chiuso il lavoro.
-
-42b. **RISOLTO (2026-08-19)** — **`mappa.html`: popup tratta non mostrava corrispondenza pratica↔ente**. Causa: `QGIS.geojson` aggrega più righe Master.csv in un'unica stringa `PRATICA` per feature, perdendo quale ente appartiene a quale codice; il popup mostrava quindi `ENTE`/`ENTE 2` come lista piatta separata dalle pill `Pratiche`. Fix: nuovo `loadPraticaEnteIndex()` (stesso pattern SWR di `loadSED`) che legge `Master.csv` e indicizza `TRATTA_ID → [{codice, ente}]` ricostruendo il codice con la stessa logica `tipoPrefix+prat+lotto` già usata per SED; caricato in parallelo a `loadGeoJSON()` all'avvio. In `makePopupHtml()` ogni pill pratica ora mostra `CODICE · Ente` quando trovato match su `TRATTA_ID`+codice (classe CSS `.popup-pratica-ente`); il campo "Ente" aggregato in alto resta invariato come fallback. ⚠️ Limite noto: essendo async, un popup aperto nei primissimi istanti dopo il load pagina (prima che `Master.csv` risponda) può mostrare le pratiche senza ente per quel click.
-
-42. **RISOLTO (2026-07-09)** — **`imprese.html`, tab "Le mie submission": aggiunto codice pratica + fix bug "Nessun campo" sulle submission "Nuova pratica"**. Contesto: ogni `change` di una submission `update` ha forma `{tratta_id, ente, tipo_permesso, original_pratica, lunghezza, fields:{...}}`, mentre una submission `new` ha `change` = record flat completo (`Source.Name`, `TRATTA_ID`, `TIPO_PERMESSO`, `PRATICA`, ecc., **senza** wrapper `fields`). `showSubDetail()` leggeva sempre `c.fields||{}` → per le submission "Nuova pratica" risultava sempre `{}`, quindi il popup mostrava "Nessun campo" nonostante i dati fossero presenti nel `change` stesso. Fix:
-    - Nuovo helper `_codiceForChange(c, type)`: per `type==='new'` usa `buildCodice(c)` diretto (il change ha già tutti i campi); per `type==='update'` cerca in `PRATICHE` (già caricato) la riga con `TRATTA_ID`+`ENTE`+`TIPO_PERMESSO` (+ `original_pratica` se disponibile) per recuperare `_codice` (serve il lotto/`Source.Name`, assente nel change di update).
-    - Tabella "Le mie submission": nuova colonna "Codice pratica" (primo codice + `+N` se la submission raggruppa più pratiche in un solo invio).
-    - Popup dettaglio: ogni blocco `.sub-change` mostra ora il codice pratica accanto a tratta/ente/tipo; header del popup mostra la lista di tutti i codici coinvolti se >1; per `type==='new'` i campi mostrati ora sono l'intero record (esclusi i campi già in header: `Source.Name`/`TRATTA_ID`/`ENTE`/`TIPO_PERMESSO`) invece di un oggetto vuoto.
-    - Sequenziato `loadPratiche()` prima di `loadMine()` nel boot (`await`) — prima partivano in parallelo, rischio di race condition sul lookup `_codiceForChange` per le submission `update` se `PRATICHE` non era ancora popolato al primo render.
-
-⚠️ **Segnalato, non risolto**: font-size sotto i 12px in decine di punti di `scavi.html` (9px/10px/10.5px/11px su badge, chip, celle tabella, eyebrow) — viola la regola brand kit §4.6 "mai sotto 12px in interfaccia". Font-family/pesi (Raleway + JetBrains Mono) invece corretti e caricati bene. In attesa di conferma utente prima di un pass esteso (60+ punti, rischio di rompere il layout di badge/tabelle compatte).
-
-43. **RISOLTO (2026-07-09)** — **`imprese.html`, tab Solleciti: `PROTOCOLLATO INTEGRAZIONE` escluso per errore dalla lista pratiche sollecitabili**. `SOL_STATI_ESCLUSI` lo trattava come uno stato "chiuso" (insieme a `NECESSARIA INTEGRAZIONE`/`IN REDAZIONE INTEGRAZIONE`), ma in `STATO_TRANSITIONS` ha lo stesso ruolo di `PROTOCOLLATO`: pratica (di integrazione) inviata all'ente, in attesa di risposta (→ `NECESSARIA INTEGRAZIONE` o `OTTENUTO`) — quindi va sollecitato esattamente come `PROTOCOLLATO`. Rimosso dall'esclusione. Effetto visibile: prima la lista "Nuovo sollecito" mostrava quasi solo pratiche `INVIATO`/`PROTOCOLLATO` (segnalato dall'utente via screenshot), ora include anche le integrazioni protocollate.
-⚠️ Non verificato in questo giro: logica del numero sollecito automatico (`sol-numero`).
-
-
----
-
-## 8bis. Palette colori stato — mapping canonico (tutte le pagine)
-
-Usata da `STATO_COLORS` (mappa/scavi) e `COLORS`/`STATI_COLORI_MAP` (index). Se aggiungi/tocchi uno di questi dizionari in una pagina, allinealo a questi valori:
-
-| Stato | Hex | Token brandkit |
-|---|---|---|
-| IN ATTESA / IN REDAZIONE | `#6B7685` | `--gray-500` |
-| IN FIRMA RDS | `#D08A1A` | `--warn` |
-| INVIO PRELIMINARE | `#043F75` | `--retelit-blue` |
-| INVIATO / PROTOCOLLATO | `#41BBD9` | `--retelit-sky` |
-| NECESSARIA INTEGRAZIONE | `#C0392B` | `--err` |
-| IN REDAZIONE INTEGRAZIONE / PROTOCOLLATO INTEGRAZIONE | `#436A93` | `--retelit-blue-75` |
-| OTTENUTO | `#1E9E6A` | `--ok` |
-
-File allineati: `index.html`, `mappa.html`, `mappa_impresa_caricamento.html`, `scavi.html`, `imprese.html`.
-
-**2026-07-09** — fix colori stato (bug, non allineamento di routine):
-- `mappa_impresa_caricamento.html`: `STATO_COLORS['IN REDAZIONE INTEGRAZIONE']` era `#C0392B` (rosso, sbagliato) invece di `#436A93` (blu) → corretto.
-- `imprese.html`: non aveva alcuna `STATO_COLORS`. Le celle stato usavano `class="stato-${stato.replace(/\s+/g,'.')}"` con regole CSS tipo `.stato-IN.REDAZIONE` — selettore composto che richiede DUE classi separate (`stato-IN` AND `REDAZIONE`), non matcha mai un'unica classe col punto letterale generata dal replace. Risultato: tutti gli stati multi-parola (`NECESSARIA INTEGRAZIONE`, `PROTOCOLLATO INTEGRAZIONE`, `IN REDAZIONE INTEGRAZIONE`) non prendevano MAI il colore dal CSS. Fix: aggiunta `STATO_COLORS` locale (identica alla tabella sopra) + `color` inline via helper `statoColor()`, rimosse le classi `.stato-X` rotte. Stesso fix di pattern applicato alla card pratiche sidebar in `mappa_impresa_caricamento.html` (usava lo stesso selettore rotto nonostante avesse già `STATO_COLORS`/`getColor()` disponibili — ora usa `getColor()` inline).
-- Verificato: `scavi.html`, `mappa.html`, `hub.html` non usano questo pattern — bug isolato a queste due pagine.
-
----
-
-## 9. Modello dati MongoDB
-
-```jsonc
-// collection: uploads (storico versioni file)
-// source: "impresa" (Master.csv da approvazione) | "derived" (QGIS.geojson/Riepilogo
-// rigenerati automaticamente) | assente per upload manuali da admin.html
-{
-  "_id": ObjectId,
-  "filename": "Master.csv",            // path relativo a DATA_DIR
-  "original_name": "Master_v2.xlsx",
-  "size": 192167,
-  "content_type": "text/csv",
-  "project": "main",                   // "main" | "M" | "pm"
-  "rows": 3120,
-  "uploaded_at": "2026-06-23T11:30:00+00:00",
-  "gridfs_id": ObjectId,               // → fs.files (None se cancellato)
-  "deleted_at": null | "ISO",
-  "source": "impresa" | "derived" | null,
-  "note": "Submission <id> from <nome> (update)" | "restore/delete Master.csv" | null
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ENRI — Stato Lotti</title>
+<script src="js/api-config.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --retelit-blue:#043F75;--retelit-blue-75:#436A93;--retelit-blue-50:#819FB9;--retelit-blue-25:#C0CFDC;
+  --retelit-sky:#41BBD9;--retelit-teal:#1A7D99;--retelit-mist:#ADCAD6;--retelit-ice:#D3DEEA;
+  --gray-50:#F7F8FA;--gray-100:#EEF1F5;--gray-200:#DFE4EB;--gray-300:#C4CDD8;
+  --gray-400:#9AA5B4;--gray-500:#6B7685;--gray-700:#363D48;
+  --font-display:"Raleway","Calibri",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-body:"Raleway","Calibri",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --bg:var(--gray-50);--surface:#fff;--surface2:var(--retelit-ice);
+  --border:var(--gray-200);--border2:var(--gray-300);
+  --accent:var(--retelit-blue);--accent2:var(--retelit-teal);
+  --text:var(--gray-700);--text2:var(--gray-500);--muted:var(--gray-500);--muted2:var(--gray-400);
+  --ok:#1E9E6A;--ok-bg:#EBFAF3;--warn:#D08A1A;--warn-bg:#FEF7E7;--danger:#C0392B;--danger-bg:#FEECEB;
+  --radius-xs:2px;--radius-sm:4px;--radius-md:8px;--radius-lg:12px;--radius-xl:20px;--radius-2xl:28px;--radius-pill:999px;
+  --shadow-sm:0 1px 2px rgba(4,63,117,.06),0 1px 1px rgba(4,63,117,.04);
+  --shadow-md:0 4px 12px rgba(4,63,117,.08),0 2px 4px rgba(4,63,117,.04);
+  --shadow-lg:0 12px 32px rgba(4,63,117,.12),0 4px 12px rgba(4,63,117,.06);
+  --shadow-focus:0 0 0 3px rgba(65,187,217,.35);
+  --ease-out:cubic-bezier(.22,1,.36,1);--ease-in:cubic-bezier(.55,0,1,.45);
+  --dur-fast:120ms;--dur-base:200ms;--dur-slow:360ms;
+  --sh-sm:0 2px 8px rgba(4,63,117,.08),0 1px 4px rgba(4,63,117,.04);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:var(--font-body);background:var(--bg);color:var(--text);min-height:100vh;}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:58px;background:var(--retelit-blue);position:sticky;top:0;z-index:50;}
+.topbar-left{display:flex;align-items:center;gap:16px;}
+.logo{font-family:var(--font-display);font-size:13px;font-weight:700;letter-spacing:.14em;color:var(--accent);text-transform:uppercase;}
+.divider-v{width:1px;height:20px;background:var(--retelit-blue-50);}
+.page-title{font-size:13px;font-weight:600;letter-spacing:.04em;color:var(--retelit-ice);text-transform:uppercase;}
+.topbar-back{font-size:12px;color:var(--retelit-sky);font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:8px;border:1px solid var(--retelit-sky);transition:background .15s;}
+.topbar-back:hover{background:rgba(65,187,217,.1);}
+.btn-sm{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:6px 14px;border-radius:6px;background:transparent;color:var(--muted);border:1px solid var(--border2);cursor:pointer;font-family:var(--font-body);font-weight:600;text-decoration:none;}
+.main{max-width:100%;margin:0 auto;padding:28px 20px 48px;display:flex;flex-direction:column;gap:24px;}
+.tables-row{display:grid;grid-template-columns:3fr 2fr;gap:16px;align-items:start;min-width:0;}
+.tables-row>*{min-width:0;overflow:hidden;}
+@media(max-width:1000px){.tables-row{grid-template-columns:1fr;}}
+.page-header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+.page-eyebrow{font-family:var(--font-mono);font-size:9px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:var(--accent2);}
+.page-h1{font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.025em;color:var(--text);line-height:1.2;}
+.page-sub{font-size:12px;color:var(--muted);margin-top:3px;}
+.legend-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.legend-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:10px;font-weight:600;font-family:var(--font-mono);letter-spacing:.04em;}
+.chip-2026{background:rgba(65,187,217,.12);color:#1A7D99;border:1px solid #ADCAD6;}
+.chip-2027{background:rgba(30,158,106,.10);color:#1E9E6A;border:1px solid #bbf7d0;}
+.chip-2028{background:rgba(4,63,117,.10);color:#043F75;border:1px solid #819FB9;}
+.section-block{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--sh-sm);overflow:hidden;}
+.section-head{display:flex;align-items:center;gap:12px;padding:16px 24px;border-bottom:1px solid var(--border);}
+.section-icon{width:36px;height:36px;border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.section-icon svg{width:18px;height:18px;}
+.si-imprese{background:var(--retelit-ice);} .si-imprese svg{color:var(--retelit-blue);}
+.si-contract{background:var(--ok-bg);} .si-contract svg{color:var(--ok);}
+.section-head-text{flex:1;}
+.section-tag{font-family:var(--font-mono);font-size:8.5px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;margin-bottom:2px;}
+.section-title{font-family:var(--font-display);font-size:15px;font-weight:700;letter-spacing:-.02em;color:var(--text);}
+.section-badge{font-size:9px;font-weight:700;font-family:var(--font-mono);letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:20px;}
+.badge-imprese{background:var(--retelit-ice);color:var(--retelit-blue);border:1px solid var(--retelit-mist);}
+.badge-contract{background:var(--ok-bg);color:var(--ok);border:1px solid var(--retelit-mist);}
+.table-wrap{overflow-x:auto;width:100%;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+thead tr.group-head th{padding:9px 14px 8px;font-family:var(--font-mono);font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;border-bottom:2px solid var(--border2);white-space:nowrap;}
+th.gh-base{color:var(--muted);text-align:center;}
+th.gh-base.col-left{text-align:left;}
+th.gh-permit{background:var(--retelit-ice);color:var(--retelit-blue);text-align:center;border-bottom:2px solid var(--retelit-mist);border-left:3px solid var(--retelit-blue);}
+th.gh-permit + th.gh-permit{border-left:1px solid var(--retelit-mist);}
+th.gh-scavi{color:var(--warn);text-align:center;border-bottom:2px solid var(--warn);border-left:3px solid var(--warn);}
+th.gh-compl{color:var(--warn);text-align:center;border-bottom:2px solid var(--warn);}
+thead tr.col-head th{padding:5px 14px 6px;font-family:var(--font-body);font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;}
+th.ch-base{color:transparent;}
+th.ch-base.col-left{text-align:left;}
+th.ch-permit{background:var(--retelit-ice);color:var(--retelit-teal);text-align:center;border-left:3px solid var(--retelit-blue);}
+th.ch-scavi{color:var(--warn);text-align:center;border-left:3px solid var(--warn);}
+th.ch-compl{background:var(--ok-bg);color:var(--ok);text-align:center;border-left:3px solid var(--ok);}
+tbody tr{border-bottom:1px solid var(--border);transition:background .15s;}
+tbody tr:last-child{border-bottom:none;}
+tbody tr:hover{background:rgba(4,63,117,.025);}
+tbody td{padding:10px 14px;text-align:center;color:var(--text2);font-size:12px;white-space:nowrap;vertical-align:middle;}
+tbody td.col-left{text-align:left;font-weight:600;color:var(--text);}
+tbody td.col-id{font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--accent);text-align:center;}
+tbody td.col-avvio{border-left:3px solid var(--warn);}
+tbody td.col-compl-first{border-left:none;}
+tbody td.col-compl{}
+tbody td.col-permit-first{border-left:3px solid var(--retelit-blue);}
+tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);font-size:8.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);padding:6px 14px;text-align:left;border-top:1px solid var(--border2);}
+.date-pill{display:inline-block;padding:3px 9px;border-radius:20px;font-family:var(--font-mono);font-size:10px;font-weight:500;white-space:nowrap;}
+.dp-none{color:var(--muted2);}
+.dp-2026{background:rgba(65,187,217,.12);color:#1A7D99;border:1px solid #ADCAD6;}
+.dp-2027{background:rgba(30,158,106,.10);color:#1E9E6A;border:1px solid #bbf7d0;}
+.dp-2028{background:rgba(4,63,117,.10);color:#043F75;border:1px solid #819FB9;}
+.gantt-legend-item{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-family:var(--font-mono);}
+#gantt-wrap{min-height:200px;}
+</style>
+</head>
+<style>
+.main{max-width:1280px;}
+.page-header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:4px;}
+.page-eyebrow{font-family:var(--font-mono);font-size:9px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:var(--accent2);}
+.page-h1{font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.025em;color:var(--text);line-height:1.2;}
+.page-sub{font-size:12px;color:var(--muted);margin-top:3px;}
+.legend-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted);}
+.legend-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px;}
+#loadState{padding:40px;text-align:center;color:var(--muted);font-size:13px;}
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:2px;}
+.kpi-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;box-shadow:var(--sh-sm);}
+.kpi-box .kpi-val{font-family:var(--font-display);font-size:22px;font-weight:700;color:var(--text);line-height:1.1;}
+.kpi-box.kpi-err .kpi-val{color:var(--danger);}
+.kpi-box.kpi-warn .kpi-val{color:var(--warn);}
+.kpi-box .kpi-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-family:var(--font-mono);margin-top:2px;}
+.stato-table{width:100%;border-collapse:collapse;font-size:12px;}
+.stato-table thead th{padding:8px 10px;font-family:var(--font-mono);font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;border-bottom:2px solid var(--border2);white-space:nowrap;background:var(--gray-50);position:sticky;top:0;}
+.stato-table thead th.tc-center{text-align:center;}
+.stato-table tbody tr{border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;border-left:4px solid transparent;}
+.stato-table tbody tr:hover{background:rgba(4,63,117,.03);}
+.stato-table tbody tr.row-err{border-left-color:var(--danger);}
+.stato-table tbody tr.row-warn{border-left-color:var(--warn);}
+.stato-table tbody tr.row-ok{border-left-color:var(--ok);}
+.stato-table tbody td{padding:10px;vertical-align:top;}
+.lotto-code{font-family:var(--font-display);font-size:14px;font-weight:700;color:var(--text);}
+.lotto-cluster{font-size:9.5px;color:var(--muted);font-family:var(--font-mono);}
+.delay-badge{display:inline-flex;flex-direction:column;align-items:center;gap:0;font-family:var(--font-mono);font-weight:700;font-size:14px;padding:4px 10px;border-radius:10px;min-width:56px;}
+.delay-badge small{font-family:var(--font-mono);font-size:8px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;}
+.delay-badge.db-err{background:var(--danger-bg);color:var(--danger);}
+.delay-badge.db-warn{background:var(--warn-bg);color:var(--warn);}
+.delay-badge.db-ok{background:var(--ok-bg);color:var(--ok);}
+.ms-chip{display:block;font-family:var(--font-mono);font-size:9.5px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap;margin-bottom:3px;}
+.ms-chip:last-child{margin-bottom:0;}
+.ms-chip.ms-warn{background:var(--warn-bg);color:var(--warn);}
+.ms-chip.ms-none{color:var(--muted2);font-family:var(--font-body);font-size:11px;font-weight:400;}
+.risk-badge{display:inline-flex;flex-direction:column;gap:1px;font-size:9.5px;font-weight:700;padding:5px 10px;border-radius:10px;letter-spacing:.03em;text-transform:uppercase;font-family:var(--font-mono);white-space:nowrap;}
+.risk-badge span.rb-date{font-size:9px;font-weight:500;text-transform:none;letter-spacing:0;opacity:.8;}
+.risk-badge.risk-err{background:var(--danger-bg);color:var(--danger);}
+.risk-badge.risk-warn{background:var(--warn-bg);color:var(--warn);}
+.risk-badge.risk-ok{background:var(--ok-bg);color:var(--ok);}
+.risk-badge.risk-none{background:var(--gray-100);color:var(--muted2);}
+.risk-badge.risk-alto{background:#FDF0E2;color:#C2680C;}
+.risk-badge.risk-medio{background:var(--warn-bg);color:var(--warn);}
+.risk-badge.risk-basso{background:var(--ok-bg);color:var(--ok);}
+.factor-row{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:11.5px;padding:6px 0;border-bottom:1px solid var(--gray-100);}
+.factor-row .fr-name{color:var(--text);font-weight:600;}
+.factor-row .fr-formula{display:block;font-family:var(--font-mono);font-size:9.5px;color:var(--muted2);font-weight:400;margin-top:1px;}
+.factor-row .fr-score{font-family:var(--font-mono);font-weight:700;white-space:nowrap;}
+.factor-row .fr-na{color:var(--muted2);font-style:italic;font-weight:400;}
+.trasp-block{background:var(--gray-50);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:11px;color:var(--text2);line-height:1.5;}
+.trasp-block b{color:var(--text);}
+.trasp-block .tb-label{font-family:var(--font-mono);font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px;display:block;}
+.action-pill{display:inline-block;font-size:10.5px;font-weight:600;padding:5px 11px;border-radius:8px;white-space:normal;max-width:160px;line-height:1.3;}
+.action-pill.ap-progettazione{background:var(--warn-bg);color:var(--warn);}
+.action-pill.ap-enti{background:var(--danger-bg);color:var(--danger);}
+.action-pill.ap-squadre{background:var(--danger-bg);color:var(--danger);}
+.action-pill.ap-sospesi{background:var(--danger-bg);color:var(--danger);}
+.action-pill.ap-nessuna{background:var(--ok-bg);color:var(--ok);}
+.causa-text{font-size:11.5px;color:var(--text2);line-height:1.45;max-width:280px;}
+.causa-text.ct-muted{color:var(--muted2);}
+.causa-text b{color:var(--text);font-weight:600;font-family:var(--font-mono);}
+/* modal */
+.modal-backdrop{display:none;position:fixed;inset:0;background:rgba(4,63,117,.35);z-index:100;align-items:center;justify-content:center;padding:20px;}
+.modal-backdrop.open{display:flex;}
+.modal-box{background:var(--surface);border-radius:16px;max-width:720px;width:100%;max-height:82vh;overflow:auto;box-shadow:var(--shadow-lg);}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);}
+.modal-close{cursor:pointer;color:var(--muted);font-size:20px;line-height:1;border:none;background:none;}
+.modal-body{padding:16px 22px 22px;}
+.modal-section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:14px 0 8px;}
+.issue-row{display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:7px 0;border-bottom:1px solid var(--gray-100);}
+.issue-row:last-child{border-bottom:none;}
+.issue-tag{font-size:9px;padding:2px 7px;border-radius:10px;font-weight:700;white-space:nowrap;}
+.issue-tag.risk-err{background:var(--danger-bg);color:var(--danger);}
+.issue-tag.risk-warn{background:var(--warn-bg);color:var(--warn);}
+.empty-note{font-size:12px;color:var(--muted2);padding:6px 0;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <img src="data:image/png;base64,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" alt="Retelit" style="height:50px;display:block" onerror="this.style.display="none"">
+    <div class="divider-v"></div>
+    <span class="page-title">Stato Lotti</span>
+  </div>
+  <a href="hub.html" class="topbar-back">← Hub</a>
+</div>
+
+<div class="main">
+  <div class="page-header">
+    <div>
+      <div class="page-eyebrow">Project Management</div>
+      <div class="page-h1">Stato Lotti — Progettazione &amp; Scavi</div>
+      <div class="page-sub">Avanzamento reale vs pianificato alla data odierna, per lotto. Ordinato per criticità. Click su un lotto per il dettaglio.</div>
+    </div>
+    <div class="legend-row">
+      <span><span class="legend-dot" style="background:var(--ok)"></span>In linea</span>
+      <span><span class="legend-dot" style="background:var(--warn)"></span>A rischio</span>
+      <span><span class="legend-dot" style="background:var(--danger)"></span>In ritardo</span>
+    </div>
+  </div>
+
+  <div id="loadState">Caricamento dati…</div>
+  <div id="kpiStrip" class="kpi-row" style="display:none;"></div>
+  <div id="tableWrap" class="section-block" style="display:none;">
+    <div class="table-wrap">
+      <table class="stato-table">
+        <thead>
+          <tr>
+            <th>Lotto</th>
+            <th class="tc-center">Stato</th>
+            <th>Causa principale</th>
+            <th class="tc-center">Ritardo stimato</th>
+            <th>Prossima milestone (30gg)</th>
+            <th class="tc-center">Rischio ROS</th>
+            <th>Azione suggerita</th>
+          </tr>
+        </thead>
+        <tbody id="lottiBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div>
+        <div class="page-eyebrow" id="modalEyebrow">LOTTO</div>
+        <div style="font-family:var(--font-display);font-size:17px;font-weight:700;" id="modalTitle"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<script>
+// ── auth guard (stesso pattern di milestone.html: staff, esclude 'dl') ──
+(function() {
+  const _ruolo = (localStorage.getItem('_enri_role') || '').toLowerCase();
+  if (!localStorage.getItem('_enri_user') || !['admin','admin2'].includes(_ruolo)) {
+    window.location.replace('hub.html');
+  }
+})();
+
+function _sessionToken() { return localStorage.getItem('_enri_session') || ''; }
+function _apiBase() { return (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || ''; }
+
+function parseDateIT(s) {
+  if (!s || s === '-') return null;
+  const p = String(s).split('/');
+  if (p.length !== 3) return null;
+  const d = new Date(+p[2], +p[1] - 1, +p[0]);
+  return isNaN(d) ? null : d;
+}
+function fmtPct(n) { return (isFinite(n) ? n : 0).toFixed(0) + '%'; }
+function fmtNum(n) { return Math.round(n || 0).toLocaleString('it-IT'); }
+
+// ── CSV parsing generico (stesso pattern di index.html/loadCluster) ──
+function parseGenericCSV(text) {
+  const lines = text.trim().split('\n').map(l => l.replace(/\r/, ''));
+  const firstLine = lines[0];
+  const sep = firstLine.includes('\t') ? '\t' : (firstLine.includes(';') ? ';' : ',');
+  const splitLine = (line) => {
+    const result = []; let cur = '', inQ = false;
+    for (const ch of line) {
+      if (ch === '"') { inQ = !inQ; }
+      else if (ch === sep && !inQ) { result.push(cur.trim()); cur = ''; }
+      else { cur += ch; }
+    }
+    result.push(cur.trim());
+    return result;
+  };
+  const headers = splitLine(lines[0]);
+  return lines.slice(1).filter(l => l.trim()).map(line => {
+    const cells = splitLine(line);
+    const row = {};
+    headers.forEach((h, i) => row[h.trim()] = cells[i] !== undefined ? cells[i] : '');
+    return row;
+  });
 }
 
-// collection: assignments (impresa → lotti)
-{
-  "_id": ObjectId,
-  "nome": "Costruzioni Alfa Srl",
-  "lotti": ["Lotto 1", "Lotto 1A"],
-  "active": true,
-  "created_at": "ISO",
-  "updated_at": "ISO"
+const oggi = new Date();
+
+async function loadAll() {
+  const apiBase = _apiBase();
+  const [riepilogoText, cantieriRes, milestoneRes, parametriRes] = await Promise.all([
+    fetch('Riepilogo_progettazione.csv?t=' + Date.now(), { headers: { 'x-session-token': _sessionToken() } }).then(r => r.text()),
+    fetch(apiBase + '/api/cantieri', { headers: { 'x-session-token': _sessionToken() } }).then(r => r.json()),
+    fetch(apiBase + '/api/milestone', { headers: { 'x-session-token': _sessionToken() } }).then(r => r.ok ? r.json() : { imprese: [] }),
+    fetch(apiBase + '/api/parametri', { headers: { 'x-session-token': _sessionToken() } }).then(r => r.ok ? r.json() : null)
+  ]);
+  const riepilogo = parseGenericCSV(riepilogoText);
+  const cantieri = cantieriRes.cantieri || [];
+  const milestoneByLotto = {};
+  (milestoneRes.imprese || []).forEach(m => { milestoneByLotto[m.lotto] = m; });
+  if (!parametriRes) {
+    document.getElementById('loadState').textContent = 'Parametri di configurazione non caricati (admin.html → carica Parametri_configurazione_dashboard_ENRI.xlsx). Il motore rischio ROS/squadre/azioni non può calcolare nulla senza.';
+    return;
+  }
+  PARAMETRI = parametriRes;
+
+  // ── aggregazione progettazione (km-weighted, coerente col resto della dashboard) ──
+  // breakdown causa ritardo: NON_INVIATO = pratica non ancora protocollata/inviata all'ente
+  // (responsabilità interna progettazione); BLOCCATO_ENTE = già inviata, in attesa risposta ente.
+  const NON_INVIATO_STATI = ['IN ATTESA', 'IN REDAZIONE', 'INVIO PRELIMINARE'];
+  const BLOCCATO_ENTE_STATI = ['INVIATO', 'PROTOCOLLATO', 'PROTOCOLLATO INTEGRAZIONE', 'NECESSARIA INTEGRAZIONE'];
+  const prog = {}; // lotto -> {kmTot, kmOtt, kmNonInviato, kmBloccato, issues:[], blocchi:[]}
+  riepilogo.forEach(r => {
+    const lotto = (r.LOTTO || '').trim();
+    if (!lotto) return;
+    const km = parseFloat((r.LUNGHEZZA || '0').replace(',', '.')) || 0;
+    const stato = (r.STATO_AUTORIZZAZIONE || 'IN ATTESA').trim();
+    const ente = (r.ENTE || '').trim();
+    if (!prog[lotto]) prog[lotto] = { kmTot: 0, kmOtt: 0, kmNonInviato: 0, kmBloccato: 0, issues: [], blocchi: [] };
+    prog[lotto].kmTot += km;
+    if (stato === 'OTTENUTO') { prog[lotto].kmOtt += km; }
+    else {
+      if (NON_INVIATO_STATI.includes(stato)) prog[lotto].kmNonInviato += km;
+      else if (BLOCCATO_ENTE_STATI.includes(stato)) prog[lotto].kmBloccato += km;
+      prog[lotto].issues.push({ comune: r.COMUNE || '—', tratta: r.TRATTA_ID || '', stato, km, ente, pratica: r.PRATICA || null });
+    }
+    // R_BLOCCHI: nulla osta / ordinanza necessari e non ottenuti — indipendente
+    // dallo STATO_AUTORIZZAZIONE (una tratta può avere l'autorizzazione
+    // principale ottenuta e restare comunque bloccata da un nulla osta pendente).
+    const statoNO = (r.STATO_NULLAOSTA || '').trim();
+    const statoOrd = (r.STATO_ORDINANZA || '').trim();
+    const noBlocca = statoNO && !['NON NECESSARIO', 'OTTENUTO'].includes(statoNO);
+    const ordBlocca = statoOrd && !['NON NECESSARIO', 'OTTENUTO'].includes(statoOrd);
+    if (noBlocca || ordBlocca) {
+      prog[lotto].blocchi.push({
+        comune: r.COMUNE || '—', tratta: r.TRATTA_ID || '', km, ente,
+        tipo: noBlocca ? 'nulla_osta' : 'ordinanza',
+        stato: noBlocca ? statoNO : statoOrd,
+        pratica: r.PRATICA || null
+      });
+    }
+  });
+
+  // ── aggregazione scavi ──
+  const scavi = {}; // lotto -> {metriTot, metriScavati, sospesi:[], ritardi:[]}
+  cantieri.forEach(c => {
+    const lotto = (c.lotto || '').trim();
+    if (!lotto) return;
+    if (!scavi[lotto]) scavi[lotto] = { metriTot: 0, metriScavati: 0, sospesi: [], ritardi: [], cantieri: [] };
+    scavi[lotto].metriTot += c.metri_totali || 0;
+    scavi[lotto].metriScavati += c.metri_scavati || 0;
+    scavi[lotto].cantieri.push(c);
+    const oggiISO = oggi.toISOString().slice(0, 10);
+    if (c.stato_cantiere === 'sospeso') {
+      scavi[lotto].sospesi.push({ codice: c.codice_cantiere, motivo: c.motivo_blocco || 'motivo non indicato', ripresa: c.data_ripresa_stimata || null, metriResiduo: (c.metri_totali || 0) - (c.metri_scavati || 0), pratica: c.pratica_id || null });
+    } else if (!c.log_count) {
+      // nessun caricamento impresa: data_inizio_prevista può essere seed non confermata (v. AGENT_BRIEF rev.200) — non segnalare ritardo
+    } else if (c.stato_cantiere === 'in_corso' && c.data_fine_prevista && c.data_fine_prevista < oggiISO) {
+      scavi[lotto].ritardi.push({ codice: c.codice_cantiere, tipo: 'scadenza fine lavori superata', data: c.data_fine_prevista });
+    } else if ((c.stato_cantiere === 'non_avviato' || c.stato_cantiere === 'allestimento') && c.data_inizio_prevista && c.data_inizio_prevista < oggiISO) {
+      scavi[lotto].ritardi.push({ codice: c.codice_cantiere, tipo: 'inizio previsto superato', data: c.data_inizio_prevista });
+    }
+  });
+
+  render(prog, scavi, milestoneByLotto);
 }
 
-// collection: pending_updates (workflow approvazione)
-{
-  "_id": ObjectId,
-  "nome": "Costruzioni Alfa Srl",
-  "type": "update" | "new",
-  "changes": [
-    // type=update
-    {"tratta_id": "TR_0103", "ente": "...", "tipo_permesso": "AUTORIZZAZIONE",
-     "fields": {"STATO_PERMESSO": "OTTENUTO", ...}},
-    // type=new
-    {"TRATTA_ID": "...", "ENTE": "...", ...}
-  ],
-  "status": "pending" | "approved" | "rejected",
-  "submitted_at": "ISO",
-  "reviewed_at": "ISO" | null,
-  "reviewed_by": null,
-  "applied_upload_id": "<id Master.csv versione generata>" | null,
-  "summary": {"updated": 3, "added": 0, "not_found": 0} | null,
-  "reviewed_note": "motivo rifiuto" | null,
-  "note": "nota libera dell'impresa"
-}
-```
+// ══════════════════════════════════════════════════════════════════════
+// MOTORE CURVE PIANIFICATE — rev.240
+// Per ogni lotto costruiamo una curva "avanzamento % previsto nel tempo"
+// a tratti lineari tra le milestone note, e la confrontiamo col dato reale:
+//   - Scavi:         avvio→0%, p50→50%, p90→90%, p100→100% (punti mancanti saltati)
+//   - Progettazione: invio→0%, ottenim→100% (rampa lineare; prima di "invio"
+//     nessun obbligo di km ottenuti, quindi previsto=0 — coerente col fatto che
+//     "invio" è la scadenza per la sola presentazione delle pratiche, non per
+//     l'ottenimento)
+// Assunzione dichiarata: si assume ritmo costante tra le milestone note; non
+// abbiamo uno storico di velocità reale (log giornalieri) per una proiezione
+// più fine — se in futuro serve, i log cantiere (rev.190+) lo permetterebbero.
+// ══════════════════════════════════════════════════════════════════════
 
-File content in `fs.files` / `fs.chunks` (motor `AsyncIOMotorGridFSBucket`, bucket `files`).
-
-```jsonc
-// collection: cantieri (NEW — un documento per pratica di autorizzazione)
-{
-  "_id": ObjectId,
-  "cantiere_key": "24|1A",          // num pratica | lotto — NON pratica_id (non univoco tra enti)
-  "codice_cantiere": "CA/3/1A",     // NEW — identificativo cantiere mostrato in UI, distinto da pratica_id
-  "codice_progressivo": 3,          // NEW — contatore progressivo per lotto, assegnato una sola volta alla creazione
-  "pratica_id": "AUT/24/1A",        // resta come riferimento pratica, non più usato come nome del cantiere in UI
-  "lotto": "1A",
-  "cluster": "...",
-  "ente": "...",
-  "stato_cantiere": "...",          // valori in STATO_CANTIERE_VALUES
-  "tecnica_scavo": "...",           // valori in TECNICA_SCAVO_VALUES
-  "data_inizio_prevista": "ISO" | null,
-  "data_inizio_effettiva": "ISO" | null,
-  "data_fine_prevista": "ISO" | null,
-  "data_fine_effettiva": "ISO" | null,
-  "metri_scavati": 0,                // accumulato via $inc da metri_realizzati_oggi
-  "note": "...",
-  "motivo_blocco": "...",
-  "data_ripresa_stimata": "ISO" | null,
-  "impresa": "Costruzioni Alfa Srl",
-  "updated_at": "ISO",
-  "log": [ {"data": "AAAA-MM-GG", "impresa": "...", "stato_cantiere": "...",
-            "metri_realizzati": 0, "note": "...", "motivo_blocco": "...",
-            "data_ripresa_stimata": "..."} ]
+function buildCurve(pointDefs) {
+  // pointDefs: [{date: Date|null, pct: number, label: string}]
+  return pointDefs.filter(p => p.date).sort((a, b) => a.date - b.date);
 }
 
-// collection: sopralluoghi (NEW)
-{
-  "_id": ObjectId,
-  "codice_verbale": "VBS-2026-0042",
-  // + campi del form (cantiere, segnalazioni, azioni richieste, firme, riferimenti foto su GitHub)
+function plannedPctAt(curve, date) {
+  if (!curve.length) return null;
+  if (date <= curve[0].date) return 0;
+  if (date >= curve[curve.length - 1].date) return curve[curve.length - 1].pct;
+  for (let i = 0; i < curve.length - 1; i++) {
+    const a = curve[i], b = curve[i + 1];
+    if (date >= a.date && date <= b.date) {
+      const span = b.date - a.date;
+      const t = span > 0 ? (date - a.date) / span : 1;
+      return a.pct + (b.pct - a.pct) * t;
+    }
+  }
+  return curve[curve.length - 1].pct;
 }
 
-// collection: solleciti (NEW)
-{
-  "_id": ObjectId,
-  "tratta_id": "...",
-  "pratica": "...",
-  "impresa": "Costruzioni Alfa Srl",
-  "tipo_sollecito": "...",
-  "created_at": "ISO"
+// Inverte la curva: trova la data in cui il previsto avrebbe eguagliato il
+// valore reale attuale → "giorni di ritardo" = oggi meno quella data.
+// Positivo = in ritardo, negativo = in anticipo, null = non calcolabile.
+function delayDaysFromCurve(curve, realPct) {
+  if (!curve.length) return null;
+  const first = curve[0], last = curve[curve.length - 1];
+  let dateAtRealPct;
+  if (realPct <= first.pct) {
+    dateAtRealPct = first.date;
+  } else if (realPct >= last.pct) {
+    dateAtRealPct = last.date;
+  } else {
+    dateAtRealPct = last.date;
+    for (let i = 0; i < curve.length - 1; i++) {
+      const a = curve[i], b = curve[i + 1];
+      if (realPct >= a.pct && realPct <= b.pct) {
+        const span = b.pct - a.pct;
+        const t = span > 0 ? (realPct - a.pct) / span : 0;
+        dateAtRealPct = new Date(a.date.getTime() + (b.date - a.date) * t);
+        break;
+      }
+    }
+  }
+  return Math.round((oggi - dateAtRealPct) / 86400000);
 }
 
-// collection: pol_conv_dates (NEW — chiave: "{lotto}|{pratica}|CONVENZIONE|POLIZZA")
-{
-  "_id": "1A|11|CONVENZIONE",
-  "data_richiesta": "AAAA-MM-GG"   // fissata una sola volta con $setOnInsert
+function fmtDelay(days) {
+  if (days === null) return '—';
+  if (days <= 0) return (days === 0 ? '0 gg' : `−${Math.abs(days)} gg`);
+  return `+${days} gg`;
+}
+function fmtGapPct(gap) {
+  const s = gap > 0 ? '+' : (gap < 0 ? '−' : '');
+  return `${s}${Math.abs(Math.round(gap))} pp`;
+}
+function fmtDateShort(d) {
+  if (!d) return '—';
+  return d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
-// collection: access_logs (NEW — ex JSONBin, un documento per binId)
-{
-  "_id": "69c8fbdced015c742bc8e978",   // il vecchio LOG_BIN_ID, riusato come chiave Mongo
-  "utenti":  ["Mario Rossi", "Costruzioni Alfa Srl", "..."],
-  "accessi": [ {"ts":"ISO","utente":"...","ruolo":"...","ip":"...","ua":"...",
-                "durata":0,"lotti":[],"nAperture":0,"pagina":"scavi"} ]
+const FLAG_RANK = { err: 3, warn: 2, ok: 1, none: 0 };
+
+function evalMetric(curve, realPct, milestonePoints) {
+  // milestonePoints: punti nominali della curva, ciascuno controllato
+  // singolarmente per capire QUALE milestone specifica è in ritardo.
+  const plannedToday = plannedPctAt(curve, oggi);
+  const gap = plannedToday === null ? null : (realPct - plannedToday);
+  const delayDays = curve.length ? delayDaysFromCurve(curve, realPct) : null;
+  const milestoneRitardo = milestonePoints.filter(p => p.date && oggi > p.date && realPct < p.pct - 0.5);
+  const prossima = milestonePoints
+    .filter(p => p.date && p.date > oggi && (p.date - oggi) / 86400000 <= 30)
+    .sort((a, b) => a.date - b.date)[0] || null;
+  let flag = 'ok';
+  if (!curve.length) flag = 'none';
+  else if (milestoneRitardo.length) flag = 'err';
+  else if (gap !== null && gap < -5) flag = 'warn';
+  return { pct: realPct, plannedToday, gap, delayDays, flag, milestoneRitardo, prossima };
 }
-```
 
----
-
-## 10. Flusso impresa end-to-end (riepilogo)
-
-1. Admin → `admin.html` tab "Assegnazioni imprese" → aggiunge `Costruzioni Alfa Srl` con lotti `Lotto 1, Lotto 1A`.
-2. L'impresa accede su `hub.html` con nome esattamente `Costruzioni Alfa Srl` + codice → backend verifica con Apps Script → restituisce session token (`_enri_session`).
-3. Hub entra in "modalità impresa" (check `/api/imprese/me`) e mostra fino a 4 card: Aggiorna Pratiche, Mappa (sola vista), Mappa con aggiornamento, Avanzamento Scavi.
-4a. **Flusso pratiche** (con approvazione): Click → `imprese.html` o `mappa_impresa_caricamento.html` → coda modifiche → "Invia per approvazione" → Admin tab "Coda imprese" → Approva → Backend applica `changes` a Master.csv, crea nuova versione GridFS, rigenera QGIS+Riepilogo, **pusha tutti e tre su GitHub** → `_sync_cantieri()` riallinea i cantieri.
-4b. **Flusso scavi** (scrittura diretta, NEW): Click → `imprese_scavi.html` → aggiorna stato cantiere/metri giornalieri → `POST /api/imprese/cantieri/{key}` scrive subito su MongoDB e pusha su GitHub, **senza passare da `pending_updates`**.
-5. Dashboard (`/api/data/Master.csv`, `/api/cantieri`) serve immediatamente la nuova versione; SWR sulle pagine aggiorna la UI live senza reload.
-
-## 11. TODO aperti (da Checklist Bug e Migliorie, importata 2026-07-02)
-
-**Regola permanente**: dopo ogni modifica (in questa sessione o future), verificare se corrisponde a una voce di questa tabella e aggiornarne subito lo Stato (es. "Chiuso (rev.NN)" + breve nota), anche se non era quella la richiesta esplicita dell'utente.
-
-Fonte: checklist Excel utente. Solo voci non "Completato" (34/59 già completate, non riportate qui — vedi file originale per lo storico completo).
-
-| ID | Pagina | Descrizione | Stato | Priorità | Note |
-|---|---|---|---|---|---|
-| 6.1 | imprese_scavi | Implementare modello strutturato caricamento dati scavi | In corso | Alta | |
-| 6.3 | imprese_scavi | Identificare informazioni da visualizzare nella pagina dedicata | In corso | Alta | |
-| 6.4 | imprese_scavi | Migliorare la visibilità delle card dei cantieri | In corso | Alta | |
-| 10 | NEW | Pagina Gantt progetto + tabella associazione impresa/lotti/cluster (%design, %perm, %delivery, metri totali) | Da fare | Alta | ENTRO MERCOLEDÌ |
-| 11.6 | Master | Pratica NO/27/1A: correggere data invio (da quando è partito ENRI) | Da fare | Alta | |
-| — | server.py | `SESSION_SECRET` a 8 cifre numeriche | Aperto (voluto) | Bassa | Bruteforce offline HMAC in tempi brevi se un token viene intercettato — rischio accettato dall'utente per la minaccia target ("smanettone", non attaccante dedicato) |
-| 11.1 | Index | Eliminare previsione "mia" e richiederla all'impresa | Chiuso (rev.48) | — | Campo compilato dall'impresa, non più calcolato |
-| 11.2 | Index | Creare nuova colonna "update" | Già presente (rev.44) | — | |
-| — | All | Rename `COORDINAMENTO`→`INVIO PRELIMINARE` | Risolto (rev.43) | — | |
-| 11.4 | Index | Portare i solleciti nei popup insieme alle note | Chiuso (rev.167) | — | Badge dedicati (`_solBadge`/`_solSedBadge`), popup separato da Note |
-| 11.9 | Master | % ottenuto Valtellina non compare (lotto piccolo?) | Risolto (rev.49) | — | Soglia `pct>=5` nascondeva la % su segmenti piccoli |
-| 12.1/12.2 | Scavi | Associazione/visibilità lotto-impresa nelle card cantiere | Chiuso (rev.77) | — | Card "Performance Imprese" + colonna Impresa nei modal |
-| 12.3 | Scavi | Stato cantieri in topbar più grande | Chiuso (rev.76) | — | |
-| 12.4/13 | Scavi | Tabella imprese + vista dirigenziale | Chiuso (rev.76) | — | |
-| — | Scavi | Font-size sotto i 12px fuori brand kit | Chiuso (rev.101) | — | |
-| — | Mappa_imprese_caricamento | Export geojson lotti impresa | Chiuso (rev.78-80) | — | `exportGeoJSONLotti()` |
-| — | Imprese | Stato ex-coordinamento (Invio Preliminare) | Chiuso (rev.112) | — | Già in `STATO_TRANSITIONS` |
-| — | Master/server | Colonna `DATA_UPDATE` mancante | Chiuso (rev.114-115) | — | Colonna + `_touch_data_update*` per i solleciti |
-| — | milestone.html/admin.html | Guardia auth mancante | Chiuso (rev.131-132) | Sicurezza | Guardia client-side; per le pagine dati la vera barriera è `_require_staff_session` server-side (rev.129) |
-| — | server.py | Endpoint staff senza controllo ruolo | Chiuso (rev.129-130) | Sicurezza | `_require_staff_session` su 6 endpoint (v. changelog) |
-| — | server.py | GridFS senza limite versioni | Chiuso (rev.130-131bis) | — | `KEEP_VERSIONS=4` + prune automatico |
-| — | server.py | Login senza rate limit | Chiuso (2026-07-06) | — | Lockout 429/300s dopo 5 tentativi falliti (in-memory) |
-
----
-
-## 12. Decisioni architetturali del 26/08/2026 — motore Stato Lotti / Rischio ROS
-
-Sessione di revisione completa del motore parametrico in `stato_lotti.html`. Decisioni **definitive**, da rispettare in ogni modifica futura al motore.
-
-### 12.1 Endpoint parametri
-
-- `GET /api/parametri` (staff-only, `_require_staff_session`) — parsa server-side (openpyxl) l'xlsx `Parametri_configurazione_dashboard_ENRI.xlsx`, caricato via `admin.html` con lo stesso meccanismo upload/GridFS di `Master.csv`.
-- **Safety net in `upload_file()`**: se `out_name == PARAMETRI_FILENAME`, `convert_to_csv` è forzato a `False` anche se il client non lo passa — altrimenti la conversione automatica xlsx→csv (default `True`, non esposta in `admin.html`) terrebbe solo il primo dei 9 fogli, distruggendo il resto.
-- Tutte le soglie, pesi, produttività, tempi autorizzativi, regole azione vengono da lì. **Nessuna logica di business hardcoded** nel motore JS.
-- Cache in-process (`_parametri_cache`), invalidata su cambio `gridfs_id`.
-- **Principio**: in assenza di un parametro, il fattore/dato che ne dipende è marcato "dato insufficiente" — mai un default silenzioso.
-
-### 12.2 Motore rischio ROS — 5 fattori
-
-`R_SCAVI` (peso 35%), `R_AUTH` (25%), `R_SOSP` (15%), `R_MS` (15%), `R_BLOCCHI` (10%). Formule dettagliate in `buildTrasparenzaPanel()`, riassunto:
-
-| Fattore | Misura | Interpolazione |
-|---|---|---|
-| R_SCAVI | squadre necessarie / squadre disponibili | 1,00→0pt, 1,50→100pt |
-| R_AUTH | vedi §12.3 | — |
-| R_SOSP | metri sospesi residui / metri residui scavo | 5%→0pt, 20%→100pt (×1,2 se manca data ripresa, cap 100) |
-| R_MS | giorni superamento milestone (peggiore tra tutte, non media) | 1gg→0pt, 30gg→100pt |
-| R_BLOCCHI | metri bloccati nulla osta/ordinanza / metri residui **progettazione** (non scavo) | 5%→0pt, 20%→100pt, × coeff. urgenza (giorni residui ROS / tempo atteso ente) |
-
-- Punteggio finale = **media pesata** dei fattori disponibili.
-- Fattore non disponibile → **escluso dal calcolo**, pesi **rinormalizzati** sui rimanenti (mai punti arbitrari).
-- Pannello "Come è stato calcolato" (`buildTrasparenzaPanel()`) sempre presente: dati oggettivi, milestone usata, squadre/capacità, formule, motivazione azione, parametri globali.
-
-### 12.3 R_AUTH — revisione architetturale definitiva
-
-**Non usa più** milestone ROS di scavo (p100) né alcun dato scavi. Basato **esclusivamente** sulla curva autorizzativa propria del lotto (invio → ottenimento), via `computeFaseAutorizzativa()`:
-
-```
-oggi < invio            → coef_fase = 0   (100% non autorizzato è fisiologico, non genera rischio)
-oggi ≥ invio             → coef_fase a bande sulla distanza da "ottenimento":
-                            >90gg→1 · 60-90gg→1,25 · 30-60gg→1,5 · <30gg/scaduta→2
-invio/ottenim assenti:
-  kmOtt > 0              → coef_fase = 1 (prudenziale, dichiarato nel pannello)
-  kmOtt = 0 e no milestone → R_AUTH = "dato insufficiente" (mai dedotto dai dati scavi)
-```
-
-Motivo: la versione precedente usava la milestone ROS di scavo come proxy di urgenza, appiattendo **8 lotti su 12** a un punteggio fisso di 25/100 (0,25×100) perché non ancora arrivati a "invio" — 100% non autorizzato veniva letto come rischio massimo anche per lotti semplicemente non ancora iniziati. Dopo il fix quegli 8 lotti scendono correttamente a 0/100 su questo fattore, e il modello torna discriminante (verificato lotto per lotto sui 12 lotti reali).
-
-**Principio guida**: mai dedurre lo stato di un dominio (autorizzativo) dai dati di un altro dominio (scavi) — v. §12.6.
-
-### 12.4 ACT_AUTH_MS — stessa correzione di dominio
-
-La regola azione `ACT_AUTH_MS` (in `computeAzioneParametrica()`) usava anch'essa la milestone ROS scavi. Corretta per usare `computeFaseAutorizzativa()` (milestone invio/ottenimento), coerente con R_AUTH.
-
-### 12.5 Conteggio pratiche vs tratte
-
-Bug: il motore contava le righe di `Riepilogo_progettazione.csv` (tratte) come se fossero "pratiche" — una pratica può coprire più tratte (campo `PRATICA`, es. `AUT/24/1A | NO/22/1A | NO/26/1A | NO/28/1A`). Fix in `countPratiche()`:
-- campo `PRATICA` valorizzato su **tutte** le righe del lotto → conteggio di pratiche distinte (dedup sull'intera stringa del campo, dichiarato come tale nel pannello);
-- campo assente/parziale → dichiarato esplicitamente **"tratte"**, mai spacciato per "pratiche".
-
-### 12.6 Nulla osta vs ordinanze in R_BLOCCHI
-
-`STATO_ORDINANZA` è oggi scarsamente/non affidabilmente alimentato nei dataset. R_BLOCCHI tratta come riferimento primario i **nulla osta** (codice dedicato `AUTH_NULLA_OSTA` nel foglio "Tempi autorizzativi"); le ordinanze restano supportate nello stesso fattore ma senza codice tempo dedicato — usano fallback `AUTH_CONSORZIO` (dichiarato nel pannello), e non guidano le scelte di soglia/peso del modello finché il dato non migliora a monte.
-
-### 12.7 Relazione R_SOSP ↔ R_BLOCCHI — causa e conseguenza, non deduplicati
-
-Decisione confermata: restano **due fattori distinti**, **nessuna deduplicazione automatica**, anche quando la stessa `pratica_id` genera sia un cantiere sospeso (R_SOSP, effetto operativo) sia una tratta bloccata (R_BLOCCHI, causa autorizzativa) — è normale che lo stesso procedimento amministrativo produca entrambe le conseguenze, e un PM in SAL deve vederle entrambe.
-
-`collegamentiSospesiBlocchi()` incrocia `pratica_id` del cantiere sospeso con `PRATICA` delle tratte in R_BLOCCHI (split su `|`, match esatto sui token) e mostra il collegamento nel pannello di trasparenza quando esiste, così l'utente capisce che non sono due criticità indipendenti.
-
-### 12.8 Principi guida del motore (validi per ogni estensione futura)
-
-1. Separare sempre **causa** (es. R_BLOCCHI, atto amministrativo) da **conseguenza** (es. R_SOSP, effetto operativo) — non deduplicare, ma dichiarare la relazione.
-2. **Mai** usare dati scavi per dedurre stati autorizzativi, né viceversa (dati autorizzativi per dedurre capacità operativa/squadre).
-3. Preferire sempre "dato insufficiente" dichiarato a un'inferenza indiretta non supportata dai dati.
-4. Ogni punteggio ROS deve essere ricostruibile dal pannello "Come è stato calcolato" — dati oggettivi, parametri, formula, motivazione.
-
----
-
-_Ultimo aggiornamento: 2026-08-26 (rev. 240)_
-
-- **rev.240** — `stato_lotti.html`+`admin.html`+`backend/server.py`: motore Stato Lotti riscritto da zero come **motore parametrico** (nessuna soglia/peso/produttività hardcoded). Nuovo endpoint `GET /api/parametri` (parsing server-side xlsx multi-foglio). 5 fattori rischio ROS (R_SCAVI/R_AUTH/R_SOSP/R_MS/R_BLOCCHI) con pesi rinormalizzati sui fattori disponibili, azioni suggerite da tabella regole (non più if/else), causa operativa ranked per contributo pesato, squadre/capacità produttiva calcolate da parametri di lotto, pannello "Come è stato calcolato" per ogni lotto. Iterazione di validazione con l'utente su dati reali (12 lotti) ha corretto 2 bug (conteggio pratiche vs tratte contate come pratiche; campo `pratica` non propagato nel dettaglio R_AUTH) e portato a una revisione architetturale di R_AUTH (dominio autorizzativo puro, non più agganciato alla milestone ROS scavi — appiattiva 8/12 lotti a punteggio fisso). Dettaglio completo delle decisioni in **§12**.
-
-_Ultimo aggiornamento: 2026-08-24 (rev. 238)_
-
-- **rev.238** — `hub.html`, card "Avanzamento Lavori" (`#scaviCard`): rimossa la dicitura statica "In arrivo" (`#scaviBadge`), non più corretta ora che `scavi.html`/`imprese_scavi.html` sono operativi. Badge ora nascosto di default (`style="display:none"`) e mostrato solo per ruoli non abilitati (`SCAVI_ALLOWED_ROLES`), con testo cambiato in "Accesso riservato" (era comunque "In arrivo" anche in quel ramo, fuorviante — non è una feature futura ma una restrizione di ruolo).
-- **rev.237** — `imprese_scavi.html`, `urgencyOf()`: **bug reale segnalato dall'utente da screenshot** — un cantiere `sospeso` con `data_ripresa_stimata` **futura** (es. Sielte/Rozzano, ripresa 14/09/2026) veniva comunque segnalato "Da aggiornare" solo perché l'ultimo caricamento risaliva a >7gg fa, mentre in `scavi.html` (`_registroStatus()`) risultava correttamente "in linea" perché quella pagina guarda `data_ripresa_stimata` invece della staleness del log per lo stato sospeso. Le due pagine avevano quindi logiche divergenti sullo stesso stato (nota già lasciata aperta in rev.233: "sospeso — lì non esiste un check di scadenza reale... nota per l'utente se in futuro si vuole allineare"). Fix: allineato a `scavi.html` — se `data_ripresa_stimata` è presente, l'allarme dipende solo dal suo superamento (`late` se scaduta, altrimenti `done` a prescindere dai giorni di inattività); il fallback su soglie giorni-da-update (2/7gg) resta invariato solo quando `data_ripresa_stimata` è assente. `mappa_impresa_caricamento.html` verificato: nessuna logica KPI/urgenza propria (solo form inserimento dati), nessuna modifica necessaria lì.
-
-_Ultimo aggiornamento: 2026-08-19 (rev. 236)_
-
-- **rev.236** — `mappa.html`, popup tratta (2 richieste utente).
-  1. **Bug reale**: la nuova feature "ente per pratica" nel popup (indice `RO_PRATICA_ENTE` da `Master.csv`, badge `AUT/24/1A · COMUNE DI PERO`) non compariva mai. Causa: `fetchWithSWR(rel, {direct:true})` faceva `fetch(rel + qs, ...)` con `rel` nudo (es. `'Master.csv'`), senza prefisso `apiBase` né path `/api/data-text/` — il backend espone solo route `/api/...` (nessuna route bare in `server.py`), quindi la fetch falliva silenziosamente (`.catch(()=>null)`) e `RO_PRATICA_ENTE` restava `{}` per sempre. Pattern corretto già presente in `polizze_convenzioni.html` (`apiBase + '/api/data-text/Master.csv'`). Fix applicato al branch `direct` di `fetchWithSWR`: ora costruisce `apiBase() + '/api/data-text/' + rel`. Effetto collaterale positivo: stesso branch usato anche da `QGIS.geojson`/`SED_classificato.geojson`, che ora vanno sempre a dati freschi da Render invece che a un'eventuale copia statica congelata su GitHub Pages da prima del giro di sicurezza (rev.139).
-  2. Layout popup: rimosso il campo "Ente" standalone (grid-column:span 2) — informazione ridondante ora che ogni codice pratica mostra già il proprio ente nella badge. Il blocco "Pratiche" passa da colonna stretta a `popup-field full` (riga intera), così con 3-4 pratiche le badge scorrono su tutta la larghezza invece di impilarsi in una colonna lunga.
-  `node --check` non eseguito in questa sessione (nessun ambiente node disponibile) — verificare al prossimo giro prima del deploy.
-
-- **rev.235** — `imprese_scavi.html`: 2 richieste utente da screenshot.
-  1. Card cantieri ora ordinate per `codice_cantiere` crescente (`localeCompare` con `numeric:true`, stesso pattern già usato altrove nel file per l'ordinamento dei lotti) — aggiunto in `getFilteredItems()`, applicato dopo i filtri. Prima non c'era alcun ordinamento, veniva mostrato l'ordine grezzo restituito dal backend.
-  2. **Bug reale segnalato** ("il carattere è orrendo" sull'input "Inserisci metri"): il campo aveva il font previsto (`--font-body`/Raleway, brand kit §Typography) sovrascritto silenziosamente da una regola globale `input[type=number] { font-family:var(--font-mono) }` — applicata a **tutti** i campi numerici del sito, non solo quello segnalato, per via di una specificità CSS identica alla regola più recente che vinceva in cascata. Rimossa la regola globale (i campi number ora ereditano font-body come testo/data/select, coerente col resto della UI). Non toccato `.input-big` (usato nel form di modifica cantiere) che mantiene volutamente il mono per enfasi su un valore numerico grande. `node --check` OK.
-
-- **rev.234** — `imprese_scavi.html`: 2 richieste utente da screenshot.
-  1. Riordinate le card KPI: "Non aggiornato" spostata prima di "In ritardo" (ordine ora: Da aggiornare oggi → Non aggiornato → In ritardo → Da aggiornare → Aggiornati). Solo ordine markup, nessuna modifica a logica/conteggi.
-  2. **Bug reale segnalato**: la barra di ricerca (`.toolbar-search`) aveva un'altezza diversa dai filtri select (`.select-wrap`, 2 righe label+valore) e dai bottoni "Pulisci filtri"/"Aggiorna" (`.btn-sm`) — nessuno dei tre aveva un'altezza esplicita, ognuno si dimensionava sul proprio contenuto/padding (~34px/~38px/~28px), risultando visibilmente disallineati sulla riga toolbar nonostante `align-items:center`. Fix: `min-height:40px` + `box-sizing:border-box` su tutti e tre; `.select-wrap` passato a `display:flex;flex-direction:column;justify-content:center` per centrare verticalmente label+select nella nuova altezza fissa. `node --check` OK.
-
-_Ultimo aggiornamento: 2026-08-09 (rev. 233)_
-
-- **rev.233** — `imprese_scavi.html`, `urgencyOf()`: richiesta utente — ridefinito il significato di "In ritardo" per lo stato `in_corso`: prima scattava anche per semplice staleness (`dsUpdate>7`, incluso il caso mai-aggiornato → `Infinity`); ora scatta **solo** per vera scadenza superata (`data_fine_prevista` scaduta). Nuovo 5° stato `'non_aggiornato'` ("Non aggiornato", badge/KPI grigio neutro `--gray-500`/`--gray-100`, nuova classe `.cant-urgency.u-non_aggiornato`): cantiere avviato (`in_corso`) ma con `log_count===0` (nessun caricamento impresa mai avvenuto) — prima ricadeva in "In ritardo" via staleness infinita, ora è categoria propria. Cantiere avviato **con** dati ma stale >2gg → resta "Da aggiornare" **senza più scalare** a "In ritardo" dopo 7gg (rimossa la soglia `dsUpdate>7`). Nuova 5ª card KPI "Non aggiornato" (`kpiNone`, grid `.kpi-row` 4→5 colonne, breakpoint responsive aggiornati 800px→1000px/640px); "Da aggiornare oggi" ora somma late+soon+non_aggiornato. Sottotitoli KPI aggiornati di conseguenza: "In ritardo" → "fine lavori prevista scaduta", "Da aggiornare" → "aggiornamento > 2 giorni". **Non toccato**: `non_avviato`/`allestimento` (logica su `data_inizio_prevista` invariata) e `sospeso` (soglie 2/7gg su staleness invariate — lì non esiste un check di scadenza reale come `data_fine_prevista`, quindi la staleness resta l'unico segnale disponibile; nota per l'utente se in futuro si vuole allineare anche questo stato). `node --check` OK.
-
-_Ultimo aggiornamento: 2026-08-09 (rev. 232)_
-
-- **rev.232** — `imprese_scavi.html`, `urgencyOf()`: richiesta utente — unito lo stato `'ok'` ("In linea", rev.231) dentro `'done'` ("Aggiornato"): un cantiere non ancora dovuto (inizio non scaduto), aggiornato di recente (in_corso, ≤1gg), o sospeso da ≤2gg ora mostra badge/colore "Aggiornato" invece di un 4° stato blu separato. Rimossi `URGENCY_LABEL.ok`/`URGENCY_ICON.ok`/`.cant-urgency.u-ok` (dead code). KPI: card "Aggiornati" ora conta anche i cantieri "in linea" (non solo quelli aggiornati oggi) — sottotitolo cambiato da "oggi" a "nessuna azione richiesta" per riflettere il nuovo significato. Le altre 3 card (Da aggiornare oggi/In ritardo/Da aggiornare) e le rispettive soglie non toccate. `node --check` OK.
-- **Manutenzione file**: trovata e rimossa una duplicazione integrale nel log sotto — i 3 blocchi rev.206/207/208 (`gantt.html`) erano incollati due volte, identici. Segnalata (non rinumerata) una collisione di numerazione rev.209–213 tra due sessioni diverse — v. nota nel log.
-
-_Ultimo aggiornamento: 2026-08-09 (rev. 231)_
-
-- **rev.231** — `imprese_scavi.html`, `urgencyOf()`: seguito rev.230 — richiesta utente da screenshot, i flag badge sulle card erano scomparsi per i cantieri "in linea" (nessuna scadenza ancora dovuta), perché la funzione tornava `null` in quei casi e il badge non veniva renderizzato affatto. Aggiunto un 4° stato `'ok'` ("In linea", badge blu `--retelit-blue`/`--retelit-ice`, nuova classe `.cant-urgency.u-ok`) restituito al posto di `null` in tutti i casi "a posto" (non_avviato/allestimento con inizio non ancora scaduto, in_corso senza scadenze superate e aggiornato di recente, sospeso aggiornato ≤2gg fa) — così ogni cantiere non completato mostra sempre un badge. `completato` resta senza badge (già ridondante con lo stato principale). `renderKpi()`/contatori KPI invariati: continuano a contare solo late/soon/done, `'ok'` non vi rientra. `node --check` OK.
-
-_Ultimo aggiornamento: 2026-08-09 (rev. 230)_
-
-- **rev.230** — `imprese_scavi.html`, `urgencyOf()`: **bug reale segnalato dall'utente da screenshot** — un cantiere in `allestimento`/`non_avviato` con `data_inizio_prevista` nel **futuro** (es. 24/08/2026 con oggi 09/08/2026) veniva comunque segnalato "IN RITARDO"/"DA AGGIORNARE", perché la funzione guardava solo i giorni dall'ultimo `updated_at` (mai aggiornato → `Infinity` → sempre in ritardo), ignorando che il cantiere non è ancora dovuto partire. Riscritta con logica deadline-aware per stato, stesso principio già usato in `scavi.html`/`_registroStatus()` (rev.10-33): non_avviato/allestimento → urgenza basata su `daysOverdue(data_inizio_prevista)` (nessun badge se non ancora scaduta, poi soon ≤2gg oltre / late oltre); in_corso → `data_fine_prevista` scaduta = late immediato, altrimenti fallback su giorni da `updated_at` (done/soon/late con soglie 1/7gg anziché 0/7 generiche); sospeso → soglie più permissive sui giorni da `updated_at` (2/7gg, non genera falsi allarmi durante un blocco). Nuovo helper `daysOverdue(dateStr)` (positivo=scaduta, negativo=futura, null se assente). `node --check` OK.
-
-_Ultimo aggiornamento: 2026-08-09 (rev. 229)_
-
-- **rev.229** — `imprese_scavi.html`: richiesta utente — rimossi i riferimenti al dettaglio tratte, non necessari su questa pagina (livello di dettaglio impresa, non tecnico). Card: eliminato "N tratte (M in attesa N.O.)" dalla `.cant-info-line`, mantenuto solo "+X m in attesa N.O." (avviso sui metri, non sulle tratte). Form aggiornamento (`openForm()`): rimosso interamente `formTratteInfo` che elencava gli ID delle singole tratte lavorabili/bloccate (`tratta_id`). Rimosse variabili JS ora inutilizzate: `nBlocc`/`tratte` in `renderGrid()`, `totPot`/`tratte`/`lav`/`bloc` in `openForm()`. Nota: la classe CSS `.cant-tratta` (stile del codice cantiere) è rimasta — è solo un nome di classe interno, non mostra testo "tratte" all'utente.
-
-_Ultimo aggiornamento: 2026-08-09 (rev. 228)_
-
-- **rev.228** — `imprese_scavi.html`: richiesta utente — il formato data deve essere sempre italiano (gg/mm/aaaa), mai ISO grezzo. Trovate e corrette 3 date che sfuggivano a `fmtDateIT()`: colonna "Data" della tabella Storico (`e.data`), "Ripresa stimata" nelle note storico (`e.data_ripresa_stimata`), "Ripresa stimata" nel box sospeso della card cantiere (`r.data_ripresa_stimata`) — tutte mostravano `aaaa-mm-gg` grezzo. `scavi.html` già conforme (usa `fmtD()`, stesso pattern). Aggiunta convenzione permanente in memoria: date sempre in formato IT su tutta la dashboard.
-
-_Ultimo aggiornamento: 2026-08-09 (rev. 227)_
-
-- **rev.227** — `imprese_scavi.html`, `showStorico()`: richiesta utente da screenshot — il modal "Storico" mostrava solo il log caricamenti impresa (data/stato/tecnica/metri/note), non le 5 date pianificate/effettive del cantiere (`data_inizio/fine_prevista/effettiva`, `data_ripresa_stimata`), già salvate ma invisibili qui. Aggiunto pannello riepilogo (`.storico-dates`) sopra la tabella log, stesso pattern già usato in `scavi.html`/`openModalRegistro()` (rev.199) lato staff — 4 date sempre mostrate + Ripresa stimata se `stato_cantiere==='sospeso'`, visibile solo se almeno un campo è valorizzato.
-
-_Ultimo aggiornamento: 2026-08-09 (rev. 226)_
-
-- **rev.226** — `imprese_scavi.html`: richiesta utente da screenshot — card cantiere confuse. Rimosso `#lastAccess` ("Ultimo accesso: HH:MM:SS", CSS `.last-access` incluso). Redesign card cantiere: eliminata la `cant-stats-row` a 3 colonne in fondo (era ridondante — Tot. lavorabili/Tratte/Ultimo aggiornamento duplicavano dati già mostrati sopra), % avanzamento ora badge colorato (classe `fill-${stato}`) allineato a destra sopra la barra invece di testo piccolo affiancato ai metri; tratte/attesa N.O./date previste-effettive unificate in un'unica riga secondaria (`.cant-info-line`, separatore "·") al posto di 3-4 div separati; box "sospeso" ora evidenziato con sfondo invece di testo semplice. Stesso trattamento sui chip "Avanzamento per lotto" in alto (`agg-chip`): percentuale come badge prominente a destra (`.agg-chip-pct`, pill blu), nome+metri raggruppati a sinistra, barra sotto su riga propria.
-
-_Ultimo aggiornamento: 2026-08-09 (rev. 225)_
-
-- **rev.225** — `imprese_scavi.html`: richiesta utente. Rimosso l'hint-banner sopra il form aggiornamento ("Inserisci i metri realizzati dall'ultimo aggiornamento. I campi con * sono obbligatori."). Aggiunta nelle card cantiere una riga compatta (`.cant-dates-row`, 10px) con le date disponibili — `data_inizio/fine_prevista` ed `effettiva` — sotto il badge stato, visibile solo se almeno un campo è valorizzato; nessuna modifica a padding/grid/dimensioni della card (era già ad altezza automatica).
-
-_Ultimo aggiornamento: 2026-08-08 (rev. 224)_
-
-- **rev.224** — `imprese.html`: causa reale del disallineamento dei filtri (non lo stile del checkbox in sé, era il CSS globale `label{margin-top:12px;margin-bottom:5px;display:block}` che si applica a QUALSIASI `<label>`, incluse le nostre label-wrapper dei filtri, spostandole verticalmente rispetto alla barra di ricerca). Aggiunto `margin:0` esplicito inline su entrambe le label filtro per neutralizzare l'eredità globale.
-
-_Ultimo aggiornamento: 2026-08-08 (rev. 223)_
-
-- **rev.223** — richiesta utente dopo aver notato note ripetute su righe consecutive nel Master.csv (screenshot TR_0813): confermato che era il comportamento standard (copia riga precedente, sovrascrive solo i campi passati). Fix su due livelli:
-  1. `imprese.html`: nota ora **obbligatoria** per ogni aggiornamento in coda (`addToQueueBtn`) — validazione esplicita, `fields.NOTE = noteVal` sempre valorizzato (non più condizionale). Label "Note *" in rosso, placeholder aggiornato, textarea non più descritta come opzionale.
-  2. `backend/server.py`, `_apply_changes_to_df` (ramo append/non in_place): se `"NOTE" not in fields`, la nuova riga copiata azzera esplicitamente `NOTE` invece di ereditare quella della riga precedente — rete di sicurezza lato server indipendente dal frontend chiamante (copre eventuali altri path che creano submission "update" senza passare da imprese.html).
-  - Corretto anche stile checkbox filtri (accent-color/margin espliciti) per uniformità visiva tra "Previsione scaduta" e "Update oltre 5gg", segnalata come disallineata.
-  - ⚠️ nota: il ramo `in_place=True` (correzioni admin "Modifica dati") non è stato toccato — lì il pre-fill della nota esistente in modifica è intenzionale (è una correzione del testo, non un nuovo evento).
-
-_Ultimo aggiornamento: 2026-08-08 (rev. 222)_
-
-- **rev.222** — `imprese.html`: cella DATA_UPDATE evidenziata in arancione/grassetto (`var(--warn)`) quando `_isUpdateScaduto(p)` è vero (stessa soglia 5gg del filtro rev.221).
-
-_Ultimo aggiornamento: 2026-08-08 (rev. 221)_
-
-- **rev.221** — `imprese.html`: aggiunto secondo filtro checkbox "Update oltre 5gg" (`filterUpdateScaduto`) accanto a "Previsione scaduta". Helper `_isUpdateScaduto(p)`: vero se `DATA_UPDATE` vuota (mai aggiornata) o più vecchia di 5 giorni da oggi. Soglia fissa a 5gg (non configurabile, a differenza del tentativo in rev.218 poi rimosso).
-
-_Ultimo aggiornamento: 2026-08-09 (rev. 223)_
-
-- **rev.223** — `imprese_scavi.html` + `imprese.html` + nuova cartella `docs/guide/`: richiesta utente — rendere scaricabili le 2 guide PDF create fuori sistema ("Guida rapida per le Imprese" testuale e "ENRI Guida Illustrata Area Impresa" con screenshot), dato che coprono anche `imprese.html` (non solo Scavi). File aggiunti al repo in `docs/guide/Dashboard_ENRI_Guida.pdf` e `docs/guide/ENRI_Guida_Illustrata_Area_Impresa.pdf` (link relativi da root, coerenti col fatto che il sito è servito da GitHub Pages). Aggiunta sezione "Guide scaricabili" in fondo a entrambi i modal guida esistenti: `#helpOverlay` di `imprese_scavi.html` (nuova sezione `.help-downloads`/`.help-download-link`) e il modal `_openHelp()` di `imprese.html` (stessa struttura ma inline, dato che qui il modal è generato via template string JS, non markup statico — nessuna nuova classe CSS globale per non toccare lo stile esistente della pagina). Non toccato `mappa_impresa_caricamento.html`: la guida copre anche quella pagina (pag. 9-12) ma non è stato richiesto esplicitamente — da valutare se allinearla allo stesso pattern in un prossimo giro. `node --check` OK su entrambi i file.
-
-_Ultimo aggiornamento: 2026-08-09 (rev. 222)_
-
-- **rev.222** — `imprese_scavi.html`: 2 fix da screenshot su rev.221. (1) "Cantieri per stato" andava su 2 righe (3+2) — `.stato-chips` da `flex-wrap` a `display:grid; grid-template-columns:repeat(5, minmax(0,1fr))`, sempre 5 colonne fisse su una riga indipendentemente dalla larghezza disponibile (si restringono invece di andare a capo); nuova classe `.agg-group-stato` (`flex:1.4 1 320px`) per dare più spazio a questo gruppo rispetto a "Avanzamento per lotto" nello stesso `.agg-section` (`max-width` 760→900px). (2) Sezione "Stati del cantiere" della guida rapida ampliata: spiega l'ordine delle tappe (Non avviato→Allestimento→In corso→{Sospeso,Completato}), perché in Allestimento i campi metri/tecnica sono disattivati, cosa richiede il passaggio a Sospeso (motivo+data ripresa stimata) e che Completato è uno stato finale. `node --check` OK.
-
-_Ultimo aggiornamento: 2026-08-09 (rev. 221)_
-
-- **rev.221** — `imprese_scavi.html`: 2 richieste utente da screenshot. (1) Il bottone "Guida rapida" in fondo pagina era un `<a href="#">` morto, senza handler. Portato lo stesso pattern di `mappa_impresa_caricamento.html` (§rev.precedenti): nuovo `#helpOverlay`/`.help-modal` (CSS + markup a fondo body) con `openHelp()`/`closeHelp()` esposte su `window`, contenuto specifico per questa pagina (aggiornare avanzamento, stati cantiere, storico, filtri). (2) Il blocco "Avanzamento per lotto" in header era giudicato troppo ingombrante: `.agg-chip`/`.agg-title` rimpiccioliti (padding, font-size, gap ridotti), `.agg-group` da `flex:1 1 320px` a `flex:1 1 220px`. Aggiunta nuova card compatta "Cantieri per stato" (`.stato-chip`, bordo sinistro colorato da `STATO_COLOR`) accanto ad "Avanzamento per lotto" nello stesso `.agg-section`, popolata in `renderAggIndicators()` contando `stato_cantiere` sugli item visibili. `node --check` OK.
-
-_Ultimo aggiornamento: 2026-08-08 (rev. 220)_
-
-- **rev.220** — `imprese.html`, `renderPratiche()`: fix reale del problema DATA_RICHIESTA vuota (rev.218 l'aveva solo diagnosticato). Confermato su Master.csv aggiornato fornito dall'utente: il campo è valorizzato dal pipeline dati SOLO sulla riga in cui la tratta passa a INVIATO, le righe successive della stessa tratta (NECESSARIA INTEGRAZIONE, nuovo INVIATO, PROTOCOLLATO INTEGRAZIONE...) lo riportano vuoto — mostrando solo l'ultima riga per tratta la dashboard perdeva il dato pur essendo presente nello storico. Aggiunta `lastRichiestaMap` costruita in parallelo a `latestMap`: tiene per ogni tratta l'ultimo DATA_RICHIESTA non vuoto visto (per DATA_ULTIMA_MODIFICA), usato come fallback quando la riga rappresentativa ha il campo vuoto. Verificato su TR_0372: recupera correttamente 17/03/2026.
-
-_Ultimo aggiornamento: 2026-08-08 (rev. 219)_
-
-- **rev.219** — `imprese.html`: correzione richiesta utente — il filtro era sbagliato (era su DATA_UPDATE con soglia giorni configurabile, volevano DATA_PREVISTA_RILASCIO senza soglia). Sostituito con checkbox unica "Previsione scaduta" → `filterPrevisioneScaduta`, filtra su `_isDataPrevistaScaduta(p)` (stesso helper già usato per l'evidenziazione rossa), nessun input giorni. Verificato: l'evidenziazione rossa era già corretta, semplicemente 0/1532 righe in Master.csv hanno oggi DATA_PREVISTA_RILASCIO scaduta (non un bug, mancanza di dati con quel caso nel dataset attuale).
-
-_Ultimo aggiornamento: 2026-08-08 (rev. 218)_
-
-- **rev.218** — `imprese.html`, tab "Aggiorna pratiche":
-  1. Data prevista rilascio scaduta (< oggi) evidenziata in rosso/grassetto (`_isDataPrevistaScaduta()`).
-  2. Barra ricerca ridotta (max-width 320px) + nuovo filtro "Update scaduto (oltre N gg)": checkbox `filterUpdateScaduto` + input numerico `filterUpdateGiorni` (default 15); filtra su `DATA_UPDATE` mancante o più vecchia della soglia.
-  3. Verificato (non modificato) perché DATA_RICHIESTA non compare su tutte le righe: **431/590** righe Master.csv con stato post-INVIATO hanno DATA_RICHIESTA vuoto. Causa: il form impresa (`imprese.html`) la richiede obbligatoriamente solo quando si imposta stato=INVIATO da qui; il pannello admin "Modifica dati" (`admin.html`, mode:'data') ha il campo ma è editabile a mano e spesso lasciato vuoto/non compilato — probabile impatto di dati storici pre-esistenti a questa logica. Non è un bug del frontend imprese.html: è dato mancante a monte. Se serve, si può rendere DATA_RICHIESTA obbligatoria anche nel form admin quando stato passa a INVIATO.
-
-_Ultimo aggiornamento: 2026-08-08 (rev. 217)_
-
-- **rev.217** — `imprese.html`, tab "Aggiorna pratiche": colonna "Lung. (m)" mostrava float grezzi non arrotondati (es. `5131.079999999999`, somma di più tratte in virgola mobile). Aggiunta `formatLunghezza(val)` — parse + `toLocaleString('it-IT', {min/maxFractionDigits:2})` → `5.131,08`. Applicata alla cella lunghezza in `renderPratiche()` al posto del cast a stringa diretto.
-
-_Ultimo aggiornamento: 2026-08-07 (rev. 216)_
-
-- **rev.216** — `imprese.html`, tab "Aggiorna pratiche": rimossa la checkbox "Aggiorna tutte insieme (consigliato)" dal pannello SIBLINGS — richiesta utente: l'unione degli aggiornamenti di tutte le tratte di una pratica non è più opzionale, è sempre lo standard. `siblingsPanel` ora è solo informativo (elenco tratte collegate, nessun controllo). `addToQueueBtn` chiama sempre `_finalizeAdd(fields, SIBLINGS.length > 0)`. Rimossi: `_showSingleTrattaWarning()` (modale di blocco/conferma per update solo-tratta, non più raggiungibile) e l'eccezione in `fld-no-nec` che disattivava il toggle quando si spuntava NULLA OSTA NECESSARIO su una singola tratta. Confermato con utente: nessun problema di propagazione — la tratta/e a cui si applica il nulla osta resta comunque scelta esplicitamente via `fld-no-tratte`/`TRATTE_NO`, indipendente dall'unione pratica.
-
-_Ultimo aggiornamento: 2026-08-07 (rev. 215)_
-
-- **rev.215** — `imprese.html`, tab "Aggiorna pratiche" (`renderPratiche()`): richiesta utente — la tabella mostrava una riga per ogni singola tratta (`TRATTA_ID+ENTE+TIPO_PERMESSO`), ma l'aggiornamento è comunque associato/propagato a tutta la pratica (logica SIBLINGS già esistente più sotto nello stesso file). Aggiunto un secondo livello di raggruppamento **dopo** il dedup per-tratta esistente: chiave = `p._codice`/`buildCodice(p)` (ENTE+TIPO_PERMESSO+PRATICA+lotto); tratte senza pratica associata (codice vuoto) restano righe singole (fallback su chiave tratta). Per ogni gruppo: riga rappresentativa = quella con `DATA_ULTIMA_MODIFICA` più recente (stato/date mostrate sono le più aggiornate della pratica); nuova colonna derivata `_lunghezzaTot` (somma `LUNGHEZZA` di tutte le tratte del gruppo, sostituisce il vecchio valore singolo in tabella e nel sort); colonna "Tratta"→"Tratte", cella mostra `N tratte` se il gruppo ne contiene più di una, altrimenti il TRATTA_ID come prima. Click-to-select e logica SIBLINGS invariati (SELECTED resta compatibile, la propagazione a tutte le tratte della pratica funzionava già). `node --check` OK.
-
-_Ultimo aggiornamento: 2026-08-06 (rev. 213)_
-
-- **rev.214** — Deploy GitHub Pages: bug reale trovato e corretto — mancava il file `.nojekyll` nella root del repo. Senza di esso, Pages tenta un build **Jekyll** anche su un sito statico vanilla JS/HTML; con file grandi in root (`Master.csv` 215K, `QGIS.geojson` 754K, HTML da 300-400K) il parser Jekyll si blocca, il job `build` gira ~45 min e il runner viene ucciso ("lost communication with the server"), facendo fallire il deploy pur restando online l'ultima versione pubblicata con successo (da cui l'apparente incoerenza "ci sono deploy falliti ma il sito è aggiornato"). Fix: aggiunto `.nojekyll` vuoto in root — deploy successivo completato subito. Nota per il futuro: verificare che non venga rimosso da script di sync/pulizia del repo (essendo un file senza estensione, "invisibile" a un controllo superficiale). — **Nota collegata (non un bug, comportamento confermato)**: le foto dei sopralluoghi (`sopralluoghi/foto/{codice}/foto_N.{ext}`) **non** passano da GridFS/Mongo — vengono caricate come data URL base64 dal frontend, decodificate e pushate **direttamente nel repo GitHub** via `_push_to_github()` (`server.py` ~riga 2798-2814, endpoint sopralluoghi). Questo fa crescere permanentemente la dimensione del repo Git ad ogni sopralluogo caricato (attualmente ~6.2MB in `sopralluoghi/foto`); da tenere presente come possibile causa futura di rallentamenti/limiti di dimensione repo, distinta dal bug `.nojekyll` di cui sopra.
-
-_Ultimo aggiornamento: 2026-08-05 (rev. 212)_
-
-- **rev.213** — `server.py`, `GET /api/admin/pratiche/note-history`: bug reale segnalato dall'utente da screenshot — lo storico note in admin (bottone "Storico note", rev.211) mostrava date/righe diverse rispetto al popup Note di `index.html` per la stessa pratica (es. mancavano occorrenze ripetute della stessa nota a date diverse). Causa: l'endpoint usava sempre `date = DATA_ULTIMA_MODIFICA or DATA_UPDATE`, senza replicare il fallback `effectiveDateRaw` di `praticaNotesRaw` in `index.html` — quando una riga è un aggiornamento SOLO-NOTA (stessa tratta, stesso STATO_PERMESSO, stesso DUM già visto in una riga precedente), `index.html` sposta la data effettiva a `DATA_UPDATE`; il backend no. Risultato: due note distinte con lo stesso `dum` finivano sulla stessa chiave `(note, date)` e venivano dedupate/collassate nello storico admin. Portata la stessa logica (tracking `stato_seen` per stato+data+tratta, merge multi-tratta senza spostare la data, swap a `DATA_UPDATE` per le continuation) in Python nell'endpoint — ora `/api/admin/pratiche/note-history` produce lo stesso storico del popup Note di `index.html`. `py_compile` OK.
-- **rev.212** — solo documentazione, nessuna modifica al codice: l'utente segnalava come mancante in admin la possibilità di correggere ogni singolo aggiornamento (ogni riga di storico caricato da un'impresa) di un cantiere — in realtà **la funzione esiste già** nel repo attuale mentre in questa sessione era stato dato per errore per mancante, quindi la documento qui perché non era mai stata riportata nel brief. In `admin.html` tab "Cantieri" → "Modifica" apre il pannello correzione (stato attuale/metri/tecnica/date) **e** sotto, "Storico caricamenti (tutti gli invii impresa)" (`cantLogList`/`refreshCantLog`): ogni riga del log (`data`, `impresa`, `stato_cantiere`, `tecnica_scavo`, `metri_realizzati`, `note`, `motivo_blocco`, `data_ripresa_stimata`) è editabile singolarmente con bottoni "Salva"/"Elimina" per riga. Backend: `PUT`/`DELETE /api/admin/cantieri/{cantiere_key}/log/{idx}` — corregge o elimina la singola voce di storico (indice nell'array `log` del documento Mongo), `metri_scavati` del cantiere viene sempre ricalcolato come somma di tutte le righe di log rimaste (coerente con l'accumulo fatto da `POST /api/imprese/cantieri/{key}`), push GitHub asincrono dopo ogni modifica, audit log (`update_cantiere_log`/`delete_cantiere_log`). Nota concettuale per non confondersi in futuro: per i **cantieri** la correzione di uno storico è già per-singola-riga (ogni caricamento impresa è un evento indipendente); per le **note delle pratiche** (rev.211) è invece per-nota-condivisa-su-più-tratte, perché lì lo stesso evento storico è duplicato su più righe fisiche di Master.csv — sono due modelli dati diversi, non applicare per analogia l'uno all'altro.
-
-_Ultimo aggiornamento: 2026-08-05 (rev. 211)_
-
-- **rev.211** — `admin.html` tab "Dati pratiche" + `server.py`: richiesta utente — poter correggere una nota SBAGLIATA ma VECCHIA (es. di 3 caricamenti fa), non solo quella corrente, e che la correzione si propaghi a tutte le tratte della pratica che condividono quella nota storica (Master.csv è append-only: la stessa nota, alla stessa data, è duplicata su ogni tratta attraversata dall'evento — v. `praticaNotesRaw` in `index.html`). Chiarimento importante nel corso della richiesta: la prima interpretazione (una riga per TRATTA_ID, editabile singolarmente come in Cantieri) NON era quella corretta — l'utente intendeva "ogni caricamento di nota" nel tempo, non "ogni tratta fisica"; l'implementazione basata su TRATTA_ID è stata scartata prima di essere consegnata. Nuovo bottone "Storico note" per ogni pratica (accanto a "Modifica dati"/"+ Nota"): apre un pannello con tutte le note storiche (data+testo, stessa dedup per (testo,data) usata in `index.html`), ciascuna con un bottone "Modifica" inline che apre una textarea e salva la correzione. Backend: 2 nuovi endpoint — `GET /api/admin/pratiche/note-history` (ente/tipo_permesso/pratica/lotto → lista note storiche uniche) e `POST /api/admin/pratiche/note/correct` (match esatto su NOTE+ente+tipo+pratica+lotto, opzionalmente anche su DATA_ULTIMA_MODIFICA/DATA_UPDATE se `old_date` è passato, sovrascrive il testo **in place su tutte le righe grezze che matchano**, non solo l'ultima per tratta — a differenza di `/pratiche/update` mode=data che tocca solo l'ultima riga). Tag `[RETELIT]`/`[IMPRESA]` preservato per-riga (non ritaggato). Segnalato subito dopo dall'utente: mancava la possibilità di **eliminare** una nota storica, non solo correggerla — aggiunto bottone "Elimina" per riga (con conferma `showConfirm`) e nuovo endpoint `POST /api/admin/pratiche/note/delete`, stesso matching di `/note/correct` ma svuota il campo NOTE invece di riscriverlo (non elimina la riga fisica di Master.csv, resta append-only). `py_compile`/`node --check`/HTML parser OK.
-
-_Ultimo aggiornamento: 2026-07-23 (rev. 210)_
-
-- **rev.210** — `server.py`: richiesta utente da screenshot `index.html` (popup Note) — l'etichetta "Impresa"/"Retelit" (rev.188, `_tag_note()`) compare solo sull'ultima nota di ogni pratica, tutte quelle storiche precedenti restano senza badge (disomogeneo). Motivo: `_tag_note()` prefissa solo le NOTE scritte **da rev.188 in poi**; quelle storiche in Master.csv non hanno mai avuto un prefisso perché all'epoca l'unico canale di inserimento nota era lato impresa. Nuovo endpoint one-off `POST /api/admin/backfill-note-tags` (stesso pattern di `backfill-data-update-solleciti` rev.147: `_check_token`, `_master_csv_lock`, idempotente): tagga retroattivamente `[IMPRESA]` ogni NOTE non vuota priva di prefisso `[RETELIT]`/`[IMPRESA]` (regex `_NOTE_TAG_RE` già esistente). Le note già taggate vengono saltate, rieseguibile senza effetti collaterali. La regola per le note **nuove** resta invariata (`_tag_note()` non toccata, chiamata come prima da imprese/admin ad ogni submission) — richiesto esplicitamente dall'utente ("per i prossimi manteniamo la regola attuale"). Da lanciare una tantum (richiesta `POST` con `x-upload-token`), poi non serve più. `py_compile` OK.
-
-
-- **rev.209** — `gantt.html`: "Inizio scavi" segnalata **ancora** al 17/04/2026 dall'utente anche dopo rev.208 (che ora usa solo `data_inizio_effettiva`, mai più `prevista`). Causa più probabile a questo punto: un **override manuale** (`applyGanttOverrides()`, salvato in passato da "Modalità modifica" e mai ripristinato) — gli override vengono applicati per ultimi nella sequenza di boot, dopo tutti i merge/cascade, quindi vincono sempre e i fix rev.206-208 su `mergeCantieriProgress()` non li toccano. Non potendo ispezionare Mongo da qui, aggiunto uno **strumento diagnostico self-service** invece di continuare a indovinare: `buildScaviRangeCard()` ora traccia anche la riga sorgente del valore mostrato; se `row.manual` (= viene da un override, non da un dato reale) mostra un'icona ⚠︎ con tooltip; il valore è cliccabile (`_locateGanttRow()`) e scrolla/espande i gruppi necessari/fa lampeggiare 3 volte la riga incriminata direttamente nel Gantt, cosi da poterla individuare e ripristinare (bottone "Ripristina" già esistente nel popover di modifica, `resetGanttOverride()`). **Da verificare anche**: che sia stato effettivamente ridistribuito rev.208 (deploy) prima di testare di nuovo — nella sessione precedente il ritardo di deploy ha causato un falso allarme simile su `polizze_convenzioni.html` rev.197/198. `node --check` OK.
-
-
-- **rev.208** — `gantt.html`, `mergeCantieriProgress()`: fix rev.206 ("Inizio scavi") **insufficiente** — l'utente ha ricontrollato con l'estrazione Excel (nessuna Opere Civili inizia ad aprile nei dati) e la card mostrava ancora 17/04/2026, valore che non esiste da nessuna parte nel `.mpp`/baseline statica del file → confermato che arriva a runtime da `data_inizio_prevista` in Mongo. Il gate `log_count>0` introdotto in rev.206 non basta: un cantiere può avere log entries (foto, note, sopralluoghi) senza che quello specifico log rifletta un inizio scavo reale confermato. Fix più netto: rimossa del tutto la fallback su `data_inizio_prevista`/`data_fine_prevista` — `mergeCantieriProgress()` ora aggiorna `row.start`/`row.end` **solo** con `data_inizio_effettiva`/`data_fine_effettiva` (mai un campo di pianificazione/preventivo). Se non c'è ancora una data effettiva confermata, il Gantt continua a mostrare la data calcolata dalla cascata permessi (mai un placeholder esterno non verificato). `node --check` OK.
-
-
-- **rev.207** — `gantt.html`, `exportGanttExcel()` (rev.206): segnalato dall'utente da screenshot — mancavano dipendenze/predecessori nell'export, e ogni task doveva avere il numero visibile in pagina (WBS "N.F", es. "1.2"). Aggiunte 2 colonne: **Numero** (stessa numerazione già mostrata a schermo e nella select "Predecessore" del popover — nuova `_ganttRowNumero()`, che replica la logica di `_ganttPraticaLabelPrefix()` senza il testo di contorno) e **Predecessori** (`_ganttRowPredecessori()`, unisce `GANTT_DEPS[row.id]` strutturale + `GANTT_EXTRA_DEPS[row.id]` extra se presenti entrambi, formattati come MS Project si aspetta: `"1.2FS"`/`"1.2SS+3"`). `node --check` OK.
-
-
-- **rev.206** — `gantt.html`: 3 bug reali segnalati dall'utente da screenshot + 1 feature.
-  1. **KPI "Avanzamento medio fasi" mostrava un valore assurdo** (es. `1.6129838710483387e+175%`): `avgPct` sommava `r.pct` di tutte le bar senza validarne il valore — un solo `pct` corrotto (fonte più probabile: override admin non validato via `ov.pct`, rev.135/gantt_overrides_col, mai stato clampato) basta a far esplodere la media. Aggiunto clamp 0-100 (valori non finiti → 0) in 3 punti indipendenti, difesa in profondità: applicazione override (riga ~640), `mergeCantieriProgress()` (calcolo da metri scavati/totali), e come rete di sicurezza finale nel calcolo di `avgPct` stesso. Rinominata l'etichetta in "Avanzamento complessivo" (richiesto dall'utente, "fasi" era ambiguo).
-  2. **"Inizio scavi" mostrava una data (17/04/2026) quando nessun cantiere era realmente partito**: stesso bug già corretto in `scavi.html` rev.199-200 — `mergeCantieriProgress()` usava `data_inizio_prevista`/`data_fine_prevista` (seed/import, possono essere valorizzate prima di qualunque lavoro reale) come fallback quando mancava l'effettiva, senza verificare se il cantiere avesse mai avuto un aggiornamento reale. Ora gated su `log_count > 0` (stesso campo aggiunto in rev.200 a `GET /api/cantieri`/`GET /api/imprese/cantieri`): le date "previste" da seed non confermate non vengono più usate per spostare le barre del Gantt.
-  3. **Bug non segnalato, trovato lavorandoci**: il marcatore verticale "Oggi" nel timeline e il calcolo "Scadenze superate" usavano `new Date(2026,6,7)`/`'07/07/2026'` **hardcoded** invece della data reale — probabilmente un residuo di test mai rimosso. Ora entrambi usano `new Date()`.
-  4. **Nuovo pulsante "Esporta Excel"** in toolbar: `exportGanttExcel()` genera un `.xlsx` (SheetJS via CDN, `cdn.sheetjs.com`) con l'intera gerarchia `GANTT_ROWS` (Nome attività indentato/Livello/Inizio/Fine/Durata gg/% Completamento), pensato per essere copiato e incollato nella tabella Gantt di MS Project. Nome file dinamico `Gantt_Lotto{LOTTO_ID}_{data}.xlsx`.
-
-> ⚠️ **Collisione di numerazione (rev.209–213)**: i 5 blocchi che seguono (su `mappa_impresa_caricamento.html`/`imprese.html`, datati 2026-08-08) riusano per errore gli stessi numeri già assegnati sopra a un'altra sessione su `gantt.html`/`server.py` (datata 2026-07-23/08-05/08-06). Contenuti diversi, nessuna sovrapposizione — usare la **data** per disambiguare, non il numero. Non rinumerato per non falsificare la cronologia reale.
-
-_Ultimo aggiornamento: 2026-08-08 (rev. 213)_
-
-- **rev.213** — `mappa_impresa_caricamento.html`: rimosso il toggle "Aggiorna tutte insieme" (checkbox `prSibToggle`, deselezionabile) — l'impresa poteva ancora aggiornare una sola tratta lasciando indietro le altre della stessa pratica, comportamento diverso da `imprese.html` dove l'aggiornamento sibling è sempre forzato. Allineato 1:1: pannello `#prSiblings` ora solo informativo ("Verranno aggiornate insieme: ...", stesso testo di `imprese.html`), nessuna checkbox; `prAddToQueue` applica sempre `_prFinalizeAdd(fields, PR_SIBLINGS.length > 0)` senza rami `wantsSingleOnly`/conferme popup; rimossa la logica collaterale che disattivava il toggle quando si spuntava "Nulla Osta Necessario" (non esiste in `imprese.html`, dove il campo si applica comunque a tutte le tratte della pratica). `node --check` OK.
-
-_Ultimo aggiornamento: 2026-08-08 (rev. 212)_
-
-- **rev.212** — `mappa_impresa_caricamento.html`: segnalato dall'utente da screenshot — il campo Note nel form di aggiornamento mostrava ancora "Note opzionali" mentre in `imprese.html` è obbligatoria su ogni aggiornamento. Allineato: label ora "Note *" (asterisco rosso), placeholder in `prSelectRow()` cambiato in "Obbligatoria: descrivi cosa è cambiato in questo aggiornamento", e nuovo guard in `prAddToQueue` che blocca il salvataggio con "Inserisci una nota: è obbligatoria per ogni aggiornamento" se il campo è vuoto — stessa validazione di `imprese.html`. `node --check` OK. Note aperte per l'utente: restano da allineare l'aggiornamento sibling forzato (qui ancora toggle opzionale) e i 2 filtri rapidi (previsione scaduta / update oltre 5gg), già segnalati come mancanti in rev.211.
-
-_Ultimo aggiornamento: 2026-08-08 (rev. 211)_
-
-- **rev.211** — `mappa_impresa_caricamento.html`, `renderPrList()`: segnalato dall'utente da screenshot — a differenza di `imprese.html` (accorpamento per pratica già presente), qui ogni tratta compariva come card separata anche quando condivideva lo stesso codice pratica (es. 7 card `AUT/1/1A` invece di 1). Portata la stessa logica di raggruppamento di `renderPratiche()` in `imprese.html`: le tratte deduplicate vengono raggruppate per `_codice`/`prBuildCodice()` in una `pratMap`, sommando `_lunghezzaTot` e contando `_nTratte`; la card mostra "N tratte" invece del singolo `TRATTA_ID` quando N>1, più una riga con la lunghezza totale formattata (nuovo helper `prFormatLunghezza()`). Tratte senza pratica associata restano card singole, stesso comportamento di `imprese.html`. `prSelectRow()` non toccata: già ricalcola i siblings da `PR_PRATICHE` grezzo indipendentemente dal raggruppamento in vista. `node --check` OK.
-
-_Ultimo aggiornamento: 2026-08-08 (rev. 210)_
-
-- **rev.210** — `mappa_impresa_caricamento.html`: portata la feature "Registro note" di rev.209 anche qui (pannello pratiche aggiorna/nuova, form parallelo a `imprese.html` con prefisso `pr-`). Bottone "Registro note" (stesso stile `--retelit-teal`) accanto al label "Note" nel form di aggiornamento pratica, pannello `#prNoteHistPanel` con lo storico note via `GET /api/imprese/pratiche/note-history` (già esposto da rev.209, nessuna modifica backend necessaria). Nuovi helper JS `prLottoFromSource()`/`_prNoteAuthorChip()`, analoghi a quelli di `imprese.html` ma con naming `pr*` per non collidere con lo scope globale della pagina; pannello si resetta (`display:none`) a ogni nuova selezione pratica in `prSelectRow()`. `node --check` OK.
-
-- **rev.209** — `imprese.html`+`server.py`: nuovo bottone "Registro note" accanto al campo Note nel form di aggiornamento pratica — apre un pannello con lo storico completo delle note passate della pratica (data + testo + chip Retelit/Impresa), stesso identico dato di `_pratica_note_history_core()`. Backend: logica di `/api/admin/pratiche/note-history` estratta in helper condiviso `_pratica_note_history_core(df, ente, tipo_permesso, pratica, lotto)`; nuovo endpoint scoped per Area Impresa `GET /api/imprese/pratiche/note-history` (`_require_session`, sola lettura, 403 se il `lotto` richiesto non è tra quelli assegnati all'impresa — stesso pattern di scoping di `/api/imprese/pratiche`/`/api/imprese/master-sed`). Frontend: nuovo helper `lottoFromSource()` in `imprese.html` allineato 1:1 a `_lotto_from_source()` server-side, per garantire che il parametro `lotto` combaci sempre. Bottone spostato a sinistra vicino al titolo "Note", colore `--retelit-teal` con icona, per maggiore visibilità (richiesta utente da screenshot). `py_compile`/`node --check` OK.
-
-- **rev.205** — `polizze_convenzioni.html`: rev.204 (chip inline) ancora "poco chiara" secondo l'utente. Proposte 2 alternative via mockup (Visualizer), scelta l'opzione B: numero+etichetta tornano in alto (`.kpi-top`, come rev.201), il breakdown per stato sotto è ora una **barra segmentata** (`.kpi-bar`, un `<div>` per stato larghezza proporzionale al conteggio, colore da `STATI_COLORS[stato].color`) con una riga di legenda testuale sotto (`.kpi-legend`, es. "6 INVIATA · 2 EMESSA · 1 RICHIESTA RDS"). `renderKpiBreakdown()` riscritta di conseguenza. `node --check` OK.
-
-_Ultimo aggiornamento: 2026-07-22 (rev. 204)_
-
-- **rev.204** — `polizze_convenzioni.html`: segnalato dall'utente da screenshot — card KPI (rev.201) troppo grandi, spazio sprecato (numero e label su una riga con `justify-content:space-between` che li spingeva agli estremi, chip breakdown su riga separata sotto). Card ora a riga singola: numero+etichetta compatti a sinistra (`.kpi-num`, non più `.kpi-top`), chip breakdown affiancati sulla stessa riga (wrap se lo spazio non basta) invece che sotto. Padding 10px 14px→8px 12px, valore 20px→16px, chip 10px→9.5px con padding ridotto. `node --check` OK.
-
-
-- **rev.203** — `server.py`, `GET /api/admin/polizze-convenzioni/data-richiesta`: segnalato dall'utente — Data Richiesta e Data Emissione risultavano **tutte non popolate**. Trovato e corretto un bug reale di robustezza: `delete_many({"_id": {"$nin": list(seen_keys)}})` girava anche quando `seen_keys` era vuoto (es. `CONVENZIONE`/`POLIZZA` non trovate nel Master in quel momento) — con `seen_keys` vuoto, `$nin: []` fa match su **tutti** i documenti e azzera l'intera collection `pol_conv_dates_col`, comprese le date già raccolte. Ora la funzione esce prima (senza toccare la collection) se nessuna delle 2 colonne è nel Master, e il `delete_many` viene saltato se `seen_keys` è vuoto per qualunque altro motivo. **Nota per l'utente**, causa più probabile del problema riportato: 1) Data Emissione era assente perché il `server.py` in uso non aveva ancora il fix rev.202 (mancava `"EMESSA": "data_emissione"` in `STATO_DATE_FIELD` e il campo nella response) — risolto qui. 2) Queste date si popolano solo **da ora in poi**, al momento in cui una pratica passa di stato tramite il pulsante "Salva" in questa pagina — non possono essere ricostruite retroattivamente per pratiche già `EMESSA`/`INVIATA` prima che la feature esistesse (nessuno storico da cui recuperarle). 3) Data Richiesta dipende dalla colonna `DATA_ULTIMA_MODIFICA` di Master.csv: se è vuota per quelle righe (es. righe caricate/importate senza passare da un update tracciato), resta vuota — nessun fix di codice può inventare quella data, va verificato/valorizzato a monte nel CSV se serve.
-- **rev.202** — `polizze_convenzioni.html` + `server.py`: aggiunta 4ª colonna data "Data Emissione", stesso pattern di rev.197/198 — si fissa (una sola volta) al primo salvataggio con stato `EMESSA`. Backend: `STATO_DATE_FIELD` esteso con `"EMESSA": "data_emissione"`; `GET .../data-richiesta` risponde ora `{date, date_invio, date_richiesta_rds, date_emissione}`. Frontend: entrambe le tabelle (Convenzioni e Polizze) a 9 colonne (Pratica/Lotto/Ente/Stato permesso/Convenzione o Polizza/Data Richiesta/Data Richiesta RDS/Data Invio/Data Emissione), colspan aggiornati ovunque.
-- **rev.201** — `polizze_convenzioni.html`: revisione layout su richiesta utente (screenshot) — non voleva le due tabelle affiancate. `.split` da grid 2 colonne a flex verticale (Convenzioni sopra, Polizze sotto, entrambe piena larghezza) per lasciare spazio a più colonne in futuro. Rimosso il sub-panel `.dates-panel` introdotto in rev.197/198: le 3 colonne data (Data Richiesta / Data Richiesta RDS / Data Invio) tornano in riga nella tabella principale, ora su **entrambe** le tabelle (Convenzioni prima ne aveva solo 1, Polizze le aveva nel sub-panel). Nessuna modifica backend necessaria per questa parte: `STATO_DATE_FIELD`/`get_pol_conv_date_richiesta` erano già generici per campo, bastava leggere `DATE_INVIO_MAP`/`DATE_RDS_MAP` anche lato Convenzioni in `parseAndRender()`. KPI in alto ridisegnate: card più piccole (val 28px→20px) con breakdown per stato sotto il numero (`countByStato()`+`renderKpiBreakdown()`, chip colorati riusando `STATI_COLORS`). Confermato con mockup (Visualizer) prima di implementare. ⚠️ Nota di processo: numerati 201-203 anziché 199-200 (già usati in questa sessione dall'utente per `scavi.html`) per evitare collisione — nessun lavoro duplicato, confermato via diff. `py_compile`/`node --check` OK.
-
-_Ultimo aggiornamento: 2026-07-21 (rev. 200)_
-
-- **rev.200** — fix rev.199: la colonna "Date" di `scavi.html` mostrava "in ritardo"/date anche per cantieri **mai toccati dall'impresa**, perché `data_inizio_prevista` può già essere valorizzata dal seed/import (`cantieri.csv`) prima di qualunque caricamento reale. `server.py`: `GET /api/cantieri` e `GET /api/imprese/cantieri` ora restituiscono `log_count` (lunghezza dell'array `log`, senza esporne il contenuto) invece di limitarsi a fare `pop("log")`. `scavi.html`: `_scavoDateCell()`/`_scavoDatePlain()` mostrano "nessuna data" se `log_count` è 0/assente, ignorando eventuali date di seed non confermate da un aggiornamento impresa; il pannello riepilogo date nel modal Registro (rev.199) ora appare solo se `log.length > 0`.
-
-
-_Ultimo aggiornamento: 2026-07-21 (rev. 199)_
-
-- **rev.199** — `scavi.html`: le 5 date cantiere (`data_inizio_prevista/effettiva`, `data_fine_prevista/effettiva`, `data_ripresa_stimata`) erano salvate da `imprese_scavi.html`/`admin.html` ma **mai mostrate** nella vista staff — nuova colonna "Date" in tabella "Tutti i Cantieri" (`CANTIERI_COLS`+render riga, colspan 13→14) e nei modal Stato/Cluster (`_cantieriTableHtml`): mostra la data più rilevante per lo stato corrente (inizio previsto/effettivo, fine effettiva, ripresa se sospeso) con scostamento gg vs previsto colorato (`--ok`/`--err`) e tooltip con tutte le date. Helper `_scavoDateCell()`/`_scavoDatePlain()`. Modal "Registro" (`openModalRegistro`): aggiunto pannello riepilogo date pianificate/effettive sopra il log eventi (prima mostrava solo la data dell'ultimo aggiornamento, non le date di pianificazione). Nessuna modifica backend: i dati esistevano già in Mongo, mancava solo la visualizzazione. TODO aperto (prossimo giro, da decidere con l'utente): rendere le date più obbligatorie/visibili lato `imprese_scavi.html` e calcolare scostamenti/ritardi aggregati a livello lotto/cluster.
-
-- **rev.198** — `polizze_convenzioni.html` + `server.py`: tabella Polizze, tracciata anche "Data Richiesta RDS" (stato `RICHIESTA RDS`), oltre a Data Richiesta/Data Invio (rev.197). Le 3 date spostate fuori dalla tabella principale in un sub-panel sotto (`.dates-panel`, `buildDatesRows()`), per fare spazio — tabella Polizze torna a 5 colonne. Backend: `STATO_DATE_FIELD = {"INVIATA": "data_invio", "RICHIESTA RDS": "data_richiesta_rds"}` in `update_polizza_convenzione`, fissate una sola volta (non sovrascritte da transizioni successive). `GET .../data-richiesta` → `{date, date_invio, date_richiesta_rds}`. Tabella Convenzioni non toccata.
-- **rev.197** — stessi file: aggiunta "Data Invio", popolata al primo salvataggio con stato `INVIATA`. Fix bug collaterale: il vecchio `$setOnInsert` su `data_richiesta` non valorizzava documenti Mongo già esistenti — sostituito con `find_one`+insert/update esplicito.
-- **rev.196/195/194/193** (`admin.html` tab Cantieri, `imprese_scavi.html`) — allineamento visivo cantieri a `scavi.html`: chip stato colorati + barra avanzamento metri nella tabella elenco, select stato colorato nel pannello edit; bottone "Storico" spostato direttamente in ogni card; fix nowrap colonne Codice/Pratica; aggiunto campo mancante "Data inizio prevista" e **fix bug**: le 3 date cantiere sono salvate in Mongo in ISO (`aaaa-mm-gg`), non `gg/mm/aaaa` come Master.csv — il pannello applicava comunque la conversione dd/mm/yyyy e le mostrava sempre vuote; ora lette/scritte native.
-- **rev.192** — audit di conferma (nessun nuovo lavoro): confermato che 4 fix di sicurezza (proxy Google Apps Script → backend Mongo, auth su `data-richiesta`, header sessione, sync cantieri non bloccante) erano già presenti nel repo corrente rispetto a uno snapshot precedente ricaricato per errore dall'utente.
-- **rev.191** — `mappa.html`+`mappa_impresa_caricamento.html`: fix arrotondamento "Metri scavati" (decimali float infiniti). `hub.html`+`ai_alerts.html`: pagina Alert Predittivi nascosta per ruolo `dl` (solo redirect client-side, non gated server-side — gap noto).
-- **rev.190** — **fix strutturale** `js/api-config.js`: il wrapper `window.fetch` inietta ora automaticamente `x-session-token` su ogni chiamata `API_BASE`-prefixed priva di header esplicito, per chiudere la classe di bug "fetch senza token → 401 silenzioso" ricorsa più volte (rev.129/130/135/136/149). Corretto anche 1 caso reale residuo in `scavi.html`.
-- **rev.189** — nuovo ruolo `dl` (Direzione Lavori): vede tutto come `user` tranne Milestone. Gating reso reale **lato server** (non solo redirect client-side): dati Milestone spostati in `server.py` dietro `GET /api/milestone` + nuova dependency `_require_milestone_session` (403 se `ruolo=='dl'`), ruolo letto dal token HMAC firmato.
-- **rev.188** — `server.py`+`index.html`+`admin.html`: le note su una pratica ora taggate `[RETELIT]`/`[IMPRESA]` in Master.csv (`_tag_note()`), mostrate come chip colorato invece di testo indistinguibile.
-
-_Ultimo aggiornamento: 2026-07-13 (rev. 187)_
-
-- **rev.187/186** — `gantt.html`: **bug reale in `mergeMasterCsv()`** (regressione rev.180) — quando l'ultimo stato Master.csv di una pratica è `NO COMPETENZA`, la funzione usciva prima di valutare la riga Progettazione anche se la pratica era realmente avanzata prima di chiudersi così. Fix: nuova mappa `everAdvanced[pratica|ente]` costruita su **tutto** lo storico, non solo l'ultima riga. Nota collegata: una stessa pratica può avere più segmenti fisici distinti nel Gantt (stesso `_pratica`+`_ente`) — il fix di aggiornamento va applicato con `filter().forEach()`, non `find()` (si fermava al primo segmento). Aggiunta anche barra di riepilogo (rollup stile MS Project) sui gruppi collassati.
-- **rev.185** — `gantt.html`: **bug reale** — da rev.182 Opere Civili è ricalcolata a metri/giorno ma Test/As Built restavano ancorate alle vecchie date fisse del `.mpp`, aprendo gap di settimane per pratiche piccole. Fix: `cascadeOpereCiviliDurations()` trasla i successori dello scostamento reale rispetto alla baseline `.mpp` (`_mppBaseEnd`). Refactor collegato: le cascate da spostamento-permesso e da ricalcolo-durata si sovrascrivevano a vicenda invece di sommarsi — ora accumulano in `_deltaPermesso`+`_deltaKm` separati e sommati prima di applicarli.
-- **rev.184** — `server.py`+`gantt.html`: tasso di scavo (100 m/g) reso configurabile da UI, con priorità PERMESSO > IMPRESA > LOTTO > DEFAULT. Nuova collection `gantt_rates_col` (scope libero `"lotto:X"`/`"impresa:X"`/`"pratica:X"`/`"global"`), endpoint `GET/PUT/DELETE /api/gantt/rates/{scope}`. Race condition trovata e corretta: la risoluzione tassi deve completare **prima** di `mergeCantieriProgress()` (dati scavi reali devono sempre vincere sulla stima).
-- **rev.183/182/181/180** — `gantt.html`, evoluzione calcolo Opere Civili/Progettazione: durata Opere Civili da km reali invece di baseline uniforme `.mpp` (`ceil(km*1000/100m)`, minimo 1gg), poi corretta a soli giorni lavorativi lun-ven (`addWorkDaysDmy`); % Progettazione dedotta da `STATO_PERMESSO` (IN ATTESA/IN REDAZIONE→0%, oltre→100%) e aggregata **in km** (non a conteggio pratiche), coerente con le altre metriche km-weighted della dashboard.
-- **rev.179/178/177** — `gantt.html`: **riscrittura strutturale** da gerarchia piatta a Lotto→Comune→Pratica→5 Fasi (`GANTT_ROWS` 137→192 righe, metadati `_ente`/`_pratica`/`_comune` diretti invece di regex sulla label); nuova `propagateGanttDatesFromPermits()` (propaga in cascata via `GANTT_DEPS`/BFS lo scostamento quando un permesso slitta, senza toccare righe con dato scavi reale o override admin); fix bug KPI "Permessi ottenuti" che contava anche le milestone Materiali.
-
-_Ultimo aggiornamento: 2026-07-07 (rev. 154–176)_ — `gantt.html`: dipendenze reali tra fasi estratte dal `.mpp` (`GANTT_DEPS`, connettori SVG, popover sola-lettura); modalità "modifica" (admin) con popover edit + persistenza override su Mongo (`gantt_overrides_col`, `_require_admin_session`); collassa/espandi per fase/pratica; KPI e tooltip milestone raffinati. `hub.html`: riposizionamento card Gantt/Milestone/Alert Predittivi/Pannello Gestione (3 iterazioni di layout). `imprese.html`: tabella Solleciti/Aggiorna pratiche — colonna "Data ottenimento" morta sostituita da "Data ultimo sollecito"; submit di sola nota permesso senza obbligo di cambiare stato. `server.py`: fix `DATA_UPDATE` mai aggiornato sui solleciti (mask troppo stretta, matchava anche su `pratica`/`tipo_permesso` invece che solo `TRATTA_ID`) + endpoint one-off di backfill.
-
-_Ultimo aggiornamento: 2026-07-06/07 (rev. 129–148) — hardening sicurezza + isolamento dati impresa_
-
-Sessione dedicata, in vista del go-live delle credenziali impresa. Falle trovate e chiuse in sequenza:
-- **rev.129/130**: molti endpoint staff erano protetti solo da token valido, non da ruolo — un account `impresa` poteva chiamarli direttamente bypassando l'hub. Nuova dependency `_require_staff_session` (403 su ruolo impresa) su 6 endpoint (`lotti-cantieri`, `sopralluoghi`×3, `cantieri`, `cantieri/{key}/log`).
-- **rev.135**: `/api/data*`, `/api/files`, `/api/preview`, `/api/uploads` erano **senza alcuna autenticazione** — chiunque poteva scaricare Master.csv/QGIS/Riepilogo dal backend. Gated con `_require_session`/`_require_staff_session`.
-- **rev.139**: gap residuo di rev.135 — `_require_session` validava solo il token, non il ruolo: un token impresa poteva comunque scaricare i file interi (Master/QGIS/SED/Riepilogo di **tutti** i lotti). Fix: `SENSITIVE_FILES` + `_guard_sensitive_read()` (403 su ruolo impresa) + nuovo endpoint scoped `GET /api/imprese/master-sed` che filtra server-side sui lotti assegnati; questi 4 file non vengono più pubblicati sul repo pubblico GitHub (restano solo su GridFS). TODO operativo aperto: la storia git pubblica resta scaricabile finché non si fa un purge (git filter-repo/BFG) o si rende il repo privato.
-- **rev.138/140**: 2 bug di isolamento dati cross-impresa — `get_solleciti` filtrava il lotto per substring invece di match esatto (un'impresa vedeva solleciti di lotti simili ma non suoi); `GET /api/imprese/cantieri/{key}/log` non verificava ownership sul lotto (leggibile lo storico di cantieri di altre imprese).
-- **rev.131/132**: guardia auth client-side aggiunta a `admin.html`/`milestone.html` (redirect `hub.html` se ruolo non consentito) — resta bypassabile forzando `localStorage`, la vera barriera per le scritture resta `UPLOAD_TOKEN`/i controlli server sopra.
-- **rev.133/134**: audit log azioni admin (`admin_actions_col`, `_log_admin_action`); fix `delete_upload` che rigenerava/pushava file ridondantemente anche cancellando versioni non correnti.
-- **rev.136/137**: verifica TODO + audit pre-produzione sulle 3 pagine impresa (nessun bug bloccante residuo).
-
-Nello stesso arco: rimozione pagina ridondante `mappa_impresa.html` (rev.126-128, superata da `mappa_impresa_caricamento.html`); `imprese.html`/`mappa_impresa_caricamento.html` — stato `NO COMPETENZA`/`OTTENUTO` nasconde campi Nulla Osta/Polizza/Convenzione non pertinenti, select→checkbox per quei 3 campi, rimosso campo "Ordinanza necessaria", fix bug di scope (`_openHelp`/`_retryBoot` non esposte su `window`, `onclick` falliva) (rev.113-125).
-
----
-
-_Storico rev.65–rev.113 compattato_ (dettagli completi nei backup di sessione, non riportati qui):
-- **`scavi.html`** (rev.65,77-91,96,101-110): iterazioni stile/larghezze colonne tabella cantieri, raggruppamento imprese per cluster/lotto, modal Cluster/Lotto, pulizia CSS morto.
-- **`index.html`** (rev.65-75,97-100): fix header/popup Note (bug dati mancanti, note multiple, rimozione solleciti dal popup — riapre TODO 11.4), colonna Impresa nei modal, rimozione colonna "Prev. Rilascio", icone sort SVG.
-- **`imprese.html`** (rev.111-123): tasto guida "?" (bug scope IIFE), NO COMPETENZA nasconde campi non pertinenti, select→checkbox, rimozione campo Ordinanza.
-- **`mappa_impresa_caricamento.html`** (rev.78-80,122): export GeoJSON con esclusione campi gestionali, allineamento form a `imprese.html`.
-
-_Storico rev.10–rev.64 archiviato in `AGENT_BRIEF_ARCHIVE.md`_:
-- Rename `COORDINAMENTO`→`INVIO PRELIMINARE` (rev.34-43); eliminata previsione calcolata, sostituita da campo compilato dall'impresa (rev.44-48); corruzione ricorrente `Master.csv` diagnosticata/riparata più volte (rev.50,63-64 — v. §8.40); iterazioni barra % nei modal lotto/cluster (rev.49,51-59); colonna `DATA_UPDATE` (rev.60-62); fix storici `scavi.html` — sort/filtro, donut KPI, rebranding, keepalive Render, guardia bfcache (rev.10-33, ha scoperto il gap auth chiuso poi in rev.131/132).
-
-_Note di compattazione: rev.65-113 compattato 2026-07-06 (rev.10-64 già archiviato in precedenza). rev.114-187 compattato 2026-07-21 con lo stesso criterio (dettagli originali recuperabili dai backup di sessione se serve un audit puntuale). Restano inline solo rev.188-198 (più recenti/actionable)._
-
-- **rev.239** — nuova pagina `stato_lotti.html` (link in `hub.html`, visibile solo ruoli `admin`/`admin2`, stesso pattern/badge "Riservato" di `ganttCard`). Aggrega per lotto: % km progettazione OTTENUTO (da `Riepilogo_progettazione.csv`) e % metri scavati (da `GET /api/cantieri`), confrontati con le date target `invio/ottenim/p50/p90/p100` di `/api/milestone` → flag ok/warn/err per progettazione e per scavi separatamente + risk badge complessivo (il peggiore dei due). Card cliccabile apre modal con elenco pratiche non ottenute, cantieri sospesi e cantieri con scadenza superata per quel lotto. Riusa la cautela `log_count` di rev.200 (non segnala ritardo "inizio previsto" su cantieri mai aggiornati dall'impresa — data seed non confermata). **Nota**: la cartella `pm/` (DASHBOARD_PM.html, allocazione.html, integrazioni.html, panoramica_portfolio/progetti.html) è un template "Nexus Dashboard" scollegato da brand/dati ENRI, non integrato in questa pagina né altrove — lasciata invariata su richiesta esplicita dell'utente, da valutare in seguito (rimozione o riuso).
+// ══════════════════════════════════════════════════════════════════════
+// MOTORE PARAMETRICO — rischio ROS, squadre/capacità, azioni, causa
+// Tutte le soglie/pesi/produttività/tempi vengono da PARAMETRI (/api/parametri,
+// parsato server-side dall'xlsx caricato in admin.html). Nessun valore di
+// business è hardcoded qui: se un parametro manca, il fattore/dato che ne
+// dipende è marcato "dato insufficiente", mai un numero inventato.
+// Formule concordate con Andrea Indino, rif. thread "stato lotti" 2026-08-26.
+// ══════════════════════════════════════════════════════════════════════
+
+let PARAMETRI = null;
+
+function interpLin(v, att, crit) {
+  if (v === null || v === undefined || !isFinite(v)) return null;
+  if (crit === att) return v >= crit ? 100 : 0;
+  if (v <= att) return 0;
+  if (v >= crit) return 100;
+  return (v - att) / (crit - att) * 100;
+}
+
+// ggSettimana: 5=Lun-Ven, 6=Lun-Sab, 7=tutti. Indice lun-based: Lun=1..Dom=7.
+function giorniLavorativi(d1, d2, ggSettimana) {
+  if (!d1 || !d2 || d2 <= d1) return 0;
+  let n = 0;
+  let cur = new Date(d1.getFullYear(), d1.getMonth(), d1.getDate());
+  const end = new Date(d2.getFullYear(), d2.getMonth(), d2.getDate());
+  while (cur < end) {
+    cur = new Date(cur.getTime() + 86400000);
+    const idx = cur.getDay() === 0 ? 7 : cur.getDay();
+    if (idx <= ggSettimana) n++;
+  }
+  return n;
+}
+
+// Coefficiente urgenza per distanza dalla milestone (R_AUTH, e R_BLOCCHI se ROS scaduta)
+function bracketDistanzaMilestone(giorniResidui) {
+  if (giorniResidui === null || giorniResidui === undefined) return null;
+  if (giorniResidui < 30) return { coef: 2, banda: giorniResidui <= 0 ? 'milestone scaduta' : '<30gg' };
+  if (giorniResidui < 60) return { coef: 1.5, banda: '30-60gg' };
+  if (giorniResidui < 90) return { coef: 1.25, banda: '60-90gg' };
+  return { coef: 1, banda: '>90gg' };
+}
+// Coefficiente urgenza per rapporto giorni_residui/tempo_atteso (R_BLOCCHI)
+function bracketRapportoUrgenza(rapporto) {
+  if (rapporto === null || rapporto === undefined) return null;
+  if (rapporto >= 1.5) return { coef: 1, banda: '≥1,50' };
+  if (rapporto >= 1.0) return { coef: 1.25, banda: '1,00–1,49' };
+  if (rapporto >= 0.5) return { coef: 1.5, banda: '0,50–0,99' };
+  return { coef: 2, banda: '<0,50' };
+}
+
+// Ente (testo libero da Riepilogo_progettazione) → codice "Tempi autorizzativi".
+// Nessuna tabella di mapping esplicita nell'xlsx: match per prefisso/substring
+// sui codici noti, altrimenti AUTH_CONSORZIO (fallback dichiarato, mai silenzioso).
+function lookupTempoEnte(enteRaw, tempi) {
+  const e = (enteRaw || '').toUpperCase();
+  let codice = null;
+  if (e.startsWith('COMUNE')) codice = 'AUTH_COMUNE';
+  else if (e.startsWith('PROVINCIA')) codice = 'AUTH_PROVINCIA';
+  else if (e.includes('ANAS')) codice = 'AUTH_ANAS';
+  else if (e.includes('AIPO')) codice = 'AUTH_AIPO';
+  else if (e.includes('SATAP')) codice = 'AUTH_SATAP';
+  else if (e.includes('VILLORESI')) codice = 'AUTH_VILLORESI';
+  else if (e.includes('RFI')) codice = 'AUTH_RFI';
+  let fallback = false;
+  if (!codice || !tempi[codice]) { codice = 'AUTH_CONSORZIO'; fallback = true; }
+  return { codice, fallback, ...(tempi[codice] || {}) };
+}
+
+function computeSquadre(lotto, cantieriLotto, parametri) {
+  const regole = parametri.regole_squadre_cantiere || {};
+  const eccezioni = {};
+  (parametri.eccezioni_cantiere || []).forEach(e => { if (e.codice_cantiere) eccezioni[e.codice_cantiere] = e; });
+  const dettaglio = cantieriLotto.map(c => {
+    const ecc = eccezioni[c.codice_cantiere];
+    let squadre, fonte;
+    if (ecc && ecc.squadre_override !== null && ecc.squadre_override !== undefined && ecc.squadre_override !== '') {
+      squadre = Number(ecc.squadre_override); fonte = `override cantiere (${ecc.motivazione || 'eccezione in Eccezioni per cantiere'})`;
+    } else {
+      const reg = regole[c.stato_cantiere] || regole['altro'] || { squadre_standard: 0 };
+      squadre = Number(reg.squadre_standard) || 0; fonte = `Regole squadre cantiere → stato "${c.stato_cantiere}"`;
+    }
+    return { codice: c.codice_cantiere, stato: c.stato_cantiere, squadre, fonte };
+  });
+  const sommaCantieri = dettaglio.reduce((s, d) => s + d.squadre, 0);
+  const pl = (parametri.parametri_lotto || {})[lotto] || {};
+  const hasOverrideLotto = pl.squadre_lotto_override !== null && pl.squadre_lotto_override !== undefined && pl.squadre_lotto_override !== '';
+  const disponibili = hasOverrideLotto ? Number(pl.squadre_lotto_override) : sommaCantieri;
+  return { disponibili, dettaglio, overrideLotto: hasOverrideLotto ? Number(pl.squadre_lotto_override) : null };
+}
+
+function computeCapacita(lotto, row, parametri) {
+  const pl = (parametri.parametri_lotto || {})[lotto] || {};
+  const glob = parametri.globali || {};
+  const gv = k => (glob[k] ? glob[k].valore : null);
+
+  const prodStd = pl.produttivita_standard_squadra != null ? Number(pl.produttivita_standard_squadra) : Number(gv('SCAVO_PROD_STD'));
+  const efficienza = pl.efficienza_prevista != null ? Number(pl.efficienza_prevista) : 1;
+  const prodEffettiva = prodStd * efficienza;
+  const squadre = computeSquadre(lotto, row.s.cantieri || [], parametri);
+  const metriResiduiScavo = Math.max(0, (row.s.metriTot || 0) - (row.s.metriScavati || 0));
+
+  let milestoneROS = pl.milestone_contrattuale ? parseDateIT(pl.milestone_contrattuale) : null;
+  let fonteMilestone = 'Parametri per lotto → Milestone contrattuale (override)';
+  if (!milestoneROS) {
+    milestoneROS = row.m ? parseDateIT(row.m.p100) : null;
+    fonteMilestone = 'milestone.html → p100 scavi (fallback, nessun override per lotto)';
+  }
+
+  const base = { squadre, metriResiduiScavo, prodStd, efficienza, prodEffettiva };
+  if (!milestoneROS) {
+    return { ...base, insufficiente: true, motivo: 'Nessuna milestone ROS disponibile (né override "Milestone contrattuale" nel foglio Parametri per lotto, né p100 in milestone.html)' };
+  }
+
+  const ggSettimana = pl.giorni_lavorativi_settimana != null ? Number(pl.giorni_lavorativi_settimana) : Number(gv('SCAVO_GG_SETT'));
+  const calendarioTipo = gv('CALENDARIO_TIPO') || 'Lavorativi';
+  const giorniResiduiCal = Math.round((milestoneROS - oggi) / 86400000);
+  const giorniUtili = calendarioTipo === 'Lavorativi' ? giorniLavorativi(oggi, milestoneROS, ggSettimana) : Math.max(0, giorniResiduiCal);
+  const rosScaduta = giorniResiduiCal <= 0;
+  const produttivitaRichiesta = giorniUtili > 0 ? metriResiduiScavo / giorniUtili : null;
+  const arrotonda = gv('ARROTONDA_SQUADRE') || 'Eccesso';
+  const squadreNecessarie = produttivitaRichiesta !== null
+    ? (arrotonda === 'Eccesso' ? Math.ceil(produttivitaRichiesta / prodEffettiva) : Math.round(produttivitaRichiesta / prodEffettiva))
+    : null;
+  const squadreAggiuntive = squadreNecessarie !== null ? Math.max(0, squadreNecessarie - squadre.disponibili) : null;
+
+  return { ...base, insufficiente: false, milestoneROS, fonteMilestone, ggSettimana, calendarioTipo,
+    giorniResiduiCal, giorniUtili, rosScaduta, produttivitaRichiesta, squadreNecessarie, squadreAggiuntive };
+}
+
+// ── I 5 fattori di rischio ROS (peso e soglie da PARAMETRI.rischio_ros.fattori) ──
+
+function fattoreRScavi(capacita, f) {
+  if (capacita.insufficiente) return { disponibile: false, motivo: capacita.motivo };
+  if (capacita.rosScaduta) return { disponibile: true, punti: 100, rapporto: null, note: 'ROS già scaduta → punteggio massimo per definizione' };
+  const rapporto = capacita.squadre.disponibili > 0
+    ? capacita.squadreNecessarie / capacita.squadre.disponibili
+    : (capacita.squadreNecessarie > 0 ? null : 0); // 0 disponibili e 0 necessarie: nessun rischio da questo fattore
+  const punti = rapporto === null ? 100 : interpLin(rapporto, 1.0, 1.5);
+  return { disponibile: true, punti, rapporto };
+}
+
+// Conta pratiche distinte quando il campo PRATICA è valorizzato (una pratica
+// può coprire più tratte/righe CSV); altrimenti dichiara che sta contando
+// tratte, non pratiche — mai un numero che sembra "pratiche" ma non lo è.
+function countPratiche(issues) {
+  if (!issues.length) return { n: 0, label: 'pratiche', esatto: true };
+  const conPratica = issues.filter(i => i.pratica);
+  if (conPratica.length === issues.length) {
+    return { n: new Set(issues.map(i => i.pratica)).size, label: 'pratiche', esatto: true, tratte: issues.length };
+  }
+  return { n: issues.length, label: 'tratte', esatto: false, nota: 'campo PRATICA non valorizzato per questo lotto — conteggio a livello di tratta, non di pratica' };
+}
+
+// Fase autorizzativa del lotto rispetto alla PROPRIA curva progettazione
+// (invio → ottenimento) — dominio autorizzativo puro, nessun riferimento a
+// scavi/ROS. Condiviso da R_AUTH e dalla regola azione ACT_AUTH_MS.
+function computeFaseAutorizzativa(row) {
+  const invio = row.m ? parseDateIT(row.m.invio) : null;
+  const ottenim = row.m ? parseDateIT(row.m.ottenim) : null;
+  if (invio && ottenim) {
+    if (oggi < invio) {
+      return { disponibile: true, coefFase: 0, giorniResiduiOttenimento: Math.round((ottenim - oggi) / 86400000),
+        fase: 'non_iniziata', info: `Fase non ancora iniziata — milestone invio (${row.m.invio}) non raggiunta: il 100% non autorizzato è fisiologico, coefficiente 0.` };
+    }
+    const giorniResiduiOtt = Math.round((ottenim - oggi) / 86400000);
+    const banda = bracketDistanzaMilestone(giorniResiduiOtt);
+    return { disponibile: true, coefFase: banda.coef, giorniResiduiOttenimento: giorniResiduiOtt,
+      fase: 'in_corso', info: `In corso — ${giorniResiduiOtt} gg a ottenimento (${row.m.ottenim}), banda ${banda.banda}.` };
+  }
+  if ((row.p.kmOtt || 0) > 0) {
+    return { disponibile: true, coefFase: 1, giorniResiduiOttenimento: null, fase: 'non_tracciata_prudenziale',
+      info: 'Milestone invio/ottenimento non tracciate per questo lotto — coefficiente pieno (1) per prudenza, sulla base dell\'evidenza autorizzativa esistente (km ottenuti > 0).' };
+  }
+  return { disponibile: false, motivo: 'Nessuna milestone invio/ottenimento tracciata e nessun km autorizzato: impossibile determinare la fase autorizzativa (dato dichiarato insufficiente, non dedotto dai dati scavi)' };
+}
+
+function fattoreRAuth(row, parametri, f) {
+  const fase = computeFaseAutorizzativa(row);
+  if (!fase.disponibile) return { disponibile: false, motivo: fase.motivo };
+  const tempi = parametri.tempi_autorizzativi || {};
+  const kmTot = row.p.kmTot || 0;
+  if (kmTot <= 0 || !(row.p.issues || []).length) return { disponibile: true, punti: 0, kmPesati: 0, pctPesata: 0, fase, dettaglio: [] };
+  const dettaglio = (row.p.issues || []).map(iss => {
+    const t = lookupTempoEnte(iss.ente, tempi);
+    const pesoEnte = t.peso_milestone_30gg != null ? Number(t.peso_milestone_30gg) : 1;
+    const kmPesati = iss.km * pesoEnte * fase.coefFase;
+    return { ente: iss.ente, tratta: iss.tratta, km: iss.km, pratica: iss.pratica, codiceTempo: t.codice, fallback: t.fallback, pesoEnte, kmPesati };
+  });
+  const kmPesati = dettaglio.reduce((s, d) => s + d.kmPesati, 0);
+  const pctPesata = kmPesati / kmTot;
+  const punti = interpLin(pctPesata, f.soglia_attenzione, f.soglia_critica);
+  return { disponibile: true, punti, kmPesati, pctPesata, fase, dettaglio };
+}
+
+
+function fattoreRSosp(row, capacita, f) {
+  const metriResidui = capacita.metriResiduiScavo;
+  const metriSospesi = (row.s.sospesi || []).reduce((s, c) => s + (c.metriResiduo || 0), 0);
+  if (metriResidui <= 0) return { disponibile: true, punti: 0, note: 'metri residui scavo = 0', metriSospesi, metriResidui };
+  const rapporto = metriSospesi / metriResidui;
+  let punti = interpLin(rapporto, f.soglia_attenzione, f.soglia_critica);
+  const senzaRipresa = (row.s.sospesi || []).some(c => !c.ripresa);
+  let penalita = false;
+  if ((row.s.sospesi || []).length > 0 && senzaRipresa) { punti = Math.min(100, punti * 1.2); penalita = true; }
+  return { disponibile: true, punti, rapporto, metriSospesi, metriResidui, penalita };
+}
+
+function fattoreRMS(row, f) {
+  const scadute = [...(row.pFlag.milestoneRitardo || []), ...(row.sFlag.milestoneRitardo || [])];
+  if (!scadute.length) return { disponibile: true, punti: 0, tutte: [] };
+  const tutte = scadute.map(m => {
+    const giorni = Math.round((oggi - m.date) / 86400000);
+    return { label: m.label, giorni, punti: interpLin(giorni, f.soglia_attenzione, f.soglia_critica) };
+  });
+  const peggiore = tutte.reduce((a, b) => (b.punti > a.punti ? b : a));
+  return { disponibile: true, punti: peggiore.punti, peggiore, tutte };
+}
+
+function fattoreRBlocchi(row, capacita, parametri, f) {
+  if (capacita.insufficiente) return { disponibile: false, motivo: capacita.motivo };
+  const tempi = parametri.tempi_autorizzativi || {};
+  const blocchi = row.p.blocchi || [];
+  const metriBloccati = blocchi.reduce((s, b) => s + b.km, 0);
+  const metriResiduiProg = Math.max(0, (row.p.kmTot || 0) - (row.p.kmOtt || 0));
+  if (metriResiduiProg <= 0) return { disponibile: true, punti: 0, note: 'metri residui progettazione = 0', metriBloccati, metriResiduiProg };
+  if (!metriBloccati) return { disponibile: true, punti: 0, metriBloccati: 0, metriResiduiProg };
+
+  const rapportoBlocco = metriBloccati / metriResiduiProg;
+  const puntiBase = interpLin(rapportoBlocco, f.soglia_attenzione, f.soglia_critica);
+
+  // Tempo atteso "dominante": tipo di blocco (nulla osta ha codice dedicato
+  // AUTH_NULLA_OSTA; l'ordinanza non ha un codice specifico nel foglio Tempi
+  // autorizzativi → fallback AUTH_CONSORZIO, dichiarato) sui km maggiori.
+  const kmPerTipo = {};
+  blocchi.forEach(b => {
+    const key = b.tipo === 'nulla_osta' ? 'AUTH_NULLA_OSTA' : 'AUTH_CONSORZIO';
+    kmPerTipo[key] = (kmPerTipo[key] || 0) + b.km;
+  });
+  let tempoCodice = null, maxKm = -1;
+  Object.entries(kmPerTipo).forEach(([k, km]) => { if (km > maxKm) { tempoCodice = k; maxKm = km; } });
+  const fallbackUsato = tempoCodice === 'AUTH_CONSORZIO';
+  const tempoAtteso = (tempi[tempoCodice] && Number(tempi[tempoCodice].giorni_attesi)) || 90;
+
+  let coefUrgenza, bandaUrgenza, rapportoUrgenza = null;
+  if (capacita.rosScaduta) { coefUrgenza = 2; bandaUrgenza = 'milestone scaduta'; }
+  else {
+    rapportoUrgenza = capacita.giorniResiduiCal / tempoAtteso;
+    const b = bracketRapportoUrgenza(rapportoUrgenza);
+    coefUrgenza = b.coef; bandaUrgenza = b.banda;
+  }
+  const punti = Math.min(100, puntiBase * coefUrgenza);
+  return { disponibile: true, punti, metriBloccati, metriResiduiProg, rapportoBlocco, puntiBase, tempoCodice, tempoAtteso, fallbackUsato, coefUrgenza, bandaUrgenza, rapportoUrgenza };
+}
+
+function computeRischioComposito(row, capacita, parametri) {
+  const fattoriDef = (parametri.rischio_ros.fattori || []).filter(x => x.attivo);
+  const fattori = {};
+  fattoriDef.forEach(f => {
+    let r;
+    if (f.codice === 'R_SCAVI') r = fattoreRScavi(capacita, f);
+    else if (f.codice === 'R_AUTH') r = fattoreRAuth(row, parametri, f);
+    else if (f.codice === 'R_SOSP') r = fattoreRSosp(row, capacita, f);
+    else if (f.codice === 'R_MS') r = fattoreRMS(row, f);
+    else if (f.codice === 'R_BLOCCHI') r = fattoreRBlocchi(row, capacita, parametri, f);
+    else r = { disponibile: false, motivo: 'fattore non implementato nel motore' };
+    fattori[f.codice] = { ...f, ...r };
+  });
+  const attivi = Object.values(fattori).filter(r => r.disponibile);
+  const pesoAttivoTotale = attivi.reduce((s, r) => s + Number(r.peso), 0);
+  let punteggio = null, classe = null;
+  if (pesoAttivoTotale > 0) {
+    attivi.forEach(r => { r.pesoEffettivo = Number(r.peso) / pesoAttivoTotale; r.contributo = r.pesoEffettivo * r.punti; });
+    punteggio = attivi.reduce((s, r) => s + r.contributo, 0);
+    classe = (parametri.rischio_ros.classi || []).find(c => punteggio >= c.punteggio_min && punteggio <= c.punteggio_max) || null;
+  }
+  return { fattori, punteggio, classe, pesoAttivoTotale, renormalizzato: pesoAttivoTotale > 0 && pesoAttivoTotale < 0.999 };
+}
+
+// ── Azione suggerita: prima regola che matcha, in ordine di priorità (Regole azioni) ──
+function computeAzioneParametrica(row, capacita, parametri) {
+  const regole = (parametri.regole_azioni || []).slice().sort((a, b) => a.priorita - b.priorita);
+  const glob = parametri.globali || {};
+  const finestraImpatto = Number(glob.PERMESSI_FINESTRA_IMPATTO ? glob.PERMESSI_FINESTRA_IMPATTO.valore : 30);
+  for (const reg of regole) {
+    let match = false, dettaglio = {};
+    if (reg.codice === 'ACT_SOSP') {
+      match = row.s.sospesi.length > 0;
+      dettaglio = { numero: row.s.sospesi.length, metri: row.s.sospesi.reduce((s, c) => s + c.metriResiduo, 0) };
+    } else if (reg.codice === 'ACT_AUTH_MS') {
+      const fase = computeFaseAutorizzativa(row);
+      const entro = fase.disponibile && fase.giorniResiduiOttenimento !== null && fase.giorniResiduiOttenimento <= finestraImpatto;
+      match = entro && (row.p.issues || []).length > 0;
+      dettaglio = { giorniResiduiOttenimento: fase.disponibile ? fase.giorniResiduiOttenimento : null, finestraImpatto, pratiche: row.p.issues.length };
+    } else if (reg.codice === 'ACT_CAP_SCAVI') {
+      match = !capacita.insufficiente && capacita.squadreNecessarie !== null && capacita.squadreNecessarie > capacita.squadre.disponibili;
+      dettaglio = { squadreNecessarie: capacita.squadreNecessarie, squadreDisponibili: capacita.squadre.disponibili, squadreAggiuntive: capacita.squadreAggiuntive };
+    } else if (reg.codice === 'ACT_PROG') {
+      const faseProg = computeFaseAutorizzativa(row);
+      // Stesso principio di R_AUTH (§12.3): prima di "invio" il 100% non
+      // presentato è fisiologico, non un ritardo — l'azione scatta solo se
+      // la fase è avviata (coef_fase > 0) o se il dato di fase manca ma c'è
+      // comunque evidenza di ritardo oggettivo (km non inviati > 0 pur con
+      // fase indeterminata è comunque riportabile, ma mai quando sappiamo
+      // con certezza di essere prima di "invio").
+      match = faseProg.disponibile && faseProg.coefFase > 0 && (row.p.kmNonInviato || 0) > 0;
+      dettaglio = { kmNonInviato: row.p.kmNonInviato, fase: faseProg.disponibile ? faseProg.info : null };
+    } else if (reg.codice === 'ACT_ORD') {
+      const metriBloccati = (row.p.blocchi || []).reduce((s, b) => s + b.km, 0);
+      match = metriBloccati > 0;
+      dettaglio = { metriBloccati, numBlocchi: row.p.blocchi.length };
+    } else if (reg.codice === 'ACT_NONE') {
+      match = true;
+    }
+    if (match) return { regola: reg, dettaglio };
+  }
+  return null;
+}
+
+// ── Causa operativa: fattori attivi ordinati per contributo pesato (§5) ──
+function computeCausaOperativa(row, rischio) {
+  const attivi = Object.values(rischio.fattori).filter(f => f.disponibile && f.contributo > 0.01);
+  attivi.sort((a, b) => b.contributo - a.contributo);
+  const frasi = attivi.slice(0, 3).map(f => {
+    let base;
+    if (f.codice === 'R_SCAVI') base = `Capacità scavi insufficiente${capForRow(f)}`;
+    else if (f.codice === 'R_AUTH') { const c = countPratiche(f.dettaglio); base = `${c.n} ${c.label} non autorizzate (${fmtNum(f.dettaglio.reduce((s, d) => s + d.km, 0))} m)${c.esatto ? '' : ' — pratiche non distinguibili, dato PRATICA assente'}`; }
+    else if (f.codice === 'R_SOSP') base = `${row.s.sospesi.length} cantiere${row.s.sospesi.length === 1 ? '' : 'i'} sospeso${row.s.sospesi.length === 1 ? '' : 'i'} (${fmtNum(f.metriSospesi)} m residui)`;
+    else if (f.codice === 'R_MS') base = `Milestone "${f.peggiore.label}" scaduta da ${f.peggiore.giorni} gg`;
+    else if (f.codice === 'R_BLOCCHI') base = `${row.p.blocchi.length} tratte bloccate da nulla osta/ordinanza (${fmtNum(f.metriBloccati)} m)`;
+    else base = f.fattore;
+    // Distingue "criticità presente" (fatto oggettivo, sopra) da "criticità
+    // impattante sulla milestone" (quanto pesa realmente sul punteggio ROS,
+    // dato dal contributo pesato — mai solo dalla gravità grezza del fattore).
+    return `${base} — impatto ROS ${f.contributo.toFixed(1)} pt`;
+  });
+  if (!frasi.length) return { html: 'Nessun fattore di rischio ROS attivo — in linea con il piano.', muted: true };
+  return { html: frasi.join(' · '), muted: false };
+}
+function capForRow(f) { return f.rapporto === null ? ' (ROS già scaduta)' : ` (squadre necessarie ${(f.rapporto * 100).toFixed(0)}% delle disponibili)`; }
+
+// R_SOSP (effetto: cantiere fermo) e R_BLOCCHI (causa: atto amministrativo
+// pendente) restano fattori distinti per scelta di modello — ma quando lo
+// stesso numero di pratica genera sia la sospensione che il blocco, va
+// dichiarato esplicitamente: non sono due problemi, sono causa+effetto dello
+// stesso procedimento. Match sul campo PRATICA (può contenere più codici
+// separati da "|": es. "AUT/2/2B | NO/6/2B").
+function collegamentiSospesiBlocchi(row) {
+  const blocchi = row.p.blocchi || [];
+  return (row.s.sospesi || []).map(c => {
+    if (!c.pratica) return { ...c, collegamento: null };
+    const match = blocchi.filter(b => b.pratica && String(b.pratica).split('|').map(x => x.trim()).includes(c.pratica));
+    return { ...c, collegamento: match.length ? { tratte: match.map(m => m.tratta), km: match.reduce((s, m) => s + m.km, 0) } : null };
+  });
+}
+
+function renderStato(r) {
+  const flag = r.overall === 'none' ? 'ok' : r.overall;
+  const label = flag === 'err' ? 'Critico' : flag === 'warn' ? 'Attenzione' : 'In linea';
+  return `<div class="risk-badge risk-${flag}">${label}</div>`;
+}
+
+function renderCausa(r) {
+  const c = r.causa;
+  return `<div class="causa-text${c.muted ? ' ct-muted' : ''}">${c.html}</div>`;
+}
+
+let LOTTI_DATA = {};
+
+function render(prog, scavi, milestoneByLotto) {
+  const lotti = new Set([...Object.keys(prog), ...Object.keys(scavi), ...Object.keys(milestoneByLotto)]);
+  const rows = [];
+  lotti.forEach(lotto => {
+    const p = prog[lotto] || { kmTot: 0, kmOtt: 0, kmNonInviato: 0, kmBloccato: 0, issues: [] };
+    const s = scavi[lotto] || { metriTot: 0, metriScavati: 0, sospesi: [], ritardi: [] };
+    const m = milestoneByLotto[lotto] || null;
+
+    const progPct = p.kmTot > 0 ? (p.kmOtt / p.kmTot) * 100 : 0;
+    const scaviPct = s.metriTot > 0 ? (s.metriScavati / s.metriTot) * 100 : 0;
+    s.pFlagPct = scaviPct; // usato da computeRischioROS
+
+    const progPoints = m ? [
+      { date: parseDateIT(m.invio), pct: 0, label: `Invio pratiche (${m.invio})` },
+      { date: parseDateIT(m.ottenim), pct: 100, label: `Ottenimento permessi (${m.ottenim})` }
+    ] : [];
+    const scaviPoints = m ? [
+      { date: parseDateIT(m.avvio), pct: 0, label: `Avvio scavi (${m.avvio})` },
+      { date: parseDateIT(m.p50), pct: 50, label: `50% scavato (${m.p50})` },
+      { date: parseDateIT(m.p90), pct: 90, label: `90% scavato (${m.p90})` },
+      { date: parseDateIT(m.p100), pct: 100, label: `100% scavato — ROS (${m.p100})` }
+    ] : [];
+    const progCurve = buildCurve(progPoints);
+    const scaviCurve = buildCurve(scaviPoints);
+
+    const pFlag = evalMetric(progCurve, progPct, progPoints);
+    const sFlag = evalMetric(scaviCurve, scaviPct, scaviPoints);
+    const overall = FLAG_RANK[pFlag.flag] >= FLAG_RANK[sFlag.flag] ? pFlag.flag : sFlag.flag;
+
+    const row = { lotto, cluster: m ? m.cluster : '—', p, s, m, pFlag, sFlag, overall };
+    row.capacita = computeCapacita(lotto, row, PARAMETRI);
+    row.rischio = computeRischioComposito(row, row.capacita, PARAMETRI);
+    row.azioneInfo = computeAzioneParametrica(row, row.capacita, PARAMETRI);
+    row.causa = computeCausaOperativa(row, row.rischio);
+    const classeSort = { Critico: 4, Alto: 3, Medio: 2, Basso: 1 };
+    row.overallSort = row.rischio.classe ? (classeSort[row.rischio.classe.classe] || 0) : FLAG_RANK[overall];
+    row.maxDelay = row.rischio.punteggio !== null ? row.rischio.punteggio : -9999;
+    rows.push(row);
+  });
+  rows.sort((a, b) => b.overallSort - a.overallSort || b.maxDelay - a.maxDelay || a.lotto.localeCompare(b.lotto, 'it', { numeric: true }));
+  LOTTI_DATA = {}; rows.forEach(r => LOTTI_DATA[r.lotto] = r);
+
+  // ── KPI strip ──
+  const nCritici = rows.filter(r => r.overall === 'err' || (r.rischio.classe && r.rischio.classe.classe === 'Critico')).length;
+  const nAttenzione = rows.filter(r => !(r.overall === 'err' || (r.rischio.classe && r.rischio.classe.classe === 'Critico')) && (r.overall === 'warn' || (r.rischio.classe && ['Alto', 'Medio'].includes(r.rischio.classe.classe)))).length;
+  const nProssime30 = rows.filter(r => r.pFlag.prossima || r.sFlag.prossima).length;
+  document.getElementById('kpiStrip').style.display = 'grid';
+  document.getElementById('kpiStrip').innerHTML = `
+    <div class="kpi-box ${nCritici ? 'kpi-err' : ''}"><div class="kpi-val">${nCritici}</div><div class="kpi-lbl">Lotti critici</div></div>
+    <div class="kpi-box ${nAttenzione ? 'kpi-warn' : ''}"><div class="kpi-val">${nAttenzione}</div><div class="kpi-lbl">Lotti a rischio</div></div>
+    <div class="kpi-box"><div class="kpi-val">${nProssime30}</div><div class="kpi-lbl">Con milestone ≤30gg</div></div>
+    <div class="kpi-box"><div class="kpi-val">${rows.length}</div><div class="kpi-lbl">Lotti monitorati</div></div>
+  `;
+
+  document.getElementById('loadState').style.display = 'none';
+  document.getElementById('tableWrap').style.display = 'block';
+  const tbody = document.getElementById('lottiBody');
+  tbody.innerHTML = rows.map(r => `
+    <tr class="row-${r.overall === 'none' ? 'ok' : r.overall}" onclick="openModal('${r.lotto}')">
+      <td><div class="lotto-code">Lotto ${r.lotto}</div><div class="lotto-cluster">cluster ${r.cluster}</div></td>
+      <td class="tc-center">${renderStato(r)}</td>
+      <td>${renderCausa(r)}</td>
+      <td class="tc-center">${renderDelayBadge(r.pFlag, r.sFlag)}</td>
+      <td>${renderProssima(r.pFlag, r.sFlag)}</td>
+      <td class="tc-center">${renderRischioBadge(r.rischio)}</td>
+      <td>${renderAzionePill(r.azioneInfo)}</td>
+    </tr>
+  `).join('');
+}
+
+const ACT_CLS = { ACT_SOSP: 'ap-sospesi', ACT_AUTH_MS: 'ap-enti', ACT_CAP_SCAVI: 'ap-squadre', ACT_PROG: 'ap-progettazione', ACT_ORD: 'ap-enti', ACT_NONE: 'ap-nessuna' };
+const CLASSE_CLS = { Basso: 'risk-basso', Medio: 'risk-medio', Alto: 'risk-alto', Critico: 'risk-err' };
+
+function renderRischioBadge(rischio) {
+  if (!rischio.classe) return `<div class="risk-badge risk-none">N/D<span class="rb-date">nessun fattore calcolabile</span></div>`;
+  const sub = rischio.renormalizzato ? `${Math.round(rischio.pesoAttivoTotale * 100)}% del modello` : `${Math.round(rischio.punteggio)}/100`;
+  return `<div class="risk-badge ${CLASSE_CLS[rischio.classe.classe] || 'risk-none'}">${rischio.classe.classe}<span class="rb-date">${sub}</span></div>`;
+}
+function renderAzionePill(azioneInfo) {
+  if (!azioneInfo) return `<span class="action-pill ap-nessuna">Nessuna azione</span>`;
+  const cls = ACT_CLS[azioneInfo.regola.codice] || 'ap-nessuna';
+  return `<span class="action-pill ${cls}">${azioneInfo.regola.azione}</span>`;
+}
+
+function renderDelayBadge(pFlag, sFlag) {
+  const cands = [];
+  if (pFlag.delayDays !== null) cands.push({ gg: pFlag.delayDays, tag: 'PROG' });
+  if (sFlag.delayDays !== null) cands.push({ gg: sFlag.delayDays, tag: 'SCAVI' });
+  if (!cands.length) return `<span style="color:var(--muted2);font-size:11px;">—</span>`;
+  cands.sort((a, b) => b.gg - a.gg);
+  const worst = cands[0];
+  const cls = worst.gg > 15 ? 'db-err' : (worst.gg > 0 ? 'db-warn' : 'db-ok');
+  return `<div class="delay-badge ${cls}">${fmtDelay(worst.gg)}<small>${worst.tag}</small></div>`;
+}
+
+function renderProssima(pFlag, sFlag) {
+  const cands = [pFlag.prossima, sFlag.prossima].filter(Boolean).sort((a, b) => a.date - b.date);
+  if (!cands.length) return `<span class="ms-chip ms-none">nessuna</span>`;
+  return `<span class="ms-chip ms-warn">${cands[0].label}</span>`;
+}
+
+function openModal(lotto) {
+  const r = LOTTI_DATA[lotto];
+  if (!r) return;
+  document.getElementById('modalEyebrow').textContent = 'LOTTO ' + lotto;
+  document.getElementById('modalTitle').textContent = `Cluster ${r.cluster} — dettaglio ritardi`;
+  const body = document.getElementById('modalBody');
+  let html = '';
+
+  html += `<div class="modal-section-title">Riepilogo decisionale</div>`;
+  html += `<div class="issue-row"><span>Progettazione — previsto/reale oggi</span><span class="issue-tag ${r.pFlag.flag === 'err' ? 'risk-err' : 'risk-warn'}">${r.pFlag.plannedToday === null ? 'n/d' : fmtPct(r.pFlag.plannedToday) + ' / ' + fmtPct(r.pFlag.pct)} (${r.pFlag.gap === null ? 'n/d' : fmtGapPct(r.pFlag.gap)}, ${fmtDelay(r.pFlag.delayDays)})</span></div>`;
+  html += `<div class="issue-row"><span>Scavi — previsto/reale oggi</span><span class="issue-tag ${r.sFlag.flag === 'err' ? 'risk-err' : 'risk-warn'}">${r.sFlag.plannedToday === null ? 'n/d' : fmtPct(r.sFlag.plannedToday) + ' / ' + fmtPct(r.sFlag.pct)} (${r.sFlag.gap === null ? 'n/d' : fmtGapPct(r.sFlag.gap)}, ${fmtDelay(r.sFlag.delayDays)})</span></div>`;
+  html += `<div class="issue-row"><span>Rischio ROS</span>${renderRischioBadge(r.rischio)}</div>`;
+  html += `<div class="issue-row"><span>Azione suggerita</span>${renderAzionePill(r.azioneInfo)}</div>`;
+
+  html += `<div class="modal-section-title">Rischio ROS — breakdown per fattore</div>`;
+  html += Object.values(r.rischio.fattori).map(f => {
+    if (!f.disponibile) {
+      return `<div class="factor-row"><span class="fr-name">${f.fattore}<span class="fr-formula">peso ${(f.peso*100).toFixed(0)}% — ${f.misura}</span></span><span class="fr-score fr-na">Dato insufficiente</span></div>`;
+    }
+    return `<div class="factor-row"><span class="fr-name">${f.fattore}<span class="fr-formula">peso ${(f.pesoEffettivo*100).toFixed(1)}%${r.rischio.renormalizzato ? ' (rinormalizzato)' : ''} × ${f.punti.toFixed(1)} pt</span></span><span class="fr-score">${f.contributo.toFixed(1)} pt</span></div>`;
+  }).join('');
+  html += `<div class="factor-row" style="border-top:2px solid var(--border2);margin-top:2px;padding-top:8px;"><span class="fr-name">Totale</span><span class="fr-score">${r.rischio.punteggio === null ? 'N/D' : r.rischio.punteggio.toFixed(1) + '/100 — ' + (r.rischio.classe ? r.rischio.classe.classe : 'n/d')}</span></div>`;
+  if (r.rischio.renormalizzato) {
+    const mancanti = Object.values(r.rischio.fattori).filter(f => !f.disponibile);
+    html += `<div class="empty-note">Punteggio calcolato sul ${Math.round(r.rischio.pesoAttivoTotale*100)}% del modello (pesi rinormalizzati). Non disponibili: ${mancanti.map(f => `${f.codice} — ${f.motivo}`).join('; ')}.</div>`;
+  }
+
+  const collegamenti = collegamentiSospesiBlocchi(r);
+  if (collegamenti.some(c => c.collegamento)) {
+    html += `<div class="trasp-block"><span class="tb-label">R_SOSP ↔ R_BLOCCHI — causa e conseguenza operativa</span>`;
+    html += collegamenti.map(c => {
+      if (!c.collegamento) return `<div>${c.codice} — sospeso, nessun collegamento con pratiche in R_BLOCCHI (${c.pratica ? 'pratica ' + c.pratica : 'pratica non indicata'}).</div>`;
+      return `<div><b>${c.codice}</b> sospeso (${c.motivo.slice(0, 90)}${c.motivo.length > 90 ? '…' : ''})<br>→ collegato alla pratica <b>${c.pratica}</b>, già conteggiata in R_BLOCCHI sulla tratta ${c.collegamento.tratte.join(', ')} (${fmtNum(c.collegamento.km)} m). Stesso procedimento amministrativo: R_SOSP ne misura l'effetto operativo (cantiere fermo), R_BLOCCHI la causa autorizzativa (nulla osta/ordinanza pendente) — contati entrambi di proposito, non sono due problemi indipendenti.</div>`;
+    }).join('<div style="height:6px"></div>');
+    html += `</div>`;
+  }
+
+  const nonInviate = r.p.issues.filter(i => ['IN ATTESA', 'IN REDAZIONE', 'INVIO PRELIMINARE'].includes(i.stato));
+  const bloccate = r.p.issues.filter(i => ['INVIATO', 'PROTOCOLLATO', 'PROTOCOLLATO INTEGRAZIONE', 'NECESSARIA INTEGRAZIONE'].includes(i.stato));
+  const cNonInviate = countPratiche(nonInviate), cBloccate = countPratiche(bloccate);
+
+  html += `<div class="modal-section-title">Progettazione — non ancora inviate all'ente (${nonInviate.length} tratte${cNonInviate.esatto ? ', ' + cNonInviate.n + ' pratiche' : ''})</div>`;
+  html += nonInviate.length ? nonInviate
+    .sort((a, b) => b.km - a.km)
+    .map(i => `<div class="issue-row"><span>${i.comune} · ${i.tratta}${i.pratica ? ' · ' + i.pratica : ''}</span><span class="issue-tag risk-warn">${i.stato}</span></div>`).join('')
+    : '<div class="empty-note">Nessuna tratta in ritardo di invio.</div>';
+
+  html += `<div class="modal-section-title">Progettazione — inviate, in attesa dell'ente (${bloccate.length} tratte${cBloccate.esatto ? ', ' + cBloccate.n + ' pratiche' : ''})</div>`;
+  html += bloccate.length ? bloccate
+    .sort((a, b) => b.km - a.km)
+    .map(i => `<div class="issue-row"><span>${i.comune} · ${i.tratta}${i.pratica ? ' · ' + i.pratica : ''}</span><span class="issue-tag risk-err">${i.stato}</span></div>`).join('')
+    : '<div class="empty-note">Nessuna tratta bloccata presso l\'ente.</div>';
+
+  html += `<div class="modal-section-title">Scavi — cantieri sospesi (${r.s.sospesi.length})</div>`;
+  html += r.s.sospesi.length ? r.s.sospesi
+    .map(c => `<div class="issue-row"><span>${c.codice} — ${c.motivo}</span><span class="issue-tag risk-err">${c.ripresa ? 'ripresa ' + c.ripresa : 'no stima ripresa'}</span></div>`).join('')
+    : '<div class="empty-note">Nessun cantiere sospeso.</div>';
+
+  html += `<div class="modal-section-title">Scavi — scadenze superate (${r.s.ritardi.length})</div>`;
+  html += r.s.ritardi.length ? r.s.ritardi
+    .map(c => `<div class="issue-row"><span>${c.codice} — ${c.tipo}</span><span class="issue-tag risk-err">${c.data}</span></div>`).join('')
+    : '<div class="empty-note">Nessuna scadenza cantiere superata.</div>';
+
+  html += buildTrasparenzaPanel(r);
+
+  body.innerHTML = html;
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+// "Come è stato calcolato" — dati/parametri/formule/motivazioni per lotto,
+// come richiesto: nessuna cifra in tabella senza un modo per risalirci.
+function buildTrasparenzaPanel(r) {
+  const c = r.capacita, glob = PARAMETRI.globali || {};
+  let h = `<div class="modal-section-title">Come è stato calcolato</div>`;
+
+  h += `<div class="trasp-block"><span class="tb-label">Dati oggettivi utilizzati</span>
+    Progettazione: <b>${fmtNum(r.p.kmTot)} m</b> totali, <b>${fmtNum(r.p.kmOtt)} m</b> autorizzati, <b>${countPratiche(r.p.issues).n} ${countPratiche(r.p.issues).label}</b> non ottenute (${r.p.issues.length} tratte), <b>${r.p.blocchi.length}</b> tratte con nulla osta/ordinanza pendente.<br>
+    Scavi: <b>${fmtNum(r.s.metriTot)} m</b> totali, <b>${fmtNum(r.s.metriScavati)} m</b> scavati, <b>${r.s.sospesi.length}</b> cantieri sospesi, <b>${c.squadre.dettaglio.length}</b> cantieri censiti.
+  </div>`;
+
+  h += `<div class="trasp-block"><span class="tb-label">Milestone considerata (ROS)</span>
+    ${c.insufficiente ? `<i>${c.motivo}</i>` : `<b>${fmtDateShort(c.milestoneROS)}</b> — fonte: ${c.fonteMilestone} — ${c.giorniResiduiCal} giorni di calendario residui, ${c.giorniUtili} giorni lavorativi (${c.calendarioTipo}, ${c.ggSettimana} gg/settimana)${c.rosScaduta ? ' — <b>ROS già scaduta</b>' : ''}.`}
+  </div>`;
+
+  h += `<div class="trasp-block"><span class="tb-label">Squadre e capacità produttiva</span>
+    Squadre disponibili: <b>${c.squadre.disponibili}</b> (${c.squadre.overrideLotto !== null ? 'override manuale di lotto' : c.squadre.dettaglio.map(d => `${d.codice}: ${d.squadre} — ${d.fonte}`).join('; ') || 'nessun cantiere censito'}).<br>
+    Produttività standard squadra: <b>${c.prodStd} m/g</b> × efficienza <b>${c.efficienza}</b> = <b>${c.prodEffettiva} m/g</b> effettivi.<br>
+    ${c.insufficiente ? '' : `Metri residui scavo: <b>${fmtNum(c.metriResiduiScavo)} m</b> / giorni utili <b>${c.giorniUtili}</b> = produttività richiesta <b>${c.produttivitaRichiesta.toFixed(1)} m/g</b>.<br>
+    Squadre necessarie: CEILING(${c.produttivitaRichiesta.toFixed(1)} / ${c.prodEffettiva}) = <b>${c.squadreNecessarie}</b>. Squadre aggiuntive: <b>${c.squadreAggiuntive}</b>.`}
+  </div>`;
+
+  h += `<div class="trasp-block"><span class="tb-label">Formule rischio ROS (pesi da foglio "Rischio ROS")</span>
+    R_SCAVI = interpola(squadre necessarie/disponibili, 1,00→0pt, 1,50→100pt), peso 35%.<br>
+    R_AUTH = interpola(Σ km×peso_ente×coeff_fase(invio→ottenimento) / km totali, 10%→0pt, 30%→100pt), peso 25%. Coeff_fase = 0 prima di "invio" (100% non autorizzato è fisiologico), poi a bande sulla distanza da "ottenimento".<br>
+    R_SOSP = interpola(m sospesi residui/m residui scavo, 5%→0pt, 20%→100pt) ×1,2 se manca data ripresa, peso 15%.<br>
+    R_MS = peggiore tra interpola(gg superamento milestone, 1→0pt, 30→100pt), peso 15%.<br>
+    R_BLOCCHI = interpola(m bloccati/m residui progettazione, 5%→0pt, 20%→100pt) × coeff_urgenza(gg residui ROS/tempo atteso ente), peso 10%.<br>
+    Punteggio totale = Σ(peso × punti) sui fattori disponibili, pesi rinormalizzati a 1 se manca un fattore.
+  </div>`;
+
+  h += `<div class="trasp-block"><span class="tb-label">Motivazione azione suggerita</span>
+    ${r.azioneInfo ? `Regola <b>${r.azioneInfo.regola.codice}</b> (priorità ${r.azioneInfo.regola.priorita}): "${r.azioneInfo.regola.condizione}" → <b>${r.azioneInfo.regola.azione}</b>. Responsabile: ${r.azioneInfo.regola.responsabile}.` : 'Nessuna regola applicabile.'}
+  </div>`;
+
+  h += `<div class="trasp-block"><span class="tb-label">Parametri globali applicati</span>
+    Produttività standard: ${glob.SCAVO_PROD_STD ? glob.SCAVO_PROD_STD.valore : '—'} m/g · Giorni/settimana: ${glob.SCAVO_GG_SETT ? glob.SCAVO_GG_SETT.valore : '—'} · Calendario: ${glob.CALENDARIO_TIPO ? glob.CALENDARIO_TIPO.valore : '—'} · Finestra impatto permessi: ${glob.PERMESSI_FINESTRA_IMPATTO ? glob.PERMESSI_FINESTRA_IMPATTO.valore : '—'} gg · Arrotondamento squadre: ${glob.ARROTONDA_SQUADRE ? glob.ARROTONDA_SQUADRE.valore : '—'}.<br>
+    Fonte parametri: ${PARAMETRI._meta ? `${PARAMETRI._meta.source === 'mongo' ? 'file caricato' : 'file seed su disco'} (${PARAMETRI._meta.filename})` : 'n/d'}.
+  </div>`;
+
+  return h;
+}
+
+function closeModal() { document.getElementById('modalBackdrop').classList.remove('open'); }
+document.getElementById('modalBackdrop').addEventListener('click', e => { if (e.target.id === 'modalBackdrop') closeModal(); });
+
+loadAll().catch(err => {
+  document.getElementById('loadState').textContent = 'Errore caricamento dati: ' + err.message;
+});
+</script>
+</body>
+</html>
