@@ -1127,7 +1127,8 @@ function _renderAll() {
 async function _loadQgisGeojsonForMappa() {
   if (QGIS_GEOJSON_CACHE) return QGIS_GEOJSON_CACHE;
   try {
-    const res = await fetch('QGIS.geojson', { cache: 'no-cache', headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } });
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    const res = await fetch(apiBase + '/api/data-text/QGIS.geojson', { cache: 'no-cache', headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     QGIS_GEOJSON_CACHE = await res.json();
   } catch (e) {
