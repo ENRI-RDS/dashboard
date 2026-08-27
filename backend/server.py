@@ -92,6 +92,7 @@ pol_conv_dates_col = db["pol_conv_dates"]      # prima data in cui CONVENZIONE/P
 access_logs_col = db["access_logs"]            # log accessi (ex-JSONBin) — un documento per binId, {utenti:[...], accessi:[...]}
 gantt_overrides_col = db["gantt_overrides"]    # override manuali riga Gantt (pct/date/label) per lotto, indip. da invii impresa
 gantt_rates_col = db["gantt_rates"]            # regole tasso scavo (m/giorno) per scope: "global" | "lotto:<ID>" | "impresa:<NOME>" | "pratica:<CODICE>"
+concomitanza_col = db["concomitanza"]          # tratte con lavorazione aggiuntiva concomitante (es. ENRI-QTS, tubo aggiuntivo), keyed per TRATTA_ID
 gridfs = AsyncIOMotorGridFSBucket(db, bucket_name="files")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1751,6 +1752,59 @@ async def get_enti(sess: dict = Depends(_require_session)):
         key=lambda x: x.lower()
     )
     return {"enti": enti}
+
+
+@app.get("/api/concomitanze")
+async def get_concomitanze(sess: dict = Depends(_require_session)):
+    """Elenco TRATTA_ID con lavorazione aggiuntiva concomitante (es. tubo extra
+    per sovrapposizione con un altro progetto). Dato tecnico sulla tratta fisica,
+    non legato a una specifica impresa: nessuno scoping per lotto, visibile a
+    qualunque sessione valida (staff o impresa)."""
+    docs = [d async for d in concomitanza_col.find({})]
+    return {
+        "tratta_ids": [d["_id"] for d in docs],
+        "nota_by_tratta": {d["_id"]: d.get("nota", "") for d in docs},
+        "count": len(docs),
+    }
+
+
+@app.post("/api/admin/concomitanze/import")
+async def import_concomitanze(
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+):
+    """Sostituisce l'intero elenco concomitanze per una 'fonte' (es. 'ENRI-QTS').
+    Body: {fonte: str, nota: str, tratta_ids: [...]} oppure un GeoJSON
+    FeatureCollection con TRATTA_ID nelle properties di ogni feature — in tal
+    caso i TRATTA_ID vengono estratti automaticamente. Richiede x-upload-token."""
+    _check_token(x_upload_token)
+    fonte = str((payload or {}).get("fonte", "")).strip() or "ENRI-QTS"
+    nota = str((payload or {}).get("nota", "")).strip() or "Tubo aggiuntivo"
+
+    if payload.get("type") == "FeatureCollection":
+        tratta_ids = sorted({
+            str((f.get("properties") or {}).get("TRATTA_ID", "")).strip()
+            for f in payload.get("features", [])
+            if str((f.get("properties") or {}).get("TRATTA_ID", "")).strip()
+        })
+    else:
+        tratta_ids = sorted({str(t).strip() for t in payload.get("tratta_ids", []) if str(t).strip()})
+
+    if not tratta_ids:
+        raise HTTPException(400, "Nessun TRATTA_ID trovato nel payload")
+
+    # Upsert per _id (non delete+insert): un TRATTA_ID può in teoria comparire
+    # anche in un'altra 'fonte' futura, l'_id deve restare univoco a livello
+    # di intera collection, non solo all'interno della fonte.
+    await concomitanza_col.delete_many({"fonte": fonte, "_id": {"$nin": tratta_ids}})
+    for tid in tratta_ids:
+        await concomitanza_col.update_one(
+            {"_id": tid},
+            {"$set": {"fonte": fonte, "nota": nota, "updated_at": _now_iso()}},
+            upsert=True,
+        )
+    await _log_admin_action("import_concomitanze", fonte, (payload or {}).get("actor"))
+    return {"ok": True, "fonte": fonte, "count": len(tratta_ids), "tratta_ids": tratta_ids}
 
 
 @app.get("/api/imprese/me")
