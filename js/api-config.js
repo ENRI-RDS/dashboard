@@ -105,7 +105,7 @@ window.ENRI.concomitanzaBadge = function (trattaIds) {
   if (!hit.length) return '';
   const nota = window.ENRI.concomitanzaNota[hit[0]] || 'Tubo aggiuntivo';
   const label = hit.length > 1 ? `${nota} (${hit.length} tratte)` : nota;
-  return `<span class="enri-concomitanza-badge" title="Concomitanza QTS: ${label}" `
+  return `<span class="enri-concomitanza-badge" title="${label}" `
     + `style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;`
     + `margin-left:3px;border-radius:50%;background:#1A7D9922;color:#1A7D99;border:1px solid #1A7D9966;`
     + `font-size:9px;font-weight:800;cursor:help;vertical-align:middle">T</span>`;
