@@ -1562,8 +1562,9 @@ window.loadExcelJS = (function(){
     loadLS();
     try {
       var qs = '?t=' + Date.now();
+      var _apiBaseSed = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
       var geojson = await Promise.race([
-        fetch('SED_classificato.geojson' + qs, { headers: { 'x-session-token': _sessionToken() } })
+        fetch(_apiBaseSed + '/api/data-text/SED_classificato.geojson' + qs, { headers: { 'x-session-token': _sessionToken() } })
           .then(function(r){ return r.ok ? r.json() : Promise.reject(new Error('render-fail ' + r.status)); }),
         _timeout(30000, 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.')
       ]);
