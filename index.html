@@ -1930,6 +1930,7 @@ window.loadXLSX = (function(){
         <div class="pdf-dropdown-menu">
           <button onclick="exportTuttiXlsx();closeXlsDropdown()">Tutte le pratiche</button>
           <button onclick="exportVistaCorrente();closeXlsDropdown()">Vista corrente</button>
+          <button onclick="exportClienteXlsx();closeXlsDropdown()">Estrazione cliente</button>
         </div>
       </div>
     </div>
@@ -2176,6 +2177,125 @@ function exportTuttiXlsx() {
   if (!tutte.length) { alert('Nessuna pratica disponibile.'); return; }
   const today = new Date().toISOString().split('T')[0];
   exportXlsx(tutte, 'ENRI_Tutte_Pratiche_' + today);
+}
+
+// ── EXPORT ESTRAZIONE CLIENTE (colonne ridotte, stati tradotti, no interno) ────
+// Stati "di lavorazione interna" mai mostrati al cliente (bozza/coordinamento pre-invio).
+const CLIENTE_STATI_ESCLUSI = ['IN ATTESA', 'IN REDAZIONE', 'IN FIRMA RDS', 'INVIO PRELIMINARE', 'IN REDAZIONE INTEGRAZIONE'];
+// Mappa stato interno → stato cliente. Stati non presenti qui (e non esclusi sopra)
+// ricadono di default su 'rejected': bucket ancora da popolare (TODO Andrea).
+const CLIENTE_STATO_MAP = {
+  'INVIATO': 'submitted', 'PROTOCOLLATO': 'submitted',
+  'OTTENUTO': 'approved', 'NO COMPETENZA': 'approved',
+  'NECESSARIA INTEGRAZIONE': 'pending', 'PROTOCOLLATO INTEGRAZIONE': 'pending'
+};
+const CLIENTE_STATO_COLORI = {
+  submitted: '41BBD9', pending: 'D08A1A', approved: '1E9E6A', rejected: 'C0392B'
+};
+const CLIENTE_TIPO_EN = { 'AUTORIZZAZIONE': 'AUTHORIZATION', 'NULLA OSTA': 'NO-OBJECTION PERMIT', 'ORDINANZA': 'ORDINANCE' };
+
+function _codiceClusterMap() {
+  const map = {};
+  if (window._clusterTrattaMap && window._masterByTratta) {
+    Object.entries(window._clusterTrattaMap).forEach(([cl, tratte]) => {
+      tratte.forEach(tratta => {
+        (window._masterByTratta[tratta] || []).forEach(r => {
+          if (!map[r.codice]) map[r.codice] = new Set();
+          map[r.codice].add(cl);
+        });
+      });
+    });
+  }
+  return map;
+}
+
+function exportClienteXlsx() {
+  if (!window._praticheDetailPerLotto) { alert('Nessun dato pratiche disponibile. Carica il Master.csv.'); return; }
+  const tutte = [];
+  const LOTTO_ORDER = ['1A','1B','2A','2B','1','2','3','4','5','6','7','8'];
+  const pushAll = lotto => (window._praticheDetailPerLotto[lotto] || []).forEach(p => tutte.push({...p, lotto}));
+  LOTTO_ORDER.forEach(pushAll);
+  Object.keys(window._praticheDetailPerLotto).forEach(lotto => { if (!LOTTO_ORDER.includes(lotto)) pushAll(lotto); });
+  if (!tutte.length) { alert('Nessuna pratica disponibile.'); return; }
+
+  const codiceCluster = _codiceClusterMap();
+
+  const rows = tutte
+    .filter(p => !CLIENTE_STATI_ESCLUSI.includes(p.stato))
+    .map(p => {
+      const tipo = p.codice.startsWith('AUT/') ? 'AUTHORIZATION'
+                 : p.codice.startsWith('NO/')  ? 'NO-OBJECTION PERMIT'
+                 : p.codice.startsWith('ORD/') ? 'ORDINANCE'
+                 : (CLIENTE_TIPO_EN[p.tipo] || p.tipo || '');
+      const cl = codiceCluster[p.codice] ? [...codiceCluster[p.codice]].sort((a,b)=>(+a)-(+b)).join(', ') : '';
+      const statoClient = CLIENTE_STATO_MAP[p.stato] || 'rejected';
+      const dateParts = buildDateParts(p);
+      const invioStr = dateParts.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
+      const dataOttStr = p.stato === 'OTTENUTO' ? (p.dum || '') : '';
+      return {
+        codice: p.codice, tipo, lotto: p.lotto || '', cluster: cl, stato: statoClient,
+        ente: p.ente || '', comune: (p.comuni && p.comuni.length ? p.comuni.join(', ') : ''),
+        dataInvio: invioStr, dataOtt: dataOttStr
+      };
+    });
+
+  if (!rows.length) { alert('Nessuna pratica da esportare per il cliente con i filtri correnti.'); return; }
+  const today = new Date().toISOString().split('T')[0];
+  return window.loadXLSX().then(() => _exportClienteXlsxImpl(rows, 'Client_Extraction_' + today));
+}
+
+function _exportClienteXlsxImpl(rows, filename) {
+  function toDateObj(s) {
+    if (!s || !s.trim()) return '';
+    const p = s.trim().split('/');
+    if (p.length === 3) return new Date(+p[2], +p[1]-1, +p[0]);
+    const d = new Date(s.trim());
+    return isNaN(d) ? '' : d;
+  }
+  const header = ['Code', 'Type', 'Lot', 'Cluster', 'Status', 'Authority', 'Municipality', 'Submission Date', 'Approval Date'];
+  const DATE_COLS = [7, 8];
+  const aoa = [header, ...rows.map(r => [
+    r.codice, r.tipo, r.lotto, r.cluster, r.stato, r.ente, r.comune, toDateObj(r.dataInvio), toDateObj(r.dataOtt)
+  ])];
+  const ws = XLSX.utils.aoa_to_sheet(aoa, { cellDates: true });
+  const range = XLSX.utils.decode_range(ws['!ref']);
+
+  // Formato data
+  for (let r = 1; r <= range.e.r; r++) {
+    DATE_COLS.forEach(c => {
+      const addr = XLSX.utils.encode_cell({r, c});
+      if (ws[addr] && ws[addr].t === 'd') ws[addr].z = 'dd/mm/yyyy';
+    });
+  }
+  // Header: sfondo Retelit blue, testo bianco, bold, centrato
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const cell = ws[XLSX.utils.encode_cell({r:0, c})];
+    if (cell) cell.s = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 }, fill: { fgColor: { rgb: '043F75' } }, alignment: { horizontal: 'center', vertical: 'center' }, border: { bottom: { style: 'thin', color: { rgb: 'FFFFFF' } } } };
+  }
+  // Righe: zebra + badge colorato sulla colonna Status (indice 4)
+  for (let r = 1; r <= range.e.r; r++) {
+    const zebra = (r % 2 === 0) ? 'F7F8FA' : 'FFFFFF';
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const addr = XLSX.utils.encode_cell({r, c});
+      if (!ws[addr]) continue;
+      ws[addr].s = { fill: { fgColor: { rgb: zebra } }, alignment: { vertical: 'center', horizontal: c === 4 ? 'center' : 'left' }, font: { sz: 10.5 } };
+    }
+    const statusAddr = XLSX.utils.encode_cell({r, c: 4});
+    if (ws[statusAddr]) {
+      const statusVal = ws[statusAddr].v;
+      ws[statusAddr].s = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10.5 }, fill: { fgColor: { rgb: CLIENTE_STATO_COLORI[statusVal] || '6B7685' } }, alignment: { horizontal: 'center', vertical: 'center' } };
+    }
+  }
+
+  ws['!cols'] = [{wch:16},{wch:20},{wch:8},{wch:10},{wch:12},{wch:28},{wch:20},{wch:15},{wch:15}];
+  ws['!rows'] = [{hpt: 20}];
+  ws['!autofilter'] = { ref: ws['!ref'] };
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Client Extraction');
+  // Freeze pane riga header (supportato dalla build full)
+  wb.Sheets['Client Extraction']['!sheetViews'] = [{ state: 'frozen', ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft' }];
+  XLSX.writeFile(wb, filename + '.xlsx');
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
