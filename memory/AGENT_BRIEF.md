@@ -56,6 +56,7 @@ Auth login: hub.html → POST /api/auth/login → backend chiama Google Apps Scr
 ├── ~~executive_summary.html~~     # RIMOSSA — non più nel progetto. Il pulsante "Executive" è stato rimosso dalla topbar di index.html. Nessun CSS residuo né link attivi.
 ├── sopralluoghi.html           # Redazione verbali di sopralluogo cantiere
 ├── milestone.html              # Milestone di progetto
+├── stato_lotti.html            # NEW (rev.239) — per lotto: % progettazione ottenuta e % scavi vs milestone contrattuali, flag ritardo
 ├── ai_alerts.html              # Beta — alert predittivi
 ├── admin.html                  # PANNELLO ADMIN — upload + coda imprese + assegnazioni + storico versioni
 ├── imprese.html                # PORTALE IMPRESE — aggiorna pratiche / nuova tratta / mie submission
@@ -593,6 +594,99 @@ Fonte: checklist Excel utente. Solo voci non "Completato" (34/59 già completate
 
 ---
 
+## 12. Decisioni architetturali del 26/08/2026 — motore Stato Lotti / Rischio ROS
+
+Sessione di revisione completa del motore parametrico in `stato_lotti.html`. Decisioni **definitive**, da rispettare in ogni modifica futura al motore.
+
+### 12.1 Endpoint parametri
+
+- `GET /api/parametri` (staff-only, `_require_staff_session`) — parsa server-side (openpyxl) l'xlsx `Parametri_configurazione_dashboard_ENRI.xlsx`, caricato via `admin.html` con lo stesso meccanismo upload/GridFS di `Master.csv`.
+- **Safety net in `upload_file()`**: se `out_name == PARAMETRI_FILENAME`, `convert_to_csv` è forzato a `False` anche se il client non lo passa — altrimenti la conversione automatica xlsx→csv (default `True`, non esposta in `admin.html`) terrebbe solo il primo dei 9 fogli, distruggendo il resto.
+- Tutte le soglie, pesi, produttività, tempi autorizzativi, regole azione vengono da lì. **Nessuna logica di business hardcoded** nel motore JS.
+- Cache in-process (`_parametri_cache`), invalidata su cambio `gridfs_id`.
+- **Principio**: in assenza di un parametro, il fattore/dato che ne dipende è marcato "dato insufficiente" — mai un default silenzioso.
+
+### 12.2 Motore rischio ROS — 5 fattori
+
+`R_SCAVI` (peso 35%), `R_AUTH` (25%), `R_SOSP` (15%), `R_MS` (15%), `R_BLOCCHI` (10%). Formule dettagliate in `buildTrasparenzaPanel()`, riassunto:
+
+| Fattore | Misura | Interpolazione |
+|---|---|---|
+| R_SCAVI | squadre necessarie / squadre disponibili | 1,00→0pt, 1,50→100pt |
+| R_AUTH | vedi §12.3 | — |
+| R_SOSP | metri sospesi residui / metri residui scavo | 5%→0pt, 20%→100pt (×1,2 se manca data ripresa, cap 100) |
+| R_MS | giorni superamento milestone (peggiore tra tutte, non media) | 1gg→0pt, 30gg→100pt |
+| R_BLOCCHI | metri bloccati nulla osta/ordinanza / metri residui **progettazione** (non scavo) | 5%→0pt, 20%→100pt, × coeff. urgenza (giorni residui ROS / tempo atteso ente) |
+
+- Punteggio finale = **media pesata** dei fattori disponibili.
+- Fattore non disponibile → **escluso dal calcolo**, pesi **rinormalizzati** sui rimanenti (mai punti arbitrari).
+- Pannello "Come è stato calcolato" (`buildTrasparenzaPanel()`) sempre presente: dati oggettivi, milestone usata, squadre/capacità, formule, motivazione azione, parametri globali.
+
+### 12.3 R_AUTH — revisione architetturale definitiva
+
+**Non usa più** milestone ROS di scavo (p100) né alcun dato scavi. Basato **esclusivamente** sulla curva autorizzativa propria del lotto (invio → ottenimento), via `computeFaseAutorizzativa()`:
+
+```
+oggi < invio            → coef_fase = 0   (100% non autorizzato è fisiologico, non genera rischio)
+oggi ≥ invio             → coef_fase a bande sulla distanza da "ottenimento":
+                            >90gg→1 · 60-90gg→1,25 · 30-60gg→1,5 · <30gg/scaduta→2
+invio/ottenim assenti:
+  kmOtt > 0              → coef_fase = 1 (prudenziale, dichiarato nel pannello)
+  kmOtt = 0 e no milestone → R_AUTH = "dato insufficiente" (mai dedotto dai dati scavi)
+```
+
+Motivo: la versione precedente usava la milestone ROS di scavo come proxy di urgenza, appiattendo **8 lotti su 12** a un punteggio fisso di 25/100 (0,25×100) perché non ancora arrivati a "invio" — 100% non autorizzato veniva letto come rischio massimo anche per lotti semplicemente non ancora iniziati. Dopo il fix quegli 8 lotti scendono correttamente a 0/100 su questo fattore, e il modello torna discriminante (verificato lotto per lotto sui 12 lotti reali).
+
+**Principio guida**: mai dedurre lo stato di un dominio (autorizzativo) dai dati di un altro dominio (scavi) — v. §12.6.
+
+### 12.4 ACT_AUTH_MS e ACT_PROG — stessa correzione di dominio
+
+Entrambe le regole azione usavano dati fuori dal dominio autorizzativo, con lo stesso effetto distorsivo di R_AUTH pre-fix:
+
+- **`ACT_AUTH_MS`** (in `computeAzioneParametrica()`) usava la milestone ROS scavi. Corretta per usare `computeFaseAutorizzativa()` (milestone invio/ottenimento), coerente con R_AUTH.
+- **`ACT_PROG`** ("Accelerare progettazione e invio") scattava su `kmNonInviato > 0`, sempre vero prima di "invio" (100% non ancora presentato è fisiologico in quella fase) — suggeriva un'azione correttiva per una condizione normale. Corretta aggiungendo la stessa guardia: `faseProg.disponibile && faseProg.coefFase > 0`, quindi mai prima di "invio" né quando la fase è indeterminata (mai un'azione basata su un'inferenza).
+
+### 12.5 Conteggio pratiche vs tratte
+
+Bug: il motore contava le righe di `Riepilogo_progettazione.csv` (tratte) come se fossero "pratiche" — una pratica può coprire più tratte (campo `PRATICA`, es. `AUT/24/1A | NO/22/1A | NO/26/1A | NO/28/1A`). Fix in `countPratiche()`:
+- campo `PRATICA` valorizzato su **tutte** le righe del lotto → conteggio di pratiche distinte (dedup sull'intera stringa del campo, dichiarato come tale nel pannello);
+- campo assente/parziale → dichiarato esplicitamente **"tratte"**, mai spacciato per "pratiche".
+
+### 12.6 Nulla osta vs ordinanze in R_BLOCCHI
+
+`STATO_ORDINANZA` è oggi scarsamente/non affidabilmente alimentato nei dataset. R_BLOCCHI tratta come riferimento primario i **nulla osta** (codice dedicato `AUTH_NULLA_OSTA` nel foglio "Tempi autorizzativi"); le ordinanze restano supportate nello stesso fattore ma senza codice tempo dedicato — usano fallback `AUTH_CONSORZIO` (dichiarato nel pannello), e non guidano le scelte di soglia/peso del modello finché il dato non migliora a monte.
+
+### 12.7 Relazione R_SOSP ↔ R_BLOCCHI — causa e conseguenza, non deduplicati
+
+Decisione confermata: restano **due fattori distinti**, **nessuna deduplicazione automatica**, anche quando la stessa `pratica_id` genera sia un cantiere sospeso (R_SOSP, effetto operativo) sia una tratta bloccata (R_BLOCCHI, causa autorizzativa) — è normale che lo stesso procedimento amministrativo produca entrambe le conseguenze, e un PM in SAL deve vederle entrambe.
+
+`collegamentiSospesiBlocchi()` incrocia `pratica_id` del cantiere sospeso con `PRATICA` delle tratte in R_BLOCCHI (split su `|`, match esatto sui token) e mostra il collegamento nel pannello di trasparenza quando esiste, così l'utente capisce che non sono due criticità indipendenti.
+
+### 12.8 Causa operativa — "criticità presente" vs "criticità impattante"
+
+`computeCausaOperativa()` elencava i fattori attivi con il solo dato oggettivo grezzo (es. "6 tratte bloccate da nulla osta"), senza indicare quanto quel fattore pesasse realmente sul punteggio finale — creando un'apparente contraddizione nei lotti "Basso" con una causa dall'aspetto grave ma peso ridotto (fattore disponibile isolato, con gli altri 4 a zero, quindi pesi rinormalizzati bassi). Corretto aggiungendo a ogni causa il contributo pesato reale: `"... — impatto ROS X,X pt"`. Distingue esplicitamente fatto oggettivo (criticità presente) da impatto sul punteggio (criticità impattante sulla milestone), senza introdurre soglie di visibilità arbitrarie non presenti nei parametri.
+
+### 12.9 Principi guida del motore (validi per ogni estensione futura)
+
+1. Separare sempre **causa** (es. R_BLOCCHI, atto amministrativo) da **conseguenza** (es. R_SOSP, effetto operativo) — non deduplicare, ma dichiarare la relazione.
+2. **Mai** usare dati scavi per dedurre stati autorizzativi, né viceversa (dati autorizzativi per dedurre capacità operativa/squadre).
+3. Preferire sempre "dato insufficiente" dichiarato a un'inferenza indiretta non supportata dai dati.
+4. Ogni punteggio ROS deve essere ricostruibile dal pannello "Come è stato calcolato" — dati oggettivi, parametri, formula, motivazione.
+
+---
+
+_Ultimo aggiornamento: 2026-08-27 (rev. 242)_
+
+- **rev.242** — Rimossa la pagina `gantt.html` (ritenuta inutile/superata da `stato_lotti.html`, su richiesta esplicita dell'utente). Ripulito il riferimento in `hub.html` (card `#ganttCard` markup + le 2 righe JS che la mostravano agli admin) e in `backend/server.py`: rimossi i 4 endpoint `GET/PUT/DELETE /api/gantt/overrides` e `GET/PUT/DELETE /api/gantt/rates`, l'helper `_validate_gantt_rate_scope()`, le collection Mongo `gantt_overrides_col`/`gantt_rates_col` e il relativo `create_index`. Nessun altro file dipendeva da questi endpoint (il gantt chart di `milestone.html` è indipendente, non li chiamava). `py_compile` OK. Nota collegata: `gantt.html` era anche l'unico consumer del fetch non protetto `fetch('Master.csv', {headers:...})` — con la pagina rimossa, restano solo `index.html` (SED_classificato.geojson) e `stato_lotti.html` (Riepilogo_progettazione.csv) a leggere file `SENSITIVE_FILES` in chiaro via fetch relativo invece che `direct:true`/`/api/data-text` — da allineare se si vogliono togliere anche quei 2 file da GitHub.
+
+_Ultimo aggiornamento: 2026-08-26 (rev. 241)_
+
+- **rev.241** — `stato_lotti.html`: due correzioni di follow-up su §12 dopo verifica utente sui 12 lotti reali. (1) `ACT_PROG` applicava lo stesso bug di dominio già corretto per R_AUTH (suggeriva "Accelerare progettazione e invio" anche prima della milestone "invio", quando il 100% non presentato è fisiologico) — ora gated da `computeFaseAutorizzativa()`. (2) `computeCausaOperativa()` ora mostra il contributo pesato reale accanto a ogni causa (`"— impatto ROS X,X pt"`), per distinguere una criticità oggettivamente presente da una che pesa poco sul punteggio finale (caso Lotto 1B: causa "grave" all'apparenza, classe Basso — ora coerenti). Dettaglio in §12.4 e §12.8.
+
+_Ultimo aggiornamento: 2026-08-26 (rev. 240)_
+
+- **rev.240** — `stato_lotti.html`+`admin.html`+`backend/server.py`: motore Stato Lotti riscritto da zero come **motore parametrico** (nessuna soglia/peso/produttività hardcoded). Nuovo endpoint `GET /api/parametri` (parsing server-side xlsx multi-foglio). 5 fattori rischio ROS (R_SCAVI/R_AUTH/R_SOSP/R_MS/R_BLOCCHI) con pesi rinormalizzati sui fattori disponibili, azioni suggerite da tabella regole (non più if/else), causa operativa ranked per contributo pesato, squadre/capacità produttiva calcolate da parametri di lotto, pannello "Come è stato calcolato" per ogni lotto. Iterazione di validazione con l'utente su dati reali (12 lotti) ha corretto 2 bug (conteggio pratiche vs tratte contate come pratiche; campo `pratica` non propagato nel dettaglio R_AUTH) e portato a una revisione architetturale di R_AUTH (dominio autorizzativo puro, non più agganciato alla milestone ROS scavi — appiattiva 8/12 lotti a punteggio fisso). Dettaglio completo delle decisioni in **§12**.
+
 _Ultimo aggiornamento: 2026-08-24 (rev. 238)_
 
 - **rev.238** — `hub.html`, card "Avanzamento Lavori" (`#scaviCard`): rimossa la dicitura statica "In arrivo" (`#scaviBadge`), non più corretta ora che `scavi.html`/`imprese_scavi.html` sono operativi. Badge ora nascosto di default (`style="display:none"`) e mostrato solo per ruoli non abilitati (`SCAVI_ALLOWED_ROLES`), con testo cambiato in "Accesso riservato" (era comunque "In arrivo" anche in quel ramo, fuorviante — non è una feature futura ma una restrizione di ruolo).
@@ -826,3 +920,7 @@ _Storico rev.10–rev.64 archiviato in `AGENT_BRIEF_ARCHIVE.md`_:
 - Rename `COORDINAMENTO`→`INVIO PRELIMINARE` (rev.34-43); eliminata previsione calcolata, sostituita da campo compilato dall'impresa (rev.44-48); corruzione ricorrente `Master.csv` diagnosticata/riparata più volte (rev.50,63-64 — v. §8.40); iterazioni barra % nei modal lotto/cluster (rev.49,51-59); colonna `DATA_UPDATE` (rev.60-62); fix storici `scavi.html` — sort/filtro, donut KPI, rebranding, keepalive Render, guardia bfcache (rev.10-33, ha scoperto il gap auth chiuso poi in rev.131/132).
 
 _Note di compattazione: rev.65-113 compattato 2026-07-06 (rev.10-64 già archiviato in precedenza). rev.114-187 compattato 2026-07-21 con lo stesso criterio (dettagli originali recuperabili dai backup di sessione se serve un audit puntuale). Restano inline solo rev.188-198 (più recenti/actionable)._
+
+- **rev.239** — nuova pagina `stato_lotti.html` (link in `hub.html`, visibile solo ruoli `admin`/`admin2`, stesso pattern/badge "Riservato" di `ganttCard`). Aggrega per lotto: % km progettazione OTTENUTO (da `Riepilogo_progettazione.csv`) e % metri scavati (da `GET /api/cantieri`), confrontati con le date target `invio/ottenim/p50/p90/p100` di `/api/milestone` → flag ok/warn/err per progettazione e per scavi separatamente + risk badge complessivo (il peggiore dei due). Card cliccabile apre modal con elenco pratiche non ottenute, cantieri sospesi e cantieri con scadenza superata per quel lotto. Riusa la cautela `log_count` di rev.200 (non segnala ritardo "inizio previsto" su cantieri mai aggiornati dall'impresa — data seed non confermata). **Nota**: la cartella `pm/` (DASHBOARD_PM.html, allocazione.html, integrazioni.html, panoramica_portfolio/progetti.html) è un template "Nexus Dashboard" scollegato da brand/dati ENRI, non integrato in questa pagina né altrove — lasciata invariata su richiesta esplicita dell'utente, da valutare in seguito (rimozione o riuso).
+
+- **rev.240** — `index.html`, sezione "Tutte le Pratiche": nuova voce dropdown Excel **"Estrazione cliente"** (`exportClienteXlsx` / `_exportClienteXlsxImpl`). Colonne ridotte e tradotte in EN: Code, Type, Lot, Cluster, Status, Authority, Municipality, Submission Date, Approval Date. Foglio stilizzato (header blu Retelit `#043F75`, zebra striping, badge colorato sulla colonna Status, autofilter, freeze riga header). Esclude sempre le pratiche negli stati di lavorazione interna pre-invio: `IN ATTESA`, `IN REDAZIONE`, `IN FIRMA RDS`, `INVIO PRELIMINARE`, `IN REDAZIONE INTEGRAZIONE` (assunzione: "in redazione" esteso anche a "in redazione integrazione", stesso concetto di bozza interna — da confermare). Mappa stato→cliente (`CLIENTE_STATO_MAP`): `INVIATO`/`PROTOCOLLATO`→`submitted`; `OTTENUTO`/`NO COMPETENZA`→`approved`; `NECESSARIA INTEGRAZIONE`/`PROTOCOLLATO INTEGRAZIONE`→`pending`; nessuno stato sorgente mappato su `rejected` (bucket vuoto, da popolare). Cluster derivato per codice pratica via `_clusterTrattaMap`/`_masterByTratta` (una pratica può ricadere in più cluster se copre tratte di cluster diversi → valori concatenati con virgola). TODO: confermare/estendere `CLIENTE_STATO_MAP` per `rejected` e rivedere l'esclusione di `IN REDAZIONE INTEGRAZIONE`.
