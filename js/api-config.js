@@ -75,3 +75,38 @@
 
   console.info('[ENRI] API base active →', API_BASE);
 })();
+
+// ── Concomitanza tratte (es. ENRI-QTS, tubo aggiuntivo) ─────────────────────
+// Caricata una volta per pagina, usata ovunque compaia un codice pratica.
+window.ENRI = window.ENRI || {};
+window.ENRI.concomitanzaIds = new Set();
+window.ENRI.concomitanzaNota = {};
+window.ENRI.concomitanzaReady = window.ENRI.apiBase
+  ? fetch(`${window.ENRI.apiBase}/api/concomitanze`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return;
+        window.ENRI.concomitanzaIds = new Set(data.tratta_ids || []);
+        window.ENRI.concomitanzaNota = data.nota_by_tratta || {};
+      })
+      .catch(() => {})
+  : Promise.resolve();
+
+/**
+ * Badge HTML da affiancare a un codice pratica quando una o più tratte
+ * associate sono in concomitanza (es. tubo aggiuntivo). `trattaIds` può
+ * essere un singolo TRATTA_ID o un array (una pratica può coprire più
+ * tratte). Ritorna '' se nessuna tratta è in concomitanza.
+ */
+window.ENRI.concomitanzaBadge = function (trattaIds) {
+  const ids = (Array.isArray(trattaIds) ? trattaIds : [trattaIds])
+    .map(t => String(t || '').trim().toUpperCase()).filter(Boolean);
+  const hit = ids.filter(t => window.ENRI.concomitanzaIds.has(t));
+  if (!hit.length) return '';
+  const nota = window.ENRI.concomitanzaNota[hit[0]] || 'Tubo aggiuntivo';
+  const label = hit.length > 1 ? `${nota} (${hit.length} tratte)` : nota;
+  return `<span class="enri-concomitanza-badge" title="Concomitanza QTS: ${label}" `
+    + `style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;`
+    + `margin-left:3px;border-radius:50%;background:#1A7D9922;color:#1A7D99;border:1px solid #1A7D9966;`
+    + `font-size:9px;font-weight:800;cursor:help;vertical-align:middle">T</span>`;
+};
