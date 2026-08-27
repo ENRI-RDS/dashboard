@@ -891,14 +891,16 @@ window.addEventListener('pageshow', (e) => {
       const len = parseFloat(String(p.LUNGHEZZA || '').replace(',', '.')) || 0;
       const g = pratMap.get(key);
       if (!g) {
-        pratMap.set(key, { ...p, _nTratte: 1, _lunghezzaTot: len });
+        pratMap.set(key, { ...p, _nTratte: 1, _lunghezzaTot: len, _tratte: [p.TRATTA_ID] });
       } else {
         const isNewer = parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(g.DATA_ULTIMA_MODIFICA);
         const nTratte = g._nTratte + 1;
         const lunghezzaTot = g._lunghezzaTot + len;
+        const tratte = [...g._tratte, p.TRATTA_ID];
         if (isNewer) Object.assign(g, p);
         g._nTratte = nTratte;
         g._lunghezzaTot = lunghezzaTot;
+        g._tratte = tratte;
       }
     });
     const soloScadute = $('filterPrevisioneScaduta')?.checked;
@@ -930,7 +932,7 @@ window.addEventListener('pageshow', (e) => {
     renderPratiche._current = rows.slice(0, 500);
     $('pratBody').innerHTML = renderPratiche._current.map((p, i) => `
       <tr data-idx="${i}">
-        <td class="mono" style="font-weight:700;color:var(--accent);background:var(--accent-light);border-left:3px solid var(--accent)">${escapeHtml(p._codice)}</td>
+        <td class="mono" style="font-weight:700;color:var(--accent);background:var(--accent-light);border-left:3px solid var(--accent)">${escapeHtml(p._codice)}${(typeof ENRI !== 'undefined' && ENRI.concomitanzaBadge) ? ENRI.concomitanzaBadge(p._tratte || p.TRATTA_ID) : ''}</td>
         <td class="mono">${p._nTratte > 1 ? `${p._nTratte} tratte` : escapeHtml(p.TRATTA_ID)}</td>
         <td>${escapeHtml(p.ENTE)}</td>
         <td>${escapeHtml(p.TIPO_PERMESSO)}</td>
@@ -1580,7 +1582,7 @@ window.addEventListener('pageshow', (e) => {
         .reduce((max, s) => (!max || parseDate(s.data_sollecito) > parseDate(max)) ? s.data_sollecito : max, null) || '—';
       return `
       <tr data-idx="${i}">
-        <td class="mono" style="font-weight:700;color:var(--accent);background:var(--accent-light);border-left:3px solid var(--accent)">${escapeHtml(rep._codice || String(rep.PRATICA||''))}</td>
+        <td class="mono" style="font-weight:700;color:var(--accent);background:var(--accent-light);border-left:3px solid var(--accent)">${escapeHtml(rep._codice || String(rep.PRATICA||''))}${(typeof ENRI !== 'undefined' && ENRI.concomitanzaBadge) ? ENRI.concomitanzaBadge([...tIds]) : ''}</td>
         <td>${escapeHtml(rep.ENTE)}</td>
         <td>${escapeHtml(rep.TIPO_PERMESSO)}</td>
         <td class="stato-cell" style="color:${statoColor(rep.STATO_PERMESSO)}">${escapeHtml(rep.STATO_PERMESSO)}</td>

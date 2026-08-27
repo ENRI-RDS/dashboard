@@ -1922,7 +1922,7 @@ function makePopupHtml(p, gmapsUrl) {
 
   const pratiche = p.PRATICA ? p.PRATICA.split('|').map(s=>s.trim()).filter(Boolean) : [];
   const praticheHtml = pratiche.length
-    ? pratiche.map(pr=>`<span class="popup-pratica">${pr}</span>`).join('') : '';
+    ? pratiche.map(pr=>`<span class="popup-pratica">${pr}${(typeof ENRI !== 'undefined' && ENRI.concomitanzaBadge) ? ENRI.concomitanzaBadge(p.TRATTA_ID) : ''}</span>`).join('') : '';
 
   const lav = p.LAVORABILE;
   const lavHtml = lav === 'SI'
@@ -3896,14 +3896,16 @@ function renderPrList(filter){
     const len = parseFloat(String(p.LUNGHEZZA || '').replace(',', '.')) || 0;
     const g = pratMap.get(key);
     if (!g) {
-      pratMap.set(key, { ...p, _nTratte: 1, _lunghezzaTot: len });
+      pratMap.set(key, { ...p, _nTratte: 1, _lunghezzaTot: len, _trattaIds: [p.TRATTA_ID] });
     } else {
       const isNewer = prParseDate(p.DATA_ULTIMA_MODIFICA) >= prParseDate(g.DATA_ULTIMA_MODIFICA);
       const nTratte = g._nTratte + 1;
       const lunghezzaTot = g._lunghezzaTot + len;
+      const trattaIds = [...g._trattaIds, p.TRATTA_ID];
       if (isNewer) Object.assign(g, p);
       g._nTratte = nTratte;
       g._lunghezzaTot = lunghezzaTot;
+      g._trattaIds = trattaIds;
     }
   });
   const rows = Array.from(pratMap.values())
@@ -3921,7 +3923,7 @@ function renderPrList(filter){
     const q = _prQueuedFor(p);
     return `
     <div class="pr-card${q?' pr-card-queued':''}" data-idx="${i}">
-      <div class="pr-card-code">${prEscapeHtml(p._codice)}${q?' <span class="pr-queued-badge" title="Modifica già in coda, non ancora inviata">🕓 in coda</span>':''}</div>
+      <div class="pr-card-code">${prEscapeHtml(p._codice)}${(typeof ENRI !== 'undefined' && ENRI.concomitanzaBadge) ? ENRI.concomitanzaBadge(p._trattaIds || p.TRATTA_ID) : ''}${q?' <span class="pr-queued-badge" title="Modifica già in coda, non ancora inviata">🕓 in coda</span>':''}</div>
       <div class="pr-card-row"><span>${p._nTratte > 1 ? `${p._nTratte} tratte` : prEscapeHtml(p.TRATTA_ID)}</span><span class="stato-cell" style="color:${getColor(p.STATO_PERMESSO)}">${prEscapeHtml(p.STATO_PERMESSO)}</span></div>
       <div class="pr-card-row"><span>${prEscapeHtml(p.ENTE)}</span><span>${prEscapeHtml(p.TIPO_PERMESSO)}</span></div>
       <div class="pr-card-row"><span></span><span style="color:var(--text,#1a1a1a);font-weight:600;font-family:var(--font-mono)">${prFormatLunghezza(p._lunghezzaTot ?? p.LUNGHEZZA)}</span></div>

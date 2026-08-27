@@ -4349,12 +4349,14 @@ function _processMasterText(text) {
         praticheByLotto[lotto][codice] = {
           codice, tipo: r.tipo, stato: r.stato, ente: r.ente,
           dr: r.dr, dum: r.dum, dr_invio: r.dr_invio || '', dataPrevRilascio: r.dataPrevRilascio || '', dataUpdate: r.dataUpdate || '', notes: [], statoHistory: [], metri: 0, lotto,
-          comuni: new Set(r.comune ? [r.comune] : [])
+          comuni: new Set(r.comune ? [r.comune] : []),
+          tratte: new Set(r.tratta ? [r.tratta] : [])
         };
       }
       praticheByLotto[lotto][codice].metri += r.lungh;
-      // Accumula comuni della pratica
+      // Accumula comuni e tratte della pratica (tratte usate per il badge concomitanza)
       if (r.comune) praticheByLotto[lotto][codice].comuni.add(r.comune);
+      if (r.tratta) praticheByLotto[lotto][codice].tratte.add(r.tratta);
       // Aggiorna con riga più recente
       const existing = praticheByLotto[lotto][codice];
       const newDum = parseDateIT(r.dum);
@@ -4382,7 +4384,8 @@ function _processMasterText(text) {
     window._praticheDetailPerLotto = {};
     Object.entries(praticheByLotto).forEach(([lot, map]) => {
       window._praticheDetailPerLotto[lot] = Object.values(map).map(p => ({
-        ...p, comuni: p.comuni instanceof Set ? [...p.comuni].sort() : (p.comuni || [])
+        ...p, comuni: p.comuni instanceof Set ? [...p.comuni].sort() : (p.comuni || []),
+        tratte: p.tratte instanceof Set ? [...p.tratte] : (p.tratte || [])
       })).sort((a,b) => a.codice.localeCompare(b.codice));
     });
 
@@ -6457,7 +6460,7 @@ _hookScadenze();
       return `<tr class="tbl-row">
         <td class="tbl-td tbl-codice-click" data-cod="${r.codice}" style="cursor:pointer" title="${hasNote ? 'Vedi note pratica' : 'Nessuna nota — clicca per aggiungere/vedere'}">
           <span class="tbl-codice-wrap">
-            <span class="tbl-codice">${r.codice}</span>
+            <span class="tbl-codice">${r.codice}</span>${(typeof ENRI !== 'undefined' && ENRI.concomitanzaBadge) ? ENRI.concomitanzaBadge(r.tratte) : ''}
             <svg class="tbl-note-icon${hasNote ? ' has-note' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           </span>
         </td>

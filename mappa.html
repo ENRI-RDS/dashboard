@@ -1606,7 +1606,8 @@ function makePopupHtml(p, gmapsUrl) {
         const enteLabel = match ? match.ente : '';
         const prefix = pr.split('/')[0].trim().toUpperCase();
         const tipoClass = prefix === 'AUT' ? 'aut' : prefix === 'NO' ? 'no' : prefix === 'ORD' ? 'ord' : '';
-        return `<span class="popup-pratica ${tipoClass}">${pr}${enteLabel?`<span class="popup-pratica-ente"> · ${enteLabel}</span>`:''}</span>`;
+        const concBadge = (typeof ENRI !== 'undefined' && ENRI.concomitanzaBadge) ? ENRI.concomitanzaBadge(p.TRATTA_ID) : '';
+        return `<span class="popup-pratica ${tipoClass}">${pr}${enteLabel?`<span class="popup-pratica-ente"> · ${enteLabel}</span>`:''}${concBadge}</span>`;
       }).join('') : '';
 
   const lav = p.LAVORABILE;
@@ -2078,7 +2079,7 @@ function renderResults(pratiche, addresses, query) {
       item.innerHTML = `
         <span class="search-result-icon">◎</span>
         <div style="flex:1;min-width:0">
-          <div class="search-result-main">${r.pratica}</div>
+          <div class="search-result-main">${r.pratica}${(typeof ENRI !== 'undefined' && ENRI.concomitanzaBadge) ? ENRI.concomitanzaBadge(r.tratta) : ''}</div>
           <div class="search-result-sub">${r.tratta} · Lotto ${r.lotto} · ${r.comune}</div>
         </div>
         <span style="font-size:9px;color:${color};white-space:nowrap;flex-shrink:0">${r.stato}</span>`;
