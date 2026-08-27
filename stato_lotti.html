@@ -753,8 +753,15 @@ function computeAzioneParametrica(row, capacita, parametri) {
       match = !capacita.insufficiente && capacita.squadreNecessarie !== null && capacita.squadreNecessarie > capacita.squadre.disponibili;
       dettaglio = { squadreNecessarie: capacita.squadreNecessarie, squadreDisponibili: capacita.squadre.disponibili, squadreAggiuntive: capacita.squadreAggiuntive };
     } else if (reg.codice === 'ACT_PROG') {
-      match = (row.p.kmNonInviato || 0) > 0;
-      dettaglio = { kmNonInviato: row.p.kmNonInviato };
+      const faseProg = computeFaseAutorizzativa(row);
+      // Stesso principio di R_AUTH (§12.3): prima di "invio" il 100% non
+      // presentato è fisiologico, non un ritardo — l'azione scatta solo se
+      // la fase è avviata (coef_fase > 0) o se il dato di fase manca ma c'è
+      // comunque evidenza di ritardo oggettivo (km non inviati > 0 pur con
+      // fase indeterminata è comunque riportabile, ma mai quando sappiamo
+      // con certezza di essere prima di "invio").
+      match = faseProg.disponibile && faseProg.coefFase > 0 && (row.p.kmNonInviato || 0) > 0;
+      dettaglio = { kmNonInviato: row.p.kmNonInviato, fase: faseProg.disponibile ? faseProg.info : null };
     } else if (reg.codice === 'ACT_ORD') {
       const metriBloccati = (row.p.blocchi || []).reduce((s, b) => s + b.km, 0);
       match = metriBloccati > 0;
@@ -772,12 +779,17 @@ function computeCausaOperativa(row, rischio) {
   const attivi = Object.values(rischio.fattori).filter(f => f.disponibile && f.contributo > 0.01);
   attivi.sort((a, b) => b.contributo - a.contributo);
   const frasi = attivi.slice(0, 3).map(f => {
-    if (f.codice === 'R_SCAVI') return `Capacità scavi insufficiente${capForRow(f)}`;
-    if (f.codice === 'R_AUTH') { const c = countPratiche(f.dettaglio); return `${c.n} ${c.label} non autorizzate (${fmtNum(f.dettaglio.reduce((s, d) => s + d.km, 0))} m)${c.esatto ? '' : ' — pratiche non distinguibili, dato PRATICA assente'}`; }
-    if (f.codice === 'R_SOSP') return `${row.s.sospesi.length} cantiere${row.s.sospesi.length === 1 ? '' : 'i'} sospeso${row.s.sospesi.length === 1 ? '' : 'i'} (${fmtNum(f.metriSospesi)} m residui)`;
-    if (f.codice === 'R_MS') return `Milestone "${f.peggiore.label}" scaduta da ${f.peggiore.giorni} gg`;
-    if (f.codice === 'R_BLOCCHI') return `${row.p.blocchi.length} tratte bloccate da nulla osta/ordinanza (${fmtNum(f.metriBloccati)} m)`;
-    return f.fattore;
+    let base;
+    if (f.codice === 'R_SCAVI') base = `Capacità scavi insufficiente${capForRow(f)}`;
+    else if (f.codice === 'R_AUTH') { const c = countPratiche(f.dettaglio); base = `${c.n} ${c.label} non autorizzate (${fmtNum(f.dettaglio.reduce((s, d) => s + d.km, 0))} m)${c.esatto ? '' : ' — pratiche non distinguibili, dato PRATICA assente'}`; }
+    else if (f.codice === 'R_SOSP') base = `${row.s.sospesi.length} cantiere${row.s.sospesi.length === 1 ? '' : 'i'} sospeso${row.s.sospesi.length === 1 ? '' : 'i'} (${fmtNum(f.metriSospesi)} m residui)`;
+    else if (f.codice === 'R_MS') base = `Milestone "${f.peggiore.label}" scaduta da ${f.peggiore.giorni} gg`;
+    else if (f.codice === 'R_BLOCCHI') base = `${row.p.blocchi.length} tratte bloccate da nulla osta/ordinanza (${fmtNum(f.metriBloccati)} m)`;
+    else base = f.fattore;
+    // Distingue "criticità presente" (fatto oggettivo, sopra) da "criticità
+    // impattante sulla milestone" (quanto pesa realmente sul punteggio ROS,
+    // dato dal contributo pesato — mai solo dalla gravità grezza del fattore).
+    return `${base} — impatto ROS ${f.contributo.toFixed(1)} pt`;
   });
   if (!frasi.length) return { html: 'Nessun fattore di rischio ROS attivo — in linea con il piano.', muted: true };
   return { html: frasi.join(' · '), muted: false };
