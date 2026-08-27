@@ -776,9 +776,7 @@ async def _on_startup():
     # delle richieste HTTP (es. /api/health) durante il boot dopo un cold-start.
     async def _startup_sync_cantieri():
         try:
-            created = await _sync_cantieri()
-            if created:
-                asyncio.create_task(_push_cantieri_to_github())
+            await _sync_cantieri()
         except Exception as e:
             print(f"[startup] _sync_cantieri: {e}")
     asyncio.create_task(_startup_sync_cantieri())
@@ -1258,7 +1256,6 @@ GITHUB_PATHS: dict = {
     "Master.csv":                  GITHUB_CSV_PATH,
     "Riepilogo_progettazione.csv": os.environ.get("GITHUB_RIEPILOGO_PATH", "Riepilogo_progettazione.csv"),
     "QGIS.geojson":                os.environ.get("GITHUB_QGIS_PATH", "QGIS.geojson"),
-    "solleciti.csv":               os.environ.get("GITHUB_SOLLECITI_PATH", "solleciti.csv"),
     "sopralluoghi.csv":             os.environ.get("GITHUB_SOPRALLUOGHI_PATH", "sopralluoghi.csv"),
     "QTS.geojson":                 os.environ.get("GITHUB_QTS_PATH", "QTS.geojson"),
     "SED_classificato.geojson":    os.environ.get("GITHUB_SED_PATH", "SED_classificato.geojson"),
@@ -2291,7 +2288,6 @@ async def approve_pending(
     await _log_admin_action("approve_pending_update", sub_id, x_actor_nome)
     # Sync cantieri: crea automaticamente cantieri non_avviato per le nuove tratte lavorabili
     asyncio.create_task(_sync_cantieri())
-    asyncio.create_task(_push_cantieri_to_github())
     return {"ok": True, "summary": summary, "new_upload_id": upload_id}
 
 
@@ -3195,34 +3191,13 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
 
 # SOLLECITI — registro solleciti per tratta/pratica
 # ─────────────────────────────────────────────────────────────────────────────
-# Ogni sollecito viene scritto direttamente su MongoDB (senza approvazione admin)
-# e il CSV solleciti.csv viene sincronizzato su GitHub dopo ogni inserimento.
+# Ogni sollecito viene scritto direttamente su MongoDB (senza approvazione admin).
+# Nessuna sincronizzazione su GitHub: MongoDB è l'unica fonte (rev. TODO-versione).
 # ═════════════════════════════════════════════════════════════════════════════
 
 SOLLECITI_COLS = ["_id", "tratta_id", "pratica", "ente", "tipo_permesso", "stato_permesso",
                   "lunghezza", "data_richiesta", "data_ultima_modifica",
                   "numero_sollecito", "tipo_sollecito", "data_sollecito", "note", "impresa", "created_at"]
-
-
-async def _build_solleciti_csv() -> bytes:
-    """Legge tutti i solleciti da MongoDB e genera un CSV con separatore ;"""
-    cols = ["tratta_id", "pratica", "tipo_sollecito", "data_sollecito", "note", "impresa", "created_at"]
-    rows = []
-    async for d in solleciti_col.find({}).sort("created_at", -1):
-        rows.append({c: str(d.get(c, "") or "") for c in cols})
-    df = pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)
-    buf = io.StringIO()
-    df.to_csv(buf, index=False, sep=";")
-    return buf.getvalue().encode("utf-8")
-
-
-async def _push_solleciti_to_github() -> None:
-    """Rigenera solleciti.csv e lo pusha su GitHub."""
-    try:
-        data = await _build_solleciti_csv()
-        await _push_to_github(data, path=GITHUB_PATHS["solleciti.csv"], label="solleciti.csv")
-    except Exception as e:
-        print(f"[GitHub] _push_solleciti: {e}")
 
 
 @app.get("/api/imprese/solleciti")
@@ -3337,7 +3312,6 @@ async def add_sollecito(payload: dict, sess: dict = Depends(_require_session)):
         "created_at":          _now_iso(),
     }
     res = await solleciti_col.insert_one(record)
-    asyncio.create_task(_push_solleciti_to_github())
     asyncio.create_task(_touch_data_update(tratta_id, pratica, tipo_perm))
     return {"ok": True, "id": str(res.inserted_id)}
 
@@ -3379,7 +3353,6 @@ async def bulk_insert_solleciti(payload: dict, sess: dict = Depends(_require_ses
         touch_keys.append((tratta_id, record["pratica"], record["tipo_permesso"]))
 
     if inserted:
-        asyncio.create_task(_push_solleciti_to_github())
         asyncio.create_task(_touch_data_update_multi(touch_keys))
     return {"ok": True, "inserted": inserted, "count": len(inserted)}
 
@@ -3397,7 +3370,6 @@ async def delete_sollecito(sol_id: str, sess: dict = Depends(_require_session)):
     if doc.get("impresa") != sess["nome"]:
         raise HTTPException(403, "Non autorizzato")
     await solleciti_col.delete_one({"_id": oid})
-    asyncio.create_task(_push_solleciti_to_github())
     return {"deleted": sol_id}
 
 
@@ -3421,7 +3393,7 @@ async def admin_get_solleciti(
 async def staff_get_solleciti(sess: dict = Depends(_require_staff_session)):
     """Restituisce tutti i solleciti per le pagine staff (index.html ecc.), letti
     direttamente da MongoDB — non dipende dal push/deploy su GitHub Pages, a
-    differenza del vecchio solleciti.csv statico (vedi AGENT_BRIEF rev.215)."""
+    differenza dal vecchio CSV statico, ormai rimosso (vedi AGENT_BRIEF)."""
     items = []
     async for d in solleciti_col.find({}).sort("created_at", -1):
         items.append({
@@ -3451,8 +3423,6 @@ async def bulk_delete_solleciti(payload: dict, sess: dict = Depends(_require_ses
             continue
         await solleciti_col.delete_one({"_id": oid})
         deleted.append(str(sol_id))
-    if deleted:
-        asyncio.create_task(_push_solleciti_to_github())
     return {"deleted": deleted, "count": len(deleted)}
 
 
@@ -3479,29 +3449,6 @@ async def bulk_delete_solleciti(payload: dict, sess: dict = Depends(_require_ses
 
 STATO_CANTIERE_VALUES = ["non_avviato", "allestimento", "in_corso", "sospeso", "completato"]
 TECNICA_SCAVO_VALUES  = ["trincea", "no_dig", "canaletta", ""]
-
-CANTIERI_CSV_PATH = os.environ.get("GITHUB_CANTIERI_PATH", "cantieri.csv")
-CANTIERI_COLS = [
-    "cantiere_key", "codice_cantiere", "pratica_id", "ente", "lotto", "cluster",
-    "tratte_lavorabili", "tratte_bloccate",
-    "metri_totali", "metri_totali_potenziali",
-    "stato_cantiere", "tecnica_scavo",
-    "data_inizio_prevista", "data_inizio_effettiva",
-    "data_fine_prevista", "data_fine_effettiva",
-    "metri_scavati", "note", "motivo_blocco", "data_ripresa_stimata",
-    "impresa", "updated_at",
-]
-
-
-def _cantieri_csv_row(d: dict) -> dict:
-    """Appiattisce un documento cantiere (con array 'tratte') in una riga CSV."""
-    tratte = d.get("tratte", []) or []
-    lav  = [t["tratta_id"] for t in tratte if t.get("lavorabile")]
-    bloc = [f"{t['tratta_id']} ({t.get('motivo_no','').strip() or 'bloccata'})" for t in tratte if not t.get("lavorabile")]
-    row = {c: str(d.get(c, "") or "") for c in CANTIERI_COLS}
-    row["tratte_lavorabili"] = ", ".join(lav)
-    row["tratte_bloccate"]   = ", ".join(bloc)
-    return row
 
 
 async def _max_codice_per_lotto() -> dict:
@@ -3768,21 +3715,6 @@ async def _sync_cantieri_impl() -> int:
     return created
 
 
-async def _push_cantieri_to_github() -> None:
-    """Rigenera cantieri.csv e lo pusha su GitHub."""
-    try:
-        rows = []
-        async for d in cantieri_col.find({}).sort("pratica_id", 1):
-            rows.append(_cantieri_csv_row(d))
-        import pandas as _pd, io as _io
-        _df = _pd.DataFrame(rows, columns=CANTIERI_COLS) if rows else _pd.DataFrame(columns=CANTIERI_COLS)
-        buf = _io.StringIO()
-        _df.to_csv(buf, index=False, sep=";")
-        data = buf.getvalue().encode("utf-8")
-        await _push_to_github(data, path=CANTIERI_CSV_PATH, label="cantieri.csv")
-    except Exception as e:
-        print(f"[GitHub] _push_cantieri: {e}")
-
 
 # ── Endpoint pubblico: lista cantieri ────────────────────────────────────────
 
@@ -3866,7 +3798,6 @@ async def admin_reset_cantieri(
     _check_token(x_upload_token or token_q)
     deleted = (await cantieri_col.delete_many({})).deleted_count
     created = await _sync_cantieri()
-    asyncio.create_task(_push_cantieri_to_github())
     return {"deleted": deleted, "recreated": created}
 
 
@@ -3879,7 +3810,6 @@ async def admin_sync_cantieri(
     _check_token(x_upload_token or token_q)
     created = await _sync_cantieri()
     total = await cantieri_col.count_documents({})
-    asyncio.create_task(_push_cantieri_to_github())
     return {"created": created, "total_cantieri": total}
 
 
@@ -3931,7 +3861,6 @@ async def admin_update_cantiere(
 
     await cantieri_col.update_one({"cantiere_key": cantiere_key}, mongo_update)
     await _log_admin_action("update_cantiere", cantiere_key, x_actor_nome)
-    asyncio.create_task(_push_cantieri_to_github())
     return {"ok": True, "cantiere_key": cantiere_key}
 
 
@@ -3982,7 +3911,6 @@ async def admin_update_cantiere_log_entry(
         {"$set": {"log": log, "metri_scavati": metri_scavati, "updated_at": _now_iso()}},
     )
     await _log_admin_action("update_cantiere_log", f"{cantiere_key}#{idx}", x_actor_nome)
-    asyncio.create_task(_push_cantieri_to_github())
     return {"ok": True, "cantiere_key": cantiere_key, "idx": idx, "metri_scavati": metri_scavati}
 
 
@@ -4011,7 +3939,6 @@ async def admin_delete_cantiere_log_entry(
         {"$set": {"log": log, "metri_scavati": metri_scavati, "updated_at": _now_iso()}},
     )
     await _log_admin_action("delete_cantiere_log", f"{cantiere_key}#{idx}", x_actor_nome)
-    asyncio.create_task(_push_cantieri_to_github())
     return {"ok": True, "cantiere_key": cantiere_key, "idx": idx, "metri_scavati": metri_scavati}
 
 
@@ -4044,7 +3971,6 @@ async def admin_reset_single_cantiere(
         }},
     )
     await _log_admin_action("reset_single_cantiere", cantiere_key, x_actor_nome)
-    asyncio.create_task(_push_cantieri_to_github())
     return {"ok": True, "cantiere_key": cantiere_key}
 
 
@@ -4154,7 +4080,6 @@ async def update_cantiere(cantiere_key: str, payload: dict, sess: dict = Depends
         mongo_update["$inc"] = update["$inc"]
 
     await cantieri_col.update_one({"cantiere_key": cantiere_key}, mongo_update)
-    asyncio.create_task(_push_cantieri_to_github())
     return {"ok": True, "cantiere_key": cantiere_key, "pratica_id": doc.get("pratica_id")}
 
 
