@@ -30,6 +30,23 @@ window.loadXLSX = (function(){
     return _p;
   };
 })();
+// ExcelJS: usato SOLO per l'estrazione cliente — a differenza di xlsx.full (SheetJS community),
+// supporta davvero la scrittura di stili cella (fill/font/bordi), necessaria per un file "carino".
+window.loadExcelJS = (function(){
+  let _p = null;
+  return function(){
+    if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+    if (_p) return _p;
+    _p = new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+      s.onload = () => res(window.ExcelJS);
+      s.onerror = () => { _p = null; rej(new Error('exceljs load failed')); };
+      document.head.appendChild(s);
+    });
+    return _p;
+  };
+})();
 </script>
 <style>
   @view-transition { navigation: auto; }
@@ -2181,18 +2198,20 @@ function exportTuttiXlsx() {
 
 // ── EXPORT ESTRAZIONE CLIENTE (colonne ridotte, stati tradotti, no interno) ────
 // Stati "di lavorazione interna" mai mostrati al cliente (bozza/coordinamento pre-invio).
-const CLIENTE_STATI_ESCLUSI = ['IN ATTESA', 'IN REDAZIONE', 'IN FIRMA RDS', 'INVIO PRELIMINARE', 'IN REDAZIONE INTEGRAZIONE'];
+// NO COMPETENZA esclusa: non ha una Data Ott. valorizzata (campo dum vuoto per quello stato),
+// quindi non può comparire in una riga "approved" con colonna Approval Date coerente.
+const CLIENTE_STATI_ESCLUSI = ['IN ATTESA', 'IN REDAZIONE', 'IN FIRMA RDS', 'INVIO PRELIMINARE', 'IN REDAZIONE INTEGRAZIONE', 'NO COMPETENZA'];
 // Mappa stato interno → stato cliente. Stati non presenti qui (e non esclusi sopra)
 // ricadono di default su 'rejected': bucket ancora da popolare (TODO Andrea).
 const CLIENTE_STATO_MAP = {
   'INVIATO': 'submitted', 'PROTOCOLLATO': 'submitted',
-  'OTTENUTO': 'approved', 'NO COMPETENZA': 'approved',
+  'OTTENUTO': 'approved',
   'NECESSARIA INTEGRAZIONE': 'pending', 'PROTOCOLLATO INTEGRAZIONE': 'pending'
 };
 const CLIENTE_STATO_COLORI = {
-  submitted: '41BBD9', pending: 'D08A1A', approved: '1E9E6A', rejected: 'C0392B'
+  submitted: 'FF41BBD9', pending: 'FFD08A1A', approved: 'FF1E9E6A', rejected: 'FFC0392B'
 };
-const CLIENTE_TIPO_EN = { 'AUTORIZZAZIONE': 'AUTHORIZATION', 'NULLA OSTA': 'NO-OBJECTION PERMIT', 'ORDINANZA': 'ORDINANCE' };
+const CLIENTE_TIPO_EN = { 'AUTORIZZAZIONE': 'AUTHORIZATION', 'NULLA OSTA': 'Approval/SED', 'ORDINANZA': 'ORDINANCE' };
 
 function _codiceClusterMap() {
   const map = {};
@@ -2224,7 +2243,7 @@ function exportClienteXlsx() {
     .filter(p => !CLIENTE_STATI_ESCLUSI.includes(p.stato))
     .map(p => {
       const tipo = p.codice.startsWith('AUT/') ? 'AUTHORIZATION'
-                 : p.codice.startsWith('NO/')  ? 'NO-OBJECTION PERMIT'
+                 : p.codice.startsWith('NO/')  ? 'Approval/SED'
                  : p.codice.startsWith('ORD/') ? 'ORDINANCE'
                  : (CLIENTE_TIPO_EN[p.tipo] || p.tipo || '');
       const cl = codiceCluster[p.codice] ? [...codiceCluster[p.codice]].sort((a,b)=>(+a)-(+b)).join(', ') : '';
@@ -2241,61 +2260,107 @@ function exportClienteXlsx() {
 
   if (!rows.length) { alert('Nessuna pratica da esportare per il cliente con i filtri correnti.'); return; }
   const today = new Date().toISOString().split('T')[0];
-  return window.loadXLSX().then(() => _exportClienteXlsxImpl(rows, 'Client_Extraction_' + today));
+  return window.loadExcelJS().then(() => _exportClienteXlsxImpl(rows, 'Client_Extraction_' + today));
 }
 
+// Nota tecnica: xlsx.full (SheetJS community, usato per gli altri export) IGNORA silenziosamente
+// le proprietà di stile cella (fill/font/bordi) in scrittura — per questo l'export cliente restava
+// piatta nonostante il codice le impostasse. Per questa estrazione (unica destinata al cliente,
+// quindi con requisiti grafici) si usa ExcelJS, che scrive davvero gli stili.
 function _exportClienteXlsxImpl(rows, filename) {
   function toDateObj(s) {
-    if (!s || !s.trim()) return '';
+    if (!s || !s.trim()) return null;
     const p = s.trim().split('/');
     if (p.length === 3) return new Date(+p[2], +p[1]-1, +p[0]);
     const d = new Date(s.trim());
-    return isNaN(d) ? '' : d;
+    return isNaN(d) ? null : d;
   }
-  const header = ['Code', 'Type', 'Lot', 'Cluster', 'Status', 'Authority', 'Municipality', 'Submission Date', 'Approval Date'];
-  const DATE_COLS = [7, 8];
-  const aoa = [header, ...rows.map(r => [
-    r.codice, r.tipo, r.lotto, r.cluster, r.stato, r.ente, r.comune, toDateObj(r.dataInvio), toDateObj(r.dataOtt)
-  ])];
-  const ws = XLSX.utils.aoa_to_sheet(aoa, { cellDates: true });
-  const range = XLSX.utils.decode_range(ws['!ref']);
 
-  // Formato data
-  for (let r = 1; r <= range.e.r; r++) {
-    DATE_COLS.forEach(c => {
-      const addr = XLSX.utils.encode_cell({r, c});
-      if (ws[addr] && ws[addr].t === 'd') ws[addr].z = 'dd/mm/yyyy';
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Retelit S.p.A.';
+  wb.created = new Date();
+  const ws = wb.addWorksheet('Client Extraction', {
+    views: [{ state: 'frozen', ySplit: 3, showGridLines: false }]
+  });
+
+  const COLS = [
+    { header: 'Code',            key: 'codice',    width: 16 },
+    { header: 'Type',            key: 'tipo',      width: 20 },
+    { header: 'Lot',             key: 'lotto',     width: 9  },
+    { header: 'Cluster',         key: 'cluster',   width: 10 },
+    { header: 'Status',          key: 'stato',     width: 14 },
+    { header: 'Authority',       key: 'ente',      width: 30 },
+    { header: 'Municipality',    key: 'comune',    width: 22 },
+    { header: 'Submission Date', key: 'dataInvio', width: 16 },
+    { header: 'Approval Date',   key: 'dataOtt',   width: 16 }
+  ];
+  ws.columns = COLS.map(c => ({ key: c.key, width: c.width }));
+  const nCols = COLS.length;
+
+  // ── Riga 1: titolo brand ────────────────────────────────────────────────
+  ws.mergeCells(1, 1, 1, nCols);
+  const titleCell = ws.getCell('A1');
+  titleCell.value = 'RETELIT — ENRI Permitting Status';
+  titleCell.font = { name: 'Calibri', size: 15, bold: true, color: { argb: 'FFFFFF' } };
+  titleCell.alignment = { horizontal: 'left', vertical: 'middle' };
+  ws.getRow(1).height = 30;
+  ws.getRow(1).eachCell({ includeEmpty: true }, cell => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '043F75' } }; });
+
+  // ── Riga 2: sottotitolo con data estrazione ─────────────────────────────
+  ws.mergeCells(2, 1, 2, nCols);
+  const subCell = ws.getCell('A2');
+  const todayIT = new Date().toLocaleDateString('it-IT');
+  subCell.value = 'Extraction date: ' + todayIT + '   ·   ' + rows.length + ' items';
+  subCell.font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FFFFFF' } };
+  subCell.alignment = { horizontal: 'left', vertical: 'middle' };
+  ws.getRow(2).height = 18;
+  ws.getRow(2).eachCell({ includeEmpty: true }, cell => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '436A93' } }; });
+
+  // ── Riga 3: header colonne ───────────────────────────────────────────────
+  const headerRow = ws.getRow(3);
+  COLS.forEach((c, i) => { headerRow.getCell(i + 1).value = c.header; });
+  headerRow.height = 22;
+  headerRow.eachCell({ includeEmpty: true }, cell => {
+    cell.font = { name: 'Calibri', size: 10.5, bold: true, color: { argb: 'FFFFFF' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '1A7D99' } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    cell.border = { bottom: { style: 'medium', color: { argb: '043F75' } } };
+  });
+
+  // ── Righe dati ────────────────────────────────────────────────────────────
+  const THIN = { style: 'thin', color: { argb: 'E3E7EC' } };
+  rows.forEach((r, i) => {
+    const row = ws.addRow({
+      codice: r.codice, tipo: r.tipo, lotto: r.lotto, cluster: r.cluster,
+      stato: r.stato, ente: r.ente, comune: r.comune,
+      dataInvio: toDateObj(r.dataInvio), dataOtt: toDateObj(r.dataOtt)
     });
-  }
-  // Header: sfondo Retelit blue, testo bianco, bold, centrato
-  for (let c = range.s.c; c <= range.e.c; c++) {
-    const cell = ws[XLSX.utils.encode_cell({r:0, c})];
-    if (cell) cell.s = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 }, fill: { fgColor: { rgb: '043F75' } }, alignment: { horizontal: 'center', vertical: 'center' }, border: { bottom: { style: 'thin', color: { rgb: 'FFFFFF' } } } };
-  }
-  // Righe: zebra + badge colorato sulla colonna Status (indice 4)
-  for (let r = 1; r <= range.e.r; r++) {
-    const zebra = (r % 2 === 0) ? 'F7F8FA' : 'FFFFFF';
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const addr = XLSX.utils.encode_cell({r, c});
-      if (!ws[addr]) continue;
-      ws[addr].s = { fill: { fgColor: { rgb: zebra } }, alignment: { vertical: 'center', horizontal: c === 4 ? 'center' : 'left' }, font: { sz: 10.5 } };
-    }
-    const statusAddr = XLSX.utils.encode_cell({r, c: 4});
-    if (ws[statusAddr]) {
-      const statusVal = ws[statusAddr].v;
-      ws[statusAddr].s = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10.5 }, fill: { fgColor: { rgb: CLIENTE_STATO_COLORI[statusVal] || '6B7685' } }, alignment: { horizontal: 'center', vertical: 'center' } };
-    }
-  }
+    const zebra = (i % 2 === 1) ? 'F7F8FA' : 'FFFFFF';
+    row.eachCell({ includeEmpty: true }, (cell, colNum) => {
+      cell.font = { name: 'Calibri', size: 10.5, color: { argb: '12161B' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: zebra } };
+      cell.alignment = { vertical: 'middle', horizontal: [3,4,5,8,9].includes(colNum) ? 'center' : 'left' };
+      cell.border = { bottom: THIN };
+      if (colNum === 8 || colNum === 9) cell.numFmt = 'dd/mm/yyyy';
+    });
+    // Badge colorato sulla colonna Status
+    const statusCell = row.getCell(5);
+    statusCell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFF' } };
+    statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: CLIENTE_STATO_COLORI[r.stato] || 'FF6B7685' } };
+    statusCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    row.height = 19;
+  });
 
-  ws['!cols'] = [{wch:16},{wch:20},{wch:8},{wch:10},{wch:12},{wch:28},{wch:20},{wch:15},{wch:15}];
-  ws['!rows'] = [{hpt: 20}];
-  ws['!autofilter'] = { ref: ws['!ref'] };
+  ws.autoFilter = { from: { row: 3, column: 1 }, to: { row: 3, column: nCols } };
 
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Client Extraction');
-  // Freeze pane riga header (supportato dalla build full)
-  wb.Sheets['Client Extraction']['!sheetViews'] = [{ state: 'frozen', ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft' }];
-  XLSX.writeFile(wb, filename + '.xlsx');
+  wb.xlsx.writeBuffer().then(buf => {
+    const blob = new Blob([buf], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename + '.xlsx';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
