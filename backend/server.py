@@ -1256,7 +1256,6 @@ GITHUB_PATHS: dict = {
     "Master.csv":                  GITHUB_CSV_PATH,
     "Riepilogo_progettazione.csv": os.environ.get("GITHUB_RIEPILOGO_PATH", "Riepilogo_progettazione.csv"),
     "QGIS.geojson":                os.environ.get("GITHUB_QGIS_PATH", "QGIS.geojson"),
-    "sopralluoghi.csv":             os.environ.get("GITHUB_SOPRALLUOGHI_PATH", "sopralluoghi.csv"),
     "QTS.geojson":                 os.environ.get("GITHUB_QTS_PATH", "QTS.geojson"),
     "SED_classificato.geojson":    os.environ.get("GITHUB_SED_PATH", "SED_classificato.geojson"),
 }
@@ -2999,36 +2998,6 @@ async def set_pol_conv_date(
 # ═════════════════════════════════════════════════════════════════════════════
 # SOPRALLUOGHI — verbali di sopralluogo
 # ─────────────────────────────────────────────────────────────────────────────
-SOPRALLUOGHI_COLS = [
-    "codice_verbale", "data_sopralluogo", "lotto", "tratta_id", "impresa",
-    "referente_impresa", "referente_retelit", "comune", "localita",
-    "tipo_intervento", "esito", "note", "segnalazioni", "azioni_richieste",
-    "scadenza_azioni", "prossimo_sopralluogo",
-    "firma_impresa", "firma_retelit", "foto_urls", "created_at",
-]
-
-
-async def _build_sopralluoghi_csv() -> bytes:
-    rows = []
-    async for d in sopralluoghi_col.find({}).sort("codice_verbale", 1):
-        row = {col: str(d.get(col, "")) for col in SOPRALLUOGHI_COLS}
-        rows.append(row)
-    import io, csv as _csv
-    buf = io.StringIO()
-    w = _csv.DictWriter(buf, fieldnames=SOPRALLUOGHI_COLS, delimiter=";",
-                        extrasaction="ignore", lineterminator="\n")
-    w.writeheader()
-    w.writerows(rows)
-    return buf.getvalue().encode("utf-8-sig")
-
-
-async def _push_sopralluoghi_to_github() -> None:
-    try:
-        data = await _build_sopralluoghi_csv()
-        await _push_to_github(data, path=GITHUB_PATHS["sopralluoghi.csv"], label="sopralluoghi.csv")
-    except Exception as e:
-        print(f"[GitHub] _push_sopralluoghi: {e}")
-
 
 @app.get("/api/lotti-cantieri")
 async def get_lotti_cantieri(sess: dict = Depends(_require_staff_session)):
@@ -3095,7 +3064,6 @@ async def delete_sopralluogo(sop_id: str, sess: dict = Depends(_require_session)
     res = await sopralluoghi_col.delete_one({"_id": oid})
     if res.deleted_count == 0:
         raise HTTPException(404, "Verbale non trovato")
-    asyncio.create_task(_push_sopralluoghi_to_github())
     return {"ok": True, "deleted": sop_id}
 
 
@@ -3126,7 +3094,7 @@ async def sopralluogo_next_codice(sess: dict = Depends(_require_staff_session)):
 
 @app.post("/api/sopralluoghi")
 async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_session)):
-    """Salva un verbale di sopralluogo su MongoDB e aggiorna sopralluoghi.csv su GitHub.
+    """Salva un verbale di sopralluogo su MongoDB (unica fonte, nessun export CSV su GitHub).
     Le foto (se presenti, come data URL base64) vengono caricate su GitHub in
     sopralluoghi/foto/{codice_verbale}/ per non saturare lo storage MongoDB gratuito."""
     last = await sopralluoghi_col.find_one({}, sort=[("codice_verbale", -1)])
@@ -3185,7 +3153,6 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
         "created_at":          _now_iso(),
     }
     await sopralluoghi_col.insert_one(record)
-    asyncio.create_task(_push_sopralluoghi_to_github())
     return {"ok": True, "codice_verbale": codice, "foto_urls": foto_urls}
 
 
@@ -3785,7 +3752,6 @@ async def admin_reset_sopralluoghi(
     """Svuota la collection sopralluoghi (solo test/dev)."""
     _check_token(x_upload_token or token_q)
     deleted = (await sopralluoghi_col.delete_many({})).deleted_count
-    asyncio.create_task(_push_sopralluoghi_to_github())
     return {"deleted": deleted}
 
 
