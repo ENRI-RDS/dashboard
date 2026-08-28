@@ -850,10 +850,13 @@ function classificaPunti(punti, classi) {
   return (classi || []).find(c => punti >= c.punteggio_min && punti <= c.punteggio_max) || null;
 }
 function impattoTesto(contributo, punteggioTotale) {
-  if (!punteggioTotale || punteggioTotale <= 0) return contributo > 0.05 ? 'Unico fattore attivo' : 'Nessun impatto';
+  if (!punteggioTotale || punteggioTotale <= 0) return contributo > 0.05 ? 'Fattore principale' : 'Nessun impatto';
   const pct = contributo / punteggioTotale * 100;
   if (pct < 3) return 'Trascurabile';
-  return `${Math.round(pct)}% del rischio totale`;
+  if (pct < 15) return 'Contenuto';
+  if (pct < 35) return 'Moderato';
+  if (pct < 60) return 'Significativo';
+  return 'Determinante';
 }
 
 function svgGauge(score, color) {
@@ -867,13 +870,19 @@ function svgGauge(score, color) {
 }
 
 // ── colonna Scavi / colonna Progettazione: Previsto / Reale / Scostamento ──
-function renderAvanzamento(flag, unitaTooltip) {
+function renderAvanzamento(flag, unitaTooltip, isProg) {
   if (flag.plannedToday === null) {
-    return `<div class="adv-col" title="${unitaTooltip}">Reale ${fmtPct(flag.pct)}<div class="adv-na">Previsto: N/D (nessuna milestone)</div></div>`;
+    return `<div class="adv-col" title="${unitaTooltip}">Reale ${fmtPct(flag.pct)}<div class="adv-na">${isProg ? 'Milestone autorizzativa non disponibile' : 'Previsto: N/D (nessuna milestone)'}</div></div>`;
   }
   const scost = fmtScost(flag.gap, flag.flag);
   const bar = `<div class="adv-bar"><div class="adv-bar-real" style="width:${Math.max(0,Math.min(100,flag.pct)).toFixed(1)}%;background:${flag.flag==='err'?'var(--danger)':flag.flag==='warn'?'var(--warn)':'var(--ok)'}"></div><div class="adv-bar-planned" style="left:${Math.max(0,Math.min(100,flag.plannedToday)).toFixed(1)}%"></div></div>`;
-  const nota = flag.primaAvvio ? `<div class="adv-note">Fase non ancora avviata</div>` : '';
+  // "Fase non ancora avviata" è accurato per gli SCAVI (avvio cantiere
+  // genuinamente futuro). Per la PROGETTAZIONE useremmo la stessa frase solo
+  // quando la milestone "invio" è tracciata ma futura — non deve mai
+  // suggerire che il lotto non sia stato progettato quando i dati di
+  // avanzamento reale mancano semplicemente perché la milestone non è
+  // tracciata nel modello (quel caso è già gestito sopra, ramo N/D).
+  const nota = flag.primaAvvio ? `<div class="adv-note">${isProg ? 'Milestone autorizzativa non disponibile' : 'Scavi non ancora avviati'}</div>` : '';
   return `<div class="adv-col" title="${unitaTooltip}">
     <div class="adv-row"><span>Prev.</span><b>${fmtPct(flag.plannedToday)}</b></div>
     <div class="adv-row"><span>Reale</span><b>${fmtPct(flag.pct)}</b></div>
@@ -892,13 +901,34 @@ function tooltipProg(r) {
 }
 
 // ── colonna "Perché è a rischio": fatti oggettivi, max 3, nessuna formula ──
+// Priorità informativa per un PM: metri/km coinvolti prima di tutto, poi
+// numero di pratiche, mai il numero di tratte in primo piano (una tratta può
+// essere 20m o 2km — non è una misura di per sé significativa).
+function causaDetail(f, row) {
+  if (f.codice === 'R_SCAVI') {
+    const c = row.capacita;
+    const sec = (!c.insufficiente) ? `${c.squadre.disponibili} disponibil${c.squadre.disponibili===1?'e':'i'}, ${c.squadreNecessarie} necessari${c.squadreNecessarie===1?'a':'e'}` : null;
+    return { primary: 'Capacità operativa insufficiente', secondary: sec };
+  }
+  if (f.codice === 'R_AUTH') {
+    const c = countPratiche(f.dettaglio);
+    const km = fmtNum(f.dettaglio.reduce((s, d) => s + d.km, 0));
+    return { primary: `${km} m non autorizzati`, secondary: c.esatto ? `${c.n} pratic${c.n===1?'a':'he'} coinvolt${c.n===1?'a':'e'}` : `${c.n} tratt${c.n===1?'a':'e'} coinvolt${c.n===1?'a':'e'}` };
+  }
+  if (f.codice === 'R_SOSP') {
+    return { primary: `${fmtNum(f.metriSospesi)} m residui sospesi`, secondary: `${row.s.sospesi.length} cantiere${row.s.sospesi.length===1?'':'i'}` };
+  }
+  if (f.codice === 'R_MS') {
+    return { primary: `Milestone "${f.peggiore.label}" scaduta`, secondary: `da ${f.peggiore.giorni} gg` };
+  }
+  if (f.codice === 'R_BLOCCHI') {
+    return { primary: `${fmtNum(f.metriBloccati)} m bloccati da nulla osta`, secondary: null };
+  }
+  return { primary: f.fattore, secondary: null };
+}
 function causaTesto(f, row) {
-  if (f.codice === 'R_SCAVI') return `Capacità operativa insufficiente${f.rapporto === null ? ' (ROS già scaduta)' : ''}`;
-  if (f.codice === 'R_AUTH') { const c = countPratiche(f.dettaglio); return `${c.n} ${c.label} non autorizzate (${fmtNum(f.dettaglio.reduce((s,d)=>s+d.km,0))} m)`; }
-  if (f.codice === 'R_SOSP') return `${row.s.sospesi.length} ${row.s.sospesi.length===1?'cantiere sospeso':'cantieri sospesi'} (${fmtNum(f.metriSospesi)} m)`;
-  if (f.codice === 'R_MS') return `Milestone "${f.peggiore.label}" scaduta da ${f.peggiore.giorni} gg`;
-  if (f.codice === 'R_BLOCCHI') return `${row.p.blocchi.length} tratte bloccate da nulla osta (${fmtNum(f.metriBloccati)} m)`;
-  return f.fattore;
+  const d = causaDetail(f, row);
+  return d.secondary ? `${d.primary} (${d.secondary})` : d.primary;
 }
 const FATTORE_ICON = { R_SCAVI: '👥', R_AUTH: '📄', R_SOSP: '⏸', R_MS: '📅', R_BLOCCHI: '🔒' };
 
@@ -909,7 +939,7 @@ function computeCausaUI(row) {
   const items = attivi.slice(0, 3).map(f => ({ testo: causaTesto(f, row), fattore: f }));
   if (items.length) return { items, muted: false, top: items[0] };
   const fase = computeFaseAutorizzativa(row);
-  if (fase.disponibile && fase.fase === 'non_iniziata') return { items: [{ testo: 'Fase autorizzativa non ancora iniziata', fattore: null }], muted: true, top: null };
+  if (fase.disponibile && fase.fase === 'non_iniziata') return { items: [{ testo: 'Milestone autorizzativa non disponibile', fattore: null }], muted: true, top: null };
   return { items: [{ testo: 'In linea con il piano', fattore: null }], muted: true, top: null };
 }
 
@@ -1007,7 +1037,7 @@ function render(prog, scavi, milestoneByLotto) {
       <td><div class="lotto-code">Lotto ${r.lotto}</div><div class="lotto-cluster">cluster ${r.cluster}</div></td>
       <td class="tc-center">${renderRischioBadge(r.rischio)}</td>
       <td>${renderAvanzamento(r.sFlag, tooltipScavi(r))}</td>
-      <td>${renderAvanzamento(r.pFlag, tooltipProg(r))}</td>
+      <td>${renderAvanzamento(r.pFlag, tooltipProg(r), true)}</td>
       <td>${renderCausaCell(r)}</td>
       <td>${renderAzionePill(r.azioneInfo)}</td>
       <td>${renderProssimaCol(r)}</td>
@@ -1136,11 +1166,12 @@ function buildSixCards(r) {
     </div>
   </div>`;
 
-  // Card 2 — Perché è a rischio (causa dominante)
+  // Card 2 — Perché è a rischio (causa dominante, in linguaggio operativo:
+  // metri/squadre/pratiche reali, non il peso del fattore nel modello)
   const top = r.causaUI.top;
   const card2 = `<div class="dcard">
     <div class="dcard-lbl">Perché è a rischio</div>
-    ${top ? `<div class="dcard-main">${FATTORE_ICON[top.fattore.codice]} ${causaTesto(top.fattore, r)}</div><div class="dcard-sub">${impattoTesto(top.fattore.contributo, rischio.punteggio)}</div>` : `<div class="dcard-nd">${r.causaUI.items[0].testo}</div>`}
+    ${top ? (() => { const d = causaDetail(top.fattore, r); return `<div class="dcard-main">${FATTORE_ICON[top.fattore.codice]} ${d.primary}</div>${d.secondary ? `<div class="dcard-sub">${d.secondary}</div>` : ''}`; })() : `<div class="dcard-nd">${r.causaUI.items[0].testo}</div>`}
   </div>`;
 
   // Card 3 — Azione suggerita
@@ -1169,7 +1200,8 @@ function buildSixCards(r) {
     </div>`;
   }
 
-  // Card 5 — Blocchi autorizzativi
+  // Card 5 — Blocchi autorizzativi: metri prima di tutto, tratte non in
+  // primo piano (una tratta può essere 20m o 2km)
   const fB = rischio.fattori.R_BLOCCHI;
   let card5;
   if (!fB) card5 = `<div class="dcard"><div class="dcard-lbl">Blocchi autorizzativi</div><div class="dcard-nd">Fattore non attivo nei parametri</div></div>`;
@@ -1178,13 +1210,14 @@ function buildSixCards(r) {
     const pct = fB.metriResiduiProg > 0 ? Math.min(100, fB.metriBloccati/fB.metriResiduiProg*100) : 0;
     card5 = `<div class="dcard">
       <div class="dcard-lbl">Blocchi autorizzativi</div>
-      <div class="dcard-main">${r.p.blocchi.length} tratte · ${fmtNum(fB.metriBloccati)} m bloccati</div>
-      <div class="dcard-sub">Impatto ROS: ${impattoTesto(fB.contributo, rischio.punteggio)}</div>
+      <div class="dcard-main">${fmtNum(fB.metriBloccati)} m bloccati da nulla osta</div>
+      <div class="dcard-sub">Impatto: ${impattoTesto(fB.contributo, rischio.punteggio)}</div>
       <div class="dcard-bars"><div class="dcard-bar-row"><div class="dbr-track"><div class="dbr-fill" style="width:${pct}%;background:var(--alto)"></div></div><span>${pct.toFixed(0)}%</span></div></div>
     </div>`;
   }
 
-  // Card 6 — Cantieri sospesi
+  // Card 6 — Cantieri sospesi: conteggio + metri residui, senza etichetta
+  // di impatto sul modello (l'informazione operativa è già autoesplicativa)
   const fS = rischio.fattori.R_SOSP;
   let card6;
   if (!fS) card6 = `<div class="dcard"><div class="dcard-lbl">Cantieri sospesi</div><div class="dcard-nd">Fattore non attivo nei parametri</div></div>`;
@@ -1193,7 +1226,7 @@ function buildSixCards(r) {
     card6 = `<div class="dcard">
       <div class="dcard-lbl">Cantieri sospesi</div>
       <div class="dcard-main">${r.s.sospesi.length} ${r.s.sospesi.length===1?'cantiere sospeso':'cantieri sospesi'}</div>
-      <div class="dcard-sub">${fmtNum(fS.metriSospesi||0)} m residui · Impatto ROS: ${impattoTesto(fS.contributo, rischio.punteggio)}</div>
+      <div class="dcard-sub">${fmtNum(fS.metriSospesi||0)} m residui</div>
       <div class="dcard-bars"><div class="dcard-bar-row"><div class="dbr-track"><div class="dbr-fill" style="width:${pct}%;background:var(--warn)"></div></div><span>${pct.toFixed(0)}%</span></div></div>
     </div>`;
   }
@@ -1232,13 +1265,13 @@ function buildRosBreakdown(r) {
 // ── grafici avanzamento (§13): barre affiancate Previsto/Reale ──
 function buildCmpChart(flag, tooltip, r, isProg) {
   if (flag.plannedToday === null) {
-    return `<div class="cmp-chart"><div class="dcard-nd">Dato non disponibile — nessuna milestone tracciata per questa fase.</div></div>`;
+    return `<div class="cmp-chart"><div class="dcard-nd">${isProg ? 'Milestone autorizzativa non disponibile per questo lotto — la progettazione può comunque essere in corso, il modello semplicemente non ha una data di riferimento per calcolare lo scostamento.' : 'Nessuna milestone tracciata per gli scavi di questo lotto.'}</div></div>`;
   }
   const scost = fmtScost(flag.gap, flag.flag);
   let meta;
   if (isProg) {
     const residuo = Math.max(0, (r.p.kmTot||0) - (r.p.kmOtt||0));
-    meta = `<span>Scostamento: <b class="${scost.cls}" style="font-family:var(--font-mono)">${scost.text}</b></span><span>Autorizzati: <b>${fmtNum(r.p.kmOtt)} m</b></span><span>Non autorizzati: <b>${fmtNum(residuo)} m</b></span><span>Fase: <b>${flag.primaAvvio?'non avviata':(flag.flag==='err'?'in ritardo':'in corso')}</b></span>`;
+    meta = `<span>Scostamento: <b class="${scost.cls}" style="font-family:var(--font-mono)">${scost.text}</b></span><span>Autorizzati: <b>${fmtNum(r.p.kmOtt)} m</b></span><span>Non autorizzati: <b>${fmtNum(residuo)} m</b></span><span>Fase: <b>${flag.primaAvvio?'milestone non disponibile':(flag.flag==='err'?'in ritardo':'in corso')}</b></span>`;
   } else {
     const residuo = Math.max(0, (r.s.metriTot||0) - (r.s.metriScavati||0));
     meta = `<span>Scostamento: <b class="${scost.cls}" style="font-family:var(--font-mono)">${scost.text}</b></span><span>Metri residui: <b>${fmtNum(residuo)} m</b></span><span>Ritardo stimato: <b>${fmtDelay(flag.delayDays)}</b></span>`;
