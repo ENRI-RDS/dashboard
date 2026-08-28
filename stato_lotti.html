@@ -107,9 +107,9 @@ body.panel-open .main{margin-right:44%;}
 .adv-note{font-size:9.5px;color:var(--muted2);font-style:italic;margin-top:2px;}
 .adv-na{font-size:11px;color:var(--muted2);}
 
-.causa-list{list-style:none;font-size:11.5px;color:var(--text2);line-height:1.6;max-width:250px;}
-.causa-list li{position:relative;padding-left:11px;}
-.causa-list li::before{content:'•';position:absolute;left:0;color:var(--muted2);}
+.causa-list{list-style:none;font-size:11.5px;color:var(--text2);line-height:1.7;max-width:250px;}
+.causa-list li{padding-left:0;}
+.causa-list .ci-icon{margin-right:5px;font-size:10.5px;filter:grayscale(.15);}
 .causa-list.ct-muted{color:var(--muted2);font-style:italic;}
 
 .action-pill{display:inline-block;font-size:10.5px;font-weight:600;padding:5px 11px;border-radius:8px;white-space:normal;max-width:170px;line-height:1.3;}
@@ -809,28 +809,6 @@ function computeAzioneParametrica(row, capacita, parametri) {
   return null;
 }
 
-// ── Causa operativa: fattori attivi ordinati per contributo pesato (§5) ──
-function computeCausaOperativa(row, rischio) {
-  const attivi = Object.values(rischio.fattori).filter(f => f.disponibile && f.contributo > 0.01);
-  attivi.sort((a, b) => b.contributo - a.contributo);
-  const frasi = attivi.slice(0, 3).map(f => {
-    let base;
-    if (f.codice === 'R_SCAVI') base = `Capacità scavi insufficiente${capForRow(f)}`;
-    else if (f.codice === 'R_AUTH') { const c = countPratiche(f.dettaglio); base = `${c.n} ${c.label} non autorizzate (${fmtNum(f.dettaglio.reduce((s, d) => s + d.km, 0))} m)${c.esatto ? '' : ' — pratiche non distinguibili, dato PRATICA assente'}`; }
-    else if (f.codice === 'R_SOSP') base = `${row.s.sospesi.length} cantiere${row.s.sospesi.length === 1 ? '' : 'i'} sospeso${row.s.sospesi.length === 1 ? '' : 'i'} (${fmtNum(f.metriSospesi)} m residui)`;
-    else if (f.codice === 'R_MS') base = `Milestone "${f.peggiore.label}" scaduta da ${f.peggiore.giorni} gg`;
-    else if (f.codice === 'R_BLOCCHI') base = `${row.p.blocchi.length} tratte bloccate da nulla osta/ordinanza (${fmtNum(f.metriBloccati)} m)`;
-    else base = f.fattore;
-    // Distingue "criticità presente" (fatto oggettivo, sopra) da "criticità
-    // impattante sulla milestone" (quanto pesa realmente sul punteggio ROS,
-    // dato dal contributo pesato — mai solo dalla gravità grezza del fattore).
-    return `${base} — impatto ROS ${f.contributo.toFixed(1)} pt`;
-  });
-  if (!frasi.length) return { html: 'Nessun fattore di rischio ROS attivo — in linea con il piano.', muted: true };
-  return { html: frasi.join(' · '), muted: false };
-}
-function capForRow(f) { return f.rapporto === null ? ' (ROS già scaduta)' : ` (squadre necessarie ${(f.rapporto * 100).toFixed(0)}% delle disponibili)`; }
-
 // R_SOSP (effetto: cantiere fermo) e R_BLOCCHI (causa: atto amministrativo
 // pendente) restano fattori distinti per scelta di modello — ma quando lo
 // stesso numero di pratica genera sia la sospensione che il blocco, va
@@ -862,6 +840,20 @@ function fmtScost(gap, flag) {
   const cls = flag === 'err' ? 'scost-neg-forte' : flag === 'warn' ? 'scost-neg' : 'scost-pos';
   const s = gap > 0 ? '+' : '';
   return { text: `${s}${Math.round(gap)}%`, cls };
+}
+
+// Traduce contributo/peso/punteggio grezzo in linguaggio operativo per la
+// vista principale e le card decisionali. Il jargon tecnico resta SOLO in
+// "Come è stato calcolato" (buildCollapsibleCalcolo). Nessuna nuova soglia:
+// riusa le classi Basso/Medio/Alto/Critico già lette da /api/parametri.
+function classificaPunti(punti, classi) {
+  return (classi || []).find(c => punti >= c.punteggio_min && punti <= c.punteggio_max) || null;
+}
+function impattoTesto(contributo, punteggioTotale) {
+  if (!punteggioTotale || punteggioTotale <= 0) return contributo > 0.05 ? 'Unico fattore attivo' : 'Nessun impatto';
+  const pct = contributo / punteggioTotale * 100;
+  if (pct < 3) return 'Trascurabile';
+  return `${Math.round(pct)}% del rischio totale`;
 }
 
 function svgGauge(score, color) {
@@ -901,13 +893,14 @@ function tooltipProg(r) {
 
 // ── colonna "Perché è a rischio": fatti oggettivi, max 3, nessuna formula ──
 function causaTesto(f, row) {
-  if (f.codice === 'R_SCAVI') return `Capacità operativa insufficiente${f.rapporto === null ? ' (ROS già scaduta)' : ` (squadre necessarie ${(f.rapporto*100).toFixed(0)}% delle disponibili)`}`;
+  if (f.codice === 'R_SCAVI') return `Capacità operativa insufficiente${f.rapporto === null ? ' (ROS già scaduta)' : ''}`;
   if (f.codice === 'R_AUTH') { const c = countPratiche(f.dettaglio); return `${c.n} ${c.label} non autorizzate (${fmtNum(f.dettaglio.reduce((s,d)=>s+d.km,0))} m)`; }
-  if (f.codice === 'R_SOSP') return `${row.s.sospesi.length} cantiere${row.s.sospesi.length===1?'':'i'} sospeso${row.s.sospesi.length===1?'':'i'} (${fmtNum(f.metriSospesi)} m)`;
+  if (f.codice === 'R_SOSP') return `${row.s.sospesi.length} ${row.s.sospesi.length===1?'cantiere sospeso':'cantieri sospesi'} (${fmtNum(f.metriSospesi)} m)`;
   if (f.codice === 'R_MS') return `Milestone "${f.peggiore.label}" scaduta da ${f.peggiore.giorni} gg`;
-  if (f.codice === 'R_BLOCCHI') return `${row.p.blocchi.length} tratte bloccate — blocchi autorizzativi (${fmtNum(f.metriBloccati)} m)`;
+  if (f.codice === 'R_BLOCCHI') return `${row.p.blocchi.length} tratte bloccate da nulla osta (${fmtNum(f.metriBloccati)} m)`;
   return f.fattore;
 }
+const FATTORE_ICON = { R_SCAVI: '👥', R_AUTH: '📄', R_SOSP: '⏸', R_MS: '📅', R_BLOCCHI: '🔒' };
 
 function computeCausaUI(row) {
   const rischio = row.rischio;
@@ -922,7 +915,7 @@ function computeCausaUI(row) {
 
 function renderCausaCell(row) {
   const c = row.causaUI;
-  return `<ul class="causa-list${c.muted ? ' ct-muted' : ''}">${c.items.map(i => `<li>${i.testo}</li>`).join('')}</ul>`;
+  return `<ul class="causa-list${c.muted ? ' ct-muted' : ''}">${c.items.map(i => `<li>${i.fattore ? `<span class="ci-icon">${FATTORE_ICON[i.fattore.codice]}</span>` : ''}${i.testo}</li>`).join('')}</ul>`;
 }
 
 function renderRischioBadge(rischio) {
@@ -940,7 +933,7 @@ function renderProssimaCol(row) {
   if (row.prossimaMilestone) {
     const p = row.prossimaMilestone;
     const gg = Math.round((p.date - oggi) / 86400000);
-    return `<div class="ms-block"><div class="ms-name">${p.label}</div><div class="ms-date">${fmtDateShort(p.date)}</div><div class="ms-days">tra ${gg} giorni</div></div>`;
+    return `<div class="ms-block"><div class="ms-name">${p.nome}</div><div class="ms-date">${fmtDateShort(p.date)}</div><div class="ms-days">tra ${gg} giorni</div></div>`;
   }
   const overdue = [...(row.pFlag.milestoneRitardo||[]), ...(row.sFlag.milestoneRitardo||[])].sort((a,b)=>b.date-a.date)[0];
   if (overdue) {
@@ -986,8 +979,7 @@ function render(prog, scavi, milestoneByLotto) {
     row.capacita = computeCapacita(lotto, row, PARAMETRI);
     row.rischio = computeRischioComposito(row, row.capacita, PARAMETRI);
     row.azioneInfo = computeAzioneParametrica(row, row.capacita, PARAMETRI);
-    row.causa = computeCausaOperativa(row, row.rischio); // versione completa (con impatto pt) per §16/tab
-    row.causaUI = computeCausaUI(row); // versione tabella/card (solo fatti)
+    row.causaUI = computeCausaUI(row); // versione card/tabella (solo fatti + impatto in linguaggio naturale)
 
     // prossima milestone: qualunque distanza futura (presentazione, non usata dal motore)
     const tuttiPunti = [...progPoints, ...scaviPoints].filter(pt => pt.date);
@@ -1148,7 +1140,7 @@ function buildSixCards(r) {
   const top = r.causaUI.top;
   const card2 = `<div class="dcard">
     <div class="dcard-lbl">Perché è a rischio</div>
-    ${top ? `<div class="dcard-main">${causaTesto(top.fattore, r)}</div><div class="dcard-sub">Contributo: ${top.fattore.contributo.toFixed(1)} punti</div>` : `<div class="dcard-nd">${r.causaUI.items[0].testo}</div>`}
+    ${top ? `<div class="dcard-main">${FATTORE_ICON[top.fattore.codice]} ${causaTesto(top.fattore, r)}</div><div class="dcard-sub">${impattoTesto(top.fattore.contributo, rischio.punteggio)}</div>` : `<div class="dcard-nd">${r.causaUI.items[0].testo}</div>`}
   </div>`;
 
   // Card 3 — Azione suggerita
@@ -1187,7 +1179,7 @@ function buildSixCards(r) {
     card5 = `<div class="dcard">
       <div class="dcard-lbl">Blocchi autorizzativi</div>
       <div class="dcard-main">${r.p.blocchi.length} tratte · ${fmtNum(fB.metriBloccati)} m bloccati</div>
-      <div class="dcard-sub">Contributo ROS: ${fB.contributo.toFixed(1)} punti</div>
+      <div class="dcard-sub">Impatto ROS: ${impattoTesto(fB.contributo, rischio.punteggio)}</div>
       <div class="dcard-bars"><div class="dcard-bar-row"><div class="dbr-track"><div class="dbr-fill" style="width:${pct}%;background:var(--alto)"></div></div><span>${pct.toFixed(0)}%</span></div></div>
     </div>`;
   }
@@ -1200,8 +1192,8 @@ function buildSixCards(r) {
     const pct = fS.metriResidui > 0 ? Math.min(100, fS.metriSospesi/fS.metriResidui*100) : 0;
     card6 = `<div class="dcard">
       <div class="dcard-lbl">Cantieri sospesi</div>
-      <div class="dcard-main">${r.s.sospesi.length} cantiere${r.s.sospesi.length===1?'':'i'} sospeso${r.s.sospesi.length===1?'':'i'}</div>
-      <div class="dcard-sub">${fmtNum(fS.metriSospesi||0)} m residui · Contributo ROS: ${fS.contributo.toFixed(1)} punti</div>
+      <div class="dcard-main">${r.s.sospesi.length} ${r.s.sospesi.length===1?'cantiere sospeso':'cantieri sospesi'}</div>
+      <div class="dcard-sub">${fmtNum(fS.metriSospesi||0)} m residui · Impatto ROS: ${impattoTesto(fS.contributo, rischio.punteggio)}</div>
       <div class="dcard-bars"><div class="dcard-bar-row"><div class="dbr-track"><div class="dbr-fill" style="width:${pct}%;background:var(--warn)"></div></div><span>${pct.toFixed(0)}%</span></div></div>
     </div>`;
   }
@@ -1209,25 +1201,30 @@ function buildSixCards(r) {
   return `<div class="card-grid-6">${card1}${card2}${card3}${card4}${card5}${card6}</div>`;
 }
 
-// ── grafico rischio ROS a 5 fattori (§12) ──
+// ── grafico rischio ROS a 5 fattori (§12): niente "peso/punteggio grezzo/pt"
+// nella vista principale — etichetta di classe (stessa scala Basso/Medio/
+// Alto/Critico dell'intera dashboard) + frase di impatto in linguaggio
+// naturale. Dettaglio numerico completo resta in "Come è stato calcolato".
 function buildRosBreakdown(r) {
   const rischio = r.rischio;
+  const classi = PARAMETRI.rischio_ros.classi || [];
   let h = FATTORE_ORDER.map(codice => {
     const f = rischio.fattori[codice];
     if (!f) return '';
     if (!f.disponibile) {
       return `<div class="factor-row"><div class="fr-top"><span class="fr-name">${FATTORE_LABEL[codice]}</span><span class="fr-na">Dato insufficiente</span></div><div class="fr-meta">${f.motivo}</div></div>`;
     }
-    const color = f.punti >= 75 ? 'var(--danger)' : f.punti >= 50 ? 'var(--alto)' : f.punti >= 25 ? 'var(--warn)' : 'var(--ok)';
+    const classeF = classificaPunti(f.punti, classi);
+    const color = classeF ? CLASSE_COLOR[classeF.classe] : 'var(--gray-400)';
     return `<div class="factor-row">
-      <div class="fr-top"><span class="fr-name">${FATTORE_LABEL[codice]}</span><span class="fr-contrib" style="color:${color}">${f.contributo.toFixed(1)} pt</span></div>
+      <div class="fr-top"><span class="fr-name">${FATTORE_LABEL[codice]}</span><span class="fr-contrib" style="color:${color}">${classeF ? classeF.classe : '—'}</span></div>
       <div class="fr-track"><div class="fr-fill" style="width:${f.punti}%;background:${color}"></div></div>
-      <div class="fr-meta">Punteggio grezzo: ${f.punti.toFixed(0)}/100 · Peso: ${(f.pesoEffettivo*100).toFixed(1)}%${rischio.renormalizzato ? ' (rinormalizzato)' : ''}</div>
+      <div class="fr-meta">${impattoTesto(f.contributo, rischio.punteggio)}</div>
     </div>`;
   }).join('');
-  h += `<div class="factor-total"><span>Totale</span><b>${rischio.punteggio===null?'N/D':rischio.punteggio.toFixed(1)+'/100'} · Classe ${rischio.classe?rischio.classe.classe:'N/D'}</b></div>`;
+  h += `<div class="factor-total"><span>Totale</span><b>${rischio.punteggio===null?'N/D':Math.round(rischio.punteggio)+'/100'} · ${rischio.classe?rischio.classe.classe:'N/D'}</b></div>`;
   if (rischio.renormalizzato) {
-    h += `<div class="empty-note">Punteggio calcolato sul ${Math.round(rischio.pesoAttivoTotale*100)}% del modello (pesi rinormalizzati sui fattori disponibili).</div>`;
+    h += `<div class="empty-note">Uno o più fattori non sono calcolabili per dati mancanti — il punteggio è comunque completo, ridistribuito sui fattori disponibili. Dettaglio in "Come è stato calcolato".</div>`;
   }
   return h;
 }
