@@ -49,22 +49,35 @@ body.panel-open .main{margin-right:44%;}
 .legend-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px;}
 #loadState{padding:40px;text-align:center;color:var(--muted);font-size:13px;}
 
-/* ── 4 KPI cards operative ── */
-.kpi-row2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;}
-.kpi-card2{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;box-shadow:var(--sh-sm);display:flex;flex-direction:column;gap:8px;}
-.kpi-card2-top{display:flex;align-items:center;gap:10px;}
-.kpi-icon2{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.kpi-icon2 svg{width:17px;height:17px;}
-.kpi-icon2.ic-critici{background:var(--danger-bg);color:var(--danger);}
-.kpi-icon2.ic-alto{background:var(--alto-bg);color:var(--alto);}
-.kpi-icon2.ic-sospesi{background:var(--warn-bg);color:var(--warn);}
-.kpi-icon2.ic-bloccati{background:var(--retelit-ice);color:var(--retelit-blue);}
-.kpi-card2-lbl{font-family:var(--font-mono);font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
-.kpi-card2-val{font-family:var(--font-display);font-size:26px;font-weight:800;color:var(--text);line-height:1;}
-.kpi-card2-sub{font-size:11px;color:var(--muted);}
-.kpi-mini-bars{display:flex;align-items:flex-end;gap:3px;height:26px;margin-top:2px;}
-.kpi-mini-bars .mb{flex:1;background:var(--gray-200);border-radius:2px 2px 0 0;min-width:4px;}
-.kpi-mini-bars .mb.mb-fill{background:var(--retelit-sky);}
+/* ── 4 pannelli grafici compatti (sostituiscono le vecchie KPI card) ── */
+.summary-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+@media(max-width:1100px){.summary-row{grid-template-columns:repeat(2,1fr);}}
+.summary-panel{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px 16px;box-shadow:var(--sh-sm);display:flex;flex-direction:column;gap:8px;min-height:0;}
+.sp-title{font-family:var(--font-mono);font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);}
+.sp-total{font-size:10.5px;color:var(--muted);border-top:1px solid var(--gray-100);padding-top:6px;margin-top:2px;}
+.sp-total b{color:var(--text);font-family:var(--font-mono);}
+/* pannello 1: distribuzione rischio */
+.sp-bars{display:flex;flex-direction:column;gap:5px;}
+.sp-bar-row{display:grid;grid-template-columns:44px 1fr 62px;align-items:center;gap:8px;font-size:11px;}
+.sp-bar-row .sbr-lbl{color:var(--text2);font-weight:600;}
+.sp-bar-row .sbr-track{height:11px;background:var(--gray-100);border-radius:4px;overflow:hidden;}
+.sp-bar-row .sbr-fill{height:100%;border-radius:4px;}
+.sp-bar-row .sbr-val{font-family:var(--font-mono);color:var(--muted);text-align:right;white-space:nowrap;}
+/* pannelli 2/3: gauge + legenda */
+.sp-gauge-row{display:flex;align-items:center;gap:12px;}
+.sp-gauge-wrap{position:relative;width:88px;height:52px;flex-shrink:0;}
+.sp-gauge-center{position:absolute;left:0;right:0;bottom:0;text-align:center;}
+.sp-gauge-center .sgc-pct{font-family:var(--font-display);font-weight:800;font-size:17px;line-height:1;color:var(--text);}
+.sp-gauge-center .sgc-lbl{font-size:8.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+.sp-legend{display:flex;flex-direction:column;gap:3px;font-size:10.5px;color:var(--text2);}
+.sp-legend .sl-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;}
+.sp-legend b{color:var(--text);font-family:var(--font-mono);}
+/* pannello 4: cantieri per stato */
+.sp-colchart{display:flex;align-items:flex-end;gap:10px;height:64px;padding-top:4px;}
+.sp-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:3px;}
+.sp-col-bar{width:100%;max-width:30px;border-radius:4px 4px 0 0;min-height:3px;}
+.sp-col-val{font-family:var(--font-mono);font-weight:700;font-size:12px;color:var(--text);}
+.sp-col-lbl{font-size:8.5px;color:var(--muted);text-align:center;line-height:1.15;}
 
 .section-block{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--sh-sm);overflow:hidden;}
 .table-wrap{overflow-x:auto;width:100%;}
@@ -73,6 +86,8 @@ body.panel-open .main{margin-right:44%;}
 .stato-table{width:100%;border-collapse:collapse;font-size:12px;}
 .stato-table thead th{padding:9px 12px;font-family:var(--font-mono);font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;border-bottom:2px solid var(--border2);white-space:nowrap;background:var(--gray-50);position:sticky;top:0;}
 .stato-table thead th.tc-center{text-align:center;}
+.stato-table thead th.th-group{text-align:center;border-bottom:1px solid var(--border);border-left:1px solid var(--border);}
+.stato-table thead th.th-sub{font-size:8.5px;border-left:1px solid var(--gray-100);color:var(--muted2);}
 .stato-table tbody tr{border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;border-left:4px solid transparent;}
 .stato-table tbody tr:hover{background:rgba(4,63,117,.03);}
 .stato-table tbody tr.sel{background:rgba(65,187,217,.08);}
@@ -94,18 +109,17 @@ body.panel-open .main{margin-right:44%;}
 .risk-badge.risk-nd{background:var(--gray-100);color:var(--muted2);}
 
 /* previsto / reale / scostamento */
-.adv-col{display:flex;flex-direction:column;gap:1px;min-width:108px;cursor:help;}
-.adv-row{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--text2);}
-.adv-row b{font-family:var(--font-mono);color:var(--text);font-weight:700;}
-.adv-row b.scost-pos{color:var(--ok);}
-.adv-row b.scost-neg{color:var(--warn);}
-.adv-row b.scost-neg-forte{color:var(--danger);}
-.adv-row b.scost-na{color:var(--muted2);}
-.adv-bar{position:relative;height:6px;background:var(--gray-100);border-radius:4px;margin-top:4px;overflow:visible;}
-.adv-bar-real{position:absolute;left:0;top:0;height:100%;border-radius:4px;background:var(--retelit-sky);}
-.adv-bar-planned{position:absolute;top:-2px;width:2px;height:10px;background:var(--gray-500);border-radius:1px;}
-.adv-note{font-size:9.5px;color:var(--muted2);font-style:italic;margin-top:2px;}
-.adv-na{font-size:11px;color:var(--muted2);}
+.stato-table td.tc-center{text-align:center;font-family:var(--font-mono);font-size:12px;color:var(--text2);}
+.scost-pos{color:var(--ok);}
+.scost-neg{color:var(--warn);}
+.scost-neg-forte{color:var(--danger);}
+.scost-na{color:var(--muted2);}
+.scost-cell{display:flex;flex-direction:column;align-items:center;gap:3px;}
+.scost-cell b{font-family:var(--font-mono);font-weight:700;font-size:12px;}
+.mini-bar{width:44px;height:4px;background:var(--gray-100);border-radius:2px;overflow:hidden;}
+.mini-bar-fill{height:100%;border-radius:2px;}
+.adv-note-sm{font-size:8.5px;color:var(--muted2);font-style:italic;line-height:1.3;max-width:90px;margin:2px auto 0;white-space:normal;}
+.adv-nd-cell{color:var(--muted2)!important;}
 
 .causa-list{list-style:none;font-size:11.5px;color:var(--text2);line-height:1.7;max-width:250px;}
 .causa-list li{padding-left:0;}
@@ -155,6 +169,15 @@ body.panel-open .main{margin-right:44%;}
 .dcard-nd{color:var(--muted2);font-style:italic;font-size:11px;}
 
 .factor-row{display:flex;flex-direction:column;gap:3px;padding:9px 0;border-bottom:1px solid var(--gray-100);}
+.panel-section-title-sm{margin-top:16px;font-size:10px;}
+.pst-note{text-transform:none;letter-spacing:0;font-weight:400;color:var(--muted2);font-style:italic;}
+.ros-breakdown-compact{background:var(--gray-50);border:1px solid var(--border);border-radius:10px;padding:4px 12px;}
+.ros-breakdown-compact .factor-row-sm{padding:6px 0;gap:2px;}
+.ros-breakdown-compact .fr-top{font-size:10.5px;}
+.ros-breakdown-compact .fr-name{font-weight:600;}
+.ros-breakdown-compact .fr-contrib{font-size:10px;}
+.ros-breakdown-compact .fr-track{height:4px;}
+.ros-breakdown-compact .fr-na{font-size:10px;}
 .factor-row .fr-top{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;}
 .factor-row .fr-name{color:var(--text);font-weight:700;}
 .factor-row .fr-contrib{font-family:var(--font-mono);font-weight:700;white-space:nowrap;font-size:12px;}
@@ -232,19 +255,23 @@ body.panel-open .main{margin-right:44%;}
   </div>
 
   <div id="loadState">Caricamento dati…</div>
-  <div id="kpiStrip" class="kpi-row2" style="display:none;"></div>
+  <div id="kpiStrip" class="summary-row" style="display:none;"></div>
   <div id="tableWrap" class="section-block" style="display:none;">
     <div class="table-wrap">
       <table class="stato-table">
         <thead>
           <tr>
-            <th>Lotto</th>
-            <th class="tc-center">Rischio ROS</th>
-            <th>Scavi</th>
-            <th>Progettazione / Autorizzazioni</th>
-            <th>Perché è a rischio</th>
-            <th>Azione suggerita</th>
-            <th>Prossima milestone</th>
+            <th rowspan="2">Lotto</th>
+            <th rowspan="2" class="tc-center">Rischio ROS</th>
+            <th colspan="3" class="th-group">Scavi</th>
+            <th colspan="3" class="th-group">Autorizzazioni</th>
+            <th rowspan="2">Perché è a rischio</th>
+            <th rowspan="2">Azione suggerita</th>
+            <th rowspan="2">Prossima milestone</th>
+          </tr>
+          <tr>
+            <th class="tc-center th-sub">Previsto</th><th class="tc-center th-sub">Reale</th><th class="tc-center th-sub">Scostamento</th>
+            <th class="tc-center th-sub">Previsto</th><th class="tc-center th-sub">Reale</th><th class="tc-center th-sub">Scostamento</th>
           </tr>
         </thead>
         <tbody id="lottiBody"></tbody>
@@ -846,9 +873,6 @@ function fmtScost(gap, flag) {
 // vista principale e le card decisionali. Il jargon tecnico resta SOLO in
 // "Come è stato calcolato" (buildCollapsibleCalcolo). Nessuna nuova soglia:
 // riusa le classi Basso/Medio/Alto/Critico già lette da /api/parametri.
-function classificaPunti(punti, classi) {
-  return (classi || []).find(c => punti >= c.punteggio_min && punti <= c.punteggio_max) || null;
-}
 function impattoTesto(contributo, punteggioTotale) {
   if (!punteggioTotale || punteggioTotale <= 0) return contributo > 0.05 ? 'Fattore principale' : 'Nessun impatto';
   const pct = contributo / punteggioTotale * 100;
@@ -869,26 +893,26 @@ function svgGauge(score, color) {
   </svg>`;
 }
 
-// ── colonna Scavi / colonna Progettazione: Previsto / Reale / Scostamento ──
-function renderAvanzamento(flag, unitaTooltip, isProg) {
+// ── colonne raggruppate Scavi / Autorizzazioni: 3 celle separate
+// Previsto | Reale | Scostamento (mai un blocco di testo combinato) ──
+function renderAvanzamentoCells(flag, isProg, tooltip) {
   if (flag.plannedToday === null) {
-    return `<div class="adv-col" title="${unitaTooltip}">Reale ${fmtPct(flag.pct)}<div class="adv-na">${isProg ? 'Milestone autorizzativa non disponibile' : 'Previsto: N/D (nessuna milestone)'}</div></div>`;
+    // Milestone non disponibile: mai "fase non iniziata" — la progettazione
+    // può essere effettivamente in corso, manca solo la data di riferimento.
+    const nota = isProg ? 'Milestone autorizzativa non disponibile' : 'Nessuna milestone tracciata';
+    return `<td class="tc-center adv-nd-cell" title="${tooltip}">—</td>
+      <td class="tc-center" title="${tooltip}"><b>${fmtPct(flag.pct)}</b><div class="adv-note-sm">${nota}</div></td>
+      <td class="tc-center adv-nd-cell">—</td>`;
   }
   const scost = fmtScost(flag.gap, flag.flag);
-  const bar = `<div class="adv-bar"><div class="adv-bar-real" style="width:${Math.max(0,Math.min(100,flag.pct)).toFixed(1)}%;background:${flag.flag==='err'?'var(--danger)':flag.flag==='warn'?'var(--warn)':'var(--ok)'}"></div><div class="adv-bar-planned" style="left:${Math.max(0,Math.min(100,flag.plannedToday)).toFixed(1)}%"></div></div>`;
-  // "Fase non ancora avviata" è accurato per gli SCAVI (avvio cantiere
-  // genuinamente futuro). Per la PROGETTAZIONE useremmo la stessa frase solo
-  // quando la milestone "invio" è tracciata ma futura — non deve mai
-  // suggerire che il lotto non sia stato progettato quando i dati di
-  // avanzamento reale mancano semplicemente perché la milestone non è
-  // tracciata nel modello (quel caso è già gestito sopra, ramo N/D).
-  const nota = flag.primaAvvio ? `<div class="adv-note">${isProg ? 'Milestone autorizzativa non disponibile' : 'Scavi non ancora avviati'}</div>` : '';
-  return `<div class="adv-col" title="${unitaTooltip}">
-    <div class="adv-row"><span>Prev.</span><b>${fmtPct(flag.plannedToday)}</b></div>
-    <div class="adv-row"><span>Reale</span><b>${fmtPct(flag.pct)}</b></div>
-    <div class="adv-row"><span>Scost.</span><b class="${scost.cls}">${scost.text}</b></div>
-    ${bar}${nota}
-  </div>`;
+  const barColor = flag.flag==='err'?'var(--danger)':flag.flag==='warn'?'var(--warn)':'var(--ok)';
+  const nota = flag.primaAvvio ? `<div class="adv-note-sm">${isProg ? 'Milestone autorizzativa non disponibile' : 'Scavi non ancora avviati'}</div>` : '';
+  return `<td class="tc-center" title="${tooltip}">${fmtPct(flag.plannedToday)}</td>
+    <td class="tc-center" title="${tooltip}"><b>${fmtPct(flag.pct)}</b>${nota}</td>
+    <td class="tc-center" title="${tooltip}">
+      <div class="scost-cell"><b class="${scost.cls}">${scost.text}</b>
+      <div class="mini-bar"><div class="mini-bar-fill" style="width:${Math.min(100,Math.abs(flag.gap||0)).toFixed(1)}%;background:${barColor}"></div></div></div>
+    </td>`;
 }
 
 function tooltipScavi(r) {
@@ -908,7 +932,7 @@ function causaDetail(f, row) {
   if (f.codice === 'R_SCAVI') {
     const c = row.capacita;
     const sec = (!c.insufficiente) ? `${c.squadre.disponibili} disponibil${c.squadre.disponibili===1?'e':'i'}, ${c.squadreNecessarie} necessari${c.squadreNecessarie===1?'a':'e'}` : null;
-    return { primary: 'Capacità operativa insufficiente', secondary: sec };
+    return { primary: 'Capacità insufficiente', secondary: sec };
   }
   if (f.codice === 'R_AUTH') {
     const c = countPratiche(f.dettaglio);
@@ -916,7 +940,7 @@ function causaDetail(f, row) {
     return { primary: `${km} m non autorizzati`, secondary: c.esatto ? `${c.n} pratic${c.n===1?'a':'he'} coinvolt${c.n===1?'a':'e'}` : `${c.n} tratt${c.n===1?'a':'e'} coinvolt${c.n===1?'a':'e'}` };
   }
   if (f.codice === 'R_SOSP') {
-    return { primary: `${fmtNum(f.metriSospesi)} m residui sospesi`, secondary: `${row.s.sospesi.length} cantiere${row.s.sospesi.length===1?'':'i'}` };
+    return { primary: `${fmtNum(f.metriSospesi)} m residui sospesi`, secondary: `${row.s.sospesi.length} cantier${row.s.sospesi.length===1?'e':'i'} coinvolt${row.s.sospesi.length===1?'o':'i'}` };
   }
   if (f.codice === 'R_MS') {
     return { primary: `Milestone "${f.peggiore.label}" scaduta`, secondary: `da ${f.peggiore.giorni} gg` };
@@ -959,16 +983,23 @@ function renderAzionePill(azioneInfo) {
 }
 
 // ── colonna Prossima milestone: qualsiasi distanza (non solo ≤30gg) ──
+// Colore per urgenza: verde oltre 60gg, arancione 30-60gg, rosso sotto 30gg
+// o milestone scaduta. Puramente presentazionale (nessuna soglia di modello).
+function urgenzaColor(gg) {
+  if (gg < 30) return 'var(--danger)';
+  if (gg <= 60) return 'var(--warn)';
+  return 'var(--ok)';
+}
 function renderProssimaCol(row) {
   if (row.prossimaMilestone) {
     const p = row.prossimaMilestone;
     const gg = Math.round((p.date - oggi) / 86400000);
-    return `<div class="ms-block"><div class="ms-name">${p.nome}</div><div class="ms-date">${fmtDateShort(p.date)}</div><div class="ms-days">tra ${gg} giorni</div></div>`;
+    return `<div class="ms-block" style="border-left:3px solid ${urgenzaColor(gg)};padding-left:7px;"><div class="ms-name">${p.nome}</div><div class="ms-date">${fmtDateShort(p.date)}</div><div class="ms-days">tra ${gg} giorni</div></div>`;
   }
   const overdue = [...(row.pFlag.milestoneRitardo||[]), ...(row.sFlag.milestoneRitardo||[])].sort((a,b)=>b.date-a.date)[0];
   if (overdue) {
     const gg = Math.round((oggi - overdue.date) / 86400000);
-    return `<div class="ms-block ms-scaduta"><div class="ms-name">Milestone scaduta</div><div class="ms-days">da ${gg} giorni</div></div>`;
+    return `<div class="ms-block ms-scaduta" style="border-left:3px solid var(--danger);padding-left:7px;"><div class="ms-name">Milestone scaduta</div><div class="ms-days">da ${gg} giorni</div></div>`;
   }
   return `<span class="ms-chip ms-none">nessuna milestone nota</span>`;
 }
@@ -1036,8 +1067,8 @@ function render(prog, scavi, milestoneByLotto) {
     <tr class="row-${classe}" onclick="openPanel('${r.lotto}')">
       <td><div class="lotto-code">Lotto ${r.lotto}</div><div class="lotto-cluster">cluster ${r.cluster}</div></td>
       <td class="tc-center">${renderRischioBadge(r.rischio)}</td>
-      <td>${renderAvanzamento(r.sFlag, tooltipScavi(r))}</td>
-      <td>${renderAvanzamento(r.pFlag, tooltipProg(r), true)}</td>
+      ${renderAvanzamentoCells(r.sFlag, false, tooltipScavi(r))}
+      ${renderAvanzamentoCells(r.pFlag, true, tooltipProg(r))}
       <td>${renderCausaCell(r)}</td>
       <td>${renderAzionePill(r.azioneInfo)}</td>
       <td>${renderProssimaCol(r)}</td>
@@ -1048,47 +1079,73 @@ function render(prog, scavi, milestoneByLotto) {
 }
 
 // ── 4 KPI cards operative (§2) ──
+// ── 4 pannelli riepilogo compatti: distribuzione rischio, metri
+// autorizzati, metri scavati, cantieri per stato — sostituiscono le
+// vecchie 4 card KPI, stessa altezza, lettura comparativa immediata.
 function renderKPI(rows) {
-  const nCritici = rows.filter(r => r.rischio.classe && r.rischio.classe.classe === 'Critico').length;
-  const nAlto = rows.filter(r => r.rischio.classe && r.rischio.classe.classe === 'Alto').length;
-  const sospesiAll = rows.flatMap(r => (r.s.sospesi || []).map(c => ({ ...c, lotto: r.lotto })));
-  const metriSospesiTot = sospesiAll.reduce((s, c) => s + (c.metriResiduo || 0), 0);
-  const bloccatiPerLotto = rows.map(r => ({ lotto: r.lotto, km: (r.p.blocchi || []).reduce((s,b)=>s+b.km,0), residuo: Math.max(0,(r.p.kmTot||0)-(r.p.kmOtt||0)) }));
-  const metriBloccatiTot = bloccatiPerLotto.reduce((s,b)=>s+b.km,0);
-  const residuoProgTot = bloccatiPerLotto.reduce((s,b)=>s+b.residuo,0);
+  const classiOrdine = ['Critico', 'Alto', 'Medio', 'Basso'];
+  const classiColor = { Critico: 'var(--danger)', Alto: 'var(--alto)', Medio: 'var(--warn)', Basso: 'var(--ok)' };
+  const counts = {};
+  classiOrdine.forEach(c => counts[c] = 0);
+  let nND = 0;
+  rows.forEach(r => { if (r.rischio.classe) counts[r.rischio.classe.classe]++; else nND++; });
+  const totLotti = rows.length;
 
-  function miniBars(values, colorClass) {
-    const max = Math.max(1, ...values);
-    return `<div class="kpi-mini-bars">${values.map(v => `<div class="mb ${v>0?'mb-fill':''}" style="height:${Math.max(2,(v/max)*26)}px" title="${fmtNum(v)}"></div>`).join('')}</div>`;
-  }
-  const sospesiPerLotto = rows.map(r => (r.s.sospesi||[]).length);
-  const bloccatiKmArr = bloccatiPerLotto.map(b => b.km);
+  const panel1 = `<div class="summary-panel">
+    <div class="sp-title">Distribuzione rischio ROS</div>
+    <div class="sp-bars">
+      ${classiOrdine.map(c => `<div class="sp-bar-row"><span class="sbr-lbl">${c}</span><div class="sbr-track"><div class="sbr-fill" style="width:${totLotti?counts[c]/totLotti*100:0}%;background:${classiColor[c]}"></div></div><span class="sbr-val">${counts[c]} (${totLotti?Math.round(counts[c]/totLotti*100):0}%)</span></div>`).join('')}
+      <div class="sp-bar-row"><span class="sbr-lbl">N/D</span><div class="sbr-track"><div class="sbr-fill" style="width:${totLotti?nND/totLotti*100:0}%;background:var(--gray-300)"></div></div><span class="sbr-val">${nND} (${totLotti?Math.round(nND/totLotti*100):0}%)</span></div>
+    </div>
+    <div class="sp-total">Totale lotti: <b>${totLotti}</b></div>
+  </div>`;
+
+  const kmTot = rows.reduce((s, r) => s + (r.p.kmTot || 0), 0);
+  const kmOtt = rows.reduce((s, r) => s + (r.p.kmOtt || 0), 0);
+  const kmNonAut = Math.max(0, kmTot - kmOtt);
+  const pctAut = kmTot > 0 ? kmOtt / kmTot * 100 : 0;
+  const panel2 = `<div class="summary-panel">
+    <div class="sp-title">Metri autorizzati</div>
+    <div class="sp-gauge-row">
+      <div class="sp-gauge-wrap">${svgGauge(pctAut, 'var(--ok)')}<div class="sp-gauge-center"><div class="sgc-pct">${Math.round(pctAut)}%</div><div class="sgc-lbl">Autorizzati</div></div></div>
+      <div class="sp-legend">
+        <div><span class="sl-dot" style="background:var(--ok)"></span>Autorizzati <b>${fmtNum(kmOtt)} m</b></div>
+        <div><span class="sl-dot" style="background:var(--gray-300)"></span>Non autorizzati <b>${fmtNum(kmNonAut)} m</b></div>
+      </div>
+    </div>
+    <div class="sp-total">Totale progettazione: <b>${fmtNum(kmTot)} m</b></div>
+  </div>`;
+
+  const mTot = rows.reduce((s, r) => s + (r.s.metriTot || 0), 0);
+  const mScav = rows.reduce((s, r) => s + (r.s.metriScavati || 0), 0);
+  const mResiduo = Math.max(0, mTot - mScav);
+  const pctScav = mTot > 0 ? mScav / mTot * 100 : 0;
+  const panel3 = `<div class="summary-panel">
+    <div class="sp-title">Metri scavati</div>
+    <div class="sp-gauge-row">
+      <div class="sp-gauge-wrap">${svgGauge(pctScav, 'var(--retelit-sky)')}<div class="sp-gauge-center"><div class="sgc-pct">${Math.round(pctScav)}%</div><div class="sgc-lbl">Scavati</div></div></div>
+      <div class="sp-legend">
+        <div><span class="sl-dot" style="background:var(--retelit-sky)"></span>Scavati <b>${fmtNum(mScav)} m</b></div>
+        <div><span class="sl-dot" style="background:var(--gray-300)"></span>Residui <b>${fmtNum(mResiduo)} m</b></div>
+      </div>
+    </div>
+    <div class="sp-total">Totale scavo: <b>${fmtNum(mTot)} m</b></div>
+  </div>`;
+
+  const statoOrder = [['in_corso','In corso','var(--retelit-sky)'],['sospeso','Sospesi','var(--warn)'],['allestimento','Allest.','var(--retelit-blue-50)'],['non_avviato','Non avviati','var(--gray-300)'],['completato','Completati','var(--ok)']];
+  const cantieriTutti = rows.flatMap(r => r.s.cantieri || []);
+  const statoCounts = statoOrder.map(([k,l,c]) => [k,l,c,cantieriTutti.filter(x=>x.stato_cantiere===k).length]).filter(([k,l,c,n],i) => n>0 || i<4);
+  const maxC = Math.max(1, ...statoCounts.map(s=>s[3]));
+  const panel4 = `<div class="summary-panel">
+    <div class="sp-title">Cantieri per stato</div>
+    <div class="sp-colchart">
+      ${statoCounts.map(([k,l,c,n]) => `<div class="sp-col"><div class="sp-col-val">${n}</div><div class="sp-col-bar" style="height:${Math.max(3,n/maxC*44)}px;background:${c}"></div><div class="sp-col-lbl">${l}</div></div>`).join('')}
+    </div>
+    <div class="sp-total">Totale: <b>${cantieriTutti.length}</b> cantieri</div>
+  </div>`;
 
   document.getElementById('kpiStrip').style.display = 'grid';
-  document.getElementById('kpiStrip').innerHTML = `
-    <div class="kpi-card2">
-      <div class="kpi-card2-top"><div class="kpi-icon2 ic-critici">⚠</div><div class="kpi-card2-lbl">Lotti critici</div></div>
-      <div class="kpi-card2-val">${nCritici}</div>
-      <div class="kpi-card2-sub">${rows.length ? Math.round(nCritici/rows.length*100) : 0}% del totale</div>
-    </div>
-    <div class="kpi-card2">
-      <div class="kpi-card2-top"><div class="kpi-icon2 ic-alto">▲</div><div class="kpi-card2-lbl">Lotti ad alto rischio</div></div>
-      <div class="kpi-card2-val">${nAlto}</div>
-      <div class="kpi-card2-sub">${rows.length ? Math.round(nAlto/rows.length*100) : 0}% del totale</div>
-    </div>
-    <div class="kpi-card2">
-      <div class="kpi-card2-top"><div class="kpi-icon2 ic-sospesi">⏸</div><div class="kpi-card2-lbl">Cantieri sospesi</div></div>
-      <div class="kpi-card2-val">${sospesiAll.length}</div>
-      <div class="kpi-card2-sub">${fmtNum(metriSospesiTot)} m residui</div>
-      ${miniBars(sospesiPerLotto)}
-    </div>
-    <div class="kpi-card2">
-      <div class="kpi-card2-top"><div class="kpi-icon2 ic-bloccati">🔒</div><div class="kpi-card2-lbl">Blocchi autorizzativi</div></div>
-      <div class="kpi-card2-val">${fmtNum(metriBloccatiTot)} m</div>
-      <div class="kpi-card2-sub">su ${fmtNum(residuoProgTot)} m residui progettazione</div>
-      ${miniBars(bloccatiKmArr)}
-    </div>
-  `;
+  document.getElementById('kpiStrip').innerHTML = panel1 + panel2 + panel3 + panel4;
 }
 
 function renderFooter() {
@@ -1141,8 +1198,8 @@ function openPanel(lotto) {
 function buildPanelHTML(r) {
   let h = '';
   h += buildSixCards(r);
-  h += `<div class="panel-section-title">Rischio ROS — breakdown per fattore</div>`;
-  h += buildRosBreakdown(r);
+  h += `<div class="panel-section-title panel-section-title-sm">Breakdown rischio ROS <span class="pst-note">(dettaglio tecnico completo in "Come è stato calcolato")</span></div>`;
+  h += `<div class="ros-breakdown-compact">${buildRosBreakdown(r)}</div>`;
   h += `<div class="panel-section-title">Avanzamento scavi</div>`;
   h += buildCmpChart(r.sFlag, tooltipScavi(r), r);
   h += `<div class="panel-section-title">Avanzamento autorizzazioni</div>`;
@@ -1191,7 +1248,7 @@ function buildSixCards(r) {
     const maxB = Math.max(disp, nec, 1);
     card4 = `<div class="dcard">
       <div class="dcard-lbl">Capacità operativa</div>
-      <div class="dcard-main">${disp} squadra${disp===1?'':'e'} disponibil${disp===1?'e':'i'}</div>
+      <div class="dcard-main">${disp} ${disp===1?'squadra disponibile':'squadre disponibili'}</div>
       <div class="dcard-sub">${nec} necessari${nec===1?'a':'e'}${delta>0?` · <b style="color:var(--danger)">+${delta} richiesta</b>`:' · nessuna aggiuntiva richiesta'}</div>
       <div class="dcard-bars">
         <div class="dcard-bar-row"><span style="width:64px">Disponibili</span><div class="dbr-track"><div class="dbr-fill" style="width:${disp/maxB*100}%;background:var(--gray-400)"></div></div><span>${disp}</span></div>
@@ -1212,7 +1269,7 @@ function buildSixCards(r) {
       <div class="dcard-lbl">Blocchi autorizzativi</div>
       <div class="dcard-main">${fmtNum(fB.metriBloccati)} m bloccati da nulla osta</div>
       <div class="dcard-sub">Impatto: ${impattoTesto(fB.contributo, rischio.punteggio)}</div>
-      <div class="dcard-bars"><div class="dcard-bar-row"><div class="dbr-track"><div class="dbr-fill" style="width:${pct}%;background:var(--alto)"></div></div><span>${pct.toFixed(0)}%</span></div></div>
+      <div class="dcard-bars"><div class="dcard-bar-row"><div class="dbr-track"><div class="dbr-fill" style="width:${pct}%;background:var(--alto)"></div></div></div></div>
     </div>`;
   }
 
@@ -1227,7 +1284,7 @@ function buildSixCards(r) {
       <div class="dcard-lbl">Cantieri sospesi</div>
       <div class="dcard-main">${r.s.sospesi.length} ${r.s.sospesi.length===1?'cantiere sospeso':'cantieri sospesi'}</div>
       <div class="dcard-sub">${fmtNum(fS.metriSospesi||0)} m residui</div>
-      <div class="dcard-bars"><div class="dcard-bar-row"><div class="dbr-track"><div class="dbr-fill" style="width:${pct}%;background:var(--warn)"></div></div><span>${pct.toFixed(0)}%</span></div></div>
+      <div class="dcard-bars"><div class="dcard-bar-row"><div class="dbr-track"><div class="dbr-fill" style="width:${pct}%;background:var(--warn)"></div></div></div></div>
     </div>`;
   }
 
@@ -1238,27 +1295,26 @@ function buildSixCards(r) {
 // nella vista principale — etichetta di classe (stessa scala Basso/Medio/
 // Alto/Critico dell'intera dashboard) + frase di impatto in linguaggio
 // naturale. Dettaglio numerico completo resta in "Come è stato calcolato".
+const IMPATTO_COLOR = { 'Trascurabile': 'var(--gray-400)', 'Contenuto': 'var(--ok)', 'Moderato': 'var(--warn)', 'Significativo': 'var(--alto)', 'Determinante': 'var(--danger)', 'Nessun impatto': 'var(--gray-400)', 'Fattore principale': 'var(--danger)' };
+
+// Sezione tecnica, compatta e secondaria: SOLO barra + parola qualitativa
+// (Trascurabile→Determinante). Punteggio grezzo, peso%, contributo in punti
+// e % del rischio totale restano esclusivamente in "Come è stato calcolato".
 function buildRosBreakdown(r) {
   const rischio = r.rischio;
-  const classi = PARAMETRI.rischio_ros.classi || [];
   let h = FATTORE_ORDER.map(codice => {
     const f = rischio.fattori[codice];
     if (!f) return '';
     if (!f.disponibile) {
-      return `<div class="factor-row"><div class="fr-top"><span class="fr-name">${FATTORE_LABEL[codice]}</span><span class="fr-na">Dato insufficiente</span></div><div class="fr-meta">${f.motivo}</div></div>`;
+      return `<div class="factor-row factor-row-sm"><div class="fr-top"><span class="fr-name">${FATTORE_LABEL[codice]}</span><span class="fr-na">Dato insufficiente</span></div></div>`;
     }
-    const classeF = classificaPunti(f.punti, classi);
-    const color = classeF ? CLASSE_COLOR[classeF.classe] : 'var(--gray-400)';
-    return `<div class="factor-row">
-      <div class="fr-top"><span class="fr-name">${FATTORE_LABEL[codice]}</span><span class="fr-contrib" style="color:${color}">${classeF ? classeF.classe : '—'}</span></div>
+    const parola = impattoTesto(f.contributo, rischio.punteggio);
+    const color = IMPATTO_COLOR[parola] || 'var(--gray-400)';
+    return `<div class="factor-row factor-row-sm">
+      <div class="fr-top"><span class="fr-name">${FATTORE_LABEL[codice]}</span><span class="fr-contrib" style="color:${color}">${parola}</span></div>
       <div class="fr-track"><div class="fr-fill" style="width:${f.punti}%;background:${color}"></div></div>
-      <div class="fr-meta">${impattoTesto(f.contributo, rischio.punteggio)}</div>
     </div>`;
   }).join('');
-  h += `<div class="factor-total"><span>Totale</span><b>${rischio.punteggio===null?'N/D':Math.round(rischio.punteggio)+'/100'} · ${rischio.classe?rischio.classe.classe:'N/D'}</b></div>`;
-  if (rischio.renormalizzato) {
-    h += `<div class="empty-note">Uno o più fattori non sono calcolabili per dati mancanti — il punteggio è comunque completo, ridistribuito sui fattori disponibili. Dettaglio in "Come è stato calcolato".</div>`;
-  }
   return h;
 }
 
@@ -1303,7 +1359,7 @@ function buildTabs(r) {
 
   const tabPratiche = `
     <div class="tab-caption">"Giorni di attesa" non disponibile: il dataset non registra la data di presentazione per pratica.</div>
-    <table class="mini-table"><thead><tr><th>${pratiche.some(p=>!p.isTratta)?'Pratica':'Tratta'}</th><th>Ente</th><th>Stato</th><th>Giorni attesa</th><th>Tratte</th><th>Metri</th></tr></thead>
+    <table class="mini-table"><thead><tr><th>${pratiche.some(p=>!p.isTratta)?'Pratica':'Tratta'}</th><th>Ente</th><th>Stato</th><th>Metri</th><th>Giorni attesa</th><th>Tratte</th></tr></thead>
     <tbody id="praticheBody">${renderPraticheRows(pratiche, 5)}</tbody></table>
     ${pratiche.length > 5 ? `<button class="tab-more" onclick="expandPratiche(this)" data-total="${pratiche.length}">Vedi tutte (${pratiche.length})</button>` : ''}
   `;
@@ -1407,13 +1463,14 @@ function buildCollapsibleCalcolo(r) {
     ${c.insufficiente ? '' : `Metri residui scavo: <b>${fmtNum(c.metriResiduiScavo)} m</b> / giorni utili <b>${c.giorniUtili}</b> = produttività richiesta <b>${c.produttivitaRichiesta.toFixed(1)} m/g</b>. Squadre necessarie: <b>${c.squadreNecessarie}</b>. Squadre aggiuntive: <b>${c.squadreAggiuntive}</b>.`}
   </div>`;
 
-  h += `<div class="trasp-block"><span class="tb-label">Formule, soglie e pesi (letti da /api/parametri)</span>`;
+  h += `<div class="trasp-block"><span class="tb-label">Formule, soglie, pesi e punteggi grezzi (letti da /api/parametri)</span>`;
   FATTORE_ORDER.forEach(codice => {
     const f = r.rischio.fattori[codice];
     if (!f) return;
-    h += `${FATTORE_LABEL[codice]} — peso ${(Number(f.peso)*100).toFixed(0)}%, soglia attenzione ${f.soglia_attenzione}, soglia critica ${f.soglia_critica} (${f.misura || ''}).<br>`;
+    if (!f.disponibile) { h += `${FATTORE_LABEL[codice]} — <i>dato insufficiente</i> (${f.motivo}).<br>`; return; }
+    h += `${FATTORE_LABEL[codice]} — punteggio grezzo ${f.punti.toFixed(1)}/100, peso ${(Number(f.peso)*100).toFixed(0)}%${r.rischio.renormalizzato ? ` (rinormalizzato a ${(f.pesoEffettivo*100).toFixed(1)}%)` : ''}, contributo ${f.contributo.toFixed(1)} pt, soglia attenzione ${f.soglia_attenzione}, soglia critica ${f.soglia_critica} (${f.misura || ''}).<br>`;
   });
-  h += `Punteggio totale = media pesata dei fattori disponibili; fattori non disponibili esclusi e pesi rinormalizzati sui rimanenti.</div>`;
+  h += `Punteggio totale = media pesata dei fattori disponibili = <b>${r.rischio.punteggio===null?'N/D':r.rischio.punteggio.toFixed(1)+'/100 · '+(r.rischio.classe?r.rischio.classe.classe:'N/D')}</b>.${r.rischio.renormalizzato ? ` Uno o più fattori non disponibili: pesi rinormalizzati sui rimanenti (${Math.round(r.rischio.pesoAttivoTotale*100)}% del modello originale).` : ''}</div>`;
 
   h += `<div class="trasp-block"><span class="tb-label">Motivazione azione suggerita</span>
     ${r.azioneInfo ? `Regola <b>${r.azioneInfo.regola.codice}</b> (priorità ${r.azioneInfo.regola.priorita}): "${r.azioneInfo.regola.condizione}" → <b>${r.azioneInfo.regola.azione}</b>.${r.azioneInfo.regola.responsabile ? ' Responsabile: ' + r.azioneInfo.regola.responsabile + '.' : ''}` : 'Nessuna regola applicabile.'}
