@@ -19,6 +19,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import csv
 import io
 import json
 import os
@@ -304,6 +305,8 @@ SENSITIVE_FILES = {
     "QGIS.geojson",
     "Riepilogo_progettazione.csv",
     "SED_classificato.geojson",
+    "Cantieri.csv",
+    "sopralluoghi.csv",
 }
 
 
@@ -780,6 +783,10 @@ async def _on_startup():
         except Exception as e:
             print(f"[startup] _sync_cantieri: {e}")
     asyncio.create_task(_startup_sync_cantieri())
+    # Backfill sopralluoghi.csv: il vecchio seed statico è stato rimosso dal
+    # repo, rigeneriamo subito il derivato da Mongo così compare in "File
+    # correnti" senza dover aspettare il prossimo verbale/eliminazione.
+    _schedule_sopralluoghi_csv_regen("backfill startup")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1215,6 +1222,8 @@ async def _read_master_csv() -> "pd.DataFrame":
 
 QGIS_FILENAME      = "QGIS.geojson"
 RIEPILOGO_FILENAME = "Riepilogo_progettazione.csv"
+CANTIERI_FILENAME  = "Cantieri.csv"
+SOPRALLUOGHI_FILENAME = "sopralluoghi.csv"
 
 
 async def _read_riepilogo_csv() -> "pd.DataFrame | None":
@@ -3064,6 +3073,7 @@ async def delete_sopralluogo(sop_id: str, sess: dict = Depends(_require_session)
     res = await sopralluoghi_col.delete_one({"_id": oid})
     if res.deleted_count == 0:
         raise HTTPException(404, "Verbale non trovato")
+    _schedule_sopralluoghi_csv_regen(f"eliminazione verbale: {sop_id}")
     return {"ok": True, "deleted": sop_id}
 
 
@@ -3153,6 +3163,7 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
         "created_at":          _now_iso(),
     }
     await sopralluoghi_col.insert_one(record)
+    _schedule_sopralluoghi_csv_regen(f"nuovo verbale: {codice}")
     return {"ok": True, "codice_verbale": codice, "foto_urls": foto_urls}
 
 
@@ -3481,12 +3492,82 @@ async def _dedupe_codici_cantiere(cache: dict) -> int:
     return n
 
 
+async def _regenerate_cantieri_csv(note: str = "") -> str | None:
+    """Rigenera Cantieri.csv (snapshot corrente della collection cantieri) come
+    file derivato in GridFS — compare in 'File correnti' come Master.csv/QGIS,
+    scaricabile con lo stesso bottone 'Scarica'. Fire-and-forget: eventuali
+    errori vengono solo loggati."""
+    try:
+        cols = [
+            "codice_cantiere", "pratica_id", "ente", "lotto", "cluster", "impresa",
+            "provincia", "comune", "stato_cantiere", "tecnica_scavo",
+            "metri_scavati", "metri_totali", "metri_totali_potenziali",
+            "data_inizio_prevista", "data_inizio_effettiva",
+            "data_fine_prevista", "data_fine_effettiva",
+            "motivo_blocco", "data_ripresa_stimata", "note", "updated_at", "log_count",
+        ]
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+        w.writeheader()
+        n = 0
+        async for d in cantieri_col.find({}).sort("pratica_id", 1):
+            d["log_count"] = len(d.get("log") or [])
+            w.writerow({k: d.get(k, "") for k in cols})
+            n += 1
+        data = buf.getvalue().encode("utf-8-sig")  # BOM per apertura corretta in Excel
+        gid = await _store_derived_file(CANTIERI_FILENAME, data, "text/csv", note)
+        print(f"[cantieri_csv] rigenerato Cantieri.csv ({n} righe)")
+        return gid
+    except Exception as e:
+        print(f"[cantieri_csv] errore rigenerazione: {type(e).__name__}: {e}")
+        return None
+
+
+def _schedule_cantieri_csv_regen(note: str = "") -> None:
+    asyncio.create_task(_regenerate_cantieri_csv(note))
+
+
+async def _regenerate_sopralluoghi_csv(note: str = "") -> str | None:
+    """Rigenera sopralluoghi.csv come file derivato in GridFS a partire dalla
+    collection sopralluoghi_col (unica fonte dei verbali) — sostituisce il
+    vecchio seed statico rimosso dal repo, compare in 'File correnti' con lo
+    stesso bottone 'Scarica'. Fire-and-forget: eventuali errori solo loggati."""
+    try:
+        cols = [
+            "codice_verbale", "data_sopralluogo", "lotto", "tratta_id", "impresa",
+            "referente_impresa", "referente_retelit", "comune", "localita",
+            "tipo_intervento", "esito", "note", "segnalazioni", "azioni_richieste",
+            "scadenza_azioni", "prossimo_sopralluogo", "firma_impresa",
+            "firma_retelit", "foto_urls", "created_at",
+        ]
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+        w.writeheader()
+        n = 0
+        async for d in sopralluoghi_col.find({}).sort("codice_verbale", 1):
+            w.writerow({k: d.get(k, "") for k in cols})
+            n += 1
+        data = buf.getvalue().encode("utf-8-sig")
+        gid = await _store_derived_file(SOPRALLUOGHI_FILENAME, data, "text/csv", note)
+        print(f"[sopralluoghi_csv] rigenerato sopralluoghi.csv ({n} righe)")
+        return gid
+    except Exception as e:
+        print(f"[sopralluoghi_csv] errore rigenerazione: {type(e).__name__}: {e}")
+        return None
+
+
+def _schedule_sopralluoghi_csv_regen(note: str = "") -> None:
+    asyncio.create_task(_regenerate_sopralluoghi_csv(note))
+
+
 async def _sync_cantieri() -> int:
     """Wrapper serializzato: vedi _sync_cantieri_impl per la logica. Il lock evita
     che due esecuzioni concorrenti assegnino lo stesso codice_cantiere (v. commento
     su _cantieri_sync_lock)."""
     async with _cantieri_sync_lock:
-        return await _sync_cantieri_impl()
+        result = await _sync_cantieri_impl()
+    _schedule_cantieri_csv_regen("sync da Master.csv")
+    return result
 
 
 async def _sync_cantieri_impl() -> int:
@@ -3752,6 +3833,7 @@ async def admin_reset_sopralluoghi(
     """Svuota la collection sopralluoghi (solo test/dev)."""
     _check_token(x_upload_token or token_q)
     deleted = (await sopralluoghi_col.delete_many({})).deleted_count
+    _schedule_sopralluoghi_csv_regen("reset totale")
     return {"deleted": deleted}
 
 
@@ -3827,6 +3909,7 @@ async def admin_update_cantiere(
 
     await cantieri_col.update_one({"cantiere_key": cantiere_key}, mongo_update)
     await _log_admin_action("update_cantiere", cantiere_key, x_actor_nome)
+    _schedule_cantieri_csv_regen(f"correzione admin: {cantiere_key}")
     return {"ok": True, "cantiere_key": cantiere_key}
 
 
@@ -3877,6 +3960,7 @@ async def admin_update_cantiere_log_entry(
         {"$set": {"log": log, "metri_scavati": metri_scavati, "updated_at": _now_iso()}},
     )
     await _log_admin_action("update_cantiere_log", f"{cantiere_key}#{idx}", x_actor_nome)
+    _schedule_cantieri_csv_regen(f"correzione log: {cantiere_key}#{idx}")
     return {"ok": True, "cantiere_key": cantiere_key, "idx": idx, "metri_scavati": metri_scavati}
 
 
@@ -3905,6 +3989,7 @@ async def admin_delete_cantiere_log_entry(
         {"$set": {"log": log, "metri_scavati": metri_scavati, "updated_at": _now_iso()}},
     )
     await _log_admin_action("delete_cantiere_log", f"{cantiere_key}#{idx}", x_actor_nome)
+    _schedule_cantieri_csv_regen(f"eliminazione log: {cantiere_key}#{idx}")
     return {"ok": True, "cantiere_key": cantiere_key, "idx": idx, "metri_scavati": metri_scavati}
 
 
@@ -3937,6 +4022,7 @@ async def admin_reset_single_cantiere(
         }},
     )
     await _log_admin_action("reset_single_cantiere", cantiere_key, x_actor_nome)
+    _schedule_cantieri_csv_regen(f"reset singolo: {cantiere_key}")
     return {"ok": True, "cantiere_key": cantiere_key}
 
 
@@ -4046,6 +4132,7 @@ async def update_cantiere(cantiere_key: str, payload: dict, sess: dict = Depends
         mongo_update["$inc"] = update["$inc"]
 
     await cantieri_col.update_one({"cantiere_key": cantiere_key}, mongo_update)
+    _schedule_cantieri_csv_regen(f"aggiornamento impresa: {cantiere_key}")
     return {"ok": True, "cantiere_key": cantiere_key, "pratica_id": doc.get("pratica_id")}
 
 
