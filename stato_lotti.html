@@ -678,14 +678,17 @@ function computeCapacita(lotto, row, parametri) {
 
 // ── I 5 fattori di rischio ROS (peso e soglie da PARAMETRI.rischio_ros.fattori) ──
 
-function fattoreRScavi(capacita, f) {
+function fattoreRScavi(row, capacita, parametri, f) {
   if (capacita.insufficiente) return { disponibile: false, motivo: capacita.motivo };
-  if (capacita.rosScaduta) return { disponibile: true, punti: 100, rapporto: null, note: 'ROS già scaduta → punteggio massimo per definizione' };
+  const fase = computeFaseScavi(row, parametri);
+  if (!fase.disponibile) return { disponibile: false, motivo: fase.motivo };
+  if (!fase.attiva) return { disponibile: true, punti: 0, fase, note: 'Fase scavi non ancora rilevante (avvio oltre la finestra d\'impatto configurata) — nessun rischio da questo fattore per definizione.' };
+  if (capacita.rosScaduta) return { disponibile: true, punti: 100, rapporto: null, fase, note: 'ROS già scaduta → punteggio massimo per definizione' };
   const rapporto = capacita.squadre.disponibili > 0
     ? capacita.squadreNecessarie / capacita.squadre.disponibili
     : (capacita.squadreNecessarie > 0 ? null : 0); // 0 disponibili e 0 necessarie: nessun rischio da questo fattore
   const punti = rapporto === null ? 100 : interpLin(rapporto, 1.0, 1.5);
-  return { disponibile: true, punti, rapporto };
+  return { disponibile: true, punti, rapporto, fase };
 }
 
 // Conta pratiche distinte quando il campo PRATICA è valorizzato (una pratica
@@ -721,6 +724,36 @@ function computeFaseAutorizzativa(row) {
       info: 'Milestone invio/ottenimento non tracciate per questo lotto — coefficiente pieno (1) per prudenza, sulla base dell\'evidenza autorizzativa esistente (km ottenuti > 0).' };
   }
   return { disponibile: false, motivo: 'Nessuna milestone invio/ottenimento tracciata e nessun km autorizzato: impossibile determinare la fase autorizzativa (dato dichiarato insufficiente, non dedotto dai dati scavi)' };
+}
+
+// Fase scavi del lotto rispetto alla PROPRIA milestone di avvio — dominio
+// operativo scavi puro, nessun riferimento ad autorizzazioni/permessi.
+// Usa PERMESSI_FINESTRA_IMPATTO come finestra di attivazione (stesso
+// principio di computeFaseAutorizzativa/R_AUTH, §12.3): la capacità
+// operativa (R_SCAVI, ACT_CAP_SCAVI) diventa rilevante solo quando la fase
+// scavi è iniziata o l'avvio è entrato nella finestra configurata — un lotto
+// con zero squadre ma avvio previsto a distanza non va penalizzato.
+function computeFaseScavi(row, parametri) {
+  const glob = parametri.globali || {};
+  const finestraImpatto = Number(glob.PERMESSI_FINESTRA_IMPATTO ? glob.PERMESSI_FINESTRA_IMPATTO.valore : 30);
+  const avvio = row.m ? parseDateIT(row.m.avvio) : null;
+  if (avvio) {
+    const giorniResiduiAvvio = Math.round((avvio - oggi) / 86400000);
+    const iniziata = oggi >= avvio;
+    const entrataInFinestra = !iniziata && giorniResiduiAvvio <= finestraImpatto;
+    return { disponibile: true, attiva: iniziata || entrataInFinestra, iniziata, entrataInFinestra, giorniResiduiAvvio, finestraImpatto,
+      info: iniziata ? `Fase scavi iniziata — avvio ${row.m.avvio}.`
+        : entrataInFinestra ? `Avvio scavi (${row.m.avvio}) entrato nella finestra d'impatto configurata (${giorniResiduiAvvio} gg ≤ ${finestraImpatto} gg).`
+        : `Avvio scavi previsto tra ${giorniResiduiAvvio} gg (${row.m.avvio}), oltre la finestra d'impatto (${finestraImpatto} gg): capacità operativa non ancora rilevante.` };
+  }
+  // Nessuna milestone di avvio tracciata: fallback prudenziale sulla stessa
+  // evidenza di dominio (cantieri già censiti per il lotto) — mai su dati
+  // di altri domini (v. §12.9 pt.2), analogo al fallback kmOtt>0 di R_AUTH.
+  if ((row.s.cantieri || []).length > 0) {
+    return { disponibile: true, attiva: true, iniziata: true, entrataInFinestra: false, giorniResiduiAvvio: null, finestraImpatto,
+      info: 'Milestone di avvio scavi non tracciata per questo lotto — attiva per prudenza sulla base di cantieri già censiti nel dominio scavi.' };
+  }
+  return { disponibile: false, motivo: 'Nessuna milestone di avvio scavi tracciata e nessun cantiere censito per il lotto: impossibile determinare la fase scavi (dato dichiarato insufficiente, mai dedotto da altri domini)', finestraImpatto };
 }
 
 function fattoreRAuth(row, parametri, f) {
@@ -806,7 +839,7 @@ function computeRischioComposito(row, capacita, parametri) {
   const fattori = {};
   fattoriDef.forEach(f => {
     let r;
-    if (f.codice === 'R_SCAVI') r = fattoreRScavi(capacita, f);
+    if (f.codice === 'R_SCAVI') r = fattoreRScavi(row, capacita, parametri, f);
     else if (f.codice === 'R_AUTH') r = fattoreRAuth(row, parametri, f);
     else if (f.codice === 'R_SOSP') r = fattoreRSosp(row, capacita, f);
     else if (f.codice === 'R_MS') r = fattoreRMS(row, f);
@@ -841,8 +874,14 @@ function computeAzioneParametrica(row, capacita, parametri) {
       match = entro && (row.p.issues || []).length > 0;
       dettaglio = { giorniResiduiOttenimento: fase.disponibile ? fase.giorniResiduiOttenimento : null, finestraImpatto, pratiche: row.p.issues.length };
     } else if (reg.codice === 'ACT_CAP_SCAVI') {
-      match = !capacita.insufficiente && capacita.squadreNecessarie !== null && capacita.squadreNecessarie > capacita.squadre.disponibili;
-      dettaglio = { squadreNecessarie: capacita.squadreNecessarie, squadreDisponibili: capacita.squadre.disponibili, squadreAggiuntive: capacita.squadreAggiuntive };
+      // Stesso gate di fase di R_SCAVI (v. computeFaseScavi): l'azione scatta
+      // solo quando la fase scavi è rilevante (iniziata o avvio entro la
+      // finestra d'impatto) — mai quando l'avvio è previsto a distanza, anche
+      // con squadre disponibili oggi a zero.
+      const faseScavi = computeFaseScavi(row, parametri);
+      match = !capacita.insufficiente && faseScavi.disponibile && faseScavi.attiva
+        && capacita.squadreNecessarie !== null && capacita.squadreNecessarie > capacita.squadre.disponibili;
+      dettaglio = { squadreNecessarie: capacita.squadreNecessarie, squadreDisponibili: capacita.squadre.disponibili, squadreAggiuntive: capacita.squadreAggiuntive, fase: faseScavi.disponibile ? faseScavi.info : faseScavi.motivo };
     } else if (reg.codice === 'ACT_PROG') {
       const faseProg = computeFaseAutorizzativa(row);
       // Stesso principio di R_AUTH (§12.3): prima di "invio" il 100% non
@@ -854,9 +893,27 @@ function computeAzioneParametrica(row, capacita, parametri) {
       match = faseProg.disponibile && faseProg.coefFase > 0 && (row.p.kmNonInviato || 0) > 0;
       dettaglio = { kmNonInviato: row.p.kmNonInviato, fase: faseProg.disponibile ? faseProg.info : null };
     } else if (reg.codice === 'ACT_ORD') {
-      const metriBloccati = (row.p.blocchi || []).reduce((s, b) => s + b.km, 0);
-      match = metriBloccati > 0;
-      dettaglio = { metriBloccati, numBlocchi: row.p.blocchi.length };
+      // Non basta un metro bloccato per sollecitare l'atto: la regola deve
+      // riflettere il rischio effettivo. Condizione: metri bloccati > 0 E
+      // almeno una delle seguenti — R_BLOCCHI sopra soglia attenzione;
+      // milestone ottenimento entro la finestra d'impatto; avvio scavi entro
+      // la finestra d'impatto; cantiere sospeso collegato alla stessa pratica.
+      const blocchi = row.p.blocchi || [];
+      const metriBloccati = blocchi.reduce((s, b) => s + b.km, 0);
+      if (metriBloccati > 0) {
+        const rBlocchi = row.rischio && row.rischio.fattori ? row.rischio.fattori.R_BLOCCHI : null;
+        const sopraSogliaAttenzione = !!(rBlocchi && rBlocchi.disponibile && rBlocchi.punti > 0);
+        const faseAuth = computeFaseAutorizzativa(row);
+        const ottenimEntroFinestra = faseAuth.disponibile && faseAuth.giorniResiduiOttenimento !== null && faseAuth.giorniResiduiOttenimento <= finestraImpatto;
+        const faseScavi = computeFaseScavi(row, parametri);
+        const avvioEntroFinestra = faseScavi.disponibile && faseScavi.attiva;
+        const cantiereSospesoCollegato = collegamentiSospesiBlocchi(row).some(c => c.collegamento);
+        match = sopraSogliaAttenzione || ottenimEntroFinestra || avvioEntroFinestra || cantiereSospesoCollegato;
+        dettaglio = { metriBloccati, numBlocchi: blocchi.length, sopraSogliaAttenzione, ottenimEntroFinestra, avvioEntroFinestra, cantiereSospesoCollegato };
+      } else {
+        match = false;
+        dettaglio = { metriBloccati: 0, numBlocchi: 0 };
+      }
     } else if (reg.codice === 'ACT_NONE') {
       match = true;
     }
@@ -1565,6 +1622,10 @@ function buildCollapsibleCalcolo(r) {
 
   h += `<div class="trasp-block"><span class="tb-label">Fase autorizzativa (invio/ottenimento — dominio separato dalla ROS scavi)</span>
     ${(() => { const fase = computeFaseAutorizzativa(r); if (!fase.disponibile) return `<i>${fase.motivo}</i>`; return fase.info; })()}
+  </div>`;
+
+  h += `<div class="trasp-block"><span class="tb-label">Fase scavi (avvio — dominio separato dalla fase autorizzativa)</span>
+    ${(() => { const fase = computeFaseScavi(r, PARAMETRI); if (!fase.disponibile) return `<i>${fase.motivo}</i>`; return fase.info; })()}
   </div>`;
 
   h += `<div class="trasp-block"><span class="tb-label">Squadre e capacità produttiva</span>
