@@ -673,7 +673,37 @@ Decisione confermata: restano **due fattori distinti**, **nessuna deduplicazione
 3. Preferire sempre "dato insufficiente" dichiarato a un'inferenza indiretta non supportata dai dati.
 4. Ogni punteggio ROS deve essere ricostruibile dal pannello "Come è stato calcolato" — dati oggettivi, parametri, formula, motivazione.
 
+### 12.10 R_SCAVI phase-aware e allineamento ACT_CAP_SCAVI/ACT_ORD (2026-08-30)
+
+**R_SCAVI** ora usa un gate di fase analogo a R_AUTH (§12.3), dominio scavi puro: `computeFaseScavi(row, parametri)` calcola la fase rispetto alla milestone **avvio** del lotto (`row.m.avvio`, milestone.html), usando `PERMESSI_FINESTRA_IMPATTO` come finestra di attivazione:
+```
+avvio tracciato:
+  oggi ≥ avvio                              → attiva=true (fase iniziata)
+  oggi < avvio, giorni_residui ≤ finestra   → attiva=true (avvio entrato in finestra)
+  oggi < avvio, giorni_residui > finestra   → attiva=false (non ancora rilevante)
+avvio non tracciato:
+  cantieri già censiti per il lotto         → attiva=true (fallback prudenziale, stesso dominio)
+  nessun cantiere censito                   → disponibile=false ("dato insufficiente")
+```
+Quando `attiva=false`, `fattoreRScavi` restituisce `punti:0` (fattore comunque `disponibile:true`, stesso pattern di R_AUTH pre-invio — mai escluso/rinormalizzato, semplicemente non pesa). Principio: non penalizzare un lotto con zero squadre oggi ma avvio previsto a distanza (mesi).
+
+**ACT_CAP_SCAVI** riceve lo stesso gate (`computeFaseScavi`) in `computeAzioneParametrica`: l'azione "Incrementare capacità operativa" scatta solo se la fase scavi è rilevante, oltre alla condizione esistente `squadreNecessarie > squadreDisponibili`. Correzione della stessa natura di §12.4 (ACT_AUTH_MS/ACT_PROG): un'azione non può basarsi su un dato che il fattore di rischio corrispondente considera non ancora rilevante.
+
+**ACT_ORD** — condizione precedente (`metriBloccati > 0`) sostituita da una regola meno aggressiva, concordata con l'utente dopo il caso Lotto 8 (R_BLOCCHI "Nessun impatto" ma azione "Sollecitare rilascio atto" contemporaneamente — incoerente): `metriBloccati > 0` **e almeno una delle seguenti**:
+- R_BLOCCHI sopra soglia attenzione (`row.rischio.fattori.R_BLOCCHI.punti > 0`, letto dal risultato già calcolato — `computeAzioneParametrica` gira dopo `computeRischioComposito` nel loop di `render()`, v. ordine in `row.capacita`/`row.rischio`/`row.azioneInfo`);
+- milestone ottenimento entro `PERMESSI_FINESTRA_IMPATTO` (stesso calcolo di `ACT_AUTH_MS`, via `computeFaseAutorizzativa`);
+- avvio scavi entro `PERMESSI_FINESTRA_IMPATTO` (`computeFaseScavi(row, parametri).attiva`);
+- esistenza di un cantiere sospeso collegato alla stessa pratica (`collegamentiSospesiBlocchi(row).some(c => c.collegamento)`).
+
+**Nota aperta**: se un lotto ha `rosScaduta=true` (milestone finale scavi già superata) ma la fase scavi non è ancora `attiva` secondo `computeFaseScavi` (avvio previsto oltre la finestra), R_SCAVI resta a 0 — il gate di fase ha priorità sul controllo di scadenza. È uno scenario di dati contraddittorio (milestone finale scaduta con avvio non ancora iniziato) che comunque emergerebbe già da R_MS; non gestito come caso speciale su richiesta esplicita dell'utente (priorità al gate di fase).
+
+**Verifica**: non eseguita in questa sessione — i dati reali dei 12 lotti (Riepilogo_progettazione.csv, /api/cantieri) vivono solo su MongoDB/Render, non accessibili dall'ambiente di sviluppo. Da verificare sull'app in esecuzione (in particolare Lotto 8, 1A, 1B, 2A, 2B come richiesto dall'utente). `node --check` OK su entrambi i blocchi `<script>`.
+
 ---
+
+_Ultimo aggiornamento: 2026-08-30 (rev. 244)_
+
+- **rev.244** — `stato_lotti.html`: R_SCAVI reso phase-aware (nuova `computeFaseScavi()`, gate su milestone avvio + `PERMESSI_FINESTRA_IMPATTO`, stesso pattern di R_AUTH/§12.3), stesso gate applicato a `ACT_CAP_SCAVI`, e condizione `ACT_ORD` sostituita da `metriBloccati>0` + almeno una tra (R_BLOCCHI sopra soglia attenzione / milestone ottenimento entro finestra / avvio scavi entro finestra / cantiere sospeso collegato). Aggiunto blocco "Fase scavi" al pannello "Come è stato calcolato". Dettaglio completo in **§12.10**. Verifica sui 12 lotti reali non eseguita (dati solo su Mongo/Render, non accessibili da qui) — da fare sull'app.
 
 _Ultimo aggiornamento: 2026-08-27 (rev. 243)_
 
