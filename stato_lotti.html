@@ -1095,7 +1095,13 @@ function tooltipScavi(r) {
 function tooltipProg(r) {
   const residuo = Math.max(0, (r.p.kmTot||0) - (r.p.kmOtt||0));
   const base = `Km totali: ${fmtNum(r.p.kmTot)} — autorizzati: ${fmtNum(r.p.kmOtt)} — residui: ${fmtNum(residuo)} — ritardo stimato: ${fmtDelay(r.pFlag.delayDays)}`;
-  return r.pFlag.stimato ? `${base} — Previsto basato su baseline stimata (nessuna milestone reale di invio/ottenimento)` : base;
+  if (!r.pFlag.stimato) return base;
+  const si = r.pFlag.stimaInfo;
+  if (!si || !si.disponibile) return `${base} — Previsto: stima non disponibile${si && si.motivo ? ' ('+si.motivo+')' : ''}`;
+  const dett = (si.dettaglio || []).map(d => d.disponibile
+    ? `${d.ente} → ${d.codice}${d.fallbackEnte ? ' (fallback)' : ''}: redazione ${d.giorniRedazione}gg, attesa ${d.giorniAttesi != null ? d.giorniAttesi+'gg' : 'N/D'}, ottenim. stimato ${fmtDateShort(d.ottenimStimato)}`
+    : `${d.ente} → ${d.codice}: non configurato (${d.motivo})`).join(' | ');
+  return `${base} — Previsto stimato: avvio progettazione ${fmtDateShort(si.avvioProg)}, invio stimato ${fmtDateShort(si.invioStimato)}, ottenimento stimato ${fmtDateShort(si.ottenimStimato)}, scenario peggiore: ${si.fonteEnte}. Dettaglio enti: ${dett}`;
 }
 
 // ── colonna "Perché è a rischio": fatti oggettivi, max 3, nessuna formula ──
