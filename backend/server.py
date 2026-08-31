@@ -3214,17 +3214,26 @@ async def get_solleciti(sess: dict = Depends(_require_session)):
 
 
 async def _touch_data_update(tratta_id: str, pratica: str, tipo_permesso: str = "") -> None:
-    """Aggiorna DATA_UPDATE=oggi sulle righe Master.csv della pratica toccata da un sollecito.
-    Scrittura diretta (fire-and-forget), coerente col modello 'solleciti senza approvazione admin'."""
+    """Aggiorna DATA_UPDATE=oggi SOLO sull'ultima riga storicizzata del gruppo
+    tratta+tipo_permesso toccato da un sollecito. Un TRATTA_ID può avere più iter
+    (es. AUTORIZZAZIONE e NULLA OSTA sulla stessa tratta) e ciascun iter più righe
+    storicizzate nel tempo (una per nota/cambio stato): mascherare solo su TRATTA_ID
+    le toccava TUTTE, retro-datando a oggi anche note storiche vecchie (bug segnalato
+    dall'utente: note vecchie duplicate con data odierna nel popup Storico Note)."""
     try:
         async with _master_csv_lock:
             df = await _read_master_csv()
             if "DATA_UPDATE" not in df.columns or "TRATTA_ID" not in df.columns:
                 return
             mask = df["TRATTA_ID"].astype(str).str.strip() == str(tratta_id).strip()
-            if not mask.any():
+            if tipo_permesso and "TIPO_PERMESSO" in df.columns:
+                mask_t = mask & (df["TIPO_PERMESSO"].astype(str).str.strip().str.upper() == tipo_permesso.strip().upper())
+                if mask_t.any():
+                    mask = mask_t
+            idx = df.index[mask].tolist()
+            if not idx:
                 return
-            df.loc[mask, "DATA_UPDATE"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+            df.loc[idx[-1], "DATA_UPDATE"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
             await _write_master_csv(df, note=f"Sollecito tratta {tratta_id} pratica {pratica}: touch DATA_UPDATE")
     except Exception as e:
         print(f"[_touch_data_update] {e}")
@@ -3239,10 +3248,16 @@ async def _touch_data_update_multi(keys: list) -> None:
                 return
             oggi = datetime.now(timezone.utc).strftime("%d/%m/%Y")
             any_hit = False
+            has_tipo = "TIPO_PERMESSO" in df.columns
             for tratta_id, pratica, tipo_permesso in keys:
                 mask = df["TRATTA_ID"].astype(str).str.strip() == str(tratta_id).strip()
-                if mask.any():
-                    df.loc[mask, "DATA_UPDATE"] = oggi
+                if tipo_permesso and has_tipo:
+                    mask_t = mask & (df["TIPO_PERMESSO"].astype(str).str.strip().str.upper() == tipo_permesso.strip().upper())
+                    if mask_t.any():
+                        mask = mask_t
+                idx = df.index[mask].tolist()
+                if idx:
+                    df.loc[idx[-1], "DATA_UPDATE"] = oggi
                     any_hit = True
             if any_hit:
                 await _write_master_csv(df, note=f"Solleciti bulk ({len(keys)}): touch DATA_UPDATE")
