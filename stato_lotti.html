@@ -1080,7 +1080,7 @@ function renderAvanzamentoCells(flag, isProg, tooltip) {
   const barColor = flag.flag==='err'?'var(--danger)':flag.flag==='warn'?'var(--warn)':'var(--ok)';
   const nota = flag.primaAvvio ? `<div class="adv-note-sm">Scavi non ancora avviati</div>` : '';
   const stimaClass = flag.stimato ? ' adv-stimato' : '';
-  const previstoTxt = flag.stimato ? `${fmtPct(flag.plannedToday)}<div class="adv-note-sm adv-note-stima">stimato</div>` : fmtPct(flag.plannedToday);
+  const previstoTxt = fmtPct(flag.plannedToday);
   return `<td class="tc-center${stimaClass}" title="${tooltip}">${previstoTxt}</td>
     <td class="tc-center" title="${tooltip}"><b>${fmtPct(flag.pct)}</b>${nota}</td>
     <td class="tc-center" title="${tooltip}">
@@ -1241,8 +1241,8 @@ function render(prog, scavi, milestoneByLotto) {
     row.azioneInfo = computeAzioneParametrica(row, row.capacita, PARAMETRI);
     row.causaUI = computeCausaUI(row); // versione card/tabella (solo fatti + impatto in linguaggio naturale)
 
-    // prossima milestone: qualunque distanza futura (presentazione, non usata dal motore)
-    const tuttiPunti = [...progPoints, ...scaviPoints].filter(pt => pt.date);
+    // prossima milestone: solo milestone contrattuali reali, mai stimate
+    const tuttiPunti = [...progPoints, ...scaviPoints].filter(pt => pt.date && !pt.stimato);
     row.prossimaMilestone = tuttiPunti.filter(pt => pt.date > oggi).sort((a,b)=>a.date-b.date)[0] || null;
 
     const classeSort = { Critico: 4, Alto: 3, Medio: 2, Basso: 1 };
