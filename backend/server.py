@@ -2237,7 +2237,64 @@ async def backfill_data_update_solleciti(
     return {"ok": True, "touched": len(touched), "column_created": column_created, "detail": touched}
 
 
-@app.put("/api/admin/pending-updates/{sub_id}")
+@app.post("/api/admin/backfill-fix-data-update-overreach")
+async def backfill_fix_data_update_overreach(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """One-off (rev.248): corregge il bug per cui _touch_data_update/_touch_data_update_multi
+    (prima del fix) scrivevano DATA_UPDATE=oggi su TUTTE le righe storicizzate con lo stesso
+    TRATTA_ID — inclusi altri iter/tipo_permesso sulla stessa tratta e righe storiche vecchie
+    dello stesso iter — invece che solo sull'ultima riga del gruppo tratta+tipo_permesso.
+
+    Per ogni gruppo (TRATTA_ID, TIPO_PERMESSO): azzera DATA_UPDATE su tutte le righe tranne
+    l'ultima (idx[-1], la più recente). Il frontend (index.html) ricade su DATA_ULTIMA_MODIFICA
+    quando DATA_UPDATE è vuota, recuperando la datazione corretta delle note storiche.
+    Non tocca NOTE/STATO_PERMESSO/DATA_ULTIMA_MODIFICA/altri campi. Idempotente: rieseguibile
+    senza effetti collaterali (le righe già a DATA_UPDATE vuota vengono saltate)."""
+    _check_token(x_upload_token or token_q)
+
+    async with _master_csv_lock:
+        df = await _read_master_csv()
+        if "TRATTA_ID" not in df.columns or "DATA_UPDATE" not in df.columns:
+            return {
+                "ok": False,
+                "error": "colonna TRATTA_ID o DATA_UPDATE assente da Master.csv",
+                "colonne_trovate": df.columns.tolist(),
+            }
+
+        has_tipo = "TIPO_PERMESSO" in df.columns
+        group_cols = ["TRATTA_ID", "TIPO_PERMESSO"] if has_tipo else ["TRATTA_ID"]
+        cleared = []
+
+        for _, idx_arr in df.groupby(
+            [df[c].astype(str).str.strip() for c in group_cols]
+        ).groups.items():
+            idx = list(idx_arr)
+            if len(idx) < 2:
+                continue  # gruppo con una sola riga: nulla da correggere
+            for i in idx[:-1]:  # tutte tranne l'ultima
+                existing = str(df.loc[i, "DATA_UPDATE"] or "").strip()
+                if not existing or existing.lower() == "nan":
+                    continue
+                cleared.append({
+                    "tratta_id": str(df.loc[i, "TRATTA_ID"]),
+                    "tipo_permesso": str(df.loc[i, "TIPO_PERMESSO"]) if has_tipo else "",
+                    "pratica": str(df.loc[i, "PRATICA"]) if "PRATICA" in df.columns else "",
+                    "data_update_rimossa": existing,
+                })
+                df.loc[i, "DATA_UPDATE"] = ""
+
+        if cleared:
+            await _write_master_csv(
+                df,
+                note=f"Backfill one-off rev.248: azzerato DATA_UPDATE errato su {len(cleared)} righe storiche non-ultime",
+            )
+
+    return {"ok": True, "cleared": len(cleared), "detail": cleared}
+
+
+
 async def edit_pending(
     sub_id: str,
     payload: dict,
