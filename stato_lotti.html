@@ -120,6 +120,9 @@ body.panel-open .main{margin-right:44%;}
 .mini-bar{width:44px;height:4px;background:var(--gray-100);border-radius:2px;overflow:hidden;}
 .mini-bar-fill{height:100%;border-radius:2px;}
 .adv-note-sm{font-size:8.5px;color:var(--muted2);font-style:italic;line-height:1.3;max-width:90px;margin:2px auto 0;white-space:normal;}
+.adv-note-stima{color:var(--brand-2,var(--muted2));font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
+.adv-stimato{background:linear-gradient(180deg,rgba(26,125,153,0.06),rgba(26,125,153,0.06));}
+.cbrb-fill.cbrb-planned.stima-fill{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,0.35) 0 4px,transparent 4px 8px);}
 .adv-nd-cell{color:var(--muted2)!important;}
 
 .causa-list{list-style:none;font-size:11px;color:var(--text2);line-height:1.4;max-width:190px;}
@@ -471,6 +474,68 @@ async function loadAll() {
 function buildCurve(pointDefs) {
   // pointDefs: [{date: Date|null, pct: number, label: string}]
   return pointDefs.filter(p => p.date).sort((a, b) => a.date - b.date);
+}
+
+function addDays(date, n) {
+  const d = new Date(date.getTime());
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// BASELINE AUTORIZZATIVA STIMATA (§14) — quando mancano le milestone
+// reali di invio/ottenimento, costruiamo una previsione operativa da:
+//   DATA_INVIO_STIMATA      = Data avvio progettazione + Giorni redazione pratiche (per ente)
+//   DATA_OTTENIMENTO_STIMATA = DATA_INVIO_STIMATA + Giorni attesi (Tempi autorizzativi, per ente)
+// Un lotto può avere pratiche verso più enti (row.p.issues[].ente), quindi
+// invio/ottenimento stimati non sono univoci a livello di singola pratica:
+// per la curva a livello di LOTTO (un solo punto, come per invio/ottenim
+// reali) si usa lo scenario più prudente — invio più tardivo e ottenimento
+// più tardivo tra gli enti presenti nel lotto — coerente con l'approccio
+// prudenziale già usato altrove nel motore (v. computeFaseAutorizzativa).
+// Dato dichiarato "stimato", mai confuso con una milestone reale: niente
+// fallback silenziosi, se manca l'avvio progettazione la stima non è
+// disponibile e lo si dichiara esplicitamente (motivo).
+// ══════════════════════════════════════════════════════════════════════
+function computeStimaAutorizzativa(row, parametri) {
+  const pl = (parametri.parametri_lotto || {})[row.lotto] || {};
+  const avvioProg = pl.data_avvio_progettazione ? parseDateIT(pl.data_avvio_progettazione) : null;
+  if (!avvioProg) {
+    return { disponibile: false, motivo: 'Data avvio progettazione non configurata per questo lotto (foglio "Parametri per lotto")' };
+  }
+  const tempi = parametri.tempi_autorizzativi || {};
+  const issues = (row.p && row.p.issues) || [];
+  if (!issues.length) {
+    return { disponibile: false, motivo: 'Nessuna pratica/tratta censita per questo lotto: impossibile determinare l\'ente e quindi i tempi attesi' };
+  }
+  // Un dettaglio per ente distinto presente nel lotto (non per tratta).
+  const entiVisti = new Map();
+  issues.forEach(iss => {
+    const t = lookupTempoEnte(iss.ente, tempi);
+    if (entiVisti.has(t.codice)) return;
+    const giorniRedazione = t.giorni_redazione_pratiche;
+    if (giorniRedazione === null || giorniRedazione === undefined || giorniRedazione === '') {
+      entiVisti.set(t.codice, { codice: t.codice, ente: iss.ente, disponibile: false,
+        motivo: `Giorni redazione pratiche non configurati per ${t.codice} (foglio "Tempi autorizzativi")` });
+      return;
+    }
+    const invioStimato = addDays(avvioProg, Number(giorniRedazione));
+    const giorniAttesi = t.giorni_attesi != null ? Number(t.giorni_attesi) : null;
+    const ottenimStimato = giorniAttesi != null ? addDays(invioStimato, giorniAttesi) : null;
+    entiVisti.set(t.codice, { codice: t.codice, ente: iss.ente, disponibile: true,
+      giorniRedazione: Number(giorniRedazione), giorniAttesi, invioStimato, ottenimStimato, fallbackEnte: t.fallback });
+  });
+  const dettaglio = [...entiVisti.values()];
+  const validi = dettaglio.filter(d => d.disponibile && d.ottenimStimato);
+  if (!validi.length) {
+    return { disponibile: false, motivo: 'Nessun ente presente nel lotto ha giorni di redazione/attesa configurati', dettaglio };
+  }
+  // Scenario più prudente: l'ottenimento stimato più tardivo determina il
+  // completamento autorizzativo del lotto (deve essere ottenuto per tutti).
+  const peggiore = validi.reduce((a, b) => (b.ottenimStimato > a.ottenimStimato ? b : a));
+  return { disponibile: true, avvioProg, invioStimato: peggiore.invioStimato, ottenimStimato: peggiore.ottenimStimato,
+    fonteEnte: peggiore.codice, dettaglio,
+    nota: dettaglio.length > 1 ? `Basato sull'ente con tempi più lunghi tra quelli presenti nel lotto (${peggiore.codice})` : `Basato su ${peggiore.codice}` };
 }
 
 function plannedPctAt(curve, date) {
@@ -994,8 +1059,10 @@ function svgGauge(score, color) {
 // situazioni ora sono distinte esplicitamente, mai la stessa dicitura.
 function renderAvanzamentoCells(flag, isProg, tooltip) {
   if (flag.plannedToday === null) {
-    // Caso B: milestone realmente assente dal modello.
-    const nota = isProg ? 'Milestone autorizzativa non disponibile' : 'Nessuna milestone tracciata';
+    // Caso B: milestone realmente assente dal modello, e nessuna baseline
+    // stimata disponibile (avvio progettazione o tempi ente non configurati).
+    let nota = isProg ? 'Milestone autorizzativa non disponibile' : 'Nessuna milestone tracciata';
+    if (isProg && flag.stimaInfo && !flag.stimaInfo.disponibile) nota += ` (stima non calcolabile: ${flag.stimaInfo.motivo})`;
     return `<td class="tc-center adv-nd-cell" title="${tooltip}">—</td>
       <td class="tc-center" title="${tooltip}"><b>${fmtPct(flag.pct)}</b><div class="adv-note-sm">${nota}</div></td>
       <td class="tc-center adv-nd-cell">—</td>`;
@@ -1004,18 +1071,21 @@ function renderAvanzamentoCells(flag, isProg, tooltip) {
     // Caso A: milestone di invio/ottenimento tracciata ma "invio" ancora
     // futuro. Previsto=0% per definizione di curva; non è un dato mancante.
     const scostTxt = flag.pct > 0.5 ? `<b class="scost-pos">+${Math.round(flag.pct)}%</b>` : `<span class="scost-na">0%</span>`;
+    const notaA = flag.stimato ? 'Prima dell\'invio stimato' : 'Prima della milestone di invio';
     return `<td class="tc-center">0%</td>
-      <td class="tc-center" title="${tooltip}"><b>${fmtPct(flag.pct)}</b><div class="adv-note-sm">Prima della milestone di invio</div></td>
+      <td class="tc-center" title="${tooltip}"><b>${fmtPct(flag.pct)}</b><div class="adv-note-sm">${notaA}</div></td>
       <td class="tc-center">${scostTxt}</td>`;
   }
   const scost = fmtScost(flag.gap, flag.flag);
   const barColor = flag.flag==='err'?'var(--danger)':flag.flag==='warn'?'var(--warn)':'var(--ok)';
   const nota = flag.primaAvvio ? `<div class="adv-note-sm">Scavi non ancora avviati</div>` : '';
-  return `<td class="tc-center" title="${tooltip}">${fmtPct(flag.plannedToday)}</td>
+  const stimaClass = flag.stimato ? ' adv-stimato' : '';
+  const previstoTxt = flag.stimato ? `${fmtPct(flag.plannedToday)}<div class="adv-note-sm adv-note-stima">stimato</div>` : fmtPct(flag.plannedToday);
+  return `<td class="tc-center${stimaClass}" title="${tooltip}">${previstoTxt}</td>
     <td class="tc-center" title="${tooltip}"><b>${fmtPct(flag.pct)}</b>${nota}</td>
     <td class="tc-center" title="${tooltip}">
       <div class="scost-cell"><b class="${scost.cls}">${scost.text}</b>
-      <div class="mini-bar"><div class="mini-bar-fill" style="width:${Math.min(100,Math.abs(flag.gap||0)).toFixed(1)}%;background:${barColor}"></div></div></div>
+      <div class="mini-bar"><div class="mini-bar-fill" style="width:${Math.min(100,Math.abs(flag.gap||0)).toFixed(1)}%;background:${barColor}${flag.stimato ? ';opacity:0.65' : ''}"></div></div></div>
     </td>`;
 }
 
@@ -1025,7 +1095,8 @@ function tooltipScavi(r) {
 }
 function tooltipProg(r) {
   const residuo = Math.max(0, (r.p.kmTot||0) - (r.p.kmOtt||0));
-  return `Km totali: ${fmtNum(r.p.kmTot)} — autorizzati: ${fmtNum(r.p.kmOtt)} — residui: ${fmtNum(residuo)} — ritardo stimato: ${fmtDelay(r.pFlag.delayDays)}`;
+  const base = `Km totali: ${fmtNum(r.p.kmTot)} — autorizzati: ${fmtNum(r.p.kmOtt)} — residui: ${fmtNum(residuo)} — ritardo stimato: ${fmtDelay(r.pFlag.delayDays)}`;
+  return r.pFlag.stimato ? `${base} — Previsto basato su baseline stimata (nessuna milestone reale di invio/ottenimento)` : base;
 }
 
 // ── colonna "Perché è a rischio": fatti oggettivi, max 3, nessuna formula ──
@@ -1129,7 +1200,7 @@ function render(prog, scavi, milestoneByLotto) {
     const scaviPct = s.metriTot > 0 ? (s.metriScavati / s.metriTot) * 100 : 0;
     s.pFlagPct = scaviPct;
 
-    const progPoints = m ? [
+    let progPoints = m ? [
       { date: parseDateIT(m.invio), pct: 0, label: `Invio pratiche (${m.invio})`, nome: 'Invio pratiche', dominio: 'prog' },
       { date: parseDateIT(m.ottenim), pct: 100, label: `Ottenimento permessi (${m.ottenim})`, nome: 'Ottenimento permessi', dominio: 'prog' }
     ] : [];
@@ -1139,10 +1210,27 @@ function render(prog, scavi, milestoneByLotto) {
       { date: parseDateIT(m.p90), pct: 90, label: `90% scavato (${m.p90})`, nome: '90% scavi', dominio: 'scavi' },
       { date: parseDateIT(m.p100), pct: 100, label: `100% scavato — ROS (${m.p100})`, nome: '100% scavi — ROS', dominio: 'scavi' }
     ] : [];
-    const progCurve = buildCurve(progPoints);
-    const scaviCurve = buildCurve(scaviPoints);
+    let progCurve = buildCurve(progPoints);
+    let progStimato = false;
+    let stima = null;
+    // Nessuna milestone reale di invio/ottenimento: baseline stimata da
+    // avvio progettazione + tempi di redazione/attesa per ente (§14).
+    // Mai sovrascrive dati reali — solo quando la curva reale è vuota.
+    if (!progCurve.length) {
+      stima = computeStimaAutorizzativa({ lotto, p }, PARAMETRI);
+      if (stima.disponibile) {
+        progPoints = [
+          { date: stima.invioStimato, pct: 0, label: `Invio pratiche stimato (${fmtDateShort(stima.invioStimato)})`, nome: 'Invio pratiche (stimato)', dominio: 'prog', stimato: true },
+          { date: stima.ottenimStimato, pct: 100, label: `Ottenimento permessi stimato (${fmtDateShort(stima.ottenimStimato)})`, nome: 'Ottenimento permessi (stimato)', dominio: 'prog', stimato: true }
+        ];
+        progCurve = buildCurve(progPoints);
+        progStimato = true;
+      }
+    }
 
     const pFlag = evalMetric(progCurve, progPct, progPoints);
+    pFlag.stimato = progStimato;
+    pFlag.stimaInfo = stima;
     const sFlag = evalMetric(scaviCurve, scaviPct, scaviPoints);
     const overall = FLAG_RANK[pFlag.flag] >= FLAG_RANK[sFlag.flag] ? pFlag.flag : sFlag.flag;
 
@@ -1469,20 +1557,25 @@ function buildRosBreakdown(r) {
 // avanzamento normale — mai la stessa dicitura per situazioni diverse.
 function buildCmpChart(flag, tooltip, r, isProg) {
   if (flag.plannedToday === null) {
-    // Caso B: milestone realmente assente.
+    // Caso B: milestone realmente assente, e nessuna baseline stimata
+    // disponibile (dato dichiarato mancante, mai dedotto silenziosamente).
     const residuoTxt = isProg ? `<span>Autorizzati: <b>${fmtKm(r.p.kmOtt)}</b></span><span>Non autorizzati: <b>${fmtKm(Math.max(0,(r.p.kmTot||0)-(r.p.kmOtt||0)))}</b></span>` : '';
+    const warnBase = 'Milestone autorizzativa non disponibile, pertanto previsto e scostamento non sono calcolabili.';
+    const warnTxt = (isProg && flag.stimaInfo && !flag.stimaInfo.disponibile) ? `${warnBase} Baseline stimata non calcolabile: ${flag.stimaInfo.motivo}.` : warnBase;
     return `<div class="cmp-chart-big" title="${tooltip}">
       <div class="cmp-row-big"><span class="cbrb-lbl">Reale</span><div class="cbrb-track"><div class="cbrb-fill cbrb-real" style="width:${Math.max(6,Math.min(100,flag.pct)).toFixed(1)}%"></div></div><span class="cbrb-pct">${fmtPct(flag.pct)}</span></div>
-      <div class="cmp-meta-big">${residuoTxt}<span class="cmp-warn-note">Milestone autorizzativa non disponibile, pertanto previsto e scostamento non sono calcolabili.</span></div>
+      <div class="cmp-meta-big">${residuoTxt}<span class="cmp-warn-note">${warnTxt}</span></div>
     </div>`;
   }
   if (flag.primaAvvio && isProg) {
     // Caso A: milestone tracciata, "invio" ancora futuro — non un dato mancante.
     const residuoTxt = `<span>Autorizzati: <b>${fmtKm(r.p.kmOtt)}</b></span><span>Non autorizzati: <b>${fmtKm(Math.max(0,(r.p.kmTot||0)-(r.p.kmOtt||0)))}</b></span>`;
+    const previstoLblA = flag.stimato ? 'Previsto stimato' : 'Previsto';
+    const infoTxtA = flag.stimato ? 'Stato: attività in anticipo rispetto all\'invio stimato (baseline da avvio progettazione)' : 'Stato: attività in anticipo rispetto alla milestone di invio';
     return `<div class="cmp-chart-big" title="${tooltip}">
-      <div class="cmp-row-big"><span class="cbrb-lbl">Previsto</span><div class="cbrb-track"><div class="cbrb-fill cbrb-planned" style="width:6%"></div></div><span class="cbrb-pct">0%</span></div>
+      <div class="cmp-row-big"><span class="cbrb-lbl">${previstoLblA}</span><div class="cbrb-track"><div class="cbrb-fill cbrb-planned${flag.stimato ? ' stima-fill' : ''}" style="width:6%"></div></div><span class="cbrb-pct">0%</span></div>
       <div class="cmp-row-big"><span class="cbrb-lbl">Reale</span><div class="cbrb-track"><div class="cbrb-fill cbrb-real" style="width:${Math.max(6,Math.min(100,flag.pct)).toFixed(1)}%"></div></div><span class="cbrb-pct">${fmtPct(flag.pct)}</span></div>
-      <div class="cmp-meta-big">${residuoTxt}<span class="cmp-info-note">Stato: attività in anticipo rispetto alla milestone di invio</span></div>
+      <div class="cmp-meta-big">${residuoTxt}<span class="cmp-info-note">${infoTxtA}</span></div>
     </div>`;
   }
   const scost = fmtScost(flag.gap, flag.flag);
@@ -1494,10 +1587,14 @@ function buildCmpChart(flag, tooltip, r, isProg) {
     const residuo = Math.max(0, (r.s.metriTot||0) - (r.s.metriScavati||0));
     meta = `<span>Metri scavati: <b>${fmtKm(r.s.metriScavati)}</b></span><span>Metri residui: <b>${fmtKm(residuo)}</b></span><span>Ritardo stimato: <b>${fmtDelay(flag.delayDays)}</b></span>`;
   }
+  const previstoLbl = flag.stimato ? 'Previsto stimato' : 'Previsto';
+  const stimaFillCls = flag.stimato ? ' stima-fill' : '';
+  const stimaNota = (isProg && flag.stimato && flag.stimaInfo && flag.stimaInfo.disponibile)
+    ? `<span class="cmp-info-note">Baseline stimata da avvio progettazione (${fmtDateShort(flag.stimaInfo.avvioProg)}) — ${flag.stimaInfo.nota}. Nessuna milestone reale di invio/ottenimento ancora tracciata.</span>` : '';
   return `<div class="cmp-chart-big" title="${tooltip}">
-    <div class="cmp-row-big"><span class="cbrb-lbl">Previsto</span><div class="cbrb-track"><div class="cbrb-fill cbrb-planned" style="width:${Math.max(6,Math.min(100,flag.plannedToday)).toFixed(1)}%"></div></div><span class="cbrb-pct">${fmtPct(flag.plannedToday)}</span></div>
+    <div class="cmp-row-big"><span class="cbrb-lbl">${previstoLbl}</span><div class="cbrb-track"><div class="cbrb-fill cbrb-planned${stimaFillCls}" style="width:${Math.max(6,Math.min(100,flag.plannedToday)).toFixed(1)}%"></div></div><span class="cbrb-pct">${fmtPct(flag.plannedToday)}</span></div>
     <div class="cmp-row-big"><span class="cbrb-lbl">Reale</span><div class="cbrb-track"><div class="cbrb-fill cbrb-real" style="width:${Math.max(6,Math.min(100,flag.pct)).toFixed(1)}%"></div></div><span class="cbrb-pct">${fmtPct(flag.pct)}</span></div>
-    <div class="cmp-scost-big"><span class="csb-lbl">Scostamento</span><span class="csb-val" style="color:${scostColor}">${scost.text}</span></div>
+    <div class="cmp-scost-big"><span class="csb-lbl">Scostamento</span><span class="csb-val" style="color:${scostColor}">${scost.text}</span></div>${stimaNota}
     <div class="cmp-meta-big">${meta}</div>
   </div>`;
 }
