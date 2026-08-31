@@ -1200,7 +1200,7 @@ function render(prog, scavi, milestoneByLotto) {
     const scaviPct = s.metriTot > 0 ? (s.metriScavati / s.metriTot) * 100 : 0;
     s.pFlagPct = scaviPct;
 
-    let progPoints = m ? [
+    let progPointsReali = m ? [
       { date: parseDateIT(m.invio), pct: 0, label: `Invio pratiche (${m.invio})`, nome: 'Invio pratiche', dominio: 'prog' },
       { date: parseDateIT(m.ottenim), pct: 100, label: `Ottenimento permessi (${m.ottenim})`, nome: 'Ottenimento permessi', dominio: 'prog' }
     ] : [];
@@ -1210,26 +1210,25 @@ function render(prog, scavi, milestoneByLotto) {
       { date: parseDateIT(m.p90), pct: 90, label: `90% scavato (${m.p90})`, nome: '90% scavi', dominio: 'scavi' },
       { date: parseDateIT(m.p100), pct: 100, label: `100% scavato — ROS (${m.p100})`, nome: '100% scavi — ROS', dominio: 'scavi' }
     ] : [];
-    let progCurve = buildCurve(progPoints);
     const scaviCurve = buildCurve(scaviPoints);
+    let progPoints = progPointsReali;
+    let progCurve = buildCurve(progPoints);
     let progStimato = false;
-    let stima = null;
-    // Baseline stimata da avvio progettazione + tempi di redazione/attesa per
-    // ente (§14), usata per completare il/i punto/i mancanti (invio e/o
-    // ottenimento) quando non c'è milestone reale. Stesso concetto sia che
-    // manchino entrambe le date reali sia che ne manchi solo una: la data
-    // reale, quando c'è, ha sempre precedenza e non viene mai sovrascritta.
-    const invioReale = progPoints[0] && progPoints[0].date ? progPoints[0] : null;
-    const ottenimReale = progPoints[1] && progPoints[1].date ? progPoints[1] : null;
-    if (!invioReale || !ottenimReale) {
-      stima = computeStimaAutorizzativa({ lotto, p }, PARAMETRI);
-      if (stima.disponibile) {
-        const invioPt = invioReale || { date: stima.invioStimato, pct: 0, label: `Invio pratiche stimato (${fmtDateShort(stima.invioStimato)})`, nome: 'Invio pratiche (stimato)', dominio: 'prog', stimato: true };
-        const ottenimPt = ottenimReale || { date: stima.ottenimStimato, pct: 100, label: `Ottenimento permessi stimato (${fmtDateShort(stima.ottenimStimato)})`, nome: 'Ottenimento permessi (stimato)', dominio: 'prog', stimato: true };
-        progPoints = [invioPt, ottenimPt];
-        progCurve = buildCurve(progPoints);
-        progStimato = !invioReale || !ottenimReale;
-      }
+    // Il "Previsto" segue SEMPRE la baseline parametrica (avvio progettazione
+    // + tempi di redazione/attesa per ente, §14) con lo stesso criterio per
+    // tutti i lotti — anche quando esiste già una data reale di invio/
+    // ottenimento pianificata nel Gantt: quella resta solo un impegno
+    // contrattuale (mostrato in "Prossima milestone"), non la base del calcolo
+    // del ritmo previsto. Si usa la curva reale solo come fallback quando la
+    // stima non è calcolabile (es. avvio progettazione non configurato).
+    const stima = computeStimaAutorizzativa({ lotto, p }, PARAMETRI);
+    if (stima.disponibile) {
+      progPoints = [
+        { date: stima.invioStimato, pct: 0, label: `Invio pratiche stimato (${fmtDateShort(stima.invioStimato)})`, nome: 'Invio pratiche (stimato)', dominio: 'prog', stimato: true },
+        { date: stima.ottenimStimato, pct: 100, label: `Ottenimento permessi stimato (${fmtDateShort(stima.ottenimStimato)})`, nome: 'Ottenimento permessi (stimato)', dominio: 'prog', stimato: true }
+      ];
+      progCurve = buildCurve(progPoints);
+      progStimato = true;
     }
 
     const pFlag = evalMetric(progCurve, progPct, progPoints);
@@ -1245,7 +1244,7 @@ function render(prog, scavi, milestoneByLotto) {
     row.causaUI = computeCausaUI(row); // versione card/tabella (solo fatti + impatto in linguaggio naturale)
 
     // prossima milestone: solo milestone contrattuali reali, mai stimate
-    const tuttiPunti = [...progPoints, ...scaviPoints].filter(pt => pt.date && !pt.stimato);
+    const tuttiPunti = [...progPointsReali, ...scaviPoints].filter(pt => pt.date);
     row.prossimaMilestone = tuttiPunti.filter(pt => pt.date > oggi).sort((a,b)=>a.date-b.date)[0] || null;
 
     const classeSort = { Critico: 4, Alto: 3, Medio: 2, Basso: 1 };
