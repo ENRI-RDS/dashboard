@@ -307,6 +307,7 @@ SENSITIVE_FILES = {
     "SED_classificato.geojson",
     "Cantieri.csv",
     "sopralluoghi.csv",
+    "solleciti.csv",
 }
 
 
@@ -787,6 +788,8 @@ async def _on_startup():
     # repo, rigeneriamo subito il derivato da Mongo così compare in "File
     # correnti" senza dover aspettare il prossimo verbale/eliminazione.
     _schedule_sopralluoghi_csv_regen("backfill startup")
+    # Backfill solleciti.csv: idem, così compare subito in "File correnti".
+    _schedule_solleciti_csv_regen("backfill startup")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1224,6 +1227,7 @@ QGIS_FILENAME      = "QGIS.geojson"
 RIEPILOGO_FILENAME = "Riepilogo_progettazione.csv"
 CANTIERI_FILENAME  = "Cantieri.csv"
 SOPRALLUOGHI_FILENAME = "sopralluoghi.csv"
+SOLLECITI_FILENAME = "solleciti.csv"
 
 
 async def _read_riepilogo_csv() -> "pd.DataFrame | None":
@@ -3291,6 +3295,7 @@ async def add_sollecito(payload: dict, sess: dict = Depends(_require_session)):
     }
     res = await solleciti_col.insert_one(record)
     asyncio.create_task(_touch_data_update(tratta_id, pratica, tipo_perm))
+    _schedule_solleciti_csv_regen(f"nuovo sollecito: {tratta_id}")
     return {"ok": True, "id": str(res.inserted_id)}
 
 
@@ -3332,6 +3337,7 @@ async def bulk_insert_solleciti(payload: dict, sess: dict = Depends(_require_ses
 
     if inserted:
         asyncio.create_task(_touch_data_update_multi(touch_keys))
+        _schedule_solleciti_csv_regen(f"bulk-insert: {len(inserted)} solleciti")
     return {"ok": True, "inserted": inserted, "count": len(inserted)}
 
 
@@ -3348,6 +3354,7 @@ async def delete_sollecito(sol_id: str, sess: dict = Depends(_require_session)):
     if doc.get("impresa") != sess["nome"]:
         raise HTTPException(403, "Non autorizzato")
     await solleciti_col.delete_one({"_id": oid})
+    _schedule_solleciti_csv_regen(f"eliminazione sollecito: {sol_id}")
     return {"deleted": sol_id}
 
 
@@ -3401,6 +3408,8 @@ async def bulk_delete_solleciti(payload: dict, sess: dict = Depends(_require_ses
             continue
         await solleciti_col.delete_one({"_id": oid})
         deleted.append(str(sol_id))
+    if deleted:
+        _schedule_solleciti_csv_regen(f"bulk-delete: {len(deleted)} solleciti")
     return {"deleted": deleted, "count": len(deleted)}
 
 
@@ -3558,6 +3567,36 @@ async def _regenerate_sopralluoghi_csv(note: str = "") -> str | None:
 
 def _schedule_sopralluoghi_csv_regen(note: str = "") -> None:
     asyncio.create_task(_regenerate_sopralluoghi_csv(note))
+
+
+async def _regenerate_solleciti_csv(note: str = "") -> str | None:
+    """Rigenera solleciti.csv come file derivato in GridFS a partire dalla
+    collection solleciti_col — compare in 'File correnti' con lo stesso
+    bottone 'Scarica'. Fire-and-forget: eventuali errori solo loggati."""
+    try:
+        cols = [
+            "tratta_id", "pratica", "tipo_sollecito", "data_sollecito", "note",
+            "impresa", "ente", "tipo_permesso", "stato_permesso", "lunghezza",
+            "data_richiesta", "data_ultima_modifica", "numero_sollecito", "created_at",
+        ]
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+        w.writeheader()
+        n = 0
+        async for d in solleciti_col.find({}).sort("data_sollecito", -1):
+            w.writerow({k: d.get(k, "") for k in cols})
+            n += 1
+        data = buf.getvalue().encode("utf-8-sig")
+        gid = await _store_derived_file(SOLLECITI_FILENAME, data, "text/csv", note)
+        print(f"[solleciti_csv] rigenerato solleciti.csv ({n} righe)")
+        return gid
+    except Exception as e:
+        print(f"[solleciti_csv] errore rigenerazione: {type(e).__name__}: {e}")
+        return None
+
+
+def _schedule_solleciti_csv_regen(note: str = "") -> None:
+    asyncio.create_task(_regenerate_solleciti_csv(note))
 
 
 async def _sync_cantieri() -> int:
