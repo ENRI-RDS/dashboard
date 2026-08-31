@@ -969,6 +969,18 @@ def _sheet_table(ws, anchor_text: str, max_scan: int = 20) -> list[dict]:
     return rows
 
 
+def _xlsx_date_to_it(v):
+    """Normalizza una cella data del PARAMETRI xlsx in stringa gg/mm/aaaa.
+    openpyxl restituisce un oggetto datetime/date se la cella è formattata
+    come Data in Excel, una stringa se è General/Testo: il frontend
+    (parseDateIT) si aspetta sempre e solo il formato gg/mm/aaaa."""
+    if v is None or v == "":
+        return v
+    if hasattr(v, "strftime"):
+        return v.strftime("%d/%m/%Y")
+    return v
+
+
 def _parse_parametri_xlsx(raw: bytes) -> dict:
     import openpyxl
     wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
@@ -1109,7 +1121,7 @@ def _parse_parametri_xlsx(raw: bytes) -> dict:
         per_lotto[str(lotto).strip()] = {
             "cluster": row.get("Cluster"),
             "impresa": row.get("Impresa"),
-            "milestone_contrattuale": row.get("Milestone contrattuale"),
+            "milestone_contrattuale": _xlsx_date_to_it(row.get("Milestone contrattuale")),
             "produttivita_standard_squadra": row.get("Produttività standard squadra"),
             "squadre_lotto_override": row.get("Squadre lotto (override manuale)"),
             "giorni_lavorativi_settimana": row.get("Giorni lavorativi/settimana"),
@@ -1118,7 +1130,7 @@ def _parse_parametri_xlsx(raw: bytes) -> dict:
             "fonte": row.get("Fonte / motivazione"),
             "data_validita": row.get("Data validità"),
             "note": row.get("Note"),
-            "data_avvio_progettazione": row.get("Data avvio progettazione"),
+            "data_avvio_progettazione": _xlsx_date_to_it(row.get("Data avvio progettazione")),
         }
     out["parametri_lotto"] = per_lotto
 
