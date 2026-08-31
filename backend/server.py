@@ -1040,6 +1040,7 @@ def _parse_parametri_xlsx(raw: bytes) -> dict:
             "peso_milestone_30gg": row.get("Peso se milestone ≤30gg"),
             "modificabile": _pf_bool_si(row, "Modificabile"),
             "note": row.get("Note"),
+            "giorni_redazione_pratiche": row.get("Giorni redazione pratiche"),
         }
     out["tempi_autorizzativi"] = tempi
 
@@ -1117,6 +1118,7 @@ def _parse_parametri_xlsx(raw: bytes) -> dict:
             "fonte": row.get("Fonte / motivazione"),
             "data_validita": row.get("Data validità"),
             "note": row.get("Note"),
+            "data_avvio_progettazione": row.get("Data avvio progettazione"),
         }
     out["parametri_lotto"] = per_lotto
 
