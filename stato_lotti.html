@@ -1165,6 +1165,14 @@ const FATTORE_ICON = { R_SCAVI: '👥', R_AUTH: '📄', R_SOSP: '⏸', R_MS: '�
 
 function computeCausaUI(row) {
   const rischio = row.rischio;
+  // Se il lotto è classificato complessivamente Basso, non ha senso indicare
+  // come "causa di rischio" un singolo fattore con un contributo minimo (es.
+  // qualche km bloccato da nulla osta): il punteggio composito dice che non
+  // c'è un problema rilevante in atto. Testo dedicato, niente dati puntuali
+  // che suonerebbero come un allarme che il resto della riga smentisce.
+  if (rischio.classe && rischio.classe.classe === 'Basso') {
+    return { items: [{ testo: 'Nessun rischio rilevato', fattore: null }], muted: true, top: null };
+  }
   const attivi = Object.values(rischio.fattori).filter(f => f.disponibile && f.contributo > 0.01);
   attivi.sort((a, b) => b.contributo - a.contributo);
   const items = attivi.slice(0, 3).map(f => ({ testo: causaTesto(f, row), fattore: f }));
