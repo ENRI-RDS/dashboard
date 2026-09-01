@@ -121,7 +121,13 @@ body.panel-open .main{margin-right:44%;}
 .mini-bar-fill{height:100%;border-radius:2px;}
 .adv-note-sm{font-size:8.5px;color:var(--muted2);font-style:italic;line-height:1.3;max-width:90px;margin:2px auto 0;white-space:normal;}
 .adv-note-stima{color:var(--brand-2,var(--muted2));font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
-.adv-stimato{background:linear-gradient(180deg,rgba(26,125,153,0.06),rgba(26,125,153,0.06));}
+/* Cella "Previsto": sfondo tenue + peso medio, per distinguerla a colpo
+   d'occhio dalla cella "Reale" (bold, sfondo bianco) senza dover ricorrere
+   al solo grassetto — il font mono a peso 400 su sfondo bianco risultava
+   illeggibile. */
+.adv-previsto-cell{background:var(--gray-50);font-weight:600;color:var(--text);border-radius:4px;}
+.adv-previsto-cell.adv-stimato{background:linear-gradient(180deg,rgba(26,125,153,.10),rgba(26,125,153,.10));}
+.adv-previsto-cell.adv-nd-cell{background:var(--gray-100);font-weight:500;}
 .cbrb-fill.cbrb-planned.stima-fill{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,0.35) 0 4px,transparent 4px 8px);}
 .adv-nd-cell{color:var(--muted2)!important;}
 
@@ -1063,7 +1069,7 @@ function renderAvanzamentoCells(flag, isProg, tooltip) {
     // stimata disponibile (avvio progettazione o tempi ente non configurati).
     let nota = isProg ? 'Milestone autorizzativa non disponibile' : 'Nessuna milestone tracciata';
     if (isProg && flag.stimaInfo && !flag.stimaInfo.disponibile) nota += ` (stima non calcolabile: ${flag.stimaInfo.motivo})`;
-    return `<td class="tc-center adv-nd-cell" title="${tooltip}">—</td>
+    return `<td class="tc-center adv-previsto-cell adv-nd-cell" title="${tooltip}">—</td>
       <td class="tc-center" title="${tooltip}"><b>${fmtPct(flag.pct)}</b><div class="adv-note-sm">${nota}</div></td>
       <td class="tc-center adv-nd-cell">—</td>`;
   }
@@ -1071,16 +1077,15 @@ function renderAvanzamentoCells(flag, isProg, tooltip) {
     // Caso A: milestone di invio/ottenimento tracciata ma "invio" ancora
     // futuro. Previsto=0% per definizione di curva; non è un dato mancante.
     const scostTxt = flag.pct > 0.5 ? `<b class="scost-pos">+${Math.round(flag.pct)}%</b>` : `<span class="scost-na">0%</span>`;
-    const notaA = flag.stimato ? 'Prima dell\'invio stimato' : 'Prima della milestone di invio';
-    return `<td class="tc-center">0%</td>
-      <td class="tc-center" title="${tooltip}"><b>${fmtPct(flag.pct)}</b><div class="adv-note-sm">${notaA}</div></td>
+    return `<td class="tc-center adv-previsto-cell">0%</td>
+      <td class="tc-center" title="${tooltip}"><b>${fmtPct(flag.pct)}</b></td>
       <td class="tc-center">${scostTxt}</td>`;
   }
   const scost = fmtScost(flag.gap, flag.flag);
   const barColor = flag.flag==='err'?'var(--danger)':flag.flag==='warn'?'var(--warn)':'var(--ok)';
   const stimaClass = flag.stimato ? ' adv-stimato' : '';
   const previstoTxt = fmtPct(flag.plannedToday);
-  return `<td class="tc-center${stimaClass}" title="${tooltip}">${previstoTxt}</td>
+  return `<td class="tc-center adv-previsto-cell${stimaClass}" title="${tooltip}">${previstoTxt}</td>
     <td class="tc-center" title="${tooltip}"><b>${fmtPct(flag.pct)}</b></td>
     <td class="tc-center" title="${tooltip}">
       <div class="scost-cell"><b class="${scost.cls}">${scost.text}</b>
