@@ -966,12 +966,17 @@ function computeAzioneParametrica(row, capacita, parametri) {
     } else if (reg.codice === 'ACT_ORD') {
       // Non basta un metro bloccato per sollecitare l'atto: la regola deve
       // riflettere il rischio effettivo. Condizione: metri bloccati > 0 E
-      // almeno una delle seguenti — R_BLOCCHI sopra soglia attenzione;
-      // milestone ottenimento entro la finestra d'impatto; avvio scavi entro
-      // la finestra d'impatto; cantiere sospeso collegato alla stessa pratica.
+      // siamo EFFETTIVAMENTE in ritardo sul previsto (reale < previsto,
+      // gap negativo) E almeno una delle seguenti — R_BLOCCHI sopra soglia
+      // attenzione; milestone ottenimento entro la finestra d'impatto;
+      // avvio scavi entro la finestra d'impatto; cantiere sospeso collegato
+      // alla stessa pratica. Se previsto e reale sono entrambi 0 (fase non
+      // ancora avviata, nessun ritardo per definizione) non ha senso
+      // sollecitare nulla: è fisiologico, non un problema da segnalare.
       const blocchi = row.p.blocchi || [];
       const metriBloccati = blocchi.reduce((s, b) => s + b.km, 0);
-      if (metriBloccati > 0) {
+      const inRitardo = row.pFlag && typeof row.pFlag.gap === 'number' && row.pFlag.gap < -0.5;
+      if (metriBloccati > 0 && inRitardo) {
         const rBlocchi = row.rischio && row.rischio.fattori ? row.rischio.fattori.R_BLOCCHI : null;
         const sopraSogliaAttenzione = !!(rBlocchi && rBlocchi.disponibile && rBlocchi.punti > 0);
         const faseAuth = computeFaseAutorizzativa(row);
@@ -980,10 +985,19 @@ function computeAzioneParametrica(row, capacita, parametri) {
         const avvioEntroFinestra = faseScavi.disponibile && faseScavi.attiva;
         const cantiereSospesoCollegato = collegamentiSospesiBlocchi(row).some(c => c.collegamento);
         match = sopraSogliaAttenzione || ottenimEntroFinestra || avvioEntroFinestra || cantiereSospesoCollegato;
-        dettaglio = { metriBloccati, numBlocchi: blocchi.length, sopraSogliaAttenzione, ottenimEntroFinestra, avvioEntroFinestra, cantiereSospesoCollegato };
+        dettaglio = { metriBloccati, numBlocchi: blocchi.length, sopraSogliaAttenzione, ottenimEntroFinestra, avvioEntroFinestra, cantiereSospesoCollegato, inRitardo, gapPrevistoReale: row.pFlag.gap };
+        // Su rischio Basso "Sollecitare rilascio atto" (escalation formale
+        // verso l'ente) è sproporzionato per un ritardo ancora marginale:
+        // si usa ACT_PROG ("Accelerare progettazione e invio", presa dal
+        // foglio Regole azioni, non hardcoded) — stessa famiglia di azione
+        // interna, tono coerente col livello di rischio reale.
+        if (match && row.rischio && row.rischio.classe && row.rischio.classe.classe === 'Basso') {
+          const regolaProg = regole.find(r => r.codice === 'ACT_PROG');
+          if (regolaProg) return { regola: regolaProg, dettaglio: { ...dettaglio, sostituitaDa: 'ACT_ORD' } };
+        }
       } else {
         match = false;
-        dettaglio = { metriBloccati: 0, numBlocchi: 0 };
+        dettaglio = { metriBloccati, numBlocchi: blocchi.length, inRitardo };
       }
     } else if (reg.codice === 'ACT_NONE') {
       match = true;
