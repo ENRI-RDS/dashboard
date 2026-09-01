@@ -934,6 +934,19 @@ function computeRischioComposito(row, capacita, parametri) {
     attivi.forEach(r => { r.pesoEffettivo = Number(r.peso) / pesoAttivoTotale; r.contributo = r.pesoEffettivo * r.punti; });
     punteggio = attivi.reduce((s, r) => s + r.contributo, 0);
     classe = (parametri.rischio_ros.classi || []).find(c => punteggio >= c.punteggio_min && punteggio <= c.punteggio_max) || null;
+    // Floor di escalation: la media pesata può "diluire" un problema grave
+    // ma isolato su un solo fattore (es. R_AUTH al 100% ma R_SCAVI/R_MS a 0)
+    // dietro pesi bassi, restituendo una classe complessiva ingannevolmente
+    // mite. La classificazione finale non scende mai sotto quella che si
+    // otterrebbe prendendo il SINGOLO fattore attivo più grave come se fosse
+    // l'intero punteggio — un problema serio e isolato non si nasconde
+    // dietro una media, ma non "gonfia" artificialmente lotti dove nessun
+    // fattore singolo è davvero critico.
+    const puntiMax = attivi.reduce((m, r) => Math.max(m, r.punti || 0), 0);
+    const classeFloor = (parametri.rischio_ros.classi || []).find(c => puntiMax >= c.punteggio_min && puntiMax <= c.punteggio_max) || null;
+    if (classeFloor && (!classe || classeFloor.punteggio_min > classe.punteggio_min)) {
+      classe = classeFloor;
+    }
   }
   return { fattori, punteggio, classe, pesoAttivoTotale, renormalizzato: pesoAttivoTotale > 0 && pesoAttivoTotale < 0.999 };
 }
