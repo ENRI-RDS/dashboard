@@ -1077,7 +1077,7 @@ function renderAvanzamentoCells(flag, isProg, tooltip) {
     // Caso A: milestone di invio/ottenimento tracciata ma "invio" ancora
     // futuro. Previsto=0% per definizione di curva; non è un dato mancante.
     const scostTxt = flag.pct > 0.5 ? `<b class="scost-pos">+${Math.round(flag.pct)}%</b>` : `<span class="scost-na">0%</span>`;
-    return `<td class="tc-center adv-previsto-cell">0%</td>
+    return `<td class="tc-center adv-previsto-cell" title="${tooltip}">0%</td>
       <td class="tc-center" title="${tooltip}"><b>${fmtPct(flag.pct)}</b></td>
       <td class="tc-center">${scostTxt}</td>`;
   }
@@ -1100,8 +1100,14 @@ function tooltipScavi(r) {
 function tooltipProg(r) {
   const residuo = Math.max(0, (r.p.kmTot||0) - (r.p.kmOtt||0));
   const base = `Km totali: ${fmtNum(r.p.kmTot)} — autorizzati: ${fmtNum(r.p.kmOtt)} — residui: ${fmtNum(residuo)} — ritardo stimato: ${fmtDelay(r.pFlag.delayDays)}`;
-  if (!r.pFlag.stimato) return base;
   const si = r.pFlag.stimaInfo;
+  if (!r.pFlag.stimato) {
+    // Previsto NON basato su stima: o c'è una milestone reale, oppure la
+    // stima è stata tentata e non è disponibile (motivo sempre mostrato,
+    // indipendentemente dal fatto che sia poi stata usata o meno).
+    if (si && !si.disponibile) return `${base} — Stima non disponibile: ${si.motivo}`;
+    return base;
+  }
   if (!si || !si.disponibile) return `${base} — Previsto: stima non disponibile${si && si.motivo ? ' ('+si.motivo+')' : ''}`;
   const dett = (si.dettaglio || []).map(d => d.disponibile
     ? `${d.ente} → ${d.codice}${d.fallbackEnte ? ' (fallback)' : ''}: redazione ${d.giorniRedazione}gg, attesa ${d.giorniAttesi != null ? d.giorniAttesi+'gg' : 'N/D'}, ottenim. stimato ${fmtDateShort(d.ottenimStimato)}`
