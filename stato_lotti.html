@@ -828,21 +828,30 @@ function computeFaseScavi(row, parametri) {
 }
 
 function fattoreRAuth(row, parametri, f) {
-  const fase = computeFaseAutorizzativa(row);
-  if (!fase.disponibile) return { disponibile: false, motivo: fase.motivo };
   const tempi = parametri.tempi_autorizzativi || {};
   const kmTot = row.p.kmTot || 0;
-  if (kmTot <= 0 || !(row.p.issues || []).length) return { disponibile: true, punti: 0, kmPesati: 0, pctPesata: 0, fase, dettaglio: [] };
-  const dettaglio = (row.p.issues || []).map(iss => {
+  const issues = row.p.issues || [];
+  const dettaglio = issues.map(iss => {
     const t = lookupTempoEnte(iss.ente, tempi);
-    const pesoEnte = t.peso_milestone_30gg != null ? Number(t.peso_milestone_30gg) : 1;
-    const kmPesati = iss.km * pesoEnte * fase.coefFase;
-    return { ente: iss.ente, tratta: iss.tratta, km: iss.km, pratica: iss.pratica, codiceTempo: t.codice, fallback: t.fallback, pesoEnte, kmPesati };
+    return { ente: iss.ente, tratta: iss.tratta, km: iss.km, pratica: iss.pratica, codiceTempo: t.codice, fallback: t.fallback };
   });
-  const kmPesati = dettaglio.reduce((s, d) => s + d.kmPesati, 0);
-  const pctPesata = kmPesati / kmTot;
-  const punti = interpLin(pctPesata, f.soglia_attenzione, f.soglia_critica);
-  return { disponibile: true, punti, kmPesati, pctPesata, fase, dettaglio };
+  // Severità basata sullo scostamento Previsto/Reale della curva
+  // autorizzativa (row.pFlag.gap — la stessa "Scostamento" mostrata in
+  // tabella, sempre calcolata via stima parametrica quando la milestone
+  // reale manca, v. computeStimaAutorizzativa), NON più sulla sola fase
+  // reale (invio/ottenimento tracciati): due lotti con la stessa quota di
+  // km non autorizzati ma uno in anticipo e uno in ritardo sul proprio
+  // piano non possono avere lo stesso rischio — prima la fase reale li
+  // trattava allo stesso modo (coefficiente 0 finché l'invio reale non
+  // arriva), ignorando il ritardo/anticipo già visibile in tabella.
+  const pFlag = row.pFlag;
+  if (!pFlag || pFlag.gap === null || pFlag.gap === undefined) {
+    return { disponibile: false, motivo: 'Nessuno scostamento previsto/reale calcolabile per la fase autorizzativa (né milestone reale né stima disponibile)' };
+  }
+  if (kmTot <= 0 || !issues.length) return { disponibile: true, punti: 0, dettaglio: [], gap: pFlag.gap };
+  const ritardoFrazione = Math.max(0, -pFlag.gap) / 100; // gap negativo = reale sotto il previsto; in anticipo/in linea → 0
+  const punti = interpLin(ritardoFrazione, f.soglia_attenzione, f.soglia_critica);
+  return { disponibile: true, punti, dettaglio, gap: pFlag.gap, ritardoFrazione, stimato: pFlag.stimato };
 }
 
 
