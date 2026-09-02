@@ -4276,7 +4276,9 @@ function _processMasterText(text) {
 
         if (note) {
           if (!praticaNotesRaw[codiceRaw]) praticaNotesRaw[codiceRaw] = [];
-          const dupeRaw = praticaNotesRaw[codiceRaw].some(n => n.note === note && n.date === effectiveDateRaw);
+          // Dedup per solo testo nota: la stessa nota invariata viene riportata dal CSV su più righe
+          // di cambio stato consecutive (con date diverse), non è un evento nuovo ogni volta.
+          const dupeRaw = praticaNotesRaw[codiceRaw].some(n => n.note === note);
           if (!dupeRaw) praticaNotesRaw[codiceRaw].push({ note, date: effectiveDateRaw });
         }
 
