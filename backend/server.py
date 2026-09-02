@@ -2647,10 +2647,12 @@ def _pratica_note_history_core(df: "pd.DataFrame", ente: str, tipo_permesso: str
         note = str(row.get("NOTE", "")).strip()
         if not note:
             continue
-        key = (note, effective_date)
-        if key in seen:
+        # Dedup per solo testo nota (non (nota, data)): la stessa nota invariata viene
+        # riportata dal CSV su più righe di cambio stato consecutive con date diverse,
+        # non è un evento nuovo ogni volta — stessa logica di index.html (praticaNotesRaw).
+        if note in seen:
             continue
-        seen.add(key)
+        seen.add(note)
         notes.append({"note": note, "date": effective_date})
     notes.sort(key=lambda n: _it_date_to_iso(n["date"]), reverse=True)
     return notes
@@ -2725,16 +2727,17 @@ async def correct_pratica_note(
             (df["Source.Name"].apply(_lotto_from_source) == lotto) &
             (df["NOTE"].astype(str).str.strip() == old_note)
         )
-        if old_date:
-            cols_present = [c for c in ("DATA_ULTIMA_MODIFICA", "DATA_UPDATE") if c in df.columns]
-            if cols_present:
-                date_mask = df[cols_present[0]].astype(str).str.strip() == old_date
-                for c in cols_present[1:]:
-                    date_mask = date_mask | (df[c].astype(str).str.strip() == old_date)
-                mask = mask & date_mask
+        # NB: old_date NON viene più usata per filtrare. Lo storico note (v.
+        # _pratica_note_history_core) dedupe ora per solo testo, quindi una voce
+        # visualizzata con una data può corrispondere a più righe fisiche con quello
+        # stesso testo ma date diverse (nota invariata riportata su più cambi stato).
+        # Filtrare anche per data correggerebbe/eliminerebbe solo una di quelle righe,
+        # lasciando le altre col testo vecchio — il doppione riapparirebbe al
+        # prossimo touch di DATA_UPDATE. old_date resta accettato per compatibilità
+        # ma è ignorato: l'identità della nota è il testo.
         idx = df.index[mask].tolist()
         if not idx:
-            raise HTTPException(404, "Nessuna riga trovata per quella nota/data — verifica che il testo combaci esattamente")
+            raise HTTPException(404, "Nessuna riga trovata per quella nota — verifica che il testo combaci esattamente")
         # Preserva il tag [RETELIT]/[IMPRESA] esistente su ciascuna riga: si corregge
         # solo il testo, non l'autore mostrato.
         for i in idx:
@@ -2787,16 +2790,10 @@ async def delete_pratica_note(
             (df["Source.Name"].apply(_lotto_from_source) == lotto) &
             (df["NOTE"].astype(str).str.strip() == old_note)
         )
-        if old_date:
-            cols_present = [c for c in ("DATA_ULTIMA_MODIFICA", "DATA_UPDATE") if c in df.columns]
-            if cols_present:
-                date_mask = df[cols_present[0]].astype(str).str.strip() == old_date
-                for c in cols_present[1:]:
-                    date_mask = date_mask | (df[c].astype(str).str.strip() == old_date)
-                mask = mask & date_mask
+        # V. nota in note/correct: old_date non filtra più, stesso motivo.
         idx = df.index[mask].tolist()
         if not idx:
-            raise HTTPException(404, "Nessuna riga trovata per quella nota/data — verifica che il testo combaci esattamente")
+            raise HTTPException(404, "Nessuna riga trovata per quella nota — verifica che il testo combaci esattamente")
         for i in idx:
             df.loc[i, "NOTE"] = ""
         reviewer = x_actor_nome or "admin"
