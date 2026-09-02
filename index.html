@@ -4278,6 +4278,9 @@ function _processMasterText(text) {
           if (!praticaNotesRaw[codiceRaw]) praticaNotesRaw[codiceRaw] = [];
           // Dedup per solo testo nota: la stessa nota invariata viene riportata dal CSV su più righe
           // di cambio stato consecutive (con date diverse), non è un evento nuovo ogni volta.
+          // Nota non taggata [IMPRESA]/[RETELIT] = dato grezzo di import (es. nome via/roggia
+          // sulla riga iniziale IN REDAZIONE): resta in elenco ma il rendering la etichetta
+          // come "Dato progetto" invece del badge Impresa/Retelit (v. popup Note più sotto).
           const dupeRaw = praticaNotesRaw[codiceRaw].some(n => n.note === note);
           if (!dupeRaw) praticaNotesRaw[codiceRaw].push({ note, date: effectiveDateRaw });
         }
@@ -6280,10 +6283,10 @@ _hookScadenze();
       if (notes.length) {
         rows = notes.map(n => {
           const m = /^\[(RETELIT|IMPRESA)\]\s*/.exec(n.note || '');
-          const author = m ? (m[1] === 'RETELIT' ? 'Retelit' : 'Impresa') : '';
-          const authorBg = m && m[1] === 'RETELIT' ? 'var(--retelit-blue)' : 'var(--retelit-teal)';
+          const author = m ? (m[1] === 'RETELIT' ? 'Retelit' : 'Impresa') : 'Dato progetto';
+          const authorBg = m ? (m[1] === 'RETELIT' ? 'var(--retelit-blue)' : 'var(--retelit-teal)') : 'var(--muted2)';
           const note = (n.note||'').slice(m ? m[0].length : 0).replace(/</g,'&lt;').replace(/>/g,'&gt;');
-          const chip = author ? '<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;margin-right:6px;background:' + authorBg + ';color:#fff">' + author + '</span>' : '';
+          const chip = '<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;margin-right:6px;background:' + authorBg + ';color:#fff">' + author + '</span>';
           return '<tr>'
             + '<td style="padding:4px 8px;font-size:10.5px;white-space:nowrap;color:var(--muted)">' + (n.date ? fmtDateIT(n.date) : '—') + '</td>'
             + '<td style="padding:4px 8px;font-size:10.5px;color:var(--text2)">' + chip + note + '</td>'
