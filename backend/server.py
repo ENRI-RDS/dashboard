@@ -149,6 +149,13 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _parse_it_date(s: str):
+    try:
+        return datetime.strptime(str(s).strip(), "%d/%m/%Y")
+    except Exception:
+        return None
+
+
 def _media_type(name: str) -> str:
     ext = name.rsplit(".", 1)[-1].lower()
     if ext == "geojson":
@@ -3359,6 +3366,9 @@ async def add_sollecito(payload: dict, sess: dict = Depends(_require_session)):
         raise HTTPException(400, "tipo_sollecito deve essere PEC, MAIL o TELEFONICO")
     if not data_sol:
         raise HTTPException(400, "data_sollecito obbligatoria")
+    _dt_sol = _parse_it_date(data_sol)
+    if _dt_sol and _dt_sol.date() > datetime.now(timezone.utc).date():
+        raise HTTPException(400, "data_sollecito non può essere futura")
 
     record = {
         "tratta_id":           tratta_id,
@@ -3397,6 +3407,9 @@ async def bulk_insert_solleciti(payload: dict, sess: dict = Depends(_require_ses
         tipo      = str(item.get("tipo_sollecito", "")).strip()
         data_sol  = str(item.get("data_sollecito", "")).strip()
         if not tratta_id or tipo not in ("PEC", "MAIL", "TELEFONICO") or not data_sol:
+            continue
+        _dt_sol = _parse_it_date(data_sol)
+        if _dt_sol and _dt_sol.date() > datetime.now(timezone.utc).date():
             continue
         record = {
             "tratta_id":           tratta_id,
