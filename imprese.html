@@ -676,11 +676,19 @@ window.addEventListener('pageshow', (e) => {
     }
   });
 
+  // Estrae il codice lotto da Source.Name ('Lotto 2A.xlsx' -> '2A'). Usato sia da
+  // buildCodice sia dal matching siblings (stessa PRATICA+ENTE+TIPO possono
+  // coesistere su lotti diversi: sono pratiche fisicamente distinte, il lotto
+  // va sempre incluso nel confronto per non accorparle per errore).
+  function _lottoFromSource(src) {
+    const m = String(src||'').match(/Lotto\s*([\w\d]+)/i);
+    return m ? m[1].toUpperCase() : '';
+  }
+
   function buildCodice(p) {
     const tipoMap = {'AUTORIZZAZIONE':'AUT','NULLA OSTA':'NO'};
     const prefix = tipoMap[(p.TIPO_PERMESSO||'').trim()] || (p.TIPO_PERMESSO||'').trim().substring(0,3);
-    const m = String(p['Source.Name']||'').match(/Lotto\s*([\w\d]+)/i);
-    const lotto = m ? m[1] : '';
+    const lotto = _lottoFromSource(p['Source.Name']);
     const prat = String(p.PRATICA||'').trim();
     if (!prefix || !prat) return '';
     return `${prefix}/${prat}/${lotto}`;
@@ -990,7 +998,8 @@ window.addEventListener('pageshow', (e) => {
       const tutteTratte = pratNum ? [...new Set(PRATICHE
         .filter(p => String(p.PRATICA||'').trim() === pratNum &&
                      String(p.ENTE||'').trim() === String(SELECTED.ENTE||'').trim() &&
-                     String(p.TIPO_PERMESSO||'').trim() === 'AUTORIZZAZIONE')
+                     String(p.TIPO_PERMESSO||'').trim() === 'AUTORIZZAZIONE' &&
+                     _lottoFromSource(p['Source.Name']) === _lottoFromSource(SELECTED['Source.Name']))
         .map(p => p.TRATTA_ID).filter(Boolean)
       )].sort() : [];
       $('fld-no-tratte').innerHTML = tutteTratte.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
@@ -1003,7 +1012,8 @@ window.addEventListener('pageshow', (e) => {
       p.TRATTA_ID !== SELECTED.TRATTA_ID &&
       String(p.ENTE||'').trim() === String(SELECTED.ENTE||'').trim() &&
       String(p.TIPO_PERMESSO||'').trim() === String(SELECTED.TIPO_PERMESSO||'').trim() &&
-      String(p.PRATICA||'').trim() === pratNum
+      String(p.PRATICA||'').trim() === pratNum &&
+      _lottoFromSource(p['Source.Name']) === _lottoFromSource(SELECTED['Source.Name'])
     ) : [];
     // Dedup per TRATTA_ID: tieni solo la riga con DATA_ULTIMA_MODIFICA più recente
     const siblingsMap = new Map();
