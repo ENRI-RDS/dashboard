@@ -411,6 +411,7 @@
     display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text);
     cursor:pointer;margin-left:auto;
   }
+  .scavi-chart-subtitle { padding:8px 22px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);flex-shrink:0; }
   .scavi-chart-body { flex:1;min-height:0;padding:16px 22px;position:relative; }
   .scavi-chart-body canvas { width:100% !important;height:100% !important; }
   .scavi-chart-empty {
@@ -2645,6 +2646,7 @@ window.addEventListener('DOMContentLoaded', () => {
         + ombra cumulata
       </label>
     </div>
+    <div class="scavi-chart-subtitle" id="scaviChartSubtitle"></div>
     <div class="scavi-chart-body">
       <div id="scaviChartLoading" class="scavi-chart-loading" style="display:none"><div class="spinner"></div></div>
       <div id="scaviChartEmpty" class="scavi-chart-empty" style="display:none">Nessun dato di scavo nel periodo/lotto selezionato.</div>
@@ -2754,7 +2756,21 @@ function _scChartWeekStart(dateStr) {
   return _scChartFmtDate(d);
 }
 
+// Etichetta "Lotto: X · Periodo: Y" condivisa fra sottotitolo del modal e slide PPTX esportata
+function _scChartFilterLabel() {
+  const lottoVal = document.getElementById('scChartLotto')?.value || '';
+  const lottoLabel = lottoVal || 'Tutti i lotti';
+  const da = document.getElementById('scChartDa')?.value || '';
+  const a  = document.getElementById('scChartA')?.value || '';
+  const periodoLabel = (da || a) ? `${da || '…'} → ${a || '…'}` : 'Intero storico';
+  return { lottoVal, lottoLabel, periodoLabel };
+}
+
 function _scChartRender() {
+  const { lottoLabel, periodoLabel } = _scChartFilterLabel();
+  const subtitleEl = document.getElementById('scaviChartSubtitle');
+  if (subtitleEl) subtitleEl.textContent = `Lotto: ${lottoLabel}    ·    Periodo: ${periodoLabel}`;
+
   const emptyEl = document.getElementById('scaviChartEmpty');
   const canvas  = document.getElementById('scaviChartCanvas');
   const exportBtn = document.getElementById('scChartExportBtn');
@@ -2920,17 +2936,13 @@ async function exportScaviChartPptx() {
   try {
     const imgData = _scChart.toBase64Image('image/png', 1);
 
-    const lottoVal = document.getElementById('scChartLotto')?.value || '';
+    const { lottoVal, lottoLabel, periodoLabel } = _scChartFilterLabel();
     const typeLabels = { bar: 'Barre raggruppate', stacked: 'Barre impilate', line: 'Linee', cumulative: 'Linee cumulative', pie: 'Torta (totale periodo)' };
     const chartTypeVal = document.getElementById('scChartType')?.value || 'bar';
     const grouping = chartTypeVal === 'pie' ? '—' : (document.getElementById('scChartGrouping')?.value === 'week' ? 'Settimanale' : 'Giornaliero');
     const cumulLabel = typeLabels[chartTypeVal] || 'Barre raggruppate';
     const overlayOn = document.getElementById('scChartCumulOverlay')?.checked && document.getElementById('scChartOverlayWrap')?.style.display !== 'none';
     const overlayLabel = overlayOn ? '    ·    + ombra cumulata' : '';
-    const da = document.getElementById('scChartDa')?.value || '';
-    const a  = document.getElementById('scChartA')?.value || '';
-    const periodoLabel = (da || a) ? `${da || '…'} → ${a || '…'}` : 'Intero storico';
-    const lottoLabel = lottoVal || 'Tutti i lotti';
 
     const pres = new PptxGenJS();
     pres.defineLayout({ name: 'ENRI_WIDE', width: 13.33, height: 7.5 });
