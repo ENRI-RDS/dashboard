@@ -379,6 +379,15 @@
     display:inline-flex;align-items:center;justify-content:center;transition:all .15s;
   }
   .scavi-chart-close:hover { background:var(--surface2);color:var(--text); }
+  .scavi-chart-export-btn {
+    display:inline-flex;align-items:center;gap:6px;
+    font-size:11px;font-weight:700;padding:7px 13px;border-radius:7px;
+    border:1px solid var(--accent2);background:transparent;color:var(--accent2);
+    cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap;
+  }
+  .scavi-chart-export-btn:hover:not(:disabled) { background:var(--accent2);color:#fff; }
+  .scavi-chart-export-btn:disabled { opacity:.5;cursor:default; }
+  .scavi-chart-head-actions { display:flex;align-items:center;gap:8px; }
   .scavi-chart-toolbar {
     display:flex;gap:8px;flex-wrap:wrap;align-items:center;
     padding:12px 22px;border-bottom:1px solid var(--border);flex-shrink:0;
@@ -713,9 +722,6 @@
         </div>
         <div class="card-body" style="padding:0;display:flex;flex-direction:column;gap:0;">
           <div class="mini-map-wrap"><div id="miniMapCantieri"></div></div>
-          <button class="scavi-chart-btn" onclick="openScaviChart()" title="Andamento metri scavati per impresa nel tempo">
-            📊 Grafico scavi
-          </button>
           <div class="legend" style="padding:10px 16px;flex-wrap:wrap;row-gap:6px;">
             <div class="legend-item"><div class="legend-dot" style="background:#8A91B4"></div>Non avviato</div>
             <div class="legend-item"><div class="legend-dot" style="background:#C08A14"></div>Allestimento</div>
@@ -723,6 +729,9 @@
             <div class="legend-item"><div class="legend-dot" style="background:#1F7A4E"></div>Completato</div>
             <div class="legend-item"><div class="legend-dot" style="background:#C23B22"></div>Sospeso</div>
           </div>
+          <button class="scavi-chart-btn" onclick="openScaviChart()" title="Andamento metri scavati per impresa nel tempo">
+            📊 Grafico scavi
+          </button>
         </div>
       </div>
 
@@ -2606,7 +2615,12 @@ window.addEventListener('DOMContentLoaded', () => {
   <div class="scavi-chart-modal">
     <div class="scavi-chart-head">
       <h3>📊 Andamento scavi per impresa</h3>
-      <button class="scavi-chart-close" onclick="closeScaviChart()">×</button>
+      <div class="scavi-chart-head-actions">
+        <button id="scChartExportBtn" class="scavi-chart-export-btn" onclick="exportScaviChartPptx()" title="Esporta il grafico corrente in una slide PowerPoint">
+          📽️ Esporta PPTX
+        </button>
+        <button class="scavi-chart-close" onclick="closeScaviChart()">×</button>
+      </div>
     </div>
     <div class="scavi-chart-toolbar">
       <select id="scChartLotto" onchange="_scChartFetch()" aria-label="Filtra per lotto"></select>
@@ -2633,6 +2647,7 @@ window.addEventListener('DOMContentLoaded', () => {
   </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PptxGenJS/3.11.0/pptxgen.min.js"></script>
 <script>
 // ── Grafico Scavi: metri realizzati per giorno/settimana e impresa ──────────
 // Fonte dati: GET /api/cantieri/scavi-timeseries (backend/server.py), che
@@ -2739,14 +2754,17 @@ function _scChartWeekStart(dateStr) {
 function _scChartRender() {
   const emptyEl = document.getElementById('scaviChartEmpty');
   const canvas  = document.getElementById('scaviChartCanvas');
+  const exportBtn = document.getElementById('scChartExportBtn');
   if (!_scChartRaw.length) {
     emptyEl.style.display = 'flex';
     canvas.style.display = 'none';
     if (_scChart) { _scChart.destroy(); _scChart = null; }
+    if (exportBtn) exportBtn.disabled = true;
     return;
   }
   emptyEl.style.display = 'none';
   canvas.style.display = 'block';
+  if (exportBtn) exportBtn.disabled = false;
 
   const grouping = document.getElementById('scChartGrouping')?.value || 'day';
   const cumulativa = document.getElementById('scChartCumul')?.checked || false;
@@ -2820,6 +2838,56 @@ function _scChartRender() {
       },
     },
   });
+}
+
+// ── Esporta il grafico corrente in una slide PowerPoint (PptxGenJS) ─────────
+// Immagine presa da Chart.js (toBase64Image, PNG), incollata in una slide
+// widescreen con titolo e riepilogo dei filtri applicati (lotto/periodo/
+// raggruppamento/cumulativa). Nessuna chiamata al backend: tutto client-side.
+async function exportScaviChartPptx() {
+  if (!_scChart) return;
+  const btn = document.getElementById('scChartExportBtn');
+  const btnOrigLabel = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Esportazione…'; }
+  try {
+    const imgData = _scChart.toBase64Image('image/png', 1);
+
+    const lottoVal = document.getElementById('scChartLotto')?.value || '';
+    const grouping = document.getElementById('scChartGrouping')?.value === 'week' ? 'Settimanale' : 'Giornaliero';
+    const cumulLabel = document.getElementById('scChartCumul')?.checked ? 'Vista cumulativa' : 'Vista per periodo';
+    const da = document.getElementById('scChartDa')?.value || '';
+    const a  = document.getElementById('scChartA')?.value || '';
+    const periodoLabel = (da || a) ? `${da || '…'} → ${a || '…'}` : 'Intero storico';
+    const lottoLabel = lottoVal || 'Tutti i lotti';
+
+    const pres = new PptxGenJS();
+    pres.defineLayout({ name: 'ENRI_WIDE', width: 13.33, height: 7.5 });
+    pres.layout = 'ENRI_WIDE';
+
+    const slide = pres.addSlide();
+    slide.background = { color: 'FFFFFF' };
+    slide.addText('Andamento scavi per impresa', {
+      x: 0.4, y: 0.25, w: 12.5, h: 0.6, fontSize: 22, bold: true, color: '043F75', fontFace: 'Arial',
+    });
+    slide.addText(
+      `Lotto: ${lottoLabel}    ·    Periodo: ${periodoLabel}    ·    Raggruppamento: ${grouping}    ·    ${cumulLabel}`,
+      { x: 0.4, y: 0.82, w: 12.5, h: 0.35, fontSize: 11, color: '5B6472', fontFace: 'Arial' }
+    );
+    slide.addImage({ data: imgData, x: 0.4, y: 1.3, w: 12.5, h: 5.75 });
+    slide.addText(
+      `Generato da ENRI Dashboard — Scavi il ${new Date().toLocaleDateString('it-IT')}`,
+      { x: 0.4, y: 7.1, w: 12.5, h: 0.3, fontSize: 8, color: '9AA5B4', fontFace: 'Arial' }
+    );
+
+    const oggi = new Date().toISOString().slice(0, 10);
+    const fname = `Grafico_Scavi_${(lottoVal || 'tutti').replace(/[^A-Za-z0-9]/g, '')}_${oggi}.pptx`;
+    await pres.writeFile({ fileName: fname });
+  } catch (e) {
+    console.error('[scaviChart] export PPTX fallita', e);
+    alert('Esportazione PowerPoint non riuscita: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = btnOrigLabel; }
+  }
 }
 </script>
 
