@@ -2637,7 +2637,6 @@ window.addEventListener('DOMContentLoaded', () => {
       </select>
       <button class="scavi-chart-period-btn active" data-range="2m" onclick="_scChartSetRange('2m', this)">Mese corrente + precedente</button>
       <button class="scavi-chart-period-btn" data-range="1m" onclick="_scChartSetRange('1m', this)">Ultimo mese</button>
-      <button class="scavi-chart-period-btn" data-range="3m" onclick="_scChartSetRange('3m', this)">Ultimi 3 mesi</button>
       <button class="scavi-chart-period-btn" data-range="all" onclick="_scChartSetRange('all', this)">Tutto lo storico</button>
       <label>Da <input type="date" id="scChartDa" onchange="_scChartSetRange('custom')"></label>
       <label>A <input type="date" id="scChartA" onchange="_scChartSetRange('custom')"></label>
@@ -2674,10 +2673,6 @@ function _scChartComputeRange(mode) {
   const end = _scChartFmtDate(today);
   if (mode === '1m') {
     const d = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
-    return { da: _scChartFmtDate(d), a: end };
-  }
-  if (mode === '3m') {
-    const d = new Date(today.getFullYear(), today.getMonth() - 3, today.getDate());
     return { da: _scChartFmtDate(d), a: end };
   }
   if (mode === 'all') {
@@ -2875,7 +2870,6 @@ function _scChartRender() {
         label: `${imp} (cumulato)`,
         data,
         type: 'line',
-        yAxisID: 'y1',
         borderColor: color,
         backgroundColor: color,
         borderDash: [5, 4],
@@ -2901,14 +2895,6 @@ function _scChartRender() {
           title: { display: true, text: 'Metri scavati' },
           beginAtZero: true,
         },
-        ...(showOverlay ? {
-          y1: {
-            position: 'right',
-            beginAtZero: true,
-            grid: { drawOnChartArea: false },
-            title: { display: true, text: 'Metri cumulati' },
-          },
-        } : {}),
       },
       plugins: {
         legend: { position: 'bottom' },
