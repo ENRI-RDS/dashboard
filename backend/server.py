@@ -63,6 +63,13 @@ ALLOWED_ORIGINS = [
 ]
 
 UPLOAD_TOKEN = os.environ.get("UPLOAD_TOKEN", "").strip()
+
+# Token dedicato, separato da UPLOAD_TOKEN, per l'endpoint read-only di
+# sincronizzazione cross-progetto usato dal backend di QTS (tratte in
+# concomitanza gestite qui su ENRI). Nessun privilegio di scrittura:
+# se compromesso, espone solo stato_autorizzazione/stato_nullaosta delle
+# tratte esplicitamente richieste, non l'intero Master.csv né azioni admin.
+QTS_SYNC_TOKEN = os.environ.get("QTS_SYNC_TOKEN", "").strip()
 ALLOWED_EXT = {".csv", ".xlsx", ".xls", ".geojson", ".json"}
 MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "25"))
 
@@ -130,6 +137,11 @@ def _safe_relpath(name: str) -> str:
 def _check_token(token: str | None) -> None:
     if UPLOAD_TOKEN and token != UPLOAD_TOKEN:
         raise HTTPException(401, "Invalid or missing upload token")
+
+
+def _check_qts_sync_token(token: str | None) -> None:
+    if not QTS_SYNC_TOKEN or token != QTS_SYNC_TOKEN:
+        raise HTTPException(401, "Invalid or missing sync token")
 
 
 async def _log_admin_action(azione: str, target: str, actor_nome: str | None) -> None:
@@ -3916,6 +3928,65 @@ async def get_cantieri(lotto: str = "", cluster: str = "", stato: str = "", sess
         d.pop("log", None)   # non esporre lo storico nel listing
         items.append(d)
     return {"cantieri": items, "count": len(items)}
+
+
+@app.post("/api/external/pratica-status")
+async def external_pratica_status(
+    payload: dict,
+    x_sync_token: Annotated[str | None, Header(alias="x-sync-token")] = None,
+):
+    """Endpoint READ-ONLY dedicato alla sincronizzazione cross-progetto con QTS:
+    le tratte in concomitanza hanno la pratica di autorizzazione aperta e
+    seguita qui su ENRI, non su QTS/Telebit — QTS deve poter leggere lo stato
+    corrente senza duplicare la pratica. La corrispondenza tra i due progetti
+    NON è per TRATTA_ID (numerazioni indipendenti, spesso più tratte QTS ->
+    una sola pratica ENRI) ma per identità di pratica: ente + tipo_permesso +
+    numero + lotto, la stessa chiave usata da /api/admin/pratiche-search.
+
+    Body atteso: {"items": [{"ente": str, "tipo_permesso": "AUTORIZZAZIONE"|
+    "NULLA OSTA"|"ORDINANZA", "numero": str, "lotto": str}, ...]}
+
+    Protetto da QTS_SYNC_TOKEN, separato da UPLOAD_TOKEN: nessuna scrittura,
+    nessun dato oltre lo stato delle pratiche esplicitamente richieste (mai
+    l'intero Master.csv)."""
+    _check_qts_sync_token(x_sync_token)
+    items = (payload or {}).get("items") or []
+    if not items:
+        raise HTTPException(400, "Body 'items' obbligatorio (lista di {ente, tipo_permesso, numero, lotto})")
+
+    df = await _read_master_csv()
+    if df is None or df.empty:
+        return {"pratiche": [{**it, "trovata": False} for it in items], "checked_at": _now_iso()}
+    work = df.fillna("")
+    work = work.assign(_lotto=work["Source.Name"].apply(_lotto_from_source))
+    ente_col   = work["ENTE"].astype(str).str.strip().str.upper()
+    tipo_col   = work["TIPO_PERMESSO"].astype(str).str.strip().str.upper()
+    numero_col = work["PRATICA"].astype(str).str.strip()
+
+    out = []
+    for it in items:
+        ente   = str(it.get("ente", "")).strip()
+        tipo   = str(it.get("tipo_permesso", "")).strip().upper()
+        numero = str(it.get("numero", "")).strip()
+        lotto  = str(it.get("lotto", "")).strip().upper()
+        match = work[
+            (ente_col == ente.upper()) & (tipo_col == tipo) &
+            (numero_col == numero) & (work["_lotto"] == lotto)
+        ]
+        if match.empty:
+            out.append({"ente": ente, "tipo_permesso": tipo, "numero": numero, "lotto": lotto, "trovata": False})
+            continue
+        rep = match.iloc[-1]  # ultima riga inserita per questa pratica = stato attuale
+        out.append({
+            "ente": ente, "tipo_permesso": tipo, "numero": numero, "lotto": lotto,
+            "trovata": True,
+            "stato_permesso": str(rep.get("STATO_PERMESSO", "")).strip(),
+            "data_richiesta": str(rep.get("DATA_RICHIESTA", "")).strip(),
+            "data_approvazione": str(rep.get("DATA_APPROVAZIONE", "")).strip(),
+            "data_prevista_rilascio": str(rep.get("DATA_PREVISTA_RILASCIO", "")).strip(),
+            "nota": str(rep.get("NOTE", "")).strip(),
+        })
+    return {"pratiche": out, "checked_at": _now_iso()}
 
 
 @app.get("/api/cantieri/scavi-timeseries")
