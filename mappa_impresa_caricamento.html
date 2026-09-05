@@ -4019,7 +4019,7 @@ function prSelectRow(idx){
   if (isAut) {
     const pratNum = String(PR_SELECTED.PRATICA||'').trim();
     const tutteTratte = pratNum ? [...new Set(PR_PRATICHE
-      .filter(p => String(p.PRATICA||'').trim()===pratNum && String(p.ENTE||'').trim()===String(PR_SELECTED.ENTE||'').trim() && String(p.TIPO_PERMESSO||'').trim()==='AUTORIZZAZIONE')
+      .filter(p => String(p.PRATICA||'').trim()===pratNum && String(p.ENTE||'').trim()===String(PR_SELECTED.ENTE||'').trim() && String(p.TIPO_PERMESSO||'').trim()==='AUTORIZZAZIONE' && prLottoFromSource(p['Source.Name'])===prLottoFromSource(PR_SELECTED['Source.Name']))
       .map(p => p.TRATTA_ID).filter(Boolean))].sort() : [];
     document.getElementById('pr-no-tratte').innerHTML = tutteTratte.map(t => `<option value="${prEscapeHtml(t)}">${prEscapeHtml(t)}</option>`).join('');
   }
@@ -4029,7 +4029,8 @@ function prSelectRow(idx){
     p.TRATTA_ID !== PR_SELECTED.TRATTA_ID &&
     String(p.ENTE||'').trim()===String(PR_SELECTED.ENTE||'').trim() &&
     String(p.TIPO_PERMESSO||'').trim()===String(PR_SELECTED.TIPO_PERMESSO||'').trim() &&
-    String(p.PRATICA||'').trim()===pratNum
+    String(p.PRATICA||'').trim()===pratNum &&
+    prLottoFromSource(p['Source.Name'])===prLottoFromSource(PR_SELECTED['Source.Name'])
   ) : [];
   const siblingsMap = new Map();
   siblingsRaw.forEach(p => {
