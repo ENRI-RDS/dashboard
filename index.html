@@ -1999,6 +1999,12 @@ window.loadExcelJS = (function(){
         <option value="21">Non aggiornata &gt; 21 gg</option>
       </select>
 
+      <!-- filtro concomitanza (5T) -->
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text);cursor:pointer;padding:0 4px" title="Mostra solo le pratiche con almeno una tratta in concomitanza (es. ENRI-QTS, tubo aggiuntivo)">
+        <input type="checkbox" id="tblConc" onchange="renderTabella()" aria-label="Filtra solo pratiche con badge 5T">
+        5T
+      </label>
+
       <!-- reset -->
       <button onclick="tblReset()" aria-label="Azzera tutti i filtri"
         style="font-size:10px;font-weight:600;padding:6px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--muted);cursor:pointer;font-family:inherit;transition:all .15s"
@@ -6404,10 +6410,16 @@ _hookScadenze();
     const fImpresa= document.getElementById('tblImpresa')?.value||'';
     const fEnte   = document.getElementById('tblEnte')?.value||'';
     const fAgg    = document.getElementById('tblAgg')?.value||'';
+    const fConc   = document.getElementById('tblConc')?.checked || false;
 
     // reset pagina se i filtri sono cambiati
-    const filterKey = q + '|' + fStato + '|' + fLotto + '|' + fImpresa + '|' + fEnte + '|' + fAgg;
+    const filterKey = q + '|' + fStato + '|' + fLotto + '|' + fImpresa + '|' + fEnte + '|' + fAgg + '|' + fConc;
     if (filterKey !== window._tblLastFilter) { _page = 0; window._tblLastFilter = filterKey; }
+
+    // Pratica in concomitanza: almeno una tratta della pratica (r.tratte) è in
+    // ENRI.concomitanzaIds — stessa logica del badge 5T già mostrato in tabella.
+    const concIds = (typeof ENRI !== 'undefined' && ENRI.concomitanzaIds) ? ENRI.concomitanzaIds : null;
+    const _hasConc = r => !!(concIds && r.tratte && [...r.tratte].some(t => concIds.has(String(t||'').trim().toUpperCase())));
 
     let rows = all.filter(r => {
       if (fStato   && r.stato   !== fStato)   return false;
@@ -6415,6 +6427,7 @@ _hookScadenze();
       if (fImpresa && r.impresa !== fImpresa) return false;
       if (fEnte    && r.ente    !== fEnte)    return false;
       if (!_matchAggFilter(r, fAgg)) return false;
+      if (fConc && !_hasConc(r)) return false;
       if (q) {
         const hay = [r.codice,r.stato,r.ente,...r.comuni,r.impresa].join(' ').toLowerCase();
         if (!hay.includes(q)) return false;
@@ -6442,7 +6455,7 @@ _hookScadenze();
     const SC = STATI_COLORI_MAP || {};
 
     // paginazione: se nessun filtro attivo, limita a PAGE_SIZE righe per pagina
-    const hasFilter = q || fStato || fLotto || fImpresa || fEnte || fAgg;
+    const hasFilter = q || fStato || fLotto || fImpresa || fEnte || fAgg || fConc;
     const totalRows = rows.length;
     if (!hasFilter) {
       // resetta pagina se ordine/filtri cambiano
@@ -6517,8 +6530,16 @@ _hookScadenze();
     document.getElementById('tblImpresa').value = '';
     document.getElementById('tblEnte').value = '';
     document.getElementById('tblAgg').value = '';
+    document.getElementById('tblConc').checked = false;
     renderTabella();
   };
+
+  // Ri-renderizza quando arriva l'elenco concomitanza (fetch async): badge 5T
+  // e filtro tblConc potrebbero altrimenti restare "vuoti" se il primo render
+  // della tabella avviene prima che ENRI.concomitanzaReady si risolva.
+  if (typeof ENRI !== 'undefined' && ENRI.concomitanzaReady && typeof ENRI.concomitanzaReady.then === 'function') {
+    ENRI.concomitanzaReady.then(() => { if (typeof renderTabella === 'function') renderTabella(); });
+  }
 
   // Hook: aggiorna la tabella quando i dati sono pronti
   (function hookTabella() {
