@@ -2624,6 +2624,13 @@ window.addEventListener('DOMContentLoaded', () => {
     </div>
     <div class="scavi-chart-toolbar">
       <select id="scChartLotto" onchange="_scChartFetch()" aria-label="Filtra per lotto"></select>
+      <select id="scChartType" onchange="_scChartRender()" aria-label="Tipo di grafico">
+        <option value="bar">Barre raggruppate</option>
+        <option value="stacked">Barre impilate</option>
+        <option value="line">Linee</option>
+        <option value="cumulative">Linee cumulative</option>
+        <option value="pie">Torta (totale periodo)</option>
+      </select>
       <select id="scChartGrouping" onchange="_scChartRender()" aria-label="Raggruppa per">
         <option value="day">Per giorno</option>
         <option value="week">Per settimana</option>
@@ -2634,10 +2641,6 @@ window.addEventListener('DOMContentLoaded', () => {
       <button class="scavi-chart-period-btn" data-range="all" onclick="_scChartSetRange('all', this)">Tutto lo storico</button>
       <label>Da <input type="date" id="scChartDa" onchange="_scChartSetRange('custom')"></label>
       <label>A <input type="date" id="scChartA" onchange="_scChartSetRange('custom')"></label>
-      <label class="scavi-chart-cumul-toggle">
-        <input type="checkbox" id="scChartCumul" onchange="_scChartRender()">
-        Vista cumulativa
-      </label>
     </div>
     <div class="scavi-chart-body">
       <div id="scaviChartLoading" class="scavi-chart-loading" style="display:none"><div class="spinner"></div></div>
@@ -2767,8 +2770,10 @@ function _scChartRender() {
   canvas.style.display = 'block';
   if (exportBtn) exportBtn.disabled = false;
 
-  const grouping = document.getElementById('scChartGrouping')?.value || 'day';
-  const cumulativa = document.getElementById('scChartCumul')?.checked || false;
+  const chartType = document.getElementById('scChartType')?.value || 'bar';
+  const groupingSel = document.getElementById('scChartGrouping');
+  if (groupingSel) groupingSel.disabled = (chartType === 'pie');
+  const grouping = groupingSel?.value || 'day';
   const bucketOf = grouping === 'week' ? _scChartWeekStart : (x => x);
 
   // Aggrega per bucket (giorno o settimana) e impresa
@@ -2783,8 +2788,46 @@ function _scChartRender() {
   });
   const labels = [...buckets.keys()].sort();
   const impreseList = [...imprese].sort();
-
   const PALETTE = ['#043F75', '#1E9E6A', '#D08A1A', '#C0392B', '#7B4FA0', '#41BBD9', '#B08968', '#5B6472'];
+
+  if (_scChart) _scChart.destroy();
+
+  if (chartType === 'pie') {
+    // Torta: totale metri per impresa sull'intero periodo selezionato (ignora il bucket giorno/settimana)
+    const totali = impreseList.map(imp => {
+      let tot = 0;
+      buckets.forEach(m => { tot += m.get(imp) || 0; });
+      return tot;
+    });
+    _scChart = new Chart(canvas.getContext('2d'), {
+      type: 'pie',
+      data: {
+        labels: impreseList,
+        datasets: [{
+          data: totali,
+          backgroundColor: impreseList.map((_, i) => PALETTE[i % PALETTE.length]),
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom' },
+          tooltip: {
+            callbacks: {
+              label: ctx => `${ctx.label}: ${ctx.parsed.toLocaleString('it-IT')} m`,
+            },
+          },
+        },
+      },
+    });
+    return;
+  }
+
+  const cumulativa = chartType === 'cumulative';
+  const isBarType  = chartType === 'bar' || chartType === 'stacked';
+  const stacked    = chartType === 'stacked';
+
   const datasets = impreseList.map((imp, i) => {
     const color = PALETTE[i % PALETTE.length];
     let running = 0;
@@ -2798,11 +2841,11 @@ function _scChartRender() {
       data,
       backgroundColor: color,
       borderColor: color,
-      fill: cumulativa ? false : true,
-      type: cumulativa ? 'line' : 'bar',
-      tension: cumulativa ? 0.25 : 0,
-      borderWidth: cumulativa ? 2 : 0,
-      pointRadius: cumulativa ? 2 : 0,
+      fill: false,
+      type: isBarType ? 'bar' : 'line',
+      tension: isBarType ? 0 : 0.25,
+      borderWidth: isBarType ? 0 : 2,
+      pointRadius: isBarType ? 0 : 2,
     };
   });
 
@@ -2812,18 +2855,17 @@ function _scChartRender() {
     return grouping === 'week' ? ('sett. ' + s) : s;
   });
 
-  if (_scChart) _scChart.destroy();
   _scChart = new Chart(canvas.getContext('2d'), {
-    type: cumulativa ? 'line' : 'bar',
+    type: isBarType ? 'bar' : 'line',
     data: { labels: dispLabels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       scales: {
-        x: { stacked: false, grid: { display: false } },
+        x: { stacked: stacked, grid: { display: false } },
         y: {
-          stacked: false,
+          stacked: stacked,
           title: { display: true, text: 'Metri scavati' },
           beginAtZero: true,
         },
@@ -2853,8 +2895,10 @@ async function exportScaviChartPptx() {
     const imgData = _scChart.toBase64Image('image/png', 1);
 
     const lottoVal = document.getElementById('scChartLotto')?.value || '';
-    const grouping = document.getElementById('scChartGrouping')?.value === 'week' ? 'Settimanale' : 'Giornaliero';
-    const cumulLabel = document.getElementById('scChartCumul')?.checked ? 'Vista cumulativa' : 'Vista per periodo';
+    const typeLabels = { bar: 'Barre raggruppate', stacked: 'Barre impilate', line: 'Linee', cumulative: 'Linee cumulative', pie: 'Torta (totale periodo)' };
+    const chartTypeVal = document.getElementById('scChartType')?.value || 'bar';
+    const grouping = chartTypeVal === 'pie' ? '—' : (document.getElementById('scChartGrouping')?.value === 'week' ? 'Settimanale' : 'Giornaliero');
+    const cumulLabel = typeLabels[chartTypeVal] || 'Barre raggruppate';
     const da = document.getElementById('scChartDa')?.value || '';
     const a  = document.getElementById('scChartA')?.value || '';
     const periodoLabel = (da || a) ? `${da || '…'} → ${a || '…'}` : 'Intero storico';
