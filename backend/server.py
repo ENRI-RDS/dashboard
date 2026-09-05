@@ -3918,6 +3918,44 @@ async def get_cantieri(lotto: str = "", cluster: str = "", stato: str = "", sess
     return {"cantieri": items, "count": len(items)}
 
 
+@app.get("/api/cantieri/scavi-timeseries")
+async def get_scavi_timeseries(
+    lotto: str = "",
+    data_da: str = "",
+    data_a: str = "",
+    sess: dict = Depends(_require_staff_session),
+):
+    """Serie storica metri scavati per giorno e impresa, aggregata sui log dei
+    cantieri (vedi update_cantiere/log_entry). Usata dal grafico 'Scavi nel
+    tempo' (mappa.html, vista Scavi). Filtro opzionale per lotto e per
+    intervallo date inclusivo (formato YYYY-MM-DD, confrontabile come
+    stringa grazie al formato ISO); se omesse copre l'intero storico.
+    Aggregazione fatta lato Mongo per evitare N+1 fetch (un cantiere per
+    pratica, ciascuno col proprio storico log)."""
+    pipeline: list = []
+    if lotto:
+        pipeline.append({"$match": {"lotto": lotto}})
+    pipeline.append({"$unwind": "$log"})
+    log_match: dict = {"log.metri_realizzati": {"$gt": 0}}
+    data_range: dict = {}
+    if data_da: data_range["$gte"] = data_da
+    if data_a:  data_range["$lte"] = data_a
+    if data_range:
+        log_match["log.data"] = data_range
+    pipeline.append({"$match": log_match})
+    pipeline.append({
+        "$group": {
+            "_id": {"data": "$log.data", "impresa": "$log.impresa"},
+            "metri": {"$sum": "$log.metri_realizzati"},
+        }
+    })
+    out = []
+    async for d in cantieri_col.aggregate(pipeline):
+        out.append({"data": d["_id"]["data"], "impresa": d["_id"]["impresa"] or "N/D", "metri": round(d["metri"], 1)})
+    out.sort(key=lambda x: (x["data"], x["impresa"]))
+    return {"serie": out, "count": len(out)}
+
+
 @app.get("/api/cantieri/{cantiere_key:path}/log")
 async def get_cantiere_log_public(cantiere_key: str, sess: dict = Depends(_require_staff_session)):
     """Storico aggiornamenti di un cantiere (pubblico, sola lettura — no session).
