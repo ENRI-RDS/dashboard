@@ -1986,7 +1986,7 @@ window.loadExcelJS = (function(){
 
       <!-- filtro ente -->
       <select id="tblEnte" onchange="renderTabella()" aria-label="Filtra per ente"
-        style="background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:7px 10px;font-family:inherit;font-size:12px;color:var(--text);outline:none;cursor:pointer">
+        style="background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:7px 10px;font-family:inherit;font-size:12px;color:var(--text);outline:none;cursor:pointer;max-width:170px">
         <option value="">Tutti gli enti</option>
       </select>
 
@@ -1999,10 +1999,10 @@ window.loadExcelJS = (function(){
         <option value="21">Non aggiornata &gt; 21 gg</option>
       </select>
 
-      <!-- filtro concomitanza (5T) -->
+      <!-- filtro concomitanza (QTS) -->
       <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text);cursor:pointer;padding:0 4px" title="Mostra solo le pratiche con almeno una tratta in concomitanza (es. ENRI-QTS, tubo aggiuntivo)">
-        <input type="checkbox" id="tblConc" onchange="renderTabella()" aria-label="Filtra solo pratiche con badge 5T">
-        5T
+        <input type="checkbox" id="tblConc" onchange="renderTabella()" aria-label="Filtra solo pratiche con badge QTS">
+        QTS
       </label>
 
       <!-- reset -->
@@ -6038,15 +6038,21 @@ _hookScadenze();
     const lotti = [...new Set(rows.map(r=>r.lotto).filter(Boolean))].sort(sortLotti);
     const imprese = [...new Set(rows.map(r=>r.impresa).filter(Boolean))].sort();
     const enti = [...new Set(rows.map(r=>r.ente).filter(Boolean))].sort();
-    function fillSel(id, vals) {
+    // Etichette accorciate per il dropdown Ente: il value resta il nome completo
+    // (usato per il filtro), solo il testo mostrato viene abbreviato per non
+    // allargare la select. Aggiungere qui altri enti dal nome lungo se serve.
+    const ENTE_LABEL_OVERRIDES = {
+      'CONSORZIO DI BONIFICA DELLA MEDIA PIANURA BERGAMASCA': 'Consorzio Bergamo'
+    };
+    function fillSel(id, vals, labelMap) {
       const sel = document.getElementById(id);
       if (!sel || sel.options.length > 1) return;
-      vals.forEach(v => { const o=document.createElement('option'); o.value=o.textContent=v; sel.appendChild(o); });
+      vals.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=(labelMap && labelMap[v]) || v; sel.appendChild(o); });
     }
     fillSel('tblStato',   stati);
     fillSel('tblLotto',   lotti);
     fillSel('tblImpresa', imprese);
-    fillSel('tblEnte',    enti);
+    fillSel('tblEnte',    enti, ENTE_LABEL_OVERRIDES);
   }
 
   // ── Raccoglie tutte le pratiche ───────────────────────────────────────────
