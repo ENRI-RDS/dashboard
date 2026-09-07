@@ -408,9 +408,9 @@
   }
   .scavi-chart-period-btn.active { background:var(--accent);color:#fff;border-color:var(--accent); }
   .scavi-chart-cumul-toggle {
-    display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text);
-    cursor:pointer;margin-left:auto;
+    margin-left:auto;
   }
+  .scavi-chart-cumul-toggle.active { background:var(--accent);color:#fff;border-color:var(--accent); }
   .scavi-chart-subtitle { padding:8px 22px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);flex-shrink:0; }
   .scavi-chart-body { flex:1;min-height:0;padding:16px 22px;position:relative; }
   .scavi-chart-body canvas { width:100% !important;height:100% !important; }
@@ -2641,10 +2641,7 @@ window.addEventListener('DOMContentLoaded', () => {
       <button class="scavi-chart-period-btn" data-range="all" onclick="_scChartSetRange('all', this)">Tutto lo storico</button>
       <label>Da <input type="date" id="scChartDa" onchange="_scChartSetRange('custom')"></label>
       <label>A <input type="date" id="scChartA" onchange="_scChartSetRange('custom')"></label>
-      <label class="scavi-chart-cumul-toggle" id="scChartOverlayWrap">
-        <input type="checkbox" id="scChartCumulOverlay" onchange="_scChartRender()">
-        + ombra cumulata
-      </label>
+      <button type="button" class="scavi-chart-period-btn scavi-chart-cumul-toggle" id="scChartOverlayWrap" onclick="this.classList.toggle('active'); _scChartRender();">+ avanzamento cumulativo</button>
     </div>
     <div class="scavi-chart-subtitle" id="scaviChartSubtitle"></div>
     <div class="scavi-chart-body">
@@ -2788,11 +2785,10 @@ function _scChartRender() {
   const chartType = document.getElementById('scChartType')?.value || 'bar';
   const groupingSel = document.getElementById('scChartGrouping');
   if (groupingSel) groupingSel.disabled = (chartType === 'pie');
-  const overlayCb = document.getElementById('scChartCumulOverlay');
   const overlayWrap = document.getElementById('scChartOverlayWrap');
   const overlayApplicabile = (chartType === 'bar' || chartType === 'stacked' || chartType === 'line');
-  if (overlayWrap) overlayWrap.style.display = overlayApplicabile ? 'flex' : 'none';
-  const showOverlay = overlayApplicabile && (overlayCb?.checked || false);
+  if (overlayWrap) overlayWrap.style.display = overlayApplicabile ? 'inline-block' : 'none';
+  const showOverlay = overlayApplicabile && (overlayWrap?.classList.contains('active') || false);
   const grouping = groupingSel?.value || 'day';
   const bucketOf = grouping === 'week' ? _scChartWeekStart : (x => x);
 
@@ -2941,8 +2937,8 @@ async function exportScaviChartPptx() {
     const chartTypeVal = document.getElementById('scChartType')?.value || 'bar';
     const grouping = chartTypeVal === 'pie' ? '—' : (document.getElementById('scChartGrouping')?.value === 'week' ? 'Settimanale' : 'Giornaliero');
     const cumulLabel = typeLabels[chartTypeVal] || 'Barre raggruppate';
-    const overlayOn = document.getElementById('scChartCumulOverlay')?.checked && document.getElementById('scChartOverlayWrap')?.style.display !== 'none';
-    const overlayLabel = overlayOn ? '    ·    + ombra cumulata' : '';
+    const overlayOn = document.getElementById('scChartOverlayWrap')?.classList.contains('active') && document.getElementById('scChartOverlayWrap')?.style.display !== 'none';
+    const overlayLabel = overlayOn ? '    ·    + avanzamento cumulativo' : '';
 
     const pres = new PptxGenJS();
     pres.defineLayout({ name: 'ENRI_WIDE', width: 13.33, height: 7.5 });
