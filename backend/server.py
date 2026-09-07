@@ -4105,6 +4105,57 @@ async def admin_sync_cantieri(
     return {"created": created, "total_cantieri": total}
 
 
+@app.put("/api/admin/cantieri/{cantiere_key:path}/log/{idx}")
+async def admin_update_cantiere_log_entry(
+    cantiere_key: str,
+    idx: int,
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Corregge una singola riga di storico (log) di un cantiere — es. un
+    caricamento errato inserito da un'impresa. metri_scavati viene
+    ricalcolato come somma di tutte le righe di log rimaste, per restare
+    coerente con l'accumulo fatto da POST /api/imprese/cantieri/{key}."""
+    _check_token(x_upload_token or token_q)
+    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
+    if not doc:
+        raise HTTPException(404, "Cantiere non trovato")
+    log = doc.get("log") or []
+    if idx < 0 or idx >= len(log):
+        raise HTTPException(404, "Voce di storico non trovata")
+
+    allowed = {
+        "data", "impresa", "stato_cantiere", "tecnica_scavo",
+        "metri_realizzati", "note", "motivo_blocco", "data_ripresa_stimata",
+    }
+    entry = dict(log[idx])
+    for k, v in (payload or {}).items():
+        if k not in allowed:
+            continue
+        if k == "stato_cantiere" and v not in STATO_CANTIERE_VALUES:
+            raise HTTPException(400, f"stato_cantiere non valido: {v}")
+        if k == "tecnica_scavo" and v and v not in TECNICA_SCAVO_VALUES:
+            raise HTTPException(400, f"tecnica_scavo non valida: {v}")
+        if k == "metri_realizzati":
+            try:
+                v = max(0.0, float(v))
+            except Exception:
+                raise HTTPException(400, "metri_realizzati deve essere un numero")
+        entry[k] = v
+    log[idx] = entry
+
+    metri_scavati = sum(float(e.get("metri_realizzati") or 0) for e in log)
+    await cantieri_col.update_one(
+        {"cantiere_key": cantiere_key},
+        {"$set": {"log": log, "metri_scavati": metri_scavati, "updated_at": _now_iso()}},
+    )
+    await _log_admin_action("update_cantiere_log", f"{cantiere_key}#{idx}", x_actor_nome)
+    _schedule_cantieri_csv_regen(f"correzione log: {cantiere_key}#{idx}")
+    return {"ok": True, "cantiere_key": cantiere_key, "idx": idx, "metri_scavati": metri_scavati}
+
+
 @app.put("/api/admin/cantieri/{cantiere_key:path}")
 async def admin_update_cantiere(
     cantiere_key: str,
@@ -4155,57 +4206,6 @@ async def admin_update_cantiere(
     await _log_admin_action("update_cantiere", cantiere_key, x_actor_nome)
     _schedule_cantieri_csv_regen(f"correzione admin: {cantiere_key}")
     return {"ok": True, "cantiere_key": cantiere_key}
-
-
-@app.put("/api/admin/cantieri/{cantiere_key:path}/log/{idx}")
-async def admin_update_cantiere_log_entry(
-    cantiere_key: str,
-    idx: int,
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Corregge una singola riga di storico (log) di un cantiere — es. un
-    caricamento errato inserito da un'impresa. metri_scavati viene
-    ricalcolato come somma di tutte le righe di log rimaste, per restare
-    coerente con l'accumulo fatto da POST /api/imprese/cantieri/{key}."""
-    _check_token(x_upload_token or token_q)
-    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
-    if not doc:
-        raise HTTPException(404, "Cantiere non trovato")
-    log = doc.get("log") or []
-    if idx < 0 or idx >= len(log):
-        raise HTTPException(404, "Voce di storico non trovata")
-
-    allowed = {
-        "data", "impresa", "stato_cantiere", "tecnica_scavo",
-        "metri_realizzati", "note", "motivo_blocco", "data_ripresa_stimata",
-    }
-    entry = dict(log[idx])
-    for k, v in (payload or {}).items():
-        if k not in allowed:
-            continue
-        if k == "stato_cantiere" and v not in STATO_CANTIERE_VALUES:
-            raise HTTPException(400, f"stato_cantiere non valido: {v}")
-        if k == "tecnica_scavo" and v and v not in TECNICA_SCAVO_VALUES:
-            raise HTTPException(400, f"tecnica_scavo non valida: {v}")
-        if k == "metri_realizzati":
-            try:
-                v = max(0.0, float(v))
-            except Exception:
-                raise HTTPException(400, "metri_realizzati deve essere un numero")
-        entry[k] = v
-    log[idx] = entry
-
-    metri_scavati = sum(float(e.get("metri_realizzati") or 0) for e in log)
-    await cantieri_col.update_one(
-        {"cantiere_key": cantiere_key},
-        {"$set": {"log": log, "metri_scavati": metri_scavati, "updated_at": _now_iso()}},
-    )
-    await _log_admin_action("update_cantiere_log", f"{cantiere_key}#{idx}", x_actor_nome)
-    _schedule_cantieri_csv_regen(f"correzione log: {cantiere_key}#{idx}")
-    return {"ok": True, "cantiere_key": cantiere_key, "idx": idx, "metri_scavati": metri_scavati}
 
 
 @app.delete("/api/admin/cantieri/{cantiere_key:path}/log/{idx}")
