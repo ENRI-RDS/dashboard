@@ -193,6 +193,11 @@ body.panel-open .main{margin-right:44%;}
 .proiezione-box{background:var(--gray-50);border:1px solid var(--border);border-radius:12px;padding:14px 16px;}
 .proiezione-hint{font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.4;}
 .proiezione-hint b{color:var(--text);font-family:var(--font-mono);}
+.proiezione-storico{padding-bottom:12px;margin-bottom:12px;border-bottom:1px dashed var(--border2);}
+.proiezione-storico-val{font-size:12.5px;font-weight:600;color:var(--text2);}
+.proiezione-storico-val b{color:var(--text);font-family:var(--font-mono);}
+.proiezione-storico-sub{font-size:10.5px;color:var(--muted2);margin-top:2px;}
+.proiezione-storico-nd{font-size:11px;color:var(--muted2);font-style:italic;}
 .proiezione-squadre-selector{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;}
 .proiezione-btn{
   min-width:32px;height:32px;padding:0 6px;border-radius:8px;
@@ -735,6 +740,32 @@ function lookupTempoEnte(enteRaw, tempi) {
   let fallback = false;
   if (!codice || !tempi[codice]) { codice = 'AUTH_CONSORZIO'; fallback = true; }
   return { codice, fallback, ...(tempi[codice] || {}) };
+}
+
+// Produttività storica reale del lotto: metri scavati totali (già disponibili
+// aggregati, s.metriScavati) diviso i giorni trascorsi dall'inizio effettivo
+// del primo cantiere del lotto ad oggi. Calcolo indipendente da
+// computeCapacita/milestoneROS (che può mancare) — stesso criterio
+// giorni-lavorativi/calendarioTipo dei parametri per restare confrontabile
+// con la produttività standard usata dalla proiezione.
+function computeMediaStorica(lotto, cantieriLotto, metriScavatiTot, parametri) {
+  const avviati = (cantieriLotto || []).filter(c => c.data_inizio_effettiva);
+  if (!avviati.length) return { disponibile: false, motivo: 'Nessun cantiere con data inizio effettiva registrata' };
+  const inizioMinISO = avviati.reduce((min, c) => (!min || c.data_inizio_effettiva < min) ? c.data_inizio_effettiva : min, null);
+  const inizioMin = new Date(inizioMinISO + 'T00:00:00');
+  const pl = (parametri.parametri_lotto || {})[lotto] || {};
+  const glob = parametri.globali || {};
+  const gv = k => (glob[k] ? glob[k].valore : null);
+  const ggSettimana = pl.giorni_lavorativi_settimana != null ? Number(pl.giorni_lavorativi_settimana) : Number(gv('SCAVO_GG_SETT'));
+  const calendarioTipo = gv('CALENDARIO_TIPO') || 'Lavorativi';
+  const giorniTrascorsi = calendarioTipo === 'Lavorativi'
+    ? giorniLavorativi(inizioMin, oggi, ggSettimana)
+    : Math.max(0, Math.round((oggi - inizioMin) / 86400000));
+  if (giorniTrascorsi <= 0) return { disponibile: false, motivo: 'Cantiere avviato oggi o calendario non ancora trascorso' };
+  return {
+    disponibile: true, inizioMin, giorniTrascorsi, calendarioTipo,
+    media: metriScavatiTot / giorniTrascorsi, metriTotali: metriScavatiTot,
+  };
 }
 
 function computeSquadre(lotto, cantieriLotto, parametri) {
@@ -1351,6 +1382,7 @@ function render(prog, scavi, milestoneByLotto) {
 
     const row = { lotto, cluster: m ? m.cluster : '—', p, s, m, pFlag, sFlag, overall, progPoints, scaviPoints };
     row.capacita = computeCapacita(lotto, row, PARAMETRI);
+    row.mediaStorica = computeMediaStorica(lotto, s.cantieri, s.metriScavati, PARAMETRI);
     row.rischio = computeRischioComposito(row, row.capacita, PARAMETRI);
     row.azioneInfo = computeAzioneParametrica(row, row.capacita, PARAMETRI);
     row.causaUI = computeCausaUI(row); // versione card/tabella (solo fatti + impatto in linguaggio naturale)
@@ -1637,10 +1669,10 @@ function buildProiezioneCard(r) {
   const c = r.capacita;
   const title = `<div class="panel-section-title panel-section-title-main">Proiezione completamento scavi</div>`;
   if (c.insufficiente) {
-    return `${title}<div class="proiezione-box"><div class="dcard-nd">Dato insufficiente — ${c.motivo}</div></div>`;
+    return `${title}<div class="proiezione-box"><div class="proiezione-storico">${buildMediaStoricaLine(r)}</div><div class="dcard-nd" style="margin-top:10px">Proiezione non disponibile — ${c.motivo}</div></div>`;
   }
   if (c.metriResiduiScavo <= 0) {
-    return `${title}<div class="proiezione-box"><div class="dcard-main" style="color:var(--ok)">Scavi già completati — nessuna proiezione da calcolare.</div></div>`;
+    return `${title}<div class="proiezione-box"><div class="proiezione-storico">${buildMediaStoricaLine(r)}</div><div class="dcard-main" style="color:var(--ok);margin-top:10px">Scavi già completati — nessuna proiezione da calcolare.</div></div>`;
   }
   const disp = c.squadre.disponibili;
   const selezionate = PROIEZIONE_SQUADRE[r.lotto] !== undefined ? PROIEZIONE_SQUADRE[r.lotto] : disp;
@@ -1652,10 +1684,26 @@ function buildProiezioneCard(r) {
     btns += `<button type="button" class="${cls}" onclick="_provSelectSquadre('${r.lotto}', ${n})" title="${n === disp ? 'Squadre attualmente disponibili' : n + ' squadre'}">${n}</button>`;
   }
   return `${title}<div class="proiezione-box">
+    <div class="proiezione-storico">${buildMediaStoricaLine(r)}</div>
     <div class="proiezione-hint">Squadre attive da oggi in poi (oggi disponibili: <b>${disp}</b>) — clicca un numero per vedere come cambia la data:</div>
     <div class="proiezione-squadre-selector" id="provSel-${r.lotto}">${btns}</div>
     <div class="proiezione-result" id="provRes-${r.lotto}">${renderProiezioneResult(r, selezionate)}</div>
   </div>`;
+}
+
+// Media storica reale (metri realizzati dall'inizio cantiere ad oggi), mostrata
+// come riferimento accanto alla proiezione — che invece usa la produttività
+// standard da parametri, non la media reale (due grandezze diverse per
+// definizione: la seconda può differire dalla prima per efficienza reale,
+// fermi, meteo, ecc. — motivo per cui restano entrambe visibili separate).
+function buildMediaStoricaLine(r) {
+  const ms = r.mediaStorica;
+  if (!ms || !ms.disponibile) {
+    return `<div class="proiezione-storico-nd">Media storica non disponibile — ${ms ? ms.motivo : 'dato mancante'}</div>`;
+  }
+  const unita = ms.calendarioTipo === 'Lavorativi' ? 'giorni lavorativi' : 'giorni';
+  return `<div class="proiezione-storico-val">Media realizzata dall'inizio cantiere ad oggi: <b>${fmtNum(ms.media)} m/giorno</b></div>
+  <div class="proiezione-storico-sub">${fmtKm(ms.metriTotali)} scavati dal ${fmtDateShort(ms.inizioMin)} (${ms.giorniTrascorsi} ${unita})</div>`;
 }
 
 function renderProiezioneResult(r, squadre) {
