@@ -198,6 +198,14 @@ body.panel-open .main{margin-right:44%;}
 .proiezione-storico-val b{color:var(--text);font-family:var(--font-mono);}
 .proiezione-storico-sub{font-size:10.5px;color:var(--muted2);margin-top:2px;}
 .proiezione-storico-nd{font-size:11px;color:var(--muted2);font-style:italic;}
+.proiezione-base-selector{display:flex;gap:6px;margin-bottom:8px;}
+.proiezione-base-btn{
+  font-size:10.5px;font-weight:700;padding:6px 11px;border-radius:6px;
+  border:1px solid var(--border2,var(--border));background:var(--surface);color:var(--muted);
+  cursor:pointer;font-family:inherit;transition:all .15s;
+}
+.proiezione-base-btn.active{background:var(--retelit-blue-50,var(--accent));color:#fff;border-color:var(--retelit-blue-50,var(--accent));}
+.proiezione-base-note{font-size:10.5px;color:var(--muted2);font-style:italic;margin-bottom:12px;line-height:1.4;}
 .proiezione-squadre-selector{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;}
 .proiezione-btn{
   min-width:32px;height:32px;padding:0 6px;border-radius:8px;
@@ -233,21 +241,29 @@ body.panel-open .main{margin-right:44%;}
 .factor-total b{font-family:var(--font-display);}
 
 /* grafico avanzamento — elemento principale del pannello (§11), barre grandi */
-.cmp-chart-big{display:flex;flex-direction:column;gap:12px;padding:8px 14px;background:var(--gray-50);border:1px solid var(--border);border-radius:12px;}
-.cmp-row-big{display:flex;align-items:center;gap:12px;}
-.cmp-row-big .cbrb-lbl{font-size:13px;font-weight:700;color:var(--text);width:66px;flex-shrink:0;}
-.cmp-row-big .cbrb-track{flex:1;height:34px;background:var(--gray-200);border-radius:7px;overflow:hidden;}
-.cmp-row-big .cbrb-fill{height:100%;border-radius:7px;}
+.cmp-chart-big{display:flex;flex-direction:column;gap:8px;padding:10px 14px;background:var(--gray-50);border:1px solid var(--border);border-radius:10px;}
+.cmp-row-big{display:flex;align-items:center;gap:10px;}
+.cmp-row-big .cbrb-lbl{font-size:11px;font-weight:700;color:var(--text);width:58px;flex-shrink:0;display:flex;align-items:center;gap:4px;}
+.cmp-row-big .cbrb-track{flex:1;height:20px;background:var(--gray-200);border-radius:5px;overflow:hidden;}
+.cmp-row-big .cbrb-fill{height:100%;border-radius:5px;}
 .cmp-row-big .cbrb-fill.cbrb-planned{background:var(--gray-400);}
 .cmp-row-big .cbrb-fill.cbrb-real{background:var(--retelit-sky);}
-.cmp-row-big .cbrb-pct{font-family:var(--font-display);font-size:26px;font-weight:800;color:var(--text);width:68px;text-align:right;flex-shrink:0;}
-.cmp-scost-big{display:flex;align-items:baseline;gap:8px;padding:8px 0;border-top:1px dashed var(--border2);}
-.cmp-scost-big .csb-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);}
-.cmp-scost-big .csb-val{font-family:var(--font-display);font-size:22px;font-weight:800;}
-.cmp-meta-big{display:flex;flex-wrap:wrap;gap:14px;font-size:11.5px;color:var(--muted);margin-top:0;}
+.cmp-row-big .cbrb-pct{font-family:var(--font-display);font-size:16px;font-weight:800;color:var(--text);width:48px;text-align:right;flex-shrink:0;}
+.cmp-scost-big{display:flex;align-items:baseline;gap:8px;padding:6px 0;border-top:1px dashed var(--border2);}
+.cmp-scost-big .csb-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);}
+.cmp-scost-big .csb-val{font-family:var(--font-display);font-size:16px;font-weight:800;}
+.cmp-meta-big{display:flex;flex-wrap:wrap;gap:12px;font-size:10.5px;color:var(--muted);margin-top:0;}
 .cmp-meta-big b{color:var(--text);font-family:var(--font-mono);}
 .cmp-warn-note,.cmp-info-note{font-style:italic;color:var(--muted2);flex-basis:100%;}
 .cmp-info-note{color:var(--ok);}
+/* Badge ⓘ compatto: sostituisce il paragrafo verde esteso per la nota
+   "baseline stimata" — spiegazione disponibile al passaggio del mouse
+   (title) invece di occupare sempre una riga intera nel pannello. */
+.cbrb-info-badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:13px;height:13px;border-radius:50%;background:var(--gray-300);color:#fff;
+  font-size:9px;font-weight:700;font-style:normal;cursor:help;flex-shrink:0;
+}
 .cmp-meta b{color:var(--text);font-family:var(--font-mono);}
 
 .tabs-nav{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-top:10px;}
@@ -693,15 +709,19 @@ function addWorkingDays(start, giorni, ggSettimana, calendarioTipo) {
 
 // Proiezione "a quale data finiscono gli scavi con N squadre da oggi in poi",
 // a produttività per squadra invariata (c.prodEffettiva, già calcolata da
-// computeCapacita). Usa lo stesso metriResiduiScavo/ggSettimana/calendarioTipo
-// della capacità operativa, così la proiezione con N=squadre.disponibili
-// coincide esattamente con la logica esistente di computeCapacita.
-function computeProiezioneData(c, squadre) {
+// computeCapacita). "metriResidui" è passato esplicitamente (non letto da
+// c.metriResiduiScavo) per supportare le due basi di calcolo scelte
+// dall'utente: "Metri autorizzati" (= c.metriResiduiScavo, comportamento
+// preesistente) oppure "Intero lotto" (= km totali lotto - scavato, include
+// anche i metri non ancora autorizzati — vedi buildProiezioneCard). ggSettimana/
+// calendarioTipo/milestoneROS restano quelli della capacità operativa in
+// entrambi i casi.
+function computeProiezioneData(metriResidui, c, squadre) {
   if (c.insufficiente) return { disponibile: false, motivo: c.motivo };
-  if (c.metriResiduiScavo <= 0) return { disponibile: true, completato: true };
+  if (metriResidui <= 0) return { disponibile: true, completato: true };
   if (!squadre || squadre <= 0 || c.prodEffettiva <= 0) return { disponibile: true, infinito: true };
   const metriGiorno = squadre * c.prodEffettiva;
-  const giorniNecessari = Math.ceil(c.metriResiduiScavo / metriGiorno);
+  const giorniNecessari = Math.ceil(metriResidui / metriGiorno);
   const dataCompletamento = addWorkingDays(oggi, giorniNecessari, c.ggSettimana, c.calendarioTipo);
   const scostamentoGiorni = c.milestoneROS ? Math.round((dataCompletamento - c.milestoneROS) / 86400000) : null;
   return { disponibile: true, giorniNecessari, dataCompletamento, scostamentoGiorni };
@@ -1330,6 +1350,7 @@ function renderProssimaCol(row) {
 let LOTTI_DATA = {};
 let PANEL_OPEN = null;
 let PROIEZIONE_SQUADRE = {}; // { [lotto]: numero squadre selezionato per la proiezione interattiva }
+let PROIEZIONE_BASE = {};    // { [lotto]: 'autorizzati' | 'lotto' — base metri residui per la proiezione }
 
 function render(prog, scavi, milestoneByLotto) {
   const lotti = new Set([...Object.keys(prog), ...Object.keys(scavi), ...Object.keys(milestoneByLotto)]);
@@ -1665,19 +1686,57 @@ function buildMilestoneCard(r) {
 // Stato selezione persistito in PROIEZIONE_SQUADRE per lotto (sopravvive a
 // switchTab ma si perde alla chiusura pannello/refresh dati, non è un dato
 // da salvare — è solo una simulazione "what-if" lato client).
+// Metri residui secondo la base scelta dall'utente: 'autorizzati' (comportamento
+// preesistente, c.metriResiduiScavo — solo ciò che ha già un permesso valido)
+// oppure 'lotto' (km totali del lotto da progettazione, r.p.kmTot, meno lo
+// scavato — include anche i metri non ancora autorizzati, utile per capire
+// "quando finisco TUTTO il lotto" anche se mancano ancora dei permessi).
+function metriResiduiPerBase(r, base) {
+  if (base === 'lotto') return Math.max(0, (r.p.kmTot || 0) - (r.s.metriScavati || 0));
+  return r.capacita.metriResiduiScavo;
+}
+
 function buildProiezioneCard(r) {
+  return `<div id="provWrap-${r.lotto}">${buildProiezioneInner(r)}</div>`;
+}
+
+function buildProiezioneInner(r) {
   const c = r.capacita;
   const title = `<div class="panel-section-title panel-section-title-main">Proiezione completamento scavi</div>`;
   if (c.insufficiente) {
     return `${title}<div class="proiezione-box"><div class="proiezione-storico">${buildMediaStoricaLine(r)}</div><div class="dcard-nd" style="margin-top:10px">Proiezione non disponibile — ${c.motivo}</div></div>`;
   }
-  if (c.metriResiduiScavo <= 0) {
-    return `${title}<div class="proiezione-box"><div class="proiezione-storico">${buildMediaStoricaLine(r)}</div><div class="dcard-main" style="color:var(--ok);margin-top:10px">Scavi già completati — nessuna proiezione da calcolare.</div></div>`;
+
+  const base = PROIEZIONE_BASE[r.lotto] || 'autorizzati';
+  PROIEZIONE_BASE[r.lotto] = base;
+  const metriAut = c.metriResiduiScavo;
+  const metriLotto = Math.max(0, (r.p.kmTot || 0) - (r.s.metriScavati || 0));
+  const gapLotto = metriLotto - metriAut;
+  const hasGap = gapLotto > 0.5; // il lotto ha metri non ancora autorizzati oltre a quanto già in cantiere
+  const metriResidui = base === 'lotto' ? metriLotto : metriAut;
+
+  const baseToggle = hasGap ? `
+    <div class="proiezione-base-selector">
+      <button type="button" class="proiezione-base-btn${base === 'autorizzati' ? ' active' : ''}" onclick="_provSelectBase('${r.lotto}','autorizzati')">Metri autorizzati</button>
+      <button type="button" class="proiezione-base-btn${base === 'lotto' ? ' active' : ''}" onclick="_provSelectBase('${r.lotto}','lotto')">Intero lotto</button>
+    </div>
+    <div class="proiezione-base-note">${base === 'lotto'
+      ? `Include ${fmtKm(gapLotto)} non ancora autorizzati — assunti realizzabili allo stesso ritmo appena disponibili.`
+      : `${fmtKm(gapLotto)} del lotto non sono ancora autorizzati — non conteggiati in questa proiezione.`}</div>` : '';
+
+  if (metriResidui <= 0) {
+    const msg = base === 'lotto' ? 'Intero lotto già scavato' : 'Metri autorizzati già completati';
+    return `${title}<div class="proiezione-box">
+      <div class="proiezione-storico">${buildMediaStoricaLine(r)}</div>
+      ${baseToggle}
+      <div class="dcard-main" style="color:var(--ok);margin-top:10px">${msg} — nessuna proiezione da calcolare.</div>
+    </div>`;
   }
+
   const disp = c.squadre.disponibili;
   const selezionate = PROIEZIONE_SQUADRE[r.lotto] !== undefined ? PROIEZIONE_SQUADRE[r.lotto] : disp;
   PROIEZIONE_SQUADRE[r.lotto] = selezionate;
-  const maxBtn = Math.min(20, Math.max(10, disp + 4));
+  const maxBtn = Math.max(6, disp); // almeno 6 opzioni cliccabili, di più solo se già oggi si hanno più di 6 squadre
   let btns = '';
   for (let n = 1; n <= maxBtn; n++) {
     const cls = 'proiezione-btn' + (n === selezionate ? ' active' : '') + (n === disp ? ' proiezione-btn-current' : '');
@@ -1685,9 +1744,10 @@ function buildProiezioneCard(r) {
   }
   return `${title}<div class="proiezione-box">
     <div class="proiezione-storico">${buildMediaStoricaLine(r)}</div>
+    ${baseToggle}
     <div class="proiezione-hint">Squadre attive da oggi in poi (oggi disponibili: <b>${disp}</b>) — clicca un numero per vedere come cambia la data:</div>
     <div class="proiezione-squadre-selector" id="provSel-${r.lotto}">${btns}</div>
-    <div class="proiezione-result" id="provRes-${r.lotto}">${renderProiezioneResult(r, selezionate)}</div>
+    <div class="proiezione-result" id="provRes-${r.lotto}">${renderProiezioneResult(r, selezionate, metriResidui, base)}</div>
   </div>`;
 }
 
@@ -1706,9 +1766,9 @@ function buildMediaStoricaLine(r) {
   <div class="proiezione-storico-sub">${fmtKm(ms.metriTotali)} scavati dal ${fmtDateShort(ms.inizioMin)} (${ms.giorniTrascorsi} ${unita})</div>`;
 }
 
-function renderProiezioneResult(r, squadre) {
+function renderProiezioneResult(r, squadre, metriResidui, base) {
   const c = r.capacita;
-  const proj = computeProiezioneData(c, squadre);
+  const proj = computeProiezioneData(metriResidui, c, squadre);
   if (proj.infinito) {
     return `<div class="dcard-main" style="color:var(--danger)">Con 0 squadre gli scavi non avanzano — nessuna data di completamento.</div>`;
   }
@@ -1723,8 +1783,9 @@ function renderProiezioneResult(r, squadre) {
       : `In ritardo di ${proj.scostamentoGiorni} giorni rispetto alla milestone ROS (${fmtDateShort(c.milestoneROS)})`;
     scostHtml = `<div class="proiezione-scost" style="color:${colore}">${testo}</div>`;
   }
+  const baseLabel = base === 'lotto' ? 'residui su intero lotto' : 'residui autorizzati';
   return `<div class="proiezione-data">Completamento previsto: <b>${dataStr}</b></div>
-  <div class="proiezione-sub">${fmtKm(c.metriResiduiScavo)} residui ÷ (${squadre} squadr${squadre === 1 ? 'a' : 'e'} × ${fmtNum(c.prodEffettiva)} m/giorno) ≈ ${proj.giorniNecessari} ${unitaGG}</div>
+  <div class="proiezione-sub">${fmtKm(metriResidui)} ${baseLabel} ÷ (${squadre} squadr${squadre === 1 ? 'a' : 'e'} × ${fmtNum(c.prodEffettiva)} m/giorno) ≈ ${proj.giorniNecessari} ${unitaGG}</div>
   ${scostHtml}`;
 }
 
@@ -1735,9 +1796,23 @@ function _provSelectSquadre(lotto, n) {
   PROIEZIONE_SQUADRE[lotto] = n;
   const sel = document.getElementById('provSel-' + lotto);
   if (sel) sel.querySelectorAll('.proiezione-btn').forEach(b => b.classList.toggle('active', Number(b.textContent) === n));
-  const res = document.getElementById('provRes-' + lotto);
   const r = LOTTI_DATA[lotto];
-  if (res && r) res.innerHTML = renderProiezioneResult(r, n);
+  const res = document.getElementById('provRes-' + lotto);
+  if (res && r) {
+    const base = PROIEZIONE_BASE[lotto] || 'autorizzati';
+    res.innerHTML = renderProiezioneResult(r, n, metriResiduiPerBase(r, base), base);
+  }
+}
+
+// Cambio base (autorizzati/lotto): può far comparire/sparire il messaggio
+// "già completato" o il numero di squadre disponibile cambia significato —
+// rebuild dell'intera sezione (non solo del risultato), via il wrapper
+// #provWrap-{lotto} creato da buildProiezioneCard.
+function _provSelectBase(lotto, base) {
+  PROIEZIONE_BASE[lotto] = base;
+  const wrap = document.getElementById('provWrap-' + lotto);
+  const r = LOTTI_DATA[lotto];
+  if (wrap && r) wrap.innerHTML = buildProiezioneInner(r);
 }
 
 // ── grafico rischio ROS a 5 fattori (§12): niente "peso/punteggio grezzo/pt"
@@ -1817,12 +1892,15 @@ function buildCmpChart(flag, tooltip, r, isProg) {
   }
   const previstoLbl = flag.stimato ? 'Previsto stimato' : 'Previsto';
   const stimaFillCls = flag.stimato ? ' stima-fill' : '';
-  const stimaNota = (isProg && flag.stimato && flag.stimaInfo && flag.stimaInfo.disponibile)
-    ? `<span class="cmp-info-note">Baseline stimata da avvio progettazione (${fmtDateShort(flag.stimaInfo.avvioProg)}) — ${flag.stimaInfo.nota}. Nessuna milestone reale di invio/ottenimento ancora tracciata.</span>` : '';
+  const stimaTooltip = (isProg && flag.stimato && flag.stimaInfo && flag.stimaInfo.disponibile)
+    ? `Baseline stimata da avvio progettazione (${fmtDateShort(flag.stimaInfo.avvioProg)}) — ${flag.stimaInfo.nota}. Nessuna milestone reale di invio/ottenimento ancora tracciata.` : '';
+  const previstoLblHtml = stimaTooltip
+    ? `${previstoLbl} <span class="cbrb-info-badge" title="${stimaTooltip.replace(/"/g, '&quot;')}">i</span>`
+    : previstoLbl;
   return `<div class="cmp-chart-big" title="${tooltip}">
-    <div class="cmp-row-big"><span class="cbrb-lbl">${previstoLbl}</span><div class="cbrb-track"><div class="cbrb-fill cbrb-planned${stimaFillCls}" style="width:${Math.max(6,Math.min(100,flag.plannedToday)).toFixed(1)}%"></div></div><span class="cbrb-pct">${fmtPct(flag.plannedToday)}</span></div>
+    <div class="cmp-row-big"><span class="cbrb-lbl">${previstoLblHtml}</span><div class="cbrb-track"><div class="cbrb-fill cbrb-planned${stimaFillCls}" style="width:${Math.max(6,Math.min(100,flag.plannedToday)).toFixed(1)}%"></div></div><span class="cbrb-pct">${fmtPct(flag.plannedToday)}</span></div>
     <div class="cmp-row-big"><span class="cbrb-lbl">Reale</span><div class="cbrb-track"><div class="cbrb-fill cbrb-real" style="width:${Math.max(6,Math.min(100,flag.pct)).toFixed(1)}%"></div></div><span class="cbrb-pct">${fmtPct(flag.pct)}</span></div>
-    <div class="cmp-scost-big"><span class="csb-lbl">Scostamento</span><span class="csb-val" style="color:${scostColor}">${scost.text}</span></div>${stimaNota}
+    <div class="cmp-scost-big"><span class="csb-lbl">Scostamento</span><span class="csb-val" style="color:${scostColor}">${scost.text}</span></div>
     <div class="cmp-meta-big">${meta}</div>
   </div>`;
 }
