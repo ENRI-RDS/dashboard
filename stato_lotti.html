@@ -189,6 +189,24 @@ body.panel-open .main{margin-right:44%;}
 .dcard-bar-row .dbr-fill{height:100%;border-radius:4px;}
 .dcard-nd{color:var(--muted2);font-style:italic;font-size:11px;}
 
+/* proiezione completamento scavi — selettore squadre cliccabile + risultato */
+.proiezione-box{background:var(--gray-50);border:1px solid var(--border);border-radius:12px;padding:14px 16px;}
+.proiezione-hint{font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.4;}
+.proiezione-hint b{color:var(--text);font-family:var(--font-mono);}
+.proiezione-squadre-selector{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;}
+.proiezione-btn{
+  min-width:32px;height:32px;padding:0 6px;border-radius:8px;
+  border:1px solid var(--border2,var(--border));background:var(--surface);color:var(--text2);
+  font-family:var(--font-mono);font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;
+}
+.proiezione-btn:hover{border-color:var(--accent);color:var(--accent);}
+.proiezione-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.proiezione-btn-current:not(.active){box-shadow:inset 0 0 0 1.5px var(--retelit-blue-50);}
+.proiezione-result{padding-top:12px;border-top:1px dashed var(--border2);}
+.proiezione-data{font-family:var(--font-display);font-size:16px;font-weight:800;color:var(--text);}
+.proiezione-sub{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4;}
+.proiezione-scost{font-size:11.5px;font-weight:700;margin-top:8px;}
+
 .factor-row{display:flex;flex-direction:column;gap:3px;padding:9px 0;border-bottom:1px solid var(--gray-100);}
 .panel-section-title-sm{margin-top:16px;font-size:10px;}
 .pst-note{text-transform:none;letter-spacing:0;font-weight:400;color:var(--muted2);font-style:italic;}
@@ -649,6 +667,39 @@ function giorniLavorativi(d1, d2, ggSettimana) {
     if (idx <= ggSettimana) n++;
   }
   return n;
+}
+
+// Inversa di giorniLavorativi: data raggiunta aggiungendo N giorni (lavorativi
+// se calendarioTipo==='Lavorativi', altrimenti solari) a partire da "start".
+// Stesso criterio di conteggio (idx settimana ISO, giorno<=ggSettimana) per
+// restare coerente con la milestone ROS calcolata più sotto.
+function addWorkingDays(start, giorni, ggSettimana, calendarioTipo) {
+  if (giorni <= 0) return new Date(start);
+  if (calendarioTipo !== 'Lavorativi') return new Date(start.getTime() + giorni * 86400000);
+  let cur = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  let n = 0;
+  while (n < giorni) {
+    cur = new Date(cur.getTime() + 86400000);
+    const idx = cur.getDay() === 0 ? 7 : cur.getDay();
+    if (idx <= ggSettimana) n++;
+  }
+  return cur;
+}
+
+// Proiezione "a quale data finiscono gli scavi con N squadre da oggi in poi",
+// a produttività per squadra invariata (c.prodEffettiva, già calcolata da
+// computeCapacita). Usa lo stesso metriResiduiScavo/ggSettimana/calendarioTipo
+// della capacità operativa, così la proiezione con N=squadre.disponibili
+// coincide esattamente con la logica esistente di computeCapacita.
+function computeProiezioneData(c, squadre) {
+  if (c.insufficiente) return { disponibile: false, motivo: c.motivo };
+  if (c.metriResiduiScavo <= 0) return { disponibile: true, completato: true };
+  if (!squadre || squadre <= 0 || c.prodEffettiva <= 0) return { disponibile: true, infinito: true };
+  const metriGiorno = squadre * c.prodEffettiva;
+  const giorniNecessari = Math.ceil(c.metriResiduiScavo / metriGiorno);
+  const dataCompletamento = addWorkingDays(oggi, giorniNecessari, c.ggSettimana, c.calendarioTipo);
+  const scostamentoGiorni = c.milestoneROS ? Math.round((dataCompletamento - c.milestoneROS) / 86400000) : null;
+  return { disponibile: true, giorniNecessari, dataCompletamento, scostamentoGiorni };
 }
 
 // Coefficiente urgenza per distanza dalla milestone (R_AUTH, e R_BLOCCHI se ROS scaduta)
@@ -1247,6 +1298,7 @@ function renderProssimaCol(row) {
 
 let LOTTI_DATA = {};
 let PANEL_OPEN = null;
+let PROIEZIONE_SQUADRE = {}; // { [lotto]: numero squadre selezionato per la proiezione interattiva }
 
 function render(prog, scavi, milestoneByLotto) {
   const lotti = new Set([...Object.keys(prog), ...Object.keys(scavi), ...Object.keys(milestoneByLotto)]);
@@ -1462,6 +1514,7 @@ function openPanel(lotto) {
 function buildPanelHTML(r) {
   let h = '';
   h += buildSixCards(r);
+  h += buildProiezioneCard(r);
   h += `<div class="panel-section-title panel-section-title-main">Avanzamento scavi</div>`;
   h += buildCmpChart(r.sFlag, tooltipScavi(r), r);
   h += `<div class="panel-section-title panel-section-title-main">Avanzamento autorizzazioni</div>`;
@@ -1572,6 +1625,71 @@ function buildMilestoneCard(r) {
     return `<div class="dcard"><div class="dcard-lbl">Prossima milestone</div><div class="dcard-main" style="color:var(--danger)">Milestone scaduta</div><div class="dcard-sub">da ${gg} giorni</div></div>`;
   }
   return `<div class="dcard"><div class="dcard-lbl">Prossima milestone</div><div class="dcard-nd">Nessuna milestone nota</div></div>`;
+}
+
+// ── Proiezione completamento scavi (§ nuova, su richiesta utente): "a quale
+// data si arriva continuando con le squadre attuali", con possibilità di
+// cliccare un numero diverso di squadre per vedere come cambia la data.
+// Stato selezione persistito in PROIEZIONE_SQUADRE per lotto (sopravvive a
+// switchTab ma si perde alla chiusura pannello/refresh dati, non è un dato
+// da salvare — è solo una simulazione "what-if" lato client).
+function buildProiezioneCard(r) {
+  const c = r.capacita;
+  const title = `<div class="panel-section-title panel-section-title-main">Proiezione completamento scavi</div>`;
+  if (c.insufficiente) {
+    return `${title}<div class="proiezione-box"><div class="dcard-nd">Dato insufficiente — ${c.motivo}</div></div>`;
+  }
+  if (c.metriResiduiScavo <= 0) {
+    return `${title}<div class="proiezione-box"><div class="dcard-main" style="color:var(--ok)">Scavi già completati — nessuna proiezione da calcolare.</div></div>`;
+  }
+  const disp = c.squadre.disponibili;
+  const selezionate = PROIEZIONE_SQUADRE[r.lotto] !== undefined ? PROIEZIONE_SQUADRE[r.lotto] : disp;
+  PROIEZIONE_SQUADRE[r.lotto] = selezionate;
+  const maxBtn = Math.min(20, Math.max(10, disp + 4));
+  let btns = '';
+  for (let n = 1; n <= maxBtn; n++) {
+    const cls = 'proiezione-btn' + (n === selezionate ? ' active' : '') + (n === disp ? ' proiezione-btn-current' : '');
+    btns += `<button type="button" class="${cls}" onclick="_provSelectSquadre('${r.lotto}', ${n})" title="${n === disp ? 'Squadre attualmente disponibili' : n + ' squadre'}">${n}</button>`;
+  }
+  return `${title}<div class="proiezione-box">
+    <div class="proiezione-hint">Squadre attive da oggi in poi (oggi disponibili: <b>${disp}</b>) — clicca un numero per vedere come cambia la data:</div>
+    <div class="proiezione-squadre-selector" id="provSel-${r.lotto}">${btns}</div>
+    <div class="proiezione-result" id="provRes-${r.lotto}">${renderProiezioneResult(r, selezionate)}</div>
+  </div>`;
+}
+
+function renderProiezioneResult(r, squadre) {
+  const c = r.capacita;
+  const proj = computeProiezioneData(c, squadre);
+  if (proj.infinito) {
+    return `<div class="dcard-main" style="color:var(--danger)">Con 0 squadre gli scavi non avanzano — nessuna data di completamento.</div>`;
+  }
+  const dataStr = fmtDateShort(proj.dataCompletamento);
+  const unitaGG = c.calendarioTipo === 'Lavorativi' ? 'giorni lavorativi' : 'giorni';
+  let scostHtml = '';
+  if (proj.scostamentoGiorni !== null) {
+    const inAnticipo = proj.scostamentoGiorni <= 0;
+    const colore = inAnticipo ? 'var(--ok)' : 'var(--danger)';
+    const testo = inAnticipo
+      ? `In anticipo di ${Math.abs(proj.scostamentoGiorni)} giorni rispetto alla milestone ROS (${fmtDateShort(c.milestoneROS)})`
+      : `In ritardo di ${proj.scostamentoGiorni} giorni rispetto alla milestone ROS (${fmtDateShort(c.milestoneROS)})`;
+    scostHtml = `<div class="proiezione-scost" style="color:${colore}">${testo}</div>`;
+  }
+  return `<div class="proiezione-data">Completamento previsto: <b>${dataStr}</b></div>
+  <div class="proiezione-sub">${fmtKm(c.metriResiduiScavo)} residui ÷ (${squadre} squadr${squadre === 1 ? 'a' : 'e'} × ${fmtNum(c.prodEffettiva)} m/giorno) ≈ ${proj.giorniNecessari} ${unitaGG}</div>
+  ${scostHtml}`;
+}
+
+// Aggiorna solo bottone attivo + risultato (no rebuild pannello): risposta
+// immediata al click, coerente col resto del file che evita re-render
+// completi dove non necessario (vedi switchTab/toggleCollapsible).
+function _provSelectSquadre(lotto, n) {
+  PROIEZIONE_SQUADRE[lotto] = n;
+  const sel = document.getElementById('provSel-' + lotto);
+  if (sel) sel.querySelectorAll('.proiezione-btn').forEach(b => b.classList.toggle('active', Number(b.textContent) === n));
+  const res = document.getElementById('provRes-' + lotto);
+  const r = LOTTI_DATA[lotto];
+  if (res && r) res.innerHTML = renderProiezioneResult(r, n);
 }
 
 // ── grafico rischio ROS a 5 fattori (§12): niente "peso/punteggio grezzo/pt"
