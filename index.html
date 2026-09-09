@@ -3037,11 +3037,30 @@ const IMPRESE_PER_LOTTO = {
   '8': 'Sielte',
 };
 
+// Split "quote-aware" in righe logiche: a differenza di text.split('\n'), non
+// spezza una riga CSV se il newline è dentro un campo tra virgolette (es. note
+// multi-riga incollate dal portale imprese, tipo "Pratica presentata...\nNumero
+// di Protocollo..."). Bug reale riscontrato su AUT/13/5 e NO/16/5 (righe INVIATO
+// perse/corrotte perché la nota conteneva un \n letterale).
+function _csvLogicalLines(text) {
+  const clean = text.replace(/\r/g, '');
+  const lines = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < clean.length; i++) {
+    const ch = clean[i];
+    if (ch === '"') { inQ = !inQ; cur += ch; }
+    else if (ch === '\n' && !inQ) { lines.push(cur); cur = ''; }
+    else { cur += ch; }
+  }
+  if (cur.trim() !== '') lines.push(cur);
+  return lines;
+}
+
 async function loadCluster() {
   try {
     // Usa la cache condivisa — se loadData() ha già scaricato il file, non rifetch
     const text = await fetchRiepilogoCSV();
-    const lines = text.trim().split('\n').map(l => l.replace(/\r/,''));
+    const lines = _csvLogicalLines(text);
 
     // Rileva separatore automaticamente dalla prima riga
     const firstLine = lines[0];
@@ -3592,7 +3611,7 @@ async function loadData(saveSnapshot = false) {
     const text = await fetchRiepilogoCSV(true); // forceFresh=true: loadData guida il refresh
     setLoading(70);
     // Aggrega da Riepilogo_progettazione.csv (stessa fonte dei cluster → totali coerenti)
-    const lines = text.trim().split('\n').map(l => l.replace(/\r/,''));
+    const lines = _csvLogicalLines(text);
     const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',');
     const splitLine = (line) => {
       const res = []; let cur = '', inQ = false;
@@ -4184,7 +4203,7 @@ async function loadMaster() {
 }
 
 function _processMasterText(text) {
-    const lines = text.trim().split('\n').map(l => l.replace(/\r/,''));
+    const lines = _csvLogicalLines(text);
     const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',');
 
     const splitLine = (line) => {
