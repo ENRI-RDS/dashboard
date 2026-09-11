@@ -226,6 +226,13 @@ body.panel-open .main{margin-right:44%;}
 .auth-modal-trigger{display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--border2);padding:8px 12px;border-radius:8px;font-size:11.5px;font-weight:600;color:var(--accent);cursor:pointer;font-family:inherit;transition:all .15s;}
 .auth-modal-trigger:hover{border-color:var(--accent);background:var(--retelit-ice);}
 .auth-modal-trigger .amt-count{font-family:var(--font-mono);background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700;}
+.auth-modal-trigger-loading{color:var(--muted);cursor:default;}
+.auth-modal-trigger-loading:hover{border-color:var(--border2);background:var(--surface);}
+.auth-modal-trigger-error{color:var(--danger);border-color:var(--danger);background:var(--danger-bg);cursor:default;font-weight:500;}
+.auth-modal-trigger-error:hover{border-color:var(--danger);background:var(--danger-bg);}
+.auth-retry-btn{font-family:inherit;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:6px;border:1px solid var(--danger);background:#fff;color:var(--danger);cursor:pointer;margin-left:4px;}
+.auth-retry-btn:hover{background:var(--danger);color:#fff;}
+.auth-date-stima{display:inline-block;margin-left:6px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--warn);vertical-align:middle;}
 .auth-modal-overlay{position:fixed;inset:0;background:rgba(4,63,117,.4);z-index:250;display:flex;align-items:center;justify-content:center;padding:24px;animation:authFadeIn .15s ease-out;}
 @keyframes authFadeIn{from{opacity:0}to{opacity:1}}
 @keyframes authPopIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
@@ -454,6 +461,142 @@ function parseGenericCSV(text) {
     headers.forEach((h, i) => row[h.trim()] = cells[i] !== undefined ? cells[i] : '');
     return row;
   });
+}
+
+// Split in righe "logiche": a differenza di text.split('\n'), non spezza un campo
+// tra virgolette che contiene newline al suo interno (stesso identico helper di
+// index.html — vedi AGENT_BRIEF sul bug corretto in precedenza su questo stesso punto).
+function _csvLogicalLines(text) {
+  const clean = text.replace(/\r/g, '');
+  const lines = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < clean.length; i++) {
+    const ch = clean[i];
+    if (ch === '"') { inQ = !inQ; cur += ch; }
+    else if (ch === '\n' && !inQ) { lines.push(cur); cur = ''; }
+    else { cur += ch; }
+  }
+  if (cur.trim() !== '') lines.push(cur);
+  return lines;
+}
+
+// Converte un Date locale (es. da parseDateIT) in 'YYYY-MM-DD' usando i componenti
+// locali — MAI Date.toISOString(), che converte a UTC e su mezzanotte locale in un
+// fuso orario positivo (Italia) sposta la data indietro di un giorno.
+function localDateToISO(d) {
+  if (!d || isNaN(d)) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Carica e aggrega le pratiche reali per lotto da Master.csv (stessa fonte di
+// index.html — vedi window._praticheDetailPerLotto lì), on-demand e una sola volta
+// per l'intera sessione pagina (cache condivisa fra tutti i lotti). Necessario perché
+// Riepilogo_progettazione.csv (già in uso nel resto della pagina) è a livello di
+// TRATTA e non porta DATA_PREVISTA_RILASCIO. Versione volutamente più snella del
+// parser di index.html: qui servono solo codice/ente/stato/metri/data prevista, non
+// note/storico stati (quelli restano di competenza di index.html/admin.html).
+function loadMasterPraticheByLotto() {
+  if (_masterPraticheByLotto) return Promise.resolve(_masterPraticheByLotto);
+  if (_masterPraticheLoading) return _masterPraticheLoading;
+  _masterPraticheError = null;
+  _masterPraticheLoading = fetch('Master.csv?t=' + Date.now(), { headers: { 'x-session-token': _sessionToken() } })
+    .then(resp => resp.ok ? resp.text() : Promise.reject(new Error('HTTP ' + resp.status)))
+    .then(text => {
+      _masterPraticheByLotto = _buildMasterPraticheByLotto(text);
+      _masterPraticheLoading = null;
+      return _masterPraticheByLotto;
+    })
+    .catch(err => {
+      _masterPraticheLoading = null;
+      _masterPraticheError = err.message || 'errore di rete';
+      throw err;
+    });
+  return _masterPraticheLoading;
+}
+
+function _buildMasterPraticheByLotto(text) {
+  const lines = _csvLogicalLines(text);
+  if (!lines.length) return {};
+  const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',');
+  const splitLine = (line) => {
+    const result = []; let cur = '', inQ = false;
+    for (const ch of line) {
+      if (ch === '"') { inQ = !inQ; }
+      else if (ch === sep && !inQ) { result.push(cur.trim()); cur = ''; }
+      else { cur += ch; }
+    }
+    result.push(cur.trim());
+    return result;
+  };
+  const headers = splitLine(lines[0]);
+  const findCol = (...names) => {
+    for (const n of names) {
+      const idx = headers.findIndex(h => h.trim().toUpperCase() === n.toUpperCase());
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  };
+  const iSrc = findCol('Source.Name', 'SOURCE.NAME');
+  const iTrat = findCol('TRATTA_ID');
+  const iEnte = findCol('ENTE');
+  const iTipo = findCol('TIPO_PERMESSO');
+  const iStato = findCol('STATO_PERMESSO');
+  const iDUM = findCol('DATA_ULTIMA_MODIFICA');
+  const iLungh = findCol('LUNGHEZZA');
+  const iPrat = findCol('PRATICA');
+  const iDataPrevRil = findCol('DATA_PREVISTA_RILASCIO');
+  if (iTrat === -1 || iPrat === -1) return {};
+
+  // Passo 1: per tratta+pratica+tipo, tieni solo la riga più recente (DATA_ULTIMA_MODIFICA) — stesso criterio di index.html.
+  const permessiMap = {};
+  for (let i = 1; i < lines.length; i++) {
+    const cols = splitLine(lines[i]);
+    const tratta = cols[iTrat]?.trim();
+    const prat = iPrat !== -1 ? cols[iPrat]?.trim() : '';
+    const tipo = iTipo !== -1 ? cols[iTipo]?.trim().toUpperCase() : '';
+    const stato = iStato !== -1 ? (cols[iStato]?.trim() || '') : '';
+    if (!tratta || !prat || !stato) continue;
+    const lunghRaw = (cols[iLungh] || '0').trim();
+    let lungh = 0;
+    if (lunghRaw.includes(',') && !lunghRaw.includes('.')) lungh = parseFloat(lunghRaw.replace(',', '.')) || 0;
+    else if (lunghRaw.includes(',')) lungh = parseFloat(lunghRaw.replace(/\./g, '').replace(',', '.')) || 0;
+    else lungh = parseFloat(lunghRaw) || 0;
+    const ente = iEnte !== -1 ? (cols[iEnte]?.trim() || '') : '';
+    const dum = iDUM !== -1 ? (cols[iDUM]?.trim() || '') : '';
+    const src = iSrc !== -1 ? (cols[iSrc]?.trim() || '') : '';
+    const dataPrevRilascio = iDataPrevRil !== -1 ? (cols[iDataPrevRil]?.trim() || '') : '';
+    // Estrae il lotto da Source.Name (es. "Lotto 1A.xlsx" → "1A") — identica logica a index.html.
+    const lotto = src ? src.replace(/\.xlsx$/i, '').replace(/^Lotto\s*/i, '').trim().toUpperCase() : '';
+    if (!lotto) continue;
+
+    const key = tratta + '|' + prat + '|' + tipo;
+    const existing = permessiMap[key];
+    const dumDate = parseDateIT(dum);
+    const exDate = existing ? parseDateIT(existing.dum) : null;
+    if (!existing || (dumDate && (!exDate || dumDate >= exDate))) {
+      permessiMap[key] = { tratta, prat, tipo, stato, ente, dum, lungh: lungh || (existing ? existing.lungh : 0) || 0, lotto, dataPrevRilascio: dataPrevRilascio || (existing ? existing.dataPrevRilascio : '') };
+    }
+  }
+
+  // Passo 2: raggruppa per lotto → codice pratica (AUT|NO|ORD/prat/lotto), sommando i metri delle tratte che la compongono.
+  const praticheByLotto = {};
+  Object.values(permessiMap).forEach(r => {
+    const tipoPrefix = r.tipo === 'AUTORIZZAZIONE' ? 'AUT' : r.tipo === 'NULLA OSTA' ? 'NO' : r.tipo === 'ORDINANZA' ? 'ORD' : (r.tipo || '').substring(0, 3);
+    const codice = tipoPrefix + '/' + r.prat + '/' + r.lotto;
+    if (!praticheByLotto[r.lotto]) praticheByLotto[r.lotto] = {};
+    if (!praticheByLotto[r.lotto][codice]) {
+      praticheByLotto[r.lotto][codice] = { codice, tipo: r.tipo, stato: r.stato, ente: r.ente, dum: r.dum, dataPrevRilascio: r.dataPrevRilascio || '', metri: 0 };
+    }
+    const p = praticheByLotto[r.lotto][codice];
+    p.metri += r.lungh;
+    const newDum = parseDateIT(r.dum), exDum = parseDateIT(p.dum);
+    if (!exDum || (newDum && newDum >= exDum)) { p.stato = r.stato; p.ente = r.ente; p.dum = r.dum; }
+    if (r.dataPrevRilascio && !p.dataPrevRilascio) p.dataPrevRilascio = r.dataPrevRilascio;
+  });
+
+  const out = {};
+  Object.entries(praticheByLotto).forEach(([lot, map]) => { out[lot] = Object.values(map).sort((a, b) => a.codice.localeCompare(b.codice)); });
+  return out;
 }
 
 const oggi = new Date();
@@ -820,7 +963,7 @@ function stimaDataPreventivaISO(ente) {
   const tempi = (PARAMETRI && PARAMETRI.tempi_autorizzativi) || {};
   const t = lookupTempoEnte(ente, tempi);
   if (t.giorni_attesi == null) return '';
-  return new Date(oggi.getTime() + Number(t.giorni_attesi) * 86400000).toISOString().slice(0, 10);
+  return localDateToISO(new Date(oggi.getTime() + Number(t.giorni_attesi) * 86400000));
 }
 
 // Coefficiente urgenza per distanza dalla milestone (R_AUTH, e R_BLOCCHI se ROS scaduta)
@@ -1447,9 +1590,19 @@ let LOTTI_DATA = {};
 let PANEL_OPEN = null;
 let PROIEZIONE_SQUADRE = {}; // { [lotto]: numero squadre selezionato per la proiezione interattiva }
 let PROIEZIONE_BASE = {};    // { [lotto]: 'autorizzati' | 'lotto' — base metri residui per la proiezione }
-let PROIEZIONE_GGSETT = {};  // { [lotto]: override giorni lavorativi/settimana per la sola proiezione (5/6/7) — non tocca il parametro ufficiale usato dal motore rischio }
-let PROIEZIONE_DATE_PRATICHE = {}; // { [lotto]: { [idxPratica]: 'YYYY-MM-DD' | '' } } — date di rilascio previste, inserite/modificate dall'utente, per le pratiche non ancora autorizzate (esclusi nulla osta/ordinanze — quelli restano in r.p.blocchi, mai qui)
+let PROIEZIONE_GGSETT = {};  // { [lotto]: override giorni lavorativi/settimana per la sola proiezione (3-7) — non tocca il parametro ufficiale usato dal motore rischio }
+let PROIEZIONE_DATE_PRATICHE = {}; // { [lotto]: { [codicePratica]: 'YYYY-MM-DD' | '' } } — date di rilascio previste per pratica (chiave = codice reale, es. "AUT/2/1B"), usate solo dalla proiezione "Intero lotto". Prefill dal campo reale DATA_PREVISTA_RILASCIO di Master.csv quando presente (stessa fonte del campo "Prev. Rilascio" di index.html/imprese.html), altrimenti da stimaDataPreventivaISO — mai persistite lato server, solo what-if locale.
+let PROIEZIONE_DATE_STIMATA = {}; // { [lotto]: Set<codicePratica> } — codici la cui data mostrata è ancora una stima (nessun DATA_PREVISTA_RILASCIO reale in Master.csv e l'utente non l'ha ancora modificata): usato solo per il badge "stimata" in tabella.
 let PROIEZIONE_AUTH_OPEN = {}; // { [lotto]: bool } — stato apertura pannello "Autorizzazioni mancanti"
+
+// Pratiche reali per lotto, lette on-demand da Master.csv (stessa fonte di index.html: campi
+// TRATTA_ID/PRATICA/TIPO_PERMESSO/STATO_PERMESSO/ENTE/LUNGHEZZA/DATA_PREVISTA_RILASCIO/Source.Name→lotto),
+// aggregate per codice pratica (AUT|NO|ORD/prat/lotto). Riepilogo_progettazione.csv (già caricato per
+// il resto della pagina) è a livello di TRATTA, non di pratica, e non ha DATA_PREVISTA_RILASCIO — per
+// questo la proiezione "Intero lotto" ha bisogno di Master.csv.
+let _masterPraticheByLotto = null; // cache condivisa fra tutti i lotti una volta caricata: { [lotto]: [{codice, tipo, stato, ente, metri, dataPrevRilascio, dum}] }
+let _masterPraticheLoading = null; // Promise in corso — evita fetch concorrenti se più pannelli lo richiedono nello stesso istante
+let _masterPraticheError = null;   // messaggio dell'ultimo tentativo fallito, null se mai tentato o riuscito
 
 function render(prog, scavi, milestoneByLotto) {
   const lotti = new Set([...Object.keys(prog), ...Object.keys(scavi), ...Object.keys(milestoneByLotto)]);
@@ -1814,14 +1967,22 @@ function buildProiezioneInner(r) {
   const hasGap = gapLotto > 0.5; // il lotto ha metri non ancora autorizzati oltre a quanto già in cantiere
   const metriResidui = base === 'lotto' ? metriLotto : metriAut;
 
+  const baseNoteLotto = _masterPraticheByLotto
+    ? (() => {
+        const praticheReali = (_masterPraticheByLotto[r.lotto] || []).filter(p => p.tipo === 'AUTORIZZAZIONE' && p.stato !== 'OTTENUTO' && p.stato !== 'NO COMPETENZA');
+        const totReale = praticheReali.reduce((s, p) => s + p.metri, 0);
+        return `Include ${fmtKm(totReale)} non ancora autorizzati (${praticheReali.length} pratiche da Master.csv, nulla osta/ordinanze esclusi), sbloccati man mano in base alle date sotto — nessuna data inserita = quei metri non entrano nel calcolo.`;
+      })()
+    : `Caricamento pratiche da Master.csv per calcolare i km non ancora autorizzati…`;
+
   const baseToggle = hasGap ? `
     <div class="proiezione-base-selector">
       <button type="button" class="proiezione-base-btn${base === 'autorizzati' ? ' active' : ''}" onclick="_provSelectBase('${r.lotto}','autorizzati')">Metri autorizzati</button>
       <button type="button" class="proiezione-base-btn${base === 'lotto' ? ' active' : ''}" onclick="_provSelectBase('${r.lotto}','lotto')">Intero lotto</button>
     </div>
     <div class="proiezione-base-note">${base === 'lotto'
-      ? `Include ${fmtKm(gapLotto)} non ancora autorizzati, sbloccati man mano in base alle date sotto — nessuna data inserita = quei metri non entrano nel calcolo.`
-      : `${fmtKm(gapLotto)} del lotto non sono ancora autorizzati — non conteggiati in questa proiezione.`}</div>` : '';
+      ? baseNoteLotto
+      : `${fmtKm(gapLotto)} del lotto non sono ancora autorizzati (stima) — non conteggiati in questa proiezione.`}</div>` : '';
 
   const ggSettDefault = c.ggSettimana;
   const ggSett = PROIEZIONE_GGSETT[r.lotto] != null ? PROIEZIONE_GGSETT[r.lotto] : ggSettDefault;
@@ -1864,27 +2025,51 @@ function buildProiezioneInner(r) {
   </div>`;
 }
 
-// Pannello "Autorizzazioni mancanti" (solo base 'Intero lotto'): elenca le pratiche/tratte
-// non ancora autorizzate (r.p.issues — MAI r.p.blocchi, che sono nulla osta/ordinanze e
-// restano fuori da questa proiezione come richiesto) con una data di rilascio prevista
-// editabile per riga. L'indice di riga (idx) è la chiave di stato: stabile perché
-// praticheAggregate/sort sono deterministici sugli stessi dati caricati.
+// Pannello "Autorizzazioni mancanti" (solo base 'Intero lotto'): elenca le pratiche
+// AUTORIZZAZIONE (mai NULLA OSTA/ORDINANZA, esclusi esplicitamente su richiesta —
+// quelli restano di competenza di R_BLOCCHI/"Blocchi autorizzativi") non ancora
+// ottenute per il lotto, lette da Master.csv (loadMasterPraticheByLotto — stesso dato
+// del campo "Prev. Rilascio" della tabella "Tutte le pratiche" di index.html), MAI
+// r.p.issues (quello è un'aggregazione a livello di tratta, usata dal tab
+// "Autorizzazioni" pre-esistente per uno scopo diverso, e può accorpare più codici
+// pratica su una stessa tratta producendo etichette composte fuorvianti).
 function buildProiezioneAuthPanel(r) {
   const lotto = r.lotto;
-  const pratiche = praticheAggregate(r.p.issues).sort((a, b) => b.metri - a.metri);
-  if (!pratiche.length) return '';
-  if (!PROIEZIONE_DATE_PRATICHE[lotto]) {
-    const init = {};
-    pratiche.forEach((p, i) => { init[i] = stimaDataPreventivaISO(p.ente); });
-    PROIEZIONE_DATE_PRATICHE[lotto] = init;
+
+  if (!_masterPraticheByLotto) {
+    if (!_masterPraticheLoading) {
+      loadMasterPraticheByLotto()
+        .then(() => { const wrap = document.getElementById('provWrap-' + lotto); const rr = LOTTI_DATA[lotto]; if (wrap && rr) wrap.innerHTML = buildProiezioneInner(rr); })
+        .catch(() => { const wrap = document.getElementById('provWrap-' + lotto); const rr = LOTTI_DATA[lotto]; if (wrap && rr) wrap.innerHTML = buildProiezioneInner(rr); });
+    }
+    return `<div class="proiezione-auth-block"><div class="auth-modal-trigger auth-modal-trigger-loading">Caricamento pratiche da Master.csv…</div></div>`;
   }
+  if (_masterPraticheError) {
+    return `<div class="proiezione-auth-block"><div class="auth-modal-trigger auth-modal-trigger-error">Autorizzazioni mancanti non disponibili — ${_masterPraticheError}. <button type="button" class="auth-retry-btn" onclick="_provRetryMasterPratiche('${lotto}')">Riprova</button></div></div>`;
+  }
+
+  const pratiche = (_masterPraticheByLotto[lotto] || [])
+    .filter(p => p.tipo === 'AUTORIZZAZIONE' && p.stato !== 'OTTENUTO' && p.stato !== 'NO COMPETENZA')
+    .slice()
+    .sort((a, b) => b.metri - a.metri);
+  if (!pratiche.length) return '';
+
+  if (!PROIEZIONE_DATE_PRATICHE[lotto]) PROIEZIONE_DATE_PRATICHE[lotto] = {};
+  if (!PROIEZIONE_DATE_STIMATA[lotto]) PROIEZIONE_DATE_STIMATA[lotto] = new Set();
   const datiLotto = PROIEZIONE_DATE_PRATICHE[lotto];
+  const stimeSet = PROIEZIONE_DATE_STIMATA[lotto];
+  pratiche.forEach(p => {
+    if (datiLotto[p.codice] !== undefined) return; // già inizializzata in questa sessione (eventualmente modificata dall'utente)
+    const realeISO = localDateToISO(parseDateIT(p.dataPrevRilascio));
+    if (realeISO) { datiLotto[p.codice] = realeISO; }
+    else { const stima = stimaDataPreventivaISO(p.ente); datiLotto[p.codice] = stima; if (stima) stimeSet.add(p.codice); }
+  });
+
   const totMetri = pratiche.reduce((s, p) => s + p.metri, 0);
-  const senzaData = pratiche.reduce((s, p, i) => s + (datiLotto[i] ? 0 : p.metri), 0);
-  const unitaLabel = pratiche.some(p => !p.isTratta) ? 'pratiche' : 'tratte';
+  const senzaData = pratiche.reduce((s, p) => s + (datiLotto[p.codice] ? 0 : p.metri), 0);
 
   const trigger = `<button type="button" class="auth-modal-trigger" onclick="_provOpenAuth('${lotto}')">
-    <span class="amt-count">${pratiche.length}</span> Autorizzazioni mancanti · ${fmtKm(totMetri)} · nulla osta/ordinanze esclusi
+    <span class="amt-count">${pratiche.length}</span> Autorizzazioni mancanti · ${fmtKm(totMetri)}
   </button>`;
 
   if (!PROIEZIONE_AUTH_OPEN[lotto]) return `<div class="proiezione-auth-block">${trigger}</div>`;
@@ -1898,21 +2083,21 @@ function buildProiezioneAuthPanel(r) {
       <div class="auth-modal-header">
         <div>
           <div class="auth-modal-title">Autorizzazioni mancanti — Lotto ${lotto}</div>
-          <div class="auth-modal-subtitle">Km non ancora autorizzati (nulla osta e ordinanze esclusi) — le date qui sotto guidano la proiezione "Intero lotto"</div>
+          <div class="auth-modal-subtitle">Pratiche non ancora ottenute, da Master.csv — le date qui sotto guidano la proiezione "Intero lotto"</div>
         </div>
         <button type="button" class="modal-close" onclick="_provCloseAuth('${lotto}')" aria-label="Chiudi">&times;</button>
       </div>
       <div class="auth-modal-body">
         <div class="auth-summary-chips">
-          <span class="auth-chip">${pratiche.length} ${unitaLabel}</span>
+          <span class="auth-chip">${pratiche.length} pratiche</span>
           <span class="auth-chip"><b>${fmtKm(totMetri)}</b> totali</span>
           ${chipSenzaData}
         </div>
-        <div class="auth-modal-note">Data prevista precompilata dalla soglia attesa configurata per ente, dove nota — sempre modificabile. Le righe senza data non entrano nella proiezione.</div>
+        <div class="auth-modal-note">Data prevista letta da Master.csv (campo "Prev. Rilascio", lo stesso di index.html/imprese.html) dove presente — altrimenti stimata dalla soglia attesa per ente (badge "stimata"). Sempre modificabile qui; le righe senza data non entrano nella proiezione.</div>
         <div class="auth-modal-table-wrap">
-          <table class="auth-modal-table"><thead><tr><th>${unitaLabel === 'pratiche' ? 'Pratica' : 'Tratta'}</th><th>Ente</th><th>Metri</th><th>Data prevista rilascio</th></tr></thead><tbody>
-          ${pratiche.map((p, i) => `<tr><td class="mt-strong">${p.label}</td><td>${p.ente || '—'}</td><td>${fmtKm(p.metri)}</td>
-            <td><input type="date" class="auth-date-input${datiLotto[i] ? '' : ' empty'}" value="${datiLotto[i] || ''}" onchange="_provSetDataPratica('${lotto}', ${i}, this.value)"></td></tr>`).join('')}
+          <table class="auth-modal-table"><thead><tr><th>Pratica</th><th>Ente</th><th>Stato</th><th>Metri</th><th>Data prevista rilascio</th></tr></thead><tbody>
+          ${pratiche.map(p => `<tr><td class="mt-strong">${p.codice}</td><td>${p.ente || '—'}</td><td>${p.stato || '—'}</td><td>${fmtKm(p.metri)}</td>
+            <td><input type="date" class="auth-date-input${datiLotto[p.codice] ? '' : ' empty'}" value="${datiLotto[p.codice] || ''}" onchange="_provSetDataPratica('${lotto}', '${p.codice}', this.value)">${stimeSet.has(p.codice) ? '<span class="auth-date-stima" title="Nessuna data reale in Master.csv — stimata dalla soglia attesa per ente">stimata</span>' : ''}</td></tr>`).join('')}
           </tbody></table>
         </div>
       </div>
@@ -1945,9 +2130,12 @@ function renderProiezioneResult(r, squadre, metriResidui, base) {
   const ggSett = PROIEZIONE_GGSETT[r.lotto] != null ? PROIEZIONE_GGSETT[r.lotto] : c.ggSettimana;
   let proj;
   if (base === 'lotto') {
-    const pratiche = praticheAggregate(r.p.issues).sort((a, b) => b.metri - a.metri);
+    if (!_masterPraticheByLotto) {
+      return `<div class="dcard-nd">${_masterPraticheError ? 'Proiezione non disponibile — pratiche non caricate da Master.csv (' + _masterPraticheError + ').' : 'Caricamento pratiche da Master.csv…'}</div>`;
+    }
+    const pratiche = (_masterPraticheByLotto[r.lotto] || []).filter(p => p.tipo === 'AUTORIZZAZIONE' && p.stato !== 'OTTENUTO' && p.stato !== 'NO COMPETENZA');
     const datiLotto = PROIEZIONE_DATE_PRATICHE[r.lotto] || {};
-    const eventi = pratiche.map((p, i) => ({ km: p.metri, data: datiLotto[i] ? new Date(datiLotto[i] + 'T00:00:00') : null }));
+    const eventi = pratiche.map(p => ({ km: p.metri, data: datiLotto[p.codice] ? new Date(datiLotto[p.codice] + 'T00:00:00') : null }));
     proj = computeProiezioneFasata(c.metriResiduiScavo, eventi, c, squadre, ggSett);
   } else {
     proj = computeProiezioneData(metriResidui, c, squadre, ggSett);
@@ -2016,12 +2204,25 @@ function _provCloseAuth(lotto) {
   if (wrap && r) wrap.innerHTML = buildProiezioneInner(r);
 }
 
-// Modifica la data prevista di una pratica: rebuild dell'intera sezione perché
-// la nota "X senza data" e il totale possono cambiare (onchange, non oninput —
-// nessun rebuild a ogni battitura, solo al blur/invio).
-function _provSetDataPratica(lotto, idx, value) {
+// Modifica la data prevista di una pratica (chiave = codice pratica reale, es.
+// "AUT/2/1B"): rebuild dell'intera sezione perché la nota "X senza data" e il totale
+// possono cambiare (onchange, non oninput — nessun rebuild a ogni battitura, solo al
+// blur/invio). Un edit manuale toglie il badge "stimata": da qui in poi è una scelta
+// esplicita dell'utente, non più il suggerimento calcolato da stimaDataPreventivaISO.
+function _provSetDataPratica(lotto, codice, value) {
   if (!PROIEZIONE_DATE_PRATICHE[lotto]) PROIEZIONE_DATE_PRATICHE[lotto] = {};
-  PROIEZIONE_DATE_PRATICHE[lotto][idx] = value || '';
+  PROIEZIONE_DATE_PRATICHE[lotto][codice] = value || '';
+  if (PROIEZIONE_DATE_STIMATA[lotto]) PROIEZIONE_DATE_STIMATA[lotto].delete(codice);
+  const wrap = document.getElementById('provWrap-' + lotto);
+  const r = LOTTI_DATA[lotto];
+  if (wrap && r) wrap.innerHTML = buildProiezioneInner(r);
+}
+
+// Ritenta il caricamento di Master.csv dopo un errore: azzera lo stato d'errore e
+// rilancia il rebuild — buildProiezioneAuthPanel vede _masterPraticheByLotto ancora
+// null e riparte da capo con loadMasterPraticheByLotto().
+function _provRetryMasterPratiche(lotto) {
+  _masterPraticheError = null;
   const wrap = document.getElementById('provWrap-' + lotto);
   const r = LOTTI_DATA[lotto];
   if (wrap && r) wrap.innerHTML = buildProiezioneInner(r);
