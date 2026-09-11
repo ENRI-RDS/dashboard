@@ -219,6 +219,41 @@ body.panel-open .main{margin-right:44%;}
 .proiezione-data{font-family:var(--font-display);font-size:16px;font-weight:800;color:var(--text);}
 .proiezione-sub{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4;}
 .proiezione-scost{font-size:11.5px;font-weight:700;margin-top:8px;}
+.proiezione-ggsett-row{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+.proiezione-ggsett-lbl{font-size:11px;color:var(--muted);}
+.proiezione-ggsett-selector{display:flex;gap:6px;}
+.proiezione-auth-block{margin-bottom:14px;}
+.auth-modal-trigger{display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--border2);padding:8px 12px;border-radius:8px;font-size:11.5px;font-weight:600;color:var(--accent);cursor:pointer;font-family:inherit;transition:all .15s;}
+.auth-modal-trigger:hover{border-color:var(--accent);background:var(--retelit-ice);}
+.auth-modal-trigger .amt-count{font-family:var(--font-mono);background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700;}
+.auth-modal-overlay{position:fixed;inset:0;background:rgba(4,63,117,.4);z-index:250;display:flex;align-items:center;justify-content:center;padding:24px;animation:authFadeIn .15s ease-out;}
+@keyframes authFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes authPopIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+.auth-modal{background:var(--surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);width:100%;max-width:640px;max-height:82vh;display:flex;flex-direction:column;overflow:hidden;animation:authPopIn .18s cubic-bezier(.2,.8,.3,1.1);}
+.auth-modal-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:18px 22px;border-bottom:1px solid var(--border);flex-shrink:0;background:linear-gradient(180deg,var(--surface),var(--gray-50));}
+.auth-modal-title{font-family:var(--font-display);font-size:16px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:8px;}
+.auth-modal-subtitle{font-size:10.5px;color:var(--muted);margin-top:4px;line-height:1.4;}
+.auth-modal-body{flex:1;overflow-y:auto;padding:16px 22px;}
+.auth-modal-footer{padding:12px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;flex-shrink:0;background:var(--gray-50);}
+.auth-modal-close-btn{font-family:inherit;font-size:12px;font-weight:700;padding:8px 18px;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer;transition:background .15s;}
+.auth-modal-close-btn:hover{background:var(--retelit-teal);}
+.auth-summary-chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+.auth-chip{font-family:var(--font-mono);font-size:10.5px;font-weight:700;padding:6px 10px;border-radius:8px;background:var(--gray-50);border:1px solid var(--border2);color:var(--text2);}
+.auth-chip b{color:var(--text);font-weight:800;}
+.auth-chip.warn{background:var(--warn-bg);border-color:var(--warn);color:var(--warn);}
+.auth-chip.ok{background:var(--ok-bg);border-color:var(--ok);color:var(--ok);}
+.auth-modal-note{font-size:10.5px;color:var(--muted2);font-style:italic;margin-bottom:12px;line-height:1.4;}
+.auth-modal-table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px;}
+.auth-modal-table{width:100%;border-collapse:collapse;}
+.auth-modal-table thead th{padding:8px 10px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);text-align:left;border-bottom:2px solid var(--border2);background:var(--gray-50);position:sticky;top:0;white-space:nowrap;}
+.auth-modal-table td{padding:8px 10px;font-size:11.5px;color:var(--text2);border-bottom:1px solid var(--gray-100);}
+.auth-modal-table tbody tr:last-child td{border-bottom:none;}
+.auth-modal-table tbody tr:hover{background:var(--gray-50);}
+.auth-modal-table td.mt-strong{color:var(--text);font-weight:600;}
+.auth-date-input{font-family:var(--font-mono);font-size:11.5px;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;background:#fff;color:var(--text);width:132px;transition:border-color .15s,box-shadow .15s;}
+.auth-date-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--retelit-ice);}
+.auth-date-input.empty{border-color:var(--warn);background:var(--warn-bg);}
+@media(max-width:600px){.auth-modal-overlay{padding:10px;}.auth-modal{max-height:90vh;}.auth-modal-header,.auth-modal-body,.auth-modal-footer{padding-left:14px;padding-right:14px;}}
 
 .factor-row{display:flex;flex-direction:column;gap:3px;padding:9px 0;border-bottom:1px solid var(--gray-100);}
 .panel-section-title-sm{margin-top:16px;font-size:10px;}
@@ -716,15 +751,76 @@ function addWorkingDays(start, giorni, ggSettimana, calendarioTipo) {
 // anche i metri non ancora autorizzati — vedi buildProiezioneCard). ggSettimana/
 // calendarioTipo/milestoneROS restano quelli della capacità operativa in
 // entrambi i casi.
-function computeProiezioneData(metriResidui, c, squadre) {
+function computeProiezioneData(metriResidui, c, squadre, ggSettimanaOverride) {
   if (c.insufficiente) return { disponibile: false, motivo: c.motivo };
   if (metriResidui <= 0) return { disponibile: true, completato: true };
   if (!squadre || squadre <= 0 || c.prodEffettiva <= 0) return { disponibile: true, infinito: true };
+  const ggSettimana = ggSettimanaOverride != null ? ggSettimanaOverride : c.ggSettimana;
   const metriGiorno = squadre * c.prodEffettiva;
   const giorniNecessari = Math.ceil(metriResidui / metriGiorno);
-  const dataCompletamento = addWorkingDays(oggi, giorniNecessari, c.ggSettimana, c.calendarioTipo);
+  const dataCompletamento = addWorkingDays(oggi, giorniNecessari, ggSettimana, c.calendarioTipo);
   const scostamentoGiorni = c.milestoneROS ? Math.round((dataCompletamento - c.milestoneROS) / 86400000) : null;
   return { disponibile: true, giorniNecessari, dataCompletamento, scostamentoGiorni };
+}
+
+// Proiezione "fasata" per la base 'Intero lotto': a differenza di computeProiezioneData
+// (che tratta tutti i metri residui come disponibili da subito), qui i km non ancora
+// autorizzati si sbloccano ciascuno alla propria data prevista di rilascio (eventi
+// inseriti/modificati dall'utente in buildProiezioneAuthPanel, precompilati dalla soglia
+// attesa per ente ma mai dedotti silenziosamente se l'utente li svuota). Pratiche senza
+// data restano fuori dal calcolo — mai una data inventata. Nulla osta/ordinanze non
+// entrano mai qui: "eventi" viene sempre costruito da r.p.issues, non da r.p.blocchi.
+function computeProiezioneFasata(metriIniziali, eventi, c, squadre, ggSettimanaOverride) {
+  if (c.insufficiente) return { disponibile: false, motivo: c.motivo };
+  const ggSettimana = ggSettimanaOverride != null ? ggSettimanaOverride : c.ggSettimana;
+  const ev = eventi.filter(e => e.data).slice().sort((a, b) => a.data - b.data);
+  const totaleFinale = metriIniziali + ev.reduce((s, e) => s + e.km, 0);
+  if (totaleFinale <= 0) return { disponibile: true, completato: true };
+  if (!squadre || squadre <= 0 || c.prodEffettiva <= 0) return { disponibile: true, infinito: true };
+  const metriGiorno = squadre * c.prodEffettiva;
+
+  let disponibile = metriIniziali, idx = 0;
+  let cur = new Date(oggi.getFullYear(), oggi.getMonth(), oggi.getDate());
+  let giorniLavorati = 0;
+
+  // se oggi non c'è nulla di scavabile, salta al primo evento che sblocca km
+  while (disponibile <= 0 && idx < ev.length) {
+    if (ev[idx].data > cur) cur = new Date(ev[idx].data);
+    disponibile += ev[idx].km; idx++;
+  }
+  if (disponibile <= 0) {
+    return { disponibile: true, infinito: true, motivo: 'Nessun km autorizzato né con data di rilascio prevista compilata: nessuna data di completamento calcolabile.' };
+  }
+
+  const maxIter = 3650; // guardia: oltre ~10 anni di calendario la proiezione non è più significativa
+  let iter = 0;
+  while (disponibile > 0 || idx < ev.length) {
+    iter++;
+    if (iter > maxIter) return { disponibile: false, motivo: 'Proiezione oltre 10 anni: dato non più significativo, verifica le date inserite.' };
+    if (disponibile <= 0) {
+      if (ev[idx].data > cur) cur = new Date(ev[idx].data);
+      disponibile += ev[idx].km; idx++;
+      continue;
+    }
+    cur = new Date(cur.getTime() + 86400000);
+    const idxGg = cur.getDay() === 0 ? 7 : cur.getDay();
+    while (idx < ev.length && ev[idx].data <= cur) { disponibile += ev[idx].km; idx++; }
+    if (idxGg <= ggSettimana) { disponibile -= metriGiorno; giorniLavorati++; }
+  }
+  const dataCompletamento = cur;
+  const scostamentoGiorni = c.milestoneROS ? Math.round((dataCompletamento - c.milestoneROS) / 86400000) : null;
+  return { disponibile: true, giorniNecessari: giorniLavorati, dataCompletamento, scostamentoGiorni, fasata: true };
+}
+
+// Default per il campo data editabile: oggi + soglia attesa configurata per l'ente
+// (stesso lookup usato dal tab Autorizzazioni). Solo un suggerimento di partenza —
+// resta sempre modificabile, e se l'ente non ha una soglia nota il campo parte vuoto
+// (mai una data indovinata).
+function stimaDataPreventivaISO(ente) {
+  const tempi = (PARAMETRI && PARAMETRI.tempi_autorizzativi) || {};
+  const t = lookupTempoEnte(ente, tempi);
+  if (t.giorni_attesi == null) return '';
+  return new Date(oggi.getTime() + Number(t.giorni_attesi) * 86400000).toISOString().slice(0, 10);
 }
 
 // Coefficiente urgenza per distanza dalla milestone (R_AUTH, e R_BLOCCHI se ROS scaduta)
@@ -1351,6 +1447,9 @@ let LOTTI_DATA = {};
 let PANEL_OPEN = null;
 let PROIEZIONE_SQUADRE = {}; // { [lotto]: numero squadre selezionato per la proiezione interattiva }
 let PROIEZIONE_BASE = {};    // { [lotto]: 'autorizzati' | 'lotto' — base metri residui per la proiezione }
+let PROIEZIONE_GGSETT = {};  // { [lotto]: override giorni lavorativi/settimana per la sola proiezione (5/6/7) — non tocca il parametro ufficiale usato dal motore rischio }
+let PROIEZIONE_DATE_PRATICHE = {}; // { [lotto]: { [idxPratica]: 'YYYY-MM-DD' | '' } } — date di rilascio previste, inserite/modificate dall'utente, per le pratiche non ancora autorizzate (esclusi nulla osta/ordinanze — quelli restano in r.p.blocchi, mai qui)
+let PROIEZIONE_AUTH_OPEN = {}; // { [lotto]: bool } — stato apertura pannello "Autorizzazioni mancanti"
 
 function render(prog, scavi, milestoneByLotto) {
   const lotti = new Set([...Object.keys(prog), ...Object.keys(scavi), ...Object.keys(milestoneByLotto)]);
@@ -1721,8 +1820,20 @@ function buildProiezioneInner(r) {
       <button type="button" class="proiezione-base-btn${base === 'lotto' ? ' active' : ''}" onclick="_provSelectBase('${r.lotto}','lotto')">Intero lotto</button>
     </div>
     <div class="proiezione-base-note">${base === 'lotto'
-      ? `Include ${fmtKm(gapLotto)} non ancora autorizzati — assunti realizzabili allo stesso ritmo appena disponibili.`
+      ? `Include ${fmtKm(gapLotto)} non ancora autorizzati, sbloccati man mano in base alle date sotto — nessuna data inserita = quei metri non entrano nel calcolo.`
       : `${fmtKm(gapLotto)} del lotto non sono ancora autorizzati — non conteggiati in questa proiezione.`}</div>` : '';
+
+  const ggSettDefault = c.ggSettimana;
+  const ggSett = PROIEZIONE_GGSETT[r.lotto] != null ? PROIEZIONE_GGSETT[r.lotto] : ggSettDefault;
+  PROIEZIONE_GGSETT[r.lotto] = ggSett;
+  const ggSettSelector = `<div class="proiezione-ggsett-row">
+    <span class="proiezione-ggsett-lbl">Giorni lavorativi/settimana per la proiezione:</span>
+    <div class="proiezione-ggsett-selector" id="provGgSel-${r.lotto}">
+      ${[5, 6, 7].map(n => `<button type="button" class="proiezione-btn proiezione-ggsett-btn${n === ggSett ? ' active' : ''}${n === ggSettDefault ? ' proiezione-btn-current' : ''}" onclick="_provSelectGgSett('${r.lotto}', ${n})" title="${n === ggSettDefault ? 'Valore da parametri configurazione' : n + ' giorni/settimana'}">${n}</button>`).join('')}
+    </div>
+  </div>`;
+
+  const authPanel = (base === 'lotto' && hasGap) ? buildProiezioneAuthPanel(r) : '';
 
   if (metriResidui <= 0) {
     const msg = base === 'lotto' ? 'Intero lotto già scavato' : 'Metri autorizzati già completati';
@@ -1745,10 +1856,73 @@ function buildProiezioneInner(r) {
   return `${title}<div class="proiezione-box">
     <div class="proiezione-storico">${buildMediaStoricaLine(r)}</div>
     ${baseToggle}
+    ${ggSettSelector}
+    ${authPanel}
     <div class="proiezione-hint">Squadre attive da oggi in poi (oggi disponibili: <b>${disp}</b>) — clicca un numero per vedere come cambia la data:</div>
     <div class="proiezione-squadre-selector" id="provSel-${r.lotto}">${btns}</div>
     <div class="proiezione-result" id="provRes-${r.lotto}">${renderProiezioneResult(r, selezionate, metriResidui, base)}</div>
   </div>`;
+}
+
+// Pannello "Autorizzazioni mancanti" (solo base 'Intero lotto'): elenca le pratiche/tratte
+// non ancora autorizzate (r.p.issues — MAI r.p.blocchi, che sono nulla osta/ordinanze e
+// restano fuori da questa proiezione come richiesto) con una data di rilascio prevista
+// editabile per riga. L'indice di riga (idx) è la chiave di stato: stabile perché
+// praticheAggregate/sort sono deterministici sugli stessi dati caricati.
+function buildProiezioneAuthPanel(r) {
+  const lotto = r.lotto;
+  const pratiche = praticheAggregate(r.p.issues).sort((a, b) => b.metri - a.metri);
+  if (!pratiche.length) return '';
+  if (!PROIEZIONE_DATE_PRATICHE[lotto]) {
+    const init = {};
+    pratiche.forEach((p, i) => { init[i] = stimaDataPreventivaISO(p.ente); });
+    PROIEZIONE_DATE_PRATICHE[lotto] = init;
+  }
+  const datiLotto = PROIEZIONE_DATE_PRATICHE[lotto];
+  const totMetri = pratiche.reduce((s, p) => s + p.metri, 0);
+  const senzaData = pratiche.reduce((s, p, i) => s + (datiLotto[i] ? 0 : p.metri), 0);
+  const unitaLabel = pratiche.some(p => !p.isTratta) ? 'pratiche' : 'tratte';
+
+  const trigger = `<button type="button" class="auth-modal-trigger" onclick="_provOpenAuth('${lotto}')">
+    <span class="amt-count">${pratiche.length}</span> Autorizzazioni mancanti · ${fmtKm(totMetri)} · nulla osta/ordinanze esclusi
+  </button>`;
+
+  if (!PROIEZIONE_AUTH_OPEN[lotto]) return `<div class="proiezione-auth-block">${trigger}</div>`;
+
+  const chipSenzaData = senzaData > 0.5
+    ? `<span class="auth-chip warn">${fmtKm(senzaData)} senza data</span>`
+    : `<span class="auth-chip ok">Tutte le date compilate</span>`;
+
+  const modal = `<div class="auth-modal-overlay" onclick="if(event.target===this)_provCloseAuth('${lotto}')">
+    <div class="auth-modal" role="dialog" aria-modal="true" aria-label="Autorizzazioni mancanti lotto ${lotto}">
+      <div class="auth-modal-header">
+        <div>
+          <div class="auth-modal-title">Autorizzazioni mancanti — Lotto ${lotto}</div>
+          <div class="auth-modal-subtitle">Km non ancora autorizzati (nulla osta e ordinanze esclusi) — le date qui sotto guidano la proiezione "Intero lotto"</div>
+        </div>
+        <button type="button" class="modal-close" onclick="_provCloseAuth('${lotto}')" aria-label="Chiudi">&times;</button>
+      </div>
+      <div class="auth-modal-body">
+        <div class="auth-summary-chips">
+          <span class="auth-chip">${pratiche.length} ${unitaLabel}</span>
+          <span class="auth-chip"><b>${fmtKm(totMetri)}</b> totali</span>
+          ${chipSenzaData}
+        </div>
+        <div class="auth-modal-note">Data prevista precompilata dalla soglia attesa configurata per ente, dove nota — sempre modificabile. Le righe senza data non entrano nella proiezione.</div>
+        <div class="auth-modal-table-wrap">
+          <table class="auth-modal-table"><thead><tr><th>${unitaLabel === 'pratiche' ? 'Pratica' : 'Tratta'}</th><th>Ente</th><th>Metri</th><th>Data prevista rilascio</th></tr></thead><tbody>
+          ${pratiche.map((p, i) => `<tr><td class="mt-strong">${p.label}</td><td>${p.ente || '—'}</td><td>${fmtKm(p.metri)}</td>
+            <td><input type="date" class="auth-date-input${datiLotto[i] ? '' : ' empty'}" value="${datiLotto[i] || ''}" onchange="_provSetDataPratica('${lotto}', ${i}, this.value)"></td></tr>`).join('')}
+          </tbody></table>
+        </div>
+      </div>
+      <div class="auth-modal-footer">
+        <button type="button" class="auth-modal-close-btn" onclick="_provCloseAuth('${lotto}')">Chiudi</button>
+      </div>
+    </div>
+  </div>`;
+
+  return `<div class="proiezione-auth-block">${trigger}${modal}</div>`;
 }
 
 // Media storica reale (metri realizzati dall'inizio cantiere ad oggi), mostrata
@@ -1768,9 +1942,24 @@ function buildMediaStoricaLine(r) {
 
 function renderProiezioneResult(r, squadre, metriResidui, base) {
   const c = r.capacita;
-  const proj = computeProiezioneData(metriResidui, c, squadre);
+  const ggSett = PROIEZIONE_GGSETT[r.lotto] != null ? PROIEZIONE_GGSETT[r.lotto] : c.ggSettimana;
+  let proj;
+  if (base === 'lotto') {
+    const pratiche = praticheAggregate(r.p.issues).sort((a, b) => b.metri - a.metri);
+    const datiLotto = PROIEZIONE_DATE_PRATICHE[r.lotto] || {};
+    const eventi = pratiche.map((p, i) => ({ km: p.metri, data: datiLotto[i] ? new Date(datiLotto[i] + 'T00:00:00') : null }));
+    proj = computeProiezioneFasata(c.metriResiduiScavo, eventi, c, squadre, ggSett);
+  } else {
+    proj = computeProiezioneData(metriResidui, c, squadre, ggSett);
+  }
   if (proj.infinito) {
-    return `<div class="dcard-main" style="color:var(--danger)">Con 0 squadre gli scavi non avanzano — nessuna data di completamento.</div>`;
+    return `<div class="dcard-main" style="color:var(--danger)">${proj.motivo || 'Con 0 squadre gli scavi non avanzano — nessuna data di completamento.'}</div>`;
+  }
+  if (proj.completato) {
+    return `<div class="dcard-main" style="color:var(--ok)">Già completato — nessuna proiezione da calcolare.</div>`;
+  }
+  if (!proj.disponibile) {
+    return `<div class="dcard-nd">Proiezione non disponibile — ${proj.motivo}</div>`;
   }
   const dataStr = fmtDateShort(proj.dataCompletamento);
   const unitaGG = c.calendarioTipo === 'Lavorativi' ? 'giorni lavorativi' : 'giorni';
@@ -1783,10 +1972,59 @@ function renderProiezioneResult(r, squadre, metriResidui, base) {
       : `In ritardo di ${proj.scostamentoGiorni} giorni rispetto alla milestone ROS (${fmtDateShort(c.milestoneROS)})`;
     scostHtml = `<div class="proiezione-scost" style="color:${colore}">${testo}</div>`;
   }
-  const baseLabel = base === 'lotto' ? 'residui su intero lotto' : 'residui autorizzati';
+  const calcSub = base === 'lotto'
+    ? `${fmtKm(metriResidui)} residui su intero lotto, sbloccati per data prevista autorizzazione — completamento in ${proj.giorniNecessari} ${unitaGG} con ${squadre} squadr${squadre === 1 ? 'a' : 'e'} × ${fmtNum(c.prodEffettiva)} m/giorno`
+    : `${fmtKm(metriResidui)} residui autorizzati ÷ (${squadre} squadr${squadre === 1 ? 'a' : 'e'} × ${fmtNum(c.prodEffettiva)} m/giorno) ≈ ${proj.giorniNecessari} ${unitaGG}`;
   return `<div class="proiezione-data">Completamento previsto: <b>${dataStr}</b></div>
-  <div class="proiezione-sub">${fmtKm(metriResidui)} ${baseLabel} ÷ (${squadre} squadr${squadre === 1 ? 'a' : 'e'} × ${fmtNum(c.prodEffettiva)} m/giorno) ≈ ${proj.giorniNecessari} ${unitaGG}</div>
+  <div class="proiezione-sub">${calcSub}</div>
   ${scostHtml}`;
+}
+
+// Aggiorna solo il risultato (no rebuild pannello) dopo un cambio squadre/gg-settimana
+// che non altera la struttura del resto della sezione.
+function _provRefreshResult(lotto) {
+  const r = LOTTI_DATA[lotto];
+  const res = document.getElementById('provRes-' + lotto);
+  if (res && r) {
+    const base = PROIEZIONE_BASE[lotto] || 'autorizzati';
+    const squadre = PROIEZIONE_SQUADRE[lotto] !== undefined ? PROIEZIONE_SQUADRE[lotto] : r.capacita.squadre.disponibili;
+    res.innerHTML = renderProiezioneResult(r, squadre, metriResiduiPerBase(r, base), base);
+  }
+}
+
+function _provSelectGgSett(lotto, n) {
+  PROIEZIONE_GGSETT[lotto] = n;
+  const sel = document.getElementById('provGgSel-' + lotto);
+  if (sel) sel.querySelectorAll('.proiezione-ggsett-btn').forEach(b => b.classList.toggle('active', Number(b.textContent) === n));
+  _provRefreshResult(lotto);
+}
+
+// Apre il modal "Autorizzazioni mancanti": rebuild dell'intera sezione proiezione
+// (come _provSelectBase) perché il modal è renderizzato dentro #provWrap-{lotto}
+// (position:fixed lo fa comunque comparire a piena viewport, nessun problema di
+// containing block: .side-panel non usa transform, solo la proprietà "right").
+function _provOpenAuth(lotto) {
+  PROIEZIONE_AUTH_OPEN[lotto] = true;
+  const wrap = document.getElementById('provWrap-' + lotto);
+  const r = LOTTI_DATA[lotto];
+  if (wrap && r) wrap.innerHTML = buildProiezioneInner(r);
+}
+function _provCloseAuth(lotto) {
+  PROIEZIONE_AUTH_OPEN[lotto] = false;
+  const wrap = document.getElementById('provWrap-' + lotto);
+  const r = LOTTI_DATA[lotto];
+  if (wrap && r) wrap.innerHTML = buildProiezioneInner(r);
+}
+
+// Modifica la data prevista di una pratica: rebuild dell'intera sezione perché
+// la nota "X senza data" e il totale possono cambiare (onchange, non oninput —
+// nessun rebuild a ogni battitura, solo al blur/invio).
+function _provSetDataPratica(lotto, idx, value) {
+  if (!PROIEZIONE_DATE_PRATICHE[lotto]) PROIEZIONE_DATE_PRATICHE[lotto] = {};
+  PROIEZIONE_DATE_PRATICHE[lotto][idx] = value || '';
+  const wrap = document.getElementById('provWrap-' + lotto);
+  const r = LOTTI_DATA[lotto];
+  if (wrap && r) wrap.innerHTML = buildProiezioneInner(r);
 }
 
 // Aggiorna solo bottone attivo + risultato (no rebuild pannello): risposta
