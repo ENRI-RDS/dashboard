@@ -2349,20 +2349,62 @@ function _gcResolveSpan(c) {
   return { start, startTentative, end, endTentative, ongoing };
 }
 
+// Simula il consumo di una coda FIFO di "chunk" di metri (backlog già
+// autorizzato + pratiche mancanti, sbloccate ciascuna alla propria data) da
+// parte di un'UNICA capacità condivisa (squadre*prodEffettiva/giorno) — le
+// squadre sono un pool comune, non uno per chunk: un chunk successivo non
+// inizia finché il precedente non è esaurito, anche se la sua autorizzazione
+// è già arrivata (resta "in coda", non in barra fino a quel momento). Stesso
+// criterio giorno-per-giorno di computeProiezioneFasata, ma qui si registra
+// anche l'inizio/fine lavorazione di ogni singolo chunk, non solo la data di
+// completamento totale del lotto.
+function _gcSimulaCoda(metriIniziali, eventi, c, squadre, ggSettimana) {
+  const risultato = {};
+  if (!squadre || squadre <= 0 || c.prodEffettiva <= 0) return risultato;
+  const metriGiorno = squadre * c.prodEffettiva;
+  const coda = [];
+  if (metriIniziali > 0) coda.push({ key: null, data: new Date(oggi.getFullYear(), oggi.getMonth(), oggi.getDate()), km: metriIniziali });
+  eventi.forEach(e => coda.push({ key: e.key, data: e.data, km: e.km }));
+  if (!coda.length) return risultato;
+
+  let cur = new Date(oggi.getFullYear(), oggi.getMonth(), oggi.getDate());
+  const maxIter = 3650; // guardia: oltre ~10 anni di calendario la stima non è più significativa
+  let iter = 0;
+  for (let i = 0; i < coda.length; i++) {
+    if (cur < coda[i].data) cur = new Date(coda[i].data);
+    if (coda[i].key) risultato[coda[i].key] = { start: new Date(cur) };
+    let remaining = coda[i].km;
+    while (remaining > 0) {
+      iter++;
+      if (iter > maxIter) { i = coda.length; break; }
+      const idxGg = cur.getDay() === 0 ? 7 : cur.getDay();
+      if (idxGg <= ggSettimana) remaining -= metriGiorno;
+      if (remaining > 0) cur = new Date(cur.getTime() + 86400000);
+    }
+    if (coda[i].key) risultato[coda[i].key].end = new Date(cur);
+    cur = new Date(cur.getTime() + 86400000);
+  }
+  return risultato;
+}
+
 // Righe "autorizzazione mancante" del Gantt (su richiesta utente): una per
 // pratica AUTORIZZAZIONE non ancora ottenuta del lotto — stessa fonte/filtro
 // di buildProiezioneAuthPanel (Master.csv via loadMasterPraticheByLotto).
-// Inizio = data prevista/stimata di rilascio (stessa PROIEZIONE_DATE_PRATICHE
-// della proiezione "Intero lotto", via _ensurePraticheDate — mai una data
-// inventata qui: senza data la pratica resta senza barra, come "Non avviato").
-// Fine = inizio + giorni necessari a scavare i metri della pratica, con le
-// STESSE squadre/ggSettimana attualmente selezionate nel pannello "Proiezione
-// completamento scavi" (PROIEZIONE_SQUADRE/GGSETT, identico motore di
-// computeProiezioneData/addWorkingDays) — cambiando le squadre nella
-// proiezione e riaprendo il Gantt, le barre mancanti si ricalcolano di
-// conseguenza. 0 squadre selezionate o capacità insufficiente (c.insufficiente)
-// → inizio mostrato ma fine non stimabile (marker puntuale, mai una durata
-// inventata).
+// Bug segnalato dall'utente sulla prima versione: ogni pratica otteneva una
+// barra calcolata come se avesse **da sola** l'intera capacità squadre
+// selezionata, quindi con 1 sola squadra due pratiche potevano comparire con
+// barre sovrapposte come se lavorassero in parallelo — impossibile, le
+// squadre sono un pool condiviso. Fix: le pratiche mancanti (+ il backlog
+// residuo già autorizzato, c.metriResiduiScavo, che occupa la capacità da
+// oggi) sono ora messe in coda FIFO per data di autorizzazione e consumate in
+// sequenza dalla stessa capacità condivisa (`_gcSimulaCoda`, stesso motore
+// event-driven di computeProiezioneFasata) — una pratica il cui avvio
+// cantiere cade quando le squadre sono già impegnate su altro mostra un
+// "Avvio cantiere stimato" successivo alla data di autorizzazione, mai
+// sovrapposto ad altre barre a parità di squadre disponibili. Pratiche senza
+// data restano fuori dal calcolo — mai una data inventata. 0 squadre
+// selezionate o capacità insufficiente (c.insufficiente) → nessuna
+// simulazione possibile, marker puntuale sulla sola data di autorizzazione.
 function _gcMissingAuthRows(r) {
   const lotto = r.lotto;
   if (!_masterPraticheByLotto) return [];
@@ -2373,22 +2415,28 @@ function _gcMissingAuthRows(r) {
   const c = r.capacita;
   const squadre = PROIEZIONE_SQUADRE[lotto] !== undefined ? PROIEZIONE_SQUADRE[lotto] : (!c.insufficiente ? c.squadre.disponibili : 0);
   const ggSett = PROIEZIONE_GGSETT[lotto] != null ? PROIEZIONE_GGSETT[lotto] : (!c.insufficiente ? c.ggSettimana : null);
-  const metriGiorno = (!c.insufficiente && squadre > 0 && c.prodEffettiva > 0) ? squadre * c.prodEffettiva : 0;
   const stimeSet = PROIEZIONE_DATE_STIMATA[lotto];
+
+  const eventi = pratiche
+    .map(p => { const iso = datiLotto[p.codice]; return iso ? { key: p.codice, data: new Date(iso + 'T00:00:00'), km: p.metri } : null; })
+    .filter(Boolean)
+    .sort((a, b) => a.data - b.data);
+  const coda = (!c.insufficiente && squadre > 0 && c.prodEffettiva > 0)
+    ? _gcSimulaCoda(c.metriResiduiScavo, eventi, c, squadre, ggSett)
+    : {};
 
   return pratiche.map(p => {
     const iso = datiLotto[p.codice];
-    const start = iso ? new Date(iso + 'T00:00:00') : null;
-    let end = null, giorniNecessari = null;
-    if (start && metriGiorno > 0) {
-      giorniNecessari = Math.max(1, Math.ceil(p.metri / metriGiorno));
-      end = addWorkingDays(start, giorniNecessari, ggSett, c.calendarioTipo);
-    }
+    const autorizzazione = iso ? new Date(iso + 'T00:00:00') : null;
+    const sim = coda[p.codice];
+    const span = { start: sim ? sim.start : autorizzazione, end: sim ? sim.end : null };
+    const giorniNecessari = sim ? giorniLavorativi(sim.start, sim.end, ggSett) : null;
+    const inCoda = !!(sim && autorizzazione && sim.start > autorizzazione);
     return {
       mancante: true, codice: p.codice, metri: p.metri, squadre, giorniNecessari,
       labelSub: ['Autorizzazione mancante', p.ente].filter(Boolean).join(' · '),
       stimata: !!(stimeSet && stimeSet.has(p.codice)),
-      span: { start, end }
+      autorizzazione, inCoda, span
     };
   });
 }
@@ -2480,13 +2528,17 @@ function _gcBuildModal(r) {
       if (row.mancante) {
         const left = pct(span.start);
         const cls = ['gantt-cant-bar', 'gc-bar-mancante'];
+        const autText = `Autorizzazione prevista: ${fmtDateShort(row.autorizzazione)}${row.stimata ? ' (stimata per soglia ente)' : ''}`;
+        const avvioText = row.inCoda
+          ? `Avvio cantiere stimato: ${fmtDateShort(span.start)} (squadre impegnate su altri cantieri del lotto fino a quella data)`
+          : `Avvio cantiere stimato: ${fmtDateShort(span.start)}`;
         let width, title;
         if (span.end) {
           width = Math.max(pct(span.end) - left, 1);
           title = [
             `${row.codice} — Autorizzazione mancante`,
-            `Avvio cantiere stimato: ${fmtDateShort(span.start)}${row.stimata ? ' (stimato per soglia ente)' : ''}`,
-            `Fine stimata: ${fmtDateShort(span.end)} (${row.giorniNecessari} gg con ${row.squadre} squadr${row.squadre === 1 ? 'a' : 'e'})`,
+            autText, avvioText,
+            `Fine stimata: ${fmtDateShort(span.end)} (${row.giorniNecessari} gg lavorativi con ${row.squadre} squadr${row.squadre === 1 ? 'a' : 'e'}, capacità condivisa con gli altri cantieri del lotto)`,
             fmtKm(row.metri)
           ].filter(Boolean).join(' · ').replace(/"/g, '&quot;');
         } else {
@@ -2494,7 +2546,7 @@ function _gcBuildModal(r) {
           cls.push('gc-bar-point');
           title = [
             `${row.codice} — Autorizzazione mancante`,
-            `Avvio cantiere stimato: ${fmtDateShort(span.start)}${row.stimata ? ' (stimato per soglia ente)' : ''}`,
+            autText,
             'Fine non stimabile: nessuna squadra selezionata nella proiezione di questo lotto',
             fmtKm(row.metri)
           ].filter(Boolean).join(' · ').replace(/"/g, '&quot;');
