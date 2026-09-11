@@ -298,10 +298,16 @@ body.panel-open .main{margin-right:44%;}
 .gc-bar-altro{background:var(--gray-400);}
 .gc-bar-ongoing{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.4) 0 6px,transparent 6px 12px);}
 .gc-bar-tentative{opacity:.55;border:1.5px dashed var(--text2);}
+.gc-bar-mancante{background:repeating-linear-gradient(135deg,var(--gray-300) 0 5px,var(--gray-100) 5px 10px);border:1.5px dashed var(--muted2);}
+.gc-bar-point{border-radius:50%;min-width:10px;}
+.gantt-cant-label-cell-mancante{background:var(--gray-100);}
+.gantt-cant-auth-note{font-size:10.5px;color:var(--muted);font-style:italic;margin-bottom:10px;}
+.gantt-cant-auth-note-error{color:var(--danger);font-style:normal;}
 .gantt-cant-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:14px;font-size:10.5px;color:var(--muted);align-items:center;}
 .gantt-cant-legend span{display:inline-flex;align-items:center;gap:5px;}
 .gc-leg-dot{width:10px;height:10px;border-radius:3px;display:inline-block;}
 .gc-leg-tentative{width:14px;height:10px;border-radius:3px;border:1.5px dashed var(--text2);display:inline-block;}
+.gc-leg-mancante{width:14px;height:10px;border-radius:3px;background:repeating-linear-gradient(135deg,var(--gray-300) 0 5px,var(--gray-100) 5px 10px);border:1.5px dashed var(--muted2);display:inline-block;}
 .gc-leg-line{width:2px;height:12px;background:var(--danger);display:inline-block;}
 @media(max-width:700px){.gantt-cant-labels{flex-basis:130px;}.gantt-cant-label-main{font-size:10px;}.gantt-cant-label-sub{font-size:9px;}}
 
@@ -2078,6 +2084,25 @@ function buildProiezioneInner(r) {
 // r.p.issues (quello è un'aggregazione a livello di tratta, usata dal tab
 // "Autorizzazioni" pre-esistente per uno scopo diverso, e può accorpare più codici
 // pratica su una stessa tratta producendo etichette composte fuorvianti).
+// Inizializza (se non già presente in questa sessione) le date previste/stimate
+// di rilascio per un elenco di pratiche mancanti di un lotto, in
+// PROIEZIONE_DATE_PRATICHE/PROIEZIONE_DATE_STIMATA — condivisa fra il pannello
+// "Autorizzazioni mancanti" della proiezione e le righe "mancanti" del Gantt
+// cantieri, cosi le due viste restano sempre coerenti sulla stessa data.
+function _ensurePraticheDate(lotto, pratiche) {
+  if (!PROIEZIONE_DATE_PRATICHE[lotto]) PROIEZIONE_DATE_PRATICHE[lotto] = {};
+  if (!PROIEZIONE_DATE_STIMATA[lotto]) PROIEZIONE_DATE_STIMATA[lotto] = new Set();
+  const datiLotto = PROIEZIONE_DATE_PRATICHE[lotto];
+  const stimeSet = PROIEZIONE_DATE_STIMATA[lotto];
+  pratiche.forEach(p => {
+    if (datiLotto[p.codice] !== undefined) return; // già inizializzata in questa sessione (eventualmente modificata dall'utente)
+    const realeISO = localDateToISO(parseDateIT(p.dataPrevRilascio));
+    if (realeISO) { datiLotto[p.codice] = realeISO; }
+    else { const stima = stimaDataPreventivaISO(p.ente); datiLotto[p.codice] = stima; if (stima) stimeSet.add(p.codice); }
+  });
+  return datiLotto;
+}
+
 function buildProiezioneAuthPanel(r) {
   const lotto = r.lotto;
 
@@ -2099,16 +2124,7 @@ function buildProiezioneAuthPanel(r) {
     .sort((a, b) => b.metri - a.metri);
   if (!pratiche.length) return '';
 
-  if (!PROIEZIONE_DATE_PRATICHE[lotto]) PROIEZIONE_DATE_PRATICHE[lotto] = {};
-  if (!PROIEZIONE_DATE_STIMATA[lotto]) PROIEZIONE_DATE_STIMATA[lotto] = new Set();
-  const datiLotto = PROIEZIONE_DATE_PRATICHE[lotto];
-  const stimeSet = PROIEZIONE_DATE_STIMATA[lotto];
-  pratiche.forEach(p => {
-    if (datiLotto[p.codice] !== undefined) return; // già inizializzata in questa sessione (eventualmente modificata dall'utente)
-    const realeISO = localDateToISO(parseDateIT(p.dataPrevRilascio));
-    if (realeISO) { datiLotto[p.codice] = realeISO; }
-    else { const stima = stimaDataPreventivaISO(p.ente); datiLotto[p.codice] = stima; if (stima) stimeSet.add(p.codice); }
-  });
+  const datiLotto = _ensurePraticheDate(lotto, pratiche);
 
   const totMetri = pratiche.reduce((s, p) => s + p.metri, 0);
   const senzaData = pratiche.reduce((s, p) => s + (datiLotto[p.codice] ? 0 : p.metri), 0);
@@ -2333,11 +2349,65 @@ function _gcResolveSpan(c) {
   return { start, startTentative, end, endTentative, ongoing };
 }
 
+// Righe "autorizzazione mancante" del Gantt (su richiesta utente): una per
+// pratica AUTORIZZAZIONE non ancora ottenuta del lotto — stessa fonte/filtro
+// di buildProiezioneAuthPanel (Master.csv via loadMasterPraticheByLotto).
+// Inizio = data prevista/stimata di rilascio (stessa PROIEZIONE_DATE_PRATICHE
+// della proiezione "Intero lotto", via _ensurePraticheDate — mai una data
+// inventata qui: senza data la pratica resta senza barra, come "Non avviato").
+// Fine = inizio + giorni necessari a scavare i metri della pratica, con le
+// STESSE squadre/ggSettimana attualmente selezionate nel pannello "Proiezione
+// completamento scavi" (PROIEZIONE_SQUADRE/GGSETT, identico motore di
+// computeProiezioneData/addWorkingDays) — cambiando le squadre nella
+// proiezione e riaprendo il Gantt, le barre mancanti si ricalcolano di
+// conseguenza. 0 squadre selezionate o capacità insufficiente (c.insufficiente)
+// → inizio mostrato ma fine non stimabile (marker puntuale, mai una durata
+// inventata).
+function _gcMissingAuthRows(r) {
+  const lotto = r.lotto;
+  if (!_masterPraticheByLotto) return [];
+  const pratiche = (_masterPraticheByLotto[lotto] || [])
+    .filter(p => p.tipo === 'AUTORIZZAZIONE' && p.stato !== 'OTTENUTO' && p.stato !== 'NO COMPETENZA');
+  if (!pratiche.length) return [];
+  const datiLotto = _ensurePraticheDate(lotto, pratiche);
+  const c = r.capacita;
+  const squadre = PROIEZIONE_SQUADRE[lotto] !== undefined ? PROIEZIONE_SQUADRE[lotto] : (!c.insufficiente ? c.squadre.disponibili : 0);
+  const ggSett = PROIEZIONE_GGSETT[lotto] != null ? PROIEZIONE_GGSETT[lotto] : (!c.insufficiente ? c.ggSettimana : null);
+  const metriGiorno = (!c.insufficiente && squadre > 0 && c.prodEffettiva > 0) ? squadre * c.prodEffettiva : 0;
+  const stimeSet = PROIEZIONE_DATE_STIMATA[lotto];
+
+  return pratiche.map(p => {
+    const iso = datiLotto[p.codice];
+    const start = iso ? new Date(iso + 'T00:00:00') : null;
+    let end = null, giorniNecessari = null;
+    if (start && metriGiorno > 0) {
+      giorniNecessari = Math.max(1, Math.ceil(p.metri / metriGiorno));
+      end = addWorkingDays(start, giorniNecessari, ggSett, c.calendarioTipo);
+    }
+    return {
+      mancante: true, codice: p.codice, metri: p.metri, squadre, giorniNecessari,
+      labelSub: ['Autorizzazione mancante', p.ente].filter(Boolean).join(' · '),
+      stimata: !!(stimeSet && stimeSet.has(p.codice)),
+      span: { start, end }
+    };
+  });
+}
+
+function _gcRetryMasterPratiche(lotto) {
+  _masterPraticheError = null;
+  _gcOpen(lotto);
+}
+
 function _gcOpen(lotto) {
   const r = LOTTI_DATA[lotto];
   const cont = document.getElementById('ganttCantContainer');
   if (!r || !cont) return;
   cont.innerHTML = _gcBuildModal(r);
+  if (!_masterPraticheByLotto && !_masterPraticheError) {
+    loadMasterPraticheByLotto()
+      .then(() => { const c2 = document.getElementById('ganttCantContainer'); if (c2 && c2.querySelector('.gantt-cant-modal')) _gcOpen(lotto); })
+      .catch(() => { const c2 = document.getElementById('ganttCantContainer'); if (c2 && c2.querySelector('.gantt-cant-modal')) _gcOpen(lotto); });
+  }
 }
 function _gcClose() {
   const cont = document.getElementById('ganttCantContainer');
@@ -2347,22 +2417,36 @@ function _gcClose() {
 function _gcBuildModal(r) {
   const lotto = r.lotto;
   const cantieri = r.s.cantieri || [];
-  const rows = cantieri.map(c => ({ c, span: _gcResolveSpan(c) }));
-  rows.sort((a, b) => {
+  const cantRows = cantieri.map(c => ({ mancante: false, c, span: _gcResolveSpan(c) }));
+  const missRows = _gcMissingAuthRows(r);
+  const allRows = cantRows.concat(missRows);
+  allRows.sort((a, b) => {
     const ta = a.span.start ? a.span.start.getTime() : Infinity;
     const tb = b.span.start ? b.span.start.getTime() : Infinity;
-    return ta - tb || String(a.c.codice_cantiere).localeCompare(String(b.c.codice_cantiere), 'it', { numeric: true });
+    const na = a.mancante ? a.codice : a.c.codice_cantiere;
+    const nb = b.mancante ? b.codice : b.c.codice_cantiere;
+    return ta - tb || String(na).localeCompare(String(nb), 'it', { numeric: true });
   });
-  const withDates = rows.filter(x => x.span.start);
+  const withDates = allRows.filter(x => x.span.start);
+
+  const authNote = !_masterPraticheByLotto
+    ? (_masterPraticheError
+        ? `<div class="gantt-cant-auth-note gantt-cant-auth-note-error">Autorizzazioni mancanti non incluse — ${_masterPraticheError}. <button type="button" class="auth-retry-btn" onclick="_gcRetryMasterPratiche('${lotto}')">Riprova</button></div>`
+        : `<div class="gantt-cant-auth-note">Caricamento autorizzazioni mancanti da Master.csv…</div>`)
+    : '';
 
   let body;
-  if (!cantieri.length) {
-    body = `<div class="gantt-cant-empty">Nessun cantiere censito per questo lotto.</div>`;
+  if (!allRows.length) {
+    body = `${authNote}<div class="gantt-cant-empty">Nessun cantiere né autorizzazione mancante censiti per questo lotto.</div>`;
   } else if (!withDates.length) {
-    body = `<div class="gantt-cant-empty">Nessuno dei ${cantieri.length} cantieri di questo lotto ha ancora una data di inizio confermata da un aggiornamento impresa.</div>`;
+    body = `${authNote}<div class="gantt-cant-empty">Nessuna riga ha ancora una data (inizio cantiere confermato da un aggiornamento impresa, o rilascio autorizzazione previsto/stimato).</div>`;
   } else {
-    let minD = withDates[0].span.start, maxD = withDates[0].span.end;
-    withDates.forEach(x => { if (x.span.start < minD) minD = x.span.start; if (x.span.end > maxD) maxD = x.span.end; });
+    let minD = withDates[0].span.start, maxD = withDates[0].span.end || withDates[0].span.start;
+    withDates.forEach(x => {
+      if (x.span.start < minD) minD = x.span.start;
+      const xEnd = x.span.end || x.span.start;
+      if (xEnd > maxD) maxD = xEnd;
+    });
     if (oggi > maxD) maxD = oggi;
     const domainStart = new Date(minD.getFullYear(), minD.getMonth(), 1);
     const domainEnd = new Date(maxD.getFullYear(), maxD.getMonth() + 1, 0);
@@ -2377,13 +2461,47 @@ function _gcBuildModal(r) {
     const gridHtml = ticks.map(t => `<div class="gantt-cant-gridline" style="left:${pct(t)}%"></div>`).join('');
     const todayHtml = (oggi >= domainStart && oggi <= domainEnd) ? `<div class="gantt-cant-today-line" style="left:${pct(oggi)}%" title="Oggi — ${fmtDateShort(oggi)}"></div>` : '';
 
-    const labelsHtml = rows.map(({ c }) => `<div class="gantt-cant-label-cell">
-      <span class="gantt-cant-label-main">${c.codice_cantiere || '—'}</span>
-      <span class="gantt-cant-label-sub">${[c.pratica_id, c.ente, c.comune].filter(Boolean).join(' · ')}</span>
-    </div>`).join('');
+    const labelsHtml = allRows.map(row => row.mancante
+      ? `<div class="gantt-cant-label-cell gantt-cant-label-cell-mancante">
+          <span class="gantt-cant-label-main">${row.codice}</span>
+          <span class="gantt-cant-label-sub">${row.labelSub}</span>
+        </div>`
+      : `<div class="gantt-cant-label-cell">
+          <span class="gantt-cant-label-main">${row.c.codice_cantiere || '—'}</span>
+          <span class="gantt-cant-label-sub">${[row.c.pratica_id, row.c.ente, row.c.comune].filter(Boolean).join(' · ')}</span>
+        </div>`
+    ).join('');
 
-    const tracksHtml = rows.map(({ c, span }) => {
-      if (!span.start) return `<div class="gantt-cant-track-cell"><span class="gantt-cant-nostart">Non avviato</span></div>`;
+    const tracksHtml = allRows.map(row => {
+      const span = row.span;
+      if (!span.start) {
+        return `<div class="gantt-cant-track-cell"><span class="gantt-cant-nostart">${row.mancante ? 'Nessuna data prevista' : 'Non avviato'}</span></div>`;
+      }
+      if (row.mancante) {
+        const left = pct(span.start);
+        const cls = ['gantt-cant-bar', 'gc-bar-mancante'];
+        let width, title;
+        if (span.end) {
+          width = Math.max(pct(span.end) - left, 1);
+          title = [
+            `${row.codice} — Autorizzazione mancante`,
+            `Avvio cantiere stimato: ${fmtDateShort(span.start)}${row.stimata ? ' (stimato per soglia ente)' : ''}`,
+            `Fine stimata: ${fmtDateShort(span.end)} (${row.giorniNecessari} gg con ${row.squadre} squadr${row.squadre === 1 ? 'a' : 'e'})`,
+            fmtKm(row.metri)
+          ].filter(Boolean).join(' · ').replace(/"/g, '&quot;');
+        } else {
+          width = 1.2;
+          cls.push('gc-bar-point');
+          title = [
+            `${row.codice} — Autorizzazione mancante`,
+            `Avvio cantiere stimato: ${fmtDateShort(span.start)}${row.stimata ? ' (stimato per soglia ente)' : ''}`,
+            'Fine non stimabile: nessuna squadra selezionata nella proiezione di questo lotto',
+            fmtKm(row.metri)
+          ].filter(Boolean).join(' · ').replace(/"/g, '&quot;');
+        }
+        return `<div class="gantt-cant-track-cell"><div class="${cls.join(' ')}" style="left:${left}%;width:${width}%" title="${title}"></div></div>`;
+      }
+      const c = row.c;
       const left = pct(span.start);
       const width = Math.max(pct(span.end) - left, 1);
       const cls = ['gantt-cant-bar', 'gc-bar-' + (c.stato_cantiere || 'altro')];
@@ -2399,7 +2517,13 @@ function _gcBuildModal(r) {
       return `<div class="gantt-cant-track-cell"><div class="${cls.join(' ')}" style="left:${left}%;width:${width}%" title="${title}"></div></div>`;
     }).join('');
 
-    body = `<div class="gantt-cant-summary">${withDates.length} di ${cantieri.length} cantieri con almeno una data nota${cantieri.length > withDates.length ? ` · ${cantieri.length - withDates.length} non avviati` : ''}</div>
+    const nCantDate = cantRows.filter(x => x.span.start).length;
+    const nMissDate = missRows.filter(x => x.span.start).length;
+    const summaryParts = [`${nCantDate} di ${cantieri.length} cantieri con almeno una data nota`];
+    if (cantieri.length > nCantDate) summaryParts.push(`${cantieri.length - nCantDate} non avviati`);
+    if (missRows.length) summaryParts.push(`${nMissDate} di ${missRows.length} autorizzazioni mancanti con avvio stimato`);
+
+    body = `${authNote}<div class="gantt-cant-summary">${summaryParts.join(' · ')}</div>
     <div class="gantt-cant-wrap">
       <div class="gantt-cant-labels"><div class="gantt-cant-label-spacer"></div>${labelsHtml}</div>
       <div class="gantt-cant-timeline">
@@ -2416,6 +2540,7 @@ function _gcBuildModal(r) {
       <span><i class="gc-leg-dot" style="background:var(--retelit-blue-50)"></i>Allestimento</span>
       <span><i class="gc-leg-dot" style="background:var(--ok)"></i>Completato</span>
       <span><i class="gc-leg-tentative"></i>Data prevista, non confermata</span>
+      <span><i class="gc-leg-mancante"></i>Autorizzazione mancante (stima)</span>
       <span><i class="gc-leg-line"></i>Oggi</span>
     </div>`;
   }
@@ -2425,7 +2550,7 @@ function _gcBuildModal(r) {
       <div class="auth-modal-header">
         <div>
           <div class="auth-modal-title">📊 Gantt cantieri — Lotto ${lotto}</div>
-          <div class="auth-modal-subtitle">Una riga per cantiere/autorizzazione (${cantieri.length} totali) — dati da /api/cantieri</div>
+          <div class="auth-modal-subtitle">${cantieri.length} cantieri/autorizzazioni aperte + ${missRows.length} autorizzazioni mancanti stimate — dati da /api/cantieri e Master.csv</div>
         </div>
         <button type="button" class="modal-close" onclick="_gcClose()" aria-label="Chiudi">&times;</button>
       </div>
