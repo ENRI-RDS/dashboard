@@ -290,6 +290,15 @@ body.panel-open .main{margin-right:44%;}
 .gc-row-ctl label{font-size:8.5px;color:var(--muted2);white-space:nowrap;}
 .gc-squadre-input{width:34px;font-size:10px;padding:1px 3px;border:1px solid var(--border2);border-radius:4px;font-family:inherit;}
 .gc-squadre-input-override{border-color:var(--accent2);background:var(--retelit-ice);font-weight:700;}
+.gc-stepper{display:inline-flex;align-items:center;border:1px solid var(--border2);border-radius:6px;overflow:hidden;background:var(--surface);}
+.gc-stepper-override{border-color:var(--accent2);}
+.gc-stepper-btn{border:none;background:var(--gray-50);color:var(--text);font-family:var(--font-mono);font-size:11px;font-weight:700;width:17px;height:17px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}
+.gc-stepper-btn:hover{background:var(--retelit-ice);}
+.gc-stepper-btn:disabled{opacity:.35;cursor:default;}
+.gc-stepper-val{min-width:14px;text-align:center;font-family:var(--font-mono);font-size:10.5px;font-weight:700;padding:0 3px;}
+.gc-stepper-override .gc-stepper-val{color:var(--accent2);}
+.gc-stepper-reset{border:none;background:none;color:var(--muted2);cursor:pointer;font-size:11px;padding:0 2px;margin-left:2px;line-height:1;}
+.gc-stepper-reset:hover{color:var(--accent2);}
 .gc-data-input{width:106px;font-size:9.5px;padding:1px 3px;border:1px solid var(--border2);border-radius:4px;font-family:inherit;}
 .gantt-cant-timeline{flex:1;min-width:0;overflow-x:auto;}
 .gantt-cant-axis{position:relative;height:24px;border-bottom:1px solid var(--border2);}
@@ -2594,10 +2603,17 @@ function _gcClose() {
 // pannello Proiezione in alto — v. rev.274/_refreshBothViews).
 function _gcRowControlsHtml(lotto, codice, squadre, isOverride, dateOpts) {
   const codiceEsc = String(codice).replace(/'/g, "\\'");
-  const squadreVal = (squadre !== null && squadre !== undefined) ? squadre : '';
+  const n = (squadre !== null && squadre !== undefined) ? squadre : 0;
   const squadreTitle = isOverride ? 'Override assegnato manualmente' : 'Default dalle regole squadre per stato — modificabile';
   let html = `<div class="gc-row-controls">
-    <span class="gc-row-ctl"><label>Squadre</label><input type="number" min="0" max="50" class="gc-squadre-input${isOverride ? ' gc-squadre-input-override' : ''}" value="${squadreVal}" title="${squadreTitle}" onchange="_gcSetSquadre('${lotto}','${codiceEsc}', this.value)"></span>`;
+    <span class="gc-row-ctl"><label>Squadre</label>
+      <span class="gc-stepper${isOverride ? ' gc-stepper-override' : ''}" title="${squadreTitle}">
+        <button type="button" class="gc-stepper-btn" onclick="_gcSetSquadre('${lotto}','${codiceEsc}', ${Math.max(0, n - 1)})"${n <= 0 ? ' disabled' : ''} aria-label="Diminuisci squadre">−</button>
+        <span class="gc-stepper-val">${n}</span>
+        <button type="button" class="gc-stepper-btn" onclick="_gcSetSquadre('${lotto}','${codiceEsc}', ${Math.min(50, n + 1)})"${n >= 50 ? ' disabled' : ''} aria-label="Aumenta squadre">+</button>
+      </span>
+      ${isOverride ? `<button type="button" class="gc-stepper-reset" onclick="_gcSetSquadre('${lotto}','${codiceEsc}', '')" title="Ripristina default">↺</button>` : ''}
+    </span>`;
   if (dateOpts) {
     html += `<span class="gc-row-ctl"><label>${dateOpts.label}</label><input type="date" class="gc-data-input" value="${dateOpts.value || ''}" title="${dateOpts.title || ''}" onchange="${dateOpts.handler}('${lotto}','${codiceEsc}', this.value)"></span>`;
   }
