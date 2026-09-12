@@ -304,6 +304,10 @@ body.panel-open .main{margin-right:44%;}
 .gc-bar-completato{background:var(--ok);}
 .gc-bar-altro{background:var(--gray-400);}
 .gc-bar-ongoing{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.4) 0 6px,transparent 6px 12px);}
+/* rev.273: overlay tratteggiato sul tratto oggi→fine proiettata dei cantieri non
+   ancora conclusi — il tratto inizio→oggi (sotto, a tinta piena) resta il periodo
+   realmente trascorso; questo overlay copre solo la stima aggiuntiva. */
+.gc-bar-proiez-overlay{position:absolute;top:19px;height:22px;border-radius:0 5px 5px 0;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.6) 0 6px,transparent 6px 12px);cursor:help;pointer-events:auto;}
 .gc-bar-tentative{opacity:.55;border:1.5px dashed var(--text2);}
 .gc-bar-mancante{background:repeating-linear-gradient(135deg,var(--gray-300) 0 5px,var(--gray-100) 5px 10px);border:1.5px dashed var(--muted2);}
 .gc-bar-proiettato{background:repeating-linear-gradient(135deg,var(--retelit-blue-50) 0 5px,var(--retelit-ice) 5px 10px);border:1.5px dashed var(--accent2);}
@@ -318,6 +322,7 @@ body.panel-open .main{margin-right:44%;}
 .gc-leg-mancante{width:14px;height:10px;border-radius:3px;background:repeating-linear-gradient(135deg,var(--gray-300) 0 5px,var(--gray-100) 5px 10px);border:1.5px dashed var(--muted2);display:inline-block;}
 .gc-leg-proiettato{width:14px;height:10px;border-radius:3px;background:repeating-linear-gradient(135deg,var(--retelit-blue-50) 0 5px,var(--retelit-ice) 5px 10px);border:1.5px dashed var(--accent2);display:inline-block;}
 .gc-leg-line{width:2px;height:12px;background:var(--danger);display:inline-block;}
+.gc-leg-continua{width:14px;height:10px;border-radius:3px;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.6) 0 4px,transparent 4px 8px);display:inline-block;}
 @media(max-width:700px){.gantt-cant-labels{flex-basis:130px;}.gantt-cant-label-main{font-size:10px;}.gantt-cant-label-sub{font-size:9px;}}
 
 .factor-row{display:flex;flex-direction:column;gap:3px;padding:9px 0;border-bottom:1px solid var(--gray-100);}
@@ -2358,7 +2363,6 @@ function _gcResolveSpan(c, ctx) {
   const iEff = c.data_inizio_effettiva ? new Date(c.data_inizio_effettiva + 'T00:00:00') : null;
   const iPrev = (hasLog && c.data_inizio_prevista) ? new Date(c.data_inizio_prevista + 'T00:00:00') : null;
   const fEff = c.data_fine_effettiva ? new Date(c.data_fine_effettiva + 'T00:00:00') : null;
-  const fPrev = (hasLog && c.data_fine_prevista) ? new Date(c.data_fine_prevista + 'T00:00:00') : null;
 
   const start = iEff || iPrev;
   if (!start) {
@@ -2381,13 +2385,30 @@ function _gcResolveSpan(c, ctx) {
   }
   const startTentative = !iEff;
 
-  let end, endTentative = false, ongoing = false;
-  if (fEff) { end = fEff; }
-  else if (c.stato_cantiere === 'in_corso' || c.stato_cantiere === 'sospeso') { end = oggi; ongoing = true; }
-  else if (fPrev) { end = fPrev; endTentative = true; }
-  else { end = start; }
-  if (end < start) end = start;
-  return { start, startTentative, end, endTentative, ongoing };
+  if (fEff) {
+    // Cantiere completato con data fine reale: è un fatto, non una proiezione.
+    return { start, startTentative, end: fEff, ongoing: false };
+  }
+
+  // rev.273: la fine di un cantiere NON ancora concluso è sempre una proiezione
+  // calcolata da squadre assegnate × produttività × metri residui da scavare
+  // (metri_totali - metri_scavati) — mai la data_fine_prevista inserita
+  // dall'impresa. Su richiesta esplicita dell'utente: quel campo non deve più
+  // influenzare la posizione della barra, il Gantt serve a stimare "quanto ci
+  // vorrebbe con le squadre assegnate ORA", non a riportare l'impegno soggettivo
+  // dell'impresa. Il tratto inizio→oggi resta il periodo realmente trascorso; la
+  // proiezione riguarda solo oggi→fine (v. rendering, overlay tratteggiato).
+  if (!ctx) return { start, startTentative, end: (oggi < start ? start : oggi), ongoing: true, noProject: true };
+  const { squadre } = _gcRowSquadre(ctx.lotto, c.pratica_id, c.stato_cantiere, ctx.parametri);
+  const metriResidui = Math.max(0, (c.metri_totali || 0) - (c.metri_scavati || 0));
+  const from = oggi > start ? oggi : start;
+  const proj = (!ctx.capacita.insufficiente)
+    ? _gcProjectRow(from, metriResidui, squadre, ctx.capacita.prodEffettiva, ctx.ggSett, ctx.calendarioTipo)
+    : null;
+  if (proj) {
+    return { start, startTentative, end: proj.end, ongoing: true, projected: true, oggiMark: from, giorniNecessari: proj.giorniNecessari, metriResidui, squadre };
+  }
+  return { start, startTentative, end: (oggi < start ? start : oggi), ongoing: true, noProject: true, metriResidui, squadre };
 }
 
 // rev.271 — SOSTITUISCE _gcSimulaCoda: su richiesta esplicita dell'utente le squadre
@@ -2654,16 +2675,29 @@ function _gcBuildModal(r) {
       const left = pct(span.start);
       const width = Math.max(pct(span.end) - left, 1);
       const cls = ['gantt-cant-bar', 'gc-bar-' + (c.stato_cantiere || 'altro')];
-      if (span.startTentative || span.endTentative) cls.push('gc-bar-tentative');
-      if (span.ongoing) cls.push('gc-bar-ongoing');
+      if (span.startTentative) cls.push('gc-bar-tentative');
+      if (span.noProject) cls.push('gc-bar-ongoing'); // nessuna proiezione possibile: barra ferma a oggi, tratteggio "aperto"
       const pctScav = c.metri_totali > 0 ? Math.round((c.metri_scavati || 0) / c.metri_totali * 100) : null;
+      const fineLabel = span.projected
+        ? `Fine proiettata: ${fmtDateShort(span.end)} (${span.giorniNecessari} gg lavorativi, ${fmtNum(span.metriResidui)} m residui con ${span.squadre} squadr${span.squadre === 1 ? 'a' : 'e'})`
+        : (span.noProject
+            ? 'Fine non proiettabile: nessuna squadra assegnata, nessun metro residuo, o milestone ROS del lotto mancante'
+            : `Fine: ${fmtDateShort(span.end)}`);
       const title = [
         `${c.codice_cantiere || ''} — ${_GC_STATO_LABEL[c.stato_cantiere] || c.stato_cantiere || ''}`,
         `Inizio: ${fmtDateShort(span.start)}${span.startTentative ? ' (previsto)' : ''}`,
-        span.ongoing ? 'Fine: in corso (aggiornato a oggi)' : `Fine: ${fmtDateShort(span.end)}${span.endTentative ? ' (previsto)' : ''}`,
+        fineLabel,
         pctScav !== null ? `${fmtNum(c.metri_scavati || 0)}/${fmtNum(c.metri_totali)} m (${pctScav}%)` : ''
       ].filter(Boolean).join(' · ').replace(/"/g, '&quot;');
-      return `<div class="gantt-cant-track-cell"><div class="${cls.join(' ')}" style="left:${left}%;width:${width}%" title="${title}"></div></div>`;
+      let bars = `<div class="${cls.join(' ')}" style="left:${left}%;width:${width}%" title="${title}"></div>`;
+      // rev.273: overlay tratteggiato solo sul tratto oggi→fine proiettata — il
+      // tratto inizio→oggi resta a tinta piena (periodo realmente trascorso).
+      if (span.projected && span.end > span.oggiMark) {
+        const leftProiez = pct(span.oggiMark);
+        const widthProiez = Math.max(pct(span.end) - leftProiez, 1);
+        bars += `<div class="gc-bar-proiez-overlay" style="left:${leftProiez}%;width:${widthProiez}%" title="${title}"></div>`;
+      }
+      return `<div class="gantt-cant-track-cell">${bars}</div>`;
     }).join('');
 
     const nCantDate = cantRows.filter(x => x.span.start).length;
@@ -2693,9 +2727,10 @@ function _gcBuildModal(r) {
       <span><i class="gc-leg-tentative"></i>Data prevista, non confermata</span>
       <span><i class="gc-leg-mancante"></i>Autorizzazione mancante (stima)</span>
       <span><i class="gc-leg-proiettato"></i>Non avviato, proiettato da data inserita</span>
+      <span><i class="gc-leg-continua" style="background:var(--retelit-sky)"></i>Tratteggio = proiezione residua (oggi→fine stimata)</span>
       <span><i class="gc-leg-line"></i>Oggi</span>
     </div>
-    <div class="gantt-cant-auth-note">Squadre indipendenti per riga (rev.271): ogni cantiere/autorizzazione avanza con la propria squadra assegnata, non più un'unica capacità condivisa del lotto.</div>`;
+    <div class="gantt-cant-auth-note">Squadre indipendenti per riga (rev.271): ogni cantiere/autorizzazione avanza con la propria squadra assegnata, non più un'unica capacità condivisa del lotto. La fine dei cantieri non conclusi è sempre proiettata da squadre×produttività×metri residui (rev.273) — non dalla data fine prevista inserita dall'impresa.</div>`;
   }
 
   return `<div class="auth-modal-overlay" onclick="if(event.target===this)_gcClose()">
