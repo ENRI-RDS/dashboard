@@ -2390,7 +2390,13 @@ function _gcResolveSpan(c, ctx) {
   }
   const startTentative = !iEff;
 
-  if (fEff) {
+  // rev.275: usa la fine reale SOLO se il cantiere è davvero concluso (stato
+  // "completato") — bug segnalato dall'utente: se data_fine_effettiva risultava
+  // valorizzata anche a stato ancora "in_corso" (dato incoerente ma possibile,
+  // es. residuo di una riapertura), la barra restava comunque ancorata a quella
+  // data, insensibile alla modifica delle squadre. Ora "non concluso" è deciso
+  // dallo stato del cantiere, non dalla sola presenza del campo data.
+  if (fEff && c.stato_cantiere === 'completato') {
     // Cantiere completato con data fine reale: è un fatto, non una proiezione.
     return { start, startTentative, end: fEff, ongoing: false };
   }
@@ -2735,7 +2741,7 @@ function _gcBuildModal(r) {
       const fineLabel = span.projected
         ? `Fine proiettata: ${fmtDateShort(span.end)} (${span.giorniNecessari} gg lavorativi, ${fmtNum(span.metriResidui)} m residui con ${span.squadre} squadr${span.squadre === 1 ? 'a' : 'e'})`
         : (span.noProject
-            ? 'Fine non proiettabile: nessuna squadra assegnata, nessun metro residuo, o milestone ROS del lotto mancante'
+            ? `Fine non proiettabile — ${!(span.metriResidui > 0) ? '0 m residui da scavare' : (!(span.squadre > 0) ? 'nessuna squadra assegnata' : 'milestone ROS del lotto mancante')}`
             : `Fine: ${fmtDateShort(span.end)}`);
       const title = [
         `${c.codice_cantiere || ''} — ${_GC_STATO_LABEL[c.stato_cantiere] || c.stato_cantiere || ''}`,
