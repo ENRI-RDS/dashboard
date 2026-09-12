@@ -277,9 +277,16 @@ body.panel-open .main{margin-right:44%;}
 .gantt-cant-wrap{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
 .gantt-cant-labels{flex:0 0 210px;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--gray-50);}
 .gantt-cant-label-spacer{height:24px;border-bottom:1px solid var(--border2);}
-.gantt-cant-label-cell{height:42px;display:flex;flex-direction:column;justify-content:center;padding:0 10px;border-bottom:1px solid var(--gray-100);overflow:hidden;}
+.gantt-cant-label-cell{height:60px;display:flex;flex-direction:column;justify-content:center;padding:0 10px;border-bottom:1px solid var(--gray-100);overflow:hidden;}
 .gantt-cant-label-main{font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .gantt-cant-label-sub{font-size:9.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
+/* rev.271: controlli squadre/data-prevista-inizio inline per riga */
+.gc-row-controls{display:flex;gap:8px;margin-top:3px;flex-wrap:wrap;}
+.gc-row-ctl{display:flex;align-items:center;gap:3px;}
+.gc-row-ctl label{font-size:8.5px;color:var(--muted2);white-space:nowrap;}
+.gc-squadre-input{width:34px;font-size:10px;padding:1px 3px;border:1px solid var(--border2);border-radius:4px;font-family:inherit;}
+.gc-squadre-input-override{border-color:var(--accent2);background:var(--retelit-ice);font-weight:700;}
+.gc-data-input{width:106px;font-size:9.5px;padding:1px 3px;border:1px solid var(--border2);border-radius:4px;font-family:inherit;}
 .gantt-cant-timeline{flex:1;min-width:0;overflow-x:auto;}
 .gantt-cant-axis{position:relative;height:24px;border-bottom:1px solid var(--border2);}
 .gantt-cant-tick{position:absolute;top:0;height:100%;display:flex;align-items:center;font-family:var(--font-mono);font-size:9px;font-weight:600;color:var(--muted);white-space:nowrap;padding-left:4px;border-left:1px solid var(--gray-200);}
@@ -287,9 +294,9 @@ body.panel-open .main{margin-right:44%;}
 .gantt-cant-gridlines{position:absolute;inset:0;pointer-events:none;}
 .gantt-cant-gridline{position:absolute;top:0;bottom:0;width:1px;background:var(--gray-100);}
 .gantt-cant-today-line{position:absolute;top:0;bottom:0;width:2px;background:var(--danger);z-index:2;}
-.gantt-cant-track-cell{position:relative;height:42px;border-bottom:1px solid var(--gray-100);}
+.gantt-cant-track-cell{position:relative;height:60px;border-bottom:1px solid var(--gray-100);}
 .gantt-cant-nostart{position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:10.5px;color:var(--muted2);font-style:italic;}
-.gantt-cant-bar{position:absolute;top:10px;height:22px;border-radius:5px;cursor:help;box-shadow:0 1px 2px rgba(4,63,117,.15);}
+.gantt-cant-bar{position:absolute;top:19px;height:22px;border-radius:5px;cursor:help;box-shadow:0 1px 2px rgba(4,63,117,.15);}
 .gc-bar-in_corso{background:var(--retelit-sky);}
 .gc-bar-sospeso{background:var(--warn);}
 .gc-bar-allestimento{background:var(--retelit-blue-50);}
@@ -299,6 +306,7 @@ body.panel-open .main{margin-right:44%;}
 .gc-bar-ongoing{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.4) 0 6px,transparent 6px 12px);}
 .gc-bar-tentative{opacity:.55;border:1.5px dashed var(--text2);}
 .gc-bar-mancante{background:repeating-linear-gradient(135deg,var(--gray-300) 0 5px,var(--gray-100) 5px 10px);border:1.5px dashed var(--muted2);}
+.gc-bar-proiettato{background:repeating-linear-gradient(135deg,var(--retelit-blue-50) 0 5px,var(--retelit-ice) 5px 10px);border:1.5px dashed var(--accent2);}
 .gc-bar-point{border-radius:50%;min-width:10px;}
 .gantt-cant-label-cell-mancante{background:var(--gray-100);}
 .gantt-cant-auth-note{font-size:10.5px;color:var(--muted);font-style:italic;margin-bottom:10px;}
@@ -308,6 +316,7 @@ body.panel-open .main{margin-right:44%;}
 .gc-leg-dot{width:10px;height:10px;border-radius:3px;display:inline-block;}
 .gc-leg-tentative{width:14px;height:10px;border-radius:3px;border:1.5px dashed var(--text2);display:inline-block;}
 .gc-leg-mancante{width:14px;height:10px;border-radius:3px;background:repeating-linear-gradient(135deg,var(--gray-300) 0 5px,var(--gray-100) 5px 10px);border:1.5px dashed var(--muted2);display:inline-block;}
+.gc-leg-proiettato{width:14px;height:10px;border-radius:3px;background:repeating-linear-gradient(135deg,var(--retelit-blue-50) 0 5px,var(--retelit-ice) 5px 10px);border:1.5px dashed var(--accent2);display:inline-block;}
 .gc-leg-line{width:2px;height:12px;background:var(--danger);display:inline-block;}
 @media(max-width:700px){.gantt-cant-labels{flex-basis:130px;}.gantt-cant-label-main{font-size:10px;}.gantt-cant-label-sub{font-size:9px;}}
 
@@ -1654,6 +1663,13 @@ let _masterPraticheByLotto = null; // cache condivisa fra tutti i lotti una volt
 let _masterPraticheLoading = null; // Promise in corso — evita fetch concorrenti se più pannelli lo richiedono nello stesso istante
 let _masterPraticheError = null;   // messaggio dell'ultimo tentativo fallito, null se mai tentato o riuscito
 
+// rev.271/272: override squadre/data-prevista-inizio per riga del Gantt cantieri, per
+// lotto — SOLO in-memory (si perde al refresh/chiusura pagina), stessa natura "what-if"
+// di sessione di PROIEZIONE_SQUADRE. Nessun fetch/persistenza backend: l'utente ha
+// chiesto esplicitamente che resti valido solo mentre la proiezione è aperta.
+// { [lotto]: { [codice]: {squadre, data_prevista_inizio} } }
+let _gcSquadreOverrides = {};
+
 function render(prog, scavi, milestoneByLotto) {
   const lotti = new Set([...Object.keys(prog), ...Object.keys(scavi), ...Object.keys(milestoneByLotto)]);
   const rows = [];
@@ -2329,7 +2345,15 @@ const _GC_STATO_LABEL = { in_corso: 'In corso', sospeso: 'Sospeso', allestimento
 // il cantiere resta "non avviato" anche se data_inizio_prevista è valorizzata.
 // La posizione della barra usa SEMPRE l'effettiva quando c'è; la prevista
 // (solo se confermata da un log) è mostrata come tentativo (bordo tratteggiato).
-function _gcResolveSpan(c) {
+// rev.271: true se il cantiere ha già una data reale o prevista-confermata (log_count>0)
+// — condiziona sia il ramo di proiezione manuale sotto sia se mostrare il controllo
+// "Inizio prev." nel Gantt (ha senso solo finché non esiste ancora un dato reale).
+function _gcCantiereHasRealStart(c) {
+  const hasLog = (c.log_count || 0) > 0;
+  return !!(c.data_inizio_effettiva || (hasLog && c.data_inizio_prevista));
+}
+
+function _gcResolveSpan(c, ctx) {
   const hasLog = (c.log_count || 0) > 0;
   const iEff = c.data_inizio_effettiva ? new Date(c.data_inizio_effettiva + 'T00:00:00') : null;
   const iPrev = (hasLog && c.data_inizio_prevista) ? new Date(c.data_inizio_prevista + 'T00:00:00') : null;
@@ -2337,7 +2361,24 @@ function _gcResolveSpan(c) {
   const fPrev = (hasLog && c.data_fine_prevista) ? new Date(c.data_fine_prevista + 'T00:00:00') : null;
 
   const start = iEff || iPrev;
-  if (!start) return { start: null };
+  if (!start) {
+    // rev.271: nessuna data reale — su richiesta utente, se è stata inserita una data
+    // di previsione inizio manuale (specifica del Gantt, non data_inizio_prevista/
+    // impresa) prova a proiettare una barra con la squadra assegnata a questa riga.
+    if (ctx) {
+      const ov = (_gcSquadreOverrides[ctx.lotto] || {})[c.pratica_id] || {};
+      const dpi = ov.data_prevista_inizio ? new Date(ov.data_prevista_inizio + 'T00:00:00') : null;
+      if (dpi) {
+        const { squadre } = _gcRowSquadre(ctx.lotto, c.pratica_id, c.stato_cantiere, ctx.parametri);
+        const metriResidui = Math.max(0, (c.metri_totali || 0) - (c.metri_scavati || 0)) || (c.metri_totali || 0);
+        const proj = (!ctx.capacita.insufficiente)
+          ? _gcProjectRow(dpi, metriResidui, squadre, ctx.capacita.prodEffettiva, ctx.ggSett, ctx.calendarioTipo)
+          : null;
+        return { start: dpi, end: proj ? proj.end : null, projected: true, giorniNecessari: proj ? proj.giorniNecessari : null };
+      }
+    }
+    return { start: null };
+  }
   const startTentative = !iEff;
 
   let end, endTentative = false, ongoing = false;
@@ -2349,62 +2390,50 @@ function _gcResolveSpan(c) {
   return { start, startTentative, end, endTentative, ongoing };
 }
 
-// Simula il consumo di una coda FIFO di "chunk" di metri (backlog già
-// autorizzato + pratiche mancanti, sbloccate ciascuna alla propria data) da
-// parte di un'UNICA capacità condivisa (squadre*prodEffettiva/giorno) — le
-// squadre sono un pool comune, non uno per chunk: un chunk successivo non
-// inizia finché il precedente non è esaurito, anche se la sua autorizzazione
-// è già arrivata (resta "in coda", non in barra fino a quel momento). Stesso
-// criterio giorno-per-giorno di computeProiezioneFasata, ma qui si registra
-// anche l'inizio/fine lavorazione di ogni singolo chunk, non solo la data di
-// completamento totale del lotto.
-function _gcSimulaCoda(metriIniziali, eventi, c, squadre, ggSettimana) {
-  const risultato = {};
-  if (!squadre || squadre <= 0 || c.prodEffettiva <= 0) return risultato;
-  const metriGiorno = squadre * c.prodEffettiva;
-  const coda = [];
-  if (metriIniziali > 0) coda.push({ key: null, data: new Date(oggi.getFullYear(), oggi.getMonth(), oggi.getDate()), km: metriIniziali });
-  eventi.forEach(e => coda.push({ key: e.key, data: e.data, km: e.km }));
-  if (!coda.length) return risultato;
+// rev.271 — SOSTITUISCE _gcSimulaCoda: su richiesta esplicita dell'utente le squadre
+// non sono più un pool condiviso per lotto ma assegnate indipendentemente riga per
+// riga (un cantiere/autorizzazione avanza con la propria squadra, in parallelo con
+// gli altri, nessuna coda FIFO). Guardia 3650 gg (~10 anni): oltre non è più una
+// stima significativa, stessa soglia già usata da _gcSimulaCoda/computeProiezioneFasata.
+function _gcProjectRow(start, metri, squadre, prodEffettiva, ggSettimana, calendarioTipo) {
+  if (!start || !squadre || squadre <= 0 || !(metri > 0) || !(prodEffettiva > 0)) return null;
+  const metriGiorno = squadre * prodEffettiva;
+  const giorniNecessari = Math.ceil(metri / metriGiorno);
+  if (giorniNecessari > 3650) return null;
+  const end = addWorkingDays(start, giorniNecessari, ggSettimana, calendarioTipo);
+  return { start, end, giorniNecessari };
+}
 
-  let cur = new Date(oggi.getFullYear(), oggi.getMonth(), oggi.getDate());
-  const maxIter = 3650; // guardia: oltre ~10 anni di calendario la stima non è più significativa
-  let iter = 0;
-  for (let i = 0; i < coda.length; i++) {
-    if (cur < coda[i].data) cur = new Date(coda[i].data);
-    if (coda[i].key) risultato[coda[i].key] = { start: new Date(cur) };
-    let remaining = coda[i].km;
-    while (remaining > 0) {
-      iter++;
-      if (iter > maxIter) { i = coda.length; break; }
-      const idxGg = cur.getDay() === 0 ? 7 : cur.getDay();
-      if (idxGg <= ggSettimana) remaining -= metriGiorno;
-      if (remaining > 0) cur = new Date(cur.getTime() + 86400000);
-    }
-    if (coda[i].key) risultato[coda[i].key].end = new Date(cur);
-    cur = new Date(cur.getTime() + 86400000);
-  }
-  return risultato;
+// Squadre "di default" per una riga quando non c'è override esplicito salvato
+// (v. _gcRowSquadre) — stessa regola per-stato del motore rischio (computeSquadre/
+// regole_squadre_cantiere), applicata anche alle autorizzazioni mancanti usando lo
+// stato 'non_avviato' (non hanno ancora un cantiere aperto).
+function _gcDefaultSquadre(stato, parametri) {
+  const regole = (parametri && parametri.regole_squadre_cantiere) || {};
+  const reg = regole[stato] || regole['altro'] || { squadre_standard: 0 };
+  return Number(reg.squadre_standard) || 0;
+}
+
+// Risolve squadre effettive di una riga (override salvato > default per stato) più
+// un flag isOverride, per distinguere in UI un valore assegnato manualmente da uno
+// ereditato dalle regole standard.
+function _gcRowSquadre(lotto, codice, statoFallback, parametri) {
+  const ov = (_gcSquadreOverrides[lotto] || {})[codice];
+  if (ov && ov.squadre !== null && ov.squadre !== undefined) return { squadre: ov.squadre, isOverride: true };
+  return { squadre: _gcDefaultSquadre(statoFallback, parametri), isOverride: false };
 }
 
 // Righe "autorizzazione mancante" del Gantt (su richiesta utente): una per
 // pratica AUTORIZZAZIONE non ancora ottenuta del lotto — stessa fonte/filtro
 // di buildProiezioneAuthPanel (Master.csv via loadMasterPraticheByLotto).
-// Bug segnalato dall'utente sulla prima versione: ogni pratica otteneva una
-// barra calcolata come se avesse **da sola** l'intera capacità squadre
-// selezionata, quindi con 1 sola squadra due pratiche potevano comparire con
-// barre sovrapposte come se lavorassero in parallelo — impossibile, le
-// squadre sono un pool condiviso. Fix: le pratiche mancanti (+ il backlog
-// residuo già autorizzato, c.metriResiduiScavo, che occupa la capacità da
-// oggi) sono ora messe in coda FIFO per data di autorizzazione e consumate in
-// sequenza dalla stessa capacità condivisa (`_gcSimulaCoda`, stesso motore
-// event-driven di computeProiezioneFasata) — una pratica il cui avvio
-// cantiere cade quando le squadre sono già impegnate su altro mostra un
-// "Avvio cantiere stimato" successivo alla data di autorizzazione, mai
-// sovrapposto ad altre barre a parità di squadre disponibili. Pratiche senza
-// data restano fuori dal calcolo — mai una data inventata. 0 squadre
-// selezionate o capacità insufficiente (c.insufficiente) → nessuna
-// simulazione possibile, marker puntuale sulla sola data di autorizzazione.
+// rev.271 — ogni pratica ora avanza indipendentemente con la propria squadra
+// assegnata (override salvato per quel codice, o default da regole_squadre_cantiere
+// per lo stato 'non_avviato' — v. _gcRowSquadre), non più in coda FIFO su un pool
+// condiviso di lotto (vecchio comportamento _gcSimulaCoda, sostituito su richiesta
+// esplicita dell'utente: più cantieri/autorizzazioni possono ora procedere in
+// parallelo se hanno squadre proprie). Pratiche senza data restano fuori dal
+// calcolo — mai una data inventata. 0 squadre assegnate → nessuna barra proiettata,
+// solo marker puntuale sulla data di autorizzazione.
 function _gcMissingAuthRows(r) {
   const lotto = r.lotto;
   if (!_masterPraticheByLotto) return [];
@@ -2413,30 +2442,23 @@ function _gcMissingAuthRows(r) {
   if (!pratiche.length) return [];
   const datiLotto = _ensurePraticheDate(lotto, pratiche);
   const c = r.capacita;
-  const squadre = PROIEZIONE_SQUADRE[lotto] !== undefined ? PROIEZIONE_SQUADRE[lotto] : (!c.insufficiente ? c.squadre.disponibili : 0);
   const ggSett = PROIEZIONE_GGSETT[lotto] != null ? PROIEZIONE_GGSETT[lotto] : (!c.insufficiente ? c.ggSettimana : null);
   const stimeSet = PROIEZIONE_DATE_STIMATA[lotto];
-
-  const eventi = pratiche
-    .map(p => { const iso = datiLotto[p.codice]; return iso ? { key: p.codice, data: new Date(iso + 'T00:00:00'), km: p.metri } : null; })
-    .filter(Boolean)
-    .sort((a, b) => a.data - b.data);
-  const coda = (!c.insufficiente && squadre > 0 && c.prodEffettiva > 0)
-    ? _gcSimulaCoda(c.metriResiduiScavo, eventi, c, squadre, ggSett)
-    : {};
 
   return pratiche.map(p => {
     const iso = datiLotto[p.codice];
     const autorizzazione = iso ? new Date(iso + 'T00:00:00') : null;
-    const sim = coda[p.codice];
-    const span = { start: sim ? sim.start : autorizzazione, end: sim ? sim.end : null };
-    const giorniNecessari = sim ? giorniLavorativi(sim.start, sim.end, ggSett) : null;
-    const inCoda = !!(sim && autorizzazione && sim.start > autorizzazione);
+    const { squadre, isOverride } = _gcRowSquadre(lotto, p.codice, 'non_avviato', PARAMETRI);
+    const proj = (!c.insufficiente && autorizzazione)
+      ? _gcProjectRow(autorizzazione, p.metri, squadre, c.prodEffettiva, ggSett, c.calendarioTipo)
+      : null;
+    const span = { start: autorizzazione, end: proj ? proj.end : null };
     return {
-      mancante: true, codice: p.codice, metri: p.metri, squadre, giorniNecessari,
+      mancante: true, codice: p.codice, metri: p.metri, squadre, isOverrideSquadre: isOverride,
+      giorniNecessari: proj ? proj.giorniNecessari : null,
       labelSub: ['Autorizzazione mancante', p.ente].filter(Boolean).join(' · '),
       stimata: !!(stimeSet && stimeSet.has(p.codice)),
-      autorizzazione, inCoda, span
+      autorizzazione, span
     };
   });
 }
@@ -2457,15 +2479,68 @@ function _gcOpen(lotto) {
       .catch(() => { const c2 = document.getElementById('ganttCantContainer'); if (c2 && c2.querySelector('.gantt-cant-modal')) _gcOpen(lotto); });
   }
 }
+
+// rev.271/272: imposta squadre (n intero, o null/'' per tornare al default) per una
+// riga del Gantt — solo in memoria per la sessione corrente della proiezione, nessuna
+// chiamata al server (v. nota su _gcSquadreOverrides). Si perde chiudendo/ricaricando
+// la pagina, esattamente come il selettore squadre del pannello "Proiezione
+// completamento scavi" sopra.
+function _gcSetSquadre(lotto, codice, value) {
+  const squadre = (value === '' || value === null || value === undefined) ? null : parseInt(value, 10);
+  if (squadre !== null && (isNaN(squadre) || squadre < 0)) return;
+  if (!_gcSquadreOverrides[lotto]) _gcSquadreOverrides[lotto] = {};
+  const prev = _gcSquadreOverrides[lotto][codice] || {};
+  _gcSquadreOverrides[lotto][codice] = { ...prev, squadre };
+  _gcOpen(lotto);
+}
+
+// rev.271/272: imposta la data di previsione inizio (solo per cantieri non_avviato —
+// le autorizzazioni mancanti hanno già una propria data da Master.csv/stima ente).
+// Solo in memoria, stessa nota di _gcSetSquadre.
+function _gcSetDataPrevista(lotto, codice, value) {
+  const dpi = value || null;
+  if (!_gcSquadreOverrides[lotto]) _gcSquadreOverrides[lotto] = {};
+  const prev = _gcSquadreOverrides[lotto][codice] || {};
+  _gcSquadreOverrides[lotto][codice] = { ...prev, data_prevista_inizio: dpi };
+  _gcOpen(lotto);
+}
 function _gcClose() {
   const cont = document.getElementById('ganttCantContainer');
   if (cont) cont.innerHTML = '';
 }
 
+// rev.271: markup dei controlli inline (squadre + opzionale data previsione inizio)
+// mostrati sotto l'etichetta di ogni riga del Gantt.
+function _gcRowControlsHtml(lotto, codice, squadre, isOverride, showDateInput) {
+  const codiceEsc = String(codice).replace(/'/g, "\\'");
+  const squadreVal = (squadre !== null && squadre !== undefined) ? squadre : '';
+  const squadreTitle = isOverride ? 'Override assegnato manualmente' : 'Default dalle regole squadre per stato — modificabile';
+  let html = `<div class="gc-row-controls">
+    <span class="gc-row-ctl"><label>Squadre</label><input type="number" min="0" max="50" class="gc-squadre-input${isOverride ? ' gc-squadre-input-override' : ''}" value="${squadreVal}" title="${squadreTitle}" onchange="_gcSetSquadre('${lotto}','${codiceEsc}', this.value)"></span>`;
+  if (showDateInput) {
+    const dpi = ((_gcSquadreOverrides[lotto] || {})[codice] || {}).data_prevista_inizio || '';
+    html += `<span class="gc-row-ctl"><label>Inizio prev.</label><input type="date" class="gc-data-input" value="${dpi}" title="Data di previsione inizio cantiere (per proiettare una barra)" onchange="_gcSetDataPrevista('${lotto}','${codiceEsc}', this.value)"></span>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
 function _gcBuildModal(r) {
   const lotto = r.lotto;
   const cantieri = r.s.cantieri || [];
-  const cantRows = cantieri.map(c => ({ mancante: false, c, span: _gcResolveSpan(c) }));
+  // rev.271: contesto condiviso per la proiezione per-riga (squadre indipendenti,
+  // non più pool condiviso) — passato a _gcResolveSpan/_gcMissingAuthRows.
+  const glob = (PARAMETRI && PARAMETRI.globali) || {};
+  const gv = k => (glob[k] ? glob[k].valore : null);
+  const ggSett = PROIEZIONE_GGSETT[lotto] != null ? PROIEZIONE_GGSETT[lotto] : (!r.capacita.insufficiente ? r.capacita.ggSettimana : null);
+  const calendarioTipo = gv('CALENDARIO_TIPO') || 'Lavorativi';
+  const ctx = { lotto, capacita: r.capacita, ggSett, calendarioTipo, parametri: PARAMETRI };
+  const cantRows = cantieri.map(c => ({
+    mancante: false, c,
+    span: _gcResolveSpan(c, ctx),
+    squadreInfo: _gcRowSquadre(lotto, c.pratica_id, c.stato_cantiere, PARAMETRI),
+    hasRealStart: _gcCantiereHasRealStart(c),
+  }));
   const missRows = _gcMissingAuthRows(r);
   const allRows = cantRows.concat(missRows);
   allRows.sort((a, b) => {
@@ -2513,10 +2588,12 @@ function _gcBuildModal(r) {
       ? `<div class="gantt-cant-label-cell gantt-cant-label-cell-mancante">
           <span class="gantt-cant-label-main">${row.codice}</span>
           <span class="gantt-cant-label-sub">${row.labelSub}</span>
+          ${_gcRowControlsHtml(lotto, row.codice, row.squadre, row.isOverrideSquadre, false)}
         </div>`
       : `<div class="gantt-cant-label-cell">
           <span class="gantt-cant-label-main">${row.c.codice_cantiere || '—'}</span>
           <span class="gantt-cant-label-sub">${[row.c.pratica_id, row.c.ente, row.c.comune].filter(Boolean).join(' · ')}</span>
+          ${_gcRowControlsHtml(lotto, row.c.pratica_id, row.squadreInfo.squadre, row.squadreInfo.isOverride, !row.hasRealStart)}
         </div>`
     ).join('');
 
@@ -2529,16 +2606,13 @@ function _gcBuildModal(r) {
         const left = pct(span.start);
         const cls = ['gantt-cant-bar', 'gc-bar-mancante'];
         const autText = `Autorizzazione prevista: ${fmtDateShort(row.autorizzazione)}${row.stimata ? ' (stimata per soglia ente)' : ''}`;
-        const avvioText = row.inCoda
-          ? `Avvio cantiere stimato: ${fmtDateShort(span.start)} (squadre impegnate su altri cantieri del lotto fino a quella data)`
-          : `Avvio cantiere stimato: ${fmtDateShort(span.start)}`;
         let width, title;
         if (span.end) {
           width = Math.max(pct(span.end) - left, 1);
           title = [
             `${row.codice} — Autorizzazione mancante`,
-            autText, avvioText,
-            `Fine stimata: ${fmtDateShort(span.end)} (${row.giorniNecessari} gg lavorativi con ${row.squadre} squadr${row.squadre === 1 ? 'a' : 'e'}, capacità condivisa con gli altri cantieri del lotto)`,
+            autText,
+            `Fine stimata: ${fmtDateShort(span.end)} (${row.giorniNecessari} gg lavorativi con ${row.squadre} squadr${row.squadre === 1 ? 'a' : 'e'} dedicat${row.squadre === 1 ? 'a' : 'e'} a questa pratica)`,
             fmtKm(row.metri)
           ].filter(Boolean).join(' · ').replace(/"/g, '&quot;');
         } else {
@@ -2547,8 +2621,31 @@ function _gcBuildModal(r) {
           title = [
             `${row.codice} — Autorizzazione mancante`,
             autText,
-            'Fine non stimabile: nessuna squadra selezionata nella proiezione di questo lotto',
+            'Fine non stimabile: nessuna squadra assegnata a questa pratica (o milestone ROS del lotto mancante)',
             fmtKm(row.metri)
+          ].filter(Boolean).join(' · ').replace(/"/g, '&quot;');
+        }
+        return `<div class="gantt-cant-track-cell"><div class="${cls.join(' ')}" style="left:${left}%;width:${width}%" title="${title}"></div></div>`;
+      }
+      if (span.projected) {
+        const left = pct(span.start);
+        const cls = ['gantt-cant-bar', 'gc-bar-proiettato'];
+        const sq = row.squadreInfo.squadre;
+        let width, title;
+        if (span.end) {
+          width = Math.max(pct(span.end) - left, 1);
+          title = [
+            `${row.c.codice_cantiere || ''} — Non avviato (proiezione)`,
+            `Inizio previsto (inserito manualmente): ${fmtDateShort(span.start)}`,
+            `Fine stimata: ${fmtDateShort(span.end)} (${span.giorniNecessari} gg lavorativi con ${sq} squadr${sq === 1 ? 'a' : 'e'})`
+          ].filter(Boolean).join(' · ').replace(/"/g, '&quot;');
+        } else {
+          width = 1.2;
+          cls.push('gc-bar-point');
+          title = [
+            `${row.c.codice_cantiere || ''} — Non avviato (proiezione)`,
+            `Inizio previsto (inserito manualmente): ${fmtDateShort(span.start)}`,
+            'Fine non stimabile: nessuna squadra assegnata, o milestone ROS del lotto mancante'
           ].filter(Boolean).join(' · ').replace(/"/g, '&quot;');
         }
         return `<div class="gantt-cant-track-cell"><div class="${cls.join(' ')}" style="left:${left}%;width:${width}%" title="${title}"></div></div>`;
@@ -2570,8 +2667,10 @@ function _gcBuildModal(r) {
     }).join('');
 
     const nCantDate = cantRows.filter(x => x.span.start).length;
+    const nCantProiettati = cantRows.filter(x => x.span.projected).length;
     const nMissDate = missRows.filter(x => x.span.start).length;
     const summaryParts = [`${nCantDate} di ${cantieri.length} cantieri con almeno una data nota`];
+    if (nCantProiettati) summaryParts.push(`${nCantProiettati} proiettati da data prevista inserita manualmente`);
     if (cantieri.length > nCantDate) summaryParts.push(`${cantieri.length - nCantDate} non avviati`);
     if (missRows.length) summaryParts.push(`${nMissDate} di ${missRows.length} autorizzazioni mancanti con avvio stimato`);
 
@@ -2593,8 +2692,10 @@ function _gcBuildModal(r) {
       <span><i class="gc-leg-dot" style="background:var(--ok)"></i>Completato</span>
       <span><i class="gc-leg-tentative"></i>Data prevista, non confermata</span>
       <span><i class="gc-leg-mancante"></i>Autorizzazione mancante (stima)</span>
+      <span><i class="gc-leg-proiettato"></i>Non avviato, proiettato da data inserita</span>
       <span><i class="gc-leg-line"></i>Oggi</span>
-    </div>`;
+    </div>
+    <div class="gantt-cant-auth-note">Squadre indipendenti per riga (rev.271): ogni cantiere/autorizzazione avanza con la propria squadra assegnata, non più un'unica capacità condivisa del lotto.</div>`;
   }
 
   return `<div class="auth-modal-overlay" onclick="if(event.target===this)_gcClose()">
