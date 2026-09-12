@@ -298,6 +298,7 @@ body.panel-open .main{margin-right:44%;}
 .gantt-cant-gridlines{position:absolute;inset:0;pointer-events:none;}
 .gantt-cant-gridline{position:absolute;top:0;bottom:0;width:1px;background:var(--gray-100);}
 .gantt-cant-today-line{position:absolute;top:0;bottom:0;width:2px;background:var(--danger);z-index:2;}
+.gantt-cant-today-flag{position:absolute;top:2px;font-size:9px;font-weight:700;color:var(--danger);white-space:nowrap;pointer-events:none;z-index:3;}
 .gantt-cant-track-cell{position:relative;height:60px;border-bottom:1px solid var(--gray-100);}
 .gantt-cant-nostart{position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:10.5px;color:var(--muted2);font-style:italic;}
 .gantt-cant-bar{position:absolute;top:19px;height:22px;border-radius:5px;cursor:help;box-shadow:0 1px 2px rgba(4,63,117,.15);}
@@ -327,6 +328,11 @@ body.panel-open .main{margin-right:44%;}
 .gc-leg-proiettato{width:14px;height:10px;border-radius:3px;background:repeating-linear-gradient(135deg,var(--retelit-blue-50) 0 5px,var(--retelit-ice) 5px 10px);border:1.5px dashed var(--accent2);display:inline-block;}
 .gc-leg-line{width:2px;height:12px;background:var(--danger);display:inline-block;}
 .gc-leg-continua{width:14px;height:10px;border-radius:3px;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.6) 0 4px,transparent 4px 8px);display:inline-block;}
+.gc-leg-noproj{width:14px;height:10px;border-radius:3px;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.4) 0 6px,transparent 6px 12px);display:inline-block;}
+.gc-leg-sep{width:1px;height:14px;background:var(--border2);align-self:center;}
+.gc-tooltip{position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0;font-size:11.5px;pointer-events:none;z-index:1000;opacity:0;transition:opacity .12s;font-family:var(--font-body);color:var(--text);box-shadow:var(--shadow-lg);min-width:160px;max-width:270px;overflow:hidden;}
+.gc-tooltip-head{padding:6px 11px;font-weight:700;font-size:11.5px;color:#fff;}
+.gc-tooltip-body{padding:7px 11px;display:flex;flex-direction:column;gap:3px;line-height:1.4;}
 @media(max-width:700px){.gantt-cant-labels{flex-basis:130px;}.gantt-cant-label-main{font-size:10px;}.gantt-cant-label-sub{font-size:9px;}}
 
 .factor-row{display:flex;flex-direction:column;gap:3px;padding:9px 0;border-bottom:1px solid var(--gray-100);}
@@ -477,6 +483,7 @@ body.panel-open .main{margin-right:44%;}
   <div class="panel-body" id="panelBody"></div>
 </aside>
 <div id="ganttCantContainer"></div>
+<div class="gc-tooltip" id="gcTooltip"></div>
 
 <script>
 // ── auth guard (stesso pattern di milestone.html: staff, esclude 'dl') ──
@@ -2348,6 +2355,15 @@ function _provSelectBase(lotto, base) {
 // #ganttCantContainer (fuori da #provWrap-{lotto}) per non legarne lo stato
 // al ciclo di rebuild della proiezione (base/squadre/gg-settimana).
 const _GC_STATO_LABEL = { in_corso: 'In corso', sospeso: 'Sospeso', allestimento: 'Allestimento', non_avviato: 'Non avviato', completato: 'Completato' };
+const _GC_STATO_COLOR = { in_corso: 'var(--retelit-sky)', sospeso: 'var(--warn)', allestimento: 'var(--retelit-blue-50)', non_avviato: 'var(--gray-400)', completato: 'var(--ok)' };
+
+// rev.276: tooltip ricco (stesso pattern #tooltip di scavi.html/index.html, adattato
+// come #gcTooltip dentro il modal) al posto del title nativo del browser — costruisce
+// l'attributo data-tip da inserire nell'HTML della barra.
+function _gcTipAttr(color, header, lines) {
+  const json = JSON.stringify({ color, header, lines: lines.filter(Boolean) });
+  return `data-tip='${json.replace(/'/g, '&#39;')}'`;
+}
 
 // Inizio/fine di un cantiere per il Gantt. Stessa cautela di rev.199-200
 // (AGENT_BRIEF): una data "prevista" da seed/import non è affidabile finché
@@ -2417,7 +2433,12 @@ function _gcResolveSpan(c, ctx) {
     ? _gcProjectRow(from, metriResidui, squadre, ctx.capacita.prodEffettiva, ctx.ggSett, ctx.calendarioTipo)
     : null;
   if (proj) {
-    return { start, startTentative, end: proj.end, ongoing: true, projected: true, oggiMark: from, giorniNecessari: proj.giorniNecessari, metriResidui, squadre };
+    // rev.276 fix bug: questo è il flag della proiezione AUTOMATICA (rev.273, cantieri
+    // in corso/sospesi non ancora conclusi) — deve restare distinto da `projected`
+    // (proiezione MANUALE da data inserita per cantieri "non avviato", v. sopra),
+    // altrimenti il ramo di rendering della riga 2711 intercetta anche questi cantieri
+    // con lo stile sbagliato (tratteggio pieno) invece del ramo a due toni sotto.
+    return { start, startTentative, end: proj.end, ongoing: true, autoProjected: true, oggiMark: from, giorniNecessari: proj.giorniNecessari, metriResidui, squadre };
   }
   return { start, startTentative, end: (oggi < start ? start : oggi), ongoing: true, noProject: true, metriResidui, squadre };
 }
@@ -2584,6 +2605,35 @@ function _gcRowControlsHtml(lotto, codice, squadre, isOverride, dateOpts) {
   return html;
 }
 
+// rev.276: hover popup ricco per le barre del Gantt cantieri, stesso pattern
+// #tooltip riusato in scavi.html/index.html — sostituisce il title nativo del
+// browser. Delegazione su document (le barre vengono ricreate ad ogni
+// _gcOpen/refresh, un listener diretto andrebbe perso).
+function _gcShowTip(el, e) {
+  const gcTooltip = document.getElementById('gcTooltip');
+  if (!gcTooltip) return;
+  let d;
+  try { d = JSON.parse(el.getAttribute('data-tip')); } catch (_) { return; }
+  const tw = 270;
+  const left = e.clientX + 14 + tw > window.innerWidth ? e.clientX - tw - 4 : e.clientX + 14;
+  gcTooltip.innerHTML = `<div class="gc-tooltip-head" style="background:${d.color}">${d.header}</div>
+    <div class="gc-tooltip-body">${d.lines.map(l => `<div>${l}</div>`).join('')}</div>`;
+  gcTooltip.style.opacity = '1';
+  gcTooltip.style.left = left + 'px';
+  gcTooltip.style.top = Math.max(4, e.clientY - 16) + 'px';
+}
+document.addEventListener('mousemove', (e) => {
+  const el = e.target.closest('.gantt-cant-bar[data-tip], .gc-bar-proiez-overlay[data-tip]');
+  if (el) _gcShowTip(el, e);
+});
+document.addEventListener('mouseout', (e) => {
+  const el = e.target.closest('.gantt-cant-bar[data-tip], .gc-bar-proiez-overlay[data-tip]');
+  if (el && (!e.relatedTarget || !el.contains(e.relatedTarget))) {
+    const gcTooltip = document.getElementById('gcTooltip');
+    if (gcTooltip) gcTooltip.style.opacity = '0';
+  }
+});
+
 function _gcBuildModal(r) {
   const lotto = r.lotto;
   const cantieri = r.s.cantieri || [];
@@ -2651,9 +2701,10 @@ function _gcBuildModal(r) {
     let cur = new Date(domainStart.getFullYear(), domainStart.getMonth(), 1);
     while (cur <= domainEnd) { ticks.push(new Date(cur)); cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1); }
 
-    const axisHtml = `<div class="gantt-cant-axis">${ticks.map(t => `<span class="gantt-cant-tick" style="left:${pct(t)}%">${t.toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })}</span>`).join('')}</div>`;
+    const oggiInDominio = oggi >= domainStart && oggi <= domainEnd;
+    const axisHtml = `<div class="gantt-cant-axis">${ticks.map(t => `<span class="gantt-cant-tick" style="left:${pct(t)}%">${t.toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })}</span>`).join('')}${oggiInDominio ? `<span class="gantt-cant-today-flag" style="left:${pct(oggi)}%">▼ Oggi: ${fmtDateShort(oggi)}</span>` : ''}</div>`;
     const gridHtml = ticks.map(t => `<div class="gantt-cant-gridline" style="left:${pct(t)}%"></div>`).join('');
-    const todayHtml = (oggi >= domainStart && oggi <= domainEnd) ? `<div class="gantt-cant-today-line" style="left:${pct(oggi)}%" title="Oggi — ${fmtDateShort(oggi)}"></div>` : '';
+    const todayHtml = oggiInDominio ? `<div class="gantt-cant-today-line" style="left:${pct(oggi)}%" title="Oggi — ${fmtDateShort(oggi)}"></div>` : '';
 
     const labelsHtml = allRows.map(row => row.mancante
       ? `<div class="gantt-cant-label-cell gantt-cant-label-cell-mancante">
@@ -2687,49 +2738,45 @@ function _gcBuildModal(r) {
         const left = pct(span.start);
         const cls = ['gantt-cant-bar', 'gc-bar-mancante'];
         const autText = `Autorizzazione prevista: ${fmtDateShort(row.autorizzazione)}${row.stimata ? ' (stimata per soglia ente)' : ''}`;
-        let width, title;
+        let width, tip;
         if (span.end) {
           width = Math.max(pct(span.end) - left, 1);
-          title = [
-            `${row.codice} — Autorizzazione mancante`,
+          tip = _gcTipAttr('var(--muted2)', `${row.codice} — Autorizzazione mancante`, [
             autText,
             `Fine stimata: ${fmtDateShort(span.end)} (${row.giorniNecessari} gg lavorativi con ${row.squadre} squadr${row.squadre === 1 ? 'a' : 'e'} dedicat${row.squadre === 1 ? 'a' : 'e'} a questa pratica)`,
             fmtKm(row.metri)
-          ].filter(Boolean).join(' · ').replace(/"/g, '&quot;');
+          ]);
         } else {
           width = 1.2;
           cls.push('gc-bar-point');
-          title = [
-            `${row.codice} — Autorizzazione mancante`,
+          tip = _gcTipAttr('var(--muted2)', `${row.codice} — Autorizzazione mancante`, [
             autText,
             'Fine non stimabile: nessuna squadra assegnata a questa pratica (o milestone ROS del lotto mancante)',
             fmtKm(row.metri)
-          ].filter(Boolean).join(' · ').replace(/"/g, '&quot;');
+          ]);
         }
-        return `<div class="gantt-cant-track-cell"><div class="${cls.join(' ')}" style="left:${left}%;width:${width}%" title="${title}"></div></div>`;
+        return `<div class="gantt-cant-track-cell"><div class="${cls.join(' ')}" style="left:${left}%;width:${width}%" ${tip}></div></div>`;
       }
       if (span.projected) {
         const left = pct(span.start);
         const cls = ['gantt-cant-bar', 'gc-bar-proiettato'];
         const sq = row.squadreInfo.squadre;
-        let width, title;
+        let width, tip;
         if (span.end) {
           width = Math.max(pct(span.end) - left, 1);
-          title = [
-            `${row.c.codice_cantiere || ''} — Non avviato (proiezione)`,
+          tip = _gcTipAttr('var(--accent2)', `${row.c.codice_cantiere || ''} — Non avviato (proiezione)`, [
             `Inizio previsto (inserito manualmente): ${fmtDateShort(span.start)}`,
             `Fine stimata: ${fmtDateShort(span.end)} (${span.giorniNecessari} gg lavorativi con ${sq} squadr${sq === 1 ? 'a' : 'e'})`
-          ].filter(Boolean).join(' · ').replace(/"/g, '&quot;');
+          ]);
         } else {
           width = 1.2;
           cls.push('gc-bar-point');
-          title = [
-            `${row.c.codice_cantiere || ''} — Non avviato (proiezione)`,
+          tip = _gcTipAttr('var(--accent2)', `${row.c.codice_cantiere || ''} — Non avviato (proiezione)`, [
             `Inizio previsto (inserito manualmente): ${fmtDateShort(span.start)}`,
             'Fine non stimabile: nessuna squadra assegnata, o milestone ROS del lotto mancante'
-          ].filter(Boolean).join(' · ').replace(/"/g, '&quot;');
+          ]);
         }
-        return `<div class="gantt-cant-track-cell"><div class="${cls.join(' ')}" style="left:${left}%;width:${width}%" title="${title}"></div></div>`;
+        return `<div class="gantt-cant-track-cell"><div class="${cls.join(' ')}" style="left:${left}%;width:${width}%" ${tip}></div></div>`;
       }
       const c = row.c;
       const left = pct(span.start);
@@ -2738,24 +2785,24 @@ function _gcBuildModal(r) {
       if (span.startTentative) cls.push('gc-bar-tentative');
       if (span.noProject) cls.push('gc-bar-ongoing'); // nessuna proiezione possibile: barra ferma a oggi, tratteggio "aperto"
       const pctScav = c.metri_totali > 0 ? Math.round((c.metri_scavati || 0) / c.metri_totali * 100) : null;
-      const fineLabel = span.projected
+      const fineLabel = span.autoProjected
         ? `Fine proiettata: ${fmtDateShort(span.end)} (${span.giorniNecessari} gg lavorativi, ${fmtNum(span.metriResidui)} m residui con ${span.squadre} squadr${span.squadre === 1 ? 'a' : 'e'})`
         : (span.noProject
             ? `Fine non proiettabile — ${!(span.metriResidui > 0) ? '0 m residui da scavare' : (!(span.squadre > 0) ? 'nessuna squadra assegnata' : 'milestone ROS del lotto mancante')}`
             : `Fine: ${fmtDateShort(span.end)}`);
-      const title = [
-        `${c.codice_cantiere || ''} — ${_GC_STATO_LABEL[c.stato_cantiere] || c.stato_cantiere || ''}`,
+      const statoColor = _GC_STATO_COLOR[c.stato_cantiere] || 'var(--gray-400)';
+      const tip = _gcTipAttr(statoColor, `${c.codice_cantiere || ''} — ${_GC_STATO_LABEL[c.stato_cantiere] || c.stato_cantiere || ''}`, [
         `Inizio: ${fmtDateShort(span.start)}${span.startTentative ? ' (previsto)' : ''}`,
         fineLabel,
         pctScav !== null ? `${fmtNum(c.metri_scavati || 0)}/${fmtNum(c.metri_totali)} m (${pctScav}%)` : ''
-      ].filter(Boolean).join(' · ').replace(/"/g, '&quot;');
-      let bars = `<div class="${cls.join(' ')}" style="left:${left}%;width:${width}%" title="${title}"></div>`;
+      ]);
+      let bars = `<div class="${cls.join(' ')}" style="left:${left}%;width:${width}%" ${tip}></div>`;
       // rev.273: overlay tratteggiato solo sul tratto oggi→fine proiettata — il
       // tratto inizio→oggi resta a tinta piena (periodo realmente trascorso).
-      if (span.projected && span.end > span.oggiMark) {
+      if (span.autoProjected && span.end > span.oggiMark) {
         const leftProiez = pct(span.oggiMark);
         const widthProiez = Math.max(pct(span.end) - leftProiez, 1);
-        bars += `<div class="gc-bar-proiez-overlay" style="left:${leftProiez}%;width:${widthProiez}%" title="${title}"></div>`;
+        bars += `<div class="gc-bar-proiez-overlay" style="left:${leftProiez}%;width:${widthProiez}%" ${tip}></div>`;
       }
       return `<div class="gantt-cant-track-cell">${bars}</div>`;
     }).join('');
@@ -2784,10 +2831,13 @@ function _gcBuildModal(r) {
       <span><i class="gc-leg-dot" style="background:var(--warn)"></i>Sospeso</span>
       <span><i class="gc-leg-dot" style="background:var(--retelit-blue-50)"></i>Allestimento</span>
       <span><i class="gc-leg-dot" style="background:var(--ok)"></i>Completato</span>
+      <span><i class="gc-leg-dot" style="background:var(--gray-300)"></i>Non avviato</span>
+      <span class="gc-leg-sep"></span>
       <span><i class="gc-leg-tentative"></i>Data prevista, non confermata</span>
       <span><i class="gc-leg-mancante"></i>Autorizzazione mancante (stima)</span>
       <span><i class="gc-leg-proiettato"></i>Non avviato, proiettato da data inserita</span>
-      <span><i class="gc-leg-continua" style="background:var(--retelit-sky)"></i>Tratteggio = proiezione residua (oggi→fine stimata)</span>
+      <span><i class="gc-leg-continua" style="background:var(--retelit-sky)"></i>Tratteggio su parte della barra = proiezione residua (oggi→fine stimata)</span>
+      <span><i class="gc-leg-noproj" style="background:var(--retelit-sky)"></i>Tratteggio su tutta la barra = proiezione non calcolabile</span>
       <span><i class="gc-leg-line"></i>Oggi</span>
     </div>
     <div class="gantt-cant-auth-note">Squadre indipendenti per riga (rev.271): ogni cantiere/autorizzazione avanza con la propria squadra assegnata, non più un'unica capacità condivisa del lotto. La fine dei cantieri non conclusi è sempre proiettata da squadre×produttività×metri residui (rev.273) — non dalla data fine prevista inserita dall'impresa.</div>`;
