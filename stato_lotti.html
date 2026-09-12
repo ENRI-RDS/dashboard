@@ -222,6 +222,10 @@ body.panel-open .main{margin-right:44%;}
 .proiezione-ggsett-row{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
 .proiezione-ggsett-lbl{font-size:11px;color:var(--muted);}
 .proiezione-ggsett-selector{display:flex;gap:6px;}
+.gc-ggsett-row{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+.gc-ggsett-lbl{font-size:11px;color:var(--muted);}
+.gc-ggsett-selector{display:flex;gap:6px;}
+.gc-ggsett-btn{width:28px;height:28px;font-size:12px;}
 .proiezione-auth-block{margin-bottom:14px;}
 .auth-modal-trigger{display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--border2);padding:8px 12px;border-radius:8px;font-size:11.5px;font-weight:600;color:var(--accent);cursor:pointer;font-family:inherit;transition:all .15s;}
 .auth-modal-trigger:hover{border-color:var(--accent);background:var(--retelit-ice);}
@@ -1674,6 +1678,7 @@ let _masterPraticheError = null;   // messaggio dell'ultimo tentativo fallito, n
 // chiesto esplicitamente che resti valido solo mentre la proiezione è aperta.
 // { [lotto]: { [codice]: {squadre, data_prevista_inizio} } }
 let _gcSquadreOverrides = {};
+let _gcCurrentLotto = null; // lotto il cui Gantt cantieri è attualmente aperto in #ganttCantContainer, o null — permette a chi modifica ggSett/date dal pannello Proiezione in alto di aggiornare anche il Gantt se aperto sullo stesso lotto, e viceversa
 
 function render(prog, scavi, milestoneByLotto) {
   const lotti = new Set([...Object.keys(prog), ...Object.keys(scavi), ...Object.keys(milestoneByLotto)]);
@@ -2146,6 +2151,7 @@ function buildProiezioneAuthPanel(r) {
   if (!pratiche.length) return '';
 
   const datiLotto = _ensurePraticheDate(lotto, pratiche);
+  const stimeSet = PROIEZIONE_DATE_STIMATA[lotto]; // bug fix: mancava — _ensurePraticheDate lo popola ma non lo restituisce, causava ReferenceError alla riga della tabella (bottone "apre" ma il rebuild falliva a metà)
 
   const totMetri = pratiche.reduce((s, p) => s + p.metri, 0);
   const senzaData = pratiche.reduce((s, p) => s + (datiLotto[p.codice] ? 0 : p.metri), 0);
@@ -2264,9 +2270,10 @@ function _provRefreshResult(lotto) {
 
 function _provSelectGgSett(lotto, n) {
   PROIEZIONE_GGSETT[lotto] = n;
-  const sel = document.getElementById('provGgSel-' + lotto);
-  if (sel) sel.querySelectorAll('.proiezione-ggsett-btn').forEach(b => b.classList.toggle('active', Number(b.textContent) === n));
-  _provRefreshResult(lotto);
+  // rev.274: rebuild completo (non più solo toggle classi + _provRefreshResult) per
+  // rinfrescare anche il Gantt se aperto sullo stesso lotto — stato condiviso, v.
+  // _refreshBothViews.
+  _refreshBothViews(lotto);
 }
 
 // Apre il modal "Autorizzazioni mancanti": rebuild dell'intera sezione proiezione
@@ -2295,9 +2302,7 @@ function _provSetDataPratica(lotto, codice, value) {
   if (!PROIEZIONE_DATE_PRATICHE[lotto]) PROIEZIONE_DATE_PRATICHE[lotto] = {};
   PROIEZIONE_DATE_PRATICHE[lotto][codice] = value || '';
   if (PROIEZIONE_DATE_STIMATA[lotto]) PROIEZIONE_DATE_STIMATA[lotto].delete(codice);
-  const wrap = document.getElementById('provWrap-' + lotto);
-  const r = LOTTI_DATA[lotto];
-  if (wrap && r) wrap.innerHTML = buildProiezioneInner(r);
+  _refreshBothViews(lotto); // rev.274: anche il Gantt se aperto — stesso campo ora editabile da entrambe le viste
 }
 
 // Ritenta il caricamento di Master.csv dopo un errore: azzera lo stato d'errore e
@@ -2493,12 +2498,26 @@ function _gcOpen(lotto) {
   const r = LOTTI_DATA[lotto];
   const cont = document.getElementById('ganttCantContainer');
   if (!r || !cont) return;
+  _gcCurrentLotto = lotto;
   cont.innerHTML = _gcBuildModal(r);
   if (!_masterPraticheByLotto && !_masterPraticheError) {
     loadMasterPraticheByLotto()
       .then(() => { const c2 = document.getElementById('ganttCantContainer'); if (c2 && c2.querySelector('.gantt-cant-modal')) _gcOpen(lotto); })
       .catch(() => { const c2 = document.getElementById('ganttCantContainer'); if (c2 && c2.querySelector('.gantt-cant-modal')) _gcOpen(lotto); });
   }
+}
+
+// rev.274: giorni/settimana e date previsione autorizzazioni mancanti sono condivisi
+// fra il pannello "Proiezione completamento scavi" in alto e il Gantt cantieri — su
+// richiesta utente sono ora editabili anche dentro il Gantt. Dato che vivono in due
+// contenitori DOM separati (#provWrap-{lotto} e #ganttCantContainer), chi modifica
+// uno stato condiviso (PROIEZIONE_GGSETT, PROIEZIONE_DATE_PRATICHE) deve rinfrescare
+// entrambe le viste se aperte, altrimenti l'altra resta con dati stantii.
+function _refreshBothViews(lotto) {
+  const wrap = document.getElementById('provWrap-' + lotto);
+  const r = LOTTI_DATA[lotto];
+  if (wrap && r) wrap.innerHTML = buildProiezioneInner(r);
+  if (_gcCurrentLotto === lotto) _gcOpen(lotto);
 }
 
 // rev.271/272: imposta squadre (n intero, o null/'' per tornare al default) per una
@@ -2516,7 +2535,8 @@ function _gcSetSquadre(lotto, codice, value) {
 }
 
 // rev.271/272: imposta la data di previsione inizio (solo per cantieri non_avviato —
-// le autorizzazioni mancanti hanno già una propria data da Master.csv/stima ente).
+// le autorizzazioni mancanti hanno già una propria data da Master.csv/stima ente,
+// modificabile con _provSetDataPratica anche da dentro il Gantt, v. rev.274).
 // Solo in memoria, stessa nota di _gcSetSquadre.
 function _gcSetDataPrevista(lotto, codice, value) {
   const dpi = value || null;
@@ -2525,22 +2545,34 @@ function _gcSetDataPrevista(lotto, codice, value) {
   _gcSquadreOverrides[lotto][codice] = { ...prev, data_prevista_inizio: dpi };
   _gcOpen(lotto);
 }
+
+// rev.274: giorni lavorativi/settimana anche dentro il Gantt (stesso stato condiviso
+// PROIEZIONE_GGSETT del pannello in alto — v. _refreshBothViews).
+function _gcSetGgSett(lotto, n) {
+  PROIEZIONE_GGSETT[lotto] = n;
+  _refreshBothViews(lotto);
+}
+
 function _gcClose() {
+  _gcCurrentLotto = null;
   const cont = document.getElementById('ganttCantContainer');
   if (cont) cont.innerHTML = '';
 }
 
-// rev.271: markup dei controlli inline (squadre + opzionale data previsione inizio)
-// mostrati sotto l'etichetta di ogni riga del Gantt.
-function _gcRowControlsHtml(lotto, codice, squadre, isOverride, showDateInput) {
+// rev.271/274: markup dei controlli inline (squadre + opzionale data) mostrati sotto
+// l'etichetta di ogni riga del Gantt. dateOpts, se presente, è {value, handler,
+// label, title} — handler è il nome della funzione onchange (stringa), diverso per i
+// due casi: '_gcSetDataPrevista' (inizio cantieri non_avviato, solo in memoria) o
+// '_provSetDataPratica' (data prevista autorizzazioni mancanti, condivisa col
+// pannello Proiezione in alto — v. rev.274/_refreshBothViews).
+function _gcRowControlsHtml(lotto, codice, squadre, isOverride, dateOpts) {
   const codiceEsc = String(codice).replace(/'/g, "\\'");
   const squadreVal = (squadre !== null && squadre !== undefined) ? squadre : '';
   const squadreTitle = isOverride ? 'Override assegnato manualmente' : 'Default dalle regole squadre per stato — modificabile';
   let html = `<div class="gc-row-controls">
     <span class="gc-row-ctl"><label>Squadre</label><input type="number" min="0" max="50" class="gc-squadre-input${isOverride ? ' gc-squadre-input-override' : ''}" value="${squadreVal}" title="${squadreTitle}" onchange="_gcSetSquadre('${lotto}','${codiceEsc}', this.value)"></span>`;
-  if (showDateInput) {
-    const dpi = ((_gcSquadreOverrides[lotto] || {})[codice] || {}).data_prevista_inizio || '';
-    html += `<span class="gc-row-ctl"><label>Inizio prev.</label><input type="date" class="gc-data-input" value="${dpi}" title="Data di previsione inizio cantiere (per proiettare una barra)" onchange="_gcSetDataPrevista('${lotto}','${codiceEsc}', this.value)"></span>`;
+  if (dateOpts) {
+    html += `<span class="gc-row-ctl"><label>${dateOpts.label}</label><input type="date" class="gc-data-input" value="${dateOpts.value || ''}" title="${dateOpts.title || ''}" onchange="${dateOpts.handler}('${lotto}','${codiceEsc}', this.value)"></span>`;
   }
   html += `</div>`;
   return html;
@@ -2554,6 +2586,7 @@ function _gcBuildModal(r) {
   const glob = (PARAMETRI && PARAMETRI.globali) || {};
   const gv = k => (glob[k] ? glob[k].valore : null);
   const ggSett = PROIEZIONE_GGSETT[lotto] != null ? PROIEZIONE_GGSETT[lotto] : (!r.capacita.insufficiente ? r.capacita.ggSettimana : null);
+  PROIEZIONE_GGSETT[lotto] = ggSett; // stesso pattern del pannello Proiezione in alto: fissa il default risolto, mai più null dopo la prima apertura
   const calendarioTipo = gv('CALENDARIO_TIPO') || 'Lavorativi';
   const ctx = { lotto, capacita: r.capacita, ggSett, calendarioTipo, parametri: PARAMETRI };
   const cantRows = cantieri.map(c => ({
@@ -2573,6 +2606,17 @@ function _gcBuildModal(r) {
   });
   const withDates = allRows.filter(x => x.span.start);
 
+  // rev.274: selettore giorni lavorativi/settimana anche dentro il Gantt — stesso
+  // stato condiviso PROIEZIONE_GGSETT del pannello Proiezione in alto (v.
+  // _gcSetGgSett/_refreshBothViews), sempre visibile indipendentemente dal contenuto.
+  const ggSettDefault = r.capacita.ggSettimana;
+  const ggSettSelectorHtml = `<div class="gc-ggsett-row">
+    <span class="gc-ggsett-lbl">Giorni lavorativi/settimana:</span>
+    <div class="gc-ggsett-selector">
+      ${[3, 4, 5, 6, 7].map(n => `<button type="button" class="proiezione-btn gc-ggsett-btn${n === ggSett ? ' active' : ''}${n === ggSettDefault ? ' proiezione-btn-current' : ''}" onclick="_gcSetGgSett('${lotto}', ${n})" title="${n === ggSettDefault ? 'Valore da parametri configurazione' : n + ' giorni/settimana'}">${n}</button>`).join('')}
+    </div>
+  </div>`;
+
   const authNote = !_masterPraticheByLotto
     ? (_masterPraticheError
         ? `<div class="gantt-cant-auth-note gantt-cant-auth-note-error">Autorizzazioni mancanti non incluse — ${_masterPraticheError}. <button type="button" class="auth-retry-btn" onclick="_gcRetryMasterPratiche('${lotto}')">Riprova</button></div>`
@@ -2581,9 +2625,9 @@ function _gcBuildModal(r) {
 
   let body;
   if (!allRows.length) {
-    body = `${authNote}<div class="gantt-cant-empty">Nessun cantiere né autorizzazione mancante censiti per questo lotto.</div>`;
+    body = `${ggSettSelectorHtml}${authNote}<div class="gantt-cant-empty">Nessun cantiere né autorizzazione mancante censiti per questo lotto.</div>`;
   } else if (!withDates.length) {
-    body = `${authNote}<div class="gantt-cant-empty">Nessuna riga ha ancora una data (inizio cantiere confermato da un aggiornamento impresa, o rilascio autorizzazione previsto/stimato).</div>`;
+    body = `${ggSettSelectorHtml}${authNote}<div class="gantt-cant-empty">Nessuna riga ha ancora una data (inizio cantiere confermato da un aggiornamento impresa, o rilascio autorizzazione previsto/stimato).</div>`;
   } else {
     let minD = withDates[0].span.start, maxD = withDates[0].span.end || withDates[0].span.start;
     withDates.forEach(x => {
@@ -2609,12 +2653,22 @@ function _gcBuildModal(r) {
       ? `<div class="gantt-cant-label-cell gantt-cant-label-cell-mancante">
           <span class="gantt-cant-label-main">${row.codice}</span>
           <span class="gantt-cant-label-sub">${row.labelSub}</span>
-          ${_gcRowControlsHtml(lotto, row.codice, row.squadre, row.isOverrideSquadre, false)}
+          ${_gcRowControlsHtml(lotto, row.codice, row.squadre, row.isOverrideSquadre, {
+            value: (PROIEZIONE_DATE_PRATICHE[lotto] || {})[row.codice] || '',
+            handler: '_provSetDataPratica',
+            label: 'Data prevista',
+            title: 'Data prevista rilascio autorizzazione — stesso campo del pannello Proiezione in alto'
+          })}
         </div>`
       : `<div class="gantt-cant-label-cell">
           <span class="gantt-cant-label-main">${row.c.codice_cantiere || '—'}</span>
           <span class="gantt-cant-label-sub">${[row.c.pratica_id, row.c.ente, row.c.comune].filter(Boolean).join(' · ')}</span>
-          ${_gcRowControlsHtml(lotto, row.c.pratica_id, row.squadreInfo.squadre, row.squadreInfo.isOverride, !row.hasRealStart)}
+          ${_gcRowControlsHtml(lotto, row.c.pratica_id, row.squadreInfo.squadre, row.squadreInfo.isOverride, !row.hasRealStart ? {
+            value: ((_gcSquadreOverrides[lotto] || {})[row.c.pratica_id] || {}).data_prevista_inizio || '',
+            handler: '_gcSetDataPrevista',
+            label: 'Inizio prev.',
+            title: 'Data di previsione inizio cantiere (per proiettare una barra)'
+          } : null)}
         </div>`
     ).join('');
 
@@ -2708,7 +2762,7 @@ function _gcBuildModal(r) {
     if (cantieri.length > nCantDate) summaryParts.push(`${cantieri.length - nCantDate} non avviati`);
     if (missRows.length) summaryParts.push(`${nMissDate} di ${missRows.length} autorizzazioni mancanti con avvio stimato`);
 
-    body = `${authNote}<div class="gantt-cant-summary">${summaryParts.join(' · ')}</div>
+    body = `${ggSettSelectorHtml}${authNote}<div class="gantt-cant-summary">${summaryParts.join(' · ')}</div>
     <div class="gantt-cant-wrap">
       <div class="gantt-cant-labels"><div class="gantt-cant-label-spacer"></div>${labelsHtml}</div>
       <div class="gantt-cant-timeline">
