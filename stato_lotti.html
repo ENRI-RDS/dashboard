@@ -264,7 +264,7 @@ body.panel-open .main{margin-right:44%;}
 .auth-date-input{font-family:var(--font-mono);font-size:11.5px;border:1px solid var(--border2);border-radius:6px;padding:5px 8px;background:#fff;color:var(--text);width:132px;transition:border-color .15s,box-shadow .15s;}
 .auth-date-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--retelit-ice);}
 .auth-date-input.empty{border-color:var(--warn);background:var(--warn-bg);}
-@media(max-width:600px){.auth-modal-overlay{padding:10px;}.auth-modal{max-height:90vh;}.auth-modal-header,.auth-modal-body,.auth-modal-footer{padding-left:14px;padding-right:14px;}}
+@media(max-width:600px){.auth-modal-overlay{padding:10px;}.auth-modal{max-height:90vh;}.gantt-cant-modal{max-height:92vh;}.auth-modal-header,.auth-modal-body,.auth-modal-footer{padding-left:14px;padding-right:14px;}}
 
 /* ── Gantt cantieri (§ nuova, su richiesta utente): un tastino nella sezione
    "Proiezione completamento scavi" apre un Gantt con una riga per cantiere/
@@ -275,7 +275,7 @@ body.panel-open .main{margin-right:44%;}
 .gantt-cant-trigger{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border2);padding:6px 12px;border-radius:8px;font-size:11px;font-weight:600;color:var(--accent2);cursor:pointer;font-family:inherit;transition:all .15s;flex-shrink:0;}
 .gantt-cant-trigger:hover{border-color:var(--accent2);background:var(--retelit-ice);}
 .gantt-cant-title-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
-.gantt-cant-modal{max-width:960px;}
+.gantt-cant-modal{max-width:1180px;max-height:88vh;}
 .gantt-cant-summary{font-size:10.5px;color:var(--muted);margin-bottom:12px;}
 .gantt-cant-empty{font-size:12px;color:var(--muted2);font-style:italic;padding:20px 0;text-align:center;}
 .gantt-cant-wrap{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
@@ -302,12 +302,15 @@ body.panel-open .main{margin-right:44%;}
 .gc-data-input{width:106px;font-size:9.5px;padding:1px 3px;border:1px solid var(--border2);border-radius:4px;font-family:inherit;}
 .gantt-cant-timeline{flex:1;min-width:0;overflow-x:auto;}
 .gantt-cant-axis{position:relative;height:24px;border-bottom:1px solid var(--border2);}
+.gantt-cant-flags-row{position:relative;height:15px;border-bottom:1px solid var(--gray-100);}
 .gantt-cant-tick{position:absolute;top:0;height:100%;display:flex;align-items:center;font-family:var(--font-mono);font-size:9px;font-weight:600;color:var(--muted);white-space:nowrap;padding-left:4px;border-left:1px solid var(--gray-200);}
 .gantt-cant-tracks{position:relative;display:flex;flex-direction:column;min-width:520px;}
 .gantt-cant-gridlines{position:absolute;inset:0;pointer-events:none;}
 .gantt-cant-gridline{position:absolute;top:0;bottom:0;width:1px;background:var(--gray-100);}
 .gantt-cant-today-line{position:absolute;top:0;bottom:0;width:2px;background:var(--danger);z-index:2;}
-.gantt-cant-today-flag{position:absolute;top:2px;font-size:9px;font-weight:700;color:var(--danger);white-space:nowrap;pointer-events:none;z-index:3;}
+.gantt-cant-today-flag{position:absolute;top:1px;font-size:9px;font-weight:700;color:var(--danger);white-space:nowrap;pointer-events:none;z-index:3;}
+.gantt-cant-milestone-line{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--muted2);z-index:1;opacity:.8;}
+.gantt-cant-milestone-flag{position:absolute;top:1px;font-size:9px;font-weight:700;white-space:nowrap;pointer-events:none;z-index:3;padding-left:8px;}
 .gantt-cant-track-cell{position:relative;height:60px;border-bottom:1px solid var(--gray-100);}
 .gantt-cant-nostart{position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:10.5px;color:var(--muted2);font-style:italic;}
 .gantt-cant-bar{position:absolute;top:19px;height:22px;border-radius:5px;cursor:help;box-shadow:0 1px 2px rgba(4,63,117,.15);}
@@ -336,6 +339,7 @@ body.panel-open .main{margin-right:44%;}
 .gc-leg-mancante{width:14px;height:10px;border-radius:3px;background:repeating-linear-gradient(135deg,var(--gray-300) 0 5px,var(--gray-100) 5px 10px);border:1.5px dashed var(--muted2);display:inline-block;}
 .gc-leg-proiettato{width:14px;height:10px;border-radius:3px;background:repeating-linear-gradient(135deg,var(--retelit-blue-50) 0 5px,var(--retelit-ice) 5px 10px);border:1.5px dashed var(--accent2);display:inline-block;}
 .gc-leg-line{width:2px;height:12px;background:var(--danger);display:inline-block;}
+.gc-leg-milestone{width:0;height:12px;border-left:2px dashed var(--muted2);display:inline-block;}
 .gc-leg-continua{width:14px;height:10px;border-radius:3px;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.6) 0 4px,transparent 4px 8px);display:inline-block;}
 .gc-leg-noproj{width:14px;height:10px;border-radius:3px;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.4) 0 6px,transparent 6px 12px);display:inline-block;}
 .gc-leg-sep{width:1px;height:14px;background:var(--border2);align-self:center;}
@@ -2701,6 +2705,17 @@ function _gcBuildModal(r) {
   } else if (!withDates.length) {
     body = `${ggSettSelectorHtml}${authNote}<div class="gantt-cant-empty">Nessuna riga ha ancora una data (inizio cantiere confermato da un aggiornamento impresa, o rilascio autorizzazione previsto/stimato).</div>`;
   } else {
+    // rev.278: milestone contrattuali del lotto, richieste visibili sul Gantt —
+    // stessi dati già usati da row.m/row.capacita per "Prossima milestone" e ROS
+    // nel resto della pagina, nessun nuovo fetch. Il dominio temporale viene esteso
+    // per includerle sempre, anche se cadono fuori dal range dei soli cantieri.
+    const milestoneDefs = [
+      { label: 'Invio pratiche', date: r.m ? parseDateIT(r.m.invio) : null, color: 'var(--retelit-blue-75)' },
+      { label: 'Ottenimento permessi', date: r.m ? parseDateIT(r.m.ottenim) : null, color: 'var(--accent2)' },
+      { label: 'Avvio scavi', date: r.m ? parseDateIT(r.m.avvio) : null, color: 'var(--retelit-blue)' },
+      { label: 'Completamento previsto (ROS)', date: (r.capacita && !r.capacita.insufficiente) ? r.capacita.milestoneROS : null, color: 'var(--ok)' },
+    ].filter(x => x.date);
+
     let minD = withDates[0].span.start, maxD = withDates[0].span.end || withDates[0].span.start;
     withDates.forEach(x => {
       if (x.span.start < minD) minD = x.span.start;
@@ -2708,6 +2723,7 @@ function _gcBuildModal(r) {
       if (xEnd > maxD) maxD = xEnd;
     });
     if (oggi > maxD) maxD = oggi;
+    milestoneDefs.forEach(m => { if (m.date < minD) minD = m.date; if (m.date > maxD) maxD = m.date; });
     const domainStart = new Date(minD.getFullYear(), minD.getMonth(), 1);
     const domainEnd = new Date(maxD.getFullYear(), maxD.getMonth() + 1, 0);
     const domainMs = domainEnd - domainStart;
@@ -2718,9 +2734,13 @@ function _gcBuildModal(r) {
     while (cur <= domainEnd) { ticks.push(new Date(cur)); cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1); }
 
     const oggiInDominio = oggi >= domainStart && oggi <= domainEnd;
-    const axisHtml = `<div class="gantt-cant-axis">${ticks.map(t => `<span class="gantt-cant-tick" style="left:${pct(t)}%">${t.toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })}</span>`).join('')}${oggiInDominio ? `<span class="gantt-cant-today-flag" style="left:${pct(oggi)}%">▼ Oggi: ${fmtDateShort(oggi)}</span>` : ''}</div>`;
+    const milestoneFlagsHtml = milestoneDefs.map(m => `<span class="gantt-cant-milestone-flag" style="left:${pct(m.date)}%;color:${m.color}">◆ ${m.label}: ${fmtDateShort(m.date)}</span>`).join('');
+    const axisHtml = `<div class="gantt-cant-axis">${ticks.map(t => `<span class="gantt-cant-tick" style="left:${pct(t)}%">${t.toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })}</span>`).join('')}</div>
+    <div class="gantt-cant-flags-row">${oggiInDominio ? `<span class="gantt-cant-today-flag" style="left:${pct(oggi)}%">▼ Oggi: ${fmtDateShort(oggi)}</span>` : ''}${milestoneFlagsHtml}</div>`;
     const gridHtml = ticks.map(t => `<div class="gantt-cant-gridline" style="left:${pct(t)}%"></div>`).join('');
     const todayHtml = oggiInDominio ? `<div class="gantt-cant-today-line" style="left:${pct(oggi)}%" title="Oggi — ${fmtDateShort(oggi)}"></div>` : '';
+    const milestoneLinesHtml = milestoneDefs.map(m => `<div class="gantt-cant-milestone-line" style="left:${pct(m.date)}%;border-left-color:${m.color}" title="${m.label} — ${fmtDateShort(m.date)}"></div>`).join('');
+
 
     const labelsHtml = allRows.map(row => row.mancante
       ? `<div class="gantt-cant-label-cell gantt-cant-label-cell-mancante">
@@ -2837,7 +2857,7 @@ function _gcBuildModal(r) {
       <div class="gantt-cant-timeline">
         ${axisHtml}
         <div class="gantt-cant-tracks">
-          <div class="gantt-cant-gridlines">${gridHtml}${todayHtml}</div>
+          <div class="gantt-cant-gridlines">${gridHtml}${milestoneLinesHtml}${todayHtml}</div>
           ${tracksHtml}
         </div>
       </div>
@@ -2855,8 +2875,12 @@ function _gcBuildModal(r) {
       <span><i class="gc-leg-continua" style="background:var(--retelit-sky)"></i>Tratteggio su parte della barra = proiezione residua (oggi→fine stimata)</span>
       <span><i class="gc-leg-noproj" style="background:var(--retelit-sky)"></i>Tratteggio su tutta la barra = proiezione non calcolabile</span>
       <span><i class="gc-leg-line"></i>Oggi</span>
-    </div>
-    <div class="gantt-cant-auth-note">Squadre indipendenti per riga (rev.271): ogni cantiere/autorizzazione avanza con la propria squadra assegnata, non più un'unica capacità condivisa del lotto. La fine dei cantieri non conclusi è sempre proiettata da squadre×produttività×metri residui (rev.273) — non dalla data fine prevista inserita dall'impresa.</div>`;
+      <span class="gc-leg-sep"></span>
+      <span><i class="gc-leg-milestone" style="border-left-color:var(--retelit-blue-75)"></i>Invio pratiche</span>
+      <span><i class="gc-leg-milestone" style="border-left-color:var(--accent2)"></i>Ottenimento permessi</span>
+      <span><i class="gc-leg-milestone" style="border-left-color:var(--retelit-blue)"></i>Avvio scavi</span>
+      <span><i class="gc-leg-milestone" style="border-left-color:var(--ok)"></i>Completamento previsto (ROS)</span>
+    </div>`;
   }
 
   return `<div class="auth-modal-overlay" onclick="if(event.target===this)_gcClose()">
@@ -2864,7 +2888,7 @@ function _gcBuildModal(r) {
       <div class="auth-modal-header">
         <div>
           <div class="auth-modal-title">📊 Gantt cantieri — Lotto ${lotto}</div>
-          <div class="auth-modal-subtitle">${cantieri.length} cantieri/autorizzazioni aperte + ${missRows.length} autorizzazioni mancanti stimate — dati da /api/cantieri e Master.csv</div>
+          <div class="auth-modal-subtitle">${cantieri.length} cantieri/autorizzazioni aperte · ${missRows.length} autorizzazioni mancanti stimate</div>
         </div>
         <button type="button" class="modal-close" onclick="_gcClose()" aria-label="Chiudi">&times;</button>
       </div>
