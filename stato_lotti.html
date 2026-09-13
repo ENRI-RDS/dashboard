@@ -275,12 +275,12 @@ body.panel-open .main{margin-right:44%;}
 .gantt-cant-trigger{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border2);padding:6px 12px;border-radius:8px;font-size:11px;font-weight:600;color:var(--accent2);cursor:pointer;font-family:inherit;transition:all .15s;flex-shrink:0;}
 .gantt-cant-trigger:hover{border-color:var(--accent2);background:var(--retelit-ice);}
 .gantt-cant-title-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
-.gantt-cant-modal{max-width:1180px;max-height:88vh;}
+.gantt-cant-modal{max-width:1500px;max-height:90vh;}
 .gantt-cant-summary{font-size:10.5px;color:var(--muted);margin-bottom:12px;}
 .gantt-cant-empty{font-size:12px;color:var(--muted2);font-style:italic;padding:20px 0;text-align:center;}
 .gantt-cant-wrap{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
 .gantt-cant-labels{flex:0 0 210px;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--gray-50);}
-.gantt-cant-label-spacer{height:24px;border-bottom:1px solid var(--border2);}
+.gantt-cant-label-spacer{height:39px;border-bottom:1px solid var(--border2);}
 .gantt-cant-label-cell{height:60px;display:flex;flex-direction:column;justify-content:center;padding:0 10px;border-bottom:1px solid var(--gray-100);overflow:hidden;}
 .gantt-cant-label-main{font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .gantt-cant-label-sub{font-size:9.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
@@ -309,8 +309,8 @@ body.panel-open .main{margin-right:44%;}
 .gantt-cant-gridline{position:absolute;top:0;bottom:0;width:1px;background:var(--gray-100);}
 .gantt-cant-today-line{position:absolute;top:0;bottom:0;width:2px;background:var(--danger);z-index:2;}
 .gantt-cant-today-flag{position:absolute;top:1px;font-size:9px;font-weight:700;color:var(--danger);white-space:nowrap;pointer-events:none;z-index:3;}
-.gantt-cant-milestone-line{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--muted2);z-index:1;opacity:.8;}
-.gantt-cant-milestone-flag{position:absolute;top:1px;font-size:9px;font-weight:700;white-space:nowrap;pointer-events:none;z-index:3;padding-left:8px;}
+.gantt-cant-milestone-line{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--accent2);z-index:1;opacity:.75;}
+.gantt-cant-milestone-flag{position:absolute;top:1px;font-size:9px;font-weight:700;color:var(--accent2);white-space:nowrap;pointer-events:none;z-index:3;}
 .gantt-cant-track-cell{position:relative;height:60px;border-bottom:1px solid var(--gray-100);}
 .gantt-cant-nostart{position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:10.5px;color:var(--muted2);font-style:italic;}
 .gantt-cant-bar{position:absolute;top:19px;height:22px;border-radius:5px;cursor:help;box-shadow:0 1px 2px rgba(4,63,117,.15);}
@@ -2705,16 +2705,27 @@ function _gcBuildModal(r) {
   } else if (!withDates.length) {
     body = `${ggSettSelectorHtml}${authNote}<div class="gantt-cant-empty">Nessuna riga ha ancora una data (inizio cantiere confermato da un aggiornamento impresa, o rilascio autorizzazione previsto/stimato).</div>`;
   } else {
-    // rev.278: milestone contrattuali del lotto, richieste visibili sul Gantt —
-    // stessi dati già usati da row.m/row.capacita per "Prossima milestone" e ROS
-    // nel resto della pagina, nessun nuovo fetch. Il dominio temporale viene esteso
-    // per includerle sempre, anche se cadono fuori dal range dei soli cantieri.
-    const milestoneDefs = [
-      { label: 'Invio pratiche', date: r.m ? parseDateIT(r.m.invio) : null, color: 'var(--retelit-blue-75)' },
-      { label: 'Ottenimento permessi', date: r.m ? parseDateIT(r.m.ottenim) : null, color: 'var(--accent2)' },
-      { label: 'Avvio scavi', date: r.m ? parseDateIT(r.m.avvio) : null, color: 'var(--retelit-blue)' },
-      { label: 'Completamento previsto (ROS)', date: (r.capacita && !r.capacita.insufficiente) ? r.capacita.milestoneROS : null, color: 'var(--ok)' },
-    ].filter(x => x.date);
+    // rev.279: fix segnalato dall'utente — mancava la "prossima milestone" (50%/90%
+    // scavato) perché rev.278 mostrava solo invio/ottenimento/avvio/ROS. Ora si usa
+    // la stessa lista completa di milestone reali già usata altrove nella pagina per
+    // "Prossima milestone" (row.m: invio/ottenim/avvio/p50/p90 + ROS da row.capacita,
+    // con fallback a p100 se la milestone ROS non è disponibile), così il Gantt non
+    // può più disallinearsi da quel dato. Stile unico (niente più 4 colori) per
+    // restare leggibile con più voci.
+    const milestoneDefs = [];
+    if (r.m) {
+      if (r.m.invio) milestoneDefs.push({ label: 'Invio pratiche', date: parseDateIT(r.m.invio) });
+      if (r.m.ottenim) milestoneDefs.push({ label: 'Ottenimento permessi', date: parseDateIT(r.m.ottenim) });
+      if (r.m.avvio) milestoneDefs.push({ label: 'Avvio scavi', date: parseDateIT(r.m.avvio) });
+      if (r.m.p50) milestoneDefs.push({ label: '50% scavato', date: parseDateIT(r.m.p50) });
+      if (r.m.p90) milestoneDefs.push({ label: '90% scavato', date: parseDateIT(r.m.p90) });
+    }
+    if (r.capacita && !r.capacita.insufficiente && r.capacita.milestoneROS) {
+      milestoneDefs.push({ label: 'Completamento previsto (ROS)', date: r.capacita.milestoneROS });
+    } else if (r.m && r.m.p100) {
+      milestoneDefs.push({ label: '100% scavato', date: parseDateIT(r.m.p100) });
+    }
+    const milestonesValide = milestoneDefs.filter(x => x.date);
 
     let minD = withDates[0].span.start, maxD = withDates[0].span.end || withDates[0].span.start;
     withDates.forEach(x => {
@@ -2723,23 +2734,29 @@ function _gcBuildModal(r) {
       if (xEnd > maxD) maxD = xEnd;
     });
     if (oggi > maxD) maxD = oggi;
-    milestoneDefs.forEach(m => { if (m.date < minD) minD = m.date; if (m.date > maxD) maxD = m.date; });
+    milestonesValide.forEach(m => { if (m.date < minD) minD = m.date; if (m.date > maxD) maxD = m.date; });
     const domainStart = new Date(minD.getFullYear(), minD.getMonth(), 1);
     const domainEnd = new Date(maxD.getFullYear(), maxD.getMonth() + 1, 0);
     const domainMs = domainEnd - domainStart;
     const pct = d => domainMs > 0 ? Math.min(100, Math.max(0, (d - domainStart) / domainMs * 100)) : 0;
+    // rev.279 fix: le etichette (testo del flag, non solo il marcatore) vicino al
+    // bordo destro sforavano il contenitore e facevano scattare lo scroll
+    // orizzontale forzato (.gantt-cant-timeline{overflow-x:auto}) anche quando i
+    // mesi ci stavano comodamente. Oltre il 60% si ancora l'etichetta a destra
+    // (cresce verso sinistra) invece che a sinistra (cresce verso destra).
+    const flagStyle = p => p > 60 ? `right:${100 - p}%;text-align:right;padding-right:8px` : `left:${p}%;padding-left:8px`;
 
     const ticks = [];
     let cur = new Date(domainStart.getFullYear(), domainStart.getMonth(), 1);
     while (cur <= domainEnd) { ticks.push(new Date(cur)); cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1); }
 
     const oggiInDominio = oggi >= domainStart && oggi <= domainEnd;
-    const milestoneFlagsHtml = milestoneDefs.map(m => `<span class="gantt-cant-milestone-flag" style="left:${pct(m.date)}%;color:${m.color}">◆ ${m.label}: ${fmtDateShort(m.date)}</span>`).join('');
+    const milestoneFlagsHtml = milestonesValide.map(m => `<span class="gantt-cant-milestone-flag" style="${flagStyle(pct(m.date))}">◆ ${m.label}: ${fmtDateShort(m.date)}</span>`).join('');
     const axisHtml = `<div class="gantt-cant-axis">${ticks.map(t => `<span class="gantt-cant-tick" style="left:${pct(t)}%">${t.toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })}</span>`).join('')}</div>
-    <div class="gantt-cant-flags-row">${oggiInDominio ? `<span class="gantt-cant-today-flag" style="left:${pct(oggi)}%">▼ Oggi: ${fmtDateShort(oggi)}</span>` : ''}${milestoneFlagsHtml}</div>`;
+    <div class="gantt-cant-flags-row">${oggiInDominio ? `<span class="gantt-cant-today-flag" style="${flagStyle(pct(oggi))}">▼ Oggi: ${fmtDateShort(oggi)}</span>` : ''}${milestoneFlagsHtml}</div>`;
     const gridHtml = ticks.map(t => `<div class="gantt-cant-gridline" style="left:${pct(t)}%"></div>`).join('');
     const todayHtml = oggiInDominio ? `<div class="gantt-cant-today-line" style="left:${pct(oggi)}%" title="Oggi — ${fmtDateShort(oggi)}"></div>` : '';
-    const milestoneLinesHtml = milestoneDefs.map(m => `<div class="gantt-cant-milestone-line" style="left:${pct(m.date)}%;border-left-color:${m.color}" title="${m.label} — ${fmtDateShort(m.date)}"></div>`).join('');
+    const milestoneLinesHtml = milestonesValide.map(m => `<div class="gantt-cant-milestone-line" style="left:${pct(m.date)}%" title="${m.label} — ${fmtDateShort(m.date)}"></div>`).join('');
 
 
     const labelsHtml = allRows.map(row => row.mancante
@@ -2876,10 +2893,7 @@ function _gcBuildModal(r) {
       <span><i class="gc-leg-noproj" style="background:var(--retelit-sky)"></i>Tratteggio su tutta la barra = proiezione non calcolabile</span>
       <span><i class="gc-leg-line"></i>Oggi</span>
       <span class="gc-leg-sep"></span>
-      <span><i class="gc-leg-milestone" style="border-left-color:var(--retelit-blue-75)"></i>Invio pratiche</span>
-      <span><i class="gc-leg-milestone" style="border-left-color:var(--accent2)"></i>Ottenimento permessi</span>
-      <span><i class="gc-leg-milestone" style="border-left-color:var(--retelit-blue)"></i>Avvio scavi</span>
-      <span><i class="gc-leg-milestone" style="border-left-color:var(--ok)"></i>Completamento previsto (ROS)</span>
+      <span><i class="gc-leg-milestone"></i>Milestone contrattuale (invio, ottenimento, avvio scavi, % scavato, completamento previsto)</span>
     </div>`;
   }
 
