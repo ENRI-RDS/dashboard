@@ -191,8 +191,6 @@ body.panel-open .main{margin-right:44%;}
 
 /* proiezione completamento scavi — selettore squadre cliccabile + risultato */
 .proiezione-box{background:var(--gray-50);border:1px solid var(--border);border-radius:12px;padding:14px 16px;}
-.proiezione-hint{font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.4;}
-.proiezione-hint b{color:var(--text);font-family:var(--font-mono);}
 .proiezione-storico{padding-bottom:12px;margin-bottom:12px;border-bottom:1px dashed var(--border2);}
 .proiezione-storico-val{font-size:12.5px;font-weight:600;color:var(--text2);}
 .proiezione-storico-val b{color:var(--text);font-family:var(--font-mono);}
@@ -206,7 +204,6 @@ body.panel-open .main{margin-right:44%;}
 }
 .proiezione-base-btn.active{background:var(--retelit-blue-50,var(--accent));color:#fff;border-color:var(--retelit-blue-50,var(--accent));}
 .proiezione-base-note{font-size:10.5px;color:var(--muted2);font-style:italic;margin-bottom:12px;line-height:1.4;}
-.proiezione-squadre-selector{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;}
 .proiezione-btn{
   min-width:32px;height:32px;padding:0 6px;border-radius:8px;
   border:1px solid var(--border2,var(--border));background:var(--surface);color:var(--text2);
@@ -219,9 +216,6 @@ body.panel-open .main{margin-right:44%;}
 .proiezione-data{font-family:var(--font-display);font-size:16px;font-weight:800;color:var(--text);}
 .proiezione-sub{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4;}
 .proiezione-scost{font-size:11.5px;font-weight:700;margin-top:8px;}
-.proiezione-ggsett-row{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
-.proiezione-ggsett-lbl{font-size:11px;color:var(--muted);}
-.proiezione-ggsett-selector{display:flex;gap:6px;}
 .gc-ggsett-row{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
 .gc-ggsett-lbl{font-size:11px;color:var(--muted);}
 .gc-ggsett-selector{display:flex;gap:6px;}
@@ -266,14 +260,16 @@ body.panel-open .main{margin-right:44%;}
 .auth-date-input.empty{border-color:var(--warn);background:var(--warn-bg);}
 @media(max-width:600px){.auth-modal-overlay{padding:10px;}.auth-modal{max-height:90vh;}.gantt-cant-modal{max-height:92vh;}.auth-modal-header,.auth-modal-body,.auth-modal-footer{padding-left:14px;padding-right:14px;}}
 
-/* ── Gantt cantieri (§ nuova, su richiesta utente): un tastino nella sezione
-   "Proiezione completamento scavi" apre un Gantt con una riga per cantiere/
-   autorizzazione, inizio/fine reali sull'asse tempo. Riusa la cornice modale
-   generica .auth-modal-* (solo più larga). Due colonne affiancate (etichette
-   + timeline) invece di una singola griglia, per poter posizionare
-   gridline/linea "oggi" in percentuale sulla sola colonna timeline. ── */
-.gantt-cant-trigger{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border2);padding:6px 12px;border-radius:8px;font-size:11px;font-weight:600;color:var(--accent2);cursor:pointer;font-family:inherit;transition:all .15s;flex-shrink:0;}
-.gantt-cant-trigger:hover{border-color:var(--accent2);background:var(--retelit-ice);}
+/* ── Gantt cantieri (§ nuova, su richiesta utente): pulsante grande e primario
+   sotto il box di proiezione — rev.280: da qui in poi è il punto principale di
+   interazione per cantiere (squadre, date, avanzamento), non più un tastino
+   secondario nel titolo. Apre un Gantt con una riga per cantiere/autorizzazione,
+   inizio/fine reali sull'asse tempo. Riusa la cornice modale generica
+   .auth-modal-* (solo più larga). Due colonne affiancate (etichette + timeline)
+   invece di una singola griglia, per poter posizionare gridline/linea "oggi" in
+   percentuale sulla sola colonna timeline. ── */
+.gantt-cant-trigger{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:var(--accent2);border:none;padding:12px 16px;border-radius:12px;font-size:13.5px;font-weight:700;color:#fff;cursor:pointer;font-family:inherit;transition:all .15s;margin-top:10px;box-shadow:var(--sh-sm);}
+.gantt-cant-trigger:hover{filter:brightness(1.08);box-shadow:var(--shadow-lg);}
 .gantt-cant-title-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
 .gantt-cant-modal{max-width:1500px;max-height:90vh;}
 .gantt-cant-summary{font-size:10.5px;color:var(--muted);margin-bottom:12px;}
@@ -1676,7 +1672,6 @@ function renderProssimaCol(row) {
 
 let LOTTI_DATA = {};
 let PANEL_OPEN = null;
-let PROIEZIONE_SQUADRE = {}; // { [lotto]: numero squadre selezionato per la proiezione interattiva }
 let PROIEZIONE_BASE = {};    // { [lotto]: 'autorizzati' | 'lotto' — base metri residui per la proiezione }
 let PROIEZIONE_GGSETT = {};  // { [lotto]: override giorni lavorativi/settimana per la sola proiezione (3-7) — non tocca il parametro ufficiale usato dal motore rischio }
 let PROIEZIONE_DATE_PRATICHE = {}; // { [lotto]: { [codicePratica]: 'YYYY-MM-DD' | '' } } — date di rilascio previste per pratica (chiave = codice reale, es. "AUT/2/1B"), usate solo dalla proiezione "Intero lotto". Prefill dal campo reale DATA_PREVISTA_RILASCIO di Master.csv quando presente (stessa fonte del campo "Prev. Rilascio" di index.html/imprese.html), altrimenti da stimaDataPreventivaISO — mai persistite lato server, solo what-if locale.
@@ -1693,9 +1688,9 @@ let _masterPraticheLoading = null; // Promise in corso — evita fetch concorren
 let _masterPraticheError = null;   // messaggio dell'ultimo tentativo fallito, null se mai tentato o riuscito
 
 // rev.271/272: override squadre/data-prevista-inizio per riga del Gantt cantieri, per
-// lotto — SOLO in-memory (si perde al refresh/chiusura pagina), stessa natura "what-if"
-// di sessione di PROIEZIONE_SQUADRE. Nessun fetch/persistenza backend: l'utente ha
-// chiesto esplicitamente che resti valido solo mentre la proiezione è aperta.
+// lotto — SOLO in-memory (si perde al refresh/chiusura pagina). Nessun fetch/
+// persistenza backend: l'utente ha chiesto esplicitamente che resti valido solo
+// mentre la proiezione è aperta.
 // { [lotto]: { [codice]: {squadre, data_prevista_inizio} } }
 let _gcSquadreOverrides = {};
 let _gcCurrentLotto = null; // lotto il cui Gantt cantieri è attualmente aperto in #ganttCantContainer, o null — permette a chi modifica ggSett/date dal pannello Proiezione in alto di aggiornare anche il Gantt se aperto sullo stesso lotto, e viceversa
@@ -2029,20 +2024,11 @@ function buildMilestoneCard(r) {
 }
 
 // ── Proiezione completamento scavi (§ nuova, su richiesta utente): "a quale
-// data si arriva continuando con le squadre attuali", con possibilità di
-// cliccare un numero diverso di squadre per vedere come cambia la data.
-// Stato selezione persistito in PROIEZIONE_SQUADRE per lotto (sopravvive a
-// switchTab ma si perde alla chiusura pannello/refresh dati, non è un dato
-// da salvare — è solo una simulazione "what-if" lato client).
-// Metri residui secondo la base scelta dall'utente: 'autorizzati' (comportamento
-// preesistente, c.metriResiduiScavo — solo ciò che ha già un permesso valido)
-// oppure 'lotto' (km totali del lotto da progettazione, r.p.kmTot, meno lo
-// scavato — include anche i metri non ancora autorizzati, utile per capire
-// "quando finisco TUTTO il lotto" anche se mancano ancora dei permessi).
-function metriResiduiPerBase(r, base) {
-  if (base === 'lotto') return Math.max(0, (r.p.kmTot || 0) - (r.s.metriScavati || 0));
-  return r.capacita.metriResiduiScavo;
-}
+// data si arriva continuando con le squadre attuali" — sola lettura, calcolata
+// con le squadre davvero disponibili oggi (v. nota rev.280 dentro
+// buildProiezioneInner: il simulatore interattivo "che succede con N squadre"
+// è stato rimosso perché superato dal Gantt cantieri, dove ogni cantiere ha
+// ormai una propria squadra indipendente — rev.271/273).
 
 function buildProiezioneCard(r) {
   return `<div id="provWrap-${r.lotto}">${buildProiezioneInner(r)}</div>`;
@@ -2050,10 +2036,10 @@ function buildProiezioneCard(r) {
 
 function buildProiezioneInner(r) {
   const c = r.capacita;
-  const ganttBtn = `<button type="button" class="gantt-cant-trigger" onclick="_gcOpen('${r.lotto}')">📊 Gantt cantieri</button>`;
-  const title = `<div class="panel-section-title panel-section-title-main gantt-cant-title-row"><span>Proiezione completamento scavi</span>${ganttBtn}</div>`;
+  const ganttBtn = `<button type="button" class="gantt-cant-trigger" onclick="_gcOpen('${r.lotto}')">📊 Apri Gantt cantieri</button>`;
+  const title = `<div class="panel-section-title panel-section-title-main gantt-cant-title-row"><span>Proiezione completamento scavi</span></div>`;
   if (c.insufficiente) {
-    return `${title}<div class="proiezione-box"><div class="proiezione-storico">${buildMediaStoricaLine(r)}</div><div class="dcard-nd" style="margin-top:10px">Proiezione non disponibile — ${c.motivo}</div></div>`;
+    return `${title}<div class="proiezione-box"><div class="proiezione-storico">${buildMediaStoricaLine(r)}</div><div class="dcard-nd" style="margin-top:10px">Proiezione non disponibile — ${c.motivo}</div></div>${ganttBtn}`;
   }
 
   const base = PROIEZIONE_BASE[r.lotto] || 'autorizzati';
@@ -2081,16 +2067,6 @@ function buildProiezioneInner(r) {
       ? baseNoteLotto
       : `${fmtKm(gapLotto)} del lotto non sono ancora autorizzati (stima) — non conteggiati in questa proiezione.`}</div>` : '';
 
-  const ggSettDefault = c.ggSettimana;
-  const ggSett = PROIEZIONE_GGSETT[r.lotto] != null ? PROIEZIONE_GGSETT[r.lotto] : ggSettDefault;
-  PROIEZIONE_GGSETT[r.lotto] = ggSett;
-  const ggSettSelector = `<div class="proiezione-ggsett-row">
-    <span class="proiezione-ggsett-lbl">Giorni lavorativi/settimana per la proiezione:</span>
-    <div class="proiezione-ggsett-selector" id="provGgSel-${r.lotto}">
-      ${[3, 4, 5, 6, 7].map(n => `<button type="button" class="proiezione-btn proiezione-ggsett-btn${n === ggSett ? ' active' : ''}${n === ggSettDefault ? ' proiezione-btn-current' : ''}" onclick="_provSelectGgSett('${r.lotto}', ${n})" title="${n === ggSettDefault ? 'Valore da parametri configurazione' : n + ' giorni/settimana'}">${n}</button>`).join('')}
-    </div>
-  </div>`;
-
   const authPanel = (base === 'lotto' && hasGap) ? buildProiezioneAuthPanel(r) : '';
 
   if (metriResidui <= 0) {
@@ -2099,27 +2075,22 @@ function buildProiezioneInner(r) {
       <div class="proiezione-storico">${buildMediaStoricaLine(r)}</div>
       ${baseToggle}
       <div class="dcard-main" style="color:var(--ok);margin-top:10px">${msg} — nessuna proiezione da calcolare.</div>
-    </div>`;
+    </div>${ganttBtn}`;
   }
 
+  // rev.280: rimossi su richiesta utente il selettore "giorni lavorativi/settimana"
+  // (duplicava lo stesso controllo già presente ed editabile nel Gantt cantieri,
+  // stato condiviso via PROIEZIONE_GGSETT — v. _refreshBothViews) e il simulatore
+  // "che succede con N squadre" (superato dal Gantt, dove ogni cantiere ha ormai
+  // una propria squadra indipendente — rev.271/273): qui resta solo il risultato
+  // in sola lettura, calcolato con le squadre davvero disponibili oggi.
   const disp = c.squadre.disponibili;
-  const selezionate = PROIEZIONE_SQUADRE[r.lotto] !== undefined ? PROIEZIONE_SQUADRE[r.lotto] : disp;
-  PROIEZIONE_SQUADRE[r.lotto] = selezionate;
-  const maxBtn = Math.max(6, disp); // almeno 6 opzioni cliccabili, di più solo se già oggi si hanno più di 6 squadre
-  let btns = '';
-  for (let n = 1; n <= maxBtn; n++) {
-    const cls = 'proiezione-btn' + (n === selezionate ? ' active' : '') + (n === disp ? ' proiezione-btn-current' : '');
-    btns += `<button type="button" class="${cls}" onclick="_provSelectSquadre('${r.lotto}', ${n})" title="${n === disp ? 'Squadre attualmente disponibili' : n + ' squadre'}">${n}</button>`;
-  }
   return `${title}<div class="proiezione-box">
     <div class="proiezione-storico">${buildMediaStoricaLine(r)}</div>
     ${baseToggle}
-    ${ggSettSelector}
     ${authPanel}
-    <div class="proiezione-hint">Squadre attive da oggi in poi (oggi disponibili: <b>${disp}</b>) — clicca un numero per vedere come cambia la data:</div>
-    <div class="proiezione-squadre-selector" id="provSel-${r.lotto}">${btns}</div>
-    <div class="proiezione-result" id="provRes-${r.lotto}">${renderProiezioneResult(r, selezionate, metriResidui, base)}</div>
-  </div>`;
+    <div class="proiezione-result" id="provRes-${r.lotto}">${renderProiezioneResult(r, disp, metriResidui, base)}</div>
+  </div>${ganttBtn}`;
 }
 
 // Pannello "Autorizzazioni mancanti" (solo base 'Intero lotto'): elenca le pratiche
@@ -2276,26 +2247,6 @@ function renderProiezioneResult(r, squadre, metriResidui, base) {
   ${scostHtml}`;
 }
 
-// Aggiorna solo il risultato (no rebuild pannello) dopo un cambio squadre/gg-settimana
-// che non altera la struttura del resto della sezione.
-function _provRefreshResult(lotto) {
-  const r = LOTTI_DATA[lotto];
-  const res = document.getElementById('provRes-' + lotto);
-  if (res && r) {
-    const base = PROIEZIONE_BASE[lotto] || 'autorizzati';
-    const squadre = PROIEZIONE_SQUADRE[lotto] !== undefined ? PROIEZIONE_SQUADRE[lotto] : r.capacita.squadre.disponibili;
-    res.innerHTML = renderProiezioneResult(r, squadre, metriResiduiPerBase(r, base), base);
-  }
-}
-
-function _provSelectGgSett(lotto, n) {
-  PROIEZIONE_GGSETT[lotto] = n;
-  // rev.274: rebuild completo (non più solo toggle classi + _provRefreshResult) per
-  // rinfrescare anche il Gantt se aperto sullo stesso lotto — stato condiviso, v.
-  // _refreshBothViews.
-  _refreshBothViews(lotto);
-}
-
 // Apre il modal "Autorizzazioni mancanti": rebuild dell'intera sezione proiezione
 // (come _provSelectBase) perché il modal è renderizzato dentro #provWrap-{lotto}
 // (position:fixed lo fa comunque comparire a piena viewport, nessun problema di
@@ -2333,21 +2284,6 @@ function _provRetryMasterPratiche(lotto) {
   const wrap = document.getElementById('provWrap-' + lotto);
   const r = LOTTI_DATA[lotto];
   if (wrap && r) wrap.innerHTML = buildProiezioneInner(r);
-}
-
-// Aggiorna solo bottone attivo + risultato (no rebuild pannello): risposta
-// immediata al click, coerente col resto del file che evita re-render
-// completi dove non necessario (vedi switchTab/toggleCollapsible).
-function _provSelectSquadre(lotto, n) {
-  PROIEZIONE_SQUADRE[lotto] = n;
-  const sel = document.getElementById('provSel-' + lotto);
-  if (sel) sel.querySelectorAll('.proiezione-btn').forEach(b => b.classList.toggle('active', Number(b.textContent) === n));
-  const r = LOTTI_DATA[lotto];
-  const res = document.getElementById('provRes-' + lotto);
-  if (res && r) {
-    const base = PROIEZIONE_BASE[lotto] || 'autorizzati';
-    res.innerHTML = renderProiezioneResult(r, n, metriResiduiPerBase(r, base), base);
-  }
 }
 
 // Cambio base (autorizzati/lotto): può far comparire/sparire il messaggio
