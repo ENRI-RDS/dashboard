@@ -2673,7 +2673,12 @@ function _gcBuildModal(r) {
     if (oggi > maxD) maxD = oggi;
     milestonesValide.forEach(m => { if (m.date < minD) minD = m.date; if (m.date > maxD) maxD = m.date; });
     const domainStart = new Date(minD.getFullYear(), minD.getMonth(), 1);
-    const domainEnd = new Date(maxD.getFullYear(), maxD.getMonth() + 1, 0);
+    // rev.282 fix: se l'ultima data (spesso una milestone come il completamento
+    // ROS) cade proprio a fine mese, il suo marcatore finiva incollato al bordo
+    // destro del Gantt — a malapena visibile/tagliato dal contenitore. Margine di
+    // qualche giorno oltre la fine del mese così il marcatore finale resta sempre
+    // ben visibile staccato dal bordo.
+    const domainEnd = new Date(maxD.getFullYear(), maxD.getMonth() + 1, 12);
     const domainMs = domainEnd - domainStart;
     const pct = d => domainMs > 0 ? Math.min(100, Math.max(0, (d - domainStart) / domainMs * 100)) : 0;
     // rev.279 fix: le etichette (testo del flag, non solo il marcatore) vicino al
@@ -2689,8 +2694,11 @@ function _gcBuildModal(r) {
 
     const oggiInDominio = oggi >= domainStart && oggi <= domainEnd;
     const milestoneFlagsHtml = milestonesValide.map(m => `<span class="gantt-cant-milestone-flag" style="${flagStyle(pct(m.date))}">◆ ${m.label}: ${fmtDateShort(m.date)}</span>`).join('');
-    const axisHtml = `<div class="gantt-cant-axis">${ticks.map(t => `<span class="gantt-cant-tick" style="left:${pct(t)}%">${t.toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })}</span>`).join('')}</div>
-    <div class="gantt-cant-flags-row">${oggiInDominio ? `<span class="gantt-cant-today-flag" style="${flagStyle(pct(oggi))}">▼ Oggi: ${fmtDateShort(oggi)}</span>` : ''}${milestoneFlagsHtml}</div>`;
+    // rev.282: riga Oggi/milestone SOPRA i mesi (non sotto, dentro il corpo del
+    // Gantt) — su richiesta utente, risultava confuso avere due righe di testo
+    // fra i mesi e le barre.
+    const axisHtml = `<div class="gantt-cant-flags-row">${oggiInDominio ? `<span class="gantt-cant-today-flag" style="${flagStyle(pct(oggi))}">▼ Oggi: ${fmtDateShort(oggi)}</span>` : ''}${milestoneFlagsHtml}</div>
+    <div class="gantt-cant-axis">${ticks.map(t => `<span class="gantt-cant-tick" style="left:${pct(t)}%">${t.toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })}</span>`).join('')}</div>`;
     const gridHtml = ticks.map(t => `<div class="gantt-cant-gridline" style="left:${pct(t)}%"></div>`).join('');
     const todayHtml = oggiInDominio ? `<div class="gantt-cant-today-line" style="left:${pct(oggi)}%" title="Oggi — ${fmtDateShort(oggi)}"></div>` : '';
     const milestoneLinesHtml = milestonesValide.map(m => `<div class="gantt-cant-milestone-line" style="left:${pct(m.date)}%" title="${m.label} — ${fmtDateShort(m.date)}"></div>`).join('');
