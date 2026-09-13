@@ -277,9 +277,10 @@ body.panel-open .main{margin-right:44%;}
 .gantt-cant-wrap{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
 .gantt-cant-labels{flex:0 0 210px;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--gray-50);}
 .gantt-cant-label-spacer{height:39px;border-bottom:1px solid var(--border2);}
-.gantt-cant-label-cell{height:60px;display:flex;flex-direction:column;justify-content:center;padding:0 10px;border-bottom:1px solid var(--gray-100);overflow:hidden;}
+.gantt-cant-label-cell{height:72px;display:flex;flex-direction:column;justify-content:center;padding:0 10px;border-bottom:1px solid var(--gray-100);overflow:hidden;}
 .gantt-cant-label-main{font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .gantt-cant-label-sub{font-size:9.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
+.gantt-cant-label-meters{font-size:9.5px;color:var(--accent2);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
 /* rev.271: controlli squadre/data-prevista-inizio inline per riga */
 .gc-row-controls{display:flex;gap:8px;margin-top:3px;flex-wrap:wrap;}
 .gc-row-ctl{display:flex;align-items:center;gap:3px;}
@@ -307,7 +308,7 @@ body.panel-open .main{margin-right:44%;}
 .gantt-cant-today-flag{position:absolute;top:1px;font-size:9px;font-weight:700;color:var(--danger);white-space:nowrap;pointer-events:none;z-index:3;}
 .gantt-cant-milestone-line{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--accent2);z-index:1;opacity:.75;}
 .gantt-cant-milestone-flag{position:absolute;top:1px;font-size:9px;font-weight:700;color:var(--accent2);white-space:nowrap;pointer-events:none;z-index:3;}
-.gantt-cant-track-cell{position:relative;height:60px;border-bottom:1px solid var(--gray-100);}
+.gantt-cant-track-cell{position:relative;height:72px;border-bottom:1px solid var(--gray-100);}
 .gantt-cant-nostart{position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:10.5px;color:var(--muted2);font-style:italic;}
 .gantt-cant-bar{position:absolute;top:19px;height:22px;border-radius:5px;cursor:help;box-shadow:0 1px 2px rgba(4,63,117,.15);}
 .gc-bar-in_corso{background:var(--retelit-sky);}
@@ -2699,6 +2700,7 @@ function _gcBuildModal(r) {
       ? `<div class="gantt-cant-label-cell gantt-cant-label-cell-mancante">
           <span class="gantt-cant-label-main">${row.codice}</span>
           <span class="gantt-cant-label-sub">${row.labelSub}</span>
+          <span class="gantt-cant-label-meters">0 scavati · ${fmtKm(row.metri)} da scavare (non avviato)</span>
           ${_gcRowControlsHtml(lotto, row.codice, row.squadre, row.isOverrideSquadre, {
             value: (PROIEZIONE_DATE_PRATICHE[lotto] || {})[row.codice] || '',
             handler: '_provSetDataPratica',
@@ -2709,6 +2711,7 @@ function _gcBuildModal(r) {
       : `<div class="gantt-cant-label-cell">
           <span class="gantt-cant-label-main">${row.c.codice_cantiere || '—'}</span>
           <span class="gantt-cant-label-sub">${[row.c.pratica_id, row.c.ente, row.c.comune].filter(Boolean).join(' · ')}</span>
+          <span class="gantt-cant-label-meters">${fmtKm(row.c.metri_scavati || 0)} scavati · ${fmtKm(Math.max(0, (row.c.metri_totali || 0) - (row.c.metri_scavati || 0)))} da scavare</span>
           ${_gcRowControlsHtml(lotto, row.c.pratica_id, row.squadreInfo.squadre, row.squadreInfo.isOverride, !row.hasRealStart ? {
             value: ((_gcSquadreOverrides[lotto] || {})[row.c.pratica_id] || {}).data_prevista_inizio || '',
             handler: '_gcSetDataPrevista',
