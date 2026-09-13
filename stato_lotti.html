@@ -322,6 +322,7 @@ body.panel-open .main{margin-right:44%;}
    ancora conclusi — il tratto inizio→oggi (sotto, a tinta piena) resta il periodo
    realmente trascorso; questo overlay copre solo la stima aggiuntiva. */
 .gc-bar-proiez-overlay{position:absolute;top:19px;height:22px;border-radius:0 5px 5px 0;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.6) 0 6px,transparent 6px 12px);cursor:help;pointer-events:auto;}
+.gc-bar-pausa-overlay{position:absolute;top:19px;height:22px;border-radius:0;background:rgba(4,63,117,.32);background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.3) 0 5px,transparent 5px 10px);cursor:help;pointer-events:auto;}
 .gc-bar-tentative{opacity:.55;border:1.5px dashed var(--text2);}
 .gc-bar-mancante{background:repeating-linear-gradient(135deg,var(--gray-300) 0 5px,var(--gray-100) 5px 10px);border:1.5px dashed var(--muted2);}
 .gc-bar-proiettato{background:repeating-linear-gradient(135deg,var(--retelit-blue-50) 0 5px,var(--retelit-ice) 5px 10px);border:1.5px dashed var(--accent2);}
@@ -339,6 +340,7 @@ body.panel-open .main{margin-right:44%;}
 .gc-leg-milestone{width:0;height:12px;border-left:2px dashed var(--muted2);display:inline-block;}
 .gc-leg-continua{width:14px;height:10px;border-radius:3px;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.6) 0 4px,transparent 4px 8px);display:inline-block;}
 .gc-leg-noproj{width:14px;height:10px;border-radius:3px;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.4) 0 6px,transparent 6px 12px);display:inline-block;}
+.gc-leg-pausa{width:14px;height:10px;border-radius:3px;background-image:repeating-linear-gradient(45deg,rgba(4,63,117,.32) 0 5px,transparent 5px 10px);display:inline-block;}
 .gc-leg-sep{width:1px;height:14px;background:var(--border2);align-self:center;}
 .gc-tooltip{position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0;font-size:11.5px;pointer-events:none;z-index:1000;opacity:0;transition:opacity .12s;font-family:var(--font-body);color:var(--text);box-shadow:var(--shadow-lg);min-width:160px;max-width:270px;overflow:hidden;}
 .gc-tooltip-head{padding:6px 11px;font-weight:700;font-size:11.5px;color:#fff;}
@@ -2378,7 +2380,21 @@ function _gcResolveSpan(c, ctx) {
   if (!ctx) return { start, startTentative, end: (oggi < start ? start : oggi), ongoing: true, noProject: true };
   const { squadre } = _gcRowSquadre(ctx.lotto, c.pratica_id, c.stato_cantiere, ctx.parametri);
   const metriResidui = Math.max(0, (c.metri_totali || 0) - (c.metri_scavati || 0));
-  const from = oggi > start ? oggi : start;
+  const oggiMark = oggi > start ? oggi : start;
+
+  // rev.283: cantieri sospesi — su richiesta utente, se è nota una data di
+  // previsione riavvio (inserita per questa riga, o stimata dal backend in
+  // data_ripresa_stimata) ed è futura, la proiezione parte da quella data invece
+  // che da oggi: nessuna squadra lavora davvero durante la sospensione, contare i
+  // giorni da oggi darebbe una fine anticipata e scorretta.
+  let pausaFino = null;
+  if (c.stato_cantiere === 'sospeso') {
+    const ovR = (_gcSquadreOverrides[ctx.lotto] || {})[c.pratica_id] || {};
+    const ripresaStr = ovR.data_ripresa_prevista || c.data_ripresa_stimata || null;
+    const ripresa = ripresaStr ? new Date(ripresaStr + 'T00:00:00') : null;
+    if (ripresa && ripresa > oggiMark) pausaFino = ripresa;
+  }
+  const from = pausaFino || oggiMark;
   const proj = (!ctx.capacita.insufficiente)
     ? _gcProjectRow(from, metriResidui, squadre, ctx.capacita.prodEffettiva, ctx.ggSett, ctx.calendarioTipo)
     : null;
@@ -2388,9 +2404,9 @@ function _gcResolveSpan(c, ctx) {
     // (proiezione MANUALE da data inserita per cantieri "non avviato", v. sopra),
     // altrimenti il ramo di rendering della riga 2711 intercetta anche questi cantieri
     // con lo stile sbagliato (tratteggio pieno) invece del ramo a due toni sotto.
-    return { start, startTentative, end: proj.end, ongoing: true, autoProjected: true, oggiMark: from, giorniNecessari: proj.giorniNecessari, metriResidui, squadre };
+    return { start, startTentative, end: proj.end, ongoing: true, autoProjected: true, oggiMark, pausaFino, giorniNecessari: proj.giorniNecessari, metriResidui, squadre };
   }
-  return { start, startTentative, end: (oggi < start ? start : oggi), ongoing: true, noProject: true, metriResidui, squadre };
+  return { start, startTentative, end: (pausaFino || oggiMark), ongoing: true, noProject: true, pausaFino, metriResidui, squadre };
 }
 
 // rev.271 — SOSTITUISCE _gcSimulaCoda: su richiesta esplicita dell'utente le squadre
@@ -2520,6 +2536,20 @@ function _gcSetDataPrevista(lotto, codice, value) {
   if (!_gcSquadreOverrides[lotto]) _gcSquadreOverrides[lotto] = {};
   const prev = _gcSquadreOverrides[lotto][codice] || {};
   _gcSquadreOverrides[lotto][codice] = { ...prev, data_prevista_inizio: dpi };
+  _gcOpen(lotto);
+}
+
+// rev.283: su richiesta utente — imposta la data di previsione RIAVVIO per un
+// cantiere sospeso, così la proiezione dei metri residui riparte da quella data
+// invece che da oggi (altrimenti, essendo il cantiere fermo, non c'è nessuna
+// squadra realmente al lavoro fra oggi e il riavvio — v. _gcResolveSpan). Solo in
+// memoria, stessa nota di _gcSetSquadre; se lasciata vuota si torna alla stima
+// data_ripresa_stimata del backend, se presente.
+function _gcSetDataRipresa(lotto, codice, value) {
+  const dr = value || null;
+  if (!_gcSquadreOverrides[lotto]) _gcSquadreOverrides[lotto] = {};
+  const prev = _gcSquadreOverrides[lotto][codice] || {};
+  _gcSquadreOverrides[lotto][codice] = { ...prev, data_ripresa_prevista: dr };
   _gcOpen(lotto);
 }
 
@@ -2725,7 +2755,16 @@ function _gcBuildModal(r) {
             handler: '_gcSetDataPrevista',
             label: 'Inizio prev.',
             title: 'Data di previsione inizio cantiere (per proiettare una barra)'
-          } : null)}
+          } : (row.c.stato_cantiere === 'sospeso' ? {
+            // rev.283: su richiesta utente — data di previsione riavvio per i
+            // cantieri sospesi, usata per calcolare da quando riprendono a scavare
+            // (v. _gcResolveSpan). Prefill dalla stima del backend se presente e
+            // non ancora sovrascritta manualmente in questa sessione.
+            value: ((_gcSquadreOverrides[lotto] || {})[row.c.pratica_id] || {}).data_ripresa_prevista || row.c.data_ripresa_stimata || '',
+            handler: '_gcSetDataRipresa',
+            label: 'Riavvio prev.',
+            title: 'Data prevista di ripresa del cantiere — la proiezione dei metri residui riparte da qui invece che da oggi'
+          } : null))}
         </div>`
     ).join('');
 
@@ -2786,9 +2825,9 @@ function _gcBuildModal(r) {
       if (span.noProject) cls.push('gc-bar-ongoing'); // nessuna proiezione possibile: barra ferma a oggi, tratteggio "aperto"
       const pctScav = c.metri_totali > 0 ? Math.round((c.metri_scavati || 0) / c.metri_totali * 100) : null;
       const fineLabel = span.autoProjected
-        ? `Fine proiettata: ${fmtDateShort(span.end)} (${span.giorniNecessari} gg lavorativi, ${fmtNum(span.metriResidui)} m residui con ${span.squadre} squadr${span.squadre === 1 ? 'a' : 'e'})`
+        ? `Fine proiettata: ${fmtDateShort(span.end)} (${span.giorniNecessari} gg lavorativi, ${fmtNum(span.metriResidui)} m residui con ${span.squadre} squadr${span.squadre === 1 ? 'a' : 'e'}${span.pausaFino ? `, riavvio previsto ${fmtDateShort(span.pausaFino)}` : ''})`
         : (span.noProject
-            ? `Fine non proiettabile — ${!(span.metriResidui > 0) ? '0 m residui da scavare' : (!(span.squadre > 0) ? 'nessuna squadra assegnata' : 'milestone ROS del lotto mancante')}`
+            ? `Fine non proiettabile — ${!(span.metriResidui > 0) ? '0 m residui da scavare' : (!(span.squadre > 0) ? 'nessuna squadra assegnata' : 'milestone ROS del lotto mancante')}${span.pausaFino ? `. Riavvio previsto ${fmtDateShort(span.pausaFino)}` : ''}`
             : `Fine: ${fmtDateShort(span.end)}`);
       const statoColor = _GC_STATO_COLOR[c.stato_cantiere] || 'var(--gray-400)';
       const tip = _gcTipAttr(statoColor, `${c.codice_cantiere || ''} — ${_GC_STATO_LABEL[c.stato_cantiere] || c.stato_cantiere || ''}`, [
@@ -2799,7 +2838,19 @@ function _gcBuildModal(r) {
       let bars = `<div class="${cls.join(' ')}" style="left:${left}%;width:${width}%" ${tip}></div>`;
       // rev.273: overlay tratteggiato solo sul tratto oggi→fine proiettata — il
       // tratto inizio→oggi resta a tinta piena (periodo realmente trascorso).
-      if (span.autoProjected && span.end > span.oggiMark) {
+      // rev.283: se il cantiere è sospeso con riavvio previsto futuro, il tratto
+      // oggi→riavvio è un terzo segmento distinto ("in pausa", scurito) — solo da
+      // riavvio→fine è la vera proiezione col tratteggio consueto.
+      if (span.pausaFino && span.pausaFino > span.oggiMark) {
+        const leftPausa = pct(span.oggiMark);
+        const widthPausa = Math.max(pct(span.pausaFino) - leftPausa, 1);
+        bars += `<div class="gc-bar-pausa-overlay" style="left:${leftPausa}%;width:${widthPausa}%" ${tip}></div>`;
+        if (span.autoProjected && span.end > span.pausaFino) {
+          const leftProiez = pct(span.pausaFino);
+          const widthProiez = Math.max(pct(span.end) - leftProiez, 1);
+          bars += `<div class="gc-bar-proiez-overlay" style="left:${leftProiez}%;width:${widthProiez}%" ${tip}></div>`;
+        }
+      } else if (span.autoProjected && span.end > span.oggiMark) {
         const leftProiez = pct(span.oggiMark);
         const widthProiez = Math.max(pct(span.end) - leftProiez, 1);
         bars += `<div class="gc-bar-proiez-overlay" style="left:${leftProiez}%;width:${widthProiez}%" ${tip}></div>`;
@@ -2838,6 +2889,7 @@ function _gcBuildModal(r) {
       <span><i class="gc-leg-proiettato"></i>Non avviato, proiettato da data inserita</span>
       <span><i class="gc-leg-continua" style="background:var(--retelit-sky)"></i>Tratteggio su parte della barra = proiezione residua (oggi→fine stimata)</span>
       <span><i class="gc-leg-noproj" style="background:var(--retelit-sky)"></i>Tratteggio su tutta la barra = proiezione non calcolabile</span>
+      <span><i class="gc-leg-pausa" style="background:var(--warn)"></i>Sospeso, in attesa del riavvio previsto</span>
       <span><i class="gc-leg-line"></i>Oggi</span>
       <span class="gc-leg-sep"></span>
       <span><i class="gc-leg-milestone"></i>Milestone contrattuale (invio, ottenimento, avvio scavi, % scavato, completamento previsto)</span>
