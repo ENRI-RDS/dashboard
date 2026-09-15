@@ -2441,12 +2441,24 @@ function _gcResolveSpan(c, ctx) {
   // data_ripresa_stimata) ed è futura, la proiezione parte da quella data invece
   // che da oggi: nessuna squadra lavora davvero durante la sospensione, contare i
   // giorni da oggi darebbe una fine anticipata e scorretta.
+  // rev.288: stesso identico problema per i cantieri "in allestimento" — hanno già
+  // un data_inizio_effettiva (l'allestimento è iniziato) quindi `start` esiste e si
+  // entra in questo ramo, ma lo scavo vero non è ancora partito. Riusa lo stesso
+  // meccanismo con la data prevista di avvio scavi (stesso campo/controllo
+  // "Inizio prev." dei cantieri non_avviato, data_prevista_inizio — v. sotto in
+  // _gcRowControlsHtml — con fallback al data_inizio_prevista del backend, lo
+  // stesso già usato altrove nel file per gli allestimento, v. riga ~808).
   let pausaFino = null;
   if (c.stato_cantiere === 'sospeso') {
     const ovR = (_gcSquadreOverrides[ctx.lotto] || {})[c.pratica_id] || {};
     const ripresaStr = ovR.data_ripresa_prevista || c.data_ripresa_stimata || null;
     const ripresa = ripresaStr ? new Date(ripresaStr + 'T00:00:00') : null;
     if (ripresa && ripresa > oggiMark) pausaFino = ripresa;
+  } else if (c.stato_cantiere === 'allestimento') {
+    const ovA = (_gcSquadreOverrides[ctx.lotto] || {})[c.pratica_id] || {};
+    const avvioStr = ovA.data_prevista_inizio || c.data_inizio_prevista || null;
+    const avvio = avvioStr ? new Date(avvioStr + 'T00:00:00') : null;
+    if (avvio && avvio > oggiMark) pausaFino = avvio;
   }
   const from = pausaFino || oggiMark;
   const proj = (!ctx.capacita.insufficiente)
@@ -2852,7 +2864,17 @@ function _gcBuildModal(r) {
             handler: '_gcSetDataRipresa',
             label: 'Riavvio prev.',
             title: 'Data prevista di ripresa del cantiere — la proiezione dei metri residui riparte da qui invece che da oggi'
-          } : null))}
+          } : (c.stato_cantiere === 'allestimento' ? {
+            // rev.288: su richiesta utente — anche i cantieri "in allestimento"
+            // (allestimento avviato ma scavo vero non ancora partito) devono poter
+            // avere una data prevista di avvio scavi, stesso motivo dei sospesi (v.
+            // _gcResolveSpan). Prefill dal data_inizio_prevista del backend — stesso
+            // campo già usato altrove nel file per segnalare allestimenti in ritardo.
+            value: ((_gcSquadreOverrides[lotto] || {})[c.pratica_id] || {}).data_prevista_inizio || c.data_inizio_prevista || '',
+            handler: '_gcSetDataPrevista',
+            label: 'Avvio scavi prev.',
+            title: 'Data prevista di avvio dei lavori di scavo veri e propri — la proiezione dei metri residui riparte da qui invece che da oggi'
+          } : null)))}
         </div>`;
         })()
     ).join('');
@@ -2913,10 +2935,11 @@ function _gcBuildModal(r) {
       if (span.startTentative) cls.push('gc-bar-tentative');
       if (span.noProject) cls.push('gc-bar-ongoing'); // nessuna proiezione possibile: barra ferma a oggi, tratteggio "aperto"
       const pctScav = c.metri_totali > 0 ? Math.round((c.metri_scavati || 0) / c.metri_totali * 100) : null;
+      const pausaLabel = c.stato_cantiere === 'sospeso' ? 'riavvio' : 'avvio scavi';
       const fineLabel = span.autoProjected
-        ? `Fine proiettata: ${fmtDateShort(span.end)} (${span.giorniNecessari} gg lavorativi, ${fmtNum(span.metriResidui)} m residui con ${span.squadre} squadr${span.squadre === 1 ? 'a' : 'e'}${span.pausaFino ? `, riavvio previsto ${fmtDateShort(span.pausaFino)}` : ''})`
+        ? `Fine proiettata: ${fmtDateShort(span.end)} (${span.giorniNecessari} gg lavorativi, ${fmtNum(span.metriResidui)} m residui con ${span.squadre} squadr${span.squadre === 1 ? 'a' : 'e'}${span.pausaFino ? `, ${pausaLabel} previsto ${fmtDateShort(span.pausaFino)}` : ''})`
         : (span.noProject
-            ? `Fine non proiettabile — ${!(span.metriResidui > 0) ? '0 m residui da scavare' : (!(span.squadre > 0) ? 'nessuna squadra assegnata' : 'milestone ROS del lotto mancante')}${span.pausaFino ? `. Riavvio previsto ${fmtDateShort(span.pausaFino)}` : ''}`
+            ? `Fine non proiettabile — ${!(span.metriResidui > 0) ? '0 m residui da scavare' : (!(span.squadre > 0) ? 'nessuna squadra assegnata' : 'milestone ROS del lotto mancante')}${span.pausaFino ? `. ${pausaLabel[0].toUpperCase()}${pausaLabel.slice(1)} previsto ${fmtDateShort(span.pausaFino)}` : ''}`
             : `Fine: ${fmtDateShort(span.end)}`);
       const statoColor = _GC_STATO_COLOR[c.stato_cantiere] || 'var(--gray-400)';
       const tip = _gcTipAttr(statoColor, `${c.codice_cantiere || ''} — ${_GC_STATO_LABEL[c.stato_cantiere] || c.stato_cantiere || ''}`, [
@@ -2994,7 +3017,7 @@ function _gcBuildModal(r) {
       <span><i class="gc-leg-proiettato"></i>Non avviato, proiettato da data inserita</span>
       <span><i class="gc-leg-continua" style="background:var(--retelit-sky)"></i>Tratteggio su parte della barra = proiezione residua (oggi→fine stimata)</span>
       <span><i class="gc-leg-noproj" style="background:var(--retelit-sky)"></i>Tratteggio su tutta la barra = proiezione non calcolabile</span>
-      <span><i class="gc-leg-pausa" style="background:var(--warn)"></i>Sospeso, in attesa del riavvio previsto</span>
+      <span><i class="gc-leg-pausa" style="background:var(--warn)"></i>In attesa di riavvio/avvio scavi previsto (sospeso o in allestimento)</span>
       <span><i class="gc-leg-line"></i>Oggi</span>
       <span class="gc-leg-sep"></span>
       <span><i class="gc-leg-milestone"></i>Milestone contrattuale (invio, ottenimento, avvio scavi, % scavato, completamento previsto)</span>
