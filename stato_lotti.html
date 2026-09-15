@@ -2459,6 +2459,18 @@ function _gcResolveSpan(c, ctx) {
     const avvioStr = ovA.data_prevista_inizio || c.data_inizio_prevista || null;
     const avvio = avvioStr ? new Date(avvioStr + 'T00:00:00') : null;
     if (avvio && avvio > oggiMark) pausaFino = avvio;
+  } else if (c.stato_cantiere === 'non_avviato' && startTentative) {
+    // rev.289: su richiesta utente — anche i cantieri "non avviato" con solo una
+    // data_inizio_prevista tentativa dell'impresa (log presente, quindi già in
+    // questo ramo "ongoing" invece del ramo di proiezione manuale sopra) possono
+    // avere un proprio override "Inizio prev." dal Gantt, per correggere/
+    // posticipare quella stima invece di subirla passivamente. A differenza di
+    // sospeso/allestimento qui non serve un fallback al dato backend: `start`
+    // (quindi oggiMark) è già iPrev di default.
+    const ovN = (_gcSquadreOverrides[ctx.lotto] || {})[c.pratica_id] || {};
+    const inizioStr = ovN.data_prevista_inizio || null;
+    const inizio = inizioStr ? new Date(inizioStr + 'T00:00:00') : null;
+    if (inizio && inizio > oggiMark) pausaFino = inizio;
   }
   const from = pausaFino || oggiMark;
   const proj = (!ctx.capacita.insufficiente)
@@ -2874,7 +2886,16 @@ function _gcBuildModal(r) {
             handler: '_gcSetDataPrevista',
             label: 'Avvio scavi prev.',
             title: 'Data prevista di avvio dei lavori di scavo veri e propri — la proiezione dei metri residui riparte da qui invece che da oggi'
-          } : null)))}
+          } : (c.stato_cantiere === 'non_avviato' && row.span.startTentative ? {
+            // rev.289: su richiesta utente — anche i "non avviato" con solo una
+            // data_inizio_prevista tentativa dell'impresa (log presente, v.
+            // _gcCantiereHasRealStart) devono poter correggere/confermare quella
+            // stima dal Gantt, non solo i "non avviato" senza nessuna data.
+            value: ((_gcSquadreOverrides[lotto] || {})[c.pratica_id] || {}).data_prevista_inizio || c.data_inizio_prevista || '',
+            handler: '_gcSetDataPrevista',
+            label: 'Inizio prev.',
+            title: 'Data prevista di inizio lavori indicata dall\'impresa (non confermata) — puoi correggerla, la proiezione riparte da qui invece che da oggi'
+          } : null))))}
         </div>`;
         })()
     ).join('');
