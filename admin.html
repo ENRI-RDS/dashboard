@@ -1023,20 +1023,65 @@
     });
   });
 
+  // rev: codice pratica leggibile (es. "NO/8/1B") da una riga di changes - stessa
+  // logica gia usata sia nella card della coda sia nel modal Dettagli, centralizzata
+  // qui per evitare che le due viste calcolino il codice in modo diverso.
+  // isNew=true per le submission di tipo "new" (nuova pratica, il lotto si ricava da
+  // Source.Name invece che dal campo _lotto arricchito dal backend).
+  function praticaCodeFromChange(c, isNew) {
+    const tipo = c.tipo_permesso || c.TIPO_PERMESSO || '';
+    const tipoAbbr = tipo === 'AUTORIZZAZIONE' ? 'AUT' : tipo === 'NULLA OSTA' ? 'NO' : tipo === 'ORDINANZA' ? 'ORD' : (tipo || '').substring(0, 3);
+    if (isNew) {
+      const rawLotto = c['Source.Name'] || '';
+      const lottoCode = rawLotto.replace(/^lotto\s*/i, '').replace(/\.xlsx$/i, '').trim() || rawLotto || '';
+      return c.PRATICA ? `${tipoAbbr}/${c.PRATICA}${lottoCode ? '/' + lottoCode : ''}` : '';
+    }
+    const origPratica = c.original_pratica || c.PRATICA || '';
+    const lotto = c._lotto || '';
+    return origPratica ? `${tipoAbbr}/${origPratica}${lotto ? '/' + lotto : ''}` : '';
+  }
+
   // Details modal
   function showDetails(s) {
     const typeLabel = s.type === 'update' ? 'Aggiornamento' : 'Nuova pratica';
     $('detailsTitle').textContent = `${typeLabel} — ${s.nome}`;
     const statusColor = {pending:'#f59e0b',approved:'var(--retelit-sky)',rejected:'#ef4444'}[s.status]||'var(--gray-500)';
     const reviewedHtml = s.reviewed_at ? `  ${s.status==='approved'?'Approvato':'Rifiutato'}: ${new Date(s.reviewed_at).toLocaleString('it-IT')}${s.reviewed_by ? ` da ${escapeHtml(s.reviewed_by)}` : ''}` : '';
-    $('detailsSub').innerHTML = `Inviato: ${new Date(s.submitted_at).toLocaleString('it-IT')}${reviewedHtml}  <span style="display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:600;background:${statusColor}22;color:${statusColor}">${s.status}</span>`;
+    $('detailsSub').innerHTML = `Inviato: ${new Date(s.submitted_at).toLocaleString('it-IT')}${reviewedHtml}  <span style="display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:600;background:${statusColor}22;color:${statusColor}">${s.status}</span>`;
     const fieldLabels = {
       STATO_PERMESSO:'Nuovo stato', DATA_RICHIESTA:'Data richiesta',
       DATA_APPROVAZIONE:'Data approvazione', PRATICA:'Pratica', NOTE:'Note',
       DATA_ULTIMA_MODIFICA:'Ultima modifica'
     };
-    const changesHtml = (s.changes || []).map(c => {
-      const tratta = c.tratta_id || c.TRATTA_ID || '—';
+    // rev: raggruppa le righe di s.changes per PRATICA invece di renderizzare una
+    // card per ogni tratta - su richiesta utente, una pratica che copre piu tratte
+    // mostrava tante card quante le tratte, con la tratta (non la pratica) in
+    // evidenza in ciascuna. Le righe che condividono lo stesso codice pratica
+    // condividono anche gli stessi campi arricchiti dal backend (stato attuale,
+    // richiesta impresa), quindi per il contenuto della card si usa la prima riga
+    // del gruppo; solo le tratte vengono raccolte da tutte le righe del gruppo.
+    const gruppiPratica = [];
+    const gruppiByCode = new Map();
+    (s.changes || []).forEach(c => {
+      const code = praticaCodeFromChange(c, s.type === 'new') || (c.tratta_id || c.TRATTA_ID || '—');
+      if (!gruppiByCode.has(code)) {
+        const g = { code, first: c, tratte: [] };
+        gruppiByCode.set(code, g);
+        gruppiPratica.push(g);
+      }
+      const t = c.tratta_id || c.TRATTA_ID || '';
+      if (t) gruppiByCode.get(code).tratte.push(t);
+    });
+    const changesHtml = gruppiPratica.map(gruppo => {
+      const c = gruppo.first;
+      const praticaCode = gruppo.code;
+      const tratte = gruppo.tratte;
+      const tratteHtml = tratte.length
+        ? `<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--gray-200);display:flex;flex-wrap:wrap;gap:5px;align-items:center">
+            <span style="color:var(--muted);font-size:10.5px">${tratte.length} tratt${tratte.length!==1?'e':'a'}:</span>
+            ${tratte.map(t => `<span style="font-family:var(--font-mono);font-size:10px;color:var(--muted);background:var(--gray-50);padding:1px 6px;border-radius:4px;border:1px solid var(--gray-200)">${escapeHtml(t)}</span>`).join('')}
+          </div>`
+        : '';
       const ente   = c.ente   || c.ENTE   || '';
       const tipo   = c.tipo_permesso || c.TIPO_PERMESSO || '';
       const fields = c.fields || {};
@@ -1045,36 +1090,31 @@
         // Nuova pratica: mostra tutti i campi della riga
         const rawLotto = c['Source.Name'] || '';
         const lottoCode = rawLotto.replace(/^lotto\s*/i,'').replace(/\.xlsx$/i,'').trim() || rawLotto || '—';
-        const tipoAbbr = (c.TIPO_PERMESSO||'').startsWith('AUT') ? 'AUT' : 'NO';
-        const praticaFmt = c.PRATICA ? `${tipoAbbr}/${c.PRATICA}/${lottoCode}` : '—';
         const rows = [
           ['Lotto',                   lottoCode],
-          ['Tratta',                  tratta],
           ['Ente',                    ente || '—'],
           ['Tipo permesso',           tipo || '—'],
           ['Stato iniziale',          c.STATO_PERMESSO || 'IN REDAZIONE'],
-          ['Numero pratica',          praticaFmt],
           ['Nulla Osta necessario',   c['NULLA OSTA NECESSARIO'] || '—'],
           ['Ordinanza necessaria',    c['ORDINANZA NECESSARIA'] || '—'],
           ['N_SED',                   c.N_SED || '—'],
           ['Note',                    c.NOTE || '—'],
         ].filter(([,v]) => v && v !== '—');
         return `<div class="detail-change" style="background:var(--retelit-ice);border:1px solid var(--retelit-mist)">
-          <div class="detail-change-header" style="color:var(--retelit-teal)">
-            ✦ Nuova pratica — Tratta ${escapeHtml(tratta)}
-            ${ente ? `<span style="font-weight:400;color:var(--muted)"> · ${escapeHtml(ente)}</span>` : ''}
-            ${tipo ? `<span style="font-weight:400;color:var(--muted)"> · ${escapeHtml(tipo)}</span>` : ''}
+          <div class="detail-change-header" style="flex-direction:column;align-items:flex-start;gap:2px">
+            <span style="font-family:var(--font-mono);font-size:17px;font-weight:800;color:var(--retelit-teal)">✦ ${escapeHtml(praticaCode || 'Nuova pratica')}</span>
+            <span style="font-size:11px;font-weight:400;color:var(--muted)">Nuova pratica${ente ? ` · ${escapeHtml(ente)}` : ''}${tipo ? ` · ${escapeHtml(tipo)}` : ''}</span>
           </div>
           ${rows.map(([k,v]) => `<div class="detail-field">
             <span class="detail-field-key">${escapeHtml(k)}</span>
             <span class="detail-field-val">${escapeHtml(String(v))}</span>
           </div>`).join('')}
+          ${tratteHtml}
         </div>`;
       }
 
       // Dati dal change (locali) + dati arricchiti dal backend (_stato_attuale ecc.)
       const lunghezza    = c.lunghezza || c.LUNGHEZZA || '';
-      const origPratica  = c.original_pratica || c.PRATICA || '';
       const lotto        = c._lotto || '';
       const statoAttuale = c._stato_attuale || '';
       const drAttuale    = c._data_richiesta || '';
@@ -1101,16 +1141,15 @@
         </div>`;
       }).join('') || '<span style="color:var(--muted);font-size:11px">Nessun campo modificato</span>';
 
-      // Header badge tipo permesso
-      const tipoBadgeColor = tipo==='AUTORIZZAZIONE'?'var(--retelit-blue)':tipo==='NULLA OSTA'?'var(--retelit-teal)':'var(--gray-700)';
-
       return `
         <div class="detail-change">
-          <div class="detail-change-header">
-            <span style="font-family:var(--font-mono);font-size:12px;background:var(--gray-100);padding:2px 8px;border-radius:5px;border:1px solid var(--gray-200)">Tratta ${escapeHtml(tratta)}</span>
-            ${lotto ? `<span style="font-family:var(--font-mono);font-size:12px;background:var(--retelit-ice);color:var(--retelit-teal);padding:2px 8px;border-radius:5px;border:1px solid var(--retelit-mist)">Lotto ${escapeHtml(lotto)}</span>` : ''}
-            ${ente ? `<span style="font-weight:500;color:var(--gray-700)">${escapeHtml(ente)}</span>` : ''}
-            ${tipo ? `<span class="pend-tag" style="background:${tipoBadgeColor}15;color:${tipoBadgeColor};font-size:9.5px">${escapeHtml(tipo)}</span>` : ''}
+          <div class="detail-change-header" style="flex-direction:column;align-items:flex-start;gap:2px">
+            <span style="font-family:var(--font-mono);font-size:17px;font-weight:800;color:var(--gray-900)">${escapeHtml(praticaCode || '(pratica senza codice)')}</span>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;font-weight:400">
+              ${lotto ? `<span style="font-family:var(--font-mono);color:var(--retelit-teal)">Lotto ${escapeHtml(lotto)}</span>` : ''}
+              ${ente ? `<span style="color:var(--gray-700)">${escapeHtml(ente)}</span>` : ''}
+              ${tipo ? `<span class="pend-tag" style="background:${tipo==='AUTORIZZAZIONE'?'var(--retelit-blue)':tipo==='NULLA OSTA'?'var(--retelit-teal)':'var(--gray-700)'}15;color:${tipo==='AUTORIZZAZIONE'?'var(--retelit-blue)':tipo==='NULLA OSTA'?'var(--retelit-teal)':'var(--gray-700)'};font-size:9.5px">${escapeHtml(tipo)}</span>` : ''}
+            </div>
           </div>
           <div class="detail-cols">
             <div class="detail-col-box">
@@ -1120,11 +1159,6 @@
               ${dumAttuale ? `<div class="detail-field"><span class="detail-field-key">Ultima modifica</span><span class="detail-field-val">${escapeHtml(dumAttuale)}</span></div>` : ''}
               ${daAttuale ? `<div class="detail-field"><span class="detail-field-key">Data approvazione</span><span class="detail-field-val">${escapeHtml(daAttuale)}</span></div>` : ''}
               ${noAttuale ? `<div class="detail-field"><span class="detail-field-key">Nulla Osta necessario</span><span class="detail-field-val" style="color:${noAttuale==='SI'?'var(--err)':'var(--gray-700)'};font-weight:${noAttuale==='SI'?'700':'400'}">${escapeHtml(noAttuale)}</span></div>` : ''}
-              ${origPratica ? `<div class="detail-field"><span class="detail-field-key">Codice pratica</span><span class="detail-field-val">${escapeHtml(
-  (tipo==='AUTORIZZAZIONE'?'AUT':tipo==='NULLA OSTA'?'NO':tipo==='ORDINANZA'?'ORD':(tipo||'').substring(0,3))
-  + '/' + origPratica
-  + (lotto ? '/' + lotto : '')
-)}</span></div>` : ''}
               ${lunghezza && lunghezza !== '—' ? `<div class="detail-field"><span class="detail-field-key">Lunghezza</span><span class="detail-field-val">${escapeHtml(String(lunghezza))} m</span></div>` : ''}
               ${!statoAttuale ? '<span style="color:var(--muted);font-size:11px">Dati non trovati nel CSV</span>' : ''}
             </div>
@@ -1133,8 +1167,10 @@
               ${colonneRichiesta}
             </div>
           </div>
+          ${tratteHtml}
         </div>`;
     }).join('');
+
     let summaryHtml = '';
     if (s.summary) {
       summaryHtml = `<div class="detail-section" style="margin-top:12px">
@@ -1143,7 +1179,7 @@
           ${s.summary.updated||0} aggiornate · ${s.summary.added||0} aggiunte · ${s.summary.not_found||0} non trovate
         </div></div>`;
     }
-    const nCh = (s.changes||[]).length;
+    const nCh = gruppiPratica.length;
     $('detailsBody').innerHTML = `
       <div style="padding:14px 16px">
         <div class="detail-label" style="margin-bottom:12px">${nCh} ${nCh!==1?'Pratiche':'Pratica'} coinvolte</div>
@@ -1261,11 +1297,17 @@
         const stBg = s.status==='pending'?'var(--retelit-ice)':s.status==='approved'?'#EBFBEE':'#FEE2E2';
         const stFg = s.status==='pending'?'var(--retelit-teal)':s.status==='approved'?'#2B8A3E':'var(--err)';
         const stLabel = s.status==='pending'?'In attesa':s.status==='approved'?'Approvato':'Rifiutato';
-        // tratte coinvolte
+        // rev: pratiche coinvolte, mostrate in evidenza al posto delle tratte (su
+        // richiesta utente) — stesso helper condiviso col modal Dettagli. Le tratte
+        // restano visibili ma in seconda battuta, sotto, più piccole/mute.
+        const pratiche = [...new Set((s.changes||[]).map(c => praticaCodeFromChange(c, !isUpdate)).filter(Boolean))];
+        const praticheHtml = pratiche.slice(0,4).map(p =>
+          `<span style="font-family:var(--font-mono);font-size:11.5px;font-weight:700;color:var(--retelit-teal);background:var(--retelit-ice);padding:2px 8px;border-radius:5px;border:1px solid var(--retelit-mist)">${escapeHtml(p)}</span>`
+        ).join(' ') + (pratiche.length > 4 ? ` <span style="color:var(--muted);font-size:10px">+${pratiche.length-4}</span>` : '');
         const tratte = [...new Set((s.changes||[]).map(c => c.tratta_id||c.TRATTA_ID||'').filter(Boolean))];
         const tratteHtml = tratte.slice(0,4).map(t =>
-          `<span style="font-family:var(--font-mono);font-size:10px;background:var(--gray-100);padding:1px 6px;border-radius:4px;border:1px solid var(--gray-200)">${escapeHtml(t)}</span>`
-        ).join(' ') + (tratte.length > 4 ? ` <span style="color:var(--muted);font-size:10px">+${tratte.length-4}</span>` : '');
+          `<span style="font-family:var(--font-mono);font-size:9.5px;color:var(--muted);background:var(--gray-50);padding:1px 5px;border-radius:4px;border:1px solid var(--gray-200)">${escapeHtml(t)}</span>`
+        ).join(' ') + (tratte.length > 4 ? ` <span style="color:var(--muted);font-size:9.5px">+${tratte.length-4}</span>` : '');
         let bodyExtra = '';
         if (isUpdate) {
           const nuovoStato = (s.changes||[]).map(c => (c.fields||{}).STATO_PERMESSO).find(Boolean) || '';
@@ -1292,10 +1334,14 @@
             <span class="pend-tag" style="background:${stBg};color:${stFg};margin-left:auto">${stLabel}</span>
           </div>
           <div class="pend-card-body">
-            <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px">
-              <span style="color:var(--muted);font-size:11px">${tratte.length} tratt${tratte.length!==1?'e':'a'}</span>
-              ${tratteHtml}
+            <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:4px">
+              <span style="color:var(--muted);font-size:11px">${pratiche.length} pratic${pratiche.length!==1?'he':'a'}</span>
+              ${praticheHtml}
               ${bodyExtra}
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;color:var(--muted);font-size:10px">
+              <span>${tratte.length} tratt${tratte.length!==1?'e':'a'}:</span>
+              ${tratteHtml}
             </div>
           </div>
           <div class="pend-actions">
