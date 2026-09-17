@@ -87,6 +87,16 @@
   .empty{padding:36px;text-align:center;color:var(--muted);font-size:12px}
   .loading-row{padding:28px;text-align:center;color:var(--muted);font-size:12px}
 
+  /* URGENTE — riga evidenziata quando fleggata; sola visualizzazione per i non-admin */
+  .urgent-th{text-align:center}
+  .urgent-cell{text-align:center}
+  .urgent-checkbox{width:15px;height:15px;cursor:pointer;accent-color:var(--danger)}
+  .urgent-badge{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--danger)}
+  tr.row-urgent td{background:var(--danger-bg) !important}
+
+  /* Colonna Convenzione/Polizza evidenziata nella tabella */
+  th.col-highlight,td.col-highlight{background:var(--retelit-ice)}
+
   /* EDIT INLINE — §7.1 Button, §5.2 radius, §5.4 motion */
   .edit-btn{
     background:none;border:none;cursor:pointer;
@@ -318,18 +328,19 @@
         <table>
           <thead>
             <tr>
+              <th class="urgent-th">Urgente</th>
               <th style="text-align:right">Pratica</th>
               <th>Lotto</th>
               <th>Ente</th>
               <th>Stato permesso</th>
-              <th>Convenzione</th>
+              <th class="col-highlight">Convenzione</th>
               <th>Data Richiesta</th>
               <th>Data Richiesta RDS</th>
               <th>Data Invio</th>
               <th>Data Emissione</th>
             </tr>
           </thead>
-          <tbody id="convBody"><tr><td colspan="9" class="loading-row">Caricamento in corso...</td></tr></tbody>
+          <tbody id="convBody"><tr><td colspan="10" class="loading-row">Caricamento in corso...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -365,18 +376,19 @@
         <table>
           <thead>
             <tr>
+              <th class="urgent-th">Urgente</th>
               <th style="text-align:right">Pratica</th>
               <th>Lotto</th>
               <th>Ente</th>
               <th>Stato permesso</th>
-              <th>Polizza</th>
+              <th class="col-highlight">Polizza</th>
               <th>Data Richiesta</th>
               <th>Data Richiesta RDS</th>
               <th>Data Invio</th>
               <th>Data Emissione</th>
             </tr>
           </thead>
-          <tbody id="polBody"><tr><td colspan="9" class="loading-row">Caricamento in corso...</td></tr></tbody>
+          <tbody id="polBody"><tr><td colspan="10" class="loading-row">Caricamento in corso...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -424,6 +436,16 @@
   let DATE_INVIO_MAP = {};
   let DATE_RDS_MAP = {};
   let DATE_EMISSIONE_MAP = {};
+  let URGENTI_MAP = {};
+
+  // Solo admin/admin2 possono fleggare "Urgente" (stessi ruoli di ADMIN_ALLOWED_ROLES in hub.html)
+  const ADMIN_ROLES = ['admin', 'admin2'];
+  const isAdmin = ADMIN_ROLES.includes(localStorage.getItem('_enri_role'));
+
+  // Etichette display-only: il valore salvato/confrontato resta invariato (es. 'RICHIESTA RDS'),
+  // cambia solo il testo mostrato all'utente.
+  const STATO_LABELS = { 'RICHIESTA RDS': 'IN LAVORAZIONE' };
+  function statoLabel(v) { return STATO_LABELS[(v || '').toUpperCase()] || v; }
 
   async function loadDates() {
     try {
@@ -436,6 +458,7 @@
         DATE_INVIO_MAP = data.date_invio || {};
         DATE_RDS_MAP = data.date_richiesta_rds || {};
         DATE_EMISSIONE_MAP = data.date_emissione || {};
+        URGENTI_MAP = data.urgenti || {};
       }
     } catch(e) { console.warn('[Polizze&Convenzioni] date non caricate:', e); }
   }
@@ -472,8 +495,8 @@
       document.querySelector('.main').insertBefore(banner, document.querySelector('.split'));
     }
     banner.textContent = msg;
-    document.getElementById('convBody').innerHTML = '<tr><td colspan="9" class="empty">' + msg + '</td></tr>';
-    document.getElementById('polBody').innerHTML  = '<tr><td colspan="9" class="empty">' + msg + '</td></tr>';
+    document.getElementById('convBody').innerHTML = '<tr><td colspan="10" class="empty">' + msg + '</td></tr>';
+    document.getElementById('polBody').innerHTML  = '<tr><td colspan="10" class="empty">' + msg + '</td></tr>';
   }
 
   function parseAndRender(text) {
@@ -578,13 +601,13 @@
       const dumTs = parseDum(dum);
       if (conv && (!seenConv[key] || dumTs >= seenConv[key])) {
         seenConv[key] = dumTs;
-        const rowEntry = {...entry, convStato: conv, dataRichiesta: DATE_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', dataInvio: DATE_INVIO_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', dataRichiestaRds: DATE_RDS_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', dataEmissione: DATE_EMISSIONE_MAP[`${lotto}|${prat}|CONVENZIONE`] || ''};
+        const rowEntry = {...entry, convStato: conv, dataRichiesta: DATE_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', dataInvio: DATE_INVIO_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', dataRichiestaRds: DATE_RDS_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', dataEmissione: DATE_EMISSIONE_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', urgente: !!URGENTI_MAP[`${lotto}|${prat}|CONVENZIONE`]};
         const existingIdx = convRows.findIndex(r => r.lotto === lotto && r.pratica === prat);
         if (existingIdx >= 0) convRows[existingIdx] = rowEntry; else convRows.push(rowEntry);
       }
       if (pol && (!seenPol[key] || dumTs >= seenPol[key])) {
         seenPol[key] = dumTs;
-        const rowEntry = {...entry, polStato: pol, dataRichiesta: DATE_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataInvio: DATE_INVIO_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataRichiestaRds: DATE_RDS_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataEmissione: DATE_EMISSIONE_MAP[`${lotto}|${prat}|POLIZZA`] || ''};
+        const rowEntry = {...entry, polStato: pol, dataRichiesta: DATE_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataInvio: DATE_INVIO_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataRichiestaRds: DATE_RDS_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataEmissione: DATE_EMISSIONE_MAP[`${lotto}|${prat}|POLIZZA`] || '', urgente: !!URGENTI_MAP[`${lotto}|${prat}|POLIZZA`]};
         const existingIdx = polRows.findIndex(r => r.lotto === lotto && r.pratica === prat);
         if (existingIdx >= 0) polRows[existingIdx] = rowEntry; else polRows.push(rowEntry);
       }
@@ -635,14 +658,14 @@
       const c = STATI_COLORS[stato] || { color: 'var(--gray-400)' };
       return `<div class="kpi-bar-seg" style="width:${(n / total * 100).toFixed(1)}%;background:${c.color}"></div>`;
     }).join('');
-    const legend = entries.map(([stato, n]) => `${n} ${stato}`).join(' · ');
+    const legend = entries.map(([stato, n]) => `${n} ${statoLabel(stato)}`).join(' · ');
     el.innerHTML = `<div class="kpi-bar">${bar}</div><div class="kpi-legend">${legend}</div>`;
   }
 
   function buildStatoFilter(rows, selId, statoKey) {
     const stati = [...new Set(rows.map(r => r[statoKey]).filter(Boolean))].sort();
     const sel = document.getElementById(selId);
-    stati.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o); });
+    stati.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = statoLabel(s); sel.appendChild(o); });
   }
 
   function filter(rows, lotto, stato, search, statoKey) {
@@ -679,18 +702,22 @@
       const stS = STATI_COLORS[(r[statoKey]||'').toUpperCase()] || { bg:'var(--gray-100)', color:'var(--gray-500)' };
       const statoVal = r[statoKey] || '';
       const opts = values.map(v =>
-        `<option value="${v}" ${v === statoVal ? 'selected' : ''}>${v || '(vuoto)'}</option>`
+        `<option value="${v}" ${v === statoVal ? 'selected' : ''}>${v ? statoLabel(v) : '(vuoto)'}</option>`
       ).join('')
       + (statoVal && !values.includes(statoVal)
-          ? `<option value="${statoVal}" selected>${statoVal} (valore precedente)</option>`
+          ? `<option value="${statoVal}" selected>${statoLabel(statoVal)} (valore precedente)</option>`
           : '');
-      return `<tr data-idx="${i}" data-field="${field}" data-lotto="${r.lotto}" data-pratica="${r.pratica}">
+      const urgentCell = isAdmin
+        ? `<td class="urgent-cell" style="text-align:center"><input type="checkbox" class="urgent-checkbox" ${r.urgente ? 'checked' : ''} onchange="toggleUrgente(this)" aria-label="Segna come urgente"></td>`
+        : `<td class="urgent-cell" style="text-align:center">${r.urgente ? '<span class="urgent-badge" title="Urgente"></span>' : ''}</td>`;
+      return `<tr data-idx="${i}" data-field="${field}" data-lotto="${r.lotto}" data-pratica="${r.pratica}" class="${r.urgente ? 'row-urgent' : ''}">
+        ${urgentCell}
         <td style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--accent);text-align:right">${r.codicePratica||'—'}${(typeof ENRI !== 'undefined' && ENRI.concomitanzaBadge) ? ENRI.concomitanzaBadge(r.tratta) : ''}</td>
         <td style="font-size:11px">${r.lotto||'—'}</td>
         <td style="font-size:11.5px">${r.ente||'—'}</td>
         <td><span class="badge" style="background:${st.bg};color:${st.color}">${r.stato||'—'}</span></td>
-        <td class="stato-cell">
-          <span class="badge stato-badge" style="background:${stS.bg};color:${stS.color}">${statoVal||'—'}</span>
+        <td class="stato-cell col-highlight">
+          <span class="badge stato-badge" style="background:${stS.bg};color:${stS.color}">${statoLabel(statoVal)||'—'}</span>
           <button class="edit-btn" title="Modifica stato" onclick="startEdit(this)" aria-label="Modifica stato">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           </button>
@@ -760,7 +787,7 @@
       // Aggiorna badge visivo senza reload
       const stS = STATI_COLORS[(val||'').toUpperCase()] || { bg:'var(--gray-100)', color:'var(--gray-500)' };
       const badge = cell.querySelector('.stato-badge');
-      badge.textContent = val || '—';
+      badge.textContent = statoLabel(val) || '—';
       badge.style.background = stS.bg;
       badge.style.color = stS.color;
       cancelEdit(btn);
@@ -849,6 +876,52 @@
     }
   }
 
+  window.toggleUrgente = function(checkbox) {
+    const row     = checkbox.closest('tr');
+    const lotto   = row.dataset.lotto;
+    const pratica = row.dataset.pratica;
+    const field   = row.dataset.field;
+    const val     = checkbox.checked;
+    _doSaveUrgente(lotto, pratica, field, val, checkbox, row);
+  };
+
+  function _doSaveUrgente(lotto, pratica, field, val, checkbox, row) {
+    const token = localStorage.getItem('enri_upload_token') || '';
+    if (!token) {
+      _pendingSave = { kind: 'urgente', lotto, pratica, field, val, checkbox, row };
+      openTokenModal();
+      return;
+    }
+    _execSaveUrgente(lotto, pratica, field, val, token, checkbox, row);
+  }
+
+  async function _execSaveUrgente(lotto, pratica, field, val, token, checkbox, row) {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    if (!apiBase) { showToast('API base non configurata.', 'err'); return; }
+    checkbox.disabled = true;
+    try {
+      const r = await fetch(apiBase + '/api/admin/polizze-convenzioni/set-urgente', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-upload-token': token },
+        body: JSON.stringify({ lotto, pratica, field, urgente: val })
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || r.statusText);
+      row.classList.toggle('row-urgent', val);
+      showToast(val ? 'Riga segnata come urgente.' : 'Urgenza rimossa.', 'ok');
+    } catch(e) {
+      checkbox.checked = !val;
+      if (e.message && e.message.includes('401')) {
+        localStorage.removeItem('enri_upload_token');
+        showToast('Token non valido. Riprovare.', 'err');
+      } else {
+        showToast('Si è verificato un problema. ' + e.message, 'err');
+      }
+    } finally {
+      checkbox.disabled = false;
+    }
+  }
+
   // ── TOKEN MODAL ────────────────────────────────────────────────────────────
   let _pendingSave = null;
 
@@ -861,6 +934,7 @@
     document.getElementById('tokenInput').value = '';
     if (_pendingSave) {
       if (_pendingSave.kind === 'date') cancelDateEdit(_pendingSave.btn);
+      else if (_pendingSave.kind === 'urgente') _pendingSave.checkbox.checked = !_pendingSave.val;
       else cancelEdit(_pendingSave.btn);
       _pendingSave = null;
     }
@@ -875,6 +949,7 @@
       const p = _pendingSave;
       _pendingSave = null;
       if (p.kind === 'date') _execSaveDate(p.lotto, p.pratica, p.field, p.dateKey, p.val, t, p.btn, p.cell);
+      else if (p.kind === 'urgente') _execSaveUrgente(p.lotto, p.pratica, p.field, p.val, t, p.checkbox, p.row);
       else _execSave(p.lotto, p.pratica, p.field, p.val, t, p.btn, p.cell);
     }
   };
@@ -928,7 +1003,7 @@
       'convStato'
     );
     document.getElementById('convCount').textContent = rows.length + ' pratiche';
-    document.getElementById('convBody').innerHTML = buildRows(rows, 'convStato', 9, 'CONVENZIONE');
+    document.getElementById('convBody').innerHTML = buildRows(rows, 'convStato', 10, 'CONVENZIONE');
   };
 
   window.renderPol = function() {
@@ -939,7 +1014,7 @@
       'polStato'
     );
     document.getElementById('polCount').textContent = rows.length + ' pratiche';
-    document.getElementById('polBody').innerHTML = buildRows(rows, 'polStato', 9, 'POLIZZA');
+    document.getElementById('polBody').innerHTML = buildRows(rows, 'polStato', 10, 'POLIZZA');
   };
 
   window.addEventListener('pageshow', (e) => {
