@@ -884,6 +884,45 @@ const STATO_COLORS = {
   'NECESSARIA INTEGRAZIONE':'#C0392B', 'PROTOCOLLATO INTEGRAZIONE':'#436A93', 'OTTENUTO':'#1E9E6A'
 };
 window.STATO_COLORS = STATO_COLORS;
+
+// ── REPORT AWS: legenda semplificata a 4 bucket ────────────────────────────
+// Usata SOLO durante generaReportAWS(): la dashboard continua a mostrare i 10
+// stati reali, il PowerPoint li aggrega in 4 categorie con palette dedicata.
+// Attivata dal flag _awsReportMode, letto da getColorForMode().
+let _awsReportMode = false;
+
+const AWS_BUCKET_COLORS = {
+  'OBTAINED':    '#1E9E6A',
+  'ONGOING':     '#E8912B',
+  'NOT STARTED': '#8A94A6',
+  'DENIED':      '#C0392B'
+};
+// Ordine di visualizzazione nella legenda del report
+const AWS_BUCKET_ORDER = ['OBTAINED', 'ONGOING', 'NOT STARTED', 'DENIED'];
+
+// stato reale (Master.csv / STATO_LEGENDA) → bucket report
+const AWS_BUCKET_BY_STATO = {
+  'IN ATTESA':                 'NOT STARTED',
+  'IN REDAZIONE':              'NOT STARTED',
+  'IN FIRMA RDS':              'ONGOING',
+  'INVIO PRELIMINARE':         'ONGOING',
+  'INVIATO':                   'ONGOING',
+  'PROTOCOLLATO':              'ONGOING',
+  'NECESSARIA INTEGRAZIONE':   'ONGOING',
+  'IN REDAZIONE INTEGRAZIONE': 'ONGOING',
+  'PROTOCOLLATO INTEGRAZIONE': 'ONGOING',
+  'OTTENUTO':                  'OBTAINED',
+  'NO COMPETENZA':             'OBTAINED',
+  // Nessuno stato di diniego esiste oggi nello schema pratiche: aggiungere qui
+  // la voce (es. 'DINIEGO': 'DENIED') non appena verrà introdotta a monte.
+};
+
+function awsBucket(stato) {
+  const s = String(stato || '').replace(/\u00a0/g, ' ').trim().toUpperCase();
+  return AWS_BUCKET_BY_STATO[s] || 'NOT STARTED';
+}
+function awsBucketColor(stato) { return AWS_BUCKET_COLORS[awsBucket(stato)]; }
+
 const IMPRESE = {'1':'Valtellina','1A':'Valtellina','1B':'Soleto','2':'Sertori','2A':'Sielte','2B':'Telebit','3':'Valtellina','4':'Sielte','5':'Circet','6':'Sertori','7':'Valtellina','8':'Sielte'};
 const LOTTO_ORDER = ['1A','1B','2A','2B','1','2','3','4','5','6','7','8'];
 const LOTTI_ATTIVI = ['1A','1B','2A','2B'];
@@ -931,7 +970,8 @@ function getColorForMode(feature, mode) {
   if (mode === 'lotto')   return LOTTO_COLORS[p.LOTTO] || '#6b7080';
   if (mode === 'cluster') return getClusterColor(p.CLUSTER ?? p.ID_CLUSTER ?? p.cluster);
   if (mode === 'scavi')   return getScaviColorForFeature(feature);
-  return getColor(p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE);
+  const st = p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE;
+  return _awsReportMode ? awsBucketColor(st) : getColor(st);
 }
 
 function setViewMode(mode) {
@@ -2917,6 +2957,24 @@ function _containFit(imgW, imgH, boxX, boxY, boxW, boxH) {
   return { x: boxX + (boxW - w) / 2, y: boxY + (boxH - h) / 2, w, h };
 }
 
+// Legenda disegnata nativamente nella slide (il #legendContainer della pagina
+// è fuori da #map, quindi non è incluso nello screenshot: va ricostruito qui).
+// Mostra i 4 bucket AWS, non i 10 stati reali della dashboard.
+function _awsAddLegend(slide) {
+  const X0 = 5.95, Y = 0.28, ITEM_W = 1.82, SW_W = 0.30, SW_H = 0.11;
+  AWS_BUCKET_ORDER.forEach((k, i) => {
+    const x = X0 + i * ITEM_W;
+    slide.addShape('rect', {
+      x, y: Y + 0.055, w: SW_W, h: SW_H,
+      fill: { color: AWS_BUCKET_COLORS[k].replace('#', '') }, line: { width: 0 }
+    });
+    slide.addText(k, {
+      x: x + SW_W + 0.08, y: Y - 0.04, w: ITEM_W - SW_W - 0.12, h: 0.28,
+      fontSize: 10, bold: true, fontFace: 'Raleway', color: '3A4150', valign: 'middle'
+    });
+  });
+}
+
 async function generaReportAWS() {
   const btn = document.getElementById('reportAwsBtn');
   if (!btn || btn.classList.contains('busy')) return;
@@ -2952,7 +3010,8 @@ async function generaReportAWS() {
 
   btn.classList.add('busy');
   btn.innerHTML = 'Report AWS…';
-  setViewMode('stato'); // Progettazione
+  _awsReportMode = true;   // palette a 4 bucket solo per la cattura
+  setViewMode('stato');    // Progettazione (restyla tutti i layer)
 
   const pptx = new PptxGenJS();
   pptx.defineLayout({ name: 'WIDE', width: 13.33, height: 7.5 });
@@ -2991,9 +3050,10 @@ async function generaReportAWS() {
 
       const slide = pptx.addSlide();
       slide.addText(`Cluster ${cl} — Progettazione`, {
-        x: 0.3, y: 0.15, w: 12.7, h: 0.5, fontSize: 20, bold: true,
+        x: 0.3, y: 0.15, w: 5.5, h: 0.5, fontSize: 20, bold: true,
         fontFace: 'Raleway', color: '043F75'
       });
+      _awsAddLegend(slide);
       const fitMappa = _containFit(canvasMappa.width, canvasMappa.height, 0.3, 0.75, 6.2, 6.2);
       slide.addImage({ data: imgMappa, x: fitMappa.x, y: fitMappa.y, w: fitMappa.w, h: fitMappa.h });
       slide.addText('Mappa', { x: 0.3, y: 7.0, w: 6.2, h: 0.35, fontSize: 12, align: 'center', color: '6b7080', fontFace: 'Raleway' });
@@ -3009,6 +3069,7 @@ async function generaReportAWS() {
     if (_ctrlTL) _ctrlTL.style.display = _ctrlTLDisplay;
     if (_ctrlTR) _ctrlTR.style.display = _ctrlTRDisplay;
     setBaseLayer(prevBmapKey);
+    _awsReportMode = false;  // prima di setViewMode: ripristina i colori reali
     setViewMode(prevMode);
     if (prevClusters.size) { selectedClusters = prevClusters; applyFilterClusterMulti(); }
     btn.classList.remove('busy');
