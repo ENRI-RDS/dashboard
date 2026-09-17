@@ -103,6 +103,7 @@ body.panel-open .main{margin-right:44%;}
 
 .risk-badge{display:inline-flex;flex-direction:column;gap:1px;font-size:9.5px;font-weight:700;padding:5px 10px;border-radius:10px;letter-spacing:.03em;text-transform:uppercase;font-family:var(--font-mono);white-space:nowrap;}
 .risk-badge span.rb-score{font-size:10px;font-weight:700;text-transform:none;letter-spacing:0;opacity:.85;}
+.risk-badge span.rb-esc{font-size:9px;margin-left:3px;opacity:.75;cursor:help;}
 .risk-badge.risk-critico{background:var(--danger-bg);color:var(--danger);}
 .risk-badge.risk-alto{background:var(--alto-bg);color:var(--alto);}
 .risk-badge.risk-medio{background:var(--warn-bg);color:var(--warn);}
@@ -1232,7 +1233,10 @@ function fattoreRScavi(row, capacita, parametri, f) {
   const rapporto = capacita.squadre.disponibili > 0
     ? capacita.squadreNecessarie / capacita.squadre.disponibili
     : (capacita.squadreNecessarie > 0 ? null : 0); // 0 disponibili e 0 necessarie: nessun rischio da questo fattore
-  const punti = rapporto === null ? 100 : interpLin(rapporto, 1.0, 1.5);
+  // Soglie da Excel (foglio "Rischio ROS"), non più hardcoded: modificare
+  // Soglia attenzione/critica per R_SCAVI nel file di configurazione ha ora
+  // effetto reale sul punteggio (prima restava sempre 1.0/1.5).
+  const punti = rapporto === null ? 100 : interpLin(rapporto, Number(f.soglia_attenzione), Number(f.soglia_critica));
   return { disponibile: true, punti, rapporto, fase };
 }
 
@@ -1282,21 +1286,35 @@ function computeFaseScavi(row, parametri) {
   const glob = parametri.globali || {};
   const finestraImpatto = Number(glob.PERMESSI_FINESTRA_IMPATTO ? glob.PERMESSI_FINESTRA_IMPATTO.valore : 30);
   const avvio = row.m ? parseDateIT(row.m.avvio) : null;
+  // Cantieri realmente "partiti" (oltre censimento/allestimento): unica prova
+  // oggettiva di lavoro in corso quando la milestone di avvio non è tracciata.
+  // Un cantiere in 'allestimento' o 'non_avviato' NON è prova che gli scavi
+  // siano iniziati: prima (fallback su cantieri.length>0) bastava che un
+  // cantiere fosse semplicemente censito perché R_SCAVI scattasse a 100 punti
+  // con 0 squadre disponibili, penalizzando lotti che semplicemente non sono
+  // ancora entrati in fase operativa.
+  const STATI_OPERATIVI = ['in_corso', 'sospeso', 'completato'];
+  const cantieriOperativi = (row.s.cantieri || []).filter(c => STATI_OPERATIVI.includes(c.stato_cantiere));
   if (avvio) {
     const giorniResiduiAvvio = Math.round((avvio - oggi) / 86400000);
     const iniziata = oggi >= avvio;
-    const entrataInFinestra = !iniziata && giorniResiduiAvvio <= finestraImpatto;
-    return { disponibile: true, attiva: iniziata || entrataInFinestra, iniziata, entrataInFinestra, giorniResiduiAvvio, finestraImpatto,
+    return { disponibile: true, attiva: iniziata || cantieriOperativi.length > 0, iniziata, entrataInFinestra: !iniziata && giorniResiduiAvvio <= finestraImpatto, giorniResiduiAvvio, finestraImpatto,
       info: iniziata ? `Fase scavi iniziata — avvio ${row.m.avvio}.`
-        : entrataInFinestra ? `Avvio scavi (${row.m.avvio}) entrato nella finestra d'impatto configurata (${giorniResiduiAvvio} gg ≤ ${finestraImpatto} gg).`
-        : `Avvio scavi previsto tra ${giorniResiduiAvvio} gg (${row.m.avvio}), oltre la finestra d'impatto (${finestraImpatto} gg): capacità operativa non ancora rilevante.` };
+        : cantieriOperativi.length > 0 ? `Avvio scavi non ancora raggiunto (${row.m.avvio}), ma ${cantieriOperativi.length} cantiere/i già in stato operativo: fattore attivo sulla base del dato scavi reale.`
+        : `Avvio scavi previsto tra ${giorniResiduiAvvio} gg (${row.m.avvio}): nessun cantiere ancora operativo, capacità non ancora rilevante.` };
   }
-  // Nessuna milestone di avvio tracciata: fallback prudenziale sulla stessa
-  // evidenza di dominio (cantieri già censiti per il lotto) — mai su dati
-  // di altri domini (v. §12.9 pt.2), analogo al fallback kmOtt>0 di R_AUTH.
-  if ((row.s.cantieri || []).length > 0) {
+  // Nessuna milestone di avvio tracciata: fallback sulla stessa evidenza di
+  // dominio (§12.9 pt.2), ma solo se almeno un cantiere è realmente operativo
+  // — un lotto con soli cantieri 'non_avviato'/'allestimento' non ha ancora
+  // scavi in corso, quindi 0 squadre disponibili è la condizione attesa, non
+  // un rischio da segnalare.
+  if (cantieriOperativi.length > 0) {
     return { disponibile: true, attiva: true, iniziata: true, entrataInFinestra: false, giorniResiduiAvvio: null, finestraImpatto,
-      info: 'Milestone di avvio scavi non tracciata per questo lotto — attiva per prudenza sulla base di cantieri già censiti nel dominio scavi.' };
+      info: `Milestone di avvio scavi non tracciata per questo lotto — attiva sulla base di ${cantieriOperativi.length} cantiere/i già in stato operativo.` };
+  }
+  if ((row.s.cantieri || []).length > 0) {
+    return { disponibile: true, attiva: false, iniziata: false, entrataInFinestra: false, giorniResiduiAvvio: null, finestraImpatto,
+      info: 'Cantieri censiti ma nessuno ancora in stato operativo (tutti in allestimento/non avviato): fase scavi non ancora rilevante ai fini del rischio.' };
   }
   return { disponibile: false, motivo: 'Nessuna milestone di avvio scavi tracciata e nessun cantiere censito per il lotto: impossibile determinare la fase scavi (dato dichiarato insufficiente, mai dedotto da altri domini)', finestraImpatto };
 }
@@ -1403,7 +1421,7 @@ function computeRischioComposito(row, capacita, parametri) {
   });
   const attivi = Object.values(fattori).filter(r => r.disponibile);
   const pesoAttivoTotale = attivi.reduce((s, r) => s + Number(r.peso), 0);
-  let punteggio = null, classe = null;
+  let punteggio = null, classe = null, escalata = false;
   if (pesoAttivoTotale > 0) {
     attivi.forEach(r => { r.pesoEffettivo = Number(r.peso) / pesoAttivoTotale; r.contributo = r.pesoEffettivo * r.punti; });
     punteggio = attivi.reduce((s, r) => s + r.contributo, 0);
@@ -1411,18 +1429,28 @@ function computeRischioComposito(row, capacita, parametri) {
     // Floor di escalation: la media pesata può "diluire" un problema grave
     // ma isolato su un solo fattore (es. R_AUTH al 100% ma R_SCAVI/R_MS a 0)
     // dietro pesi bassi, restituendo una classe complessiva ingannevolmente
-    // mite. La classificazione finale non scende mai sotto quella che si
-    // otterrebbe prendendo il SINGOLO fattore attivo più grave come se fosse
-    // l'intero punteggio — un problema serio e isolato non si nasconde
-    // dietro una media, ma non "gonfia" artificialmente lotti dove nessun
-    // fattore singolo è davvero critico.
+    // mite. La classificazione finale sale di UN SOLO GRADINO rispetto alla
+    // media pesata quando un singolo fattore attivo è più severo (mai un
+    // salto diretto alla classe del fattore peggiore, che nella pratica
+    // portava quasi ogni lotto con un fattore a 100 punti dritto in Critico,
+    // anche con punteggio composito 36-58/100 — v. rev.278): un problema
+    // isolato emerge segnalando un livello di attenzione in più, senza che
+    // un solo fattore possa da solo determinare l'intera classificazione.
+    const classiOrd = (parametri.rischio_ros.classi || []).slice().sort((a, b) => a.punteggio_min - b.punteggio_min);
+    const idxOf = c => classiOrd.findIndex(x => x.classe === (c && c.classe));
     const puntiMax = attivi.reduce((m, r) => Math.max(m, r.punti || 0), 0);
-    const classeFloor = (parametri.rischio_ros.classi || []).find(c => puntiMax >= c.punteggio_min && puntiMax <= c.punteggio_max) || null;
-    if (classeFloor && (!classe || classeFloor.punteggio_min > classe.punteggio_min)) {
-      classe = classeFloor;
+    const classeFloor = classiOrd.find(c => puntiMax >= c.punteggio_min && puntiMax <= c.punteggio_max) || null;
+    escalata = false;
+    if (classeFloor) {
+      const idxAttuale = idxOf(classe);
+      const idxFloor = idxOf(classeFloor);
+      if (idxFloor > idxAttuale) {
+        const idxNuovo = Math.min(idxFloor, idxAttuale + 1);
+        if (idxNuovo !== idxAttuale) { classe = classiOrd[idxNuovo]; escalata = true; }
+      }
     }
   }
-  return { fattori, punteggio, classe, pesoAttivoTotale, renormalizzato: pesoAttivoTotale > 0 && pesoAttivoTotale < 0.999 };
+  return { fattori, punteggio, classe, pesoAttivoTotale, escalata, renormalizzato: pesoAttivoTotale > 0 && pesoAttivoTotale < 0.999 };
 }
 
 // ── Azione suggerita: prima regola che matcha, in ordine di priorità (Regole azioni) ──
@@ -1689,7 +1717,7 @@ function renderCausaCell(row) {
 
 function renderRischioBadge(rischio) {
   if (!rischio.classe) return `<div class="risk-badge risk-nd">N/D<span class="rb-score">non calcolabile</span></div>`;
-  return `<div class="risk-badge ${CLASSE_CLS[rischio.classe.classe] || 'risk-nd'}">${rischio.classe.classe}<span class="rb-score">${Math.round(rischio.punteggio)}/100</span></div>`;
+  return `<div class="risk-badge ${CLASSE_CLS[rischio.classe.classe] || 'risk-nd'}" ${rischio.escalata ? `title="Classe alzata di un livello: un singolo fattore di rischio è più severo della media pesata mostrata"` : ''}>${rischio.classe.classe}${rischio.escalata ? '<span class="rb-esc">▲</span>' : ''}<span class="rb-score">${Math.round(rischio.punteggio)}/100</span></div>`;
 }
 function renderAzionePill(azioneInfo) {
   if (!azioneInfo) return `<span class="action-pill ap-ok">Nessuna azione urgente</span>`;
@@ -3291,7 +3319,7 @@ function buildCollapsibleCalcolo(r) {
     if (!f.disponibile) { h += `${FATTORE_LABEL[codice]} — <i>dato insufficiente</i> (${f.motivo}).<br>`; return; }
     h += `${FATTORE_LABEL[codice]} — punteggio grezzo ${f.punti.toFixed(1)}/100, peso ${(Number(f.peso)*100).toFixed(0)}%${r.rischio.renormalizzato ? ` (rinormalizzato a ${(f.pesoEffettivo*100).toFixed(1)}%)` : ''}, contributo ${f.contributo.toFixed(1)} pt, soglia attenzione ${f.soglia_attenzione}, soglia critica ${f.soglia_critica} (${f.misura || ''}).<br>`;
   });
-  h += `Punteggio totale = media pesata dei fattori disponibili = <b>${r.rischio.punteggio===null?'N/D':r.rischio.punteggio.toFixed(1)+'/100 · '+(r.rischio.classe?r.rischio.classe.classe:'N/D')}</b>.${r.rischio.renormalizzato ? ` Uno o più fattori non disponibili: pesi rinormalizzati sui rimanenti (${Math.round(r.rischio.pesoAttivoTotale*100)}% del modello originale).` : ''}</div>`;
+  h += `Punteggio totale = media pesata dei fattori disponibili = <b>${r.rischio.punteggio===null?'N/D':r.rischio.punteggio.toFixed(1)+'/100 · '+(r.rischio.classe?r.rischio.classe.classe:'N/D')}</b>.${r.rischio.renormalizzato ? ` Uno o più fattori non disponibili: pesi rinormalizzati sui rimanenti (${Math.round(r.rischio.pesoAttivoTotale*100)}% del modello originale).` : ''}${r.rischio.escalata ? ` <b>Classe alzata di un livello</b> rispetto alla sola media pesata: almeno un fattore singolo (v. sopra) è più severo del punteggio composito.` : ''}</div>`;
 
   h += `<div class="trasp-block"><span class="tb-label">Motivazione azione suggerita</span>
     ${r.azioneInfo ? `Regola <b>${r.azioneInfo.regola.codice}</b> (priorità ${r.azioneInfo.regola.priorita}): "${r.azioneInfo.regola.condizione}" → <b>${r.azioneInfo.regola.azione}</b>.${r.azioneInfo.regola.responsabile ? ' Responsabile: ' + r.azioneInfo.regola.responsabile + '.' : ''}` : 'Nessuna regola applicabile.'}
