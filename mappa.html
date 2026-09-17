@@ -2904,6 +2904,19 @@ function _dataOggiFile() {
   return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
 }
 
+// pptxgenjs sizing:{type:'contain'} richiede di conoscere le dimensioni native
+// dell'immagine per calcolare il rettangolo aspect-corretto: con data URI
+// base64 in browser (nessun file da ispezionare) non ci riesce e ricade su
+// uno stretch semplice che riempie tutto il box, deformando l'immagine se il
+// box non ha le sue stesse proporzioni. Calcoliamo noi il contain a partire
+// dalle dimensioni reali del canvas catturato, così l'immagine finale ha
+// sempre le stesse proporzioni della mappa a schermo, solo centrata nel box.
+function _containFit(imgW, imgH, boxX, boxY, boxW, boxH) {
+  const scale = Math.min(boxW / imgW, boxH / imgH);
+  const w = imgW * scale, h = imgH * scale;
+  return { x: boxX + (boxW - w) / 2, y: boxY + (boxH - h) / 2, w, h };
+}
+
 async function generaReportAWS() {
   const btn = document.getElementById('reportAwsBtn');
   if (!btn || btn.classList.contains('busy')) return;
@@ -2981,9 +2994,11 @@ async function generaReportAWS() {
         x: 0.3, y: 0.15, w: 12.7, h: 0.5, fontSize: 20, bold: true,
         fontFace: 'Raleway', color: '043F75'
       });
-      slide.addImage({ data: imgMappa, x: 0.3, y: 0.75, w: 6.2, h: 6.2, sizing: { type: 'contain', w: 6.2, h: 6.2 } });
+      const fitMappa = _containFit(canvasMappa.width, canvasMappa.height, 0.3, 0.75, 6.2, 6.2);
+      slide.addImage({ data: imgMappa, x: fitMappa.x, y: fitMappa.y, w: fitMappa.w, h: fitMappa.h });
       slide.addText('Mappa', { x: 0.3, y: 7.0, w: 6.2, h: 0.35, fontSize: 12, align: 'center', color: '6b7080', fontFace: 'Raleway' });
-      slide.addImage({ data: imgSat, x: 6.8, y: 0.75, w: 6.2, h: 6.2, sizing: { type: 'contain', w: 6.2, h: 6.2 } });
+      const fitSat = _containFit(canvasSat.width, canvasSat.height, 6.8, 0.75, 6.2, 6.2);
+      slide.addImage({ data: imgSat, x: fitSat.x, y: fitSat.y, w: fitSat.w, h: fitSat.h });
       slide.addText('Satellite', { x: 6.8, y: 7.0, w: 6.2, h: 0.35, fontSize: 12, align: 'center', color: '6b7080', fontFace: 'Raleway' });
     }
     await pptx.writeFile({ fileName: `Report_AWS_${_dataOggiFile()}.pptx` });
