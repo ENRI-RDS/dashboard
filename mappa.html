@@ -2940,17 +2940,30 @@ async function generaReportAWS() {
       applyFilterCluster(cl);
       await _attendiMappaPronta();
 
+      // scale:1 + width/height espliciti (invece del default devicePixelRatio):
+      // su schermi HiDPI html2canvas raddoppiava/triplicava la risoluzione del
+      // canvas rispetto alle dimensioni CSS di #map, gonfiando il file e
+      // producendo, se letto con proporzioni diverse da quelle attese, un
+      // risultato "sfalsato" rispetto a quanto visibile a schermo. JPEG invece
+      // di PNG per contenere ulteriormente il peso (le tile mappa/satellite
+      // sono fotografiche, JPEG comprime molto meglio senza perdita visibile).
+      const H2C_OPTS = {
+        useCORS: true, allowTaint: false, logging: false,
+        scale: 1, width: mapEl.clientWidth, height: mapEl.clientHeight,
+        backgroundColor: '#ffffff'
+      };
+
       btn.innerHTML = `Report AWS… ${i + 1}/${clSorted.length} (mappa)`;
       setBaseLayer('osm');
       await _attendiTileLayerPronto(_currentBmapLayer);
-      const canvasMappa = await html2canvas(mapEl, { useCORS: true, allowTaint: false, logging: false });
-      const imgMappa = canvasMappa.toDataURL('image/png');
+      const canvasMappa = await html2canvas(mapEl, H2C_OPTS);
+      const imgMappa = canvasMappa.toDataURL('image/jpeg', 0.85);
 
       btn.innerHTML = `Report AWS… ${i + 1}/${clSorted.length} (satellite)`;
       setBaseLayer('satellite');
       await _attendiTileLayerPronto(_currentBmapLayer);
-      const canvasSat = await html2canvas(mapEl, { useCORS: true, allowTaint: false, logging: false });
-      const imgSat = canvasSat.toDataURL('image/png');
+      const canvasSat = await html2canvas(mapEl, H2C_OPTS);
+      const imgSat = canvasSat.toDataURL('image/jpeg', 0.85);
 
       const slide = pptx.addSlide();
       slide.addText(`Cluster ${cl} — Progettazione`, {
