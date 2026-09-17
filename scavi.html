@@ -1743,15 +1743,17 @@ function _renderImprese() {
     g.metriTotByLotto[lottoKey] = (g.metriTotByLotto[lottoKey] || 0) + (r.metri_totali || 0);
   });
 
-  // Metri totali "reali" per impresa: come nella vista per-Lotto, si preferisce il
-  // totale da PERMESSI (Riepilogo_progettazione.csv, copre tutte le tratte autorizzate
-  // del lotto) rispetto alla somma di metri_totali dai soli cantieri già sincronizzati
-  // in Mongo, che può essere parziale. Fallback sul dato cantieri se il lotto non è in PERMESSI.
+  // Metri totali "reali" per impresa: si usa la quota GIA' OTTENUTA da PERMESSI
+  // (Riepilogo_progettazione.csv) per ciascun lotto, non l'intero tracciato di
+  // progetto — i cantieri vengono aperti in Mongo solo per tratte con
+  // STATO_AUTORIZZAZIONE = OTTENUTO, quindi sommare p.totale (che include anche
+  // tratte in fase di autorizzazione) gonfia il dato rispetto ai cantieri reali.
+  // Fallback sul dato cantieri se il lotto non è in PERMESSI.
   let rows = Object.values(byImpresa).map(g => {
     let metriTotReale = 0;
     Object.keys(g.metriTotByLotto).forEach(l => {
       const p = PERMESSI[l];
-      metriTotReale += p ? p.totale : g.metriTotByLotto[l];
+      metriTotReale += p ? (p.statiMap['OTTENUTO'] || 0) : g.metriTotByLotto[l];
     });
     return {
       ...g,
