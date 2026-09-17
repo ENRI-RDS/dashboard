@@ -169,6 +169,7 @@
     @supports (padding: env(safe-area-inset-bottom)) {
       .sidebar { padding-bottom: env(safe-area-inset-bottom); }
       .measure-badge { bottom: calc(80px + env(safe-area-inset-bottom)); }
+      .selector-badge { bottom: calc(80px + env(safe-area-inset-bottom)); }
     }
   }
   /* ── TOUCH: rimuove il ritardo 300ms su tutti i pulsanti ── */
@@ -347,6 +348,7 @@
 
     /* ── Badge misura ── */
     .measure-badge{ bottom:80px; }
+    .selector-badge{ bottom:80px; }
     .measure-hint{ top:58px; font-size:10px; }
     .catastale-notice{ bottom:auto; top:58px; font-size:10px; padding:4px 12px; }
 
@@ -447,6 +449,7 @@
   @media(max-width:480px){
     .stats-bar{ bottom:18px !important; max-width:calc(100vw - 160px); }
     .measure-badge{ bottom:76px; }
+    .selector-badge{ bottom:76px; }
     .map-legend{ max-width:130px; top:56px; }
     .sidebar{ max-height:48vh; }
     /* Siti button sotto la legenda (phone piccoli) */
@@ -680,6 +683,23 @@
   }
   .measure-control-btn:hover { background:var(--surface2); box-shadow:0 3px 12px #0003; }
   .measure-control-btn.active { background:#fff7ed; border-color:#e07b3a; color:#e07b3a; }
+  .selector-control-btn.active { background:#eef3fb; border-color:var(--accent); color:var(--accent); }
+  .selector-badge {
+    position:absolute; bottom:90px; left:50%; transform:translateX(-50%);
+    z-index:900; background:#1a1d27ee; color:#fff;
+    font-size:12px; font-weight:700; font-family:var(--font-mono);
+    padding:7px 18px; border-radius:20px;
+    box-shadow:0 2px 12px #0005; white-space:nowrap;
+    display:none; align-items:center; gap:8px;
+    backdrop-filter:blur(8px);
+  }
+  .selector-badge.visible { display:flex; }
+  .selector-badge-code { font-family:var(--font-body); font-weight:600; opacity:0.85; }
+  .selector-badge-clear {
+    font-size:14px; cursor:pointer; opacity:0.7;
+    transition:opacity 0.15s; line-height:1;
+  }
+  .selector-badge-clear:hover { opacity:1; }
   .measure-badge {
     position:absolute; bottom:90px; left:50%; transform:translateX(-50%);
     z-index:900; background:#1a1d27ee; color:#fff;
@@ -824,6 +844,11 @@
     <span class="measure-badge-clear" onclick="clearMeasure()" title="Cancella misura">✕</span>
   </div>
   <div id="measureHint" class="measure-hint">📏 Clicca per aggiungere punti · Doppio click per terminare</div>
+  <div id="selectorBadge" class="selector-badge">
+    <span class="selector-badge-code" id="selectorPratica">—</span>
+    <span id="selectorDist">0 m</span>
+    <span class="selector-badge-clear" onclick="clearSelectorHighlight()" title="Cancella selezione">✕</span>
+  </div>
   <div id="catastaleLoader" class="catastale-loader">
     <div class="catastale-loader-spin"></div>
     <span>Caricamento catasto…</span>
@@ -2149,6 +2174,8 @@ function clearHighlight() {
     });
   });
   _highlightedLayers = [];
+  const badge = document.getElementById('selectorBadge');
+  if (badge) badge.classList.remove('visible');
 }
 
 function applyHighlight(targetLayer) {
@@ -2747,7 +2774,10 @@ function _buildMapLayers(geojson, isUpdate = false) {
           if (_highlightedLayers.includes(e.target)) return;
           e.target.setStyle({ weight:4, opacity:0.95, color: getColorForMode(e.target.feature, currentViewMode) });
         });
-        layer.on('click', e => { applyHighlight(e.target); });
+        layer.on('click', e => {
+          if (_selectorMode === 'pratica') selectByPraticaFromLayer(e.target);
+          else applyHighlight(e.target);
+        });
       }
     }).addTo(map);
     allLayers.push({ layer, outlineLayer, lotto });
@@ -2824,6 +2854,65 @@ const MeasureControl = L.Control.extend({
   }
 });
 new MeasureControl().addTo(map);
+
+// ── SELETTORE: tratta / pratica ─────────────────────────────────────────────
+let _selectorMode = 'tratta'; // 'tratta' | 'pratica'
+
+const SelectorControl = L.Control.extend({
+  options: { position: 'topleft' },
+  onAdd: function() {
+    const btn = L.DomUtil.create('div', 'measure-control-btn selector-control-btn');
+    btn.id = 'selectorBtn';
+    btn.innerHTML = 'Selettore: Tratta';
+    btn.title = 'Modalità di selezione: singola tratta o intera pratica';
+    L.DomEvent.disableClickPropagation(btn);
+    L.DomEvent.on(btn, 'click', toggleSelectorMode);
+    return btn;
+  }
+});
+new SelectorControl().addTo(map);
+
+function toggleSelectorMode() {
+  _selectorMode = _selectorMode === 'tratta' ? 'pratica' : 'tratta';
+  const btn = document.getElementById('selectorBtn');
+  if (btn) {
+    btn.innerHTML = _selectorMode === 'pratica' ? 'Selettore: Pratica' : 'Selettore: Tratta';
+    btn.classList.toggle('active', _selectorMode === 'pratica');
+  }
+  clearSelectorHighlight();
+}
+
+// Evidenzia sulla mappa tutte le tratte della stessa pratica del layer cliccato
+// e ne somma la lunghezza — utile perché ogni permesso viene verificato per
+// singola tratta, ma la lunghezza complessiva di una pratica non è sempre ovvia.
+function selectByPraticaFromLayer(clickedLayer) {
+  const raw = (clickedLayer.feature?.properties?.PRATICA || '').trim();
+  if (!raw) { applyHighlight(clickedLayer); return; }
+  const codes = raw.split(/[|;,]/).map(s => s.trim().toUpperCase()).filter(Boolean);
+  if (!codes.length) { applyHighlight(clickedLayer); return; }
+
+  const matchedLayers = [];
+  allLayers.forEach(({layer}) => {
+    layer.eachLayer(l => {
+      const lRaw = (l.feature?.properties?.PRATICA || '');
+      const lCodes = lRaw.split(/[|;,]/).map(s => s.trim().toUpperCase());
+      if (lCodes.some(c => codes.includes(c))) matchedLayers.push(l);
+    });
+  });
+  if (!matchedLayers.length) { applyHighlight(clickedLayer); return; }
+
+  applyHighlightMulti(matchedLayers);
+
+  const totale = matchedLayers.reduce((s, l) => s + (Number(l.feature?.properties?.LUNGHEZZA) || 0), 0);
+  document.getElementById('selectorPratica').textContent =
+    codes.join(', ') + ` · ${matchedLayers.length} tratt${matchedLayers.length === 1 ? 'a' : 'e'}`;
+  document.getElementById('selectorDist').textContent = _fmtDist(totale);
+  document.getElementById('selectorBadge').classList.add('visible');
+}
+
+function clearSelectorHighlight() {
+  clearHighlight();
+}
 
 function toggleMeasure() {
   _measureActive = !_measureActive;
