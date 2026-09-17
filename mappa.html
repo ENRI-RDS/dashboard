@@ -12,6 +12,8 @@
 <script>function _sessionToken(){ return localStorage.getItem('_enri_session') || ''; }</script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <!-- Anti-FOUC: nasconde la sidebar su mobile PRIMA del primo disegno -->
 <script>
@@ -683,6 +685,7 @@
   }
   .measure-control-btn:hover { background:var(--surface2); box-shadow:0 3px 12px #0003; }
   .measure-control-btn.active { background:#fff7ed; border-color:#e07b3a; color:#e07b3a; }
+  .measure-control-btn.busy { opacity:0.6; cursor:wait; pointer-events:none; }
   .selector-control-btn.active { background:#eef3fb; border-color:var(--accent); color:var(--accent); }
   .selector-badge {
     position:absolute; bottom:90px; left:50%; transform:translateX(-50%);
@@ -2871,6 +2874,93 @@ const SelectorControl = L.Control.extend({
   }
 });
 new SelectorControl().addTo(map);
+
+// ── REPORT AWS ───────────────────────────────────────────────────────────
+// PowerPoint con uno screenshot della mappa per cluster, in modalità
+// "Progettazione" (currentViewMode 'stato' → colore per STATO_LEGENDA/STATO_AUTORIZZAZIONE).
+const ReportAWSControl = L.Control.extend({
+  options: { position: 'topleft' },
+  onAdd: function() {
+    const btn = L.DomUtil.create('div', 'measure-control-btn');
+    btn.id = 'reportAwsBtn';
+    btn.innerHTML = 'Report AWS';
+    btn.title = 'Genera un PowerPoint con uno screenshot mappa per cluster (modalità Progettazione)';
+    L.DomEvent.disableClickPropagation(btn);
+    L.DomEvent.on(btn, 'click', generaReportAWS);
+    return btn;
+  }
+});
+new ReportAWSControl().addTo(map);
+
+function _attendiMappaPronta() {
+  return new Promise(resolve => {
+    let done = false;
+    const finisci = () => { if (!done) { done = true; setTimeout(resolve, 700); } };
+    map.once('moveend', finisci);
+    setTimeout(finisci, 2500); // fallback se i bounds non cambiano (moveend non scatta)
+  });
+}
+
+function _dataOggiFile() {
+  const d = new Date();
+  return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+}
+
+async function generaReportAWS() {
+  const btn = document.getElementById('reportAwsBtn');
+  if (!btn || btn.classList.contains('busy')) return;
+  if (typeof html2canvas === 'undefined' || typeof PptxGenJS === 'undefined') {
+    alert('Librerie di export (html2canvas/pptxgenjs) non disponibili.');
+    return;
+  }
+  const mapEl = document.getElementById('map');
+  if (!mapEl || !allFeatures.length) { alert('Mappa non ancora pronta.'); return; }
+
+  const clusters = new Set();
+  allFeatures.forEach(f => {
+    const cl = f.properties.CLUSTER ?? f.properties.ID_CLUSTER ?? f.properties.cluster;
+    if (cl != null && cl !== '') clusters.add(String(cl));
+  });
+  const clSorted = [...clusters].sort((a, b) => parseInt(a) - parseInt(b) || a.localeCompare(b));
+  if (!clSorted.length) { alert('Nessun cluster trovato nei dati caricati.'); return; }
+
+  const prevMode = currentViewMode;
+  const prevClusters = new Set(selectedClusters);
+
+  btn.classList.add('busy');
+  btn.innerHTML = 'Report AWS…';
+  setViewMode('stato'); // Progettazione
+
+  const pptx = new PptxGenJS();
+  pptx.defineLayout({ name: 'WIDE', width: 13.33, height: 7.5 });
+  pptx.layout = 'WIDE';
+
+  try {
+    for (let i = 0; i < clSorted.length; i++) {
+      const cl = clSorted[i];
+      btn.innerHTML = `Report AWS… ${i + 1}/${clSorted.length}`;
+      applyFilterCluster(cl);
+      await _attendiMappaPronta();
+      const canvas = await html2canvas(mapEl, { useCORS: true, allowTaint: false, logging: false });
+      const imgData = canvas.toDataURL('image/png');
+      const slide = pptx.addSlide();
+      slide.addText(`Cluster ${cl} — Progettazione`, {
+        x: 0.3, y: 0.2, w: 12.7, h: 0.5, fontSize: 20, bold: true,
+        fontFace: 'Raleway', color: '043F75'
+      });
+      slide.addImage({ data: imgData, x: 0.3, y: 0.8, w: 12.7, h: 6.4, sizing: { type: 'contain', w: 12.7, h: 6.4 } });
+    }
+    await pptx.writeFile({ fileName: `Report_AWS_${_dataOggiFile()}.pptx` });
+  } catch (e) {
+    console.error('[Report AWS]', e);
+    alert('Errore nella generazione del report: ' + e.message);
+  } finally {
+    setViewMode(prevMode);
+    if (prevClusters.size) { selectedClusters = prevClusters; applyFilterClusterMulti(); }
+    btn.classList.remove('busy');
+    btn.innerHTML = 'Report AWS';
+  }
+}
 
 function toggleSelectorMode() {
   _selectorMode = _selectorMode === 'tratta' ? 'pratica' : 'tratta';
