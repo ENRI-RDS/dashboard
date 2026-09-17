@@ -2926,6 +2926,17 @@ async function generaReportAWS() {
   const prevClusters = new Set(selectedClusters);
   const prevBmapKey = _currentBmapKey;
 
+  // Nascondi i controlli Leaflet overlay (zoom, tasto mappa/satellite, SED,
+  // Misura, Selettore: Tratta, Siti ENRI, Pratiche) solo per la cattura:
+  // non fanno parte del "contenuto mappa" da mettere nel report. Restano
+  // visibili scala e attribuzione (angoli bottom, non toccati).
+  const _ctrlTL = mapEl.querySelector('.leaflet-top.leaflet-left');
+  const _ctrlTR = mapEl.querySelector('.leaflet-top.leaflet-right');
+  const _ctrlTLDisplay = _ctrlTL ? _ctrlTL.style.display : '';
+  const _ctrlTRDisplay = _ctrlTR ? _ctrlTR.style.display : '';
+  if (_ctrlTL) _ctrlTL.style.display = 'none';
+  if (_ctrlTR) _ctrlTR.style.display = 'none';
+
   btn.classList.add('busy');
   btn.innerHTML = 'Report AWS…';
   setViewMode('stato'); // Progettazione
@@ -2980,6 +2991,8 @@ async function generaReportAWS() {
     console.error('[Report AWS]', e);
     alert('Errore nella generazione del report: ' + e.message);
   } finally {
+    if (_ctrlTL) _ctrlTL.style.display = _ctrlTLDisplay;
+    if (_ctrlTR) _ctrlTR.style.display = _ctrlTRDisplay;
     setBaseLayer(prevBmapKey);
     setViewMode(prevMode);
     if (prevClusters.size) { selectedClusters = prevClusters; applyFilterClusterMulti(); }
