@@ -87,19 +87,19 @@ body.panel-open .main{margin-right:44%;}
 .stato-table{width:100%;border-collapse:collapse;font-size:12px;}
 .stato-table thead th{padding:9px 12px;font-family:var(--font-mono);font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;border-bottom:2px solid var(--border2);white-space:nowrap;background:var(--gray-50);position:sticky;top:0;}
 .stato-table thead th.tc-center{text-align:center;}
-.stato-table thead th.th-group{text-align:center;border-bottom:1px solid var(--border);border-left:1px solid var(--border);color:#fff;font-size:9.5px;}
-/* Gruppo SCAVI: blu Retelit — sia intestazione piena che sotto-intestazione e celle, stessa famiglia di colore per far percepire il gruppo a colpo d'occhio */
-.stato-table thead th.th-group.grp-scavi{background:var(--retelit-blue);}
-.stato-table thead th.th-sub.grp-scavi{background:rgba(4,63,117,.07);color:var(--retelit-blue);}
-.stato-table tbody td.grp-scavi{background:rgba(4,63,117,.035);}
-/* Gruppo AUTORIZZAZIONI: teal Retelit, stesso schema */
-.stato-table thead th.th-group.grp-auth{background:var(--retelit-teal);}
-.stato-table thead th.th-sub.grp-auth{background:rgba(26,125,153,.09);color:var(--retelit-teal);}
-.stato-table tbody td.grp-auth{background:rgba(26,125,153,.045);}
-/* Colonne narrative (Perché/Azione/Milestone): tinta neutra per separarle
-   visivamente dai dati numerici, senza competere con i due gruppi sopra */
-.stato-table thead th.grp-narr{background:var(--gray-100);}
-.stato-table tbody td.grp-narr{background:var(--gray-50);}
+.stato-table thead th.th-group{text-align:center;border-bottom:3px solid var(--border2);background:var(--gray-50);color:var(--text);font-size:9.5px;}
+/* Gruppo SCAVI / AUTORIZZAZIONI: tocco leggero — solo bordo colorato sotto
+   l'intestazione + colore del testo nella sotto-intestazione, MAI sfondo
+   pieno su header o celle (prima versione troppo satura, v. rev.280→281). */
+.stato-table thead th.th-group.grp-scavi{border-bottom-color:var(--retelit-blue);}
+.stato-table thead th.th-sub.grp-scavi{color:var(--retelit-blue);}
+.stato-table thead th.th-group.grp-auth{border-bottom-color:var(--retelit-teal);}
+.stato-table thead th.th-sub.grp-auth{color:var(--retelit-teal);}
+/* Celle body: nessuno sfondo di gruppo, solo un sottile bordo verticale ai
+   margini del gruppo per separarlo visivamente senza appesantire la riga. */
+.stato-table tbody td.grp-scavi.grp-start{border-left:2px solid rgba(4,63,117,.15);}
+.stato-table tbody td.grp-auth.grp-start{border-left:2px solid rgba(26,125,153,.18);}
+.stato-table thead th.grp-narr{background:var(--gray-50);}
 .stato-table thead th.th-sub{font-size:8.5px;border-left:1px solid var(--gray-100);}
 .stato-table tbody tr{border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;border-left:4px solid transparent;}
 .stato-table tbody tr:hover{background:rgba(4,63,117,.03);}
@@ -1620,7 +1620,7 @@ function renderAvanzamentoCells(flag, isProg, tooltip) {
     // stimata disponibile (avvio progettazione o tempi ente non configurati).
     let nota = isProg ? 'Milestone autorizzativa non disponibile' : 'Nessuna milestone tracciata';
     if (isProg && flag.stimaInfo && !flag.stimaInfo.disponibile) nota += ` (stima non calcolabile: ${flag.stimaInfo.motivo})`;
-    return `<td class="tc-center adv-previsto-cell adv-nd-cell ${grp}" title="${tooltip}">—</td>
+    return `<td class="tc-center adv-previsto-cell adv-nd-cell ${grp} grp-start" title="${tooltip}">—</td>
       <td class="tc-center ${grp}" title="${tooltip}"><b>${fmtPct(flag.pct)}</b><div class="adv-note-sm">${nota}</div></td>
       <td class="tc-center adv-nd-cell ${grp}">—</td>`;
   }
@@ -1628,7 +1628,7 @@ function renderAvanzamentoCells(flag, isProg, tooltip) {
     // Caso A: milestone di invio/ottenimento tracciata ma "invio" ancora
     // futuro. Previsto=0% per definizione di curva; non è un dato mancante.
     const scostTxt = flag.pct > 0.5 ? `<b class="scost-pos">+${Math.round(flag.pct)}%</b>` : `<span class="scost-na">0%</span>`;
-    return `<td class="tc-center adv-previsto-cell ${grp}" title="${tooltip}">0%</td>
+    return `<td class="tc-center adv-previsto-cell ${grp} grp-start" title="${tooltip}">0%</td>
       <td class="tc-center ${grp}" title="${tooltip}"><b>${fmtPct(flag.pct)}</b></td>
       <td class="tc-center ${grp}">${scostTxt}</td>`;
   }
@@ -1636,7 +1636,7 @@ function renderAvanzamentoCells(flag, isProg, tooltip) {
   const barColor = flag.flag==='err'?'var(--danger)':flag.flag==='warn'?'var(--warn)':'var(--ok)';
   const stimaClass = flag.stimato ? ' adv-stimato' : '';
   const previstoTxt = fmtPct(flag.plannedToday);
-  return `<td class="tc-center adv-previsto-cell${stimaClass} ${grp}" title="${tooltip}">${previstoTxt}</td>
+  return `<td class="tc-center adv-previsto-cell${stimaClass} ${grp} grp-start" title="${tooltip}">${previstoTxt}</td>
     <td class="tc-center ${grp}" title="${tooltip}"><b>${fmtPct(flag.pct)}</b></td>
     <td class="tc-center ${grp}" title="${tooltip}">
       <div class="scost-cell"><b class="${scost.cls}">${scost.text}</b>
@@ -1868,9 +1868,9 @@ function render(prog, scavi, milestoneByLotto) {
       <td class="tc-center">${renderRischioBadge(r.rischio)}</td>
       ${renderAvanzamentoCells(r.sFlag, false, tooltipScavi(r))}
       ${renderAvanzamentoCells(r.pFlag, true, tooltipProg(r))}
-      <td class="grp-narr">${renderCausaCell(r)}</td>
-      <td class="grp-narr">${renderAzionePill(r.azioneInfo)}</td>
-      <td class="grp-narr">${renderProssimaCol(r)}</td>
+      <td>${renderCausaCell(r)}</td>
+      <td>${renderAzionePill(r.azioneInfo)}</td>
+      <td>${renderProssimaCol(r)}</td>
     </tr>`;
   }).join('');
 
