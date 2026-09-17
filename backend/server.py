@@ -2914,12 +2914,15 @@ async def get_pol_conv_date_richiesta(sess: dict = Depends(_require_staff_sessio
         # (altrimenti il delete_many sotto, con seen_keys vuoto, cancellerebbe
         # tutte le date già raccolte in precedenza).
         dates, dates_invio, dates_rds, dates_emissione = {}, {}, {}, {}
+        urgenti = {}
         async for d in pol_conv_dates_col.find({}):
             dates[d["_id"]] = d.get("data_richiesta", "")
             dates_invio[d["_id"]] = d.get("data_invio", "")
             dates_rds[d["_id"]] = d.get("data_richiesta_rds", "")
             dates_emissione[d["_id"]] = d.get("data_emissione", "")
-        return {"date": dates, "date_invio": dates_invio, "date_richiesta_rds": dates_rds, "date_emissione": dates_emissione}
+            if d.get("urgente"):
+                urgenti[d["_id"]] = True
+        return {"date": dates, "date_invio": dates_invio, "date_richiesta_rds": dates_rds, "date_emissione": dates_emissione, "urgenti": urgenti}
 
     def _extract_lotto(src: str) -> str:
         return str(src).replace(".xlsx", "").replace(".xls", "").replace("Lotto ", "").strip().upper()
@@ -2956,12 +2959,45 @@ async def get_pol_conv_date_richiesta(sess: dict = Depends(_require_staff_sessio
         await pol_conv_dates_col.delete_many({"_id": {"$nin": list(seen_keys)}})
 
     dates, dates_invio, dates_rds, dates_emissione = {}, {}, {}, {}
+    urgenti = {}
     async for d in pol_conv_dates_col.find({}):
         dates[d["_id"]] = d.get("data_richiesta", "")
         dates_invio[d["_id"]] = d.get("data_invio", "")
         dates_rds[d["_id"]] = d.get("data_richiesta_rds", "")
         dates_emissione[d["_id"]] = d.get("data_emissione", "")
-    return {"date": dates, "date_invio": dates_invio, "date_richiesta_rds": dates_rds, "date_emissione": dates_emissione}
+        if d.get("urgente"):
+            urgenti[d["_id"]] = True
+    return {"date": dates, "date_invio": dates_invio, "date_richiesta_rds": dates_rds, "date_emissione": dates_emissione, "urgenti": urgenti}
+
+
+@app.post("/api/admin/polizze-convenzioni/set-urgente")
+async def set_pol_conv_urgente(
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """Flegga/sfleggia una pratica come urgente (solo lato UI: gestito da admin/admin2).
+    Body: {lotto, pratica, field: "CONVENZIONE"|"POLIZZA", urgente: bool}
+    Richiede x-upload-token. Scrive solo su pol_conv_dates_col, non su Master.csv."""
+    _check_token(x_upload_token or token_q)
+
+    lotto   = str((payload or {}).get("lotto", "")).strip().upper()
+    pratica = str((payload or {}).get("pratica", "")).strip()
+    field   = str((payload or {}).get("field", "")).strip().upper()
+    urgente = bool((payload or {}).get("urgente", False))
+
+    if not lotto or not pratica:
+        raise HTTPException(400, "lotto e pratica sono obbligatori")
+    if field not in _POL_CONV_ALLOWED_FIELDS:
+        raise HTTPException(400, f"field deve essere uno tra {sorted(_POL_CONV_ALLOWED_FIELDS)}")
+
+    key = f"{lotto}|{pratica}|{field}"
+    if urgente:
+        await pol_conv_dates_col.update_one({"_id": key}, {"$set": {"urgente": True}}, upsert=True)
+    else:
+        await pol_conv_dates_col.update_one({"_id": key}, {"$unset": {"urgente": ""}}, upsert=True)
+
+    return {"ok": True, "key": key, "urgente": urgente}
 
 
 @app.post("/api/admin/polizze-convenzioni/update")
