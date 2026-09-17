@@ -787,6 +787,53 @@
     transition:background .15s;flex-shrink:0;
   }
   .help-btn:hover { background:rgba(65,187,217,.15); }
+  /* ── MODAL NEGATI (Report AWS) ── */
+  #deniedOverlay {
+    position:fixed;inset:0;background:#0007;display:flex;align-items:center;
+    justify-content:center;z-index:3000;opacity:0;pointer-events:none;transition:opacity .2s;
+  }
+  #deniedOverlay.open { opacity:1; pointer-events:all; }
+  #deniedOverlay .denied-modal {
+    background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    width:720px;max-width:95vw;max-height:86vh;display:flex;flex-direction:column;
+    box-shadow:0 20px 60px #0005;font-family:var(--font-body);
+  }
+  .denied-head { padding:20px 24px 12px;border-bottom:1px solid var(--border); }
+  .denied-head h3 { font-size:16px;font-weight:700;color:var(--text);margin:0 0 4px; }
+  .denied-head p { font-size:11.5px;color:var(--muted);line-height:1.55;margin:0; }
+  .denied-tools { display:flex;gap:8px;align-items:center;padding:12px 24px;flex-wrap:wrap; }
+  .denied-tools input[type=text], .denied-tools select {
+    font-family:var(--font-body);font-size:12px;padding:6px 10px;border-radius:7px;
+    border:1px solid var(--border);background:var(--gray-50);color:var(--text);outline:none;
+  }
+  .denied-tools input[type=text] { flex:1;min-width:160px; }
+  .denied-tools button {
+    font-family:var(--font-body);font-size:11px;font-weight:600;padding:6px 12px;
+    border-radius:7px;border:1px solid var(--border);background:var(--gray-50);
+    color:var(--retelit-blue);cursor:pointer;
+  }
+  .denied-tools button:hover { background:var(--retelit-ice); }
+  .denied-list { overflow-y:auto;padding:0 24px 8px;flex:1; }
+  .denied-row {
+    display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;
+    border:1px solid transparent;cursor:pointer;
+  }
+  .denied-row:hover { background:var(--gray-50); }
+  .denied-row.on { background:rgba(192,57,43,.08);border-color:rgba(192,57,43,.35); }
+  .denied-row input { accent-color:#C0392B;cursor:pointer;flex-shrink:0; }
+  .denied-code { font-family:var(--font-mono);font-size:11.5px;font-weight:700;color:var(--text);min-width:92px; }
+  .denied-meta { font-size:11px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+  .denied-stato { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;flex-shrink:0; }
+  .denied-foot {
+    padding:12px 24px 18px;border-top:1px solid var(--border);
+    display:flex;justify-content:space-between;align-items:center;gap:12px;
+  }
+  .denied-foot .denied-summary { font-size:11.5px;color:var(--muted); }
+  .denied-foot button {
+    font-family:var(--font-body);font-size:12px;font-weight:700;padding:8px 18px;border-radius:8px;
+    border:none;background:var(--retelit-blue);color:#fff;cursor:pointer;
+  }
+  .denied-empty { padding:28px 4px;text-align:center;font-size:12px;color:var(--muted); }
 
 </style>
 </head>
@@ -803,6 +850,7 @@
     <button class="search-btn" id="clearSearchBtn" onclick="clearSearch()" style="display:none">&times;</button>
   </div>
   <div class="topbar-right">
+    <button class="topbar-back" id="deniedBtn" onclick="openDeniedModal()" title="Seleziona le pratiche da mostrare come DENIED nel Report AWS">⛔ Negati <span id="deniedCount">0</span></button>
     <button class="topbar-back" id="reportAwsBtn" onclick="generaReportAWS()" title="Genera un PowerPoint con uno screenshot mappa per cluster (modalità Progettazione)">Report AWS</button>
     <button class="topbar-back" onclick="exportGeoJSON()" title="Esporta il tracciato (o i lotti filtrati) in formato GeoJSON">⬇ GeoJSON</button>
     <a href="hub.html" class="topbar-back">&larr; Hub</a>
@@ -923,6 +971,42 @@ function awsBucket(stato) {
 }
 function awsBucketColor(stato) { return AWS_BUCKET_COLORS[awsBucket(stato)]; }
 
+// ── Selezione manuale dei NEGATI ───────────────────────────────────────────
+// Nessuno stato di diniego esiste a monte (PRATICA_STATO_VALUES non lo prevede):
+// la selezione è manuale, vale SOLO per il Report AWS e non tocca i dati.
+// Chiavi: 'P:<codice pratica>' quando la tratta ha il campo PRATICA valorizzato,
+// altrimenti 'T:<TRATTA_ID>' (fallback per le tratte senza pratica associata).
+const AWS_DENIED_LS_KEY = 'aws_report_denied_v1';
+let _awsDenied = new Set();
+
+function _awsLoadDenied() {
+  try {
+    const raw = localStorage.getItem(AWS_DENIED_LS_KEY);
+    if (raw) _awsDenied = new Set(JSON.parse(raw));
+  } catch (e) { console.warn('[Negati] lettura localStorage fallita', e); }
+}
+function _awsSaveDenied() {
+  try { localStorage.setItem(AWS_DENIED_LS_KEY, JSON.stringify([..._awsDenied])); }
+  catch (e) { console.warn('[Negati] salvataggio localStorage fallito', e); }
+}
+function _awsPraticaKey(p) {
+  const cod = String(p.PRATICA || '').replace(/\u00a0/g, ' ').trim();
+  return cod ? 'P:' + cod.toUpperCase() : '';
+}
+function _awsTrattaKey(p) {
+  const t = String(p.TRATTA_ID ?? p.fid ?? '').trim();
+  return t ? 'T:' + t.toUpperCase() : '';
+}
+// Una tratta è negata se lo è la sua pratica oppure la tratta stessa
+function _awsIsDenied(p) {
+  const pk = _awsPraticaKey(p);
+  if (pk && _awsDenied.has(pk)) return true;
+  const tk = _awsTrattaKey(p);
+  return !!tk && _awsDenied.has(tk);
+}
+_awsLoadDenied();
+document.addEventListener('DOMContentLoaded', () => _awsUpdateDeniedSummary(0));
+
 const IMPRESE = {'1':'Valtellina','1A':'Valtellina','1B':'Soleto','2':'Sertori','2A':'Sielte','2B':'Telebit','3':'Valtellina','4':'Sielte','5':'Circet','6':'Sertori','7':'Valtellina','8':'Sielte'};
 const LOTTO_ORDER = ['1A','1B','2A','2B','1','2','3','4','5','6','7','8'];
 const LOTTI_ATTIVI = ['1A','1B','2A','2B'];
@@ -971,7 +1055,9 @@ function getColorForMode(feature, mode) {
   if (mode === 'cluster') return getClusterColor(p.CLUSTER ?? p.ID_CLUSTER ?? p.cluster);
   if (mode === 'scavi')   return getScaviColorForFeature(feature);
   const st = p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE;
-  return _awsReportMode ? awsBucketColor(st) : getColor(st);
+  if (!_awsReportMode) return getColor(st);
+  // Nel report il diniego manuale vince sempre sullo stato reale
+  return _awsIsDenied(p) ? AWS_BUCKET_COLORS['DENIED'] : awsBucketColor(st);
 }
 
 function setViewMode(mode) {
@@ -2957,6 +3043,97 @@ function _containFit(imgW, imgH, boxX, boxY, boxW, boxH) {
   return { x: boxX + (boxW - w) / 2, y: boxY + (boxH - h) / 2, w, h };
 }
 
+// ── UI selezione NEGATI ────────────────────────────────────────────────────
+// Aggrega le feature caricate per pratica (o per tratta se PRATICA è vuoto):
+// la stessa granularità con cui il backend assegna una sola AUTORIZZAZIONE
+// per tratta, quindi selezionare una pratica nega tutte le sue tratte.
+function _awsBuildDeniedIndex() {
+  const idx = new Map();
+  (allFeatures || []).forEach(f => {
+    const p = f.properties || {};
+    const key = _awsPraticaKey(p) || _awsTrattaKey(p);
+    if (!key) return;
+    let e = idx.get(key);
+    if (!e) {
+      e = {
+        key,
+        codice: key.startsWith('P:') ? key.slice(2) : 'tratta ' + key.slice(2),
+        isPratica: key.startsWith('P:'),
+        ente: String(p.ENTE || '').trim(),
+        comuni: new Set(),
+        lotto: String(p.LOTTO ?? '').trim(),
+        cluster: String(p.CLUSTER ?? p.ID_CLUSTER ?? p.cluster ?? '').trim(),
+        stato: String(p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE || 'IN ATTESA').trim().toUpperCase(),
+        tratte: 0, metri: 0
+      };
+      idx.set(key, e);
+    }
+    if (p.COMUNE) e.comuni.add(String(p.COMUNE).trim());
+    e.tratte++;
+    e.metri += Number(p.LUNGHEZZA) || 0;
+  });
+  return [...idx.values()].sort((a, b) =>
+    (a.lotto || '').localeCompare(b.lotto || '', 'it', { numeric: true }) ||
+    a.codice.localeCompare(b.codice, 'it', { numeric: true })
+  );
+}
+
+function openDeniedModal() {
+  if (!allFeatures || !allFeatures.length) { alert('Mappa non ancora pronta.'); return; }
+  const sel = document.getElementById('deniedLotto');
+  if (sel && sel.options.length <= 1) {
+    const lotti = [...new Set(allFeatures.map(f => String(f.properties.LOTTO ?? '').trim()).filter(Boolean))]
+      .sort((a, b) => (LOTTO_ORDER.indexOf(a) - LOTTO_ORDER.indexOf(b)) || a.localeCompare(b));
+    lotti.forEach(l => { const o = document.createElement('option'); o.value = l; o.textContent = 'Lotto ' + l; sel.appendChild(o); });
+  }
+  renderDeniedList();
+  document.getElementById('deniedOverlay').classList.add('open');
+}
+function closeDeniedModal() { document.getElementById('deniedOverlay').classList.remove('open'); }
+
+function renderDeniedList() {
+  const q = (document.getElementById('deniedSearch').value || '').trim().toLowerCase();
+  const lot = document.getElementById('deniedLotto').value;
+  const filtro = document.getElementById('deniedFiltro').value;
+  const rows = _awsBuildDeniedIndex().filter(e => {
+    if (lot && e.lotto !== lot) return false;
+    if (filtro === 'selezionate' && !_awsDenied.has(e.key)) return false;
+    if (filtro === 'nonottenute' && (e.stato === 'OTTENUTO' || e.stato === 'NO COMPETENZA')) return false;
+    if (!q) return true;
+    return (e.codice + ' ' + e.ente + ' ' + [...e.comuni].join(' ') + ' ' + e.lotto).toLowerCase().includes(q);
+  });
+  const box = document.getElementById('deniedList');
+  box.innerHTML = rows.length ? rows.map(e => {
+    const on = _awsDenied.has(e.key);
+    const comuni = [...e.comuni].slice(0, 2).join(', ') + (e.comuni.size > 2 ? ` +${e.comuni.size - 2}` : '');
+    return `<label class="denied-row${on ? ' on' : ''}">
+      <input type="checkbox" ${on ? 'checked' : ''} onchange="toggleDenied('${e.key.replace(/'/g, "\\'")}')">
+      <span class="denied-code">${e.codice}</span>
+      <span class="denied-meta">Lotto ${e.lotto || '—'} · ${e.ente || 'ente n/d'}${comuni ? ' · ' + comuni : ''} · ${e.tratte} tratte · ${(e.metri / 1000).toFixed(2).replace('.', ',')} km</span>
+      <span class="denied-stato" style="color:${getColor(e.stato)}">${e.stato}</span>
+    </label>`;
+  }).join('') : '<div class="denied-empty">Nessuna pratica corrisponde ai filtri.</div>';
+  _awsUpdateDeniedSummary(rows.length);
+}
+
+function toggleDenied(key) {
+  if (_awsDenied.has(key)) _awsDenied.delete(key); else _awsDenied.add(key);
+  _awsSaveDenied();
+  renderDeniedList();
+}
+function clearDenied() {
+  if (!_awsDenied.size) return;
+  if (!confirm('Deselezionare tutte le pratiche negate?')) return;
+  _awsDenied.clear(); _awsSaveDenied(); renderDeniedList();
+}
+
+function _awsUpdateDeniedSummary(visibili) {
+  const badge = document.getElementById('deniedCount');
+  if (badge) badge.textContent = _awsDenied.size;
+  const s = document.getElementById('deniedSummary');
+  if (s) s.textContent = `${_awsDenied.size} negate in totale · ${visibili} voci mostrate`;
+}
+
 // Legenda disegnata nativamente nella slide (il #legendContainer della pagina
 // è fuori da #map, quindi non è incluso nello screenshot: va ricostruito qui).
 // Mostra i 4 bucket AWS, non i 10 stati reali della dashboard.
@@ -3641,6 +3818,30 @@ window.addEventListener('load', () => {
 </script>
 
 <!-- Help Modal -->
+<div id="deniedOverlay" onclick="if(event.target===this)closeDeniedModal()">
+  <div class="denied-modal">
+    <div class="denied-head">
+      <h3>Pratiche negate — Report AWS</h3>
+      <p>Le pratiche selezionate qui vengono mostrate come <strong>DENIED</strong> (rosso) nel PowerPoint generato da «Report AWS». La selezione non modifica in alcun modo i dati della dashboard né Master.csv: è solo una regola di visualizzazione del report, salvata su questo browser.</p>
+    </div>
+    <div class="denied-tools">
+      <input type="text" id="deniedSearch" placeholder="Cerca pratica, ente, comune, tratta…" oninput="renderDeniedList()" autocomplete="off">
+      <select id="deniedLotto" onchange="renderDeniedList()"><option value="">Tutti i lotti</option></select>
+      <select id="deniedFiltro" onchange="renderDeniedList()">
+        <option value="tutte">Tutte</option>
+        <option value="selezionate">Solo selezionate</option>
+        <option value="nonottenute">Escludi ottenute</option>
+      </select>
+      <button onclick="clearDenied()">Deseleziona tutto</button>
+    </div>
+    <div class="denied-list" id="deniedList"></div>
+    <div class="denied-foot">
+      <span class="denied-summary" id="deniedSummary"></span>
+      <button onclick="closeDeniedModal()">Chiudi</button>
+    </div>
+  </div>
+</div>
+
 <div id="helpOverlay" onclick="if(event.target===this)document.getElementById('helpOverlay').classList.remove('open')">
   <div class="help-modal">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
