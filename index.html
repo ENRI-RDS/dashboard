@@ -3109,6 +3109,7 @@ async function loadCluster() {
     const trattaLottoMap = {};       // TRATTA_ID → lotto
     const trattaComuneMap = {};       // TRATTA_ID → comune
     const clusterTrattaMap = {};     // CLUSTER → Set<TRATTA_ID>
+    const lottoClusterSets = {};     // LOTTO → Set<CLUSTER> (un lotto può attraversare più cluster)
 
     for (let i = 1; i < lines.length; i++) {
       const cols = splitLine(lines[i]);
@@ -3172,7 +3173,22 @@ async function loadCluster() {
           clusterTrattaMap[cl].add(tratta);
         }
       }
+
+      // Mappa lotto → set cluster (per l'header del popup dettaglio lotto)
+      if (iLOT !== -1 && cl) {
+        const lottoRaw2 = cols[iLOT]?.trim().replace(/"/g,'');
+        const lottoNorm = lottoRaw2 ? lottoRaw2.replace(/^Lotto\s*/i,'').trim().toUpperCase() : '';
+        if (lottoNorm) {
+          if (!lottoClusterSets[lottoNorm]) lottoClusterSets[lottoNorm] = new Set();
+          lottoClusterSets[lottoNorm].add(cl);
+        }
+      }
     }
+
+    window._clusterPerLotto = {};
+    Object.entries(lottoClusterSets).forEach(([lotto, set]) => {
+      window._clusterPerLotto[lotto] = [...set].sort((a,b) => +a - +b || String(a).localeCompare(String(b)));
+    });
 
     window._comuniKm = comuniKm;
     window._comuniKmPerLotto = comuniKmPerLotto;
@@ -3225,7 +3241,10 @@ function fmt(n) {
 }
 function parseNum(s) { if(!s||s.trim()==='') return 0; return parseFloat(s.replace(/\./g,'').replace(',','.')); }
 function openModal(lotto, statiMetri, totale) {
-  document.getElementById('modalTitle').textContent = `Lotto ${lotto} — Dettaglio`;
+  const clusters = (window._clusterPerLotto && window._clusterPerLotto[lotto]) || [];
+  document.getElementById('modalTitle').textContent = clusters.length
+    ? `Lotto ${lotto} — Cluster ${clusters.join(', ')}`
+    : `Lotto ${lotto}`;
   const body = document.getElementById('modalBody');
 
   const metriOttenuto = statiMetri['OTTENUTO'] || 0;
