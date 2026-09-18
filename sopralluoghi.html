@@ -112,6 +112,9 @@
   .archive-card,.preview-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px;box-shadow:var(--sh-sm);position:relative;overflow:hidden;}
   .archive-card::before,.preview-card::before{content:'';position:absolute;top:0;left:0;bottom:0;width:3px;border-radius:14px 0 0 14px;background:linear-gradient(180deg,#1A7D99,#41BBD9);}
   .archive-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+  .btn-export{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--accent2);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;}
+  .btn-export:hover{background:var(--surface2);}
+  .btn-export:disabled{opacity:.55;cursor:wait;}
   .archive-title{font-family:'Raleway',sans-serif;font-weight:700;font-size:15px;color:var(--accent);}
 
   .archive-toolbar{display:flex;gap:8px;margin-bottom:8px;}
@@ -515,6 +518,10 @@
       <div class="archive-card">
         <div class="archive-header">
           <span class="archive-title">Archivio verbali</span>
+          <button type="button" class="btn-export" id="btnExportCsv" onclick="exportVerbaliCsv()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Esporta Excel
+          </button>
         </div>
 
         <div class="archive-toolbar">
@@ -1179,6 +1186,38 @@ function _soprDateDisplay(str) {
   if (!iso) return str || '—';
   const [y,mo,d] = iso.split('-');
   return `${d}/${mo}/${y}`;
+}
+
+// ── Esportazione CSV/Excel (tutti i verbali, non solo la pagina/filtro corrente) ──
+async function exportVerbaliCsv() {
+  const btn = document.getElementById('btnExportCsv');
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = 'Esportazione…';
+  try {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    const token   = localStorage.getItem('_enri_session') || '';
+    if (!apiBase) throw new Error('API endpoint non configurato');
+    if (!token) throw new Error('Sessione scaduta — riaccedi dall\'hub');
+    const res = await fetch(apiBase + '/api/data/sopralluoghi.csv', {
+      headers: { 'x-session-token': token }
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'sopralluoghi_' + new Date().toISOString().slice(0,10) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    showToast('✓ Esportazione avviata');
+  } catch(e) {
+    showToast('✗ Errore esportazione: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
 }
 
 async function loadVerbali() {
