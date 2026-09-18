@@ -54,6 +54,33 @@
   .kpi-strip{display:grid;grid-template-columns:repeat(7,1fr);gap:12px;}
   @media(max-width:1100px){.kpi-strip{grid-template-columns:repeat(3,1fr);}}
   @media(max-width:640px){.kpi-strip{grid-template-columns:repeat(2,1fr);}}
+  .kpi-card.is-click{cursor:pointer;transition:box-shadow .15s,transform .1s,border-color .15s;}
+  .kpi-card.is-click:hover{box-shadow:var(--sh-sm);border-color:var(--accent);transform:translateY(-1px);}
+  .kpi-card.is-click:active{transform:none;}
+  /* ── Colonne aree checklist ── */
+  .area-switch{display:flex;align-items:center;gap:6px;margin:0 0 8px;flex-wrap:wrap;}
+  .area-switch span{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted2);}
+  .area-switch button{font-size:10.5px;padding:4px 10px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer;}
+  .area-switch button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700;}
+  .ac-head{font-family:'JetBrains Mono',monospace;font-size:8px;text-align:center;color:var(--muted2);letter-spacing:0;}
+  .ac-cell{display:block;text-align:center;font-size:9px;font-weight:800;line-height:16px;height:16px;border-radius:4px;background:var(--surface2);color:var(--muted2);}
+  .ac-cell.nc{background:#FDECEA;color:var(--err);box-shadow:inset 0 0 0 1px var(--err);}
+  .ac-cell.ok{background:#E4F5EC;color:var(--ok);}
+  .ac-cell.part{background:#FFF3E0;color:var(--warn);}
+  /* ── Modale KPI ── */
+  .kpi-modal{position:fixed;inset:0;background:rgba(4,63,117,.45);display:none;align-items:center;justify-content:center;z-index:900;padding:24px;}
+  .kpi-modal.open{display:flex;}
+  .kpi-modal-box{background:var(--surface);border-radius:14px;width:min(920px,100%);max-height:82vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(4,63,117,.25);overflow:hidden;}
+  .kpi-modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);}
+  .kpi-modal-title{font-size:15px;font-weight:700;color:var(--accent);}
+  .kpi-modal-title small{display:block;font-size:11px;font-weight:500;color:var(--muted);margin-top:2px;}
+  .kpi-modal-body{overflow-y:auto;padding:6px 20px 18px;}
+  .kpi-modal-close{background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;font-size:12px;padding:5px 11px;cursor:pointer;}
+  .km-row{display:grid;grid-template-columns:auto .8fr 1.6fr 1.4fr;gap:10px;align-items:center;padding:9px 6px;border-bottom:1px solid var(--border);font-size:12px;cursor:pointer;}
+  .km-row:hover{background:var(--surface2);}
+  .km-row.has-segn{background:#FFF7E6;box-shadow:inset 3px 0 0 var(--warn);}
+  .km-row .vr-codice{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11.5px;color:var(--accent);}
+  .km-row small{display:block;color:var(--muted);font-size:10px;}
   .kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;box-shadow:var(--sh-xs);display:flex;flex-direction:column;gap:2px;}
   .kpi-value{font-family:'Raleway',sans-serif;font-size:24px;font-weight:800;color:var(--accent);letter-spacing:-.02em;line-height:1.15;}
   .kpi-value-sm{font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;}
@@ -102,7 +129,8 @@
   .verbale-row .vr-data{color:var(--muted);font-size:11px;}
   .verbale-row .vr-comune{color:var(--text2);}
   .verbale-row .vr-comune small{display:block;color:var(--muted);font-size:10px;}
-  @media(max-width:760px){.verbale-row{grid-template-columns:1fr;gap:2px;padding:10px;}}
+  @media(max-width:760px){.verbale-row{grid-template-columns:1fr !important;gap:2px;padding:10px;}
+    .ac-cell{display:inline-block;width:24px;margin:2px 3px 0 0;}}
 
 
   /* ── Checklist DL ─────────────────────────────────────────────────────────── */
@@ -330,27 +358,27 @@
   </div>
 
   <div class="kpi-strip">
-    <div class="kpi-card">
+    <div class="kpi-card is-click" onclick="openKpiModal('oggi','Verbali di oggi')">
       <div class="kpi-value" id="kpi-oggi">0</div>
       <div class="kpi-label">Verbali oggi</div>
     </div>
-    <div class="kpi-card">
+    <div class="kpi-card is-click" onclick="openKpiModal('tutti','Tutti i verbali')">
       <div class="kpi-value" id="kpi-totale">0</div>
       <div class="kpi-label">Totale verbali</div>
     </div>
-    <div class="kpi-card kpi-warn">
+    <div class="kpi-card kpi-warn is-click" onclick="openKpiModal('anomalie','Verbali con anomalia')">
       <div class="kpi-value" id="kpi-anomalie">0</div>
       <div class="kpi-label">Con anomalia</div>
     </div>
-    <div class="kpi-card kpi-ok">
+    <div class="kpi-card kpi-ok is-click" onclick="openKpiModal('nessuna','Verbali senza anomalia')">
       <div class="kpi-value" id="kpi-chiusi">0</div>
       <div class="kpi-label">Nessuna anomalia</div>
     </div>
-    <div class="kpi-card kpi-warn">
+    <div class="kpi-card kpi-warn is-click" onclick="openKpiModal('segncliente','Verbali con segnalazione cliente')">
       <div class="kpi-value" id="kpi-segn-cliente">0</div>
       <div class="kpi-label">Segnalazioni cliente</div>
     </div>
-    <div class="kpi-card kpi-warn">
+    <div class="kpi-card kpi-warn is-click" onclick="openKpiModal('nc','Verbali con non conformità')">
       <div class="kpi-value" id="kpi-nc">0</div>
       <div class="kpi-label">Non conformità</div>
     </div>
@@ -566,9 +594,14 @@
           </select>
         </div>
 
-        <div class="archive-table-head">
-          <span>Codice</span><span>Data</span><span>Comune / Cantiere</span><span>Stato</span><span></span>
+        <div class="area-switch">
+          <span>Colonne aree checklist</span>
+          <button type="button" id="as-qualita"   class="on" onclick="setAreaCols('qualita')">Qualità</button>
+          <button type="button" id="as-sicurezza" onclick="setAreaCols('sicurezza')">Sicurezza</button>
+          <button type="button" id="as-none"      onclick="setAreaCols('none')">Nessuna</button>
         </div>
+
+        <div class="archive-table-head" id="archive-table-head"></div>
         <div id="verbali-list"></div>
 
         <div id="verbali-pagination" class="archive-pagination"></div>
@@ -580,6 +613,16 @@
       </div>
 
     </div>
+  </div>
+</div>
+
+<div class="kpi-modal" id="kpiModal" onclick="if(event.target===this)closeKpiModal()">
+  <div class="kpi-modal-box">
+    <div class="kpi-modal-head">
+      <div class="kpi-modal-title" id="kpiModalTitle">—<small id="kpiModalSub"></small></div>
+      <button class="kpi-modal-close" onclick="closeKpiModal()">Chiudi ✕</button>
+    </div>
+    <div class="kpi-modal-body" id="kpiModalBody"></div>
   </div>
 </div>
 
@@ -1297,6 +1340,7 @@ function _statoChip(esito) {
 
 function _renderVerbaliList(rows) {
   const list = document.getElementById('verbali-list');
+  _renderTableHead();
   if (!rows.length) {
     list.innerHTML = '<div style="color:#888;font-size:12px;padding:20px 0;text-align:center">Nessun verbale trovato</div>';
     document.getElementById('verbali-pagination').innerHTML = '';
@@ -1308,11 +1352,12 @@ function _renderVerbaliList(rows) {
   const pageRows = rows.slice((_currentPage - 1) * _PAGE_SIZE, _currentPage * _PAGE_SIZE);
 
   list.innerHTML = pageRows.map(v => `
-    <div data-id="${v._id}" class="verbale-row${v._id === _selectedVerbaleId ? ' is-selected' : ''}${_isSegnCliente(v) ? ' has-segn' : ''}">
+    <div data-id="${v._id}" style="grid-template-columns:${_gridCols()}" class="verbale-row${v._id === _selectedVerbaleId ? ' is-selected' : ''}${_isSegnCliente(v) ? ' has-segn' : ''}">
       <span class="vr-codice">${v.codice_verbale}</span>
       <span class="vr-data">${_soprDateDisplay(v.data_sopralluogo)}</span>
       <span class="vr-comune">${v.comune || '—'}<small>${v.tratta_id || '—'} · ${v.lotto || '—'}</small></span>
       <span>${_statoChip(v.esito)}${_isSegnCliente(v) ? '<span class="flag-chip">SEGN. CLIENTE</span>' : ''}${_ckChip(v)}</span>
+      ${_areaCellsHtml(v)}
       <span class="vr-actions">
         <button title="Scarica PDF" onclick="event.stopPropagation();generatePdfForRecord('${v._id}')">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -1688,6 +1733,109 @@ function _ckNcList(v) {
   });
   return out;
 }
+
+// ══ COLONNE AREE CHECKLIST ═══════════════════════════════════════════════════
+const CK_AREA_CODE = {
+  'Verifiche preliminari':'PRE','Infrastruttura':'INF','Diversificazione':'DIV','Pozzetti':'POZ',
+  'Microdotti e giunzioni':'MIC','Codifica cromatica':'COL','Collaudi':'TST','Ripristini':'RIP',
+  'Documentazione':'DOC','Autorizzazioni personale':'AUT','Documentazione sicurezza':'DSI',
+  'Programmazione lavori':'PRG','DPI':'DPI','Macchine e attrezzature':'MAC','Stoccaggio materiali':'STO',
+  'Protezione scavi':'SCA','Lavori in quota':'QUO','Cadute sotto 2 m':'CAD','Caduta materiali':'CDM',
+  'Viabilità e pulizia':'VIA','Segnaletica':'SEG','Recinzioni e delimitazioni':'REC',
+  'Apprestamenti igienico-sanitari':'IGN','Presidi emergenza':'EMG','Gestione rifiuti':'RIF',
+  'Rumore':'RUM','Illuminazione':'ILL','Altro':'ALT',
+};
+function _ckAreaCode(a) { return CK_AREA_CODE[a] || a.slice(0,3).toUpperCase(); }
+
+let _areaCols = 'qualita';   // 'qualita' | 'sicurezza' | 'none'
+
+function _ckAreas(k) {
+  if (k === 'none') return [];
+  const seen = [];
+  CHECKLIST_DEF[k].items.forEach(it => { if (!seen.includes(it.area)) seen.push(it.area); });
+  return seen.map(a => ({ area:a, code:_ckAreaCode(a), ids: CHECKLIST_DEF[k].items.filter(i => i.area===a).map(i => i.id) }));
+}
+
+function _ckAreaStat(v, k, ids) {
+  const map = _ckOf(v)[k] || {};
+  let nc=0, comp=0;
+  ids.forEach(id => { const st = map[id]; if (st && st.e) { comp++; if (st.e==='NC') nc++; } });
+  return { nc, comp, tot: ids.length };
+}
+
+function _gridCols() {
+  const n = _ckAreas(_areaCols).length;
+  return `1fr .8fr 1.4fr 1.2fr${n ? ' repeat(' + n + ',24px)' : ''} .8fr`;
+}
+
+function setAreaCols(k) {
+  _areaCols = k;
+  ['qualita','sicurezza','none'].forEach(x => document.getElementById('as-'+x)?.classList.toggle('on', x===k));
+  applyVerbaliFilters();
+}
+
+function _renderTableHead() {
+  const head = document.getElementById('archive-table-head');
+  if (!head) return;
+  const areas = _ckAreas(_areaCols);
+  head.style.gridTemplateColumns = _gridCols();
+  head.innerHTML = '<span>Codice</span><span>Data</span><span>Comune / Cantiere</span><span>Stato</span>' +
+    areas.map(a => `<span class="ac-head" title="${esc(a.area)}">${a.code}</span>`).join('') + '<span></span>';
+}
+
+function _areaCellsHtml(v) {
+  const areas = _ckAreas(_areaCols);
+  if (!areas.length) return '';
+  return areas.map(a => {
+    const st = _ckAreaStat(v, _areaCols, a.ids);
+    const cls = st.nc ? 'nc' : (st.comp === 0 ? '' : (st.comp < st.tot ? 'part' : 'ok'));
+    const txt = st.nc ? st.nc : (st.comp === 0 ? '·' : (st.comp < st.tot ? st.comp : '✓'));
+    const tip = `${a.area} — ${st.comp}/${st.tot} verificati${st.nc ? ', ' + st.nc + ' non conformità' : ''}`;
+    return `<span class="ac-cell ${cls}" title="${esc(tip)}">${txt}</span>`;
+  }).join('');
+}
+
+// ══ MODALE KPI ═══════════════════════════════════════════════════════════════
+function _kpiFilter(key) {
+  const oggi = new Date().toISOString().slice(0,10);
+  switch (key) {
+    case 'oggi':        return _verbaliAll.filter(v => _soprDateISO(v.data_sopralluogo) === oggi);
+    case 'anomalie':    return _verbaliAll.filter(v => v.esito === 'Anomalia media' || v.esito === 'Anomalia critica');
+    case 'nessuna':     return _verbaliAll.filter(v => v.esito === 'Nessuna anomalia');
+    case 'segncliente': return _verbaliAll.filter(_isSegnCliente);
+    case 'nc':          return _verbaliAll.filter(v => _ckStatsOf(v).nc > 0);
+    default:            return _verbaliAll.slice();
+  }
+}
+
+function openKpiModal(key, titolo) {
+  const rows = _kpiFilter(key);
+  document.getElementById('kpiModalTitle').innerHTML =
+    `${esc(titolo)}<small>${rows.length} verbal${rows.length===1?'e':'i'}</small>`;
+  const body = document.getElementById('kpiModalBody');
+  body.innerHTML = rows.length ? rows.map(v => {
+    const st = _ckStatsOf(v);
+    return `<div class="km-row${_isSegnCliente(v)?' has-segn':''}" onclick="_kpiPick('${v._id}')">
+      <span class="vr-codice">${v.codice_verbale}</span>
+      <span>${_soprDateDisplay(v.data_sopralluogo)}<small>${esc(v.impresa||'—')}</small></span>
+      <span>${esc(v.comune||'—')}<small>${esc(v.tratta_id||'—')} · ${esc(v.lotto||'—')}</small></span>
+      <span>${_statoChip(v.esito)}${_isSegnCliente(v)?'<span class="flag-chip">SEGN. CLIENTE</span>':''}${st.nc?`<span class="ck-chip nc">${st.nc} NC</span>`:''}</span>
+    </div>`;
+  }).join('') : '<div style="padding:22px 0;text-align:center;color:var(--muted);font-size:12px">Nessun verbale in questo stato.</div>';
+  document.getElementById('kpiModal').classList.add('open');
+}
+
+function closeKpiModal() { document.getElementById('kpiModal').classList.remove('open'); }
+
+function _kpiPick(id) {
+  closeKpiModal();
+  const v = _verbaliAll.find(x => x._id === id);
+  _selectedVerbaleId = id;
+  if (v) _renderPreview(v);
+  document.getElementById('preview-card')?.scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeKpiModal(); });
 
 </script>
 </body>
