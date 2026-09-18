@@ -1,4667 +1,1075 @@
-"""
-ENRI Dashboard — Backend API
-============================
-FastAPI service for the ENRI-RDS/dashboard project.
+> Documento di onboarding per agenti AI / sviluppatori. Spiega architettura, flussi, file e convenzioni della dashboard ENRI **senza dover leggere tutto il codice**.
 
-Storage model
--------------
-MongoDB is the AUTHORITATIVE storage for uploaded files (via GridFS).
-Files committed in the git repo are used as the INITIAL SEED ONLY:
-when no upload exists for a given filename, the API falls back to
-the file on disk (the version pushed on GitHub Pages).
+---
 
-This avoids data loss on Render's ephemeral filesystem AND keeps the
-static GitHub Pages fallback fully functional.
-"""
-from __future__ import annotations
+## 1. Cos'è questo progetto
 
-import asyncio
-import base64
-import hashlib
-import hmac
-import csv
-import io
-import json
-import os
-import re
-import time
-from collections import Counter
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Annotated, Any
+Dashboard di project management per **ENRI** — un progetto infrastrutturale di posa fibra/cavidotti (12 lotti, 7 cluster, province BG/MI/MB/PV/CR). Mostra l'avanzamento di:
+- **Fase 1 – Progettazione**: iter autorizzativo (richieste, scadenze, pratiche per cluster/lotto/ente).
+- **Fase 2 – Avanzamento Lavori (Scavi)**: stato cantieri, % completamento, metri scavati.
+- **Sopralluoghi, Mappa georeferenziata, Milestone, AI Alerts**.
+- **Area Impresa**: portale per le imprese appaltatrici (vista pratiche dei propri lotti + workflow di approvazione admin).
 
-import httpx
-import pandas as pd
-from bson import ObjectId
-from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, Header, Query
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse, Response, FileResponse
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
+È una **dashboard solo-frontend statica** (HTML + JS vanilla, niente React/Vue) servita da **GitHub Pages**, con un **backend FastAPI** (Render) che permette di aggiornare i dataset senza re-pushare su GitHub e che — dopo ogni approvazione — committa anche la versione aggiornata direttamente nel repo.
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Config
-# ─────────────────────────────────────────────────────────────────────────────
-ROOT_DIR = Path(__file__).resolve().parent
-load_dotenv(ROOT_DIR / ".env")
+---
 
-MONGO_URL = os.environ["MONGO_URL"]
-DB_NAME = os.environ["DB_NAME"]
+## 2. Architettura a colpo d'occhio
 
-# DATA_DIR is the directory containing the git-committed seed files
-# (Master.csv, QGIS.geojson, etc.). It's READ-ONLY in the new model.
-DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT_DIR.parent)).resolve()
+```
+┌──────────────────────────────┐    ┌────────────────────────────┐    ┌──────────────────────┐
+│  GitHub Pages                │    │  Render (FastAPI)          │    │  MongoDB Atlas       │
+│  enri-rds.github.io/dashboard│───▶│  enri-dashboard-api.       │───▶│  DB: enri_dashboard  │
+│  HTML + JS vanilla           │    │  onrender.com              │    │   - uploads (GridFS) │
+│  Pagine: hub, index, mappa,… │    │  /api/* endpoints          │    │   - assignments      │
+└──────────────────────────────┘    └────────────────────────────┘    │   - pending_updates  │
+        │                                       ▲                      └──────────────────────┘
+        │ js/api-config.js                      │ multipart upload + workflow imprese
+        │ intercetta fetch('Master.csv') e la   │
+        │ riscrive in fetch(API/api/data/…)     │
+        └───────────────────────────────────────┘
+                                                │
+                                                ▼ commit automatico (GitHub API, fine-grained PAT)
+                                       Master.csv / QGIS.geojson / Riepilogo_progettazione.csv
 
-_default_origins = (
-    "https://enri-rds.github.io,"
-    "http://localhost:3000,"
-    "http://localhost:5500,"
-    "http://127.0.0.1:5500"
-)
-ALLOWED_ORIGINS = [
-    o.strip() for o in os.environ.get("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()
-]
+Auth login: hub.html → POST /api/auth/login → backend chiama Google Apps Script server-to-server →
+            restituisce token HMAC firmato (nome|ruolo|exp) salvato in localStorage._enri_token.
+            Ogni chiamata /api/imprese/* o /api/auth/* richiede l'header `x-session-token`.
+```
 
-UPLOAD_TOKEN = os.environ.get("UPLOAD_TOKEN", "").strip()
+**Tre modi di girare:**
+1. **Production**: GitHub Pages + Render + Atlas.
+2. **Preview**: static HTML servito da `frontend/server.js` su :3000, FastAPI su :8001, MongoDB locale.
+3. **Solo statico**: GitHub Pages senza backend (le pagine fanno `fetch('Master.csv')` direttamente sui file committati nel repo — sempre presenti perché il backend ri-pusha dopo ogni approvazione).
 
-# Token dedicato, separato da UPLOAD_TOKEN, per l'endpoint read-only di
-# sincronizzazione cross-progetto usato dal backend di QTS (tratte in
-# concomitanza gestite qui su ENRI). Nessun privilegio di scrittura:
-# se compromesso, espone solo stato_autorizzazione/stato_nullaosta delle
-# tratte esplicitamente richieste, non l'intero Master.csv né azioni admin.
-QTS_SYNC_TOKEN = os.environ.get("QTS_SYNC_TOKEN", "").strip()
-ALLOWED_EXT = {".csv", ".xlsx", ".xls", ".geojson", ".json"}
-MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "25"))
+---
 
-# ─────────────────────────────────────────────────────────────────────────────
-# DB
-# ─────────────────────────────────────────────────────────────────────────────
-client = AsyncIOMotorClient(MONGO_URL)
-db = client[DB_NAME]
-uploads_col = db["uploads"]
-admin_actions_col = db["admin_actions"]  # audit: azioni protette da UPLOAD_TOKEN (chi/cosa/quando)
-assignments_col = db["assignments"]            # impresa nome -> {lotti: [...]}
-pending_col = db["pending_updates"]            # submissions from imprese pending admin review
-solleciti_col = db["solleciti"]                # registro solleciti per tratta/pratica
+## 3. Struttura del repository
 
-# Lock per serializzare i cicli read-modify-write su Master.csv (GridFS).
-# Senza questo lock, due richieste concorrenti (es. solleciti di imprese diverse)
-# possono leggere la stessa versione e la seconda scrittura sovrascrive/perde la prima.
-_master_csv_lock = asyncio.Lock()
-# Lock per serializzare _sync_cantieri(): senza di esso due esecuzioni concorrenti
-# (es. startup + trigger da approve_pending_update, o due approvazioni ravvicinate,
-# entrambe lanciate come asyncio.create_task non awaitate) possono leggere lo stesso
-# _max_codice_per_lotto() prima che l'altra abbia inserito il proprio documento,
-# assegnando lo stesso codice_cantiere (es. "CA/2/1A") a due pratiche diverse.
-_cantieri_sync_lock = asyncio.Lock()
-cantieri_col  = db["cantieri"]                  # stato cantiere per pratica di autorizzazione
-sopralluoghi_col = db["sopralluoghi"]          # verbali di sopralluogo
-pol_conv_dates_col = db["pol_conv_dates"]      # prima data in cui CONVENZIONE/POLIZZA è comparsa per una pratica
-access_logs_col = db["access_logs"]            # log accessi (ex-JSONBin) — un documento per binId, {utenti:[...], accessi:[...]}
-gantt_overrides_col = db["gantt_overrides"]    # override manuali riga Gantt (pct/date/label) per lotto, indip. da invii impresa
-gantt_rates_col = db["gantt_rates"]            # regole tasso scavo (m/giorno) per scope: "global" | "lotto:<ID>" | "impresa:<NOME>" | "pratica:<CODICE>"
-concomitanza_col = db["concomitanza"]          # tratte con lavorazione aggiuntiva concomitante (es. ENRI-QTS, tubo aggiuntivo), keyed per TRATTA_ID
-gridfs = AsyncIOMotorGridFSBucket(db, bucket_name="files")
+```
+/app/
+├── hub.html                    # PORTALE — entrypoint con login (via /api/auth/login) + griglia di card
+├── index.html                  # FASE 1 — Progettazione (KPI, GANTT, tabella pratiche) — SWR su Master.csv
+├── scavi.html                  # FASE 2 — Avanzamento scavi (lotti, cluster, donut)
+├── mappa.html                  # Mappa Leaflet con SWR su QGIS / QTS / SED / Master
+├── ~~mappa_impresa.html~~         # RIMOSSA (rev.126) — sola-vista, superset da mappa_impresa_caricamento.html. File non più nel repo.
+├── ~~executive_summary.html~~     # RIMOSSA — non più nel progetto. Il pulsante "Executive" è stato rimosso dalla topbar di index.html. Nessun CSS residuo né link attivi.
+├── sopralluoghi.html           # Redazione verbali di sopralluogo cantiere
+├── milestone.html              # Milestone di progetto
+├── stato_lotti.html            # NEW (rev.239) — per lotto: % progettazione ottenuta e % scavi vs milestone contrattuali, flag ritardo
+├── ai_alerts.html              # Beta — alert predittivi
+├── admin.html                  # PANNELLO ADMIN — upload + coda imprese + assegnazioni + storico versioni
+├── imprese.html                # PORTALE IMPRESE — aggiorna pratiche / nuova tratta / mie submission
+├── imprese_scavi.html          # Area Impresa: avanzamento scavi giornaliero (stato cantiere, metri, log)
+├── mappa_impresa_caricamento.html  # Area Impresa: mappa Leaflet filtrata sui lotti assegnati, con possibilità di aggiornare/inserire pratiche direttamente dalla tratta selezionata
+├── polizze_convenzioni.html    # NEW — pratiche con CONVENZIONE/POLIZZA richiesta: filtro lotto/impresa/stato + KPI aggregati
+│
+├── js/
+│   └── api-config.js           # **CRUCIALE** — intercetta fetch() e li reindirizza al backend
+│
+├── Master.csv                  # Dataset principale pratiche — separatore auto-rilevato (TAB o ;)
+├── Riepilogo_progettazione.csv # Riepilogo cluster — RIGENERATO automaticamente da Master.csv
+├── dati.csv                    # Dati ausiliari (in disuso — index.html calcola la stessa aggregazione lato client)
+├── QGIS.geojson                # Tracciato lotti — RIGENERATO automaticamente (properties di stato) da Master.csv
+├── QTS.geojson                 # Tracciato secondario
+├── SED_classificato.geojson    # Attraversamenti (Stradali / Ferroviari / Idrici)
+│
+├── backend/
+│   ├── server.py               # FastAPI app v2.0.0 — vedi §5
+│   ├── requirements.txt        # include httpx (chiamate GitHub API + Apps Script)
+│   ├── .env                    # MONGO_URL, DB_NAME, UPLOAD_TOKEN, SESSION_SECRET, APPS_SCRIPT_*, GITHUB_*
+│   └── .env.example
+│
+├── frontend/                   # Server statico per preview Emergent (NON in produzione)
+│   ├── server.js
+│   └── package.json
+│
+├── DEPLOY.md                   # Guida deploy Render + Atlas + GitHub Pages
+├── Procfile                    # `web: uvicorn server:app --host 0.0.0.0 --port $PORT`
+└── memory/
+    ├── PRD.md                  # Stato avanzamento del progetto
+    ├── test_credentials.md     # Credenziali backend per preview
+    └── AGENT_BRIEF.md          # ← QUESTO FILE
+```
 
-# ─────────────────────────────────────────────────────────────────────────────
-# App
-# ─────────────────────────────────────────────────────────────────────────────
-app = FastAPI(title="ENRI Dashboard API", version="2.0.0")
+---
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["Content-Disposition"],
-)
+## 4. Pagine — cosa fa ognuna
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Helpers
-# ─────────────────────────────────────────────────────────────────────────────
-_SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9_\-./]+$")
-_EXCLUDE_DIRS  = {"backend", "frontend", "node_modules", "__pycache__", ".git", "memory", "js", "M"}
-_EXCLUDE_FILES = {"dati.csv"}          # file su disco da NON esporre nella lista admin
-# "M" esclusa: cartella di file legacy (es. M/QGIS_3.geojson) non collegati alla
-# dashboard — restano nel repo per storico ma non devono comparire in admin.html
+| Pagina | Ruolo necessario | Cosa mostra / fa |
+|---|---|---|
+| **hub.html** | nessuno (login obbligatorio) | Login server-side (POST `/api/auth/login`) + griglia card. Mostra card "Area Impresa" solo se backend conferma assegnazione. Anti-FOUC: card nascoste finché non torna il ruolo. Cold-start Render: timeout 10s e pannello "Riprova" |
+| **index.html** | `admin`/`admin2`/`user` (tutti tranne `impresa`) | KPI, GANTT, tabella filtrabile, modal pratiche, grafici Chart.js. **SWR**: legge GitHub statico + Render in parallelo, ridisegna live se il backend ha dati più freschi. XLSX caricato lazy al primo "Esporta Excel" |
+| **scavi.html** | `admin`/`admin2`/`user` (tutti tranne `impresa`) | KPI scavi (non avviati/in corso/sospeso/completati) con metri+% sul totale (rev.8), barre per lotto e per cluster a segmenti multi-stato reali (rev.8, non più blob binario), donut chart, modal lotto/cluster, tabella "Tutti i Cantieri" con `codice_cantiere`/`impresa` (rev.10: rimossa colonna `tecnica_scavo`, resta solo nella card modal). ⚠️ Ruolo cambiato: in precedenza era ristretto a `admin`/`admin2`, ora `SCAVI_ALLOWED_ROLES` include anche `user`. ✅ Topbar uniformata al brand kit Retelit (§8.11 pattern: navy, logo base64, `.topbar-back`) — sostituita la vecchia topbar chiara con `.logo`/`.btn-nav`. Rimosso il badge "Struttura reale · avanzamento di esempio". **(sessione 2026-07-03)**: exec-strip con 3 KPI grandi (avanzamento fisico/permessi/sospesi) in header; titolo/eyebrow/sottotitolo pagina rimossi su richiesta utente, `#pageSubDyn` di nuovo assente dal markup |
+| **mappa.html** | `admin`/`admin2`/`user` (tutti tranne `impresa`) | Leaflet — SWR su `QGIS.geojson`, `QTS.geojson`, `SED_classificato.geojson`, `Master.csv`; ricostruzione live dei layer se cambiano. Basemaps Google-style, ricerca, misurazione distanze, esportazione PDF |
+| **mappa_impresa_caricamento.html** | impresa loggata | Mappa filtrata sui lotti assegnati (usa `/api/imprese/pratiche` e session token), con possibilità di aggiornare lo stato di una pratica o inserirne una nuova direttamente cliccando sulla tratta (`/api/imprese/submit`, `/api/imprese/my-submissions`, `/api/imprese/cantieri*`). Include il blocco "tracking accessi" (vedi §5.9). Unica pagina mappa lato impresa (sostituisce l'ex `mappa_impresa.html`, rimossa rev.126) |
+| **milestone.html** | `admin`/`admin2`/`user` (tutti tranne `impresa`) | Milestone contrattuali e di impresa |
+| **sopralluoghi.html** | `admin`/`admin2`/`user` (tutti tranne `impresa`) | Form di redazione verbale. ⚠️ Non è più solo client-side: i verbali sono ora persistiti su MongoDB (`POST/GET/DELETE /api/sopralluoghi`) con codice progressivo `VBS-AAAA-NNNN` e foto caricate su GitHub (`sopralluoghi/foto/{codice}/`) invece che generare solo un PDF locale |
+| **ai_alerts.html** | tutti (Beta) | Pagina placeholder per future analisi AI |
+| **polizze_convenzioni.html** | `admin`/`admin2`/`user` (tutti tranne `impresa`) | Pratiche con CONVENZIONE e/o POLIZZA richiesta: filtro per lotto/impresa/stato, KPI aggregati. Legge `/api/admin/polizze-convenzioni/data-richiesta`, con fallback diretto a Master.csv su GitHub Pages se l'API non risponde. ✅ **RISOLTO**: guardia di login (`_enri_user`) aggiunta, stesso pattern overlay usato in scavi.html/sopralluoghi.html. La sola scrittura (`POST /api/admin/polizze-convenzioni/update`) richiede un `UPLOAD_TOKEN` chiesto al volo via modale, salvato in `localStorage['enri_upload_token']` — stessa chiave di admin.html (§8.15) |
+| **admin.html** | richiede `UPLOAD_TOKEN` | 4 tabs (File correnti, Storico versioni, **Coda imprese**, **Assegnazioni imprese**). Badge live conteggio pending, modali HTML custom (no `alert/confirm/prompt` nativi), date in formato `gg/mm/aa, hh:mm`, righe coda colorate per tipo. Upload: select `target` a scelta fissa (no testo libero), JS blocca l'invio se il nome del file selezionato dal disco non combacia (case-insensitive) col `target` scelto — messaggio "Nome file non corrispondente" (riga ~842) |
+| **imprese.html** | impresa assegnata + session token | 3 tabs (Aggiorna pratiche / Nuova pratica / Le mie submission). Campo **Ente** = select dinamica via `/api/enti` + opzione "Altro"; **Pratica** in nuova tratta = solo numero progressivo editabile (prefisso AUT/NO + suffisso lotto calcolati). Selezionando una tratta, se altre tratte condividono ENTE+TIPO+PRATICA il sistema propone di aggiornarle tutte insieme |
+| **imprese_scavi.html** | impresa assegnata + session token | "Avanzamento Scavi" lato impresa: aggiornamento giornaliero per pratica/cantiere (stato cantiere, tecnica di scavo, date inizio/fine, metri realizzati **oggi** — accumulati su `metri_scavati`), storico log consultabile. Scrittura diretta, **senza** workflow di approvazione admin (a differenza di `imprese.html`) |
+
+Tutte le pagine fanno guardia: `if (!localStorage.getItem('_enri_user')) → mostra overlay/redirect a hub.html`. Le pagine impresa controllano anche `localStorage._enri_session`.
+
+⚠️ **Rinominata la chiave di sessione**: il token firmato in localStorage non si chiama più `_enri_token` ma **`_enri_session`** (verificato in hub.html, mappa_impresa_caricamento.html). Se trovi ancora `_enri_token` in qualche file non aggiornato, è codice vecchio.
+
+---
+
+## 5. Backend FastAPI (`backend/server.py` v2.0.0)
+
+**Modello di storage**: MongoDB GridFS è AUTORITATIVO per i file caricati. I CSV/GeoJSON
+nel repo (`/app/Master.csv`, ecc.) sono usati come SEED FALLBACK quando non esiste
+ancora un upload per quel nome. Dopo ogni approvazione/eliminazione/ripristino il
+backend pusha anche su GitHub via API (token fine-grained, scope `Contents: Read and write`)
+così la copia statica del repo non va più in deriva da quella servita live.
+
+**Tutte le rotte iniziano con `/api/`**.
+
+### 5.1 File / dataset
+
+| Metodo | Endpoint | Auth | Descrizione |
+|---|---|---|---|
+| GET | `/api/` | — | Health JSON di servizio |
+| GET | `/api/health` | — | Ping a MongoDB |
+| GET | `/api/files` | session token, **solo staff** | Lista unificata: Mongo + seed disco. Ogni file: `source: 'mongo'\|'disk'`, `versions`, `size`, `modified` |
+| GET | `/api/data/{path}` | session token | Scarica file (Mongo se presente, altrimenti disco). Usato da `js/api-config.js` |
+| GET | `/api/data-text/{path}` | session token | Idem in `text/plain` |
+| GET | `/api/preview/{path}?max_bytes=N` | session token, **solo staff** | Anteprima primi N byte (256–65536, default 8192) |
+| GET | `/api/uploads?limit=&project=&filename=&include_deleted=` | session token, **solo staff** | Storico upload (filtri + audit cancellati) |
+| POST | `/api/upload` | `UPLOAD_TOKEN` (form `token` o header `x-upload-token`) | Multipart: `file`, `target` opz., `project`, `convert_to_csv`. Salva in GridFS + record `uploads`. Excel → CSV auto. **Se il target è `Master.csv` pusha su GitHub e rigenera QGIS/Riepilogo**. ⚠️ Se `target` è vuoto, `out_name` ricade sul filename originale del file caricato (`server.py` riga ~359) — da `admin.html` non capita mai (guardia lato client, v. riga 110), ma qualunque altro chiamante di questo endpoint senza passare `target` esplicito rischia di salvare sotto nome sbagliato senza errore. `GET /api/data/{filename}` e `GET /api/files` selezionano sempre l'upload con `uploaded_at` più recente per quel filename (nessun lock/versioning ottimistico tra scritture concorrenti, v. §8.41) |
+| DELETE | `/api/uploads/{id}` | `UPLOAD_TOKEN` | Soft-delete singola versione + purge GridFS. Se era Master.csv ri-pusha lo stato corrente |
+| DELETE | `/api/files/{path}` | `UPLOAD_TOKEN` | Soft-delete di TUTTE le versioni — se esiste un seed disco, torna a essere servito |
+| PATCH | `/api/files/{old}` | `UPLOAD_TOKEN` | Body JSON `{"new_name": "..."}` (409 se collide) |
+| POST | `/api/uploads/{id}/restore` | `UPLOAD_TOKEN` | Ripristina versione cancellata (410 se i byte GridFS sono già stati purgati) |
+| GET | `/api/enti` | session token | NEW — elenco enti unici presenti in Master.csv, ordinati alfabeticamente (popola la select "Ente" in imprese.html) |
+
+### 5.2 Auth firmata (HMAC)
+
+Risolve la falla per cui chiunque poteva fare `localStorage.setItem('_enri_user', 'Nome Impresa')`
+e impersonare quel nome senza conoscere il codice. Ora il codice è verificato dal backend e ogni
+chiamata successiva richiede un token firmato non falsificabile.
+
+| Metodo | Endpoint | Auth | Descrizione |
+|---|---|---|---|
+| POST | `/api/auth/login` | — | Body `{nome, codice}` → backend chiama Apps Script server-to-server (segreto MAI esposto al browser) → restituisce `{ok, token, nome, ruolo}` |
+| GET | `/api/auth/verify` | session token | Rivalidazione silenziosa (usata da index.html) |
+| POST | `/api/logs/get` / `/api/logs/put` | session token | Log accessi — MongoDB (`access_logs`), non più JSONBin/Apps Script (vedi §5.12) |
+
+**Schema token** (base64 urlsafe): `nome | ruolo | exp_unix | HMAC-SHA256(payload, SESSION_SECRET)`
+con TTL configurabile via `SESSION_TTL_SECONDS` (default 12h).
+
+### 5.3 Imprese (richiedono `x-session-token` — il `nome` è SEMPRE preso dal token, MAI da un parametro client)
+
+> Nota: l'header resta `x-session-token`; è solo la chiave **localStorage** lato client che è stata rinominata da `_enri_token` a `_enri_session` (vedi §4 e §7).
+
+| Metodo | Endpoint | Descrizione |
+|---|---|---|
+| GET | `/api/imprese/me` | Profilo + lotti assegnati (404 se non assegnata) |
+| GET | `/api/imprese/pratiche` | Master.csv filtrato per i lotti dell'impresa. Confronto per **codice lotto esatto** (non substring — "Lotto 2" non aggancia "Lotto 2A") |
+| POST | `/api/imprese/submit` | Body `{type:'update'\|'new', changes:[...]}` → record in `pending_updates`, status `pending` |
+| GET | `/api/imprese/my-submissions` | Storico delle proprie submission |
+| DELETE | `/api/imprese/submissions/{id}` | L'impresa cancella SOLO le proprie submission ancora `pending` |
+| GET | `/api/lotti-cantieri` | NEW — lotti distinti (da Master.csv) + cantieri associati (da MongoDB) + mappa lotto→impresa assegnata. Usato per popolare select a cascata |
+| GET | `/api/imprese/cantieri` | NEW — cantieri (uno per pratica di autorizzazione) nei lotti dell'impresa autenticata |
+| POST | `/api/imprese/cantieri/{cantiere_key}` | NEW — aggiorna stato cantiere, tecnica scavo, date, **metri_realizzati_oggi** (si accumula su `metri_scavati`, non sovrascrive), note. Push automatico su GitHub. **Scrittura diretta, nessuna approvazione admin** (a differenza di `/api/imprese/submit`) |
+| GET | `/api/imprese/cantieri/{cantiere_key}/log` | NEW — storico aggiornamenti giornalieri di un cantiere |
+| GET | `/api/imprese/solleciti` | NEW — solleciti dell'impresa, filtrati per le tratte dei suoi lotti |
+| POST | `/api/imprese/solleciti` | NEW — inserisce un sollecito. Scrittura diretta, nessuna approvazione |
+| POST | `/api/imprese/solleciti/bulk-insert` / `bulk-delete` | NEW — inserimento/cancellazione massiva |
+| DELETE | `/api/imprese/solleciti/{id}` | NEW — elimina un sollecito |
+
+### 5.4 Admin (richiedono `UPLOAD_TOKEN`)
+
+| Metodo | Endpoint | Descrizione |
+|---|---|---|
+| GET / PUT / DELETE | `/api/admin/assignments[/{nome}]` | CRUD nome impresa ↔ lotti (lookup case-insensitive) |
+| GET | `/api/admin/pending-updates?status=pending\|approved\|rejected\|all` | Lista coda |
+| POST | `/api/admin/pending-updates/{id}/approve` | Applica le modifiche a Master.csv (nuova versione GridFS), **rigenera QGIS.geojson + Riepilogo_progettazione.csv** e pusha tutti e tre su GitHub. Da qui parte anche `_sync_cantieri()` (vedi §5.12) |
+| POST | `/api/admin/pending-updates/{id}/reject` | Body `{note}` |
+| GET | `/api/admin/polizze-convenzioni/data-richiesta` | NEW — per ogni pratica con CONVENZIONE/POLIZZA valorizzata, fissa (una sola volta, `$setOnInsert`) la data di prima richiesta nella collection `pol_conv_dates` |
+| POST | `/api/admin/polizze-convenzioni/update` | NEW — Body `{lotto, pratica, fields:{CONVENZIONE?, POLIZZA?}}`. Valori ammessi: `NECESSARIA\|RICHIESTA RDS\|INVIATA\|OTTENUTA\|""`. Scrive su Master.csv (tutte le righe lotto+pratica) e pusha su GitHub |
+| GET | `/api/admin/sync-cantieri` | NEW — forza la sincronizzazione cantieri↔Master.csv (crea cantieri mancanti, uno per pratica AUTORIZZAZIONE) |
+| GET | `/api/admin/solleciti` | NEW — vista admin di tutti i solleciti |
+
+### 5.5 Auto-push GitHub + rigenerazione derivati
+
+`_push_to_github(file_bytes, path, label)` — commit via API GitHub (GET sha → PUT contents), fire-and-forget, retry su conflitto sha (409) fino a 3 volte. Skip silenzioso se `GITHUB_TOKEN` mancante: MongoDB resta comunque autoritativo.
+
+`_regenerate_derived_files(master_df, note)` — Scoperta chiave: `Riepilogo_progettazione.csv` è esattamente la tabella attributi di `QGIS.geojson` esportata in CSV (stesse 21 colonne, stesso ordine, stessi valori, verificato riga per riga). Per questo:
+
+```
+Master.csv (dinamico)
+    │
+    ▼
+_compute_tratta_summary() — per ogni TRATTA_ID:
+   • STATO_AUTORIZZAZIONE ← ultima riga AUTORIZZAZIONE attiva (le pratiche
+     con STATO_PERMESSO=NO COMPETENZA vengono saltate se esistono alternative)
+   • STATO_NULLAOSTA / STATO_ORDINANZA ← peggiore tra l'ultimo stato di ciascun ente
+   • LAVORABILE ← SI solo se AUTORIZZAZIONE=OTTENUTO e, se richiesti,
+     anche NULLA OSTA/ORDINANZA=OTTENUTO
+   • PRATICA ← "AUT/24/1A | NO/22/1A | …" (AUT, poi NO, poi ORD)
+    │
+    ▼
+PATCH UNICA sulle properties di QGIS.geojson (geometria invariata)
+    │
+    ▼
+Riepilogo_progettazione.csv = derivato direttamente da quelle properties
+```
+
+Campi **mai derivati automaticamente** (provenienti da sistemi esterni o senza regola certa): `CAMPO AWS`, `PROTOCOLLO_AUT`, `ENTE 2`, `fid`, `TIPOLOGIA`, `PROVINCIA`, `ROUTE`, `SPAN`. Restano quelli già presenti in QGIS.geojson.
+
+### 5.6 Approvazione: come viene applicata una `update`
+
+`_apply_changes_to_df`:
+1. Match per `TRATTA_ID + ENTE + TIPO_PERMESSO` (+ `PRATICA` se fornita come discriminante: utile quando sulla stessa tratta+ente+tipo esistono pratiche diverse).
+2. **Copia l'ultima riga esistente** e la inserisce **subito DOPO** la stessa (non in fondo al file) — così le righe dello stesso iter restano vicine.
+3. Auto-set `DATA_ULTIMA_MODIFICA = oggi` se non fornito e c'è un cambio di `STATO_PERMESSO`.
+4. Per le submission `type:'new'` aggiunge una riga vuota popolata con i campi inviati.
+
+### 5.7 Variabili d'ambiente (`backend/.env`)
+
+| Key | Significato |
+|---|---|
+| `MONGO_URL` | URI Mongo (locale o Atlas) |
+| `DB_NAME` | `enri_dashboard` |
+| `DATA_DIR` | Cartella seed (default: parent di `/backend`, in preview `/app`) |
+| `ALLOWED_ORIGINS` | CSV di origini CORS |
+| `UPLOAD_TOKEN` | Token admin (upload/delete/assignments/approve). Generare con `openssl rand -hex 32` |
+| `MAX_UPLOAD_MB` | Default `25` |
+| `SESSION_SECRET` | **OBBLIGATORIO** — chiave HMAC per i session token (`openssl rand -hex 32`) |
+| `SESSION_TTL_SECONDS` | Default `43200` (12h) |
+| `APPS_SCRIPT_URL` | URL del Google Apps Script di login |
+| `APPS_SCRIPT_SECRET` | Segreto condiviso con Apps Script (MAI esposto al client) |
+| `GITHUB_TOKEN` | Fine-grained PAT, repo `ENRI-RDS/dashboard`, `Contents: Read and write`. Se assente il push viene skippato |
+| `GITHUB_REPO` | Default `ENRI-RDS/dashboard` |
+| `GITHUB_BRANCH` | Default `main` |
+| `GITHUB_CSV_PATH` / `GITHUB_QGIS_PATH` / `GITHUB_RIEPILOGO_PATH` | Override path nel repo se servono sottocartelle |
+
+### 5.8 Vincoli di sicurezza
+- `_safe_relpath()` impedisce path-traversal (`..`, `\`, caratteri fuori `[A-Za-z0-9_\-./]`).
+- Estensioni accettate: `.csv`, `.xlsx`, `.xls`, `.geojson`, `.json`.
+- Limite dimensione = `MAX_UPLOAD_MB`.
+- HMAC compare con `hmac.compare_digest` (timing-safe).
+- Le rotte impresa **ignorano qualunque parametro `nome`** passato dal client e usano sempre quello firmato nel token.
+
+### 5.9 Sopralluoghi (collection `sopralluoghi`)
+
+| Metodo | Endpoint | Auth | Descrizione |
+|---|---|---|---|
+| GET | `/api/sopralluoghi` | session token | Tutti i verbali, ordinati per `codice_verbale` decrescente |
+| GET | `/api/sopralluoghi/next-codice` | session token | Prossimo codice progressivo `VBS-{anno}-{NNNN}` |
+| POST | `/api/sopralluoghi` | session token | Salva verbale su MongoDB (unica fonte, nessun export CSV su GitHub). Le foto (data URL base64) vengono caricate su GitHub in `sopralluoghi/foto/{codice}/` per non saturare lo storage Mongo gratuito |
+| DELETE | `/api/sopralluoghi/{id}` | session token, **solo ruolo `admin`** | Elimina un verbale |
+
+### 5.10 Cantieri / Avanzamento Scavi impresa (collection `cantieri`)
+
+Un cantiere = una pratica AUTORIZZAZIONE (chiave `cantiere_key`, **non** `pratica_id`, perché quest'ultimo non è garantito univoco tra enti diversi sullo stesso lotto/numero).
+
+- **`codice_cantiere`** (`CA/{progressivo}/{lotto}`, rev.5): identificativo "ufficiale" mostrato all'impresa e in `scavi.html`, distinto da `cantiere_key` (chiave tecnica) e `pratica_id` (riferimento pratica). Assegnato **una sola volta** alla creazione in `_sync_cantieri()`, mai riassegnato; `_max_codice_per_lotto()`+`_backfill_codici_cantiere()` garantiscono continuità anche sui cantieri storici. Esposto su `/api/cantieri`, `/api/imprese/cantieri`, `cantieri.csv`.
+- ✅ **RISOLTO (rev.10)**: `impresa` sui cantieri era popolato **solo** da migrazione best-effort dal vecchio schema pre-raggruppamento (`old_docs`) — per qualsiasi cantiere creato dopo, restava sempre `""`. `_sync_cantieri()` ora costruisce all'inizio una mappa `lotto_impresa` dalla collection `assignments` (stessa fonte/logica di `GET /api/lotti-cantieri`) e la usa per popolare `impresa` sia in creazione sia in update (backfill automatico sui cantieri esistenti privi del campo, senza sovrascrivere se un lotto non ha assegnazione).
+- **Transizioni stato** (`STATO_TRANSITIONS`, JS, rev.5): la select stato in `mappa_impresa_caricamento.html`/`imprese_scavi.html` mostra solo stato corrente + transizioni valide (`non_avviato→allestimento→in_corso→{sospeso,completato}`, `sospeso→in_corso`). Su `allestimento`: `tecnica_scavo`/`metri_realizzati_oggi` disabilitati e non richiesti (né in UI né in payload). `data_inizio_effettiva` lockata permanentemente una volta valorizzata.
+- `GET /api/cantieri?lotto=&cluster=&stato=` — lista pubblica, usata da `scavi.html` (lo storico `log` viene tolto dal listing per non appesantire la risposta).
+- L'impresa aggiorna via `POST /api/imprese/cantieri/{cantiere_key}` (vedi §5.3): **scrittura diretta senza approvazione**, a differenza del flusso `imprese.html`/`pending_updates`. Ogni update accumula `metri_realizzati_oggi` su `metri_scavati` (`$inc`) e appende una riga a `log[]` (data, impresa, stato, **tecnica_scavo** [rev.6], metri, note, motivo blocco). ⚠️ Bug corretto (rev.5): il check assegnazione confrontava `lotto` non normalizzato (`"1A"` vs `"Lotto 1A"`) → 403 spurio; ora entrambi i lati passano da `_lotto_from_source()`.
+- `_sync_cantieri()` crea i cantieri mancanti a partire da Master.csv; viene rilanciata sia da `/api/admin/sync-cantieri` sia automaticamente dopo ogni approvazione di `pending_updates`. **`metri_totali` = somma di TUTTE le tratte della pratica (autorizzazione ottenuta), indipendentemente da `lavorabile`** (rev.9, §8.33): quel flag per-tratta è solo indicativo per la mappa (NULLA OSTA/ORDINANZA ottenuti), non deve e non limita cosa l'impresa può rendicontare come scavato.
+- Dopo ogni scrittura, push fire-and-forget su GitHub (`_push_cantieri_to_github`).
+
+### 5.11 Solleciti (collection `solleciti`)
+
+Sistema di "promemoria/follow-up" per pratiche in attesa, associato alle tratte dei lotti dell'impresa. Scrittura diretta (no workflow di approvazione), CRUD completo lato impresa (`/api/imprese/solleciti*`) e vista aggregata lato admin (`/api/admin/solleciti`).
+
+### 5.12 ✅ Tracking accessi — RISOLTO + migrato da JSONBin a MongoDB
+
+Tutte le 4 pagine con blocco `<!-- TRACKING ACCESSI -->` (`scavi.html`, `mappa.html`, `mappa_impresa_caricamento.html`, `sopralluoghi.html`) chiamano `POST /api/logs/get` e `POST /api/logs/put` (header `x-session-token`). **Il backend non chiama più Apps Script/JSONBin per questo**: legge/scrive dalla collection Mongo `access_logs` (un documento per `binId`, campi `utenti[]`/`accessi[]`). Contratto richiesta/risposta lasciato identico apposta (`{binId}` → `{record:{utenti,accessi}}`), quindi **le pagine non sono state toccate di nuovo** — solo il backend è cambiato.
+
+`APPS_SCRIPT_URL`/`APPS_SCRIPT_SECRET` restano in uso **solo per il login** (`action: "login"` verso il Google Sheet), non più per i log.
+
+⚠️ **Dati storici non migrati**: gli accessi già registrati sul vecchio bin JSONBin non sono stati copiati automaticamente su MongoDB (nessun accesso di rete disponibile per farlo in questa sessione). Se serve conservare lo storico, va fatto un import una tantum leggendo il bin esistente e scrivendolo in `access_logs`. Da questo deploy in poi, il log riparte vuoto su Mongo.
+
+`index.html` conteneva anche codice/commenti morti che nominavano JSONBin per una funzione "Note per pratica" già disattivata (stub `noteLoad`/`noteSave` no-op) e per due commenti descrittivi non più accurati — ripuliti (rinominati, nessuna funzionalità toccata).
+
+---
+
+## 6. Come i file caricati arrivano sul frontend — `js/api-config.js`
+
+Ogni pagina HTML include `<script src="js/api-config.js"></script>` in `<head>`. Lo script:
+
+1. Legge `window.ENRI_API_BASE` **oppure** `localStorage.getItem('enri_api_base')`.
+2. Se vuoto → non fa nulla, le pagine leggono i CSV/GeoJSON statici committati nel repo.
+3. Se valorizzato → **monkey-patcha `window.fetch`**: ogni `fetch('Master.csv')` viene riscritta in `fetch(`${API_BASE}/api/data/Master.csv`)`.
+
+**Pattern SWR (stale-while-revalidate)** in `index.html`, `mappa.html`, `mappa_impresa_caricamento.html`:
+- fetch parallelo del file statico GitHub (istantaneo, sempre disponibile) E del backend Render (può essere lento al cold-start);
+- la UI mostra subito il dato statico;
+- se Render risponde con un contenuto diverso, **la UI si aggiorna live senza reload** (callback ridisegna tabella, ricostruisce layer Leaflet, ecc.).
+
+**Flusso completo upload/approvazione:**
+1. Impresa apre `imprese.html` (auth: token in `_enri_session`), compila modifiche, invia.
+2. Backend salva in `pending_updates` (status `pending`).
+3. Admin apre `admin.html` → tab "Coda imprese" (badge live) → Approva.
+4. Backend: legge Master.csv corrente → applica `changes` con pandas (riga inserita dopo l'ultima della stessa pratica) → crea nuova versione GridFS → **rigenera QGIS.geojson + Riepilogo_progettazione.csv** → pusha tutti e tre su GitHub.
+5. Tutte le pagine, alla prossima `fetch('Master.csv')`, ricevono la nuova versione dal backend; le SWR aggiornano la UI live senza reload.
+
+---
+
+## 7. Auth & ruoli
+
+### 7.1 Login utente (hub.html → /api/auth/login)
+Implementato come **proxy server-to-server** verso Google Apps Script. Il browser invia `{nome, codice}`; il backend verifica con Apps Script (segreto MAI esposto) e firma un token HMAC che viene salvato in localStorage:
+
+```js
+localStorage._enri_user    // nome canonico
+localStorage._enri_role    // 'admin' | 'admin2' | 'user' | 'impresa'
+localStorage._enri_session // session token firmato (HMAC, scade dopo SESSION_TTL_SECONDS) — ⚠️ rinominata da _enri_token
+```
+
+L'admin gestisce gli accessi modificando lo sheet Google collegato all'Apps Script (requisito esplicito del committente).
+
+In `hub.html` tre liste filtrano le card:
+- `SCAVI_ALLOWED_ROLES = ['admin', 'admin2', 'user']` → mostra/blocca card "Avanzamento Lavori". ⚠️ Ora include anche `user`, non più solo admin
+- `ADMIN_ALLOWED_ROLES = ['admin', 'admin2']` → mostra/nasconde card "Pannello Admin".
+- `IMPRESA_ROLES = ['impresa']` → attiva la modalità "Area Impresa": nasconde tutte le card normali e mostra fino a 3 card dedicate (`impresaCardsWrap`), ciascuna condizionata a `display:none` finché non si conferma l'assegnazione via `/api/imprese/me`:
+  - `impresaCard` → `imprese.html` (aggiorna pratiche)
+  - `impresaMapUpdCard` → `mappa_impresa_caricamento.html` (mappa con aggiornamento pratiche)
+  - `impresaScaviCard` → `imprese_scavi.html` (avanzamento scavi)
+
+Nota minor: la chiamata `fetch(apiBase + '/api/imprese/me?nome=' + ...)` in `hub.html` passa ancora un parametro `?nome=` in query string, ma il backend (`impresa_me`) lo ignora completamente e legge sempre il nome dal token firmato — il parametro è innocuo ma andrebbe rimosso dal client per coerenza con quanto dichiarato in §7.3.
+
+### 7.2 Upload backend e azioni admin
+Tutte le scritture admin (`POST /api/upload`, `DELETE /api/uploads/*`, `PUT /api/admin/assignments/*`, `POST /api/admin/pending-updates/*/approve|reject`, `POST /api/admin/polizze-convenzioni/update`, `GET /api/admin/sync-cantieri`) richiedono `UPLOAD_TOKEN`. In `admin.html` l'admin lo incolla manualmente nel form.
+
+### 7.3 Azioni impresa
+Tutti gli endpoint `/api/imprese/*` richiedono header `x-session-token`. Il `nome` viene SEMPRE letto dal token firmato, mai da un parametro `?nome=` lato server (vedi nota sopra: il client a volte lo invia ancora, ma viene ignorato).
+
+---
+
+## 8. Convenzioni & gotchas
+
+1. **Separatore CSV auto-rilevato**: `Master.csv` può essere tab o `;` (Excel italiano vs export). `_detect_sep()` lo determina sulla prima riga; lettura/scrittura lo preservano. Il push su GitHub usa SEMPRE tab (formato originale del file nel repo).
+2. **Encoding-robust**: Master.csv viene letto provando `utf-8`, `cp1252`, `latin-1` prima di fallback a `errors='replace'`. Le righe malformate (es. virgola non quotata in NOTE) usano `on_bad_lines='warn'` invece di fallire.
+3. **CORS**: il backend espone solo le origini in `ALLOWED_ORIGINS`. Aggiungere il dominio preview/Render quando cambia.
+4. **Path con sotto-cartelle**: `target=M/QGIS_3.geojson` salva in `DATA_DIR/M/QGIS_3.geojson`. La regex `_SAFE_NAME_RE` accetta `/` ma rifiuta `..`.
+5. **Render free tier**: il servizio si spegne dopo 15min di inattività, prima chiamata ~30s di cold-start → frontend usa timeout 10s + pannello "Riprova". ⚠️ **`.github/workflows/keepalive.yml` abbandonato (rev.28)**: gli scheduled workflow di GitHub Actions non sono affidabili al minuto (ritardi 10-15+min documentati, causavano comunque sleep intermittenti) — sostituito con **cron-job.org** (ping `/api/health` ogni 13min, precisione al minuto, alert email su fallimento). Il file su GitHub resta solo con `workflow_dispatch` per test manuali, `schedule` rimosso. ✅ Confermato attivo in orario lavorativo (2026-07-06) — zero cold-start diurno per le imprese.
+6. **AbortController → Promise.race**: l'anteprima Claude non supporta la clonazione di `AbortSignal` via `postMessage`; i timeout sui fetch usano `Promise.race` ovunque (compatibile sia in anteprima che in produzione).
+7. **NO COMPETENZA**: le pratiche AUTORIZZAZIONE chiuse con STATO_PERMESSO=NO COMPETENZA sono "superate" — se esiste una pratica attiva successiva sulla stessa tratta, è quella a contare; se NO COMPETENZA è l'unica presente, la tratta è IN ATTESA della prossima pratica.
+8. **Conflitti GitHub (409)**: `_push_to_github` rilegge lo sha aggiornato e riprova fino a 3 volte se qualcuno scrive sullo stesso file in parallelo.
+9. **Lookup impresa case-insensitive**: `_find_assignment` cerca con regex `^nome$` case-insensitive — `sertori`, `Sertori`, `SERTORI` trovano tutti lo stesso record.
+10. **`dati.csv` è in disuso**: `index.html` calcola la stessa aggregazione LOTTO×STATO×Metri/Percentuale lato client da `Riepilogo_progettazione.csv` (variabili `aggMap`/`totMap` in `loadData()`).
+11. **Rebranding "Retelit" — COMPLETATO su TUTTE le pagine (rev.3)**: topbar navy (`--retelit-blue`, 58px, padding 28px) con logo Retelit embeddato come base64 bianco (50px) su tutte le pagine: `hub`, `index`, `mappa`, `sopralluoghi`, `polizze_convenzioni`, `milestone`. Bottone Hub unificato come `.topbar-back` (bordo `--retelit-sky`, hover trasparente). `<title>` aggiornati a `Retelit — …` su tutte le pagine. Tutti i token brand CSS (`--retelit-blue-50`, `--retelit-ice`, `--retelit-sky`, `--accent2`, `--border2`, `--muted2`, `--text2`, `--radius-*`, `--shadow-*`, `--dur-*`, `--ease-*`) definiti nel `:root` di ogni file. Emoji vietate dal brand kit rimosse da topbar, placeholder, export buttons e JS (restano solo simboli funzionali in pannelli tecnici Leaflet).
+12. **Token rinominato**: `_enri_token` → `_enri_session` in localStorage (vedi §7.1). Se incontri ancora `_enri_token` in una pagina, è codice non aggiornato.
+13. **Scrittura diretta vs workflow di approvazione**: occhio a non confondere i due modelli — `imprese.html`/`mappa_impresa_caricamento.html` (pratiche) passano sempre da `pending_updates` + approvazione admin; `imprese_scavi.html` (cantieri) e i solleciti scrivono **direttamente** su MongoDB/GitHub senza step di revisione.
+14. ✅ **RISOLTO** — Tracking accessi con segreto esposto: vedi §5.12. Tutte le 5 pagine ora usano il proxy `/api/logs/*`, nessun secret in chiaro nel client.
+15. ✅ **RISOLTO** — `polizze_convenzioni.html` ora legge/scrive il token nella stessa chiave `localStorage['enri_upload_token']` usata da `admin.html` (prima usava `sessionStorage['_enri_upload_token']`). Se il token è già stato inserito una volta in una delle due pagine, l'altra non lo richiede più. Scelta deliberata: si è mantenuto il modello a doppio secret (login + UPLOAD_TOKEN), non si è passati a un controllo basato solo sul ruolo — nessuna modifica al backend.
+16. **Login duplicato in `index.html`**: oltre al login "ufficiale" su `hub.html`, `index.html` ha un proprio overlay di login che chiama anch'esso `POST /api/auth/login` e poi reindirizza a `hub.html` dopo aver salvato `_enri_user/_enri_role/_enri_session`. Serve da fallback per chi atterra direttamente su `index.html?direct=1` (link diretto dalla card "Fase 1" in hub.html) senza essere già loggato.
+17. **`executive_summary.html` rimosso dal progetto** (confermato dall'utente): non c'è più una card collegata in `hub.html`. Se trovi ancora riferimenti al file in vecchie versioni di documentazione o in altri repo collegati, sono obsoleti.
+18. **"Lotti in Progettazione" (ex "Lotti in Avvio")**: i lotti 1–8 non ancora avviati sono ora etichettati "Lotti in Progettazione" ovunque in `index.html` (label visuale, riga totale, modale riepilogo, export). La colonna milestone "Invio Perm./Scadenza" è stata rimossa da quella sezione (ora c'è `milestone.html` dedicata).
+19. **`IMPRESE_PER_LOTTO` estesa a tutti i 12 lotti**: in `index.html` l'oggetto include ora anche i lotti 1–8 (`1→Valtellina`, `2→Sertori`, `3→Valtellina`, `4→Sielte`, `5→Circet`, `6→Sertori`, `7→Valtellina`, `8→Sielte`). Il nome impresa compare sotto il numero lotto nelle barre di avanzamento.
+20. **SED — bottoni Excel unificati**: la sezione "Attraversamenti SED" in `index.html` aveva due pulsanti separati ("Scarica Vista" / "Scarica Tutti"). Ora è un unico dropdown `sedXlsDropdown` identico a `xlsDropdown` di "Tutte le Pratiche" (con opzioni "Tutti gli attraversamenti" e "Vista corrente").
+21. **`debug_dashboard.py`**: script Python di audit automatico per i file HTML della dashboard. Controlla: CSS vars mancanti/undefined, topbar navy, logo, hub button style, div balance, emoji UI vietate vs funzionali Leaflet, gradienti decorativi, backdrop-filter, colori fuori palette, funzioni JS duplicate e dead, variabili JS inutilizzate, DOM ID mancanti, console.log in produzione, segreti hardcoded. Output con score /100 per file. Uso: `python3 debug_dashboard.py file.html [...]`.
+22. **Card modal cantieri in `scavi.html` (rev.7)**: `openModalStato()` mostrava solo `pratica_id`/lotto/ente/comune/progresso. Ora mostra tutti i dati disponibili: `codice_cantiere` (primario), cluster, tecnica scavo, impresa, conteggio tratte lavorabili/bloccate (derivato da `r.tratte[]`, **non** da `tratte_lavorabili`/`tratte_bloccate` — quei campi esistono solo nella riga CSV, non nel doc Mongo), le 4 date se valorizzate, motivo blocco+ripresa stimata se `sospeso`, note.
+23. ✅ **RISOLTO** — **Palette colori stato fuori brandkit Retelit**: `STATO_COLORS`/`COLORS`/`STATI_COLORI_MAP` usavano hex arbitrari non a palette (viola `#9b59b6`/`#7A3DAA`, rosa `#B5657A`, verde/rosso/blu/arancio non-token). Mappa canonica ora identica su `index.html`, `mappa.html`, `mappa_impresa_caricamento.html`, `scavi.html` (v. §8bis; includeva anche `mappa_impresa.html`, poi rimossa rev.126). **Esclusi deliberatamente**: palette per-lotto/cluster (`LOTTO_COLORS`, rainbow array) e marker misura/ricerca — servono a distinguere entità diverse, non rappresentano uno "stato", restano arbitrari.
+24. ✅ **RISOLTO** — **Nesting HTML rotto in `mappa_impresa_caricamento.html`**: `</div>` di troppo chiudeva `#sidebarEl` prima che `#scaviBodyPanel` venisse aperto → il pannello scavi diventava fratello della sidebar invece che figlio, causava "doppia finestra" (mappa schiacciata, legenda sovrapposta al form). Verificare sempre il nesting con `html.parser` prima di assumere che un problema visivo sia CSS quando coinvolge un intero pannello.
+25. ✅ **RISOLTO** — **`.pr-form-actions` senza `flex-wrap`**: su sidebar 300px i 3 pulsanti (Annulla/Storico/Salva aggiornamento) andavano in overflow orizzontale e venivano tagliati da `.sidebar{overflow:hidden}` (es. "Annulla" → "nnulla"). Aggiunto `flex-wrap:wrap` in `mappa_impresa_caricamento.html`.
+26. ✅ **RISOLTO** — **"Aggiorna Scavi" apriva cantiere sbagliato**: il fallback quando non c'era match esatto sulla tratta prendeva "il primo cantiere dello stesso lotto" alla cieca. Ora: match esatto → apri; nessun match + lotto con 1 solo cantiere → apri; nessun match + lotto con più cantieri → messaggio, nessuna apertura automatica; nessun match + nessun cantiere sul lotto → messaggio "autorizzazione non ancora ottenuta". File: `mappa_impresa_caricamento.html`.
+27. ✅ **RISOLTO** — **Bug `LAVORABILE` in `_compute_tratta_summary` (`server.py`)**: `need_no`/`need_ord` venivano letti SOLO dal flag `NULLA OSTA NECESSARIO`/`ORDINANZA NECESSARIA` sulla riga AUT. Se il flag era vuoto/NO ma esistevano comunque righe reali NULLA OSTA/ORDINANZA non ottenute per la tratta, `LAVORABILE` risultava `SI` per errore. Fix: `no_effettivo = (need_no=="SI") or bool(no_latest)` (idem `ord_effettivo`) — vincolante se il flag lo dichiara O se la pratica esiste davvero nei dati.
+28. ✅ **RISOLTO** — Integrata la tabella "Tutti i Cantieri" di `scavi.html`: aggiunte colonne `codice_cantiere`, `impresa`, `tecnica_scavo` (label via `TECNICA_LABEL`) — dati già esposti da `GET /api/cantieri` ma non renderizzati. Aggiunti anche a `haystack` di ricerca.
+29. ✅ **RISOLTO** — Nuovo endpoint `POST /api/admin/regenerate-derived` (auth `x-upload-token`): rilegge il Master.csv corrente e richiama `_regenerate_derived_files` senza upload — serve a riprocessare i dati esistenti dopo un fix a `_compute_tratta_summary` senza toccare Master.csv.
+30. ✅ **RISOLTO** — **Popup mappa: info cantiere integrate** (prima mostravano solo dati pratica/autorizzazione).
+    - `mappa_impresa_caricamento.html`: sezione "Cantiere" completa (stato+colore, tecnica, metri scavati/totali+%, impedimento), dati da `SC_CANTIERI` precaricato all'avvio (`scEnsureInit()` fire-and-forget in testa alla IIFE di init mappa).
+    - `mappa.html` (già allora anche `mappa_impresa.html`, rimossa rev.126): stessa sezione ma **sola lettura** (nessun bottone azione), dati da `GET /api/cantieri` (pubblico, no auth) in `RO_CANTIERI` (costanti locali `RO_SC_STATO_LABEL/COLOR/TECNICA_LABEL`, funzione `_roLoadCantieri()`).
+    - Lookup in tutti e 3 i casi: `cantieri.find(c => (c.tratte||[]).some(t => t.tratta_id === p.TRATTA_ID))`.
+31. ✅ **RISOLTO** — `.btn.secondary{color:var(--muted)}` faceva sembrare disabilitati i pulsanti secondari (es. "Nuova pratica"/"Aggiorna Scavi" nel popup mappa apparivano "spenti" accanto al primario blu). Cambiato a `color:var(--text)` + hover `border-color/color:var(--accent)` in tutti e 3 i file mappa.
+32. ✅ **RISOLTO** — **`scavi.html`: 3 bug segnalati dall'utente su KPI/barre/tabella (rev.8)**:
+    - **KPI cards**: contavano solo i lotti aggregati sul "peggiore" stato, senza metri né %. Ora `_renderKpi()` conta i cantieri reali da `CANTIERI_RAW` e popola `#kpi{Nav,All,Cor,Com,Sos}Sub` con `metri m · pct% sul totale`.
+    - **Barre "Avanzamento per Cluster" e "per Lotto"**: la riga scavi era binaria (un unico segmento colorato `in-corso`/stato-peggiore + grigio "non scavato"), non rifletteva i singoli stati dei cantieri che compongono cluster/lotto. Ora `_loadCantieri()` traccia `statoMetri{stato:metri}` per lotto e cluster (propagato in `LOTTI[].statoMetri` e `window._CLUSTER_SCAVI[cl].statoMetri`); `_renderClusters()`/`_renderBars()` disegnano un segmento per ogni stato reale (ordine/colori da `STATO_ORDER`/`STATO_COLOR`) + eventuale segmento grigio "Non tracciato" per i metri senza cantiere associato.
+    - **Tabella "Tutti i Cantieri"**: vedi voce 28.
+33. ✅ **RISOLTO (rev.9)** — **Bug `metri_totali` incoerente in `_sync_cantieri()` (`server.py`)**: `metri_totali` veniva ricalcolato ad ogni sync sommando solo le tratte con `lavorabile==True` (riga ~2229) e sovrascritto con `$set` senza mai controllare `metri_scavati` già accumulato. Siccome `lavorabile` dipende anche da NULLA OSTA/ORDINANZA (non solo dall'AUTORIZZAZIONE), un cantiere già "in corso" con metri regolarmente rendicontati poteva vedersi azzerare `metri_totali` a un sync successivo (visto in produzione: `CA/3/2A`, 0 totali / 600 scavati). **Chiarito dall'utente**: `lavorabile` è un flag SOLO per la visualizzazione in mappa, non deve limitare cosa un'impresa può rendicontare. Fix: `metri_totali` ora somma **tutte** le tratte della pratica (autorizzazione ottenuta), indipendentemente da `lavorabile` — di fatto uguale a `metri_totali_potenziali` (campo lasciato per compatibilità con pagine che lo leggono separatamente). ⚠️ **Da fare manualmente una tantum**: i documenti `cantieri` già in Mongo restano con il vecchio `metri_totali` finché non gira un sync — chiamare `GET /api/admin/sync-cantieri` (auth `x-upload-token`) per riallinearli subito, altrimenti si autocorreggono al prossimo upload/approvazione di Master.csv.
+34. **RISOLTO (rev.21)** — **Tabella "Tutti i Cantieri" in `scavi.html`: header non andava a capo**: `white-space:nowrap` globale su `.cant-table thead th` + `tight:true` che lo riforzava inline → 13 colonne in overflow orizzontale anche con label corte, nonostante gli aggiustamenti di rev.18/rev.20. Fix: `white-space:normal` sugli header (con `line-height:1.35`), `tight` ora `max-width:70px` invece di `nowrap`, `.th-cell` allineato `flex-start` (serve per header su 2 righe), label accorciate (Prov., Stato, Avanz., M. Tot., M. Scavati, Registro). Bottone "Registro" per riga: rimossa emoji 📋 (vietata da brand kit §8.11) e stile inline generico, sostituiti con classe `.btn-registro` (bordo/hover accent Retelit, icona SVG inline al posto dell'emoji).
+35. **RISOLTO (rev.22)** — **Card "Registro Lotti · Stato Cantiere" rimossa da `scavi.html`** (ridondante con "Avanzamento per Lotto" + tabella "Tutti i Cantieri"): eliminato il markup della card, la funzione `_renderTabella()` e la sua chiamata in `_renderAll()`. I pill province (`.prov-pill`, stesso stile già usato nella tabella rimossa) sono stati spostati sotto al numero lotto in `_renderBars()` (card "Avanzamento per Lotto"), dentro `.bar-lotto-wrap`.
+36. **RISOLTO (rev.23)** — **Colore distintivo per provincia in tutta `scavi.html`**: nuovo `provColor(p)`/`provPill(p)` (hash deterministico su palette di 10 colori brand-coerenti — stessa provincia = stesso colore sempre, non serve enumerare le province a mano). Applicato a: pill "Avanzamento per Lotto", card modal cantiere, colonna "Prov." tabella "Tutti i Cantieri", modal Lotto (era hardcoded su `--accent`), modal Cluster (era testo semplice `MI / PV`), card "Metri scavati per provincia". `.prov-pill` CSS ora senza colori fissi (solo forma), il colore è sempre inline via `provColor()`.
+37. **RISOLTO (rev.24)** — **Redesign card cantiere nel modal stato (`openModalStato`)**: erano righe separate da bordo inferiore con testo semplice "Label: valore" — ora card vere (`.msc-*`, bordo+radius+padding), chip invece di label:valore, provincia con `provPill()`, icone SVG al posto delle emoji 📍/⏸/📝 (vietate da brand kit §8.11). ⚠️ Bug corretto nello stesso giro: `background:var(--danger)0d` non è CSS valido (non si concatena testo dopo `var()`) e `--danger` non è nemmeno definita in `scavi.html` — sostituito con hex diretto `#C0392B` (stesso token brand kit). **(rev.25)**: rimossi chip "Tecnica" e "Tratte lavorabili/bloccate" dalla card (giudicati privi di senso in questo contesto dall'utente) — resta solo "Impresa".
+38. **Redesign vista dirigenti `scavi.html` (sessione 2026-07-03, no rev.-tag per evitare collisione col rev.38 changelog sotto)**: (a) `.phase-header` ("Stato Cantieri") portato da 9px a 13px, allineato a `.page-title`; (b) **exec-strip** in header: 3 numeri grandi (Avanzamento Fisico %, Permessi Ottenuti %, Cantieri in Sospeso — rosso se >0) — alimentati da `pctGlob`/`pctPermessi`, calcolati in `_renderRiepilogo()` ma prima mai scritti a video (dead code); titolo/eyebrow/sottotitolo pagina rimossi su richiesta utente, resta solo l'exec-strip allineata a destra (`#pageSubDyn` di nuovo assente dal markup, `_renderPageSubtitle()` esce per guard `if(!el)return`, nessun errore); (c) nuova card **"Performance Imprese"** subito sotto i KPI: aggregazione per `impresa` con colonne Lotto/Cluster (multi-valore, Set ordinato con `_lottoCompare`), Cantieri, Completati/In Corso/Sospesi, Metri Tot., % Avanzamento (bar+colore), Ritmo m/gg (da `data_inizio_effettiva`→oggi o `data_fine_effettiva`) — ordinabile per colonna (`_sortImprese()`, funzione `_renderImprese()` in pipeline `_renderAll()`); (d) rimossa legenda duplicata identica tra "Avanzamento per Cluster" e "Avanzamento per Lotto" (resta una sola, con rimando testuale nella seconda). ⚠️ Ritmo m/gg è vuoto per i cantieri senza `data_inizio_effettiva` valorizzata — verificare copertura dato in produzione.
+39. **`scavi.html` — bug/rifiniture "Performance Imprese" + modal "Stato Cantieri" (rev.77)**: (a) ✅ **RISOLTO — bug % avanzamento non coerente con la vista "per Lotto"**: `_renderImprese()` calcolava il denominatore sommando `metri_totali` dai soli cantieri già sincronizzati in Mongo per quell'impresa (es. Sielte/lotto 2A = 7852m) invece del totale da PERMESSI (Riepilogo_progettazione.csv, 11.589m per lo stesso lotto — più completo, copre tutte le tratte autorizzate anche se non ancora un cantiere Mongo), come fa correttamente `byLotto`/`LOTTI`. Risultato: stessa `metriScav`, denominatori diversi → 8% mostrato invece di 5,5%. Fix: nuovo `g.metriTotByLotto{}` per-impresa-per-lotto, `metriTotReale` = somma di `PERMESSI[lotto].totale` (fallback sul dato cantieri se il lotto non è in PERMESSI) — usato sia per il denominatore di `pct` sia per la colonna "Metri Tot." visualizzata (prima disallineata rispetto al nuovo pct). (b) ✅ **RISOLTO** — colonne Lotto/Cluster della tabella non erano ordinabili: mancavano `class="imp-th-sort"`+`onclick="_sortImprese(...)"` sui `<th>`, e il comparator confrontava direttamente due `Set` JS (`a.lotti < b.lotti` è sempre `false` → nessun ordinamento) — ora le due chiavi vengono convertite alla stessa stringa ordinata mostrata a video (`[...set].sort(...).join(', ')`) prima del confronto. Ordinamento di default per "miglior avanzamento" (`{key:'pct', dir:'desc'}`) era già corretto, il sort rotto sulle altre colonne dava probabilmente l'impressione che l'intera tabella non si riordinasse. (c) Rinominata label header "Avanzamento Fisico" → "Avanzamento globale" (solo testo, chiave dato `execPctScavi` invariata). (d) Card "Avanzamento per Cluster": rimosso il nome descrittivo del cluster (es. "Milano urbano", da `CLUSTER_LABEL`) — resta solo il badge "Cluster N"; `CLUSTER_LABEL` lasciata invariata altrove (modal cluster, dove il nome resta utile). (e) `openModalStato()` (modal aperta cliccando le card KPI "Stato Cantieri"): sostituita la lista a card `.msc-*` con la stessa tabella/colonne di "Tutti i Cantieri" (Cod. Cantiere, Pratica, Ente, Lotto, Cluster, Prov., Comune, **Impresa**, Stato, Avanz., M. Tot., M. Scavati, bottone Registro) — chiude anche TODO §11 12.1/12.2 (impresa ora visibile sia in "Performance Imprese" sia nelle card modal cantiere). ⚠️ **Trade-off non richiesto esplicitamente**: la vecchia card mostrava anche `motivo_blocco`/`data_ripresa_stimata` (solo per stato Sospeso) e `note` libere, assenti nella tabella "Tutti i Cantieri" — questi due dati non sono più visibili da questa modal. Segnalato all'utente, non reintegrato salvo richiesta. (f) ✅ **RISOLTO (rev.78, follow-up immediato)** — dopo il punto (e) il div `.modal` di `#modalStatoOverlay` era rimasto a `width:560px` inline (dimensionato per la vecchia lista card), causando scroll orizzontale forzato con la tabella a 13 colonne (screenshot utente: solo le prime 7 colonne visibili). Portato a `width:1180px;max-width:96vw` — stesso pattern già usato per il modal Cluster di `index.html` in rev.75 quando gli fu aggiunta una colonna.
+40. **Formato reale di `Master.csv`**: il file di produzione è **tab-separated** (non comma, non semicolon) — `server.py` lo scrive sempre con `sep="\t"` verso GitHub/derivati. Qualsiasi `Master.csv` ricevuto per editing va verificato con `head -1 file | cat -A` prima di assumerne la struttura: se ogni riga appare come un unico blob tra virgolette, è corrotto (visto in rev.50, archiviato) e va riconvertito prima di qualunque modifica. Occhio anche a varianti `;`-separated/latin-1/CRLF (viste in rev.63-64, archiviato) e a nomi colonna quasi-identici (`DATA_PREVISTO_RILASCIO` vs `DATA_PREVISTA_RILASCIO`, femminile è quello corretto usato dal codice).
+
+41. **Split tratte esistenti (nuovi TRATTA_ID) — sessione 2026-07-06**: `_regenerate_derived_files` patcha SOLO le property delle feature già presenti in `QGIS.geojson` (match per TRATTA_ID, geometria invariata) — non crea geometrie nuove. Procedura corretta: 1) split linea in QGIS, nuovi TRATTA_ID univoci, export geojson (verificato CRS export = EPSG:4326/CRS84, non UTM, altrimenti coordinate fuori scala e mappa mostra vista mondo); 2) upload con `target=QGIS.geojson` esatto — `admin.html` valida che il nome file scelto combaci col target selezionato (riga ~842), quindi niente più rischio di salvataggio sotto nome sbagliato; 3) SOLO DOPO caricare/approvare Master.csv coi nuovi TRATTA_ID. Ordine invertito = righe orfane senza geometria. ⚠️ **Rischio residuo non risolto**: nessun lock/versioning ottimistico tra upload manuale admin e `_regenerate_derived_files` triggerato da approvazione `pending_updates` impresa — se un'approvazione impresa scatta a ridosso dell'upload manuale del geojson, vince chi scrive per ultimo su `uploaded_at`. Dopo un upload critico, verificare sempre `GET /api/files` (campo `size`/`modified` dell'entry) per confermare che sia la versione servita, prima di considerare chiuso il lavoro.
+
+42b. **RISOLTO (2026-08-19)** — **`mappa.html`: popup tratta non mostrava corrispondenza pratica↔ente**. Causa: `QGIS.geojson` aggrega più righe Master.csv in un'unica stringa `PRATICA` per feature, perdendo quale ente appartiene a quale codice; il popup mostrava quindi `ENTE`/`ENTE 2` come lista piatta separata dalle pill `Pratiche`. Fix: nuovo `loadPraticaEnteIndex()` (stesso pattern SWR di `loadSED`) che legge `Master.csv` e indicizza `TRATTA_ID → [{codice, ente}]` ricostruendo il codice con la stessa logica `tipoPrefix+prat+lotto` già usata per SED; caricato in parallelo a `loadGeoJSON()` all'avvio. In `makePopupHtml()` ogni pill pratica ora mostra `CODICE · Ente` quando trovato match su `TRATTA_ID`+codice (classe CSS `.popup-pratica-ente`); il campo "Ente" aggregato in alto resta invariato come fallback. ⚠️ Limite noto: essendo async, un popup aperto nei primissimi istanti dopo il load pagina (prima che `Master.csv` risponda) può mostrare le pratiche senza ente per quel click.
+
+42. **RISOLTO (2026-07-09)** — **`imprese.html`, tab "Le mie submission": aggiunto codice pratica + fix bug "Nessun campo" sulle submission "Nuova pratica"**. Contesto: ogni `change` di una submission `update` ha forma `{tratta_id, ente, tipo_permesso, original_pratica, lunghezza, fields:{...}}`, mentre una submission `new` ha `change` = record flat completo (`Source.Name`, `TRATTA_ID`, `TIPO_PERMESSO`, `PRATICA`, ecc., **senza** wrapper `fields`). `showSubDetail()` leggeva sempre `c.fields||{}` → per le submission "Nuova pratica" risultava sempre `{}`, quindi il popup mostrava "Nessun campo" nonostante i dati fossero presenti nel `change` stesso. Fix:
+    - Nuovo helper `_codiceForChange(c, type)`: per `type==='new'` usa `buildCodice(c)` diretto (il change ha già tutti i campi); per `type==='update'` cerca in `PRATICHE` (già caricato) la riga con `TRATTA_ID`+`ENTE`+`TIPO_PERMESSO` (+ `original_pratica` se disponibile) per recuperare `_codice` (serve il lotto/`Source.Name`, assente nel change di update).
+    - Tabella "Le mie submission": nuova colonna "Codice pratica" (primo codice + `+N` se la submission raggruppa più pratiche in un solo invio).
+    - Popup dettaglio: ogni blocco `.sub-change` mostra ora il codice pratica accanto a tratta/ente/tipo; header del popup mostra la lista di tutti i codici coinvolti se >1; per `type==='new'` i campi mostrati ora sono l'intero record (esclusi i campi già in header: `Source.Name`/`TRATTA_ID`/`ENTE`/`TIPO_PERMESSO`) invece di un oggetto vuoto.
+    - Sequenziato `loadPratiche()` prima di `loadMine()` nel boot (`await`) — prima partivano in parallelo, rischio di race condition sul lookup `_codiceForChange` per le submission `update` se `PRATICHE` non era ancora popolato al primo render.
+
+⚠️ **Segnalato, non risolto**: font-size sotto i 12px in decine di punti di `scavi.html` (9px/10px/10.5px/11px su badge, chip, celle tabella, eyebrow) — viola la regola brand kit §4.6 "mai sotto 12px in interfaccia". Font-family/pesi (Raleway + JetBrains Mono) invece corretti e caricati bene. In attesa di conferma utente prima di un pass esteso (60+ punti, rischio di rompere il layout di badge/tabelle compatte).
+
+43. **RISOLTO (2026-07-09)** — **`imprese.html`, tab Solleciti: `PROTOCOLLATO INTEGRAZIONE` escluso per errore dalla lista pratiche sollecitabili**. `SOL_STATI_ESCLUSI` lo trattava come uno stato "chiuso" (insieme a `NECESSARIA INTEGRAZIONE`/`IN REDAZIONE INTEGRAZIONE`), ma in `STATO_TRANSITIONS` ha lo stesso ruolo di `PROTOCOLLATO`: pratica (di integrazione) inviata all'ente, in attesa di risposta (→ `NECESSARIA INTEGRAZIONE` o `OTTENUTO`) — quindi va sollecitato esattamente come `PROTOCOLLATO`. Rimosso dall'esclusione. Effetto visibile: prima la lista "Nuovo sollecito" mostrava quasi solo pratiche `INVIATO`/`PROTOCOLLATO` (segnalato dall'utente via screenshot), ora include anche le integrazioni protocollate.
+⚠️ Non verificato in questo giro: logica del numero sollecito automatico (`sol-numero`).
 
 
-def _safe_relpath(name: str) -> str:
-    name = name.replace("\\", "/").lstrip("/")
-    if ".." in name.split("/") or not _SAFE_NAME_RE.match(name):
-        raise HTTPException(400, "Invalid filename")
-    return name
+---
 
+## 8bis. Palette colori stato — mapping canonico (tutte le pagine)
 
-def _check_token(token: str | None) -> None:
-    if UPLOAD_TOKEN and token != UPLOAD_TOKEN:
-        raise HTTPException(401, "Invalid or missing upload token")
+Usata da `STATO_COLORS` (mappa/scavi) e `COLORS`/`STATI_COLORI_MAP` (index). Se aggiungi/tocchi uno di questi dizionari in una pagina, allinealo a questi valori:
 
+| Stato | Hex | Token brandkit |
+|---|---|---|
+| IN ATTESA / IN REDAZIONE | `#6B7685` | `--gray-500` |
+| IN FIRMA RDS | `#D08A1A` | `--warn` |
+| INVIO PRELIMINARE | `#043F75` | `--retelit-blue` |
+| INVIATO / PROTOCOLLATO | `#41BBD9` | `--retelit-sky` |
+| NECESSARIA INTEGRAZIONE | `#C0392B` | `--err` |
+| IN REDAZIONE INTEGRAZIONE / PROTOCOLLATO INTEGRAZIONE | `#436A93` | `--retelit-blue-75` |
+| OTTENUTO | `#1E9E6A` | `--ok` |
 
-# Ruolo dedicato 'polizza' (rev.283): può aggiornare stato/date/urgenza delle
-# pratiche in polizze_convenzioni.html SENZA conoscere l'UPLOAD_TOKEN condiviso
-# — quel token resta un segreto ad ampio raggio (upload Master.csv, override
-# Gantt, ecc.) e non va distribuito a un ruolo pensato per un solo dominio.
-# Il ruolo va assegnato all'utenza lato Google Sheet collegato all'Apps
-# Script di login (stesso posto di admin/admin2/dl/impresa) — non in questo
-# repo. Entrambe le vie restano valide per compatibilità con chi già usa il
-# token condiviso.
-_POLIZZA_WRITE_ROLES = ("admin", "admin2", "polizza")
+File allineati: `index.html`, `mappa.html`, `mappa_impresa_caricamento.html`, `scavi.html`, `imprese.html`.
 
-def _check_polizza_write_auth(token: str | None, x_session_token: str | None) -> None:
-    if UPLOAD_TOKEN and token == UPLOAD_TOKEN:
-        return
-    sess = _verify_session(x_session_token or "")
-    if sess and sess.get("ruolo") in _POLIZZA_WRITE_ROLES:
-        return
-    raise HTTPException(401, "Accesso non autorizzato: upload token non valido e nessuna sessione con ruolo abilitato (admin/admin2/polizza)")
+**2026-07-09** — fix colori stato (bug, non allineamento di routine):
+- `mappa_impresa_caricamento.html`: `STATO_COLORS['IN REDAZIONE INTEGRAZIONE']` era `#C0392B` (rosso, sbagliato) invece di `#436A93` (blu) → corretto.
+- `imprese.html`: non aveva alcuna `STATO_COLORS`. Le celle stato usavano `class="stato-${stato.replace(/\s+/g,'.')}"` con regole CSS tipo `.stato-IN.REDAZIONE` — selettore composto che richiede DUE classi separate (`stato-IN` AND `REDAZIONE`), non matcha mai un'unica classe col punto letterale generata dal replace. Risultato: tutti gli stati multi-parola (`NECESSARIA INTEGRAZIONE`, `PROTOCOLLATO INTEGRAZIONE`, `IN REDAZIONE INTEGRAZIONE`) non prendevano MAI il colore dal CSS. Fix: aggiunta `STATO_COLORS` locale (identica alla tabella sopra) + `color` inline via helper `statoColor()`, rimosse le classi `.stato-X` rotte. Stesso fix di pattern applicato alla card pratiche sidebar in `mappa_impresa_caricamento.html` (usava lo stesso selettore rotto nonostante avesse già `STATO_COLORS`/`getColor()` disponibili — ora usa `getColor()` inline).
+- Verificato: `scavi.html`, `mappa.html`, `hub.html` non usano questo pattern — bug isolato a queste due pagine.
 
+---
 
-def _check_qts_sync_token(token: str | None) -> None:
-    if not QTS_SYNC_TOKEN or token != QTS_SYNC_TOKEN:
-        raise HTTPException(401, "Invalid or missing sync token")
+## 9. Modello dati MongoDB
 
-
-async def _log_admin_action(azione: str, target: str, actor_nome: str | None) -> None:
-    """Audit trail per le azioni protette da UPLOAD_TOKEN (non da sessione, quindi
-    `actor_nome` è auto-dichiarato dal client — utile per tracciare, non per provare)."""
-    try:
-        await admin_actions_col.insert_one({
-            "azione": azione, "target": target,
-            "actor": (actor_nome or "").strip() or "sconosciuto",
-            "timestamp": _now_iso(),
-        })
-    except Exception:
-        pass  # l'audit log non deve mai far fallire l'azione principale
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _parse_it_date(s: str):
-    try:
-        return datetime.strptime(str(s).strip(), "%d/%m/%Y")
-    except Exception:
-        return None
-
-
-def _media_type(name: str) -> str:
-    ext = name.rsplit(".", 1)[-1].lower()
-    if ext == "geojson":
-        return "application/geo+json"
-    if ext == "json":
-        return "application/json"
-    if ext == "csv":
-        return "text/csv; charset=utf-8"
-    return "application/octet-stream"
-
-
-def _serialize(doc: dict) -> dict:
-    d = dict(doc)
-    if "_id" in d:
-        d["_id"] = str(d["_id"])
-    if "gridfs_id" in d and isinstance(d["gridfs_id"], ObjectId):
-        d["gridfs_id"] = str(d["gridfs_id"])
-    return d
-
-
-async def _current_upload(filename: str) -> dict | None:
-    """Most recent non-deleted upload for a given filename."""
-    return await uploads_col.find_one(
-        {"filename": filename, "deleted_at": None},
-        sort=[("uploaded_at", -1)],
-    )
-
-
-KEEP_VERSIONS = int(os.environ.get("KEEP_VERSIONS", "4"))
-
-
-async def _prune_old_versions(filename: str, keep: int = KEEP_VERSIONS) -> int:
-    """Mantiene solo le ultime `keep` versioni non cancellate di un file:
-    elimina il blob GridFS e soft-delete (deleted_at) delle versioni più vecchie."""
-    cur = uploads_col.find({"filename": filename, "deleted_at": None}).sort("uploaded_at", -1).skip(keep)
-    n = 0
-    async for doc in cur:
-        gid = doc.get("gridfs_id")
-        if gid:
-            try:
-                await gridfs.delete(gid)
-            except Exception:
-                pass
-        await uploads_col.update_one(
-            {"_id": doc["_id"]},
-            {"$set": {"deleted_at": _now_iso(), "gridfs_id": None}},
-        )
-        n += 1
-    return n
-
-
-async def _read_gridfs(gridfs_id: ObjectId) -> bytes:
-    stream = await gridfs.open_download_stream(gridfs_id)
-    try:
-        return await stream.read()
-    finally:
-        # motor's GridOut.close is synchronous
-        close = getattr(stream, "close", None)
-        if callable(close):
-            res = close()
-            if hasattr(res, "__await__"):
-                await res
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Sessioni firmate (usate anche da /api/data* più sotto — definite qui,
-# prima delle routes, perché Depends() valuta il default arg a import-time)
-# ─────────────────────────────────────────────────────────────────────────────
-
-SESSION_SECRET = os.environ.get("SESSION_SECRET", "")
-SESSION_TTL_SECONDS = int(os.environ.get("SESSION_TTL_SECONDS", str(12 * 3600)))  # 12h default
-APPS_SCRIPT_URL = os.environ.get("APPS_SCRIPT_URL", "")
-APPS_SCRIPT_SECRET = os.environ.get("APPS_SCRIPT_SECRET", "")
-
-
-def _sign_session(nome: str, ruolo: str) -> str:
-    if not SESSION_SECRET:
-        raise HTTPException(500, "SESSION_SECRET non configurato sul server")
-    exp = int(time.time()) + SESSION_TTL_SECONDS
-    payload = f"{nome}|{ruolo}|{exp}"
-    sig = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    raw = f"{payload}|{sig}"
-    return base64.urlsafe_b64encode(raw.encode()).decode()
-
-
-def _verify_session(token: str) -> dict | None:
-    if not token or not SESSION_SECRET:
-        return None
-    try:
-        raw = base64.urlsafe_b64decode(token.encode()).decode()
-        nome, ruolo, exp, sig = raw.split("|", 3)
-        payload = f"{nome}|{ruolo}|{exp}"
-        expected = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(sig, expected):
-            return None
-        if int(exp) < int(time.time()):
-            return None
-        return {"nome": nome, "ruolo": ruolo}
-    except Exception:
-        return None
-
-
-async def _require_session(
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-) -> dict:
-    """Dependency per gli endpoint /api/imprese/*: il `nome` autenticato viene
-    SEMPRE letto dal token firmato, mai da un parametro passato dal client."""
-    sess = _verify_session(x_session_token or "")
-    if not sess:
-        raise HTTPException(401, "Sessione non valida o scaduta — effettua di nuovo il login")
-    return sess
-
-
-async def _require_staff_session(
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-) -> dict:
-    """Come _require_session ma esclude il ruolo 'impresa' — per endpoint non
-    pensati per le pagine Area Impresa (che usano gli /api/imprese/* scoped)."""
-    sess = await _require_session(x_session_token)
-    if sess.get("ruolo") == "impresa":
-        raise HTTPException(403, "Accesso non consentito per questo ruolo")
-    return sess
-
-
-async def _require_admin_session(
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-) -> dict:
-    """Solo ruolo 'admin' o 'admin2' — per scritture riservate (es. override Gantt)."""
-    sess = await _require_staff_session(x_session_token)
-    if sess.get("ruolo") not in ("admin", "admin2"):
-        raise HTTPException(403, "Riservato ad admin")
-    return sess
-
-
-async def _require_milestone_session(
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-) -> dict:
-    """Come _require_staff_session ma esclude anche il ruolo 'dl' (Direzione
-    Lavori): vede tutto come 'user' tranne la pagina Milestone di Progetto,
-    su richiesta esplicita utente. Il ruolo è letto dal token firmato
-    (HMAC/SESSION_SECRET), non falsificabile lato client."""
-    sess = await _require_staff_session(x_session_token)
-    if sess.get("ruolo") == "dl":
-        raise HTTPException(403, "Milestone di progetto non disponibili per questo ruolo")
-    return sess
-
-
-# File "core" con dati di TUTTI i lotti/imprese. In lettura (/api/data*,
-# /api/preview, /api/files) sono riservati ai ruoli interni: le Aree Impresa
-# usano gli endpoint /api/imprese/* già scoped sui propri lotti. Inoltre NON
-# vengono più pubblicati sul repo GitHub pubblico (vedi _push_to_github).
-SENSITIVE_FILES = {
-    "Master.csv",
-    "QGIS.geojson",
-    "Riepilogo_progettazione.csv",
-    "SED_classificato.geojson",
-    "Cantieri.csv",
-    "sopralluoghi.csv",
-    "solleciti.csv",
+```jsonc
+// collection: uploads (storico versioni file)
+// source: "impresa" (Master.csv da approvazione) | "derived" (QGIS.geojson/Riepilogo
+// rigenerati automaticamente) | assente per upload manuali da admin.html
+{
+  "_id": ObjectId,
+  "filename": "Master.csv",            // path relativo a DATA_DIR
+  "original_name": "Master_v2.xlsx",
+  "size": 192167,
+  "content_type": "text/csv",
+  "project": "main",                   // "main" | "M" | "pm"
+  "rows": 3120,
+  "uploaded_at": "2026-06-23T11:30:00+00:00",
+  "gridfs_id": ObjectId,               // → fs.files (None se cancellato)
+  "deleted_at": null | "ISO",
+  "source": "impresa" | "derived" | null,
+  "note": "Submission <id> from <nome> (update)" | "restore/delete Master.csv" | null
 }
 
-
-def _guard_sensitive_read(rel: str, sess: dict) -> None:
-    """Blocca la lettura dei file core da parte del ruolo 'impresa': un token
-    impresa legittimo non deve poter scaricare il dataset intero di tutti i
-    concorrenti via /api/data. I ruoli interni (admin/admin2/user) restano ok."""
-    if Path(rel).name in SENSITIVE_FILES and sess.get("ruolo") == "impresa":
-        raise HTTPException(
-            403,
-            "Accesso non consentito per questo ruolo — le imprese usano gli endpoint /api/imprese/*",
-        )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Routes
-# ─────────────────────────────────────────────────────────────────────────────
-@app.get("/api/")
-async def root():
-    return {
-        "service": "enri-dashboard-api",
-        "status": "ok",
-        "time": _now_iso(),
-        "version": "2.0.0",
-    }
-
-
-@app.get("/api/health")
-async def health():
-    try:
-        await db.command("ping")
-        mongo_ok = True
-    except Exception:
-        mongo_ok = False
-    return {"ok": True, "mongo": mongo_ok, "time": _now_iso()}
-
-
-@app.get("/api/files")
-async def list_files(sess: dict = Depends(_require_staff_session)):
-    """Union of:
-    - files with current (non-deleted) GridFS uploads
-    - seed files on disk (excluding system dirs) that aren't shadowed by a
-      Mongo upload
-    """
-    out: dict[str, dict] = {}
-
-    # 1) Disk seed
-    if DATA_DIR.exists():
-        for p in sorted(DATA_DIR.rglob("*")):
-            if not p.is_file():
-                continue
-            ext = p.suffix.lower()
-            if ext not in {".csv", ".geojson", ".json"}:
-                continue
-            try:
-                rel = p.relative_to(DATA_DIR).as_posix()
-            except ValueError:
-                continue
-            top = rel.split("/", 1)[0]
-            if top in _EXCLUDE_DIRS or top.startswith("."):
-                continue
-            if p.name in _EXCLUDE_FILES:
-                continue
-            out[rel] = {
-                "name": rel,
-                "size": p.stat().st_size,
-                "type": ext[1:],
-                "source": "disk",
-                "modified": _GITHUB_PUSH_TIMES.get(p.name) or datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc).isoformat(),
-                "versions": 0,
-            }
-
-    # 2) Mongo current versions (override disk)
-    pipeline = [
-        {"$match": {"deleted_at": None}},
-        {"$sort": {"uploaded_at": -1}},
-        {"$group": {
-            "_id": "$filename",
-            "size": {"$first": "$size"},
-            "uploaded_at": {"$first": "$uploaded_at"},
-            "project": {"$first": "$project"},
-            "rows": {"$first": "$rows"},
-            "upload_source": {"$first": "$source"},
-            "note": {"$first": "$note"},
-        }},
-    ]
-    versions_pipeline = [
-        {"$match": {"deleted_at": None}},
-        {"$group": {"_id": "$filename", "count": {"$sum": 1}}},
-    ]
-    version_counts: dict[str, int] = {}
-    async for d in uploads_col.aggregate(versions_pipeline):
-        version_counts[d["_id"]] = d["count"]
-
-    async for d in uploads_col.aggregate(pipeline):
-        name = d["_id"]
-        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
-        out[name] = {
-            "name": name,
-            "size": d["size"],
-            "type": ext,
-            "source": "mongo",
-            "modified": d["uploaded_at"],
-            "project": d.get("project", "main"),
-            "rows": d.get("rows"),
-            "versions": version_counts.get(name, 1),
-            "upload_source": d.get("upload_source") or "admin",  # impresa | derived | admin (upload manuale)
-            "note": d.get("note") or "",
-        }
-
-    files = sorted(out.values(), key=lambda x: x["name"])
-    return {"files": files, "count": len(files)}
-
-
-@app.get("/api/data/{filename:path}")
-async def get_data_file(filename: str, sess: dict = Depends(_require_session)):
-    rel = _safe_relpath(filename)
-    _guard_sensitive_read(rel, sess)
-    cur = await _current_upload(rel)
-    if cur:
-        data = await _read_gridfs(cur["gridfs_id"])
-        return Response(content=data, media_type=_media_type(rel))
-    # Fallback to disk seed (git-committed file)
-    path = DATA_DIR / rel
-    if path.exists() and path.is_file():
-        return FileResponse(path, media_type=_media_type(rel), filename=path.name)
-    raise HTTPException(404, f"File not found: {rel}")
-
-
-@app.get("/api/data-text/{filename:path}", response_class=PlainTextResponse)
-async def get_data_text(filename: str, sess: dict = Depends(_require_session)):
-    rel = _safe_relpath(filename)
-    _guard_sensitive_read(rel, sess)
-    cur = await _current_upload(rel)
-    if cur:
-        data = await _read_gridfs(cur["gridfs_id"])
-        return data.decode("utf-8", errors="replace")
-    path = DATA_DIR / rel
-    if path.exists() and path.is_file():
-        return path.read_text(encoding="utf-8", errors="replace")
-    raise HTTPException(404, f"File not found: {rel}")
-
-
-@app.get("/api/preview/{filename:path}")
-async def preview_file(filename: str, max_bytes: int = 8192, sess: dict = Depends(_require_staff_session)):
-    """Returns a short text preview of a file (first max_bytes)."""
-    rel = _safe_relpath(filename)
-    max_bytes = max(256, min(max_bytes, 65536))
-    cur = await _current_upload(rel)
-    if cur:
-        data = (await _read_gridfs(cur["gridfs_id"]))[:max_bytes]
-        source = "mongo"
-        size = cur["size"]
-    else:
-        path = DATA_DIR / rel
-        if not (path.exists() and path.is_file()):
-            raise HTTPException(404, f"File not found: {rel}")
-        size = path.stat().st_size
-        with path.open("rb") as f:
-            data = f.read(max_bytes)
-        source = "disk"
-    return {
-        "filename": rel,
-        "source": source,
-        "size": size,
-        "truncated": size > max_bytes,
-        "content": data.decode("utf-8", errors="replace"),
-    }
-
-
-@app.get("/api/uploads")
-async def list_uploads(
-    limit: int = 50,
-    project: str | None = None,
-    filename: str | None = None,
-    include_deleted: bool = False,
-    sess: dict = Depends(_require_staff_session),
-):
-    q: dict = {}
-    if project:
-        q["project"] = project
-    if filename:
-        q["filename"] = filename
-    if not include_deleted:
-        q["deleted_at"] = None
-    cur = uploads_col.find(q).sort("uploaded_at", -1).limit(min(limit, 500))
-    items = [_serialize(d) async for d in cur]
-    return {"uploads": items, "count": len(items)}
-
-
-@app.post("/api/upload")
-async def upload_file(
-    file: UploadFile = File(...),
-    target: str = Form(""),
-    project: str = Form("main"),
-    convert_to_csv: bool = Form(True),
-    x_upload_token: Annotated[str | None, Form(alias="token")] = None,
-    header_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    _check_token(x_upload_token or header_token)
-
-    raw = await file.read()
-    if len(raw) == 0:
-        raise HTTPException(400, "Empty file")
-    if len(raw) > MAX_UPLOAD_MB * 1024 * 1024:
-        raise HTTPException(413, f"File too large (>{MAX_UPLOAD_MB} MB)")
-
-    ext = Path(file.filename or "").suffix.lower()
-    if ext not in ALLOWED_EXT:
-        raise HTTPException(400, f"Unsupported file type {ext!r}. Allowed: {sorted(ALLOWED_EXT)}")
-
-    rows = None
-    df = None
-    out_name = target.strip() or (file.filename or "uploaded")
-    out_bytes = raw
-
-    # Safety net: anche se il client non passa convert_to_csv=false, il file
-    # parametri (multi-foglio) non va MAI appiattito in CSV a un solo foglio.
-    if out_name == PARAMETRI_FILENAME:
-        convert_to_csv = False
-
-    if ext in {".xlsx", ".xls"} and convert_to_csv:
-        try:
-            df = pd.read_excel(io.BytesIO(raw))
-        except Exception as e:
-            raise HTTPException(400, f"Cannot parse Excel: {e}")
-        rows = int(len(df))
-        buf = io.StringIO()
-        df.to_csv(buf, index=False, sep=";")
-        out_bytes = buf.getvalue().encode("utf-8")
-        if not target:
-            out_name = Path(file.filename).stem + ".csv"
-
-    if out_name.lower().endswith(".csv") and rows is None:
-        try:
-            rows = max(0, out_bytes.decode("utf-8", errors="replace").count("\n") - 1)
-        except Exception:
-            rows = None
-
-    rel = _safe_relpath(out_name)
-
-    # Se stiamo sostituendo Master.csv, preserva eventuale stato CONVENZIONE/POLIZZA
-    # già avanzato (RICHIESTA RDS/INVIATA/EMESSA) rispetto a quanto porta il nuovo
-    # file — fix bug: un nuovo export esterno (QGIS/Excel) porta solo SI/NO e
-    # retrocederebbe silenziosamente il workflow tracciato da polizze_convenzioni.html.
-    pol_conv_preserved = 0
-    if rel == MASTER_FILENAME:
-        try:
-            sep_new = _detect_sep(out_bytes)
-            if df is None:
-                new_df = None
-                for enc in ("utf-8", "cp1252", "latin-1"):
-                    try:
-                        new_df = pd.read_csv(io.BytesIO(out_bytes), sep=sep_new, dtype=str, keep_default_na=False, encoding=enc, on_bad_lines="warn")
-                        break
-                    except (UnicodeDecodeError, UnicodeError):
-                        continue
-            else:
-                new_df = df.astype(str)
-            if new_df is not None:
-                old_df = await _read_master_csv()
-                pol_conv_preserved = _preserve_pol_conv_state(old_df, new_df)
-                if pol_conv_preserved:
-                    buf2 = io.StringIO()
-                    new_df.to_csv(buf2, index=False, sep=sep_new)
-                    out_bytes = buf2.getvalue().encode("utf-8")
-        except Exception as e:
-            print(f"[_preserve_pol_conv_state] fallita, procedo senza (upload non bloccato): {e}")
-
-    # Store content in GridFS
-    gridfs_id = await gridfs.upload_from_stream(
-        rel,
-        io.BytesIO(out_bytes),
-        metadata={"project": project or "main", "uploaded_at": _now_iso()},
-    )
-
-    record = {
-        "filename": rel,
-        "original_name": file.filename,
-        "size": len(out_bytes),
-        "content_type": file.content_type or "",
-        "project": project or "main",
-        "rows": rows,
-        "uploaded_at": _now_iso(),
-        "gridfs_id": gridfs_id,
-        "deleted_at": None,
-    }
-    res = await uploads_col.insert_one(record)
-    asyncio.create_task(_prune_old_versions(rel))
-    await _log_admin_action(
-        "upload" + (f" (+{pol_conv_preserved} CONVENZIONE/POLIZZA preservate)" if pol_conv_preserved else ""),
-        rel, x_actor_nome,
-    )
-
-    # Se è Master.csv, rigenera anche i file derivati (Riepilogo_progettazione.csv,
-    # QGIS.geojson) e sincronizza GitHub — stesso comportamento di approve/delete/restore,
-    # altrimenti un upload manuale lascia mappa e barre ferme alla versione precedente.
-    if rel == MASTER_FILENAME:
-        asyncio.create_task(_push_current_master_to_github())
-    elif rel in GITHUB_PATHS:
-        asyncio.create_task(_push_to_github(out_bytes, path=GITHUB_PATHS[rel], label=rel))
-
-    return JSONResponse({
-        "ok": True,
-        "id": str(res.inserted_id),
-        "filename": rel,
-        "size": len(out_bytes),
-        "rows": rows,
-        "converted_from_excel": ext in {".xlsx", ".xls"} and convert_to_csv,
-        "pol_conv_preserved": pol_conv_preserved,
-    })
-
-
-@app.delete("/api/uploads/{upload_id}")
-async def delete_upload(
-    upload_id: str,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Soft-delete a single upload version + remove its GridFS blob."""
-    _check_token(x_upload_token or token_q)
-    try:
-        oid = ObjectId(upload_id)
-    except Exception:
-        raise HTTPException(400, "Invalid id")
-    doc = await uploads_col.find_one({"_id": oid})
-    if not doc:
-        raise HTTPException(404, "Upload not found")
-    # Determina se questa era la versione corrente PRIMA di cancellarla:
-    # se era una versione vecchia già superata, il contenuto "corrente" non
-    # cambia e non serve pushare/rigenerare nulla su GitHub.
-    was_current = False
-    if doc.get("filename") == MASTER_FILENAME:
-        cur = await _current_upload(MASTER_FILENAME)
-        was_current = bool(cur and cur["_id"] == oid)
-    if doc.get("gridfs_id"):
-        try:
-            await gridfs.delete(doc["gridfs_id"])
-        except Exception:
-            pass
-    await uploads_col.update_one(
-        {"_id": oid},
-        {"$set": {"deleted_at": _now_iso(), "gridfs_id": None}},
-    )
-    await _log_admin_action("delete_version", doc["filename"], x_actor_nome)
-    # Sincronizza GitHub solo se era davvero la versione corrente di Master.csv
-    if was_current:
-        asyncio.create_task(_push_current_master_to_github())
-    return {"deleted": str(oid), "filename": doc["filename"]}
-
-
-@app.delete("/api/files/{filename:path}")
-async def delete_file(
-    filename: str,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Soft-delete ALL upload versions of `filename`. After this call, if
-    a disk seed exists, it becomes the served version again; otherwise the
-    file returns 404."""
-    _check_token(x_upload_token or token_q)
-    rel = _safe_relpath(filename)
-    # Collect gridfs ids to remove
-    ids: list[ObjectId] = []
-    async for d in uploads_col.find({"filename": rel, "deleted_at": None}):
-        if d.get("gridfs_id"):
-            ids.append(d["gridfs_id"])
-    for gid in ids:
-        try:
-            await gridfs.delete(gid)
-        except Exception:
-            pass
-    res = await uploads_col.update_many(
-        {"filename": rel, "deleted_at": None},
-        {"$set": {"deleted_at": _now_iso(), "gridfs_id": None}},
-    )
-    await _log_admin_action("delete_all_versions", rel, x_actor_nome)
-    # Se è Master.csv, sincronizza GitHub e rigenera i file derivati con la
-    # versione ora corrente (il seed da disco, se non resta nessun'altra versione)
-    if rel == MASTER_FILENAME:
-        asyncio.create_task(_push_current_master_to_github())
-    return {"filename": rel, "deleted_versions": res.modified_count}
-
-
-@app.patch("/api/files/{old_name:path}")
-async def rename_file(
-    old_name: str,
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    """Rename a file in MongoDB. Disk seed (if any) keeps its original name
-    but it's shadowed by the renamed Mongo entry."""
-    _check_token(x_upload_token or token_q)
-    new_name = (payload or {}).get("new_name", "")
-    if not new_name:
-        raise HTTPException(400, "Missing 'new_name'")
-    old_rel = _safe_relpath(old_name)
-    new_rel = _safe_relpath(new_name)
-    if old_rel == new_rel:
-        return {"ok": True, "filename": new_rel, "updated": 0}
-    # Make sure target name isn't already taken by an active upload
-    clash = await uploads_col.find_one({"filename": new_rel, "deleted_at": None})
-    if clash:
-        raise HTTPException(409, f"Target name already in use: {new_rel}")
-    res = await uploads_col.update_many(
-        {"filename": old_rel, "deleted_at": None},
-        {"$set": {"filename": new_rel}},
-    )
-    return {"ok": True, "from": old_rel, "to": new_rel, "updated": res.modified_count}
-
-
-@app.post("/api/uploads/{upload_id}/restore")
-async def restore_upload(
-    upload_id: str,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Make a past (soft-deleted) version current again, by clearing
-    `deleted_at` on it. NB: doesn't recover GridFS bytes if they were
-    already purged. If gridfs_id is null, this fails."""
-    _check_token(x_upload_token or token_q)
-    try:
-        oid = ObjectId(upload_id)
-    except Exception:
-        raise HTTPException(400, "Invalid id")
-    doc = await uploads_col.find_one({"_id": oid})
-    if not doc:
-        raise HTTPException(404, "Upload not found")
-    if not doc.get("gridfs_id"):
-        raise HTTPException(410, "Underlying content was purged; cannot restore")
-    await uploads_col.update_one({"_id": oid}, {"$set": {"deleted_at": None}})
-    await _log_admin_action("restore", doc["filename"], x_actor_nome)
-    # Se è Master.csv, sincronizza GitHub con la versione ripristinata
-    if doc.get("filename") == MASTER_FILENAME:
-        asyncio.create_task(_push_current_master_to_github())
-    return {"ok": True, "restored": str(oid), "filename": doc["filename"]}
-
-
-@app.on_event("startup")
-async def _on_startup():
-    print(f"[enri-dashboard] DATA_DIR (seed) = {DATA_DIR}")
-    print(f"[enri-dashboard] DB_NAME         = {DB_NAME}")
-    print(f"[enri-dashboard] CORS            = {ALLOWED_ORIGINS}")
-    print(f"[enri-dashboard] UPLOAD_TOKEN    = {'set' if UPLOAD_TOKEN else 'OFF (open)'}")
-    # Indici MongoDB — evitano full collection scan sulle query più frequenti
-    try:
-        await uploads_col.create_index([("filename", 1), ("deleted_at", 1), ("uploaded_at", -1)])
-        await assignments_col.create_index("nome")
-        await pending_col.create_index([("status", 1), ("submitted_at", -1)])
-        await solleciti_col.create_index([("pratica", 1), ("data_sollecito", 1)])
-        await solleciti_col.create_index("tratta_id")
-        await cantieri_col.create_index([("pratica_id", 1), ("ente", 1)])
-        await cantieri_col.create_index("lotto")
-        await sopralluoghi_col.create_index("codice_verbale")
-        await gantt_rates_col.create_index("scope", unique=True)
-        print("[enri-dashboard] Indici MongoDB verificati/creati")
-    except Exception as e:
-        print(f"[startup] creazione indici: {e}")
-    # Backfill: ensure pre-existing upload records have a deleted_at field
-    await uploads_col.update_many(
-        {"deleted_at": {"$exists": False}}, {"$set": {"deleted_at": None}}
-    )
-    # Sync cantieri: crea automaticamente cantieri non_avviato per tratte LAVORABILE=SI
-    # Eseguita in background (non awaitata) per non ritardare l'accettazione
-    # delle richieste HTTP (es. /api/health) durante il boot dopo un cold-start.
-    async def _startup_sync_cantieri():
-        try:
-            await _sync_cantieri()
-        except Exception as e:
-            print(f"[startup] _sync_cantieri: {e}")
-    asyncio.create_task(_startup_sync_cantieri())
-    # Backfill sopralluoghi.csv: il vecchio seed statico è stato rimosso dal
-    # repo, rigeneriamo subito il derivato da Mongo così compare in "File
-    # correnti" senza dover aspettare il prossimo verbale/eliminazione.
-    _schedule_sopralluoghi_csv_regen("backfill startup")
-    # Backfill solleciti.csv: idem, così compare subito in "File correnti".
-    _schedule_solleciti_csv_regen("backfill startup")
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# IMPRESE (contractor) — assignments + pending updates workflow
-# ─────────────────────────────────────────────────────────────────────────────
-# An "impresa" user logs in via the existing Google Apps Script flow (hub.html).
-# We keep a server-side mapping nome → lotti[] in `assignments`. When the user
-# submits updates / new rows, they go in `pending_updates`; the admin approves
-# and the change is applied to Master.csv (a new GridFS version is created).
-# ═════════════════════════════════════════════════════════════════════════════
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Sessione firmata — risolve il problema per cui chiunque potesse fare
-# `localStorage.setItem('_enri_user', 'Nome Impresa')` e impersonare quel
-# nome senza conoscere il codice di accesso (il codice era verificato SOLO
-# da Google Apps Script al login, mai dal backend sulle chiamate successive).
-#
-# Flusso corretto:
-#   1. hub.html invia nome+codice a /api/auth/login (non più direttamente ad
-#      Apps Script: il segreto APPS_SCRIPT_SECRET resta lato server)
-#   2. Il backend verifica nome+codice chiamando Apps Script server-to-server
-#   3. Se ok, firma un token (HMAC, non falsificabile senza SESSION_SECRET)
-#      con nome+ruolo+scadenza, e lo restituisce al browser
-#   4. Ogni chiamata /api/imprese/* richiede questo token nell'header
-#      x-session-token; il `nome` viene SEMPRE preso dal token firmato,
-#      MAI dal parametro `nome` passato dal client (che viene ignorato)
-# ─────────────────────────────────────────────────────────────────────────────
-
-LOGIN_MAX_ATTEMPTS = int(os.environ.get("LOGIN_MAX_ATTEMPTS", "5"))
-LOGIN_LOCKOUT_SECONDS = int(os.environ.get("LOGIN_LOCKOUT_SECONDS", "300"))
-_login_failures: dict[str, list[float]] = {}
-
-
-def _check_login_rate_limit(nome_key: str) -> None:
-    now = time.time()
-    attempts = [t for t in _login_failures.get(nome_key, []) if now - t < LOGIN_LOCKOUT_SECONDS]
-    _login_failures[nome_key] = attempts
-    if len(attempts) >= LOGIN_MAX_ATTEMPTS:
-        wait = int(LOGIN_LOCKOUT_SECONDS - (now - attempts[0]))
-        raise HTTPException(429, f"Troppi tentativi falliti. Riprova tra {max(wait, 1)}s")
-
-
-def _record_login_failure(nome_key: str) -> None:
-    _login_failures.setdefault(nome_key, []).append(time.time())
-
-
-@app.post("/api/auth/login")
-async def auth_login(payload: dict):
-    """Proxy server-to-server verso Google Apps Script: il browser non vede
-    più APPS_SCRIPT_SECRET, e il codice viene verificato per davvero (non solo
-    al primo login, ma e' la base per ogni chiamata successiva tramite il token)."""
-    nome = (payload or {}).get("nome", "").strip()
-    codice = (payload or {}).get("codice", "").strip()
-    if not nome or not codice:
-        raise HTTPException(400, "Nome e codice sono richiesti")
-    nome_key = nome.lower()
-    _check_login_rate_limit(nome_key)
-    if not APPS_SCRIPT_URL or not APPS_SCRIPT_SECRET:
-        raise HTTPException(500, "Login non configurato sul server (APPS_SCRIPT_URL/SECRET mancanti)")
-    try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            r = await client.post(
-                APPS_SCRIPT_URL,
-                content=json.dumps({"secret": APPS_SCRIPT_SECRET, "action": "login", "nome": nome, "codice": codice}),
-                headers={"Content-Type": "text/plain"},
-            )
-    except Exception as e:
-        raise HTTPException(502, f"Servizio di login non raggiungibile: {e}")
-
-    try:
-        data = r.json()
-    except Exception:
-        snippet = r.text[:200].replace("\n", " ")
-        raise HTTPException(502, f"Risposta non valida da Apps Script (HTTP {r.status_code}): {snippet!r}")
-
-    if not data.get("ok"):
-        _record_login_failure(nome_key)
-        raise HTTPException(401, data.get("msg") or "Nome o codice non riconosciuti")
-
-    _login_failures.pop(nome_key, None)
-    nome_canonical = data.get("nome") or nome
-    ruolo = str(data.get("ruolo") or "user").lower()
-    token = _sign_session(nome_canonical, ruolo)
-    return {"ok": True, "token": token, "nome": nome_canonical, "ruolo": ruolo}
-
-
-@app.get("/api/auth/verify")
-async def auth_verify(sess: dict = Depends(_require_session)):
-    """Verifica token di sessione e restituisce nome+ruolo — usato da index.html per la rivalidazione silenziosa."""
-    return {"ok": True, "nome": sess["nome"], "ruolo": sess.get("ruolo", "user")}
-
-
-@app.post("/api/logs/get")
-async def logs_get(payload: dict, sess: dict = Depends(_require_session)):
-    """Log accessi — letto da MongoDB (access_logs). JSONBin/Apps Script non più usati per questo."""
-    bin_id = (payload or {}).get("binId", "")
-    doc = await access_logs_col.find_one({"_id": bin_id}) or {}
-    return {"record": {
-        "utenti":  doc.get("utenti", []),
-        "accessi": doc.get("accessi", []),
-    }}
-
-
-@app.post("/api/logs/put")
-async def logs_put(payload: dict, sess: dict = Depends(_require_session)):
-    """Log accessi — scritto su MongoDB (access_logs). JSONBin/Apps Script non più usati per questo."""
-    bin_id = (payload or {}).get("binId", "")
-    data   = (payload or {}).get("data") or {}
-    if not bin_id:
-        raise HTTPException(400, "binId mancante")
-    await access_logs_col.update_one(
-        {"_id": bin_id},
-        {"$set": {
-            "utenti":  data.get("utenti", []),
-            "accessi": data.get("accessi", []),
-        }},
-        upsert=True,
-    )
-    return {"ok": True}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Parametri di configurazione (rischio ROS, squadre, capacità, azioni) — rev.??
-# Fonte unica: xlsx caricato da admin.html tramite /api/upload (stesso
-# meccanismo GridFS di Master.csv). Il parsing avviene qui, server-side:
-# il frontend (stato_lotti.html) consuma solo /api/parametri (JSON), mai
-# l'xlsx direttamente — nessuna soglia/peso/produttività è hardcoded in JS.
-# ─────────────────────────────────────────────────────────────────────────────
-PARAMETRI_FILENAME = "Parametri_configurazione_dashboard_ENRI.xlsx"
-
-
-def _pf(row: dict, key: str, default=None):
-    v = row.get(key)
-    return default if v is None else v
-
-
-def _pf_bool_si(row: dict, key: str) -> bool:
-    v = row.get(key)
-    return str(v).strip().lower() == "sì" or str(v).strip().lower() == "si"
-
-
-def _find_header_row(ws, anchor_text: str, max_scan: int = 20) -> int | None:
-    """Cerca nella colonna A, entro le prime `max_scan` righe, la cella che
-    contiene esattamente `anchor_text` e ne restituisce l'indice (1-based).
-    Usato invece di numeri di riga fissi così lo sheet resta parsabile anche
-    se il PM inserisce/rimuove righe di intestazione o note sopra la tabella."""
-    for i in range(1, max_scan + 1):
-        v = ws.cell(row=i, column=1).value
-        if v is not None and str(v).strip() == anchor_text:
-            return i
-    return None
-
-
-def _sheet_table(ws, anchor_text: str, max_scan: int = 20) -> list[dict]:
-    """Legge la tabella che inizia con l'header trovato da `_find_header_row`.
-    Ferma la lettura alla prima riga completamente vuota. Le chiavi del dict
-    sono le intestazioni originali (testo colonna A..N), non rinominate qui —
-    la rinomina in snake_case avviene nel parser specifico di ogni sezione."""
-    hdr_row = _find_header_row(ws, anchor_text, max_scan)
-    if hdr_row is None:
-        return []
-    headers = [c.value for c in ws[hdr_row]]
-    rows = []
-    r = hdr_row + 1
-    while True:
-        cells = [ws.cell(row=r, column=ci + 1).value for ci in range(len(headers))]
-        if all(c is None for c in cells):
-            break
-        row = {}
-        for h, v in zip(headers, cells):
-            if h is not None:
-                row[str(h).strip()] = v
-        rows.append(row)
-        r += 1
-        if r > hdr_row + 500:  # safety stop
-            break
-    return rows
-
-
-def _xlsx_date_to_it(v):
-    """Normalizza una cella data del PARAMETRI xlsx in stringa gg/mm/aaaa.
-    openpyxl restituisce un oggetto datetime/date se la cella è formattata
-    come Data in Excel, una stringa se è General/Testo: il frontend
-    (parseDateIT) si aspetta sempre e solo il formato gg/mm/aaaa."""
-    if v is None or v == "":
-        return v
-    if hasattr(v, "strftime"):
-        return v.strftime("%d/%m/%Y")
-    return v
-
-
-def _parse_parametri_xlsx(raw: bytes) -> dict:
-    import openpyxl
-    wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
-
-    out: dict = {}
-
-    # ── Parametri globali ──
-    globali = {}
-    for row in _sheet_table(wb["Parametri globali"], "Codice"):
-        codice = row.get("Codice")
-        if not codice:
-            continue
-        globali[str(codice).strip()] = {
-            "ambito": row.get("Ambito"),
-            "parametro": row.get("Parametro"),
-            "valore": row.get("Valore"),
-            "unita": row.get("Unità"),
-            "tipo_dato": row.get("Tipo dato"),
-            "modificabile": _pf_bool_si(row, "Modificabile"),
-            "descrizione": row.get("Descrizione / regola"),
-        }
-    out["globali"] = globali
-
-    # ── Regole squadre per stato cantiere ──
-    regole_squadre = {}
-    for row in _sheet_table(wb["Regole squadre cantiere"], "Stato cantiere"):
-        stato = row.get("Stato cantiere")
-        if not stato:
-            continue
-        regole_squadre[str(stato).strip()] = {
-            "squadre_standard": row.get("Squadre standard"),
-            "operativo": _pf_bool_si(row, "Conta come operativo"),
-            "modificabile": _pf_bool_si(row, "Modificabile"),
-            "regola": row.get("Regola"),
-            "note": row.get("Note"),
-        }
-    out["regole_squadre_cantiere"] = regole_squadre
-
-    # ── Eccezioni squadre per singolo cantiere ──
-    eccezioni = []
-    for row in _sheet_table(wb["Eccezioni per cantiere"], "Codice cantiere"):
-        if not row.get("Codice cantiere"):
-            continue
-        eccezioni.append({
-            "codice_cantiere": row.get("Codice cantiere"),
-            "lotto": row.get("Lotto"),
-            "impresa": row.get("Impresa"),
-            "stato_cantiere": row.get("Stato cantiere"),
-            "squadre_standard": row.get("Squadre standard"),
-            "squadre_override": row.get("Squadre override"),
-            "squadre_effettive": row.get("Squadre effettive"),
-            "data_validita": row.get("Data validità"),
-            "motivazione": row.get("Motivazione"),
-        })
-    out["eccezioni_cantiere"] = eccezioni
-
-    # ── Tempi autorizzativi ──
-    tempi = {}
-    for row in _sheet_table(wb["Tempi autorizzativi"], "Codice"):
-        codice = row.get("Codice")
-        if not codice:
-            continue
-        tempi[str(codice).strip()] = {
-            "tipologia": row.get("Tipologia ente / pratica"),
-            "giorni_attesi": row.get("Giorni attesi"),
-            "soglia_attenzione": row.get("Soglia attenzione"),
-            "soglia_critica": row.get("Soglia critica"),
-            "unita": row.get("Unità"),
-            "peso_milestone_30gg": row.get("Peso se milestone ≤30gg"),
-            "modificabile": _pf_bool_si(row, "Modificabile"),
-            "note": row.get("Note"),
-            "giorni_redazione_pratiche": row.get("Giorni redazione pratiche"),
-        }
-    out["tempi_autorizzativi"] = tempi
-
-    # ── Rischio ROS: fattori (pesi) + classi ──
-    ws_ros = wb["Rischio ROS"]
-    fattori = []
-    for row in _sheet_table(ws_ros, "Codice fattore"):
-        if not row.get("Codice fattore"):
-            continue
-        fattori.append({
-            "codice": row.get("Codice fattore"),
-            "fattore": row.get("Fattore"),
-            "peso": row.get("Peso"),
-            "misura": row.get("Misura utilizzata"),
-            "soglia_attenzione": row.get("Soglia attenzione"),
-            "soglia_critica": row.get("Soglia critica"),
-            "normalizzazione": row.get("Normalizzazione proposta"),
-            "attivo": _pf_bool_si(row, "Attivo"),
-            "note": row.get("Note"),
-        })
-    peso_totale_attivi = round(sum(float(f["peso"] or 0) for f in fattori if f["attivo"]), 6)
-    classi = []
-    for row in _sheet_table(ws_ros, "Classe"):
-        if not row.get("Classe"):
-            continue
-        classi.append({
-            "classe": row.get("Classe"),
-            "punteggio_min": row.get("Punteggio minimo"),
-            "punteggio_max": row.get("Punteggio massimo"),
-            "colore": row.get("Colore"),
-            "descrizione": row.get("Descrizione"),
-            "azione": row.get("Azione dashboard"),
-        })
-    out["rischio_ros"] = {
-        "fattori": fattori,
-        "peso_totale_attivi": peso_totale_attivi,
-        "peso_valido": abs(peso_totale_attivi - 1.0) < 0.001,
-        "classi": classi,
-    }
-
-    # ── Regole azioni ──
-    azioni = []
-    for row in _sheet_table(wb["Regole azioni"], "Priorità"):
-        if row.get("Codice") is None:
-            continue
-        azioni.append({
-            "priorita": row.get("Priorità"),
-            "codice": row.get("Codice"),
-            "condizione": row.get("Condizione oggettiva"),
-            "dato_da_mostrare": row.get("Dato da mostrare"),
-            "azione": row.get("Azione suggerita"),
-            "responsabile": row.get("Responsabile"),
-            "calcolo_quantita": row.get("Calcolo quantità"),
-            "affidabilita_minima": row.get("Affidabilità minima"),
-            "note": row.get("Note"),
-        })
-    azioni.sort(key=lambda a: (a["priorita"] if isinstance(a["priorita"], (int, float)) else 999))
-    out["regole_azioni"] = azioni
-
-    # ── Parametri per lotto (override globali) ──
-    per_lotto = {}
-    for row in _sheet_table(wb["Parametri per lotto"], "Lotto"):
-        lotto = row.get("Lotto")
-        if lotto is None or str(lotto).strip() == "":
-            continue
-        per_lotto[str(lotto).strip()] = {
-            "cluster": row.get("Cluster"),
-            "impresa": row.get("Impresa"),
-            "milestone_contrattuale": _xlsx_date_to_it(row.get("Milestone contrattuale")),
-            "produttivita_standard_squadra": row.get("Produttività standard squadra"),
-            "squadre_lotto_override": row.get("Squadre lotto (override manuale)"),
-            "giorni_lavorativi_settimana": row.get("Giorni lavorativi/settimana"),
-            "efficienza_prevista": row.get("Efficienza prevista"),
-            "produttivita_disponibile": row.get("Produttività disponibile (da squadre effettive)"),
-            "fonte": row.get("Fonte / motivazione"),
-            "data_validita": row.get("Data validità"),
-            "note": row.get("Note"),
-            "data_avvio_progettazione": _xlsx_date_to_it(row.get("Data avvio progettazione")),
-        }
-    out["parametri_lotto"] = per_lotto
-
-    # Nota: lo sheet "Esempio calcolo" è una sandbox del PM per validare le
-    # formule a mano (contiene ipotesi/celle di prova, non parametri) — non
-    # viene esposto da /api/parametri e non è usato dal motore di calcolo.
-
-    return out
-
-
-# Cache in-process: rifà il parsing solo se cambia la versione (gridfs_id/mtime).
-_parametri_cache: dict = {"key": None, "data": None}
-
-
-async def _load_parametri() -> tuple[dict, dict]:
-    """Restituisce (parametri_json, meta). meta include source/uploaded_at
-    per far vedere in dashboard da dove arrivano i numeri."""
-    cur = await _current_upload(PARAMETRI_FILENAME)
-    if cur:
-        cache_key = str(cur.get("gridfs_id"))
-        meta = {"source": "mongo", "filename": PARAMETRI_FILENAME, "uploaded_at": cur.get("uploaded_at")}
-        if _parametri_cache["key"] != cache_key:
-            raw = await _read_gridfs(cur["gridfs_id"])
-            _parametri_cache["key"] = cache_key
-            _parametri_cache["data"] = _parse_parametri_xlsx(raw)
-        return _parametri_cache["data"], meta
-
-    # Fallback: file seed committato nel repo (nessun upload ancora fatto)
-    path = DATA_DIR / PARAMETRI_FILENAME
-    if path.exists() and path.is_file():
-        cache_key = f"disk:{path.stat().st_mtime}"
-        meta = {"source": "disk", "filename": PARAMETRI_FILENAME, "uploaded_at": None}
-        if _parametri_cache["key"] != cache_key:
-            _parametri_cache["key"] = cache_key
-            _parametri_cache["data"] = _parse_parametri_xlsx(path.read_bytes())
-        return _parametri_cache["data"], meta
-
-    raise HTTPException(404, f"Nessun file parametri caricato ({PARAMETRI_FILENAME}) — caricalo da admin.html")
-
-
-MASTER_FILENAME = "Master.csv"
-ROW_KEY_COLS = ("TRATTA_ID", "ENTE", "TIPO_PERMESSO")  # natural key for an update
-
-# Separatore rilevato dal file effettivo — viene impostato in _read_master_csv()
-_detected_sep: str = ";"
-
-def _detect_sep(raw: bytes, encoding: str = "utf-8") -> str:
-    """Auto-detect CSV separator: tab, semicolon or comma."""
-    try:
-        sample = raw[:4096].decode(encoding, errors="replace")
-        first_line = sample.split("\n")[0]
-        counts = {"\t": first_line.count("\t"), ";": first_line.count(";"), ",": first_line.count(",")}
-        return max(counts, key=counts.get)
-    except Exception:
-        return ";"
-
-# Cache in-process per _read_master_csv() — evita di riparsare lo stesso CSV
-# più volte nella stessa request (e tra request ravvicinate finché non cambia versione).
-_master_csv_cache: dict = {"key": None, "df": None}
-
-async def _read_master_csv() -> "pd.DataFrame":
-    """Read the current authoritative Master.csv (Mongo first, then disk seed).
-    Cache in-process: la cache è valida finché la versione corrente (upload _id)
-    non cambia, così le ~11 chiamate per request evitano di rileggere/riparsare
-    lo stesso file da GridFS più volte."""
-    global _detected_sep
-    cur = await _current_upload(MASTER_FILENAME)
-    cache_key = str(cur["_id"]) if cur else "disk-seed"
-
-    cached = _master_csv_cache.get("key")
-    if cached == cache_key and _master_csv_cache.get("df") is not None:
-        return _master_csv_cache["df"]
-
-    if cur:
-        raw = await _read_gridfs(cur["gridfs_id"])
-    else:
-        path = DATA_DIR / MASTER_FILENAME
-        if not path.exists():
-            raise HTTPException(404, "Master.csv not found")
-        raw = path.read_bytes()
-    # Auto-rileva separatore dal contenuto reale del file
-    _detected_sep = _detect_sep(raw)
-    # Master.csv may be UTF-8 or Latin-1/CP1252 depending on the Excel export.
-    # on_bad_lines='warn' evita che UNA riga malformata (es. virgola non quotata
-    # in un campo di testo libero come NOTE) faccia fallire la lettura di tutto
-    # il file: la riga incriminata viene segnalata in log e scartata, il resto
-    # del file resta leggibile.
-    df = None
-    for enc in ("utf-8", "cp1252", "latin-1"):
-        try:
-            df = pd.read_csv(
-                io.BytesIO(raw), sep=_detected_sep, dtype=str, keep_default_na=False,
-                encoding=enc, on_bad_lines="warn",
-            )
-            break
-        except (UnicodeDecodeError, UnicodeError):
-            continue
-    if df is None:
-        # Last resort: replace bad bytes
-        df = pd.read_csv(io.BytesIO(raw), sep=_detected_sep, dtype=str, keep_default_na=False, encoding="utf-8", encoding_errors="replace")
-
-    _master_csv_cache["key"] = cache_key
-    _master_csv_cache["df"]  = df
-    return df
-
-
-QGIS_FILENAME      = "QGIS.geojson"
-RIEPILOGO_FILENAME = "Riepilogo_progettazione.csv"
-CANTIERI_FILENAME  = "Cantieri.csv"
-SOPRALLUOGHI_FILENAME = "sopralluoghi.csv"
-SOLLECITI_FILENAME = "solleciti.csv"
-
-
-async def _read_riepilogo_csv() -> "pd.DataFrame | None":
-    """Legge Riepilogo_progettazione.csv (Mongo se presente, altrimenti seed su
-    disco). Usato per recuperare CLUSTER/PROVINCIA/COMUNE per TRATTA_ID: questi
-    campi non esistono in Master.csv, solo in Riepilogo (ereditati da QGIS.geojson).
-    Ritorna None se il file non e' ancora disponibile (fail-soft: i cantieri
-    vengono comunque creati, solo senza questi campi)."""
-    try:
-        cur = await _current_upload(RIEPILOGO_FILENAME)
-        if cur:
-            raw = await _read_gridfs(cur["gridfs_id"])
-        else:
-            path = DATA_DIR / RIEPILOGO_FILENAME
-            if not path.exists():
-                return None
-            raw = path.read_bytes()
-        sep = _detect_sep(raw)
-        for enc in ("utf-8", "cp1252", "latin-1"):
-            try:
-                return pd.read_csv(
-                    io.BytesIO(raw), sep=sep, dtype=str, keep_default_na=False,
-                    encoding=enc, on_bad_lines="warn",
-                )
-            except (UnicodeDecodeError, UnicodeError):
-                continue
-        return pd.read_csv(io.BytesIO(raw), sep=sep, dtype=str, keep_default_na=False, encoding="utf-8", encoding_errors="replace")
-    except Exception as e:
-        print(f"[_read_riepilogo_csv] errore: {e}")
-        return None
-
-
-GITHUB_REPO     = os.environ.get("GITHUB_REPO", "ENRI-RDS/dashboard")
-GITHUB_BRANCH   = os.environ.get("GITHUB_BRANCH", "main")
-GITHUB_CSV_PATH = os.environ.get("GITHUB_CSV_PATH", "Master.csv")
-
-# Mappa file dashboard -> path nel repo GitHub (override via env se servono sottocartelle)
-GITHUB_PATHS: dict = {
-    "Master.csv":                  GITHUB_CSV_PATH,
-    "Riepilogo_progettazione.csv": os.environ.get("GITHUB_RIEPILOGO_PATH", "Riepilogo_progettazione.csv"),
-    "QGIS.geojson":                os.environ.get("GITHUB_QGIS_PATH", "QGIS.geojson"),
-    "QTS.geojson":                 os.environ.get("GITHUB_QTS_PATH", "QTS.geojson"),
-    "SED_classificato.geojson":    os.environ.get("GITHUB_SED_PATH", "SED_classificato.geojson"),
+// collection: assignments (impresa → lotti)
+{
+  "_id": ObjectId,
+  "nome": "Costruzioni Alfa Srl",
+  "lotti": ["Lotto 1", "Lotto 1A"],
+  "active": true,
+  "created_at": "ISO",
+  "updated_at": "ISO"
 }
 
+// collection: pending_updates (workflow approvazione)
+{
+  "_id": ObjectId,
+  "nome": "Costruzioni Alfa Srl",
+  "type": "update" | "new",
+  "changes": [
+    // type=update
+    {"tratta_id": "TR_0103", "ente": "...", "tipo_permesso": "AUTORIZZAZIONE",
+     "fields": {"STATO_PERMESSO": "OTTENUTO", ...}},
+    // type=new
+    {"TRATTA_ID": "...", "ENTE": "...", ...}
+  ],
+  "status": "pending" | "approved" | "rejected",
+  "submitted_at": "ISO",
+  "reviewed_at": "ISO" | null,
+  "reviewed_by": null,
+  "applied_upload_id": "<id Master.csv versione generata>" | null,
+  "summary": {"updated": 3, "added": 0, "not_found": 0} | null,
+  "reviewed_note": "motivo rifiuto" | null,
+  "note": "nota libera dell'impresa"
+}
+```
 
-_GITHUB_PUSH_TIMES: dict[str, str] = {}   # label/basename -> ISO timestamp ultimo push riuscito
+File content in `fs.files` / `fs.chunks` (motor `AsyncIOMotorGridFSBucket`, bucket `files`).
 
-async def _push_to_github(file_bytes: bytes, path: str = None, label: str = None) -> None:
-    """Aggiorna un file su GitHub via API (Master.csv, QGIS.geojson, Riepilogo_progettazione.csv, ...).
-    In caso di conflitto sha (409 — qualcun altro ha scritto sullo stesso file nel frattempo,
-    es. una modifica manuale in parallelo) rilegge lo sha aggiornato e riprova fino a 3 volte."""
-    path  = path or GITHUB_CSV_PATH
-    label = label or path
-    if os.path.basename(path) in SENSITIVE_FILES:
-        print(f"[GitHub] push disabilitato per file sensibile {path} — NON pubblicato sul repo pubblico (servito solo dal backend gated)")
-        return
-    print(f"[GitHub] push avviato — {len(file_bytes)} bytes, repo={GITHUB_REPO}, path={path}, branch={GITHUB_BRANCH}")
-    token = os.environ.get("GITHUB_TOKEN")
-    if not token:
-        print("[GitHub] GITHUB_TOKEN non impostato — skip push")
-        return
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}"
-    max_tentativi = 3
-    try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            for tentativo in range(1, max_tentativi + 1):
-                r = await client.get(url, headers=headers, params={"ref": GITHUB_BRANCH})
-                if r.status_code not in (200, 404):
-                    print(f"[GitHub] GET {url} → {r.status_code}: {r.text[:200]}")
-                    return
-                sha = r.json().get("sha") if r.status_code == 200 else None
-                payload: dict = {
-                    "message": f"Auto-update {label} via approvazione admin [skip ci]",
-                    "content": base64.b64encode(file_bytes).decode(),
-                    "branch": GITHUB_BRANCH,
-                }
-                if sha:
-                    payload["sha"] = sha
-                resp = await client.put(url, headers=headers, json=payload)
-                if resp.status_code in (200, 201):
-                    extra = f" (tentativo {tentativo}/{max_tentativi})" if tentativo > 1 else ""
-                    print(f"[GitHub] {label} aggiornato sul branch {GITHUB_BRANCH}{extra}")
-                    _GITHUB_PUSH_TIMES[os.path.basename(path)] = _now_iso()
-                    return
-                if resp.status_code == 409 and tentativo < max_tentativi:
-                    print(f"[GitHub] Conflitto sha su {label} (tentativo {tentativo}/{max_tentativi}) — rileggo e riprovo")
-                    await asyncio.sleep(1)
-                    continue
-                print(f"[GitHub] Errore push {label}: {resp.status_code} {resp.text[:300]}")
-                return
-    except Exception as e:
-        print(f"[GitHub] Eccezione {label}: {type(e).__name__}: {e}")
-
-
-
-async def _push_current_master_to_github() -> None:
-    """Legge la versione corrente di Master.csv da MongoDB, la pusha su GitHub
-    e rigenera QGIS.geojson + Riepilogo_progettazione.csv (usata da delete/restore)."""
-    try:
-        df = await _read_master_csv()
-        github_buf = io.StringIO()
-        df.to_csv(github_buf, index=False, sep="\t")
-        github_data = github_buf.getvalue().encode("utf-8")
-        await _push_to_github(github_data, path=GITHUB_PATHS["Master.csv"], label="Master.csv")
-        await _regenerate_derived_files(df, note="restore/delete Master.csv")
-    except Exception as e:
-        print(f"[GitHub] _push_current_master: {e}")
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# Derivazione QGIS.geojson + Riepilogo_progettazione.csv da Master.csv
-# ─────────────────────────────────────────────────────────────────────────────
-# Regole verificate contro un export reale di Riepilogo_progettazione.csv:
-#   - STATO_LEGENDA è sempre identico a STATO_AUTORIZZAZIONE (0 eccezioni su 692 righe)
-#   - LAVORABILE = SI solo se STATO_AUTORIZZAZIONE = OTTENUTO E (se richiesto)
-#     anche il/i NULLA OSTA sono OTTENUTI (idem ORDINANZA se richiesta)
-#   - Quando una tratta ha PIU' nulla osta (enti diversi), si usa lo stato PIU'
-#     INDIETRO (peggiore) tra l'ultimo stato registrato per ciascun ente
-#   - CAMPO AWS, PROTOCOLLO_AUT, ENTE 2: provengono da un sistema esterno o non
-#     hanno una regola derivabile con certezza dai dati disponibili — NON vengono
-#     toccati dalla rigenerazione, il valore esistente viene preservato.
-# ═════════════════════════════════════════════════════════════════════════════
-
-_STATUS_RANK = {
-    "NECESSARIA INTEGRAZIONE": 0,
-    "IN REDAZIONE INTEGRAZIONE": 1,
-    "IN REDAZIONE": 2,
-    "IN ATTESA": 2,
-    "INVIO PRELIMINARE": 3,
-    "IN FIRMA RDS": 4,
-    "INVIATO": 5,
-    "PROTOCOLLATO INTEGRAZIONE": 6,
-    "PROTOCOLLATO": 7,
-    "OTTENUTO": 8,
+```jsonc
+// collection: cantieri (NEW — un documento per pratica di autorizzazione)
+{
+  "_id": ObjectId,
+  "cantiere_key": "24|1A",          // num pratica | lotto — NON pratica_id (non univoco tra enti)
+  "codice_cantiere": "CA/3/1A",     // NEW — identificativo cantiere mostrato in UI, distinto da pratica_id
+  "codice_progressivo": 3,          // NEW — contatore progressivo per lotto, assegnato una sola volta alla creazione
+  "pratica_id": "AUT/24/1A",        // resta come riferimento pratica, non più usato come nome del cantiere in UI
+  "lotto": "1A",
+  "cluster": "...",
+  "ente": "...",
+  "stato_cantiere": "...",          // valori in STATO_CANTIERE_VALUES
+  "tecnica_scavo": "...",           // valori in TECNICA_SCAVO_VALUES
+  "data_inizio_prevista": "ISO" | null,
+  "data_inizio_effettiva": "ISO" | null,
+  "data_fine_prevista": "ISO" | null,
+  "data_fine_effettiva": "ISO" | null,
+  "metri_scavati": 0,                // accumulato via $inc da metri_realizzati_oggi
+  "note": "...",
+  "motivo_blocco": "...",
+  "data_ripresa_stimata": "ISO" | null,
+  "impresa": "Costruzioni Alfa Srl",
+  "updated_at": "ISO",
+  "log": [ {"data": "AAAA-MM-GG", "impresa": "...", "stato_cantiere": "...",
+            "metri_realizzati": 0, "note": "...", "motivo_blocco": "...",
+            "data_ripresa_stimata": "..."} ]
 }
 
-_TIPO_PREFIX = {"AUTORIZZAZIONE": "AUT", "NULLA OSTA": "NO", "ORDINANZA": "ORD"}
-
-
-def _norm(s) -> str:
-    return str(s or "").replace("\xa0", " ").strip().upper()
-
-
-def _worst_status(statuses: list) -> str:
-    clean = [str(s).strip() for s in statuses
-             if s and str(s).strip() and str(s).strip().upper() != "NO COMPETENZA"]
-    if not clean:
-        return ""
-    return min(clean, key=lambda s: _STATUS_RANK.get(s.upper(), 99))
-
-
-def _latest_per_ente(rows: list, tipo: str) -> list:
-    """Tra le righe di un TIPO_PERMESSO, prende l'ultima riga (cronologicamente
-    piu' recente, assumendo l'ordine di inserimento) per ciascun ente distinto."""
-    by_ente, order = {}, []
-    for r in rows:
-        if _norm(r.get("TIPO_PERMESSO")) != tipo:
-            continue
-        ente = _norm(r.get("ENTE"))
-        if ente not in by_ente:
-            order.append(ente)
-        by_ente[ente] = r  # l'ultima occorrenza trovata vince
-    return [by_ente[e] for e in order]
-
-
-def _lotto_from_source(source_name: str) -> str:
-    """'Lotto 1A.xlsx' -> '1A'."""
-    s = str(source_name or "")
-    s = re.sub(r"(?i)^lotto\s*", "", s).strip()
-    s = re.sub(r"(?i)\.xlsx?$", "", s).strip()
-    return s.upper()
-
-
-def _it_date_to_iso(s: str) -> str:
-    """'17/03/2026' -> '2026-03-17'. Stringa vuota/non parsabile -> ''."""
-    s = str(s or "").strip()
-    if not s:
-        return ""
-    try:
-        return datetime.strptime(s, "%d/%m/%Y").strftime("%Y-%m-%d")
-    except Exception:
-        return ""
-
-
-def _iso_date_to_it(s: str) -> str:
-    """'2026-03-17' -> '17/03/2026'. Stringa vuota/non parsabile -> ''."""
-    s = str(s or "").strip()
-    if not s:
-        return ""
-    try:
-        return datetime.strptime(s, "%Y-%m-%d").strftime("%d/%m/%Y")
-    except Exception:
-        return ""
-
-
-def _build_pratica(rows: list) -> str:
-    """'AUT/24/1A | NO/22/1A | NO/26/1A' — AUT prima, poi NO, poi ORD."""
-    parts, seen = [], set()
-    for tipo, pref in (("AUTORIZZAZIONE", "AUT"), ("NULLA OSTA", "NO"), ("ORDINANZA", "ORD")):
-        for r in rows:
-            if _norm(r.get("TIPO_PERMESSO")) != tipo:
-                continue
-            num = str(r.get("PRATICA") or "").strip()
-            if not num:
-                continue
-            lotto = _lotto_from_source(r.get("Source.Name", ""))
-            tok = f"{pref}/{num}/{lotto}"
-            if tok not in seen:
-                seen.add(tok)
-                parts.append(tok)
-    return " | ".join(parts)
-
-
-def _compute_tratta_summary(master_df: "pd.DataFrame") -> dict:
-    """Per ogni TRATTA_ID calcola: STATO_AUTORIZZAZIONE, STATO_NULLAOSTA,
-    STATO_ORDINANZA, LAVORABILE, MOTIVO_NO, PRATICA, STATO_LEGENDA, ENTE."""
-    if master_df is None or "TRATTA_ID" not in master_df.columns:
-        return {}
-    df = master_df.fillna("")
-    result = {}
-
-    for tratta_id, group in df.groupby(df["TRATTA_ID"].astype(str).str.strip()):
-        tratta_id = tratta_id.strip()
-        if not tratta_id:
-            continue
-        rows = group.to_dict(orient="records")
-
-        # AUTORIZZAZIONE: un solo permesso per tratta -> ultima riga inserita.
-        # Le pratiche chiuse con STATO_PERMESSO=NO COMPETENZA sono superate:
-        # l'ente ha dichiarato di non essere competente, quindi prima o poi
-        # arriva una NUOVA pratica con un ente diverso sulla stessa tratta.
-        # Finché esiste un'alternativa attiva va sempre preferita a NO COMPETENZA;
-        # se invece NO COMPETENZA è l'unica pratica presente, la tratta è
-        # semplicemente in attesa che la nuova pratica venga aperta.
-        aut_rows = [r for r in rows if _norm(r.get("TIPO_PERMESSO")) == "AUTORIZZAZIONE"]
-        aut_rows_attive = [r for r in aut_rows if _norm(r.get("STATO_PERMESSO")) != "NO COMPETENZA"]
-        if aut_rows_attive:
-            aut_row_corrente = aut_rows_attive[-1]
-            stato_aut = _norm(aut_row_corrente.get("STATO_PERMESSO"))
-        elif aut_rows:
-            aut_row_corrente = aut_rows[-1]
-            stato_aut = "IN ATTESA"
-        else:
-            aut_row_corrente = None
-            stato_aut = "IN ATTESA"
-        ente_aut  = str(aut_row_corrente.get("ENTE", "")).strip() if aut_row_corrente else ""
-        need_no   = _norm(aut_row_corrente.get("NULLA OSTA NECESSARIO")) if aut_row_corrente else "NO"
-        need_ord  = _norm(aut_row_corrente.get("ORDINANZA NECESSARIA")) if aut_row_corrente else "NO"
-
-        # NULLA OSTA / ORDINANZA: possono essercene piu' di uno (enti diversi) ->
-        # prendi l'ultimo stato di ciascun ente, poi il PEGGIORE tra questi
-        no_latest  = _latest_per_ente(rows, "NULLA OSTA")
-        stato_no   = _worst_status([r.get("STATO_PERMESSO") for r in no_latest]) if no_latest else (
-            "IN ATTESA" if need_no == "SI" else "NON NECESSARIO"
-        )
-        ord_latest = _latest_per_ente(rows, "ORDINANZA")
-        stato_ord  = _worst_status([r.get("STATO_PERMESSO") for r in ord_latest]) if ord_latest else (
-            "IN ATTESA" if need_ord == "SI" else "NON NECESSARIO"
-        )
-
-        aut_ok = stato_aut == "OTTENUTO"
-        no_ok  = stato_no == "OTTENUTO"
-        ord_ok = stato_ord == "OTTENUTO"
-
-        # Vincolante se il flag sull'AUT lo dichiara necessario OPPURE se
-        # esistono comunque righe reali NULLA OSTA/ORDINANZA per la tratta:
-        # il flag può essere disallineato nei dati sorgente, la pratica no.
-        no_effettivo  = (need_no == "SI") or bool(no_latest)
-        ord_effettivo = (need_ord == "SI") or bool(ord_latest)
-
-        lavorabile = aut_ok
-        if no_effettivo:
-            lavorabile = lavorabile and no_ok
-        if ord_effettivo:
-            lavorabile = lavorabile and ord_ok
-
-        motivi = []
-        if not aut_ok:
-            motivi.append("Manca autorizz")
-        if no_effettivo and not no_ok:
-            motivi.append("Manca nulla osta")
-        if ord_effettivo and not ord_ok:
-            motivi.append("Manca ordinanza")
-
-        result[tratta_id] = {
-            "STATO_AUTORIZZAZIONE": stato_aut,
-            "STATO_LEGENDA":        stato_aut,  # sempre identico, confermato sui dati reali
-            "STATO_NULLAOSTA":      stato_no,
-            "STATO_ORDINANZA":      stato_ord,
-            "LAVORABILE":           "SI" if lavorabile else "NO",
-            "MOTIVO_NO":            " | ".join(motivi),
-            "PRATICA":              _build_pratica(rows),
-            "PRATICA_AUT":          str(aut_row_corrente.get("PRATICA", "")).strip() if aut_row_corrente else "",
-            "ENTE":                 ente_aut,
-            "LUNGHEZZA":            rows[0].get("LUNGHEZZA", 0) if rows else 0,
-        }
-    return result
-
-
-async def _read_current_geojson(filename: str):
-    """Legge un GeoJSON (MongoDB se presente, altrimenti seed su disco)."""
-    cur = await _current_upload(filename)
-    if cur and cur.get("gridfs_id"):
-        raw = await _read_gridfs(cur["gridfs_id"])
-    else:
-        path = DATA_DIR / filename
-        if not path.exists():
-            return None
-        raw = path.read_bytes()
-    for enc in ("utf-8", "cp1252", "latin-1"):
-        try:
-            return json.loads(raw.decode(enc))
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            continue
-    return None
-
-
-async def _store_derived_file(filename: str, data: bytes, content_type: str, note: str) -> str:
-    """Salva un file derivato (rigenerato) come nuova versione in GridFS."""
-    gid = await gridfs.upload_from_stream(
-        filename, io.BytesIO(data),
-        metadata={"project": "main", "uploaded_at": _now_iso(), "source": "derived", "note": note},
-    )
-    record = {
-        "filename": filename, "original_name": filename, "size": len(data),
-        "content_type": content_type, "project": "main", "rows": None,
-        "uploaded_at": _now_iso(), "gridfs_id": gid, "deleted_at": None,
-        "source": "derived", "note": note,
-    }
-    res = await uploads_col.insert_one(record)
-    asyncio.create_task(_prune_old_versions(filename))
-    return str(res.inserted_id)
-
-
-async def _regenerate_derived_files(master_df: "pd.DataFrame", note: str = "") -> dict:
-    """Rigenera QGIS.geojson e Riepilogo_progettazione.csv a partire da Master.csv.
-
-    Verificato sui file reali: Riepilogo_progettazione.csv e' ESATTAMENTE la
-    tabella attributi di QGIS.geojson esportata in CSV (stesse 21 colonne,
-    stesso ordine, stessi valori, stesso numero di righe — confrontato riga
-    per riga su TR_0103 e sull'intero file). Per questo la patch avviene UNA
-    SOLA VOLTA sulle properties di QGIS.geojson, e Riepilogo viene poi
-    derivato direttamente da quello: i due file non possono piu' disallinearsi.
-
-    Vengono aggiornati SOLO i campi calcolati da Master.csv:
-    STATO_AUTORIZZAZIONE, STATO_LEGENDA, STATO_NULLAOSTA, STATO_ORDINANZA,
-    LAVORABILE, MOTIVO_NO, PRATICA, ENTE.
-    Tutto il resto (fid, TIPOLOGIA, PROVINCIA, COMUNE, CLUSTER, ROUTE, ENTE 2,
-    LUNGHEZZA, SPAN, LOTTO, PROTOCOLLO_AUT, CAMPO AWS, geometria) resta
-    esattamente come nel QGIS.geojson esistente.
-
-    Fire-and-forget: eventuali errori vengono solo loggati.
-    """
-    # Ordine colonne confermato sul file reale (json.load preserva l'ordine delle key)
-    RIEPILOGO_COLUMNS = [
-        "fid", "TIPOLOGIA", "PROVINCIA", "COMUNE", "CLUSTER", "ROUTE", "ENTE", "ENTE 2",
-        "LUNGHEZZA", "SPAN", "LOTTO", "TRATTA_ID", "MOTIVO_NO", "STATO_AUTORIZZAZIONE",
-        "STATO_NULLAOSTA", "STATO_ORDINANZA", "PROTOCOLLO_AUT", "PRATICA", "LAVORABILE",
-        "STATO_LEGENDA", "CAMPO AWS",
-    ]
-
-    out_ids: dict = {}
-    try:
-        summary = _compute_tratta_summary(master_df)
-        if not summary:
-            print("[Sync] Master.csv senza TRATTA_ID utilizzabili — skip rigenerazione")
-            return out_ids
-
-        geo = await _read_current_geojson(QGIS_FILENAME)
-        if not geo or not isinstance(geo.get("features"), list):
-            print(f"[Sync] {QGIS_FILENAME} non trovato — skip rigenerazione")
-            return out_ids
-
-        # ── 1. Patch in place delle proprieta' di stato su QGIS.geojson ─────────
-        riepilogo_rows = []
-        for feat in geo["features"]:
-            props = feat.get("properties") or {}
-            tid = str(props.get("TRATTA_ID") or "").strip()
-            s = summary.get(tid)
-            if s:
-                props["STATO_AUTORIZZAZIONE"] = s["STATO_AUTORIZZAZIONE"]
-                props["STATO_LEGENDA"]        = s["STATO_LEGENDA"]
-                props["STATO_NULLAOSTA"]      = s["STATO_NULLAOSTA"]
-                props["STATO_ORDINANZA"]      = s["STATO_ORDINANZA"]
-                props["LAVORABILE"]           = s["LAVORABILE"]
-                props["MOTIVO_NO"]            = s["MOTIVO_NO"]
-                if s["PRATICA"]:
-                    props["PRATICA"] = s["PRATICA"]
-                if s["ENTE"]:
-                    props["ENTE"] = s["ENTE"]
-            feat["properties"] = props
-            # Riga corrispondente per Riepilogo_progettazione.csv — stesse colonne,
-            # stessi valori, derivati dalla stessa feature appena patchata.
-            riepilogo_rows.append({col: props.get(col, "") for col in RIEPILOGO_COLUMNS})
-
-        geo_bytes = json.dumps(geo, ensure_ascii=False).encode("utf-8")
-        out_ids["qgis"] = await _store_derived_file(QGIS_FILENAME, geo_bytes, "application/geo+json", note)
-        asyncio.create_task(_push_to_github(geo_bytes, path=GITHUB_PATHS["QGIS.geojson"], label=QGIS_FILENAME))
-
-        # ── 2. Riepilogo_progettazione.csv: derivato 1:1 da QGIS.geojson ────────
-        riep_df = pd.DataFrame(riepilogo_rows, columns=RIEPILOGO_COLUMNS)
-        rbuf = io.StringIO()
-        riep_df.to_csv(rbuf, index=False)  # virgola, come il file originale
-        rdata = rbuf.getvalue().encode("utf-8")
-        out_ids["riepilogo"] = await _store_derived_file(RIEPILOGO_FILENAME, rdata, "text/csv", note)
-        asyncio.create_task(_push_to_github(rdata, path=GITHUB_PATHS["Riepilogo_progettazione.csv"], label=RIEPILOGO_FILENAME))
-
-        print(f"[Sync] Rigenerati: {list(out_ids.keys())} ({len(summary)} tratte, note={note!r})")
-    except Exception as e:
-        print(f"[Sync] Errore rigenerazione QGIS/Riepilogo: {type(e).__name__}: {e}")
-    return out_ids
-
-
-
-
-
-async def _write_master_csv(df: "pd.DataFrame", note: str) -> str:
-    """Persist a new Master.csv version in GridFS and return the new upload id."""
-    buf = io.StringIO()
-    df.to_csv(buf, index=False, sep=_detected_sep)
-    data = buf.getvalue().encode("utf-8")
-    # Per GitHub usiamo sempre tab (formato originale del file nel repo)
-    github_buf = io.StringIO()
-    df.to_csv(github_buf, index=False, sep="\t")
-    github_data = github_buf.getvalue().encode("utf-8")
-    gid = await gridfs.upload_from_stream(
-        MASTER_FILENAME,
-        io.BytesIO(data),
-        metadata={"project": "main", "uploaded_at": _now_iso(), "source": "impresa", "note": note},
-    )
-    record = {
-        "filename": MASTER_FILENAME,
-        "original_name": MASTER_FILENAME,
-        "size": len(data),
-        "content_type": "text/csv",
-        "project": "main",
-        "rows": max(0, len(df)),
-        "uploaded_at": _now_iso(),
-        "gridfs_id": gid,
-        "deleted_at": None,
-        "source": "impresa",
-        "note": note,
-    }
-    res = await uploads_col.insert_one(record)
-    asyncio.create_task(_prune_old_versions(MASTER_FILENAME))
-    # Aggiorna Master.csv su GitHub e rigenera i file derivati (fire-and-forget)
-    asyncio.create_task(_push_to_github(github_data, path=GITHUB_PATHS["Master.csv"], label="Master.csv"))
-    asyncio.create_task(_regenerate_derived_files(df, note=note))
-    return str(res.inserted_id)
-
-
-def _serialize_assignment(d: dict) -> dict:
-    out = dict(d)
-    out["_id"] = str(out["_id"])
-    return out
-
-
-# ───────── Imprese (no admin token required, identified by their `nome`) ────
-
-async def _find_assignment(nome: str) -> dict | None:
-    """Cerca un assignment per nome in modo case-insensitive,
-    così 'sertori', 'Sertori' e 'SERTORI' trovano tutti lo stesso record."""
-    return await assignments_col.find_one(
-        {"nome": {"$regex": f"^{re.escape(nome.strip())}$", "$options": "i"}}
-    )
-
-
-# ── Milestone di Progetto — dati serviti da qui (non più embedded in
-# milestone.html) così il controllo di accesso per ruolo è reale lato server,
-# non solo un redirect client-side aggirabile forzando localStorage.
-MILESTONE_IMPRESE_ROWS = [
-    {"lotto": "1A", "cluster": "1–3", "invio": "-", "ottenim": "-", "avvio": "31/05/2026", "p50": "-", "p90": "31/10/2026", "p100": "31/12/2026"},
-    {"lotto": "1B", "cluster": "1", "invio": "-", "ottenim": "-", "avvio": "31/05/2026", "p50": "-", "p90": "31/10/2026", "p100": "31/12/2026"},
-    {"lotto": "2A", "cluster": "2", "invio": "-", "ottenim": "-", "avvio": "20/07/2026", "p50": "-", "p90": "31/10/2026", "p100": "31/12/2026"},
-    {"lotto": "2B", "cluster": "2", "invio": "-", "ottenim": "-", "avvio": "06/07/2026", "p50": "-", "p90": "31/10/2026", "p100": "31/12/2026"},
-    {"lotto": "1", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
-    {"lotto": "2", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
-    {"lotto": "3", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
-    {"lotto": "4", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
-    {"lotto": "5", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
-    {"lotto": "6", "cluster": "3–4", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/10/2026", "p50": "31/05/2027", "p90": "-", "p100": "15/11/2027"},
-    {"lotto": "7", "cluster": "6–7", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/01/2027", "p50": "30/09/2027", "p90": "-", "p100": "31/03/2028"},
-    {"lotto": "8", "cluster": "5", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/01/2027", "p50": "30/09/2027", "p90": "-", "p100": "31/07/2028"},
-]
-
-MILESTONE_CONTRACT_ROWS = [
-    {"milestone": "Permits submission", "p50": "-", "p70": "-", "p100": "31/12/2026"},
-    {"milestone": "Authorizations received", "p50": "-", "p70": "-", "p100": "31/12/2027"},
-    {"milestone": "Cluster 1", "p50": "-", "p70": "31/12/2026", "p100": "30/04/2027"},
-    {"milestone": "Cluster 2", "p50": "31/12/2026", "p70": "-", "p100": "31/05/2027"},
-    {"milestone": "Cluster 3", "p50": "31/05/2027", "p70": "-", "p100": "31/03/2028"},
-    {"milestone": "Cluster 4", "p50": "-", "p70": "-", "p100": "31/03/2028"},
-    {"milestone": "Cluster 5", "p50": "-", "p70": "-", "p100": "30/06/2028"},
-    {"milestone": "Cluster 6", "p50": "-", "p70": "-", "p100": "31/12/2028"},
-    {"milestone": "Cluster 7", "p50": "-", "p70": "-", "p100": "31/12/2028"},
-]
-
-
-@app.get("/api/milestone")
-async def get_milestone(sess: dict = Depends(_require_milestone_session)):
-    """Dati di milestone.html. Accesso negato (403) al ruolo 'dl', in aggiunta
-    al redirect client-side già presente sulla pagina — qui il controllo è
-    reale perché il ruolo viene dal token firmato server-side."""
-    return {"imprese": MILESTONE_IMPRESE_ROWS, "contract": MILESTONE_CONTRACT_ROWS}
-
-
-@app.get("/api/parametri")
-async def get_parametri(sess: dict = Depends(_require_staff_session)):
-    """Parametri di configurazione (rischio ROS, squadre, capacità, azioni,
-    tempi autorizzativi) usati da stato_lotti.html. Parsati server-side dallo
-    xlsx caricato via admin.html — nessun valore è hardcoded nel frontend.
-    403 per il ruolo 'impresa' (dato interno di pianificazione, non pratiche)."""
-    data, meta = await _load_parametri()
-    return {**data, "_meta": meta}
-
-
-@app.get("/api/enti")
-async def get_enti(sess: dict = Depends(_require_session)):
-    """Restituisce tutti gli enti unici presenti in Master.csv, ordinati alfabeticamente."""
-    df = await _read_master_csv()
-    if df is None or "ENTE" not in df.columns:
-        return {"enti": []}
-    enti = sorted(
-        {str(v).strip() for v in df["ENTE"].dropna() if str(v).strip()},
-        key=lambda x: x.lower()
-    )
-    return {"enti": enti}
-
-
-@app.get("/api/concomitanze")
-async def get_concomitanze(sess: dict = Depends(_require_session)):
-    """Elenco TRATTA_ID con lavorazione aggiuntiva concomitante (es. tubo extra
-    per sovrapposizione con un altro progetto). Dato tecnico sulla tratta fisica,
-    non legato a una specifica impresa: nessuno scoping per lotto, visibile a
-    qualunque sessione valida (staff o impresa)."""
-    docs = [d async for d in concomitanza_col.find({})]
-    return {
-        "tratta_ids": [d["_id"] for d in docs],
-        "nota_by_tratta": {d["_id"]: d.get("nota", "") for d in docs},
-        "count": len(docs),
-    }
-
-
-@app.post("/api/admin/concomitanze/import")
-async def import_concomitanze(
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-):
-    """Sostituisce l'intero elenco concomitanze per una 'fonte' (es. 'ENRI-QTS').
-    Body: {fonte: str, nota: str, tratta_ids: [...]} oppure un GeoJSON
-    FeatureCollection con TRATTA_ID nelle properties di ogni feature — in tal
-    caso i TRATTA_ID vengono estratti automaticamente. Richiede x-upload-token."""
-    _check_token(x_upload_token)
-    fonte = str((payload or {}).get("fonte", "")).strip() or "ENRI-QTS"
-    nota = str((payload or {}).get("nota", "")).strip() or "Tubo aggiuntivo"
-
-    if payload.get("type") == "FeatureCollection":
-        tratta_ids = sorted({
-            str((f.get("properties") or {}).get("TRATTA_ID", "")).strip()
-            for f in payload.get("features", [])
-            if str((f.get("properties") or {}).get("TRATTA_ID", "")).strip()
-        })
-    else:
-        tratta_ids = sorted({str(t).strip() for t in payload.get("tratta_ids", []) if str(t).strip()})
-
-    if not tratta_ids:
-        raise HTTPException(400, "Nessun TRATTA_ID trovato nel payload")
-
-    # Upsert per _id (non delete+insert): un TRATTA_ID può in teoria comparire
-    # anche in un'altra 'fonte' futura, l'_id deve restare univoco a livello
-    # di intera collection, non solo all'interno della fonte.
-    await concomitanza_col.delete_many({"fonte": fonte, "_id": {"$nin": tratta_ids}})
-    for tid in tratta_ids:
-        await concomitanza_col.update_one(
-            {"_id": tid},
-            {"$set": {"fonte": fonte, "nota": nota, "updated_at": _now_iso()}},
-            upsert=True,
-        )
-    await _log_admin_action("import_concomitanze", fonte, (payload or {}).get("actor"))
-    return {"ok": True, "fonte": fonte, "count": len(tratta_ids), "tratta_ids": tratta_ids}
-
-
-@app.get("/api/imprese/me")
-async def impresa_me(sess: dict = Depends(_require_session)):
-    """Returns the impresa's profile if they are assigned, else 404.
-    Il nome viene dal token di sessione firmato, non da un parametro client."""
-    doc = await _find_assignment(sess["nome"])
-    if not doc:
-        raise HTTPException(404, "Impresa non assegnata")
-    return {"nome": doc["nome"], "lotti": doc.get("lotti", []), "active": bool(doc.get("active", True))}
-
-
-@app.get("/api/imprese/pratiche")
-async def impresa_pratiche(sess: dict = Depends(_require_session)):
-    """Returns Master.csv rows whose Source.Name matches one of the user's lotti
-    (confronto per codice lotto esatto, non substring — così 'Lotto 2' non
-    aggancia per errore 'Lotto 2A.xlsx' o eventuali lotti a doppia cifra)."""
-    doc = await _find_assignment(sess["nome"])
-    if not doc or not doc.get("active", True):
-        raise HTTPException(404, "Impresa non autorizzata")
-    lotti = {_lotto_from_source(l) for l in doc.get("lotti", []) if str(l).strip()}
-    df = await _read_master_csv()
-    if "Source.Name" not in df.columns or not lotti:
-        return {"pratiche": [], "lotti": sorted(lotti), "total": 0}
-    mask = df["Source.Name"].apply(lambda x: _lotto_from_source(x) in lotti)
-    sub = df[mask]
-    pratiche = sub.fillna("").to_dict(orient="records")
-    return {"pratiche": pratiche, "lotti": sorted(lotti), "total": len(pratiche)}
-
-
-@app.get("/api/imprese/master-sed")
-async def impresa_master_sed(sess: dict = Depends(_require_session)):
-    """GeoJSON (QGIS.geojson + SED_classificato.geojson) filtrati ai SOLI lotti
-    assegnati all'impresa (nome dal token firmato). Le pagine Area Impresa usano
-    questo endpoint invece di scaricare i file interi con i lotti di tutti i
-    concorrenti. Stesso pattern di scoping di /api/imprese/pratiche."""
-    doc = await _find_assignment(sess["nome"])
-    if not doc or not doc.get("active", True):
-        raise HTTPException(404, "Impresa non autorizzata")
-    lotti = {_lotto_from_source(l) for l in doc.get("lotti", []) if str(l).strip()}
-
-    def _scope(geo: "dict | None") -> dict:
-        if not geo or not isinstance(geo.get("features"), list):
-            return {"type": "FeatureCollection", "features": []}
-        feats = [
-            f for f in geo["features"]
-            if str((f.get("properties") or {}).get("LOTTO", "")).strip().upper() in lotti
-        ]
-        out = {k: v for k, v in geo.items() if k != "features"}
-        out.setdefault("type", "FeatureCollection")
-        out["features"] = feats
-        return out
-
-    qgis = _scope(await _read_current_geojson("QGIS.geojson"))
-    sed = _scope(await _read_current_geojson("SED_classificato.geojson"))
-    return {"qgis": qgis, "sed": sed, "lotti": sorted(lotti)}
-
-
-@app.post("/api/imprese/submit")
-async def impresa_submit(payload: dict, sess: dict = Depends(_require_session)):
-    """Body: {type: 'update'|'new', changes: [...]}. Il `nome` arriva dalla
-    sessione firmata: anche se il client invia un 'nome' diverso nel body,
-    viene ignorato — non e' piu' possibile inviare submission per conto di
-    un'altra impresa semplicemente cambiando un parametro.
-    For 'update': each change has {tratta_id, ente, tipo_permesso, fields:{col:val}}
-    For 'new': each change is a full row dict.
-    Goes into pending_updates with status='pending'."""
-    nome = sess["nome"]
-    typ = (payload or {}).get("type", "").strip()
-    changes = (payload or {}).get("changes") or []
-    if typ not in {"update", "new"}:
-        raise HTTPException(400, "type must be 'update' or 'new'")
-    if not isinstance(changes, list) or not changes:
-        raise HTTPException(400, "Empty 'changes' array")
-    doc = await _find_assignment(nome)
-    if not doc or not doc.get("active", True):
-        raise HTTPException(403, "Impresa non autorizzata")
-
-    # Tagga le eventuali note con [IMPRESA] cosi' index.html/admin.html possono
-    # distinguerle dalle note admin (v. _tag_note / add_admin_note)
-    if typ == "update":
-        for ch in changes:
-            fields = ch.get("fields") or {}
-            if str(fields.get("NOTE") or "").strip():
-                fields["NOTE"] = _tag_note(fields["NOTE"], "IMPRESA")
-    elif typ == "new":
-        for row in changes:
-            if isinstance(row, dict) and str(row.get("NOTE") or "").strip():
-                row["NOTE"] = _tag_note(row["NOTE"], "IMPRESA")
-
-    record = {
-        "nome": nome,
-        "type": typ,
-        "changes": changes,
-        "status": "pending",
-        "submitted_at": _now_iso(),
-        "reviewed_at": None,
-        "reviewed_by": None,
-        "applied_upload_id": None,
-        "note": (payload or {}).get("note", ""),
-    }
-    res = await pending_col.insert_one(record)
-    return {"ok": True, "id": str(res.inserted_id), "count": len(changes)}
-
-
-@app.get("/api/imprese/my-submissions")
-async def my_submissions(limit: int = 50, sess: dict = Depends(_require_session)):
-    cur = pending_col.find({"nome": sess["nome"]}).sort("submitted_at", -1).limit(min(limit, 200))
-    items = []
-    async for d in cur:
-        d["_id"] = str(d["_id"])
-        items.append(d)
-    return {"submissions": items, "count": len(items)}
-
-
-@app.delete("/api/imprese/submissions/{sub_id}")
-async def delete_my_submission(sub_id: str, sess: dict = Depends(_require_session)):
-    """L'impresa può cancellare solo le proprie submission ancora in stato pending.
-    Il confronto usa il nome dalla sessione, non un parametro client."""
-    try:
-        oid = ObjectId(sub_id)
-    except Exception:
-        raise HTTPException(400, "ID submission non valido")
-    doc = await pending_col.find_one({"_id": oid})
-    if not doc:
-        raise HTTPException(404, "Submission non trovata")
-    if doc.get("nome") != sess["nome"]:
-        raise HTTPException(403, "Non autorizzato")
-    if doc.get("status") != "pending":
-        raise HTTPException(409, "Solo le richieste in attesa possono essere eliminate")
-    await pending_col.delete_one({"_id": oid})
-    return {"deleted": sub_id}
-
-
-# ───────── Admin: assignments management ────────────────────────────────────
-
-@app.get("/api/admin/assignments")
-async def list_assignments(
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    _check_token(x_upload_token or token_q)
-    cur = assignments_col.find({}).sort("nome", 1)
-    items = [_serialize_assignment(d) async for d in cur]
-    return {"assignments": items, "count": len(items)}
-
-
-@app.put("/api/admin/assignments/{nome}")
-async def upsert_assignment(
-    nome: str,
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    _check_token(x_upload_token or token_q)
-    nome = nome.strip()
-    lotti = (payload or {}).get("lotti", [])
-    active = bool((payload or {}).get("active", True))
-    if not nome:
-        raise HTTPException(400, "nome required")
-    if not isinstance(lotti, list):
-        raise HTTPException(400, "lotti must be a list")
-    doc = {"nome": nome, "lotti": [str(x) for x in lotti], "active": active, "updated_at": _now_iso()}
-    await assignments_col.update_one({"nome": nome}, {"$set": doc, "$setOnInsert": {"created_at": _now_iso()}}, upsert=True)
-    out = await _find_assignment(nome)
-    return _serialize_assignment(out)
-
-
-@app.delete("/api/admin/assignments/{nome}")
-async def delete_assignment(
-    nome: str,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    _check_token(x_upload_token or token_q)
-    res = await assignments_col.delete_one({"nome": nome})
-    return {"deleted": res.deleted_count}
-
-
-# ───────── Admin: pending updates approval queue ────────────────────────────
-
-@app.get("/api/admin/pending-updates")
-async def list_pending(
-    status: str = "pending",
-    limit: int = 100,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    _check_token(x_upload_token or token_q)
-    q: dict = {}
-    if status and status != "all":
-        q["status"] = status
-    cur = pending_col.find(q).sort("submitted_at", -1).limit(min(limit, 500))
-    items = []
-    async for d in cur:
-        d["_id"] = str(d["_id"])
-        items.append(d)
-    # Arricchisce ogni change con lo stato attuale dal Master.csv
-    try:
-        df = await _read_master_csv()
-        for sub in items:
-            if sub.get("type") != "update":
-                continue
-            for ch in sub.get("changes", []):
-                tratta  = str(ch.get("tratta_id") or "").strip()
-                ente    = str(ch.get("ente") or "").strip()
-                tipo    = str(ch.get("tipo_permesso") or "").strip()
-                pratica = str(ch.get("original_pratica") or "").strip()
-                if not tratta:
-                    continue
-                mask = df["TRATTA_ID"].astype(str).str.strip() == tratta
-                if ente:
-                    mask = mask & (df["ENTE"].astype(str).str.strip() == ente)
-                if tipo:
-                    mask = mask & (df["TIPO_PERMESSO"].astype(str).str.strip() == tipo)
-                if pratica and "PRATICA" in df.columns:
-                    mp = mask & (df["PRATICA"].astype(str).str.strip() == pratica)
-                    if mp.any():
-                        mask = mp
-                rows = df[mask]
-                if rows.empty:
-                    continue
-                # NB: DATA_ULTIMA_MODIFICA è testo DD/MM/YYYY — ordinare come stringa
-                # è sbagliato (es. "26/03/2026" > "02/07/2026" lessicograficamente pur
-                # essendo antecedente). Serve un parsing esplicito a datetime.
-                _dum_dt = pd.to_datetime(rows["DATA_ULTIMA_MODIFICA"], format="%d/%m/%Y", errors="coerce")
-                row = rows.loc[_dum_dt.sort_values(ascending=False, na_position="last").index[0]]
-                ch["_stato_attuale"]     = str(row.get("STATO_PERMESSO", "") or "")
-                ch["_data_richiesta"]    = str(row.get("DATA_RICHIESTA", "") or "")
-                ch["_data_ult_mod"]      = str(row.get("DATA_ULTIMA_MODIFICA", "") or "")
-                ch["_data_approvazione"] = str(row.get("DATA_APPROVAZIONE", "") or "")
-                ch["_nulla_osta"] = str(row.get("NULLA OSTA NECESSARIO", "") or "").strip()
-                # Ricava lotto da Source.Name (es. "Lotto1.xlsx" → "1A", "Lotto3.xlsx" → "3A")
-                src = str(row.get("Source.Name", "") or "")
-                import re as _re
-                lm = _re.search(r'[Ll]otto\s*(\w+)', src)
-                ch["_lotto"] = lm.group(1) if lm else ""
-    except Exception as e:
-        print(f"[pending-updates] enrich error: {e}")
-
-    return {"submissions": items, "count": len(items)}
-
-
-def _apply_changes_to_df(df, submission: dict) -> tuple:
-    """Returns (new_df, summary). Raises HTTPException on errors.
-
-    Comportamento di default (in_place=False, usato da imprese.html e dalle
-    NOTE admin): copia l'ultima riga e inserisce una nuova riga subito dopo,
-    per mantenere lo storico di chi ha scritto cosa e quando.
-
-    in_place=True (usato dalla correzione dati admin — stato/date/N_SED):
-    sovrascrive i campi direttamente sulla riga esistente, senza duplicarla.
-    Una correzione di un dato inesatto non è un evento di business da
-    storicizzare come le note o gli aggiornamenti di stato dell'impresa: se
-    duplicassimo la riga, il dato sbagliato originale resterebbe comunque nel
-    CSV (anche se ignorato dalle pagine che leggono solo l'ultima riga)."""
-    typ = submission["type"]
-    changes = submission["changes"]
-    in_place = bool(submission.get("in_place"))
-    summary = {"updated": 0, "added": 0, "not_found": 0}
-    if typ == "update":
-        for ch in changes:
-            tratta = (ch.get("tratta_id") or "").strip()
-            ente   = (ch.get("ente") or "").strip()
-            tipo   = (ch.get("tipo_permesso") or "").strip()
-            fields = ch.get("fields") or {}
-            if not tratta:
-                continue
-            mask = df["TRATTA_ID"].astype(str).str.strip() == tratta
-            if ente:
-                mask = mask & (df["ENTE"].astype(str).str.strip() == ente)
-            if tipo:
-                mask = mask & (df["TIPO_PERMESSO"].astype(str).str.strip() == tipo)
-            # Se la submission include anche PRATICA, usa come discriminante
-            # per distinguere pratiche diverse sulla stessa tratta+ente+tipo
-            pratica_key = str(fields.get("PRATICA") or ch.get("pratica") or "").strip()
-            if not pratica_key and "PRATICA" in df.columns:
-                # Prova a ricavarlo dalla submission (campo originale della riga)
-                pratica_key = str(ch.get("original_pratica") or "").strip()
-            if pratica_key and "PRATICA" in df.columns:
-                mask_p = mask & (df["PRATICA"].astype(str).str.strip() == pratica_key)
-                idx_p  = df.index[mask_p].tolist()
-                if idx_p:   # usa il filtro per pratica solo se trova qualcosa
-                    idx = idx_p
-                else:
-                    idx = df.index[mask].tolist()
-            else:
-                idx = df.index[mask].tolist()
-            if not idx:
-                summary["not_found"] += 1
-                continue
-            # Auto-set DATA_ULTIMA_MODIFICA se non fornita (solo su cambio stato)
-            if "DATA_ULTIMA_MODIFICA" not in fields and "STATO_PERMESSO" in fields:
-                fields["DATA_ULTIMA_MODIFICA"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
-            # DATA_UPDATE: qualsiasi tocco dell'impresa sulla pratica (stato, nota, o altro campo), non solo cambio stato
-            if "DATA_UPDATE" in df.columns and "DATA_UPDATE" not in fields:
-                fields["DATA_UPDATE"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
-            last_idx = idx[-1]
-            if in_place:
-                # Correzione: sovrascrive i campi sulla riga esistente, nessuna nuova riga
-                if ch.get("preserve_note_tag") and "NOTE" in fields and fields["NOTE"]:
-                    # Non cambiare l'autore mostrato (RETELIT/IMPRESA): si sta
-                    # solo correggendo il testo di una nota già esistente.
-                    existing = str(df.loc[last_idx, "NOTE"]) if "NOTE" in df.columns else ""
-                    m = _NOTE_TAG_RE.match(existing or "")
-                    tag_prefix = m.group(0) if m else ""
-                    fields["NOTE"] = f"{tag_prefix}{fields['NOTE']}"
-                for col, val in fields.items():
-                    if col in df.columns:
-                        df.loc[last_idx, col] = str(val)
-                summary["updated"] += 1
-                continue
-            # Copia l'ultima riga esistente e inserisce la nuova SUBITO DOPO
-            # in modo da mantenere le righe dello stesso iter vicine
-            last_row = df.loc[last_idx].copy()
-            for col, val in fields.items():
-                if col in df.columns:
-                    last_row[col] = str(val)
-            # La nota NON deve mai essere ereditata implicitamente dalla riga precedente:
-            # se questo aggiornamento non la include esplicitamente, la nuova riga resta
-            # senza nota (il frontend imprese.html la rende comunque obbligatoria, questo
-            # è un secondo livello di sicurezza per qualsiasi altro chiamante).
-            if "NOTE" in df.columns and "NOTE" not in fields:
-                last_row["NOTE"] = ""
-            new_row_df = pd.DataFrame([last_row])
-            # Dividi il DataFrame prima e dopo il punto di inserimento
-            top    = df.iloc[:last_idx + 1]
-            bottom = df.iloc[last_idx + 1:]
-            df = pd.concat([top, new_row_df, bottom], ignore_index=True)
-            summary["updated"] += 1
-    elif typ == "new":
-        for row in changes:
-            if not isinstance(row, dict):
-                continue
-            new_row = {c: str(row.get(c, "")) for c in df.columns}
-            if "DATA_UPDATE" in df.columns and not new_row.get("DATA_UPDATE"):
-                new_row["DATA_UPDATE"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
-            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-            summary["added"] += 1
-    return df, summary
-
-
-@app.post("/api/admin/regenerate-derived")
-async def regenerate_derived(
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    """Rigenera QGIS.geojson + Riepilogo_progettazione.csv dal Master.csv corrente
-    senza modificarlo — utile dopo un fix a _compute_tratta_summary per applicare
-    la nuova logica ai dati già presenti, senza dover re-uploadare Master.csv."""
-    _check_token(x_upload_token or token_q)
-    df = await _read_master_csv()
-    result = await _regenerate_derived_files(df, note="force regenerate (manual)")
-    return {"ok": True, "result": result}
-
-
-@app.post("/api/admin/backfill-data-update-solleciti")
-async def backfill_data_update_solleciti(
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    """One-off (rev.147): valorizza DATA_UPDATE per le tratte con solleciti registrati
-    PRIMA del fix del bug di matching (mask rotta su 'pratica' → touch mai avvenuto).
-    Per ogni tratta_id in 'solleciti', prende la data_sollecito più recente e la usa
-    come DATA_UPDATE se è più recente di quella già presente (o se assente).
-    Non tocca le tratte senza solleciti. Idempotente: rieseguibile senza effetti collaterali
-    (non peggiora mai una DATA_UPDATE già più recente di quella dei solleciti)."""
-    _check_token(x_upload_token or token_q)
-
-    def _parse_it(s: str):
-        try:
-            return datetime.strptime(str(s).strip(), "%d/%m/%Y")
-        except Exception:
-            return None
-
-    # Max data_sollecito per tratta_id
-    max_per_tratta: dict[str, datetime] = {}
-    async for d in solleciti_col.find({}, {"tratta_id": 1, "data_sollecito": 1}):
-        tid = str(d.get("tratta_id", "")).strip()
-        dt = _parse_it(d.get("data_sollecito", ""))
-        if not tid or not dt:
-            continue
-        if tid not in max_per_tratta or dt > max_per_tratta[tid]:
-            max_per_tratta[tid] = dt
-
-    async with _master_csv_lock:
-        df = await _read_master_csv()
-        if "TRATTA_ID" not in df.columns:
-            return {
-                "ok": False,
-                "error": "colonna TRATTA_ID assente da Master.csv",
-                "colonne_trovate": df.columns.tolist(),
-            }
-        if "DATA_UPDATE" not in df.columns:
-            df["DATA_UPDATE"] = ""
-            column_created = True
-        else:
-            column_created = False
-
-        touched = []
-        col_tratta = df["TRATTA_ID"].astype(str).str.strip()
-        for tid, sol_dt in max_per_tratta.items():
-            mask = col_tratta == tid
-            if not mask.any():
-                continue
-            existing_raw = df.loc[mask, "DATA_UPDATE"].iloc[0]
-            existing_dt = _parse_it(existing_raw)
-            if existing_dt and existing_dt >= sol_dt:
-                continue  # già più recente (o uguale), non sovrascrivere
-            new_val = sol_dt.strftime("%d/%m/%Y")
-            df.loc[mask, "DATA_UPDATE"] = new_val
-            touched.append({"tratta_id": tid, "data_update": new_val})
-
-        if touched or column_created:
-            await _write_master_csv(
-                df,
-                note=f"Backfill one-off rev.147: DATA_UPDATE da storico solleciti ({len(touched)} tratte)"
-                     + (" + colonna creata" if column_created else ""),
-            )
-
-    return {"ok": True, "touched": len(touched), "column_created": column_created, "detail": touched}
-
-
-@app.post("/api/admin/backfill-fix-data-update-overreach")
-async def backfill_fix_data_update_overreach(
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    """One-off (rev.248): corregge il bug per cui _touch_data_update/_touch_data_update_multi
-    (prima del fix) scrivevano DATA_UPDATE=oggi su TUTTE le righe storicizzate con lo stesso
-    TRATTA_ID — inclusi altri iter/tipo_permesso sulla stessa tratta e righe storiche vecchie
-    dello stesso iter — invece che solo sull'ultima riga del gruppo tratta+tipo_permesso.
-
-    Per ogni gruppo (TRATTA_ID, TIPO_PERMESSO): azzera DATA_UPDATE su tutte le righe tranne
-    l'ultima (idx[-1], la più recente). Il frontend (index.html) ricade su DATA_ULTIMA_MODIFICA
-    quando DATA_UPDATE è vuota, recuperando la datazione corretta delle note storiche.
-    Non tocca NOTE/STATO_PERMESSO/DATA_ULTIMA_MODIFICA/altri campi. Idempotente: rieseguibile
-    senza effetti collaterali (le righe già a DATA_UPDATE vuota vengono saltate)."""
-    _check_token(x_upload_token or token_q)
-
-    async with _master_csv_lock:
-        df = await _read_master_csv()
-        if "TRATTA_ID" not in df.columns or "DATA_UPDATE" not in df.columns:
-            return {
-                "ok": False,
-                "error": "colonna TRATTA_ID o DATA_UPDATE assente da Master.csv",
-                "colonne_trovate": df.columns.tolist(),
-            }
-
-        has_tipo = "TIPO_PERMESSO" in df.columns
-        group_cols = ["TRATTA_ID", "TIPO_PERMESSO"] if has_tipo else ["TRATTA_ID"]
-        cleared = []
-
-        for _, idx_arr in df.groupby(
-            [df[c].astype(str).str.strip() for c in group_cols]
-        ).groups.items():
-            idx = list(idx_arr)
-            if len(idx) < 2:
-                continue  # gruppo con una sola riga: nulla da correggere
-            for i in idx[:-1]:  # tutte tranne l'ultima
-                existing = str(df.loc[i, "DATA_UPDATE"] or "").strip()
-                if not existing or existing.lower() == "nan":
-                    continue
-                cleared.append({
-                    "tratta_id": str(df.loc[i, "TRATTA_ID"]),
-                    "tipo_permesso": str(df.loc[i, "TIPO_PERMESSO"]) if has_tipo else "",
-                    "pratica": str(df.loc[i, "PRATICA"]) if "PRATICA" in df.columns else "",
-                    "data_update_rimossa": existing,
-                })
-                df.loc[i, "DATA_UPDATE"] = ""
-
-        if cleared:
-            await _write_master_csv(
-                df,
-                note=f"Backfill one-off rev.248: azzerato DATA_UPDATE errato su {len(cleared)} righe storiche non-ultime",
-            )
-
-    return {"ok": True, "cleared": len(cleared), "detail": cleared}
-
-
-
-async def edit_pending(
-    sub_id: str,
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Corregge i dati (`changes`) di una submission impresa ancora in stato 'pending',
-    prima di approvarla — es. errori di digitazione o dati di test inviati per sbaglio.
-    Non è modificabile una submission già approvata/rifiutata (usare direttamente
-    la tabella Cantieri/Master per correzioni post-approvazione)."""
-    _check_token(x_upload_token or token_q)
-    try:
-        oid = ObjectId(sub_id)
-    except Exception:
-        raise HTTPException(400, "Invalid id")
-    sub = await pending_col.find_one({"_id": oid})
-    if not sub:
-        raise HTTPException(404, "Submission not found")
-    if sub.get("status") != "pending":
-        raise HTTPException(409, f"Non modificabile: già {sub.get('status')}")
-    changes = payload.get("changes")
-    if not isinstance(changes, list):
-        raise HTTPException(400, "'changes' deve essere una lista")
-    await pending_col.update_one(
-        {"_id": oid},
-        {"$set": {"changes": changes, "edited_at": _now_iso(), "edited_by": x_actor_nome or "admin"}},
-    )
-    await _log_admin_action("edit_pending_update", sub_id, x_actor_nome)
-    return {"ok": True}
-
-
-@app.post("/api/admin/pending-updates/{sub_id}/approve")
-async def approve_pending(
-    sub_id: str,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    _check_token(x_upload_token or token_q)
-    try:
-        oid = ObjectId(sub_id)
-    except Exception:
-        raise HTTPException(400, "Invalid id")
-    sub = await pending_col.find_one({"_id": oid})
-    if not sub:
-        raise HTTPException(404, "Submission not found")
-    if sub.get("status") != "pending":
-        raise HTTPException(409, f"Already {sub.get('status')}")
-    async with _master_csv_lock:
-        df = await _read_master_csv()
-        new_df, summary = _apply_changes_to_df(df, sub)
-        note = f"Submission {sub_id} from {sub['nome']} ({sub['type']})"
-        upload_id = await _write_master_csv(new_df, note=note)
-    reviewer = x_actor_nome or "admin"
-    await pending_col.update_one(
-        {"_id": oid},
-        {"$set": {"status": "approved", "reviewed_at": _now_iso(), "reviewed_by": reviewer, "applied_upload_id": upload_id, "summary": summary}},
-    )
-    await _log_admin_action("approve_pending_update", sub_id, x_actor_nome)
-    # Sync cantieri: crea automaticamente cantieri non_avviato per le nuove tratte lavorabili
-    asyncio.create_task(_sync_cantieri())
-    return {"ok": True, "summary": summary, "new_upload_id": upload_id}
-
-
-@app.post("/api/admin/pending-updates/{sub_id}/reject")
-async def reject_pending(
-    sub_id: str,
-    payload: dict | None = None,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    _check_token(x_upload_token or token_q)
-    try:
-        oid = ObjectId(sub_id)
-    except Exception:
-        raise HTTPException(400, "Invalid id")
-    note = ((payload or {}).get("note") or "").strip()
-    reviewer = x_actor_nome or "admin"
-    res = await pending_col.update_one(
-        {"_id": oid, "status": "pending"},
-        {"$set": {"status": "rejected", "reviewed_at": _now_iso(), "reviewed_by": reviewer, "reviewed_note": note}},
-    )
-    if res.matched_count == 0:
-        raise HTTPException(404, "Submission not found or not pending")
-    await _log_admin_action("reject_pending_update", sub_id, x_actor_nome)
-    return {"ok": True}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# NOTE ADMIN — l'admin annota una pratica con lo stesso meccanismo delle imprese
-# (stessa pipeline _apply_changes_to_df: nuova riga copiata dall'ultima esistente,
-# NOTE valorizzata, DATA_UPDATE stampata). Distinguibile da una nota impresa via
-# prefisso [RETELIT]/[IMPRESA] (_tag_note) — index.html/admin.html lo parsano
-# per mostrare l'etichetta "Retelit"/"Impresa" e nascondono il prefisso grezzo.
-# ─────────────────────────────────────────────────────────────────────────────
-_NOTE_TAG_RE = re.compile(r"^\[(RETELIT|IMPRESA)\]\s*")
-_NOTE_WS_RE = re.compile(r"\s+")
-
-
-def _sanitize_note_text(note: str) -> str:
-    """Rimuove newline/tab/altri whitespace di controllo da una NOTE,
-    collassandoli in uno spazio singolo. Master.csv e' quotato correttamente
-    quindi un \\n dentro un campo non rompe il CSV di per se', ma e'
-    esattamente il pattern che ha gia' causato bug su parser non quote-aware
-    a valle (v. AGENT_BRIEF, righe spezzate su campi multi-riga) — meglio non
-    farlo mai entrare in origine."""
-    if not note:
-        return note
-    return _NOTE_WS_RE.sub(" ", note).strip()
-
-
-def _tag_note(note: str, tag: str) -> str:
-    """Prefissa una NOTE con [RETELIT]/[IMPRESA] per distinguerne l'autore in
-    index.html/admin.html. Rimuove un eventuale tag preesistente prima di
-    riapplicarlo, cosi' un admin che modifica una submission impresa (PUT
-    /api/admin/pending-updates/{id}) non produce prefissi impilati."""
-    note = _sanitize_note_text((note or "").strip())
-    if not note:
-        return note
-    note = _NOTE_TAG_RE.sub("", note)
-    return f"[{tag}] {note}"
-@app.get("/api/admin/pratiche-search")
-async def search_pratiche_admin(
-    q: str = "",
-    limit: int = 800,
-    sess: dict = Depends(_require_staff_session),
-):
-    """Cerca pratiche in Master.csv per TRATTA_ID / codice pratica / ente / lotto,
-    deduplicate all'ultima riga (Master.csv è append-only, storico incluso).
-    Usata da admin.html per trovare la pratica a cui aggiungere una nota."""
-    df = await _read_master_csv()
-    if df is None or df.empty:
-        return {"results": []}
-    needed = {"TRATTA_ID", "ENTE", "TIPO_PERMESSO", "PRATICA", "Source.Name", "STATO_PERMESSO", "NOTE"}
-    missing = needed - set(df.columns)
-    if missing:
-        return {"results": [], "error": f"Colonne mancanti in Master.csv: {sorted(missing)}"}
-    work = df.fillna("")
-    q_norm = q.strip().lower()
-    if q_norm:
-        hay = (
-            work["TRATTA_ID"].astype(str) + " " + work["PRATICA"].astype(str) + " " +
-            work["ENTE"].astype(str) + " " + work["Source.Name"].astype(str)
-        ).str.lower()
-        work = work[hay.str.contains(re.escape(q_norm), na=False)]
-    if work.empty:
-        return {"results": []}
-    work = work.assign(_key=(
-        work["TRATTA_ID"].astype(str).str.strip() + "|" + work["ENTE"].astype(str).str.strip() + "|" +
-        work["TIPO_PERMESSO"].astype(str).str.strip() + "|" + work["PRATICA"].astype(str).str.strip()
-    ))
-    latest = work.drop_duplicates(subset="_key", keep="last")
-    # Righe senza numero PRATICA non sono rappresentabili come "pratica" e non
-    # possono ricevere note (add_admin_note richiede una pratica valida) →
-    # escluse dalla tabella, come richiesto dall'utente.
-    latest = latest[latest["PRATICA"].astype(str).str.strip() != ""]
-    # Le pratiche già OTTENUTO non necessitano più di note (emesse, chiuse) →
-    # escluse dalla tabella, come richiesto dall'utente.
-    latest = latest[latest["STATO_PERMESSO"].astype(str).str.strip().str.upper() != "OTTENUTO"]
-    if latest.empty:
-        return {"results": []}
-    # Raggruppa per pratica (ENTE+TIPO_PERMESSO+PRATICA): una pratica AUTORIZZAZIONE
-    # copre piu' tratte, e la nota va condivisa su tutte come fa imprese.html
-    # (PR_SIBLINGS).
-    latest = latest.assign(_lotto=latest["Source.Name"].apply(_lotto_from_source))
-    latest = latest.assign(_gkey=(
-        latest["ENTE"].astype(str).str.strip() + "|" + latest["TIPO_PERMESSO"].astype(str).str.strip() + "|" +
-        latest["PRATICA"].astype(str).str.strip() + "|" + latest["_lotto"]
-    ))
-    PREFIX = {"AUTORIZZAZIONE": "AUT", "NULLA OSTA": "NO", "ORDINANZA": "ORD"}
-    out = []
-    for _, grp in latest.groupby("_gkey", sort=False):
-        with_note = grp[grp["NOTE"].astype(str).str.strip() != ""]
-        rep = with_note.iloc[-1] if not with_note.empty else grp.iloc[0]
-        tipo = str(rep.get("TIPO_PERMESSO", "")).strip()
-        pratica_num = str(rep.get("PRATICA", "")).strip()
-        lotto = rep.get("_lotto", "") or _lotto_from_source(rep.get("Source.Name", ""))
-        pref = PREFIX.get(tipo, (tipo[:3] or "").upper())
-        tratta_ids = sorted({t for t in grp["TRATTA_ID"].astype(str).str.strip() if t})
-        out.append({
-            "tratta_ids": tratta_ids,
-            "tratta_id": tratta_ids[0] if tratta_ids else "",
-            "n_tratte": len(tratta_ids),
-            "ente": str(rep.get("ENTE", "")).strip(),
-            "tipo_permesso": tipo,
-            "pratica": pratica_num,
-            "lotto": lotto,
-            "codice": f"{pref}/{pratica_num}/{lotto}" if pratica_num else "",
-            "stato_permesso": str(rep.get("STATO_PERMESSO", "")).strip(),
-            "note_attuale": str(rep.get("NOTE", "")).strip(),
-            "data_richiesta": _it_date_to_iso(rep.get("DATA_RICHIESTA", "")),
-            "data_prevista_rilascio": _it_date_to_iso(rep.get("DATA_PREVISTA_RILASCIO", "")),
-            "data_approvazione": _it_date_to_iso(rep.get("DATA_APPROVAZIONE", "")),
-            "n_sed": str(rep.get("N_SED", "")).strip(),
-        })
-    out.sort(key=lambda x: x["codice"])
-    return {"results": out[:max(1, min(limit, 800))]}
-
-
-PRATICA_STATO_VALUES = [
-    "IN ATTESA", "IN REDAZIONE", "IN FIRMA RDS", "INVIO PRELIMINARE",
-    "INVIATO", "PROTOCOLLATO", "NECESSARIA INTEGRAZIONE",
-    "IN REDAZIONE INTEGRAZIONE", "PROTOCOLLATO INTEGRAZIONE",
-    "OTTENUTO", "NO COMPETENZA",
-]
-
-
-@app.post("/api/admin/pratiche/update")
-async def update_admin_pratica(
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Modifica diretta dei dati di una pratica (stato, date, nota, n. SED)
-    esattamente come farebbe un'impresa da imprese.html, attraverso
-    _apply_changes_to_df: nessuna approvazione richiesta (l'admin è già
-    l'autorità), scrittura diretta su Master.csv, applicata a TUTTE le tratte
-    della pratica (stessa pipeline già usata da add_admin_note, generalizzata
-    a più campi)."""
-    _check_token(x_upload_token or token_q)
-    p = payload or {}
-    ente = str(p.get("ente") or "").strip()
-    tipo = str(p.get("tipo_permesso") or "").strip()
-    pratica = str(p.get("pratica") or "").strip()
-    tratte = [str(t).strip() for t in (p.get("tratta_ids") or []) if str(t).strip()]
-    single = str(p.get("tratta_id") or "").strip()
-    if single and single not in tratte:
-        tratte.append(single)
-    if not tratte:
-        raise HTTPException(400, "tratta_ids (o tratta_id) è obbligatorio")
-
-    raw = p.get("fields") or {}
-    mode = str(p.get("mode") or "").strip().lower()
-    if mode not in ("data", "note"):
-        # Fallback per eventuali chiamate legacy senza mode esplicito
-        mode = "note" if set(raw.keys()) <= {"note"} else "data"
-
-    fields: dict = {}
-    if mode == "data":
-        if "stato_permesso" in raw:
-            v = str(raw["stato_permesso"] or "").strip()
-            if v and v not in PRATICA_STATO_VALUES:
-                raise HTTPException(400, f"stato_permesso non valido: {v}")
-            if v:
-                fields["STATO_PERMESSO"] = v
-        if "data_richiesta" in raw:
-            v = _iso_date_to_it(raw["data_richiesta"])
-            if raw["data_richiesta"] and not v:
-                raise HTTPException(400, "data_richiesta non valida")
-            fields["DATA_RICHIESTA"] = v
-        if "data_prevista_rilascio" in raw:
-            v = _iso_date_to_it(raw["data_prevista_rilascio"])
-            if raw["data_prevista_rilascio"] and not v:
-                raise HTTPException(400, "data_prevista_rilascio non valida")
-            fields["DATA_PREVISTA_RILASCIO"] = v
-        if "data_approvazione" in raw:
-            v = _iso_date_to_it(raw["data_approvazione"])
-            if raw["data_approvazione"] and not v:
-                raise HTTPException(400, "data_approvazione non valida")
-            fields["DATA_APPROVAZIONE"] = v
-        if "n_sed" in raw:
-            fields["N_SED"] = str(raw["n_sed"] or "").strip()
-        if "note" in raw:
-            # Correzione diretta della nota esistente: NON si ritagga come
-            # RETELIT — chi l'ha scritta in origine (Impresa o Retelit) resta
-            # l'autore mostrato, si corregge solo il testo.
-            # _apply_changes_to_df preserva il tag esistente sulla riga.
-            fields["NOTE"] = _sanitize_note_text(str(raw["note"] or ""))
-        if not fields:
-            raise HTTPException(400, "Nessun campo valido da aggiornare")
-        in_place = True
-        preserve_note_tag = True
-    else:
-        text = str(raw.get("note") or "").strip()
-        if not text:
-            raise HTTPException(400, "note è obbligatoria")
-        # Nuova nota: sempre taggata RETELIT, sempre una nuova riga di storico
-        fields["NOTE"] = _tag_note(text, "RETELIT")
-        in_place = False
-        preserve_note_tag = False
-
-    submission = {
-        "type": "update",
-        "in_place": in_place,
-        "changes": [{
-            "tratta_id": t, "ente": ente, "tipo_permesso": tipo,
-            "original_pratica": pratica,
-            "preserve_note_tag": preserve_note_tag,
-            "fields": dict(fields),
-        } for t in tratte],
-    }
-    async with _master_csv_lock:
-        df = await _read_master_csv()
-        new_df, summary = _apply_changes_to_df(df, submission)
-        if summary.get("updated", 0) == 0:
-            raise HTTPException(404, "Nessuna riga trovata per TRATTA_ID/ENTE/TIPO_PERMESSO/PRATICA indicati")
-        reviewer = x_actor_nome or "admin"
-        upload_id = await _write_master_csv(new_df, note=f"Admin update by {reviewer} on {len(tratte)} tratta/e ({tratte[0]}{'…' if len(tratte)>1 else ''})")
-    await _log_admin_action("update_pratica", f"{'+'.join(tratte)}|{ente}|{tipo}|{pratica}", x_actor_nome)
-    return {"ok": True, "summary": summary, "new_upload_id": upload_id}
-
-
-def _pratica_note_history_core(df: "pd.DataFrame", ente: str, tipo_permesso: str, pratica: str, lotto: str) -> list[dict]:
-    """Logica condivisa: storico di TUTTE le note inserite nel tempo su una pratica,
-    raccolte da OGNI riga grezza di Master.csv (non solo l'ultima per tratta) e
-    deduplicate per (testo, data) — stessa logica di praticaNotesRaw in index.html."""
-    if df is None or df.empty:
-        return []
-    needed = {"ENTE", "TIPO_PERMESSO", "PRATICA", "Source.Name", "NOTE"}
-    if needed - set(df.columns):
-        return []
-    work = df.fillna("")
-    mask = (
-        (work["ENTE"].astype(str).str.strip() == ente) &
-        (work["TIPO_PERMESSO"].astype(str).str.strip() == tipo_permesso) &
-        (work["PRATICA"].astype(str).str.strip() == pratica)
-    )
-    work = work[mask]
-    work = work[work["Source.Name"].apply(_lotto_from_source) == lotto]
-    has_stato = "STATO_PERMESSO" in work.columns
-    has_tratta = "TRATTA_ID" in work.columns
-    # Replica esatta di effectiveDateRaw in index.html (praticaNotesRaw): se una riga è un
-    # aggiornamento SOLO-NOTA (stessa tratta, stesso STATO_PERMESSO, stessa DATA_ULTIMA_MODIFICA
-    # già vista prima), la vera data dell'evento è DATA_UPDATE, non DATA_ULTIMA_MODIFICA.
-    # Senza questo fallback due note distinte con stessa dum collassano sulla stessa data.
-    stato_seen = []  # lista di {stato, date, tratta_ids: set()}
-    seen = set()
-    notes = []
-    for _, row in work.iterrows():
-        stato = str(row.get("STATO_PERMESSO", "")).strip() if has_stato else ""
-        tratta = str(row.get("TRATTA_ID", "")).strip() if has_tratta else ""
-        dum = str(row.get("DATA_ULTIMA_MODIFICA", "")).strip()
-        data_update = str(row.get("DATA_UPDATE", "")).strip()
-        note_date_raw = dum or data_update
-        is_continuation = any(
-            s["stato"] == stato and s["date"] == note_date_raw and tratta in s["tratta_ids"]
-            for s in stato_seen
-        )
-        effective_date = data_update if (is_continuation and data_update) else note_date_raw
-        merge_target = next((s for s in stato_seen if s["stato"] == stato and s["date"] == effective_date), None)
-        if merge_target is not None:
-            merge_target["tratta_ids"].add(tratta)
-        else:
-            stato_seen.append({"stato": stato, "date": effective_date, "tratta_ids": {tratta}})
-
-        note = str(row.get("NOTE", "")).strip()
-        if not note:
-            continue
-        # Dedup per solo testo nota (non (nota, data)): la stessa nota invariata viene
-        # riportata dal CSV su più righe di cambio stato consecutive con date diverse,
-        # non è un evento nuovo ogni volta — stessa logica di index.html (praticaNotesRaw).
-        if note in seen:
-            continue
-        seen.add(note)
-        notes.append({"note": note, "date": effective_date})
-    notes.sort(key=lambda n: _it_date_to_iso(n["date"]), reverse=True)
-    return notes
-
-
-@app.get("/api/admin/pratiche/note-history")
-async def pratica_note_history(
-    ente: str, tipo_permesso: str, pratica: str, lotto: str,
-    sess: dict = Depends(_require_staff_session),
-):
-    """Storico note per staff/admin. Serve anche a poterle correggere con /pratiche/note/correct."""
-    df = await _read_master_csv()
-    return {"notes": _pratica_note_history_core(df, ente, tipo_permesso, pratica, lotto)}
-
-
-@app.get("/api/imprese/pratiche/note-history")
-async def impresa_pratica_note_history(
-    ente: str, tipo_permesso: str, pratica: str, lotto: str,
-    sess: dict = Depends(_require_session),
-):
-    """Come /api/admin/pratiche/note-history ma per l'Area Impresa: sola lettura,
-    nessuna correzione/eliminazione, e ristretto ai soli lotti assegnati all'impresa
-    (nome preso dal token di sessione firmato, stesso pattern di /api/imprese/pratiche)."""
-    doc = await _find_assignment(sess["nome"])
-    if not doc or not doc.get("active", True):
-        raise HTTPException(404, "Impresa non autorizzata")
-    lotti = {_lotto_from_source(l) for l in doc.get("lotti", []) if str(l).strip()}
-    if lotto not in lotti:
-        raise HTTPException(403, "Lotto non assegnato a questa impresa")
-    df = await _read_master_csv()
-    return {"notes": _pratica_note_history_core(df, ente, tipo_permesso, pratica, lotto)}
-
-
-@app.post("/api/admin/pratiche/note/correct")
-async def correct_pratica_note(
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Corregge il testo di una nota STORICA (anche non l'ultima) su una pratica.
-    A differenza di /pratiche/update (mode=data), che tocca solo l'ultima riga per
-    tratta, qui si cerca per testo+data della nota su TUTTE le righe grezze di
-    Master.csv del gruppo pratica (ente+tipo+pratica+lotto) — la stessa nota storica
-    è duplicata su ogni tratta attraversata dalla pratica in quell'evento, quindi la
-    correzione va propagata su tutte, non solo sull'ultima riga di ciascuna tratta."""
-    _check_token(x_upload_token or token_q)
-    p = payload or {}
-    ente = str(p.get("ente") or "").strip()
-    tipo = str(p.get("tipo_permesso") or "").strip()
-    pratica = str(p.get("pratica") or "").strip()
-    lotto = str(p.get("lotto") or "").strip()
-    old_note = str(p.get("old_note") or "").strip()
-    old_date = str(p.get("old_date") or "").strip()
-    new_text = str(p.get("new_note") or "").strip()
-    if not (ente and tipo and pratica and lotto and old_note):
-        raise HTTPException(400, "ente, tipo_permesso, pratica, lotto e old_note sono obbligatori")
-    if not new_text:
-        raise HTTPException(400, "new_note è obbligatoria")
-
-    async with _master_csv_lock:
-        df = await _read_master_csv()
-        if df is None or df.empty:
-            raise HTTPException(404, "Master.csv non disponibile")
-        needed = {"ENTE", "TIPO_PERMESSO", "PRATICA", "Source.Name", "NOTE"}
-        if needed - set(df.columns):
-            raise HTTPException(400, "Colonne mancanti in Master.csv")
-        mask = (
-            (df["ENTE"].astype(str).str.strip() == ente) &
-            (df["TIPO_PERMESSO"].astype(str).str.strip() == tipo) &
-            (df["PRATICA"].astype(str).str.strip() == pratica) &
-            (df["Source.Name"].apply(_lotto_from_source) == lotto) &
-            (df["NOTE"].astype(str).str.strip() == old_note)
-        )
-        # NB: old_date NON viene più usata per filtrare. Lo storico note (v.
-        # _pratica_note_history_core) dedupe ora per solo testo, quindi una voce
-        # visualizzata con una data può corrispondere a più righe fisiche con quello
-        # stesso testo ma date diverse (nota invariata riportata su più cambi stato).
-        # Filtrare anche per data correggerebbe/eliminerebbe solo una di quelle righe,
-        # lasciando le altre col testo vecchio — il doppione riapparirebbe al
-        # prossimo touch di DATA_UPDATE. old_date resta accettato per compatibilità
-        # ma è ignorato: l'identità della nota è il testo.
-        idx = df.index[mask].tolist()
-        if not idx:
-            raise HTTPException(404, "Nessuna riga trovata per quella nota — verifica che il testo combaci esattamente")
-        # Preserva il tag [RETELIT]/[IMPRESA] esistente su ciascuna riga: si corregge
-        # solo il testo, non l'autore mostrato.
-        for i in idx:
-            existing = str(df.loc[i, "NOTE"]) if "NOTE" in df.columns else ""
-            m = _NOTE_TAG_RE.match(existing or "")
-            tag_prefix = m.group(0) if m else ""
-            df.loc[i, "NOTE"] = f"{tag_prefix}{new_text}"
-        reviewer = x_actor_nome or "admin"
-        upload_id = await _write_master_csv(
-            df, note=f"Admin note-correct by {reviewer} on {len(idx)} riga/e ({ente}|{tipo}|{pratica}|{lotto})"
-        )
-    await _log_admin_action("correct_pratica_note", f"{ente}|{tipo}|{pratica}|{lotto}", x_actor_nome)
-    return {"ok": True, "updated": len(idx), "new_upload_id": upload_id}
-
-
-@app.post("/api/admin/pratiche/note/delete")
-async def delete_pratica_note(
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Elimina (svuota) una nota STORICA su tutte le righe grezze di Master.csv che
-    la condividono — stesso matching di /pratiche/note/correct (ente+tipo+pratica+
-    lotto+testo[+data]), ma il campo NOTE viene azzerato invece che riscritto. Non
-    rimuove la riga fisica del CSV (Master.csv resta append-only), solo il testo
-    della nota su quell'evento storico."""
-    _check_token(x_upload_token or token_q)
-    p = payload or {}
-    ente = str(p.get("ente") or "").strip()
-    tipo = str(p.get("tipo_permesso") or "").strip()
-    pratica = str(p.get("pratica") or "").strip()
-    lotto = str(p.get("lotto") or "").strip()
-    old_note = str(p.get("old_note") or "").strip()
-    old_date = str(p.get("old_date") or "").strip()
-    if not (ente and tipo and pratica and lotto and old_note):
-        raise HTTPException(400, "ente, tipo_permesso, pratica, lotto e old_note sono obbligatori")
-
-    async with _master_csv_lock:
-        df = await _read_master_csv()
-        if df is None or df.empty:
-            raise HTTPException(404, "Master.csv non disponibile")
-        needed = {"ENTE", "TIPO_PERMESSO", "PRATICA", "Source.Name", "NOTE"}
-        if needed - set(df.columns):
-            raise HTTPException(400, "Colonne mancanti in Master.csv")
-        mask = (
-            (df["ENTE"].astype(str).str.strip() == ente) &
-            (df["TIPO_PERMESSO"].astype(str).str.strip() == tipo) &
-            (df["PRATICA"].astype(str).str.strip() == pratica) &
-            (df["Source.Name"].apply(_lotto_from_source) == lotto) &
-            (df["NOTE"].astype(str).str.strip() == old_note)
-        )
-        # V. nota in note/correct: old_date non filtra più, stesso motivo.
-        idx = df.index[mask].tolist()
-        if not idx:
-            raise HTTPException(404, "Nessuna riga trovata per quella nota — verifica che il testo combaci esattamente")
-        for i in idx:
-            df.loc[i, "NOTE"] = ""
-        reviewer = x_actor_nome or "admin"
-        upload_id = await _write_master_csv(
-            df, note=f"Admin note-delete by {reviewer} on {len(idx)} riga/e ({ente}|{tipo}|{pratica}|{lotto})"
-        )
-    await _log_admin_action("delete_pratica_note", f"{ente}|{tipo}|{pratica}|{lotto}", x_actor_nome)
-    return {"ok": True, "updated": len(idx), "new_upload_id": upload_id}
-
-
-
-_POL_CONV_ALLOWED_FIELDS = {"CONVENZIONE", "POLIZZA"}
-_POL_CONV_ALLOWED_VALUES = {"NECESSARIA", "RICHIESTA RDS", "INVIATA", "EMESSA", ""}
-# SI/NO sono i soli valori che l'impresa può scrivere (checkbox "è necessaria?"),
-# usati anche come default nelle esportazioni esterne (QGIS/Excel) che alimentano
-# nuovi upload di Master.csv. NECESSARIA/RICHIESTA RDS/INVIATA/EMESSA sono invece
-# lo stato di workflow avanzato manualmente da polizze_convenzioni.html: un nuovo
-# upload che porta solo SI/NO per una pratica già oltre NECESSARIA non deve mai
-# retrocederla (bug segnalato dall'utente: polizze/convenzioni tornate a
-# "NECESSARIA" dopo un caricamento di Master.csv aggiornato).
-_POL_CONV_RANK = {"": 0, "NO": 0, "SI": 1, "NECESSARIA": 1, "RICHIESTA RDS": 2, "INVIATA": 3, "EMESSA": 4}
-
-
-def _preserve_pol_conv_state(old_df: "pd.DataFrame", new_df: "pd.DataFrame") -> int:
-    """Prima di sostituire Master.csv con un nuovo upload, riporta nel nuovo file
-    lo stato CONVENZIONE/POLIZZA più avanzato già presente nel file corrente, per
-    ogni lotto+pratica, se il nuovo file porterebbe una retrocessione (es. SI/NO
-    grezzo dalla fonte esterna sopra un INVIATA/EMESSA impostato a mano). Non tocca
-    nulla se il nuovo valore è uguale o più avanzato. Ritorna il numero di celle
-    corrette, per il log di audit."""
-    def _extract_lotto(src) -> str:
-        return str(src).replace(".xlsx", "").replace(".xls", "").replace("Lotto ", "").strip().upper()
-
-    src_col_old = next((c for c in old_df.columns if c.strip().upper().replace(".", "").replace(" ", "") in {"SOURCENAME", "SOURCE_NAME"}), None)
-    prat_col_old = next((c for c in old_df.columns if c.strip().upper() == "PRATICA"), None)
-    if src_col_old is None or prat_col_old is None:
-        return 0
-
-    # stato più avanzato già visto nel file corrente, per (lotto, pratica, campo)
-    best: dict[tuple, str] = {}
-    for col_name, field in (("CONVENZIONE", "CONVENZIONE"), ("POLIZZA", "POLIZZA")):
-        real_old = next((c for c in old_df.columns if c.strip().upper() == col_name), None)
-        if real_old is None:
-            continue
-        for _, row in old_df.iterrows():
-            val = str(row.get(real_old, "")).strip().upper()
-            if _POL_CONV_RANK.get(val, 0) < 2:  # sotto RICHIESTA RDS: niente da preservare
-                continue
-            lotto = _extract_lotto(row.get(src_col_old, ""))
-            pratica = str(row.get(prat_col_old, "")).strip()
-            if not lotto or not pratica:
-                continue
-            key = (lotto, pratica, field)
-            if key not in best or _POL_CONV_RANK.get(val, 0) > _POL_CONV_RANK.get(best[key], 0):
-                best[key] = val
-
-    if not best:
-        return 0
-
-    src_col_new = next((c for c in new_df.columns if c.strip().upper().replace(".", "").replace(" ", "") in {"SOURCENAME", "SOURCE_NAME"}), None)
-    prat_col_new = next((c for c in new_df.columns if c.strip().upper() == "PRATICA"), None)
-    if src_col_new is None or prat_col_new is None:
-        return 0
-
-    touched = 0
-    for col_name, field in (("CONVENZIONE", "CONVENZIONE"), ("POLIZZA", "POLIZZA")):
-        real_new = next((c for c in new_df.columns if c.strip().upper() == col_name), None)
-        if real_new is None:
-            continue
-        lotti_new = new_df[src_col_new].astype(str).apply(_extract_lotto)
-        pratiche_new = new_df[prat_col_new].astype(str).str.strip()
-        for i in new_df.index:
-            key = (lotti_new.loc[i], pratiche_new.loc[i], field)
-            preserved = best.get(key)
-            if preserved is None:
-                continue
-            cur = str(new_df.at[i, real_new]).strip().upper()
-            if _POL_CONV_RANK.get(cur, 0) < _POL_CONV_RANK.get(preserved, 0):
-                new_df.at[i, real_new] = preserved
-                touched += 1
-    return touched
-
-
-@app.get("/api/admin/polizze-convenzioni/data-richiesta")
-async def get_pol_conv_date_richiesta(sess: dict = Depends(_require_staff_session)):
-    """Per ogni pratica con CONVENZIONE/POLIZZA valorizzata, fissa la data
-    DATA_ULTIMA_MODIFICA dal Master.csv come data di prima richiesta.
-    La data viene salvata una sola volta — i giri successivi non la toccano."""
-    df = await _read_master_csv()
-    src_col    = next((c for c in df.columns if c.strip().upper().replace(".", "").replace(" ", "") in {"SOURCENAME", "SOURCE_NAME"}), None)
-    pratica_col = next((c for c in df.columns if c.strip().upper() == "PRATICA"), None)
-    conv_col   = next((c for c in df.columns if c.strip().upper() == "CONVENZIONE"), None)
-    pol_col    = next((c for c in df.columns if c.strip().upper() == "POLIZZA"), None)
-    data_col   = next((c for c in df.columns if c.strip().upper() == "DATA_ULTIMA_MODIFICA"), None)
-    if src_col is None or pratica_col is None:
-        return {"date": {}}
-    if conv_col is None and pol_col is None:
-        # Nessuna delle 2 colonne è nel Master: NON toccare la collection esistente
-        # (altrimenti il delete_many sotto, con seen_keys vuoto, cancellerebbe
-        # tutte le date già raccolte in precedenza).
-        dates, dates_invio, dates_rds, dates_emissione = {}, {}, {}, {}
-        urgenti = {}
-        async for d in pol_conv_dates_col.find({}):
-            dates[d["_id"]] = d.get("data_richiesta", "")
-            dates_invio[d["_id"]] = d.get("data_invio", "")
-            dates_rds[d["_id"]] = d.get("data_richiesta_rds", "")
-            dates_emissione[d["_id"]] = d.get("data_emissione", "")
-            if d.get("urgente"):
-                urgenti[d["_id"]] = True
-        return {"date": dates, "date_invio": dates_invio, "date_richiesta_rds": dates_rds, "date_emissione": dates_emissione, "urgenti": urgenti}
-
-    def _extract_lotto(src: str) -> str:
-        return str(src).replace(".xlsx", "").replace(".xls", "").replace("Lotto ", "").strip().upper()
-
-    seen_keys = set()
-    for col, field in ((conv_col, "CONVENZIONE"), (pol_col, "POLIZZA")):
-        if col is None:
-            continue
-        for _, row in df.iterrows():
-            val = str(row.get(col, "")).strip()
-            if not val:
-                continue
-            lotto   = _extract_lotto(row.get(src_col, ""))
-            pratica = str(row.get(pratica_col, "")).strip()
-            if not lotto or not pratica:
-                continue
-            key = f"{lotto}|{pratica}|{field}"
-            if key in seen_keys:
-                continue
-            seen_keys.add(key)
-            data_mod = str(row.get(data_col, "")).strip() if data_col else ""
-            # Fissa solo alla prima rilevazione, anche se il documento esiste
-            # già (es. creato prima da un data_invio su INVIATA).
-            existing = await pol_conv_dates_col.find_one({"_id": key})
-            if existing is None:
-                await pol_conv_dates_col.insert_one({"_id": key, "data_richiesta": data_mod})
-            elif not existing.get("data_richiesta"):
-                await pol_conv_dates_col.update_one({"_id": key}, {"$set": {"data_richiesta": data_mod}})
-
-    # Rimuove chiavi non più presenti nel Master — solo se ne abbiamo trovate
-    # di nuove: seen_keys vuoto per un problema transitorio (CSV non ancora
-    # sincronizzato, colonne rinominate) non deve azzerare la collection.
-    if seen_keys:
-        await pol_conv_dates_col.delete_many({"_id": {"$nin": list(seen_keys)}})
-
-    dates, dates_invio, dates_rds, dates_emissione = {}, {}, {}, {}
-    urgenti = {}
-    async for d in pol_conv_dates_col.find({}):
-        dates[d["_id"]] = d.get("data_richiesta", "")
-        dates_invio[d["_id"]] = d.get("data_invio", "")
-        dates_rds[d["_id"]] = d.get("data_richiesta_rds", "")
-        dates_emissione[d["_id"]] = d.get("data_emissione", "")
-        if d.get("urgente"):
-            urgenti[d["_id"]] = True
-    return {"date": dates, "date_invio": dates_invio, "date_richiesta_rds": dates_rds, "date_emissione": dates_emissione, "urgenti": urgenti}
-
-
-@app.post("/api/admin/polizze-convenzioni/set-urgente")
-async def set_pol_conv_urgente(
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-):
-    """Flegga/sfleggia una pratica come urgente (gestito da admin/admin2/polizza).
-    Body: {lotto, pratica, field: "CONVENZIONE"|"POLIZZA", urgente: bool}
-    Richiede x-upload-token OPPURE x-session-token con ruolo abilitato (rev.283).
-    Scrive solo su pol_conv_dates_col, non su Master.csv."""
-    _check_polizza_write_auth(x_upload_token or token_q, x_session_token)
-
-    lotto   = str((payload or {}).get("lotto", "")).strip().upper()
-    pratica = str((payload or {}).get("pratica", "")).strip()
-    field   = str((payload or {}).get("field", "")).strip().upper()
-    urgente = bool((payload or {}).get("urgente", False))
-
-    if not lotto or not pratica:
-        raise HTTPException(400, "lotto e pratica sono obbligatori")
-    if field not in _POL_CONV_ALLOWED_FIELDS:
-        raise HTTPException(400, f"field deve essere uno tra {sorted(_POL_CONV_ALLOWED_FIELDS)}")
-
-    key = f"{lotto}|{pratica}|{field}"
-    if urgente:
-        await pol_conv_dates_col.update_one({"_id": key}, {"$set": {"urgente": True}}, upsert=True)
-    else:
-        await pol_conv_dates_col.update_one({"_id": key}, {"$unset": {"urgente": ""}}, upsert=True)
-
-    return {"ok": True, "key": key, "urgente": urgente}
-
-
-@app.post("/api/admin/polizze-convenzioni/update")
-async def update_polizza_convenzione(
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-):
-    """Aggiorna CONVENZIONE e/o POLIZZA per tutte le righe lotto+pratica nel Master CSV.
-    Body: {lotto: "2B", pratica: "11", fields: {CONVENZIONE?: val, POLIZZA?: val}}
-    Valori ammessi: NECESSARIA | RICHIESTA RDS | INVIATA | EMESSA | "" (vuoto = cancella)
-    Richiede x-upload-token OPPURE x-session-token con ruolo abilitato (rev.283).
-    Scrive su MongoDB e pusha su GitHub."""
-    _check_polizza_write_auth(x_upload_token or token_q, x_session_token)
-
-    lotto   = str((payload or {}).get("lotto",   "")).strip().upper()
-    pratica = str((payload or {}).get("pratica", "")).strip()
-    fields  = (payload or {}).get("fields") or {}
-
-    if not lotto or not pratica:
-        raise HTTPException(400, "lotto e pratica sono obbligatori")
-    if not fields:
-        raise HTTPException(400, "fields non puo essere vuoto")
-
-    bad_fields = set(fields.keys()) - _POL_CONV_ALLOWED_FIELDS
-    if bad_fields:
-        raise HTTPException(400, f"Campi non consentiti: {bad_fields}")
-    for k, v in fields.items():
-        if str(v).strip().upper() not in {s.upper() for s in _POL_CONV_ALLOWED_VALUES}:
-            raise HTTPException(400, f"Valore non ammesso per {k}: '{v}'")
-
-    async with _master_csv_lock:
-        df = await _read_master_csv()
-
-        def _extract_lotto(src: str) -> str:
-            return src.replace(".xlsx", "").replace(".xls", "").replace("Lotto ", "").strip().upper()
-
-        src_col = next((c for c in df.columns if c.strip().upper().replace(".", "").replace(" ", "") in {"SOURCENAME", "SOURCE_NAME"}), None)
-        if src_col is None:
-            raise HTTPException(500, "Colonna SOURCE.NAME non trovata nel Master CSV")
-
-        pratica_col = next((c for c in df.columns if c.strip().upper() == "PRATICA"), None)
-        if pratica_col is None:
-            raise HTTPException(500, "Colonna PRATICA non trovata nel Master CSV")
-
-        mask = (
-            df[src_col].astype(str).apply(_extract_lotto) == lotto
-        ) & (
-            df[pratica_col].astype(str).str.strip() == pratica
-        )
-
-        matched = int(mask.sum())
-        if matched == 0:
-            raise HTTPException(404, f"Nessuna riga trovata per lotto={lotto} pratica={pratica}")
-
-        for col, val in fields.items():
-            real_col = next((c for c in df.columns if c.strip().upper() == col.upper()), None)
-            if real_col is None:
-                raise HTTPException(500, f"Colonna {col} non trovata nel Master CSV")
-            df.loc[mask, real_col] = str(val).strip()
-
-        note = f"Admin update polizze/convenzioni: lotto={lotto} pratica={pratica} fields={fields}"
-        upload_id = await _write_master_csv(df, note=note)
-
-    today_str = datetime.now().strftime("%d/%m/%Y")
-    STATO_DATE_FIELD = {"INVIATA": "data_invio", "RICHIESTA RDS": "data_richiesta_rds", "EMESSA": "data_emissione"}
-    for col, val in fields.items():
-        date_field = STATO_DATE_FIELD.get(str(val).strip().upper())
-        if not date_field:
-            continue
-        key = f"{lotto}|{pratica}|{col.upper()}"
-        existing = await pol_conv_dates_col.find_one({"_id": key})
-        if existing is None:
-            await pol_conv_dates_col.insert_one({"_id": key, date_field: today_str})
-        elif not existing.get(date_field):
-            await pol_conv_dates_col.update_one({"_id": key}, {"$set": {date_field: today_str}})
-
-    return {"ok": True, "rows_updated": matched, "new_upload_id": upload_id}
-
-
-_POL_CONV_DATE_KEYS = {
-    "richiesta": "data_richiesta",
-    "richiesta_rds": "data_richiesta_rds",
-    "invio": "data_invio",
-    "emissione": "data_emissione",
+// collection: sopralluoghi (NEW)
+{
+  "_id": ObjectId,
+  "codice_verbale": "VBS-2026-0042",
+  // + campi del form (cantiere, segnalazioni, azioni richieste, firme, riferimenti foto su GitHub)
 }
 
+// collection: solleciti (NEW)
+{
+  "_id": ObjectId,
+  "tratta_id": "...",
+  "pratica": "...",
+  "impresa": "Costruzioni Alfa Srl",
+  "tipo_sollecito": "...",
+  "created_at": "ISO"
+}
+
+// collection: pol_conv_dates (NEW — chiave: "{lotto}|{pratica}|CONVENZIONE|POLIZZA")
+{
+  "_id": "1A|11|CONVENZIONE",
+  "data_richiesta": "AAAA-MM-GG"   // fissata una sola volta con $setOnInsert
+}
+
+// collection: access_logs (NEW — ex JSONBin, un documento per binId)
+{
+  "_id": "69c8fbdced015c742bc8e978",   // il vecchio LOG_BIN_ID, riusato come chiave Mongo
+  "utenti":  ["Mario Rossi", "Costruzioni Alfa Srl", "..."],
+  "accessi": [ {"ts":"ISO","utente":"...","ruolo":"...","ip":"...","ua":"...",
+                "durata":0,"lotti":[],"nAperture":0,"pagina":"scavi"} ]
+}
+```
+
+---
+
+## 10. Flusso impresa end-to-end (riepilogo)
+
+1. Admin → `admin.html` tab "Assegnazioni imprese" → aggiunge `Costruzioni Alfa Srl` con lotti `Lotto 1, Lotto 1A`.
+2. L'impresa accede su `hub.html` con nome esattamente `Costruzioni Alfa Srl` + codice → backend verifica con Apps Script → restituisce session token (`_enri_session`).
+3. Hub entra in "modalità impresa" (check `/api/imprese/me`) e mostra fino a 4 card: Aggiorna Pratiche, Mappa (sola vista), Mappa con aggiornamento, Avanzamento Scavi.
+4a. **Flusso pratiche** (con approvazione): Click → `imprese.html` o `mappa_impresa_caricamento.html` → coda modifiche → "Invia per approvazione" → Admin tab "Coda imprese" → Approva → Backend applica `changes` a Master.csv, crea nuova versione GridFS, rigenera QGIS+Riepilogo, **pusha tutti e tre su GitHub** → `_sync_cantieri()` riallinea i cantieri.
+4b. **Flusso scavi** (scrittura diretta, NEW): Click → `imprese_scavi.html` → aggiorna stato cantiere/metri giornalieri → `POST /api/imprese/cantieri/{key}` scrive subito su MongoDB e pusha su GitHub, **senza passare da `pending_updates`**.
+5. Dashboard (`/api/data/Master.csv`, `/api/cantieri`) serve immediatamente la nuova versione; SWR sulle pagine aggiorna la UI live senza reload.
+
+## 11. TODO aperti (da Checklist Bug e Migliorie, importata 2026-07-02)
+
+**Regola permanente**: dopo ogni modifica (in questa sessione o future), verificare se corrisponde a una voce di questa tabella e aggiornarne subito lo Stato (es. "Chiuso (rev.NN)" + breve nota), anche se non era quella la richiesta esplicita dell'utente.
 
-@app.post("/api/admin/polizze-convenzioni/set-date")
-async def set_pol_conv_date(
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-):
-    """Modifica manuale di una delle 4 date CONVENZIONE/POLIZZA (Richiesta,
-    Richiesta RDS, Invio, Emissione) — a differenza di STATO_DATE_FIELD (rev.197-
-    202), che le fissa automaticamente e una sola volta al primo cambio di stato,
-    questo endpoint permette una correzione manuale in qualunque momento, per
-    sistemare casi passati (es. persi da un bug come rev.213) o errori futuri.
-    Body: {lotto, pratica, field: "CONVENZIONE"|"POLIZZA",
-           date_key: "richiesta"|"richiesta_rds"|"invio"|"emissione",
-           value: "GG/MM/AAAA" oppure "" per cancellare}
-    Richiede x-upload-token OPPURE x-session-token con ruolo abilitato (rev.283).
-    Scrive solo su pol_conv_dates_col, non su Master.csv."""
-    _check_polizza_write_auth(x_upload_token or token_q, x_session_token)
-
-    lotto    = str((payload or {}).get("lotto", "")).strip().upper()
-    pratica  = str((payload or {}).get("pratica", "")).strip()
-    field    = str((payload or {}).get("field", "")).strip().upper()
-    date_key = str((payload or {}).get("date_key", "")).strip().lower()
-    value    = str((payload or {}).get("value", "")).strip()
-
-    if not lotto or not pratica:
-        raise HTTPException(400, "lotto e pratica sono obbligatori")
-    if field not in _POL_CONV_ALLOWED_FIELDS:
-        raise HTTPException(400, f"field deve essere uno tra {sorted(_POL_CONV_ALLOWED_FIELDS)}")
-    mongo_field = _POL_CONV_DATE_KEYS.get(date_key)
-    if mongo_field is None:
-        raise HTTPException(400, f"date_key deve essere uno tra {sorted(_POL_CONV_DATE_KEYS)}")
-    if value:
-        try:
-            datetime.strptime(value, "%d/%m/%Y")
-        except ValueError:
-            raise HTTPException(400, "value deve essere in formato GG/MM/AAAA (o vuoto per cancellare)")
-
-    key = f"{lotto}|{pratica}|{field}"
-    if value:
-        await pol_conv_dates_col.update_one({"_id": key}, {"$set": {mongo_field: value}}, upsert=True)
-    else:
-        await pol_conv_dates_col.update_one({"_id": key}, {"$unset": {mongo_field: ""}}, upsert=True)
-
-    return {"ok": True, "key": key, "date_key": date_key, "value": value}
-
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# SOPRALLUOGHI — verbali di sopralluogo
-# ─────────────────────────────────────────────────────────────────────────────
-
-@app.get("/api/lotti-cantieri")
-async def get_lotti_cantieri(sess: dict = Depends(_require_staff_session)):
-    """Restituisce lotti distinti (da Master.csv) e i loro cantieri (da MongoDB)."""
-    lotti_master = []
-
-    # Leggi lotti da Master.csv — prova più nomi colonna
-    try:
-        df = await _read_master_csv()
-        if df is not None:
-            col = next((c for c in df.columns if c.strip().lower() in
-                        ("source.name", "source name", "lotto", "lotti", "nome_lotto")), None)
-            print(f"[lotti-cantieri] colonne disponibili: {list(df.columns[:10])}, colonna lotto: {col}")
-            if col:
-                raw = df[col].dropna().unique().tolist()
-                lotti_master = sorted({_lotto_from_source(r) for r in raw if str(r).strip()})
-                print(f"[lotti-cantieri] lotti da Master.csv: {lotti_master}")
-    except Exception as e:
-        print(f"[lotti-cantieri] errore lettura Master.csv: {e}")
-
-    # Cantieri da MongoDB — raggruppati per lotto
-    cantieri_map: dict = {}
-    async for doc in cantieri_col.find({}, {"cantiere_key": 1, "lotto": 1, "ente": 1}):
-        lotto = _lotto_from_source(doc.get("lotto", ""))
-        key   = str(doc.get("cantiere_key", "")).strip()
-        if not lotto or not key:
-            continue
-        num   = key.split("|")[0].strip() if "|" in key else key
-        ente  = str(doc.get("ente", "")).strip()
-        codice = f"CA/{num}/{lotto}"
-        label  = f"{codice} — {ente}" if ente else codice
-        if lotto not in cantieri_map:
-            cantieri_map[lotto] = []
-        if not any(c["value"] == key for c in cantieri_map[lotto]):
-            cantieri_map[lotto].append({"value": key, "label": label, "num": num})
-
-    # Unisce: lotti dal Master + lotti dai cantieri (fallback se Master fallisce)
-    tutti_lotti = sorted(set(lotti_master) | set(cantieri_map.keys()))
-    result = {l: sorted(cantieri_map.get(l, []), key=lambda x: x["num"]) for l in tutti_lotti}
-
-    # Mappa lotto → impresa assegnata (per auto-popolare il campo impresa)
-    lotto_impresa = {}
-    async for a in assignments_col.find({}, {"nome": 1, "lotti": 1}):
-        nome_impresa = a.get("nome", "")
-        for l in (a.get("lotti") or []):
-            lotto_norm = _lotto_from_source(l)
-            if lotto_norm:
-                lotto_impresa[lotto_norm] = nome_impresa
-
-    print(f"[lotti-cantieri] lotti finali: {list(result.keys())}")
-    print(f"[lotti-cantieri] lotto_impresa: {lotto_impresa}")
-    return {"lotti": result, "lotto_impresa": lotto_impresa}
-
-
-@app.delete("/api/sopralluoghi/{sop_id}")
-async def delete_sopralluogo(sop_id: str, sess: dict = Depends(_require_session)):
-    """Elimina un verbale di sopralluogo — solo admin."""
-    if sess.get("ruolo", "user") != "admin":
-        raise HTTPException(403, "Solo gli admin possono eliminare verbali")
-    try:
-        oid = ObjectId(sop_id)
-    except Exception:
-        raise HTTPException(400, "ID non valido")
-    res = await sopralluoghi_col.delete_one({"_id": oid})
-    if res.deleted_count == 0:
-        raise HTTPException(404, "Verbale non trovato")
-    _schedule_sopralluoghi_csv_regen(f"eliminazione verbale: {sop_id}")
-    return {"ok": True, "deleted": sop_id}
-
-
-@app.get("/api/sopralluoghi")
-async def list_sopralluoghi(sess: dict = Depends(_require_staff_session)):
-    """Restituisce tutti i verbali di sopralluogo, ordinati per codice decrescente."""
-    verbali = []
-    async for d in sopralluoghi_col.find({}).sort("codice_verbale", -1):
-        d["_id"] = str(d["_id"])
-        verbali.append(d)
-    return {"verbali": verbali}
-
-
-@app.get("/api/sopralluoghi/next-codice")
-async def sopralluogo_next_codice(sess: dict = Depends(_require_staff_session)):
-    """Restituisce il prossimo codice verbale progressivo."""
-    last = await sopralluoghi_col.find_one({}, sort=[("codice_verbale", -1)])
-    next_n = 1
-    if last and last.get("codice_verbale"):
-        try:
-            next_n = int(str(last["codice_verbale"]).split("-")[-1]) + 1
-        except (ValueError, IndexError):
-            count = await sopralluoghi_col.count_documents({})
-            next_n = count + 1
-    year = _now_iso()[:4]
-    return {"codice": f"VBS-{year}-{next_n:04d}", "numero": next_n}
-
-
-_CK_ESITI = {"C", "NC", "NA"}
-
-
-def _sanitize_checklist(raw: dict | None) -> dict:
-    """Normalizza la checklist DL ricevuta dal frontend: solo item con esito
-    valido, campi di non conformità solo per gli item NC."""
-    out = {"qualita": {}, "sicurezza": {}}
-    if not isinstance(raw, dict):
-        return out
-    for sez in ("qualita", "sicurezza"):
-        blocco = raw.get(sez) or {}
-        if not isinstance(blocco, dict):
-            continue
-        for item_id, st in blocco.items():
-            if not isinstance(st, dict):
-                continue
-            esito = str(st.get("e", "")).strip().upper()
-            if esito not in _CK_ESITI:
-                continue
-            rec = {"e": esito}
-            if esito == "NC":
-                rec.update({
-                    "rilievo": str(st.get("rilievo", "")).strip(),
-                    "azione":  str(st.get("azione", "")).strip(),
-                    "resp":    str(st.get("resp", "")).strip(),
-                    "scad":    str(st.get("scad", "")).strip(),
-                })
-            out[sez][str(item_id).strip()[:20]] = rec
-    return out
-
-
-def _checklist_counts(ck: dict) -> dict:
-    tot = {"C": 0, "NC": 0, "NA": 0}
-    nc_ids = []
-    for sez in ("qualita", "sicurezza"):
-        for item_id, st in (ck.get(sez) or {}).items():
-            e = st.get("e")
-            if e in tot:
-                tot[e] += 1
-            if e == "NC":
-                nc_ids.append(item_id)
-    return {
-        "checklist_conformi":     tot["C"],
-        "checklist_non_conformi": tot["NC"],
-        "checklist_na":           tot["NA"],
-        "checklist_compilati":    tot["C"] + tot["NC"] + tot["NA"],
-        "checklist_nc_ids":       ", ".join(sorted(nc_ids)),
-    }
-
-
-@app.post("/api/sopralluoghi")
-async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_session)):
-    """Salva un verbale di sopralluogo su MongoDB (unica fonte, nessun export CSV su GitHub).
-    Le foto (se presenti, come data URL base64) vengono caricate su GitHub in
-    sopralluoghi/foto/{codice_verbale}/ per non saturare lo storage MongoDB gratuito."""
-    last = await sopralluoghi_col.find_one({}, sort=[("codice_verbale", -1)])
-    next_n = 1
-    if last and last.get("codice_verbale"):
-        try:
-            next_n = int(str(last["codice_verbale"]).split("-")[-1]) + 1
-        except (ValueError, IndexError):
-            count = await sopralluoghi_col.count_documents({})
-            next_n = count + 1
-    year = _now_iso()[:4]
-    codice = f"VBS-{year}-{next_n:04d}"
-
-    # Upload foto su GitHub (max 4, ciascuna come data URL base64 dal frontend)
-    foto_urls = []
-    foto_in = (payload or {}).get("foto") or []
-    for i, foto in enumerate(foto_in[:4]):
-        try:
-            data_url = foto.get("dataUrl", "") if isinstance(foto, dict) else str(foto)
-            if "," not in data_url:
-                continue
-            header, b64data = data_url.split(",", 1)
-            ext = "jpg"
-            if "png" in header:
-                ext = "png"
-            elif "webp" in header:
-                ext = "webp"
-            img_bytes = base64.b64decode(b64data)
-            github_path = f"sopralluoghi/foto/{codice}/foto_{i+1}.{ext}"
-            await _push_to_github(img_bytes, path=github_path, label=f"foto {i+1} — {codice}")
-            raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/{github_path}"
-            foto_urls.append(raw_url)
-        except Exception as e:
-            print(f"[sopralluoghi] errore upload foto {i+1}: {e}")
-
-    record = {
-        "codice_verbale":      codice,
-        "data_sopralluogo":    str((payload or {}).get("data_sopralluogo", "")).strip(),
-        "lotto":               str((payload or {}).get("lotto", "")).strip(),
-        "tratta_id":           str((payload or {}).get("tratta_id", "")).strip(),
-        "impresa":             str((payload or {}).get("impresa", sess["nome"])).strip(),
-        "referente_impresa":   str((payload or {}).get("referente_impresa", "")).strip(),
-        "referente_retelit":   str((payload or {}).get("referente_retelit", "")).strip(),
-        "comune":              str((payload or {}).get("comune", "")).strip(),
-        "localita":            str((payload or {}).get("localita", "")).strip(),
-        "tipo_intervento":     str((payload or {}).get("tipo_intervento", "")).strip(),
-        "esito":               str((payload or {}).get("esito", "")).strip(),
-        "segnalazione_cliente": bool((payload or {}).get("segnalazione_cliente", False)),
-        "note":                str((payload or {}).get("note", "")).strip(),
-        "segnalazioni":        str((payload or {}).get("segnalazioni", "")).strip(),
-        "azioni_richieste":    str((payload or {}).get("azioni_richieste", "")).strip(),
-        "scadenza_azioni":     str((payload or {}).get("scadenza_azioni", "")).strip(),
-        "prossimo_sopralluogo": str((payload or {}).get("prossimo_sopralluogo", "")).strip(),
-        "firma_impresa":       str((payload or {}).get("firma_impresa", "")).strip(),
-        "firma_retelit":       str((payload or {}).get("firma_retelit", "")).strip(),
-        "foto_urls":           ", ".join(foto_urls),
-        "created_at":          _now_iso(),
-    }
-    _ck = _sanitize_checklist((payload or {}).get("checklist"))
-    record["checklist"] = _ck
-    record.update(_checklist_counts(_ck))
-    await sopralluoghi_col.insert_one(record)
-    _schedule_sopralluoghi_csv_regen(f"nuovo verbale: {codice}")
-    return {"ok": True, "codice_verbale": codice, "foto_urls": foto_urls}
-
-
-# SOLLECITI — registro solleciti per tratta/pratica
-# ─────────────────────────────────────────────────────────────────────────────
-# Ogni sollecito viene scritto direttamente su MongoDB (senza approvazione admin).
-# Nessuna sincronizzazione su GitHub: MongoDB è l'unica fonte (rev. TODO-versione).
-# ═════════════════════════════════════════════════════════════════════════════
-
-SOLLECITI_COLS = ["_id", "tratta_id", "pratica", "ente", "tipo_permesso", "stato_permesso",
-                  "lunghezza", "data_richiesta", "data_ultima_modifica",
-                  "numero_sollecito", "tipo_sollecito", "data_sollecito", "note", "impresa", "created_at"]
-
-
-@app.get("/api/imprese/solleciti")
-async def get_solleciti(sess: dict = Depends(_require_session)):
-    """Restituisce i solleciti dell'impresa autenticata, filtrati per le tratte dei suoi lotti."""
-    nome = sess["nome"]
-    # Recupera i lotti assegnati
-    assignment = await _find_assignment(nome)
-    if not assignment:
-        return {"solleciti": [], "count": 0}
-    lotti = {_lotto_from_source(l) for l in (assignment.get("lotti") or []) if str(l).strip()}
-
-    # Legge le tratte dei lotti dell'impresa dal Master.csv (match esatto, non substring:
-    # "Lotto 2" non deve agganciare "Lotto 2A" — stesso criterio di impresa_pratiche/get_cantieri_impresa)
-    try:
-        df = await _read_master_csv()
-        tratte_impresa: set[str] = set()
-        if "Source.Name" in df.columns and lotti:
-            mask = df["Source.Name"].apply(lambda x: _lotto_from_source(x) in lotti)
-            tratte_impresa.update(df.loc[mask, "TRATTA_ID"].astype(str).str.strip().tolist())
-    except Exception:
-        tratte_impresa = set()
-
-    cur = solleciti_col.find(
-        {"tratta_id": {"$in": list(tratte_impresa)}} if tratte_impresa else {"impresa": nome}
-    ).sort("created_at", -1).limit(500)
-    items = []
-    async for d in cur:
-        d["_id"] = str(d["_id"])
-        items.append(d)
-    return {"solleciti": items, "count": len(items)}
-
-
-async def _touch_data_update(tratta_id: str, pratica: str, tipo_permesso: str = "") -> None:
-    """Aggiorna DATA_UPDATE=oggi SOLO sull'ultima riga storicizzata del gruppo
-    tratta+tipo_permesso toccato da un sollecito. Un TRATTA_ID può avere più iter
-    (es. AUTORIZZAZIONE e NULLA OSTA sulla stessa tratta) e ciascun iter più righe
-    storicizzate nel tempo (una per nota/cambio stato): mascherare solo su TRATTA_ID
-    le toccava TUTTE, retro-datando a oggi anche note storiche vecchie (bug segnalato
-    dall'utente: note vecchie duplicate con data odierna nel popup Storico Note)."""
-    try:
-        async with _master_csv_lock:
-            df = await _read_master_csv()
-            if "DATA_UPDATE" not in df.columns or "TRATTA_ID" not in df.columns:
-                return
-            mask = df["TRATTA_ID"].astype(str).str.strip() == str(tratta_id).strip()
-            if tipo_permesso and "TIPO_PERMESSO" in df.columns:
-                mask_t = mask & (df["TIPO_PERMESSO"].astype(str).str.strip().str.upper() == tipo_permesso.strip().upper())
-                if mask_t.any():
-                    mask = mask_t
-            idx = df.index[mask].tolist()
-            if not idx:
-                return
-            df.loc[idx[-1], "DATA_UPDATE"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
-            await _write_master_csv(df, note=f"Sollecito tratta {tratta_id} pratica {pratica}: touch DATA_UPDATE")
-    except Exception as e:
-        print(f"[_touch_data_update] {e}")
-
-
-async def _touch_data_update_multi(keys: list) -> None:
-    """Come _touch_data_update ma per più pratiche in un solo read+write di Master.csv."""
-    try:
-        async with _master_csv_lock:
-            df = await _read_master_csv()
-            if "DATA_UPDATE" not in df.columns or "TRATTA_ID" not in df.columns:
-                return
-            oggi = datetime.now(timezone.utc).strftime("%d/%m/%Y")
-            any_hit = False
-            has_tipo = "TIPO_PERMESSO" in df.columns
-            for tratta_id, pratica, tipo_permesso in keys:
-                mask = df["TRATTA_ID"].astype(str).str.strip() == str(tratta_id).strip()
-                if tipo_permesso and has_tipo:
-                    mask_t = mask & (df["TIPO_PERMESSO"].astype(str).str.strip().str.upper() == tipo_permesso.strip().upper())
-                    if mask_t.any():
-                        mask = mask_t
-                idx = df.index[mask].tolist()
-                if idx:
-                    df.loc[idx[-1], "DATA_UPDATE"] = oggi
-                    any_hit = True
-            if any_hit:
-                await _write_master_csv(df, note=f"Solleciti bulk ({len(keys)}): touch DATA_UPDATE")
-    except Exception as e:
-        print(f"[_touch_data_update_multi] {e}")
-
-
-@app.post("/api/imprese/solleciti")
-async def add_sollecito(payload: dict, sess: dict = Depends(_require_session)):
-    """Inserisce un nuovo sollecito. Scrittura diretta senza approvazione admin."""
-    nome = sess["nome"]
-    tratta_id    = str((payload or {}).get("tratta_id", "")).strip()
-    pratica      = str((payload or {}).get("pratica", "")).strip()
-    tipo         = str((payload or {}).get("tipo_sollecito", "")).strip()
-    data_sol     = str((payload or {}).get("data_sollecito", "")).strip()
-    note         = str((payload or {}).get("note", "")).strip()
-    ente         = str((payload or {}).get("ente", "")).strip()
-    tipo_perm    = str((payload or {}).get("tipo_permesso", "")).strip()
-    stato_perm   = str((payload or {}).get("stato_permesso", "")).strip()
-    lunghezza    = str((payload or {}).get("lunghezza", "")).strip()
-    data_rich    = str((payload or {}).get("data_richiesta", "")).strip()
-    data_ult_mod = str((payload or {}).get("data_ultima_modifica", "")).strip()
-    try:
-        numero_sol = int((payload or {}).get("numero_sollecito") or 1)
-    except (TypeError, ValueError):
-        numero_sol = 1
-
-    if not tratta_id:
-        raise HTTPException(400, "tratta_id obbligatorio")
-    if tipo not in ("PEC", "MAIL", "TELEFONICO"):
-        raise HTTPException(400, "tipo_sollecito deve essere PEC, MAIL o TELEFONICO")
-    if not data_sol:
-        raise HTTPException(400, "data_sollecito obbligatoria")
-    _dt_sol = _parse_it_date(data_sol)
-    if _dt_sol and _dt_sol.date() > datetime.now(timezone.utc).date():
-        raise HTTPException(400, "data_sollecito non può essere futura")
-
-    record = {
-        "tratta_id":           tratta_id,
-        "pratica":             pratica,
-        "tipo_sollecito":      tipo,
-        "data_sollecito":      data_sol,
-        "note":                note,
-        "impresa":             nome,
-        "ente":                ente,
-        "tipo_permesso":       tipo_perm,
-        "stato_permesso":      stato_perm,
-        "lunghezza":           lunghezza,
-        "data_richiesta":      data_rich,
-        "data_ultima_modifica": data_ult_mod,
-        "numero_sollecito":    numero_sol,
-        "created_at":          _now_iso(),
-    }
-    res = await solleciti_col.insert_one(record)
-    asyncio.create_task(_touch_data_update(tratta_id, pratica, tipo_perm))
-    _schedule_solleciti_csv_regen(f"nuovo sollecito: {tratta_id}")
-    return {"ok": True, "id": str(res.inserted_id)}
-
-
-@app.post("/api/imprese/solleciti/bulk-insert")
-async def bulk_insert_solleciti(payload: dict, sess: dict = Depends(_require_session)):
-    """Inserisce più solleciti in una sola chiamata e fa un unico push GitHub."""
-    nome  = sess["nome"]
-    items = (payload or {}).get("items", [])
-    if not items or not isinstance(items, list):
-        raise HTTPException(400, "items obbligatorio")
-
-    inserted = []
-    touch_keys = []
-    for item in items:
-        tratta_id = str(item.get("tratta_id", "")).strip()
-        tipo      = str(item.get("tipo_sollecito", "")).strip()
-        data_sol  = str(item.get("data_sollecito", "")).strip()
-        if not tratta_id or tipo not in ("PEC", "MAIL", "TELEFONICO") or not data_sol:
-            continue
-        _dt_sol = _parse_it_date(data_sol)
-        if _dt_sol and _dt_sol.date() > datetime.now(timezone.utc).date():
-            continue
-        record = {
-            "tratta_id":           tratta_id,
-            "pratica":             str(item.get("pratica", "")).strip(),
-            "tipo_sollecito":      tipo,
-            "data_sollecito":      data_sol,
-            "note":                str(item.get("note", "")).strip(),
-            "impresa":             nome,
-            "ente":                str(item.get("ente", "")).strip(),
-            "tipo_permesso":       str(item.get("tipo_permesso", "")).strip(),
-            "stato_permesso":      str(item.get("stato_permesso", "")).strip(),
-            "lunghezza":           str(item.get("lunghezza", "")).strip(),
-            "data_richiesta":      str(item.get("data_richiesta", "")).strip(),
-            "data_ultima_modifica": str(item.get("data_ultima_modifica", "")).strip(),
-            "numero_sollecito":    int(item.get("numero_sollecito") or 1),
-            "created_at":          _now_iso(),
-        }
-        res = await solleciti_col.insert_one(record)
-        inserted.append(str(res.inserted_id))
-        touch_keys.append((tratta_id, record["pratica"], record["tipo_permesso"]))
-
-    if inserted:
-        asyncio.create_task(_touch_data_update_multi(touch_keys))
-        _schedule_solleciti_csv_regen(f"bulk-insert: {len(inserted)} solleciti")
-    return {"ok": True, "inserted": inserted, "count": len(inserted)}
-
-
-@app.delete("/api/imprese/solleciti/{sol_id}")
-async def delete_sollecito(sol_id: str, sess: dict = Depends(_require_session)):
-    """L'impresa può eliminare solo i propri solleciti."""
-    try:
-        oid = ObjectId(sol_id)
-    except Exception:
-        raise HTTPException(400, "ID non valido")
-    doc = await solleciti_col.find_one({"_id": oid})
-    if not doc:
-        raise HTTPException(404, "Sollecito non trovato")
-    if doc.get("impresa") != sess["nome"]:
-        raise HTTPException(403, "Non autorizzato")
-    await solleciti_col.delete_one({"_id": oid})
-    _schedule_solleciti_csv_regen(f"eliminazione sollecito: {sol_id}")
-    return {"deleted": sol_id}
-
-
-
-
-@app.get("/api/admin/solleciti")
-async def admin_get_solleciti(
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q:        Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    """Restituisce tutti i solleciti (vista admin, senza filtro impresa)."""
-    _check_token(x_upload_token or token_q)
-    items = []
-    async for d in solleciti_col.find({}).sort("data_sollecito", -1):
-        d["_id"] = str(d["_id"])
-        items.append(d)
-    return {"solleciti": items, "count": len(items)}
-
-
-@app.get("/api/staff/solleciti")
-async def staff_get_solleciti(sess: dict = Depends(_require_staff_session)):
-    """Restituisce tutti i solleciti per le pagine staff (index.html ecc.), letti
-    direttamente da MongoDB — non dipende dal push/deploy su GitHub Pages, a
-    differenza dal vecchio CSV statico, ormai rimosso (vedi AGENT_BRIEF)."""
-    items = []
-    async for d in solleciti_col.find({}).sort("created_at", -1):
-        items.append({
-            "pratica":  str(d.get("pratica", "") or ""),
-            "tratta":   str(d.get("tratta_id", "") or ""),
-            "tipo":     str(d.get("tipo_sollecito", "") or ""),
-            "data":     str(d.get("data_sollecito", "") or ""),
-            "note":     str(d.get("note", "") or ""),
-            "impresa":  str(d.get("impresa", "") or ""),
-        })
-    return {"solleciti": items, "count": len(items)}
-
-@app.post("/api/imprese/solleciti/bulk-delete")
-async def bulk_delete_solleciti(payload: dict, sess: dict = Depends(_require_session)):
-    """Elimina più solleciti in una sola chiamata e fa un unico push GitHub."""
-    ids = (payload or {}).get("ids", [])
-    if not ids or not isinstance(ids, list):
-        raise HTTPException(400, "ids obbligatorio")
-    deleted = []
-    for sol_id in ids:
-        try:
-            oid = ObjectId(str(sol_id))
-        except Exception:
-            continue
-        doc = await solleciti_col.find_one({"_id": oid})
-        if not doc or doc.get("impresa") != sess["nome"]:
-            continue
-        await solleciti_col.delete_one({"_id": oid})
-        deleted.append(str(sol_id))
-    if deleted:
-        _schedule_solleciti_csv_regen(f"bulk-delete: {len(deleted)} solleciti")
-    return {"deleted": deleted, "count": len(deleted)}
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# CANTIERI — stato avanzamento scavi per PRATICA di AUTORIZZAZIONE
-# ─────────────────────────────────────────────────────────────────────────────
-# Un cantiere = una pratica di AUTORIZZAZIONE ottenuta (non una singola tratta:
-# una stessa autorizzazione può coprire più tratte). Il NULLA OSTA/ORDINANZA
-# non sono un cantiere a sé: sono permessi accessori che possono mancare su
-# alcune tratte della stessa autorizzazione. Quelle tratte restano elencate
-# nel cantiere con 'lavorabile'=false, ma è un flag SOLO indicativo (usato
-# in mappa per colorare le tratte non ancora cantierabili): NON esclude i
-# metri dal totale rendicontabile dall'impresa. metri_totali conta sempre
-# tutta la lunghezza della pratica autorizzata.
-#
-# Flusso:
-#   1. Ogni volta che il Master.csv viene aggiornato, _sync_cantieri() raggruppa
-#      le tratte con AUTORIZZAZIONE OTTENUTA per (ente, numero pratica, lotto)
-#      e crea/aggiorna un documento cantiere per pratica.
-#   2. L'impresa aggiorna giornalmente i metri realizzati e lo stato cantiere
-#      a livello di pratica (un solo stato/contatore per tutte le tratte).
-#   3. scavi.html legge GET /api/cantieri (pubblico) per popolare i grafici.
-# ═════════════════════════════════════════════════════════════════════════════
-
-STATO_CANTIERE_VALUES = ["non_avviato", "allestimento", "in_corso", "sospeso", "completato"]
-TECNICA_SCAVO_VALUES  = ["trincea", "no_dig", "canaletta", ""]
-
-
-async def _max_codice_per_lotto() -> dict:
-    """Numero massimo di codice_cantiere (CA/N/lotto) già assegnato per ciascun
-    lotto, per continuare la sequenza senza mai riassegnare un numero usato."""
-    cache: dict[str, int] = {}
-    async for d in cantieri_col.find(
-        {"codice_cantiere": {"$regex": "^CA/"}}, {"lotto": 1, "codice_cantiere": 1}
-    ):
-        m = re.match(r"^CA/(\d+)/", d.get("codice_cantiere", ""))
-        if not m:
-            continue
-        lotto = d.get("lotto", "")
-        cache[lotto] = max(cache.get(lotto, 0), int(m.group(1)))
-    return cache
-
-
-async def _backfill_codici_cantiere(cache: dict) -> int:
-    """Assegna codice_cantiere ai cantieri creati prima dell'introduzione del
-    campo. Progressivo stabile per lotto — una volta scritto su un documento
-    non viene mai più toccato, nemmeno da sync successivi. Ordine pratica_id
-    (unico riferimento disponibile per i cantieri storici, non essendoci un
-    timestamp di creazione)."""
-    n = 0
-    async for d in cantieri_col.find(
-        {"$or": [{"codice_cantiere": {"$exists": False}}, {"codice_cantiere": ""}]}
-    ).sort([("lotto", 1), ("pratica_id", 1)]):
-        lotto = d.get("lotto", "")
-        cache[lotto] = cache.get(lotto, 0) + 1
-        codice = f"CA/{cache[lotto]}/{lotto}"
-        await cantieri_col.update_one({"_id": d["_id"]}, {"$set": {"codice_cantiere": codice}})
-        n += 1
-    if n:
-        print(f"[sync_cantieri] assegnato codice_cantiere a {n} cantieri storici")
-    return n
-
-
-async def _dedupe_codici_cantiere(cache: dict) -> int:
-    """Ripara codice_cantiere duplicati già presenti in Mongo (causati dalla race
-    condition di _sync_cantieri risolta con _cantieri_sync_lock — v. commento sopra
-    la definizione del lock: due esecuzioni concorrenti potevano leggere lo stesso
-    _max_codice_per_lotto() e assegnare lo stesso codice a due pratiche diverse).
-    Per ogni codice duplicato mantiene invariato il documento più vecchio (_id più
-    basso) e riassegna un nuovo codice progressivo ai restanti."""
-    groups: dict[str, list] = {}
-    async for d in cantieri_col.find(
-        {"codice_cantiere": {"$regex": "^CA/"}}, {"lotto": 1, "codice_cantiere": 1}
-    ):
-        groups.setdefault(d["codice_cantiere"], []).append(d)
-
-    n = 0
-    for codice, docs in groups.items():
-        if len(docs) < 2:
-            continue
-        docs.sort(key=lambda d: d["_id"])
-        for d in docs[1:]:  # il primo (più vecchio) mantiene il codice originale
-            lotto = d.get("lotto", "")
-            cache[lotto] = cache.get(lotto, 0) + 1
-            nuovo = f"CA/{cache[lotto]}/{lotto}"
-            await cantieri_col.update_one({"_id": d["_id"]}, {"$set": {"codice_cantiere": nuovo}})
-            print(f"[sync_cantieri] riassegnato codice duplicato {codice} → {nuovo} (_id={d['_id']})")
-            n += 1
-    return n
-
-
-async def _regenerate_cantieri_csv(note: str = "") -> str | None:
-    """Rigenera Cantieri.csv (snapshot corrente della collection cantieri) come
-    file derivato in GridFS — compare in 'File correnti' come Master.csv/QGIS,
-    scaricabile con lo stesso bottone 'Scarica'. Fire-and-forget: eventuali
-    errori vengono solo loggati."""
-    try:
-        cols = [
-            "codice_cantiere", "pratica_id", "ente", "lotto", "cluster", "impresa",
-            "provincia", "comune", "stato_cantiere", "tecnica_scavo",
-            "metri_scavati", "metri_totali", "metri_totali_potenziali",
-            "data_inizio_prevista", "data_inizio_effettiva",
-            "data_fine_prevista", "data_fine_effettiva",
-            "motivo_blocco", "data_ripresa_stimata", "note", "updated_at", "log_count",
-        ]
-        buf = io.StringIO()
-        w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
-        w.writeheader()
-        n = 0
-        async for d in cantieri_col.find({}).sort("pratica_id", 1):
-            d["log_count"] = len(d.get("log") or [])
-            w.writerow({k: d.get(k, "") for k in cols})
-            n += 1
-        data = buf.getvalue().encode("utf-8-sig")  # BOM per apertura corretta in Excel
-        gid = await _store_derived_file(CANTIERI_FILENAME, data, "text/csv", note)
-        print(f"[cantieri_csv] rigenerato Cantieri.csv ({n} righe)")
-        return gid
-    except Exception as e:
-        print(f"[cantieri_csv] errore rigenerazione: {type(e).__name__}: {e}")
-        return None
-
-
-def _schedule_cantieri_csv_regen(note: str = "") -> None:
-    asyncio.create_task(_regenerate_cantieri_csv(note))
-
-
-async def _regenerate_sopralluoghi_csv(note: str = "") -> str | None:
-    """Rigenera sopralluoghi.csv come file derivato in GridFS a partire dalla
-    collection sopralluoghi_col (unica fonte dei verbali) — sostituisce il
-    vecchio seed statico rimosso dal repo, compare in 'File correnti' con lo
-    stesso bottone 'Scarica'. Fire-and-forget: eventuali errori solo loggati."""
-    try:
-        cols = [
-            "codice_verbale", "data_sopralluogo", "lotto", "tratta_id", "impresa",
-            "referente_impresa", "referente_retelit", "comune", "localita",
-            "tipo_intervento", "esito", "segnalazione_cliente", "note", "segnalazioni", "azioni_richieste",
-            "scadenza_azioni", "prossimo_sopralluogo", "firma_impresa",
-            "firma_retelit", "foto_urls",
-            "checklist_conformi", "checklist_non_conformi", "checklist_na",
-            "checklist_compilati", "checklist_nc_ids",
-            "created_at",
-        ]
-        buf = io.StringIO()
-        w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
-        w.writeheader()
-        n = 0
-        async for d in sopralluoghi_col.find({}).sort("codice_verbale", 1):
-            row = {k: d.get(k, "") for k in cols}
-            row["segnalazione_cliente"] = "SI" if d.get("segnalazione_cliente") else "NO"
-            w.writerow(row)
-            n += 1
-        data = buf.getvalue().encode("utf-8-sig")
-        gid = await _store_derived_file(SOPRALLUOGHI_FILENAME, data, "text/csv", note)
-        print(f"[sopralluoghi_csv] rigenerato sopralluoghi.csv ({n} righe)")
-        return gid
-    except Exception as e:
-        print(f"[sopralluoghi_csv] errore rigenerazione: {type(e).__name__}: {e}")
-        return None
-
-
-def _schedule_sopralluoghi_csv_regen(note: str = "") -> None:
-    asyncio.create_task(_regenerate_sopralluoghi_csv(note))
-
-
-async def _regenerate_solleciti_csv(note: str = "") -> str | None:
-    """Rigenera solleciti.csv come file derivato in GridFS a partire dalla
-    collection solleciti_col — compare in 'File correnti' con lo stesso
-    bottone 'Scarica'. Fire-and-forget: eventuali errori solo loggati."""
-    try:
-        cols = [
-            "tratta_id", "pratica", "tipo_sollecito", "data_sollecito", "note",
-            "impresa", "ente", "tipo_permesso", "stato_permesso", "lunghezza",
-            "data_richiesta", "data_ultima_modifica", "numero_sollecito", "created_at",
-        ]
-        buf = io.StringIO()
-        w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
-        w.writeheader()
-        n = 0
-        async for d in solleciti_col.find({}).sort("data_sollecito", -1):
-            w.writerow({k: d.get(k, "") for k in cols})
-            n += 1
-        data = buf.getvalue().encode("utf-8-sig")
-        gid = await _store_derived_file(SOLLECITI_FILENAME, data, "text/csv", note)
-        print(f"[solleciti_csv] rigenerato solleciti.csv ({n} righe)")
-        return gid
-    except Exception as e:
-        print(f"[solleciti_csv] errore rigenerazione: {type(e).__name__}: {e}")
-        return None
-
-
-def _schedule_solleciti_csv_regen(note: str = "") -> None:
-    asyncio.create_task(_regenerate_solleciti_csv(note))
-
-
-async def _sync_cantieri() -> int:
-    """Wrapper serializzato: vedi _sync_cantieri_impl per la logica. Il lock evita
-    che due esecuzioni concorrenti assegnino lo stesso codice_cantiere (v. commento
-    su _cantieri_sync_lock)."""
-    async with _cantieri_sync_lock:
-        result = await _sync_cantieri_impl()
-    _schedule_cantieri_csv_regen("sync da Master.csv")
-    return result
-
-
-async def _sync_cantieri_impl() -> int:
-    """Raggruppa le tratte con AUTORIZZAZIONE OTTENUTA per pratica (ente, numero,
-    lotto) e crea/aggiorna un documento cantiere per pratica. metri_totali conta
-    TUTTE le tratte della pratica (autorizzazione ottenuta), indipendentemente
-    da 'lavorabile': quel flag è solo indicativo per la visualizzazione in
-    mappa (NULLA OSTA/ORDINANZA ottenuti) e non deve limitare i metri che
-    un'impresa può rendicontare come scavati sul cantiere.
-    Ritorna il numero di nuovi cantieri (nuove pratiche) creati."""
-    try:
-        df = await _read_master_csv()
-        summary = _compute_tratta_summary(df)
-    except Exception as e:
-        print(f"[sync_cantieri] errore lettura master: {e}")
-        return 0
-
-    # CLUSTER/PROVINCIA/COMUNE non esistono in Master.csv: vengono recuperati da
-    # Riepilogo_progettazione.csv (che li eredita da QGIS.geojson), indicizzati
-    # per TRATTA_ID. Fail-soft: se il file non è disponibile i cantieri vengono
-    # comunque creati, semplicemente senza questi tre campi.
-    geo_by_tratta: dict[str, dict] = {}
-    try:
-        riep_df = await _read_riepilogo_csv()
-        if riep_df is not None and "TRATTA_ID" in riep_df.columns:
-            for _, row in riep_df.iterrows():
-                tid = str(row.get("TRATTA_ID", "")).strip()
-                if not tid:
-                    continue
-                geo_by_tratta[tid] = {
-                    "cluster":   str(row.get("CLUSTER", "")).strip(),
-                    "provincia": str(row.get("PROVINCIA", "")).strip(),
-                    "comune":    str(row.get("COMUNE", "")).strip(),
-                }
-    except Exception as e:
-        print(f"[sync_cantieri] errore lettura riepilogo (cluster/provincia/comune): {e}")
-
-    codice_cache = await _max_codice_per_lotto()
-    await _backfill_codici_cantiere(codice_cache)
-    await _dedupe_codici_cantiere(codice_cache)
-
-    # Mappa lotto → impresa assegnata (stessa fonte di /api/lotti-cantieri) per
-    # popolare/backfillare 'impresa' sia sui cantieri esistenti che su quelli nuovi.
-    lotto_impresa: dict[str, str] = {}
-    async for a in assignments_col.find({}, {"nome": 1, "lotti": 1}):
-        nome_impresa = a.get("nome", "")
-        for l in (a.get("lotti") or []):
-            lotto_norm = _lotto_from_source(l)
-            if lotto_norm:
-                lotto_impresa[lotto_norm] = nome_impresa
-
-    groups: dict[tuple, dict] = {}
-    for tratta_id, info in summary.items():
-        if info.get("STATO_AUTORIZZAZIONE") != "OTTENUTO":
-            continue  # niente cantiere finché l'autorizzazione non è ottenuta
-        pratica_num = (info.get("PRATICA_AUT") or "").strip()
-        if not pratica_num:
-            continue
-        rows = df[df["TRATTA_ID"].astype(str).str.strip() == tratta_id]
-        lotto = _lotto_from_source(rows.iloc[0].get("Source.Name", "")) if not rows.empty else ""
-        geo   = geo_by_tratta.get(tratta_id, {})
-        cluster   = geo.get("cluster", "")
-        provincia = geo.get("provincia", "")
-        comune    = geo.get("comune", "")
-        try:
-            raw_lung = info.get("LUNGHEZZA", 0)
-            lunghezza = 0.0 if pd.isna(raw_lung) else float(str(raw_lung).replace(",", "."))
-        except Exception:
-            lunghezza = 0.0
-
-        ente_display = re.sub(r"\s+", " ", str(info.get("ENTE", ""))).strip()
-        ente_key = ente_display.upper()
-        key = (ente_key, pratica_num, lotto)
-        g = groups.setdefault(key, {
-            "cantiere_key": f"{pratica_num}|{lotto}|{ente_key}",
-            "pratica_id": f"AUT/{pratica_num}/{lotto}",
-            "ente": ente_display, "lotto": lotto, "cluster": cluster,
-            "tratte": [],
-        })
-        g["tratte"].append({
-            "tratta_id":  tratta_id,
-            "lunghezza":  lunghezza,
-            "lavorabile": info.get("LAVORABILE") == "SI",
-            "motivo_no":  info.get("MOTIVO_NO", ""),
-            "provincia":  provincia,
-            "comune":     comune,
-        })
-
-    created = 0
-    stato_rank = {s: i for i, s in enumerate(STATO_CANTIERE_VALUES)}
-    for key, g in groups.items():
-        # metri_totali = tutte le tratte della pratica (autorizzazione ottenuta),
-        # a prescindere da 'lavorabile' — quel flag è solo per la mappa e non
-        # deve ridurre il totale su cui l'impresa rendiconta i metri scavati.
-        metri_totali     = sum(t["lunghezza"] for t in g["tratte"])
-        metri_totali_pot = sum(t["lunghezza"] for t in g["tratte"])
-        # provincia/comune del cantiere: il valore più frequente tra le sue tratte
-        provincia_count = Counter(t["provincia"] for t in g["tratte"] if t.get("provincia"))
-        comune_count     = Counter(t["comune"]    for t in g["tratte"] if t.get("comune"))
-        provincia_cantiere = provincia_count.most_common(1)[0][0] if provincia_count else ""
-        comune_cantiere     = comune_count.most_common(1)[0][0] if comune_count else ""
-
-        existing = await cantieri_col.find_one({"cantiere_key": g["cantiere_key"]})
-        if existing:
-            await cantieri_col.update_one(
-                {"_id": existing["_id"]},
-                {"$set": {
-                    "tratte": g["tratte"], "lotto": g["lotto"], "cluster": g["cluster"],
-                    "metri_totali": metri_totali, "metri_totali_potenziali": metri_totali_pot,
-                    "provincia": provincia_cantiere, "comune": comune_cantiere,
-                    "impresa": lotto_impresa.get(g["lotto"], existing.get("impresa", "")),
-                }},
-            )
-            continue
-
-        # Migrazione best-effort: se esistevano già documenti del VECCHIO schema
-        # (1 per tratta_id, pre-raggruppamento per pratica), recupera l'avanzamento
-        # già inserito dall'impresa prima di accorparli nel nuovo cantiere.
-        tratta_ids = [t["tratta_id"] for t in g["tratte"]]
-        old_docs = await cantieri_col.find(
-            {"tratta_id": {"$in": tratta_ids}, "pratica_id": {"$exists": False}}
-        ).to_list(length=None)
-
-        metri_scavati  = sum(float(d.get("metri_scavati", 0) or 0) for d in old_docs)
-        old_log = [
-            {**entry, "tratta_id": d.get("tratta_id")}
-            for d in old_docs for entry in d.get("log", [])
-        ]
-        stato_cantiere = max(
-            (d.get("stato_cantiere", "non_avviato") for d in old_docs),
-            key=lambda s: stato_rank.get(s, 0), default="non_avviato",
-        )
-        tecnica_scavo = next((d.get("tecnica_scavo") for d in old_docs if d.get("tecnica_scavo")), "")
-        impresa       = lotto_impresa.get(g["lotto"]) or next((d.get("impresa") for d in old_docs if d.get("impresa")), "")
-
-        codice_cache[g["lotto"]] = codice_cache.get(g["lotto"], 0) + 1
-        codice_cantiere = f"CA/{codice_cache[g['lotto']]}/{g['lotto']}"
-
-        doc = {
-            "cantiere_key": g["cantiere_key"],
-            "codice_cantiere": codice_cantiere,
-            "pratica_id": g["pratica_id"], "ente": g["ente"], "lotto": g["lotto"], "cluster": g["cluster"],
-            "provincia": provincia_cantiere, "comune": comune_cantiere,
-            "tratte": g["tratte"],
-            "metri_totali": metri_totali, "metri_totali_potenziali": metri_totali_pot,
-            "stato_cantiere": stato_cantiere, "tecnica_scavo": tecnica_scavo,
-            "data_inizio_prevista": "", "data_inizio_effettiva": "",
-            "data_fine_prevista": "", "data_fine_effettiva": "",
-            "metri_scavati": metri_scavati, "note": "",
-            "motivo_blocco": "", "data_ripresa_stimata": "",
-            "impresa": impresa, "updated_at": _now_iso(),
-            "log": old_log,
-        }
-        await cantieri_col.insert_one(doc)
-        if old_docs:
-            await cantieri_col.delete_many({"_id": {"$in": [d["_id"] for d in old_docs]}})
-        created += 1
-
-    # Pulizia doppioni: cantieri creati prima dell'introduzione di 'cantiere_key'
-    # (schema intermedio: solo pratica_id+ente, niente cantiere_key) oppure prima
-    # della normalizzazione di 'ente' (spazi multipli/maiuscole diverse → stessa
-    # pratica vista come due chiavi diverse). $nin su un campo assente include
-    # anche i documenti dove il campo non esiste affatto (schema intermedio).
-    touched_keys = {g["cantiere_key"] for g in groups.values()}
-    merged = 0
-    async for orphan in cantieri_col.find({
-        "pratica_id": {"$exists": True},
-        "cantiere_key": {"$nin": list(touched_keys)},
-    }):
-        m = re.match(r"^AUT/(.+)/([^/]+)$", orphan.get("pratica_id") or "")
-        if not m:
-            continue
-        o_num, o_lotto = m.group(1), m.group(2)
-        o_ente_key = re.sub(r"\s+", " ", str(orphan.get("ente", ""))).strip().upper()
-        target_key = f"{o_num}|{o_lotto}|{o_ente_key}"
-        if target_key == orphan.get("cantiere_key") or target_key not in touched_keys:
-            continue  # non è un doppione da normalizzazione: lascialo (es. autorizzazione non più OTTENUTA)
-        target = await cantieri_col.find_one({"cantiere_key": target_key})
-        if not target:
-            continue
-        await cantieri_col.update_one(
-            {"_id": target["_id"]},
-            {"$inc": {"metri_scavati": float(orphan.get("metri_scavati", 0) or 0)},
-             "$push": {"log": {"$each": orphan.get("log", [])}}},
-        )
-        await cantieri_col.delete_one({"_id": orphan["_id"]})
-        merged += 1
-    if merged:
-        print(f"[sync_cantieri] uniti {merged} cantieri duplicati (variazioni di formattazione ente)")
-
-    if created:
-        print(f"[sync_cantieri] creati {created} nuovi cantieri (per pratica)")
-    return created
-
-
-
-# ── Endpoint pubblico: lista cantieri ────────────────────────────────────────
-
-@app.get("/api/cantieri")
-async def get_cantieri(lotto: str = "", cluster: str = "", stato: str = "", sess: dict = Depends(_require_staff_session)):
-    """Lista cantieri (pubblica), uno per pratica di autorizzazione. Filtrabile
-    per lotto, cluster, stato."""
-    q: dict = {}
-    if lotto:   q["lotto"]          = lotto
-    if cluster: q["cluster"]        = cluster
-    if stato:   q["stato_cantiere"] = stato
-    items = []
-    async for d in cantieri_col.find(q).sort("pratica_id", 1):
-        d["_id"] = str(d["_id"])
-        d["log_count"] = len(d.get("log") or [])   # segnala se l'impresa ha mai fatto un aggiornamento
-        d.pop("log", None)   # non esporre lo storico nel listing
-        items.append(d)
-    return {"cantieri": items, "count": len(items)}
-
-
-@app.post("/api/external/pratica-status")
-async def external_pratica_status(
-    payload: dict,
-    x_sync_token: Annotated[str | None, Header(alias="x-sync-token")] = None,
-):
-    """Endpoint READ-ONLY dedicato alla sincronizzazione cross-progetto con QTS:
-    le tratte in concomitanza hanno la pratica di autorizzazione aperta e
-    seguita qui su ENRI, non su QTS/Telebit — QTS deve poter leggere lo stato
-    corrente senza duplicare la pratica. La corrispondenza tra i due progetti
-    NON è per TRATTA_ID (numerazioni indipendenti, spesso più tratte QTS ->
-    una sola pratica ENRI) ma per identità di pratica: ente + tipo_permesso +
-    numero + lotto, la stessa chiave usata da /api/admin/pratiche-search.
-
-    Body atteso: {"items": [{"ente": str, "tipo_permesso": "AUTORIZZAZIONE"|
-    "NULLA OSTA"|"ORDINANZA", "numero": str, "lotto": str}, ...]}
-
-    Protetto da QTS_SYNC_TOKEN, separato da UPLOAD_TOKEN: nessuna scrittura,
-    nessun dato oltre lo stato delle pratiche esplicitamente richieste (mai
-    l'intero Master.csv)."""
-    _check_qts_sync_token(x_sync_token)
-    items = (payload or {}).get("items") or []
-    if not items:
-        raise HTTPException(400, "Body 'items' obbligatorio (lista di {ente, tipo_permesso, numero, lotto})")
-
-    df = await _read_master_csv()
-    if df is None or df.empty:
-        return {"pratiche": [{**it, "trovata": False} for it in items], "checked_at": _now_iso()}
-    work = df.fillna("")
-    work = work.assign(_lotto=work["Source.Name"].apply(_lotto_from_source))
-    ente_col   = work["ENTE"].astype(str).str.strip().str.upper()
-    tipo_col   = work["TIPO_PERMESSO"].astype(str).str.strip().str.upper()
-    numero_col = work["PRATICA"].astype(str).str.strip()
-
-    out = []
-    for it in items:
-        ente   = str(it.get("ente", "")).strip()
-        tipo   = str(it.get("tipo_permesso", "")).strip().upper()
-        numero = str(it.get("numero", "")).strip()
-        lotto  = str(it.get("lotto", "")).strip().upper()
-        match = work[
-            (ente_col == ente.upper()) & (tipo_col == tipo) &
-            (numero_col == numero) & (work["_lotto"] == lotto)
-        ]
-        if match.empty:
-            out.append({"ente": ente, "tipo_permesso": tipo, "numero": numero, "lotto": lotto, "trovata": False})
-            continue
-        rep = match.iloc[-1]  # ultima riga inserita per questa pratica = stato attuale
-        out.append({
-            "ente": ente, "tipo_permesso": tipo, "numero": numero, "lotto": lotto,
-            "trovata": True,
-            "stato_permesso": str(rep.get("STATO_PERMESSO", "")).strip(),
-            "data_richiesta": str(rep.get("DATA_RICHIESTA", "")).strip(),
-            "data_approvazione": str(rep.get("DATA_APPROVAZIONE", "")).strip(),
-            "data_prevista_rilascio": str(rep.get("DATA_PREVISTA_RILASCIO", "")).strip(),
-            "nota": str(rep.get("NOTE", "")).strip(),
-        })
-    return {"pratiche": out, "checked_at": _now_iso()}
-
-
-@app.get("/api/cantieri/scavi-timeseries")
-async def get_scavi_timeseries(
-    lotto: str = "",
-    data_da: str = "",
-    data_a: str = "",
-    sess: dict = Depends(_require_staff_session),
-):
-    """Serie storica metri scavati per giorno e impresa, aggregata sui log dei
-    cantieri (vedi update_cantiere/log_entry). Usata dal grafico 'Scavi nel
-    tempo' (mappa.html, vista Scavi). Filtro opzionale per lotto e per
-    intervallo date inclusivo (formato YYYY-MM-DD, confrontabile come
-    stringa grazie al formato ISO); se omesse copre l'intero storico.
-    Aggregazione fatta lato Mongo per evitare N+1 fetch (un cantiere per
-    pratica, ciascuno col proprio storico log)."""
-    pipeline: list = []
-    if lotto:
-        pipeline.append({"$match": {"lotto": lotto}})
-    pipeline.append({"$unwind": "$log"})
-    log_match: dict = {"log.metri_realizzati": {"$gt": 0}}
-    data_range: dict = {}
-    if data_da: data_range["$gte"] = data_da
-    if data_a:  data_range["$lte"] = data_a
-    if data_range:
-        log_match["log.data"] = data_range
-    pipeline.append({"$match": log_match})
-    pipeline.append({
-        "$group": {
-            "_id": {"data": "$log.data", "impresa": "$log.impresa"},
-            "metri": {"$sum": "$log.metri_realizzati"},
-        }
-    })
-    out = []
-    async for d in cantieri_col.aggregate(pipeline):
-        out.append({"data": d["_id"]["data"], "impresa": d["_id"]["impresa"] or "N/D", "metri": round(d["metri"], 1)})
-    out.sort(key=lambda x: (x["data"], x["impresa"]))
-    return {"serie": out, "count": len(out)}
-
-
-@app.get("/api/cantieri/{cantiere_key:path}/log")
-async def get_cantiere_log_public(cantiere_key: str, sess: dict = Depends(_require_staff_session)):
-    """Storico aggiornamenti di un cantiere (pubblico, sola lettura — no session).
-    Usato dal 'Registro Cantiere' in scavi.html."""
-    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
-    if not doc:
-        raise HTTPException(404, "Cantiere non trovato")
-    return {"log": doc.get("log", []), "cantiere_key": cantiere_key, "pratica_id": doc.get("pratica_id")}
-
-
-# ── Endpoint impresa: aggiornamento giornaliero ───────────────────────────────
-
-@app.get("/api/admin/actions")
-async def list_admin_actions(
-    limit: int = 100,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    """Log azioni admin (upload/delete/restore/prune) — vedi _log_admin_action."""
-    _check_token(x_upload_token or token_q)
-    cur = admin_actions_col.find({}).sort("timestamp", -1).limit(min(limit, 500))
-    items = [_serialize(d) async for d in cur]
-    return {"actions": items, "count": len(items)}
-
-
-@app.post("/api/admin/prune-versions")
-async def admin_prune_versions(
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """One-shot: applica KEEP_VERSIONS all'arretrato già esistente (il prune
-    automatico dopo ogni upload agisce solo sui filename toccati da quel momento in poi)."""
-    _check_token(x_upload_token or token_q)
-    filenames = await uploads_col.distinct("filename", {"deleted_at": None})
-    result = {}
-    for fn in filenames:
-        result[fn] = await _prune_old_versions(fn)
-    await _log_admin_action("prune_versions", ",".join(filenames) or "-", x_actor_nome)
-    return {"pruned": result, "keep_versions": KEEP_VERSIONS}
-
-
-@app.delete("/api/admin/sopralluoghi/reset")
-async def admin_reset_sopralluoghi(
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    """Svuota la collection sopralluoghi (solo test/dev)."""
-    _check_token(x_upload_token or token_q)
-    deleted = (await sopralluoghi_col.delete_many({})).deleted_count
-    _schedule_sopralluoghi_csv_regen("reset totale")
-    return {"deleted": deleted}
-
-
-@app.delete("/api/admin/cantieri/reset")
-async def admin_reset_cantieri(
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    """Svuota la collection cantieri (solo test/dev) e la ricrea da Master.csv."""
-    _check_token(x_upload_token or token_q)
-    deleted = (await cantieri_col.delete_many({})).deleted_count
-    created = await _sync_cantieri()
-    return {"deleted": deleted, "recreated": created}
-
-
-@app.get("/api/admin/sync-cantieri")
-async def admin_sync_cantieri(
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    """Forza la sincronizzazione dei cantieri (solo admin)."""
-    _check_token(x_upload_token or token_q)
-    created = await _sync_cantieri()
-    total = await cantieri_col.count_documents({})
-    return {"created": created, "total_cantieri": total}
-
-
-@app.put("/api/admin/cantieri/{cantiere_key:path}/log/{idx}")
-async def admin_update_cantiere_log_entry(
-    cantiere_key: str,
-    idx: int,
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Corregge una singola riga di storico (log) di un cantiere — es. un
-    caricamento errato inserito da un'impresa. metri_scavati viene
-    ricalcolato come somma di tutte le righe di log rimaste, per restare
-    coerente con l'accumulo fatto da POST /api/imprese/cantieri/{key}."""
-    _check_token(x_upload_token or token_q)
-    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
-    if not doc:
-        raise HTTPException(404, "Cantiere non trovato")
-    log = doc.get("log") or []
-    if idx < 0 or idx >= len(log):
-        raise HTTPException(404, "Voce di storico non trovata")
-
-    allowed = {
-        "data", "impresa", "stato_cantiere", "tecnica_scavo",
-        "metri_realizzati", "note", "motivo_blocco", "data_ripresa_stimata",
-    }
-    entry = dict(log[idx])
-    for k, v in (payload or {}).items():
-        if k not in allowed:
-            continue
-        if k == "stato_cantiere" and v not in STATO_CANTIERE_VALUES:
-            raise HTTPException(400, f"stato_cantiere non valido: {v}")
-        if k == "tecnica_scavo" and v and v not in TECNICA_SCAVO_VALUES:
-            raise HTTPException(400, f"tecnica_scavo non valida: {v}")
-        if k == "metri_realizzati":
-            try:
-                v = max(0.0, float(v))
-            except Exception:
-                raise HTTPException(400, "metri_realizzati deve essere un numero")
-        entry[k] = v
-    log[idx] = entry
-
-    metri_scavati = sum(float(e.get("metri_realizzati") or 0) for e in log)
-    await cantieri_col.update_one(
-        {"cantiere_key": cantiere_key},
-        {"$set": {"log": log, "metri_scavati": metri_scavati, "updated_at": _now_iso()}},
-    )
-    await _log_admin_action("update_cantiere_log", f"{cantiere_key}#{idx}", x_actor_nome)
-    _schedule_cantieri_csv_regen(f"correzione log: {cantiere_key}#{idx}")
-    return {"ok": True, "cantiere_key": cantiere_key, "idx": idx, "metri_scavati": metri_scavati}
-
-
-@app.put("/api/admin/cantieri/{cantiere_key:path}")
-async def admin_update_cantiere(
-    cantiere_key: str,
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Correzione admin di un cantiere: a differenza di POST /api/imprese/cantieri/{key}
-    (scrittura impresa, metri_scavati SEMPRE in accumulo via $inc), qui i campi passati
-    vengono impostati DIRETTAMENTE — utile per correggere dati di test/errati senza dover
-    passare da un valore negativo (non ammesso) o azzerare tutto il cantiere.
-    Non tocca il log storico salvo che 'clear_log' sia True."""
-    _check_token(x_upload_token or token_q)
-    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
-    if not doc:
-        raise HTTPException(404, "Cantiere non trovato")
-
-    allowed = {
-        "stato_cantiere", "tecnica_scavo", "metri_scavati",
-        "data_inizio_prevista", "data_inizio_effettiva",
-        "data_fine_prevista", "data_fine_effettiva",
-        "note", "motivo_blocco", "data_ripresa_stimata", "impresa",
-    }
-    mongo_set: dict = {}
-    for k, v in (payload or {}).items():
-        if k not in allowed:
-            continue
-        if k == "stato_cantiere" and v not in STATO_CANTIERE_VALUES:
-            raise HTTPException(400, f"stato_cantiere non valido: {v}")
-        if k == "tecnica_scavo" and v and v not in TECNICA_SCAVO_VALUES:
-            raise HTTPException(400, f"tecnica_scavo non valida: {v}")
-        if k == "metri_scavati":
-            try:
-                v = max(0.0, float(v))
-            except Exception:
-                raise HTTPException(400, "metri_scavati deve essere un numero")
-        mongo_set[k] = v
-
-    mongo_update: dict = {"$set": mongo_set} if mongo_set else {}
-    if payload.get("clear_log"):
-        mongo_update["$set"] = {**mongo_set, "log": []}
-    if not mongo_update:
-        raise HTTPException(400, "Nessun campo valido da aggiornare")
-    mongo_update["$set"]["updated_at"] = _now_iso()
-
-    await cantieri_col.update_one({"cantiere_key": cantiere_key}, mongo_update)
-    await _log_admin_action("update_cantiere", cantiere_key, x_actor_nome)
-    _schedule_cantieri_csv_regen(f"correzione admin: {cantiere_key}")
-    return {"ok": True, "cantiere_key": cantiere_key}
-
-
-@app.delete("/api/admin/cantieri/{cantiere_key:path}/log/{idx}")
-async def admin_delete_cantiere_log_entry(
-    cantiere_key: str,
-    idx: int,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Elimina una singola riga di storico (es. caricamento di test/duplicato)
-    senza toccare le altre. metri_scavati ricalcolato sulle righe rimaste."""
-    _check_token(x_upload_token or token_q)
-    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
-    if not doc:
-        raise HTTPException(404, "Cantiere non trovato")
-    log = doc.get("log") or []
-    if idx < 0 or idx >= len(log):
-        raise HTTPException(404, "Voce di storico non trovata")
-    del log[idx]
-
-    metri_scavati = sum(float(e.get("metri_realizzati") or 0) for e in log)
-    await cantieri_col.update_one(
-        {"cantiere_key": cantiere_key},
-        {"$set": {"log": log, "metri_scavati": metri_scavati, "updated_at": _now_iso()}},
-    )
-    await _log_admin_action("delete_cantiere_log", f"{cantiere_key}#{idx}", x_actor_nome)
-    _schedule_cantieri_csv_regen(f"eliminazione log: {cantiere_key}#{idx}")
-    return {"ok": True, "cantiere_key": cantiere_key, "idx": idx, "metri_scavati": metri_scavati}
-
-
-@app.delete("/api/admin/cantieri/{cantiere_key:path}/reset")
-async def admin_reset_single_cantiere(
-    cantiere_key: str,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Riporta UN SOLO cantiere allo stato 'pristino' (non_avviato, 0 metri, log
-    vuoto) senza toccare gli altri e senza ricrearlo — a differenza di
-    DELETE /api/admin/cantieri/reset che svuota TUTTA la collection. Utile per
-    rimuovere avanzamenti di test inseriti per errore da un'impresa. Metadati
-    (cantiere_key, codice_cantiere, pratica_id, ente, lotto, metri_totali, impresa)
-    restano invariati."""
-    _check_token(x_upload_token or token_q)
-    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
-    if not doc:
-        raise HTTPException(404, "Cantiere non trovato")
-    await cantieri_col.update_one(
-        {"cantiere_key": cantiere_key},
-        {"$set": {
-            "stato_cantiere": "non_avviato", "tecnica_scavo": "",
-            "data_inizio_prevista": "", "data_inizio_effettiva": "",
-            "data_fine_prevista": "", "data_fine_effettiva": "",
-            "metri_scavati": 0.0, "note": "",
-            "motivo_blocco": "", "data_ripresa_stimata": "",
-            "log": [], "updated_at": _now_iso(),
-        }},
-    )
-    await _log_admin_action("reset_single_cantiere", cantiere_key, x_actor_nome)
-    _schedule_cantieri_csv_regen(f"reset singolo: {cantiere_key}")
-    return {"ok": True, "cantiere_key": cantiere_key}
-
-
-@app.get("/api/imprese/cantieri")
-async def get_cantieri_impresa(sess: dict = Depends(_require_session)):
-    """Cantieri (per pratica) nei lotti dell'impresa autenticata."""
-    nome = sess["nome"]
-    assignment = await _find_assignment(nome)
-    if not assignment:
-        return {"cantieri": [], "count": 0, "debug": "no assignment found"}
-    # Normalizza i lotti dell'impresa con _lotto_from_source
-    raw_lotti = [str(l) for l in (assignment.get("lotti") or [])]
-    lotti = [_lotto_from_source(l) for l in raw_lotti]
-    items = []
-    async for d in cantieri_col.find({}).sort("pratica_id", 1):
-        d["_id"] = str(d["_id"])
-        d["log_count"] = len(d.get("log") or [])
-        d.pop("log", None)
-        cant_lotto = _lotto_from_source(str(d.get("lotto") or ""))
-        if cant_lotto in lotti:
-            items.append(d)
-    return {"cantieri": items, "count": len(items)}
-
-
-@app.post("/api/imprese/cantieri/{cantiere_key:path}")
-async def update_cantiere(cantiere_key: str, payload: dict, sess: dict = Depends(_require_session)):
-    """L'impresa aggiorna lo stato cantiere e i metri realizzati oggi (a livello
-    di pratica: un solo stato/contatore per tutte le tratte della pratica).
-    cantiere_key (non pratica_id) perché pratica_id ('AUT/24/1A') non è garantito
-    univoco tra enti diversi sullo stesso lotto/numero."""
-    nome = sess["nome"]
-    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
-    if not doc:
-        raise HTTPException(404, "Cantiere non trovato")
-
-    # Verifica che la pratica appartenga ai lotti dell'impresa
-    assignment = await _find_assignment(nome)
-    raw_lotti = [str(l) for l in ((assignment or {}).get("lotti") or [])]
-    lotti = [_lotto_from_source(l) for l in raw_lotti]
-    if _lotto_from_source(str(doc.get("lotto") or "")) not in lotti:
-        raise HTTPException(403, "Pratica non assegnata a questa impresa")
-
-    # Campi aggiornabili dall'impresa
-    allowed = {
-        "stato_cantiere", "tecnica_scavo",
-        "data_inizio_prevista", "data_inizio_effettiva",
-        "data_fine_prevista", "data_fine_effettiva",
-        "metri_realizzati_oggi",   # campo speciale: viene accumulato
-        "note", "motivo_blocco", "data_ripresa_stimata",
-    }
-    update: dict = {}
-    for k, v in (payload or {}).items():
-        if k not in allowed:
-            continue
-        if k == "stato_cantiere" and v not in STATO_CANTIERE_VALUES:
-            raise HTTPException(400, f"stato_cantiere non valido: {v}")
-        if k == "tecnica_scavo" and v not in TECNICA_SCAVO_VALUES:
-            raise HTTPException(400, f"tecnica_scavo non valida: {v}")
-        if k != "metri_realizzati_oggi":
-            update[k] = v
-
-    nuovo_stato = payload.get("stato_cantiere", doc.get("stato_cantiere"))
-    if nuovo_stato == "allestimento" and not payload.get("data_inizio_prevista") and not doc.get("data_inizio_prevista"):
-        raise HTTPException(400, "data_inizio_prevista obbligatoria per lo stato Allestimento")
-    if nuovo_stato == "in_corso" and not doc.get("data_inizio_effettiva") and not payload.get("data_inizio_effettiva"):
-        raise HTTPException(400, "data_inizio_effettiva obbligatoria al primo avvio cantiere")
-    if nuovo_stato == "completato" and not payload.get("data_fine_effettiva") and not doc.get("data_fine_effettiva"):
-        raise HTTPException(400, "data_fine_effettiva obbligatoria per chiudere il cantiere")
-
-    # Accumula metri giornalieri (con cap su metri_totali)
-    metri_oggi = 0.0
-    if "metri_realizzati_oggi" in payload:
-        try:
-            metri_oggi = max(0.0, float(payload["metri_realizzati_oggi"]))
-        except Exception:
-            raise HTTPException(400, "metri_realizzati_oggi deve essere un numero")
-        metri_totali   = float(doc.get("metri_totali", 0) or 0)
-        metri_scavati_attuali = float(doc.get("metri_scavati", 0) or 0)
-        rimanenti = max(0.0, metri_totali - metri_scavati_attuali)
-        if metri_totali > 0 and metri_oggi > rimanenti:
-            raise HTTPException(
-                400,
-                f"Metri inseriti ({metri_oggi:.0f}m) superano i metri rimanenti "
-                f"del cantiere ({rimanenti:.0f}m su {metri_totali:.0f}m totali)."
-            )
-        update["$inc"] = {"metri_scavati": metri_oggi}
-
-    update["impresa"]    = nome
-    update["updated_at"] = _now_iso()
-
-    # Log entry giornaliero
-    log_entry = {
-        "data":                  _now_iso()[:10],
-        "impresa":               nome,
-        "stato_cantiere":        payload.get("stato_cantiere", doc.get("stato_cantiere")),
-        "tecnica_scavo":         payload.get("tecnica_scavo", doc.get("tecnica_scavo")),
-        "metri_realizzati":      metri_oggi,
-        "note":                  payload.get("note", ""),
-        "motivo_blocco":         payload.get("motivo_blocco", ""),
-        "data_ripresa_stimata":  payload.get("data_ripresa_stimata", ""),
-    }
-
-    # Costruisci update MongoDB
-    mongo_set = {k: v for k, v in update.items() if k != "$inc"}
-    mongo_update: dict = {"$set": mongo_set, "$push": {"log": log_entry}}
-    if "$inc" in update:
-        mongo_update["$inc"] = update["$inc"]
-
-    await cantieri_col.update_one({"cantiere_key": cantiere_key}, mongo_update)
-    _schedule_cantieri_csv_regen(f"aggiornamento impresa: {cantiere_key}")
-    return {"ok": True, "cantiere_key": cantiere_key, "pratica_id": doc.get("pratica_id")}
-
-
-@app.get("/api/imprese/cantieri/{cantiere_key:path}/log")
-async def get_cantiere_log(cantiere_key: str, sess: dict = Depends(_require_session)):
-    """Storico aggiornamenti giornalieri di un cantiere (pratica)."""
-    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
-    if not doc:
-        raise HTTPException(404, "Cantiere non trovato")
-
-    # Verifica che la pratica appartenga ai lotti dell'impresa (stesso controllo di update_cantiere)
-    assignment = await _find_assignment(sess["nome"])
-    raw_lotti = [str(l) for l in ((assignment or {}).get("lotti") or [])]
-    lotti = [_lotto_from_source(l) for l in raw_lotti]
-    if _lotto_from_source(str(doc.get("lotto") or "")) not in lotti:
-        raise HTTPException(403, "Pratica non assegnata a questa impresa")
-
-    return {"log": doc.get("log", []), "cantiere_key": cantiere_key, "pratica_id": doc.get("pratica_id")}
-
-
-# ── Gantt: override manuali per riga (pct/date/label), indipendenti dagli ───
-# invii impresa — non tutte le fasi (es. materiali) derivano da un invio.
-# Chiave riga: {lotto}|{row_id}, row_id = indice della riga nell'array
-# GANTT_ROWS lato frontend (statico, quindi stabile).
-
-@app.get("/api/gantt/overrides")
-async def get_gantt_overrides(lotto: str = "", sess: dict = Depends(_require_staff_session)):
-    if not lotto:
-        raise HTTPException(400, "lotto required")
-    cur = gantt_overrides_col.find({"lotto": lotto})
-    out = {}
-    async for d in cur:
-        out[str(d["row_id"])] = {
-            "pct": d.get("pct"),
-            "start": d.get("start"),
-            "end": d.get("end"),
-            "date": d.get("date"),
-            "label": d.get("label"),
-            "sub": d.get("sub"),
-            "dep_pred": d.get("dep_pred"),
-            "dep_type": d.get("dep_type"),
-            "dep_lag": d.get("dep_lag"),
-            "updated_at": d.get("updated_at"),
-            "updated_by": d.get("updated_by"),
-        }
-    return {"lotto": lotto, "overrides": out}
-
-
-@app.put("/api/gantt/overrides/{lotto}/{row_id}")
-async def upsert_gantt_override(lotto: str, row_id: str, payload: dict, sess: dict = Depends(_require_admin_session)):
-    fields = {}
-    for k in ("pct", "start", "end", "date", "label", "sub", "dep_pred", "dep_type", "dep_lag"):
-        if k in (payload or {}):
-            fields[k] = payload[k]
-    if not fields:
-        raise HTTPException(400, "Nessun campo da aggiornare")
-    if "pct" in fields:
-        try:
-            fields["pct"] = max(0, min(100, int(fields["pct"])))
-        except (TypeError, ValueError):
-            raise HTTPException(400, "pct deve essere un intero 0-100")
-    if "dep_pred" in fields:
-        dep_pred = fields["dep_pred"]
-        if dep_pred in (None, ""):
-            fields["dep_pred"] = None
-        else:
-            try:
-                dep_pred_int = int(dep_pred)
-            except (TypeError, ValueError):
-                raise HTTPException(400, "dep_pred deve essere un id riga intero")
-            if str(dep_pred_int) == str(row_id):
-                raise HTTPException(400, "Un task non può dipendere da se stesso")
-            fields["dep_pred"] = dep_pred_int
-    if "dep_type" in fields and fields["dep_type"] not in ("FS", "SS"):
-        raise HTTPException(400, "dep_type deve essere 'FS' o 'SS'")
-    if "dep_lag" in fields:
-        try:
-            fields["dep_lag"] = max(0, int(fields["dep_lag"]))
-        except (TypeError, ValueError):
-            raise HTTPException(400, "dep_lag deve essere un intero >= 0")
-    doc = {"lotto": lotto, "row_id": row_id, **fields,
-           "updated_at": _now_iso(), "updated_by": sess["nome"]}
-    await gantt_overrides_col.update_one(
-        {"lotto": lotto, "row_id": row_id},
-        {"$set": doc, "$setOnInsert": {"created_at": _now_iso()}},
-        upsert=True,
-    )
-    return {"ok": True, "lotto": lotto, "row_id": row_id, **fields}
-
-
-@app.delete("/api/gantt/overrides/{lotto}/{row_id}")
-async def delete_gantt_override(lotto: str, row_id: str, sess: dict = Depends(_require_admin_session)):
-    """Ripristina il valore automatico/baseline per la riga (rimuove l'override manuale)."""
-    res = await gantt_overrides_col.delete_one({"lotto": lotto, "row_id": row_id})
-    return {"deleted": res.deleted_count}
-
-
-# ── Tasso di produzione scavo (m/giorno), configurabile per scope ────────────
-# scope è una stringa libera con 4 forme valide:
-#   "global"              → default di fallback, usato se nessuna regola più specifica esiste
-#   "lotto:<ID>"           es. "lotto:1A"
-#   "impresa:<NOME>"       es. "impresa:ROSSI SPA" (nome esatto come in assignments_col)
-#   "pratica:<CODICE>"     es. "pratica:AUT/1/1A" (codice pratica completo, univoco anche tra lotti)
-# Il frontend risolve la priorità (pratica > impresa > lotto > global) leggendo tutte le
-# regole in un colpo solo via GET e applicando la più specifica per ciascuna pratica.
-_GANTT_RATE_SCOPE_PREFIXES = ("lotto:", "impresa:", "pratica:")
-
-
-def _validate_gantt_rate_scope(scope: str) -> None:
-    if scope == "global" or scope.startswith(_GANTT_RATE_SCOPE_PREFIXES):
-        return
-    raise HTTPException(400, "scope deve essere 'global', 'lotto:<ID>', 'impresa:<NOME>' o 'pratica:<CODICE>'")
-
-
-@app.get("/api/gantt/rates")
-async def get_gantt_rates(sess: dict = Depends(_require_staff_session)):
-    cur = gantt_rates_col.find({})
-    out = {}
-    async for d in cur:
-        out[d["scope"]] = {
-            "m_giorno": d.get("m_giorno"),
-            "updated_at": d.get("updated_at"),
-            "updated_by": d.get("updated_by"),
-        }
-    return {"rates": out}
-
-
-@app.put("/api/gantt/rates/{scope:path}")
-async def upsert_gantt_rate(scope: str, payload: dict, sess: dict = Depends(_require_admin_session)):
-    _validate_gantt_rate_scope(scope)
-    try:
-        m_giorno = float((payload or {}).get("m_giorno"))
-    except (TypeError, ValueError):
-        raise HTTPException(400, "m_giorno deve essere un numero")
-    if m_giorno <= 0 or m_giorno > 10000:
-        raise HTTPException(400, "m_giorno deve essere un valore positivo plausibile (0-10000)")
-    doc = {"scope": scope, "m_giorno": m_giorno, "updated_at": _now_iso(), "updated_by": sess["nome"]}
-    await gantt_rates_col.update_one(
-        {"scope": scope},
-        {"$set": doc, "$setOnInsert": {"created_at": _now_iso()}},
-        upsert=True,
-    )
-    return {"ok": True, "scope": scope, "m_giorno": m_giorno}
-
-
-@app.delete("/api/gantt/rates/{scope:path}")
-async def delete_gantt_rate(scope: str, sess: dict = Depends(_require_admin_session)):
-    """Rimuove la regola per questo scope: la pratica ricade sul livello meno specifico successivo."""
-    res = await gantt_rates_col.delete_one({"scope": scope})
-    return {"deleted": res.deleted_count}
-
-
-# ── Trigger sync cantieri dopo approvazione Master.csv ───────────────────────
-# _sync_cantieri() è già chiamata alla fine di approve_pending_update
-# (vedi hook sotto) — aggiungiamo il trigger se non esiste
+Fonte: checklist Excel utente. Solo voci non "Completato" (34/59 già completate, non riportate qui — vedi file originale per lo storico completo).
+
+| ID | Pagina | Descrizione | Stato | Priorità | Note |
+|---|---|---|---|---|---|
+| 6.1 | imprese_scavi | Implementare modello strutturato caricamento dati scavi | In corso | Alta | |
+| 6.3 | imprese_scavi | Identificare informazioni da visualizzare nella pagina dedicata | In corso | Alta | |
+| 6.4 | imprese_scavi | Migliorare la visibilità delle card dei cantieri | In corso | Alta | |
+| 10 | NEW | Pagina Gantt progetto + tabella associazione impresa/lotti/cluster (%design, %perm, %delivery, metri totali) | Da fare | Alta | ENTRO MERCOLEDÌ |
+| 11.6 | Master | Pratica NO/27/1A: correggere data invio (da quando è partito ENRI) | Da fare | Alta | |
+| — | server.py | `SESSION_SECRET` a 8 cifre numeriche | Aperto (voluto) | Bassa | Bruteforce offline HMAC in tempi brevi se un token viene intercettato — rischio accettato dall'utente per la minaccia target ("smanettone", non attaccante dedicato) |
+| 11.1 | Index | Eliminare previsione "mia" e richiederla all'impresa | Chiuso (rev.48) | — | Campo compilato dall'impresa, non più calcolato |
+| 11.2 | Index | Creare nuova colonna "update" | Già presente (rev.44) | — | |
+| — | All | Rename `COORDINAMENTO`→`INVIO PRELIMINARE` | Risolto (rev.43) | — | |
+| 11.4 | Index | Portare i solleciti nei popup insieme alle note | Chiuso (rev.167) | — | Badge dedicati (`_solBadge`/`_solSedBadge`), popup separato da Note |
+| 11.9 | Master | % ottenuto Valtellina non compare (lotto piccolo?) | Risolto (rev.49) | — | Soglia `pct>=5` nascondeva la % su segmenti piccoli |
+| 12.1/12.2 | Scavi | Associazione/visibilità lotto-impresa nelle card cantiere | Chiuso (rev.77) | — | Card "Performance Imprese" + colonna Impresa nei modal |
+| 12.3 | Scavi | Stato cantieri in topbar più grande | Chiuso (rev.76) | — | |
+| 12.4/13 | Scavi | Tabella imprese + vista dirigenziale | Chiuso (rev.76) | — | |
+| — | Scavi | Font-size sotto i 12px fuori brand kit | Chiuso (rev.101) | — | |
+| — | Mappa_imprese_caricamento | Export geojson lotti impresa | Chiuso (rev.78-80) | — | `exportGeoJSONLotti()` |
+| — | Imprese | Stato ex-coordinamento (Invio Preliminare) | Chiuso (rev.112) | — | Già in `STATO_TRANSITIONS` |
+| — | Master/server | Colonna `DATA_UPDATE` mancante | Chiuso (rev.114-115) | — | Colonna + `_touch_data_update*` per i solleciti |
+| — | milestone.html/admin.html | Guardia auth mancante | Chiuso (rev.131-132) | Sicurezza | Guardia client-side; per le pagine dati la vera barriera è `_require_staff_session` server-side (rev.129) |
+| — | server.py | Endpoint staff senza controllo ruolo | Chiuso (rev.129-130) | Sicurezza | `_require_staff_session` su 6 endpoint (v. changelog) |
+| — | server.py | GridFS senza limite versioni | Chiuso (rev.130-131bis) | — | `KEEP_VERSIONS=4` + prune automatico |
+| — | server.py | Login senza rate limit | Chiuso (2026-07-06) | — | Lockout 429/300s dopo 5 tentativi falliti (in-memory) |
+
+---
+
+## 12. Decisioni architetturali del 26/08/2026 — motore Stato Lotti / Rischio ROS
+
+Sessione di revisione completa del motore parametrico in `stato_lotti.html`. Decisioni **definitive**, da rispettare in ogni modifica futura al motore.
+
+### 12.1 Endpoint parametri
+
+- `GET /api/parametri` (staff-only, `_require_staff_session`) — parsa server-side (openpyxl) l'xlsx `Parametri_configurazione_dashboard_ENRI.xlsx`, caricato via `admin.html` con lo stesso meccanismo upload/GridFS di `Master.csv`.
+- **Safety net in `upload_file()`**: se `out_name == PARAMETRI_FILENAME`, `convert_to_csv` è forzato a `False` anche se il client non lo passa — altrimenti la conversione automatica xlsx→csv (default `True`, non esposta in `admin.html`) terrebbe solo il primo dei 9 fogli, distruggendo il resto.
+- Tutte le soglie, pesi, produttività, tempi autorizzativi, regole azione vengono da lì. **Nessuna logica di business hardcoded** nel motore JS.
+- Cache in-process (`_parametri_cache`), invalidata su cambio `gridfs_id`.
+- **Principio**: in assenza di un parametro, il fattore/dato che ne dipende è marcato "dato insufficiente" — mai un default silenzioso.
+
+### 12.2 Motore rischio ROS — 5 fattori
+
+`R_SCAVI` (peso 35%), `R_AUTH` (25%), `R_SOSP` (15%), `R_MS` (15%), `R_BLOCCHI` (10%). Formule dettagliate in `buildTrasparenzaPanel()`, riassunto:
+
+| Fattore | Misura | Interpolazione |
+|---|---|---|
+| R_SCAVI | squadre necessarie / squadre disponibili | 1,00→0pt, 1,50→100pt |
+| R_AUTH | vedi §12.3 | — |
+| R_SOSP | metri sospesi residui / metri residui scavo | 5%→0pt, 20%→100pt (×1,2 se manca data ripresa, cap 100) |
+| R_MS | giorni superamento milestone (peggiore tra tutte, non media) | 1gg→0pt, 30gg→100pt |
+| R_BLOCCHI | metri bloccati nulla osta/ordinanza / metri residui **progettazione** (non scavo) | 5%→0pt, 20%→100pt, × coeff. urgenza (giorni residui ROS / tempo atteso ente) |
+
+- Punteggio finale = **media pesata** dei fattori disponibili.
+- Fattore non disponibile → **escluso dal calcolo**, pesi **rinormalizzati** sui rimanenti (mai punti arbitrari).
+- Pannello "Come è stato calcolato" (`buildTrasparenzaPanel()`) sempre presente: dati oggettivi, milestone usata, squadre/capacità, formule, motivazione azione, parametri globali.
+
+### 12.3 R_AUTH — revisione architetturale definitiva
+
+**Non usa più** milestone ROS di scavo (p100) né alcun dato scavi. Basato **esclusivamente** sulla curva autorizzativa propria del lotto (invio → ottenimento), via `computeFaseAutorizzativa()`:
+
+```
+oggi < invio            → coef_fase = 0   (100% non autorizzato è fisiologico, non genera rischio)
+oggi ≥ invio             → coef_fase a bande sulla distanza da "ottenimento":
+                            >90gg→1 · 60-90gg→1,25 · 30-60gg→1,5 · <30gg/scaduta→2
+invio/ottenim assenti:
+  kmOtt > 0              → coef_fase = 1 (prudenziale, dichiarato nel pannello)
+  kmOtt = 0 e no milestone → R_AUTH = "dato insufficiente" (mai dedotto dai dati scavi)
+```
+
+Motivo: la versione precedente usava la milestone ROS di scavo come proxy di urgenza, appiattendo **8 lotti su 12** a un punteggio fisso di 25/100 (0,25×100) perché non ancora arrivati a "invio" — 100% non autorizzato veniva letto come rischio massimo anche per lotti semplicemente non ancora iniziati. Dopo il fix quegli 8 lotti scendono correttamente a 0/100 su questo fattore, e il modello torna discriminante (verificato lotto per lotto sui 12 lotti reali).
+
+**Principio guida**: mai dedurre lo stato di un dominio (autorizzativo) dai dati di un altro dominio (scavi) — v. §12.6.
+
+### 12.4 ACT_AUTH_MS e ACT_PROG — stessa correzione di dominio
+
+Entrambe le regole azione usavano dati fuori dal dominio autorizzativo, con lo stesso effetto distorsivo di R_AUTH pre-fix:
+
+- **`ACT_AUTH_MS`** (in `computeAzioneParametrica()`) usava la milestone ROS scavi. Corretta per usare `computeFaseAutorizzativa()` (milestone invio/ottenimento), coerente con R_AUTH.
+- **`ACT_PROG`** ("Accelerare progettazione e invio") scattava su `kmNonInviato > 0`, sempre vero prima di "invio" (100% non ancora presentato è fisiologico in quella fase) — suggeriva un'azione correttiva per una condizione normale. Corretta aggiungendo la stessa guardia: `faseProg.disponibile && faseProg.coefFase > 0`, quindi mai prima di "invio" né quando la fase è indeterminata (mai un'azione basata su un'inferenza).
+
+### 12.5 Conteggio pratiche vs tratte
+
+Bug: il motore contava le righe di `Riepilogo_progettazione.csv` (tratte) come se fossero "pratiche" — una pratica può coprire più tratte (campo `PRATICA`, es. `AUT/24/1A | NO/22/1A | NO/26/1A | NO/28/1A`). Fix in `countPratiche()`:
+- campo `PRATICA` valorizzato su **tutte** le righe del lotto → conteggio di pratiche distinte (dedup sull'intera stringa del campo, dichiarato come tale nel pannello);
+- campo assente/parziale → dichiarato esplicitamente **"tratte"**, mai spacciato per "pratiche".
+
+### 12.6 Nulla osta vs ordinanze in R_BLOCCHI
+
+`STATO_ORDINANZA` è oggi scarsamente/non affidabilmente alimentato nei dataset. R_BLOCCHI tratta come riferimento primario i **nulla osta** (codice dedicato `AUTH_NULLA_OSTA` nel foglio "Tempi autorizzativi"); le ordinanze restano supportate nello stesso fattore ma senza codice tempo dedicato — usano fallback `AUTH_CONSORZIO` (dichiarato nel pannello), e non guidano le scelte di soglia/peso del modello finché il dato non migliora a monte.
+
+### 12.7 Relazione R_SOSP ↔ R_BLOCCHI — causa e conseguenza, non deduplicati
+
+Decisione confermata: restano **due fattori distinti**, **nessuna deduplicazione automatica**, anche quando la stessa `pratica_id` genera sia un cantiere sospeso (R_SOSP, effetto operativo) sia una tratta bloccata (R_BLOCCHI, causa autorizzativa) — è normale che lo stesso procedimento amministrativo produca entrambe le conseguenze, e un PM in SAL deve vederle entrambe.
+
+`collegamentiSospesiBlocchi()` incrocia `pratica_id` del cantiere sospeso con `PRATICA` delle tratte in R_BLOCCHI (split su `|`, match esatto sui token) e mostra il collegamento nel pannello di trasparenza quando esiste, così l'utente capisce che non sono due criticità indipendenti.
+
+### 12.8 Causa operativa — "criticità presente" vs "criticità impattante"
+
+`computeCausaOperativa()` elencava i fattori attivi con il solo dato oggettivo grezzo (es. "6 tratte bloccate da nulla osta"), senza indicare quanto quel fattore pesasse realmente sul punteggio finale — creando un'apparente contraddizione nei lotti "Basso" con una causa dall'aspetto grave ma peso ridotto (fattore disponibile isolato, con gli altri 4 a zero, quindi pesi rinormalizzati bassi). Corretto aggiungendo a ogni causa il contributo pesato reale: `"... — impatto ROS X,X pt"`. Distingue esplicitamente fatto oggettivo (criticità presente) da impatto sul punteggio (criticità impattante sulla milestone), senza introdurre soglie di visibilità arbitrarie non presenti nei parametri.
+
+### 12.9 Principi guida del motore (validi per ogni estensione futura)
+
+1. Separare sempre **causa** (es. R_BLOCCHI, atto amministrativo) da **conseguenza** (es. R_SOSP, effetto operativo) — non deduplicare, ma dichiarare la relazione.
+2. **Mai** usare dati scavi per dedurre stati autorizzativi, né viceversa (dati autorizzativi per dedurre capacità operativa/squadre).
+3. Preferire sempre "dato insufficiente" dichiarato a un'inferenza indiretta non supportata dai dati.
+4. Ogni punteggio ROS deve essere ricostruibile dal pannello "Come è stato calcolato" — dati oggettivi, parametri, formula, motivazione.
+
+### 12.10 R_SCAVI phase-aware e allineamento ACT_CAP_SCAVI/ACT_ORD (2026-08-30)
+
+**R_SCAVI** ora usa un gate di fase analogo a R_AUTH (§12.3), dominio scavi puro: `computeFaseScavi(row, parametri)` calcola la fase rispetto alla milestone **avvio** del lotto (`row.m.avvio`, milestone.html), usando `PERMESSI_FINESTRA_IMPATTO` come finestra di attivazione:
+```
+avvio tracciato:
+  oggi ≥ avvio                              → attiva=true (fase iniziata)
+  oggi < avvio, giorni_residui ≤ finestra   → attiva=true (avvio entrato in finestra)
+  oggi < avvio, giorni_residui > finestra   → attiva=false (non ancora rilevante)
+avvio non tracciato:
+  cantieri già censiti per il lotto         → attiva=true (fallback prudenziale, stesso dominio)
+  nessun cantiere censito                   → disponibile=false ("dato insufficiente")
+```
+Quando `attiva=false`, `fattoreRScavi` restituisce `punti:0` (fattore comunque `disponibile:true`, stesso pattern di R_AUTH pre-invio — mai escluso/rinormalizzato, semplicemente non pesa). Principio: non penalizzare un lotto con zero squadre oggi ma avvio previsto a distanza (mesi).
+
+**ACT_CAP_SCAVI** riceve lo stesso gate (`computeFaseScavi`) in `computeAzioneParametrica`: l'azione "Incrementare capacità operativa" scatta solo se la fase scavi è rilevante, oltre alla condizione esistente `squadreNecessarie > squadreDisponibili`. Correzione della stessa natura di §12.4 (ACT_AUTH_MS/ACT_PROG): un'azione non può basarsi su un dato che il fattore di rischio corrispondente considera non ancora rilevante.
+
+**ACT_ORD** — condizione precedente (`metriBloccati > 0`) sostituita da una regola meno aggressiva, concordata con l'utente dopo il caso Lotto 8 (R_BLOCCHI "Nessun impatto" ma azione "Sollecitare rilascio atto" contemporaneamente — incoerente): `metriBloccati > 0` **e almeno una delle seguenti**:
+- R_BLOCCHI sopra soglia attenzione (`row.rischio.fattori.R_BLOCCHI.punti > 0`, letto dal risultato già calcolato — `computeAzioneParametrica` gira dopo `computeRischioComposito` nel loop di `render()`, v. ordine in `row.capacita`/`row.rischio`/`row.azioneInfo`);
+- milestone ottenimento entro `PERMESSI_FINESTRA_IMPATTO` (stesso calcolo di `ACT_AUTH_MS`, via `computeFaseAutorizzativa`);
+- avvio scavi entro `PERMESSI_FINESTRA_IMPATTO` (`computeFaseScavi(row, parametri).attiva`);
+- esistenza di un cantiere sospeso collegato alla stessa pratica (`collegamentiSospesiBlocchi(row).some(c => c.collegamento)`).
+
+**Nota aperta**: se un lotto ha `rosScaduta=true` (milestone finale scavi già superata) ma la fase scavi non è ancora `attiva` secondo `computeFaseScavi` (avvio previsto oltre la finestra), R_SCAVI resta a 0 — il gate di fase ha priorità sul controllo di scadenza. È uno scenario di dati contraddittorio (milestone finale scaduta con avvio non ancora iniziato) che comunque emergerebbe già da R_MS; non gestito come caso speciale su richiesta esplicita dell'utente (priorità al gate di fase).
+
+**Verifica**: non eseguita in questa sessione — i dati reali dei 12 lotti (Riepilogo_progettazione.csv, /api/cantieri) vivono solo su MongoDB/Render, non accessibili dall'ambiente di sviluppo. Da verificare sull'app in esecuzione (in particolare Lotto 8, 1A, 1B, 2A, 2B come richiesto dall'utente). `node --check` OK su entrambi i blocchi `<script>`.
+
+---
+
+_Ultimo aggiornamento: 2026-08-30 (rev. 244)_
+
+- **rev.244** — `stato_lotti.html`: R_SCAVI reso phase-aware (nuova `computeFaseScavi()`, gate su milestone avvio + `PERMESSI_FINESTRA_IMPATTO`, stesso pattern di R_AUTH/§12.3), stesso gate applicato a `ACT_CAP_SCAVI`, e condizione `ACT_ORD` sostituita da `metriBloccati>0` + almeno una tra (R_BLOCCHI sopra soglia attenzione / milestone ottenimento entro finestra / avvio scavi entro finestra / cantiere sospeso collegato). Aggiunto blocco "Fase scavi" al pannello "Come è stato calcolato". Dettaglio completo in **§12.10**. Verifica sui 12 lotti reali non eseguita (dati solo su Mongo/Render, non accessibili da qui) — da fare sull'app.
+
+_Ultimo aggiornamento: 2026-08-27 (rev. 243)_
+
+- **rev.243** — Allineati al pattern `direct:true`/backend gli ultimi 3 fetch in chiaro di file `SENSITIVE_FILES` rimasti dopo la rimozione di `gantt.html` (rev.242): `scavi.html` (`_loadQgisGeojsonForMappa`, leggeva `QGIS.geojson` staticamente per la mini-mappa cantieri attivi), `index.html` (`loadSED`, sezione SED — a differenza di scavi.html non aveva fallback silenzioso: un errore qui bloccava la sezione con un messaggio visibile all'utente), `stato_lotti.html` (`loadAll`, leggeva `Riepilogo_progettazione.csv` staticamente). Tutti e 3 ora usano `apiBase + '/api/data-text/<file>'` con header `x-session-token`, stesso pattern già in uso in `mappa.html`. Verificato con `node --check` su tutti i blocchi `<script>` di ciascun file. Con questo fix, tutti e 4 i file in `SENSITIVE_FILES` (`Master.csv`, `QGIS.geojson`, `SED_classificato.geojson`, `Riepilogo_progettazione.csv`) sono ora effettivamente Mongo-only e cancellabili da GitHub senza impatti funzionali (già rimossi da git: `QGIS.geojson`, `Master.csv`, `gantt.html`, `dati.csv`).
+
+_Ultimo aggiornamento: 2026-08-27 (rev. 242)_
+
+- **rev.242** — Rimossa la pagina `gantt.html` (ritenuta inutile/superata da `stato_lotti.html`, su richiesta esplicita dell'utente). Ripulito il riferimento in `hub.html` (card `#ganttCard` markup + le 2 righe JS che la mostravano agli admin) e in `backend/server.py`: rimossi i 4 endpoint `GET/PUT/DELETE /api/gantt/overrides` e `GET/PUT/DELETE /api/gantt/rates`, l'helper `_validate_gantt_rate_scope()`, le collection Mongo `gantt_overrides_col`/`gantt_rates_col` e il relativo `create_index`. Nessun altro file dipendeva da questi endpoint (il gantt chart di `milestone.html` è indipendente, non li chiamava). `py_compile` OK. Nota collegata: `gantt.html` era anche l'unico consumer del fetch non protetto `fetch('Master.csv', {headers:...})` — con la pagina rimossa, restano solo `index.html` (SED_classificato.geojson) e `stato_lotti.html` (Riepilogo_progettazione.csv) a leggere file `SENSITIVE_FILES` in chiaro via fetch relativo invece che `direct:true`/`/api/data-text` — da allineare se si vogliono togliere anche quei 2 file da GitHub.
+
+_Ultimo aggiornamento: 2026-08-26 (rev. 241)_
+
+- **rev.241** — `stato_lotti.html`: due correzioni di follow-up su §12 dopo verifica utente sui 12 lotti reali. (1) `ACT_PROG` applicava lo stesso bug di dominio già corretto per R_AUTH (suggeriva "Accelerare progettazione e invio" anche prima della milestone "invio", quando il 100% non presentato è fisiologico) — ora gated da `computeFaseAutorizzativa()`. (2) `computeCausaOperativa()` ora mostra il contributo pesato reale accanto a ogni causa (`"— impatto ROS X,X pt"`), per distinguere una criticità oggettivamente presente da una che pesa poco sul punteggio finale (caso Lotto 1B: causa "grave" all'apparenza, classe Basso — ora coerenti). Dettaglio in §12.4 e §12.8.
+
+_Ultimo aggiornamento: 2026-08-26 (rev. 240)_
+
+- **rev.240** — `stato_lotti.html`+`admin.html`+`backend/server.py`: motore Stato Lotti riscritto da zero come **motore parametrico** (nessuna soglia/peso/produttività hardcoded). Nuovo endpoint `GET /api/parametri` (parsing server-side xlsx multi-foglio). 5 fattori rischio ROS (R_SCAVI/R_AUTH/R_SOSP/R_MS/R_BLOCCHI) con pesi rinormalizzati sui fattori disponibili, azioni suggerite da tabella regole (non più if/else), causa operativa ranked per contributo pesato, squadre/capacità produttiva calcolate da parametri di lotto, pannello "Come è stato calcolato" per ogni lotto. Iterazione di validazione con l'utente su dati reali (12 lotti) ha corretto 2 bug (conteggio pratiche vs tratte contate come pratiche; campo `pratica` non propagato nel dettaglio R_AUTH) e portato a una revisione architetturale di R_AUTH (dominio autorizzativo puro, non più agganciato alla milestone ROS scavi — appiattiva 8/12 lotti a punteggio fisso). Dettaglio completo delle decisioni in **§12**.
+
+_Ultimo aggiornamento: 2026-08-24 (rev. 238)_
+
+- **rev.238** — `hub.html`, card "Avanzamento Lavori" (`#scaviCard`): rimossa la dicitura statica "In arrivo" (`#scaviBadge`), non più corretta ora che `scavi.html`/`imprese_scavi.html` sono operativi. Badge ora nascosto di default (`style="display:none"`) e mostrato solo per ruoli non abilitati (`SCAVI_ALLOWED_ROLES`), con testo cambiato in "Accesso riservato" (era comunque "In arrivo" anche in quel ramo, fuorviante — non è una feature futura ma una restrizione di ruolo).
+- **rev.237** — `imprese_scavi.html`, `urgencyOf()`: **bug reale segnalato dall'utente da screenshot** — un cantiere `sospeso` con `data_ripresa_stimata` **futura** (es. Sielte/Rozzano, ripresa 14/09/2026) veniva comunque segnalato "Da aggiornare" solo perché l'ultimo caricamento risaliva a >7gg fa, mentre in `scavi.html` (`_registroStatus()`) risultava correttamente "in linea" perché quella pagina guarda `data_ripresa_stimata` invece della staleness del log per lo stato sospeso. Le due pagine avevano quindi logiche divergenti sullo stesso stato (nota già lasciata aperta in rev.233: "sospeso — lì non esiste un check di scadenza reale... nota per l'utente se in futuro si vuole allineare"). Fix: allineato a `scavi.html` — se `data_ripresa_stimata` è presente, l'allarme dipende solo dal suo superamento (`late` se scaduta, altrimenti `done` a prescindere dai giorni di inattività); il fallback su soglie giorni-da-update (2/7gg) resta invariato solo quando `data_ripresa_stimata` è assente. `mappa_impresa_caricamento.html` verificato: nessuna logica KPI/urgenza propria (solo form inserimento dati), nessuna modifica necessaria lì.
+
+_Ultimo aggiornamento: 2026-08-19 (rev. 236)_
+
+- **rev.236** — `mappa.html`, popup tratta (2 richieste utente).
+  1. **Bug reale**: la nuova feature "ente per pratica" nel popup (indice `RO_PRATICA_ENTE` da `Master.csv`, badge `AUT/24/1A · COMUNE DI PERO`) non compariva mai. Causa: `fetchWithSWR(rel, {direct:true})` faceva `fetch(rel + qs, ...)` con `rel` nudo (es. `'Master.csv'`), senza prefisso `apiBase` né path `/api/data-text/` — il backend espone solo route `/api/...` (nessuna route bare in `server.py`), quindi la fetch falliva silenziosamente (`.catch(()=>null)`) e `RO_PRATICA_ENTE` restava `{}` per sempre. Pattern corretto già presente in `polizze_convenzioni.html` (`apiBase + '/api/data-text/Master.csv'`). Fix applicato al branch `direct` di `fetchWithSWR`: ora costruisce `apiBase() + '/api/data-text/' + rel`. Effetto collaterale positivo: stesso branch usato anche da `QGIS.geojson`/`SED_classificato.geojson`, che ora vanno sempre a dati freschi da Render invece che a un'eventuale copia statica congelata su GitHub Pages da prima del giro di sicurezza (rev.139).
+  2. Layout popup: rimosso il campo "Ente" standalone (grid-column:span 2) — informazione ridondante ora che ogni codice pratica mostra già il proprio ente nella badge. Il blocco "Pratiche" passa da colonna stretta a `popup-field full` (riga intera), così con 3-4 pratiche le badge scorrono su tutta la larghezza invece di impilarsi in una colonna lunga.
+  `node --check` non eseguito in questa sessione (nessun ambiente node disponibile) — verificare al prossimo giro prima del deploy.
+
+- **rev.235** — `imprese_scavi.html`: 2 richieste utente da screenshot.
+  1. Card cantieri ora ordinate per `codice_cantiere` crescente (`localeCompare` con `numeric:true`, stesso pattern già usato altrove nel file per l'ordinamento dei lotti) — aggiunto in `getFilteredItems()`, applicato dopo i filtri. Prima non c'era alcun ordinamento, veniva mostrato l'ordine grezzo restituito dal backend.
+  2. **Bug reale segnalato** ("il carattere è orrendo" sull'input "Inserisci metri"): il campo aveva il font previsto (`--font-body`/Raleway, brand kit §Typography) sovrascritto silenziosamente da una regola globale `input[type=number] { font-family:var(--font-mono) }` — applicata a **tutti** i campi numerici del sito, non solo quello segnalato, per via di una specificità CSS identica alla regola più recente che vinceva in cascata. Rimossa la regola globale (i campi number ora ereditano font-body come testo/data/select, coerente col resto della UI). Non toccato `.input-big` (usato nel form di modifica cantiere) che mantiene volutamente il mono per enfasi su un valore numerico grande. `node --check` OK.
+
+- **rev.234** — `imprese_scavi.html`: 2 richieste utente da screenshot.
+  1. Riordinate le card KPI: "Non aggiornato" spostata prima di "In ritardo" (ordine ora: Da aggiornare oggi → Non aggiornato → In ritardo → Da aggiornare → Aggiornati). Solo ordine markup, nessuna modifica a logica/conteggi.
+  2. **Bug reale segnalato**: la barra di ricerca (`.toolbar-search`) aveva un'altezza diversa dai filtri select (`.select-wrap`, 2 righe label+valore) e dai bottoni "Pulisci filtri"/"Aggiorna" (`.btn-sm`) — nessuno dei tre aveva un'altezza esplicita, ognuno si dimensionava sul proprio contenuto/padding (~34px/~38px/~28px), risultando visibilmente disallineati sulla riga toolbar nonostante `align-items:center`. Fix: `min-height:40px` + `box-sizing:border-box` su tutti e tre; `.select-wrap` passato a `display:flex;flex-direction:column;justify-content:center` per centrare verticalmente label+select nella nuova altezza fissa. `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 233)_
+
+- **rev.233** — `imprese_scavi.html`, `urgencyOf()`: richiesta utente — ridefinito il significato di "In ritardo" per lo stato `in_corso`: prima scattava anche per semplice staleness (`dsUpdate>7`, incluso il caso mai-aggiornato → `Infinity`); ora scatta **solo** per vera scadenza superata (`data_fine_prevista` scaduta). Nuovo 5° stato `'non_aggiornato'` ("Non aggiornato", badge/KPI grigio neutro `--gray-500`/`--gray-100`, nuova classe `.cant-urgency.u-non_aggiornato`): cantiere avviato (`in_corso`) ma con `log_count===0` (nessun caricamento impresa mai avvenuto) — prima ricadeva in "In ritardo" via staleness infinita, ora è categoria propria. Cantiere avviato **con** dati ma stale >2gg → resta "Da aggiornare" **senza più scalare** a "In ritardo" dopo 7gg (rimossa la soglia `dsUpdate>7`). Nuova 5ª card KPI "Non aggiornato" (`kpiNone`, grid `.kpi-row` 4→5 colonne, breakpoint responsive aggiornati 800px→1000px/640px); "Da aggiornare oggi" ora somma late+soon+non_aggiornato. Sottotitoli KPI aggiornati di conseguenza: "In ritardo" → "fine lavori prevista scaduta", "Da aggiornare" → "aggiornamento > 2 giorni". **Non toccato**: `non_avviato`/`allestimento` (logica su `data_inizio_prevista` invariata) e `sospeso` (soglie 2/7gg su staleness invariate — lì non esiste un check di scadenza reale come `data_fine_prevista`, quindi la staleness resta l'unico segnale disponibile; nota per l'utente se in futuro si vuole allineare anche questo stato). `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 232)_
+
+- **rev.232** — `imprese_scavi.html`, `urgencyOf()`: richiesta utente — unito lo stato `'ok'` ("In linea", rev.231) dentro `'done'` ("Aggiornato"): un cantiere non ancora dovuto (inizio non scaduto), aggiornato di recente (in_corso, ≤1gg), o sospeso da ≤2gg ora mostra badge/colore "Aggiornato" invece di un 4° stato blu separato. Rimossi `URGENCY_LABEL.ok`/`URGENCY_ICON.ok`/`.cant-urgency.u-ok` (dead code). KPI: card "Aggiornati" ora conta anche i cantieri "in linea" (non solo quelli aggiornati oggi) — sottotitolo cambiato da "oggi" a "nessuna azione richiesta" per riflettere il nuovo significato. Le altre 3 card (Da aggiornare oggi/In ritardo/Da aggiornare) e le rispettive soglie non toccate. `node --check` OK.
+- **Manutenzione file**: trovata e rimossa una duplicazione integrale nel log sotto — i 3 blocchi rev.206/207/208 (`gantt.html`) erano incollati due volte, identici. Segnalata (non rinumerata) una collisione di numerazione rev.209–213 tra due sessioni diverse — v. nota nel log.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 231)_
+
+- **rev.231** — `imprese_scavi.html`, `urgencyOf()`: seguito rev.230 — richiesta utente da screenshot, i flag badge sulle card erano scomparsi per i cantieri "in linea" (nessuna scadenza ancora dovuta), perché la funzione tornava `null` in quei casi e il badge non veniva renderizzato affatto. Aggiunto un 4° stato `'ok'` ("In linea", badge blu `--retelit-blue`/`--retelit-ice`, nuova classe `.cant-urgency.u-ok`) restituito al posto di `null` in tutti i casi "a posto" (non_avviato/allestimento con inizio non ancora scaduto, in_corso senza scadenze superate e aggiornato di recente, sospeso aggiornato ≤2gg fa) — così ogni cantiere non completato mostra sempre un badge. `completato` resta senza badge (già ridondante con lo stato principale). `renderKpi()`/contatori KPI invariati: continuano a contare solo late/soon/done, `'ok'` non vi rientra. `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 230)_
+
+- **rev.230** — `imprese_scavi.html`, `urgencyOf()`: **bug reale segnalato dall'utente da screenshot** — un cantiere in `allestimento`/`non_avviato` con `data_inizio_prevista` nel **futuro** (es. 24/08/2026 con oggi 09/08/2026) veniva comunque segnalato "IN RITARDO"/"DA AGGIORNARE", perché la funzione guardava solo i giorni dall'ultimo `updated_at` (mai aggiornato → `Infinity` → sempre in ritardo), ignorando che il cantiere non è ancora dovuto partire. Riscritta con logica deadline-aware per stato, stesso principio già usato in `scavi.html`/`_registroStatus()` (rev.10-33): non_avviato/allestimento → urgenza basata su `daysOverdue(data_inizio_prevista)` (nessun badge se non ancora scaduta, poi soon ≤2gg oltre / late oltre); in_corso → `data_fine_prevista` scaduta = late immediato, altrimenti fallback su giorni da `updated_at` (done/soon/late con soglie 1/7gg anziché 0/7 generiche); sospeso → soglie più permissive sui giorni da `updated_at` (2/7gg, non genera falsi allarmi durante un blocco). Nuovo helper `daysOverdue(dateStr)` (positivo=scaduta, negativo=futura, null se assente). `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 229)_
+
+- **rev.229** — `imprese_scavi.html`: richiesta utente — rimossi i riferimenti al dettaglio tratte, non necessari su questa pagina (livello di dettaglio impresa, non tecnico). Card: eliminato "N tratte (M in attesa N.O.)" dalla `.cant-info-line`, mantenuto solo "+X m in attesa N.O." (avviso sui metri, non sulle tratte). Form aggiornamento (`openForm()`): rimosso interamente `formTratteInfo` che elencava gli ID delle singole tratte lavorabili/bloccate (`tratta_id`). Rimosse variabili JS ora inutilizzate: `nBlocc`/`tratte` in `renderGrid()`, `totPot`/`tratte`/`lav`/`bloc` in `openForm()`. Nota: la classe CSS `.cant-tratta` (stile del codice cantiere) è rimasta — è solo un nome di classe interno, non mostra testo "tratte" all'utente.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 228)_
+
+- **rev.228** — `imprese_scavi.html`: richiesta utente — il formato data deve essere sempre italiano (gg/mm/aaaa), mai ISO grezzo. Trovate e corrette 3 date che sfuggivano a `fmtDateIT()`: colonna "Data" della tabella Storico (`e.data`), "Ripresa stimata" nelle note storico (`e.data_ripresa_stimata`), "Ripresa stimata" nel box sospeso della card cantiere (`r.data_ripresa_stimata`) — tutte mostravano `aaaa-mm-gg` grezzo. `scavi.html` già conforme (usa `fmtD()`, stesso pattern). Aggiunta convenzione permanente in memoria: date sempre in formato IT su tutta la dashboard.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 227)_
+
+- **rev.227** — `imprese_scavi.html`, `showStorico()`: richiesta utente da screenshot — il modal "Storico" mostrava solo il log caricamenti impresa (data/stato/tecnica/metri/note), non le 5 date pianificate/effettive del cantiere (`data_inizio/fine_prevista/effettiva`, `data_ripresa_stimata`), già salvate ma invisibili qui. Aggiunto pannello riepilogo (`.storico-dates`) sopra la tabella log, stesso pattern già usato in `scavi.html`/`openModalRegistro()` (rev.199) lato staff — 4 date sempre mostrate + Ripresa stimata se `stato_cantiere==='sospeso'`, visibile solo se almeno un campo è valorizzato.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 226)_
+
+- **rev.226** — `imprese_scavi.html`: richiesta utente da screenshot — card cantiere confuse. Rimosso `#lastAccess` ("Ultimo accesso: HH:MM:SS", CSS `.last-access` incluso). Redesign card cantiere: eliminata la `cant-stats-row` a 3 colonne in fondo (era ridondante — Tot. lavorabili/Tratte/Ultimo aggiornamento duplicavano dati già mostrati sopra), % avanzamento ora badge colorato (classe `fill-${stato}`) allineato a destra sopra la barra invece di testo piccolo affiancato ai metri; tratte/attesa N.O./date previste-effettive unificate in un'unica riga secondaria (`.cant-info-line`, separatore "·") al posto di 3-4 div separati; box "sospeso" ora evidenziato con sfondo invece di testo semplice. Stesso trattamento sui chip "Avanzamento per lotto" in alto (`agg-chip`): percentuale come badge prominente a destra (`.agg-chip-pct`, pill blu), nome+metri raggruppati a sinistra, barra sotto su riga propria.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 225)_
+
+- **rev.225** — `imprese_scavi.html`: richiesta utente. Rimosso l'hint-banner sopra il form aggiornamento ("Inserisci i metri realizzati dall'ultimo aggiornamento. I campi con * sono obbligatori."). Aggiunta nelle card cantiere una riga compatta (`.cant-dates-row`, 10px) con le date disponibili — `data_inizio/fine_prevista` ed `effettiva` — sotto il badge stato, visibile solo se almeno un campo è valorizzato; nessuna modifica a padding/grid/dimensioni della card (era già ad altezza automatica).
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 224)_
+
+- **rev.224** — `imprese.html`: causa reale del disallineamento dei filtri (non lo stile del checkbox in sé, era il CSS globale `label{margin-top:12px;margin-bottom:5px;display:block}` che si applica a QUALSIASI `<label>`, incluse le nostre label-wrapper dei filtri, spostandole verticalmente rispetto alla barra di ricerca). Aggiunto `margin:0` esplicito inline su entrambe le label filtro per neutralizzare l'eredità globale.
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 223)_
+
+- **rev.223** — richiesta utente dopo aver notato note ripetute su righe consecutive nel Master.csv (screenshot TR_0813): confermato che era il comportamento standard (copia riga precedente, sovrascrive solo i campi passati). Fix su due livelli:
+  1. `imprese.html`: nota ora **obbligatoria** per ogni aggiornamento in coda (`addToQueueBtn`) — validazione esplicita, `fields.NOTE = noteVal` sempre valorizzato (non più condizionale). Label "Note *" in rosso, placeholder aggiornato, textarea non più descritta come opzionale.
+  2. `backend/server.py`, `_apply_changes_to_df` (ramo append/non in_place): se `"NOTE" not in fields`, la nuova riga copiata azzera esplicitamente `NOTE` invece di ereditare quella della riga precedente — rete di sicurezza lato server indipendente dal frontend chiamante (copre eventuali altri path che creano submission "update" senza passare da imprese.html).
+  - Corretto anche stile checkbox filtri (accent-color/margin espliciti) per uniformità visiva tra "Previsione scaduta" e "Update oltre 5gg", segnalata come disallineata.
+  - ⚠️ nota: il ramo `in_place=True` (correzioni admin "Modifica dati") non è stato toccato — lì il pre-fill della nota esistente in modifica è intenzionale (è una correzione del testo, non un nuovo evento).
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 222)_
+
+- **rev.222** — `imprese.html`: cella DATA_UPDATE evidenziata in arancione/grassetto (`var(--warn)`) quando `_isUpdateScaduto(p)` è vero (stessa soglia 5gg del filtro rev.221).
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 221)_
+
+- **rev.221** — `imprese.html`: aggiunto secondo filtro checkbox "Update oltre 5gg" (`filterUpdateScaduto`) accanto a "Previsione scaduta". Helper `_isUpdateScaduto(p)`: vero se `DATA_UPDATE` vuota (mai aggiornata) o più vecchia di 5 giorni da oggi. Soglia fissa a 5gg (non configurabile, a differenza del tentativo in rev.218 poi rimosso).
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 223)_
+
+- **rev.223** — `imprese_scavi.html` + `imprese.html` + nuova cartella `docs/guide/`: richiesta utente — rendere scaricabili le 2 guide PDF create fuori sistema ("Guida rapida per le Imprese" testuale e "ENRI Guida Illustrata Area Impresa" con screenshot), dato che coprono anche `imprese.html` (non solo Scavi). File aggiunti al repo in `docs/guide/Dashboard_ENRI_Guida.pdf` e `docs/guide/ENRI_Guida_Illustrata_Area_Impresa.pdf` (link relativi da root, coerenti col fatto che il sito è servito da GitHub Pages). Aggiunta sezione "Guide scaricabili" in fondo a entrambi i modal guida esistenti: `#helpOverlay` di `imprese_scavi.html` (nuova sezione `.help-downloads`/`.help-download-link`) e il modal `_openHelp()` di `imprese.html` (stessa struttura ma inline, dato che qui il modal è generato via template string JS, non markup statico — nessuna nuova classe CSS globale per non toccare lo stile esistente della pagina). Non toccato `mappa_impresa_caricamento.html`: la guida copre anche quella pagina (pag. 9-12) ma non è stato richiesto esplicitamente — da valutare se allinearla allo stesso pattern in un prossimo giro. `node --check` OK su entrambi i file.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 222)_
+
+- **rev.222** — `imprese_scavi.html`: 2 fix da screenshot su rev.221. (1) "Cantieri per stato" andava su 2 righe (3+2) — `.stato-chips` da `flex-wrap` a `display:grid; grid-template-columns:repeat(5, minmax(0,1fr))`, sempre 5 colonne fisse su una riga indipendentemente dalla larghezza disponibile (si restringono invece di andare a capo); nuova classe `.agg-group-stato` (`flex:1.4 1 320px`) per dare più spazio a questo gruppo rispetto a "Avanzamento per lotto" nello stesso `.agg-section` (`max-width` 760→900px). (2) Sezione "Stati del cantiere" della guida rapida ampliata: spiega l'ordine delle tappe (Non avviato→Allestimento→In corso→{Sospeso,Completato}), perché in Allestimento i campi metri/tecnica sono disattivati, cosa richiede il passaggio a Sospeso (motivo+data ripresa stimata) e che Completato è uno stato finale. `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-09 (rev. 221)_
+
+- **rev.221** — `imprese_scavi.html`: 2 richieste utente da screenshot. (1) Il bottone "Guida rapida" in fondo pagina era un `<a href="#">` morto, senza handler. Portato lo stesso pattern di `mappa_impresa_caricamento.html` (§rev.precedenti): nuovo `#helpOverlay`/`.help-modal` (CSS + markup a fondo body) con `openHelp()`/`closeHelp()` esposte su `window`, contenuto specifico per questa pagina (aggiornare avanzamento, stati cantiere, storico, filtri). (2) Il blocco "Avanzamento per lotto" in header era giudicato troppo ingombrante: `.agg-chip`/`.agg-title` rimpiccioliti (padding, font-size, gap ridotti), `.agg-group` da `flex:1 1 320px` a `flex:1 1 220px`. Aggiunta nuova card compatta "Cantieri per stato" (`.stato-chip`, bordo sinistro colorato da `STATO_COLOR`) accanto ad "Avanzamento per lotto" nello stesso `.agg-section`, popolata in `renderAggIndicators()` contando `stato_cantiere` sugli item visibili. `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 220)_
+
+- **rev.220** — `imprese.html`, `renderPratiche()`: fix reale del problema DATA_RICHIESTA vuota (rev.218 l'aveva solo diagnosticato). Confermato su Master.csv aggiornato fornito dall'utente: il campo è valorizzato dal pipeline dati SOLO sulla riga in cui la tratta passa a INVIATO, le righe successive della stessa tratta (NECESSARIA INTEGRAZIONE, nuovo INVIATO, PROTOCOLLATO INTEGRAZIONE...) lo riportano vuoto — mostrando solo l'ultima riga per tratta la dashboard perdeva il dato pur essendo presente nello storico. Aggiunta `lastRichiestaMap` costruita in parallelo a `latestMap`: tiene per ogni tratta l'ultimo DATA_RICHIESTA non vuoto visto (per DATA_ULTIMA_MODIFICA), usato come fallback quando la riga rappresentativa ha il campo vuoto. Verificato su TR_0372: recupera correttamente 17/03/2026.
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 219)_
+
+- **rev.219** — `imprese.html`: correzione richiesta utente — il filtro era sbagliato (era su DATA_UPDATE con soglia giorni configurabile, volevano DATA_PREVISTA_RILASCIO senza soglia). Sostituito con checkbox unica "Previsione scaduta" → `filterPrevisioneScaduta`, filtra su `_isDataPrevistaScaduta(p)` (stesso helper già usato per l'evidenziazione rossa), nessun input giorni. Verificato: l'evidenziazione rossa era già corretta, semplicemente 0/1532 righe in Master.csv hanno oggi DATA_PREVISTA_RILASCIO scaduta (non un bug, mancanza di dati con quel caso nel dataset attuale).
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 218)_
+
+- **rev.218** — `imprese.html`, tab "Aggiorna pratiche":
+  1. Data prevista rilascio scaduta (< oggi) evidenziata in rosso/grassetto (`_isDataPrevistaScaduta()`).
+  2. Barra ricerca ridotta (max-width 320px) + nuovo filtro "Update scaduto (oltre N gg)": checkbox `filterUpdateScaduto` + input numerico `filterUpdateGiorni` (default 15); filtra su `DATA_UPDATE` mancante o più vecchia della soglia.
+  3. Verificato (non modificato) perché DATA_RICHIESTA non compare su tutte le righe: **431/590** righe Master.csv con stato post-INVIATO hanno DATA_RICHIESTA vuoto. Causa: il form impresa (`imprese.html`) la richiede obbligatoriamente solo quando si imposta stato=INVIATO da qui; il pannello admin "Modifica dati" (`admin.html`, mode:'data') ha il campo ma è editabile a mano e spesso lasciato vuoto/non compilato — probabile impatto di dati storici pre-esistenti a questa logica. Non è un bug del frontend imprese.html: è dato mancante a monte. Se serve, si può rendere DATA_RICHIESTA obbligatoria anche nel form admin quando stato passa a INVIATO.
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 217)_
+
+- **rev.217** — `imprese.html`, tab "Aggiorna pratiche": colonna "Lung. (m)" mostrava float grezzi non arrotondati (es. `5131.079999999999`, somma di più tratte in virgola mobile). Aggiunta `formatLunghezza(val)` — parse + `toLocaleString('it-IT', {min/maxFractionDigits:2})` → `5.131,08`. Applicata alla cella lunghezza in `renderPratiche()` al posto del cast a stringa diretto.
+
+_Ultimo aggiornamento: 2026-08-07 (rev. 216)_
+
+- **rev.216** — `imprese.html`, tab "Aggiorna pratiche": rimossa la checkbox "Aggiorna tutte insieme (consigliato)" dal pannello SIBLINGS — richiesta utente: l'unione degli aggiornamenti di tutte le tratte di una pratica non è più opzionale, è sempre lo standard. `siblingsPanel` ora è solo informativo (elenco tratte collegate, nessun controllo). `addToQueueBtn` chiama sempre `_finalizeAdd(fields, SIBLINGS.length > 0)`. Rimossi: `_showSingleTrattaWarning()` (modale di blocco/conferma per update solo-tratta, non più raggiungibile) e l'eccezione in `fld-no-nec` che disattivava il toggle quando si spuntava NULLA OSTA NECESSARIO su una singola tratta. Confermato con utente: nessun problema di propagazione — la tratta/e a cui si applica il nulla osta resta comunque scelta esplicitamente via `fld-no-tratte`/`TRATTE_NO`, indipendente dall'unione pratica.
+
+_Ultimo aggiornamento: 2026-08-07 (rev. 215)_
+
+- **rev.215** — `imprese.html`, tab "Aggiorna pratiche" (`renderPratiche()`): richiesta utente — la tabella mostrava una riga per ogni singola tratta (`TRATTA_ID+ENTE+TIPO_PERMESSO`), ma l'aggiornamento è comunque associato/propagato a tutta la pratica (logica SIBLINGS già esistente più sotto nello stesso file). Aggiunto un secondo livello di raggruppamento **dopo** il dedup per-tratta esistente: chiave = `p._codice`/`buildCodice(p)` (ENTE+TIPO_PERMESSO+PRATICA+lotto); tratte senza pratica associata (codice vuoto) restano righe singole (fallback su chiave tratta). Per ogni gruppo: riga rappresentativa = quella con `DATA_ULTIMA_MODIFICA` più recente (stato/date mostrate sono le più aggiornate della pratica); nuova colonna derivata `_lunghezzaTot` (somma `LUNGHEZZA` di tutte le tratte del gruppo, sostituisce il vecchio valore singolo in tabella e nel sort); colonna "Tratta"→"Tratte", cella mostra `N tratte` se il gruppo ne contiene più di una, altrimenti il TRATTA_ID come prima. Click-to-select e logica SIBLINGS invariati (SELECTED resta compatibile, la propagazione a tutte le tratte della pratica funzionava già). `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-06 (rev. 213)_
+
+- **rev.214** — Deploy GitHub Pages: bug reale trovato e corretto — mancava il file `.nojekyll` nella root del repo. Senza di esso, Pages tenta un build **Jekyll** anche su un sito statico vanilla JS/HTML; con file grandi in root (`Master.csv` 215K, `QGIS.geojson` 754K, HTML da 300-400K) il parser Jekyll si blocca, il job `build` gira ~45 min e il runner viene ucciso ("lost communication with the server"), facendo fallire il deploy pur restando online l'ultima versione pubblicata con successo (da cui l'apparente incoerenza "ci sono deploy falliti ma il sito è aggiornato"). Fix: aggiunto `.nojekyll` vuoto in root — deploy successivo completato subito. Nota per il futuro: verificare che non venga rimosso da script di sync/pulizia del repo (essendo un file senza estensione, "invisibile" a un controllo superficiale). — **Nota collegata (non un bug, comportamento confermato)**: le foto dei sopralluoghi (`sopralluoghi/foto/{codice}/foto_N.{ext}`) **non** passano da GridFS/Mongo — vengono caricate come data URL base64 dal frontend, decodificate e pushate **direttamente nel repo GitHub** via `_push_to_github()` (`server.py` ~riga 2798-2814, endpoint sopralluoghi). Questo fa crescere permanentemente la dimensione del repo Git ad ogni sopralluogo caricato (attualmente ~6.2MB in `sopralluoghi/foto`); da tenere presente come possibile causa futura di rallentamenti/limiti di dimensione repo, distinta dal bug `.nojekyll` di cui sopra.
+
+_Ultimo aggiornamento: 2026-08-05 (rev. 212)_
+
+- **rev.213** — `server.py`, `GET /api/admin/pratiche/note-history`: bug reale segnalato dall'utente da screenshot — lo storico note in admin (bottone "Storico note", rev.211) mostrava date/righe diverse rispetto al popup Note di `index.html` per la stessa pratica (es. mancavano occorrenze ripetute della stessa nota a date diverse). Causa: l'endpoint usava sempre `date = DATA_ULTIMA_MODIFICA or DATA_UPDATE`, senza replicare il fallback `effectiveDateRaw` di `praticaNotesRaw` in `index.html` — quando una riga è un aggiornamento SOLO-NOTA (stessa tratta, stesso STATO_PERMESSO, stesso DUM già visto in una riga precedente), `index.html` sposta la data effettiva a `DATA_UPDATE`; il backend no. Risultato: due note distinte con lo stesso `dum` finivano sulla stessa chiave `(note, date)` e venivano dedupate/collassate nello storico admin. Portata la stessa logica (tracking `stato_seen` per stato+data+tratta, merge multi-tratta senza spostare la data, swap a `DATA_UPDATE` per le continuation) in Python nell'endpoint — ora `/api/admin/pratiche/note-history` produce lo stesso storico del popup Note di `index.html`. `py_compile` OK.
+- **rev.212** — solo documentazione, nessuna modifica al codice: l'utente segnalava come mancante in admin la possibilità di correggere ogni singolo aggiornamento (ogni riga di storico caricato da un'impresa) di un cantiere — in realtà **la funzione esiste già** nel repo attuale mentre in questa sessione era stato dato per errore per mancante, quindi la documento qui perché non era mai stata riportata nel brief. In `admin.html` tab "Cantieri" → "Modifica" apre il pannello correzione (stato attuale/metri/tecnica/date) **e** sotto, "Storico caricamenti (tutti gli invii impresa)" (`cantLogList`/`refreshCantLog`): ogni riga del log (`data`, `impresa`, `stato_cantiere`, `tecnica_scavo`, `metri_realizzati`, `note`, `motivo_blocco`, `data_ripresa_stimata`) è editabile singolarmente con bottoni "Salva"/"Elimina" per riga. Backend: `PUT`/`DELETE /api/admin/cantieri/{cantiere_key}/log/{idx}` — corregge o elimina la singola voce di storico (indice nell'array `log` del documento Mongo), `metri_scavati` del cantiere viene sempre ricalcolato come somma di tutte le righe di log rimaste (coerente con l'accumulo fatto da `POST /api/imprese/cantieri/{key}`), push GitHub asincrono dopo ogni modifica, audit log (`update_cantiere_log`/`delete_cantiere_log`). Nota concettuale per non confondersi in futuro: per i **cantieri** la correzione di uno storico è già per-singola-riga (ogni caricamento impresa è un evento indipendente); per le **note delle pratiche** (rev.211) è invece per-nota-condivisa-su-più-tratte, perché lì lo stesso evento storico è duplicato su più righe fisiche di Master.csv — sono due modelli dati diversi, non applicare per analogia l'uno all'altro.
+
+_Ultimo aggiornamento: 2026-08-05 (rev. 211)_
+
+- **rev.211** — `admin.html` tab "Dati pratiche" + `server.py`: richiesta utente — poter correggere una nota SBAGLIATA ma VECCHIA (es. di 3 caricamenti fa), non solo quella corrente, e che la correzione si propaghi a tutte le tratte della pratica che condividono quella nota storica (Master.csv è append-only: la stessa nota, alla stessa data, è duplicata su ogni tratta attraversata dall'evento — v. `praticaNotesRaw` in `index.html`). Chiarimento importante nel corso della richiesta: la prima interpretazione (una riga per TRATTA_ID, editabile singolarmente come in Cantieri) NON era quella corretta — l'utente intendeva "ogni caricamento di nota" nel tempo, non "ogni tratta fisica"; l'implementazione basata su TRATTA_ID è stata scartata prima di essere consegnata. Nuovo bottone "Storico note" per ogni pratica (accanto a "Modifica dati"/"+ Nota"): apre un pannello con tutte le note storiche (data+testo, stessa dedup per (testo,data) usata in `index.html`), ciascuna con un bottone "Modifica" inline che apre una textarea e salva la correzione. Backend: 2 nuovi endpoint — `GET /api/admin/pratiche/note-history` (ente/tipo_permesso/pratica/lotto → lista note storiche uniche) e `POST /api/admin/pratiche/note/correct` (match esatto su NOTE+ente+tipo+pratica+lotto, opzionalmente anche su DATA_ULTIMA_MODIFICA/DATA_UPDATE se `old_date` è passato, sovrascrive il testo **in place su tutte le righe grezze che matchano**, non solo l'ultima per tratta — a differenza di `/pratiche/update` mode=data che tocca solo l'ultima riga). Tag `[RETELIT]`/`[IMPRESA]` preservato per-riga (non ritaggato). Segnalato subito dopo dall'utente: mancava la possibilità di **eliminare** una nota storica, non solo correggerla — aggiunto bottone "Elimina" per riga (con conferma `showConfirm`) e nuovo endpoint `POST /api/admin/pratiche/note/delete`, stesso matching di `/note/correct` ma svuota il campo NOTE invece di riscriverlo (non elimina la riga fisica di Master.csv, resta append-only). `py_compile`/`node --check`/HTML parser OK.
+
+_Ultimo aggiornamento: 2026-07-23 (rev. 210)_
+
+- **rev.210** — `server.py`: richiesta utente da screenshot `index.html` (popup Note) — l'etichetta "Impresa"/"Retelit" (rev.188, `_tag_note()`) compare solo sull'ultima nota di ogni pratica, tutte quelle storiche precedenti restano senza badge (disomogeneo). Motivo: `_tag_note()` prefissa solo le NOTE scritte **da rev.188 in poi**; quelle storiche in Master.csv non hanno mai avuto un prefisso perché all'epoca l'unico canale di inserimento nota era lato impresa. Nuovo endpoint one-off `POST /api/admin/backfill-note-tags` (stesso pattern di `backfill-data-update-solleciti` rev.147: `_check_token`, `_master_csv_lock`, idempotente): tagga retroattivamente `[IMPRESA]` ogni NOTE non vuota priva di prefisso `[RETELIT]`/`[IMPRESA]` (regex `_NOTE_TAG_RE` già esistente). Le note già taggate vengono saltate, rieseguibile senza effetti collaterali. La regola per le note **nuove** resta invariata (`_tag_note()` non toccata, chiamata come prima da imprese/admin ad ogni submission) — richiesto esplicitamente dall'utente ("per i prossimi manteniamo la regola attuale"). Da lanciare una tantum (richiesta `POST` con `x-upload-token`), poi non serve più. `py_compile` OK.
+
+
+- **rev.209** — `gantt.html`: "Inizio scavi" segnalata **ancora** al 17/04/2026 dall'utente anche dopo rev.208 (che ora usa solo `data_inizio_effettiva`, mai più `prevista`). Causa più probabile a questo punto: un **override manuale** (`applyGanttOverrides()`, salvato in passato da "Modalità modifica" e mai ripristinato) — gli override vengono applicati per ultimi nella sequenza di boot, dopo tutti i merge/cascade, quindi vincono sempre e i fix rev.206-208 su `mergeCantieriProgress()` non li toccano. Non potendo ispezionare Mongo da qui, aggiunto uno **strumento diagnostico self-service** invece di continuare a indovinare: `buildScaviRangeCard()` ora traccia anche la riga sorgente del valore mostrato; se `row.manual` (= viene da un override, non da un dato reale) mostra un'icona ⚠︎ con tooltip; il valore è cliccabile (`_locateGanttRow()`) e scrolla/espande i gruppi necessari/fa lampeggiare 3 volte la riga incriminata direttamente nel Gantt, cosi da poterla individuare e ripristinare (bottone "Ripristina" già esistente nel popover di modifica, `resetGanttOverride()`). **Da verificare anche**: che sia stato effettivamente ridistribuito rev.208 (deploy) prima di testare di nuovo — nella sessione precedente il ritardo di deploy ha causato un falso allarme simile su `polizze_convenzioni.html` rev.197/198. `node --check` OK.
+
+
+- **rev.208** — `gantt.html`, `mergeCantieriProgress()`: fix rev.206 ("Inizio scavi") **insufficiente** — l'utente ha ricontrollato con l'estrazione Excel (nessuna Opere Civili inizia ad aprile nei dati) e la card mostrava ancora 17/04/2026, valore che non esiste da nessuna parte nel `.mpp`/baseline statica del file → confermato che arriva a runtime da `data_inizio_prevista` in Mongo. Il gate `log_count>0` introdotto in rev.206 non basta: un cantiere può avere log entries (foto, note, sopralluoghi) senza che quello specifico log rifletta un inizio scavo reale confermato. Fix più netto: rimossa del tutto la fallback su `data_inizio_prevista`/`data_fine_prevista` — `mergeCantieriProgress()` ora aggiorna `row.start`/`row.end` **solo** con `data_inizio_effettiva`/`data_fine_effettiva` (mai un campo di pianificazione/preventivo). Se non c'è ancora una data effettiva confermata, il Gantt continua a mostrare la data calcolata dalla cascata permessi (mai un placeholder esterno non verificato). `node --check` OK.
+
+
+- **rev.207** — `gantt.html`, `exportGanttExcel()` (rev.206): segnalato dall'utente da screenshot — mancavano dipendenze/predecessori nell'export, e ogni task doveva avere il numero visibile in pagina (WBS "N.F", es. "1.2"). Aggiunte 2 colonne: **Numero** (stessa numerazione già mostrata a schermo e nella select "Predecessore" del popover — nuova `_ganttRowNumero()`, che replica la logica di `_ganttPraticaLabelPrefix()` senza il testo di contorno) e **Predecessori** (`_ganttRowPredecessori()`, unisce `GANTT_DEPS[row.id]` strutturale + `GANTT_EXTRA_DEPS[row.id]` extra se presenti entrambi, formattati come MS Project si aspetta: `"1.2FS"`/`"1.2SS+3"`). `node --check` OK.
+
+
+- **rev.206** — `gantt.html`: 3 bug reali segnalati dall'utente da screenshot + 1 feature.
+  1. **KPI "Avanzamento medio fasi" mostrava un valore assurdo** (es. `1.6129838710483387e+175%`): `avgPct` sommava `r.pct` di tutte le bar senza validarne il valore — un solo `pct` corrotto (fonte più probabile: override admin non validato via `ov.pct`, rev.135/gantt_overrides_col, mai stato clampato) basta a far esplodere la media. Aggiunto clamp 0-100 (valori non finiti → 0) in 3 punti indipendenti, difesa in profondità: applicazione override (riga ~640), `mergeCantieriProgress()` (calcolo da metri scavati/totali), e come rete di sicurezza finale nel calcolo di `avgPct` stesso. Rinominata l'etichetta in "Avanzamento complessivo" (richiesto dall'utente, "fasi" era ambiguo).
+  2. **"Inizio scavi" mostrava una data (17/04/2026) quando nessun cantiere era realmente partito**: stesso bug già corretto in `scavi.html` rev.199-200 — `mergeCantieriProgress()` usava `data_inizio_prevista`/`data_fine_prevista` (seed/import, possono essere valorizzate prima di qualunque lavoro reale) come fallback quando mancava l'effettiva, senza verificare se il cantiere avesse mai avuto un aggiornamento reale. Ora gated su `log_count > 0` (stesso campo aggiunto in rev.200 a `GET /api/cantieri`/`GET /api/imprese/cantieri`): le date "previste" da seed non confermate non vengono più usate per spostare le barre del Gantt.
+  3. **Bug non segnalato, trovato lavorandoci**: il marcatore verticale "Oggi" nel timeline e il calcolo "Scadenze superate" usavano `new Date(2026,6,7)`/`'07/07/2026'` **hardcoded** invece della data reale — probabilmente un residuo di test mai rimosso. Ora entrambi usano `new Date()`.
+  4. **Nuovo pulsante "Esporta Excel"** in toolbar: `exportGanttExcel()` genera un `.xlsx` (SheetJS via CDN, `cdn.sheetjs.com`) con l'intera gerarchia `GANTT_ROWS` (Nome attività indentato/Livello/Inizio/Fine/Durata gg/% Completamento), pensato per essere copiato e incollato nella tabella Gantt di MS Project. Nome file dinamico `Gantt_Lotto{LOTTO_ID}_{data}.xlsx`.
+
+> ⚠️ **Collisione di numerazione (rev.209–213)**: i 5 blocchi che seguono (su `mappa_impresa_caricamento.html`/`imprese.html`, datati 2026-08-08) riusano per errore gli stessi numeri già assegnati sopra a un'altra sessione su `gantt.html`/`server.py` (datata 2026-07-23/08-05/08-06). Contenuti diversi, nessuna sovrapposizione — usare la **data** per disambiguare, non il numero. Non rinumerato per non falsificare la cronologia reale.
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 213)_
+
+- **rev.213** — `mappa_impresa_caricamento.html`: rimosso il toggle "Aggiorna tutte insieme" (checkbox `prSibToggle`, deselezionabile) — l'impresa poteva ancora aggiornare una sola tratta lasciando indietro le altre della stessa pratica, comportamento diverso da `imprese.html` dove l'aggiornamento sibling è sempre forzato. Allineato 1:1: pannello `#prSiblings` ora solo informativo ("Verranno aggiornate insieme: ...", stesso testo di `imprese.html`), nessuna checkbox; `prAddToQueue` applica sempre `_prFinalizeAdd(fields, PR_SIBLINGS.length > 0)` senza rami `wantsSingleOnly`/conferme popup; rimossa la logica collaterale che disattivava il toggle quando si spuntava "Nulla Osta Necessario" (non esiste in `imprese.html`, dove il campo si applica comunque a tutte le tratte della pratica). `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 212)_
+
+- **rev.212** — `mappa_impresa_caricamento.html`: segnalato dall'utente da screenshot — il campo Note nel form di aggiornamento mostrava ancora "Note opzionali" mentre in `imprese.html` è obbligatoria su ogni aggiornamento. Allineato: label ora "Note *" (asterisco rosso), placeholder in `prSelectRow()` cambiato in "Obbligatoria: descrivi cosa è cambiato in questo aggiornamento", e nuovo guard in `prAddToQueue` che blocca il salvataggio con "Inserisci una nota: è obbligatoria per ogni aggiornamento" se il campo è vuoto — stessa validazione di `imprese.html`. `node --check` OK. Note aperte per l'utente: restano da allineare l'aggiornamento sibling forzato (qui ancora toggle opzionale) e i 2 filtri rapidi (previsione scaduta / update oltre 5gg), già segnalati come mancanti in rev.211.
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 211)_
+
+- **rev.211** — `mappa_impresa_caricamento.html`, `renderPrList()`: segnalato dall'utente da screenshot — a differenza di `imprese.html` (accorpamento per pratica già presente), qui ogni tratta compariva come card separata anche quando condivideva lo stesso codice pratica (es. 7 card `AUT/1/1A` invece di 1). Portata la stessa logica di raggruppamento di `renderPratiche()` in `imprese.html`: le tratte deduplicate vengono raggruppate per `_codice`/`prBuildCodice()` in una `pratMap`, sommando `_lunghezzaTot` e contando `_nTratte`; la card mostra "N tratte" invece del singolo `TRATTA_ID` quando N>1, più una riga con la lunghezza totale formattata (nuovo helper `prFormatLunghezza()`). Tratte senza pratica associata restano card singole, stesso comportamento di `imprese.html`. `prSelectRow()` non toccata: già ricalcola i siblings da `PR_PRATICHE` grezzo indipendentemente dal raggruppamento in vista. `node --check` OK.
+
+_Ultimo aggiornamento: 2026-08-08 (rev. 210)_
+
+- **rev.210** — `mappa_impresa_caricamento.html`: portata la feature "Registro note" di rev.209 anche qui (pannello pratiche aggiorna/nuova, form parallelo a `imprese.html` con prefisso `pr-`). Bottone "Registro note" (stesso stile `--retelit-teal`) accanto al label "Note" nel form di aggiornamento pratica, pannello `#prNoteHistPanel` con lo storico note via `GET /api/imprese/pratiche/note-history` (già esposto da rev.209, nessuna modifica backend necessaria). Nuovi helper JS `prLottoFromSource()`/`_prNoteAuthorChip()`, analoghi a quelli di `imprese.html` ma con naming `pr*` per non collidere con lo scope globale della pagina; pannello si resetta (`display:none`) a ogni nuova selezione pratica in `prSelectRow()`. `node --check` OK.
+
+- **rev.209** — `imprese.html`+`server.py`: nuovo bottone "Registro note" accanto al campo Note nel form di aggiornamento pratica — apre un pannello con lo storico completo delle note passate della pratica (data + testo + chip Retelit/Impresa), stesso identico dato di `_pratica_note_history_core()`. Backend: logica di `/api/admin/pratiche/note-history` estratta in helper condiviso `_pratica_note_history_core(df, ente, tipo_permesso, pratica, lotto)`; nuovo endpoint scoped per Area Impresa `GET /api/imprese/pratiche/note-history` (`_require_session`, sola lettura, 403 se il `lotto` richiesto non è tra quelli assegnati all'impresa — stesso pattern di scoping di `/api/imprese/pratiche`/`/api/imprese/master-sed`). Frontend: nuovo helper `lottoFromSource()` in `imprese.html` allineato 1:1 a `_lotto_from_source()` server-side, per garantire che il parametro `lotto` combaci sempre. Bottone spostato a sinistra vicino al titolo "Note", colore `--retelit-teal` con icona, per maggiore visibilità (richiesta utente da screenshot). `py_compile`/`node --check` OK.
+
+- **rev.205** — `polizze_convenzioni.html`: rev.204 (chip inline) ancora "poco chiara" secondo l'utente. Proposte 2 alternative via mockup (Visualizer), scelta l'opzione B: numero+etichetta tornano in alto (`.kpi-top`, come rev.201), il breakdown per stato sotto è ora una **barra segmentata** (`.kpi-bar`, un `<div>` per stato larghezza proporzionale al conteggio, colore da `STATI_COLORS[stato].color`) con una riga di legenda testuale sotto (`.kpi-legend`, es. "6 INVIATA · 2 EMESSA · 1 RICHIESTA RDS"). `renderKpiBreakdown()` riscritta di conseguenza. `node --check` OK.
+
+_Ultimo aggiornamento: 2026-07-22 (rev. 204)_
+
+- **rev.204** — `polizze_convenzioni.html`: segnalato dall'utente da screenshot — card KPI (rev.201) troppo grandi, spazio sprecato (numero e label su una riga con `justify-content:space-between` che li spingeva agli estremi, chip breakdown su riga separata sotto). Card ora a riga singola: numero+etichetta compatti a sinistra (`.kpi-num`, non più `.kpi-top`), chip breakdown affiancati sulla stessa riga (wrap se lo spazio non basta) invece che sotto. Padding 10px 14px→8px 12px, valore 20px→16px, chip 10px→9.5px con padding ridotto. `node --check` OK.
+
+
+- **rev.203** — `server.py`, `GET /api/admin/polizze-convenzioni/data-richiesta`: segnalato dall'utente — Data Richiesta e Data Emissione risultavano **tutte non popolate**. Trovato e corretto un bug reale di robustezza: `delete_many({"_id": {"$nin": list(seen_keys)}})` girava anche quando `seen_keys` era vuoto (es. `CONVENZIONE`/`POLIZZA` non trovate nel Master in quel momento) — con `seen_keys` vuoto, `$nin: []` fa match su **tutti** i documenti e azzera l'intera collection `pol_conv_dates_col`, comprese le date già raccolte. Ora la funzione esce prima (senza toccare la collection) se nessuna delle 2 colonne è nel Master, e il `delete_many` viene saltato se `seen_keys` è vuoto per qualunque altro motivo. **Nota per l'utente**, causa più probabile del problema riportato: 1) Data Emissione era assente perché il `server.py` in uso non aveva ancora il fix rev.202 (mancava `"EMESSA": "data_emissione"` in `STATO_DATE_FIELD` e il campo nella response) — risolto qui. 2) Queste date si popolano solo **da ora in poi**, al momento in cui una pratica passa di stato tramite il pulsante "Salva" in questa pagina — non possono essere ricostruite retroattivamente per pratiche già `EMESSA`/`INVIATA` prima che la feature esistesse (nessuno storico da cui recuperarle). 3) Data Richiesta dipende dalla colonna `DATA_ULTIMA_MODIFICA` di Master.csv: se è vuota per quelle righe (es. righe caricate/importate senza passare da un update tracciato), resta vuota — nessun fix di codice può inventare quella data, va verificato/valorizzato a monte nel CSV se serve.
+- **rev.202** — `polizze_convenzioni.html` + `server.py`: aggiunta 4ª colonna data "Data Emissione", stesso pattern di rev.197/198 — si fissa (una sola volta) al primo salvataggio con stato `EMESSA`. Backend: `STATO_DATE_FIELD` esteso con `"EMESSA": "data_emissione"`; `GET .../data-richiesta` risponde ora `{date, date_invio, date_richiesta_rds, date_emissione}`. Frontend: entrambe le tabelle (Convenzioni e Polizze) a 9 colonne (Pratica/Lotto/Ente/Stato permesso/Convenzione o Polizza/Data Richiesta/Data Richiesta RDS/Data Invio/Data Emissione), colspan aggiornati ovunque.
+- **rev.201** — `polizze_convenzioni.html`: revisione layout su richiesta utente (screenshot) — non voleva le due tabelle affiancate. `.split` da grid 2 colonne a flex verticale (Convenzioni sopra, Polizze sotto, entrambe piena larghezza) per lasciare spazio a più colonne in futuro. Rimosso il sub-panel `.dates-panel` introdotto in rev.197/198: le 3 colonne data (Data Richiesta / Data Richiesta RDS / Data Invio) tornano in riga nella tabella principale, ora su **entrambe** le tabelle (Convenzioni prima ne aveva solo 1, Polizze le aveva nel sub-panel). Nessuna modifica backend necessaria per questa parte: `STATO_DATE_FIELD`/`get_pol_conv_date_richiesta` erano già generici per campo, bastava leggere `DATE_INVIO_MAP`/`DATE_RDS_MAP` anche lato Convenzioni in `parseAndRender()`. KPI in alto ridisegnate: card più piccole (val 28px→20px) con breakdown per stato sotto il numero (`countByStato()`+`renderKpiBreakdown()`, chip colorati riusando `STATI_COLORS`). Confermato con mockup (Visualizer) prima di implementare. ⚠️ Nota di processo: numerati 201-203 anziché 199-200 (già usati in questa sessione dall'utente per `scavi.html`) per evitare collisione — nessun lavoro duplicato, confermato via diff. `py_compile`/`node --check` OK.
+
+_Ultimo aggiornamento: 2026-07-21 (rev. 200)_
+
+- **rev.200** — fix rev.199: la colonna "Date" di `scavi.html` mostrava "in ritardo"/date anche per cantieri **mai toccati dall'impresa**, perché `data_inizio_prevista` può già essere valorizzata dal seed/import (`cantieri.csv`) prima di qualunque caricamento reale. `server.py`: `GET /api/cantieri` e `GET /api/imprese/cantieri` ora restituiscono `log_count` (lunghezza dell'array `log`, senza esporne il contenuto) invece di limitarsi a fare `pop("log")`. `scavi.html`: `_scavoDateCell()`/`_scavoDatePlain()` mostrano "nessuna data" se `log_count` è 0/assente, ignorando eventuali date di seed non confermate da un aggiornamento impresa; il pannello riepilogo date nel modal Registro (rev.199) ora appare solo se `log.length > 0`.
+
+
+_Ultimo aggiornamento: 2026-07-21 (rev. 199)_
+
+- **rev.199** — `scavi.html`: le 5 date cantiere (`data_inizio_prevista/effettiva`, `data_fine_prevista/effettiva`, `data_ripresa_stimata`) erano salvate da `imprese_scavi.html`/`admin.html` ma **mai mostrate** nella vista staff — nuova colonna "Date" in tabella "Tutti i Cantieri" (`CANTIERI_COLS`+render riga, colspan 13→14) e nei modal Stato/Cluster (`_cantieriTableHtml`): mostra la data più rilevante per lo stato corrente (inizio previsto/effettivo, fine effettiva, ripresa se sospeso) con scostamento gg vs previsto colorato (`--ok`/`--err`) e tooltip con tutte le date. Helper `_scavoDateCell()`/`_scavoDatePlain()`. Modal "Registro" (`openModalRegistro`): aggiunto pannello riepilogo date pianificate/effettive sopra il log eventi (prima mostrava solo la data dell'ultimo aggiornamento, non le date di pianificazione). Nessuna modifica backend: i dati esistevano già in Mongo, mancava solo la visualizzazione. TODO aperto (prossimo giro, da decidere con l'utente): rendere le date più obbligatorie/visibili lato `imprese_scavi.html` e calcolare scostamenti/ritardi aggregati a livello lotto/cluster.
+
+- **rev.198** — `polizze_convenzioni.html` + `server.py`: tabella Polizze, tracciata anche "Data Richiesta RDS" (stato `RICHIESTA RDS`), oltre a Data Richiesta/Data Invio (rev.197). Le 3 date spostate fuori dalla tabella principale in un sub-panel sotto (`.dates-panel`, `buildDatesRows()`), per fare spazio — tabella Polizze torna a 5 colonne. Backend: `STATO_DATE_FIELD = {"INVIATA": "data_invio", "RICHIESTA RDS": "data_richiesta_rds"}` in `update_polizza_convenzione`, fissate una sola volta (non sovrascritte da transizioni successive). `GET .../data-richiesta` → `{date, date_invio, date_richiesta_rds}`. Tabella Convenzioni non toccata.
+- **rev.197** — stessi file: aggiunta "Data Invio", popolata al primo salvataggio con stato `INVIATA`. Fix bug collaterale: il vecchio `$setOnInsert` su `data_richiesta` non valorizzava documenti Mongo già esistenti — sostituito con `find_one`+insert/update esplicito.
+- **rev.196/195/194/193** (`admin.html` tab Cantieri, `imprese_scavi.html`) — allineamento visivo cantieri a `scavi.html`: chip stato colorati + barra avanzamento metri nella tabella elenco, select stato colorato nel pannello edit; bottone "Storico" spostato direttamente in ogni card; fix nowrap colonne Codice/Pratica; aggiunto campo mancante "Data inizio prevista" e **fix bug**: le 3 date cantiere sono salvate in Mongo in ISO (`aaaa-mm-gg`), non `gg/mm/aaaa` come Master.csv — il pannello applicava comunque la conversione dd/mm/yyyy e le mostrava sempre vuote; ora lette/scritte native.
+- **rev.192** — audit di conferma (nessun nuovo lavoro): confermato che 4 fix di sicurezza (proxy Google Apps Script → backend Mongo, auth su `data-richiesta`, header sessione, sync cantieri non bloccante) erano già presenti nel repo corrente rispetto a uno snapshot precedente ricaricato per errore dall'utente.
+- **rev.191** — `mappa.html`+`mappa_impresa_caricamento.html`: fix arrotondamento "Metri scavati" (decimali float infiniti). `hub.html`+`ai_alerts.html`: pagina Alert Predittivi nascosta per ruolo `dl` (solo redirect client-side, non gated server-side — gap noto).
+- **rev.190** — **fix strutturale** `js/api-config.js`: il wrapper `window.fetch` inietta ora automaticamente `x-session-token` su ogni chiamata `API_BASE`-prefixed priva di header esplicito, per chiudere la classe di bug "fetch senza token → 401 silenzioso" ricorsa più volte (rev.129/130/135/136/149). Corretto anche 1 caso reale residuo in `scavi.html`.
+- **rev.189** — nuovo ruolo `dl` (Direzione Lavori): vede tutto come `user` tranne Milestone. Gating reso reale **lato server** (non solo redirect client-side): dati Milestone spostati in `server.py` dietro `GET /api/milestone` + nuova dependency `_require_milestone_session` (403 se `ruolo=='dl'`), ruolo letto dal token HMAC firmato.
+- **rev.188** — `server.py`+`index.html`+`admin.html`: le note su una pratica ora taggate `[RETELIT]`/`[IMPRESA]` in Master.csv (`_tag_note()`), mostrate come chip colorato invece di testo indistinguibile.
+
+_Ultimo aggiornamento: 2026-07-13 (rev. 187)_
+
+- **rev.187/186** — `gantt.html`: **bug reale in `mergeMasterCsv()`** (regressione rev.180) — quando l'ultimo stato Master.csv di una pratica è `NO COMPETENZA`, la funzione usciva prima di valutare la riga Progettazione anche se la pratica era realmente avanzata prima di chiudersi così. Fix: nuova mappa `everAdvanced[pratica|ente]` costruita su **tutto** lo storico, non solo l'ultima riga. Nota collegata: una stessa pratica può avere più segmenti fisici distinti nel Gantt (stesso `_pratica`+`_ente`) — il fix di aggiornamento va applicato con `filter().forEach()`, non `find()` (si fermava al primo segmento). Aggiunta anche barra di riepilogo (rollup stile MS Project) sui gruppi collassati.
+- **rev.185** — `gantt.html`: **bug reale** — da rev.182 Opere Civili è ricalcolata a metri/giorno ma Test/As Built restavano ancorate alle vecchie date fisse del `.mpp`, aprendo gap di settimane per pratiche piccole. Fix: `cascadeOpereCiviliDurations()` trasla i successori dello scostamento reale rispetto alla baseline `.mpp` (`_mppBaseEnd`). Refactor collegato: le cascate da spostamento-permesso e da ricalcolo-durata si sovrascrivevano a vicenda invece di sommarsi — ora accumulano in `_deltaPermesso`+`_deltaKm` separati e sommati prima di applicarli.
+- **rev.184** — `server.py`+`gantt.html`: tasso di scavo (100 m/g) reso configurabile da UI, con priorità PERMESSO > IMPRESA > LOTTO > DEFAULT. Nuova collection `gantt_rates_col` (scope libero `"lotto:X"`/`"impresa:X"`/`"pratica:X"`/`"global"`), endpoint `GET/PUT/DELETE /api/gantt/rates/{scope}`. Race condition trovata e corretta: la risoluzione tassi deve completare **prima** di `mergeCantieriProgress()` (dati scavi reali devono sempre vincere sulla stima).
+- **rev.183/182/181/180** — `gantt.html`, evoluzione calcolo Opere Civili/Progettazione: durata Opere Civili da km reali invece di baseline uniforme `.mpp` (`ceil(km*1000/100m)`, minimo 1gg), poi corretta a soli giorni lavorativi lun-ven (`addWorkDaysDmy`); % Progettazione dedotta da `STATO_PERMESSO` (IN ATTESA/IN REDAZIONE→0%, oltre→100%) e aggregata **in km** (non a conteggio pratiche), coerente con le altre metriche km-weighted della dashboard.
+- **rev.179/178/177** — `gantt.html`: **riscrittura strutturale** da gerarchia piatta a Lotto→Comune→Pratica→5 Fasi (`GANTT_ROWS` 137→192 righe, metadati `_ente`/`_pratica`/`_comune` diretti invece di regex sulla label); nuova `propagateGanttDatesFromPermits()` (propaga in cascata via `GANTT_DEPS`/BFS lo scostamento quando un permesso slitta, senza toccare righe con dato scavi reale o override admin); fix bug KPI "Permessi ottenuti" che contava anche le milestone Materiali.
+
+_Ultimo aggiornamento: 2026-07-07 (rev. 154–176)_ — `gantt.html`: dipendenze reali tra fasi estratte dal `.mpp` (`GANTT_DEPS`, connettori SVG, popover sola-lettura); modalità "modifica" (admin) con popover edit + persistenza override su Mongo (`gantt_overrides_col`, `_require_admin_session`); collassa/espandi per fase/pratica; KPI e tooltip milestone raffinati. `hub.html`: riposizionamento card Gantt/Milestone/Alert Predittivi/Pannello Gestione (3 iterazioni di layout). `imprese.html`: tabella Solleciti/Aggiorna pratiche — colonna "Data ottenimento" morta sostituita da "Data ultimo sollecito"; submit di sola nota permesso senza obbligo di cambiare stato. `server.py`: fix `DATA_UPDATE` mai aggiornato sui solleciti (mask troppo stretta, matchava anche su `pratica`/`tipo_permesso` invece che solo `TRATTA_ID`) + endpoint one-off di backfill.
+
+_Ultimo aggiornamento: 2026-07-06/07 (rev. 129–148) — hardening sicurezza + isolamento dati impresa_
+
+Sessione dedicata, in vista del go-live delle credenziali impresa. Falle trovate e chiuse in sequenza:
+- **rev.129/130**: molti endpoint staff erano protetti solo da token valido, non da ruolo — un account `impresa` poteva chiamarli direttamente bypassando l'hub. Nuova dependency `_require_staff_session` (403 su ruolo impresa) su 6 endpoint (`lotti-cantieri`, `sopralluoghi`×3, `cantieri`, `cantieri/{key}/log`).
+- **rev.135**: `/api/data*`, `/api/files`, `/api/preview`, `/api/uploads` erano **senza alcuna autenticazione** — chiunque poteva scaricare Master.csv/QGIS/Riepilogo dal backend. Gated con `_require_session`/`_require_staff_session`.
+- **rev.139**: gap residuo di rev.135 — `_require_session` validava solo il token, non il ruolo: un token impresa poteva comunque scaricare i file interi (Master/QGIS/SED/Riepilogo di **tutti** i lotti). Fix: `SENSITIVE_FILES` + `_guard_sensitive_read()` (403 su ruolo impresa) + nuovo endpoint scoped `GET /api/imprese/master-sed` che filtra server-side sui lotti assegnati; questi 4 file non vengono più pubblicati sul repo pubblico GitHub (restano solo su GridFS). TODO operativo aperto: la storia git pubblica resta scaricabile finché non si fa un purge (git filter-repo/BFG) o si rende il repo privato.
+- **rev.138/140**: 2 bug di isolamento dati cross-impresa — `get_solleciti` filtrava il lotto per substring invece di match esatto (un'impresa vedeva solleciti di lotti simili ma non suoi); `GET /api/imprese/cantieri/{key}/log` non verificava ownership sul lotto (leggibile lo storico di cantieri di altre imprese).
+- **rev.131/132**: guardia auth client-side aggiunta a `admin.html`/`milestone.html` (redirect `hub.html` se ruolo non consentito) — resta bypassabile forzando `localStorage`, la vera barriera per le scritture resta `UPLOAD_TOKEN`/i controlli server sopra.
+- **rev.133/134**: audit log azioni admin (`admin_actions_col`, `_log_admin_action`); fix `delete_upload` che rigenerava/pushava file ridondantemente anche cancellando versioni non correnti.
+- **rev.136/137**: verifica TODO + audit pre-produzione sulle 3 pagine impresa (nessun bug bloccante residuo).
+
+Nello stesso arco: rimozione pagina ridondante `mappa_impresa.html` (rev.126-128, superata da `mappa_impresa_caricamento.html`); `imprese.html`/`mappa_impresa_caricamento.html` — stato `NO COMPETENZA`/`OTTENUTO` nasconde campi Nulla Osta/Polizza/Convenzione non pertinenti, select→checkbox per quei 3 campi, rimosso campo "Ordinanza necessaria", fix bug di scope (`_openHelp`/`_retryBoot` non esposte su `window`, `onclick` falliva) (rev.113-125).
+
+---
+
+_Storico rev.65–rev.113 compattato_ (dettagli completi nei backup di sessione, non riportati qui):
+- **`scavi.html`** (rev.65,77-91,96,101-110): iterazioni stile/larghezze colonne tabella cantieri, raggruppamento imprese per cluster/lotto, modal Cluster/Lotto, pulizia CSS morto.
+- **`index.html`** (rev.65-75,97-100): fix header/popup Note (bug dati mancanti, note multiple, rimozione solleciti dal popup — riapre TODO 11.4), colonna Impresa nei modal, rimozione colonna "Prev. Rilascio", icone sort SVG.
+- **`imprese.html`** (rev.111-123): tasto guida "?" (bug scope IIFE), NO COMPETENZA nasconde campi non pertinenti, select→checkbox, rimozione campo Ordinanza.
+- **`mappa_impresa_caricamento.html`** (rev.78-80,122): export GeoJSON con esclusione campi gestionali, allineamento form a `imprese.html`.
+
+_Storico rev.10–rev.64 archiviato in `AGENT_BRIEF_ARCHIVE.md`_:
+- Rename `COORDINAMENTO`→`INVIO PRELIMINARE` (rev.34-43); eliminata previsione calcolata, sostituita da campo compilato dall'impresa (rev.44-48); corruzione ricorrente `Master.csv` diagnosticata/riparata più volte (rev.50,63-64 — v. §8.40); iterazioni barra % nei modal lotto/cluster (rev.49,51-59); colonna `DATA_UPDATE` (rev.60-62); fix storici `scavi.html` — sort/filtro, donut KPI, rebranding, keepalive Render, guardia bfcache (rev.10-33, ha scoperto il gap auth chiuso poi in rev.131/132).
+
+_Note di compattazione: rev.65-113 compattato 2026-07-06 (rev.10-64 già archiviato in precedenza). rev.114-187 compattato 2026-07-21 con lo stesso criterio (dettagli originali recuperabili dai backup di sessione se serve un audit puntuale). Restano inline solo rev.188-198 (più recenti/actionable)._
+
+- **rev.239** — nuova pagina `stato_lotti.html` (link in `hub.html`, visibile solo ruoli `admin`/`admin2`, stesso pattern/badge "Riservato" di `ganttCard`). Aggrega per lotto: % km progettazione OTTENUTO (da `Riepilogo_progettazione.csv`) e % metri scavati (da `GET /api/cantieri`), confrontati con le date target `invio/ottenim/p50/p90/p100` di `/api/milestone` → flag ok/warn/err per progettazione e per scavi separatamente + risk badge complessivo (il peggiore dei due). Card cliccabile apre modal con elenco pratiche non ottenute, cantieri sospesi e cantieri con scadenza superata per quel lotto. Riusa la cautela `log_count` di rev.200 (non segnala ritardo "inizio previsto" su cantieri mai aggiornati dall'impresa — data seed non confermata). **Nota**: la cartella `pm/` (DASHBOARD_PM.html, allocazione.html, integrazioni.html, panoramica_portfolio/progetti.html) è un template "Nexus Dashboard" scollegato da brand/dati ENRI, non integrato in questa pagina né altrove — lasciata invariata su richiesta esplicita dell'utente, da valutare in seguito (rimozione o riuso).
+
+- **rev.240** — `index.html`, sezione "Tutte le Pratiche": nuova voce dropdown Excel **"Estrazione cliente"** (`exportClienteXlsx` / `_exportClienteXlsxImpl`). Colonne ridotte e tradotte in EN: Code, Type, Lot, Cluster, Status, Authority, Municipality, Submission Date, Approval Date. Foglio stilizzato (header blu Retelit `#043F75`, zebra striping, badge colorato sulla colonna Status, autofilter, freeze riga header). Esclude sempre le pratiche negli stati di lavorazione interna pre-invio: `IN ATTESA`, `IN REDAZIONE`, `IN FIRMA RDS`, `INVIO PRELIMINARE`, `IN REDAZIONE INTEGRAZIONE` (assunzione: "in redazione" esteso anche a "in redazione integrazione", stesso concetto di bozza interna — da confermare). Mappa stato→cliente (`CLIENTE_STATO_MAP`): `INVIATO`/`PROTOCOLLATO`→`submitted`; `OTTENUTO`/`NO COMPETENZA`→`approved`; `NECESSARIA INTEGRAZIONE`/`PROTOCOLLATO INTEGRAZIONE`→`pending`; nessuno stato sorgente mappato su `rejected` (bucket vuoto, da popolare). Cluster derivato per codice pratica via `_clusterTrattaMap`/`_masterByTratta` (una pratica può ricadere in più cluster se copre tratte di cluster diversi → valori concatenati con virgola). TODO: confermare/estendere `CLIENTE_STATO_MAP` per `rejected` e rivedere l'esclusione di `IN REDAZIONE INTEGRAZIONE`.
+
+- **rev.241** — Nuova feature **"Concomitanza tratte"** (es. ENRI-QTS: tratte dove verrà posato un tubo aggiuntivo, richiesta utente da file `CONCOMITANZA_ENRI-QTS.geojson`, 20 TRATTA_ID tutte Lotto 2). Elenco salvato in Mongo (non hardcoded, non in Master.csv) per essere aggiornabile senza redeploy. Backend `server.py`: nuova collection `concomitanza_col` (keyed per `TRATTA_ID`, campi `fonte`/`nota`); `GET /api/concomitanze` (qualunque sessione, staff o impresa — dato tecnico sulla tratta fisica, non sensibile/scoped per lotto) → `{tratta_ids, nota_by_tratta, count}`; `POST /api/admin/concomitanze/import` (x-upload-token) upsert-only, accetta un GeoJSON FeatureCollection intero (estrae TRATTA_ID dalle properties) o `{tratta_ids:[...]}`, sostituisce l'elenco per `fonte` senza toccare eventuali _id di altre fonti. Frontend `js/api-config.js`: `ENRI.concomitanzaReady` (fetch unica per pagina, cache in `ENRI.concomitanzaIds`/`concomitanzaNota`) + `ENRI.concomitanzaBadge(trattaIdOrArray)` — pallino teal con tooltip ("Concomitanza QTS: Tubo aggiuntivo (N tratte)"), stringa vuota se nessun match. Badge applicato ovunque compare un codice pratica: `mappa.html` (popup tratta + risultati ricerca), `mappa_impresa_caricamento.html` (popup + pannello Pratiche, aggiunto tracking `_trattaIds` nel raggruppamento), `imprese.html` (tabella "Aggiorna pratiche" + tabella "Solleciti", aggiunto tracking `_tratte`/`tIds`), `index.html` (tabella "Tutte le Pratiche", aggiunto `tratte: new Set()` nell'aggregazione per codice pratica, stesso pattern già usato per `comuni`), `stato_lotti.html` (righe issue nel modal lotto), `polizze_convenzioni.html` (tabelle Convenzioni/Polizze — **limite noto**: qui ogni riga tiene solo l'ultimo `TRATTA_ID` visto per quella pratica, non l'elenco completo, quindi il badge può mancare se la tratta in concomitanza non è quella rimasta in `r.tratta`). **Non applicato** ad `admin.html` (modale di revisione submission impresa): la tratta è già visibile esplicitamente nell'header della card, valore aggiunto marginale, e la pagina non include `js/api-config.js` (andrebbe aggiunto il `<script>` prima di poter usare `ENRI.concomitanzaBadge`). TODO import iniziale: l'utente deve lanciare da console browser (loggato come admin) la `POST /api/admin/concomitanze/import` con il body del geojson caricato — vedi istruzioni fornite in chat, non salvate qui perché operative una tantum. `py_compile`/`node --check` OK su tutti i file toccati.
+
+- **rev.242** — `js/api-config.js`: rimosso il prefisso "Concomitanza QTS:" dal tooltip di `ENRI.concomitanzaBadge()` (segnalato dall'utente come non gradito) — ora mostra solo la `nota` salvata in Mongo (es. "Tubo aggiuntivo", eventualmente con conteggio tratte), nessun riferimento testuale a QTS nel tooltip. Nessun altro file conteneva la stringa (verificato con grep). `node --check` OK.
+
+- **rev.243** — `js/api-config.js`: badge `ENRI.concomitanzaBadge()` mostra ora il conteggio tratte nel testo stesso (es. "5T" invece della lettera fissa "T"), non solo nel tooltip. Forma cambiata da cerchio fisso 14x14 a pillola (`min-width:16px`, `border-radius:7px`, padding orizzontale) per ospitare 2 caratteri senza schiacciarli. `node --check` OK.
+
+- **rev.244** — `js/api-config.js`: rev.243 annullata su richiesta esplicita dell'utente — il testo del badge NON deve riflettere il conteggio reale delle tratte, resta fisso `"5T"` per ogni pratica in concomitanza indipendentemente da `hit.length`. Tooltip invariato (mostra ancora la `nota` reale). `node --check` OK.
+
+- **rev.245** — Rimossa sincronizzazione GitHub per `solleciti.csv` e `cantieri.csv`: MongoDB (`solleciti_col`/`cantieri_col`) resta l'unica fonte, i due CSV in root vengono eliminati dal repo. `backend/server.py`: rimosse `_push_solleciti_to_github()`/`_build_solleciti_csv()` e tutte e 4 le `asyncio.create_task(...)` che le richiamavano (add/bulk-insert/delete/bulk-delete sollecito); rimosse `_push_cantieri_to_github()`/`_cantieri_csv_row()`/`CANTIERI_CSV_PATH`/`CANTIERI_COLS` e tutte e 9 le chiamate corrispondenti (startup sync, approve Master, admin reset/sync/update/update-log/delete-log/reset-singolo, update impresa). Rimossa entry `"solleciti.csv"` da `GITHUB_PATHS`. Nessun impatto su `sopralluoghi.csv`, che resta sincronizzato su GitHub come prima. `admin.html`: il bottone "Reset cantieri" era agganciato alla riga `f.name === 'cantieri.csv'` nella tabella "File correnti" (alimentata da `/api/files`, che elenca solo file fisici presenti nel repo/GridFS) — con la sparizione del CSV dal repo quella riga non sarebbe più comparsa, rendendo il bottone irraggiungibile pur restando l'endpoint `DELETE /api/admin/cantieri/reset` pienamente funzionante. Spostato come bottone fisso "Reset tutti i cantieri" nel tab "Cantieri" (non dipende più dalla file list), handler JS invariato (delegation `data-act` su `document.body`). Verificato che gli altri editing cantieri in admin (`PUT /api/admin/cantieri/{key}`, log edit/delete, reset singolo) scrivono già solo su `cantieri_col`, nessun residuo push GitHub. `solleciti.csv` non aveva alcuna azione collegata in `admin.html`. `py_compile` OK su `backend/server.py`. **Nota**: `server.py` in root del repo (parallelo a `backend/server.py`, versione più vecchia con 8 endpoint in meno — vedi confronto in chat) NON è stato allineato con questa modifica; da decidere se aggiornarlo o eliminarlo.
+- **rev.246** — Rimossa sincronizzazione GitHub per `sopralluoghi.csv` (ultimo dei tre export CSV legacy, dopo `solleciti.csv`/`cantieri.csv` in rev.245): MongoDB (`sopralluoghi_col`) resta l'unica fonte, il CSV in root viene eliminato dal repo. `backend/server.py`: rimosse `_push_sopralluoghi_to_github()`/`_build_sopralluoghi_csv()`/`SOPRALLUOGHI_COLS` e le 3 `asyncio.create_task(...)` che le richiamavano (POST verbale, DELETE verbale, admin reset). Rimossa entry `"sopralluoghi.csv"` (e relativo env override `GITHUB_SOPRALLUOGHI_PATH`) da `GITHUB_PATHS`. Docstring di `POST /api/sopralluoghi` aggiornata. `admin.html`: stesso problema già visto per `cantieri.csv` — il bottone "Reset" era agganciato alla riga `f.name === 'sopralluoghi.csv'` nella tabella "File correnti", che sarebbe sparita da `/api/files` una volta rimosso il CSV dal repo. Spostato come bottone fisso "Reset sopralluoghi" in cima al tab "File correnti" (non dipende più dalla file list), handler JS invariato (delegation `data-act` su `document.body`, endpoint `DELETE /api/admin/sopralluoghi/reset` pienamente funzionante e non toccato). Verificato che `sopralluoghi.html` legge sempre e solo via `/api/sopralluoghi` (mai fetch diretta del CSV), quindi nessun impatto sul frontend statico. `py_compile` OK su `backend/server.py`. Aggiunti `/solleciti.csv`, `/cantieri.csv`, `/sopralluoghi.csv` a `.gitignore` (mai fatto in rev.245, colmata la lacuna ora) per evitare che rientrino per errore da un push manuale/vecchio checkout.
+
+- **rev.247** — `solleciti.csv` compare ora in "File correnti" (admin.html), colmando la lacuna segnalata in rev.245 ("solleciti.csv non aveva alcuna azione collegata in admin.html" — in realtà non esisteva proprio come file derivato). `backend/server.py`: nuova `SOLLECITI_FILENAME = "solleciti.csv"`; nuova `_regenerate_solleciti_csv()`/`_schedule_solleciti_csv_regen()` (stesso pattern di `_regenerate_sopralluoghi_csv`/`_regenerate_cantieri_csv`: snapshot della collection `solleciti_col` → CSV con BOM UTF-8 → `_store_derived_file()` → GridFS, **nessun push GitHub** per coerenza con la scelta di rev.245/246 di tenere Mongo come unica fonte). Colonne: tratta_id, pratica, tipo_sollecito, data_sollecito, note, impresa, ente, tipo_permesso, stato_permesso, lunghezza, data_richiesta, data_ultima_modifica, numero_sollecito, created_at. Rigenerazione agganciata a: startup (backfill, così compare subito senza aspettare il primo sollecito), `POST /api/imprese/solleciti` (nuovo), `POST /api/imprese/solleciti/bulk-insert`, `DELETE /api/imprese/solleciti/{id}`, `POST /api/imprese/solleciti/bulk-delete`. Aggiunto `"solleciti.csv"` a `SENSITIVE_FILES` (come `sopralluoghi.csv`, dato aggregato multi-impresa: blocca lettura via `/api/data*` al ruolo `impresa`, che usa già gli endpoint scoped `/api/imprese/solleciti`). Nessuna modifica ad `admin.html`: la tabella "File correnti" è già generica su `/api/files`, Anteprima/Scarica funzionano senza codice dedicato. `ast.parse` OK su `backend/server.py`.
+
+- **rev.248** — **Bug segnalato dall'utente** (screenshot popup Note, pratica `NO/13/2A`): note storiche vecchie ricompaiono duplicate con la data di oggi. Causa root: `_touch_data_update`/`_touch_data_update_multi` (`backend/server.py`) mascheravano le righe di `Master.csv` da toccare **solo per `TRATTA_ID`**, ignorando il parametro `tipo_permesso` già disponibile — e un `TRATTA_ID` può avere più iter (es. `AUTORIZZAZIONE` da Provincia + `NULLA OSTA` da Consorzio) ciascuno con più righe storicizzate nel tempo (una per nota/cambio stato, pattern append di `_apply_changes_to_df`). Un sollecito su un solo iter quindi impostava `DATA_UPDATE=oggi` su **tutte** le righe di **tutti** gli iter di quel `TRATTA_ID`. Confermato sui dati caricati dall'utente: sollecito inserito oggi su `TR_0818`/`NO/13/2A` → tutte le 22 righe storiche di `TR_0818` (sia le 9 di `PRATICA 11/AUTORIZZAZIONE` che le 13 di `PRATICA 13/NULLA OSTA`) risultavano con `DATA_UPDATE=31/08/2026`. Il popup Note (`index.html`) usa `DATA_UPDATE` come data effettiva per le righe "nota-continuazione" (`effectiveDateRaw`), quindi tutte le note storiche di quell'iter apparivano ridatate a oggi, sommandosi visivamente alle note reali (duplicazione apparente). Fix: mask ristretta anche a `TIPO_PERMESSO` (già passato come parametro, valori coerenti col Master: `NULLA OSTA`/`AUTORIZZAZIONE`/`ORDINANZA`) e `DATA_UPDATE` scritta solo sull'ultima riga del gruppo filtrato (`idx[-1]`), stesso pattern già usato in `_apply_changes_to_df` per identificare `last_idx`. `ast.parse` OK su `backend/server.py`. **Da fare**: i dati già scritti su MongoDB da questo bug (righe storiche con `DATA_UPDATE` errato, non solo su `TR_0818`: il bug è presente da quando la mask fu allargata al solo `TRATTA_ID`, quindi la portata reale nel DB di produzione è ignota) restano corrotti finché non viene lanciato un backfill correttivo — non eseguito in questo giro, da decidere con l'utente (pattern one-off endpoint come `backfill_data_update_solleciti`/rev.147, ma stavolta per *azzerare* `DATA_UPDATE` sulle righe non-ultime di ogni gruppo tratta+tipo_permesso invece di impostarlo).
+
+- **rev.249** — **Incoerenza segnalata dall'utente** (screenshot popup Solleciti, pratica `NO/5/1B`): sollecito datato 30/09/2026 pur essendo l'inserimento del 03/09/2026. Causa: `data_sollecito` viene presa da un `<input type="date">` libero (`imprese.html`, campo `#sol-data`) senza `max`, né validazione server-side in `add_sollecito`/`bulk_insert_solleciti` — un sollecito (per definizione un contatto già avvenuto) poteva quindi essere registrato con data futura. Nel caso segnalato l'impresa (Soleto) aveva probabilmente usato il campo data per indicare "risposta attesa entro fine settembre" invece di annotarlo in nota. Fix: (1) `imprese.html` — `#sol-data` riceve ora `.max` impostato alla data odierna al load pagina (IIFE, subito dopo la definizione di `$`); (2) `backend/server.py` — nuovo helper condiviso `_parse_it_date()` (estratto dal parsing già presente in `backfill_data_update_solleciti`/rev.147); `add_sollecito` rigetta con 400 "data_sollecito non può essere futura" se la data parsata è > oggi; `bulk_insert_solleciti` scarta silenziosamente l'item (stesso pattern già in uso per tratta_id/tipo/data mancanti, non abortisce l'intero batch). `py_compile` OK su `backend/server.py`.
+
+- **rev.250** — `index.html`: rinominato filtro checkbox "5T" → "QTS" (solo etichetta visibile + aria-label, id `tblConc` e logica di filtro concomitanza invariati — nessun impatto sul badge "5T" nelle righe tabella, che rev.244 fissa deliberatamente a quel testo). Filtro Ente: `fillSel()` ora accetta una `labelMap` opzionale che abbrevia solo il testo mostrato nel `<select>` (option `value` resta il nome ente completo usato per il filtro/match esatto su `r.ente`); aggiunta prima entry `ENTE_LABEL_OVERRIDES`: "CONSORZIO DI BONIFICA DELLA MEDIA PIANURA BERGAMASCA" → "Consorzio Bergamo". Aggiunto anche `max-width:170px` alla select `#tblEnte` per contenerne la larghezza. Obiettivo: mantenere tutti i filtri della toolbar sulla stessa riga. **Nota**: se in futuro comparissero altri enti dal nome molto lungo, vanno aggiunti manualmente a `ENTE_LABEL_OVERRIDES` (nessuna troncatura automatica implementata).
+
+- **rev.251** — Nuova feature **"Grafico scavi"**: metri scavati per impresa nel tempo, filtrabile per lotto e periodo. `backend/server.py`: nuovo `GET /api/cantieri/scavi-timeseries` (query `lotto`, `data_da`, `data_a`, tutte opzionali) — aggregation pipeline Mongo su `cantieri_col` (`$match` lotto → `$unwind log` → `$match` su `log.metri_realizzati>0` e range date → `$group` per `{data, impresa}` sommando `metri_realizzati`), evita N+1 fetch (un cantiere per pratica, ciascuno col proprio storico `log`). `mappa.html`: nuovo bottone "📊 Grafico scavi" in sidebar sotto i toggle Pratiche/Scavi/Lotto/Cluster, apre un modal grande (`#scaviChartOverlay`, stesso pattern di `#helpOverlay`) con grafico interattivo Chart.js (nuovo `<script>` da cdnjs, `Chart.js@4.4.4`, prima libreria grafici caricata in questo file). Toolbar modal: filtro lotto (popolato da `lottoStats`/`LOTTO_ORDER` già globali), raggruppamento giorno/settimana (bucket settimana = lunedì ISO), 4 preset periodo (mese corrente+precedente **default all'apertura**, ultimo mese, ultimi 3 mesi, tutto lo storico) + date custom, toggle "Vista cumulativa" (barre impilate per impresa → linee con somma progressiva). Colori impresa da palette fissa di 8 colori ciclica. Dati fetchati una volta per combinazione lotto/periodo (`_scChartFetch`), raggruppamento/cumulativa ricalcolati lato client senza rifetch (`_scChartRender`). **Non testato con dati reali** (nessun ambiente di run disponibile in sessione) — verificata solo sintassi JS/Python (`node --check` sui 5 script inline di `mappa.html`, `ast.parse` su `backend/server.py`). Da verificare al primo deploy: volume dati reale (se i cantieri con log lunghi sono molti, valutare indice Mongo su `log.data` o cache); comportamento con `impresa` mancante/vuota nel log (mappato a "N/D" lato backend). **Assunzione**: bottone posizionato nella sidebar (non come controllo flottante sulla mappa) per evitare collisioni CSS con gli altri controlli assoluti già presenti (stats-bar, map-legend, siti/measure control) — da confermare con l'utente se preferisce altra collocazione.
+
+- **rev.252** — **Correzione posizione rev.251**: la feature "Grafico scavi" era stata messa in `mappa.html` per un fraintendimento — l'utente intendeva `scavi.html`, sotto la card "Mappa Cantieri" (mini-mappa `#miniMapCantieri` già esistente, quella con i badge cluster colorati e i 17 cantieri). Rimosso interamente da `mappa.html` (bottone sidebar, CSS modal, script Chart.js — tornata identica a prima di rev.251) e spostato in `scavi.html`: bottone `.scavi-chart-btn` inserito nella card "Mappa Cantieri" subito sotto `.mini-map-wrap` (dentro lo stesso `card-body`, sopra la legenda colori stato cantiere). Stessa identica logica/modal di rev.251, adattata alle variabili/pattern di `scavi.html`: filtro lotto ora popolato da `LOTTI` (array già caricato/ordinato da `_loadCantieri()`, niente più dipendenza da `lottoStats`/`LOTTO_ORDER` di mappa.html), `apiBase` letto con lo stesso pattern già in uso nel file (`window.ENRI?.apiBase || localStorage.enri_api_base`). Aggiunta anche una classe `.spinner`/`@keyframes scspin` locale (namespaced per non collidere con eventuali stili esistenti), assente in `scavi.html` a differenza di `mappa.html`. Endpoint backend (`GET /api/cantieri/scavi-timeseries`, rev.251) invariato. Verificata solo sintassi (`node --check` sui 5 script inline di `scavi.html`); **non testato con dati reali**.
+
+- **rev.253** — **Fix bug "Grafico scavi" (rev.251/252)**: grafico rimaneva completamente bianco (niente canvas, niente messaggio "Nessun dato") a causa di `ReferenceError: Chart is not defined` in `_scChartRender()` (confermato da console utente). Causa: `cdnjs.cloudflare.com` risultava irraggiungibile dalla rete dell'utente, quindi lo script `Chart.js@4.4.4` non si caricava mai; il resto dello script inline eseguiva comunque (funzioni definite), e l'eccezione scattava solo al primo `new Chart(...)`, dopo che loading/empty erano già stati nascosti — da cui l'assenza di qualunque feedback visibile. Testato prima un fallback `onerror` su jsdelivr, scartato perché insufficiente in reti che bloccano i CDN in generale. **Fix definitivo**: libreria vendorizzata in `js/vendor/chart.umd.min.js` (scaricata da npm, stessa versione 4.4.4, minificata) — in `scavi.html` riga 2649 sostituito `<script src="https://cdnjs.cloudflare.com/.../chart.umd.min.js">` con `<script src="js/vendor/chart.umd.min.js">`, zero dipendenza da CDN esterni per questa feature. **Da fare** (non in scope qui): `index.html` carica Chart.js dallo stesso CDN cdnjs — stesso rischio potenziale, non ancora corretto.
+
+- **rev.254** — Due fix su "Grafico scavi" (rev.251-253): **(1)** stesso problema di rev.253 anche sull'export PPTX (`PptxGenJS is not defined`, CDN cdnjs irraggiungibile) — vendorizzata anche questa libreria. Nota: il build `pptxgen.min.js` da npm richiede **JSZip separato** (a differenza del bundle cdnjs che lo include inline), e il file `pptxgen.bundle.js` di npm risulta rotto (il wrapper UMD esterno esporta erroneamente `window.JSZip` invece di `window.PptxGenJS`, bug del pacchetto — verificato ispezionando il sorgente). Soluzione: vendorizzati **entrambi** `js/vendor/jszip.min.js` (JSZip 3.10.1) e `js/vendor/pptxgen.min.js` (PptxGenJS 3.11.0, build `min.js` non `bundle.js`), caricati in quest'ordine in `scavi.html` (JSZip deve precedere pptxgen). **(2)** Su richiesta utente, le barre nella vista normale (non cumulativa) erano impilate per impresa e poco leggibili — rimosso `stack:'metri'` dai dataset e `stacked:true` dagli assi x/y quando non cumulativa: ora ogni impresa ha una barra affiancata per periodo invece che sovrapposta (vista cumulativa/linee invariata, `stacked` lì non è rilevante).
+
+- **rev.255** — Su richiesta utente, sostituito il checkbox "Vista cumulativa" con un selettore **`#scChartType`** (5 opzioni): Barre raggruppate (default, ex rev.254), Barre impilate, Linee, Linee cumulative (ex "Vista cumulativa"), Torta (totale periodo). `_scChartRender()` riscritta: ramo dedicato per `pie` (aggrega `metri` per impresa su tutto il periodo selezionato, ignora il bucket giorno/settimana — il select `#scChartGrouping` viene disabilitato quando il tipo è torta), gli altri 4 tipi condividono la stessa pipeline di aggregazione per bucket, cambia solo `type`/`stacked`/cumulativa del running sum. Aggiornato anche `exportScaviChartPptx()`: la label del sottotitolo slide ora legge `#scChartType` invece del vecchio checkbox rimosso (mappa valore→etichetta italiana). Verificata solo sintassi (`node --check` su tutti i 10 script inline di `scavi.html`); **non testato con dati reali**.
+
+- **rev.256** — Su richiesta utente ("vedere quanti metri in totale ha fatto un'impresa oltre al valore del giorno"), aggiunta **"+ ombra cumulata"**: checkbox `#scChartCumulOverlay` visibile solo per i tipi Barre raggruppate/impilate/Linee (nascosto per Linee cumulative — ridondante — e Torta — non applicabile, gestito via `#scChartOverlayWrap.style.display`). Quando attivo, aggiunge per ogni impresa un dataset linea tratteggiata (`borderDash:[5,4]`, `pointRadius:0`) con il totale progressivo, plottato su un **asse secondario `y1`** (a destra, "Metri cumulati", `grid.drawOnChartArea:false` per non sovrapporre le griglie) così le linee cumulate (scala alta) non schiacciano le barre/linee giornaliere (scala bassa) sullo stesso asse. Propagato anche a `exportScaviChartPptx()`: se l'overlay è attivo la label della slide include "+ ombra cumulata". Verificata solo sintassi; **non testato con dati reali**.
+
+- **rev.257** — **Bug segnalato dall'utente**: salvataggio riga di storico (log) di un cantiere dal pannello admin falliva sempre con 404 "Cantiere non trovato", anche con `cantiere_key` verificata carattere-per-carattere identica a quella in Mongo. Causa: **ordine delle route** in `backend/server.py` — `PUT /api/admin/cantieri/{cantiere_key:path}` (correzione cantiere, senza suffisso) era registrata *prima* di `PUT /api/admin/cantieri/{cantiere_key:path}/log/{idx}` (correzione singola riga log). Il converter `:path` di Starlette è greedy: per una richiesta come `.../cantieri/1|1B|COMUNE DI SETTIMO MILANESE/log/13`, la route generica (dichiarata prima) intercetta la richiesta e assegna a `cantiere_key` l'intera coda `"1|1B|COMUNE DI SETTIMO MILANESE/log/13"` (con `/log/13` incollato dentro), che ovviamente non esiste come documento → 404 dal handler *sbagliato* (da cui il messaggio "Cantiere non trovato" invece di "Voce di storico non trovata"). Il `DELETE` equivalente non era affetto (nessuna route generica `DELETE` in conflitto). Fix: spostato il blocco `admin_update_cantiere` (route generica) *dopo* `admin_update_cantiere_log_entry` — nessun'altra riga di codice toccata. Verificato `ast.parse` + ordine route via grep.
+
+- **rev.258** — Su richiesta utente: checkbox "+ ombra cumulata" (rev.256) rinominata **"+ avanzamento cumulativo"** (nome più chiaro, mantenuto il prefisso "+" per segnalare che è un overlay additivo e non un tipo di grafico a sé, distinguendola da "Linee cumulative" nel select `#scChartType`) e **convertita da checkbox a bottone toggle** stile `.scavi-chart-period-btn` (stato "acceso" tramite classe `.active`, non più `<input type="checkbox">`). Toccati: HTML (`<label>` + `<input>` → `<button id="scChartOverlayWrap">`), CSS (`.scavi-chart-cumul-toggle` ora eredita da `.scavi-chart-period-btn` + variante `.active`), JS (`_scChartRender()` e `exportScaviChartPptx()` ora leggono `classList.contains('active')` su `#scChartOverlayWrap` invece di `#scChartCumulOverlay.checked` — l'id `scChartCumulOverlay` non esiste più).
+
+- **rev.259** — Portata su **QTS** (repo gemello, fork di ENRI) la feature "Grafico scavi" (rev.251-258) **identica**: nuovo `GET /api/cantieri/scavi-timeseries` in `backend/server.py` (stessa pipeline aggregation), bottone `.scavi-chart-btn` + modal in `scavi.html` sotto la card "Mappa Cantieri" (struttura HTML identica tra i due repo, nessun adattamento richiesto lì). Uniche differenze necessarie nel porting: `window.ENRI`→`window.QTS`, `enri_api_base`→`qts_api_base`, `_enri_session`→`_qts_session` (pattern auth già esistente e diverso in QTS), branding slide PPTX (`ENRI_WIDE`→`QTS_WIDE`, "Generato da ENRI Dashboard"→"Generato da QTS Dashboard"). Riusa la stessa variabile globale `LOTTI` già presente in QTS con identica shape (`{id, ...}`) per il filtro lotto. Librerie vendorizzate (`js/vendor/chart.umd.min.js`, `jszip.min.js`, `pptxgen.min.js`, rev.253-254) copiate as-is, stesso path. Verificato: `node --check` su tutti i 6 script inline di `scavi.html`, `ast.parse` su `backend/server.py`. **Non testato con dati reali.**
+
+- **rev.260** — Su richiesta utente, nuova sezione **"Proiezione completamento scavi"** nel pannello di dettaglio lotto (`stato_lotti.html`, `openPanel`/`buildPanelHTML`), subito dopo le 6 card decisionali e prima del grafico "Avanzamento scavi": risponde a "a quale data arrivo continuando a scavare con le squadre che ho ora" con un selettore di squadre **cliccabile** (bottoni 1..N, N = `max(10, disponibili+4)` capped a 20) per simulare "e se avessi un numero diverso di squadre". Riusa interamente i dati già calcolati da `computeCapacita()` (rev. preesistenti) — nessuna nuova fonte dati: `metriResiduiScavo`, `prodEffettiva` (m/giorno per squadra), `ggSettimana`/`calendarioTipo`, `milestoneROS`. Nuove funzioni: `addWorkingDays(start, giorni, ggSettimana, calendarioTipo)` (inversa di `giorniLavorativi`, stesso criterio di conteggio giorno-settimana per restare coerente con la ROS già calcolata), `computeProiezioneData(c, squadre)` (giorni necessari = `ceil(metriResiduiScavo / (squadre*prodEffettiva))`, poi `addWorkingDays` da oggi; calcola anche lo scostamento in giorni vs `milestoneROS`), `buildProiezioneCard(r)`/`renderProiezioneResult(r, squadre)` (rendering), `_provSelectSquadre(lotto, n)` (click su un bottone squadre: aggiorna solo bottone attivo + blocco risultato via `innerHTML` mirato, non l'intero pannello — stesso pattern di `toggleCollapsible`/`switchTab`). Stato selezione per lotto in nuova variabile globale `PROIEZIONE_SQUADRE` (in-memory, non persistita — si resetta al refresh dati, è una simulazione "what-if" lato client, non un dato salvato). Gestiti i 2 casi limite: `capacita.insufficiente` (stesso motivo già usato dalla card "Capacità operativa") e `metriResiduiScavo<=0` (scavi già completati, nessuna proiezione). Bottone selezionato di default = squadre disponibili oggi (evidenziato anche con un bordo distintivo anche se non è quello cliccato, per restare visibile come riferimento mentre si simula un altro numero). Nuova CSS `.proiezione-*` (namespaced, riusa le stesse variabili colore/font delle altre card). Verificato `node --check` su tutti gli script inline del file. **Non testato con dati reali.**
+
+- **rev.261** — Su richiesta utente, aggiunta **media storica reale** ("metri realizzati dall'inizio cantiere ad oggi") nella sezione "Proiezione completamento scavi" (rev.260) di `stato_lotti.html`: riga informativa sopra il selettore squadre, sempre visibile (anche quando la proiezione stessa non è calcolabile per milestone/capacità insufficiente o scavi già completati). Nuova `computeMediaStorica(lotto, cantieriLotto, metriScavatiTot, parametri)`: prende la data `data_inizio_effettiva` più antica tra i cantieri del lotto che l'hanno valorizzata (campo già presente su `/api/cantieri`, impostabile da admin.html), calcola i giorni trascorsi da lì a oggi con lo stesso criterio giorni-lavorativi/calendarioTipo dei parametri (per restare confrontabile in unità con la produttività standard), e divide `metriScavati` totale del lotto (già aggregato in `s.metriScavati`) per quei giorni. Salvato su `row.mediaStorica` in `render()` (stesso pattern di `row.capacita`). Deliberatamente **non sostituisce** la produttività standard usata dalla proiezione (`c.prodEffettiva`, da parametri) — sono due grandezze diverse per definizione (storica reale vs standard di progetto) e restano entrambe visibili separate, non media in un unico numero, per non nascondere lo scostamento fra le due. Caso limite gestito: nessun cantiere con `data_inizio_effettiva` → messaggio "non disponibile" invece di 0 o N/D silenzioso. Verificato `node --check`.
+
+- **rev.262** — Due modifiche su richiesta utente alla "Proiezione completamento scavi" (rev.260-261) di `stato_lotti.html`: **(1)** nuovo toggle **"Metri autorizzati" / "Intero lotto"** (`_provSelectBase`), visibile solo quando esiste un gap reale fra le due basi (`metriLotto - metriAut > 0.5`, per non mostrare un toggle inutile quando coincidono). "Metri autorizzati" = comportamento preesistente (`c.metriResiduiScavo`, solo tratte con permesso valido/cantiere aperto). "Intero lotto" = `max(0, r.p.kmTot - r.s.metriScavati)` — usa la lunghezza totale del lotto da progettazione (`row.p.kmTot`, già disponibile, include anche tratte non ancora autorizzate) invece del solo residuo autorizzato: risponde a "se finisco i metri autorizzati, quanto ci metto a fare TUTTO il lotto". Nota esplicita sotto il toggle con il gap in metri, per non far scambiare le due basi per errore. `computeProiezioneData(c, squadre)` → `computeProiezioneData(metriResidui, c, squadre)` (metri residui ora passati esplicitamente, non più letti da `c.metriResiduiScavo` — necessario per supportare le due basi); stessa firma aggiornata su `renderProiezioneResult`. Cambio base ricostruisce l'intera sezione (non solo il risultato, a differenza del click su una squadra) perché può far comparire/sparire il ramo "già completato" — nuovo wrapper `#provWrap-{lotto}` e funzione `buildProiezioneInner(r)` (contenuto) separata da `buildProiezioneCard(r)` (wrapper con id). **(2)** numero massimo di bottoni squadre selezionabili ridotto: `Math.min(20, Math.max(10, disp+4))` → `Math.max(6, disp)` (almeno 6 opzioni sempre visibili, di più solo se le squadre disponibili oggi superano già 6 — nessun buffer automatico oltre le disponibili). Verificato `node --check`.
+
+- **rev.263** — Su richiesta utente ("troppo grossi" + nota verde poco utile), rimpicciolito `buildCmpChart`/`.cmp-chart-big` (grafici "Avanzamento scavi"/"Avanzamento autorizzazioni" nel pannello lotto): barra `.cbrb-track` 34px→20px, `.cbrb-pct` 26px→16px (width 68→48), label `.cbrb-lbl` 13px→11px (width 66→58), `.csb-val` scostamento 22px→16px, padding/gap del container ridotti. La nota verde estesa "Baseline stimata da avvio progettazione..." (mostrata quando `flag.stimato`, caso senza milestone reale di invio/ottenimento) non è più un paragrafo sempre visibile sotto lo scostamento: sostituita da un **badge "ⓘ" compatto** (nuova classe `.cbrb-info-badge`, cerchio 13px) accanto all'etichetta "Previsto stimato", stesso testo ora nel `title` (tooltip al passaggio del mouse) invece che in riga. Riduce lo spazio verticale occupato dalla card senza perdere l'informazione. Non toccato il caso A (`infoTxtA`, "attività in anticipo rispetto all'invio") né il caso B (`warnTxt`, milestone mancante) — restano paragrafo `cmp-info-note`/`cmp-warn-note` come prima, non segnalati dall'utente. Verificato `node --check`.
+
+- **rev.264** — Su richiesta utente, due estensioni alla "Proiezione completamento scavi" (rev.260-262) di `stato_lotti.html`: **(1)** selettore **giorni lavorativi/settimana** (bottoni 5/6/7, `_provSelectGgSett`) sopra il blocco squadre — override client-side, in nuova `PROIEZIONE_GGSETT[lotto]` (in-memory, come `PROIEZIONE_SQUADRE`), letto da `renderProiezioneResult`/passato come 4° argomento sia a `computeProiezioneData` che alla nuova `computeProiezioneFasata` (vedi sotto). **Non tocca** `c.ggSettimana`/il parametro ufficiale da `Parametri_configurazione_dashboard_ENRI.xlsx` usato dal motore rischio — è un what-if isolato a questa sezione, esattamente come le squadre. **(2)** pannello **"Autorizzazioni mancanti"** (`buildProiezioneAuthPanel`, collassato di default, `_provToggleAuth`), visibile solo con base "Intero lotto" selezionata e gap>0: elenca `praticheAggregate(r.p.issues)` (stessa aggregazione già usata dal tab "Pratiche critiche"/"Autorizzazioni" — **mai `r.p.blocchi`**, che sono nulla osta/ordinanze e restano esclusi come richiesto esplicitamente dall'utente) con un `<input type="date">` per riga, precompilato da `stimaDataPreventivaISO(ente)` (oggi + `giorni_attesi` da `PARAMETRI.tempi_autorizzativi`/`lookupTempoEnte`, stesso lookup del tab Autorizzazioni; vuoto se l'ente non ha soglia nota — mai una data indovinata) ma sempre modificabile dall'utente (`onchange`→`_provSetDataPratica(lotto, idx, value)`, salva in nuova `PROIEZIONE_DATE_PRATICHE[lotto][idx]`, idx = indice di riga stabile perché l'ordinamento è deterministico sugli stessi dati). Nuovo motore **`computeProiezioneFasata(metriIniziali, eventi, c, squadre, ggSettimanaOverride)`**: a differenza del calcolo esistente (che tratta tutti i metri residui come disponibili da subito), simula giorno-lavorativo per giorno-lavorativo un backlog che parte da `c.metriResiduiScavo` (già autorizzato) e si incrementa via via che si superano le date evento inserite — le pratiche **senza data restano fuori dal calcolo**, mai forzate a una data. Usato automaticamente da `renderProiezioneResult` quando base==='lotto' (branch, altrimenti resta `computeProiezioneData` invariato per base "Metri autorizzati"). Guardia anti-loop-infinito a 3650 iterazioni (~10 anni) → esito `disponibile:false` con motivo esplicito invece di bloccare il browser. Verificato `node --check` sullo script estratto.
+
+- **rev.266** — Su richiesta utente, il selettore "Giorni lavorativi/settimana" della proiezione (rev.264) passa da `[5,6,7]` a `[3,4,5,6,7]` — stessa logica invariata (`_provSelectGgSett`, `idxGg <= ggSettimana` in `computeProiezioneData`/`computeProiezioneFasata`), solo più opzioni cliccabili. Verificato `node --check`.
+
+- **rev.267** — Bug segnalato dall'utente: il modal "Autorizzazioni mancanti" (rev.264-265) mostrava dati sbagliati (etichette composte tipo "AUT/7/1B | NO/5/1B", date tutte stimate anche quando esisteva già una previsione reale). Causa: usava `praticheAggregate(r.p.issues)`, un'aggregazione a livello di **tratta** pensata per il tab "Autorizzazioni" pre-esistente — quando il campo PRATICA non è valorizzato su tutte le righe (`countPratiche(...).esatto===false`) quella funzione ripiega su un'etichetta per tratta, e la stessa tratta può comparire referenziata da più codici pratica (AUT+NO collegati), da cui le etichette concatenate. Inoltre non aveva mai accesso al campo reale `DATA_PREVISTA_RILASCIO` (quello mostrato in "Prev. Rilascio" nella tabella "Tutte le pratiche" di `index.html`), perché `stato_lotti.html` carica solo `Riepilogo_progettazione.csv` (livello tratta, senza quel campo), mai `Master.csv` (livello pratica). Fix: nuovo **`loadMasterPraticheByLotto()`**/`_buildMasterPraticheByLotto()` — fetch on-demand (al primo `_provSelectBase(lotto,'lotto')`, cache condivisa fra tutti i lotti in `_masterPraticheByLotto`) e parsing snello di `Master.csv` (stesse colonne/stessa logica di aggregazione tratta+pratica+tipo→codice pratica di `index.html`, ma senza note/storico stati che qui non servono), con **`_csvLogicalLines()`** portato 1:1 da `index.html` per non riproporre il bug delle righe spezzate su campi quotati multi-riga (già corretto altrove, vedi rev. citata in cima al file). Il modal ora mostra il **codice pratica reale** (es. `AUT/2/1B`), **stato**, **metri** ed **ente** per pratica, e precompila la data con `DATA_PREVISTA_RILASCIO` quando presente (convertita via nuovo **`localDateToISO()`** — mai `Date.toISOString()`, che sposta la data indietro di un giorno su mezzanotte locale in fuso orario positivo: bug potenziale anche preesistente, corretto qui e in `stimaDataPreventivaISO`); solo se assente ripiega sulla stima da soglia ente, marcata con badge "stimata" (si toglie al primo edit manuale, `_provSetDataPratica` ora chiavizzato per **codice pratica**, non più indice di riga). **Riconfermato esplicitamente il filtro `TIPO_PERMESSO==='AUTORIZZAZIONE'`** (nulla osta/ordinanze esclusi) in tutti e tre i punti che leggono le pratiche (nota "Intero lotto", trigger/tabella del modal, motore `computeProiezioneFasata`) — era un requisito esplicito dell'utente in rev.264 e non va inteso come superato dallo screenshot di `index.html` mostrato per illustrare il bug (quella tabella non è filtrata per tipo, è solo la fonte dati corretta da usare). Stati loading/errore/retry aggiunti (`_provRetryMasterPratiche`) perché il fetch è ora asincrono. Verificato `node --check`, nessun residuo del vecchio parametro `idx`/`p.isTratta` nella sezione modal (`grep` mirato).
+
+- **rev.265** — Su richiesta utente ("rendi più professionale il pop-up"), il pannello "Autorizzazioni mancanti" (rev.264) da collassabile inline è diventato un **vero modal centrato**: trigger compatto `.auth-modal-trigger` (badge col conteggio) apre `.auth-modal-overlay`/`.auth-modal` (header con titolo+sottotitolo+chiusura, chips riepilogo — N pratiche/tratte, km totali, km senza data con stato warn/ok —, tabella con header sticky e riga hover, footer con bottone "Chiudi"; animazioni fade+pop in CSS, backdrop cliccabile per chiudere via `event.target===this`). Input data ridisegnato (`.auth-date-input`, focus ring, bordo warn quando vuoto). Nuove funzioni `_provOpenAuth(lotto)`/`_provCloseAuth(lotto)` sostituiscono `_provToggleAuth` (stesso pattern rebuild di `#provWrap-{lotto}`). Il modal è renderizzato dentro il markup del pannello proiezione ma con `position:fixed` copre comunque l'intera viewport senza problemi di containing block (`.side-panel` non usa `transform`, solo `right` per l'animazione slide). Responsive: `@media(max-width:600px)` riduce padding overlay/header/body/footer. Verificato `node --check`, nessun residuo delle classi/funzioni precedenti (`grep` pulito).
+
+- **rev.268** — Nuova feature **"Gantt cantieri"** su richiesta utente: bottone `.gantt-cant-trigger` ("📊 Gantt cantieri") aggiunto nel titolo della sezione "Proiezione completamento scavi" (`stato_lotti.html`, `buildProiezioneInner`) — apre un modal (`_gcOpen(lotto)`, riusa la cornice generica `.auth-modal-overlay/.auth-modal` con variante più larga `.gantt-cant-modal` 960px, iniettato in nuovo `<div id="ganttCantContainer">` fuori da `#provWrap-{lotto}` per non legarne lo stato al ciclo di rebuild proiezione) con un Gantt: una riga per cantiere = una pratica di autorizzazione (`r.s.cantieri`, già "uno per pratica di autorizzazione" per docstring `GET /api/cantieri` — nessuna nuova fetch), barra posizionata sull'asse tempo da inizio a fine. Nuova `_gcResolveSpan(c)`: posizione barra guidata **sempre** da `data_inizio/fine_effettiva` quando presente; la `_prevista` è usata solo se `log_count>0` (stessa cautela rev.199-200 — una prevista da seed mai confermata da un aggiornamento impresa non sposta la barra) ed è marcata visivamente come tentativo (`.gc-bar-tentative`, bordo tratteggiato, opacità ridotta); cantieri senza alcuna data valida (log_count 0 o nessuna data) mostrano "Non avviato" invece di una barra. Cantieri `in_corso`/`sospeso` senza `data_fine_effettiva` estendono la barra a oggi con pattern a righe (`.gc-bar-ongoing`). Colori barra per `stato_cantiere` riusano la stessa palette di `statoOrder` (riga ~1752: sky/warn/blue-50/gray-300/ok per in_corso/sospeso/allestimento/non_avviato/completato). Layout a due colonne affiancate (`.gantt-cant-labels` larghezza fissa 210px + `.gantt-cant-timeline` flessibile) invece di una singola griglia, per poter posizionare in percentuale (relativa al solo dominio temporale) sia i tick mensili/gridline sia la linea verticale "Oggi" (`new Date()`, mai hardcoded) senza che la colonna etichette la sfalsi. Dominio calcolato su tutte le date note dei cantieri del lotto (min/max, arrotondato a inizio/fine mese, esteso a oggi se necessario). Tooltip nativo (`title`) per riga con stato, inizio/fine (con badge "(previsto)" se tentativo) e metri scavati/totali. Gestiti 2 casi limite: nessun cantiere censito, e cantieri presenti ma nessuno con una data valida. **Non testato con dati reali** (nessun ambiente di run disponibile in sessione) — verificata solo sintassi (`node --check` sull'unico script inline del file).
+
+- **rev.269** — Su richiesta utente, il Gantt cantieri (rev.268) di `stato_lotti.html` include anche le **autorizzazioni mancanti** del lotto, non solo i cantieri già aperti. Nuova `_gcMissingAuthRows(r)`: stessa fonte/filtro di `buildProiezioneAuthPanel` (pratiche `tipo==='AUTORIZZAZIONE'` non `OTTENUTO`/`NO COMPETENZA` da `_masterPraticheByLotto`, Master.csv via `loadMasterPraticheByLotto`, caricato on-demand se non già in cache quando si apre il Gantt, con stato loading/errore/retry — `_gcRetryMasterPratiche`). Inizio barra = data prevista/stimata di rilascio della pratica (stessa `PROIEZIONE_DATE_PRATICHE[lotto]` della proiezione "Intero lotto" — logica di inizializzazione estratta in helper condiviso **`_ensurePraticheDate(lotto, pratiche)`**, usato sia da `buildProiezioneAuthPanel` che dal Gantt, cosi le due viste mostrano sempre la stessa data). Fine barra = inizio + giorni necessari a scavare i metri della pratica con le **stesse squadre/giorni-settimana attualmente selezionati nel pannello "Proiezione completamento scavi"** (`PROIEZIONE_SQUADRE[lotto]`/`PROIEZIONE_GGSETT[lotto]`, fallback a squadre disponibili oggi se l'utente non ha ancora toccato il selettore; stesso motore `addWorkingDays`/`c.prodEffettiva`/`c.calendarioTipo` di `computeProiezioneData`) — cambiando il numero di squadre nella proiezione e riaprendo il Gantt, le barre mancanti si ricalcolano di conseguenza. Nessuna squadra selezionata o `c.insufficiente` (milestone ROS mancante) → barra non calcolabile, mostrato solo un marker puntuale (`.gc-bar-point`) sulla data di inizio con tooltip esplicito ("nessuna squadra selezionata"), mai una durata inventata. Pratiche senza alcuna data (né reale né stimabile per soglia ente) restano fuori dall'asse, riga con testo "Nessuna data prevista" (stesso pattern di "Non avviato" per i cantieri). Righe "mancante" hanno stile dedicato (`.gc-bar-mancante`, pattern diagonale tratteggiato, per non confondersi con `.gc-bar-tentative` dei cantieri reali) e sono ordinate/mescolate con i cantieri nello stesso asse temporale unico. Riepilogo/legenda/sottotitolo modal aggiornati per riportare il conteggio delle autorizzazioni mancanti incluse. Verificato `node --check` sullo script estratto; **non testato con dati reali** (stesso limite ambientale di rev.268).
+
+- **rev.270** — Bug reale segnalato dall'utente su rev.269: le barre "autorizzazione mancante" del Gantt erano calcolate **ciascuna con l'intera capacità squadre selezionata**, come se ogni pratica avesse il proprio pool dedicato — con 1 squadra e 2 autorizzazioni mancanti comparivano due barre sovrapposte nello stesso periodo, impossibile (le squadre sono un pool condiviso per l'intero lotto, non uno per pratica). Fix: nuova **`_gcSimulaCoda(metriIniziali, eventi, c, squadre, ggSettimana)`** — stesso motore event-driven giorno-per-giorno di `computeProiezioneFasata`, ma qui il backlog è una **coda FIFO di chunk** (residuo già autorizzato `c.metriResiduiScavo`, sbloccato da oggi, seguito da una pratica mancante per ogni data di autorizzazione, in ordine cronologico) consumata in sequenza dall'unica capacità condivisa `squadre*prodEffettiva/giorno`: un chunk non inizia finché il precedente non è esaurito, anche se la sua autorizzazione è già arrivata prima. Per ogni pratica si registra sia `start` (giorno reale di inizio lavorazione, può cadere dopo la data di autorizzazione se le squadre sono ancora impegnate su altro) sia `end`. `_gcMissingAuthRows` aggiornata di conseguenza: la barra ora usa `sim.start`/`sim.end` (mai più `addWorkingDays` sulla singola pratica isolata), e il tooltip distingue esplicitamente **"Autorizzazione prevista"** (data da Master.csv/stima) da **"Avvio cantiere stimato"** quando diverso (label "squadre impegnate su altri cantieri del lotto fino a quella data"), cosi resta chiaro perché l'avvio reale slitta rispetto alla sola autorizzazione. Verificato con test isolato (`node`, scenario 1 vs 2 squadre su 2 pratiche): con 1 squadra le barre ora si accodano senza sovrapposizione, con 2 restano comunque sequenziali (nessun modello di parallelismo per-cantiere, coerente con la semplificazione esistente "squadre = produttività aggregata" già usata da `computeProiezioneFasata`/tutto il motore proiezione — non introdotta qui). **Incoerenza preesistente non toccata** (fuori scope, solo segnalata): `computeProiezioneFasata` (e quindi anche `_gcSimulaCoda`, che ne replica il pattern) applica il gate `idxGg<=ggSettimana` sempre, mentre `addWorkingDays`/`computeProiezioneData` lo applicano solo se `calendarioTipo==='Lavorativi'` — con calendario "Solare" le due proiezioni (base "Metri autorizzati" vs "Intero lotto"/Gantt) userebbero criteri diversi. `node --check` OK.
+
+- **rev.271** — Su richiesta esplicita dell'utente, il numero di squadre nel Gantt cantieri (`stato_lotti.html`, rev.268-270) non è più un pool condiviso di lotto: ogni riga (cantiere esistente o autorizzazione mancante) ha ora la propria squadra, editabile inline e persistita, e avanza in parallelo con le altre — nessuna coda FIFO. **Backend** (`backend/server.py`): nuova collection `stato_lotti_squadre_col` (keyed `lotto`+`codice` pratica — stessa chiave sia per `pratica_id` dei cantieri che per il codice Master.csv delle autorizzazioni mancanti, stesso formato "AUT/N/lotto"), index unique su `(lotto, codice)`; `GET/PUT /api/gantt-cantieri/squadre` (GET: `_require_staff_session`; PUT: `_require_admin_session`, upsert `{squadre, data_prevista_inizio}`, entrambi nullable per tornare al default). **Frontend**: rimossa `_gcSimulaCoda` (coda FIFO su capacità condivisa), sostituita da `_gcProjectRow(start, metri, squadre, prodEffettiva, ggSettimana, calendarioTipo)` — proiezione indipendente per riga, stesso motore `addWorkingDays` già in uso altrove. Default squadre per riga (`_gcDefaultSquadre`/`_gcRowSquadre`) quando non c'è override: stessa regola per-stato di `computeSquadre()`/`regole_squadre_cantiere` (stato `non_avviato` per le autorizzazioni mancanti, non avendo ancora un cantiere). `_gcMissingAuthRows` riscritta di conseguenza (ogni pratica proietta la propria fine indipendentemente, nessun accodamento su altre pratiche). Cantieri `non_avviato` (nessuna data, prima mostravano solo testo "Non avviato" senza barra): su richiesta utente ora possono ottenere una barra proiettata inserendo manualmente una **data di previsione inizio** (nuovo input `type=date` inline, campo `data_prevista_inizio` nella stessa collection — **non** è `data_inizio_prevista` del cantiere, che ha semantica diversa/già in uso lato impresa e resta invariato) + squadre assegnate; nuovo ramo in `_gcResolveSpan(c, ctx)` (firma estesa con un `ctx` — `{lotto, capacita, ggSett, calendarioTipo, parametri}` — costruito una volta in `_gcBuildModal`). Nuovo stile barra `.gc-bar-proiettato` (pattern diagonale azzurro/tratteggiato accent, distinto sia da `.gc-bar-tentative` — dato reale non confermato — sia da `.gc-bar-mancante` — grigio, autorizzazione). Controlli inline (`_gcRowControlsHtml`): input numero squadre su ogni riga (bordo evidenziato se è un override esplicito vs default ereditato), + input data solo sui cantieri senza data reale (`!hasRealStart`). Handler `_gcSetSquadre`/`_gcSetDataPrevista`: aggiornamento ottimistico della cache locale (`_gcSquadreOverrides[lotto][codice]`) + rebuild immediato della sola sezione Gantt, poi PUT al backend in background (nessun rollback automatico se il salvataggio fallisce — resta il valore ottimistico, si autocorregge al prossimo giro se il GET viene rifatto). Altezza righe label/track 42px→60px per fare spazio ai controlli. Legenda e riepilogo conteggi aggiornati. **Non testato con dati reali** (stesso limite ambientale delle sessioni precedenti su questo file) — verificata solo sintassi (`node --check` sui 2 script inline di `stato_lotti.html`, `ast.parse` su `backend/server.py`). **Nota per l'utente**: il meccanismo di override squadre "storico" del motore rischio ROS (`eccezioni_cantiere`/`regole_squadre_cantiere`, da Excel `Parametri_configurazione_dashboard_ENRI.xlsx`) resta **invariato e separato** — continua a governare `computeSquadre()`/le card di rischio in alto nel pannello lotto; il nuovo override qui è specifico del Gantt e ha priorità solo lì (viene usato anche come sorgente del valore di default mostrato, ma un override salvato nel Gantt non retroagisce sul motore rischio). Da valutare in un secondo giro (non richiesto ora): se l'utente vuole che l'override squadre del Gantt aggiorni anche `eccezioni_cantiere`/il pannello rischio, o restino intenzionalmente disaccoppiati. **Altra nota**: il pannello **"Proiezione completamento scavi"** (rev.260-266, sopra il bottone Gantt, con selettore squadre 1..N cliccabile) resta **invariato** — continua a usare `PROIEZIONE_SQUADRE[lotto]` come pool unico condiviso per proiettare il completamento dell'intero lotto. Solo il Gantt cantieri (sotto, nel modal) usa ora le squadre indipendenti per riga. Da chiedere all'utente se vuole disaccoppiare i due anche concettualmente in UI (nomi/posizione) per evitare confusione fra i due selettori di squadre con semantica diversa nella stessa pagina.
+
+- **rev.272** — **Correzione a rev.271**: l'utente ha chiarito che le squadre/data-prevista-inizio per riga del Gantt cantieri devono restare **solo per la sessione della proiezione aperta** (si perdono al refresh/chiusura), non persistite — stessa natura "what-if" locale di `PROIEZIONE_SQUADRE`/`PROIEZIONE_DATE_PRATICHE`, non un dato persistente come inizialmente implementato. Rimossa interamente la parte backend aggiunta in rev.271 (`stato_lotti_squadre_col`, index, `GET/PUT /api/gantt-cantieri/squadre`) — `backend/server.py` torna identico al pre-rev.271. Lato frontend `_gcSquadreOverrides` resta l'unica fonte dati ma ora è puro stato in-memory (nessun `loadGanttSquadreOverrides`/fetch/PUT): `_gcSetSquadre`/`_gcSetDataPrevista` scrivono solo nell'oggetto e fanno rebuild, senza chiamate di rete. Rimossi `_gcSquadreLoading`, `_gcSquadreError`, `_gcRetrySquadreOverrides`, la nota di caricamento/errore nel modal. Resta invariato tutto il resto di rev.271 (motore `_gcProjectRow` per-riga indipendente, `_gcResolveSpan` con proiezione da data manuale per i `non_avviato`, UI dei controlli inline, stile `.gc-bar-proiettato`).
+
+- **rev.273** — Bug segnalato dall'utente su rev.271/272: modificando le squadre di un cantiere già **in corso**, la barra nel Gantt non si aggiornava — restava ancorata a `data_fine_prevista` (il campo inserito dall'impresa), mai coinvolta nel nuovo motore per-riga. L'utente ha chiarito che quel campo non va più considerato affatto: il Gantt deve proiettare la fine di **ogni cantiere non concluso** (qualsiasi stato, non solo `in_corso`/`sospeso`) da squadre assegnate × produttività × **metri residui da scavare** (`metri_totali - metri_scavati`), a partire da oggi. `_gcResolveSpan(c, ctx)` riscritta: se `data_fine_effettiva` presente → fine reale, nessuna proiezione (invariato). Altrimenti → fine sempre proiettata con `_gcRowSquadre`+`_gcProjectRow` a partire da `max(oggi, inizio)`; `data_fine_prevista`/`fPrev` **rimossi interamente** dalla funzione (non più letti). Nessuna squadra assegnata/0 metri residui/capacità lotto insufficiente → fallback barra ferma a oggi (`noProject`, stesso stile tratteggiato "aperto" di prima, classe `.gc-bar-ongoing`). **Rendering**: la barra dei cantieri non conclusi ora è a due tratti nello stesso track-cell — tinta piena inizio→oggi (periodo realmente trascorso, invariato) + overlay tratteggiato bianco-su-colore `.gc-bar-proiez-overlay` (nuovo, posizionato sopra via DOM order, `pointer-events` attivo per il tooltip) solo su oggi→fine proiettata. Tooltip aggiornato con gg lavorativi/metri residui/squadre quando proiettato. Legenda: nuova voce "Tratteggio = proiezione residua"; nota in fondo al modal aggiornata per esplicitare che `data_fine_prevista` non è più usata. **Non testato con dati reali** (stesso limite ambientale delle sessioni precedenti).
+
+- **rev.274** — **Fix bug reale segnalato dall'utente (preesistente, non introdotto dalle sessioni rev.271-273)**: il bottone "Autorizzazioni mancanti" del pannello "Proiezione completamento scavi" non apriva più il modal. Causa: `buildProiezioneAuthPanel()` referenziava `stimeSet.has(p.codice)` nella riga della tabella senza mai dichiarare `stimeSet` in quello scope (esisteva solo dentro `_ensurePraticheDate`, non restituito) — `ReferenceError` silenzioso al rebuild che lasciava il bottone apparentemente "morto" (lo stato `PROIEZIONE_AUTH_OPEN` veniva comunque impostato a `true`, ma il render falliva sempre prima di scrivere l'HTML). Fix: `const stimeSet = PROIEZIONE_DATE_STIMATA[lotto];` aggiunta subito dopo `_ensurePraticheDate(...)` in `buildProiezioneAuthPanel`. **Su richiesta utente**, giorni lavorativi/settimana e data prevista rilascio delle autorizzazioni mancanti — finora modificabili solo dal pannello "Proiezione completamento scavi" in alto — sono ora editabili anche **dentro il Gantt cantieri**, stesso stato condiviso (`PROIEZIONE_GGSETT`, `PROIEZIONE_DATE_PRATICHE`/`PROIEZIONE_DATE_STIMATA`), non duplicato: nuovo selettore giorni/settimana in testa al modal Gantt (`_gcSetGgSett`, stessa UI/default di parametri configurazione del pannello in alto), nuovo input data sulle righe "mancante" del Gantt che chiama direttamente `_provSetDataPratica` (già esistente, riutilizzata). Poiché pannello in alto (`#provWrap-{lotto}`) e Gantt (`#ganttCantContainer`) sono due alberi DOM separati con lo stesso stato sottostante, aggiunto un tracker `_gcCurrentLotto` (lotto il cui Gantt è aperto, o null) + helper `_refreshBothViews(lotto)` che rinfresca entrambe le viste se presenti — richiamato da `_provSelectGgSett`, `_provSetDataPratica` (ora fa rebuild completo invece del precedente aggiornamento parziale) e dal nuovo `_gcSetGgSett`: modificare da una vista aggiorna anche l'altra se aperta sullo stesso lotto, niente più dati stantii tra le due. `_gcRowControlsHtml` generalizzata: il parametro booleano `showDateInput` è diventato un oggetto `dateOpts {value, handler, label, title}` per supportare sia l'input "Inizio prev." dei cantieri `non_avviato` (handler `_gcSetDataPrevista`, solo in memoria) sia il nuovo input "Data prevista" delle autorizzazioni mancanti (handler `_provSetDataPratica`, condiviso/persistito in sessione come il resto della proiezione "Intero lotto"). Verificata solo sintassi (`node --check`), non testato con dati reali.
+
+- **rev.275** — Bug segnalato dall'utente su rev.273: la barra di un cantiere "in corso" restava ancorata a una data fissa e non cambiava modificando le squadre. Causa: `_gcResolveSpan` dava priorità a `data_fine_effettiva` (`fEff`) se presente, **indipendentemente dallo stato del cantiere** — se quel campo risultava valorizzato anche a stato ancora `in_corso` (dato incoerente ma possibile in pratica, es. residuo di una riapertura/correzione), la barra restava sul "fatto" invece di passare alla proiezione, e le squadre non venivano nemmeno lette. Fix: la fine reale (non proiettata) si usa ora solo se `fEff && c.stato_cantiere === 'completato'` — "concluso" è deciso dallo stato, non dalla sola presenza del campo data. Migliorato anche il tooltip del caso "fine non proiettabile" (era un elenco generico di 3 possibili cause): ora indica la causa specifica — 0 m residui, nessuna squadra assegnata, o milestone ROS del lotto mancante — in base ai valori effettivi della riga, utile per capire subito perché una barra non si muove. Verificata solo sintassi, non testato con dati reali.
+
+- **rev.276** — Su richiesta utente, il **Report AWS** (`mappa.html`, `generaReportAWS()`) usa ora una **legenda semplificata a 4 bucket**, valida **solo per il PowerPoint**: la dashboard continua a mostrare i 10 stati reali. Nuovi oggetti in testa allo script (subito dopo `STATO_COLORS`): flag `_awsReportMode`, `AWS_BUCKET_COLORS` (OBTAINED `#1E9E6A`, ONGOING `#E8912B`, NOT STARTED `#8A94A6`, DENIED `#C0392B`), `AWS_BUCKET_ORDER`, mappa `AWS_BUCKET_BY_STATO` (IN ATTESA/IN REDAZIONE → NOT STARTED; IN FIRMA RDS, INVIO PRELIMINARE, INVIATO, PROTOCOLLATO, NECESSARIA INTEGRAZIONE, IN REDAZIONE INTEGRAZIONE, PROTOCOLLATO INTEGRAZIONE → ONGOING; OTTENUTO + NO COMPETENZA → OBTAINED) e helper `awsBucket()`/`awsBucketColor()` (normalizzazione NBSP/trim/upper, fallback NOT STARTED). `getColorForMode()` è l'unico punto di innesto: in modalità `stato` ritorna `awsBucketColor(st)` se `_awsReportMode`, altrimenti il `getColor(st)` di sempre — quindi il restyle avviene con la `setViewMode('stato')` già presente, senza toccare `applyFilterCluster*`. `generaReportAWS()` alza il flag prima di `setViewMode('stato')` e lo azzera nel `finally` **prima** del `setViewMode(prevMode)` di ripristino. Legenda disegnata **nativamente in pptx** (`_awsAddLegend(slide)`: 4 `addShape('rect')` + `addText`, riga orizzontale da x=5.95, passo 1.82") perché `#legendContainer` è fuori da `#map` e non finisce mai nello screenshot `html2canvas`; titolo slide ristretto da w=12.7 a w=5.5 per fargli spazio. **DENIED non ha oggi alcuno stato sorgente**: `PRATICA_STATO_VALUES` (backend) non prevede diniego/rigetto — la voce compare in legenda ma nessuna tratta la userà finché non si aggiunge la riga corrispondente in `AWS_BUCKET_BY_STATO`. Verificata solo sintassi (`node --check` sui 4 script inline di `mappa.html`), non testato con dati reali.
+
+- **rev.277** — Completamento di rev.276: poiché nessuno stato di diniego esiste a monte (`PRATICA_STATO_VALUES`), il bucket **DENIED** del Report AWS è ora popolato da una **selezione manuale** fatta dall'utente prima dell'estrazione. Nuovo bottone topbar `#deniedBtn` ("⛔ Negati N", badge `#deniedCount`) accanto a "Report AWS", apre `#deniedOverlay` (stesso pattern CSS di `#helpOverlay`). Stato: `_awsDenied` (Set) persistito in `localStorage` chiave `aws_report_denied_v1` — **solo lato browser, nessuna scrittura su Master.csv/MongoDB/GitHub**: è una regola di visualizzazione del report, non un dato. Chiavi `'P:<codice PRATICA>'` (preferita — il backend assegna una sola AUTORIZZAZIONE per tratta, quindi negare la pratica nega tutte le sue tratte) con fallback `'T:<TRATTA_ID>'` per le tratte senza campo PRATICA; `_awsIsDenied(props)` controlla entrambe. `getColorForMode()`: in `_awsReportMode` il diniego manuale **vince sempre** sullo stato reale (`_awsIsDenied(p) ? AWS_BUCKET_COLORS.DENIED : awsBucketColor(st)`), fuori dal report il comportamento resta invariato. Modal: `_awsBuildDeniedIndex()` aggrega `allFeatures` per pratica (codice, ente, comuni, lotto, cluster, stato, n. tratte, km), `renderDeniedList()` con ricerca testuale + filtro lotto + filtro "Tutte/Solo selezionate/Escludi ottenute", `toggleDenied()`/`clearDenied()` (con conferma), `_awsUpdateDeniedSummary()` aggiorna badge topbar e riepilogo footer. Il badge si inizializza su `DOMContentLoaded`. Verificata solo sintassi (`node --check` sui 4 script inline), non testato con dati reali.
+
+- **rev.278** — Bug reale segnalato dall'utente su `stato_lotti.html`: quasi tutti i lotti (10 su 12) risultavano "Critico" con badge tipo "CRITICO 58/100", numericamente contraddittorio con la propria legenda (Critico = 75-100/Excel "Rischio ROS"). Causa a catena, tre difetti distinti nel motore rischio:
+  1. **Floor di escalation troppo aggressivo**: `computeRischioComposito` sostituiva l'intera `classe` con quella del singolo fattore più severo (`puntiMax`), ignorando del tutto il punteggio composito mostrato accanto — da cui l'incoerenza "Critico" + "58/100" (58 sta nella fascia Alto). **Fix**: la classe ora sale al massimo **di un gradino** rispetto alla media pesata quando un fattore singolo è più severo (nuovo `escalata:true` nel risultato, mai un salto diretto alla classe del fattore peggiore). Badge (`badgeRischio`) mostra un marker `▲` con tooltip quando la classe è stata alzata; nota metodologica del pannello dettaglio (§ trasparenza) lo esplicita.
+  2. **`computeFaseScavi` attivava R_SCAVI troppo presto/troppo spesso**: la fase scattava già 30gg prima dell'avvio (`PERMESSI_FINESTRA_IMPATTO`) oppure, in assenza di milestone di avvio tracciata, bastava che il lotto avesse **un solo cantiere censito** (anche in `allestimento`/`non_avviato`) perché il fattore fosse considerato attivo — con 0 squadre disponibili (contate solo dai cantieri `in_corso`) il rapporto squadre-necessarie/disponibili risultava indefinito e il punteggio saltava a 100 secco, anche per lotti semplicemente non ancora entrati in fase operativa. **Fix**: fase scavi ora "attiva" solo se la milestone di avvio è realmente passata, **oppure** se almeno un cantiere del lotto è in uno stato realmente operativo (`in_corso`/`sospeso`/`completato` — non più `allestimento`/`non_avviato`, che non sono prova di lavoro in corso). Rimossa la finestra d'impatto pre-avvio come trigger (restava solo informativa in `entrataInFinestra`, mai usata a valle).
+  3. **Soglie R_SCAVI hardcoded**: `fattoreRScavi` chiamava `interpLin(rapporto, 1.0, 1.5)` ignorando le colonne "Soglia attenzione"/"Soglia critica" del foglio Excel "Rischio ROS" (1.0/1.25) passate come parametro `f` alla funzione ma mai lette. Modificare quelle celle non aveva alcun effetto sul punteggio. Fix: ora legge `Number(f.soglia_attenzione)`/`Number(f.soglia_critica)`.
+  Verificata solo sintassi (`node --check`), non testato con dati reali (nessun ambiente di run disponibile in sessione).
+
+- **rev.279** — Correzioni al file Excel `Parametri_configurazione_dashboard_ENRI.xlsx` (fornito dall'utente), segnalate durante l'analisi di rev.278:
+  1. **Foglio "Tempi autorizzativi", riga AUTH_SATAP**: soglia attenzione (100) > soglia critica (90) — invertite rispetto a tutti gli altri enti (crescenti). Corretto a attenzione=100/critica=150 (allineate a RFI, stesso "giorni attesi"=120) **come proposta da validare**, non un dato certo — segnalato in colonna Note.
+  2. **Foglio "Parametri per lotto"**: intestazione colonna "Efficienza prevista" rinominata in "Efficienza prevista (fattore, 1 = 100%)" — il codice (`stato_lotti.html`, `computeCapacita`) la usa come moltiplicatore diretto (`prodStd * efficienza`, 1=100%), ma l'etichetta originale e l'unità "%" nel foglio "Esempio calcolo" inducevano a inserire valori come 85 (intendendo 85%), che avrebbero fatto esplodere la produttività effettiva di 85 volte.
+  3. **Foglio "Esempio calcolo"**: due bug che rendevano il foglio-sandbox inutilizzabile per validare la logica (dava risultati assurdi: produttività effettiva 4900 m/g con input standard, scostamento milestone −46326 giorni). (a) Tutte le formule da riga 15 a 23 referenziavano la cella una riga sopra quella corretta (es. "Produttività effettiva" leggeva Giorni-lavorativi×Produttività-standard invece di Produttività-standard×Efficienza) — corrette tutte le referenze (B15, B17-B23). (b) "Data riferimento"/"Milestone contrattuale" (B8/B9) erano salvate come **testo** (`'25/08/2026'`, tipo stringa) nonostante il formato data: le formule a valle restituivano `#VALORE!` al primo ricalcolo reale (verificato aprendo/riconvertendo il file con LibreOffice headless, che ricalcola le formule — i valori "corretti" visti in Excel erano cache stantie). Convertite in date reali. Verificato con ricalcolo LibreOffice: con gli input di esempio invariati (10.000 m totali, 2.000 scavati, milestone 31/10/2026, 1 squadra attiva) il foglio ora produce risultati coerenti — 8.000 m residui, 49 gg lavorativi, produttività richiesta ≈163 m/g, 2 squadre necessarie, 1 squadra aggiuntiva, completamento stimato 15/12/2026, scostamento +45 gg, esito "Capacità insufficiente". Corretto anche il formato numerico della cella "Squadre aggiuntive" (era formattata come data, mostrava "01/01/1900" per il valore 1).
+  **Nota per l'utente**: il punto 1 (soglie SATAP) è una proposta, non un valore confermato — da validare con l'esperienza di progetto come per gli altri enti. Il file corretto è in `/mnt/user-data/outputs/`.
+
+- **rev.280** — Feedback utente su `stato_lotti.html` dopo rev.278: distribuzione rischio corretta (17% Critico, 58% Alto, 0% Basso, contro l'83% Critico pre-fix) ma tabella "poco chiara": tutte le colonne su sfondo bianco non distinguono a colpo d'occhio i due gruppi Scavi/Autorizzazioni dalle colonne narrative. **Fix richiesto dall'utente**: colori diversi per gruppo di colonne. Aggiunte classi `grp-scavi` (blu Retelit `--retelit-blue`, intestazione piena + sotto-intestazione e celle in tinta chiara coerente), `grp-auth` (teal Retelit `--retelit-teal`, stesso schema) e `grp-narr` (grigio neutro `--gray-100`/`--gray-50`) sulle relative `<th>` (entrambe le righe di intestazione) e `<td>` del body. `renderAvanzamentoCells(flag, isProg, tooltip)` deriva la classe di gruppo direttamente da `isProg` (già distingue Scavi/Autorizzazioni, nessun nuovo parametro) e la applica a tutte e 3 le celle che genera. Bump di specificità per `.adv-previsto-cell`/`.adv-nd-cell` (ora `.stato-table tbody td.adv-previsto-cell`) altrimenti la tinta di gruppo (selettore più specifico, 2 classi + 2 elementi) avrebbe silenziosamente sovrascritto lo sfondo distintivo della cella "Previsto"/N.D. già esistente. Verificato `node --check`, non testato con dati reali.
+  **Nota per l'utente, non ancora affrontata**: quasi ogni riga mostra ora il marker ▲ di escalation (rev.278) — non è un difetto del fix, ma il sintomo di soglie R_AUTH (Excel "Rischio ROS": attenzione 3% / critica 20% di metri non autorizzati con milestone vicina) molto strette per un progetto ancora al 10% di autorizzazioni complessive: uno scostamento tipico di -15% produce già ~70/100 punti dal solo fattore R_AUTH. Da validare con Andrea se le soglie vanno allentate per la fase attuale di progetto o se l'escalation diffusa è il comportamento voluto.
+
+- **rev.281** — Correzione a rev.280: l'utente ha giudicato "orrendo" lo sfondo pieno saturo (navy/teal) su intestazione e celle. Sostituito con tocchi leggeri: intestazione di gruppo torna a sfondo neutro (`--gray-50`) con solo un **bordo inferiore colorato spesso 3px** (blu Retelit per Scavi, teal per Autorizzazioni); sotto-intestazione (Previsto/Reale/Scostamento) senza sfondo, solo **testo colorato** nella stessa tinta del bordo; celle del body senza alcuno sfondo di gruppo, solo un **sottile bordo sinistro colorato (2px, alpha .15-.18)** sulla prima cella di ciascun gruppo (nuova classe `grp-start`, aggiunta in `renderAvanzamentoCells` alla cella "Previsto" in tutti e 3 i rami — dato mancante, pre-avvio, caso normale) per segnare visivamente dove inizia il gruppo senza tingere l'intera riga. Rimossa la classe `grp-narr` dalle celle body (restano bianche), mantenuta solo sull'header (sfondo gray-50, tocco minimo). Verificato `node --check`, non testato con dati reali.
+
+- **rev.282** — Bug reale in `computeStimaAutorizzativa` (`stato_lotti.html`), segnalato dall'utente confrontando lotti con km/pratiche diverse ma stessa % Previsto Autorizzazioni. Causa: la funzione calcolava, per ogni ente presente nel lotto, invio/ottenimento stimati (avvio progettazione + giorni ente), ma poi usava **solo l'ente più lento** come un'unica rampa lineare 0→100% per l'INTERO lotto, ignorando `issue.km` (già disponibile in `row.p.issues[].km`, usato altrove per `kmTot`/`kmOtt`) — due lotti con stesso avvio e stesso ente peggiore ma composizione km opposta (es. 95%/5% vs 5%/95%) ottenevano curve Previsto identiche. **Fix**: ogni ente distinto nel lotto ora contribuisce con la propria rampa lineare pesata sulla propria quota di km (`km_ente/kmTot_pesati*100`), sommata sulle altre — matematicamente la somma di rampe lineari a tratti con breakpoint diversi è lineare a tratti sull'unione dei breakpoint, quindi la curva composita si costruisce valutando il totale a ogni invio/ottenimento stimato di ciascun ente (`breakpoints`) e collegando i punti (riusa `buildCurve`/`plannedPctAt` esistenti, nessuna modifica lì). `dettaglio` per ente ora include `km`; nuovo campo top-level `kmPesatiTot`. `invioStimato`/`ottenimStimato` restituiti restano il min/max tra gli enti (usati solo per display in tooltip/pannello, non più per costruire la curva). Tooltip (`tooltipProg`) aggiornato per mostrare km e quota % per ente. Verificato `node --check` + test sintetico standalone (stesso ente peggiore, mix km opposto → 28.8% vs 96.3% invece di essere identici). Non testato con dati reali del progetto.
+
+- **rev.283** — Nuovo ruolo dedicato **`polizza`**, su richiesta utente: deve poter aggiornare `polizze_convenzioni.html` (oggi il suo utente ha ruolo `user` e non può) e vedere SOLO quella card nell'hub.
+  **Backend (`server.py`)**: i 3 endpoint di scrittura della pagina (`set-urgente`, `update`, `set-date`) erano protetti SOLO da un token condiviso statico (`_check_token`/`UPLOAD_TOKEN`, lo stesso usato per upload Master.csv/override Gantt) — **nessun controllo di sessione/ruolo**, per design storico di quella pagina. Dare quel token a un ruolo pensato per un solo dominio sarebbe stato eccessivo (apre anche endpoint non correlati). Aggiunta `_check_polizza_write_auth(token, x_session_token)`: autorizza se il token condiviso combacia (comportamento invariato per chi lo usa già) **oppure** se la sessione (`x-session-token`, HMAC firmato server-side) ha ruolo in `_POLIZZA_WRITE_ROLES = ("admin","admin2","polizza")`. Tutti e 3 gli endpoint ora accettano anche l'header `x-session-token` e usano questa funzione al posto di `_check_token`.
+  **Frontend (`polizze_convenzioni.html`)**: `ADMIN_ROLES` esteso a `['admin','admin2','polizza']` (variabile `isAdmin`, già usata per mostrare la checkbox "urgente" — ora anche il ruolo polizza la vede). Le 3 coppie `_doSave*/_exec*` (stato, date, urgente) saltano il modal "Inserisci upload token" quando `isAdmin` è vero, inviando `x-session-token` (da `localStorage._enri_session`, già presente per le sole letture) invece di richiedere il token condiviso; il flusso a token resta invariato per chi non ha uno di questi 3 ruoli. Messaggio di errore 401 differenziato: "sessione scaduta" per ruoli sessione-based, "token non valido" per il flusso a token condiviso.
+  **`hub.html`**: aggiunto `id="polCard"` alla card Polizze & Convenzioni. Nuovo blocco in `_showHub()`: se `ruolo === 'polizza'`, nasconde tutte le `.nav-card` tranne `#polCard` e tutti i `[data-section-title]` — stesso principio di isolamento già usato per `impresa` (`impresaCardsWrap`), ma più semplice: qui basta il ruolo firmato nel token di sessione, senza bisogno di un controllo server aggiuntivo tipo `/api/imprese/me`.
+  **Nota importante non ancora implementata, segnalata all'utente**: l'isolamento in `hub.html` è solo visivo/di navigazione. Un'utenza con ruolo `polizza` che digita direttamente l'URL di un'altra pagina (es. `scavi.html`, `mappa.html`) non viene bloccata a livello backend, perché quelle pagine usano `_require_staff_session` (esclude solo `impresa`, non `polizza`) — la lettura dei dati di Master.csv/scavi resterebbe quindi accessibile. Se serve un blocco reale (come già esiste per `impresa` sui file "core" e per `dl` su milestone), va aggiunto un controllo esplicito lato backend per il ruolo `polizza` sulle pagine da escludere.
+  **Nota operativa (non modificabile da qui)**: l'assegnazione del ruolo `polizza` a una specifica utenza avviene sul Google Sheet collegato all'Apps Script di login (stesso posto di admin/admin2/dl/impresa), fuori da questo repository — va impostata da chi gestisce quello sheet (v. §5.12/§AGENT_BRIEF "L'admin gestisce gli accessi modificando lo sheet Google").
+  Verificato `python -m py_compile` sul backend e `node --check` sui 3 file HTML. Non testato con dati/sessioni reali.
+
+- **rev.286** — `sopralluoghi.html`, dashboard verbali (seguito di rev.285), 2 richieste utente. (1) **KPI cliccabili**: le 6 card in alto (Verbali oggi / Totale / Con anomalia / Nessuna anomalia / Segnalazioni cliente / Non conformità) aprono una modale con l'elenco dei verbali in quello stato (`openKpiModal(key,titolo)` + `_kpiFilter(key)`; chiusura con ✕, click sul backdrop o Esc). Ogni riga della modale mostra codice, data, impresa, comune/cantiere, chip stato + SEGN. CLIENTE + `N NC`; il click seleziona il verbale, chiude la modale e scrolla sull'anteprima (`_kpiPick`). La card "Ultimo invio" resta non cliccabile. (2) **Colonne per capitolo checklist**: sopra la tabella uno switch `Qualità | Sicurezza | Nessuna` (`setAreaCols`, default Qualità) — non si possono mostrare tutte e 28 le aree insieme, quindi si alterna tra i 9 capitoli Qualità (PRE/INF/DIV/POZ/MIC/COL/TST/RIP/DOC, coincidono coi prefissi ID) e i 19 Sicurezza (mappa `CK_AREA_CODE` nome→sigla 3 lettere, fallback alle prime 3 lettere). Ogni area diventa una colonna da 24px: cella rossa col numero di NC se ce ne sono, verde ✓ se tutte verificate senza NC, ambra col conteggio se parzialmente compilata, grigia `·` se intatta; `title` col nome esteso dell'area e il conteggio. `grid-template-columns` di header e righe è generata a runtime (`_gridCols()`, inline style) perché il numero di colonne varia; su <760px l'inline style è neutralizzato con `!important` e le celle diventano badge inline. `_renderTableHead()` chiamata anche quando la lista è vuota. Verificato `new Function()` su tutti i blocchi script; non testato con dati reali.
+
+- **rev.285** — `sopralluoghi.html` trasformata da pagina-form a **dashboard verbali**, + checklist DL. (1) Il form "nuovo verbale" non occupa più metà pagina: `#formCard` parte con `display:none`, la griglia passa a `.layout-grid.solo-archivio` (1 colonna, archivio a tutta larghezza) e si apre col bottone **NUOVO VERBALE** in header (`toggleNuovoVerbale()`), oppure automaticamente con deep link `?nuovo=1`/`?lotto=`/`?cantiere=` (retrocompatibilità con i link da altre pagine). (2) Nuovo flag **Segnalazione cliente** (checkbox nel form → `segnalazione_cliente: bool` in Mongo): riga archivio evidenziata (`.verbale-row.has-segn`, giallo + barra laterale), chip `SEGN. CLIENTE` accanto allo stato, KPI dedicata, filtro select, campo in anteprima e nel PDF. Lettura tollerante lato client (`_isSegnCliente`: bool/"SI"/"true"/1) per i verbali storici privi del campo. (3) **Checklist DL** da `Checklist_DL_Qualita_e_Sicurezza_ENRI.xlsx`: 43 item Qualità + 42 Sicurezza embeddati come costante `CHECKLIST_DEF` (id/area/testo/riferimento), UI a tab con item raggruppati per area, esito per item Conforme/NC/N.A. (ri-click = azzera), campi Rilievo/Azione correttiva/Responsabile/Scadenza che compaiono solo su NC, barra contatori e bulk "Tutti conformi"/"Azzera". Persistenza Mongo: `checklist: {qualita:{ID:{e,rilievo,azione,resp,scad}}, sicurezza:{...}}` sanificata server-side (`_sanitize_checklist`, solo esiti C/NC/NA, campi NC solo se e=="NC"), più contatori denormalizzati (`_checklist_counts`: `checklist_conformi/non_conformi/na/compilati/nc_ids`) usati anche come colonne nuove di `sopralluoghi.csv`. Dashboard: KPI "Non conformità", filtro checklist (con NC / senza NC / incompleta), chip per riga (`N NC` / `x/85` / `checklist OK` / `checklist vuota`), riepilogo + elenco NC dettagliato in anteprima, e due tabelle checklist nel PDF (solo item con esito valorizzato, con dettaglio NC inline). Verificato `new Function()` su tutti i blocchi script + `ast.parse` su `backend/server.py`; non testato con dati reali. **Aperto**: i campi Mongo `referente_impresa`/`referente_retelit` sono invertiti rispetto al significato (contengono rispettivamente il redattore Retelit e il suo ruolo); `localita`/`tipo_intervento` esistono nello schema ma non nel form (sempre vuoti).
+
+- **rev.284** — Audit dati su `Master.csv` (richiesta utente) + fix di 2 problemi trovati:
+  1. **`DATA_ULTIMA_MODIFICA` < `DATA_RICHIESTA`** su 6 righe (`TR_0818`/PRATICA 13 ×2, `TR_0379`/9, `TR_0384`/11, `TR_0408`/9, `TR_0793`/11) — rompe qualsiasi calcolo basato su DM≥DR. Corretto `DATA_RICHIESTA` allineandola a `DATA_ULTIMA_MODIFICA` (DM è monotona e coerente con lo storico riga-per-riga della pratica; DR sembrava inserita manualmente — 4 delle 6 righe avevano lo stesso valore "01/04/2026", indizio di un inserimento in blocco). **Assunzione non verificata con l'utente sul valore reale** — da confermare se la data di richiesta formale è effettivamente un'altra.
+  2. **NOTE con newline letterale interno** (`TR_0102`/PRATICA 16) — sostituito con uno spazio. Scansionato l'intero Master.csv: era l'unico caso in NOTE e in tutte le altre colonne.
+  **Prevenzione lato codice** (perché non si ripresenti dalle imprese): `backend/server.py` — nuova `_sanitize_note_text()` (collassa whitespace/newline/tab in uno spazio singolo), applicata dentro `_tag_note()` — copre quindi **tutte** le note che passano da `/api/imprese/submit` (sia `imprese.html` che `mappa_impresa_caricamento.html`, indipendentemente dal frontend/chiamata diretta all'API) e la correzione diretta nota lato admin (endpoint `note` in `raw`). `imprese.html`/`mappa_impresa_caricamento.html`: nuova `sanitizeNote()`/`prSanitizeNote()` applicata ai 4 punti dove si legge il valore delle textarea nota (`fld-note`, `new-note`, `pr-note`, `pr-new-note`) prima di metterlo in coda — feedback immediato, evita anche il giro di rete inutile. `py_compile`/`node --check` OK.
+  **Trovato ma non corretto, solo segnalato all'utente**:
+  - `index.html`: `STATI_COLORI_MAP` (riga 2529) e `SED_STATI`/`STATI_INV` (righe 1245, 1270, 1335, 1668, 1680) usano **"PROTOCOLLATA INTEGRAZIONE"** (femminile) — mismatch col valore reale **"PROTOCOLLATO INTEGRAZIONE"** (maschile) presente in Master.csv e usato ovunque nel resto del codice (backend, admin.html, imprese.html, mappa.html, stato_lotti.html, e nello stesso index.html altrove: righe 2216, 2374, 2384, 2428, 3822, 4066, 4069, 4499, 5766, 6068). ~495 righe/12% del dataset restano senza colore mappato/escluse dai conteggi SED in quei 5 punti specifici. Non toccato in questa sessione.
+  - **527 righe** in uno stato che richiederebbe `DATA_PREVISTA_RILASCIO` (INVIATO/PROTOCOLLATO/NECESSARIA INTEGRAZIONE/IN REDAZIONE INTEGRAZIONE/PROTOCOLLATO INTEGRAZIONE, v. hint UI in `imprese.html`) ma con il campo vuoto — impatta il motore curve p50/p90/p100 di `stato_lotti.html` e il modal "Autorizzazioni mancanti" (rev.267), che ripiegano su stime quando il valore reale manca.
+  - **147 note con imperfezioni solo estetiche** (6 con TAB interno tipo `"SP EXSS342 -\tBriantea"`, ~15 con doppi spazi interni, alcune con spazi iniziali/finali residui) — non toccano newline/quote, non rompono il parsing CSV, non corrette.
+  - **829 combinazioni `TRATTA_ID+TIPO_PERMESSO+PRATICA` duplicate** — verificato: è il pattern atteso di storico stati (una riga per cambio stato/nota), non un bug — v. anche rev.248 in questo file.
+  File corretti consegnati in sessione (fuori da questo repo, da applicare/pushare manualmente): `Master.csv`, `backend/server.py`, `imprese.html`, `mappa_impresa_caricamento.html`.
