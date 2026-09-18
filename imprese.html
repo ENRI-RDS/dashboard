@@ -570,6 +570,10 @@ window.addEventListener('pageshow', (e) => {
   }
   function setMsg(el, txt, ok){ el.className = 'msg ' + (ok ? 'ok' : 'err'); el.textContent = txt; }
   function escapeHtml(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  // Rimuove newline/tab dalle note prima dell'invio: un \n dentro NOTE (es. incollato
+  // da un altro programma) puo' rompere parser CSV non quote-aware a valle — vietato
+  // in origine, non solo sanificato lato backend (_tag_note su server.py).
+  function sanitizeNote(s){ return String(s ?? '').replace(/\s+/g, ' ').trim(); }
 
   // ─── tabs ───────────────────────────────────────────
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
@@ -1138,7 +1142,7 @@ window.addEventListener('pageshow', (e) => {
   $('addToQueueBtn').onclick = () => {
     if (!SELECTED) return;
     const stato = $('fld-stato').value;
-    const noteVal = $('fld-note').value.trim();
+    const noteVal = sanitizeNote($('fld-note').value);
     const prevRilascio = (stato === 'OTTENUTO' || stato === 'NO COMPETENZA') ? '' : $('fld-prev-rilascio').value;
     const checksVisibleGuard = $('wrap-convenzione').style.display !== 'none';
     const polizzaChanged = checksVisibleGuard && $('fld-polizza').checked !== ((SELECTED['POLIZZA ']?.trim() || '') === 'SI');
@@ -1265,7 +1269,7 @@ window.addEventListener('pageshow', (e) => {
       "NULLA OSTA NECESSARIO": $('new-tipo').value === 'AUTORIZZAZIONE' ? $('new-no-nec')?.value || '' : '',
       "PRATICA":              pratica,
       "N_SED":                $('new-nsed').value.trim(),
-      "NOTE":                 $('new-note').value.trim(),
+      "NOTE":                 sanitizeNote($('new-note').value),
       "DATA_PREVISTA_RILASCIO": fromInputDate($('new-prev-rilascio').value),
     }));
 
