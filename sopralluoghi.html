@@ -62,7 +62,8 @@
   .area-switch span{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted2);}
   .area-switch button{font-size:10.5px;padding:4px 10px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer;}
   .area-switch button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700;}
-  .ac-head{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;text-align:center;color:var(--muted2);letter-spacing:.02em;}
+  .archive-table-scroll{overflow-x:auto;}
+  .ac-head{display:flex;align-items:flex-end;justify-content:center;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-height:150px;font-family:'Raleway',sans-serif;font-size:10.5px;font-weight:700;text-align:left;color:var(--text2);letter-spacing:0;text-transform:none;padding-bottom:2px;}
   .ac-cell{display:block;text-align:center;font-size:11px;font-weight:800;line-height:20px;height:20px;border-radius:5px;background:var(--surface2);color:var(--muted2);}
   .ac-cell.nc{background:#FDECEA;color:var(--err);box-shadow:inset 0 0 0 1px var(--err);}
   .ac-cell.ok{background:#E4F5EC;color:var(--ok);}
@@ -126,7 +127,8 @@
   .btn-azzera-filtri:hover{color:var(--err);border-color:var(--err);}
   @media(max-width:640px){.archive-filters{grid-template-columns:1fr;}}
 
-  .archive-table-head{display:grid;grid-template-columns:.62fr .5fr 1.3fr 1fr .55fr;gap:6px;padding:0 10px 6px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2);border-bottom:1px solid var(--border);margin-bottom:2px;}
+  .archive-table-head{display:grid;grid-template-columns:.62fr .5fr 1.3fr 1fr .55fr;gap:6px;padding:0 10px 6px;align-items:end;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);border-bottom:1px solid var(--border);margin-bottom:2px;}
+  .archive-table-head.has-areas{padding-bottom:6px;}
   @media(max-width:760px){.archive-table-head{display:none;}}
 
   .verbale-row{display:grid;grid-template-columns:.62fr .5fr 1.3fr 1fr .55fr;gap:6px;align-items:center;padding:9px 10px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;font-size:12px;}
@@ -470,62 +472,11 @@
       <div class="foto-count" id="fotoCount"></div>
     </div>
 
-    <hr class="divider-h">
-    <div class="section-label">Segnalazioni</div>
-
     <div class="field-group">
       <label class="check-inline" id="segnClienteWrap" for="segnalazione_cliente">
         <input type="checkbox" id="segnalazione_cliente" onchange="onSegnClienteChange()">
         Segnalazione cliente
       </label>
-    </div>
-
-    <div class="field-group">
-      <label>Gravità</label>
-      <div class="radio-group">
-          <div class="radio-pill">
-            <input type="radio" name="gravita" id="grav_nessuna" value="Nessuna anomalia" checked>
-            <label for="grav_nessuna">✓ Nessuna anomalia</label>
-          </div>
-          <div class="radio-pill sev-media">
-            <input type="radio" name="gravita" id="grav_media" value="Anomalia media">
-            <label for="grav_media">⚠ Media</label>
-          </div>
-          <div class="radio-pill sev-alta">
-            <input type="radio" name="gravita" id="grav_alta" value="Anomalia critica">
-            <label for="grav_alta">✖ Critica</label>
-          </div>
-        </div>
-        <div class="legend-hints">
-          <div class="legend-hint"><span class="dot media"></span><strong class="media">Media —</strong> metri di scavo difformi da quelli dichiarati</div>
-          <div class="legend-hint"><span class="dot critica"></span><strong class="critica">Critica —</strong> blocco operativo</div>
-        </div>
-    </div>
-
-    <div class="field-group">
-      <label for="segnalazioni">Segnalazioni / Anomalie rilevate</label>
-      <textarea id="segnalazioni" placeholder="Descrivere eventuali anomalie, non conformità o problemi rilevati..."></textarea>
-    </div>
-
-    <div class="field-group">
-      <label for="azioni">Azioni richieste all'impresa</label>
-      <textarea id="azioni" placeholder="Azioni correttive richieste e scadenze..." style="min-height:56px;"></textarea>
-    </div>
-
-    <div class="field-row">
-      <div class="field-group">
-        <label for="scadenza_azioni">Scadenza azioni (entro il)</label>
-        <input type="date" id="scadenza_azioni">
-      </div>
-      <div class="field-group">
-        <label for="prossimo_sopr">Prossimo sopralluogo</label>
-        <input type="date" id="prossimo_sopr">
-      </div>
-    </div>
-
-    <div class="field-group">
-      <label for="note">Note libere</label>
-      <textarea id="note" placeholder="Altre osservazioni..." style="min-height:56px;"></textarea>
     </div>
 
     <hr class="divider-h">
@@ -615,8 +566,10 @@
           <button type="button" id="as-none"      onclick="setAreaCols('none')">Nessuna</button>
         </div>
 
-        <div class="archive-table-head" id="archive-table-head"></div>
-        <div id="verbali-list"></div>
+        <div class="archive-table-scroll">
+          <div class="archive-table-head" id="archive-table-head"></div>
+          <div id="verbali-list"></div>
+        </div>
 
         <div id="verbali-pagination" class="archive-pagination"></div>
       </div>
@@ -734,12 +687,21 @@ function getF(){
     n_cantiere: cantLabel !== '— seleziona cantiere —' ? cantLabel : '—',
     data:fmtDate('data'), indirizzo:v('indirizzo'),
     lotto:v('lotto'), impresa:v('impresa'), ruolo:v('ruolo'), redattore:v('redattore'),
-    n_foto:String(uploadedPhotos.length), gravita:gravita(),
-    segnalazione_cliente: document.getElementById('segnalazione_cliente')?.checked ? 'SI' : 'NO',
+    n_foto:String(uploadedPhotos.length),
     checklist: ckPayload(),
-    segnalazioni:v('segnalazioni'), azioni:v('azioni'),
-    scadenza_azioni:fmtDate('scadenza_azioni'), prossimo_sopr:fmtDate('prossimo_sopr'), note:v('note'),
+    segnalazione_cliente: document.getElementById('segnalazione_cliente')?.checked ? 'SI' : 'NO',
+    // Resto della vecchia sezione "Segnalazioni" (gravità/testo/azioni/date/note)
+    // rimosso dal form di compilazione — resta solo in lettura sui verbali già
+    // esistenti, sostituito dalla checklist DL. Campi mantenuti vuoti per
+    // compatibilità payload.
+    gravita:'—', segnalazioni:'—', azioni:'—',
+    scadenza_azioni:'—', prossimo_sopr:'—', note:'—',
   };
+}
+
+function onSegnClienteChange() {
+  const on = document.getElementById('segnalazione_cliente')?.checked;
+  document.getElementById('segnClienteWrap')?.classList.toggle('on', !!on);
 }
 
 // Griglia foto: 1→full, 2→[0,1], 3→[0,1]+[2], 4→[0,1]+[2,3]
@@ -814,11 +776,6 @@ function toggleNuovoVerbale(force) {
   }
 }
 
-function onSegnClienteChange() {
-  const on = document.getElementById('segnalazione_cliente')?.checked;
-  document.getElementById('segnClienteWrap')?.classList.toggle('on', !!on);
-}
-
 async function inviaVerbale(){
   const btn = document.getElementById('btn-invia');
   const f = getF();
@@ -857,14 +814,14 @@ async function inviaVerbale(){
         referente_retelit: f.ruolo,
         comune:            f.indirizzo,
         tipo_intervento:   '',
-        esito:             f.gravita,
+        esito:             '',
         segnalazione_cliente: document.getElementById('segnalazione_cliente')?.checked || false,
         checklist:         ckPayload(),
-        note:              f.note,
-        segnalazioni:      f.segnalazioni,
-        azioni_richieste:  f.azioni,
-        scadenza_azioni:   document.getElementById('scadenza_azioni').value || '',
-        prossimo_sopralluogo: document.getElementById('prossimo_sopr').value || '',
+        note:              '',
+        segnalazioni:      '',
+        azioni_richieste:  '',
+        scadenza_azioni:   '',
+        prossimo_sopralluogo: '',
         foto:              uploadedPhotos.map(p => ({ dataUrl: p.dataUrl, name: p.name })),
       })
     });
@@ -891,14 +848,8 @@ function resetVerbaleForm() {
   document.getElementById('ruolo').value = 'Direttore Lavori';
   const u = localStorage.getItem('_enri_user');
   document.getElementById('redattore').value = u || '';
-  document.getElementById('grav_nessuna').checked = true;
   const segnCli = document.getElementById('segnalazione_cliente');
   if (segnCli) { segnCli.checked = false; onSegnClienteChange(); }
-  document.getElementById('segnalazioni').value = '';
-  document.getElementById('azioni').value = '';
-  document.getElementById('scadenza_azioni').value = '';
-  document.getElementById('prossimo_sopr').value = '';
-  document.getElementById('note').value = '';
   uploadedPhotos = [];
   ckReset();
   const fotoInput = document.getElementById('fotoInput');
@@ -1367,7 +1318,7 @@ function _renderVerbaliList(rows) {
   const pageRows = rows.slice((_currentPage - 1) * _PAGE_SIZE, _currentPage * _PAGE_SIZE);
 
   list.innerHTML = pageRows.map(v => `
-    <div data-id="${v._id}" style="grid-template-columns:${_gridCols()}" class="verbale-row${v._id === _selectedVerbaleId ? ' is-selected' : ''}${_isSegnCliente(v) ? ' has-segn' : ''}">
+    <div data-id="${v._id}" style="grid-template-columns:${_gridCols()};${_gridMinWidth() ? 'min-width:'+_gridMinWidth()+';' : ''}" class="verbale-row${v._id === _selectedVerbaleId ? ' is-selected' : ''}${_isSegnCliente(v) ? ' has-segn' : ''}">
       <span class="vr-codice">${v.codice_verbale}</span>
       <span class="vr-data">${_soprDateDisplay(v.data_sopralluogo)}</span>
       <span class="vr-comune">${v.comune || '—'}<small>${v.tratta_id || '—'} · ${v.lotto || '—'}</small></span>
@@ -1780,7 +1731,11 @@ function _ckAreaStat(v, k, ids) {
 
 function _gridCols() {
   const n = _ckAreas(_areaCols).length;
-  return `.62fr .5fr 1.3fr 1fr${n ? ' repeat(' + n + ',40px)' : ''} .55fr`;
+  return `minmax(84px,.62fr) minmax(64px,.5fr) minmax(170px,1.3fr) minmax(120px,1fr)${n ? ' repeat(' + n + ',30px)' : ''} minmax(40px,.55fr)`;
+}
+function _gridMinWidth() {
+  const n = _ckAreas(_areaCols).length;
+  return n ? (84+64+170+120+40 + n*30 + 6*(4+n)) + 'px' : null;
 }
 
 // ── Pannello filtri a comparsa ────────────────────────────────────────────────
@@ -1820,8 +1775,11 @@ function _renderTableHead() {
   if (!head) return;
   const areas = _ckAreas(_areaCols);
   head.style.gridTemplateColumns = _gridCols();
+  const mw = _gridMinWidth();
+  head.style.minWidth = mw || '';
+  head.classList.toggle('has-areas', areas.length > 0);
   head.innerHTML = '<span>Codice</span><span>Data</span><span>Comune / Cantiere</span><span>Stato</span>' +
-    areas.map(a => `<span class="ac-head" title="${esc(a.area)}">${a.code}</span>`).join('') + '<span></span>';
+    areas.map(a => `<span class="ac-head" title="${esc(a.area)}">${esc(a.area)}</span>`).join('') + '<span></span>';
 }
 
 function _areaCellsHtml(v) {
