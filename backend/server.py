@@ -139,6 +139,25 @@ def _check_token(token: str | None) -> None:
         raise HTTPException(401, "Invalid or missing upload token")
 
 
+# Ruolo dedicato 'polizza' (rev.283): può aggiornare stato/date/urgenza delle
+# pratiche in polizze_convenzioni.html SENZA conoscere l'UPLOAD_TOKEN condiviso
+# — quel token resta un segreto ad ampio raggio (upload Master.csv, override
+# Gantt, ecc.) e non va distribuito a un ruolo pensato per un solo dominio.
+# Il ruolo va assegnato all'utenza lato Google Sheet collegato all'Apps
+# Script di login (stesso posto di admin/admin2/dl/impresa) — non in questo
+# repo. Entrambe le vie restano valide per compatibilità con chi già usa il
+# token condiviso.
+_POLIZZA_WRITE_ROLES = ("admin", "admin2", "polizza")
+
+def _check_polizza_write_auth(token: str | None, x_session_token: str | None) -> None:
+    if UPLOAD_TOKEN and token == UPLOAD_TOKEN:
+        return
+    sess = _verify_session(x_session_token or "")
+    if sess and sess.get("ruolo") in _POLIZZA_WRITE_ROLES:
+        return
+    raise HTTPException(401, "Accesso non autorizzato: upload token non valido e nessuna sessione con ruolo abilitato (admin/admin2/polizza)")
+
+
 def _check_qts_sync_token(token: str | None) -> None:
     if not QTS_SYNC_TOKEN or token != QTS_SYNC_TOKEN:
         raise HTTPException(401, "Invalid or missing sync token")
@@ -2975,11 +2994,13 @@ async def set_pol_conv_urgente(
     payload: dict,
     x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
     token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
 ):
-    """Flegga/sfleggia una pratica come urgente (solo lato UI: gestito da admin/admin2).
+    """Flegga/sfleggia una pratica come urgente (gestito da admin/admin2/polizza).
     Body: {lotto, pratica, field: "CONVENZIONE"|"POLIZZA", urgente: bool}
-    Richiede x-upload-token. Scrive solo su pol_conv_dates_col, non su Master.csv."""
-    _check_token(x_upload_token or token_q)
+    Richiede x-upload-token OPPURE x-session-token con ruolo abilitato (rev.283).
+    Scrive solo su pol_conv_dates_col, non su Master.csv."""
+    _check_polizza_write_auth(x_upload_token or token_q, x_session_token)
 
     lotto   = str((payload or {}).get("lotto", "")).strip().upper()
     pratica = str((payload or {}).get("pratica", "")).strip()
@@ -3005,12 +3026,14 @@ async def update_polizza_convenzione(
     payload: dict,
     x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
     token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
 ):
     """Aggiorna CONVENZIONE e/o POLIZZA per tutte le righe lotto+pratica nel Master CSV.
     Body: {lotto: "2B", pratica: "11", fields: {CONVENZIONE?: val, POLIZZA?: val}}
     Valori ammessi: NECESSARIA | RICHIESTA RDS | INVIATA | EMESSA | "" (vuoto = cancella)
-    Richiede x-upload-token. Scrive su MongoDB e pusha su GitHub."""
-    _check_token(x_upload_token or token_q)
+    Richiede x-upload-token OPPURE x-session-token con ruolo abilitato (rev.283).
+    Scrive su MongoDB e pusha su GitHub."""
+    _check_polizza_write_auth(x_upload_token or token_q, x_session_token)
 
     lotto   = str((payload or {}).get("lotto",   "")).strip().upper()
     pratica = str((payload or {}).get("pratica", "")).strip()
@@ -3090,6 +3113,7 @@ async def set_pol_conv_date(
     payload: dict,
     x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
     token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
 ):
     """Modifica manuale di una delle 4 date CONVENZIONE/POLIZZA (Richiesta,
     Richiesta RDS, Invio, Emissione) — a differenza di STATO_DATE_FIELD (rev.197-
@@ -3099,8 +3123,9 @@ async def set_pol_conv_date(
     Body: {lotto, pratica, field: "CONVENZIONE"|"POLIZZA",
            date_key: "richiesta"|"richiesta_rds"|"invio"|"emissione",
            value: "GG/MM/AAAA" oppure "" per cancellare}
-    Richiede x-upload-token. Scrive solo su pol_conv_dates_col, non su Master.csv."""
-    _check_token(x_upload_token or token_q)
+    Richiede x-upload-token OPPURE x-session-token con ruolo abilitato (rev.283).
+    Scrive solo su pol_conv_dates_col, non su Master.csv."""
+    _check_polizza_write_auth(x_upload_token or token_q, x_session_token)
 
     lotto    = str((payload or {}).get("lotto", "")).strip().upper()
     pratica  = str((payload or {}).get("pratica", "")).strip()
