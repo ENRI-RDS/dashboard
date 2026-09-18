@@ -877,34 +877,65 @@ function computeStimaAutorizzativa(row, parametri) {
   if (!issues.length) {
     return { disponibile: false, motivo: 'Nessuna pratica/tratta censita per questo lotto: impossibile determinare l\'ente e quindi i tempi attesi' };
   }
-  // Un dettaglio per ente distinto presente nel lotto (non per tratta).
+  // Un dettaglio per ente distinto presente nel lotto, pesato per i km che
+  // quell'ente copre nel lotto (issue.km). PRIMA (rev.<282): un'unica
+  // timeline "scenario peggiore" (l'ente più lento) veniva applicata come
+  // rampa 0→100% all'INTERO lotto — due lotti con lo stesso ente più lento
+  // ma composizione km radicalmente diversa (es. 95% vs 5% dei km legati a
+  // quell'ente) ottenevano curve Previsto identiche, ignorando che nel
+  // secondo caso la maggior parte del lotto non dipende affatto dall'ente
+  // lento. Segnalato dall'utente confrontando lotti con km/pratiche diversi
+  // ma stessa % prevista. ORA: ogni ente contribuisce con una propria rampa
+  // lineare (0% al proprio invio stimato → propria quota km/kmTot al
+  // proprio ottenimento stimato), sommata sulle altre — vedi costruzione
+  // curvePoints più sotto.
   const entiVisti = new Map();
   issues.forEach(iss => {
     const t = lookupTempoEnte(iss.ente, tempi);
-    if (entiVisti.has(t.codice)) return;
-    const giorniRedazione = t.giorni_redazione_pratiche;
-    if (giorniRedazione === null || giorniRedazione === undefined || giorniRedazione === '') {
-      entiVisti.set(t.codice, { codice: t.codice, ente: iss.ente, disponibile: false,
-        motivo: `Giorni redazione pratiche non configurati per ${t.codice} (foglio "Tempi autorizzativi")` });
-      return;
+    const km = Number(iss.km) || 0;
+    if (!entiVisti.has(t.codice)) {
+      const giorniRedazione = t.giorni_redazione_pratiche;
+      if (giorniRedazione === null || giorniRedazione === undefined || giorniRedazione === '') {
+        entiVisti.set(t.codice, { codice: t.codice, ente: iss.ente, disponibile: false, km: 0,
+          motivo: `Giorni redazione pratiche non configurati per ${t.codice} (foglio "Tempi autorizzativi")` });
+      } else {
+        const invioStimato = addDays(avvioProg, Number(giorniRedazione));
+        const giorniAttesi = t.giorni_attesi != null ? Number(t.giorni_attesi) : null;
+        const ottenimStimato = giorniAttesi != null ? addDays(invioStimato, giorniAttesi) : null;
+        entiVisti.set(t.codice, { codice: t.codice, ente: iss.ente, disponibile: true, km: 0,
+          giorniRedazione: Number(giorniRedazione), giorniAttesi, invioStimato, ottenimStimato, fallbackEnte: t.fallback });
+      }
     }
-    const invioStimato = addDays(avvioProg, Number(giorniRedazione));
-    const giorniAttesi = t.giorni_attesi != null ? Number(t.giorni_attesi) : null;
-    const ottenimStimato = giorniAttesi != null ? addDays(invioStimato, giorniAttesi) : null;
-    entiVisti.set(t.codice, { codice: t.codice, ente: iss.ente, disponibile: true,
-      giorniRedazione: Number(giorniRedazione), giorniAttesi, invioStimato, ottenimStimato, fallbackEnte: t.fallback });
+    entiVisti.get(t.codice).km += km;
   });
   const dettaglio = [...entiVisti.values()];
-  const validi = dettaglio.filter(d => d.disponibile && d.ottenimStimato);
+  const validi = dettaglio.filter(d => d.disponibile && d.ottenimStimato && d.km > 0);
   if (!validi.length) {
-    return { disponibile: false, motivo: 'Nessun ente presente nel lotto ha giorni di redazione/attesa configurati', dettaglio };
+    return { disponibile: false, motivo: 'Nessun ente presente nel lotto ha giorni di redazione/attesa configurati (o nessuna pratica valida con km > 0)', dettaglio };
   }
-  // Scenario più prudente: l'ottenimento stimato più tardivo determina il
-  // completamento autorizzativo del lotto (deve essere ottenuto per tutti).
+  const kmPesatiTot = validi.reduce((s, d) => s + d.km, 0);
+  // Somma di rampe lineari a tratti con breakpoint diversi tra loro è
+  // lineare a tratti sull'UNIONE dei breakpoint: basta valutare il totale a
+  // ogni invio/ottenimento di ciascun ente e collegare i punti linearmente
+  // (buildCurve/plannedPctAt fanno già l'interpolazione tra punti).
+  const breakpoints = [...new Set(validi.flatMap(d => [d.invioStimato.getTime(), d.ottenimStimato.getTime()]))].sort((a, b) => a - b);
+  const pctAt = (t) => validi.reduce((sum, d) => {
+    const i0 = d.invioStimato.getTime(), i1 = d.ottenimStimato.getTime();
+    const quota = (d.km / kmPesatiTot) * 100;
+    if (t <= i0) return sum;
+    if (t >= i1) return sum + quota;
+    const frac = i1 > i0 ? (t - i0) / (i1 - i0) : 1;
+    return sum + quota * frac;
+  }, 0);
+  const curvePoints = breakpoints.map(t => ({ date: new Date(t), pct: pctAt(t) }));
+  const invioStimato = new Date(Math.min(...validi.map(d => d.invioStimato.getTime())));
+  const ottenimStimato = new Date(Math.max(...validi.map(d => d.ottenimStimato.getTime())));
   const peggiore = validi.reduce((a, b) => (b.ottenimStimato > a.ottenimStimato ? b : a));
-  return { disponibile: true, avvioProg, invioStimato: peggiore.invioStimato, ottenimStimato: peggiore.ottenimStimato,
-    fonteEnte: peggiore.codice, dettaglio,
-    nota: dettaglio.length > 1 ? `Basato sull'ente con tempi più lunghi tra quelli presenti nel lotto (${peggiore.codice})` : `Basato su ${peggiore.codice}` };
+  return { disponibile: true, avvioProg, invioStimato, ottenimStimato, curvePoints,
+    fonteEnte: peggiore.codice, dettaglio, kmPesatiTot,
+    nota: validi.length > 1
+      ? `Curva pesata per km su ${validi.length} enti (${validi.map(d => `${d.codice} ${fmtKm(d.km)}`).join(', ')}); il 100% è raggiunto quando anche l'ente più lento (${peggiore.codice}) ha concluso.`
+      : `Basato su ${peggiore.codice} (unico ente presente nel lotto)` };
 }
 
 function plannedPctAt(curve, date) {
@@ -1661,9 +1692,9 @@ function tooltipProg(r) {
   }
   if (!si || !si.disponibile) return `${base} — Previsto: stima non disponibile${si && si.motivo ? ' ('+si.motivo+')' : ''}`;
   const dett = (si.dettaglio || []).map(d => d.disponibile
-    ? `${d.ente} → ${d.codice}${d.fallbackEnte ? ' (fallback)' : ''}: redazione ${d.giorniRedazione}gg, attesa ${d.giorniAttesi != null ? d.giorniAttesi+'gg' : 'N/D'}, ottenim. stimato ${fmtDateShort(d.ottenimStimato)}`
+    ? `${d.ente} → ${d.codice}${d.fallbackEnte ? ' (fallback)' : ''}: ${fmtKm(d.km)} (${((d.km/(si.kmPesatiTot||1))*100).toFixed(0)}%), redazione ${d.giorniRedazione}gg, attesa ${d.giorniAttesi != null ? d.giorniAttesi+'gg' : 'N/D'}, ottenim. stimato ${fmtDateShort(d.ottenimStimato)}`
     : `${d.ente} → ${d.codice}: non configurato (${d.motivo})`).join(' | ');
-  return `${base} — Previsto stimato: avvio progettazione ${fmtDateShort(si.avvioProg)}, invio stimato ${fmtDateShort(si.invioStimato)}, ottenimento stimato ${fmtDateShort(si.ottenimStimato)}, scenario peggiore: ${si.fonteEnte}. Dettaglio enti: ${dett}`;
+  return `${base} — Previsto stimato (pesato per km): avvio progettazione ${fmtDateShort(si.avvioProg)}, primo invio ${fmtDateShort(si.invioStimato)}, ultimo ottenimento ${fmtDateShort(si.ottenimStimato)} (${si.fonteEnte}). Dettaglio enti: ${dett}`;
 }
 
 // ── colonna "Perché è a rischio": fatti oggettivi, max 3, nessuna formula ──
@@ -1820,10 +1851,11 @@ function render(prog, scavi, milestoneByLotto) {
     // stima non è calcolabile (es. avvio progettazione non configurato).
     const stima = computeStimaAutorizzativa({ lotto, p }, PARAMETRI);
     if (stima.disponibile) {
-      progPoints = [
-        { date: stima.invioStimato, pct: 0, label: `Invio pratiche stimato (${fmtDateShort(stima.invioStimato)})`, nome: 'Invio pratiche (stimato)', dominio: 'prog', stimato: true },
-        { date: stima.ottenimStimato, pct: 100, label: `Ottenimento permessi stimato (${fmtDateShort(stima.ottenimStimato)})`, nome: 'Ottenimento permessi (stimato)', dominio: 'prog', stimato: true }
-      ];
+      progPoints = stima.curvePoints.map((pt, i) => ({
+        date: pt.date, pct: pt.pct, dominio: 'prog', stimato: true,
+        nome: i === 0 ? 'Inizio stimato' : (i === stima.curvePoints.length - 1 ? 'Fine stimata (tutti gli enti)' : 'Tappa intermedia stimata'),
+        label: `${fmtDateShort(pt.date)} — ${pt.pct.toFixed(0)}% stimato`
+      }));
       progCurve = buildCurve(progPoints);
       progStimato = true;
     }
