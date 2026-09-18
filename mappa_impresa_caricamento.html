@@ -3679,6 +3679,9 @@ async function prApi(path, opts={}){
   return data;
 }
 function prEscapeHtml(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// Rimuove newline/tab dalle note prima dell'invio (stesso fix di imprese.html /
+// _tag_note su server.py): un \n dentro NOTE puo' rompere parser CSV non quote-aware.
+function prSanitizeNote(s){ return String(s ?? '').replace(/\s+/g, ' ').trim(); }
 function prSetMsg(el, txt, ok){ el.className = 'pr-msg ' + (ok?'ok':'err'); el.textContent = txt; }
 
 // Estrae il codice lotto da Source.Name con la stessa logica di _lotto_from_source
@@ -4113,7 +4116,7 @@ document.getElementById('prAddToQueue').onclick = async () => {
   const msgEl = document.getElementById('prMsgUpd');
   const stato = document.getElementById('pr-stato').value;
   const dataPrevista = (stato === 'OTTENUTO' || stato === 'NO COMPETENZA') ? '' : document.getElementById('pr-data-prevista').value;
-  const noteVal = document.getElementById('pr-note').value.trim();
+  const noteVal = prSanitizeNote(document.getElementById('pr-note').value);
   const checksVisibleGuard = document.getElementById('pr-wrap-convenzione').style.display !== 'none';
   const polizzaChanged = checksVisibleGuard && document.getElementById('pr-polizza').checked !== ((PR_SELECTED['POLIZZA ']||'').trim() === 'SI');
   const convenzioneChanged = checksVisibleGuard && document.getElementById('pr-convenzione').checked !== ((PR_SELECTED['CONVENZIONE']||'').trim() === 'SI');
@@ -4255,7 +4258,7 @@ document.getElementById('prNewForm').addEventListener('submit', async e => {
     "NULLA OSTA NECESSARIO": document.getElementById('pr-new-tipo').value==='AUTORIZZAZIONE' ? (document.getElementById('pr-new-no-nec')?.value||'') : '',
     "PRATICA":              pratica,
     "N_SED":                document.getElementById('pr-new-nsed').value.trim(),
-    "NOTE":                 document.getElementById('pr-new-note').value.trim(),
+    "NOTE":                 prSanitizeNote(document.getElementById('pr-new-note').value),
     "DATA_PREVISTA_RILASCIO": prFromInputDate(document.getElementById('pr-new-data-prevista').value),
   }));
   const btn = e.target.querySelector('button[type=submit]');
