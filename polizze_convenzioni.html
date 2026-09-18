@@ -439,7 +439,7 @@
   let URGENTI_MAP = {};
 
   // Solo admin/admin2 possono fleggare "Urgente" (stessi ruoli di ADMIN_ALLOWED_ROLES in hub.html)
-  const ADMIN_ROLES = ['admin', 'admin2'];
+  const ADMIN_ROLES = ['admin', 'admin2', 'polizza']; // rev.283: ruolo dedicato 'polizza' gestisce la pagina come admin/admin2, senza i permessi admin del resto della dashboard
   const isAdmin = ADMIN_ROLES.includes(localStorage.getItem('_enri_role'));
 
   // Etichette display-only: il valore salvato/confrontato resta invariato (es. 'RICHIESTA RDS'),
@@ -764,7 +764,7 @@
 
   function _doSave(lotto, pratica, field, val, btn, cell) {
     const token = localStorage.getItem('enri_upload_token') || '';
-    if (!token) {
+    if (!token && !isAdmin) {
       _pendingSave = { lotto, pratica, field, val, btn, cell };
       openTokenModal();
       return;
@@ -779,7 +779,7 @@
     try {
       const r = await fetch(apiBase + '/api/admin/polizze-convenzioni/update', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-upload-token': token },
+        headers: { 'Content-Type': 'application/json', 'x-upload-token': token, 'x-session-token': localStorage.getItem('_enri_session') || '' },
         body: JSON.stringify({ lotto, pratica, fields: { [field]: val } })
       });
       const d = await r.json();
@@ -794,8 +794,8 @@
       showToast('Operazione completata. Righe aggiornate: ' + d.rows_updated + '.', 'ok');
     } catch(e) {
       if (e.message && e.message.includes('401')) {
-        localStorage.removeItem('enri_upload_token');
-        showToast('Token non valido. Riprovare.', 'err');
+        if (isAdmin) { showToast('Sessione scaduta o non abilitata: effettua di nuovo il login.', 'err'); }
+        else { localStorage.removeItem('enri_upload_token'); showToast('Token non valido. Riprovare.', 'err'); }
       } else {
         showToast('Si è verificato un problema. ' + e.message, 'err');
       }
@@ -841,7 +841,7 @@
 
   function _doSaveDate(lotto, pratica, field, dateKey, val, btn, cell) {
     const token = localStorage.getItem('enri_upload_token') || '';
-    if (!token) {
+    if (!token && !isAdmin) {
       _pendingSave = { kind: 'date', lotto, pratica, field, dateKey, val, btn, cell };
       openTokenModal();
       return;
@@ -856,7 +856,7 @@
     try {
       const r = await fetch(apiBase + '/api/admin/polizze-convenzioni/set-date', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-upload-token': token },
+        headers: { 'Content-Type': 'application/json', 'x-upload-token': token, 'x-session-token': localStorage.getItem('_enri_session') || '' },
         body: JSON.stringify({ lotto, pratica, field, date_key: dateKey, value: val })
       });
       const d = await r.json();
@@ -866,8 +866,8 @@
       showToast(val ? 'Data aggiornata.' : 'Data cancellata.', 'ok');
     } catch(e) {
       if (e.message && e.message.includes('401')) {
-        localStorage.removeItem('enri_upload_token');
-        showToast('Token non valido. Riprovare.', 'err');
+        if (isAdmin) { showToast('Sessione scaduta o non abilitata: effettua di nuovo il login.', 'err'); }
+        else { localStorage.removeItem('enri_upload_token'); showToast('Token non valido. Riprovare.', 'err'); }
       } else {
         showToast('Si è verificato un problema. ' + e.message, 'err');
       }
@@ -887,7 +887,7 @@
 
   function _doSaveUrgente(lotto, pratica, field, val, checkbox, row) {
     const token = localStorage.getItem('enri_upload_token') || '';
-    if (!token) {
+    if (!token && !isAdmin) {
       _pendingSave = { kind: 'urgente', lotto, pratica, field, val, checkbox, row };
       openTokenModal();
       return;
@@ -902,7 +902,7 @@
     try {
       const r = await fetch(apiBase + '/api/admin/polizze-convenzioni/set-urgente', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-upload-token': token },
+        headers: { 'Content-Type': 'application/json', 'x-upload-token': token, 'x-session-token': localStorage.getItem('_enri_session') || '' },
         body: JSON.stringify({ lotto, pratica, field, urgente: val })
       });
       const d = await r.json();
@@ -912,8 +912,8 @@
     } catch(e) {
       checkbox.checked = !val;
       if (e.message && e.message.includes('401')) {
-        localStorage.removeItem('enri_upload_token');
-        showToast('Token non valido. Riprovare.', 'err');
+        if (isAdmin) { showToast('Sessione scaduta o non abilitata: effettua di nuovo il login.', 'err'); }
+        else { localStorage.removeItem('enri_upload_token'); showToast('Token non valido. Riprovare.', 'err'); }
       } else {
         showToast('Si è verificato un problema. ' + e.message, 'err');
       }
