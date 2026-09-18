@@ -2445,6 +2445,19 @@ async def reject_pending(
 # per mostrare l'etichetta "Retelit"/"Impresa" e nascondono il prefisso grezzo.
 # ─────────────────────────────────────────────────────────────────────────────
 _NOTE_TAG_RE = re.compile(r"^\[(RETELIT|IMPRESA)\]\s*")
+_NOTE_WS_RE = re.compile(r"\s+")
+
+
+def _sanitize_note_text(note: str) -> str:
+    """Rimuove newline/tab/altri whitespace di controllo da una NOTE,
+    collassandoli in uno spazio singolo. Master.csv e' quotato correttamente
+    quindi un \\n dentro un campo non rompe il CSV di per se', ma e'
+    esattamente il pattern che ha gia' causato bug su parser non quote-aware
+    a valle (v. AGENT_BRIEF, righe spezzate su campi multi-riga) — meglio non
+    farlo mai entrare in origine."""
+    if not note:
+        return note
+    return _NOTE_WS_RE.sub(" ", note).strip()
 
 
 def _tag_note(note: str, tag: str) -> str:
@@ -2452,7 +2465,7 @@ def _tag_note(note: str, tag: str) -> str:
     index.html/admin.html. Rimuove un eventuale tag preesistente prima di
     riapplicarlo, cosi' un admin che modifica una submission impresa (PUT
     /api/admin/pending-updates/{id}) non produce prefissi impilati."""
-    note = (note or "").strip()
+    note = _sanitize_note_text((note or "").strip())
     if not note:
         return note
     note = _NOTE_TAG_RE.sub("", note)
@@ -2604,7 +2617,7 @@ async def update_admin_pratica(
             # RETELIT — chi l'ha scritta in origine (Impresa o Retelit) resta
             # l'autore mostrato, si corregge solo il testo.
             # _apply_changes_to_df preserva il tag esistente sulla riga.
-            fields["NOTE"] = str(raw["note"] or "").strip()
+            fields["NOTE"] = _sanitize_note_text(str(raw["note"] or ""))
         if not fields:
             raise HTTPException(400, "Nessun campo valido da aggiornare")
         in_place = True
