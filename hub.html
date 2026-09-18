@@ -431,7 +431,7 @@
       </div>
     </a>
 
-<a href="polizze_convenzioni.html" class="nav-card card-pol">
+<a id="polCard" href="polizze_convenzioni.html" class="nav-card card-pol">
       <div class="card-top-row">
         <div class="card-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -698,6 +698,20 @@ function _showHub(nome) {
   if (aiAlertsCard && ruolo === 'dl') {
     aiAlertsCard.removeAttribute('href');
     aiAlertsCard.style.display = 'none';
+  }
+
+  // rev.283: ruolo dedicato 'polizza' — vede SOLO la card Polizze &
+  // Convenzioni nell'hub, stesso principio di isolamento già usato per
+  // 'impresa' (v. sotto, isImpresa/impresaCardsWrap) ma più semplice: qui
+  // non serve un controllo server-side aggiuntivo (a differenza di impresa,
+  // che verifica anche l'attivazione via /api/imprese/me) perché il ruolo
+  // stesso, firmato server-side nel token di sessione, è già la prova che
+  // l'utenza è abilitata solo a questo dominio.
+  if (ruolo === 'polizza') {
+    document.querySelectorAll('.nav-card').forEach(card => {
+      card.style.display = (card.id === 'polCard') ? '' : 'none';
+    });
+    document.querySelectorAll('[data-section-title]').forEach(s => s.style.display = 'none');
   }
 
   function _reveal() {
