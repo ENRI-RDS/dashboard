@@ -3267,6 +3267,56 @@ async def sopralluogo_next_codice(sess: dict = Depends(_require_staff_session)):
     return {"codice": f"VBS-{year}-{next_n:04d}", "numero": next_n}
 
 
+_CK_ESITI = {"C", "NC", "NA"}
+
+
+def _sanitize_checklist(raw: dict | None) -> dict:
+    """Normalizza la checklist DL ricevuta dal frontend: solo item con esito
+    valido, campi di non conformità solo per gli item NC."""
+    out = {"qualita": {}, "sicurezza": {}}
+    if not isinstance(raw, dict):
+        return out
+    for sez in ("qualita", "sicurezza"):
+        blocco = raw.get(sez) or {}
+        if not isinstance(blocco, dict):
+            continue
+        for item_id, st in blocco.items():
+            if not isinstance(st, dict):
+                continue
+            esito = str(st.get("e", "")).strip().upper()
+            if esito not in _CK_ESITI:
+                continue
+            rec = {"e": esito}
+            if esito == "NC":
+                rec.update({
+                    "rilievo": str(st.get("rilievo", "")).strip(),
+                    "azione":  str(st.get("azione", "")).strip(),
+                    "resp":    str(st.get("resp", "")).strip(),
+                    "scad":    str(st.get("scad", "")).strip(),
+                })
+            out[sez][str(item_id).strip()[:20]] = rec
+    return out
+
+
+def _checklist_counts(ck: dict) -> dict:
+    tot = {"C": 0, "NC": 0, "NA": 0}
+    nc_ids = []
+    for sez in ("qualita", "sicurezza"):
+        for item_id, st in (ck.get(sez) or {}).items():
+            e = st.get("e")
+            if e in tot:
+                tot[e] += 1
+            if e == "NC":
+                nc_ids.append(item_id)
+    return {
+        "checklist_conformi":     tot["C"],
+        "checklist_non_conformi": tot["NC"],
+        "checklist_na":           tot["NA"],
+        "checklist_compilati":    tot["C"] + tot["NC"] + tot["NA"],
+        "checklist_nc_ids":       ", ".join(sorted(nc_ids)),
+    }
+
+
 @app.post("/api/sopralluoghi")
 async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_session)):
     """Salva un verbale di sopralluogo su MongoDB (unica fonte, nessun export CSV su GitHub).
@@ -3317,6 +3367,7 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
         "localita":            str((payload or {}).get("localita", "")).strip(),
         "tipo_intervento":     str((payload or {}).get("tipo_intervento", "")).strip(),
         "esito":               str((payload or {}).get("esito", "")).strip(),
+        "segnalazione_cliente": bool((payload or {}).get("segnalazione_cliente", False)),
         "note":                str((payload or {}).get("note", "")).strip(),
         "segnalazioni":        str((payload or {}).get("segnalazioni", "")).strip(),
         "azioni_richieste":    str((payload or {}).get("azioni_richieste", "")).strip(),
@@ -3327,6 +3378,9 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
         "foto_urls":           ", ".join(foto_urls),
         "created_at":          _now_iso(),
     }
+    _ck = _sanitize_checklist((payload or {}).get("checklist"))
+    record["checklist"] = _ck
+    record.update(_checklist_counts(_ck))
     await sopralluoghi_col.insert_one(record)
     _schedule_sopralluoghi_csv_regen(f"nuovo verbale: {codice}")
     return {"ok": True, "codice_verbale": codice, "foto_urls": foto_urls}
@@ -3727,16 +3781,21 @@ async def _regenerate_sopralluoghi_csv(note: str = "") -> str | None:
         cols = [
             "codice_verbale", "data_sopralluogo", "lotto", "tratta_id", "impresa",
             "referente_impresa", "referente_retelit", "comune", "localita",
-            "tipo_intervento", "esito", "note", "segnalazioni", "azioni_richieste",
+            "tipo_intervento", "esito", "segnalazione_cliente", "note", "segnalazioni", "azioni_richieste",
             "scadenza_azioni", "prossimo_sopralluogo", "firma_impresa",
-            "firma_retelit", "foto_urls", "created_at",
+            "firma_retelit", "foto_urls",
+            "checklist_conformi", "checklist_non_conformi", "checklist_na",
+            "checklist_compilati", "checklist_nc_ids",
+            "created_at",
         ]
         buf = io.StringIO()
         w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
         n = 0
         async for d in sopralluoghi_col.find({}).sort("codice_verbale", 1):
-            w.writerow({k: d.get(k, "") for k in cols})
+            row = {k: d.get(k, "") for k in cols}
+            row["segnalazione_cliente"] = "SI" if d.get("segnalazione_cliente") else "NO"
+            w.writerow(row)
             n += 1
         data = buf.getvalue().encode("utf-8-sig")
         gid = await _store_derived_file(SOPRALLUOGHI_FILENAME, data, "text/csv", note)
