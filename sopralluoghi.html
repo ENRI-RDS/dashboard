@@ -114,6 +114,11 @@
   .verif-chip.todo{background:#FFE7B8;color:#8A5A00;}
   .verif-chip.late{background:#FDECEA;color:var(--err);}
   .verif-chip.ok{background:#E4F5EC;color:var(--ok);}
+  .verif-chip.cliente{background:#FFE7B8;color:#8A5A00;}
+  .verif-chip.interno{background:#E6F1F8;color:#043F75;box-shadow:inset 0 0 0 1px #41BBD9;}
+  .verbale-row.is-verifica{box-shadow:inset 3px 0 0 #1A7D99;}
+  .verbale-row.is-verifica.has-segn{box-shadow:inset 3px 0 0 #1A7D99;}
+  .vr-link{display:block;font-family:'Raleway',sans-serif;font-size:9.5px;font-weight:600;color:#1A7D99;margin-top:2px;}
   .verif-chip.neutral{background:#EEF1F5;color:#5B6577;}
   .verifica-banner{margin:0 0 14px;padding:10px 14px;border-radius:10px;background:#E6F1F8;border:1px solid #41BBD9;color:#043F75;font-size:12.5px;align-items:center;justify-content:space-between;gap:10px;}
   .verifica-box{margin-top:12px;padding:10px 12px;border-radius:10px;font-size:12px;border:1px solid var(--border);background:var(--surface2);line-height:1.5;}
@@ -609,7 +614,7 @@
             <option value="">Verifiche: tutte</option>
             <option value="da_fare">Verifiche da eseguire</option>
             <option value="scaduta">Verifiche scadute</option>
-            <option value="risolto">Segnalazioni risolte</option>
+            <option value="risolto">Verifiche risolte</option>
             <option value="non_risolto">Non risolte</option>
             <option value="figli">Solo 2° sopralluoghi</option>
           </select>
@@ -754,6 +759,7 @@ function getF(){
     segnalazione_cliente_note: document.getElementById('segnalazione_cliente')?.checked ? (document.getElementById('segnalazione_cliente_note')?.value || '').trim() : '',
     esito_segnalazione: document.getElementById('segnalazione_cliente')?.checked ? (document.querySelector('input[name="esito_segnalazione"]:checked')?.value || '') : '',
     verbale_origine: _verificaDi ? _verificaDi.codice : '',
+    verifica_tipo: _verificaDi ? _verificaDi.tipo : '',
     // Resto della vecchia sezione "Segnalazioni" (gravità/testo/azioni/date/note)
     // rimosso dal form di compilazione — resta solo in lettura sui verbali già
     // esistenti, sostituito dalla checklist DL. Campi mantenuti vuoti per
@@ -977,7 +983,7 @@ async function _generatePdfCore(f, photos){
     ['Redatto da', f.redattore], ['Gravità anomalie', f.gravita],
     ['Segnalazione cliente', f.segnalazione_cliente || 'NO'],
     ...(f.segnalazione_cliente === 'SI' ? [['Esito verifica segnalazione', ({confermata:'Confermata',non_confermata:'Non confermata'})[f.esito_segnalazione] || '—']] : []),
-    ...(f.verbale_origine ? [['2° sopralluogo — verifica del verbale', esc(f.verbale_origine)]] : []),
+    ...(f.verbale_origine ? [['2° sopralluogo — verifica del verbale', esc(f.verbale_origine) + (f.verifica_tipo ? ' (verifica ' + (f.verifica_tipo === 'cliente' ? 'cliente' : 'interna') + ')' : '')]] : []),
     ['N° Foto allegate', f.n_foto],
   ];
   const extraSections = [
@@ -1163,6 +1169,7 @@ async function generatePdfForRecord(id){
     segnalazione_cliente_note: _isSegnCliente(v) ? (v.segnalazione_cliente_note || '') : '',
     esito_segnalazione: _isSegnCliente(v) ? (v.esito_segnalazione || '') : '',
     verbale_origine: v.verbale_origine || '',
+    verifica_tipo: v.verbale_origine ? _verifRootTipo(v) : '',
     checklist: _ckOf(v),
     segnalazioni: v.segnalazioni || '—',
     azioni: v.azioni_richieste || '—',
@@ -1443,8 +1450,8 @@ function _renderVerbaliList(rows) {
   const pageRows = rows.slice((_currentPage - 1) * _PAGE_SIZE, _currentPage * _PAGE_SIZE);
 
   list.innerHTML = pageRows.map(v => `
-    <div data-id="${v._id}" style="grid-template-columns:${_gridCols()};${_gridMinWidth() ? 'min-width:'+_gridMinWidth()+';' : ''}" class="verbale-row${v._id === _selectedVerbaleId ? ' is-selected' : ''}${_isSegnCliente(v) ? ' has-segn' : ''}">
-      <span class="vr-codice">${v.codice_verbale}</span>
+    <div data-id="${v._id}" style="grid-template-columns:${_gridCols()};${_gridMinWidth() ? 'min-width:'+_gridMinWidth()+';' : ''}" class="verbale-row${v._id === _selectedVerbaleId ? ' is-selected' : ''}${_isSegnCliente(v) ? ' has-segn' : ''}${v.verbale_origine ? ' is-verifica' : ''}">
+      <span class="vr-codice">${v.codice_verbale}${_verifLinkHtml(v)}</span>
       <span class="vr-data">${_soprDateDisplay(v.data_sopralluogo)}</span>
       <span class="vr-comune">${v.comune || '—'}<small>${v.tratta_id || '—'} · ${v.lotto || '—'}</small></span>
       <span>${_statoChip(v.esito)}${_isSegnCliente(v) ? '<span class="flag-chip">SEGN. CLIENTE</span>' : ''}${_ckChip(v)}${_verifChips(v)}</span>
@@ -1974,14 +1981,24 @@ function _ckPrevHtml(k, id) {
   return `<div class="ck-prev">↩ ${esc(_verificaDi.codice)}: NC — ${esc(i.rilievo || '—')}${i.azione ? ' · Azione: ' + esc(i.azione) : ''}${i.scad ? ' · Scad. ' + _soprDateDisplay(i.scad) : ''}</div>`;
 }
 
-// Verbali con segnalazione salvati prima di rev.296 non hanno l'esito: se hanno NC li si considera confermati
-function _isConfermata(v) { return _isSegnCliente(v) && (v.esito_segnalazione === 'confermata' || !v.esito_segnalazione); }
+// Tipo di verifica risalendo la catena fino al verbale radice: 'cliente' se la radice ha una segnalazione cliente, altrimenti 'interno'
+function _verifRootTipo(v) {
+  let cur = v, n = 0;
+  while (cur && cur.verbale_origine && n++ < 20) cur = _verbaliAll.find(x => x.codice_verbale === cur.verbale_origine);
+  return (cur && _isSegnCliente(cur)) ? 'cliente' : 'interno';
+}
 
-// Stato di un verbale che richiede verifica (segnalazione confermata, o 2° sopralluogo con NC residue).
+function _verifLinkHtml(v) {
+  if (v.verbale_origine) return `<span class="vr-link">↳ verifica di ${esc(v.verbale_origine.replace(/^VBS-/, ''))}</span>`;
+  const k = _verbaliAll.filter(x => x.verbale_origine === v.codice_verbale).sort((a, b) => a.codice_verbale.localeCompare(b.codice_verbale));
+  return k.length ? `<span class="vr-link">→ verificato in ${esc(k[k.length - 1].codice_verbale.replace(/^VBS-/, ''))}</span>` : '';
+}
+
+// Stato di un verbale che richiede verifica (qualunque verbale, semplice o con segnalazione cliente, con almeno una NC).
 // null = non richiede verifica. Lo stato è calcolato al volo dai verbali collegati.
 function _verifState(v) {
   const ncs = _ckNcList(v);
-  if (!ncs.length || !(_isConfermata(v) || v.verbale_origine)) return null;
+  if (!ncs.length) return null;
   const kids = _verbaliAll.filter(x => x.verbale_origine === v.codice_verbale)
                           .sort((a, b) => a.codice_verbale.localeCompare(b.codice_verbale));
   if (kids.length) {
@@ -2001,7 +2018,10 @@ function _verifStateChip(s) {
 
 function _verifChips(v) {
   let h = '';
-  if (v.verbale_origine) h += `<span class="verif-chip" title="Verifica di ${esc(v.verbale_origine)}">2° SOPRALLUOGO</span>`;
+  if (v.verbale_origine) {
+    const t = _verifRootTipo(v);
+    h += `<span class="verif-chip" title="Verifica di ${esc(v.verbale_origine)}">2° SOPRALLUOGO</span><span class="verif-chip ${t}">${t === 'cliente' ? 'CLIENTE' : 'INTERNO'}</span>`;
+  }
   if (_isSegnCliente(v) && v.esito_segnalazione === 'non_confermata') h += '<span class="verif-chip neutral">NON CONFERMATA</span>';
   return h + _verifStateChip(_verifState(v));
 }
@@ -2010,7 +2030,7 @@ function _verifPreviewHtml(v) {
   let h = '';
   const link = c => { const x = _verbaliAll.find(y => y.codice_verbale === c);
     return x ? `<a href="#" onclick="event.preventDefault();_selectVerbale('${x._id}')">${esc(c)}</a>` : esc(c); };
-  if (v.verbale_origine) h += `<div class="verifica-box"><b>2° SOPRALLUOGO</b> — verifica della risoluzione del verbale ${link(v.verbale_origine)}</div>`;
+  if (v.verbale_origine) h += `<div class="verifica-box"><b>2° SOPRALLUOGO</b> — verifica ${_verifRootTipo(v) === 'cliente' ? 'della segnalazione cliente' : 'interna'} · verbale ${link(v.verbale_origine)}</div>`;
   const s = _verifState(v);
   if (s && s.figlio) {
     h += `<div class="verifica-box">Verifica eseguita: ${link(s.figlio.codice_verbale)} ${_verifStateChip(s)}</div>`;
@@ -2027,7 +2047,7 @@ async function creaVerifica(id) {
   const nc = _ckNcList(p);
   if (!nc.length) { showToast('✗ Nessuna non conformità da verificare'); return; }
   resetVerbaleForm();
-  _verificaDi = { codice: p.codice_verbale, ids: new Set(nc.map(x => x.k + ':' + x.id)), info: {} };
+  _verificaDi = { codice: p.codice_verbale, ids: new Set(nc.map(x => x.k + ':' + x.id)), info: {}, tipo: _verifRootTipo(p) };
   nc.forEach(x => { _verificaDi.info[x.k + ':' + x.id] = { rilievo: x.rilievo, azione: x.azione, scad: x.scad }; });
   toggleNuovoVerbale(true);
   const selL = document.getElementById('lotto');
@@ -2049,7 +2069,7 @@ function _applyVerificaUI() {
   const b = document.getElementById('verificaBanner');
   if (b) {
     b.style.display = on ? 'flex' : 'none';
-    if (on) document.getElementById('verificaBannerTxt').innerHTML = `<b>2° SOPRALLUOGO</b> — verifica della risoluzione di <b>${esc(_verificaDi.codice)}</b> · ${_verificaDi.ids.size} punti da riverificare`;
+    if (on) document.getElementById('verificaBannerTxt').innerHTML = `<b>2° SOPRALLUOGO</b> — verifica ${_verificaDi.tipo === 'cliente' ? 'della segnalazione cliente' : 'interna'} di <b>${esc(_verificaDi.codice)}</b> · ${_verificaDi.ids.size} punti da riverificare`;
   }
   const g = document.getElementById('segnClienteGroup'); if (g) g.style.display = on ? 'none' : '';
   const t = document.querySelector('#formCard .fch-title'); if (t) t.textContent = on ? 'Sopralluogo di verifica' : 'Nuovo verbale di sopralluogo';
