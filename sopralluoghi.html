@@ -51,7 +51,7 @@
   /* ── Layout largo: KPI + colonna form / colonna archivio ── */
   .main-wide{max-width:1440px;margin:0 auto;padding:28px 24px 40px;display:flex;flex-direction:column;gap:18px;}
 
-  .kpi-strip{display:grid;grid-template-columns:repeat(7,1fr);gap:12px;}
+  .kpi-strip{display:grid;grid-template-columns:repeat(8,1fr);gap:12px;}
   @media(max-width:1100px){.kpi-strip{grid-template-columns:repeat(3,1fr);}}
   @media(max-width:640px){.kpi-strip{grid-template-columns:repeat(2,1fr);}}
   .kpi-card.is-click{cursor:pointer;transition:box-shadow .15s,transform .1s,border-color .15s;}
@@ -106,6 +106,19 @@
   .check-inline{display:flex;align-items:center;gap:9px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);cursor:pointer;font-size:12.5px;font-weight:600;color:var(--text2);}
   .check-inline input{width:16px;height:16px;accent-color:var(--warn);cursor:pointer;}
   .check-inline.on{background:#FFF7E6;border-color:var(--warn);color:#8A5A00;}
+  .segn-esito{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0;font-size:12px;font-weight:600;color:var(--text2);}
+  .segn-esito label{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--surface2);}
+  .segn-esito.miss{outline:1.5px solid var(--err);outline-offset:3px;border-radius:8px;}
+  .verif-chip{display:inline-block;margin-left:5px;padding:2px 7px;border-radius:20px;font-size:9.5px;font-weight:800;white-space:nowrap;background:#D3DEEA;color:#043F75;}
+  .verif-chip.todo{background:#FFE7B8;color:#8A5A00;}
+  .verif-chip.late{background:#FDECEA;color:var(--err);}
+  .verif-chip.ok{background:#E4F5EC;color:var(--ok);}
+  .verif-chip.neutral{background:#EEF1F5;color:#5B6577;}
+  .verifica-banner{margin:0 0 14px;padding:10px 14px;border-radius:10px;background:#E6F1F8;border:1px solid #41BBD9;color:#043F75;font-size:12.5px;align-items:center;justify-content:space-between;gap:10px;}
+  .verifica-box{margin-top:12px;padding:10px 12px;border-radius:10px;font-size:12px;border:1px solid var(--border);background:var(--surface2);line-height:1.5;}
+  .btn-verifica{margin-top:6px;padding:7px 12px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:12px;font-weight:700;cursor:pointer;}
+  .ck-prev{font-size:10.5px;color:var(--muted);margin-top:3px;line-height:1.4;font-weight:400;}
+  .ck-nc-box .miss{border-color:var(--err)!important;background:#FDF3F1;}
   .segn-hint{font-size:11px;color:var(--muted);line-height:1.4;}
   #segnClienteNoteBox textarea{width:100%;min-height:60px;font-size:12.5px;padding:8px 10px;border:1px solid var(--warn);border-radius:8px;font-family:inherit;background:#FFFCF5;}
 
@@ -396,6 +409,10 @@
       <div class="kpi-value" id="kpi-segn-cliente">0</div>
       <div class="kpi-label">Segnalazioni cliente</div>
     </div>
+    <div class="kpi-card kpi-warn is-click" onclick="openKpiModal('verifiche','Verifiche da eseguire')">
+      <div class="kpi-value" id="kpi-verifiche">0</div>
+      <div class="kpi-label">Verifiche da eseguire</div>
+    </div>
     <div class="kpi-card kpi-warn is-click" onclick="openKpiModal('nc','Verbali con non conformità')">
       <div class="kpi-value" id="kpi-nc">0</div>
       <div class="kpi-label">Non conformità</div>
@@ -413,6 +430,11 @@
     <div class="form-card-head">
       <span class="fch-title">Nuovo verbale di sopralluogo</span>
       <button class="btn-chiudi-form" onclick="toggleNuovoVerbale(false)">Chiudi ✕</button>
+    </div>
+
+    <div class="verifica-banner" id="verificaBanner" style="display:none">
+      <span id="verificaBannerTxt"></span>
+      <button type="button" class="btn-chiudi-form" onclick="resetVerbaleForm()">Annulla verifica</button>
     </div>
 
     <div class="section-label">Identificazione</div>
@@ -481,13 +503,18 @@
       <div class="foto-count" id="fotoCount"></div>
     </div>
 
-    <div class="field-group">
+    <div class="field-group" id="segnClienteGroup">
       <label class="check-inline" id="segnClienteWrap" for="segnalazione_cliente">
         <input type="checkbox" id="segnalazione_cliente" onchange="onSegnClienteChange()">
         Segnalazione cliente
       </label>
       <div class="segn-hint">Attiva solo se il sopralluogo è stato richiesto a seguito di una segnalazione ricevuta dal cliente.</div>
       <div id="segnClienteNoteBox" style="display:none">
+        <div class="segn-esito" id="segnEsito">
+          <span>Esito verifica sul posto *</span>
+          <label><input type="radio" name="esito_segnalazione" value="confermata" onchange="document.getElementById('segnEsito').classList.remove('miss')"> Confermata (anomalia)</label>
+          <label><input type="radio" name="esito_segnalazione" value="non_confermata" onchange="document.getElementById('segnEsito').classList.remove('miss')"> Non confermata</label>
+        </div>
         <textarea id="segnalazione_cliente_note" maxlength="2000" placeholder="Note sulla segnalazione cliente (oggetto, data, riferimento…)"></textarea>
       </div>
     </div>
@@ -576,6 +603,14 @@
             <option value="">Segnalazione cliente: tutte</option>
             <option value="si">Solo con segnalazione</option>
             <option value="no">Solo senza segnalazione</option>
+          </select>
+          <select id="filtro-verifica" onchange="applyVerbaliFilters()">
+            <option value="">Verifiche: tutte</option>
+            <option value="da_fare">Verifiche da eseguire</option>
+            <option value="scaduta">Verifiche scadute</option>
+            <option value="risolto">Segnalazioni risolte</option>
+            <option value="non_risolto">Non risolte</option>
+            <option value="figli">Solo 2° sopralluoghi</option>
           </select>
           <select id="filtro-mese" onchange="applyVerbaliFilters()" class="archive-filter-wide">
             <option value="">Filtra mese</option>
@@ -716,6 +751,8 @@ function getF(){
     checklist: ckPayload(),
     segnalazione_cliente: document.getElementById('segnalazione_cliente')?.checked ? 'SI' : 'NO',
     segnalazione_cliente_note: document.getElementById('segnalazione_cliente')?.checked ? (document.getElementById('segnalazione_cliente_note')?.value || '').trim() : '',
+    esito_segnalazione: document.getElementById('segnalazione_cliente')?.checked ? (document.querySelector('input[name="esito_segnalazione"]:checked')?.value || '') : '',
+    verbale_origine: _verificaDi ? _verificaDi.codice : '',
     // Resto della vecchia sezione "Segnalazioni" (gravità/testo/azioni/date/note)
     // rimosso dal form di compilazione — resta solo in lettura sui verbali già
     // esistenti, sostituito dalla checklist DL. Campi mantenuti vuoti per
@@ -812,6 +849,8 @@ async function inviaVerbale(){
   if (!document.getElementById('data').value) { showToast('✗ Inserisci la data del sopralluogo'); return; }
   if (!document.getElementById('n_cantiere').value.trim()) { showToast('✗ Inserisci il numero cantiere'); return; }
   if (!document.getElementById('impresa').value.trim()) { showToast('✗ Inserisci il nome impresa'); return; }
+  const errV = _validaVerbale();
+  if (errV) { showToast('✗ ' + errV); return; }
 
   // Impedisce doppio invio
   if (document.getElementById('codice_verbale').value) {
@@ -845,6 +884,8 @@ async function inviaVerbale(){
         esito:             '',
         segnalazione_cliente: document.getElementById('segnalazione_cliente')?.checked || false,
         segnalazione_cliente_note: f.segnalazione_cliente_note,
+        esito_segnalazione: f.esito_segnalazione,
+        verbale_origine:   f.verbale_origine,
         checklist:         ckPayload(),
         note:              '',
         segnalazioni:      '',
@@ -854,7 +895,10 @@ async function inviaVerbale(){
         foto:              uploadedPhotos.map(p => ({ dataUrl: p.dataUrl, name: p.name })),
       })
     });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (!res.ok) {
+      let det = ''; try { det = (await res.json()).detail || ''; } catch(_) {}
+      throw new Error(det || ('HTTP ' + res.status));
+    }
     const data = await res.json();
     showToast('✓ Verbale inviato — ' + data.codice_verbale);
     await loadVerbali();
@@ -880,8 +924,12 @@ function resetVerbaleForm() {
   const segnCli = document.getElementById('segnalazione_cliente');
   if (segnCli) { segnCli.checked = false; onSegnClienteChange(); }
   const segnNote = document.getElementById('segnalazione_cliente_note'); if (segnNote) segnNote.value = '';
+  document.querySelectorAll('input[name="esito_segnalazione"]').forEach(r => r.checked = false);
+  document.getElementById('segnEsito')?.classList.remove('miss');
+  _verificaDi = null; _ckShowMissing = false;
   uploadedPhotos = [];
   ckReset();
+  _applyVerificaUI();
   const fotoInput = document.getElementById('fotoInput');
   if (fotoInput) fotoInput.value = '';
   renderPreviews();
@@ -927,6 +975,8 @@ async function _generatePdfCore(f, photos){
     ['Lotto', f.lotto], ['Ruolo redattore', f.ruolo],
     ['Redatto da', f.redattore], ['Gravità anomalie', f.gravita],
     ['Segnalazione cliente', f.segnalazione_cliente || 'NO'],
+    ...(f.segnalazione_cliente === 'SI' ? [['Esito verifica segnalazione', ({confermata:'Confermata',non_confermata:'Non confermata'})[f.esito_segnalazione] || '—']] : []),
+    ...(f.verbale_origine ? [['2° sopralluogo — verifica del verbale', esc(f.verbale_origine)]] : []),
     ['N° Foto allegate', f.n_foto],
   ];
   const extraSections = [
@@ -1110,6 +1160,8 @@ async function generatePdfForRecord(id){
     gravita: v.esito || '—',
     segnalazione_cliente: _isSegnCliente(v) ? 'SI' : 'NO',
     segnalazione_cliente_note: _isSegnCliente(v) ? (v.segnalazione_cliente_note || '') : '',
+    esito_segnalazione: _isSegnCliente(v) ? (v.esito_segnalazione || '') : '',
+    verbale_origine: v.verbale_origine || '',
     checklist: _ckOf(v),
     segnalazioni: v.segnalazioni || '—',
     azioni: v.azioni_richieste || '—',
@@ -1279,6 +1331,7 @@ function _populateKpis() {
   document.getElementById('kpi-anomalie').textContent = nAnomalie;
   document.getElementById('kpi-chiusi').textContent   = nNessuna;
   document.getElementById('kpi-segn-cliente').textContent = _verbaliAll.filter(_isSegnCliente).length;
+  document.getElementById('kpi-verifiche').textContent = _verbaliAll.filter(v => { const s = _verifState(v); return s && (s.stato === 'aperta' || s.stato === 'scaduta'); }).length;
   document.getElementById('kpi-nc').textContent = _verbaliAll.reduce((a,v) => a + _ckStatsOf(v).nc, 0);
   document.getElementById('kpi-ultimo').textContent   = ultimo && ultimo.created_at
     ? new Date(ultimo.created_at).toLocaleString('it-IT', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})
@@ -1322,6 +1375,7 @@ function applyVerbaliFilters() {
   const mese    = document.getElementById('filtro-mese')?.value || '';
   const segnCli = document.getElementById('filtro-segn-cliente')?.value || '';
   const fNc     = document.getElementById('filtro-nc')?.value || '';
+  const fVer    = document.getElementById('filtro-verifica')?.value || '';
 
   const rows = _verbaliAll.filter(v => {
     if (impresa && v.impresa !== impresa) return false;
@@ -1331,13 +1385,19 @@ function applyVerbaliFilters() {
     if (mese && _soprDateISO(v.data_sopralluogo).slice(0,7) !== mese) return false;
     if (segnCli === 'si' && !_isSegnCliente(v)) return false;
     if (segnCli === 'no' && _isSegnCliente(v)) return false;
+    if (fVer) {
+      const vs = _verifState(v);
+      if (fVer === 'da_fare' && !(vs && (vs.stato === 'aperta' || vs.stato === 'scaduta'))) return false;
+      if (fVer === 'figli' && !v.verbale_origine) return false;
+      if (['scaduta','risolto','non_risolto'].includes(fVer) && !(vs && vs.stato === fVer)) return false;
+    }
     if (fNc) {
       const cs = _ckStatsOf(v);
       if (fNc === 'nc' && cs.nc === 0) return false;
       if (fNc === 'ok' && cs.nc > 0) return false;
       if (fNc === 'incompleta' && cs.compilati >= cs.tot) return false;
     }
-    if (q && ![v.codice_verbale, v.tratta_id, v.lotto, v.impresa, v.data_sopralluogo, v.comune, v.segnalazioni, v.azioni_richieste, v.segnalazione_cliente_note]
+    if (q && ![v.codice_verbale, v.tratta_id, v.lotto, v.impresa, v.data_sopralluogo, v.comune, v.segnalazioni, v.azioni_richieste, v.segnalazione_cliente_note, v.verbale_origine]
               .join(' ').toLowerCase().includes(q)) return false;
     return true;
   });
@@ -1386,7 +1446,7 @@ function _renderVerbaliList(rows) {
       <span class="vr-codice">${v.codice_verbale}</span>
       <span class="vr-data">${_soprDateDisplay(v.data_sopralluogo)}</span>
       <span class="vr-comune">${v.comune || '—'}<small>${v.tratta_id || '—'} · ${v.lotto || '—'}</small></span>
-      <span>${_statoChip(v.esito)}${_isSegnCliente(v) ? '<span class="flag-chip">SEGN. CLIENTE</span>' : ''}${_ckChip(v)}</span>
+      <span>${_statoChip(v.esito)}${_isSegnCliente(v) ? '<span class="flag-chip">SEGN. CLIENTE</span>' : ''}${_ckChip(v)}${_verifChips(v)}</span>
       ${_areaCellsHtml(v)}
       <span class="vr-actions">
         <button title="Scarica PDF" onclick="event.stopPropagation();generatePdfForRecord('${v._id}')">
@@ -1435,6 +1495,7 @@ function _renderPreview(v) {
     ['Impresa esecutrice', v.impresa], ['Gravità / Esito', v.esito],
     ['Segnalazione cliente', _isSegnCliente(v) ? 'SÌ' : ''],
     ['Note segnalazione cliente', _isSegnCliente(v) ? (v.segnalazione_cliente_note || '') : ''],
+    ['Esito verifica segnalazione', _isSegnCliente(v) ? (({confermata:'Confermata',non_confermata:'Non confermata'})[v.esito_segnalazione] || '') : ''],
     ['Segnalazioni', v.segnalazioni], ['Azioni richieste', v.azioni_richieste],
     ['Scadenza azioni', v.scadenza_azioni ? new Date(v.scadenza_azioni).toLocaleDateString('it-IT') : ''],
     ['Prossimo sopralluogo', v.prossimo_sopralluogo ? new Date(v.prossimo_sopralluogo).toLocaleDateString('it-IT') : ''],
@@ -1459,6 +1520,7 @@ function _renderPreview(v) {
             <span class="pf-val">${val}</span>
           </div>`).join('')}
       </div>
+      ${_verifPreviewHtml(v)}
       ${_ckPreviewHtml(v)}
       ${urls.length ? `
         <div class="preview-photos">
@@ -1655,6 +1717,8 @@ const CK_ESITI = { 'C':'Conforme', 'NC':'Non conforme', 'NA':'N.A.', '':'Da veri
 const CK_CATS = ['qualita', 'sicurezza', 'collaudo'];
 let _ckTab = 'qualita';
 let _ckState = { qualita:{}, sicurezza:{}, collaudo:{} };   // id -> {e, rilievo, azione, resp, scad, nota}
+let _verificaDi = null;       // {codice, ids:Set('k:id'), info:{'k:id':{rilievo,azione,scad}}} se si sta compilando un 2° sopralluogo
+let _ckShowMissing = false;   // evidenzia azione/scadenza mancanti sulle NC
 let _ckNoteOpen = new Set();   // "k:id" — pannello nota espanso (solo UI, si auto-espande se c'è già un contenuto)
 let _ckGeneralNote = '';
 
@@ -1674,13 +1738,13 @@ function renderChecklist() {
   const body = document.getElementById('ck-body');
   if (!body) return;
   let html = '', lastArea = null;
-  CHECKLIST_DEF[k].items.forEach(it => {
+  _ckItemsOf(k).forEach(it => {
     if (it.area !== lastArea) { html += `<div class="ck-area">${esc(it.area)}</div>`; lastArea = it.area; }
     const st = _ckGet(k, it.id);
     const noteOpen = _ckNoteOpen.has(k+':'+it.id) || !!st.nota;
     const cls = (st.e==='NC' ? ' is-nc' : (st.e==='NA' ? ' is-na' : ''));
     html += `<div class="ck-item${cls}" data-id="${it.id}">
-      <div class="ck-txt"><span class="ck-id">${it.id}</span>${esc(it.t)}${it.rif?`<span class="ck-rif">${esc(it.rif)}</span>`:''}</div>
+      <div class="ck-txt"><span class="ck-id">${it.id}</span>${esc(it.t)}${it.rif?`<span class="ck-rif">${esc(it.rif)}</span>`:''}${_ckPrevHtml(k, it.id)}</div>
       <div class="ck-esiti">
         <button type="button" class="ck-b c${st.e==='C'?' on':''}" onclick="setCk('${k}','${it.id}','C')">Conforme</button>
         <button type="button" class="ck-b nc${st.e==='NC'?' on':''}" onclick="setCk('${k}','${it.id}','NC')">NC</button>
@@ -1690,12 +1754,12 @@ function renderChecklist() {
       ${st.e==='NC' ? `<div class="ck-nc-box">
         <div style="grid-column:1/-1"><label>Rilievo / Non conformità</label>
           <textarea oninput="setCkField('${k}','${it.id}','rilievo',this.value)">${esc(st.rilievo||'')}</textarea></div>
-        <div style="grid-column:1/-1"><label>Azione correttiva</label>
-          <textarea oninput="setCkField('${k}','${it.id}','azione',this.value)">${esc(st.azione||'')}</textarea></div>
+        <div style="grid-column:1/-1"><label>Azione correttiva *</label>
+          <textarea class="${_ckMiss(st.azione)}" oninput="setCkField('${k}','${it.id}','azione',this.value)">${esc(st.azione||'')}</textarea></div>
         <div><label>Responsabile</label>
           <input type="text" value="${esc(st.resp||'')}" oninput="setCkField('${k}','${it.id}','resp',this.value)"></div>
-        <div><label>Scadenza</label>
-          <input type="date" value="${st.scad||''}" oninput="setCkField('${k}','${it.id}','scad',this.value)"></div>
+        <div><label>Scadenza *</label>
+          <input type="date" class="${_ckMiss(st.scad)}" value="${st.scad||''}" oninput="setCkField('${k}','${it.id}','scad',this.value)"></div>
       </div>` : ''}
       ${noteOpen ? `<div class="ck-note-box">
         <textarea placeholder="Nota su questo punto..." oninput="setCkField('${k}','${it.id}','nota',this.value)">${esc(st.nota||'')}</textarea>
@@ -1727,7 +1791,7 @@ function ckGeneralNoteInput() {
 
 function ckBulk(val) {
   const k = _ckTab;
-  CHECKLIST_DEF[k].items.forEach(it => {
+  _ckItemsOf(k).forEach(it => {
     const st = _ckGet(k, it.id);
     st.e = val;
     if (val !== 'NC') { st.rilievo=''; st.azione=''; st.resp=''; st.scad=''; }
@@ -1737,7 +1801,7 @@ function ckBulk(val) {
 }
 
 function _ckStats(k) {
-  const items = CHECKLIST_DEF[k].items;
+  const items = _ckItemsOf(k);
   let c=0, nc=0, na=0;
   items.forEach(it => { const e=(_ckState[k][it.id]||{}).e; if(e==='C')c++; else if(e==='NC')nc++; else if(e==='NA')na++; });
   return { tot:items.length, c, nc, na, compilati:c+nc+na, todo:items.length-(c+nc+na) };
@@ -1784,7 +1848,7 @@ function _ckStatsOf(v) {
   const ck = _ckOf(v);
   let tot=0, c=0, nc=0, na=0;
   CK_CATS.forEach(k => {
-    tot += CHECKLIST_DEF[k].items.length;
+    tot += (v && v.verbale_origine) ? Object.keys(ck[k] || {}).length : CHECKLIST_DEF[k].items.length;
     Object.values(ck[k] || {}).forEach(x => {
       if (x.e==='C') c++; else if (x.e==='NC') nc++; else if (x.e==='NA') na++;
     });
@@ -1851,7 +1915,7 @@ function toggleFiltri(force) {
 }
 
 function azzeraFiltri() {
-  ['filtro-impresa','filtro-lotto','filtro-comune','filtro-stato','filtro-nc','filtro-segn-cliente','filtro-mese'].forEach(id => {
+  ['filtro-impresa','filtro-lotto','filtro-comune','filtro-stato','filtro-nc','filtro-segn-cliente','filtro-verifica','filtro-mese'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   document.getElementById('verbali-search').value = '';
@@ -1859,7 +1923,7 @@ function azzeraFiltri() {
 }
 
 function _updateFiltriBadge() {
-  const ids = ['filtro-impresa','filtro-lotto','filtro-comune','filtro-stato','filtro-nc','filtro-segn-cliente','filtro-mese'];
+  const ids = ['filtro-impresa','filtro-lotto','filtro-comune','filtro-stato','filtro-nc','filtro-segn-cliente','filtro-verifica','filtro-mese'];
   const n = ids.reduce((a,id) => a + (document.getElementById(id)?.value ? 1 : 0), 0);
   const b = document.getElementById('filtriBadge');
   if (!b) return;
@@ -1897,6 +1961,123 @@ function _areaCellsHtml(v) {
   }).join('');
 }
 
+// ══ SEGNALAZIONE CLIENTE → VERIFICA → 2° SOPRALLUOGO ═════════════════════════
+function _ckItemsOf(k) {
+  const all = CHECKLIST_DEF[k].items;
+  return _verificaDi ? all.filter(it => _verificaDi.ids.has(k + ':' + it.id)) : all;
+}
+function _ckMiss(v) { return (_ckShowMissing && !String(v || '').trim()) ? 'miss' : ''; }
+function _ckPrevHtml(k, id) {
+  const i = _verificaDi && _verificaDi.info[k + ':' + id];
+  if (!i) return '';
+  return `<div class="ck-prev">↩ ${esc(_verificaDi.codice)}: NC — ${esc(i.rilievo || '—')}${i.azione ? ' · Azione: ' + esc(i.azione) : ''}${i.scad ? ' · Scad. ' + _soprDateDisplay(i.scad) : ''}</div>`;
+}
+
+function _isConfermata(v) { return _isSegnCliente(v) && v.esito_segnalazione === 'confermata'; }
+
+// Stato di un verbale che richiede verifica (segnalazione confermata, o 2° sopralluogo con NC residue).
+// null = non richiede verifica. Lo stato è calcolato al volo dai verbali collegati.
+function _verifState(v) {
+  const ncs = _ckNcList(v);
+  if (!ncs.length || !(_isConfermata(v) || v.verbale_origine)) return null;
+  const kids = _verbaliAll.filter(x => x.verbale_origine === v.codice_verbale)
+                          .sort((a, b) => a.codice_verbale.localeCompare(b.codice_verbale));
+  if (kids.length) {
+    const k = kids[kids.length - 1];
+    return { stato: _ckNcList(k).length ? 'non_risolto' : 'risolto', figlio: k };
+  }
+  const scad = ncs.map(x => x.scad).filter(Boolean).sort().pop() || '';
+  const oggi = new Date().toISOString().slice(0, 10);
+  return { stato: (scad && scad < oggi) ? 'scaduta' : 'aperta', scad };
+}
+
+function _verifStateChip(s) {
+  if (!s) return '';
+  const m = { aperta:['todo','VERIFICA DA FARE'], scaduta:['late','VERIFICA SCADUTA'], risolto:['ok','RISOLTO'], non_risolto:['late','NON RISOLTO'] }[s.stato];
+  return `<span class="verif-chip ${m[0]}">${m[1]}</span>`;
+}
+
+function _verifChips(v) {
+  let h = '';
+  if (v.verbale_origine) h += `<span class="verif-chip" title="Verifica di ${esc(v.verbale_origine)}">2° SOPRALLUOGO</span>`;
+  if (_isSegnCliente(v) && v.esito_segnalazione === 'non_confermata') h += '<span class="verif-chip neutral">NON CONFERMATA</span>';
+  return h + _verifStateChip(_verifState(v));
+}
+
+function _verifPreviewHtml(v) {
+  let h = '';
+  const link = c => { const x = _verbaliAll.find(y => y.codice_verbale === c);
+    return x ? `<a href="#" onclick="event.preventDefault();_selectVerbale('${x._id}')">${esc(c)}</a>` : esc(c); };
+  if (v.verbale_origine) h += `<div class="verifica-box"><b>2° SOPRALLUOGO</b> — verifica della risoluzione del verbale ${link(v.verbale_origine)}</div>`;
+  const s = _verifState(v);
+  if (s && s.figlio) {
+    h += `<div class="verifica-box">Verifica eseguita: ${link(s.figlio.codice_verbale)} ${_verifStateChip(s)}</div>`;
+  } else if (s) {
+    h += `<div class="verifica-box">${s.stato === 'scaduta' ? '⚠ <b>Verifica scaduta</b>' : '<b>Verifica da eseguire</b>'}${s.scad ? ' — entro ' + _soprDateDisplay(s.scad) : ''}
+      <div><button type="button" class="btn-verifica" onclick="creaVerifica('${v._id}')">Crea sopralluogo di verifica</button></div></div>`;
+  }
+  return h;
+}
+
+async function creaVerifica(id) {
+  const p = _verbaliAll.find(x => x._id === id);
+  if (!p) return;
+  const nc = _ckNcList(p);
+  if (!nc.length) { showToast('✗ Nessuna non conformità da verificare'); return; }
+  resetVerbaleForm();
+  _verificaDi = { codice: p.codice_verbale, ids: new Set(nc.map(x => x.k + ':' + x.id)), info: {} };
+  nc.forEach(x => { _verificaDi.info[x.k + ':' + x.id] = { rilievo: x.rilievo, azione: x.azione, scad: x.scad }; });
+  toggleNuovoVerbale(true);
+  const selL = document.getElementById('lotto');
+  if (selL.options.length <= 1) await _loadLottiCantieri();
+  document.getElementById('data').value = new Date().toISOString().split('T')[0];
+  selL.value = p.lotto || '';
+  if (selL.value) onLottoChange();
+  const selC = document.getElementById('n_cantiere');
+  const opt = [...selC.options].find(o => o.text === p.tratta_id || o.value === p.tratta_id);
+  if (opt) selC.value = opt.value;
+  document.getElementById('indirizzo').value = p.comune || '';
+  const imp = document.getElementById('impresa');
+  if (!imp.value) imp.value = p.impresa || '';
+  _applyVerificaUI();
+}
+
+function _applyVerificaUI() {
+  const on = !!_verificaDi;
+  const b = document.getElementById('verificaBanner');
+  if (b) {
+    b.style.display = on ? 'flex' : 'none';
+    if (on) document.getElementById('verificaBannerTxt').innerHTML = `<b>2° SOPRALLUOGO</b> — verifica della risoluzione di <b>${esc(_verificaDi.codice)}</b> · ${_verificaDi.ids.size} punti da riverificare`;
+  }
+  const g = document.getElementById('segnClienteGroup'); if (g) g.style.display = on ? 'none' : '';
+  const t = document.querySelector('#formCard .fch-title'); if (t) t.textContent = on ? 'Sopralluogo di verifica' : 'Nuovo verbale di sopralluogo';
+  CK_CATS.forEach(k => { const el = document.getElementById('ck-tab-' + k); if (el) el.style.display = (!on || _ckItemsOf(k).length) ? '' : 'none'; });
+  if (on) { const first = CK_CATS.find(k => _ckItemsOf(k).length); if (first) setChecklistTab(first); }
+  else renderChecklist();
+}
+
+function _validaVerbale() {
+  _ckShowMissing = false;
+  const segn = !!document.getElementById('segnalazione_cliente')?.checked && !_verificaDi;
+  const esito = document.querySelector('input[name="esito_segnalazione"]:checked')?.value || '';
+  if (segn && !esito) {
+    document.getElementById('segnEsito')?.classList.add('miss');
+    document.getElementById('segnClienteWrap')?.scrollIntoView({behavior:'smooth', block:'center'});
+    return 'Segnalazione cliente: indica se è confermata o non confermata';
+  }
+  const p = ckPayload(); let nNc = 0, bad = null;
+  CK_CATS.forEach(k => Object.entries(p[k]).forEach(([id, st]) => {
+    if (st.e === 'NC') { nNc++; if (!bad && (!st.azione.trim() || !st.scad)) bad = { k, id }; }
+  }));
+  if (bad) { _ckShowMissing = true; setChecklistTab(bad.k); return `Non conformità ${bad.id}: azione correttiva e scadenza sono obbligatorie`; }
+  if (segn && esito === 'confermata' && !nNc) return 'Segnalazione confermata: almeno un punto della checklist deve essere non conforme';
+  if (_verificaDi) {
+    const miss = [..._verificaDi.ids].filter(key => { const [k, id] = key.split(':'); return !(p[k] || {})[id]?.e; });
+    if (miss.length) { setChecklistTab(miss[0].split(':')[0]); return `Compila l'esito di tutti i punti da verificare (${miss.length} mancanti)`; }
+  }
+  return null;
+}
+
 // ══ MODALE KPI ═══════════════════════════════════════════════════════════════
 function _kpiFilter(key) {
   const oggi = new Date().toISOString().slice(0,10);
@@ -1906,6 +2087,7 @@ function _kpiFilter(key) {
     case 'nessuna':     return _verbaliAll.filter(v => v.esito === 'Nessuna anomalia');
     case 'segncliente': return _verbaliAll.filter(_isSegnCliente);
     case 'nc':          return _verbaliAll.filter(v => _ckStatsOf(v).nc > 0);
+    case 'verifiche':   return _verbaliAll.filter(v => { const s = _verifState(v); return s && (s.stato === 'aperta' || s.stato === 'scaduta'); });
     default:            return _verbaliAll.slice();
   }
 }
@@ -1921,7 +2103,7 @@ function openKpiModal(key, titolo) {
       <span class="vr-codice">${v.codice_verbale}</span>
       <span>${_soprDateDisplay(v.data_sopralluogo)}<small>${esc(v.impresa||'—')}</small></span>
       <span>${esc(v.comune||'—')}<small>${esc(v.tratta_id||'—')} · ${esc(v.lotto||'—')}</small></span>
-      <span>${_statoChip(v.esito)}${_isSegnCliente(v)?'<span class="flag-chip">SEGN. CLIENTE</span>':''}${st.nc?`<span class="ck-chip nc">${st.nc} NC</span>`:''}</span>
+      <span>${_statoChip(v.esito)}${_isSegnCliente(v)?'<span class="flag-chip">SEGN. CLIENTE</span>':''}${st.nc?`<span class="ck-chip nc">${st.nc} NC</span>`:''}${_verifChips(v)}</span>
     </div>`;
   }).join('') : '<div style="padding:22px 0;text-align:center;color:var(--muted);font-size:12px">Nessun verbale in questo stato.</div>';
   document.getElementById('kpiModal').classList.add('open');
