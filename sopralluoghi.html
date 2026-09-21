@@ -164,6 +164,8 @@
   .ck-item{padding:9px 14px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start;}
   .ck-item.is-nc{background:#FDF0EE;}
   .ck-item.is-na{opacity:.55;}
+  .ck-item.has-cliente{box-shadow:inset 3px 0 0 var(--warn);}
+  .ck-item.has-cliente.is-nc{background:linear-gradient(90deg,#FFF7E6 0%,#FDF0EE 40%);}
   .ck-txt{font-size:12px;color:var(--text2);line-height:1.4;}
   .ck-id{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:var(--accent);margin-right:6px;}
   .ck-rif{display:block;font-size:10px;color:var(--muted);margin-top:2px;}
@@ -173,6 +175,12 @@
   .ck-b.on.c{background:#E4F5EC;border-color:var(--ok);color:var(--ok);}
   .ck-b.on.nc{background:#FDECEA;border-color:var(--err);color:var(--err);}
   .ck-b.on.na{background:var(--surface2);border-color:var(--muted);color:var(--muted2);}
+  .ck-b.nota{margin-left:auto;}
+  .ck-b.nota.on{background:#FFF7E6;border-color:var(--warn);color:#8A5A00;}
+  .ck-note-box{grid-column:1/-1;margin-top:6px;padding-top:8px;border-top:1px dashed var(--border);}
+  .ck-note-box textarea{width:100%;min-height:44px;font-size:11.5px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-family:inherit;margin-top:6px;}
+  .check-inline-sm{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:var(--text2);cursor:pointer;}
+  .check-inline-sm input{width:14px;height:14px;accent-color:var(--warn);cursor:pointer;}
   .ck-nc-box{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;}
   .ck-nc-box textarea{min-height:44px;grid-column:1/-1;}
   .ck-nc-box input,.ck-nc-box textarea{width:100%;font-size:11.5px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-family:inherit;}
@@ -181,6 +189,7 @@
   .ck-chip.nc{background:#FDECEA;color:var(--err);}
   .ck-chip.ok{background:#E4F5EC;color:var(--ok);}
   .ck-chip.todo{background:var(--surface2);color:var(--muted);}
+  .ck-chip.cliente{background:#FFE7B8;color:#8A5A00;margin-left:6px;}
   .pv-ck-item{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:start;padding:6px 0;border-bottom:1px solid var(--border);font-size:11.5px;}
   .pv-ck-item .ck-id{margin:0;}
   .pv-ck-nc{grid-column:1/-1;font-size:11px;color:var(--err);padding-left:2px;}
@@ -489,6 +498,7 @@
       <div class="ck-tabs">
         <button type="button" class="ck-tab active" id="ck-tab-qualita" onclick="setChecklistTab('qualita')">Qualità <span class="ck-tab-badge" id="ck-badge-qualita">0/0</span></button>
         <button type="button" class="ck-tab" id="ck-tab-sicurezza" onclick="setChecklistTab('sicurezza')">Sicurezza <span class="ck-tab-badge" id="ck-badge-sicurezza">0/0</span></button>
+        <button type="button" class="ck-tab" id="ck-tab-collaudo" onclick="setChecklistTab('collaudo')">Collaudo <span class="ck-tab-badge" id="ck-badge-collaudo">0/0</span></button>
       </div>
       <div class="ck-toolbar">
         <span class="ck-progress" id="ck-progress">—</span>
@@ -498,6 +508,11 @@
         </span>
       </div>
       <div class="ck-body" id="ck-body"></div>
+    </div>
+
+    <div class="field-group" style="margin-top:12px">
+      <label for="ck-note-generali">Note generali checklist</label>
+      <textarea id="ck-note-generali" placeholder="Indicazioni di carattere generale o specifiche sul sopralluogo..." oninput="ckGeneralNoteInput()"></textarea>
     </div>
 
     <div class="btn-row">
@@ -570,6 +585,7 @@
           <span>Colonne checklist</span>
           <button type="button" id="as-qualita"   class="on" onclick="setAreaCols('qualita')">Qualità</button>
           <button type="button" id="as-sicurezza" onclick="setAreaCols('sicurezza')">Sicurezza</button>
+          <button type="button" id="as-collaudo"  onclick="setAreaCols('collaudo')">Collaudo</button>
           <button type="button" id="as-none"      onclick="setAreaCols('none')">Nessuna</button>
         </div>
 
@@ -1188,7 +1204,7 @@ function _soprDateDisplay(str) {
   return `${d}/${mo}/${y}`;
 }
 
-// ── Esportazione CSV/Excel (tutti i verbali, non solo la pagina/filtro corrente) ──
+// ── Esportazione Excel (tutti i verbali, 3 fogli: Verbali / Checklist dettaglio / Non conformità) ──
 async function exportVerbaliCsv() {
   const btn = document.getElementById('btnExportCsv');
   const orig = btn.innerHTML;
@@ -1199,14 +1215,14 @@ async function exportVerbaliCsv() {
     const token   = localStorage.getItem('_enri_session') || '';
     if (!apiBase) throw new Error('API endpoint non configurato');
     if (!token) throw new Error('Sessione scaduta — riaccedi dall\'hub');
-    const res = await fetch(apiBase + '/api/data/sopralluoghi.csv', {
+    const res = await fetch(apiBase + '/api/sopralluoghi/export.xlsx', {
       headers: { 'x-session-token': token }
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const blob = await res.blob();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'sopralluoghi_' + new Date().toISOString().slice(0,10) + '.csv';
+    a.download = 'sopralluoghi_' + new Date().toISOString().slice(0,10) + '.xlsx';
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1446,21 +1462,25 @@ function _ckPdfHtml(ck) {
   const cardStyle = 'background:#fff;border:1px solid #DFE4EB;border-radius:14px;padding:16px 20px 14px 24px;position:relative;margin-bottom:14px;';
   const secLabel = 'font-family:"JetBrains Mono",monospace;font-size:8px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:#1A7D99;margin-bottom:10px;';
   let any = false, blocks = '';
-  ['qualita','sicurezza'].forEach(k => {
+  CK_CATS.forEach(k => {
     const map = ck[k] || {};
-    const rows = CHECKLIST_DEF[k].items.filter(it => map[it.id] && map[it.id].e);
+    const rows = CHECKLIST_DEF[k].items.filter(it => map[it.id] && (map[it.id].e || map[it.id].nota || map[it.id].segnCliente));
     if (!rows.length) return;
     any = true;
     const tr = rows.map((it, i) => {
       const st = map[it.id];
       const col = st.e === 'NC' ? '#C0392B' : (st.e === 'C' ? '#1E8E4E' : '#7A8598');
-      const det = st.e === 'NC' && (st.rilievo || st.azione || st.resp || st.scad)
-        ? `<div style="font-size:8.5px;color:#C0392B;margin-top:3px;line-height:1.45;">
+      let det = '';
+      if (st.e === 'NC' && (st.rilievo || st.azione || st.resp || st.scad)) {
+        det += `<div style="font-size:8.5px;color:#C0392B;margin-top:3px;line-height:1.45;">
              ${st.rilievo ? '<b>Rilievo:</b> ' + esc(st.rilievo) + '<br>' : ''}
              ${st.azione ? '<b>Azione:</b> ' + esc(st.azione) + '<br>' : ''}
              ${st.resp ? '<b>Resp.:</b> ' + esc(st.resp) + ' ' : ''}
              ${st.scad ? '<b>Scad.:</b> ' + _soprDateDisplay(st.scad) : ''}
-           </div>` : '';
+           </div>`;
+      }
+      if (st.nota) det += `<div style="font-size:8.5px;color:#363D48;margin-top:3px;line-height:1.45;"><b>Nota:</b> ${esc(st.nota)}</div>`;
+      if (st.segnCliente) det += `<div style="font-size:8px;font-weight:700;color:#8A5A00;margin-top:3px;">🚩 SEGNALAZIONE CLIENTE</div>`;
       return `<tr style="background:${i%2===0?'#F2F5F9':'#ffffff'}">
         <td style="padding:4px 8px;font-size:8.5px;font-family:'JetBrains Mono',monospace;font-weight:700;color:#1A7D99;border:1px solid #DFE4EB;white-space:nowrap;vertical-align:top;">${it.id}</td>
         <td style="padding:4px 8px;font-size:9px;color:#363D48;border:1px solid #DFE4EB;">${esc(it.t)}${det}</td>
@@ -1474,6 +1494,13 @@ function _ckPdfHtml(ck) {
       <table style="width:100%;border-collapse:collapse;">${tr}</table>
     </div>`;
   });
+  if (ck.note_generali) {
+    any = true;
+    blocks += `<div style="${cardStyle}">
+      <div style="${secLabel}">Note generali checklist</div>
+      <div style="font-size:9px;color:#363D48;line-height:1.5;white-space:pre-wrap;">${esc(ck.note_generali)}</div>
+    </div>`;
+  }
   return any ? blocks : '';
 }
 
@@ -1481,6 +1508,7 @@ function _ckPreviewHtml(v) {
   const st = _ckStatsOf(v);
   if (!st.compilati) return '<div style="margin-top:10px;font-size:11.5px;color:var(--muted)">Checklist non compilata.</div>';
   const nc = _ckNcList(v);
+  const cliente = _ckClienteList(v).filter(x => x.e !== 'NC');
   return `
     <div style="margin-top:12px">
       <div class="archive-title" style="margin-bottom:6px">Checklist DL
@@ -1494,13 +1522,25 @@ function _ckPreviewHtml(v) {
           <span class="ck-id">${x.id}</span>
           <span>${esc(x.t)}<br><small style="color:var(--muted)">${esc(x.area)}${x.rif?' · '+esc(x.rif):''}</small></span>
           <span class="ck-chip nc">NC</span>
-          ${(x.rilievo || x.azione || x.resp || x.scad) ? `<div class="pv-ck-nc">
+          ${(x.rilievo || x.azione || x.resp || x.scad || x.nota) ? `<div class="pv-ck-nc">
             ${x.rilievo ? '<b>Rilievo:</b> '+esc(x.rilievo)+'<br>' : ''}
             ${x.azione ? '<b>Azione:</b> '+esc(x.azione)+'<br>' : ''}
             ${x.resp ? '<b>Responsabile:</b> '+esc(x.resp)+' ' : ''}
             ${x.scad ? '<b>Scadenza:</b> '+_soprDateDisplay(x.scad) : ''}
+            ${x.nota ? '<br><b>Nota:</b> '+esc(x.nota) : ''}
           </div>` : ''}
         </div>`).join('') : '<div style="font-size:11.5px;color:var(--ok);font-weight:600">Nessuna non conformità rilevata.</div>'}
+      ${cliente.length ? `
+      <div style="margin-top:10px;font-size:11px;font-weight:700;color:#8A5A00">Punti con segnalazione cliente</div>
+      ${cliente.map(x => `
+        <div class="pv-ck-item">
+          <span class="ck-id">${x.id}</span>
+          <span>${esc(x.t)}${x.nota?`<br><small style="color:var(--muted)">${esc(x.nota)}</small>`:''}</span>
+          <span class="ck-chip cliente">CLIENTE</span>
+        </div>`).join('')}` : ''}
+      ${_ckOf(v).note_generali ? `
+      <div style="margin-top:10px;font-size:11px;font-weight:700;color:var(--accent)">Note generali checklist</div>
+      <div style="font-size:11.5px;color:var(--text2);white-space:pre-wrap;">${esc(_ckOf(v).note_generali)}</div>` : ''}
     </div>`;
 }
 
@@ -1536,7 +1576,6 @@ const CHECKLIST_DEF = {
     {"id": "INF-05", "area": "Infrastruttura", "t": "Cordino di tiro presente nei tubi Ø63 mm vuoti", "rif": "Cap. 6.4"},
     {"id": "INF-06", "area": "Infrastruttura", "t": "Tappi idonei presenti su tubi e microdotti nei pozzetti", "rif": "Cap. 6.4"},
     {"id": "DIV-01", "area": "Diversificazione", "t": "Separazione fisica minima di 8 m tra percorsi dello stesso cluster", "rif": "Cap. 6.3"},
-    {"id": "DIV-02", "area": "Diversificazione", "t": "Assenza di strutture o supporti comuni tra percorsi diversificati", "rif": "Cap. 6.3"},
     {"id": "POZ-01", "area": "Pozzetti", "t": "Distanza media circa 475 m e passo massimo 500 m", "rif": "Cap. 6.2"},
     {"id": "POZ-02", "area": "Pozzetti", "t": "Pozzetti presenti agli incroci con curva ≥45°", "rif": "Cap. 6.2"},
     {"id": "POZ-03", "area": "Pozzetti", "t": "Dimensioni e tipologia conformi alle specifiche", "rif": "Cap. 6.2"},
@@ -1553,20 +1592,7 @@ const CHECKLIST_DEF = {
     {"id": "MIC-07", "area": "Microdotti e giunzioni", "t": "Ball Marker sui giunti a profondità ≤1 m", "rif": "Cap. 6.4"},
     {"id": "COL-01", "area": "Codifica cromatica", "t": "Tubi RDS identificati in blu", "rif": "Cap. 6.5.1"},
     {"id": "COL-02", "area": "Codifica cromatica", "t": "Tubi Cliente identificati in rosso, giallo e verde", "rif": "Cap. 6.5.1"},
-    {"id": "COL-03", "area": "Codifica cromatica", "t": "Marcatura visibile, continua e resistente", "rif": "Cap. 6.5.2"},
-    {"id": "TST-01", "area": "Collaudi", "t": "Mandrinatura su ogni tratta pozzetto-pozzetto dei Ø63 mm non bundle", "rif": "Cap. 7.1 e 7.3"},
-    {"id": "TST-02", "area": "Collaudi", "t": "Verbale mandrinatura completo", "rif": "Cap. 7.1"},
-    {"id": "TST-03", "area": "Collaudi", "t": "Test pressione su condotti e microdotti previsti", "rif": "Cap. 7.2 e 7.3"},
-    {"id": "TST-04", "area": "Collaudi", "t": "Nessun calo pressione, perdita, deformazione o cedimento", "rif": "Cap. 7.2"},
-    {"id": "TST-05", "area": "Collaudi", "t": "Verbale pressione completo", "rif": "Cap. 7.2"},
-    {"id": "RIP-01", "area": "Ripristini", "t": "Ripristino provvisorio sicuro e senza cedimenti", "rif": "Cap. 9.1"},
-    {"id": "RIP-02", "area": "Ripristini", "t": "Ripristino definitivo conforme alle prescrizioni", "rif": "Cap. 5.5 e 9.1"},
-    {"id": "DOC-01", "area": "Documentazione", "t": "Checklist conformità disponibile", "rif": "Cap. 8.1"},
-    {"id": "DOC-02", "area": "Documentazione", "t": "Butterfly diagram disponibile e coerente", "rif": "Cap. 8.1"},
-    {"id": "DOC-03", "area": "Documentazione", "t": "Permessi, autorizzazioni e test disponibili", "rif": "Cap. 8.1"},
-    {"id": "DOC-04", "area": "Documentazione", "t": "As-built GIS e DWG completi", "rif": "Cap. 8.1"},
-    {"id": "DOC-05", "area": "Documentazione", "t": "Due foto georeferenziate per ogni giunto", "rif": "Cap. 8.1"},
-    {"id": "DOC-06", "area": "Documentazione", "t": "Foto nuovi pozzetti e aggiornamento One GIS completati", "rif": "Cap. 9.1"}] },
+    {"id": "COL-03", "area": "Codifica cromatica", "t": "Marcatura visibile, continua e resistente", "rif": "Cap. 6.5.2"}] },
   sicurezza: { label: 'Sicurezza', items: [{"id": "SIC-01", "area": "Autorizzazioni personale", "t": "Presenza in cantiere di personale autorizzato", "rif": "Checklist sicurezza fornita"},
     {"id": "SIC-02", "area": "Autorizzazioni personale", "t": "Presenza dei tesserini identificativi", "rif": "Checklist sicurezza fornita"},
     {"id": "SIC-03", "area": "Documentazione sicurezza", "t": "Presenza di POS, PSC, eventuale PIMUS, notifica preliminare aggiornata e piano di emergenza", "rif": "Checklist sicurezza fornita"},
@@ -1587,6 +1613,7 @@ const CHECKLIST_DEF = {
     {"id": "SIC-18", "area": "Viabilità e pulizia", "t": "Movieri e segnaletica per regolazione traffico", "rif": "Checklist sicurezza fornita"},
     {"id": "SIC-19", "area": "Viabilità e pulizia", "t": "Ordine e pulizia delle aree di cantiere", "rif": "Checklist sicurezza fornita"},
     {"id": "SIC-20", "area": "Segnaletica", "t": "Segnaletica di cantiere, emergenza e stradale conforme", "rif": "Checklist sicurezza fornita"},
+    {"id": "SIC-43", "area": "Segnaletica", "t": "Cartello di cantiere presente, anche in formato ridotto, posizionato in prossimità dei cantieri mobili", "rif": ""},
     {"id": "SIC-21", "area": "Recinzioni e delimitazioni", "t": "Area di intervento correttamente delimitata", "rif": "Checklist sicurezza fornita"},
     {"id": "SIC-22", "area": "Recinzioni e delimitazioni", "t": "Accessi di cantiere correttamente chiusi", "rif": "Checklist sicurezza fornita"},
     {"id": "SIC-23", "area": "Apprestamenti igienico-sanitari", "t": "Apprestamenti conformi al POS", "rif": "Checklist sicurezza fornita"},
@@ -1608,22 +1635,37 @@ const CHECKLIST_DEF = {
     {"id": "SIC-39", "area": "Altro", "t": "Assenza di focolai", "rif": "Checklist sicurezza fornita"},
     {"id": "SIC-40", "area": "Altro", "t": "Spezzoni e tondini adeguatamente protetti", "rif": "Checklist sicurezza fornita"},
     {"id": "SIC-41", "area": "Altro", "t": "Ordinanze stradali disponibili e personale formato", "rif": "Checklist sicurezza fornita"},
-    {"id": "SIC-42", "area": "Altro", "t": "Schede sicurezza sostanze disponibili e contenitori etichettati", "rif": "Checklist sicurezza fornita"}] }
+    {"id": "SIC-42", "area": "Altro", "t": "Schede sicurezza sostanze disponibili e contenitori etichettati", "rif": "Checklist sicurezza fornita"}] },
+  collaudo: { label: 'Collaudo', items: [{"id": "TST-01", "area": "Collaudi", "t": "Mandrinatura su ogni tratta pozzetto-pozzetto dei Ø63 mm non bundle", "rif": "Cap. 7.1 e 7.3"},
+    {"id": "TST-02", "area": "Collaudi", "t": "Verbale mandrinatura completo", "rif": "Cap. 7.1"},
+    {"id": "TST-03", "area": "Collaudi", "t": "Test pressione su condotti e microdotti previsti", "rif": "Cap. 7.2 e 7.3"},
+    {"id": "TST-04", "area": "Collaudi", "t": "Nessun calo pressione, perdita, deformazione o cedimento", "rif": "Cap. 7.2"},
+    {"id": "TST-05", "area": "Collaudi", "t": "Verbale pressione completo", "rif": "Cap. 7.2"},
+    {"id": "RIP-01", "area": "Ripristini", "t": "Ripristino provvisorio sicuro e senza cedimenti", "rif": "Cap. 9.1"},
+    {"id": "RIP-02", "area": "Ripristini", "t": "Ripristino definitivo conforme alle prescrizioni", "rif": "Cap. 5.5 e 9.1"},
+    {"id": "DOC-01", "area": "Documentazione", "t": "Checklist conformità disponibile", "rif": "Cap. 8.1"},
+    {"id": "DOC-02", "area": "Documentazione", "t": "Butterfly diagram disponibile e coerente", "rif": "Cap. 8.1"},
+    {"id": "DOC-03", "area": "Documentazione", "t": "Permessi, autorizzazioni e test disponibili", "rif": "Cap. 8.1"},
+    {"id": "DOC-04", "area": "Documentazione", "t": "As-built GIS e DWG completi", "rif": "Cap. 8.1"},
+    {"id": "DOC-05", "area": "Documentazione", "t": "Due foto georeferenziate per ogni giunto", "rif": "Cap. 8.1"},
+    {"id": "DOC-06", "area": "Documentazione", "t": "Foto nuovi pozzetti e aggiornamento One GIS completati", "rif": "Cap. 9.1"}] }
 };
 
 const CK_ESITI = { 'C':'Conforme', 'NC':'Non conforme', 'NA':'N.A.', '':'Da verificare' };
+const CK_CATS = ['qualita', 'sicurezza', 'collaudo'];
 let _ckTab = 'qualita';
-let _ckState = { qualita:{}, sicurezza:{} };   // id -> {e, rilievo, azione, resp, scad}
+let _ckState = { qualita:{}, sicurezza:{}, collaudo:{} };   // id -> {e, rilievo, azione, resp, scad, nota, segnCliente}
+let _ckNoteOpen = new Set();   // "k:id" — pannello nota espanso (solo UI, si auto-espande se c'è già un contenuto)
+let _ckGeneralNote = '';
 
 function _ckGet(k, id) {
-  if (!_ckState[k][id]) _ckState[k][id] = { e:'', rilievo:'', azione:'', resp:'', scad:'' };
+  if (!_ckState[k][id]) _ckState[k][id] = { e:'', rilievo:'', azione:'', resp:'', scad:'', nota:'', segnCliente:false };
   return _ckState[k][id];
 }
 
 function setChecklistTab(k) {
   _ckTab = k;
-  document.getElementById('ck-tab-qualita').classList.toggle('active', k==='qualita');
-  document.getElementById('ck-tab-sicurezza').classList.toggle('active', k==='sicurezza');
+  CK_CATS.forEach(x => document.getElementById('ck-tab-'+x)?.classList.toggle('active', x===k));
   renderChecklist();
 }
 
@@ -1635,13 +1677,15 @@ function renderChecklist() {
   CHECKLIST_DEF[k].items.forEach(it => {
     if (it.area !== lastArea) { html += `<div class="ck-area">${esc(it.area)}</div>`; lastArea = it.area; }
     const st = _ckGet(k, it.id);
-    const cls = st.e==='NC' ? ' is-nc' : (st.e==='NA' ? ' is-na' : '');
+    const noteOpen = _ckNoteOpen.has(k+':'+it.id) || !!st.nota || st.segnCliente;
+    const cls = (st.e==='NC' ? ' is-nc' : (st.e==='NA' ? ' is-na' : '')) + (st.segnCliente ? ' has-cliente' : '');
     html += `<div class="ck-item${cls}" data-id="${it.id}">
-      <div class="ck-txt"><span class="ck-id">${it.id}</span>${esc(it.t)}${it.rif?`<span class="ck-rif">${esc(it.rif)}</span>`:''}</div>
+      <div class="ck-txt"><span class="ck-id">${it.id}</span>${esc(it.t)}${it.rif?`<span class="ck-rif">${esc(it.rif)}</span>`:''}${st.segnCliente?'<span class="ck-chip cliente">CLIENTE</span>':''}</div>
       <div class="ck-esiti">
         <button type="button" class="ck-b c${st.e==='C'?' on':''}" onclick="setCk('${k}','${it.id}','C')">Conforme</button>
         <button type="button" class="ck-b nc${st.e==='NC'?' on':''}" onclick="setCk('${k}','${it.id}','NC')">NC</button>
         <button type="button" class="ck-b na${st.e==='NA'?' on':''}" onclick="setCk('${k}','${it.id}','NA')">N.A.</button>
+        <button type="button" class="ck-b nota${noteOpen?' on':''}" onclick="toggleCkNote('${k}','${it.id}')" title="Nota / segnalazione cliente">🗒 Nota</button>
       </div>
       ${st.e==='NC' ? `<div class="ck-nc-box">
         <div style="grid-column:1/-1"><label>Rilievo / Non conformità</label>
@@ -1652,6 +1696,13 @@ function renderChecklist() {
           <input type="text" value="${esc(st.resp||'')}" oninput="setCkField('${k}','${it.id}','resp',this.value)"></div>
         <div><label>Scadenza</label>
           <input type="date" value="${st.scad||''}" oninput="setCkField('${k}','${it.id}','scad',this.value)"></div>
+      </div>` : ''}
+      ${noteOpen ? `<div class="ck-note-box">
+        <label class="check-inline-sm">
+          <input type="checkbox" ${st.segnCliente?'checked':''} onchange="setCkFlag('${k}','${it.id}','segnCliente',this.checked)">
+          Segnalazione cliente su questo punto
+        </label>
+        <textarea placeholder="Nota su questo punto..." oninput="setCkField('${k}','${it.id}','nota',this.value)">${esc(st.nota||'')}</textarea>
       </div>` : ''}
     </div>`;
   });
@@ -1668,12 +1719,28 @@ function setCk(k, id, val) {
 
 function setCkField(k, id, field, val) { _ckGet(k, id)[field] = val; }
 
+function setCkFlag(k, id, field, val) {
+  _ckGet(k, id)[field] = !!val;
+  if (k === _ckTab) renderChecklist(); else _ckUpdateCounters();
+}
+
+function toggleCkNote(k, id) {
+  const key = k + ':' + id;
+  if (_ckNoteOpen.has(key)) _ckNoteOpen.delete(key); else _ckNoteOpen.add(key);
+  renderChecklist();
+}
+
+function ckGeneralNoteInput() {
+  _ckGeneralNote = document.getElementById('ck-note-generali')?.value || '';
+}
+
 function ckBulk(val) {
   const k = _ckTab;
   CHECKLIST_DEF[k].items.forEach(it => {
     const st = _ckGet(k, it.id);
     st.e = val;
     if (val !== 'NC') { st.rilievo=''; st.azione=''; st.resp=''; st.scad=''; }
+    if (val === '') { st.nota=''; st.segnCliente=false; _ckNoteOpen.delete(k+':'+it.id); }
   });
   renderChecklist();
 }
@@ -1686,7 +1753,7 @@ function _ckStats(k) {
 }
 
 function _ckUpdateCounters() {
-  ['qualita','sicurezza'].forEach(k => {
+  CK_CATS.forEach(k => {
     const st = _ckStats(k);
     const b = document.getElementById('ck-badge-'+k);
     if (b) { b.textContent = st.nc ? `${st.compilati}/${st.tot} · ${st.nc} NC` : `${st.compilati}/${st.tot}`;
@@ -1698,42 +1765,60 @@ function _ckUpdateCounters() {
 }
 
 function ckPayload() {
-  const out = { qualita:{}, sicurezza:{} };
-  ['qualita','sicurezza'].forEach(k => {
+  const out = { note_generali: _ckGeneralNote || '' };
+  CK_CATS.forEach(k => {
+    out[k] = {};
     CHECKLIST_DEF[k].items.forEach(it => {
       const st = _ckState[k][it.id];
-      if (!st || !st.e) return;
-      out[k][it.id] = { e:st.e, rilievo:st.rilievo||'', azione:st.azione||'', resp:st.resp||'', scad:st.scad||'' };
+      if (!st || (!st.e && !st.nota && !st.segnCliente)) return;
+      out[k][it.id] = { e:st.e||'', rilievo:st.rilievo||'', azione:st.azione||'', resp:st.resp||'', scad:st.scad||'', nota:st.nota||'', segnCliente:!!st.segnCliente };
     });
   });
   return out;
 }
 
 function ckReset() {
-  _ckState = { qualita:{}, sicurezza:{} };
+  _ckState = { qualita:{}, sicurezza:{}, collaudo:{} };
+  _ckNoteOpen = new Set();
+  _ckGeneralNote = '';
+  const gn = document.getElementById('ck-note-generali'); if (gn) gn.value = '';
   _ckTab = 'qualita';
   setChecklistTab('qualita');
 }
 
 // ── Letture su un verbale salvato ───────────────────────────────────────────
-function _ckOf(v) { return (v && v.checklist) || { qualita:{}, sicurezza:{} }; }
+function _ckOf(v) { return (v && v.checklist) || { qualita:{}, sicurezza:{}, collaudo:{} }; }
 
 function _ckStatsOf(v) {
   const ck = _ckOf(v);
-  let tot=0, c=0, nc=0, na=0;
-  ['qualita','sicurezza'].forEach(k => {
+  let tot=0, c=0, nc=0, na=0, cliente=0;
+  CK_CATS.forEach(k => {
     tot += CHECKLIST_DEF[k].items.length;
-    Object.values(ck[k] || {}).forEach(x => { if(x.e==='C')c++; else if(x.e==='NC')nc++; else if(x.e==='NA')na++; });
+    Object.values(ck[k] || {}).forEach(x => {
+      if (x.e==='C') c++; else if (x.e==='NC') nc++; else if (x.e==='NA') na++;
+      if (x.segnCliente) cliente++;
+    });
   });
-  return { tot, c, nc, na, compilati:c+nc+na };
+  return { tot, c, nc, na, cliente, compilati:c+nc+na };
 }
 
 function _ckNcList(v) {
   const ck = _ckOf(v); const out = [];
-  ['qualita','sicurezza'].forEach(k => {
+  CK_CATS.forEach(k => {
     CHECKLIST_DEF[k].items.forEach(it => {
       const st = (ck[k]||{})[it.id];
       if (st && st.e === 'NC') out.push({ k, ...it, ...st });
+    });
+  });
+  return out;
+}
+
+function _ckClienteList(v) {
+  const ck = _ckOf(v); const out = [];
+  CK_CATS.forEach(k => {
+    CHECKLIST_DEF[k].items.forEach(it => {
+      const st = (ck[k]||{})[it.id];
+      if (st && st.segnCliente) out.push({ k, ...it, ...st });
     });
   });
   return out;
@@ -1805,7 +1890,7 @@ function _updateFiltriBadge() {
 
 function setAreaCols(k) {
   _areaCols = k;
-  ['qualita','sicurezza','none'].forEach(x => document.getElementById('as-'+x)?.classList.toggle('on', x===k));
+  ['qualita','sicurezza','collaudo','none'].forEach(x => document.getElementById('as-'+x)?.classList.toggle('on', x===k));
   applyVerbaliFilters();
 }
 
