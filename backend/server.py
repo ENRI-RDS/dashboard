@@ -3252,6 +3252,247 @@ async def list_sopralluoghi(sess: dict = Depends(_require_staff_session)):
     return {"verbali": verbali}
 
 
+def _sopr_date_iso(raw: str) -> str:
+    """Normalizza una data verbale (ISO yyyy-mm-dd o gg/mm/aaaa legacy) in ISO."""
+    raw = (raw or "").strip()
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", raw):
+        return raw
+    m = re.match(r"^(\d{2})/(\d{2})/(\d{4})$", raw)
+    if m:
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    return ""
+
+
+def _sopr_date_obj(raw: str):
+    """Come sopra ma restituisce un date Python (per celle Excel formattate come data), o None."""
+    iso = _sopr_date_iso(raw)
+    if not iso:
+        return None
+    try:
+        return datetime.strptime(iso, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+@app.get("/api/sopralluoghi/export.xlsx")
+async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session)):
+    """Estrazione Excel dei verbali di sopralluogo su 3 fogli:
+    Verbali (riepilogo leggibile, un verbale per riga), Checklist dettaglio
+    (un item per riga, su qualità/sicurezza/collaudo) e Non conformità (solo
+    gli item NC, per il follow-up delle azioni correttive)."""
+    import openpyxl
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.table import Table, TableStyleInfo
+
+    verbali = [d async for d in sopralluoghi_col.find({}).sort("codice_verbale", 1)]
+
+    wb = openpyxl.Workbook()
+
+    HEADER_FILL = PatternFill("solid", fgColor="043F75")
+    HEADER_FONT = Font(color="FFFFFF", bold=True, size=10.5)
+    THIN = Side(style="thin", color="D9DEE6")
+    BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
+    NC_FILL = PatternFill("solid", fgColor="FDECEA")
+    OK_FILL = PatternFill("solid", fgColor="E4F5EC")
+    WARN_FILL = PatternFill("solid", fgColor="FFF3E0")
+    CLIENTE_FILL = PatternFill("solid", fgColor="FFE7B8")
+
+    def _style_header(ws, ncols, row=1):
+        for c in range(1, ncols + 1):
+            cell = ws.cell(row=row, column=c)
+            cell.fill = HEADER_FILL
+            cell.font = HEADER_FONT
+            cell.alignment = Alignment(vertical="center", wrap_text=True)
+            cell.border = BORDER
+        # Nota: usare ws.cell(row=row+1, ...) per calcolare la coordinata delle
+        # freeze panes istanzierebbe quella cella nel foglio, spostando di una
+        # riga ogni successivo ws.append() (max_row si aggiornerebbe subito a
+        # row+1 anche senza dati) — si costruisce la coordinata come stringa.
+        ws.freeze_panes = f"A{row + 1}"
+        ws.row_dimensions[row].height = 28
+
+    def _autofit(ws, widths):
+        for i, w in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+
+    # ── Foglio 1: Verbali ────────────────────────────────────────────────────
+    ws1 = wb.active
+    ws1.title = "Verbali"
+    cols1 = [
+        "Codice", "Data", "Lotto", "Tratta / Cantiere", "Comune", "Impresa",
+        "Redatto da", "Ruolo redattore", "Esito", "Segnalazione cliente",
+        "Checklist compilati", "Checklist conformi", "Checklist non conformi",
+        "Checklist N.A.", "ID non conformità", "N. segnalazioni cliente (checklist)",
+        "N. foto", "Note generali checklist", "Creato il",
+    ]
+    ws1.append(cols1)
+    _style_header(ws1, len(cols1))
+
+    for v in verbali:
+        ck = v.get("checklist") or {}
+        d_obj = _sopr_date_obj(v.get("data_sopralluogo", ""))
+        foto_urls = [u.strip() for u in (v.get("foto_urls") or "").split(",") if u.strip()]
+        row = [
+            v.get("codice_verbale", ""),
+            d_obj or v.get("data_sopralluogo", ""),
+            v.get("lotto", ""),
+            v.get("tratta_id", ""),
+            v.get("comune", ""),
+            v.get("impresa", ""),
+            v.get("referente_impresa", ""),   # nome campo storico: contiene il redattore
+            v.get("referente_retelit", ""),   # nome campo storico: contiene il ruolo
+            v.get("esito", "") or "—",
+            "SÌ" if v.get("segnalazione_cliente") in (True, "SI", "si", "true", 1, "1") else "NO",
+            v.get("checklist_compilati", 0) or 0,
+            v.get("checklist_conformi", 0) or 0,
+            v.get("checklist_non_conformi", 0) or 0,
+            v.get("checklist_na", 0) or 0,
+            v.get("checklist_nc_ids", ""),
+            v.get("checklist_segnalazioni_cliente", 0) or 0,
+            len(foto_urls),
+            ck.get("note_generali", ""),
+            v.get("created_at", ""),
+        ]
+        ws1.append(row)
+        r = ws1.max_row
+        if foto_urls:
+            ws1.cell(row=r, column=17).hyperlink = foto_urls[0]
+            ws1.cell(row=r, column=17).font = Font(color="043F75", underline="single")
+        esito_val = str(v.get("esito", ""))
+        if esito_val == "Anomalia critica":
+            ws1.cell(row=r, column=9).fill = NC_FILL
+        elif esito_val == "Anomalia media":
+            ws1.cell(row=r, column=9).fill = WARN_FILL
+        elif esito_val == "Nessuna anomalia":
+            ws1.cell(row=r, column=9).fill = OK_FILL
+        if row[9] == "SÌ":
+            ws1.cell(row=r, column=10).fill = CLIENTE_FILL
+        if (v.get("checklist_non_conformi") or 0) > 0:
+            ws1.cell(row=r, column=13).fill = NC_FILL
+        for c in range(1, len(cols1) + 1):
+            ws1.cell(row=r, column=c).border = BORDER
+            ws1.cell(row=r, column=c).alignment = Alignment(vertical="top", wrap_text=(c in (4, 18)))
+        ws1.cell(row=r, column=2).number_format = "dd/mm/yyyy"
+
+    _autofit(ws1, [14, 11, 7, 24, 20, 16, 18, 16, 15, 16, 10, 9, 11, 9, 20, 12, 7, 30, 20])
+    if len(verbali) > 0:
+        ws1.add_table(Table(
+            displayName="TabVerbali",
+            ref=f"A1:{get_column_letter(len(cols1))}{len(verbali) + 1}",
+            tableStyleInfo=TableStyleInfo(name="TableStyleMedium2", showRowStripes=True),
+        ))
+
+    # ── Foglio 2: Checklist dettaglio (un item per riga) ────────────────────
+    ws2 = wb.create_sheet("Checklist dettaglio")
+    cols2 = ["Codice verbale", "Data", "Categoria", "Area", "ID item", "Descrizione",
+             "Esito", "Nota", "Segnalazione cliente", "Rilievo", "Azione correttiva",
+             "Responsabile", "Scadenza"]
+    ws2.append(cols2)
+    _style_header(ws2, len(cols2))
+    cat_label = {"qualita": "Qualità", "sicurezza": "Sicurezza", "collaudo": "Collaudo"}
+    def_by_cat = {}  # cache id -> {area, t} per categoria, popolata al volo dal primo verbale che la usa
+    n_rows2 = 0
+    for v in verbali:
+        ck = v.get("checklist") or {}
+        d_obj = _sopr_date_obj(v.get("data_sopralluogo", ""))
+        for cat in ("qualita", "sicurezza", "collaudo"):
+            blocco = ck.get(cat) or {}
+            for item_id, st in sorted(blocco.items()):
+                if not isinstance(st, dict):
+                    continue
+                if not (st.get("e") or st.get("nota") or st.get("segnCliente")):
+                    continue
+                scad_obj = _sopr_date_obj(st.get("scad", ""))
+                row = [
+                    v.get("codice_verbale", ""), d_obj or v.get("data_sopralluogo", ""),
+                    cat_label.get(cat, cat), "", item_id, "",
+                    {"C": "Conforme", "NC": "Non conforme", "NA": "N.A.", "": "Da verificare"}.get(st.get("e", ""), st.get("e", "")),
+                    st.get("nota", ""), "SÌ" if st.get("segnCliente") else "",
+                    st.get("rilievo", ""), st.get("azione", ""), st.get("resp", ""),
+                    scad_obj or st.get("scad", ""),
+                ]
+                ws2.append(row)
+                n_rows2 += 1
+                r = ws2.max_row
+                if st.get("e") == "NC":
+                    ws2.cell(row=r, column=7).fill = NC_FILL
+                if st.get("segnCliente"):
+                    ws2.cell(row=r, column=9).fill = CLIENTE_FILL
+                for c in range(1, len(cols2) + 1):
+                    ws2.cell(row=r, column=c).border = BORDER
+                    ws2.cell(row=r, column=c).alignment = Alignment(vertical="top", wrap_text=(c in (6, 8, 10, 11)))
+                if d_obj:
+                    ws2.cell(row=r, column=2).number_format = "dd/mm/yyyy"
+                if scad_obj:
+                    ws2.cell(row=r, column=13).number_format = "dd/mm/yyyy"
+
+    # Compila la colonna Area leggendo il prefisso dell'ID (PRE/INF/.../SIC/TST/RIP/DOC):
+    # la definizione completa (CHECKLIST_DEF) vive solo nel frontend, il backend non ne
+    # ha una copia — la colonna "Descrizione" resta vuota per lo stesso motivo.
+    if n_rows2:
+        for r in range(2, ws2.max_row + 1):
+            item_id = ws2.cell(row=r, column=5).value or ""
+            ws2.cell(row=r, column=4).value = item_id.split("-")[0] if "-" in item_id else ""
+        ws2.add_table(Table(
+            displayName="TabChecklist",
+            ref=f"A1:{get_column_letter(len(cols2))}{ws2.max_row}",
+            tableStyleInfo=TableStyleInfo(name="TableStyleMedium2", showRowStripes=True),
+        ))
+    _autofit(ws2, [14, 11, 11, 8, 9, 8, 14, 30, 12, 26, 26, 16, 12])
+
+    # ── Foglio 3: Non conformità (solo gli item NC, per follow-up) ─────────
+    ws3 = wb.create_sheet("Non conformità")
+    cols3 = ["Codice verbale", "Data", "Impresa", "Comune", "Categoria", "ID item",
+             "Segnalazione cliente", "Rilievo", "Azione correttiva", "Responsabile", "Scadenza"]
+    ws3.append(cols3)
+    _style_header(ws3, len(cols3))
+    n_rows3 = 0
+    for v in verbali:
+        ck = v.get("checklist") or {}
+        d_obj = _sopr_date_obj(v.get("data_sopralluogo", ""))
+        for cat in ("qualita", "sicurezza", "collaudo"):
+            for item_id, st in sorted((ck.get(cat) or {}).items()):
+                if not isinstance(st, dict) or st.get("e") != "NC":
+                    continue
+                scad_obj = _sopr_date_obj(st.get("scad", ""))
+                row = [
+                    v.get("codice_verbale", ""), d_obj or v.get("data_sopralluogo", ""),
+                    v.get("impresa", ""), v.get("comune", ""), cat_label.get(cat, cat), item_id,
+                    "SÌ" if st.get("segnCliente") else "", st.get("rilievo", ""),
+                    st.get("azione", ""), st.get("resp", ""), scad_obj or st.get("scad", ""),
+                ]
+                ws3.append(row)
+                n_rows3 += 1
+                r = ws3.max_row
+                ws3.cell(row=r, column=1).fill = NC_FILL
+                if st.get("segnCliente"):
+                    ws3.cell(row=r, column=7).fill = CLIENTE_FILL
+                for c in range(1, len(cols3) + 1):
+                    ws3.cell(row=r, column=c).border = BORDER
+                    ws3.cell(row=r, column=c).alignment = Alignment(vertical="top", wrap_text=(c in (8, 9)))
+                ws3.cell(row=r, column=2).number_format = "dd/mm/yyyy"
+                if scad_obj:
+                    ws3.cell(row=r, column=11).number_format = "dd/mm/yyyy"
+    if n_rows3:
+        ws3.add_table(Table(
+            displayName="TabNC",
+            ref=f"A1:{get_column_letter(len(cols3))}{ws3.max_row}",
+            tableStyleInfo=TableStyleInfo(name="TableStyleMedium2", showRowStripes=True),
+        ))
+    _autofit(ws3, [14, 11, 16, 20, 11, 9, 12, 30, 30, 16, 12])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = f"sopralluoghi_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.get("/api/sopralluoghi/next-codice")
 async def sopralluogo_next_codice(sess: dict = Depends(_require_staff_session)):
     """Restituisce il prossimo codice verbale progressivo."""
@@ -3268,15 +3509,20 @@ async def sopralluogo_next_codice(sess: dict = Depends(_require_staff_session)):
 
 
 _CK_ESITI = {"C", "NC", "NA"}
+_CK_CATEGORIE = ("qualita", "sicurezza", "collaudo")
 
 
 def _sanitize_checklist(raw: dict | None) -> dict:
-    """Normalizza la checklist DL ricevuta dal frontend: solo item con esito
-    valido, campi di non conformità solo per gli item NC."""
-    out = {"qualita": {}, "sicurezza": {}}
+    """Normalizza la checklist DL ricevuta dal frontend: esito valido (o vuoto),
+    campi di non conformità solo per gli item NC; nota libera e flag
+    'segnalazione cliente' per-item sempre ammessi, indipendenti dall'esito.
+    Un item è mantenuto se ha un esito valido oppure una nota/flag valorizzati."""
+    out = {sez: {} for sez in _CK_CATEGORIE}
+    out["note_generali"] = ""
     if not isinstance(raw, dict):
         return out
-    for sez in ("qualita", "sicurezza"):
+    out["note_generali"] = str(raw.get("note_generali", "")).strip()[:4000]
+    for sez in _CK_CATEGORIE:
         blocco = raw.get(sez) or {}
         if not isinstance(blocco, dict):
             continue
@@ -3285,8 +3531,12 @@ def _sanitize_checklist(raw: dict | None) -> dict:
                 continue
             esito = str(st.get("e", "")).strip().upper()
             if esito not in _CK_ESITI:
+                esito = ""
+            nota = str(st.get("nota", "")).strip()[:2000]
+            segn_cliente = bool(st.get("segnCliente", False))
+            if not esito and not nota and not segn_cliente:
                 continue
-            rec = {"e": esito}
+            rec = {"e": esito, "nota": nota, "segnCliente": segn_cliente}
             if esito == "NC":
                 rec.update({
                     "rilievo": str(st.get("rilievo", "")).strip(),
@@ -3301,19 +3551,23 @@ def _sanitize_checklist(raw: dict | None) -> dict:
 def _checklist_counts(ck: dict) -> dict:
     tot = {"C": 0, "NC": 0, "NA": 0}
     nc_ids = []
-    for sez in ("qualita", "sicurezza"):
+    n_cliente = 0
+    for sez in _CK_CATEGORIE:
         for item_id, st in (ck.get(sez) or {}).items():
             e = st.get("e")
             if e in tot:
                 tot[e] += 1
             if e == "NC":
                 nc_ids.append(item_id)
+            if st.get("segnCliente"):
+                n_cliente += 1
     return {
         "checklist_conformi":     tot["C"],
         "checklist_non_conformi": tot["NC"],
         "checklist_na":           tot["NA"],
         "checklist_compilati":    tot["C"] + tot["NC"] + tot["NA"],
         "checklist_nc_ids":       ", ".join(sorted(nc_ids)),
+        "checklist_segnalazioni_cliente": n_cliente,
     }
 
 
@@ -3785,7 +4039,7 @@ async def _regenerate_sopralluoghi_csv(note: str = "") -> str | None:
             "scadenza_azioni", "prossimo_sopralluogo", "firma_impresa",
             "firma_retelit", "foto_urls",
             "checklist_conformi", "checklist_non_conformi", "checklist_na",
-            "checklist_compilati", "checklist_nc_ids",
+            "checklist_compilati", "checklist_nc_ids", "checklist_segnalazioni_cliente",
             "created_at",
         ]
         buf = io.StringIO()
