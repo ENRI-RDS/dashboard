@@ -3286,6 +3286,19 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
     from openpyxl.worksheet.table import Table, TableStyleInfo
 
     verbali = [d async for d in sopralluoghi_col.find({}).sort("codice_verbale", 1)]
+    _by_code = {d.get("codice_verbale"): d for d in verbali}
+
+    def _tipo_verbale(v):
+        """'Sopralluogo' oppure '2° sopralluogo (verifica cliente|interna)': il tipo si
+        ricava risalendo la catena di verbale_origine fino alla radice."""
+        if not v.get("verbale_origine"):
+            return "Sopralluogo"
+        cur, n = v, 0
+        while cur and cur.get("verbale_origine") and n < 20:
+            cur = _by_code.get(cur["verbale_origine"])
+            n += 1
+        cliente = bool(cur and cur.get("segnalazione_cliente"))
+        return "2° sopralluogo (verifica " + ("cliente" if cliente else "interna") + ")"
 
     wb = openpyxl.Workbook()
 
@@ -3356,7 +3369,7 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
             ck.get("note_generali", ""),
             v.get("created_at", ""),
             {"confermata": "Confermata", "non_confermata": "Non confermata"}.get(v.get("esito_segnalazione", ""), ""),
-            "2° sopralluogo (verifica)" if v.get("verbale_origine") else "Sopralluogo",
+            _tipo_verbale(v),
             v.get("verbale_origine", ""),
         ]
         ws1.append(row)
