@@ -3326,6 +3326,7 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
         "Checklist compilati", "Checklist conformi", "Checklist non conformi",
         "Checklist N.A.", "ID non conformità",
         "N. foto", "Note generali checklist", "Creato il",
+        "Esito segnalazione", "Tipo", "Verbale origine",
     ]
     ws1.append(cols1)
     _style_header(ws1, len(cols1))
@@ -3354,6 +3355,9 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
             len(foto_urls),
             ck.get("note_generali", ""),
             v.get("created_at", ""),
+            {"confermata": "Confermata", "non_confermata": "Non confermata"}.get(v.get("esito_segnalazione", ""), ""),
+            "2° sopralluogo (verifica)" if v.get("verbale_origine") else "Sopralluogo",
+            v.get("verbale_origine", ""),
         ]
         ws1.append(row)
         r = ws1.max_row
@@ -3376,7 +3380,7 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
             ws1.cell(row=r, column=c).alignment = Alignment(vertical="top", wrap_text=(c in (4, 11, 18)))
         ws1.cell(row=r, column=2).number_format = "dd/mm/yyyy"
 
-    _autofit(ws1, [14, 11, 7, 24, 20, 16, 18, 16, 15, 16, 30, 10, 9, 11, 9, 20, 7, 30, 20])
+    _autofit(ws1, [14, 11, 7, 24, 20, 16, 18, 16, 15, 16, 30, 10, 9, 11, 9, 20, 7, 30, 20, 16, 22, 16])
     if len(verbali) > 0:
         ws1.add_table(Table(
             displayName="TabVerbali",
@@ -3569,6 +3573,30 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
     """Salva un verbale di sopralluogo su MongoDB (unica fonte, nessun export CSV su GitHub).
     Le foto (se presenti, come data URL base64) vengono caricate su GitHub in
     sopralluoghi/foto/{codice_verbale}/ per non saturare lo storage MongoDB gratuito."""
+    # ── Validazione (prima di qualunque upload/scrittura) ────────────────────
+    _p = payload or {}
+    _ck = _sanitize_checklist(_p.get("checklist"))
+    _origine = str(_p.get("verbale_origine", "")).strip()
+    _segn = bool(_p.get("segnalazione_cliente", False)) and not _origine
+    _esito_segn = str(_p.get("esito_segnalazione", "")).strip().lower() if _segn else ""
+    if _segn and _esito_segn not in ("confermata", "non_confermata"):
+        raise HTTPException(422, "Segnalazione cliente: indicare se è confermata o non confermata")
+    _ncs = [(sez, i, st) for sez in _CK_CATEGORIE for i, st in _ck[sez].items() if st.get("e") == "NC"]
+    if _segn and _esito_segn == "confermata" and not _ncs:
+        raise HTTPException(422, "Segnalazione confermata: almeno un punto della checklist deve essere non conforme")
+    for _sez, _i, _st in _ncs:
+        if not _st.get("azione") or not _st.get("scad"):
+            raise HTTPException(422, f"Non conformità {_i}: azione correttiva e scadenza sono obbligatorie")
+    if _origine:
+        _parent = await sopralluoghi_col.find_one({"codice_verbale": _origine})
+        if not _parent:
+            raise HTTPException(422, f"Verbale di origine {_origine} non trovato")
+        _pck = _parent.get("checklist") or {}
+        _miss = [i for sez in _CK_CATEGORIE for i, st in (_pck.get(sez) or {}).items()
+                 if isinstance(st, dict) and st.get("e") == "NC" and not (_ck[sez].get(i) or {}).get("e")]
+        if _miss:
+            raise HTTPException(422, "Sopralluogo di verifica: compilare l'esito di tutti i punti da riverificare (" + ", ".join(sorted(_miss)) + ")")
+
     last = await sopralluoghi_col.find_one({}, sort=[("codice_verbale", -1)])
     next_n = 1
     if last and last.get("codice_verbale"):
@@ -3614,11 +3642,13 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
         "localita":            str((payload or {}).get("localita", "")).strip(),
         "tipo_intervento":     str((payload or {}).get("tipo_intervento", "")).strip(),
         "esito":               str((payload or {}).get("esito", "")).strip(),
-        "segnalazione_cliente": bool((payload or {}).get("segnalazione_cliente", False)),
+        "segnalazione_cliente": _segn,
         "segnalazione_cliente_note": (
-            str((payload or {}).get("segnalazione_cliente_note", "")).strip()[:2000]
-            if (payload or {}).get("segnalazione_cliente", False) else ""
+            str(_p.get("segnalazione_cliente_note", "")).strip()[:2000] if _segn else ""
         ),
+        "esito_segnalazione":  _esito_segn,
+        "verbale_origine":     _origine,
+        "tipo":                "verifica" if _origine else "sopralluogo",
         "note":                str((payload or {}).get("note", "")).strip(),
         "segnalazioni":        str((payload or {}).get("segnalazioni", "")).strip(),
         "azioni_richieste":    str((payload or {}).get("azioni_richieste", "")).strip(),
@@ -3629,7 +3659,6 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
         "foto_urls":           ", ".join(foto_urls),
         "created_at":          _now_iso(),
     }
-    _ck = _sanitize_checklist((payload or {}).get("checklist"))
     record["checklist"] = _ck
     record.update(_checklist_counts(_ck))
     await sopralluoghi_col.insert_one(record)
@@ -4037,6 +4066,7 @@ async def _regenerate_sopralluoghi_csv(note: str = "") -> str | None:
             "firma_retelit", "foto_urls",
             "checklist_conformi", "checklist_non_conformi", "checklist_na",
             "checklist_compilati", "checklist_nc_ids", "segnalazione_cliente_note",
+            "esito_segnalazione", "verbale_origine", "tipo",
             "created_at",
         ]
         buf = io.StringIO()
