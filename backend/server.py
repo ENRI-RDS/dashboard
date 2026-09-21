@@ -3322,8 +3322,9 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
     cols1 = [
         "Codice", "Data", "Lotto", "Tratta / Cantiere", "Comune", "Impresa",
         "Redatto da", "Ruolo redattore", "Esito", "Segnalazione cliente",
+        "Note segnalazione cliente",
         "Checklist compilati", "Checklist conformi", "Checklist non conformi",
-        "Checklist N.A.", "ID non conformità", "N. segnalazioni cliente (checklist)",
+        "Checklist N.A.", "ID non conformità",
         "N. foto", "Note generali checklist", "Creato il",
     ]
     ws1.append(cols1)
@@ -3344,12 +3345,12 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
             v.get("referente_retelit", ""),   # nome campo storico: contiene il ruolo
             v.get("esito", "") or "—",
             "SÌ" if v.get("segnalazione_cliente") in (True, "SI", "si", "true", 1, "1") else "NO",
+            v.get("segnalazione_cliente_note", ""),
             v.get("checklist_compilati", 0) or 0,
             v.get("checklist_conformi", 0) or 0,
             v.get("checklist_non_conformi", 0) or 0,
             v.get("checklist_na", 0) or 0,
             v.get("checklist_nc_ids", ""),
-            v.get("checklist_segnalazioni_cliente", 0) or 0,
             len(foto_urls),
             ck.get("note_generali", ""),
             v.get("created_at", ""),
@@ -3369,13 +3370,13 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
         if row[9] == "SÌ":
             ws1.cell(row=r, column=10).fill = CLIENTE_FILL
         if (v.get("checklist_non_conformi") or 0) > 0:
-            ws1.cell(row=r, column=13).fill = NC_FILL
+            ws1.cell(row=r, column=14).fill = NC_FILL
         for c in range(1, len(cols1) + 1):
             ws1.cell(row=r, column=c).border = BORDER
-            ws1.cell(row=r, column=c).alignment = Alignment(vertical="top", wrap_text=(c in (4, 18)))
+            ws1.cell(row=r, column=c).alignment = Alignment(vertical="top", wrap_text=(c in (4, 11, 18)))
         ws1.cell(row=r, column=2).number_format = "dd/mm/yyyy"
 
-    _autofit(ws1, [14, 11, 7, 24, 20, 16, 18, 16, 15, 16, 10, 9, 11, 9, 20, 12, 7, 30, 20])
+    _autofit(ws1, [14, 11, 7, 24, 20, 16, 18, 16, 15, 16, 30, 10, 9, 11, 9, 20, 7, 30, 20])
     if len(verbali) > 0:
         ws1.add_table(Table(
             displayName="TabVerbali",
@@ -3386,7 +3387,7 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
     # ── Foglio 2: Checklist dettaglio (un item per riga) ────────────────────
     ws2 = wb.create_sheet("Checklist dettaglio")
     cols2 = ["Codice verbale", "Data", "Categoria", "Area", "ID item", "Descrizione",
-             "Esito", "Nota", "Segnalazione cliente", "Rilievo", "Azione correttiva",
+             "Esito", "Nota", "Rilievo", "Azione correttiva",
              "Responsabile", "Scadenza"]
     ws2.append(cols2)
     _style_header(ws2, len(cols2))
@@ -3401,14 +3402,14 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
             for item_id, st in sorted(blocco.items()):
                 if not isinstance(st, dict):
                     continue
-                if not (st.get("e") or st.get("nota") or st.get("segnCliente")):
+                if not (st.get("e") or st.get("nota")):
                     continue
                 scad_obj = _sopr_date_obj(st.get("scad", ""))
                 row = [
                     v.get("codice_verbale", ""), d_obj or v.get("data_sopralluogo", ""),
                     cat_label.get(cat, cat), "", item_id, "",
                     {"C": "Conforme", "NC": "Non conforme", "NA": "N.A.", "": "Da verificare"}.get(st.get("e", ""), st.get("e", "")),
-                    st.get("nota", ""), "SÌ" if st.get("segnCliente") else "",
+                    st.get("nota", ""),
                     st.get("rilievo", ""), st.get("azione", ""), st.get("resp", ""),
                     scad_obj or st.get("scad", ""),
                 ]
@@ -3417,15 +3418,13 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
                 r = ws2.max_row
                 if st.get("e") == "NC":
                     ws2.cell(row=r, column=7).fill = NC_FILL
-                if st.get("segnCliente"):
-                    ws2.cell(row=r, column=9).fill = CLIENTE_FILL
                 for c in range(1, len(cols2) + 1):
                     ws2.cell(row=r, column=c).border = BORDER
-                    ws2.cell(row=r, column=c).alignment = Alignment(vertical="top", wrap_text=(c in (6, 8, 10, 11)))
+                    ws2.cell(row=r, column=c).alignment = Alignment(vertical="top", wrap_text=(c in (6, 8, 9, 10)))
                 if d_obj:
                     ws2.cell(row=r, column=2).number_format = "dd/mm/yyyy"
                 if scad_obj:
-                    ws2.cell(row=r, column=13).number_format = "dd/mm/yyyy"
+                    ws2.cell(row=r, column=12).number_format = "dd/mm/yyyy"
 
     # Compila la colonna Area leggendo il prefisso dell'ID (PRE/INF/.../SIC/TST/RIP/DOC):
     # la definizione completa (CHECKLIST_DEF) vive solo nel frontend, il backend non ne
@@ -3439,12 +3438,12 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
             ref=f"A1:{get_column_letter(len(cols2))}{ws2.max_row}",
             tableStyleInfo=TableStyleInfo(name="TableStyleMedium2", showRowStripes=True),
         ))
-    _autofit(ws2, [14, 11, 11, 8, 9, 8, 14, 30, 12, 26, 26, 16, 12])
+    _autofit(ws2, [14, 11, 11, 8, 9, 8, 14, 30, 26, 26, 16, 12])
 
     # ── Foglio 3: Non conformità (solo gli item NC, per follow-up) ─────────
     ws3 = wb.create_sheet("Non conformità")
     cols3 = ["Codice verbale", "Data", "Impresa", "Comune", "Categoria", "ID item",
-             "Segnalazione cliente", "Rilievo", "Azione correttiva", "Responsabile", "Scadenza"]
+             "Rilievo", "Azione correttiva", "Responsabile", "Scadenza"]
     ws3.append(cols3)
     _style_header(ws3, len(cols3))
     n_rows3 = 0
@@ -3459,28 +3458,26 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
                 row = [
                     v.get("codice_verbale", ""), d_obj or v.get("data_sopralluogo", ""),
                     v.get("impresa", ""), v.get("comune", ""), cat_label.get(cat, cat), item_id,
-                    "SÌ" if st.get("segnCliente") else "", st.get("rilievo", ""),
+                    st.get("rilievo", ""),
                     st.get("azione", ""), st.get("resp", ""), scad_obj or st.get("scad", ""),
                 ]
                 ws3.append(row)
                 n_rows3 += 1
                 r = ws3.max_row
                 ws3.cell(row=r, column=1).fill = NC_FILL
-                if st.get("segnCliente"):
-                    ws3.cell(row=r, column=7).fill = CLIENTE_FILL
                 for c in range(1, len(cols3) + 1):
                     ws3.cell(row=r, column=c).border = BORDER
-                    ws3.cell(row=r, column=c).alignment = Alignment(vertical="top", wrap_text=(c in (8, 9)))
+                    ws3.cell(row=r, column=c).alignment = Alignment(vertical="top", wrap_text=(c in (7, 8)))
                 ws3.cell(row=r, column=2).number_format = "dd/mm/yyyy"
                 if scad_obj:
-                    ws3.cell(row=r, column=11).number_format = "dd/mm/yyyy"
+                    ws3.cell(row=r, column=10).number_format = "dd/mm/yyyy"
     if n_rows3:
         ws3.add_table(Table(
             displayName="TabNC",
             ref=f"A1:{get_column_letter(len(cols3))}{ws3.max_row}",
             tableStyleInfo=TableStyleInfo(name="TableStyleMedium2", showRowStripes=True),
         ))
-    _autofit(ws3, [14, 11, 16, 20, 11, 9, 12, 30, 30, 16, 12])
+    _autofit(ws3, [14, 11, 16, 20, 11, 9, 30, 30, 16, 12])
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -3514,9 +3511,10 @@ _CK_CATEGORIE = ("qualita", "sicurezza", "collaudo")
 
 def _sanitize_checklist(raw: dict | None) -> dict:
     """Normalizza la checklist DL ricevuta dal frontend: esito valido (o vuoto),
-    campi di non conformità solo per gli item NC; nota libera e flag
-    'segnalazione cliente' per-item sempre ammessi, indipendenti dall'esito.
-    Un item è mantenuto se ha un esito valido oppure una nota/flag valorizzati."""
+    campi di non conformità solo per gli item NC; nota libera per-item sempre
+    ammessa, indipendente dall'esito. La 'segnalazione cliente' è un flag del
+    solo verbale (non per-item). Un item è mantenuto se ha un esito valido
+    oppure una nota valorizzata."""
     out = {sez: {} for sez in _CK_CATEGORIE}
     out["note_generali"] = ""
     if not isinstance(raw, dict):
@@ -3533,10 +3531,9 @@ def _sanitize_checklist(raw: dict | None) -> dict:
             if esito not in _CK_ESITI:
                 esito = ""
             nota = str(st.get("nota", "")).strip()[:2000]
-            segn_cliente = bool(st.get("segnCliente", False))
-            if not esito and not nota and not segn_cliente:
+            if not esito and not nota:
                 continue
-            rec = {"e": esito, "nota": nota, "segnCliente": segn_cliente}
+            rec = {"e": esito, "nota": nota}
             if esito == "NC":
                 rec.update({
                     "rilievo": str(st.get("rilievo", "")).strip(),
@@ -3551,7 +3548,6 @@ def _sanitize_checklist(raw: dict | None) -> dict:
 def _checklist_counts(ck: dict) -> dict:
     tot = {"C": 0, "NC": 0, "NA": 0}
     nc_ids = []
-    n_cliente = 0
     for sez in _CK_CATEGORIE:
         for item_id, st in (ck.get(sez) or {}).items():
             e = st.get("e")
@@ -3559,15 +3555,12 @@ def _checklist_counts(ck: dict) -> dict:
                 tot[e] += 1
             if e == "NC":
                 nc_ids.append(item_id)
-            if st.get("segnCliente"):
-                n_cliente += 1
     return {
         "checklist_conformi":     tot["C"],
         "checklist_non_conformi": tot["NC"],
         "checklist_na":           tot["NA"],
         "checklist_compilati":    tot["C"] + tot["NC"] + tot["NA"],
         "checklist_nc_ids":       ", ".join(sorted(nc_ids)),
-        "checklist_segnalazioni_cliente": n_cliente,
     }
 
 
@@ -3622,6 +3615,10 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
         "tipo_intervento":     str((payload or {}).get("tipo_intervento", "")).strip(),
         "esito":               str((payload or {}).get("esito", "")).strip(),
         "segnalazione_cliente": bool((payload or {}).get("segnalazione_cliente", False)),
+        "segnalazione_cliente_note": (
+            str((payload or {}).get("segnalazione_cliente_note", "")).strip()[:2000]
+            if (payload or {}).get("segnalazione_cliente", False) else ""
+        ),
         "note":                str((payload or {}).get("note", "")).strip(),
         "segnalazioni":        str((payload or {}).get("segnalazioni", "")).strip(),
         "azioni_richieste":    str((payload or {}).get("azioni_richieste", "")).strip(),
@@ -4039,7 +4036,7 @@ async def _regenerate_sopralluoghi_csv(note: str = "") -> str | None:
             "scadenza_azioni", "prossimo_sopralluogo", "firma_impresa",
             "firma_retelit", "foto_urls",
             "checklist_conformi", "checklist_non_conformi", "checklist_na",
-            "checklist_compilati", "checklist_nc_ids", "checklist_segnalazioni_cliente",
+            "checklist_compilati", "checklist_nc_ids", "segnalazione_cliente_note",
             "created_at",
         ]
         buf = io.StringIO()
