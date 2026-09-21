@@ -106,6 +106,8 @@
   .check-inline{display:flex;align-items:center;gap:9px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);cursor:pointer;font-size:12.5px;font-weight:600;color:var(--text2);}
   .check-inline input{width:16px;height:16px;accent-color:var(--warn);cursor:pointer;}
   .check-inline.on{background:#FFF7E6;border-color:var(--warn);color:#8A5A00;}
+  .segn-hint{font-size:11px;color:var(--muted);line-height:1.4;}
+  #segnClienteNoteBox textarea{width:100%;min-height:60px;font-size:12.5px;padding:8px 10px;border:1px solid var(--warn);border-radius:8px;font-family:inherit;background:#FFFCF5;}
 
   .right-col{display:flex;flex-direction:column;gap:18px;min-width:0;}
 
@@ -164,8 +166,6 @@
   .ck-item{padding:9px 14px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start;}
   .ck-item.is-nc{background:#FDF0EE;}
   .ck-item.is-na{opacity:.55;}
-  .ck-item.has-cliente{box-shadow:inset 3px 0 0 var(--warn);}
-  .ck-item.has-cliente.is-nc{background:linear-gradient(90deg,#FFF7E6 0%,#FDF0EE 40%);}
   .ck-txt{font-size:12px;color:var(--text2);line-height:1.4;}
   .ck-id{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:var(--accent);margin-right:6px;}
   .ck-rif{display:block;font-size:10px;color:var(--muted);margin-top:2px;}
@@ -179,8 +179,6 @@
   .ck-b.nota.on{background:#FFF7E6;border-color:var(--warn);color:#8A5A00;}
   .ck-note-box{grid-column:1/-1;margin-top:6px;padding-top:8px;border-top:1px dashed var(--border);}
   .ck-note-box textarea{width:100%;min-height:44px;font-size:11.5px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-family:inherit;margin-top:6px;}
-  .check-inline-sm{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:var(--text2);cursor:pointer;}
-  .check-inline-sm input{width:14px;height:14px;accent-color:var(--warn);cursor:pointer;}
   .ck-nc-box{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;}
   .ck-nc-box textarea{min-height:44px;grid-column:1/-1;}
   .ck-nc-box input,.ck-nc-box textarea{width:100%;font-size:11.5px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-family:inherit;}
@@ -189,7 +187,6 @@
   .ck-chip.nc{background:#FDECEA;color:var(--err);}
   .ck-chip.ok{background:#E4F5EC;color:var(--ok);}
   .ck-chip.todo{background:var(--surface2);color:var(--muted);}
-  .ck-chip.cliente{background:#FFE7B8;color:#8A5A00;margin-left:6px;}
   .pv-ck-item{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:start;padding:6px 0;border-bottom:1px solid var(--border);font-size:11.5px;}
   .pv-ck-item .ck-id{margin:0;}
   .pv-ck-nc{grid-column:1/-1;font-size:11px;color:var(--err);padding-left:2px;}
@@ -489,6 +486,10 @@
         <input type="checkbox" id="segnalazione_cliente" onchange="onSegnClienteChange()">
         Segnalazione cliente
       </label>
+      <div class="segn-hint">Attiva solo se il sopralluogo è stato richiesto a seguito di una segnalazione ricevuta dal cliente.</div>
+      <div id="segnClienteNoteBox" style="display:none">
+        <textarea id="segnalazione_cliente_note" maxlength="2000" placeholder="Note sulla segnalazione cliente (oggetto, data, riferimento…)"></textarea>
+      </div>
     </div>
 
     <hr class="divider-h">
@@ -713,6 +714,7 @@ function getF(){
     n_foto:String(uploadedPhotos.length),
     checklist: ckPayload(),
     segnalazione_cliente: document.getElementById('segnalazione_cliente')?.checked ? 'SI' : 'NO',
+    segnalazione_cliente_note: document.getElementById('segnalazione_cliente')?.checked ? (document.getElementById('segnalazione_cliente_note')?.value || '').trim() : '',
     // Resto della vecchia sezione "Segnalazioni" (gravità/testo/azioni/date/note)
     // rimosso dal form di compilazione — resta solo in lettura sui verbali già
     // esistenti, sostituito dalla checklist DL. Campi mantenuti vuoti per
@@ -725,6 +727,8 @@ function getF(){
 function onSegnClienteChange() {
   const on = document.getElementById('segnalazione_cliente')?.checked;
   document.getElementById('segnClienteWrap')?.classList.toggle('on', !!on);
+  const nb = document.getElementById('segnClienteNoteBox');
+  if (nb) nb.style.display = on ? '' : 'none';
 }
 
 // Griglia foto: 1→full, 2→[0,1], 3→[0,1]+[2], 4→[0,1]+[2,3]
@@ -839,6 +843,7 @@ async function inviaVerbale(){
         tipo_intervento:   '',
         esito:             '',
         segnalazione_cliente: document.getElementById('segnalazione_cliente')?.checked || false,
+        segnalazione_cliente_note: f.segnalazione_cliente_note,
         checklist:         ckPayload(),
         note:              '',
         segnalazioni:      '',
@@ -873,6 +878,7 @@ function resetVerbaleForm() {
   document.getElementById('redattore').value = u || '';
   const segnCli = document.getElementById('segnalazione_cliente');
   if (segnCli) { segnCli.checked = false; onSegnClienteChange(); }
+  const segnNote = document.getElementById('segnalazione_cliente_note'); if (segnNote) segnNote.value = '';
   uploadedPhotos = [];
   ckReset();
   const fotoInput = document.getElementById('fotoInput');
@@ -929,6 +935,7 @@ async function _generatePdfCore(f, photos){
     ['Prossimo sopralluogo', f.prossimo_sopr],
     ['Note libere', f.note],
   ].filter(([,v]) => v && v !== '—');
+  if (f.segnalazione_cliente === 'SI' && f.segnalazione_cliente_note) extraSections.unshift(['Note segnalazione cliente', esc(f.segnalazione_cliente_note)]);
 
   const gravColor = f.gravita === 'Anomalia critica' ? '#C0392B'
                   : f.gravita === 'Anomalia media'   ? '#D08A1A' : '#1A7D99';
@@ -1101,6 +1108,7 @@ async function generatePdfForRecord(id){
     n_foto: String(urls.length),
     gravita: v.esito || '—',
     segnalazione_cliente: _isSegnCliente(v) ? 'SI' : 'NO',
+    segnalazione_cliente_note: _isSegnCliente(v) ? (v.segnalazione_cliente_note || '') : '',
     checklist: _ckOf(v),
     segnalazioni: v.segnalazioni || '—',
     azioni: v.azioni_richieste || '—',
@@ -1328,7 +1336,7 @@ function applyVerbaliFilters() {
       if (fNc === 'ok' && cs.nc > 0) return false;
       if (fNc === 'incompleta' && cs.compilati >= cs.tot) return false;
     }
-    if (q && ![v.codice_verbale, v.tratta_id, v.lotto, v.impresa, v.data_sopralluogo, v.comune, v.segnalazioni, v.azioni_richieste]
+    if (q && ![v.codice_verbale, v.tratta_id, v.lotto, v.impresa, v.data_sopralluogo, v.comune, v.segnalazioni, v.azioni_richieste, v.segnalazione_cliente_note]
               .join(' ').toLowerCase().includes(q)) return false;
     return true;
   });
@@ -1425,6 +1433,7 @@ function _renderPreview(v) {
     ['Ruolo redattore', v.referente_retelit], ['Redatto da', v.referente_impresa],
     ['Impresa esecutrice', v.impresa], ['Gravità / Esito', v.esito],
     ['Segnalazione cliente', _isSegnCliente(v) ? 'SÌ' : ''],
+    ['Note segnalazione cliente', _isSegnCliente(v) ? (v.segnalazione_cliente_note || '') : ''],
     ['Segnalazioni', v.segnalazioni], ['Azioni richieste', v.azioni_richieste],
     ['Scadenza azioni', v.scadenza_azioni ? new Date(v.scadenza_azioni).toLocaleDateString('it-IT') : ''],
     ['Prossimo sopralluogo', v.prossimo_sopralluogo ? new Date(v.prossimo_sopralluogo).toLocaleDateString('it-IT') : ''],
@@ -1464,7 +1473,7 @@ function _ckPdfHtml(ck) {
   let any = false, blocks = '';
   CK_CATS.forEach(k => {
     const map = ck[k] || {};
-    const rows = CHECKLIST_DEF[k].items.filter(it => map[it.id] && (map[it.id].e || map[it.id].nota || map[it.id].segnCliente));
+    const rows = CHECKLIST_DEF[k].items.filter(it => map[it.id] && (map[it.id].e || map[it.id].nota));
     if (!rows.length) return;
     any = true;
     const tr = rows.map((it, i) => {
@@ -1480,7 +1489,6 @@ function _ckPdfHtml(ck) {
            </div>`;
       }
       if (st.nota) det += `<div style="font-size:8.5px;color:#363D48;margin-top:3px;line-height:1.45;"><b>Nota:</b> ${esc(st.nota)}</div>`;
-      if (st.segnCliente) det += `<div style="font-size:8px;font-weight:700;color:#8A5A00;margin-top:3px;">🚩 SEGNALAZIONE CLIENTE</div>`;
       return `<tr style="background:${i%2===0?'#F2F5F9':'#ffffff'}">
         <td style="padding:4px 8px;font-size:8.5px;font-family:'JetBrains Mono',monospace;font-weight:700;color:#1A7D99;border:1px solid #DFE4EB;white-space:nowrap;vertical-align:top;">${it.id}</td>
         <td style="padding:4px 8px;font-size:9px;color:#363D48;border:1px solid #DFE4EB;">${esc(it.t)}${det}</td>
@@ -1508,7 +1516,6 @@ function _ckPreviewHtml(v) {
   const st = _ckStatsOf(v);
   if (!st.compilati) return '<div style="margin-top:10px;font-size:11.5px;color:var(--muted)">Checklist non compilata.</div>';
   const nc = _ckNcList(v);
-  const cliente = _ckClienteList(v).filter(x => x.e !== 'NC');
   return `
     <div style="margin-top:12px">
       <div class="archive-title" style="margin-bottom:6px">Checklist DL
@@ -1530,14 +1537,6 @@ function _ckPreviewHtml(v) {
             ${x.nota ? '<br><b>Nota:</b> '+esc(x.nota) : ''}
           </div>` : ''}
         </div>`).join('') : '<div style="font-size:11.5px;color:var(--ok);font-weight:600">Nessuna non conformità rilevata.</div>'}
-      ${cliente.length ? `
-      <div style="margin-top:10px;font-size:11px;font-weight:700;color:#8A5A00">Punti con segnalazione cliente</div>
-      ${cliente.map(x => `
-        <div class="pv-ck-item">
-          <span class="ck-id">${x.id}</span>
-          <span>${esc(x.t)}${x.nota?`<br><small style="color:var(--muted)">${esc(x.nota)}</small>`:''}</span>
-          <span class="ck-chip cliente">CLIENTE</span>
-        </div>`).join('')}` : ''}
       ${_ckOf(v).note_generali ? `
       <div style="margin-top:10px;font-size:11px;font-weight:700;color:var(--accent)">Note generali checklist</div>
       <div style="font-size:11.5px;color:var(--text2);white-space:pre-wrap;">${esc(_ckOf(v).note_generali)}</div>` : ''}
@@ -1654,12 +1653,12 @@ const CHECKLIST_DEF = {
 const CK_ESITI = { 'C':'Conforme', 'NC':'Non conforme', 'NA':'N.A.', '':'Da verificare' };
 const CK_CATS = ['qualita', 'sicurezza', 'collaudo'];
 let _ckTab = 'qualita';
-let _ckState = { qualita:{}, sicurezza:{}, collaudo:{} };   // id -> {e, rilievo, azione, resp, scad, nota, segnCliente}
+let _ckState = { qualita:{}, sicurezza:{}, collaudo:{} };   // id -> {e, rilievo, azione, resp, scad, nota}
 let _ckNoteOpen = new Set();   // "k:id" — pannello nota espanso (solo UI, si auto-espande se c'è già un contenuto)
 let _ckGeneralNote = '';
 
 function _ckGet(k, id) {
-  if (!_ckState[k][id]) _ckState[k][id] = { e:'', rilievo:'', azione:'', resp:'', scad:'', nota:'', segnCliente:false };
+  if (!_ckState[k][id]) _ckState[k][id] = { e:'', rilievo:'', azione:'', resp:'', scad:'', nota:'' };
   return _ckState[k][id];
 }
 
@@ -1677,15 +1676,15 @@ function renderChecklist() {
   CHECKLIST_DEF[k].items.forEach(it => {
     if (it.area !== lastArea) { html += `<div class="ck-area">${esc(it.area)}</div>`; lastArea = it.area; }
     const st = _ckGet(k, it.id);
-    const noteOpen = _ckNoteOpen.has(k+':'+it.id) || !!st.nota || st.segnCliente;
-    const cls = (st.e==='NC' ? ' is-nc' : (st.e==='NA' ? ' is-na' : '')) + (st.segnCliente ? ' has-cliente' : '');
+    const noteOpen = _ckNoteOpen.has(k+':'+it.id) || !!st.nota;
+    const cls = (st.e==='NC' ? ' is-nc' : (st.e==='NA' ? ' is-na' : ''));
     html += `<div class="ck-item${cls}" data-id="${it.id}">
-      <div class="ck-txt"><span class="ck-id">${it.id}</span>${esc(it.t)}${it.rif?`<span class="ck-rif">${esc(it.rif)}</span>`:''}${st.segnCliente?'<span class="ck-chip cliente">CLIENTE</span>':''}</div>
+      <div class="ck-txt"><span class="ck-id">${it.id}</span>${esc(it.t)}${it.rif?`<span class="ck-rif">${esc(it.rif)}</span>`:''}</div>
       <div class="ck-esiti">
         <button type="button" class="ck-b c${st.e==='C'?' on':''}" onclick="setCk('${k}','${it.id}','C')">Conforme</button>
         <button type="button" class="ck-b nc${st.e==='NC'?' on':''}" onclick="setCk('${k}','${it.id}','NC')">NC</button>
         <button type="button" class="ck-b na${st.e==='NA'?' on':''}" onclick="setCk('${k}','${it.id}','NA')">N.A.</button>
-        <button type="button" class="ck-b nota${noteOpen?' on':''}" onclick="toggleCkNote('${k}','${it.id}')" title="Nota / segnalazione cliente">🗒 Nota</button>
+        <button type="button" class="ck-b nota${noteOpen?' on':''}" onclick="toggleCkNote('${k}','${it.id}')" title="Nota">🗒 Nota</button>
       </div>
       ${st.e==='NC' ? `<div class="ck-nc-box">
         <div style="grid-column:1/-1"><label>Rilievo / Non conformità</label>
@@ -1698,10 +1697,6 @@ function renderChecklist() {
           <input type="date" value="${st.scad||''}" oninput="setCkField('${k}','${it.id}','scad',this.value)"></div>
       </div>` : ''}
       ${noteOpen ? `<div class="ck-note-box">
-        <label class="check-inline-sm">
-          <input type="checkbox" ${st.segnCliente?'checked':''} onchange="setCkFlag('${k}','${it.id}','segnCliente',this.checked)">
-          Segnalazione cliente su questo punto
-        </label>
         <textarea placeholder="Nota su questo punto..." oninput="setCkField('${k}','${it.id}','nota',this.value)">${esc(st.nota||'')}</textarea>
       </div>` : ''}
     </div>`;
@@ -1719,11 +1714,6 @@ function setCk(k, id, val) {
 
 function setCkField(k, id, field, val) { _ckGet(k, id)[field] = val; }
 
-function setCkFlag(k, id, field, val) {
-  _ckGet(k, id)[field] = !!val;
-  if (k === _ckTab) renderChecklist(); else _ckUpdateCounters();
-}
-
 function toggleCkNote(k, id) {
   const key = k + ':' + id;
   if (_ckNoteOpen.has(key)) _ckNoteOpen.delete(key); else _ckNoteOpen.add(key);
@@ -1740,7 +1730,7 @@ function ckBulk(val) {
     const st = _ckGet(k, it.id);
     st.e = val;
     if (val !== 'NC') { st.rilievo=''; st.azione=''; st.resp=''; st.scad=''; }
-    if (val === '') { st.nota=''; st.segnCliente=false; _ckNoteOpen.delete(k+':'+it.id); }
+    if (val === '') { st.nota=''; _ckNoteOpen.delete(k+':'+it.id); }
   });
   renderChecklist();
 }
@@ -1770,8 +1760,8 @@ function ckPayload() {
     out[k] = {};
     CHECKLIST_DEF[k].items.forEach(it => {
       const st = _ckState[k][it.id];
-      if (!st || (!st.e && !st.nota && !st.segnCliente)) return;
-      out[k][it.id] = { e:st.e||'', rilievo:st.rilievo||'', azione:st.azione||'', resp:st.resp||'', scad:st.scad||'', nota:st.nota||'', segnCliente:!!st.segnCliente };
+      if (!st || (!st.e && !st.nota)) return;
+      out[k][it.id] = { e:st.e||'', rilievo:st.rilievo||'', azione:st.azione||'', resp:st.resp||'', scad:st.scad||'', nota:st.nota||'' };
     });
   });
   return out;
@@ -1791,15 +1781,14 @@ function _ckOf(v) { return (v && v.checklist) || { qualita:{}, sicurezza:{}, col
 
 function _ckStatsOf(v) {
   const ck = _ckOf(v);
-  let tot=0, c=0, nc=0, na=0, cliente=0;
+  let tot=0, c=0, nc=0, na=0;
   CK_CATS.forEach(k => {
     tot += CHECKLIST_DEF[k].items.length;
     Object.values(ck[k] || {}).forEach(x => {
       if (x.e==='C') c++; else if (x.e==='NC') nc++; else if (x.e==='NA') na++;
-      if (x.segnCliente) cliente++;
     });
   });
-  return { tot, c, nc, na, cliente, compilati:c+nc+na };
+  return { tot, c, nc, na, compilati:c+nc+na };
 }
 
 function _ckNcList(v) {
@@ -1808,17 +1797,6 @@ function _ckNcList(v) {
     CHECKLIST_DEF[k].items.forEach(it => {
       const st = (ck[k]||{})[it.id];
       if (st && st.e === 'NC') out.push({ k, ...it, ...st });
-    });
-  });
-  return out;
-}
-
-function _ckClienteList(v) {
-  const ck = _ckOf(v); const out = [];
-  CK_CATS.forEach(k => {
-    CHECKLIST_DEF[k].items.forEach(it => {
-      const st = (ck[k]||{})[it.id];
-      if (st && st.segnCliente) out.push({ k, ...it, ...st });
     });
   });
   return out;
