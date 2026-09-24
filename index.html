@@ -14,7 +14,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Raleway:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@4.0.1/dist/pptxgen.bundle.js"></script>
 <!-- xlsx caricato lazy on demand (vedi loadXLSX()) — risparmio ~900KB al primo load -->
 <script>
 window.loadXLSX = (function(){
@@ -6872,8 +6872,11 @@ async function generaReportCompletoPPT() {
       if (r.ok) {
         const d = await r.json();
         milestoneRow = (d.imprese || []).find(x => String(x.lotto) === String(lotto)) || null;
+        if (!milestoneRow) console.warn('[reportPPT] /api/milestone OK ma nessuna riga per lotto', lotto, '— righe disponibili:', (d.imprese||[]).map(x=>x.lotto));
+      } else {
+        console.error('[reportPPT] /api/milestone HTTP', r.status, '— probabile permesso mancante per il ruolo corrente (endpoint escluso per il ruolo "dl")');
       }
-    } catch(e) { console.warn('[reportPPT] milestone non disponibile', e); }
+    } catch(e) { console.error('[reportPPT] fetch /api/milestone fallita', e); }
     const cluster = milestoneRow ? milestoneRow.cluster : null;
     const p90date  = milestoneRow ? milestoneRow.p90  : null;
     const p100date = milestoneRow ? milestoneRow.p100 : null;
@@ -6883,14 +6886,20 @@ async function generaReportCompletoPPT() {
     let scaviSerie = [];
     try {
       const r = await fetch(apiBase + '/api/cantieri/scavi-timeseries?lotto=' + encodeURIComponent(lotto), sessHeaders);
-      if (r.ok) { const d = await r.json(); scaviSerie = d.serie || []; }
-    } catch(e) { console.warn('[reportPPT] scavi-timeseries non disponibile', e); }
+      if (r.ok) {
+        const d = await r.json();
+        scaviSerie = d.serie || [];
+        if (!scaviSerie.length) console.warn('[reportPPT] scavi-timeseries OK ma serie vuota per lotto', lotto);
+      } else {
+        console.error('[reportPPT] /api/cantieri/scavi-timeseries HTTP', r.status);
+      }
+    } catch(e) { console.error('[reportPPT] fetch scavi-timeseries fallita', e); }
 
     // lunghezza totale del lotto: somma metri delle sole pratiche AUTORIZZAZIONE
     // (esclude NO COMPETENZA), coerente con tutti gli altri valori % di questa slide
     const lunghezzaTotale = totMetriPermessi;
 
-    const metriScavatiTot = scaviSerie.reduce((s,r) => s + (r.metri_scavati||0), 0);
+    const metriScavatiTot = scaviSerie.reduce((s,r) => s + (r.metri||0), 0);
     const pctScavo = lunghezzaTotale > 0 ? Math.round(metriScavatiTot / lunghezzaTotale * 100) : 0;
 
     // Testo andamento scavi: prime/ultime date della serie, media m/giorno
@@ -6914,10 +6923,11 @@ async function generaReportCompletoPPT() {
 
     // ── Screenshot mappa cluster da mappa.html (iframe nascosto) ──────
     let mappaImg = null;
+    let mappaErrMsg = milestoneRow ? null : `milestone non trovata per il lotto ${lotto} (endpoint /api/milestone non ha restituito una riga corrispondente, o la sessione non ha i permessi per leggerla)`;
     if (cluster != null) {
       _rpptSetStatus('Carico mappa cluster ' + cluster + '…');
       try { mappaImg = await _rpptCatturaMappaCluster(cluster); }
-      catch(e) { console.warn('[reportPPT] cattura mappa fallita', e); }
+      catch(e) { console.error('[reportPPT] cattura mappa fallita', e); mappaErrMsg = e.message || String(e); }
     }
 
     // ── Costruzione PPTX ───────────────────────────────────────────────
@@ -6994,7 +7004,7 @@ async function generaReportCompletoPPT() {
     if (mappaImg) {
       s5.addImage({ data: mappaImg, x:1.5, y:1.0, w:10.3, h:6.0 });
     } else {
-      s5.addText('Screenshot mappa non disponibile (cluster non determinato o errore di cattura).', { x:0.4, y:3.3, w:12.5, h:0.8, fontSize:14, color:'C0392B', align:'center' });
+      s5.addText(`Screenshot mappa non disponibile.\n${mappaErrMsg || 'cluster non determinato'}`, { x:0.4, y:3.0, w:12.5, h:1.4, fontSize:14, color:'C0392B', align:'center' });
     }
 
     // Slide 6 — Open Points
@@ -7029,7 +7039,7 @@ function _rpptFmtDataIt(iso) {
 async function _rpptBuildScaviChartImage(serie) {
   if (!serie.length || typeof Chart === 'undefined') return null;
   const byDate = new Map();
-  serie.forEach(r => { byDate.set(r.data, (byDate.get(r.data)||0) + (r.metri_scavati||0)); });
+  serie.forEach(r => { byDate.set(r.data, (byDate.get(r.data)||0) + (r.metri||0)); });
   const dates = [...byDate.keys()].sort();
   const values = dates.map(d => byDate.get(d));
 
