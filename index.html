@@ -14,7 +14,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Raleway:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
 <!-- xlsx caricato lazy on demand (vedi loadXLSX()) — risparmio ~900KB al primo load -->
 <script>
 window.loadXLSX = (function(){
@@ -1076,10 +1076,6 @@ window.loadExcelJS = (function(){
       <div>
         <label style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:block;margin-bottom:6px">Lotto</label>
         <select id="rpptLotto" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px"></select>
-      </div>
-      <div>
-        <label style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:block;margin-bottom:6px">Design % (non presente nei dati — inserire manualmente)</label>
-        <input id="rpptDesignPct" type="number" min="0" max="100" placeholder="es. 100" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px">
       </div>
       <div>
         <label style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:block;margin-bottom:6px">Open Points (uno per riga, testo libero)</label>
@@ -6835,8 +6831,6 @@ function _rpptSetStatus(msg) {
 async function generaReportCompletoPPT() {
   const btn = document.getElementById('rpptGenBtn');
   const lotto = document.getElementById('rpptLotto').value;
-  const designPctInput = document.getElementById('rpptDesignPct').value;
-  const designPct = designPctInput !== '' ? Number(designPctInput) : null;
   const openPointsRaw = document.getElementById('rpptOpenPoints').value;
   if (!lotto) { alert('Seleziona un lotto.'); return; }
   if (typeof PptxGenJS === 'undefined' || typeof html2canvas === 'undefined') {
@@ -6853,11 +6847,22 @@ async function generaReportCompletoPPT() {
     // ── Dati pratiche del lotto (già in memoria) ──────────────────────
     const pratiche = ((window._praticheDetailPerLotto || {})[lotto] || []).slice();
     if (!pratiche.length) { alert('Nessuna pratica trovata per il lotto ' + lotto + '.'); btn.disabled = false; return; }
-    const totMetriPermessi = pratiche.reduce((s,p) => s + (p.metri||0), 0);
-    const metriOttenuti    = pratiche.filter(p => p.stato === 'OTTENUTO').reduce((s,p) => s + (p.metri||0), 0);
-    const metriInviati     = pratiche.filter(p => p.stato !== 'IN REDAZIONE' && p.stato !== 'IN REDAZIONE INTEGRAZIONE').reduce((s,p) => s + (p.metri||0), 0);
+    // Tutti i valori % e i metri del KPI (slide 2) considerano SOLO le pratiche
+    // di tipo AUTORIZZAZIONE (non NULLA OSTA), escluse quelle NO COMPETENZA
+    // (non pertinenti al lotto). La tabella "permessi mancanti" (slide 3)
+    // resta invece su tutte le pratiche (AUT + NO), vedi più sotto.
+    const praticheAut = pratiche.filter(p => p.tipo === 'AUTORIZZAZIONE' && p.stato !== 'NO COMPETENZA');
+    const totMetriPermessi = praticheAut.reduce((s,p) => s + (p.metri||0), 0);
+    // Permitting approval: tutto ciò che è arrivato almeno allo stato INVIATO (incluso)
+    const STATI_DA_INVIATO = new Set(['INVIATO','PROTOCOLLATO','PROTOCOLLATO INTEGRAZIONE','NECESSARIA INTEGRAZIONE','INVIO PRELIMINARE','OTTENUTO']);
+    const metriApproval    = praticheAut.filter(p => STATI_DA_INVIATO.has(p.stato)).reduce((s,p) => s + (p.metri||0), 0);
+    // Design: tutto ciò che non è (più) IN REDAZIONE
+    const metriDesign      = praticheAut.filter(p => p.stato !== 'IN REDAZIONE').reduce((s,p) => s + (p.metri||0), 0);
+    // Permitting submission: come Design ma esclude anche IN REDAZIONE INTEGRAZIONE
+    const metriInviati     = praticheAut.filter(p => p.stato !== 'IN REDAZIONE' && p.stato !== 'IN REDAZIONE INTEGRAZIONE').reduce((s,p) => s + (p.metri||0), 0);
+    const pctDesign               = totMetriPermessi > 0 ? Math.round(metriDesign / totMetriPermessi * 100) : 0;
     const pctPermittingSubmission = totMetriPermessi > 0 ? Math.round(metriInviati / totMetriPermessi * 100) : 0;
-    const pctPermittingApproval   = totMetriPermessi > 0 ? Math.round(metriOttenuti / totMetriPermessi * 100) : 0;
+    const pctPermittingApproval   = totMetriPermessi > 0 ? Math.round(metriApproval / totMetriPermessi * 100) : 0;
 
     // ── Milestone contrattuali (/api/milestone) ───────────────────────
     _rpptSetStatus('Carico dati milestone…');
@@ -6881,10 +6886,9 @@ async function generaReportCompletoPPT() {
       if (r.ok) { const d = await r.json(); scaviSerie = d.serie || []; }
     } catch(e) { console.warn('[reportPPT] scavi-timeseries non disponibile', e); }
 
-    // lunghezza totale del lotto: preferisci somma metri autorizzazioni (una riga
-    // per tratta+tipo AUTORIZZAZIONE), fallback ai permessi totali se assente
-    const totMetriAut = pratiche.filter(p => p.tipo === 'AUTORIZZAZIONE').reduce((s,p) => s + (p.metri||0), 0);
-    const lunghezzaTotale = totMetriAut > 0 ? totMetriAut : totMetriPermessi;
+    // lunghezza totale del lotto: somma metri delle sole pratiche AUTORIZZAZIONE
+    // (esclude NO COMPETENZA), coerente con tutti gli altri valori % di questa slide
+    const lunghezzaTotale = totMetriPermessi;
 
     const metriScavatiTot = scaviSerie.reduce((s,r) => s + (r.metri_scavati||0), 0);
     const pctScavo = lunghezzaTotale > 0 ? Math.round(metriScavatiTot / lunghezzaTotale * 100) : 0;
@@ -6953,7 +6957,7 @@ async function generaReportCompletoPPT() {
        {text:'%', options:{bold:true, fill:'043F75', color:'FFFFFF'}},
        {text:'KM', options:{bold:true, fill:'043F75', color:'FFFFFF'}}],
       ['Length', '', _rpptFmtKm(km100)],
-      ['Design', designPct!=null ? designPct+'%' : 'n/d', _rpptFmtKm(km100)],
+      ['Design', pctDesign+'%', _rpptFmtKm(km100*pctDesign/100)],
       ['Permitting submission', pctPermittingSubmission+'%', _rpptFmtKm(km100*pctPermittingSubmission/100)],
       ['Permitting approval', pctPermittingApproval+'%', _rpptFmtKm(km100*pctPermittingApproval/100)],
       ['Delivery on-site implementation', pctScavo+'%', _rpptFmtKm(metriScavatiTot/1000)],
