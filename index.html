@@ -13,6 +13,8 @@
 <script src="js/api-config.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Raleway:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js"></script>
 <!-- xlsx caricato lazy on demand (vedi loadXLSX()) — risparmio ~900KB al primo load -->
 <script>
 window.loadXLSX = (function(){
@@ -1019,6 +1021,7 @@ window.loadExcelJS = (function(){
       <span id="statusBadge" style="font-size:10px;font-family:var(--font-mono);color:var(--retelit-sky);font-weight:600">Caricamento</span>
       <span id="lastUpdate" style="font-size:10px;font-family:var(--font-body);font-weight:600;color:var(--retelit-ice);white-space:nowrap;letter-spacing:0.01em"><span></span></span>
     </div>
+    <button class="topbar-back" style="cursor:pointer;background:rgba(255,255,255,.06)" onclick="openReportPptModal()">📊 Report PPT</button>
     <a href="mappa.html" class="topbar-back">Mappa</a>
     <a href="scavi.html" class="topbar-back">Avanz. Lavori</a>
     
@@ -1062,6 +1065,32 @@ window.loadExcelJS = (function(){
     <div id="modalKpiBody"></div>
   </div>
 </div>
+<!-- Modal Report PPT completo (6 slide: copertina, KPI, permessi mancanti, scavi, cantieri, open points) -->
+<div class="modal-overlay" id="modalReportPptOverlay" onclick="closeReportPptModal(event)" role="dialog" aria-modal="true" aria-labelledby="modalReportPptTitle">
+  <div class="modal" style="width:560px;max-width:95vw">
+    <div class="modal-title">
+      <span id="modalReportPptTitle">📊 Report PPT completo</span>
+      <span class="modal-close" onclick="closeReportPptModal()">×</span>
+    </div>
+    <div style="padding:18px 22px;display:flex;flex-direction:column;gap:14px">
+      <div>
+        <label style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:block;margin-bottom:6px">Lotto</label>
+        <select id="rpptLotto" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px"></select>
+      </div>
+      <div>
+        <label style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:block;margin-bottom:6px">Design % (non presente nei dati — inserire manualmente)</label>
+        <input id="rpptDesignPct" type="number" min="0" max="100" placeholder="es. 100" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px">
+      </div>
+      <div>
+        <label style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:block;margin-bottom:6px">Open Points (uno per riga, testo libero)</label>
+        <textarea id="rpptOpenPoints" rows="5" placeholder="Ritardo nell'avvio dei cantieri...&#10;Numero squadre insufficiente...&#10;Qualità - mancata sigillatura tubi..." style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;resize:vertical"></textarea>
+      </div>
+      <div id="rpptStatus" style="font-size:12px;color:var(--muted);min-height:16px"></div>
+      <button id="rpptGenBtn" onclick="generaReportCompletoPPT()" style="padding:10px 16px;border-radius:8px;background:var(--retelit-blue);color:white;border:none;cursor:pointer;font-weight:600;font-size:13px">Genera Report (6 slide)</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Storico -->
 <div class="modal-overlay" id="modalClusterOverlay" onclick="closeModalCluster(event)" role="dialog" aria-modal="true" aria-labelledby="modalClusterTitle">
   <div class="modal" style="width:1140px;max-width:96vw">
@@ -6772,6 +6801,289 @@ function closeSedModal() {
 document.addEventListener('keydown', function(e){
   if (e.key === 'Escape') closeSedModal();
 });
+
+// ═══════════════════════════════════════════════════════════════════════
+// REPORT PPT COMPLETO (6 slide) — copertina, KPI/milestone, permessi
+// mancanti, andamento scavi, stato cantieri (mappa), open points.
+// Slide 4 (scavi) usa Chart.js già caricato in questa pagina.
+// Slide 5 (mappa) apre mappa.html in un iframe nascosto e riusa le sue
+// funzioni globali (applyFilterCluster, html2canvas) — stesso pattern di
+// generaReportAWS in mappa.html.
+// ═══════════════════════════════════════════════════════════════════════
+
+function openReportPptModal() {
+  const sel = document.getElementById('rpptLotto');
+  const LOTTO_ORDER = ['1A','1B','2A','2B','1','2','3','4','5','6','7','8'];
+  const lotti = Object.keys(IMPRESE_PER_LOTTO)
+    .sort((a,b) => (LOTTO_ORDER.indexOf(a)+1||99)-(LOTTO_ORDER.indexOf(b)+1||99));
+  sel.innerHTML = lotti.map(l => `<option value="${l}">Lotto ${l} — ${IMPRESE_PER_LOTTO[l]}</option>`).join('');
+  document.getElementById('rpptStatus').textContent = '';
+  document.getElementById('modalReportPptOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeReportPptModal(e) {
+  if (e && e.target !== e.currentTarget) return;
+  document.getElementById('modalReportPptOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function _rpptSetStatus(msg) {
+  const el = document.getElementById('rpptStatus');
+  if (el) el.textContent = msg;
+}
+
+async function generaReportCompletoPPT() {
+  const btn = document.getElementById('rpptGenBtn');
+  const lotto = document.getElementById('rpptLotto').value;
+  const designPctInput = document.getElementById('rpptDesignPct').value;
+  const designPct = designPctInput !== '' ? Number(designPctInput) : null;
+  const openPointsRaw = document.getElementById('rpptOpenPoints').value;
+  if (!lotto) { alert('Seleziona un lotto.'); return; }
+  if (typeof PptxGenJS === 'undefined' || typeof html2canvas === 'undefined') {
+    alert('Librerie di export (pptxgenjs/html2canvas) non disponibili.');
+    return;
+  }
+
+  btn.disabled = true;
+  const impresa = IMPRESE_PER_LOTTO[lotto] || '';
+  const apiBase = _apiBase();
+  const sessHeaders = { headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } };
+
+  try {
+    // ── Dati pratiche del lotto (già in memoria) ──────────────────────
+    const pratiche = ((window._praticheDetailPerLotto || {})[lotto] || []).slice();
+    if (!pratiche.length) { alert('Nessuna pratica trovata per il lotto ' + lotto + '.'); btn.disabled = false; return; }
+    const totMetriPermessi = pratiche.reduce((s,p) => s + (p.metri||0), 0);
+    const metriOttenuti    = pratiche.filter(p => p.stato === 'OTTENUTO').reduce((s,p) => s + (p.metri||0), 0);
+    const metriInviati     = pratiche.filter(p => p.stato !== 'IN REDAZIONE' && p.stato !== 'IN REDAZIONE INTEGRAZIONE').reduce((s,p) => s + (p.metri||0), 0);
+    const pctPermittingSubmission = totMetriPermessi > 0 ? Math.round(metriInviati / totMetriPermessi * 100) : 0;
+    const pctPermittingApproval   = totMetriPermessi > 0 ? Math.round(metriOttenuti / totMetriPermessi * 100) : 0;
+
+    // ── Milestone contrattuali (/api/milestone) ───────────────────────
+    _rpptSetStatus('Carico dati milestone…');
+    let milestoneRow = null;
+    try {
+      const r = await fetch(apiBase + '/api/milestone', sessHeaders);
+      if (r.ok) {
+        const d = await r.json();
+        milestoneRow = (d.imprese || []).find(x => String(x.lotto) === String(lotto)) || null;
+      }
+    } catch(e) { console.warn('[reportPPT] milestone non disponibile', e); }
+    const cluster = milestoneRow ? milestoneRow.cluster : null;
+    const p90date  = milestoneRow ? milestoneRow.p90  : null;
+    const p100date = milestoneRow ? milestoneRow.p100 : null;
+
+    // ── Andamento scavi (metri scavati nel tempo) ─────────────────────
+    _rpptSetStatus('Carico dati scavi…');
+    let scaviSerie = [];
+    try {
+      const r = await fetch(apiBase + '/api/cantieri/scavi-timeseries?lotto=' + encodeURIComponent(lotto), sessHeaders);
+      if (r.ok) { const d = await r.json(); scaviSerie = d.serie || []; }
+    } catch(e) { console.warn('[reportPPT] scavi-timeseries non disponibile', e); }
+
+    // lunghezza totale del lotto: preferisci somma metri autorizzazioni (una riga
+    // per tratta+tipo AUTORIZZAZIONE), fallback ai permessi totali se assente
+    const totMetriAut = pratiche.filter(p => p.tipo === 'AUTORIZZAZIONE').reduce((s,p) => s + (p.metri||0), 0);
+    const lunghezzaTotale = totMetriAut > 0 ? totMetriAut : totMetriPermessi;
+
+    const metriScavatiTot = scaviSerie.reduce((s,r) => s + (r.metri_scavati||0), 0);
+    const pctScavo = lunghezzaTotale > 0 ? Math.round(metriScavatiTot / lunghezzaTotale * 100) : 0;
+
+    // Testo andamento scavi: prime/ultime date della serie, media m/giorno
+    let scaviTestoLines = [];
+    if (scaviSerie.length) {
+      const dateOrdinate = scaviSerie.map(r => r.data).filter(Boolean).sort();
+      const dataInizio = dateOrdinate[0];
+      const giorniAttivi = new Set(dateOrdinate).size || 1;
+      const mediaGiorno = Math.round(metriScavatiTot / giorniAttivi);
+      const mancanti90 = Math.max(0, Math.round(lunghezzaTotale*0.9 - metriScavatiTot));
+      scaviTestoLines.push(`Dal ${_rpptFmtDataIt(dataInizio)} ad oggi scavati ${_rpptFmtNum(metriScavatiTot)} m, media ${mediaGiorno} m/giorno.`);
+      if (mancanti90 > 0) scaviTestoLines.push(`Per completare ${_rpptFmtNum(mancanti90)} metri mancanti (90% totale) necessario mantenere un ritmo adeguato.`);
+      if (pctPermittingApproval < 90) scaviTestoLines.push(`Necessario ottenere permessi mancanti per avere Km scavabili pari almeno al 90% (attualmente ${pctPermittingApproval}%).`);
+    } else {
+      scaviTestoLines.push('Nessun dato di scavo disponibile per il periodo.');
+    }
+
+    // ── Grafico scavi con Chart.js (offscreen canvas) ─────────────────
+    _rpptSetStatus('Genero grafico scavi…');
+    const scaviChartImg = await _rpptBuildScaviChartImage(scaviSerie);
+
+    // ── Screenshot mappa cluster da mappa.html (iframe nascosto) ──────
+    let mappaImg = null;
+    if (cluster != null) {
+      _rpptSetStatus('Carico mappa cluster ' + cluster + '…');
+      try { mappaImg = await _rpptCatturaMappaCluster(cluster); }
+      catch(e) { console.warn('[reportPPT] cattura mappa fallita', e); }
+    }
+
+    // ── Costruzione PPTX ───────────────────────────────────────────────
+    _rpptSetStatus('Compongo il PowerPoint…');
+    const pptx = new PptxGenJS();
+    pptx.defineLayout({ name: 'WIDE', width: 13.33, height: 7.5 });
+    pptx.layout = 'WIDE';
+
+    const oggi = new Date();
+    const dataLabel = oggi.toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
+
+    // Slide 1 — Copertina
+    const s1 = pptx.addSlide();
+    s1.background = { color: '043F75' };
+    s1.addText(`ENRI Project\nLotto ${lotto} - ${impresa}`, {
+      x:0.6, y:2.6, w:9, h:1.8, fontSize:32, bold:true, color:'FFFFFF', fontFace:'Raleway'
+    });
+    s1.addText(dataLabel, { x:0.6, y:4.3, w:6, h:0.5, fontSize:16, color:'41BBD9', fontFace:'Raleway' });
+
+    // Slide 2 — Project Status (milestone + activity)
+    const s2 = pptx.addSlide();
+    s2.background = { color:'FFFFFF' };
+    s2.addText(`Project Status - Lot ${lotto} ${impresa}`, { x:0.4, y:0.25, w:12.5, h:0.5, fontSize:22, bold:true, color:'043F75', fontFace:'Raleway' });
+
+    const km100 = lunghezzaTotale/1000, km90 = lunghezzaTotale*0.9/1000;
+    s2.addTable([
+      [{text:'Milestone', options:{bold:true, fill:'043F75', color:'FFFFFF'}},
+       {text:`90% compl\n${_rpptFmtKm(km90)} Km`, options:{bold:true, fill:'043F75', color:'FFFFFF'}},
+       {text:`100% compl\n${_rpptFmtKm(km100)} Km`, options:{bold:true, fill:'043F75', color:'FFFFFF'}}],
+      ['Delivery on-site', p90date || '—', p100date || '—']
+    ], { x:0.4, y:0.9, w:6.0, h:1.0, fontSize:11, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', align:'center' });
+
+    const gap90 = Math.max(0, 100 - pctScavo);
+    const gap100 = Math.max(0, 100 - pctScavo);
+    const activityRows = [
+      [{text:'Activity', options:{bold:true, fill:'043F75', color:'FFFFFF'}},
+       {text:'%', options:{bold:true, fill:'043F75', color:'FFFFFF'}},
+       {text:'KM', options:{bold:true, fill:'043F75', color:'FFFFFF'}}],
+      ['Length', '', _rpptFmtKm(km100)],
+      ['Design', designPct!=null ? designPct+'%' : 'n/d', _rpptFmtKm(km100)],
+      ['Permitting submission', pctPermittingSubmission+'%', _rpptFmtKm(km100*pctPermittingSubmission/100)],
+      ['Permitting approval', pctPermittingApproval+'%', _rpptFmtKm(km100*pctPermittingApproval/100)],
+      ['Delivery on-site implementation', pctScavo+'%', _rpptFmtKm(metriScavatiTot/1000)],
+      ['', '', ''],
+      [`Gap Milestone ${p90date||'90%'}`, gap90+'%', _rpptFmtKm(km90 - metriScavatiTot/1000)],
+      [`Gap Milestone ${p100date||'100%'}`, gap100+'%', _rpptFmtKm(km100 - metriScavatiTot/1000)],
+    ];
+    s2.addTable(activityRows, { x:0.4, y:2.1, w:9.5, h:4.3, fontSize:11, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle' });
+
+    // Slide 3 — Dettaglio permessi mancanti
+    const s3 = pptx.addSlide();
+    s3.background = { color:'FFFFFF' };
+    s3.addText('Project Status – Dettaglio permessi mancanti', { x:0.4, y:0.25, w:12.5, h:0.5, fontSize:20, bold:true, color:'043F75', fontFace:'Raleway' });
+    const mancanti = pratiche.filter(p => p.stato !== 'OTTENUTO' && p.stato !== 'NO COMPETENZA');
+    const headerRow = ['Codice','Tipo','Stato','Ente','Comune','Data Invio','Cambio Stato','Update','Prev. Rilascio','Metri (m)']
+      .map(t => ({text:t, options:{bold:true, fill:'043F75', color:'FFFFFF', fontSize:9}}));
+    const bodyRows = mancanti.map(p => ([
+      p.codice, p.tipo, p.stato, p.ente, (p.comuni&&p.comuni[0])||'',
+      p.dr_invio||'', p.dum||'', p.dataUpdate||'', p.dataPrevRilascio||'', _rpptFmtNum(p.metri||0)
+    ]));
+    s3.addTable([headerRow, ...bodyRows], { x:0.3, y:0.9, w:12.7, h:6.2, fontSize:8, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', autoPage:true });
+
+    // Slide 4 — Andamento Scavi
+    const s4 = pptx.addSlide();
+    s4.background = { color:'FFFFFF' };
+    s4.addText('Andamento Scavi', { x:0.4, y:0.25, w:12.5, h:0.5, fontSize:22, bold:true, color:'043F75', fontFace:'Raleway' });
+    s4.addText(scaviTestoLines.join('\n\n'), { x:0.4, y:0.9, w:5.8, h:6.0, fontSize:13, color:'333333', fontFace:'Raleway', valign:'top' });
+    if (scaviChartImg) s4.addImage({ data: scaviChartImg, x:6.4, y:0.9, w:6.5, h:4.5 });
+
+    // Slide 5 — Stato Cantieri
+    const s5 = pptx.addSlide();
+    s5.background = { color:'FFFFFF' };
+    s5.addText('Stato Cantieri', { x:0.4, y:0.25, w:12.5, h:0.5, fontSize:22, bold:true, color:'043F75', fontFace:'Raleway' });
+    if (mappaImg) {
+      s5.addImage({ data: mappaImg, x:1.5, y:1.0, w:10.3, h:6.0 });
+    } else {
+      s5.addText('Screenshot mappa non disponibile (cluster non determinato o errore di cattura).', { x:0.4, y:3.3, w:12.5, h:0.8, fontSize:14, color:'C0392B', align:'center' });
+    }
+
+    // Slide 6 — Open Points
+    const s6 = pptx.addSlide();
+    s6.background = { color:'FFFFFF' };
+    s6.addText('Open Points', { x:0.4, y:0.25, w:12.5, h:0.5, fontSize:22, bold:true, color:'043F75', fontFace:'Raleway' });
+    const opText = openPointsRaw.trim() || '(nessun open point inserito)';
+    s6.addText(opText, { x:0.4, y:0.9, w:12.5, h:6.0, fontSize:14, color:'333333', fontFace:'Raleway', valign:'top', bullet:{code:'2022'} });
+
+    _rpptSetStatus('Salvataggio file…');
+    await pptx.writeFile({ fileName: `Report_Lotto_${lotto}_${oggi.toISOString().slice(0,10)}.pptx` });
+    _rpptSetStatus('✅ Report generato.');
+  } catch (e) {
+    console.error('[reportPPT]', e);
+    alert('Errore nella generazione del report: ' + e.message);
+    _rpptSetStatus('');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function _rpptFmtNum(n) { return Math.round(n).toLocaleString('it-IT'); }
+function _rpptFmtKm(km) { return (Math.round(km*100)/100).toLocaleString('it-IT', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+function _rpptFmtDataIt(iso) {
+  if (!iso) return '—';
+  const parts = String(iso).split('-');
+  return parts.length === 3 ? `${parts[2]}/${parts[1]}` : iso;
+}
+
+// Costruisce un'immagine PNG del grafico "metri scavati nel tempo" usando
+// Chart.js su un canvas offscreen (non visibile nel DOM finale).
+async function _rpptBuildScaviChartImage(serie) {
+  if (!serie.length || typeof Chart === 'undefined') return null;
+  const byDate = new Map();
+  serie.forEach(r => { byDate.set(r.data, (byDate.get(r.data)||0) + (r.metri_scavati||0)); });
+  const dates = [...byDate.keys()].sort();
+  const values = dates.map(d => byDate.get(d));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 900; canvas.height = 560;
+  canvas.style.position = 'fixed'; canvas.style.left = '-9999px';
+  document.body.appendChild(canvas);
+  const chart = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: { labels: dates.map(_rpptFmtDataIt), datasets: [{ label:'Metri scavati', data: values, backgroundColor:'#41BBD9' }] },
+    options: { responsive:false, animation:false, plugins:{ legend:{display:false} },
+      scales:{ y:{ beginAtZero:true, title:{display:true, text:'metri'} } } }
+  });
+  await new Promise(r => setTimeout(r, 150)); // attende il render sincrono del canvas
+  const img = chart.toBase64Image('image/png', 1);
+  chart.destroy();
+  document.body.removeChild(canvas);
+  return img;
+}
+
+// Apre mappa.html in un iframe nascosto, filtra per cluster e cattura uno
+// screenshot con html2canvas — riusa le funzioni globali già presenti in
+// mappa.html (stesso meccanismo di generaReportAWS).
+function _rpptCatturaMappaCluster(cluster) {
+  return new Promise((resolve, reject) => {
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:1280px;height:800px;border:0';
+    iframe.src = 'mappa.html';
+    const cleanup = () => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); };
+    const timeout = setTimeout(() => { cleanup(); reject(new Error('Timeout caricamento mappa')); }, 25000);
+
+    iframe.onload = async () => {
+      try {
+        const w = iframe.contentWindow;
+        // attende che i dati della mappa (allFeatures) siano popolati
+        const t0 = Date.now();
+        while ((!w.allFeatures || !w.allFeatures.length) && Date.now() - t0 < 15000) {
+          await new Promise(r => setTimeout(r, 200));
+        }
+        if (!w.allFeatures || !w.allFeatures.length) throw new Error('Dati mappa non pronti');
+        w.applyFilterCluster(String(cluster));
+        await w._attendiMappaPronta();
+        w.setBaseLayer('osm');
+        await w._attendiTileLayerPronto(w._currentBmapLayer);
+        const mapEl = iframe.contentDocument.getElementById('map');
+        const canvas = await w.html2canvas(mapEl, { useCORS:true, allowTaint:false, logging:false, scale:1, width:mapEl.clientWidth, height:mapEl.clientHeight, backgroundColor:'#ffffff' });
+        clearTimeout(timeout);
+        cleanup();
+        resolve(canvas.toDataURL('image/jpeg', 0.9));
+      } catch (e) {
+        clearTimeout(timeout);
+        cleanup();
+        reject(e);
+      }
+    };
+    document.body.appendChild(iframe);
+  });
+}
 </script>
 
 
