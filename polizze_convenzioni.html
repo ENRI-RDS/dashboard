@@ -346,12 +346,13 @@
               <th>Stato permesso</th>
               <th class="col-highlight">Convenzione</th>
               <th>Data Richiesta</th>
-              <th>Data Richiesta RDS</th>
+              <th>Data Lavorazione</th>
               <th>Data Invio</th>
               <th>Data Emissione</th>
+              <th>Prot. Ente</th>
             </tr>
           </thead>
-          <tbody id="convBody"><tr><td colspan="10" class="loading-row">Caricamento in corso...</td></tr></tbody>
+          <tbody id="convBody"><tr><td colspan="11" class="loading-row">Caricamento in corso...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -397,10 +398,9 @@
               <th>Data Lavorazione</th>
               <th>Data Invio</th>
               <th>Data Emissione</th>
-              <th>Prot. Ente</th>
             </tr>
           </thead>
-          <tbody id="polBody"><tr><td colspan="11" class="loading-row">Caricamento in corso...</td></tr></tbody>
+          <tbody id="polBody"><tr><td colspan="10" class="loading-row">Caricamento in corso...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -509,8 +509,8 @@
       document.querySelector('.main').insertBefore(banner, document.querySelector('.split'));
     }
     banner.textContent = msg;
-    document.getElementById('convBody').innerHTML = '<tr><td colspan="10" class="empty">' + msg + '</td></tr>';
-    document.getElementById('polBody').innerHTML  = '<tr><td colspan="11" class="empty">' + msg + '</td></tr>';
+    document.getElementById('convBody').innerHTML = '<tr><td colspan="11" class="empty">' + msg + '</td></tr>';
+    document.getElementById('polBody').innerHTML  = '<tr><td colspan="10" class="empty">' + msg + '</td></tr>';
   }
 
   function parseAndRender(text) {
@@ -615,13 +615,13 @@
       const dumTs = parseDum(dum);
       if (conv && (!seenConv[key] || dumTs >= seenConv[key])) {
         seenConv[key] = dumTs;
-        const rowEntry = {...entry, convStato: conv, dataRichiesta: DATE_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', dataInvio: DATE_INVIO_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', dataRichiestaRds: DATE_RDS_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', dataEmissione: DATE_EMISSIONE_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', urgente: !!URGENTI_MAP[`${lotto}|${prat}|CONVENZIONE`]};
+        const rowEntry = {...entry, convStato: conv, dataRichiesta: DATE_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', dataInvio: DATE_INVIO_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', dataRichiestaRds: DATE_RDS_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', dataEmissione: DATE_EMISSIONE_MAP[`${lotto}|${prat}|CONVENZIONE`] || '', urgente: !!URGENTI_MAP[`${lotto}|${prat}|CONVENZIONE`], protEnte: PROT_ENTE_MAP[`${lotto}|${prat}|CONVENZIONE`] || ''};
         const existingIdx = convRows.findIndex(r => r.lotto === lotto && r.pratica === prat);
         if (existingIdx >= 0) convRows[existingIdx] = rowEntry; else convRows.push(rowEntry);
       }
       if (pol && (!seenPol[key] || dumTs >= seenPol[key])) {
         seenPol[key] = dumTs;
-        const rowEntry = {...entry, polStato: pol, dataRichiesta: DATE_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataInvio: DATE_INVIO_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataRichiestaRds: DATE_RDS_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataEmissione: DATE_EMISSIONE_MAP[`${lotto}|${prat}|POLIZZA`] || '', urgente: !!URGENTI_MAP[`${lotto}|${prat}|POLIZZA`], protEnte: PROT_ENTE_MAP[`${lotto}|${prat}|POLIZZA`] || ''};
+        const rowEntry = {...entry, polStato: pol, dataRichiesta: DATE_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataInvio: DATE_INVIO_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataRichiestaRds: DATE_RDS_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataEmissione: DATE_EMISSIONE_MAP[`${lotto}|${prat}|POLIZZA`] || '', urgente: !!URGENTI_MAP[`${lotto}|${prat}|POLIZZA`]};
         const existingIdx = polRows.findIndex(r => r.lotto === lotto && r.pratica === prat);
         if (existingIdx >= 0) polRows[existingIdx] = rowEntry; else polRows.push(rowEntry);
       }
@@ -712,7 +712,7 @@
     return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   }
 
-  // Prot. Ente: testo libero, solo colonna Polizze. In sola lettura per chi non
+  // Prot. Ente: testo libero, solo colonna Convenzioni. In sola lettura per chi non
   // ha ruolo abilitato (stesso criterio isAdmin di "Urgente"), editabile inline
   // per admin/admin2/polizza tramite /api/admin/polizze-convenzioni/set-prot-ente.
   function _protEnteCellHtml(value) {
@@ -770,7 +770,7 @@
         ${_dateCellHtml('richiesta_rds', r.dataRichiestaRds)}
         ${_dateCellHtml('invio', r.dataInvio)}
         ${_dateCellHtml('emissione', r.dataEmissione)}
-        ${field === 'POLIZZA' ? _protEnteCellHtml(r.protEnte) : ''}
+        ${field === 'CONVENZIONE' ? _protEnteCellHtml(r.protEnte) : ''}
       </tr>`;
     }).join('');
   }
@@ -1088,17 +1088,17 @@
     );
     const statoKey = isConv ? 'convStato' : 'polStato';
     const label = isConv ? 'Convenzione' : 'Polizza';
-    const rdsColLabel = isConv ? 'Data Richiesta RDS' : 'Data Lavorazione';
+    const rdsColLabel = 'Data Lavorazione';
     const headerRow = ['Pratica', 'Lotto', 'Ente', 'Stato permesso', label, 'Data Richiesta', rdsColLabel, 'Data Invio', 'Data Emissione'];
     const colWidths = [{ wch: 12 }, { wch: 7 }, { wch: 26 }, { wch: 22 }, { wch: 18 }, { wch: 13 }, { wch: 16 }, { wch: 13 }, { wch: 14 }];
-    if (!isConv) { headerRow.push('Prot. Ente'); colWidths.push({ wch: 16 }); }
+    if (isConv) { headerRow.push('Prot. Ente'); colWidths.push({ wch: 16 }); }
     const aoa = [headerRow];
     rows.forEach(r => {
       const row = [
         r.codicePratica || '', r.lotto || '', r.ente || '', r.stato || '',
         r[statoKey] || '', r.dataRichiesta || '', r.dataRichiestaRds || '', r.dataInvio || '', r.dataEmissione || ''
       ];
-      if (!isConv) row.push(r.protEnte || '');
+      if (isConv) row.push(r.protEnte || '');
       aoa.push(row);
     });
     const ws = XLSX.utils.aoa_to_sheet(aoa);
@@ -1118,7 +1118,7 @@
       'convStato'
     );
     document.getElementById('convCount').textContent = rows.length + ' pratiche';
-    document.getElementById('convBody').innerHTML = buildRows(rows, 'convStato', 10, 'CONVENZIONE');
+    document.getElementById('convBody').innerHTML = buildRows(rows, 'convStato', 11, 'CONVENZIONE');
   };
 
   window.renderPol = function() {
@@ -1129,7 +1129,7 @@
       'polStato'
     );
     document.getElementById('polCount').textContent = rows.length + ' pratiche';
-    document.getElementById('polBody').innerHTML = buildRows(rows, 'polStato', 11, 'POLIZZA');
+    document.getElementById('polBody').innerHTML = buildRows(rows, 'polStato', 10, 'POLIZZA');
   };
 
   window.addEventListener('pageshow', (e) => {
