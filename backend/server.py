@@ -2947,6 +2947,7 @@ async def get_pol_conv_date_richiesta(sess: dict = Depends(_require_staff_sessio
         # tutte le date già raccolte in precedenza).
         dates, dates_invio, dates_rds, dates_emissione = {}, {}, {}, {}
         urgenti = {}
+        prot_ente = {}
         async for d in pol_conv_dates_col.find({}):
             dates[d["_id"]] = d.get("data_richiesta", "")
             dates_invio[d["_id"]] = d.get("data_invio", "")
@@ -2954,7 +2955,9 @@ async def get_pol_conv_date_richiesta(sess: dict = Depends(_require_staff_sessio
             dates_emissione[d["_id"]] = d.get("data_emissione", "")
             if d.get("urgente"):
                 urgenti[d["_id"]] = True
-        return {"date": dates, "date_invio": dates_invio, "date_richiesta_rds": dates_rds, "date_emissione": dates_emissione, "urgenti": urgenti}
+            if d.get("prot_ente"):
+                prot_ente[d["_id"]] = d["prot_ente"]
+        return {"date": dates, "date_invio": dates_invio, "date_richiesta_rds": dates_rds, "date_emissione": dates_emissione, "urgenti": urgenti, "prot_ente": prot_ente}
 
     def _extract_lotto(src: str) -> str:
         return str(src).replace(".xlsx", "").replace(".xls", "").replace("Lotto ", "").strip().upper()
@@ -2992,6 +2995,7 @@ async def get_pol_conv_date_richiesta(sess: dict = Depends(_require_staff_sessio
 
     dates, dates_invio, dates_rds, dates_emissione = {}, {}, {}, {}
     urgenti = {}
+    prot_ente = {}
     async for d in pol_conv_dates_col.find({}):
         dates[d["_id"]] = d.get("data_richiesta", "")
         dates_invio[d["_id"]] = d.get("data_invio", "")
@@ -2999,7 +3003,9 @@ async def get_pol_conv_date_richiesta(sess: dict = Depends(_require_staff_sessio
         dates_emissione[d["_id"]] = d.get("data_emissione", "")
         if d.get("urgente"):
             urgenti[d["_id"]] = True
-    return {"date": dates, "date_invio": dates_invio, "date_richiesta_rds": dates_rds, "date_emissione": dates_emissione, "urgenti": urgenti}
+        if d.get("prot_ente"):
+            prot_ente[d["_id"]] = d["prot_ente"]
+    return {"date": dates, "date_invio": dates_invio, "date_richiesta_rds": dates_rds, "date_emissione": dates_emissione, "urgenti": urgenti, "prot_ente": prot_ente}
 
 
 @app.post("/api/admin/polizze-convenzioni/set-urgente")
@@ -3032,6 +3038,42 @@ async def set_pol_conv_urgente(
         await pol_conv_dates_col.update_one({"_id": key}, {"$unset": {"urgente": ""}}, upsert=True)
 
     return {"ok": True, "key": key, "urgente": urgente}
+
+
+@app.post("/api/admin/polizze-convenzioni/set-prot-ente")
+async def set_pol_conv_prot_ente(
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+):
+    """Imposta/cancella il Prot. Ente (protocollo assegnato dall'ente, testo libero)
+    per una pratica CONVENZIONE/POLIZZA — oggi usato solo dalla colonna \"Prot. Ente\"
+    di polizze_convenzioni.html (tabella Polizze).
+    Body: {lotto, pratica, field: "CONVENZIONE"|"POLIZZA", prot_ente: str (max 80, "" per cancellare)}
+    Richiede x-upload-token OPPURE x-session-token con ruolo abilitato (rev.283).
+    Scrive solo su pol_conv_dates_col, non su Master.csv."""
+    _check_polizza_write_auth(x_upload_token or token_q, x_session_token)
+
+    lotto     = str((payload or {}).get("lotto", "")).strip().upper()
+    pratica   = str((payload or {}).get("pratica", "")).strip()
+    field     = str((payload or {}).get("field", "")).strip().upper()
+    prot_ente = str((payload or {}).get("prot_ente", "")).strip()
+
+    if not lotto or not pratica:
+        raise HTTPException(400, "lotto e pratica sono obbligatori")
+    if field not in _POL_CONV_ALLOWED_FIELDS:
+        raise HTTPException(400, f"field deve essere uno tra {sorted(_POL_CONV_ALLOWED_FIELDS)}")
+    if len(prot_ente) > 80:
+        raise HTTPException(400, "prot_ente troppo lungo (max 80 caratteri)")
+
+    key = f"{lotto}|{pratica}|{field}"
+    if prot_ente:
+        await pol_conv_dates_col.update_one({"_id": key}, {"$set": {"prot_ente": prot_ente}}, upsert=True)
+    else:
+        await pol_conv_dates_col.update_one({"_id": key}, {"$unset": {"prot_ente": ""}}, upsert=True)
+
+    return {"ok": True, "key": key, "prot_ente": prot_ente}
 
 
 @app.post("/api/admin/polizze-convenzioni/update")
