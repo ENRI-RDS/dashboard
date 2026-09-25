@@ -129,6 +129,17 @@
   .date-cell{white-space:nowrap}
   .date-cell .edit-btn{padding:2px 4px}
 
+  .prot-ente-input{
+    width:110px;padding:3px 6px;
+    border:1.5px solid var(--retelit-sky);
+    border-radius:var(--radius-md);
+    font-family:var(--font-mono);font-size:11px;
+    background:var(--surface);color:var(--text)
+  }
+  .prot-ente-input:focus{outline:none;box-shadow:var(--shadow-focus)}
+  .prot-ente-cell{white-space:nowrap}
+  .prot-ente-cell .edit-btn{padding:2px 4px}
+
   /* Bottoni inline — variante sm §7.1 */
   .btn-save{
     padding:4px 12px;height:28px;
@@ -383,12 +394,13 @@
               <th>Stato permesso</th>
               <th class="col-highlight">Polizza</th>
               <th>Data Richiesta</th>
-              <th>Data Richiesta RDS</th>
+              <th>Data Lavorazione</th>
               <th>Data Invio</th>
               <th>Data Emissione</th>
+              <th>Prot. Ente</th>
             </tr>
           </thead>
-          <tbody id="polBody"><tr><td colspan="10" class="loading-row">Caricamento in corso...</td></tr></tbody>
+          <tbody id="polBody"><tr><td colspan="11" class="loading-row">Caricamento in corso...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -437,6 +449,7 @@
   let DATE_RDS_MAP = {};
   let DATE_EMISSIONE_MAP = {};
   let URGENTI_MAP = {};
+  let PROT_ENTE_MAP = {};
 
   // Solo admin/admin2 possono fleggare "Urgente" (stessi ruoli di ADMIN_ALLOWED_ROLES in hub.html)
   const ADMIN_ROLES = ['admin', 'admin2', 'polizza']; // rev.283: ruolo dedicato 'polizza' gestisce la pagina come admin/admin2, senza i permessi admin del resto della dashboard
@@ -459,6 +472,7 @@
         DATE_RDS_MAP = data.date_richiesta_rds || {};
         DATE_EMISSIONE_MAP = data.date_emissione || {};
         URGENTI_MAP = data.urgenti || {};
+        PROT_ENTE_MAP = data.prot_ente || {};
       }
     } catch(e) { console.warn('[Polizze&Convenzioni] date non caricate:', e); }
   }
@@ -496,7 +510,7 @@
     }
     banner.textContent = msg;
     document.getElementById('convBody').innerHTML = '<tr><td colspan="10" class="empty">' + msg + '</td></tr>';
-    document.getElementById('polBody').innerHTML  = '<tr><td colspan="10" class="empty">' + msg + '</td></tr>';
+    document.getElementById('polBody').innerHTML  = '<tr><td colspan="11" class="empty">' + msg + '</td></tr>';
   }
 
   function parseAndRender(text) {
@@ -607,7 +621,7 @@
       }
       if (pol && (!seenPol[key] || dumTs >= seenPol[key])) {
         seenPol[key] = dumTs;
-        const rowEntry = {...entry, polStato: pol, dataRichiesta: DATE_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataInvio: DATE_INVIO_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataRichiestaRds: DATE_RDS_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataEmissione: DATE_EMISSIONE_MAP[`${lotto}|${prat}|POLIZZA`] || '', urgente: !!URGENTI_MAP[`${lotto}|${prat}|POLIZZA`]};
+        const rowEntry = {...entry, polStato: pol, dataRichiesta: DATE_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataInvio: DATE_INVIO_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataRichiestaRds: DATE_RDS_MAP[`${lotto}|${prat}|POLIZZA`] || '', dataEmissione: DATE_EMISSIONE_MAP[`${lotto}|${prat}|POLIZZA`] || '', urgente: !!URGENTI_MAP[`${lotto}|${prat}|POLIZZA`], protEnte: PROT_ENTE_MAP[`${lotto}|${prat}|POLIZZA`] || ''};
         const existingIdx = polRows.findIndex(r => r.lotto === lotto && r.pratica === prat);
         if (existingIdx >= 0) polRows[existingIdx] = rowEntry; else polRows.push(rowEntry);
       }
@@ -694,6 +708,31 @@
     </td>`;
   }
 
+  function _escAttr(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  }
+
+  // Prot. Ente: testo libero, solo colonna Polizze. In sola lettura per chi non
+  // ha ruolo abilitato (stesso criterio isAdmin di "Urgente"), editabile inline
+  // per admin/admin2/polizza tramite /api/admin/polizze-convenzioni/set-prot-ente.
+  function _protEnteCellHtml(value) {
+    const val = value || '';
+    if (!isAdmin) {
+      return `<td class="prot-ente-cell"><span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${val ? _escAttr(val) : '—'}</span></td>`;
+    }
+    return `<td class="prot-ente-cell" data-date-key="prot_ente">
+      <span class="prot-ente-value" style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">${val ? _escAttr(val) : '—'}</span>
+      <button class="edit-btn" title="Modifica Prot. Ente" onclick="startProtEnteEdit(this)" aria-label="Modifica Prot. Ente">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </button>
+      <span class="edit-controls-prot" style="display:none;gap:5px;align-items:center">
+        <input type="text" class="prot-ente-input" placeholder="Prot. Ente" maxlength="80" value="${_escAttr(val)}">
+        <button class="btn-save" onclick="saveProtEnteEdit(this)">Salva</button>
+        <button class="btn-ghost-sm" onclick="cancelProtEnteEdit(this)">Annulla</button>
+      </span>
+    </td>`;
+  }
+
   function buildRows(rows, statoKey, colSpan, field) {
     if (!rows.length) return '<tr><td colspan="' + colSpan + '" class="empty">Nessuna pratica trovata.</td></tr>';
     const values = field === 'CONVENZIONE' ? CONV_VALUES : POL_VALUES;
@@ -731,6 +770,7 @@
         ${_dateCellHtml('richiesta_rds', r.dataRichiestaRds)}
         ${_dateCellHtml('invio', r.dataInvio)}
         ${_dateCellHtml('emissione', r.dataEmissione)}
+        ${field === 'POLIZZA' ? _protEnteCellHtml(r.protEnte) : ''}
       </tr>`;
     }).join('');
   }
@@ -876,6 +916,71 @@
     }
   }
 
+  window.startProtEnteEdit = function(btn) {
+    const cell = btn.closest('.prot-ente-cell');
+    cell.querySelector('.prot-ente-value').style.display = 'none';
+    btn.style.display = 'none';
+    const ctrl = cell.querySelector('.edit-controls-prot');
+    ctrl.style.display = 'inline-flex';
+    const input = ctrl.querySelector('.prot-ente-input');
+    input.focus();
+    input.select();
+  };
+
+  window.cancelProtEnteEdit = function(btn) {
+    const cell = btn.closest('.prot-ente-cell');
+    cell.querySelector('.prot-ente-value').style.display = '';
+    cell.querySelector('.edit-btn').style.display = '';
+    cell.querySelector('.edit-controls-prot').style.display = 'none';
+  };
+
+  window.saveProtEnteEdit = function(btn) {
+    const row  = btn.closest('tr');
+    const cell = btn.closest('.prot-ente-cell');
+    const val  = cell.querySelector('.prot-ente-input').value.trim();
+    const lotto    = row.dataset.lotto;
+    const pratica  = row.dataset.pratica;
+    const field    = row.dataset.field;
+    _doSaveProtEnte(lotto, pratica, field, val, btn, cell);
+  };
+
+  function _doSaveProtEnte(lotto, pratica, field, val, btn, cell) {
+    const token = localStorage.getItem('enri_upload_token') || '';
+    if (!token && !isAdmin) {
+      _pendingSave = { kind: 'protente', lotto, pratica, field, val, btn, cell };
+      openTokenModal();
+      return;
+    }
+    _execSaveProtEnte(lotto, pratica, field, val, token, btn, cell);
+  }
+
+  async function _execSaveProtEnte(lotto, pratica, field, val, token, btn, cell) {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    if (!apiBase) { showToast('API base non configurata.', 'err'); return; }
+    btn.disabled = true;
+    try {
+      const r = await fetch(apiBase + '/api/admin/polizze-convenzioni/set-prot-ente', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-upload-token': token, 'x-session-token': localStorage.getItem('_enri_session') || '' },
+        body: JSON.stringify({ lotto, pratica, field, prot_ente: val })
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || r.statusText);
+      cell.querySelector('.prot-ente-value').textContent = val || '—';
+      cancelProtEnteEdit(btn);
+      showToast(val ? 'Prot. Ente aggiornato.' : 'Prot. Ente cancellato.', 'ok');
+    } catch(e) {
+      if (e.message && e.message.includes('401')) {
+        if (isAdmin) { showToast('Sessione scaduta o non abilitata: effettua di nuovo il login.', 'err'); }
+        else { localStorage.removeItem('enri_upload_token'); showToast('Token non valido. Riprovare.', 'err'); }
+      } else {
+        showToast('Si è verificato un problema. ' + e.message, 'err');
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   window.toggleUrgente = function(checkbox) {
     const row     = checkbox.closest('tr');
     const lotto   = row.dataset.lotto;
@@ -934,6 +1039,7 @@
     document.getElementById('tokenInput').value = '';
     if (_pendingSave) {
       if (_pendingSave.kind === 'date') cancelDateEdit(_pendingSave.btn);
+      else if (_pendingSave.kind === 'protente') cancelProtEnteEdit(_pendingSave.btn);
       else if (_pendingSave.kind === 'urgente') _pendingSave.checkbox.checked = !_pendingSave.val;
       else cancelEdit(_pendingSave.btn);
       _pendingSave = null;
@@ -949,6 +1055,7 @@
       const p = _pendingSave;
       _pendingSave = null;
       if (p.kind === 'date') _execSaveDate(p.lotto, p.pratica, p.field, p.dateKey, p.val, t, p.btn, p.cell);
+      else if (p.kind === 'protente') _execSaveProtEnte(p.lotto, p.pratica, p.field, p.val, t, p.btn, p.cell);
       else if (p.kind === 'urgente') _execSaveUrgente(p.lotto, p.pratica, p.field, p.val, t, p.checkbox, p.row);
       else _execSave(p.lotto, p.pratica, p.field, p.val, t, p.btn, p.cell);
     }
@@ -981,13 +1088,21 @@
     );
     const statoKey = isConv ? 'convStato' : 'polStato';
     const label = isConv ? 'Convenzione' : 'Polizza';
-    const aoa = [['Pratica', 'Lotto', 'Ente', 'Stato permesso', label, 'Data Richiesta', 'Data Richiesta RDS', 'Data Invio', 'Data Emissione']];
-    rows.forEach(r => aoa.push([
-      r.codicePratica || '', r.lotto || '', r.ente || '', r.stato || '',
-      r[statoKey] || '', r.dataRichiesta || '', r.dataRichiestaRds || '', r.dataInvio || '', r.dataEmissione || ''
-    ]));
+    const rdsColLabel = isConv ? 'Data Richiesta RDS' : 'Data Lavorazione';
+    const headerRow = ['Pratica', 'Lotto', 'Ente', 'Stato permesso', label, 'Data Richiesta', rdsColLabel, 'Data Invio', 'Data Emissione'];
+    const colWidths = [{ wch: 12 }, { wch: 7 }, { wch: 26 }, { wch: 22 }, { wch: 18 }, { wch: 13 }, { wch: 16 }, { wch: 13 }, { wch: 14 }];
+    if (!isConv) { headerRow.push('Prot. Ente'); colWidths.push({ wch: 16 }); }
+    const aoa = [headerRow];
+    rows.forEach(r => {
+      const row = [
+        r.codicePratica || '', r.lotto || '', r.ente || '', r.stato || '',
+        r[statoKey] || '', r.dataRichiesta || '', r.dataRichiestaRds || '', r.dataInvio || '', r.dataEmissione || ''
+      ];
+      if (!isConv) row.push(r.protEnte || '');
+      aoa.push(row);
+    });
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [{ wch: 12 }, { wch: 7 }, { wch: 26 }, { wch: 22 }, { wch: 18 }, { wch: 13 }, { wch: 16 }, { wch: 13 }, { wch: 14 }];
+    ws['!cols'] = colWidths;
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, label);
     const oggi = new Date();
@@ -1014,7 +1129,7 @@
       'polStato'
     );
     document.getElementById('polCount').textContent = rows.length + ' pratiche';
-    document.getElementById('polBody').innerHTML = buildRows(rows, 'polStato', 10, 'POLIZZA');
+    document.getElementById('polBody').innerHTML = buildRows(rows, 'polStato', 11, 'POLIZZA');
   };
 
   window.addEventListener('pageshow', (e) => {
