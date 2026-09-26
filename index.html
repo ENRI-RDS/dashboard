@@ -6958,8 +6958,11 @@ async function generaReportCompletoPPT() {
     // Slide 1 — Copertina
     const s1 = pptx.addSlide();
     s1.background = { color: '043F75' };
+    const logoSrc = document.querySelector('.topbar-left img[alt="Retelit"]')?.src;
+    if (logoSrc) s1.addImage({ data: logoSrc, x:0.6, y:0.5, w:1.6, h:0.8 });
+    s1.addShape('rect', { x:0.6, y:2.35, w:1.1, h:0.06, fill:{color:'41BBD9'} });
     s1.addText(`ENRI Project\nLotto ${lotto} - ${impresa}`, {
-      x:0.6, y:2.6, w:9, h:1.8, fontSize:32, bold:true, color:'FFFFFF', fontFace:'Raleway'
+      x:0.6, y:2.6, w:10, h:1.8, fontSize:32, bold:true, color:'FFFFFF', fontFace:'Raleway'
     });
     s1.addText(dataLabel, { x:0.6, y:4.3, w:6, h:0.5, fontSize:16, color:'41BBD9', fontFace:'Raleway' });
 
@@ -6970,30 +6973,34 @@ async function generaReportCompletoPPT() {
 
     const km100 = lunghezzaTotale/1000, km90 = lunghezzaTotale*0.9/1000;
     s2.addTable([
-      [{text:'Milestone', options:{bold:true, fill:'043F75', color:'FFFFFF'}},
-       {text:`90% compl\n${_rpptFmtKm(km90)} Km`, options:{bold:true, fill:'043F75', color:'FFFFFF'}},
-       {text:`100% compl\n${_rpptFmtKm(km100)} Km`, options:{bold:true, fill:'043F75', color:'FFFFFF'}}],
-      ['Delivery on-site', p90date || '—', p100date || '—']
-    ], { x:0.4, y:0.9, w:6.0, h:1.0, fontSize:11, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', align:'center' });
+      [{text:'Milestone', options:{bold:true, fill:'043F75', color:'FFFFFF', fontFace:'Raleway'}},
+       {text:`90% compl\n${_rpptFmtKm(km90)} Km`, options:{bold:true, fill:'043F75', color:'FFFFFF', fontFace:'Raleway'}},
+       {text:`100% compl\n${_rpptFmtKm(km100)} Km`, options:{bold:true, fill:'043F75', color:'FFFFFF', fontFace:'Raleway'}}],
+      [{text:'Delivery on-site', options:{fill:'F4F6F9', fontFace:'Raleway'}},
+       {text:p90date || '—', options:{fill:'F4F6F9', fontFace:'JetBrains Mono'}},
+       {text:p100date || '—', options:{fill:'F4F6F9', fontFace:'JetBrains Mono'}}]
+    ], { x:0.4, y:0.9, w:9.5, h:1.0, fontSize:11, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', align:'center' });
 
     const gapPct90  = Math.max(0, Math.round((km90target - metriScavatiTot) / (lunghezzaTotale||1) * 100));
     const gapKm90   = Math.max(0, km90 - metriScavatiTot/1000);
     const gapPct100 = Math.max(0, 100 - pctScavo);
     const gapKm100  = Math.max(0, km100 - metriScavatiTot/1000);
-    const activityRows = [
-      [{text:'Activity', options:{bold:true, fill:'043F75', color:'FFFFFF'}},
-       {text:'%', options:{bold:true, fill:'043F75', color:'FFFFFF'}},
-       {text:'KM', options:{bold:true, fill:'043F75', color:'FFFFFF'}}],
+    const activityHeader = [{text:'Activity', options:{bold:true, fill:'043F75', color:'FFFFFF', fontFace:'Raleway'}},
+       {text:'%', options:{bold:true, fill:'043F75', color:'FFFFFF', fontFace:'Raleway'}},
+       {text:'KM', options:{bold:true, fill:'043F75', color:'FFFFFF', fontFace:'Raleway'}}];
+    const activityBody = _rpptZebra([
       ['Length', '', _rpptFmtKm(km100)],
       ['Design', pctDesign+'%', _rpptFmtKm(km100*pctDesign/100)],
       ['Permitting submission', pctPermittingSubmission+'%', _rpptFmtKm(km100*pctPermittingSubmission/100)],
       ['Permitting approval', pctPermittingApproval+'%', _rpptFmtKm(km100*pctPermittingApproval/100)],
       ['Delivery on-site implementation', pctScavo+'%', _rpptFmtKm(metriScavatiTot/1000)],
       ['', '', ''],
-      [`Gap Milestone ${p90date||'90%'}`, gapPct90+'%', _rpptFmtKm(gapKm90)],
-      [`Gap Milestone ${p100date||'100%'}`, gapPct100+'%', _rpptFmtKm(gapKm100)],
-    ];
-    s2.addTable(activityRows, { x:0.4, y:2.1, w:9.5, h:4.3, fontSize:11, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle' });
+      [{text:`Gap Milestone ${p90date||'90%'}`, options:{bold:true}}, gapPct90+'%', _rpptFmtKm(gapKm90)],
+      [{text:`Gap Milestone ${p100date||'100%'}`, options:{bold:true}}, gapPct100+'%', _rpptFmtKm(gapKm100)],
+    ], { fontFace:'Raleway' });
+    const activityRows = [activityHeader, ...activityBody];
+    s2.addTable(activityRows, { x:0.4, y:2.15, w:9.5, h:4.3, fontSize:11, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle' });
+    _rpptFooter(s2, lotto, impresa, dataLabel);
 
     // Slide 3 — Dettaglio permessi mancanti (tutte le pratiche in una sola slide:
     // font e margini calcolati dinamicamente in base al numero di righe)
@@ -7004,20 +7011,23 @@ async function generaReportCompletoPPT() {
     const nRowsS3 = mancanti.length + 1;
     const fsS3 = nRowsS3 <= 15 ? 9 : nRowsS3 <= 25 ? 7.5 : nRowsS3 <= 35 ? 6.5 : nRowsS3 <= 50 ? 5.5 : 4.5;
     const padS3 = nRowsS3 <= 25 ? 3 : 1;
-    const headerRow = ['Codice','Tipo','Stato','Ente','Comune','Data Invio','Cambio Stato','Update','Prev. Rilascio','Metri (m)']
-      .map(t => ({text:t, options:{bold:true, fill:'043F75', color:'FFFFFF', fontSize:fsS3}}));
-    const bodyRows = mancanti.map(p => ([
+    const headerRowS3 = ['Codice','Tipo','Stato','Ente','Comune','Data Invio','Cambio Stato','Update','Prev. Rilascio','Metri (m)']
+      .map(t => ({text:t, options:{bold:true, fill:'043F75', color:'FFFFFF', fontSize:fsS3, fontFace:'Raleway'}}));
+    const bodyRowsS3 = _rpptZebra(mancanti.map(p => ([
       p.codice, p.tipo, p.stato, p.ente, (p.comuni&&p.comuni[0])||'',
       p.dr_invio||'', p.dum||'', p.dataUpdate||'', p.dataPrevRilascio||'', _rpptFmtNum(p.metri||0)
-    ]));
-    s3.addTable([headerRow, ...bodyRows], { x:0.15, y:0.65, w:13.03, h:6.75, fontSize:fsS3, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', autoPage:false, margin:[padS3,padS3,padS3,padS3] });
+    ])));
+    s3.addTable([headerRowS3, ...bodyRowsS3], { x:0.15, y:0.65, w:13.03, h:6.6, fontSize:fsS3, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', autoPage:false, margin:[padS3,padS3,padS3,padS3] });
+    _rpptFooter(s3, lotto, impresa, dataLabel);
 
     // Slide 4 — Andamento Scavi
     const s4 = pptx.addSlide();
     s4.background = { color:'FFFFFF' };
     s4.addText('Andamento Scavi', { x:0.4, y:0.25, w:12.5, h:0.5, fontSize:22, bold:true, color:'043F75', fontFace:'Raleway' });
-    s4.addText(scaviTestoLines.join('\n\n'), { x:0.4, y:0.9, w:5.8, h:6.0, fontSize:13, color:'333333', fontFace:'Raleway', valign:'top' });
+    s4.addShape('rect', { x:0.4, y:0.85, w:5.4, h:0.02, fill:{color:'D0D5DD'} });
+    s4.addText(scaviTestoLines.join('\n\n'), { x:0.4, y:1.05, w:5.6, h:5.8, fontSize:13, color:'333333', fontFace:'Raleway', valign:'top' });
     if (scaviChartImg) s4.addImage({ data: scaviChartImg, x:6.4, y:0.9, w:6.5, h:4.5 });
+    _rpptFooter(s4, lotto, impresa, dataLabel);
 
     // Slide 5 — Stato Cantieri (stessa tabella "Tutti i Cantieri" di scavi.html,
     // filtrata sul lotto corrente)
@@ -7030,25 +7040,30 @@ async function generaReportCompletoPPT() {
       const nRowsS5 = cantieriLotto.length + 1;
       const fsS5 = nRowsS5 <= 15 ? 9 : nRowsS5 <= 25 ? 7.5 : nRowsS5 <= 35 ? 6.5 : nRowsS5 <= 50 ? 5.5 : 4.5;
       const padS5 = nRowsS5 <= 25 ? 3 : 1;
+      // Altezza tabella proporzionata al numero di righe (evita righe enormi
+      // e vuote quando il lotto ha pochi cantieri), con un tetto massimo per
+      // non sforare la slide quando sono tanti.
+      const hS5 = Math.min(6.6, Math.max(0.8, nRowsS5 * (fsS5/72*2.6)));
       const headS5 = ['Cod. Cantiere','Pratica','Ente','Cluster','Prov.','Comune','Impresa','Stato','Data','Avanz.','M. Scavati / Tot.']
-        .map(t => ({text:t, options:{bold:true, fill:'043F75', color:'FFFFFF', fontSize:fsS5}}));
-      const bodyS5 = cantieriLotto.map(c => {
+        .map(t => ({text:t, options:{bold:true, fill:'043F75', color:'FFFFFF', fontSize:fsS5, fontFace:'Raleway'}}));
+      const bodyS5 = _rpptZebra(cantieriLotto.map(c => {
         const statoUI = STATO_CANT_MAP[c.stato_cantiere] || 'non-avviato';
         const pct = (c.metri_totali||0) > 0 ? Math.round((c.metri_scavati||0)/c.metri_totali*100) + '%' : '—';
-        const dataCell = !c.log_count ? '' :
-          statoUI==='completato' ? (c.data_fine_effettiva||'') :
-          statoUI==='sospeso'    ? (c.data_ripresa_stimata||'') :
-          statoUI==='in-corso'   ? (c.data_inizio_effettiva||'') : (c.data_inizio_prevista||'');
+        const dataCellRaw = !c.log_count ? '' :
+          statoUI==='completato' ? c.data_fine_effettiva :
+          statoUI==='sospeso'    ? c.data_ripresa_stimata :
+          statoUI==='in-corso'   ? c.data_inizio_effettiva : c.data_inizio_prevista;
         return [
           c.codice_cantiere||'—', c.pratica_id||'—', c.ente||'—', String(c.cluster ?? '?').replace(/^[Cc]/,''),
           c.provincia||'—', c.comune||'—', c.impresa||'—', STATO_CANT_LABEL[statoUI],
-          dataCell, pct, `${_rpptFmtNum(c.metri_scavati||0)} / ${_rpptFmtNum(c.metri_totali||0)}`
+          _rpptFmtDataFull(dataCellRaw), pct, `${_rpptFmtNum(c.metri_scavati||0)} / ${_rpptFmtNum(c.metri_totali||0)}`
         ];
-      });
-      s5.addTable([headS5, ...bodyS5], { x:0.15, y:0.65, w:13.03, h:6.75, fontSize:fsS5, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', autoPage:false, margin:[padS5,padS5,padS5,padS5] });
+      }));
+      s5.addTable([headS5, ...bodyS5], { x:0.15, y:0.65, w:13.03, h:hS5, fontSize:fsS5, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', autoPage:false, margin:[padS5,padS5,padS5,padS5] });
     } else {
       s5.addText('Nessun cantiere trovato per questo lotto (endpoint /api/cantieri).', { x:0.4, y:3.3, w:12.5, h:0.8, fontSize:14, color:'C0392B', align:'center' });
     }
+    _rpptFooter(s5, lotto, impresa, dataLabel);
 
     // Slide 6 — Open Points
     const s6 = pptx.addSlide();
@@ -7056,6 +7071,7 @@ async function generaReportCompletoPPT() {
     s6.addText('Open Points', { x:0.4, y:0.25, w:12.5, h:0.5, fontSize:22, bold:true, color:'043F75', fontFace:'Raleway' });
     const opText = openPointsRaw.trim() || '(nessun open point inserito)';
     s6.addText(opText, { x:0.4, y:0.9, w:12.5, h:6.0, fontSize:14, color:'333333', fontFace:'Raleway', valign:'top', bullet:{code:'2022'} });
+    _rpptFooter(s6, lotto, impresa, dataLabel);
 
     _rpptSetStatus('Salvataggio file…');
     await pptx.writeFile({ fileName: `Report_Lotto_${lotto}_${oggi.toISOString().slice(0,10)}.pptx` });
@@ -7070,6 +7086,35 @@ async function generaReportCompletoPPT() {
 }
 
 function _rpptFmtNum(n) { return Math.round(n).toLocaleString('it-IT'); }
+// Converte una data "YYYY-MM-DD" in "DD/MM/YYYY" per coerenza col resto del deck.
+function _rpptFmtDataFull(iso) {
+  if (!iso) return '';
+  const p = String(iso).split('-');
+  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : iso;
+}
+// Applica banding zebra alle righe body di una tabella PptxGenJS: righe pari
+// bianche, dispari grigio chiaro. Accetta righe come array di stringhe o di
+// oggetti {text,options}; ritorna sempre oggetti {text,options}.
+function _rpptZebra(bodyRows, opts) {
+  const o = opts || {};
+  return bodyRows.map((row, i) => {
+    const fill = i % 2 === 0 ? 'FFFFFF' : 'F4F6F9';
+    return row.map(cell => {
+      const isObj = cell && typeof cell === 'object';
+      const text = isObj ? cell.text : cell;
+      const cellOpts = isObj ? { ...cell.options } : {};
+      if (!cellOpts.fill) cellOpts.fill = fill;
+      if (o.fontFace && !cellOpts.fontFace) cellOpts.fontFace = o.fontFace;
+      return { text, options: cellOpts };
+    });
+  });
+}
+// Footer discreto in basso a destra (lotto, impresa, data) su ogni slide di contenuto.
+function _rpptFooter(slide, lotto, impresa, dataLabel) {
+  slide.addText(`Lotto ${lotto} — ${impresa}  |  ${dataLabel}`, {
+    x:0.4, y:7.15, w:12.5, h:0.3, fontSize:8, color:'9AA5B4', fontFace:'Raleway', align:'right'
+  });
+}
 function _rpptFmtKm(km) { return (Math.round(km*100)/100).toLocaleString('it-IT', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 function _rpptFmtDataIt(iso) {
   if (!iso) return '—';
