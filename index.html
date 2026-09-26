@@ -6876,6 +6876,7 @@ async function generaReportCompletoPPT() {
         console.error('[reportPPT] /api/milestone HTTP', r.status, '— probabile permesso mancante per il ruolo corrente (endpoint escluso per il ruolo "dl")');
       }
     } catch(e) { console.error('[reportPPT] fetch /api/milestone fallita', e); }
+    const cluster  = milestoneRow ? milestoneRow.cluster : null;
     const p90date  = milestoneRow ? milestoneRow.p90  : null;
     const p100date = milestoneRow ? milestoneRow.p100 : null;
 
@@ -7029,21 +7030,66 @@ async function generaReportCompletoPPT() {
     if (scaviChartImg) s4.addImage({ data: scaviChartImg, x:6.4, y:0.9, w:6.5, h:4.5 });
     _rpptFooter(s4, lotto, impresa, dataLabel);
 
-    // Slide 5 — Stato Cantieri (stessa tabella "Tutti i Cantieri" di scavi.html,
-    // filtrata sul lotto corrente)
+    // Slide 5 — Stato Cantieri: replica il contenuto del modale che si apre
+    // cliccando la barra del lotto in scavi.html (openModalLotto): stat
+    // header, territorio, distribuzione permessi Ottenuto/In corso, poi la
+    // tabella cantieri.
     const s5 = pptx.addSlide();
     s5.background = { color:'FFFFFF' };
-    s5.addText('Stato Cantieri', { x:0.4, y:0.2, w:12.5, h:0.4, fontSize:18, bold:true, color:'043F75', fontFace:'Raleway' });
+    s5.addText('Stato Cantieri', { x:0.4, y:0.18, w:12.5, h:0.35, fontSize:18, bold:true, color:'043F75', fontFace:'Raleway' });
     const STATO_CANT_MAP = { non_avviato:'non-avviato', allestimento:'allestimento', in_corso:'in-corso', sospeso:'sospeso', completato:'completato' };
     const STATO_CANT_LABEL = { 'non-avviato':'Non avviato', 'allestimento':'Allestimento', 'in-corso':'In Corso', 'sospeso':'In Sospeso', 'completato':'Completato' };
+
+    // ── Stat header (6 box in riga, come i "modal-stat" di scavi.html) ──
+    const cantieriAttivi = cantieriLotto.filter(c => (STATO_CANT_MAP[c.stato_cantiere]||'non-avviato') !== 'non-avviato').length;
+    const statBoxes = [
+      ['Totale lotto', `${_rpptFmtNum(lunghezzaTotale)} m`, '043F75'],
+      ['Permessi ottenuti', `${_rpptFmtNum(metriApproval)} m`, '1E9E6A'],
+      ['Avanz. permessi', `${pctPermittingApproval}%`, '1E9E6A'],
+      ['Avanz. scavi', `${pctScavo}%`, '41BBD9'],
+      ['Cluster', cluster!=null ? String(cluster) : '—', '043F75'],
+      ['Cantieri attivi', `${cantieriAttivi} / ${cantieriLotto.length}`, '043F75'],
+    ];
+    const statW = 13.03/6;
+    statBoxes.forEach((sb, i) => {
+      const x = 0.15 + i*statW;
+      s5.addShape('rect', { x, y:0.58, w:statW-0.08, h:0.72, fill:{color:'F4F6F9'}, line:{color:'E3E7ED', width:0.5} });
+      s5.addText(sb[0].toUpperCase(), { x:x+0.08, y:0.62, w:statW-0.24, h:0.25, fontSize:7.5, color:'8A91A0', fontFace:'Raleway', bold:true, charSpacing:1 });
+      s5.addText(sb[1], { x:x+0.08, y:0.87, w:statW-0.24, h:0.38, fontSize:15, color:sb[2], fontFace:'Raleway', bold:true });
+    });
+
+    // ── Territorio + Distribuzione permessi (due colonne) ──
+    const comuniSet = new Set();
+    praticheAut.forEach(p => (p.comuni||[]).forEach(c => c && comuniSet.add(c)));
+    const provSet = new Set();
+    cantieriLotto.forEach(c => c.provincia && provSet.add(c.provincia));
+    s5.addText('TERRITORIO', { x:0.15, y:1.5, w:6.3, h:0.25, fontSize:9, bold:true, color:'8A91A0', fontFace:'Raleway' });
+    s5.addText(`${comuniSet.size} comuni${provSet.size ? '  —  ' + [...provSet].join(', ') : ''}`, { x:0.15, y:1.78, w:6.3, h:0.3, fontSize:11, color:'333333', fontFace:'Raleway', bold:true });
+    s5.addText([...comuniSet].sort().join('  •  ') || '—', { x:0.15, y:2.1, w:6.3, h:0.75, fontSize:8.5, color:'555555', fontFace:'Raleway', valign:'top' });
+
+    s5.addText('DISTRIBUZIONE PERMESSI (AUTORIZZAZIONE)', { x:6.7, y:1.5, w:6.5, h:0.25, fontSize:9, bold:true, color:'8A91A0', fontFace:'Raleway' });
+    const inCorsoM = totMetriPermessi - metriApproval;
+    const distribRows = [
+      { label:'Ottenuto', m: metriApproval, color:'1E9E6A' },
+      { label:'In fase di autorizzazione', m: inCorsoM, color:'8A8A96' },
+    ].filter(r => r.m > 0);
+    distribRows.forEach((r, i) => {
+      const y = 1.78 + i*0.38;
+      const pct = totMetriPermessi>0 ? (r.m/totMetriPermessi*100).toFixed(1) : '0.0';
+      s5.addShape('rect', { x:6.7, y:y+0.06, w:0.1, h:0.1, fill:{color:r.color} });
+      s5.addText(r.label, { x:6.9, y, w:3.2, h:0.3, fontSize:10, color:r.color, bold:true, fontFace:'Raleway' });
+      s5.addText(`${pct}%`, { x:10.1, y, w:0.9, h:0.3, fontSize:10, color:r.color, align:'right', fontFace:'Raleway' });
+      s5.addText(`${_rpptFmtNum(r.m)} m`, { x:11.1, y, w:2.1, h:0.3, fontSize:10, color:'555555', align:'right', fontFace:'JetBrains Mono' });
+    });
+
+    // ── Cantieri del lotto (stessa tabella "Tutti i Cantieri" di scavi.html) ──
+    s5.addText('CANTIERI DEL LOTTO', { x:0.15, y:3.05, w:6.5, h:0.25, fontSize:9, bold:true, color:'8A91A0', fontFace:'Raleway' });
     if (cantieriLotto.length) {
       const nRowsS5 = cantieriLotto.length + 1;
-      const fsS5 = nRowsS5 <= 15 ? 9 : nRowsS5 <= 25 ? 7.5 : nRowsS5 <= 35 ? 6.5 : nRowsS5 <= 50 ? 5.5 : 4.5;
-      const padS5 = nRowsS5 <= 25 ? 3 : 1;
-      // Altezza tabella proporzionata al numero di righe (evita righe enormi
-      // e vuote quando il lotto ha pochi cantieri), con un tetto massimo per
-      // non sforare la slide quando sono tanti.
-      const hS5 = Math.min(6.6, Math.max(0.8, nRowsS5 * (fsS5/72*2.6)));
+      const fsS5 = nRowsS5 <= 10 ? 9 : nRowsS5 <= 18 ? 7.5 : nRowsS5 <= 26 ? 6.5 : 5.5;
+      const padS5 = nRowsS5 <= 18 ? 3 : 1;
+      const hMaxS5 = 6.95 - 3.35; // spazio residuo sotto il titolo "Cantieri del lotto"
+      const hS5 = Math.min(hMaxS5, Math.max(0.6, nRowsS5 * (fsS5/72*2.4)));
       const headS5 = ['Cod. Cantiere','Pratica','Ente','Cluster','Prov.','Comune','Impresa','Stato','Data','Avanz.','M. Scavati / Tot.']
         .map(t => ({text:t, options:{bold:true, fill:'043F75', color:'FFFFFF', fontSize:fsS5, fontFace:'Raleway'}}));
       const bodyS5 = _rpptZebra(cantieriLotto.map(c => {
@@ -7059,7 +7105,7 @@ async function generaReportCompletoPPT() {
           _rpptFmtDataFull(dataCellRaw), pct, `${_rpptFmtNum(c.metri_scavati||0)} / ${_rpptFmtNum(c.metri_totali||0)}`
         ];
       }));
-      s5.addTable([headS5, ...bodyS5], { x:0.15, y:0.65, w:13.03, h:hS5, fontSize:fsS5, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', autoPage:false, margin:[padS5,padS5,padS5,padS5] });
+      s5.addTable([headS5, ...bodyS5], { x:0.15, y:3.35, w:13.03, h:hS5, fontSize:fsS5, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', autoPage:false, margin:[padS5,padS5,padS5,padS5] });
     } else {
       s5.addText('Nessun cantiere trovato per questo lotto (endpoint /api/cantieri).', { x:0.4, y:3.3, w:12.5, h:0.8, fontSize:14, color:'C0392B', align:'center' });
     }
