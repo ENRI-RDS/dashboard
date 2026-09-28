@@ -7047,17 +7047,33 @@ async function generaReportCompletoPPT() {
     s3.addText('Project Status – Dettaglio permessi mancanti', { x:0.4, y:0.2, w:12.5, h:0.4, fontSize:18, bold:true, color:'043F75', fontFace:'Raleway' });
     const mancanti = pratiche.filter(p => p.stato !== 'OTTENUTO' && p.stato !== 'NO COMPETENZA');
     const nRowsS3 = mancanti.length + 1;
-    const fsS3 = nRowsS3 <= 15 ? 9 : nRowsS3 <= 22 ? 7.5 : nRowsS3 <= 30 ? 6.5 : nRowsS3 <= 42 ? 5.5 : 4.5;
-    const padS3 = nRowsS3 <= 15 ? 3 : 1.5;
-    const colWS3 = [1.05, 1.35, 1.95, 1.95, 1.15, 1.15, 1.15, 1.05, 1.15, 1.13]; // somma = 13.03
-    const _abbrevStato = s => (s||'').replace('INTEGRAZIONE', 'INTEGR.');
-    const headerRowS3 = ['Codice','Tipo','Stato','Ente','Comune','Data Invio','Cambio Stato','Update','Prev. Rilascio','Metri (m)']
-      .map(t => ({text:t, options:{bold:true, fill:'043F75', color:'FFFFFF', fontSize:fsS3, fontFace:'Raleway'}}));
-    const bodyRowsS3 = _rpptZebra(mancanti.map(p => ([
-      p.codice, p.tipo, _abbrevStato(p.stato), p.ente, (p.comuni&&p.comuni[0])||'',
-      p.dr_invio||'', p.dum||'', p.dataUpdate||'', p.dataPrevRilascio||'', _rpptFmtNum(p.metri||0)
-    ])));
-    s3.addTable([headerRowS3, ...bodyRowsS3], { x:0.15, y:0.65, w:13.03, colW:colWS3, fontSize:fsS3, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', autoPage:false, margin:[padS3,padS3,padS3,padS3] });
+    const _abbrevStato = t => (t||'').replace('INTEGRAZIONE', 'INTEGR.');
+    if (nRowsS3 <= 26) {
+      const fsS3 = nRowsS3 <= 15 ? 9 : nRowsS3 <= 22 ? 7.5 : 6.5;
+      const padS3 = nRowsS3 <= 15 ? 3 : 1.5;
+      const colWS3 = [1.05, 1.35, 1.95, 1.95, 1.15, 1.15, 1.15, 1.05, 1.15, 1.13]; // somma = 13.03
+      const headerRowS3 = ['Codice','Tipo','Stato','Ente','Comune','Data Invio','Cambio Stato','Update','Prev. Rilascio','Metri (m)']
+        .map(t => ({text:t, options:{bold:true, fill:'043F75', color:'FFFFFF', fontSize:fsS3, fontFace:'Raleway'}}));
+      const bodyRowsS3 = _rpptZebra(mancanti.map(p => ([
+        p.codice, p.tipo, _abbrevStato(p.stato), p.ente, (p.comuni&&p.comuni[0])||'',
+        p.dr_invio||'', p.dum||'', p.dataUpdate||'', p.dataPrevRilascio||'', _rpptFmtNum(p.metri||0)
+      ])));
+      s3.addTable([headerRowS3, ...bodyRowsS3], { x:0.15, y:0.65, w:13.03, colW:colWS3, fontSize:fsS3, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', autoPage:false, margin:[padS3,padS3,padS3,padS3] });
+    } else {
+      // Molte pratiche: due tabelle affiancate con meno colonne (Tipo si deduce dal
+      // codice AUT/NO) per tenere tutto in una slide con font leggibile.
+      const half = Math.ceil(mancanti.length / 2);
+      const fsS3 = mancanti.length <= 40 ? 8 : mancanti.length <= 56 ? 7.5 : 6;
+      const colWHalf = [0.85, 1.3, 1.85, 1.1, 0.75, 0.65]; // somma = 6.5
+      [mancanti.slice(0, half), mancanti.slice(half)].forEach((chunk, i) => {
+        const head = ['Codice','Stato','Ente','Comune','Prev. Rilasc.','Metri']
+          .map(t => ({text:t, options:{bold:true, fill:'043F75', color:'FFFFFF', fontSize:fsS3, fontFace:'Raleway'}}));
+        const body = _rpptZebra(chunk.map(p => ([
+          p.codice, _abbrevStato(p.stato), p.ente, (p.comuni&&p.comuni[0])||'', p.dataPrevRilascio||'', _rpptFmtNum(p.metri||0)
+        ])));
+        s3.addTable([head, ...body], { x: 0.15 + i*6.6, y:0.65, w:6.5, colW:colWHalf, fontSize:fsS3, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', autoPage:false, margin:[1.5,1.5,1.5,1.5] });
+      });
+    }
     _rpptFooter(s3, lotto, impresa, dataLabel);
 
     // Slide 4 — Andamento Scavi
@@ -7145,7 +7161,7 @@ async function generaReportCompletoPPT() {
       }));
       s5.addTable([headS5, ...bodyS5], { x:0.15, y:3.35, w:13.03, colW:colWS5, fontSize:fsS5, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', autoPage:false, margin:[padS5,padS5,padS5,padS5] });
     } else {
-      s5.addText('Nessun cantiere trovato per questo lotto (endpoint /api/cantieri).', { x:0.4, y:3.3, w:12.5, h:0.8, fontSize:14, color:'C0392B', align:'center' });
+      s5.addText('Nessun cantiere avviato o registrato per questo lotto.', { x:0.4, y:3.3, w:12.5, h:0.8, fontSize:14, color:'C0392B', align:'center' });
     }
     _rpptFooter(s5, lotto, impresa, dataLabel);
 
@@ -7169,7 +7185,7 @@ async function generaReportCompletoPPT() {
   }
 }
 
-function _rpptFmtNum(n) { return Math.round(n).toLocaleString('it-IT'); }
+function _rpptFmtNum(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
 // Converte una data "YYYY-MM-DD" in "DD/MM/YYYY" per coerenza col resto del deck.
 function _rpptFmtDataFull(iso) {
   if (!iso) return '';
