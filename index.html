@@ -6866,19 +6866,32 @@ async function generaReportCompletoPPT() {
     // ── Milestone contrattuali (/api/milestone) ───────────────────────
     _rpptSetStatus('Carico dati milestone…');
     let milestoneRow = null;
+    let milestoneErr = null;
     try {
       const r = await fetch(apiBase + '/api/milestone', sessHeaders);
       if (r.ok) {
         const d = await r.json();
-        milestoneRow = (d.imprese || []).find(x => String(x.lotto) === String(lotto)) || null;
-        if (!milestoneRow) console.warn('[reportPPT] /api/milestone OK ma nessuna riga per lotto', lotto, '— righe disponibili:', (d.imprese||[]).map(x=>x.lotto));
+        milestoneRow = (d.imprese || []).find(x => String(x.lotto).trim().toUpperCase() === String(lotto).trim().toUpperCase()) || null;
+        if (!milestoneRow) {
+          milestoneErr = `nessuna riga milestone per il lotto ${lotto}`;
+          console.warn('[reportPPT] /api/milestone OK ma nessuna riga per lotto', lotto, '— righe disponibili:', (d.imprese||[]).map(x=>x.lotto));
+        }
       } else {
+        milestoneErr = `/api/milestone HTTP ${r.status} (permesso negato per il ruolo corrente?)`;
         console.error('[reportPPT] /api/milestone HTTP', r.status, '— probabile permesso mancante per il ruolo corrente (endpoint escluso per il ruolo "dl")');
       }
-    } catch(e) { console.error('[reportPPT] fetch /api/milestone fallita', e); }
-    const cluster  = milestoneRow ? milestoneRow.cluster : null;
-    const p90date  = milestoneRow ? milestoneRow.p90  : null;
-    const p100date = milestoneRow ? milestoneRow.p100 : null;
+    } catch(e) { milestoneErr = 'endpoint /api/milestone non raggiungibile'; console.error('[reportPPT] fetch /api/milestone fallita', e); }
+    // Milestone effettive del lotto: i valori "-" significano "non prevista".
+    // Lotti 1A/1B/2A/2B: traguardi civili al 90% e 100%; lotti 1-8: 50% e 100%
+    // (+ permitting invio/ottenimento). Si usa ciò che esiste per quel lotto.
+    const _msVal = v => { const t = (v==null ? '' : String(v)).trim(); return (!t || t==='-' || t==='–' || t==='—') ? null : t; };
+    const cluster       = milestoneRow ? milestoneRow.cluster : null;
+    const msPermInvio   = _msVal(milestoneRow && milestoneRow.invio);
+    const msPermOttenim = _msVal(milestoneRow && milestoneRow.ottenim);
+    const msAvvio       = _msVal(milestoneRow && milestoneRow.avvio);
+    const civiliTargets = [[50,'p50'],[90,'p90'],[100,'p100']]
+      .map(([pct,k]) => ({ pct, date: _msVal(milestoneRow && milestoneRow[k]) }))
+      .filter(t => t.date);
 
     // ── Andamento scavi (metri scavati nel tempo) ─────────────────────
     _rpptSetStatus('Carico dati scavi…');
@@ -6901,12 +6914,11 @@ async function generaReportCompletoPPT() {
     const metriScavatiTot = scaviSerie.reduce((s,r) => s + (r.metri||0), 0);
     const pctScavo = lunghezzaTotale > 0 ? Math.round(metriScavatiTot / lunghezzaTotale * 100) : 0;
 
-    // Testo andamento scavi: metri fatti, giorni lavorativi trascorsi, ritmo
-    // necessario (solo giorni lavorativi, Lun-Ven) per raggiungere il 90%
-    // entro la milestone contrattuale p90date.
+    // Testo andamento scavi: metri fatti, giorni lavorativi trascorsi, e per
+    // OGNI milestone civile non ancora raggiunta (50/90/100% a seconda del
+    // lotto) metri mancanti, giorni lavorativi residui (Lun-Ven) e ritmo
+    // necessario in m/giorno lavorativo.
     let scaviTestoLines = [];
-    const km90target = lunghezzaTotale*0.9;
-    const mancanti90 = Math.max(0, Math.round(km90target - metriScavatiTot));
     if (scaviSerie.length) {
       const dateOrdinate = scaviSerie.map(r => r.data).filter(Boolean).sort();
       const dataInizio = dateOrdinate[0];
@@ -6917,19 +6929,32 @@ async function generaReportCompletoPPT() {
     } else {
       scaviTestoLines.push('Nessun dato di scavo disponibile per il periodo.');
     }
-    if (mancanti90 > 0) {
-      const p90dateObj = _rpptParseDateIT(p90date);
-      if (p90dateObj) {
-        const giorniLavorativiResidui = Math.max(1, _rpptCountBusinessDays(oggi, p90dateObj));
-        const ritmoNecessario = Math.round(mancanti90 / giorniLavorativiResidui);
-        scaviTestoLines.push(`Mancano ${_rpptFmtNum(mancanti90)} m per raggiungere il 90% (target ${p90date}): servono ${giorniLavorativiResidui} giorni lavorativi residui, ritmo necessario ${ritmoNecessario} m/giorno lavorativo.`);
-      } else {
-        scaviTestoLines.push(`Mancano ${_rpptFmtNum(mancanti90)} m per raggiungere il 90% (data milestone non disponibile per calcolare il ritmo necessario).`);
-      }
+    const targetsDaRaggiungere = civiliTargets.filter(t => lunghezzaTotale*t.pct/100 > metriScavatiTot);
+    if (!civiliTargets.length) {
+      scaviTestoLines.push(`Nessuna milestone di scavo definita per il lotto ${lotto}${milestoneErr ? ' (' + milestoneErr + ')' : ''}.`);
+    } else if (!targetsDaRaggiungere.length) {
+      scaviTestoLines.push('Tutte le milestone di scavo già raggiunte.');
     } else {
-      scaviTestoLines.push('Target 90% già raggiunto o superato.');
+      targetsDaRaggiungere.forEach(t => {
+        const mancanti = Math.round(lunghezzaTotale*t.pct/100 - metriScavatiTot);
+        const dObj = _rpptParseDateIT(t.date);
+        const dObjDay = dObj ? new Date(dObj.getFullYear(), dObj.getMonth(), dObj.getDate()) : null;
+        const oggiDay = new Date(oggi.getFullYear(), oggi.getMonth(), oggi.getDate());
+        if (dObjDay && dObjDay <= oggiDay) {
+          scaviTestoLines.push(`Milestone ${t.pct}% (${t.date}) scaduta: mancano ${_rpptFmtNum(mancanti)} m.`);
+        } else if (dObjDay) {
+          const gg = Math.max(1, _rpptCountBusinessDays(oggi, dObjDay));
+          scaviTestoLines.push(`Milestone ${t.pct}% (${t.date}): mancano ${_rpptFmtNum(mancanti)} m in ${gg} giorni lavorativi residui, ritmo necessario ${_rpptFmtNum(mancanti/gg)} m/giorno lavorativo.`);
+        } else {
+          scaviTestoLines.push(`Milestone ${t.pct}%: mancano ${_rpptFmtNum(mancanti)} m (data non disponibile).`);
+        }
+      });
+      const nextT = targetsDaRaggiungere[0];
+      if (pctPermittingApproval < nextT.pct) scaviTestoLines.push(`Necessario ottenere permessi mancanti per avere Km scavabili pari almeno al ${nextT.pct}% (attualmente ${pctPermittingApproval}%).`);
     }
-    if (pctPermittingApproval < 90) scaviTestoLines.push(`Necessario ottenere permessi mancanti per avere Km scavabili pari almeno al 90% (attualmente ${pctPermittingApproval}%).`);
+    if (msPermInvio || msPermOttenim) {
+      scaviTestoLines.push(`Permitting: ${msPermInvio ? 'invio entro ' + msPermInvio : ''}${msPermInvio && msPermOttenim ? ', ' : ''}${msPermOttenim ? 'ottenimento entro ' + msPermOttenim : ''}.`);
+    }
 
     // ── Grafico scavi con Chart.js (offscreen canvas) ─────────────────
     _rpptSetStatus('Genero grafico scavi…');
@@ -6972,53 +6997,67 @@ async function generaReportCompletoPPT() {
     s2.background = { color:'FFFFFF' };
     s2.addText(`Project Status - Lot ${lotto} ${impresa}`, { x:0.4, y:0.25, w:12.5, h:0.5, fontSize:22, bold:true, color:'043F75', fontFace:'Raleway' });
 
-    const km100 = lunghezzaTotale/1000, km90 = lunghezzaTotale*0.9/1000;
-    s2.addTable([
-      [{text:'Milestone', options:{bold:true, fill:'043F75', color:'FFFFFF', fontFace:'Raleway'}},
-       {text:`90% compl\n${_rpptFmtKm(km90)} Km`, options:{bold:true, fill:'043F75', color:'FFFFFF', fontFace:'Raleway'}},
-       {text:`100% compl\n${_rpptFmtKm(km100)} Km`, options:{bold:true, fill:'043F75', color:'FFFFFF', fontFace:'Raleway'}}],
-      [{text:'Delivery on-site', options:{fill:'F4F6F9', fontFace:'Raleway'}},
-       {text:p90date || '—', options:{fill:'F4F6F9', fontFace:'JetBrains Mono'}},
-       {text:p100date || '—', options:{fill:'F4F6F9', fontFace:'JetBrains Mono'}}]
-    ], { x:0.4, y:0.9, w:9.5, h:1.0, fontSize:11, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', align:'center' });
+    const km100 = lunghezzaTotale/1000;
+    // Tabella milestone dinamica: mostra solo le colonne previste per il lotto
+    const msCols = [];
+    if (msPermInvio)   msCols.push({ h:'Invio permessi',        v:msPermInvio });
+    if (msPermOttenim) msCols.push({ h:'Ottenimento permessi',  v:msPermOttenim });
+    if (msAvvio)       msCols.push({ h:'Avvio attività civili', v:msAvvio });
+    civiliTargets.forEach(t => msCols.push({ h:`${t.pct}% compl\n${_rpptFmtKm(lunghezzaTotale*t.pct/100000)} Km`, v:t.date }));
+    if (msCols.length) {
+      s2.addTable([
+        [{text:'Milestone', options:{bold:true, fill:'043F75', color:'FFFFFF', fontFace:'Raleway'}},
+         ...msCols.map(c => ({text:c.h, options:{bold:true, fill:'043F75', color:'FFFFFF', fontFace:'Raleway'}}))],
+        [{text:'Data contrattuale', options:{fill:'F4F6F9', fontFace:'Raleway'}},
+         ...msCols.map(c => ({text:c.v, options:{fill:'F4F6F9', fontFace:'JetBrains Mono'}}))]
+      ], { x:0.4, y:0.9, w:12.5, h:1.0, fontSize:11, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', align:'center' });
+    } else {
+      s2.addText(`Milestone non disponibili per il lotto ${lotto}${milestoneErr ? ' — ' + milestoneErr : ''}.`, { x:0.4, y:0.95, w:12.5, h:0.8, fontSize:13, bold:true, color:'C0392B', fontFace:'Raleway' });
+    }
 
-    const gapPct90  = Math.max(0, Math.round((km90target - metriScavatiTot) / (lunghezzaTotale||1) * 100));
-    const gapKm90   = Math.max(0, km90 - metriScavatiTot/1000);
-    const gapPct100 = Math.max(0, 100 - pctScavo);
-    const gapKm100  = Math.max(0, km100 - metriScavatiTot/1000);
+    // Righe Gap: una per ogni milestone civile prevista per il lotto
+    const gapRows = civiliTargets.map(t => {
+      const targetM = lunghezzaTotale*t.pct/100;
+      const gapPct = Math.max(0, Math.round((targetM - metriScavatiTot) / (lunghezzaTotale||1) * 100));
+      const gapKm  = Math.max(0, (targetM - metriScavatiTot)/1000);
+      return [{text:`Gap Milestone ${t.date} (${t.pct}%)`, options:{bold:true}}, gapPct+'%', _rpptFmtKm(gapKm)];
+    });
     const activityHeader = [{text:'Activity', options:{bold:true, fill:'043F75', color:'FFFFFF', fontFace:'Raleway'}},
        {text:'%', options:{bold:true, fill:'043F75', color:'FFFFFF', fontFace:'Raleway'}},
        {text:'KM', options:{bold:true, fill:'043F75', color:'FFFFFF', fontFace:'Raleway'}}];
     const activityBody = _rpptZebra([
       ['Length', '', _rpptFmtKm(km100)],
-      ['Design', pctDesign+'%', _rpptFmtKm(km100*pctDesign/100)],
-      ['Permitting submission', pctPermittingSubmission+'%', _rpptFmtKm(km100*pctPermittingSubmission/100)],
-      ['Permitting approval', pctPermittingApproval+'%', _rpptFmtKm(km100*pctPermittingApproval/100)],
+      ['Design', pctDesign+'%', _rpptFmtKm(metriDesign/1000)],
+      ['Permitting submission', pctPermittingSubmission+'%', _rpptFmtKm(metriInviati/1000)],
+      ['Permitting approval', pctPermittingApproval+'%', _rpptFmtKm(metriApproval/1000)],
       ['Delivery on-site implementation', pctScavo+'%', _rpptFmtKm(metriScavatiTot/1000)],
-      ['', '', ''],
-      [{text:`Gap Milestone ${p90date||'90%'}`, options:{bold:true}}, gapPct90+'%', _rpptFmtKm(gapKm90)],
-      [{text:`Gap Milestone ${p100date||'100%'}`, options:{bold:true}}, gapPct100+'%', _rpptFmtKm(gapKm100)],
+      ...(gapRows.length ? [['', '', '']] : []),
+      ...gapRows,
     ], { fontFace:'Raleway' });
     const activityRows = [activityHeader, ...activityBody];
-    s2.addTable(activityRows, { x:0.4, y:2.15, w:9.5, h:4.3, fontSize:11, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle' });
+    s2.addTable(activityRows, { x:0.4, y:2.15, w:12.5, h:4.3, fontSize:11, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle' });
     _rpptFooter(s2, lotto, impresa, dataLabel);
 
     // Slide 3 — Dettaglio permessi mancanti (tutte le pratiche in una sola slide:
-    // font e margini calcolati dinamicamente in base al numero di righe)
+    // font, larghezze colonna e margini calcolati dinamicamente in base al
+    // numero di righe; "Stato" abbreviato per evitare wrap su 2 righe, che
+    // allungava tutte le righe e faceva sforare la tabella oltre la slide)
     const s3 = pptx.addSlide();
     s3.background = { color:'FFFFFF' };
     s3.addText('Project Status – Dettaglio permessi mancanti', { x:0.4, y:0.2, w:12.5, h:0.4, fontSize:18, bold:true, color:'043F75', fontFace:'Raleway' });
     const mancanti = pratiche.filter(p => p.stato !== 'OTTENUTO' && p.stato !== 'NO COMPETENZA');
     const nRowsS3 = mancanti.length + 1;
-    const fsS3 = nRowsS3 <= 15 ? 9 : nRowsS3 <= 25 ? 7.5 : nRowsS3 <= 35 ? 6.5 : nRowsS3 <= 50 ? 5.5 : 4.5;
-    const padS3 = nRowsS3 <= 25 ? 3 : 1;
+    const fsS3 = nRowsS3 <= 15 ? 9 : nRowsS3 <= 22 ? 7.5 : nRowsS3 <= 30 ? 6.5 : nRowsS3 <= 42 ? 5.5 : 4.5;
+    const padS3 = nRowsS3 <= 15 ? 3 : 1.5;
+    const colWS3 = [1.05, 1.35, 1.95, 1.95, 1.15, 1.15, 1.15, 1.05, 1.15, 1.13]; // somma = 13.03
+    const _abbrevStato = s => (s||'').replace('INTEGRAZIONE', 'INTEGR.');
     const headerRowS3 = ['Codice','Tipo','Stato','Ente','Comune','Data Invio','Cambio Stato','Update','Prev. Rilascio','Metri (m)']
       .map(t => ({text:t, options:{bold:true, fill:'043F75', color:'FFFFFF', fontSize:fsS3, fontFace:'Raleway'}}));
     const bodyRowsS3 = _rpptZebra(mancanti.map(p => ([
-      p.codice, p.tipo, p.stato, p.ente, (p.comuni&&p.comuni[0])||'',
+      p.codice, p.tipo, _abbrevStato(p.stato), p.ente, (p.comuni&&p.comuni[0])||'',
       p.dr_invio||'', p.dum||'', p.dataUpdate||'', p.dataPrevRilascio||'', _rpptFmtNum(p.metri||0)
     ])));
-    s3.addTable([headerRowS3, ...bodyRowsS3], { x:0.15, y:0.65, w:13.03, h:6.6, fontSize:fsS3, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', autoPage:false, margin:[padS3,padS3,padS3,padS3] });
+    s3.addTable([headerRowS3, ...bodyRowsS3], { x:0.15, y:0.65, w:13.03, colW:colWS3, fontSize:fsS3, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', autoPage:false, margin:[padS3,padS3,padS3,padS3] });
     _rpptFooter(s3, lotto, impresa, dataLabel);
 
     // Slide 4 — Andamento Scavi
@@ -7088,8 +7127,7 @@ async function generaReportCompletoPPT() {
       const nRowsS5 = cantieriLotto.length + 1;
       const fsS5 = nRowsS5 <= 10 ? 9 : nRowsS5 <= 18 ? 7.5 : nRowsS5 <= 26 ? 6.5 : 5.5;
       const padS5 = nRowsS5 <= 18 ? 3 : 1;
-      const hMaxS5 = 6.95 - 3.35; // spazio residuo sotto il titolo "Cantieri del lotto"
-      const hS5 = Math.min(hMaxS5, Math.max(0.6, nRowsS5 * (fsS5/72*2.4)));
+      const colWS5 = [1.15, 1.15, 1.95, 0.75, 0.65, 1.15, 1.15, 1.15, 1.15, 0.85, 1.88]; // somma = 13.03
       const headS5 = ['Cod. Cantiere','Pratica','Ente','Cluster','Prov.','Comune','Impresa','Stato','Data','Avanz.','M. Scavati / Tot.']
         .map(t => ({text:t, options:{bold:true, fill:'043F75', color:'FFFFFF', fontSize:fsS5, fontFace:'Raleway'}}));
       const bodyS5 = _rpptZebra(cantieriLotto.map(c => {
@@ -7105,7 +7143,7 @@ async function generaReportCompletoPPT() {
           _rpptFmtDataFull(dataCellRaw), pct, `${_rpptFmtNum(c.metri_scavati||0)} / ${_rpptFmtNum(c.metri_totali||0)}`
         ];
       }));
-      s5.addTable([headS5, ...bodyS5], { x:0.15, y:3.35, w:13.03, h:hS5, fontSize:fsS5, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', autoPage:false, margin:[padS5,padS5,padS5,padS5] });
+      s5.addTable([headS5, ...bodyS5], { x:0.15, y:3.35, w:13.03, colW:colWS5, fontSize:fsS5, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', autoPage:false, margin:[padS5,padS5,padS5,padS5] });
     } else {
       s5.addText('Nessun cantiere trovato per questo lotto (endpoint /api/cantieri).', { x:0.4, y:3.3, w:12.5, h:0.8, fontSize:14, color:'C0392B', align:'center' });
     }
