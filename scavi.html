@@ -1063,6 +1063,13 @@ const STATO_ORDER = ['in-corso','allestimento','sospeso','completato','non-avvia
 
 function fmt(n){ return Math.round(n).toLocaleString('it-IT'); }
 function fmtD(iso){ if(!iso) return null; const p = iso.split('-'); return p.length===3 ? `${p[2]}/${p[1]}/${p[0]}` : iso; }
+const GIORNI_ABBR = ['dom','lun','mar','mer','gio','ven','sab'];
+function fmtDGiorno(iso){
+  const d = fmtD(iso);
+  if (!d) return null;
+  const dt = new Date(iso.length > 10 ? iso : iso + 'T00:00:00');
+  return isNaN(dt) ? d : `${GIORNI_ABBR[dt.getDay()]} ${d}`;
+}
 
 // ── Cella "Date" (tabella cantieri): mostra la data più rilevante per lo stato corrente
 // + scostamento rispetto al previsto, con tooltip su tutte le date registrate.
@@ -1413,7 +1420,7 @@ async function openModalRegistro(cantiereKey) {
         const stCol   = STATO_COLOR[statoUI] || 'var(--muted)';
         const tecnica = TECNICA_LABEL[e.tecnica_scavo] || e.tecnica_scavo || '—';
         const metri   = (e.metri_realizzati ?? null);
-        const data    = fmtD((e.data || e.ts || '').slice(0,10)) || '—';
+        const data    = fmtDGiorno((e.data || e.ts || '').slice(0,10)) || '—';
         return `<tr>
           <td style="font-family:var(--font-mono);font-size:12px">${data}</td>
           <td><span class="chip ${statoUI}" style="color:${stCol}">${stLabel}</span></td>
