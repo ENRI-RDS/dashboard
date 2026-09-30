@@ -1789,7 +1789,7 @@ function makePopupHtml(p, gmapsUrl) {
     const cPct   = cTot > 0 ? Math.min(100, Math.round(cScav/cTot*100)) : 0;
     const cTec   = RO_SC_TECNICA_LABEL[cantiere.tecnica_scavo] || cantiere.tecnica_scavo || '';
     return `<div class="popup-section">
-      <div class="popup-section-title">Cantiere</div>
+      <div class="popup-section-title">Cantiere${cantiere.codice_cantiere ? ` <span style="font-family:var(--font-mono);font-weight:700;color:var(--retelit-blue);letter-spacing:0;text-transform:none">${cantiere.codice_cantiere}</span>` : ''}</div>
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
         <span class="popup-stato" style="background:${cCol}18;color:${cCol};border:1.5px solid ${cCol}44">
           <span class="popup-stato-dot" style="background:${cCol}"></span>${cLbl}
@@ -2200,6 +2200,29 @@ function searchPratiche(query) {
     });
   });
 
+  // Passo 2c: match su CODICE CANTIERE (RO_CANTIERI) → un risultato per cantiere,
+  // posizionato sulla prima tratta del cantiere presente in mappa
+  (typeof RO_CANTIERI !== 'undefined' ? RO_CANTIERI : []).forEach(c => {
+    const cod = (c.codice_cantiere || '').trim();
+    if (!cod || !cod.toUpperCase().includes(q)) return;
+    const tid = (c.tratte || []).map(t => (t.tratta_id || '').trim().toUpperCase()).find(t => trattaIndex.has(t));
+    if (!tid) return;
+    const data = trattaIndex.get(tid);
+    const key = 'C|' + cod.toUpperCase();
+    if (seenResult.has(key)) return;
+    seenResult.add(key);
+    results.unshift({
+      type: 'pratica',
+      feature: data.feature,
+      cantiere: cod,
+      pratica: [...data.praticheSet].join(' · ') || data.tratta,
+      tratta: data.tratta,
+      lotto: data.lotto,
+      stato: data.stato,
+      comune: data.comune
+    });
+  });
+
   return results.slice(0, 15);
 }
 
@@ -2226,7 +2249,7 @@ function renderResults(pratiche, addresses, query) {
     hasAny = true;
     const div = document.createElement('div');
     div.className = 'search-divider';
-    div.textContent = 'Pratiche e Tratte';
+    div.textContent = 'Pratiche, Tratte e Cantieri';
     resultsEl.appendChild(div);
     pratiche.forEach(r => {
       const item = document.createElement('div');
@@ -2235,7 +2258,7 @@ function renderResults(pratiche, addresses, query) {
       item.innerHTML = `
         <span class="search-result-icon">◎</span>
         <div style="flex:1;min-width:0">
-          <div class="search-result-main">${r.pratica}${(typeof ENRI !== 'undefined' && ENRI.concomitanzaBadge) ? ENRI.concomitanzaBadge(r.tratta) : ''}</div>
+          <div class="search-result-main">${r.cantiere ? `<span style="font-family:var(--font-mono);color:var(--retelit-blue)">${r.cantiere}</span> · ` : ''}${r.pratica}${(typeof ENRI !== 'undefined' && ENRI.concomitanzaBadge) ? ENRI.concomitanzaBadge(r.tratta) : ''}</div>
           <div class="search-result-sub">${r.tratta} · Lotto ${r.lotto} · ${r.comune}</div>
         </div>
         <span style="font-size:9px;color:${color};white-space:nowrap;flex-shrink:0">${r.stato}</span>`;
@@ -2356,7 +2379,7 @@ inputEl.addEventListener('input', () => {
   searchTimer = setTimeout(async () => {
     const pratiche = searchPratiche(q);
     // Cerca indirizzo solo se query > 3 chars e non sembra un codice pratica
-    const looksLikePratica = /^(AUT|NO|ORD|TR_)/i.test(q);
+    const looksLikePratica = /^(AUT|NO|ORD|TR_|CA\/)/i.test(q);
     const addresses = (!looksLikePratica && q.length > 3) ? await searchAddress(q) : [];
     renderResults(pratiche, addresses, q);
   }, 350);
@@ -3878,7 +3901,7 @@ window.addEventListener('load', () => {
 
     <div class="help-section">
       <h4>Ricerca Pratiche e Indirizzi</h4>
-      <p>La barra di ricerca nella topbar cerca contemporaneamente tra le pratiche del dataset (per codice pratica o ID tratta) e tra gli indirizzi italiani via geocoding OpenStreetMap. I risultati sono divisi in due sezioni: <em>Pratiche e Tratte</em> mostra il codice, il lotto e il comune; <em>Indirizzi</em> permette di centrare la mappa su qualsiasi luogo. Selezionando una tratta, questa viene evidenziata in giallo e si apre il popup di dettaglio.</p>
+      <p>La barra di ricerca nella topbar cerca contemporaneamente tra le pratiche del dataset (per codice pratica, codice cantiere o ID tratta) e tra gli indirizzi italiani via geocoding OpenStreetMap. I risultati sono divisi in due sezioni: <em>Pratiche, Tratte e Cantieri</em> mostra il codice, il lotto e il comune; <em>Indirizzi</em> permette di centrare la mappa su qualsiasi luogo. Selezionando una tratta, questa viene evidenziata in giallo e si apre il popup di dettaglio.</p>
     </div>
 
     <div class="help-section">
