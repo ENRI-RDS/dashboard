@@ -191,7 +191,7 @@
   <div>
     <div class="page-eyebrow">Pianificazione</div>
     <div class="page-h1">Agenda Enti</div>
-    <div class="page-sub">Appuntamenti richiesti e programmati dagli enti: sopralluoghi, riunioni, collaudi.</div>
+    <div class="page-sub">Appuntamenti richiesti e programmati dagli enti: incontri istituzionali e tavoli tecnici.</div>
   </div>
 
   <div class="kpi-row">
@@ -226,15 +226,15 @@
   <div class="modal">
     <div class="modal-h" id="mTitle">Nuovo appuntamento</div>
     <div class="modal-b">
-      <div class="fld"><label>Ente *</label><input class="f-in" id="mEnte" list="dlEnti" autocomplete="off"></div>
+      <div class="fld"><label>Pratica</label><input class="f-in" id="mRif" list="dlPrat" autocomplete="off" placeholder="es. AUT/3/1A" oninput="onPratica()" onchange="onPratica()"></div>
+      <div class="fld"><label>Ente * <span id="enteHint" style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--green)"></span></label><input class="f-in" id="mEnte" list="dlEnti" autocomplete="off"></div>
       <div class="fld"><label>Tipo</label>
-        <select class="f-sel" id="mTipo"><option value="sopralluogo">Sopralluogo</option><option value="riunione">Riunione / tavolo tecnico</option>
-        <option value="collaudo">Collaudo</option><option value="consegna_documenti">Consegna documenti</option><option value="altro">Altro</option></select></div>
-      <div class="fld full"><label>Oggetto</label><input class="f-in" id="mOggetto" maxlength="300"></div>
-      <div class="fld"><label>Pratica / Cantiere</label><input class="f-in" id="mRif" list="dlCant" autocomplete="off" placeholder="es. AUT-… oppure CA/2/1A"></div>
+        <select class="f-sel" id="mTipo"><option value="incontro_istituzionale">Incontro istituzionale</option><option value="tavolo_tecnico">Tavolo tecnico</option>
+        <option value="altro">Altro</option></select></div>
       <div class="fld"><label>Stato</label>
         <select class="f-sel" id="mStato" onchange="syncStato()"><option value="richiesto">Richiesto</option><option value="programmato">Programmato</option>
         <option value="svolto">Svolto</option><option value="annullato">Annullato</option></select></div>
+      <div class="fld full"><label>Oggetto</label><input class="f-in" id="mOggetto" maxlength="300"></div>
       <div class="fld"><label>Data richiesta</label><input class="f-in" type="date" id="mDReq"></div>
       <div class="fld"><label id="lblDApp">Data appuntamento</label><input class="f-in" type="date" id="mDApp"></div>
       <div class="fld"><label>Ora</label><input class="f-in" type="time" id="mOra"></div>
@@ -264,7 +264,7 @@
 </div>
 
 <datalist id="dlEnti"></datalist>
-<datalist id="dlCant"></datalist>
+<datalist id="dlPrat"></datalist>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -277,9 +277,9 @@ window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); }
 const API = (window.ENRI && ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
 const ROLE = (localStorage.getItem('_enri_role') || '').toLowerCase();
 const CAN_DELETE = true; // pagina riservata ad admin/admin2
-const TIPI = { sopralluogo:'Sopralluogo', riunione:'Riunione', collaudo:'Collaudo', consegna_documenti:'Consegna documenti', altro:'Altro' };
+const TIPI = { incontro_istituzionale:'Incontro istituzionale', tavolo_tecnico:'Tavolo tecnico', altro:'Altro' };
 const STATI = { richiesto:'Richiesto', programmato:'Programmato', svolto:'Svolto', annullato:'Annullato' };
-let items = [], editId = null, delId = null, tab = 'lista';
+let items = [], editId = null, delId = null, tab = 'lista', PRAT = {};
 let calY = new Date().getFullYear(), calM = new Date().getMonth();
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -315,8 +315,10 @@ async function loadLookups() {
     $('dlEnti').innerHTML = (e.enti || []).map(x => '<option value="' + esc(x) + '">').join('');
   } catch (_) {}
   try {
-    const c = await api('/api/cantieri');
-    $('dlCant').innerHTML = (c.cantieri || []).filter(x => x.codice_cantiere).map(x => '<option value="' + esc(x.codice_cantiere) + '">').join('');
+    const p = await api('/api/agenda/pratiche');
+    PRAT = {};
+    (p.pratiche || []).forEach(x => { PRAT[x.codice.toUpperCase()] = x.ente; });
+    $('dlPrat').innerHTML = (p.pratiche || []).map(x => '<option value="' + esc(x.codice) + '">' + esc(x.ente) + '</option>').join('');
   } catch (_) {}
 }
 
@@ -416,13 +418,18 @@ function openModal(id, stato) {
   editId = id || null;
   const it = id ? items.find(x => x._id === id) : null;
   $('mTitle').textContent = it ? 'Modifica appuntamento' : 'Nuovo appuntamento';
-  $('mEnte').value = it?.ente || ''; $('mTipo').value = it?.tipo || 'sopralluogo'; $('mOggetto').value = it?.oggetto || '';
+  $('mEnte').value = it?.ente || ''; $('mTipo').value = it?.tipo || 'incontro_istituzionale'; $('mOggetto').value = it?.oggetto || '';
   $('mRif').value = it?.riferimento || ''; $('mStato').value = stato || it?.stato || 'richiesto';
   $('mDReq').value = it?.data_richiesta || TODAY; $('mDApp').value = it?.data_appuntamento || ''; $('mOra').value = it?.ora || '';
   $('mLuogo').value = it?.luogo || ''; $('mRef').value = it?.referente || ''; $('mPart').value = it?.partecipanti || '';
   $('mNote').value = it?.note || ''; $('mEsito').value = it?.esito || '';
-  $('mErr').style.display = 'none'; $('mDel').style.display = it && CAN_DELETE ? '' : 'none';
+  $('enteHint').textContent = ''; $('mErr').style.display = 'none'; $('mDel').style.display = it && CAN_DELETE ? '' : 'none';
   syncStato(); $('ovForm').classList.add('open');
+}
+function onPratica() {
+  const ente = PRAT[$('mRif').value.trim().toUpperCase()];
+  $('enteHint').textContent = '';
+  if (ente) { $('mEnte').value = ente; $('enteHint').textContent = '· da pratica'; }
 }
 function closeModal() { $('ovForm').classList.remove('open'); }
 function quick(id, stato) { openModal(id, stato); }
