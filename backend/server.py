@@ -96,6 +96,7 @@ _master_csv_lock = asyncio.Lock()
 _cantieri_sync_lock = asyncio.Lock()
 cantieri_col  = db["cantieri"]                  # stato cantiere per pratica di autorizzazione
 sopralluoghi_col = db["sopralluoghi"]          # verbali di sopralluogo
+agenda_col = db["agenda"]                      # appuntamenti richiesti/programmati dagli enti
 pol_conv_dates_col = db["pol_conv_dates"]      # prima data in cui CONVENZIONE/POLIZZA è comparsa per una pratica
 access_logs_col = db["access_logs"]            # log accessi (ex-JSONBin) — un documento per binId, {utenti:[...], accessi:[...]}
 gantt_overrides_col = db["gantt_overrides"]    # override manuali riga Gantt (pct/date/label) per lotto, indip. da invii impresa
@@ -805,6 +806,7 @@ async def _on_startup():
         await cantieri_col.create_index([("pratica_id", 1), ("ente", 1)])
         await cantieri_col.create_index("lotto")
         await sopralluoghi_col.create_index("codice_verbale")
+        await agenda_col.create_index([("stato", 1), ("data_appuntamento", 1)])
         await gantt_rates_col.create_index("scope", unique=True)
         print("[enri-dashboard] Indici MongoDB verificati/creati")
     except Exception as e:
@@ -3209,6 +3211,109 @@ async def set_pol_conv_date(
 
     return {"ok": True, "key": key, "date_key": date_key, "value": value}
 
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# AGENDA ENTI — appuntamenti richiesti e programmati dagli enti
+# ─────────────────────────────────────────────────────────────────────────────
+_AGENDA_STATI = ("richiesto", "programmato", "svolto", "annullato")
+_AGENDA_TIPI = ("sopralluogo", "riunione", "collaudo", "consegna_documenti", "altro")
+
+
+def _agenda_clean(p: dict) -> dict:
+    """Valida e normalizza il payload di un appuntamento (create/update)."""
+    p = p or {}
+
+    def _s(k: str, n: int = 300) -> str:
+        return str(p.get(k, "") or "").strip()[:n]
+
+    def _d(k: str) -> str:
+        v = _s(k, 10)
+        if v:
+            try:
+                datetime.strptime(v, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(422, f"{k}: data non valida (atteso AAAA-MM-GG)")
+        return v
+
+    rec = {
+        "ente": _s("ente", 200),
+        "tipo": _s("tipo", 40).lower() or "altro",
+        "stato": _s("stato", 20).lower() or "richiesto",
+        "oggetto": _s("oggetto", 300),
+        "riferimento": _s("riferimento", 200),      # pratica / cantiere / tratta (testo libero)
+        "data_richiesta": _d("data_richiesta"),
+        "data_appuntamento": _d("data_appuntamento"),
+        "ora": _s("ora", 5),
+        "luogo": _s("luogo", 300),
+        "referente": _s("referente", 200),           # referente lato ente
+        "partecipanti": _s("partecipanti", 300),     # partecipanti lato Retelit/impresa
+        "note": _s("note", 2000),
+        "esito": _s("esito", 2000),
+    }
+    if not rec["ente"]:
+        raise HTTPException(422, "Ente obbligatorio")
+    if rec["tipo"] not in _AGENDA_TIPI:
+        raise HTTPException(422, "Tipo appuntamento non valido")
+    if rec["stato"] not in _AGENDA_STATI:
+        raise HTTPException(422, "Stato non valido")
+    if rec["ora"] and not re.match(r"^([01]\d|2[0-3]):[0-5]\d$", rec["ora"]):
+        raise HTTPException(422, "Ora non valida (atteso HH:MM)")
+    if rec["stato"] in ("programmato", "svolto") and not rec["data_appuntamento"]:
+        raise HTTPException(422, "Data appuntamento obbligatoria per appuntamenti programmati/svolti")
+    return rec
+
+
+def _agenda_oid(agenda_id: str) -> ObjectId:
+    try:
+        return ObjectId(agenda_id)
+    except Exception:
+        raise HTTPException(400, "ID non valido")
+
+
+@app.get("/api/agenda")
+async def list_agenda(sess: dict = Depends(_require_admin_session)):
+    """Tutti gli appuntamenti con gli enti (ordinamento lato client)."""
+    items = []
+    async for d in agenda_col.find({}):
+        d["_id"] = str(d["_id"])
+        items.append(d)
+    return {"items": items}
+
+
+@app.post("/api/agenda")
+async def create_agenda(payload: dict, sess: dict = Depends(_require_admin_session)):
+    rec = _agenda_clean(payload)
+    now = datetime.now(timezone.utc).isoformat()
+    if not rec["data_richiesta"]:
+        rec["data_richiesta"] = now[:10]
+    rec.update({"created_by": sess.get("nome", ""), "created_at": now, "updated_at": now})
+    res = await agenda_col.insert_one(rec)
+    rec["_id"] = str(res.inserted_id)
+    return {"ok": True, "item": rec}
+
+
+@app.put("/api/agenda/{agenda_id}")
+async def update_agenda(agenda_id: str, payload: dict, sess: dict = Depends(_require_admin_session)):
+    oid = _agenda_oid(agenda_id)
+    rec = _agenda_clean(payload)
+    rec.update({"updated_by": sess.get("nome", ""),
+                "updated_at": datetime.now(timezone.utc).isoformat()})
+    res = await agenda_col.update_one({"_id": oid}, {"$set": rec})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Appuntamento non trovato")
+    d = await agenda_col.find_one({"_id": oid})
+    d["_id"] = str(d["_id"])
+    return {"ok": True, "item": d}
+
+
+@app.delete("/api/agenda/{agenda_id}")
+async def delete_agenda(agenda_id: str, sess: dict = Depends(_require_admin_session)):
+    """Elimina un appuntamento."""
+    res = await agenda_col.delete_one({"_id": _agenda_oid(agenda_id)})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Appuntamento non trovato")
+    return {"ok": True, "deleted": agenda_id}
 
 
 # ═════════════════════════════════════════════════════════════════════════════
