@@ -130,7 +130,7 @@
   .ev-date b { display:block; font-size:15px; color:var(--text); font-family:var(--font-display); }
   .ev-main { min-width:0; }
   .ev-ente { font-weight:700; font-size:13px; }
-  .ev-sub { font-size:11px; color:var(--muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ev-sub { font-size:11px; color:var(--muted); margin-top:3px; line-height:1.45; }
   .badge { display:inline-block; font-size:9px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
     padding:2px 8px; border-radius:10px; margin-left:6px; vertical-align:middle; }
   .b-richiesto { background:var(--yellowL); color:var(--yellow); } .b-programmato { background:var(--retelit-ice); color:var(--accent); }
@@ -163,6 +163,19 @@
   .modal-f { padding:14px 22px; border-top:1px solid var(--border); display:flex; gap:8px; }
   .fld label { display:block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:4px; }
   .f-in, .f-sel, .f-ta { width:100%; } .f-ta { min-height:60px; resize:vertical; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .chip { display:inline-flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:11px; font-weight:600;
+    background:var(--retelit-ice); color:var(--accent); border-radius:14px; padding:3px 6px 3px 10px; }
+  .chip button { border:none; background:none; color:var(--accent); cursor:pointer; font-size:13px; line-height:1; padding:0 2px; }
+  .ev-sub b { color:var(--text2); font-weight:600; }
+  .ac-wrap { position:relative; }
+  .ac-list { position:absolute; left:0; right:0; top:100%; margin-top:2px; z-index:300; background:var(--surface);
+    border:1px solid var(--border2); border-radius:8px; box-shadow:var(--sh-md); max-height:240px; overflow:auto; display:none; }
+  .ac-list.open { display:block; }
+  .ac-item { padding:7px 10px; font-size:12px; cursor:pointer; display:flex; justify-content:space-between; gap:12px; }
+  .ac-item:hover, .ac-item.act { background:var(--retelit-ice); }
+  .ac-item span { color:var(--muted); font-size:11px; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .f-in[readonly] { background:var(--gray-50); color:var(--text2); }
   .err { color:var(--red); font-size:12px; padding:0 22px 10px; display:none; }
   .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--gray-700); color:#fff; font-size:12px;
     padding:9px 16px; border-radius:8px; opacity:0; transition:opacity .25s; pointer-events:none; z-index:200; }
@@ -226,8 +239,12 @@
   <div class="modal">
     <div class="modal-h" id="mTitle">Nuovo appuntamento</div>
     <div class="modal-b">
-      <div class="fld"><label>Pratica</label><input class="f-in" id="mRif" list="dlPrat" autocomplete="off" placeholder="es. AUT/3/1A" oninput="onPratica()" onchange="onPratica()"></div>
-      <div class="fld"><label>Ente * <span id="enteHint" style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--green)"></span></label><input class="f-in" id="mEnte" list="dlEnti" autocomplete="off"></div>
+      <div class="fld full"><label>Pratiche * <span style="text-transform:none;letter-spacing:0;font-weight:500">(puoi aggiungerne più di una)</span></label>
+        <div class="ac-wrap"><input class="f-in" id="mRif" autocomplete="off" placeholder="Scrivi il codice e scegli dai suggerimenti, es. AUT/3/1A" oninput="acShow()" onfocus="acShow()" onkeydown="acKey(event)">
+        <div class="ac-list" id="acList"></div></div>
+        <div class="chips" id="pratChips"></div>
+        <div id="pratMsg" style="font-size:11px;color:var(--red);margin-top:3px;display:none"></div></div>
+      <div class="fld full"><label>Ente (automatico)</label><input class="f-in" id="mEnte" autocomplete="off" readonly></div>
       <div class="fld"><label>Tipo</label>
         <select class="f-sel" id="mTipo"><option value="incontro_istituzionale">Incontro istituzionale</option><option value="tavolo_tecnico">Tavolo tecnico</option>
         <option value="altro">Altro</option></select></div>
@@ -264,7 +281,6 @@
 </div>
 
 <datalist id="dlEnti"></datalist>
-<datalist id="dlPrat"></datalist>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -279,7 +295,11 @@ const ROLE = (localStorage.getItem('_enri_role') || '').toLowerCase();
 const CAN_DELETE = true; // pagina riservata ad admin/admin2
 const TIPI = { incontro_istituzionale:'Incontro istituzionale', tavolo_tecnico:'Tavolo tecnico', altro:'Altro' };
 const STATI = { richiesto:'Richiesto', programmato:'Programmato', svolto:'Svolto', annullato:'Annullato' };
-let items = [], editId = null, delId = null, tab = 'lista', PRAT = {};
+let items = [], editId = null, delId = null, tab = 'lista', PRAT = {}, PRAT_LIST = [], PRAT_OK = false, PRAT_ERR = '', acIdx = -1, selPrat = [];
+const pratOf = it => (it.pratiche && it.pratiche.length) ? it.pratiche : (it.riferimento ? [it.riferimento] : []);
+const entiOf = it => (it.enti && it.enti.length) ? it.enti : (it.ente ? [it.ente] : []);
+const lottoOf = c => { const p = String(c).split('/'); return p.length >= 3 ? p[p.length-1].toUpperCase() : ''; };
+const lottiOf = it => [...new Set(pratOf(it).map(lottoOf).filter(Boolean))].sort();
 let calY = new Date().getFullYear(), calM = new Date().getMonth();
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -316,17 +336,20 @@ async function loadLookups() {
   } catch (_) {}
   try {
     const p = await api('/api/agenda/pratiche');
-    PRAT = {};
-    (p.pratiche || []).forEach(x => { PRAT[x.codice.toUpperCase()] = x.ente; });
-    $('dlPrat').innerHTML = (p.pratiche || []).map(x => '<option value="' + esc(x.codice) + '">' + esc(x.ente) + '</option>').join('');
-  } catch (_) {}
+    PRAT = {}; PRAT_LIST = p.pratiche || [];
+    PRAT_LIST.forEach(x => { PRAT[x.codice.toUpperCase()] = x.ente; });
+    if (!PRAT_LIST.length) throw new Error('nessuna pratica trovata in Master.csv');
+    PRAT_OK = true;
+  } catch (e) {
+    PRAT_OK = false; PRAT_ERR = e.message;
+  }
 }
 
 function sortKey(it) { return (it.data_appuntamento || '') + ' ' + (it.ora || '00:00'); }
 function filtered() {
   const q = $('fSearch').value.trim().toLowerCase(), st = $('fStato').value, en = $('fEnte').value;
-  return items.filter(it => (!st || it.stato === st) && (!en || it.ente === en) &&
-    (!q || [it.ente, it.oggetto, it.riferimento, it.referente, it.luogo, it.note, it.partecipanti].join(' ').toLowerCase().includes(q)));
+  return items.filter(it => (!st || it.stato === st) && (!en || entiOf(it).includes(en)) &&
+    (!q || [entiOf(it).join(' '), pratOf(it).join(' '), lottiOf(it).join(' '), it.oggetto, it.referente, it.luogo, it.note, it.partecipanti].join(' ').toLowerCase().includes(q)));
 }
 
 function renderKpi() {
@@ -340,7 +363,7 @@ function renderKpi() {
   $('kDone').textContent = items.filter(i => i.stato === 'svolto').length;
 }
 function renderEntiFilter() {
-  const cur = $('fEnte').value, enti = [...new Set(items.map(i => i.ente))].sort((a,b) => a.localeCompare(b));
+  const cur = $('fEnte').value, enti = [...new Set(items.flatMap(entiOf))].sort((a,b) => a.localeCompare(b));
   $('fEnte').innerHTML = '<option value="">Tutti gli enti</option>' + enti.map(e => '<option' + (e === cur ? ' selected' : '') + ' value="' + esc(e) + '">' + esc(e) + '</option>').join('');
 }
 
@@ -353,14 +376,17 @@ function evHtml(it) {
   } else {
     dateBlock = '<b>—</b>' + (it.data_richiesta ? 'da ' + dayDiff(it.data_richiesta, TODAY) + ' gg' : '');
   }
-  const sub = [TIPI[it.tipo], it.riferimento, it.oggetto, it.luogo, it.referente && ('Ref. ' + it.referente)].filter(Boolean).map(esc).join(' · ');
+  const sub = [TIPI[it.tipo], it.oggetto, it.luogo, it.referente && ('Ref. ' + it.referente)].filter(Boolean).map(esc).join(' · ');
+  const pr = pratOf(it), lt = lottiOf(it);
+  const sub2 = [pr.length ? '<b>Pratiche</b> ' + pr.map(esc).join(', ') : '', lt.length ? '<b>Lott' + (lt.length > 1 ? 'i' : 'o') + '</b> ' + lt.map(esc).join(', ') : ''].filter(Boolean).join(' · ');
+  const sub3 = it.partecipanti ? '<b>Partecipanti</b> ' + esc(it.partecipanti) : '';
   let act = '';
   if (it.stato === 'richiesto') act = '<button class="btn sm" onclick="event.stopPropagation();quick(\'' + it._id + '\',\'programmato\')">Programma</button>';
   else if (it.stato === 'programmato') act = '<button class="btn sm" onclick="event.stopPropagation();quick(\'' + it._id + '\',\'svolto\')">Segna svolto</button>';
   return '<div class="ev s-' + it.stato + (late ? ' late' : '') + '" onclick="openModal(\'' + it._id + '\')">' +
     '<div class="ev-date">' + dateBlock + '</div>' +
-    '<div class="ev-main"><div class="ev-ente">' + esc(it.ente) + '<span class="badge b-' + it.stato + '">' + STATI[it.stato] + '</span>' +
-    (late ? '<span class="badge b-late">Da chiudere</span>' : '') + '</div><div class="ev-sub">' + (sub || '—') + '</div></div>' +
+    '<div class="ev-main"><div class="ev-ente">' + esc(entiOf(it).join(', ')) + '<span class="badge b-' + it.stato + '">' + STATI[it.stato] + '</span>' +
+    (late ? '<span class="badge b-late">Da chiudere</span>' : '') + '</div><div class="ev-sub">' + (sub || '—') + '</div>' + (sub2 ? '<div class="ev-sub">' + sub2 + '</div>' : '') + (sub3 ? '<div class="ev-sub">' + sub3 + '</div>' : '') + '</div>' +
     '<div class="ev-act">' + act + '</div></div>';
 }
 function section(title, arr) {
@@ -389,8 +415,8 @@ function renderCal() {
     const d = new Date(start); d.setDate(start.getDate() + i); const k = iso(d);
     const evs = f.filter(x => x.data_appuntamento === k).sort((a,b) => (a.ora||'').localeCompare(b.ora||''));
     h += '<div class="cal-day' + (d.getMonth() !== calM ? ' other' : '') + (k === TODAY ? ' today' : '') + '"><div class="cal-num">' + d.getDate() + '</div>' +
-      evs.map(x => '<div class="cal-ev s-' + x.stato + (isLate(x) ? ' late' : '') + '" title="' + esc(x.ente + (x.oggetto ? ' — ' + x.oggetto : '')) +
-        '" onclick="openModal(\'' + x._id + '\')">' + esc((x.ora ? x.ora + ' ' : '') + x.ente) + '</div>').join('') + '</div>';
+      evs.map(x => '<div class="cal-ev s-' + x.stato + (isLate(x) ? ' late' : '') + '" title="' + esc(entiOf(x).join(', ') + (x.oggetto ? ' — ' + x.oggetto : '')) +
+        '" onclick="openModal(\'' + x._id + '\')">' + esc((x.ora ? x.ora + ' ' : '') + entiOf(x).join(', ')) + '</div>').join('') + '</div>';
   }
   $('viewCal').innerHTML = h + '</div>';
 }
@@ -418,28 +444,74 @@ function openModal(id, stato) {
   editId = id || null;
   const it = id ? items.find(x => x._id === id) : null;
   $('mTitle').textContent = it ? 'Modifica appuntamento' : 'Nuovo appuntamento';
-  $('mEnte').value = it?.ente || ''; $('mTipo').value = it?.tipo || 'incontro_istituzionale'; $('mOggetto').value = it?.oggetto || '';
-  $('mRif').value = it?.riferimento || ''; $('mStato').value = stato || it?.stato || 'richiesto';
+  $('mTipo').value = it?.tipo || 'incontro_istituzionale'; $('mOggetto').value = it?.oggetto || '';
+  selPrat = it ? pratOf(it).slice() : []; $('mRif').value = ''; $('mEnte').value = it ? entiOf(it).join(', ') : ''; renderChips(); $('mStato').value = stato || it?.stato || 'richiesto';
   $('mDReq').value = it?.data_richiesta || TODAY; $('mDApp').value = it?.data_appuntamento || ''; $('mOra').value = it?.ora || '';
   $('mLuogo').value = it?.luogo || ''; $('mRef').value = it?.referente || ''; $('mPart').value = it?.partecipanti || '';
   $('mNote').value = it?.note || ''; $('mEsito').value = it?.esito || '';
-  $('enteHint').textContent = ''; $('mErr').style.display = 'none'; $('mDel').style.display = it && CAN_DELETE ? '' : 'none';
+  $('acList').classList.remove('open'); $('pratMsg').style.display = 'none'; if (PRAT_OK) $('mEnte').setAttribute('readonly', ''); $('mErr').style.display = 'none'; $('mDel').style.display = it && CAN_DELETE ? '' : 'none';
   syncStato(); $('ovForm').classList.add('open');
 }
-function onPratica() {
-  const ente = PRAT[$('mRif').value.trim().toUpperCase()];
-  $('enteHint').textContent = '';
-  if (ente) { $('mEnte').value = ente; $('enteHint').textContent = '· da pratica'; }
+function acMatches() {
+  const q = $('mRif').value.trim().toUpperCase();
+  return PRAT_LIST.filter(x => !selPrat.some(c => c.toUpperCase() === x.codice.toUpperCase()) && (!q || x.codice.toUpperCase().includes(q))).slice(0, 40);
 }
+function renderChips() {
+  $('pratChips').innerHTML = selPrat.map((c, i) => '<span class="chip">' + esc(c) + '<button type="button" title="Rimuovi" onclick="removePrat(' + i + ')">×</button></span>').join('');
+  if (PRAT_OK) {
+    const enti = [...new Set(selPrat.map(c => PRAT[c.toUpperCase()]).filter(Boolean))];
+    $('mEnte').value = enti.join(', ');
+  }
+}
+function removePrat(i) { selPrat.splice(i, 1); renderChips(); }
+function acShow() {
+  const box = $('acList'), msg = $('pratMsg');
+  if (!PRAT_OK) {
+    // elenco non disponibile: pratiche e ente inseribili a mano (Invio aggiunge la pratica)
+    $('mEnte').removeAttribute('readonly');
+    msg.textContent = 'Elenco pratiche non disponibile (' + PRAT_ERR + ') — scrivi la pratica e premi Invio, poi inserisci l\'ente a mano.'; msg.style.display = 'block';
+    return;
+  }
+  const m = acMatches(); acIdx = -1;
+  box.innerHTML = m.map((x, i) => '<div class="ac-item" data-i="' + i + '" onmousedown="acPick(' + i + ')">' + esc(x.codice) + '<span>' + esc(x.ente) + '</span></div>').join('');
+  box.classList.toggle('open', m.length > 0);
+}
+function acPick(i) {
+  const x = acMatches()[i]; if (!x) return;
+  selPrat.push(x.codice); $('mRif').value = ''; $('acList').classList.remove('open'); $('pratMsg').style.display = 'none';
+  renderChips(); $('mRif').focus();
+}
+function acKey(e) {
+  const box = $('acList'), items = [...box.querySelectorAll('.ac-item')];
+  if (!PRAT_OK && e.key === 'Enter') {
+    e.preventDefault(); const v = $('mRif').value.trim();
+    if (v && !selPrat.some(c => c.toUpperCase() === v.toUpperCase())) { selPrat.push(v); $('mRif').value = ''; renderChips(); }
+    return;
+  }
+  if (!box.classList.contains('open') || !items.length) return;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault(); acIdx = (acIdx + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items.forEach((el, i) => el.classList.toggle('act', i === acIdx)); items[acIdx].scrollIntoView({ block:'nearest' });
+  } else if (e.key === 'Enter') { e.preventDefault(); acPick(acIdx >= 0 ? acIdx : 0); }
+  else if (e.key === 'Escape') { e.stopPropagation(); box.classList.remove('open'); }
+}
+document.addEventListener('mousedown', e => { if (!e.target.closest('.ac-wrap')) $('acList').classList.remove('open'); });
 function closeModal() { $('ovForm').classList.remove('open'); }
 function quick(id, stato) { openModal(id, stato); }
 
 async function saveItem() {
   const body = {
-    ente: $('mEnte').value, tipo: $('mTipo').value, oggetto: $('mOggetto').value, riferimento: $('mRif').value, stato: $('mStato').value,
+    ente: $('mEnte').value, enti: $('mEnte').value ? $('mEnte').value.split(', ') : [], pratiche: selPrat, tipo: $('mTipo').value, oggetto: $('mOggetto').value, stato: $('mStato').value,
     data_richiesta: $('mDReq').value, data_appuntamento: $('mDApp').value, ora: $('mOra').value, luogo: $('mLuogo').value,
     referente: $('mRef').value, partecipanti: $('mPart').value, note: $('mNote').value, esito: $('mEsito').value
   };
+  if (PRAT_OK) {
+    const enti = [...new Set(selPrat.map(c => PRAT[c.toUpperCase()]).filter(Boolean))];
+    if (!selPrat.length || enti.length < 1 || selPrat.some(c => !PRAT[c.toUpperCase()])) {
+      $('mErr').textContent = 'Aggiungi almeno una pratica scegliendola dai suggerimenti.'; $('mErr').style.display = 'block'; return;
+    }
+    body.enti = enti; body.ente = enti.join(', ');
+  }
   $('mSave').disabled = true;
   try {
     const d = editId ? await api('/api/agenda/' + editId, { method:'PUT', body: JSON.stringify(body) })
