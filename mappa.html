@@ -2361,9 +2361,14 @@ function zoomToFeature(feature) {
     const latlng = bounds ? bounds.getCenter() : targetLayer.getLatLng?.();
     if (latlng) {
       map.setView(latlng, 15, {animate: false});
-      applyHighlight(targetLayer);
-      targetLayer.openPopup();
-      setTimeout(() => { map.getContainer().style.cursor = ''; }, 0);
+      // Attende che il renderer canvas abbia ridisegnato dopo lo zoom, poi apre il popup
+      // PRIMA di evidenziare: openPopup chiude l'eventuale popup precedente, il cui
+      // listener once('popupclose') chiama clearHighlight() e cancellerebbe l'highlight appena applicato.
+      requestAnimationFrame(() => {
+        targetLayer.openPopup();
+        applyHighlight(targetLayer);
+        map.getContainer().style.cursor = '';
+      });
     }
   }
   resultsEl.style.display = 'none';
@@ -2979,6 +2984,7 @@ async function _roLoadCantieri(){
     lottoStats=buildLottoStats(features);
 
     _buildMapLayers(geojson);
+    setTimeout(focusPraticaFromUrl, 400); // deep-link da index/agenda: mappa.html?pratica=AUT/3/1A
 
   } catch(e){
     document.getElementById('loadingOverlay').innerHTML=`
@@ -2986,6 +2992,27 @@ async function _roLoadCantieri(){
       <div style="color:var(--muted);font-size:12px">${e.message}</div>`;
   }
 })();
+
+// ── DEEP-LINK PRATICA (?pratica=AUT/3/1A) ───────────────────────────────────
+// Evidenzia tutte le tratte della pratica, inquadra la mappa e mostra il badge selettore.
+function focusPraticaFromUrl() {
+  const q = (new URLSearchParams(location.search).get('pratica') || '').trim().toUpperCase();
+  if (!q) return;
+  const matched = [];
+  allLayers.forEach(({layer}) => {
+    layer.eachLayer(l => {
+      const codes = (l.feature?.properties?.PRATICA || '').split(/[|;,]/).map(s => s.trim().toUpperCase());
+      if (codes.includes(q)) matched.push(l);
+    });
+  });
+  if (!matched.length) { alert('Pratica ' + q + ': nessuna tratta trovata in mappa.'); return; }
+  applyHighlightMulti(matched);
+  try { map.fitBounds(L.featureGroup(matched).getBounds(), { padding: [70, 70], maxZoom: 16, animate: false }); } catch (_) {}
+  const totale = matched.reduce((s, l) => s + (Number(l.feature?.properties?.LUNGHEZZA) || 0), 0);
+  document.getElementById('selectorPratica').textContent = q + ` · ${matched.length} tratt${matched.length === 1 ? 'a' : 'e'}`;
+  document.getElementById('selectorDist').textContent = _fmtDist(totale);
+  document.getElementById('selectorBadge').classList.add('visible');
+}
 
 // ── MISURATORE DI DISTANZA ──────────────────────────────────────────────────
 let _measureActive = false;
