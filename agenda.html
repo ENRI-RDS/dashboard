@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="it" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="google" content="notranslate">
+<meta http-equiv="Content-Language" content="it">
+<title>ENRI — Agenda Enti</title>
+<script src="js/api-config.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --retelit-blue:#043F75; --retelit-blue-75:#436A93; --retelit-blue-50:#819FB9; --retelit-blue-25:#C0CFDC;
+    --retelit-sky:#41BBD9;  --retelit-teal:#1A7D99;   --retelit-mist:#ADCAD6;   --retelit-ice:#D3DEEA;
+    --gray-50:#F7F8FA; --gray-100:#EEF1F5; --gray-200:#DFE4EB; --gray-300:#C4CDD8;
+    --gray-400:#9AA5B4; --gray-500:#6B7685; --gray-700:#363D48;
+    --font-display:"Raleway","Calibri",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --font-body:"Raleway","Calibri",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --font-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+    --bg:var(--gray-50); --surface:#FFFFFF; --surface2:var(--retelit-ice);
+    --border:var(--gray-200); --border2:var(--gray-300);
+    --accent:var(--retelit-blue); --accent2:var(--retelit-teal);
+    --text:var(--gray-700); --text2:var(--gray-500); --muted:var(--gray-500); --muted2:var(--gray-400);
+    --green:#1E9E6A; --greenL:#EBFAF3;
+    --red:#C0392B;   --redL:#FEECEB;
+    --yellow:#D08A1A; --yellowL:#FEF7E7;
+    --sh-xs:0 1px 2px rgba(4,63,117,.06),0 1px 1px rgba(4,63,117,.04);
+    --sh-sm:0 2px 8px rgba(4,63,117,.08),0 1px 4px rgba(4,63,117,.04);
+    --sh-md:0 4px 12px rgba(4,63,117,.08),0 2px 4px rgba(4,63,117,.04);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:var(--font-body); background:var(--bg); color:var(--text); min-height:100vh; }
+
+  /* ── TOPBAR ── */
+  .topbar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 20px; height:52px; background:var(--surface);
+    border-bottom:1px solid var(--border); box-shadow:var(--sh-xs);
+    position:sticky; top:0; z-index:50;
+  }
+  .topbar-left  { display:flex; align-items:center; gap:12px; flex-shrink:0; }
+  .topbar-right { display:flex; align-items:center; gap:6px; }
+  .logo { font-family:var(--font-display); font-size:13px; font-weight:700; letter-spacing:.14em; color:var(--accent); text-transform:uppercase; }
+  .divider-v { width:1px; height:20px; background:var(--border2); }
+  .page-title { font-size:12px; color:var(--muted); font-weight:500; }
+  .btn-nav {
+    font-size:12px; padding:7px 14px; border-radius:7px;
+    background:var(--surface2); color:var(--text);
+    border:1px solid var(--border); cursor:pointer;
+    font-family:var(--font-body); font-weight:600;
+    text-decoration:none; transition:opacity .2s; white-space:nowrap;
+    display:inline-flex; align-items:center; gap:5px;
+  }
+  .btn-nav:hover { opacity:.75; }
+  .btn-nav.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+
+  /* ── MAIN ── */
+  .main { padding:22px 28px; display:flex; flex-direction:column; gap:20px; max-width:1400px; }
+
+  .page-eyebrow { font-family:var(--font-mono); font-size:9px; font-weight:500; letter-spacing:.2em; text-transform:uppercase; color:var(--accent2); }
+  .page-h1 { font-family:var(--font-display); font-size:22px; font-weight:700; letter-spacing:-.025em; color:var(--text); line-height:1.2; margin-top:2px; }
+  .page-sub { font-size:12px; color:var(--muted); margin-top:3px; line-height:1.5; }
+
+  /* ── KPI ROW ── */
+  .kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  @media(max-width:900px){ .kpi-row{ grid-template-columns:repeat(2,1fr); } }
+  .kpi {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:12px; padding:16px 18px;
+    position:relative; overflow:hidden; box-shadow:var(--sh-xs);
+    animation:fadeUp .4s ease both;
+  }
+  @keyframes fadeUp{ from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+  .kpi:nth-child(1){animation-delay:.05s} .kpi:nth-child(2){animation-delay:.10s}
+  .kpi:nth-child(3){animation-delay:.15s} .kpi:nth-child(4){animation-delay:.20s}
+  .kpi::before { content:''; position:absolute; top:0; left:0; bottom:0; width:3px; border-radius:12px 0 0 12px; }
+  .kpi.k-red::before    { background:var(--red); }
+  .kpi.k-yellow::before { background:var(--yellow); }
+  .kpi.k-green::before  { background:var(--green); }
+  .kpi.k-blue::before   { background:var(--accent); }
+  .kpi-label { font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin-bottom:10px; font-weight:600; }
+  .kpi-value { font-size:30px; font-weight:700; font-family:var(--font-display); line-height:1; letter-spacing:-.02em; }
+  .kpi.k-red    .kpi-value { color:var(--red); }
+  .kpi.k-yellow .kpi-value { color:var(--yellow); }
+  .kpi.k-green  .kpi-value { color:var(--green); }
+  .kpi.k-blue   .kpi-value { color:var(--accent); }
+  .kpi-sub { font-size:11px; color:var(--text2); margin-top:6px; font-weight:500; }
+
+  /* ── LAYOUT 2 COLONNE ── */
+  .two-col { display:grid; grid-template-columns:1fr 340px; gap:16px; align-items:start; }
+  @media(max-width:1100px){ .two-col{ grid-template-columns:1fr; } }
+
+  /* ── CARD ── */
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:var(--sh-xs); }
+  .card-header { display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid var(--border); }
+  .card-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); font-family:var(--font-display); }
+  .card-body  { padding:20px; }
+
+  /* ── AGENDA ── */
+  .toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .toolbar input, .toolbar select, .f-in, .f-sel, .f-ta {
+    font-family:var(--font-body); font-size:12px; color:var(--text);
+    padding:7px 10px; border:1px solid var(--border2); border-radius:7px; background:var(--surface);
+  }
+  .toolbar input { min-width:200px; }
+  .btn { font-family:var(--font-body); font-size:12px; font-weight:600; padding:7px 14px; border-radius:7px;
+    border:1px solid var(--border2); background:var(--surface); color:var(--text); cursor:pointer; }
+  .btn:hover { opacity:.8; }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .btn.danger { color:var(--red); border-color:var(--red); }
+  .btn.sm { font-size:11px; padding:4px 9px; }
+  .spacer { flex:1; }
+  .tabs { display:flex; gap:4px; border-bottom:1px solid var(--border); }
+  .tab { padding:9px 16px; font-size:12px; font-weight:600; color:var(--muted); cursor:pointer; border:none; background:none;
+    border-bottom:2px solid transparent; font-family:var(--font-body); }
+  .tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .sec-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--muted);
+    font-family:var(--font-display); margin:6px 0 8px; display:flex; align-items:center; gap:8px; }
+  .sec-count { font-family:var(--font-mono); font-size:10px; background:var(--gray-100); border-radius:10px; padding:1px 8px; }
+  .ev { display:grid; grid-template-columns:92px 1fr auto; gap:14px; align-items:center; background:var(--surface);
+    border:1px solid var(--border); border-left:4px solid var(--gray-300); border-radius:10px; padding:12px 16px;
+    margin-bottom:8px; cursor:pointer; box-shadow:var(--sh-xs); }
+  .ev:hover { box-shadow:var(--sh-sm); }
+  .ev.s-richiesto { border-left-color:var(--yellow); } .ev.s-programmato { border-left-color:var(--accent); }
+  .ev.s-svolto { border-left-color:var(--green); } .ev.s-annullato { border-left-color:var(--gray-400); opacity:.7; }
+  .ev.late { border-left-color:var(--red); }
+  .ev-date { font-family:var(--font-mono); font-size:11px; line-height:1.4; color:var(--text2); }
+  .ev-date b { display:block; font-size:15px; color:var(--text); font-family:var(--font-display); }
+  .ev-main { min-width:0; }
+  .ev-ente { font-weight:700; font-size:13px; }
+  .ev-sub { font-size:11px; color:var(--muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .badge { display:inline-block; font-size:9px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+    padding:2px 8px; border-radius:10px; margin-left:6px; vertical-align:middle; }
+  .b-richiesto { background:var(--yellowL); color:var(--yellow); } .b-programmato { background:var(--retelit-ice); color:var(--accent); }
+  .b-svolto { background:var(--greenL); color:var(--green); } .b-annullato { background:var(--gray-100); color:var(--gray-500); }
+  .b-late { background:var(--redL); color:var(--red); }
+  .ev-act { display:flex; gap:6px; }
+  .empty { text-align:center; color:var(--muted2); font-size:12px; padding:28px; background:var(--surface);
+    border:1px dashed var(--border2); border-radius:10px; }
+  /* calendario */
+  .cal-head { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .cal-title { font-family:var(--font-display); font-weight:700; font-size:16px; min-width:160px; text-align:center; text-transform:capitalize; }
+  .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; background:var(--border); border:1px solid var(--border);
+    border-radius:10px; overflow:hidden; }
+  .cal-dow { background:var(--gray-100); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--muted); padding:6px; text-align:center; }
+  .cal-day { background:var(--surface); min-height:92px; padding:4px 5px; }
+  .cal-day.other { background:var(--gray-50); } .cal-day.today { box-shadow:inset 0 0 0 2px var(--accent); }
+  .cal-num { font-family:var(--font-mono); font-size:10px; color:var(--muted); }
+  .cal-ev { font-size:10px; padding:2px 5px; border-radius:4px; margin-top:2px; cursor:pointer; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; background:var(--retelit-ice); color:var(--accent); font-weight:600; }
+  .cal-ev.s-svolto { background:var(--greenL); color:var(--green); } .cal-ev.s-annullato { background:var(--gray-100); color:var(--gray-500); text-decoration:line-through; }
+  .cal-ev.late { background:var(--redL); color:var(--red); }
+  /* modal */
+  .overlay { position:fixed; inset:0; background:rgba(4,63,117,.35); display:none; align-items:center; justify-content:center; z-index:100; padding:16px; }
+  .overlay.open { display:flex; }
+  .modal { background:var(--surface); border-radius:14px; width:min(640px,100%); max-height:92vh; overflow:auto; box-shadow:var(--sh-md); }
+  .modal-h { padding:16px 22px; border-bottom:1px solid var(--border); font-family:var(--font-display); font-weight:700; font-size:15px; }
+  .modal-b { padding:18px 22px; display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .modal-b .full { grid-column:1/-1; }
+  .modal-f { padding:14px 22px; border-top:1px solid var(--border); display:flex; gap:8px; }
+  .fld label { display:block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:4px; }
+  .f-in, .f-sel, .f-ta { width:100%; } .f-ta { min-height:60px; resize:vertical; }
+  .err { color:var(--red); font-size:12px; padding:0 22px 10px; display:none; }
+  .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--gray-700); color:#fff; font-size:12px;
+    padding:9px 16px; border-radius:8px; opacity:0; transition:opacity .25s; pointer-events:none; z-index:200; }
+  .toast.show { opacity:1; }
+  @media(max-width:700px){ .ev{ grid-template-columns:1fr; } .modal-b{ grid-template-columns:1fr; } .main{ padding:16px; } }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <span class="logo">PROGETTO · ENRI</span>
+    <div class="divider-v"></div>
+    <span class="page-title">Agenda Enti</span>
+  </div>
+  <div class="topbar-right">
+    <span id="topbarUser" style="font-size:11px;color:var(--muted);font-family:var(--font-mono);"></span>
+    <a href="index.html" class="btn-nav">📋 Progettazione</a>
+    <a href="scavi.html" class="btn-nav">🏗 Scavi</a>
+    <a href="mappa.html" class="btn-nav">🗺 Mappa</a>
+    <a href="hub.html" class="btn-nav primary">← Hub</a>
+  </div>
+</div>
+
+<div class="main">
+  <div>
+    <div class="page-eyebrow">Pianificazione</div>
+    <div class="page-h1">Agenda Enti</div>
+    <div class="page-sub">Appuntamenti richiesti e programmati dagli enti: sopralluoghi, riunioni, collaudi.</div>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi k-yellow"><div class="kpi-label">Da programmare</div><div class="kpi-value" id="kRich">–</div><div class="kpi-sub" id="kRichSub">richieste in attesa</div></div>
+    <div class="kpi k-blue"><div class="kpi-label">Prossimi 7 giorni</div><div class="kpi-value" id="kProx">–</div><div class="kpi-sub">programmati</div></div>
+    <div class="kpi k-red"><div class="kpi-label">Da chiudere</div><div class="kpi-value" id="kLate">–</div><div class="kpi-sub">programmati già passati</div></div>
+    <div class="kpi k-green"><div class="kpi-label">Svolti</div><div class="kpi-value" id="kDone">–</div><div class="kpi-sub">totale</div></div>
+  </div>
+
+  <div class="toolbar">
+    <input id="fSearch" type="search" placeholder="Cerca ente, oggetto, pratica, referente…" oninput="render()">
+    <select id="fStato" onchange="render()">
+      <option value="">Tutti gli stati</option><option value="richiesto">Richiesti</option><option value="programmato">Programmati</option>
+      <option value="svolto">Svolti</option><option value="annullato">Annullati</option>
+    </select>
+    <select id="fEnte" onchange="render()"><option value="">Tutti gli enti</option></select>
+    <div class="spacer"></div>
+    <button class="btn primary" onclick="openModal()">+ Nuovo appuntamento</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" id="tabL" onclick="setTab('lista')">Lista</button>
+    <button class="tab" id="tabC" onclick="setTab('cal')">Calendario</button>
+  </div>
+
+  <div id="viewLista"></div>
+  <div id="viewCal" style="display:none"></div>
+</div>
+
+<!-- MODAL APPUNTAMENTO -->
+<div class="overlay" id="ovForm">
+  <div class="modal">
+    <div class="modal-h" id="mTitle">Nuovo appuntamento</div>
+    <div class="modal-b">
+      <div class="fld"><label>Ente *</label><input class="f-in" id="mEnte" list="dlEnti" autocomplete="off"></div>
+      <div class="fld"><label>Tipo</label>
+        <select class="f-sel" id="mTipo"><option value="sopralluogo">Sopralluogo</option><option value="riunione">Riunione / tavolo tecnico</option>
+        <option value="collaudo">Collaudo</option><option value="consegna_documenti">Consegna documenti</option><option value="altro">Altro</option></select></div>
+      <div class="fld full"><label>Oggetto</label><input class="f-in" id="mOggetto" maxlength="300"></div>
+      <div class="fld"><label>Pratica / Cantiere</label><input class="f-in" id="mRif" list="dlCant" autocomplete="off" placeholder="es. AUT-… oppure CA/2/1A"></div>
+      <div class="fld"><label>Stato</label>
+        <select class="f-sel" id="mStato" onchange="syncStato()"><option value="richiesto">Richiesto</option><option value="programmato">Programmato</option>
+        <option value="svolto">Svolto</option><option value="annullato">Annullato</option></select></div>
+      <div class="fld"><label>Data richiesta</label><input class="f-in" type="date" id="mDReq"></div>
+      <div class="fld"><label id="lblDApp">Data appuntamento</label><input class="f-in" type="date" id="mDApp"></div>
+      <div class="fld"><label>Ora</label><input class="f-in" type="time" id="mOra"></div>
+      <div class="fld"><label>Luogo</label><input class="f-in" id="mLuogo" maxlength="300"></div>
+      <div class="fld"><label>Referente ente</label><input class="f-in" id="mRef" maxlength="200"></div>
+      <div class="fld"><label>Partecipanti (Retelit / impresa)</label><input class="f-in" id="mPart" maxlength="300"></div>
+      <div class="fld full"><label>Note</label><textarea class="f-ta" id="mNote" maxlength="2000"></textarea></div>
+      <div class="fld full"><label>Esito</label><textarea class="f-ta" id="mEsito" maxlength="2000"></textarea></div>
+    </div>
+    <div class="err" id="mErr"></div>
+    <div class="modal-f">
+      <button class="btn primary" id="mSave" onclick="saveItem()">Salva</button>
+      <button class="btn" onclick="closeModal()">Annulla</button>
+      <div class="spacer"></div>
+      <button class="btn danger" id="mDel" style="display:none" onclick="askDelete()">Elimina</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONFERMA ELIMINAZIONE -->
+<div class="overlay" id="ovDel">
+  <div class="modal" style="width:min(400px,100%)">
+    <div class="modal-h">Eliminare l'appuntamento?</div>
+    <div style="padding:16px 22px;font-size:13px">L'operazione non è reversibile.</div>
+    <div class="modal-f"><button class="btn danger" onclick="doDelete()">Elimina</button><button class="btn" onclick="document.getElementById('ovDel').classList.remove('open')">Annulla</button></div>
+  </div>
+</div>
+
+<datalist id="dlEnti"></datalist>
+<datalist id="dlCant"></datalist>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  const r = (localStorage.getItem('_enri_role') || '').toLowerCase();
+  if (!localStorage.getItem('_enri_user') || !['admin', 'admin2'].includes(r)) window.location.replace('hub.html');
+})();
+window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
+
+const API = (window.ENRI && ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+const ROLE = (localStorage.getItem('_enri_role') || '').toLowerCase();
+const CAN_DELETE = true; // pagina riservata ad admin/admin2
+const TIPI = { sopralluogo:'Sopralluogo', riunione:'Riunione', collaudo:'Collaudo', consegna_documenti:'Consegna documenti', altro:'Altro' };
+const STATI = { richiesto:'Richiesto', programmato:'Programmato', svolto:'Svolto', annullato:'Annullato' };
+let items = [], editId = null, delId = null, tab = 'lista';
+let calY = new Date().getFullYear(), calM = new Date().getMonth();
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $ = id => document.getElementById(id);
+const iso = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+const TODAY = iso(new Date());
+const fmt = d => d ? d.split('-').reverse().join('/') : '—';
+const dayDiff = (a, b) => Math.round((new Date(b+'T00:00:00') - new Date(a+'T00:00:00')) / 864e5);
+const isLate = it => it.stato === 'programmato' && it.data_appuntamento && it.data_appuntamento < TODAY;
+
+async function api(path, opts = {}) {
+  const r = await fetch(API + path, { ...opts, headers: { 'Content-Type':'application/json', 'x-session-token': localStorage.getItem('_enri_session') || '' } });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : 'Errore ' + r.status);
+  return d;
+}
+function toast(m) { const t = $('toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200); }
+
+async function load() {
+  $('viewLista').innerHTML = '<div class="empty">Caricamento…</div>';
+  try {
+    items = (await api('/api/agenda')).items || [];
+  } catch (e) {
+    if (/riservata|non consentito/i.test(e.message)) { window.location.replace('hub.html'); return; }
+    $('viewLista').innerHTML = '<div class="empty" style="color:var(--red)">' + esc(e.message) + ' — il server potrebbe essere in avvio, riprova tra qualche secondo.</div>';
+    return;
+  }
+  render();
+}
+async function loadLookups() {
+  try {
+    const e = await api('/api/enti');
+    $('dlEnti').innerHTML = (e.enti || []).map(x => '<option value="' + esc(x) + '">').join('');
+  } catch (_) {}
+  try {
+    const c = await api('/api/cantieri');
+    $('dlCant').innerHTML = (c.cantieri || []).filter(x => x.codice_cantiere).map(x => '<option value="' + esc(x.codice_cantiere) + '">').join('');
+  } catch (_) {}
+}
+
+function sortKey(it) { return (it.data_appuntamento || '') + ' ' + (it.ora || '00:00'); }
+function filtered() {
+  const q = $('fSearch').value.trim().toLowerCase(), st = $('fStato').value, en = $('fEnte').value;
+  return items.filter(it => (!st || it.stato === st) && (!en || it.ente === en) &&
+    (!q || [it.ente, it.oggetto, it.riferimento, it.referente, it.luogo, it.note, it.partecipanti].join(' ').toLowerCase().includes(q)));
+}
+
+function renderKpi() {
+  const rich = items.filter(i => i.stato === 'richiesto');
+  const oldest = rich.map(i => i.data_richiesta).filter(Boolean).sort()[0];
+  $('kRich').textContent = rich.length;
+  $('kRichSub').textContent = oldest ? 'la più vecchia da ' + dayDiff(oldest, TODAY) + ' gg' : 'richieste in attesa';
+  const lim = iso(new Date(Date.now() + 7*864e5));
+  $('kProx').textContent = items.filter(i => i.stato === 'programmato' && i.data_appuntamento >= TODAY && i.data_appuntamento <= lim).length;
+  $('kLate').textContent = items.filter(isLate).length;
+  $('kDone').textContent = items.filter(i => i.stato === 'svolto').length;
+}
+function renderEntiFilter() {
+  const cur = $('fEnte').value, enti = [...new Set(items.map(i => i.ente))].sort((a,b) => a.localeCompare(b));
+  $('fEnte').innerHTML = '<option value="">Tutti gli enti</option>' + enti.map(e => '<option' + (e === cur ? ' selected' : '') + ' value="' + esc(e) + '">' + esc(e) + '</option>').join('');
+}
+
+function evHtml(it) {
+  const late = isLate(it);
+  let dateBlock;
+  if (it.data_appuntamento) {
+    const [y, m, d] = it.data_appuntamento.split('-');
+    dateBlock = '<b>' + d + '/' + m + '</b>' + y + (it.ora ? ' · ' + esc(it.ora) : '');
+  } else {
+    dateBlock = '<b>—</b>' + (it.data_richiesta ? 'da ' + dayDiff(it.data_richiesta, TODAY) + ' gg' : '');
+  }
+  const sub = [TIPI[it.tipo], it.riferimento, it.oggetto, it.luogo, it.referente && ('Ref. ' + it.referente)].filter(Boolean).map(esc).join(' · ');
+  let act = '';
+  if (it.stato === 'richiesto') act = '<button class="btn sm" onclick="event.stopPropagation();quick(\'' + it._id + '\',\'programmato\')">Programma</button>';
+  else if (it.stato === 'programmato') act = '<button class="btn sm" onclick="event.stopPropagation();quick(\'' + it._id + '\',\'svolto\')">Segna svolto</button>';
+  return '<div class="ev s-' + it.stato + (late ? ' late' : '') + '" onclick="openModal(\'' + it._id + '\')">' +
+    '<div class="ev-date">' + dateBlock + '</div>' +
+    '<div class="ev-main"><div class="ev-ente">' + esc(it.ente) + '<span class="badge b-' + it.stato + '">' + STATI[it.stato] + '</span>' +
+    (late ? '<span class="badge b-late">Da chiudere</span>' : '') + '</div><div class="ev-sub">' + (sub || '—') + '</div></div>' +
+    '<div class="ev-act">' + act + '</div></div>';
+}
+function section(title, arr) {
+  if (!arr.length) return '';
+  return '<div class="sec-title">' + title + ' <span class="sec-count">' + arr.length + '</span></div>' + arr.map(evHtml).join('');
+}
+
+function renderLista() {
+  const f = filtered();
+  const rich = f.filter(i => i.stato === 'richiesto').sort((a,b) => (a.data_richiesta||'').localeCompare(b.data_richiesta||''));
+  const prog = f.filter(i => i.stato === 'programmato' && !isLate(i)).sort((a,b) => sortKey(a).localeCompare(sortKey(b)));
+  const late = f.filter(isLate).sort((a,b) => sortKey(a).localeCompare(sortKey(b)));
+  const done = f.filter(i => i.stato === 'svolto' || i.stato === 'annullato').sort((a,b) => sortKey(b).localeCompare(sortKey(a)));
+  const html = section('Da programmare', rich) + section('Programmati', prog) + section('Da chiudere (data passata)', late) + section('Storico', done);
+  $('viewLista').innerHTML = html || '<div class="empty">Nessun appuntamento' + (items.length ? ' con questi filtri' : ' — aggiungi il primo con “Nuovo appuntamento”') + '.</div>';
+}
+
+function renderCal() {
+  const f = filtered().filter(i => i.data_appuntamento && i.stato !== 'richiesto');
+  const first = new Date(calY, calM, 1), start = new Date(calY, calM, 1 - ((first.getDay() + 6) % 7));
+  const name = first.toLocaleDateString('it-IT', { month:'long', year:'numeric' });
+  let h = '<div class="cal-head"><button class="btn sm" onclick="calNav(-1)">‹</button><div class="cal-title">' + name +
+    '</div><button class="btn sm" onclick="calNav(1)">›</button><button class="btn sm" onclick="calNav(0)">Oggi</button></div><div class="cal-grid">';
+  ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'].forEach(d => h += '<div class="cal-dow">' + d + '</div>');
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start); d.setDate(start.getDate() + i); const k = iso(d);
+    const evs = f.filter(x => x.data_appuntamento === k).sort((a,b) => (a.ora||'').localeCompare(b.ora||''));
+    h += '<div class="cal-day' + (d.getMonth() !== calM ? ' other' : '') + (k === TODAY ? ' today' : '') + '"><div class="cal-num">' + d.getDate() + '</div>' +
+      evs.map(x => '<div class="cal-ev s-' + x.stato + (isLate(x) ? ' late' : '') + '" title="' + esc(x.ente + (x.oggetto ? ' — ' + x.oggetto : '')) +
+        '" onclick="openModal(\'' + x._id + '\')">' + esc((x.ora ? x.ora + ' ' : '') + x.ente) + '</div>').join('') + '</div>';
+  }
+  $('viewCal').innerHTML = h + '</div>';
+}
+function calNav(n) {
+  if (n === 0) { calY = new Date().getFullYear(); calM = new Date().getMonth(); }
+  else { calM += n; if (calM < 0) { calM = 11; calY--; } if (calM > 11) { calM = 0; calY++; } }
+  renderCal();
+}
+function setTab(t) {
+  tab = t;
+  $('tabL').classList.toggle('active', t === 'lista'); $('tabC').classList.toggle('active', t === 'cal');
+  $('viewLista').style.display = t === 'lista' ? '' : 'none'; $('viewCal').style.display = t === 'cal' ? '' : 'none';
+  render();
+}
+function render() {
+  renderKpi(); renderEntiFilter();
+  if (tab === 'lista') renderLista(); else renderCal();
+}
+
+// ── Form ──
+function syncStato() {
+  $('lblDApp').textContent = 'Data appuntamento' + (['programmato','svolto'].includes($('mStato').value) ? ' *' : '');
+}
+function openModal(id, stato) {
+  editId = id || null;
+  const it = id ? items.find(x => x._id === id) : null;
+  $('mTitle').textContent = it ? 'Modifica appuntamento' : 'Nuovo appuntamento';
+  $('mEnte').value = it?.ente || ''; $('mTipo').value = it?.tipo || 'sopralluogo'; $('mOggetto').value = it?.oggetto || '';
+  $('mRif').value = it?.riferimento || ''; $('mStato').value = stato || it?.stato || 'richiesto';
+  $('mDReq').value = it?.data_richiesta || TODAY; $('mDApp').value = it?.data_appuntamento || ''; $('mOra').value = it?.ora || '';
+  $('mLuogo').value = it?.luogo || ''; $('mRef').value = it?.referente || ''; $('mPart').value = it?.partecipanti || '';
+  $('mNote').value = it?.note || ''; $('mEsito').value = it?.esito || '';
+  $('mErr').style.display = 'none'; $('mDel').style.display = it && CAN_DELETE ? '' : 'none';
+  syncStato(); $('ovForm').classList.add('open');
+}
+function closeModal() { $('ovForm').classList.remove('open'); }
+function quick(id, stato) { openModal(id, stato); }
+
+async function saveItem() {
+  const body = {
+    ente: $('mEnte').value, tipo: $('mTipo').value, oggetto: $('mOggetto').value, riferimento: $('mRif').value, stato: $('mStato').value,
+    data_richiesta: $('mDReq').value, data_appuntamento: $('mDApp').value, ora: $('mOra').value, luogo: $('mLuogo').value,
+    referente: $('mRef').value, partecipanti: $('mPart').value, note: $('mNote').value, esito: $('mEsito').value
+  };
+  $('mSave').disabled = true;
+  try {
+    const d = editId ? await api('/api/agenda/' + editId, { method:'PUT', body: JSON.stringify(body) })
+                     : await api('/api/agenda', { method:'POST', body: JSON.stringify(body) });
+    const i = items.findIndex(x => x._id === d.item._id);
+    if (i >= 0) items[i] = d.item; else items.push(d.item);
+    closeModal(); render(); toast('Salvato');
+  } catch (e) {
+    $('mErr').textContent = e.message; $('mErr').style.display = 'block';
+  } finally { $('mSave').disabled = false; }
+}
+function askDelete() { delId = editId; $('ovDel').classList.add('open'); }
+async function doDelete() {
+  try {
+    await api('/api/agenda/' + delId, { method:'DELETE' });
+    items = items.filter(x => x._id !== delId);
+    $('ovDel').classList.remove('open'); closeModal(); render(); toast('Eliminato');
+  } catch (e) { $('ovDel').classList.remove('open'); $('mErr').textContent = e.message; $('mErr').style.display = 'block'; }
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); $('ovDel').classList.remove('open'); } });
+
+window.addEventListener('DOMContentLoaded', () => {
+  const u = localStorage.getItem('_enri_user'); if (u) $('topbarUser').textContent = u;
+  load(); loadLookups();
+});
+</script>
+</body>
+</html>
