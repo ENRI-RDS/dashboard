@@ -3217,7 +3217,7 @@ async def set_pol_conv_date(
 # AGENDA ENTI — appuntamenti richiesti e programmati dagli enti
 # ─────────────────────────────────────────────────────────────────────────────
 _AGENDA_STATI = ("richiesto", "programmato", "svolto", "annullato")
-_AGENDA_TIPI = ("sopralluogo", "riunione", "collaudo", "consegna_documenti", "altro")
+_AGENDA_TIPI = ("incontro_istituzionale", "tavolo_tecnico", "altro")
 
 
 def _agenda_clean(p: dict) -> dict:
@@ -3241,7 +3241,7 @@ def _agenda_clean(p: dict) -> dict:
         "tipo": _s("tipo", 40).lower() or "altro",
         "stato": _s("stato", 20).lower() or "richiesto",
         "oggetto": _s("oggetto", 300),
-        "riferimento": _s("riferimento", 200),      # pratica / cantiere / tratta (testo libero)
+        "riferimento": _s("riferimento", 200),      # codice pratica (es. AUT/3/1A); l'ente si deriva da questa
         "data_richiesta": _d("data_richiesta"),
         "data_appuntamento": _d("data_appuntamento"),
         "ora": _s("ora", 5),
@@ -3269,6 +3269,32 @@ def _agenda_oid(agenda_id: str) -> ObjectId:
         return ObjectId(agenda_id)
     except Exception:
         raise HTTPException(400, "ID non valido")
+
+
+@app.get("/api/agenda/pratiche")
+async def agenda_pratiche(sess: dict = Depends(_require_admin_session)):
+    """Elenco codici pratica con relativo ente (da Master.csv), per l'autocompilazione
+    dell'ente nel form agenda. Codice = PREFISSO/PRATICA/LOTTO (stesso formato della mappa)."""
+    df = await _read_master_csv()
+    if df is None or not {"ENTE", "PRATICA", "TIPO_PERMESSO"}.issubset(df.columns):
+        return {"pratiche": []}
+    prefix = {"AUTORIZZAZIONE": "AUT", "NULLA OSTA": "NO", "ORDINANZA": "ORD"}
+    seen, out = set(), []
+    for _, r in df.iterrows():
+        prat = str(r.get("PRATICA", "") or "").strip()
+        ente = str(r.get("ENTE", "") or "").strip()
+        if not prat or not ente:
+            continue
+        tipo = str(r.get("TIPO_PERMESSO", "") or "").strip().upper()
+        pre = prefix.get(tipo, tipo[:3] or "?")
+        lotto = _lotto_from_source(r.get("Source.Name", "")) if "Source.Name" in df.columns else ""
+        codice = f"{pre}/{prat}" + (f"/{lotto}" if lotto else "")
+        if (codice.upper(), ente) in seen:
+            continue
+        seen.add((codice.upper(), ente))
+        out.append({"codice": codice, "ente": ente})
+    out.sort(key=lambda x: x["codice"])
+    return {"pratiche": out}
 
 
 @app.get("/api/agenda")
