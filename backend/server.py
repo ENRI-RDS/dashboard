@@ -3236,12 +3236,32 @@ def _agenda_clean(p: dict) -> dict:
                 raise HTTPException(422, f"{k}: data non valida (atteso AAAA-MM-GG)")
         return v
 
+    def _list(k: str, maxn: int, maxlen: int) -> list:
+        raw = p.get(k) or []
+        if not isinstance(raw, list):
+            raise HTTPException(422, f"{k}: atteso un elenco")
+        out: list = []
+        for v in raw[:maxn]:
+            v = str(v or "").strip()[:maxlen]
+            if v and v.upper() not in {o.upper() for o in out}:
+                out.append(v)
+        return out
+
+    pratiche = _list("pratiche", 30, 60)
+    enti = _list("enti", 30, 200)
+    if not enti and _s("ente", 200):
+        enti = [_s("ente", 200)]
+    lotti = sorted({c.split("/")[-1].upper() for c in pratiche if c.count("/") >= 2 and c.split("/")[-1]})
+
     rec = {
-        "ente": _s("ente", 200),
+        "ente": ", ".join(enti)[:500],
+        "enti": enti,
+        "pratiche": pratiche,
+        "lotti": lotti,
         "tipo": _s("tipo", 40).lower() or "altro",
         "stato": _s("stato", 20).lower() or "richiesto",
         "oggetto": _s("oggetto", 300),
-        "riferimento": _s("riferimento", 200),      # codice pratica (es. AUT/3/1A); l'ente si deriva da questa
+        "riferimento": ", ".join(pratiche)[:500],    # compat: pratiche in testo; fonte di verità = "pratiche"
         "data_richiesta": _d("data_richiesta"),
         "data_appuntamento": _d("data_appuntamento"),
         "ora": _s("ora", 5),
