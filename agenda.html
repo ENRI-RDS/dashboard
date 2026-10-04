@@ -226,12 +226,12 @@
   </div>
 
   <div class="tabs">
-    <button class="tab active" id="tabL" onclick="setTab('lista')">Lista</button>
-    <button class="tab" id="tabC" onclick="setTab('cal')">Calendario</button>
+    <button class="tab" id="tabL" onclick="setTab('lista')">Lista</button>
+    <button class="tab active" id="tabC" onclick="setTab('cal')">Calendario</button>
   </div>
 
-  <div id="viewLista"></div>
-  <div id="viewCal" style="display:none"></div>
+  <div id="viewLista" style="display:none"></div>
+  <div id="viewCal"></div>
 </div>
 
 <!-- MODAL APPUNTAMENTO -->
@@ -295,7 +295,7 @@ const ROLE = (localStorage.getItem('_enri_role') || '').toLowerCase();
 const CAN_DELETE = true; // pagina riservata ad admin/admin2
 const TIPI = { incontro_istituzionale:'Incontro istituzionale', tavolo_tecnico:'Tavolo tecnico', altro:'Altro' };
 const STATI = { richiesto:'Richiesto', programmato:'Programmato', svolto:'Svolto', annullato:'Annullato' };
-let items = [], editId = null, delId = null, tab = 'lista', PRAT = {}, PRAT_LIST = [], PRAT_OK = false, PRAT_ERR = '', acIdx = -1, selPrat = [];
+let items = [], editId = null, delId = null, tab = 'cal', PRAT = {}, PRAT_LIST = [], PRAT_OK = false, PRAT_ERR = '', acIdx = -1, selPrat = [];
 const pratOf = it => (it.pratiche && it.pratiche.length) ? it.pratiche : (it.riferimento ? [it.riferimento] : []);
 const entiOf = it => (it.enti && it.enti.length) ? it.enti : (it.ente ? [it.ente] : []);
 const lottoOf = c => { const p = String(c).split('/'); return p.length >= 3 ? p[p.length-1].toUpperCase() : ''; };
@@ -319,12 +319,12 @@ async function api(path, opts = {}) {
 function toast(m) { const t = $('toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200); }
 
 async function load() {
-  $('viewLista').innerHTML = '<div class="empty">Caricamento…</div>';
+  $('viewLista').innerHTML = $('viewCal').innerHTML = '<div class="empty">Caricamento…</div>';
   try {
     items = (await api('/api/agenda')).items || [];
   } catch (e) {
     if (/riservata|non consentito/i.test(e.message)) { window.location.replace('hub.html'); return; }
-    $('viewLista').innerHTML = '<div class="empty" style="color:var(--red)">' + esc(e.message) + ' — il server potrebbe essere in avvio, riprova tra qualche secondo.</div>';
+    $('viewLista').innerHTML = $('viewCal').innerHTML = '<div class="empty" style="color:var(--red)">' + esc(e.message) + ' — il server potrebbe essere in avvio, riprova tra qualche secondo.</div>';
     return;
   }
   render();
