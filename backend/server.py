@@ -335,6 +335,20 @@ async def _require_milestone_session(
     return sess
 
 
+_AGENDA_ROLES = ("admin", "admin2", "dl")
+
+
+async def _require_agenda_session(
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+) -> dict:
+    """Agenda Enti: ruoli 'admin', 'admin2' e 'dl' (Direzione Lavori). Il ruolo
+    è letto dal token firmato (HMAC/SESSION_SECRET), non falsificabile lato client."""
+    sess = await _require_staff_session(x_session_token)
+    if sess.get("ruolo") not in _AGENDA_ROLES:
+        raise HTTPException(403, "Agenda riservata ad admin e direzione lavori")
+    return sess
+
+
 # File "core" con dati di TUTTI i lotti/imprese. In lettura (/api/data*,
 # /api/preview, /api/files) sono riservati ai ruoli interni: le Aree Impresa
 # usano gli endpoint /api/imprese/* già scoped sui propri lotti. Inoltre NON
@@ -3292,7 +3306,7 @@ def _agenda_oid(agenda_id: str) -> ObjectId:
 
 
 @app.get("/api/agenda/pratiche")
-async def agenda_pratiche(sess: dict = Depends(_require_admin_session)):
+async def agenda_pratiche(sess: dict = Depends(_require_agenda_session)):
     """Elenco codici pratica con relativo ente (da Master.csv), per l'autocompilazione
     dell'ente nel form agenda. Codice = PREFISSO/PRATICA/LOTTO (stesso formato della mappa)."""
     df = await _read_master_csv()
@@ -3318,7 +3332,7 @@ async def agenda_pratiche(sess: dict = Depends(_require_admin_session)):
 
 
 @app.get("/api/agenda")
-async def list_agenda(sess: dict = Depends(_require_admin_session)):
+async def list_agenda(sess: dict = Depends(_require_agenda_session)):
     """Tutti gli appuntamenti con gli enti (ordinamento lato client)."""
     items = []
     async for d in agenda_col.find({}):
@@ -3328,7 +3342,7 @@ async def list_agenda(sess: dict = Depends(_require_admin_session)):
 
 
 @app.post("/api/agenda")
-async def create_agenda(payload: dict, sess: dict = Depends(_require_admin_session)):
+async def create_agenda(payload: dict, sess: dict = Depends(_require_agenda_session)):
     rec = _agenda_clean(payload)
     now = datetime.now(timezone.utc).isoformat()
     if not rec["data_richiesta"]:
@@ -3340,7 +3354,7 @@ async def create_agenda(payload: dict, sess: dict = Depends(_require_admin_sessi
 
 
 @app.put("/api/agenda/{agenda_id}")
-async def update_agenda(agenda_id: str, payload: dict, sess: dict = Depends(_require_admin_session)):
+async def update_agenda(agenda_id: str, payload: dict, sess: dict = Depends(_require_agenda_session)):
     oid = _agenda_oid(agenda_id)
     rec = _agenda_clean(payload)
     rec.update({"updated_by": sess.get("nome", ""),
@@ -3354,7 +3368,7 @@ async def update_agenda(agenda_id: str, payload: dict, sess: dict = Depends(_req
 
 
 @app.delete("/api/agenda/{agenda_id}")
-async def delete_agenda(agenda_id: str, sess: dict = Depends(_require_admin_session)):
+async def delete_agenda(agenda_id: str, sess: dict = Depends(_require_agenda_session)):
     """Elimina un appuntamento."""
     res = await agenda_col.delete_one({"_id": _agenda_oid(agenda_id)})
     if res.deleted_count == 0:
