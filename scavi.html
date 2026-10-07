@@ -1136,14 +1136,29 @@ function _lastUploadLabel(r) {
   if (!r.log_count || !r.updated_at) return 'Nessun caricamento registrato';
   const d = new Date(r.updated_at);
   if (isNaN(d)) return 'Data aggiornamento non valida';
-  const giorni = Math.floor((new Date() - d) / 86400000);
+  const oggi = new Date();
+  const stessoGiorno = d.toDateString() === oggi.toDateString();
+  const giorniLav = _giorniLavorativi(d, oggi);
   const dataStr = fmtD(r.updated_at.slice(0, 10));
-  const ggTxt = giorni <= 0 ? 'oggi' : giorni === 1 ? 'ieri' : `${giorni}gg fa`;
+  const ggTxt = stessoGiorno ? 'oggi' : `${giorniLav}gg lav. fa`;
   return `Ultimo caricamento ${dataStr}, ${ggTxt}`;
+}
+// Giorni LAVORATIVI (lun-ven) trascorsi dall'ultimo caricamento: sabato e domenica non contano
+// come giorni di caricamento, quindi non generano ritardo. Es.: caricamento venerdì, oggi lunedì → 1.
+function _giorniLavorativi(da, a) {
+  const d = new Date(da.getFullYear(), da.getMonth(), da.getDate());
+  const fine = new Date(a.getFullYear(), a.getMonth(), a.getDate());
+  let n = 0;
+  while (d < fine) {
+    d.setDate(d.getDate() + 1);
+    const w = d.getDay();
+    if (w !== 0 && w !== 6) n++;
+  }
+  return n;
 }
 function _logRecencyStatus(r, th) {
   if (!r.log_count || !r.updated_at) return { color: 'var(--muted2)', label: _lastUploadLabel(r) };
-  const giorni = Math.floor((new Date() - new Date(r.updated_at)) / 86400000);
+  const giorni = _giorniLavorativi(new Date(r.updated_at), new Date());
   const base = _lastUploadLabel(r);
   if (giorni <= th.verdeMax)  return { color: 'var(--ok)',   label: `In linea — ${base}` };
   if (giorni <= th.gialloMax) return { color: 'var(--warn)', label: base };
