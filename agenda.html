@@ -198,10 +198,12 @@
   .cal-num { font-size:11px; color:var(--muted); font-weight:500; padding-left:3px; }
   .cal-day.sel .cal-num { color:var(--accent); font-weight:700; }
   .cal-grid.week .cal-day { min-height:300px; }
-  .cal-ev { display:flex; align-items:center; gap:5px; font-size:9.5px; padding:3px 6px; border-radius:10px; margin-top:5px; cursor:pointer;
+  .cal-ev { display:flex; align-items:flex-start; gap:5px; font-size:10.5px; line-height:1.3; padding:4px 7px; border-radius:8px; margin-top:5px; cursor:pointer;
     background:rgba(22,112,217,.12); color:var(--text); font-weight:500; min-width:0; }
-  .cal-ev span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .cal-grid.week .cal-ev span { white-space:normal; }
+  .cal-ev span { overflow:hidden; white-space:normal; word-break:break-word; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; }
+  .cal-ev span b { font-weight:700; margin-right:2px; }
+  .cal-ev .dot { margin-top:3px; }
+  .cal-grid.week .cal-ev span { -webkit-line-clamp:6; }
   .cal-ev .dot, .lg i { width:9px; height:9px; border-radius:50%; flex-shrink:0; background:var(--blue-b); display:inline-block; }
   .cal-ev.s-richiesto { background:rgba(208,138,26,.14); } .cal-ev.s-richiesto .dot { background:var(--yellow); }
   .cal-ev.s-svolto { background:rgba(30,158,106,.12); } .cal-ev.s-svolto .dot { background:var(--green); }
@@ -446,7 +448,7 @@ const parseD = k => new Date(k + 'T00:00:00');
 const fmtLong = k => { const d = parseD(k); return DOW[d.getDay()] + ' ' + d.getDate() + ' ' + MON[d.getMonth()] + ' ' + d.getFullYear(); };
 const KEEP_LOW = ['di','del','della','dei','delle','degli','dello','da','in','e','al','alla','con','per','su','tra','fra','la','il','le','lo'];
 const titleCase = s => String(s || '').split(' ').map((w, i) => {
-  if (w.length > 1 && w.length <= 3 && w === w.toUpperCase() && !KEEP_LOW.includes(w.toLowerCase())) return w;
+  if (w.length > 1 && w.length <= 3 && w === w.toUpperCase() && !KEEP_LOW.includes(w.toLowerCase()) && w.toLowerCase() !== 'san') return w;
   const l = w.toLowerCase();
   return (i > 0 && KEEP_LOW.includes(l)) ? l : l.charAt(0).toUpperCase() + l.slice(1);
 }).join(' ');
@@ -558,7 +560,7 @@ const monday = d => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDat
 function chip(x) {
   const t = entiOf(x).join(', ') + (x.oggetto ? ' — ' + x.oggetto : '');
   return '<div class="cal-ev ' + stCls(x) + '" title="' + esc(t) + '" onclick="event.stopPropagation();openModal(\'' + x._id + '\')"><i class="dot"></i><span>' +
-    esc((x.ora ? x.ora + ' ' : '') + titleCase(entiOf(x).join(', '))) + '</span></div>';
+    (x.ora ? '<b>' + esc(x.ora) + '</b> ' : '') + esc(titleCase(entiOf(x).join(', '))) + '</span></div>';
 }
 function renderCal() {
   const f = filtered().filter(i => i.data_appuntamento && i.stato !== 'richiesto');
