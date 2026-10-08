@@ -3297,6 +3297,8 @@ def _agenda_clean(p: dict) -> dict:
         raise HTTPException(422, "Ora non valida (atteso HH:MM)")
     if rec["stato"] in ("programmato", "svolto") and not rec["data_appuntamento"]:
         raise HTTPException(422, "Data appuntamento obbligatoria per appuntamenti programmati/svolti")
+    if rec["stato"] == "svolto" and not rec["esito"]:
+        raise HTTPException(422, "Esito obbligatorio per appuntamenti svolti")
     return rec
 
 
@@ -3525,6 +3527,105 @@ async def agenda_export_xlsx(sess: dict = Depends(_require_agenda_session)):
     return Response(
         content=buf.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── Export calendario (.ics) per Outlook/Google ───────────────────────────────
+def _ics_esc(t: str) -> str:
+    return (str(t or "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
+            .replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\\n"))
+
+
+def _ics_fold(line: str) -> str:
+    """RFC 5545: righe max 75 ottetti, continuazione con spazio iniziale (senza spezzare i caratteri UTF-8)."""
+    out, cur, curb = [], "", 0
+    for ch in line:
+        b = len(ch.encode("utf-8"))
+        if curb + b > 75:
+            out.append(cur)
+            cur, curb = " " + ch, 1 + b
+        else:
+            cur += ch
+            curb += b
+    out.append(cur)
+    return "\r\n".join(out)
+
+
+_ICS_TZ = (
+    "BEGIN:VTIMEZONE\r\nTZID:Europe/Rome\r\n"
+    "BEGIN:DAYLIGHT\r\nTZOFFSETFROM:+0100\r\nTZOFFSETTO:+0200\r\nTZNAME:CEST\r\nDTSTART:19700329T020000\r\n"
+    "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU\r\nEND:DAYLIGHT\r\n"
+    "BEGIN:STANDARD\r\nTZOFFSETFROM:+0200\r\nTZOFFSETTO:+0100\r\nTZNAME:CET\r\nDTSTART:19701025T030000\r\n"
+    "RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\n"
+)
+
+
+@app.get("/api/agenda/export.ics")
+async def agenda_export_ics(
+    agenda_id: str | None = Query(None, alias="id"),
+    sess: dict = Depends(_require_agenda_session),
+):
+    """Calendario iCalendar. Senza `id`: tutti gli appuntamenti programmati da oggi in poi.
+    Con `id`: solo quell'appuntamento (se ha una data). UID stabile = reimportando
+    il file i client aggiornano gli eventi invece di duplicarli (quando lo supportano)."""
+    from datetime import timedelta
+    today = datetime.now().strftime("%Y-%m-%d")
+    if agenda_id:
+        d = await agenda_col.find_one({"_id": _agenda_oid(agenda_id)})
+        if not d:
+            raise HTTPException(404, "Appuntamento non trovato")
+        if not d.get("data_appuntamento"):
+            raise HTTPException(422, "L'appuntamento non ha ancora una data")
+        docs = [d]
+    else:
+        docs = [d async for d in agenda_col.find({"stato": "programmato", "data_appuntamento": {"$gte": today}})]
+    docs.sort(key=lambda d: (d.get("data_appuntamento") or "", d.get("ora") or ""))
+
+    tipi = {"incontro_istituzionale": "Incontro istituzionale", "tavolo_tecnico": "Tavolo tecnico", "altro": "Altro"}
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//ENRI//Agenda Enti//IT", "CALSCALE:GREGORIAN",
+             "X-WR-CALNAME:Agenda Enti ENRI", "X-WR-TIMEZONE:Europe/Rome"]
+    out = "\r\n".join(_ics_fold(x) for x in lines) + "\r\n" + _ICS_TZ
+    for d in docs:
+        try:
+            day = datetime.strptime(d["data_appuntamento"], "%Y-%m-%d")
+        except (KeyError, ValueError):
+            continue
+        enti = d.get("enti") or ([d["ente"]] if d.get("ente") else [])
+        prat = d.get("pratiche") or ([d["riferimento"]] if d.get("riferimento") else [])
+        summary = f'{tipi.get(d.get("tipo"), "Appuntamento")} — {", ".join(enti)}'.strip(" —")
+        desc = [f"Stato: {(d.get('stato') or '').capitalize()}"]
+        for lab, key in (("Oggetto", "oggetto"), ("Referente ente", "referente"), ("Partecipanti", "partecipanti"),
+                         ("Note", "note"), ("Esito", "esito")):
+            if d.get(key):
+                desc.append(f"{lab}: {d[key]}")
+        if prat:
+            desc.insert(1, "Pratiche: " + ", ".join(prat))
+        ev = ["BEGIN:VEVENT", f"UID:{d['_id']}@enri-agenda", f"DTSTAMP:{stamp}"]
+        ora = d.get("ora") or ""
+        if re.match(r"^([01]\d|2[0-3]):[0-5]\d$", ora):
+            st = datetime.strptime(f'{d["data_appuntamento"]} {ora}', "%Y-%m-%d %H:%M")
+            ev += [f'DTSTART;TZID=Europe/Rome:{st.strftime("%Y%m%dT%H%M%S")}',
+                   f'DTEND;TZID=Europe/Rome:{(st + timedelta(hours=1)).strftime("%Y%m%dT%H%M%S")}']
+        else:
+            ev += [f'DTSTART;VALUE=DATE:{day.strftime("%Y%m%d")}',
+                   f'DTEND;VALUE=DATE:{(day + timedelta(days=1)).strftime("%Y%m%d")}']
+        try:
+            seq = int(datetime.fromisoformat(d.get("updated_at") or d.get("created_at")).timestamp())
+        except (TypeError, ValueError):
+            seq = 0
+        ev += [f"SEQUENCE:{seq}", f"SUMMARY:{_ics_esc(summary)}"]
+        if d.get("luogo"):
+            ev.append(f'LOCATION:{_ics_esc(d["luogo"])}')
+        ev += [f'DESCRIPTION:{_ics_esc(chr(10).join(desc))}',
+               "STATUS:" + ("CANCELLED" if d.get("stato") == "annullato" else "CONFIRMED"), "END:VEVENT"]
+        out += "\r\n".join(_ics_fold(x) for x in ev) + "\r\n"
+    out += "END:VCALENDAR\r\n"
+    filename = f"agenda_enti_{today}.ics" if not agenda_id else f"appuntamento_{today}.ics"
+    return Response(
+        content=out.encode("utf-8"),
+        media_type="text/calendar; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
