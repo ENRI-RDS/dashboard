@@ -3563,23 +3563,19 @@ _ICS_TZ = (
 
 @app.get("/api/agenda/export.ics")
 async def agenda_export_ics(
-    agenda_id: str | None = Query(None, alias="id"),
+    agenda_id: str = Query(..., alias="id"),
     sess: dict = Depends(_require_agenda_session),
 ):
-    """Calendario iCalendar. Senza `id`: tutti gli appuntamenti programmati da oggi in poi.
-    Con `id`: solo quell'appuntamento (se ha una data). UID stabile = reimportando
+    """Calendario iCalendar del singolo appuntamento `id` (se ha una data). UID stabile = reimportando
     il file i client aggiornano gli eventi invece di duplicarli (quando lo supportano)."""
     from datetime import timedelta
     today = datetime.now().strftime("%Y-%m-%d")
-    if agenda_id:
-        d = await agenda_col.find_one({"_id": _agenda_oid(agenda_id)})
-        if not d:
-            raise HTTPException(404, "Appuntamento non trovato")
-        if not d.get("data_appuntamento"):
-            raise HTTPException(422, "L'appuntamento non ha ancora una data")
-        docs = [d]
-    else:
-        docs = [d async for d in agenda_col.find({"stato": "programmato", "data_appuntamento": {"$gte": today}})]
+    d = await agenda_col.find_one({"_id": _agenda_oid(agenda_id)})
+    if not d:
+        raise HTTPException(404, "Appuntamento non trovato")
+    if not d.get("data_appuntamento"):
+        raise HTTPException(422, "L'appuntamento non ha ancora una data")
+    docs = [d]
     docs.sort(key=lambda d: (d.get("data_appuntamento") or "", d.get("ora") or ""))
 
     tipi = {"incontro_istituzionale": "Incontro istituzionale", "tavolo_tecnico": "Tavolo tecnico", "altro": "Altro"}
