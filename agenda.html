@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="it" translate="n">
+<html lang="it" translate="no">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -296,6 +296,7 @@
     <select id="fEnte" onchange="render()"><option value="">Tutti gli enti</option></select>
     <div class="spacer"></div>
     <button class="btn" id="btnExport" onclick="exportXlsx()" title="Scarica tutti gli appuntamenti in Excel"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>Esporta Excel</button>
+    <button class="btn" id="btnIcs" onclick="exportIcs()" title="Appuntamenti programmati da oggi, da importare in Outlook / Google Calendar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>Calendario (.ics)</button>
     <button class="btn primary" onclick="openModal()">+ Nuovo appuntamento</button>
   </div>
 
@@ -379,8 +380,9 @@
       <div class="fld"><label>Referente ente</label><input class="f-in" id="mRef" maxlength="200"></div>
       <div class="fld"><label>Partecipanti (Retelit / impresa)</label><input class="f-in" id="mPart" maxlength="300"></div>
       <div class="fld full"><label>Note</label><textarea class="f-ta" id="mNote" maxlength="2000"></textarea></div>
-      <div class="fld full"><label>Esito</label><textarea class="f-ta" id="mEsito" maxlength="2000"></textarea></div>
+      <div class="fld full"><label id="lblEsito">Esito</label><textarea class="f-ta" id="mEsito" maxlength="2000"></textarea></div>
     </div>
+    <div id="mMeta" style="padding:0 22px 10px;font-size:11px;color:var(--muted);line-height:1.6;display:none"></div>
     <div class="err" id="mErr"></div>
     <div class="modal-f">
       <button class="btn primary" id="mSave" onclick="saveItem()">Salva</button>
@@ -397,6 +399,17 @@
     <div class="modal-h">Eliminare l'appuntamento?</div>
     <div style="padding:16px 22px;font-size:13px">L'operazione non è reversibile.</div>
     <div class="modal-f"><button class="btn danger" onclick="doDelete()">Elimina</button><button class="btn" onclick="document.getElementById('ovDel').classList.remove('open')">Annulla</button></div>
+  </div>
+</div>
+
+<!-- MODAL ANNULLA APPUNTAMENTO -->
+<div class="overlay" id="ovCancel">
+  <div class="modal" style="width:min(440px,100%)">
+    <div class="modal-h">Annullare l'appuntamento?</div>
+    <div style="padding:16px 22px 6px;font-size:13px" id="cancInfo"></div>
+    <div style="padding:6px 22px 14px"><div class="fld"><label>Motivo (facoltativo)</label><textarea class="f-ta" id="cancMotivo" maxlength="300" placeholder="Es. annullato dall'ente, da riprogrammare"></textarea></div></div>
+    <div class="err" id="cancErr"></div>
+    <div class="modal-f"><button class="btn danger" id="cancOk" onclick="doCancel()">Annulla appuntamento</button><button class="btn" onclick="$('ovCancel').classList.remove('open')">Indietro</button></div>
   </div>
 </div>
 
@@ -567,6 +580,8 @@ function evMenu(e, id) {
   let h = '<button onclick="closeMenu();openModal(\'' + id + '\')">Modifica</button>';
   if (it.stato === 'richiesto') h += '<button onclick="closeMenu();quick(\'' + id + '\',\'programmato\')">Programma</button>';
   else if (it.stato === 'programmato') h += '<button onclick="closeMenu();quick(\'' + id + '\',\'svolto\')">Segna svolto</button>';
+  if (it.data_appuntamento) h += '<button onclick="closeMenu();exportIcs(\'' + id + '\')">Aggiungi al calendario</button>';
+  if (it.stato === 'richiesto' || it.stato === 'programmato') h += '<button onclick="closeMenu();askCancel(\'' + id + '\')">Annulla appuntamento</button>';
   if (IS_ADMIN) h += '<button style="color:var(--red)" onclick="closeMenu();editId=\'' + id + '\';askDelete()">Elimina</button>';
   else if (it.eliminazione_richiesta) h += '<button disabled style="opacity:.55;cursor:default">Eliminazione richiesta</button>';
   else h += '<button style="color:var(--red)" onclick="closeMenu();askReq(\'' + id + '\')">Richiedi eliminazione</button>';
@@ -681,6 +696,7 @@ function render() { renderKpi(); renderEntiFilter(); renderLista(); renderCal();
 // ── Form ──
 function syncStato() {
   $('lblDApp').textContent = 'Data appuntamento' + (['programmato','svolto'].includes($('mStato').value) ? ' *' : '');
+  $('lblEsito').textContent = 'Esito' + ($('mStato').value === 'svolto' ? ' *' : '');
 }
 function openModal(id, stato) {
   editId = id || null;
@@ -696,6 +712,13 @@ function openModal(id, stato) {
     dl.textContent = CAN_DELETE ? 'Elimina' : (it.eliminazione_richiesta ? 'Eliminazione richiesta' : 'Richiedi eliminazione');
     dl.disabled = !CAN_DELETE && !!it.eliminazione_richiesta;
   }
+  const mm = $('mMeta');
+  if (it && (it.created_by || it.updated_by)) {
+    const f = v => v ? new Date(v).toLocaleDateString('it-IT') : '';
+    mm.innerHTML = (it.created_by ? 'Creato da <b>' + esc(it.created_by) + '</b>' + (it.created_at ? ' il ' + f(it.created_at) : '') : '') +
+      (it.updated_by ? '<br>Ultima modifica di <b>' + esc(it.updated_by) + '</b>' + (it.updated_at ? ' il ' + f(it.updated_at) : '') : '');
+    mm.style.display = 'block';
+  } else mm.style.display = 'none';
   syncStato(); $('ovForm').classList.add('open');
 }
 function acMatches() {
@@ -751,6 +774,9 @@ async function saveItem() {
     data_richiesta: $('mDReq').value, data_appuntamento: $('mDApp').value, ora: $('mOra').value, luogo: $('mLuogo').value,
     referente: $('mRef').value, partecipanti: $('mPart').value, note: $('mNote').value, esito: $('mEsito').value
   };
+  if (body.stato === 'svolto' && !body.esito.trim()) {
+    $('mErr').textContent = 'Scrivi l\'esito prima di segnare l\'appuntamento come svolto.'; $('mErr').style.display = 'block'; $('mEsito').focus(); return;
+  }
   if (PRAT_OK) {
     const enti = [...new Set(selPrat.map(c => PRAT[c.toUpperCase()]).filter(Boolean))];
     if (!selPrat.length || enti.length < 1 || selPrat.some(c => !PRAT[c.toUpperCase()])) {
@@ -837,6 +863,41 @@ async function confirmAct() {
   finally { $('actOk').disabled = false; }
 }
 
+// ── Annulla rapido ──
+let cancId = null;
+function askCancel(id) {
+  const it = items.find(x => x._id === id); if (!it) return;
+  cancId = id; $('cancMotivo').value = ''; $('cancErr').style.display = 'none';
+  $('cancInfo').innerHTML = 'Lo stato passa a <b>Annullato</b>; l\'appuntamento resta in agenda e nell\'export.<div class="dr-meta"><b>' + itemLabel(it) + '</b></div>';
+  $('ovCancel').classList.add('open');
+}
+async function doCancel() {
+  const it = items.find(x => x._id === cancId); if (!it) return;
+  const motivo = $('cancMotivo').value.trim();
+  const body = { ente: it.ente, enti: entiOf(it), pratiche: pratOf(it), tipo: it.tipo, oggetto: it.oggetto, stato: 'annullato',
+    data_richiesta: it.data_richiesta, data_appuntamento: it.data_appuntamento, ora: it.ora, luogo: it.luogo, referente: it.referente,
+    partecipanti: it.partecipanti, note: it.note, esito: [it.esito, motivo && ('Annullato: ' + motivo)].filter(Boolean).join('\n') };
+  $('cancOk').disabled = true;
+  try {
+    const d = await api('/api/agenda/' + cancId, { method:'PUT', body: JSON.stringify(body) });
+    const i = items.findIndex(x => x._id === cancId); if (i >= 0) items[i] = { ...d.item, eliminazione_richiesta: items[i].eliminazione_richiesta };
+    $('ovCancel').classList.remove('open'); render(); toast('Appuntamento annullato');
+  } catch (e) { $('cancErr').textContent = e.message; $('cancErr').style.display = 'block'; }
+  finally { $('cancOk').disabled = false; }
+}
+
+// ── Export calendario (.ics) ──
+async function exportIcs(id) {
+  const b = $('btnIcs'); b.disabled = true;
+  try {
+    const r = await fetch(API + '/api/agenda/export.ics' + (id ? '?id=' + encodeURIComponent(id) : ''), { headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(typeof d.detail === 'string' ? d.detail : 'Errore ' + r.status); }
+    const url = URL.createObjectURL(await r.blob()), a = document.createElement('a');
+    a.href = url; a.download = (id ? 'appuntamento_' : 'agenda_enti_') + TODAY + '.ics'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  } catch (e) { toast('Export non riuscito: ' + e.message); }
+  finally { b.disabled = false; }
+}
+
 // ── Export Excel ──
 async function exportXlsx() {
   const b = $('btnExport'); b.disabled = true;
@@ -849,7 +910,7 @@ async function exportXlsx() {
   finally { b.disabled = false; }
 }
 
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('ovReq').classList.remove('open'); $('ovAct').classList.remove('open'); closeModal(); $('ovDel').classList.remove('open'); $('ovLeg').classList.remove('open'); closeMenu(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('ovCancel').classList.remove('open'); $('ovReq').classList.remove('open'); $('ovAct').classList.remove('open'); closeModal(); $('ovDel').classList.remove('open'); $('ovLeg').classList.remove('open'); closeMenu(); } });
 
 window.addEventListener('DOMContentLoaded', () => {
   const u = localStorage.getItem('_enri_user'); if (u) $('topbarUser').textContent = u;
