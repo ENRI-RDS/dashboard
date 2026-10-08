@@ -97,6 +97,7 @@ _cantieri_sync_lock = asyncio.Lock()
 cantieri_col  = db["cantieri"]                  # stato cantiere per pratica di autorizzazione
 sopralluoghi_col = db["sopralluoghi"]          # verbali di sopralluogo
 agenda_col = db["agenda"]                      # appuntamenti richiesti/programmati dagli enti
+agenda_delreq_col = db["agenda_richieste_eliminazione"]  # richieste di eliminazione appuntamento (da approvare)
 pol_conv_dates_col = db["pol_conv_dates"]      # prima data in cui CONVENZIONE/POLIZZA è comparsa per una pratica
 access_logs_col = db["access_logs"]            # log accessi (ex-JSONBin) — un documento per binId, {utenti:[...], accessi:[...]}
 gantt_overrides_col = db["gantt_overrides"]    # override manuali riga Gantt (pct/date/label) per lotto, indip. da invii impresa
@@ -821,6 +822,7 @@ async def _on_startup():
         await cantieri_col.create_index("lotto")
         await sopralluoghi_col.create_index("codice_verbale")
         await agenda_col.create_index([("stato", 1), ("data_appuntamento", 1)])
+        await agenda_delreq_col.create_index([("stato", 1), ("agenda_id", 1)])
         await gantt_rates_col.create_index("scope", unique=True)
         print("[enri-dashboard] Indici MongoDB verificati/creati")
     except Exception as e:
@@ -3334,9 +3336,14 @@ async def agenda_pratiche(sess: dict = Depends(_require_agenda_session)):
 @app.get("/api/agenda")
 async def list_agenda(sess: dict = Depends(_require_agenda_session)):
     """Tutti gli appuntamenti con gli enti (ordinamento lato client)."""
+    pend = {}
+    async for r in agenda_delreq_col.find({"stato": "pending"}):
+        pend[r["agenda_id"]] = {"richiesto_da": r.get("richiesto_da", ""), "richiesto_il": r.get("richiesto_il", "")}
     items = []
     async for d in agenda_col.find({}):
         d["_id"] = str(d["_id"])
+        if d["_id"] in pend:
+            d["eliminazione_richiesta"] = pend[d["_id"]]
         items.append(d)
     return {"items": items}
 
@@ -3368,12 +3375,158 @@ async def update_agenda(agenda_id: str, payload: dict, sess: dict = Depends(_req
 
 
 @app.delete("/api/agenda/{agenda_id}")
-async def delete_agenda(agenda_id: str, sess: dict = Depends(_require_agenda_session)):
-    """Elimina un appuntamento."""
+async def delete_agenda(agenda_id: str, sess: dict = Depends(_require_admin_session)):
+    """Elimina un appuntamento — solo admin/admin2. Gli altri ruoli (es. field)
+    possono solo inviare una richiesta di eliminazione (vedi sotto)."""
     res = await agenda_col.delete_one({"_id": _agenda_oid(agenda_id)})
     if res.deleted_count == 0:
         raise HTTPException(404, "Appuntamento non trovato")
+    await _agenda_close_delreqs(agenda_id, "approved", sess, "eliminato direttamente da admin")
     return {"ok": True, "deleted": agenda_id}
+
+
+async def _agenda_close_delreqs(agenda_id: str, stato: str, sess: dict, nota: str = "") -> None:
+    """Chiude le richieste di eliminazione ancora pendenti per un appuntamento."""
+    await agenda_delreq_col.update_many(
+        {"agenda_id": agenda_id, "stato": "pending"},
+        {"$set": {"stato": stato, "gestita_da": sess.get("nome", ""), "gestita_il": _now_iso(), "nota_admin": nota[:500]}},
+    )
+
+
+# ── Richieste di eliminazione: chi non è admin non cancella, chiede ───────────
+@app.post("/api/agenda/{agenda_id}/richiesta-eliminazione")
+async def agenda_request_delete(agenda_id: str, payload: dict, sess: dict = Depends(_require_agenda_session)):
+    motivo = str((payload or {}).get("motivo", "") or "").strip()[:500]
+    if len(motivo) < 3:
+        raise HTTPException(422, "Indica il motivo della richiesta")
+    d = await agenda_col.find_one({"_id": _agenda_oid(agenda_id)})
+    if not d:
+        raise HTTPException(404, "Appuntamento non trovato")
+    if await agenda_delreq_col.find_one({"agenda_id": agenda_id, "stato": "pending"}):
+        raise HTTPException(409, "Esiste già una richiesta di eliminazione in attesa per questo appuntamento")
+    rec = {
+        "agenda_id": agenda_id,
+        "snapshot": {k: d.get(k) for k in ("enti", "ente", "pratiche", "tipo", "oggetto", "stato", "data_appuntamento", "ora", "luogo")},
+        "motivo": motivo,
+        "stato": "pending",
+        "richiesto_da": sess.get("nome", ""),
+        "ruolo": sess.get("ruolo", ""),
+        "richiesto_il": _now_iso(),
+    }
+    res = await agenda_delreq_col.insert_one(rec)
+    return {"ok": True, "id": str(res.inserted_id)}
+
+
+@app.get("/api/agenda/richieste-eliminazione")
+async def agenda_list_delreqs(stato: str = "pending", sess: dict = Depends(_require_admin_session)):
+    q = {} if stato == "all" else {"stato": "pending"}
+    out = []
+    async for r in agenda_delreq_col.find(q).sort("richiesto_il", -1):
+        r["_id"] = str(r["_id"])
+        out.append(r)
+    return {"items": out}
+
+
+@app.post("/api/agenda/richieste-eliminazione/{req_id}/approve")
+async def agenda_approve_delreq(req_id: str, sess: dict = Depends(_require_admin_session)):
+    r = await agenda_delreq_col.find_one({"_id": _agenda_oid(req_id)})
+    if not r:
+        raise HTTPException(404, "Richiesta non trovata")
+    if r.get("stato") != "pending":
+        raise HTTPException(409, "Richiesta già gestita")
+    await agenda_col.delete_one({"_id": _agenda_oid(r["agenda_id"])})
+    await _agenda_close_delreqs(r["agenda_id"], "approved", sess)
+    return {"ok": True, "deleted": r["agenda_id"]}
+
+
+@app.post("/api/agenda/richieste-eliminazione/{req_id}/reject")
+async def agenda_reject_delreq(req_id: str, payload: dict | None = None, sess: dict = Depends(_require_admin_session)):
+    r = await agenda_delreq_col.find_one({"_id": _agenda_oid(req_id)})
+    if not r:
+        raise HTTPException(404, "Richiesta non trovata")
+    if r.get("stato") != "pending":
+        raise HTTPException(409, "Richiesta già gestita")
+    await _agenda_close_delreqs(r["agenda_id"], "rejected", sess, str((payload or {}).get("nota", "") or "").strip())
+    return {"ok": True}
+
+
+# ── Export Excel di tutti gli appuntamenti ────────────────────────────────────
+@app.get("/api/agenda/export.xlsx")
+async def agenda_export_xlsx(sess: dict = Depends(_require_agenda_session)):
+    import openpyxl
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.table import Table, TableStyleInfo
+
+    pend = {r["agenda_id"] async for r in agenda_delreq_col.find({"stato": "pending"})}
+    docs = [d async for d in agenda_col.find({})]
+    # per data appuntamento crescente; senza data (richieste) in fondo per data richiesta
+    docs.sort(key=lambda d: (d.get("data_appuntamento") or "9999-12-31", d.get("ora") or "", d.get("data_richiesta") or ""))
+
+    def _date(v):
+        try:
+            return datetime.strptime(v, "%Y-%m-%d") if v else None
+        except ValueError:
+            return v or None
+
+    def _dt_it(v):
+        try:
+            return datetime.fromisoformat(v).astimezone().strftime("%d/%m/%Y %H:%M") if v else ""
+        except ValueError:
+            return v or ""
+
+    tipi = {"incontro_istituzionale": "Incontro istituzionale", "tavolo_tecnico": "Tavolo tecnico", "altro": "Altro"}
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Agenda"
+    cols = ["Data appuntamento", "Ora", "Stato", "Da chiudere", "Tipo", "Ente/i", "Pratiche", "Lotto/i", "Oggetto", "Luogo",
+            "Referente ente", "Partecipanti", "Data richiesta", "Note", "Esito", "Eliminazione richiesta", "Creato da", "Creato il"]
+    ws.append(cols)
+    thin = Side(style="thin", color="DFE4EB")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    for c in range(1, len(cols) + 1):
+        cell = ws.cell(row=1, column=c)
+        cell.fill = PatternFill("solid", fgColor="043F75")
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.alignment = Alignment(vertical="center", wrap_text=True)
+        cell.border = border
+    ws.row_dimensions[1].height = 28
+    ws.freeze_panes = "A2"
+
+    for d in docs:
+        enti = d.get("enti") or ([d["ente"]] if d.get("ente") else [])
+        prat = d.get("pratiche") or ([d["riferimento"]] if d.get("riferimento") else [])
+        late = d.get("stato") == "programmato" and (d.get("data_appuntamento") or "9999") < today
+        ws.append([
+            _date(d.get("data_appuntamento")), d.get("ora", ""), (d.get("stato") or "").capitalize(), "Sì" if late else "",
+            tipi.get(d.get("tipo"), d.get("tipo", "")), ", ".join(enti), ", ".join(prat), ", ".join(d.get("lotti") or []),
+            d.get("oggetto", ""), d.get("luogo", ""), d.get("referente", ""), d.get("partecipanti", ""),
+            _date(d.get("data_richiesta")), d.get("note", ""), d.get("esito", ""),
+            "Sì" if str(d["_id"]) in pend else "", d.get("created_by", ""), _dt_it(d.get("created_at", "")),
+        ])
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+        for cell in row:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+            cell.border = border
+        for idx in (0, 12):
+            if row[idx].value:
+                row[idx].number_format = "DD/MM/YYYY"
+    if ws.max_row >= 2:
+        ws.add_table(Table(displayName="TabAgenda", ref=f"A1:{get_column_letter(len(cols))}{ws.max_row}",
+                           tableStyleInfo=TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)))
+    for i, w in enumerate([16, 8, 13, 11, 22, 34, 30, 9, 40, 26, 22, 28, 15, 40, 40, 14, 20, 17], start=1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    filename = f"agenda_enti_{today}.xlsx"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ═════════════════════════════════════════════════════════════════════════════
