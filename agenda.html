@@ -364,6 +364,7 @@
         <div class="ac-wrap"><input class="f-in" id="mRif" autocomplete="off" placeholder="Scrivi il codice e scegli dai suggerimenti, es. AUT/3/1A" oninput="acShow()" onfocus="acShow()" onkeydown="acKey(event)">
         <div class="ac-list" id="acList"></div></div>
         <div class="chips" id="pratChips"></div>
+        <div style="margin-top:6px"><button type="button" class="btn sm" onclick="pickFromMap()" title="Apre la mappa per scegliere le pratiche cliccando le tratte">Scegli da mappa</button></div>
         <div id="pratMsg" style="font-size:11px;color:var(--red);margin-top:3px;display:none"></div></div>
       <div class="fld full"><label>Ente (automatico)</label><input class="f-in" id="mEnte" autocomplete="off" readonly></div>
       <div class="fld"><label>Tipo</label>
@@ -863,6 +864,32 @@ async function confirmAct() {
   finally { $('actOk').disabled = false; }
 }
 
+// ── Selezione pratiche da mappa ──
+function pickFromMap() {
+  const draft = { editId, selPrat, tipo: $('mTipo').value, stato: $('mStato').value, oggetto: $('mOggetto').value, dReq: $('mDReq').value,
+    dApp: $('mDApp').value, ora: $('mOra').value, luogo: $('mLuogo').value, ref: $('mRef').value, part: $('mPart').value,
+    note: $('mNote').value, esito: $('mEsito').value, ente: $('mEnte').value };
+  sessionStorage.setItem('agenda_draft', JSON.stringify(draft));
+  location.href = 'mappa.html?seleziona=agenda';
+}
+function restoreDraft() {
+  if (!new URLSearchParams(location.search).has('ripristina')) return;
+  history.replaceState(null, '', location.pathname);
+  let d = null; try { d = JSON.parse(sessionStorage.getItem('agenda_draft') || 'null'); } catch (_) {}
+  sessionStorage.removeItem('agenda_draft');
+  if (!d) return;
+  openModal(d.editId && items.some(x => x._id === d.editId) ? d.editId : undefined, d.stato);
+  $('mTipo').value = d.tipo || 'incontro_istituzionale'; $('mOggetto').value = d.oggetto || ''; $('mDReq').value = d.dReq || '';
+  $('mDApp').value = d.dApp || ''; $('mOra').value = d.ora || ''; $('mLuogo').value = d.luogo || ''; $('mRef').value = d.ref || '';
+  $('mPart').value = d.part || ''; $('mNote').value = d.note || ''; $('mEsito').value = d.esito || '';
+  let sel = Array.isArray(d.mapPick) ? d.mapPick : (d.selPrat || []), skipped = 0;
+  if (PRAT_OK) {
+    sel = sel.map(c => { const m = PRAT_LIST.find(x => x.codice.toUpperCase() === String(c).toUpperCase()); if (!m) skipped++; return m && m.codice; }).filter(Boolean);
+  } else $('mEnte').value = d.ente || '';
+  selPrat = [...new Set(sel)]; renderChips(); syncStato();
+  if (skipped) toast(skipped + (skipped === 1 ? ' pratica non presente' : ' pratiche non presenti') + ' nell\'elenco: ignorat' + (skipped === 1 ? 'a' : 'e'));
+}
+
 // ── Annulla rapido ──
 let cancId = null;
 function askCancel(id) {
@@ -914,7 +941,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('ovCance
 
 window.addEventListener('DOMContentLoaded', () => {
   const u = localStorage.getItem('_enri_user'); if (u) $('topbarUser').textContent = u;
-  load(); loadLookups();
+  Promise.all([load(), loadLookups()]).then(restoreDraft);
 });
 </script>
 </body>
