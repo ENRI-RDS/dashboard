@@ -246,6 +246,16 @@
   .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--gray-700); color:#fff; font-size:12px;
     padding:9px 16px; border-radius:8px; opacity:0; transition:opacity .25s; pointer-events:none; z-index:200; }
   .toast.show { opacity:1; }
+  .b-delreq { background:var(--redL); color:var(--red); margin-left:6px; }
+  .toolbar .btn:not(.primary) { height:34px; padding:0 14px; border-radius:8px; display:inline-flex; align-items:center; gap:6px; }
+  .dr-count { display:inline-block; min-width:20px; padding:1px 7px; border-radius:10px; background:var(--red); color:#fff; font-size:11px; font-weight:700; text-align:center; margin-left:6px; }
+  .dr-row { display:grid; grid-template-columns:1fr auto; gap:14px; align-items:center; padding:12px 0; border-top:1px solid var(--border); }
+  .dr-row:first-child { border-top:none; }
+  .dr-main b { color:var(--text); font-size:13px; }
+  .dr-meta { font-size:12px; color:var(--text2); margin-top:3px; line-height:1.5; }
+  .dr-why { font-size:12px; margin-top:6px; padding:7px 10px; background:var(--gray-50); border-left:3px solid var(--yellow); border-radius:4px; color:var(--text); }
+  .dr-act { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+  @media(max-width:700px){ .dr-row{ grid-template-columns:1fr; } .dr-act{ justify-content:flex-start; } }
   @media(max-width:700px){ .modal-b{ grid-template-columns:1fr; } .main{ padding:16px; } }
 </style>
 </head>
@@ -285,6 +295,7 @@
     </select>
     <select id="fEnte" onchange="render()"><option value="">Tutti gli enti</option></select>
     <div class="spacer"></div>
+    <button class="btn" id="btnExport" onclick="exportXlsx()" title="Scarica tutti gli appuntamenti in Excel"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>Esporta Excel</button>
     <button class="btn primary" onclick="openModal()">+ Nuovo appuntamento</button>
   </div>
 
@@ -317,6 +328,14 @@
       </div>
     </section>
   </div>
+
+  <section class="ag-card" id="delSec" style="display:none">
+    <div class="ag-head">
+      <div class="ag-hico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></div>
+      <div class="ag-htitle">Richieste di eliminazione<span class="dr-count" id="drCount">0</span></div>
+    </div>
+    <div id="drList"></div>
+  </section>
 </div>
 
 <div class="ev-menu" id="evMenu"></div>
@@ -381,6 +400,28 @@
   </div>
 </div>
 
+<!-- MODAL RICHIESTA ELIMINAZIONE (non admin) -->
+<div class="overlay" id="ovReq">
+  <div class="modal" style="width:min(460px,100%)">
+    <div class="modal-h">Richiedi eliminazione</div>
+    <div style="padding:16px 22px 6px;font-size:13px" id="reqInfo"></div>
+    <div style="padding:6px 22px 14px"><div class="fld"><label>Motivo *</label><textarea class="f-ta" id="reqMotivo" maxlength="500" placeholder="Perché va eliminato?"></textarea></div></div>
+    <div class="err" id="reqErr"></div>
+    <div class="modal-f"><button class="btn primary" id="reqSend" onclick="sendDelReq()">Invia richiesta</button><button class="btn" onclick="$('ovReq').classList.remove('open')">Annulla</button></div>
+  </div>
+</div>
+
+<!-- MODAL AZIONE SU RICHIESTA (admin) -->
+<div class="overlay" id="ovAct">
+  <div class="modal" style="width:min(440px,100%)">
+    <div class="modal-h" id="actTitle"></div>
+    <div style="padding:16px 22px 6px;font-size:13px" id="actText"></div>
+    <div style="padding:6px 22px 14px;display:none" id="actNoteWrap"><div class="fld"><label>Nota per il richiedente (facoltativa)</label><textarea class="f-ta" id="actNote" maxlength="500"></textarea></div></div>
+    <div class="err" id="actErr"></div>
+    <div class="modal-f"><button class="btn danger" id="actOk" onclick="confirmAct()">Conferma</button><button class="btn" onclick="$('ovAct').classList.remove('open')">Annulla</button></div>
+  </div>
+</div>
+
 <datalist id="dlEnti"></datalist>
 <div class="toast" id="toast"></div>
 
@@ -393,7 +434,9 @@ window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); }
 
 const API = (window.ENRI && ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
 const ROLE = (localStorage.getItem('_enri_role') || '').toLowerCase();
-const CAN_DELETE = true; // pagina riservata ad admin/admin2/field
+const IS_ADMIN = ['admin', 'admin2'].includes(ROLE);
+const CAN_DELETE = IS_ADMIN; // eliminazione diretta solo admin; gli altri inviano una richiesta
+let DELREQ = [], reqId = null, actReq = null, actKind = null;
 const TIPI = { incontro_istituzionale:'Incontro istituzionale', tavolo_tecnico:'Tavolo tecnico', altro:'Altro' };
 const STATI = { richiesto:'Richiesto', programmato:'Programmato', svolto:'Svolto', annullato:'Annullato' };
 let items = [], editId = null, delId = null, tab = 'cal', PRAT = {}, PRAT_LIST = [], PRAT_OK = false, PRAT_ERR = '', acIdx = -1, selPrat = [];
@@ -428,6 +471,7 @@ async function load() {
     return;
   }
   render();
+  loadDelReqs();
 }
 async function loadLookups() {
   try {
@@ -514,7 +558,7 @@ function evHtml(it) {
   return '<div class="ev s-' + it.stato + (late ? ' late' : '') + '" onclick="openModal(\'' + it._id + '\')">' +
     '<div class="ev-time">' + time + '</div>' +
     '<div class="ev-main"><div class="ev-ente">' + esc(entiOf(it).join(', ')) + '<span class="badge b-' + it.stato + '">' + STATI[it.stato] + '</span>' +
-    (late ? '<span class="badge b-late">Da chiudere</span>' : '') + '</div>' + (sub ? '<div class="ev-sub">' + sub + '</div>' : '') + rows.join('') + '</div>' +
+    (late ? '<span class="badge b-late">Da chiudere</span>' : '') + (it.eliminazione_richiesta ? '<span class="badge b-delreq" title="Richiesta di eliminazione in attesa di approvazione">Eliminazione richiesta</span>' : '') + '</div>' + (sub ? '<div class="ev-sub">' + sub + '</div>' : '') + rows.join('') + '</div>' +
     '<button class="ev-more" title="Azioni" onclick="event.stopPropagation();evMenu(event,\'' + it._id + '\')">' + ICON.dots + '</button></div>';
 }
 function evMenu(e, id) {
@@ -523,6 +567,9 @@ function evMenu(e, id) {
   let h = '<button onclick="closeMenu();openModal(\'' + id + '\')">Modifica</button>';
   if (it.stato === 'richiesto') h += '<button onclick="closeMenu();quick(\'' + id + '\',\'programmato\')">Programma</button>';
   else if (it.stato === 'programmato') h += '<button onclick="closeMenu();quick(\'' + id + '\',\'svolto\')">Segna svolto</button>';
+  if (IS_ADMIN) h += '<button style="color:var(--red)" onclick="closeMenu();editId=\'' + id + '\';askDelete()">Elimina</button>';
+  else if (it.eliminazione_richiesta) h += '<button disabled style="opacity:.55;cursor:default">Eliminazione richiesta</button>';
+  else h += '<button style="color:var(--red)" onclick="closeMenu();askReq(\'' + id + '\')">Richiedi eliminazione</button>';
   m.innerHTML = h; m.style.top = (r.bottom + 4) + 'px'; m.style.left = Math.max(8, r.right - 170) + 'px'; m.classList.add('open');
 }
 function closeMenu() { $('evMenu').classList.remove('open'); }
@@ -644,7 +691,11 @@ function openModal(id, stato) {
   $('mDReq').value = it?.data_richiesta || TODAY; $('mDApp').value = it?.data_appuntamento || ''; $('mOra').value = it?.ora || '';
   $('mLuogo').value = it?.luogo || ''; $('mRef').value = it?.referente || ''; $('mPart').value = it?.partecipanti || '';
   $('mNote').value = it?.note || ''; $('mEsito').value = it?.esito || '';
-  $('acList').classList.remove('open'); $('pratMsg').style.display = 'none'; if (PRAT_OK) $('mEnte').setAttribute('readonly', ''); $('mErr').style.display = 'none'; $('mDel').style.display = it && CAN_DELETE ? '' : 'none';
+  $('acList').classList.remove('open'); $('pratMsg').style.display = 'none'; if (PRAT_OK) $('mEnte').setAttribute('readonly', ''); $('mErr').style.display = 'none'; const dl = $('mDel'); dl.style.display = it ? '' : 'none';
+  if (it) {
+    dl.textContent = CAN_DELETE ? 'Elimina' : (it.eliminazione_richiesta ? 'Eliminazione richiesta' : 'Richiedi eliminazione');
+    dl.disabled = !CAN_DELETE && !!it.eliminazione_richiesta;
+  }
   syncStato(); $('ovForm').classList.add('open');
 }
 function acMatches() {
@@ -718,15 +769,87 @@ async function saveItem() {
     $('mErr').textContent = e.message; $('mErr').style.display = 'block';
   } finally { $('mSave').disabled = false; }
 }
-function askDelete() { delId = editId; $('ovDel').classList.add('open'); }
+function askDelete() { if (!CAN_DELETE) { askReq(editId); return; } delId = editId; $('ovDel').classList.add('open'); }
 async function doDelete() {
   try {
     await api('/api/agenda/' + delId, { method:'DELETE' });
     items = items.filter(x => x._id !== delId);
-    $('ovDel').classList.remove('open'); closeModal(); render(); toast('Eliminato');
+    $('ovDel').classList.remove('open'); closeModal(); render(); loadDelReqs(); toast('Eliminato');
   } catch (e) { $('ovDel').classList.remove('open'); $('mErr').textContent = e.message; $('mErr').style.display = 'block'; }
 }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); $('ovDel').classList.remove('open'); $('ovLeg').classList.remove('open'); closeMenu(); } });
+// ── Richieste di eliminazione ──
+function itemLabel(it) { return esc(entiOf(it).join(', ') || '—') + (it.data_appuntamento ? ' · ' + fmt(it.data_appuntamento) + (it.ora ? ' ' + esc(it.ora) : '') : ' · senza data'); }
+function askReq(id) {
+  const it = items.find(x => x._id === id); if (!it) return;
+  reqId = id; $('reqMotivo').value = ''; $('reqErr').style.display = 'none';
+  $('reqInfo').innerHTML = 'L\'appuntamento non viene eliminato subito: la richiesta va in approvazione a un admin.<div class="dr-meta"><b>' + itemLabel(it) + '</b>' + (it.oggetto ? '<br>' + esc(it.oggetto) : '') + '</div>';
+  $('ovReq').classList.add('open'); setTimeout(() => $('reqMotivo').focus(), 50);
+}
+async function sendDelReq() {
+  const motivo = $('reqMotivo').value.trim();
+  if (motivo.length < 3) { $('reqErr').textContent = 'Indica il motivo della richiesta.'; $('reqErr').style.display = 'block'; return; }
+  $('reqSend').disabled = true;
+  try {
+    await api('/api/agenda/' + reqId + '/richiesta-eliminazione', { method:'POST', body: JSON.stringify({ motivo }) });
+    const it = items.find(x => x._id === reqId); if (it) it.eliminazione_richiesta = { richiesto_da: localStorage.getItem('_enri_user') || '' };
+    $('ovReq').classList.remove('open'); closeModal(); render(); toast('Richiesta inviata agli admin');
+  } catch (e) { $('reqErr').textContent = e.message; $('reqErr').style.display = 'block'; }
+  finally { $('reqSend').disabled = false; }
+}
+async function loadDelReqs() {
+  if (!IS_ADMIN) return;
+  try { DELREQ = (await api('/api/agenda/richieste-eliminazione')).items || []; } catch (_) { DELREQ = []; }
+  renderDelReqs();
+}
+function renderDelReqs() {
+  const sec = $('delSec'); if (!IS_ADMIN) return;
+  sec.style.display = DELREQ.length ? '' : 'none';
+  $('drCount').textContent = DELREQ.length;
+  $('drList').innerHTML = DELREQ.map(r => {
+    const sn = r.snapshot || {}, enti = (sn.enti && sn.enti.length ? sn.enti : (sn.ente ? [sn.ente] : [])).join(', ');
+    const when = r.richiesto_il ? new Date(r.richiesto_il).toLocaleString('it-IT', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+    const meta = [TIPI[sn.tipo], STATI[sn.stato], (sn.pratiche || []).join(', ')].filter(Boolean).map(esc).join(' · ');
+    return '<div class="dr-row"><div class="dr-main"><b>' + esc(enti || '—') + '</b> — ' + (sn.data_appuntamento ? fmt(sn.data_appuntamento) + (sn.ora ? ' ' + esc(sn.ora) : '') : 'senza data') +
+      '<div class="dr-meta">' + meta + (sn.oggetto ? '<br>' + esc(sn.oggetto) : '') + '<br>Richiesta da <b>' + esc(r.richiesto_da || '—') + '</b>' + (when ? ' il ' + when : '') + '</div>' +
+      '<div class="dr-why">' + esc(r.motivo) + '</div></div>' +
+      '<div class="dr-act"><button class="btn danger" onclick="openAct(\'' + r._id + '\',\'approve\')">Approva ed elimina</button><button class="btn" onclick="openAct(\'' + r._id + '\',\'reject\')">Rifiuta</button></div></div>';
+  }).join('');
+}
+function openAct(id, kind) {
+  actReq = DELREQ.find(x => x._id === id); actKind = kind; if (!actReq) return;
+  const sn = actReq.snapshot || {}, enti = (sn.enti && sn.enti.length ? sn.enti : (sn.ente ? [sn.ente] : [])).join(', ');
+  $('actTitle').textContent = kind === 'approve' ? 'Eliminare l\'appuntamento?' : 'Rifiutare la richiesta?';
+  $('actText').innerHTML = (kind === 'approve' ? 'L\'appuntamento <b>' + esc(enti) + '</b> verrà eliminato definitivamente. L\'operazione non è reversibile.' : 'L\'appuntamento <b>' + esc(enti) + '</b> resta in agenda.');
+  $('actNoteWrap').style.display = kind === 'reject' ? '' : 'none'; $('actNote').value = ''; $('actErr').style.display = 'none';
+  $('actOk').textContent = kind === 'approve' ? 'Elimina' : 'Rifiuta'; $('actOk').className = 'btn ' + (kind === 'approve' ? 'danger' : 'primary');
+  $('ovAct').classList.add('open');
+}
+async function confirmAct() {
+  $('actOk').disabled = true;
+  try {
+    const body = actKind === 'reject' ? JSON.stringify({ nota: $('actNote').value.trim() }) : '{}';
+    await api('/api/agenda/richieste-eliminazione/' + actReq._id + '/' + actKind, { method:'POST', body });
+    if (actKind === 'approve') items = items.filter(x => x._id !== actReq.agenda_id);
+    else { const it = items.find(x => x._id === actReq.agenda_id); if (it) delete it.eliminazione_richiesta; }
+    DELREQ = DELREQ.filter(x => x._id !== actReq._id);
+    $('ovAct').classList.remove('open'); render(); renderDelReqs(); toast(actKind === 'approve' ? 'Appuntamento eliminato' : 'Richiesta rifiutata');
+  } catch (e) { $('actErr').textContent = e.message; $('actErr').style.display = 'block'; }
+  finally { $('actOk').disabled = false; }
+}
+
+// ── Export Excel ──
+async function exportXlsx() {
+  const b = $('btnExport'); b.disabled = true;
+  try {
+    const r = await fetch(API + '/api/agenda/export.xlsx', { headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(typeof d.detail === 'string' ? d.detail : 'Errore ' + r.status); }
+    const url = URL.createObjectURL(await r.blob()), a = document.createElement('a');
+    a.href = url; a.download = 'agenda_enti_' + TODAY + '.xlsx'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  } catch (e) { toast('Export non riuscito: ' + e.message); }
+  finally { b.disabled = false; }
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('ovReq').classList.remove('open'); $('ovAct').classList.remove('open'); closeModal(); $('ovDel').classList.remove('open'); $('ovLeg').classList.remove('open'); closeMenu(); } });
 
 window.addEventListener('DOMContentLoaded', () => {
   const u = localStorage.getItem('_enri_user'); if (u) $('topbarUser').textContent = u;
