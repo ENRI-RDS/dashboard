@@ -388,7 +388,7 @@
   <section class="ag-card" id="delSec" style="display:none">
     <div class="ag-head">
       <div class="ag-hico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></div>
-      <div class="ag-htitle">Richieste di eliminazione<span class="dr-count" id="drCount">0</span></div>
+      <div class="ag-htitle">Richieste di eliminazione / annullamento<span class="dr-count" id="drCount">0</span></div>
     </div>
     <div id="drList"></div>
   </section>
@@ -472,9 +472,9 @@
 <!-- MODAL RICHIESTA ELIMINAZIONE (non admin) -->
 <div class="overlay" id="ovReq">
   <div class="modal" style="width:min(460px,100%)">
-    <div class="modal-h">Richiedi eliminazione</div>
+    <div class="modal-h" id="reqTitle">Richiedi eliminazione</div>
     <div style="padding:16px 22px 6px;font-size:13px" id="reqInfo"></div>
-    <div style="padding:6px 22px 14px"><div class="fld"><label>Motivo *</label><textarea class="f-ta" id="reqMotivo" maxlength="500" placeholder="Perché va eliminato?"></textarea></div></div>
+    <div style="padding:6px 22px 14px"><div class="fld"><label>Motivo *</label><textarea class="f-ta" id="reqMotivo" maxlength="500" placeholder="Motivo della richiesta"></textarea></div></div>
     <div class="err" id="reqErr"></div>
     <div class="modal-f"><button class="btn primary" id="reqSend" onclick="sendDelReq()">Invia richiesta</button><button class="btn" onclick="$('ovReq').classList.remove('open')">Annulla</button></div>
   </div>
@@ -505,7 +505,7 @@ const API = (window.ENRI && ENRI.apiBase) || localStorage.getItem('enri_api_base
 const ROLE = (localStorage.getItem('_enri_role') || '').toLowerCase();
 const IS_ADMIN = ['admin', 'admin2'].includes(ROLE);
 const CAN_DELETE = IS_ADMIN; // eliminazione diretta solo admin; gli altri inviano una richiesta
-let DELREQ = [], reqId = null, actReq = null, actKind = null;
+let DELREQ = [], reqId = null, reqAzione = 'elimina', actReq = null, actKind = null;
 const TIPI = { incontro_istituzionale:'Incontro istituzionale', tavolo_tecnico:'Tavolo tecnico', altro:'Altro' };
 const STATI = { richiesto:'Richiesto', programmato:'Programmato', svolto:'Svolto', annullato:'Annullato' };
 let items = [], editId = null, delId = null, tab = 'cal', PRAT = {}, PRAT_LIST = [], PRAT_OK = false, PRAT_ERR = '', acIdx = -1, selPrat = [];
@@ -627,7 +627,7 @@ function evHtml(it) {
   return '<div class="ev s-' + it.stato + (late ? ' late' : '') + '" onclick="openModal(\'' + it._id + '\')">' +
     '<div class="ev-time">' + time + '</div>' +
     '<div class="ev-main"><div class="ev-ente">' + esc(entiOf(it).join(', ')) + '<span class="badge b-' + it.stato + '">' + STATI[it.stato] + '</span>' +
-    (late ? '<span class="badge b-late">Da chiudere</span>' : '') + (it.eliminazione_richiesta ? '<span class="badge b-delreq" title="Richiesta di eliminazione in attesa di approvazione">Eliminazione richiesta</span>' : '') + '</div>' + (sub ? '<div class="ev-sub">' + sub + '</div>' : '') + rows.join('') + '</div>' +
+    (late ? '<span class="badge b-late">Da chiudere</span>' : '') + (it.eliminazione_richiesta ? '<span class="badge b-delreq" title="Richiesta in attesa di approvazione">' + (it.eliminazione_richiesta.azione === 'annulla' ? 'Annullamento richiesto' : 'Eliminazione richiesta') + '</span>' : '') + '</div>' + (sub ? '<div class="ev-sub">' + sub + '</div>' : '') + rows.join('') + '</div>' +
     '<button class="ev-more" title="Azioni" onclick="event.stopPropagation();evMenu(event,\'' + it._id + '\')">' + ICON.dots + '</button></div>';
 }
 function evMenu(e, id) {
@@ -637,7 +637,10 @@ function evMenu(e, id) {
   if (it.stato === 'richiesto') h += '<button onclick="closeMenu();quick(\'' + id + '\',\'programmato\')">Programma</button>';
   else if (it.stato === 'programmato') h += '<button onclick="closeMenu();quick(\'' + id + '\',\'svolto\')">Segna svolto</button>';
   if (it.data_appuntamento) h += '<button onclick="closeMenu();exportIcs(\'' + id + '\')">Aggiungi al calendario</button>';
-  if (it.stato === 'richiesto' || it.stato === 'programmato') h += '<button onclick="closeMenu();askCancel(\'' + id + '\')">Annulla appuntamento</button>';
+  if (it.stato === 'richiesto' || it.stato === 'programmato') {
+    if (IS_ADMIN) h += '<button onclick="closeMenu();askCancel(\'' + id + '\')">Annulla appuntamento</button>';
+    else if (!it.eliminazione_richiesta) h += '<button onclick="closeMenu();askCancel(\'' + id + '\')">Richiedi annullamento</button>';
+  }
   if (IS_ADMIN) h += '<button style="color:var(--red)" onclick="closeMenu();editId=\'' + id + '\';askDelete()">Elimina</button>';
   else if (it.eliminazione_richiesta) h += '<button disabled style="opacity:.55;cursor:default">Eliminazione richiesta</button>';
   else h += '<button style="color:var(--red)" onclick="closeMenu();askReq(\'' + id + '\')">Richiedi eliminazione</button>';
@@ -761,6 +764,7 @@ function openModal(id, stato) {
   $('mTitle').textContent = it ? 'Modifica appuntamento' : 'Nuovo appuntamento';
   $('mTipo').value = it?.tipo || 'incontro_istituzionale'; $('mOggetto').value = it?.oggetto || '';
   selPrat = it ? pratOf(it).slice() : []; $('mRif').value = ''; $('mEnte').value = it ? entiOf(it).join(', ') : ''; renderChips(); $('mStato').value = stato || it?.stato || 'richiesto';
+  [...$('mStato').options].forEach(o => { if (o.value === 'annullato') o.disabled = !IS_ADMIN && it?.stato !== 'annullato'; });
   $('mDReq').value = it?.data_richiesta || TODAY; $('mDApp').value = it?.data_appuntamento || ''; $('mOra').value = it?.ora || '';
   $('mLuogo').value = it?.luogo || ''; $('mRef').value = it?.referente || ''; $('mPart').value = it?.partecipanti || '';
   $('mNote').value = it?.note || ''; $('mEsito').value = it?.esito || '';
@@ -862,10 +866,11 @@ async function doDelete() {
 }
 // ── Richieste di eliminazione ──
 function itemLabel(it) { return esc(entiOf(it).join(', ') || '—') + (it.data_appuntamento ? ' · ' + fmt(it.data_appuntamento) + (it.ora ? ' ' + esc(it.ora) : '') : ' · senza data'); }
-function askReq(id) {
+function askReq(id, azione) {
   const it = items.find(x => x._id === id); if (!it) return;
-  reqId = id; $('reqMotivo').value = ''; $('reqErr').style.display = 'none';
-  $('reqInfo').innerHTML = 'L\'appuntamento non viene eliminato subito: la richiesta va in approvazione a un admin.<div class="dr-meta"><b>' + itemLabel(it) + '</b>' + (it.oggetto ? '<br>' + esc(it.oggetto) : '') + '</div>';
+  reqId = id; reqAzione = azione === 'annulla' ? 'annulla' : 'elimina';
+  $('reqTitle').textContent = reqAzione === 'annulla' ? 'Richiedi annullamento' : 'Richiedi eliminazione'; $('reqMotivo').value = ''; $('reqErr').style.display = 'none';
+  $('reqInfo').innerHTML = 'L\'appuntamento non viene ' + (reqAzione === 'annulla' ? 'annullato' : 'eliminato') + ' subito: la richiesta va in approvazione a un admin.<div class="dr-meta"><b>' + itemLabel(it) + '</b>' + (it.oggetto ? '<br>' + esc(it.oggetto) : '') + '</div>';
   $('ovReq').classList.add('open'); setTimeout(() => $('reqMotivo').focus(), 50);
 }
 async function sendDelReq() {
@@ -873,8 +878,8 @@ async function sendDelReq() {
   if (motivo.length < 3) { $('reqErr').textContent = 'Indica il motivo della richiesta.'; $('reqErr').style.display = 'block'; return; }
   $('reqSend').disabled = true;
   try {
-    await api('/api/agenda/' + reqId + '/richiesta-eliminazione', { method:'POST', body: JSON.stringify({ motivo }) });
-    const it = items.find(x => x._id === reqId); if (it) it.eliminazione_richiesta = { richiesto_da: localStorage.getItem('_enri_user') || '' };
+    await api('/api/agenda/' + reqId + '/richiesta-eliminazione', { method:'POST', body: JSON.stringify({ motivo, azione: reqAzione }) });
+    const it = items.find(x => x._id === reqId); if (it) it.eliminazione_richiesta = { richiesto_da: localStorage.getItem('_enri_user') || '', azione: reqAzione };
     $('ovReq').classList.remove('open'); closeModal(); render(); toast('Richiesta inviata agli admin');
   } catch (e) { $('reqErr').textContent = e.message; $('reqErr').style.display = 'block'; }
   finally { $('reqSend').disabled = false; }
@@ -891,31 +896,34 @@ function renderDelReqs() {
   $('drList').innerHTML = DELREQ.map(r => {
     const sn = r.snapshot || {}, enti = (sn.enti && sn.enti.length ? sn.enti : (sn.ente ? [sn.ente] : [])).join(', ');
     const when = r.richiesto_il ? new Date(r.richiesto_il).toLocaleString('it-IT', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
-    const meta = [TIPI[sn.tipo], STATI[sn.stato], (sn.pratiche || []).join(', ')].filter(Boolean).map(esc).join(' · ');
+    const ann = r.azione === 'annulla', meta = [ann ? 'ANNULLAMENTO' : 'ELIMINAZIONE', TIPI[sn.tipo], STATI[sn.stato], (sn.pratiche || []).join(', ')].filter(Boolean).map(esc).join(' · ');
     return '<div class="dr-row"><div class="dr-main"><b>' + esc(enti || '—') + '</b> — ' + (sn.data_appuntamento ? fmt(sn.data_appuntamento) + (sn.ora ? ' ' + esc(sn.ora) : '') : 'senza data') +
       '<div class="dr-meta">' + meta + (sn.oggetto ? '<br>' + esc(sn.oggetto) : '') + '<br>Richiesta da <b>' + esc(r.richiesto_da || '—') + '</b>' + (when ? ' il ' + when : '') + '</div>' +
       '<div class="dr-why">' + esc(r.motivo) + '</div></div>' +
-      '<div class="dr-act"><button class="btn danger" onclick="openAct(\'' + r._id + '\',\'approve\')">Approva ed elimina</button><button class="btn" onclick="openAct(\'' + r._id + '\',\'reject\')">Rifiuta</button></div></div>';
+      '<div class="dr-act"><button class="btn danger" onclick="openAct(\'' + r._id + '\',\'approve\')">' + (ann ? 'Approva e annulla' : 'Approva ed elimina') + '</button><button class="btn" onclick="openAct(\'' + r._id + '\',\'reject\')">Rifiuta</button></div></div>';
   }).join('');
 }
 function openAct(id, kind) {
   actReq = DELREQ.find(x => x._id === id); actKind = kind; if (!actReq) return;
   const sn = actReq.snapshot || {}, enti = (sn.enti && sn.enti.length ? sn.enti : (sn.ente ? [sn.ente] : [])).join(', ');
-  $('actTitle').textContent = kind === 'approve' ? 'Eliminare l\'appuntamento?' : 'Rifiutare la richiesta?';
-  $('actText').innerHTML = (kind === 'approve' ? 'L\'appuntamento <b>' + esc(enti) + '</b> verrà eliminato definitivamente. L\'operazione non è reversibile.' : 'L\'appuntamento <b>' + esc(enti) + '</b> resta in agenda.');
+  const ann = actReq.azione === 'annulla';
+  $('actTitle').textContent = kind === 'approve' ? (ann ? 'Annullare l\'appuntamento?' : 'Eliminare l\'appuntamento?') : 'Rifiutare la richiesta?';
+  $('actText').innerHTML = (kind === 'approve' ? (ann ? 'L\'appuntamento <b>' + esc(enti) + '</b> passa a <b>Annullato</b> e resta in agenda e nell\'export.' : 'L\'appuntamento <b>' + esc(enti) + '</b> verrà eliminato definitivamente. L\'operazione non è reversibile.') : 'L\'appuntamento <b>' + esc(enti) + '</b> resta in agenda' + (ann ? ' senza modifiche.' : '.'));
   $('actNoteWrap').style.display = kind === 'reject' ? '' : 'none'; $('actNote').value = ''; $('actErr').style.display = 'none';
-  $('actOk').textContent = kind === 'approve' ? 'Elimina' : 'Rifiuta'; $('actOk').className = 'btn ' + (kind === 'approve' ? 'danger' : 'primary');
+  $('actOk').textContent = kind === 'approve' ? (ann ? 'Annulla appuntamento' : 'Elimina') : 'Rifiuta'; $('actOk').className = 'btn ' + (kind === 'approve' ? 'danger' : 'primary');
   $('ovAct').classList.add('open');
 }
 async function confirmAct() {
   $('actOk').disabled = true;
   try {
     const body = actKind === 'reject' ? JSON.stringify({ nota: $('actNote').value.trim() }) : '{}';
-    await api('/api/agenda/richieste-eliminazione/' + actReq._id + '/' + actKind, { method:'POST', body });
-    if (actKind === 'approve') items = items.filter(x => x._id !== actReq.agenda_id);
+    const res = await api('/api/agenda/richieste-eliminazione/' + actReq._id + '/' + actKind, { method:'POST', body });
+    const wasAnn = actReq.azione === 'annulla';
+    if (actKind === 'approve' && wasAnn && res.item) { const i = items.findIndex(x => x._id === actReq.agenda_id); if (i >= 0) items[i] = res.item; }
+    else if (actKind === 'approve') items = items.filter(x => x._id !== actReq.agenda_id);
     else { const it = items.find(x => x._id === actReq.agenda_id); if (it) delete it.eliminazione_richiesta; }
     DELREQ = DELREQ.filter(x => x._id !== actReq._id);
-    $('ovAct').classList.remove('open'); render(); renderDelReqs(); toast(actKind === 'approve' ? 'Appuntamento eliminato' : 'Richiesta rifiutata');
+    $('ovAct').classList.remove('open'); render(); renderDelReqs(); toast(actKind === 'approve' ? (wasAnn ? 'Appuntamento annullato' : 'Appuntamento eliminato') : 'Richiesta rifiutata');
   } catch (e) { $('actErr').textContent = e.message; $('actErr').style.display = 'block'; }
   finally { $('actOk').disabled = false; }
 }
@@ -950,6 +958,7 @@ function restoreDraft() {
 let cancId = null;
 function askCancel(id) {
   const it = items.find(x => x._id === id); if (!it) return;
+  if (!IS_ADMIN) { askReq(id, 'annulla'); return; }
   cancId = id; $('cancMotivo').value = ''; $('cancErr').style.display = 'none';
   $('cancInfo').innerHTML = 'Lo stato passa a <b>Annullato</b>; l\'appuntamento resta in agenda e nell\'export.<div class="dr-meta"><b>' + itemLabel(it) + '</b></div>';
   $('ovCancel').classList.add('open');
@@ -963,8 +972,8 @@ async function doCancel() {
   $('cancOk').disabled = true;
   try {
     const d = await api('/api/agenda/' + cancId, { method:'PUT', body: JSON.stringify(body) });
-    const i = items.findIndex(x => x._id === cancId); if (i >= 0) items[i] = { ...d.item, eliminazione_richiesta: items[i].eliminazione_richiesta };
-    $('ovCancel').classList.remove('open'); render(); toast('Appuntamento annullato');
+    const i = items.findIndex(x => x._id === cancId); if (i >= 0) items[i] = d.item;
+    $('ovCancel').classList.remove('open'); render(); loadDelReqs(); toast('Appuntamento annullato');
   } catch (e) { $('cancErr').textContent = e.message; $('cancErr').style.display = 'block'; }
   finally { $('cancOk').disabled = false; }
 }
