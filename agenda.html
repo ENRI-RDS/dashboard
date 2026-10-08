@@ -296,7 +296,6 @@
     <select id="fEnte" onchange="render()"><option value="">Tutti gli enti</option></select>
     <div class="spacer"></div>
     <button class="btn" id="btnExport" onclick="exportXlsx()" title="Scarica tutti gli appuntamenti in Excel"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>Esporta Excel</button>
-    <button class="btn" id="btnIcs" onclick="exportIcs()" title="Appuntamenti programmati da oggi, da importare in Outlook / Google Calendar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>Calendario (.ics)</button>
     <button class="btn primary" onclick="openModal()">+ Nuovo appuntamento</button>
   </div>
 
@@ -915,14 +914,13 @@ async function doCancel() {
 
 // ── Export calendario (.ics) ──
 async function exportIcs(id) {
-  const b = $('btnIcs'); b.disabled = true;
+  if (!id) return;
   try {
-    const r = await fetch(API + '/api/agenda/export.ics' + (id ? '?id=' + encodeURIComponent(id) : ''), { headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } });
+    const r = await fetch(API + '/api/agenda/export.ics?id=' + encodeURIComponent(id), { headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } });
     if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(typeof d.detail === 'string' ? d.detail : 'Errore ' + r.status); }
     const url = URL.createObjectURL(await r.blob()), a = document.createElement('a');
-    a.href = url; a.download = (id ? 'appuntamento_' : 'agenda_enti_') + TODAY + '.ics'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    a.href = url; a.download = 'appuntamento_' + TODAY + '.ics'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   } catch (e) { toast('Export non riuscito: ' + e.message); }
-  finally { b.disabled = false; }
 }
 
 // ── Export Excel ──
