@@ -3340,7 +3340,7 @@ async def list_agenda(sess: dict = Depends(_require_agenda_session)):
     """Tutti gli appuntamenti con gli enti (ordinamento lato client)."""
     pend = {}
     async for r in agenda_delreq_col.find({"stato": "pending"}):
-        pend[r["agenda_id"]] = {"richiesto_da": r.get("richiesto_da", ""), "richiesto_il": r.get("richiesto_il", "")}
+        pend[r["agenda_id"]] = {"richiesto_da": r.get("richiesto_da", ""), "richiesto_il": r.get("richiesto_il", ""), "azione": r.get("azione", "elimina")}
     items = []
     async for d in agenda_col.find({}):
         d["_id"] = str(d["_id"])
@@ -3366,6 +3366,11 @@ async def create_agenda(payload: dict, sess: dict = Depends(_require_agenda_sess
 async def update_agenda(agenda_id: str, payload: dict, sess: dict = Depends(_require_agenda_session)):
     oid = _agenda_oid(agenda_id)
     rec = _agenda_clean(payload)
+    is_admin = sess.get("ruolo") in ("admin", "admin2")
+    if rec.get("stato") == "annullato":
+        cur = await agenda_col.find_one({"_id": oid}, {"stato": 1})
+        if cur and cur.get("stato") != "annullato" and not is_admin:
+            raise HTTPException(403, "L'annullamento va richiesto a un admin (richiesta di annullamento)")
     rec.update({"updated_by": sess.get("nome", ""),
                 "updated_at": datetime.now(timezone.utc).isoformat()})
     res = await agenda_col.update_one({"_id": oid}, {"$set": rec})
@@ -3373,6 +3378,8 @@ async def update_agenda(agenda_id: str, payload: dict, sess: dict = Depends(_req
         raise HTTPException(404, "Appuntamento non trovato")
     d = await agenda_col.find_one({"_id": oid})
     d["_id"] = str(d["_id"])
+    if rec.get("stato") == "annullato" and is_admin:
+        await _agenda_close_delreqs(agenda_id, "approved", sess, "annullato direttamente da admin")
     return {"ok": True, "item": d}
 
 
@@ -3401,13 +3408,17 @@ async def agenda_request_delete(agenda_id: str, payload: dict, sess: dict = Depe
     motivo = str((payload or {}).get("motivo", "") or "").strip()[:500]
     if len(motivo) < 3:
         raise HTTPException(422, "Indica il motivo della richiesta")
+    azione = "annulla" if (payload or {}).get("azione") == "annulla" else "elimina"
     d = await agenda_col.find_one({"_id": _agenda_oid(agenda_id)})
     if not d:
         raise HTTPException(404, "Appuntamento non trovato")
+    if azione == "annulla" and d.get("stato") not in ("richiesto", "programmato"):
+        raise HTTPException(422, "Si possono annullare solo appuntamenti richiesti o programmati")
     if await agenda_delreq_col.find_one({"agenda_id": agenda_id, "stato": "pending"}):
-        raise HTTPException(409, "Esiste già una richiesta di eliminazione in attesa per questo appuntamento")
+        raise HTTPException(409, "Esiste già una richiesta in attesa per questo appuntamento")
     rec = {
         "agenda_id": agenda_id,
+        "azione": azione,
         "snapshot": {k: d.get(k) for k in ("enti", "ente", "pratiche", "tipo", "oggetto", "stato", "data_appuntamento", "ora", "luogo")},
         "motivo": motivo,
         "stato": "pending",
@@ -3436,6 +3447,18 @@ async def agenda_approve_delreq(req_id: str, sess: dict = Depends(_require_admin
         raise HTTPException(404, "Richiesta non trovata")
     if r.get("stato") != "pending":
         raise HTTPException(409, "Richiesta già gestita")
+    if r.get("azione") == "annulla":
+        oid = _agenda_oid(r["agenda_id"])
+        d = await agenda_col.find_one({"_id": oid})
+        if not d:
+            raise HTTPException(404, "Appuntamento non trovato")
+        riga = f'Annullato: {r.get("motivo", "")} (richiesto da {r.get("richiesto_da", "")})'
+        esito = "\n".join(x for x in (d.get("esito"), riga) if x)[:2000]
+        await agenda_col.update_one({"_id": oid}, {"$set": {"stato": "annullato", "esito": esito,
+                                    "updated_by": sess.get("nome", ""), "updated_at": _now_iso()}})
+        await _agenda_close_delreqs(r["agenda_id"], "approved", sess)
+        d = await agenda_col.find_one({"_id": oid}); d["_id"] = str(d["_id"])
+        return {"ok": True, "annullato": r["agenda_id"], "item": d}
     await agenda_col.delete_one({"_id": _agenda_oid(r["agenda_id"])})
     await _agenda_close_delreqs(r["agenda_id"], "approved", sess)
     return {"ok": True, "deleted": r["agenda_id"]}
