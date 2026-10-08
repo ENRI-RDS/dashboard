@@ -2664,6 +2664,15 @@ function _agSelRefresh() {
   bar.querySelector('#agSelDone').textContent = 'Fatto' + (AG_SEL_MAP.size ? ' (' + AG_SEL_MAP.size + ')' : '');
   document.querySelectorAll('.popup-pratica-pick').forEach(el => el.classList.toggle('picked', AG_SEL_MAP.has((el.dataset.cod || '').toUpperCase())));
 }
+// Click su una tratta in modalità agenda: aggiunge tutte le sue pratiche (se già tutte selezionate le rimuove).
+// Per affinare la scelta si usano i chip nel popup o nella barra.
+function agSelFromTratta(p) {
+  const codes = String((p && p.PRATICA) || '').split(/[|;]/).map(x => x.trim()).filter(Boolean);
+  if (!codes.length) return;
+  const allIn = codes.every(c => AG_SEL_MAP.has(c.toUpperCase()));
+  codes.forEach(c => { const k = c.toUpperCase(); if (allIn) AG_SEL_MAP.delete(k); else if (!AG_SEL_MAP.has(k)) AG_SEL_MAP.set(k, c); });
+  _agSelRefresh();
+}
 function agSelFinish(save) {
   const d = _agDraft();
   if (d && save) { d.mapPick = [...AG_SEL_MAP.values()]; sessionStorage.setItem('agenda_draft', JSON.stringify(d)); }
@@ -2986,6 +2995,7 @@ function _buildMapLayers(geojson, isUpdate = false) {
           e.target.setStyle({ weight:4, opacity:0.95, color: getColorForMode(e.target.feature, currentViewMode) });
         });
         layer.on('click', e => {
+          if (AG_SEL) agSelFromTratta(e.target.feature && e.target.feature.properties);
           if (_selectorMode === 'pratica') selectByPraticaFromLayer(e.target);
           else applyHighlight(e.target);
         });
