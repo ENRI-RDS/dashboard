@@ -273,7 +273,12 @@ function milCell(c, key, soglia) {
   var fmt = function(v) { return v.toLocaleString('it-IT', {minimumFractionDigits:1, maximumFractionDigits:1}); };
   var reale = (d.scavati / d.metri) * 100;
   var pct = Math.min(100, (reale / soglia) * 100);
+  /* Milestone 100% con una parziale (50/70) presente: scatta solo quando la parziale è al 100%, prima resta 0% */
+  var sogliaParz = (c.p70 && c.p70 !== '-') ? 70 : ((c.p50 && c.p50 !== '-') ? 50 : 0);
+  var bloccata = soglia === 100 && sogliaParz > 0 && (reale / sogliaParz) * 100 < 100;
+  if (bloccata) pct = 0;
   var tip = 'Scavi su totale cluster: ' + fmt(reale) + '% (' + Math.round(d.scavati).toLocaleString('it-IT') + ' / ' + Math.round(d.metri).toLocaleString('it-IT') + ' m)'
+          + (bloccata ? ' · parziale ' + sogliaParz + '% non ancora completata: il 100% non è ancora attivo' : '')
           + (soglia < 100 ? ' · target milestone ' + soglia + '% = ' + Math.round(d.metri * soglia / 100).toLocaleString('it-IT') + ' m' : '');
   return '<div class="mil-cell"><span class="pct-pill" title="' + tip + '">' + fmt(pct) + '%</span>' + pill(date) + '</div>';
 }
