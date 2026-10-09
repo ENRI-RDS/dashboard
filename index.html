@@ -4764,6 +4764,7 @@ const PREV_WARN_DAYS = 7;
 
 function calcolaPrevisione(p) {
   if (!p.dataPrevRilascio) return null;
+  if (p.stato === 'NO COMPETENZA') return null; /* pratica non di competenza: la previsione non ha senso, mai in linea/scaduta */
   if (p.stato === 'OTTENUTO') return null; /* bug segnalato dall'utente: pratica già ottenuta (esito reale arrivato) mostrata come "scaduta" solo perché la data PREVISTA di rilascio è nel passato — la previsione non ha più senso una volta che l'esito reale è noto, va ignorata */
   const scad = parseDateIT(p.dataPrevRilascio);
   if (!scad) return null;
@@ -6147,7 +6148,7 @@ _hookScadenze();
           data_update: p.dataUpdate || '',
           comuni: p.comuni || [],
           data_ott: p.stato === 'OTTENUTO' ? (p.dum || '') : '',
-          prev: p.dataPrevRilascio || '',
+          prev: p.stato === 'NO COMPETENZA' ? '' : (p.dataPrevRilascio || ''),
         });
       });
     });
@@ -7068,7 +7069,7 @@ async function generaReportCompletoPPT() {
         .map(t => ({text:t, options:{bold:true, fill:'043F75', color:'FFFFFF', fontSize:fsS3, fontFace:'Raleway'}}));
       const bodyRowsS3 = _rpptZebra(mancanti.map(p => ([
         p.codice, p.tipo, _abbrevStato(p.stato), p.ente, (p.comuni&&p.comuni[0])||'',
-        p.dr_invio||'', p.dum||'', p.dataUpdate||'', p.dataPrevRilascio||'', _rpptFmtNum(p.metri||0)
+        p.dr_invio||'', p.dum||'', p.dataUpdate||'', (p.stato==='NO COMPETENZA'?'':p.dataPrevRilascio)||'', _rpptFmtNum(p.metri||0)
       ])));
       s3.addTable([headerRowS3, ...bodyRowsS3], { x:0.15, y:0.65, w:13.03, colW:colWS3, fontSize:fsS3, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', autoPage:false, margin:[padS3,padS3,padS3,padS3] });
     } else {
@@ -7081,7 +7082,7 @@ async function generaReportCompletoPPT() {
         const head = ['Codice','Stato','Ente','Comune','Prev. Rilasc.','Metri']
           .map(t => ({text:t, options:{bold:true, fill:'043F75', color:'FFFFFF', fontSize:fsS3, fontFace:'Raleway'}}));
         const body = _rpptZebra(chunk.map(p => ([
-          p.codice, _abbrevStato(p.stato), p.ente, (p.comuni&&p.comuni[0])||'', p.dataPrevRilascio||'', _rpptFmtNum(p.metri||0)
+          p.codice, _abbrevStato(p.stato), p.ente, (p.comuni&&p.comuni[0])||'', (p.stato==='NO COMPETENZA'?'':p.dataPrevRilascio)||'', _rpptFmtNum(p.metri||0)
         ])));
         s3.addTable([head, ...body], { x: 0.15 + i*6.6, y:0.65, w:6.5, colW:colWHalf, fontSize:fsS3, border:{type:'solid', color:'D0D5DD', pt:0.5}, valign:'middle', autoPage:false, margin:[1.5,1.5,1.5,1.5] });
       });
