@@ -1790,15 +1790,15 @@ MILESTONE_IMPRESE_ROWS = [
 ]
 
 MILESTONE_CONTRACT_ROWS = [
-    {"milestone": "Permits submission", "p50": "-", "p70": "-", "p100": "31/12/2026"},
-    {"milestone": "Authorizations received", "p50": "-", "p70": "-", "p100": "31/12/2027"},
-    {"milestone": "Cluster 1", "p50": "-", "p70": "31/12/2026", "p100": "30/04/2027"},
-    {"milestone": "Cluster 2", "p50": "31/12/2026", "p70": "-", "p100": "31/05/2027"},
-    {"milestone": "Cluster 3", "p50": "31/05/2027", "p70": "-", "p100": "31/03/2028"},
-    {"milestone": "Cluster 4", "p50": "-", "p70": "-", "p100": "31/03/2028"},
-    {"milestone": "Cluster 5", "p50": "-", "p70": "-", "p100": "30/06/2028"},
-    {"milestone": "Cluster 6", "p50": "-", "p70": "-", "p100": "31/12/2028"},
-    {"milestone": "Cluster 7", "p50": "-", "p70": "-", "p100": "31/12/2028"},
+    {"milestone": "Permits submission", "p50": "-", "p70": "-", "p100": "31/12/2026", "cavi_testati": "-", "cavi_info": ""},
+    {"milestone": "Authorizations received", "p50": "-", "p70": "-", "p100": "31/12/2027", "cavi_testati": "-", "cavi_info": ""},
+    {"milestone": "Cluster 1", "p50": "-", "p70": "31/12/2026", "p100": "30/04/2027", "cavi_testati": "30/06/2027", "cavi_info": "Intra MXP102 · P0"},
+    {"milestone": "Cluster 2", "p50": "31/12/2026", "p70": "-", "p100": "31/05/2027", "cavi_testati": "31/07/2027", "cavi_info": "Intra MXP109 · P0"},
+    {"milestone": "Cluster 3", "p50": "31/05/2027", "p70": "-", "p100": "31/03/2028", "cavi_testati": "30/06/2028", "cavi_info": "Inter AZ · P1"},
+    {"milestone": "Cluster 4", "p50": "-", "p70": "-", "p100": "31/03/2028", "cavi_testati": "30/06/2028", "cavi_info": "Inter AZ - MXP064 · P1"},
+    {"milestone": "Cluster 5", "p50": "-", "p70": "-", "p100": "30/06/2028", "cavi_testati": "31/08/2028", "cavi_info": "Intra MXP133 · P2"},
+    {"milestone": "Cluster 6", "p50": "-", "p70": "-", "p100": "31/12/2028", "cavi_testati": "31/03/2029", "cavi_info": "Intra MXP118 · P3"},
+    {"milestone": "Cluster 7", "p50": "-", "p70": "-", "p100": "31/12/2028", "cavi_testati": "31/03/2029", "cavi_info": "Intra MXP140 · TBC"},
 ]
 
 
