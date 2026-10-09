@@ -92,7 +92,8 @@ tbody td.col-permit-first{border-left:3px solid var(--retelit-blue);}
 tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);font-size:8.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);padding:6px 14px;text-align:left;border-top:1px solid var(--border2);}
 .date-pill{display:inline-block;padding:3px 9px;border-radius:20px;font-family:var(--font-mono);font-size:10px;font-weight:500;white-space:nowrap;}
 .dp-none{color:var(--muted2);}
-.pct-pill{display:inline-block;padding:3px 9px;border-radius:20px;font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--retelit-blue);background:var(--retelit-ice);white-space:nowrap;}
+.mil-cell{display:flex;flex-direction:column;align-items:center;gap:3px;}
+.pct-pill{display:inline-block;padding:1px 7px;border-radius:20px;font-family:var(--font-mono);font-size:10px;font-weight:600;color:var(--retelit-blue);background:var(--retelit-ice);white-space:nowrap;}
 .dp-2026{background:rgba(65,187,217,.12);color:#1A7D99;border:1px solid #ADCAD6;}
 .dp-2027{background:rgba(30,158,106,.10);color:#1E9E6A;border:1px solid #bbf7d0;}
 .dp-2028{background:rgba(4,63,117,.10);color:#043F75;border:1px solid #819FB9;}
@@ -180,12 +181,10 @@ tbody tr.group-row td{background:var(--surface2);font-family:var(--font-mono);fo
             <th class="gh-compl">50%</th>
             <th class="gh-compl">70%</th>
             <th class="gh-compl">100%</th>
-            <th class="gh-base" style="text-align:center;">Scavi attuali</th>
           </tr>
           <tr class="col-head">
             <th class="ch-base col-left"></th>
             <th class="ch-compl" colspan="3">Completamento</th>
-            <th class="ch-base"></th>
           </tr>
         </thead><tbody id="tbody-contract"></tbody></table>
       </div>
@@ -262,39 +261,68 @@ var CONTRACT = [];
 var GANTT_ROWS = [];
 var SCAVI_CLUSTER = null;  /* { '3': {metri, scavati} } da /api/cantieri, null se non disponibile */
 
-/* Soglia di riferimento della riga: milestone intermedia (70% o 50%) se presente, altrimenti 100%.
-   La % attuale è espressa rispetto a quella soglia: scavati / (soglia × metri totali), max 100%. */
-function _sogliaRiga(c) {
-  if (c.p70 && c.p70 !== '-') return 70;
-  if (c.p50 && c.p50 !== '-') return 50;
-  return 100;
-}
-
-function scaviCell(c) {
-  var m = /^Cluster\s+(\d+)$/i.exec((c && c.milestone) || '');
-  if (!m) return '<span class="date-pill dp-none">—</span>';
-  var d = SCAVI_CLUSTER && SCAVI_CLUSTER[m[1]];
-  if (!d || !(d.metri > 0)) return '<span class="date-pill dp-none">—</span>';
-  var soglia = _sogliaRiga(c);
-  var reale = (d.scavati / d.metri) * 100;           /* % scavi sul totale cluster */
-  var pct = Math.min(100, (reale / soglia) * 100);   /* % rispetto alla milestone */
+/* Cella milestone contract: per le righe "Cluster N" mostra sopra la data la % attuale di scavi
+   rispetto a quella milestone: min(100, scavati / (soglia × metri totali cluster)).
+   Soglia 100 = % sul totale cluster. Righe non-cluster o dati mancanti: solo la data. */
+function milCell(c, key, soglia) {
+  var date = c[key];
+  if (!date || date === '-') return pill(date);
+  var m = /^Cluster\s+(\d+)$/i.exec(c.milestone || '');
+  var d = m && SCAVI_CLUSTER && SCAVI_CLUSTER[m[1]];
+  if (!d || !(d.metri > 0)) return pill(date);
   var fmt = function(v) { return v.toLocaleString('it-IT', {minimumFractionDigits:1, maximumFractionDigits:1}); };
+  var reale = (d.scavati / d.metri) * 100;
+  var pct = Math.min(100, (reale / soglia) * 100);
   var tip = 'Scavi su totale cluster: ' + fmt(reale) + '% (' + Math.round(d.scavati).toLocaleString('it-IT') + ' / ' + Math.round(d.metri).toLocaleString('it-IT') + ' m)'
           + (soglia < 100 ? ' · target milestone ' + soglia + '% = ' + Math.round(d.metri * soglia / 100).toLocaleString('it-IT') + ' m' : '');
-  return '<span class="pct-pill" title="' + tip + '">' + fmt(pct) + '%</span>'
-       + (soglia < 100 ? ' <span style="font-size:10px;color:var(--muted2);">del ' + soglia + '%</span>' : '');
+  return '<div class="mil-cell"><span class="pct-pill" title="' + tip + '">' + fmt(pct) + '%</span>' + pill(date) + '</div>';
 }
 
-function _aggScaviCluster(cantieri) {
+/* Metri scavati per cluster: da /api/cantieri (uno per pratica autorizzata). */
+function _scavatiPerCluster(cantieri) {
   var agg = {};
   (cantieri || []).forEach(function(r) {
     var cl = String(r.cluster || '').replace(/^[Cc]/, '').trim();
     if (!cl) return;
-    if (!agg[cl]) agg[cl] = { metri: 0, scavati: 0 };
-    agg[cl].metri += r.metri_totali || 0;
-    agg[cl].scavati += r.metri_scavati || 0;
+    agg[cl] = (agg[cl] || 0) + (r.metri_scavati || 0);
   });
   return agg;
+}
+
+/* Metri TOTALI per cluster: da Riepilogo_progettazione.csv (tutte le tratte di progetto,
+   anche non ancora autorizzate), escluse le NO COMPETENZA — stessa logica di scavi.html. */
+function _parseCsvLine(line, sep) {
+  var res = [], cur = '', inQ = false;
+  for (var i = 0; i < line.length; i++) {
+    var ch = line[i];
+    if (ch === '"') inQ = !inQ;
+    else if (ch === sep && !inQ) { res.push(cur.trim()); cur = ''; }
+    else cur += ch;
+  }
+  res.push(cur.trim());
+  return res;
+}
+function _totaliPerCluster(text) {
+  var lines = (text || '').trim().split('\n').map(function(l) { return l.replace(/\r/, ''); });
+  if (lines.length < 2) return null;
+  var sep = lines[0].indexOf('\t') >= 0 ? '\t' : (lines[0].indexOf(';') >= 0 ? ';' : ',');
+  var H = _parseCsvLine(lines[0], sep).map(function(h) { return h.trim().toUpperCase(); });
+  var find = function() { for (var k = 0; k < arguments.length; k++) { var i = H.indexOf(arguments[k]); if (i >= 0) return i; } return -1; };
+  var iS = find('STATO_AUTORIZZAZIONE', 'STATO_LEGENDA'), iLun = find('LUNGHEZZA', 'LENGTH'), iCl = find('CLUSTER');
+  if (iLun < 0 || iCl < 0) return null;
+  var tot = {};
+  for (var n = 1; n < lines.length; n++) {
+    var cols = _parseCsvLine(lines[n], sep);
+    var cl = (cols[iCl] || '').trim().replace(/^[Cc]/, '');
+    var stato = (iS >= 0 ? cols[iS] : '') || 'IN ATTESA';
+    if (!cl || stato === 'NO COMPETENZA') continue;
+    var raw = (cols[iLun] || '0').trim(), v = 0;
+    if (raw.indexOf(',') >= 0 && raw.indexOf('.') < 0) v = parseFloat(raw.replace(',', '.')) || 0;
+    else if (raw.indexOf(',') >= 0) v = parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0;
+    else v = parseFloat(raw) || 0;
+    if (v > 0) tot[cl] = (tot[cl] || 0) + v;
+  }
+  return tot;
 }
 
 function _buildGanttRows() {
@@ -321,7 +349,7 @@ function _renderMilestoneData() {
   var tb2 = document.getElementById('tbody-contract');
   CONTRACT.forEach(function(c) {
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td class="col-left">' + c.milestone + '</td><td>' + pill(c.p50) + '</td><td>' + pill(c.p70) + '</td><td>' + pill(c.p100) + '</td><td style="text-align:center;">' + scaviCell(c) + '</td>';
+    tr.innerHTML = '<td class="col-left">' + c.milestone + '</td><td>' + milCell(c, 'p50', 50) + '</td><td>' + milCell(c, 'p70', 70) + '</td><td>' + milCell(c, 'p100', 100) + '</td>';
     tb2.appendChild(tr);
   });
 
@@ -333,10 +361,20 @@ function _renderMilestoneData() {
   var apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
   var _hdr = { headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } };
   /* % scavi per cluster: best-effort, se fallisce la colonna resta "—" */
-  var _pCantieri = fetch(apiBase + '/api/cantieri', _hdr)
+  var _pScavati = fetch(apiBase + '/api/cantieri', _hdr)
     .then(function(r) { return r.ok ? r.json() : null; })
-    .then(function(d) { return d ? _aggScaviCluster(d.cantieri) : null; })
+    .then(function(d) { return d ? _scavatiPerCluster(d.cantieri) : null; })
     .catch(function() { return null; });
+  var _pTotali = fetch('Riepilogo_progettazione.csv?t=' + Date.now(), _hdr)
+    .then(function(r) { return r.ok ? r.text() : null; })
+    .then(function(t) { return t ? _totaliPerCluster(t) : null; })
+    .catch(function() { return null; });
+  var _pCantieri = Promise.all([_pScavati, _pTotali]).then(function(a) {
+    if (!a[0] || !a[1]) return null;
+    var agg = {};
+    Object.keys(a[1]).forEach(function(cl) { agg[cl] = { metri: a[1][cl], scavati: a[0][cl] || 0 }; });
+    return agg;
+  });
   fetch(apiBase + '/api/milestone', _hdr)
     .then(function(r) {
       if (r.status === 403) { window.location.replace('hub.html'); return null; }
