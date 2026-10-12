@@ -2071,10 +2071,11 @@ function exportXlsx(pratiche, filename) {
 
 function _exportXlsxImpl(pratiche, filename) {
   if (!pratiche || !pratiche.length) { alert('Nessuna pratica da esportare.'); return; }
-  const header = ['Codice', 'Tipo', 'Lotto', 'Stato', 'Ente', 'Comune', 'Data Invio', 'Cambio Stato', 'Update', 'Data Ott.', 'Prev. Rilascio', 'Metri (m)'];
+  const header = ['Codice', 'Tipo', 'Lotto', 'Cluster', 'Stato', 'Ente', 'Comune', 'Data Invio', 'Cambio Stato', 'Update', 'Data Ott.', 'Prev. Rilascio', 'Metri (m)'];
 
-  // Indici colonne data (0-based): 6=Data Invio, 7=Cambio Stato, 8=Update, 9=Data Ott., 10=Prev. Rilascio
-  const DATE_COLS = [6, 7, 8, 9, 10];
+  // Indici colonne data (0-based): 7=Data Invio, 8=Cambio Stato, 9=Update, 10=Data Ott., 11=Prev. Rilascio
+  const DATE_COLS = [7, 8, 9, 10, 11];
+  const codiceCluster = _codiceClusterMap();  // codice pratica → Set<cluster> (come estrazione cliente)
   const DATE_FMT  = 'dd/mm/yyyy';
 
   // Converte stringa "dd/mm/yyyy" in oggetto Date (native) per SheetJS
@@ -2101,15 +2102,16 @@ function _exportXlsxImpl(pratiche, filename) {
       p.codice,
       tipo,
       p.lotto || '',
+      codiceCluster[p.codice] ? [...codiceCluster[p.codice]].sort((a,b)=>(+a)-(+b)).join(', ') : '', // col 3 – Cluster
       p.stato,
       p.ente || '',
-      (p.comuni && p.comuni.length ? p.comuni.join(', ') : ''), // col 5 – Comune
-      toDateObj(invioStr),          // col 6 – Data Invio → Date object
-      toDateObj(aggStr),            // col 7 – Cambio Stato → Date object
-      toDateObj(p.dataUpdate || ''),// col 8 – Update → Date object
-      toDateObj(dataOttStr),        // col 9 – Data Ott. → Date object
-      prevDate || '',               // col 10 – Prev. Rilascio → Date object
-      p.metri ? Number(p.metri) : 0 // col 11 – Metri → numero
+      (p.comuni && p.comuni.length ? p.comuni.join(', ') : ''), // col 6 – Comune
+      toDateObj(invioStr),          // col 7 – Data Invio → Date object
+      toDateObj(aggStr),            // col 8 – Cambio Stato → Date object
+      toDateObj(p.dataUpdate || ''),// col 9 – Update → Date object
+      toDateObj(dataOttStr),        // col 10 – Data Ott. → Date object
+      prevDate || '',               // col 11 – Prev. Rilascio → Date object
+      p.metri ? Number(p.metri) : 0 // col 12 – Metri → numero
     ];
   });
 
@@ -2126,7 +2128,7 @@ function _exportXlsxImpl(pratiche, filename) {
     });
   }
 
-  ws['!cols'] = [{wch:22},{wch:18},{wch:8},{wch:30},{wch:32},{wch:20},{wch:14},{wch:14},{wch:14},{wch:14},{wch:14},{wch:12}];
+  ws['!cols'] = [{wch:22},{wch:18},{wch:8},{wch:9},{wch:30},{wch:32},{wch:20},{wch:14},{wch:14},{wch:14},{wch:14},{wch:14},{wch:12}];
   const headerRange = XLSX.utils.decode_range(ws['!ref']);
   for (let c = headerRange.s.c; c <= headerRange.e.c; c++) {
     const cell = ws[XLSX.utils.encode_cell({r:0, c})];
