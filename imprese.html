@@ -689,6 +689,13 @@ window.addEventListener('pageshow', (e) => {
     return m ? m[1].toUpperCase() : '';
   }
 
+  // Chiave di dedup storico stati: include PRATICA e lotto, altrimenti due pratiche
+  // distinte sulla stessa tratta/ente/tipo (es. NO/14 e NO/30 su TR_0091) si
+  // sovrascrivono a parità di DATA_ULTIMA_MODIFICA e una sparisce dalla tabella.
+  function _dedupKey(p) {
+    return p.TRATTA_ID + '|' + p.ENTE + '|' + p.TIPO_PERMESSO + '|' + String(p.PRATICA||'').trim() + '|' + _lottoFromSource(p['Source.Name']);
+  }
+
   function buildCodice(p) {
     const tipoMap = {'AUTORIZZAZIONE':'AUT','NULLA OSTA':'NO'};
     const prefix = tipoMap[(p.TIPO_PERMESSO||'').trim()] || (p.TIPO_PERMESSO||'').trim().substring(0,3);
@@ -712,7 +719,7 @@ window.addEventListener('pageshow', (e) => {
   function _buildExportRows() {
     const latestMap = new Map();
     PRATICHE.forEach(p => {
-      const key = p.TRATTA_ID + '|' + p.ENTE + '|' + p.TIPO_PERMESSO;
+      const key = _dedupKey(p);
       const existing = latestMap.get(key);
       if (!existing || parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(existing.DATA_ULTIMA_MODIFICA)) {
         latestMap.set(key, p);
@@ -872,7 +879,7 @@ window.addEventListener('pageshow', (e) => {
     const latestMap = new Map();
     const lastRichiestaMap = new Map();
     PRATICHE.forEach(p => {
-      const key = p.TRATTA_ID + '|' + p.ENTE + '|' + p.TIPO_PERMESSO;
+      const key = _dedupKey(p);
       const existing = latestMap.get(key);
       if (!existing || parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(existing.DATA_ULTIMA_MODIFICA)) {
         latestMap.set(key, p);
@@ -1565,7 +1572,7 @@ window.addEventListener('pageshow', (e) => {
     // PRATICHE contiene tutta la storia degli stati) — stessa logica di renderPratiche()
     const latestMap = new Map();
     PRATICHE.forEach(p => {
-      const tKey = p.TRATTA_ID + '|' + p.ENTE + '|' + p.TIPO_PERMESSO;
+      const tKey = _dedupKey(p);
       const existing = latestMap.get(tKey);
       if (!existing || parseDate(p.DATA_ULTIMA_MODIFICA) >= parseDate(existing.DATA_ULTIMA_MODIFICA)) {
         latestMap.set(tKey, p);
