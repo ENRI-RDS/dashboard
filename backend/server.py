@@ -4101,10 +4101,10 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
     year = _now_iso()[:4]
     codice = f"VBS-{year}-{next_n:04d}"
 
-    # Upload foto su GitHub (max 4, ciascuna come data URL base64 dal frontend)
+    # Upload foto su GitHub (max 8, ciascuna come data URL base64 dal frontend)
     foto_urls = []
     foto_in = (payload or {}).get("foto") or []
-    for i, foto in enumerate(foto_in[:4]):
+    for i, foto in enumerate(foto_in[:8]):
         try:
             data_url = foto.get("dataUrl", "") if isinstance(foto, dict) else str(foto)
             if "," not in data_url:
