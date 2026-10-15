@@ -2969,7 +2969,10 @@ function _buildMapLayers(geojson, isUpdate = false) {
         const mid = coords[Math.floor(coords.length / 2)];
         const gmapsUrl = mid ? `https://www.google.com/maps?q=${mid[1].toFixed(6)},${mid[0].toFixed(6)}` : null;
         const isMobile = window.innerWidth <= 768;
-        layer.bindPopup(makePopupHtml(f.properties, gmapsUrl), {
+        // Contenuto lazy (funzione): il popup si costruisce all'apertura, quando RO_CANTIERI è sicuramente
+        // caricato. Costruirlo qui (eager) lo generava senza sezione Cantiere/bottone Sopralluogo se
+        // /api/cantieri rispondeva dopo il GeoJSON (es. cold start Render, senza cache).
+        layer.bindPopup(() => makePopupHtml(f.properties, gmapsUrl), {
           maxWidth: isMobile ? Math.min(window.innerWidth - 40, 320) : 640,
           autoPanPaddingTopLeft:  isMobile ? L.point(10, 180) : L.point(10, 70),
           autoPanPaddingBottomRight: isMobile ? L.point(10, 160) : L.point(10, 10),
