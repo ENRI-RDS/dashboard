@@ -259,6 +259,9 @@
   }
   .btn-registro:hover { background:var(--retelit-blue-25); border-color:var(--retelit-blue-50); }
   .btn-registro svg { width:11px; height:11px; flex-shrink:0; }
+  .pratica-map-btn { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; margin-left:4px; border-radius:4px; cursor:pointer; color:var(--accent); opacity:.6; vertical-align:middle; flex:0 0 auto; }
+  .pratica-map-btn svg { width:12px; height:12px; }
+  .pratica-map-btn:hover { opacity:1; background:var(--surface2); }
   .th-cell { display:flex; align-items:center; justify-content:space-between; gap:6px; }
   .th-icons { display:flex; align-items:center; gap:2px; flex-shrink:0; }
   .th-icon-btn {
@@ -1366,7 +1369,7 @@ function _cantieriTableHtml(rows) {
               : `<span style="color:var(--muted2)">—</span>`;
             return `<tr>
               <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--accent)">${r.codice_cantiere || '—'}</span></td>
-              <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:12px;color:var(--muted)" title="${(r.tratte||[]).length} tratte">${r.pratica_id || '—'}</span></td>
+              <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:12px;color:var(--muted)" title="${(r.tratte||[]).length} tratte">${r.pratica_id || '—'}</span>${_mapBtn(r)}</td>
               <td style="color:var(--muted)">${r.ente || '—'}</td>
               <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--accent)">${r.lotto ?? '—'}</span></td>
               <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:12px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 7px;color:var(--muted)">${(r.cluster ?? '?').toString().replace(/^[Cc]/,'')}</span></td>
@@ -1693,7 +1696,7 @@ function _renderCantieriTable() {
       : `<span style="color:var(--muted2)">—</span>`;
     return `<tr>
       <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--accent)">${r.codice_cantiere || '—'}</span></td>
-      <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:12px;color:var(--muted)" title="${(r.tratte||[]).length} tratte">${r.pratica_id || '—'}</span></td>
+      <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:12px;color:var(--muted)" title="${(r.tratte||[]).length} tratte">${r.pratica_id || '—'}</span>${_mapBtn(r)}</td>
       <td style="color:var(--muted);max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${r.ente || ''}">${r.ente || '—'}</td>
       <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--accent)">${r.lotto ?? '—'}</span></td>
       <td style="white-space:nowrap"><span style="font-family:var(--font-mono);font-size:12px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 7px;color:var(--muted)">${(r.cluster ?? '?').toString().replace(/^[Cc]/,'')}</span></td>
@@ -1790,6 +1793,18 @@ async function exportCantieriExcel(mode) {
     if (btn) { btn.disabled = false; btn.innerHTML = oldHtml; }
   }
 }
+
+// ── Apri pratica del cantiere in mappa (stesso deep-link di index.html: mappa.html?pratica=) ──
+function _mapBtn(r) {
+  if (!r.pratica_id) return '';
+  return `<span class="pratica-map-btn" data-map-cod="${String(r.pratica_id).replace(/"/g, '&quot;')}" title="Apri in mappa" role="link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span>`;
+}
+document.addEventListener('click', function(e) {
+  const b = e.target.closest('.pratica-map-btn[data-map-cod]');
+  if (!b) return;
+  e.stopPropagation(); e.preventDefault();
+  window.location.href = 'mappa.html?pratica=' + encodeURIComponent(b.dataset.mapCod);
+}, true);
 
 function _renderPageSubtitle() {
   const el = document.getElementById('pageSubDyn');
