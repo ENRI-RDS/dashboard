@@ -747,6 +747,10 @@
     <div class="card-header">
       <span class="card-title">Tutti i Cantieri</span>
       <span class="card-caption" id="cantieriCount">caricamento…</span>
+      <div class="scavi-chart-head-actions" style="margin-left:auto">
+        <button type="button" class="scavi-chart-export-btn" id="cantieriXlsVisBtn" onclick="exportCantieriExcel('visualizzato')" title="Esporta in Excel i cantieri attualmente visualizzati (filtri e ordinamento applicati)"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>Excel · visualizzato</button>
+        <button type="button" class="scavi-chart-export-btn" id="cantieriXlsAllBtn" onclick="exportCantieriExcel('tutti')" title="Esporta in Excel tutti i cantieri, ignorando i filtri"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>Excel · tutti i cantieri</button>
+      </div>
     </div>
     <div class="card-body">
       <div class="kpi-filter-bar">
@@ -1631,10 +1635,8 @@ function _applyColFilter() {
 
 
 // Tabella "Tutti i Cantieri": singole tratte/cantieri, non aggregate per lotto
-function _renderCantieriTable() {
-  const tbody = document.getElementById('cantieriTableBody');
-  if (!tbody) return;
-  _renderCantieriTableHead();
+// Righe attualmente visibili in "Tutti i Cantieri" (ricerca + quick filter + filtri colonna + ordinamento) — usata da render ed export Excel
+function _cantieriVisibili() {
   const q = (document.getElementById('cantieriSearchInput')?.value || '').trim().toLowerCase();
   let rows = CANTIERI_RAW.filter(r => {
     if (!_cantieriQuickFilterMatch(r)) return false;
@@ -1668,6 +1670,14 @@ function _renderCantieriTable() {
       String(a.codice_cantiere || '').localeCompare(String(b.codice_cantiere || ''), undefined, { numeric:true })
     );
   }
+  return rows;
+}
+
+function _renderCantieriTable() {
+  const tbody = document.getElementById('cantieriTableBody');
+  if (!tbody) return;
+  _renderCantieriTableHead();
+  const rows = _cantieriVisibili();
   const countEl = document.getElementById('cantieriCount');
   if (countEl) countEl.innerHTML = `<span class="cc-num">${rows.length}</span> / <span class="cc-num">${CANTIERI_RAW.length}</span> cantieri`;
   const filterCountEl = document.getElementById('cantieriFilterCount');
@@ -1697,6 +1707,88 @@ function _renderCantieriTable() {
       <td style="text-align:center"><span style="display:inline-flex;align-items:center;justify-content:center;gap:6px">${_registroDotHtml(r)}<button class="btn-registro" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Registro</button></span></td>
     </tr>`;
   }).join('') || `<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px">Nessun cantiere trovato.</td></tr>`;
+}
+
+// ── Esporta "Tutti i Cantieri" in Excel (ExcelJS, caricato lazy) ────────────
+window.loadExcelJS = window.loadExcelJS || (function(){
+  let _p = null;
+  return function(){
+    if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+    if (_p) return _p;
+    _p = new Promise((res, rej) => {
+      const sc = document.createElement('script');
+      sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+      sc.onload = () => res(window.ExcelJS);
+      sc.onerror = () => { _p = null; rej(new Error('exceljs load failed')); };
+      document.head.appendChild(sc);
+    });
+    return _p;
+  };
+})();
+
+async function exportCantieriExcel(mode) {
+  const all = mode === 'tutti';
+  const btn = document.getElementById(all ? 'cantieriXlsAllBtn' : 'cantieriXlsVisBtn');
+  const rows = all
+    ? CANTIERI_RAW.slice().sort((a, b) => String(a.codice_cantiere || '').localeCompare(String(b.codice_cantiere || ''), undefined, { numeric:true }))
+    : _cantieriVisibili();
+  if (!rows.length) { alert('Nessun cantiere da esportare.'); return; }
+  const oldHtml = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Esportazione…'; }
+  try {
+    const ExcelJS = await window.loadExcelJS();
+    const toDate = iso => iso ? new Date(iso + 'T00:00:00Z') : null;
+    const cols = [
+      { h:'Cod. Cantiere',      w:16, v:r => r.codice_cantiere || '' },
+      { h:'Pratica',            w:18, v:r => r.pratica_id || '' },
+      { h:'Ente',               w:34, v:r => r.ente || '' },
+      { h:'Lotto',              w:8,  v:r => String(r.lotto ?? '') },
+      { h:'Cluster',            w:9,  v:r => (r.cluster ?? '').toString().replace(/^[Cc]/, '') },
+      { h:'Provincia',          w:10, v:r => r.provincia || '' },
+      { h:'Comune',             w:20, v:r => r.comune || '' },
+      { h:'Impresa',            w:16, v:r => r.impresa || '' },
+      { h:'Stato',              w:14, v:r => STATO_LABEL[STATO_MAP[r.stato_cantiere] || 'non-avviato'] },
+      { h:'Tecnica scavo',      w:13, v:r => TECNICA_LABEL[r.tecnica_scavo] || '' },
+      { h:'Inizio previsto',    w:14, v:r => toDate(r.data_inizio_prevista),   f:'dd/mm/yyyy' },
+      { h:'Fine prevista',      w:14, v:r => toDate(r.data_fine_prevista),     f:'dd/mm/yyyy' },
+      { h:'Inizio effettivo',   w:14, v:r => toDate(r.data_inizio_effettiva),  f:'dd/mm/yyyy' },
+      { h:'Fine effettiva',     w:14, v:r => toDate(r.data_fine_effettiva),    f:'dd/mm/yyyy' },
+      { h:'Ripresa stimata',    w:14, v:r => toDate(r.data_ripresa_stimata),   f:'dd/mm/yyyy' },
+      { h:'Motivo blocco',      w:28, v:r => r.motivo_blocco || '' },
+      { h:'Metri totali',       w:12, v:r => r.metri_totali || 0,  f:'#,##0' },
+      { h:'Metri scavati',      w:12, v:r => r.metri_scavati || 0, f:'#,##0' },
+      { h:'Avanzamento',        w:12, v:r => (r.metri_totali || 0) > 0 ? (r.metri_scavati || 0) / r.metri_totali : null, f:'0%' },
+      { h:'Aggiornamento',      w:14, v:r => _registroFilterLabel(r) },
+      { h:'Note',               w:36, v:r => r.note || '' },
+    ];
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Cantieri', { views:[{ state:'frozen', ySplit:1 }] });
+    ws.columns = cols.map(c => ({ header:c.h, width:c.w }));
+    rows.forEach(r => {
+      const xr = ws.addRow(cols.map(c => c.v(r)));
+      cols.forEach((c, i) => { if (c.f) xr.getCell(i + 1).numFmt = c.f; });
+    });
+    const head = ws.getRow(1);
+    head.height = 22;
+    head.eachCell(cell => {
+      cell.font = { bold:true, color:{ argb:'FFFFFFFF' }, name:'Calibri' };
+      cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF043F75' } };
+      cell.alignment = { vertical:'middle', horizontal:'center', wrapText:true };
+    });
+    ws.autoFilter = { from:{ row:1, column:1 }, to:{ row:1, column:cols.length } };
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `ENRI_Cantieri_${all ? 'tutti' : 'visualizzati'}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  } catch (e) {
+    console.error(e);
+    alert('Esportazione Excel non riuscita: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = oldHtml; }
+  }
 }
 
 function _renderPageSubtitle() {
