@@ -80,6 +80,8 @@
   .cod:hover { text-decoration:underline; }
   .tipo { display:inline-block; font-size:10.5px; font-weight:600; padding:2px 8px; border-radius:10px; white-space:nowrap; }
   .tipo-In { background:var(--redL); color:var(--red); } .tipo-Cn { background:var(--yellowL); color:var(--yellow); } .tipo-Sc { background:var(--retelit-ice); color:var(--accent); }
+  thead th.srt { cursor:pointer; user-select:none; } thead th.srt:hover { background:var(--retelit-teal); }
+  thead th.srt::after { content:' ↕'; opacity:.4; } thead th.srt.asc::after { content:' ▲'; opacity:1; } thead th.srt.desc::after { content:' ▼'; opacity:1; }
   .sub { display:block; font-size:10.5px; color:var(--muted); margin-top:1px; }
   .desc { max-width:340px; line-height:1.4; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; cursor:pointer; white-space:pre-line; }
   td input.cell, td select.cell { font-family:inherit; font-size:12px; width:100%; min-width:110px; padding:5px 7px; border:1px solid transparent;
@@ -182,8 +184,7 @@
   <div class="tbl-wrap">
     <table>
       <thead><tr>
-        <th>Codice</th><th>Tipo</th><th>Cantiere / Comune</th><th>Impresa esecutrice (System)</th><th>SubSystem</th><th>Rilevata</th><th>Descrizione</th>
-        <th>Invio al System</th><th>Stato</th><th>Priority</th><th>Prevista</th><th></th>
+        <th class="srt" data-k="codice" onclick="setSort('codice')">Codice</th><th class="srt" data-k="tipo" onclick="setSort('tipo')">Tipo</th><th class="srt" data-k="cantiere" onclick="setSort('cantiere')">Cantiere / Comune</th><th class="srt" data-k="system" onclick="setSort('system')">Impresa esecutrice (System)</th><th class="srt" data-k="subsystem" onclick="setSort('subsystem')">SubSystem</th><th class="srt" data-k="data_rilevamento" onclick="setSort('data_rilevamento')">Rilevata</th><th class="srt" data-k="descrizione" onclick="setSort('descrizione')">Descrizione</th><th class="srt" data-k="data_invio" onclick="setSort('data_invio')">Invio al System</th><th class="srt" data-k="stato" onclick="setSort('stato')">Stato</th><th class="srt" data-k="priority" onclick="setSort('priority')">Priority</th><th class="srt" data-k="data_prevista" onclick="setSort('data_prevista')">Prevista</th><th></th>
       </tr></thead>
       <tbody id="tbody"></tbody>
     </table>
@@ -336,6 +337,27 @@ function filtered() {
   });
 }
 
+let sortK = '', sortD = 1;
+const PRIO_RANK = { bassa:0, media:1, alta:2, critica:3 }, STATO_RANK = { aperta:0, inviata:1, in_lavorazione:2, risolta:3, chiusa:4 };
+function sortVal(it, k) {
+  if (k === 'codice') return (it.prefisso || '') + String(it.seq || 0).padStart(6, '0');
+  if (k === 'tipo') return it.prefisso || '';
+  if (k === 'priority') return PRIO_RANK[it.priority] ?? -1;
+  if (k === 'stato') return STATO_RANK[it.stato] ?? -1;
+  return String(it[k] || '').toLowerCase();
+}
+function sorted(list) {
+  if (!sortK) return list;
+  return [...list].sort((a, b) => {
+    const x = sortVal(a, sortK), y = sortVal(b, sortK);
+    if (x === '' || y === '') return x === y ? 0 : (x === '' ? 1 : -1);  // vuoti sempre in fondo
+    return (x < y ? -1 : x > y ? 1 : 0) * sortD;
+  });
+}
+function setSort(k) {
+  if (sortK === k) { if (sortD === 1) sortD = -1; else { sortK = ''; sortD = 1; } } else { sortK = k; sortD = 1; }
+  render();
+}
 function renderKpi() {
   const K = [
     ['all', 'Totale', items.length, ''],
@@ -347,11 +369,12 @@ function renderKpi() {
   $('kpis').innerHTML = K.map(([k, l, v, c]) => '<button class="kpi ' + c + ((kpi === k || (k === 'all' && !kpi)) ? ' on' : '') + '" onclick="setKpi(\'' + k + '\')"><div class="k-l">' + l + '</div><div class="k-v">' + v + '</div></button>').join('');
 }
 function setKpi(k) { kpi = (k === 'all' || kpi === k) ? '' : k; render(); }
-function resetFilters() { ['fQ', 'fTipo', 'fStato', 'fPrio', 'fSys', 'fOrig'].forEach(i => $(i).value = ''); kpi = ''; render(); }
+function resetFilters() { ['fQ', 'fTipo', 'fStato', 'fPrio', 'fSys', 'fOrig'].forEach(i => $(i).value = ''); kpi = ''; sortK = ''; sortD = 1; render(); }
 
 function render() {
   renderKpi();
-  const list = filtered();
+  document.querySelectorAll('thead th.srt').forEach(th => { const on = th.dataset.k === sortK; th.classList.toggle('asc', on && sortD === 1); th.classList.toggle('desc', on && sortD === -1); });
+  const list = sorted(filtered());
   $('count').textContent = list.length + ' di ' + items.length;
   $('tbody').innerHTML = list.map(it => {
     const sys = esc(it.system || ''), sub = esc(it.subsystem || '');
