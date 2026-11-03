@@ -96,6 +96,8 @@ _master_csv_lock = asyncio.Lock()
 _cantieri_sync_lock = asyncio.Lock()
 cantieri_col  = db["cantieri"]                  # stato cantiere per pratica di autorizzazione
 sopralluoghi_col = db["sopralluoghi"]          # verbali di sopralluogo
+issues_col = db["issues"]                      # registro issue/anomalie verso i System (imprese)
+issues_skip_col = db["issues_skip"]            # NC di verbale la cui issue è stata eliminata a mano: la sync non la ricrea
 agenda_col = db["agenda"]                      # appuntamenti richiesti/programmati dagli enti
 agenda_delreq_col = db["agenda_richieste_eliminazione"]  # richieste di eliminazione appuntamento (da approvare)
 pol_conv_dates_col = db["pol_conv_dates"]      # prima data in cui CONVENZIONE/POLIZZA è comparsa per una pratica
@@ -821,6 +823,10 @@ async def _on_startup():
         await cantieri_col.create_index([("pratica_id", 1), ("ente", 1)])
         await cantieri_col.create_index("lotto")
         await sopralluoghi_col.create_index("codice_verbale")
+        await issues_col.create_index("codice", unique=True)
+        await issues_col.create_index("origine_key", unique=True, partialFilterExpression={"origine_key": {"$type": "string"}})
+        await issues_skip_col.create_index("key", unique=True)
+        await issues_col.create_index([("prefisso", 1), ("seq", -1)])
         await agenda_col.create_index([("stato", 1), ("data_appuntamento", 1)])
         await agenda_delreq_col.create_index([("stato", 1), ("agenda_id", 1)])
         await gantt_rates_col.create_index("scope", unique=True)
@@ -3706,6 +3712,500 @@ async def get_lotti_cantieri(sess: dict = Depends(_require_staff_session)):
     return {"lotti": result, "lotto_impresa": lotto_impresa}
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ISSUE — registro anomalie/segnalazioni verso i System (imprese). Solo admin/admin2.
+# Codice = prefisso per tipologia + progressivo per prefisso: In_0001, Cn_0001, Sc_0001.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Copia di CHECKLIST_DEF (sopralluoghi.html): id -> (area, testo). Serve a descrivere le issue nate dalle NC dei verbali.
+# Se la checklist cambia nel frontend, va riallineata qui (vedi AGENT_BRIEF §5.13).
+_CK_DEF = {
+    "PRE-01": ("Verifiche preliminari", "Autorizzazione valida e disponibile per il tratto in lavorazione"),
+    "PRE-02": ("Verifiche preliminari", "Tracciato conforme al progetto autorizzato; eventuali varianti approvate"),
+    "PRE-03": ("Verifiche preliminari", "Tracciato su suolo pubblico o diritto di passaggio pubblico"),
+    "PRE-04": ("Verifiche preliminari", "Impresa esecutrice e subappaltatori preventivamente autorizzati"),
+    "PRE-05": ("Verifiche preliminari", "Prescrizioni degli enti recepite nelle lavorazioni"),
+    "INF-01": ("Infrastruttura", "Pacco Tubi 1 conforme: 2 monotubi vuoti Ø63 mm e 1 bundle con 7 minitubi 16/13,5 mm"),
+    "INF-02": ("Infrastruttura", "Pacco Tubi 2 conforme: 1 bundle Ø63 mm con 9 minitubi 14/12 mm, salvo tratte Lotto 2"),
+    "INF-03": ("Infrastruttura", "Pacchi tubi separati con pozzetti dedicati"),
+    "INF-04": ("Infrastruttura", "Tubi e microdotti integri, puliti e privi di deformazioni o ostruzioni"),
+    "INF-05": ("Infrastruttura", "Cordino di tiro presente nei tubi Ø63 mm vuoti"),
+    "INF-06": ("Infrastruttura", "Tappi idonei presenti su tubi e microdotti nei pozzetti"),
+    "DIV-01": ("Diversificazione", "Separazione fisica minima di 8 m tra percorsi dello stesso cluster"),
+    "POZ-01": ("Pozzetti", "Distanza media circa 475 m e passo massimo 500 m"),
+    "POZ-02": ("Pozzetti", "Pozzetti presenti agli incroci con curva ≥45°"),
+    "POZ-03": ("Pozzetti", "Dimensioni e tipologia conformi alle specifiche"),
+    "POZ-04": ("Pozzetti", "Pozzetti Tipo 1 fronte Data Center e nelle interconnessioni, ove previsti"),
+    "POZ-05": ("Pozzetti", "Foro di drenaggio vicino al centro"),
+    "POZ-06": ("Pozzetti", "Chiusino in ghisa, dimensionato e con logo Retelit"),
+    "POZ-07": ("Pozzetti", "Pozzetto pulito, accessibile e adeguato"),
+    "MIC-01": ("Microdotti e giunzioni", "Colori distinti e continuità cromatica nelle giunzioni"),
+    "MIC-02": ("Microdotti e giunzioni", "Microdotti tagliati a 600 mm dall’ingresso del pozzetto"),
+    "MIC-03": ("Microdotti e giunzioni", "Coupler e tappi approvati con tenuta ermetica"),
+    "MIC-04": ("Microdotti e giunzioni", "Coupler non sepolti in incroci, ponti o aree difficili"),
+    "MIC-05": ("Microdotti e giunzioni", "Giunzioni incapsulate e sigillate ai due estremi"),
+    "MIC-06": ("Microdotti e giunzioni", "Buca riempita con materiale vagliato e microdotti sostenuti"),
+    "MIC-07": ("Microdotti e giunzioni", "Ball Marker sui giunti a profondità ≤1 m"),
+    "COL-01": ("Codifica cromatica", "Tubi RDS identificati in blu"),
+    "COL-02": ("Codifica cromatica", "Tubi Cliente identificati in rosso, giallo e verde"),
+    "COL-03": ("Codifica cromatica", "Marcatura visibile, continua e resistente"),
+    "SIC-01": ("Autorizzazioni personale", "Presenza in cantiere di personale autorizzato"),
+    "SIC-02": ("Autorizzazioni personale", "Presenza dei tesserini identificativi"),
+    "SIC-03": ("Documentazione sicurezza", "Presenza di POS, PSC, eventuale PIMUS, notifica preliminare aggiornata e piano di emergenza"),
+    "SIC-04": ("Programmazione lavori", "Rispetto del programma lavori settimanale"),
+    "SIC-05": ("Programmazione lavori", "Presenza del preposto indicato dall’impresa"),
+    "SIC-06": ("DPI", "Presenza e corretto utilizzo dei DPI previsti dal POS e formazione specifica"),
+    "SIC-07": ("Macchine e attrezzature", "Utilizzo corretto delle attrezzature rispetto al POS e formazione richiesta"),
+    "SIC-08": ("Macchine e attrezzature", "Documentazione sicurezza e libretti uso/manutenzione disponibili"),
+    "SIC-09": ("Macchine e attrezzature", "Fasce di sollevamento idonee e prive di usura"),
+    "SIC-10": ("Macchine e attrezzature", "Specchietti retrovisori e cicalino funzionanti"),
+    "SIC-11": ("Stoccaggio materiali", "Bombole identificate, separate, verticali e distinte tra piene e vuote"),
+    "SIC-12": ("Stoccaggio materiali", "Materiali stoccati in modo idoneo e stabile"),
+    "SIC-13": ("Protezione scavi", "Protezioni contro il rischio di seppellimento"),
+    "SIC-14": ("Lavori in quota", "Protezioni collettive contro le cadute dall’alto"),
+    "SIC-15": ("Cadute sotto 2 m", "Protezioni contro le cadute, anche negli scavi"),
+    "SIC-16": ("Caduta materiali", "Protezioni contro la caduta di materiali"),
+    "SIC-17": ("Viabilità e pulizia", "Pulizia della sede stradale adiacente"),
+    "SIC-18": ("Viabilità e pulizia", "Movieri e segnaletica per regolazione traffico"),
+    "SIC-19": ("Viabilità e pulizia", "Ordine e pulizia delle aree di cantiere"),
+    "SIC-20": ("Segnaletica", "Segnaletica di cantiere, emergenza e stradale conforme"),
+    "SIC-43": ("Segnaletica", "Cartello di cantiere presente, anche in formato ridotto, posizionato in prossimità dei cantieri mobili"),
+    "SIC-21": ("Recinzioni e delimitazioni", "Area di intervento correttamente delimitata"),
+    "SIC-22": ("Recinzioni e delimitazioni", "Accessi di cantiere correttamente chiusi"),
+    "SIC-23": ("Apprestamenti igienico-sanitari", "Apprestamenti conformi al POS"),
+    "SIC-24": ("Presidi emergenza", "Cassetta primo soccorso o pacchetto medicazione idoneo"),
+    "SIC-25": ("Presidi emergenza", "Estintori presenti"),
+    "SIC-26": ("Presidi emergenza", "Addetti primo soccorso e antincendio presenti"),
+    "SIC-27": ("Gestione rifiuti", "Rifiuti identificati con corretto codice CER"),
+    "SIC-28": ("Gestione rifiuti", "Rifiuti separati per tipologie omogenee"),
+    "SIC-29": ("Gestione rifiuti", "Deposito temporaneo delimitato e protetto da sversamenti"),
+    "SIC-30": ("Gestione rifiuti", "Contenitori rifiuti pericolosi integri ed etichettati"),
+    "SIC-31": ("Gestione rifiuti", "Formulari rifiuti completi e conservati"),
+    "SIC-32": ("Gestione rifiuti", "Kit antiversamento presente e pronto"),
+    "SIC-33": ("Rumore", "Prescrizioni POS per il rumore rispettate"),
+    "SIC-34": ("Rumore", "Autorizzazione o deroga acustica presente, se richiesta"),
+    "SIC-35": ("Rumore", "Orari e limiti delle lavorazioni rumorose rispettati"),
+    "SIC-36": ("Rumore", "Silenziatori e carter in buono stato"),
+    "SIC-37": ("Rumore", "Barriere antirumore presso recettori sensibili, se previste"),
+    "SIC-38": ("Illuminazione", "Illuminazione adeguata e conforme al POS"),
+    "SIC-39": ("Altro", "Assenza di focolai"),
+    "SIC-40": ("Altro", "Spezzoni e tondini adeguatamente protetti"),
+    "SIC-41": ("Altro", "Ordinanze stradali disponibili e personale formato"),
+    "SIC-42": ("Altro", "Schede sicurezza sostanze disponibili e contenitori etichettati"),
+    "TST-01": ("Collaudi", "Mandrinatura su ogni tratta pozzetto-pozzetto dei Ø63 mm non bundle"),
+    "TST-02": ("Collaudi", "Verbale mandrinatura completo"),
+    "TST-03": ("Collaudi", "Test pressione su condotti e microdotti previsti"),
+    "TST-04": ("Collaudi", "Nessun calo pressione, perdita, deformazione o cedimento"),
+    "TST-05": ("Collaudi", "Verbale pressione completo"),
+    "RIP-01": ("Ripristini", "Ripristino provvisorio sicuro e senza cedimenti"),
+    "RIP-02": ("Ripristini", "Ripristino definitivo conforme alle prescrizioni"),
+    "DOC-01": ("Documentazione", "Checklist conformità disponibile"),
+    "DOC-02": ("Documentazione", "Butterfly diagram disponibile e coerente"),
+    "DOC-03": ("Documentazione", "Permessi, autorizzazioni e test disponibili"),
+    "DOC-04": ("Documentazione", "As-built GIS e DWG completi"),
+    "DOC-05": ("Documentazione", "Due foto georeferenziate per ogni giunto"),
+    "DOC-06": ("Documentazione", "Foto nuovi pozzetti e aggiornamento One GIS completati"),
+}
+
+# Tipologia issue per punto checklist: Cn = segnaletica di cantiere; Sc = documenti/autorizzazioni (personale,
+# documentazione sicurezza, autorizzazioni e prescrizioni degli enti); tutto il resto = In (anomalia infrastruttura).
+_ISSUE_CN_IDS = {"SIC-20", "SIC-43"}
+_ISSUE_SC_IDS = {"SIC-01", "SIC-02", "SIC-03", "PRE-01", "PRE-04", "PRE-05"}
+_issue_sync_lock = asyncio.Lock()
+
+_ISSUE_TIPI = {
+    "In": "Anomalia su infrastruttura (completata o in corso)",
+    "Cn": "Segnaletica su cantiere in corso",
+    "Sc": "Documentazione sicurezza / autorizzazioni",
+}
+_ISSUE_STATI = {
+    "aperta": "Aperta", "inviata": "Inviata al System", "in_lavorazione": "In lavorazione",
+    "risolta": "Risolta", "chiusa": "Chiusa",
+}
+_ISSUE_PRIORITY = {"bassa": "Bassa", "media": "Media", "alta": "Alta", "critica": "Critica"}
+# campo -> etichetta (usata nello storico e nell'export)
+_ISSUE_FIELDS = {
+    "cantiere": "Cantiere", "comune": "Comune", "system": "System", "subsystem": "SubSystem",
+    "pratica": "Permesso / Pratica", "ente": "Ente", "lotto": "Lotto",
+    "data_rilevamento": "Data rilevamento", "rilevato_da": "Chi ha rilevato l'anomalia",
+    "descrizione": "Descrizione", "data_invio": "Data invio segnalazione al System",
+    "rif_system_invio": "Riferimento System invio", "metodo_invio": "Metodo di invio",
+    "stato": "Stato avanzamento", "priority": "Priority", "data_prevista": "Data prevista sistemazione",
+}
+_ISSUE_DATE_FIELDS = ("data_rilevamento", "data_invio", "data_prevista")
+_ISSUE_TEXT_MAX = {"descrizione": 4000, "pratica": 80, "ente": 200, "lotto": 20, "cantiere": 200, "comune": 120, "system": 200, "subsystem": 200,
+                   "rilevato_da": 200, "rif_system_invio": 300, "metodo_invio": 100}
+_issue_code_lock = asyncio.Lock()
+
+
+def _issue_oid(issue_id: str) -> ObjectId:
+    try:
+        return ObjectId(issue_id)
+    except Exception:
+        raise HTTPException(400, "ID non valido")
+
+
+def _issue_clean(p: dict, cur: dict | None = None) -> dict:
+    """Valida il payload e lo fonde sul documento corrente (update parziale: i campi
+    assenti dal payload restano invariati). Restituisce solo i campi gestiti."""
+    p = p or {}
+    base = {k: (cur or {}).get(k, "") for k in _ISSUE_FIELDS}
+    rec = dict(base)
+    for k in _ISSUE_FIELDS:
+        if k not in p:
+            continue
+        v = str(p.get(k) or "").strip()
+        if k in _ISSUE_DATE_FIELDS:
+            if v:
+                try:
+                    datetime.strptime(v, "%Y-%m-%d")
+                except ValueError:
+                    raise HTTPException(422, f"{_ISSUE_FIELDS[k]}: data non valida (atteso AAAA-MM-GG)")
+        elif k in ("stato", "priority"):
+            v = v.lower()
+        else:
+            v = v[:_ISSUE_TEXT_MAX.get(k, 300)]
+        rec[k] = v
+    if not rec["stato"]:
+        rec["stato"] = "aperta"
+    if not rec["priority"]:
+        rec["priority"] = "media"
+    if rec["stato"] not in _ISSUE_STATI:
+        raise HTTPException(422, "Stato avanzamento non valido")
+    if rec["priority"] not in _ISSUE_PRIORITY:
+        raise HTTPException(422, "Priority non valida")
+    if not rec["descrizione"]:
+        raise HTTPException(422, "Descrizione obbligatoria")
+    return rec
+
+
+def _issue_out(d: dict) -> dict:
+    d["_id"] = str(d["_id"])
+    return d
+
+
+@app.get("/api/issues")
+async def list_issues(sess: dict = Depends(_require_admin_session)):
+    items = []
+    async for d in issues_col.find({}).sort([("prefisso", 1), ("seq", -1)]):
+        items.append(_issue_out(d))
+    return {"items": items}
+
+
+async def _issue_create(pref: str, rec: dict, utente: str, extra: dict | None = None,
+                        azione: str = "creata", marker: dict | None = None) -> dict:
+    """Inserisce una issue assegnando il codice {prefisso}_{NNNN} (progressivo per prefisso)."""
+    now = datetime.now(timezone.utc).isoformat()
+    if not rec.get("data_rilevamento"):
+        rec["data_rilevamento"] = now[:10]
+    async with _issue_code_lock:
+        last = await issues_col.find_one({"prefisso": pref}, sort=[("seq", -1)])
+        seq = int((last or {}).get("seq", 0)) + 1
+        doc = {
+            **rec, **(extra or {}),
+            "prefisso": pref, "seq": seq, "codice": f"{pref}_{seq:04d}",
+            "created_by": utente, "created_at": now, "updated_at": now,
+            "storico": [{"ts": now, "utente": utente, "azione": azione, "modifiche": [], **(marker or {})}],
+        }
+        res = await issues_col.insert_one(doc)
+    doc["_id"] = str(res.inserted_id)
+    return doc
+
+
+@app.post("/api/issues")
+async def create_issue(payload: dict, sess: dict = Depends(_require_admin_session)):
+    pref = str((payload or {}).get("tipologia", "")).strip()
+    pref = pref[:1].upper() + pref[1:2].lower() if pref else ""
+    if pref not in _ISSUE_TIPI:
+        raise HTTPException(422, "Tipologia non valida (In / Cn / Sc)")
+    doc = await _issue_create(pref, _issue_clean(payload), sess.get("nome", ""))
+    return {"ok": True, "item": doc}
+
+
+@app.put("/api/issues/{issue_id}")
+async def update_issue(issue_id: str, payload: dict, sess: dict = Depends(_require_admin_session)):
+    """Update parziale (anche un solo campo, per la modifica in cella). Ogni variazione
+    viene registrata nello storico con utente, data/ora e valore precedente/nuovo."""
+    oid = _issue_oid(issue_id)
+    cur = await issues_col.find_one({"_id": oid})
+    if not cur:
+        raise HTTPException(404, "Issue non trovata")
+    if "tipologia" in (payload or {}) and str(payload["tipologia"]).strip()[:2].lower() != cur["prefisso"].lower():
+        raise HTTPException(422, "La tipologia non è modificabile (il codice dipende da essa)")
+    rec = _issue_clean(payload, cur)
+    def _disp(k: str, v: str) -> str:
+        return {"stato": _ISSUE_STATI, "priority": _ISSUE_PRIORITY}.get(k, {}).get(v, v)
+
+    changes = [{"campo": _ISSUE_FIELDS[k], "da": _disp(k, str(cur.get(k, "") or "")), "a": _disp(k, rec[k])}
+               for k in _ISSUE_FIELDS if str(cur.get(k, "") or "") != rec[k]]
+    if not changes:
+        return {"ok": True, "item": _issue_out(cur), "changed": False}
+    now = datetime.now(timezone.utc).isoformat()
+    rec.update({"updated_by": sess.get("nome", ""), "updated_at": now})
+    await issues_col.update_one({"_id": oid}, {
+        "$set": rec,
+        "$push": {"storico": {"ts": now, "utente": sess.get("nome", ""), "azione": "modificata", "modifiche": changes}},
+    })
+    d = await issues_col.find_one({"_id": oid})
+    return {"ok": True, "item": _issue_out(d), "changed": True}
+
+
+@app.delete("/api/issues/{issue_id}")
+async def delete_issue(issue_id: str, sess: dict = Depends(_require_admin_session)):
+    oid = _issue_oid(issue_id)
+    cur = await issues_col.find_one({"_id": oid})
+    res = await issues_col.delete_one({"_id": oid})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Issue non trovata")
+    if cur and cur.get("origine_key"):
+        # issue nata da una NC di verbale: ricordo l'eliminazione, altrimenti la sync la ricreerebbe
+        await issues_skip_col.update_one({"key": cur["origine_key"]},
+                                         {"$set": {"key": cur["origine_key"], "codice": cur.get("codice", ""),
+                                                   "by": sess.get("nome", ""), "at": datetime.now(timezone.utc).isoformat()}},
+                                         upsert=True)
+    return {"ok": True, "deleted": issue_id}
+
+
+def _issue_tipo_item(item_id: str) -> str:
+    return "Sc" if item_id in _ISSUE_SC_IDS else ("Cn" if item_id in _ISSUE_CN_IDS else "In")
+
+
+async def _sopr_root_code(v: dict, cache: dict) -> str:
+    """Codice del primo verbale della catena (sopralluogo → verifiche): le NC ripetute nelle verifiche
+    appartengono alla stessa issue."""
+    cur, n = v, 0
+    while cur.get("verbale_origine") and n < 20:
+        code = cur["verbale_origine"]
+        nxt = cache.get(code)
+        if nxt is None:
+            nxt = await sopralluoghi_col.find_one({"codice_verbale": code})
+            if nxt is None:
+                return code
+            cache[code] = nxt
+        cur, n = nxt, n + 1
+    return cur.get("codice_verbale", "")
+
+
+async def _issue_sync_verbali(verbali: list) -> dict:
+    """Crea/aggiorna le issue a partire dalle checklist dei verbali (da passare in ordine di codice crescente).
+    - punto NC → una issue per (verbale radice, punto), con impresa/cantiere/comune/lotto/permesso del verbale;
+    - verifica successiva con punto Conforme → la issue passa a 'Risolta' (una sola volta, rispetta le modifiche manuali);
+    - verifica ancora NC → solo una riga di storico.
+    Idempotente: si può rilanciare quante volte si vuole."""
+    created = resolved = 0
+    cache = {d.get("codice_verbale"): d for d in verbali}
+    async with _issue_sync_lock:
+        for v in verbali:
+            code = v.get("codice_verbale", "")
+            root = await _sopr_root_code(v, cache)
+            ck = v.get("checklist") or {}
+            label = str(v.get("tratta_id", "") or "").strip()
+            cod_cant = label.split(" — ")[0].strip() if label not in ("", "—") else ""
+            cinfo = None
+            for sez in _CK_CATEGORIE:
+                for item_id, st in (ck.get(sez) or {}).items():
+                    if not isinstance(st, dict) or st.get("e") not in ("NC", "C"):
+                        continue
+                    key = f"{root}|{item_id}"
+                    iss = await issues_col.find_one({"origine_key": key})
+                    now = datetime.now(timezone.utc).isoformat()
+                    if st["e"] == "NC":
+                        if iss is not None:
+                            if code != iss.get("origine_verbale") and not any(h.get("verbale") == code for h in iss.get("storico") or []):
+                                await issues_col.update_one({"_id": iss["_id"]}, {"$set": {"updated_at": now}, "$push": {"storico": {
+                                    "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code,
+                                    "modifiche": [{"campo": "Verifica", "da": "", "a": f"Ancora non conforme nel verbale {code}"}]}}})
+                            continue
+                        if await issues_skip_col.find_one({"key": key}):
+                            continue
+                        if cinfo is None:
+                            cinfo = {}
+                            if cod_cant.startswith("CA/"):
+                                cd = await cantieri_col.find_one({"codice_cantiere": cod_cant})
+                                if cd:
+                                    cinfo = {"pratica": str(cd.get("pratica_id", "") or ""), "ente": str(cd.get("ente", "") or "")}
+                        area, testo = _CK_DEF.get(item_id, ("", ""))
+                        parts = [f"{item_id} — {area}: {testo}" if testo else item_id]
+                        for lab, k in (("Rilievo", "rilievo"), ("Azione correttiva", "azione"), ("Responsabile", "resp"), ("Nota", "nota")):
+                            if st.get(k):
+                                parts.append(f"{lab}: {st[k]}")
+                        rec = _issue_clean({
+                            "cantiere": cod_cant or label, "pratica": cinfo.get("pratica", ""), "ente": cinfo.get("ente", ""),
+                            "lotto": v.get("lotto", ""), "comune": v.get("comune", ""), "system": v.get("impresa", ""),
+                            "data_rilevamento": _sopr_date_iso(v.get("data_sopralluogo", "")) or str(v.get("created_at", ""))[:10],
+                            "rilevato_da": v.get("referente_impresa", ""),  # campo storicamente invertito: contiene il redattore
+                            "descrizione": "\n".join(parts), "data_prevista": _sopr_date_iso(st.get("scad", "")),
+                        })
+                        try:
+                            await _issue_create(_issue_tipo_item(item_id), rec, f"Sistema (verbale {code})",
+                                                extra={"origine_verbale": code, "origine_item": item_id, "origine_cat": sez, "origine_key": key},
+                                                azione="creata", marker={"verbale": code})
+                            created += 1
+                        except Exception as e:
+                            if "E11000" not in str(e):
+                                raise
+                    elif iss is not None and code != iss.get("origine_verbale") and iss.get("stato") not in ("risolta", "chiusa") \
+                            and not any(h.get("verbale") == code for h in iss.get("storico") or []):
+                        await issues_col.update_one({"_id": iss["_id"]}, {"$set": {"stato": "risolta", "updated_at": now}, "$push": {"storico": {
+                            "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code,
+                            "modifiche": [{"campo": "Stato avanzamento", "da": _ISSUE_STATI.get(iss.get("stato"), ""), "a": "Risolta"},
+                                          {"campo": "Verifica", "da": "", "a": f"Conforme nel verbale {code}"}]}}})
+                        resolved += 1
+    return {"created": created, "resolved": resolved}
+
+
+async def _issue_sync_safe(verbali: list) -> None:
+    try:
+        r = await _issue_sync_verbali(verbali)
+        if r["created"] or r["resolved"]:
+            print(f"[issues] sync da verbali: {r}")
+    except Exception as e:
+        print(f"[issues] sync da verbali fallita: {type(e).__name__}: {e}")
+
+
+@app.post("/api/issues/sync-sopralluoghi")
+async def sync_issues_from_sopralluoghi(sess: dict = Depends(_require_admin_session)):
+    """Allinea il registro con le NC dei verbali (idempotente; chiamata anche all'apertura della pagina)."""
+    verbali = [d async for d in sopralluoghi_col.find({}).sort("codice_verbale", 1)]
+    return {"ok": True, "scanned": len(verbali), **(await _issue_sync_verbali(verbali))}
+
+
+@app.get("/api/issues/lookup")
+async def issues_lookup(sess: dict = Depends(_require_admin_session)):
+    """Cantieri già presenti (collection `cantieri`, 1 per pratica AUT ottenuta) per precompilare la
+    issue partendo da codice cantiere o permesso: comune, impresa (= System), lotto, ente."""
+    lotto_impresa: dict = {}
+    async for a in assignments_col.find({}, {"nome": 1, "lotti": 1}):
+        for l in (a.get("lotti") or []):
+            ln = _lotto_from_source(l)
+            if ln:
+                lotto_impresa[ln] = a.get("nome", "")
+    rows = []
+    async for d in cantieri_col.find({}, {"codice_cantiere": 1, "cantiere_key": 1, "pratica_id": 1, "ente": 1, "lotto": 1,
+                                          "cluster": 1, "provincia": 1, "comune": 1, "impresa": 1}):
+        lotto = _lotto_from_source(d.get("lotto", ""))
+        rows.append({
+            "codice_cantiere": str(d.get("codice_cantiere", "") or "").strip(),
+            "pratica_id": str(d.get("pratica_id", "") or "").strip(),
+            "ente": str(d.get("ente", "") or "").strip(),
+            "lotto": lotto,
+            "comune": str(d.get("comune", "") or "").strip(),
+            "provincia": str(d.get("provincia", "") or "").strip(),
+            "impresa": str(d.get("impresa", "") or "").strip() or lotto_impresa.get(lotto, ""),
+        })
+    rows.sort(key=lambda r: (r["lotto"], r["codice_cantiere"] or r["pratica_id"]))
+    return {"cantieri": rows}
+
+
+@app.get("/api/issues/export.xlsx")
+async def export_issues_xlsx(
+    tipologia: str = "", stato: str = "", priority: str = "", system: str = "", q: str = "",
+    sess: dict = Depends(_require_admin_session),
+):
+    """Excel nel formato della bozza richiesta (16 colonne, stesso ordine) + fogli Storico e
+    Legenda codici. Accetta gli stessi filtri della pagina."""
+    import openpyxl
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.table import Table, TableStyleInfo
+
+    items = []
+    async for d in issues_col.find({}).sort([("prefisso", 1), ("seq", 1)]):
+        if tipologia and d.get("prefisso") != tipologia:
+            continue
+        if stato and d.get("stato") != stato:
+            continue
+        if priority and d.get("priority") != priority:
+            continue
+        if system and (d.get("system") or "").strip().lower() != system.strip().lower():
+            continue
+        if q:
+            hay = " ".join(str(d.get(k, "")) for k in ("codice", *_ISSUE_FIELDS)).lower()
+            if q.strip().lower() not in hay:
+                continue
+        items.append(d)
+
+    wb = openpyxl.Workbook()
+    HFILL = PatternFill("solid", fgColor="043F75")
+    HFONT = Font(color="FFFFFF", bold=True, size=10.5)
+    THIN = Side(style="thin", color="D9DEE6")
+    BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
+    PRIO_FILL = {"critica": "F8D0CC", "alta": "FDE3C8", "media": "FFF3C4", "bassa": "E4F5EC"}
+    STATO_FILL = {"risolta": "E4F5EC", "chiusa": "E4F5EC"}
+
+    def _header(ws, cols, widths):
+        ws.append(cols)
+        for c in range(1, len(cols) + 1):
+            cell = ws.cell(row=1, column=c)
+            cell.fill, cell.font, cell.border = HFILL, HFONT, BORDER
+            cell.alignment = Alignment(vertical="center", wrap_text=True)
+        ws.row_dimensions[1].height = 30
+        ws.freeze_panes = "B2"
+        for i, w in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+
+    ws = wb.active
+    ws.title = "Foglio1"
+    cols = ["Codice Issue", "Tipologia", "Cantiere", "Comune", "System", "SubSystem", "data rilevamento",
+            "chi ha rilevato l'anomalia", "Descrizione", "data invio segnalazione al system",
+            "Riferimento System invio", "metodo di invio", "stato avanzamento", "Priority",
+            "Link vs documentazione", "data prevista sistemazione",
+            "Lotto", "Permesso / Pratica", "Ente", "Origine (verbale · punto)"]  # ultime 4: extra rispetto alla bozza, in coda
+    _header(ws, cols, [13, 26, 16, 16, 20, 20, 13, 22, 60, 16, 22, 15, 18, 11, 24, 16, 8, 18, 26, 22])
+    for d in items:
+        ws.append([
+            d.get("codice", ""), _ISSUE_TIPI.get(d.get("prefisso"), ""), d.get("cantiere", ""), d.get("comune", ""),
+            d.get("system", ""), d.get("subsystem", ""),
+            _sopr_date_obj(d.get("data_rilevamento", "")) or None, d.get("rilevato_da", ""),
+            d.get("descrizione", ""), _sopr_date_obj(d.get("data_invio", "")) or None,
+            d.get("rif_system_invio", ""), d.get("metodo_invio", ""),
+            _ISSUE_STATI.get(d.get("stato"), ""), _ISSUE_PRIORITY.get(d.get("priority"), ""),
+            "",  # Link vs documentazione: colonna mantenuta per compatibilità col modello, compilabile a mano
+            _sopr_date_obj(d.get("data_prevista", "")) or None,
+            d.get("lotto", ""), d.get("pratica", ""), d.get("ente", ""),
+            f"{d['origine_verbale']} · {d.get('origine_item', '')}" if d.get("origine_verbale") else "",
+        ])
+        r = ws.max_row
+        for c in range(1, len(cols) + 1):
+            cell = ws.cell(row=r, column=c)
+            cell.border = BORDER
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+        for c in (7, 10, 16):
+            ws.cell(row=r, column=c).number_format = "DD/MM/YYYY"
+        ws.cell(row=r, column=14).fill = PatternFill("solid", fgColor=PRIO_FILL.get(d.get("priority"), "FFFFFF"))
+        if d.get("stato") in STATO_FILL:
+            ws.cell(row=r, column=13).fill = PatternFill("solid", fgColor=STATO_FILL[d["stato"]])
+    if items:
+        ws.add_table(Table(displayName="Issue", ref=f"A1:{get_column_letter(len(cols))}{ws.max_row}",
+                           tableStyleInfo=TableStyleInfo(name="TableStyleLight1", showRowStripes=False)))
+
+    ws2 = wb.create_sheet("Storico")
+    _header(ws2, ["Codice Issue", "Data e ora (UTC)", "Utente", "Azione", "Campo", "Da", "A"], [13, 20, 20, 12, 30, 30, 30])
+    for d in items:
+        for h in d.get("storico") or []:
+            ts = str(h.get("ts", ""))[:19].replace("T", " ")
+            mods = h.get("modifiche") or []
+            if not mods:
+                ws2.append([d.get("codice", ""), ts, h.get("utente", ""), h.get("azione", ""), "", "", ""])
+            for m in mods:
+                ws2.append([d.get("codice", ""), ts, h.get("utente", ""), h.get("azione", ""),
+                            m.get("campo", ""), m.get("da", ""), m.get("a", "")])
+
+    ws3 = wb.create_sheet("Legenda codici")
+    _header(ws3, ["Prefisso", "Significato"], [12, 80])
+    ws3.append(["In_nnnn", "Progressivo per anomalie riscontrate su infrastrutture completate o in corso"])
+    ws3.append(["Cn_nnnn", "Segnaletica su cantieri in corso"])
+    ws3.append(["Sc_nnnn", "Documentazione sicurezza / autorizzazioni"])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="issue_enri_{datetime.now().strftime("%Y-%m-%d")}.xlsx"'},
+    )
+
+
 @app.delete("/api/sopralluoghi/{sop_id}")
 async def delete_sopralluogo(sop_id: str, sess: dict = Depends(_require_session)):
     """Elimina un verbale di sopralluogo — solo admin."""
@@ -4156,6 +4656,7 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
     record.update(_checklist_counts(_ck))
     await sopralluoghi_col.insert_one(record)
     _schedule_sopralluoghi_csv_regen(f"nuovo verbale: {codice}")
+    asyncio.create_task(_issue_sync_safe([record]))  # NC → issue nel registro (e verifiche conformi → issue risolte)
     return {"ok": True, "codice_verbale": codice, "foto_urls": foto_urls}
 
 
