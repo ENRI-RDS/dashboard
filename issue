@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="it" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="google" content="notranslate">
+<meta http-equiv="Content-Language" content="it">
+<title>Retelit — Registro Issue</title>
+<script src="js/api-config.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --retelit-blue:#043F75; --retelit-blue-50:#819FB9; --retelit-blue-25:#C0CFDC;
+    --retelit-sky:#41BBD9; --retelit-teal:#1A7D99; --retelit-ice:#D3DEEA;
+    --gray-50:#F7F8FA; --gray-100:#EEF1F5; --gray-200:#DFE4EB; --gray-300:#C4CDD8;
+    --gray-400:#9AA5B4; --gray-500:#6B7685; --gray-700:#363D48;
+    --font-body:"Raleway","Calibri",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --font-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+    --bg:var(--gray-50); --surface:#fff; --surface2:var(--retelit-ice);
+    --border:var(--gray-200); --border2:var(--gray-300);
+    --accent:var(--retelit-blue); --text:var(--gray-700); --muted:var(--gray-500); --muted2:var(--gray-400);
+    --green:#1E9E6A; --greenL:#EBFAF3; --red:#C0392B; --redL:#FEECEB; --yellow:#D08A1A; --yellowL:#FEF7E7;
+    --orange:#D9650F; --orangeL:#FEF0E3;
+    --sh-xs:0 1px 2px rgba(4,63,117,.06),0 1px 1px rgba(4,63,117,.04);
+    --sh-sm:0 2px 8px rgba(4,63,117,.08),0 1px 4px rgba(4,63,117,.04);
+    --sh-lg:0 12px 40px rgba(4,63,117,.18);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:var(--font-body); background:var(--bg); color:var(--text); min-height:100vh; }
+  svg.ic { width:15px; height:15px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
+
+  .topbar { display:flex; align-items:center; justify-content:space-between; padding:0 20px; height:52px; background:var(--surface);
+    border-bottom:1px solid var(--border); box-shadow:var(--sh-xs); position:sticky; top:0; z-index:50; }
+  .topbar-left, .topbar-right { display:flex; align-items:center; gap:10px; }
+  .logo { font-size:13px; font-weight:700; letter-spacing:.14em; color:var(--accent); text-transform:uppercase; }
+  .divider-v { width:1px; height:20px; background:var(--border2); }
+  .page-title { font-size:12px; color:var(--muted); font-weight:500; }
+  .btn { font-family:var(--font-body); font-size:12px; font-weight:600; padding:7px 14px; border-radius:7px; cursor:pointer;
+    border:1px solid var(--border); background:var(--surface2); color:var(--text); text-decoration:none;
+    display:inline-flex; align-items:center; gap:6px; white-space:nowrap; transition:opacity .15s; }
+  .btn:hover { opacity:.8; } .btn:disabled { opacity:.5; cursor:default; }
+  .btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .btn.ghost { background:var(--surface); }
+  .btn.danger { background:var(--redL); color:var(--red); border-color:#F3C6C1; }
+
+  .main { padding:18px 30px 40px; max-width:1760px; margin:0 auto; display:flex; flex-direction:column; gap:16px; }
+  .head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .head h1 { font-size:20px; font-weight:700; color:var(--accent); letter-spacing:-.01em; }
+  .head p { font-size:12px; color:var(--muted); margin-top:2px; }
+  .head-actions { display:flex; gap:8px; flex-wrap:wrap; }
+
+  .kpis { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; }
+  .kpi { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:12px 14px; cursor:pointer;
+    box-shadow:var(--sh-xs); transition:border-color .15s, box-shadow .15s; text-align:left; font-family:inherit; }
+  .kpi:hover { border-color:var(--retelit-blue-50); box-shadow:var(--sh-sm); }
+  .kpi.on { border-color:var(--accent); box-shadow:0 0 0 2px rgba(4,63,117,.15); }
+  .kpi .k-l { font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  .kpi .k-v { font-size:26px; font-weight:700; color:var(--accent); margin-top:2px; font-family:var(--font-mono); }
+  .kpi.warn .k-v { color:var(--red); } .kpi.amber .k-v { color:var(--orange); }
+
+  .toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .toolbar input[type=search], .toolbar select { font-family:inherit; font-size:12px; padding:8px 10px; border:1px solid var(--border2);
+    border-radius:7px; background:var(--surface); color:var(--text); }
+  .toolbar input[type=search] { min-width:240px; flex:1; max-width:360px; }
+  .count { margin-left:auto; font-size:11px; color:var(--muted); font-family:var(--font-mono); }
+
+  .tbl-wrap { background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--sh-xs); overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; min-width:1280px; font-size:12px; }
+  thead th { position:sticky; top:0; background:var(--accent); color:#fff; font-weight:600; font-size:10.5px; text-transform:uppercase;
+    letter-spacing:.05em; text-align:left; padding:10px 10px; white-space:nowrap; }
+  tbody td { padding:8px 10px; border-top:1px solid var(--border); vertical-align:top; }
+  tbody tr:hover { background:var(--gray-50); }
+  tbody tr td:first-child { border-left:3px solid transparent; }
+  tr.p-critica td:first-child { border-left-color:var(--red); } tr.p-alta td:first-child { border-left-color:var(--orange); }
+  tr.p-media td:first-child { border-left-color:var(--yellow); } tr.p-bassa td:first-child { border-left-color:var(--green); }
+  tr.done { opacity:.62; }
+  .cod { font-family:var(--font-mono); font-weight:600; color:var(--accent); white-space:nowrap; cursor:pointer; }
+  .cod:hover { text-decoration:underline; }
+  .tipo { display:inline-block; font-size:10.5px; font-weight:600; padding:2px 8px; border-radius:10px; white-space:nowrap; }
+  .tipo-In { background:var(--redL); color:var(--red); } .tipo-Cn { background:var(--yellowL); color:var(--yellow); } .tipo-Sc { background:var(--retelit-ice); color:var(--accent); }
+  .sub { display:block; font-size:10.5px; color:var(--muted); margin-top:1px; }
+  .desc { max-width:340px; line-height:1.4; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; cursor:pointer; white-space:pre-line; }
+  td input.cell, td select.cell { font-family:inherit; font-size:12px; width:100%; min-width:110px; padding:5px 7px; border:1px solid transparent;
+    border-radius:6px; background:transparent; color:var(--text); }
+  td input.cell:hover, td select.cell:hover { border-color:var(--border2); background:var(--surface); }
+  td input.cell:focus, td select.cell:focus { outline:none; border-color:var(--retelit-sky); background:#fff; box-shadow:0 0 0 2px rgba(65,187,217,.2); }
+  td input.cell.empty { background:var(--yellowL); border-color:#F2DFB3; }
+  .late { color:var(--red); font-weight:700; }
+  .num { font-family:var(--font-mono); white-space:nowrap; }
+  .empty-box { padding:44px 20px; text-align:center; color:var(--muted); font-size:13px; }
+  .row-btn { border:1px solid var(--border2); background:var(--surface); border-radius:6px; padding:5px 8px; cursor:pointer; color:var(--text); }
+  .row-btn:hover { background:var(--surface2); }
+
+  .ov { position:fixed; inset:0; background:rgba(4,25,48,.45); display:none; align-items:flex-start; justify-content:center; padding:4vh 16px; z-index:100; overflow-y:auto; }
+  .ov.open { display:flex; }
+  .modal { background:var(--surface); border-radius:12px; width:100%; max-width:860px; box-shadow:var(--sh-lg); }
+  .m-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); }
+  .m-head h2 { font-size:15px; font-weight:700; color:var(--accent); }
+  .m-head h2 .cod { cursor:default; }
+  .x { border:none; background:none; cursor:pointer; color:var(--muted); padding:4px; display:flex; }
+  .tabs { display:flex; gap:4px; padding:0 20px; border-bottom:1px solid var(--border); }
+  .tab { font-family:inherit; font-size:12px; font-weight:600; padding:10px 12px; border:none; background:none; color:var(--muted); cursor:pointer; border-bottom:2px solid transparent; }
+  .tab.on { color:var(--accent); border-bottom-color:var(--accent); }
+  .m-body { padding:18px 20px; }
+  .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 14px; }
+  .fld { display:flex; flex-direction:column; gap:4px; } .fld.full { grid-column:1/-1; }
+  .fld label { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+  .fld input, .fld select, .fld textarea { font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border2); border-radius:7px; background:#fff; color:var(--text); }
+  .fld input:focus, .fld select:focus, .fld textarea:focus { outline:none; border-color:var(--retelit-sky); box-shadow:0 0 0 2px rgba(65,187,217,.2); }
+  .fld input:disabled, .fld select:disabled { background:var(--gray-100); color:var(--muted); }
+  .fld textarea { min-height:96px; resize:vertical; }
+  .hint { font-size:10.5px; color:var(--muted2); }
+  .fld.rel { position:relative; }
+  .ac { position:absolute; left:0; right:0; top:100%; margin-top:2px; background:#fff; border:1px solid var(--border2); border-radius:8px;
+    box-shadow:var(--sh-lg); z-index:30; max-height:260px; overflow-y:auto; display:none; }
+  .ac.open { display:block; }
+  .ac-i { padding:8px 10px; cursor:pointer; border-bottom:1px solid var(--border); }
+  .ac-i:last-child { border-bottom:none; }
+  .ac-i.on, .ac-i:hover { background:var(--gray-100); }
+  .ac-i b { font-family:var(--font-mono); font-size:12px; color:var(--accent); }
+  .ac-i span { display:block; font-size:11px; color:var(--muted); margin-top:1px; }
+  .ac-none { padding:10px; font-size:11.5px; color:var(--muted); }
+  .m-foot { display:flex; justify-content:space-between; gap:8px; padding:14px 20px; border-top:1px solid var(--border); }
+  .m-foot .r { display:flex; gap:8px; }
+  .hist { display:flex; flex-direction:column; gap:12px; }
+  .h-item { border-left:2px solid var(--retelit-blue-25); padding:2px 0 2px 12px; }
+  .h-top { font-size:12px; font-weight:600; } .h-top span { color:var(--muted); font-weight:400; font-family:var(--font-mono); font-size:11px; margin-left:6px; }
+  .h-mod { font-size:12px; margin-top:3px; color:var(--text); } .h-mod b { font-weight:600; } .h-mod .from { color:var(--muted); text-decoration:line-through; }
+  #toast { position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--accent); color:#fff; padding:10px 18px;
+    border-radius:8px; font-size:12px; opacity:0; pointer-events:none; transition:all .25s; z-index:200; max-width:90vw; }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  @media (max-width:900px) {
+    .main { padding:14px 12px 40px; } .kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .grid { grid-template-columns:1fr; }
+    .page-title, .divider-v { display:none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <span class="logo">PROGETTO · ENRI</span>
+    <div class="divider-v"></div>
+    <span class="page-title">Registro Issue</span>
+  </div>
+  <div class="topbar-right">
+    <span id="topbarUser" style="font-size:11px;color:var(--muted);font-family:var(--font-mono);"></span>
+    <a href="sopralluoghi.html" class="btn ghost">Sopralluoghi</a>
+    <a href="hub.html" class="btn primary">Hub</a>
+  </div>
+</div>
+
+<div class="main">
+  <div class="head">
+    <div>
+      <h1>Registro Issue</h1>
+      <p>Anomalie e segnalazioni verso le imprese esecutrici (System). Le celle System, SubSystem, Stato e Priority si modificano direttamente in tabella.</p>
+    </div>
+    <div class="head-actions">
+      <button class="btn ghost" id="btnExport" onclick="exportXlsx()" title="Esporta tutte le issue (rispetta ricerca e filtri a tendina)">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>Esporta Excel</button>
+      <button class="btn primary" onclick="openModal()">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Nuova issue</button>
+    </div>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="toolbar">
+    <input type="search" id="fQ" placeholder="Cerca codice, cantiere, permesso, comune, System, descrizione…" oninput="render()">
+    <select id="fTipo" onchange="render()"><option value="">Tutte le tipologie</option></select>
+    <select id="fStato" onchange="render()"><option value="">Tutti gli stati</option></select>
+    <select id="fPrio" onchange="render()"><option value="">Tutte le priority</option></select>
+    <select id="fSys" onchange="render()"><option value="">Tutti i System</option></select>
+    <select id="fOrig" onchange="render()"><option value="">Tutte le origini</option><option value="verbale">Da verbali (NC)</option><option value="manuale">Inserite a mano</option></select>
+    <button class="btn ghost" onclick="resetFilters()">Azzera filtri</button>
+    <span class="count" id="count"></span>
+  </div>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr>
+        <th>Codice</th><th>Tipo</th><th>Cantiere / Comune</th><th>Impresa esecutrice (System)</th><th>SubSystem</th><th>Rilevata</th><th>Descrizione</th>
+        <th>Invio al System</th><th>Stato</th><th>Priority</th><th>Prevista</th><th></th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="empty-box" id="empty" style="display:none"></div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="ov" id="ov">
+  <div class="modal">
+    <div class="m-head">
+      <h2 id="mTitle">Nuova issue</h2>
+      <button class="x" onclick="closeModal()" aria-label="Chiudi"><svg class="ic" viewBox="0 0 24 24" style="width:18px;height:18px"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="tabs" id="mTabs" style="display:none">
+      <button class="tab on" id="tabDati" onclick="setTab('dati')">Dati</button>
+      <button class="tab" id="tabStorico" onclick="setTab('storico')">Storico</button>
+    </div>
+    <div class="m-body">
+      <div id="paneDati">
+        <div class="hint" id="origHint" style="display:none;margin-bottom:10px"></div>
+        <div class="grid">
+          <div class="fld"><label for="f_tipologia">Tipologia *</label>
+            <select id="f_tipologia"></select>
+            <span class="hint" id="tipoHint">Il codice viene assegnato in base alla tipologia (non modificabile dopo la creazione).</span></div>
+          <div class="fld"><label for="f_priority">Priority</label><select id="f_priority"></select></div>
+          <div class="fld full rel"><label for="f_cantiere">Cantiere o permesso (cerca)</label>
+            <input id="f_cantiere" autocomplete="off" placeholder="Digita codice cantiere (CA/2/1A), permesso (AUT/12/1A), ente o comune…" oninput="acInput()" onkeydown="acKey(event)" onfocus="acInput()">
+            <div class="ac" id="acBox"></div>
+            <span class="hint" id="cantHint">Scegliendo un cantiere si precompilano permesso, ente, lotto, comune e System. Si può anche scrivere un valore libero.</span></div>
+          <div class="fld"><label for="f_pratica">Permesso / pratica</label><input id="f_pratica" autocomplete="off"></div>
+          <div class="fld"><label for="f_ente">Ente</label><input id="f_ente" autocomplete="off"></div>
+          <div class="fld"><label for="f_lotto">Lotto</label><input id="f_lotto" autocomplete="off"></div>
+          <div class="fld"><label for="f_comune">Comune</label><input id="f_comune" list="dlComune" autocomplete="off"></div>
+          <div class="fld"><label for="f_system">Impresa esecutrice (System)</label><input id="f_system" list="dlSystem" autocomplete="off"><span class="hint">Può restare vuoto e essere compilato dopo.</span></div>
+          <div class="fld"><label for="f_subsystem">SubSystem (subappalto)</label><input id="f_subsystem" list="dlSub" autocomplete="off"><span class="hint">Può restare vuoto e essere compilato dopo.</span></div>
+          <div class="fld"><label for="f_data_rilevamento">Data rilevamento</label><input type="date" id="f_data_rilevamento"></div>
+          <div class="fld"><label for="f_rilevato_da">Chi ha rilevato l'anomalia</label><input id="f_rilevato_da" autocomplete="off"></div>
+          <div class="fld full"><label for="f_descrizione">Descrizione *</label><textarea id="f_descrizione"></textarea></div>
+          <div class="fld"><label for="f_data_invio">Data invio segnalazione al System</label><input type="date" id="f_data_invio"></div>
+          <div class="fld"><label for="f_metodo_invio">Metodo di invio</label><input id="f_metodo_invio" list="dlMetodo" autocomplete="off"></div>
+          <div class="fld full"><label for="f_rif_system_invio">Riferimento System invio</label><input id="f_rif_system_invio" autocomplete="off"></div>
+          <div class="fld"><label for="f_stato">Stato avanzamento</label><select id="f_stato"></select></div>
+          <div class="fld"><label for="f_data_prevista">Data prevista sistemazione</label><input type="date" id="f_data_prevista"></div>
+        </div>
+      </div>
+      <div id="paneStorico" style="display:none"><div class="hist" id="hist"></div></div>
+    </div>
+    <div class="m-foot">
+      <div><button class="btn danger" id="btnDel" onclick="delIssue()" style="display:none">Elimina</button></div>
+      <div class="r"><button class="btn ghost" onclick="closeModal()">Annulla</button><button class="btn primary" id="btnSave" onclick="saveIssue()">Salva</button></div>
+    </div>
+  </div>
+</div>
+
+<datalist id="dlComune"></datalist><datalist id="dlSystem"></datalist>
+<datalist id="dlSub"></datalist>
+<datalist id="dlMetodo"><option value="PEC"><option value="Email"><option value="Verbale di sopralluogo"><option value="Telefono"><option value="WhatsApp"><option value="Di persona"></datalist>
+<div id="toast"></div>
+
+<script>
+(() => {
+  const r = (localStorage.getItem('_enri_role') || '').toLowerCase();
+  if (!localStorage.getItem('_enri_user') || !['admin', 'admin2'].includes(r)) window.location.replace('hub.html');
+})();
+window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
+
+const API = (window.ENRI && ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const TIPI = { In:'Anomalia su infrastruttura (completata o in corso)', Cn:'Segnaletica su cantiere in corso', Sc:'Documentazione sicurezza / autorizzazioni' };
+const TIPI_SHORT = { In:'Anomalia infrastruttura', Cn:'Segnaletica cantiere', Sc:'Doc. sicurezza/aut.' };
+const STATI = { aperta:'Aperta', inviata:'Inviata al System', in_lavorazione:'In lavorazione', risolta:'Risolta', chiusa:'Chiusa' };
+const PRIO = { bassa:'Bassa', media:'Media', alta:'Alta', critica:'Critica' };
+const CLOSED = ['risolta', 'chiusa'];
+const iso = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+const TODAY = iso(new Date());
+const fmt = d => d ? d.split('-').reverse().join('/') : '—';
+const isOpen = it => !CLOSED.includes(it.stato);
+const isLate = it => isOpen(it) && it.data_prevista && it.data_prevista < TODAY;
+
+let items = [], kpi = '', editId = null;
+
+async function api(path, opts = {}) {
+  const r = await fetch(API + path, { ...opts, headers: { 'Content-Type':'application/json', 'x-session-token': localStorage.getItem('_enri_session') || '' } });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : 'Errore ' + r.status);
+  return d;
+}
+function toast(m) { const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2400); }
+const optsHtml = (obj, first) => (first ? '<option value="">' + first + '</option>' : '') + Object.entries(obj).map(([k, v]) => '<option value="' + k + '">' + esc(v) + '</option>').join('');
+
+async function load() {
+  $('tbody').innerHTML = ''; $('empty').style.display = ''; $('empty').textContent = 'Caricamento…';
+  try { items = (await api('/api/issues')).items || []; }
+  catch (e) {
+    if (/riservat|non consentito/i.test(e.message)) { window.location.replace('hub.html'); return; }
+    $('empty').innerHTML = '<span style="color:var(--red)">' + esc(e.message) + '</span> — il server potrebbe essere in avvio, riprova tra qualche secondo.'; return;
+  }
+  fillLookups(); render();
+  syncFromVerbali();
+}
+
+/* Allinea il registro con le NC dei verbali (idempotente): crea le issue mancanti e chiude quelle verificate conformi */
+async function syncFromVerbali() {
+  try {
+    const r = await api('/api/issues/sync-sopralluoghi', { method: 'POST' });
+    if (r.created || r.resolved) {
+      items = (await api('/api/issues')).items || []; fillLookups(); render();
+      toast([r.created && (r.created + ' nuove issue dalle NC dei verbali'), r.resolved && (r.resolved + ' risolte da verifiche conformi')].filter(Boolean).join(' · '));
+    }
+  } catch (e) { /* la sync è un di più: la pagina funziona anche senza */ }
+}
+
+let CANT = [];
+async function loadLookup() {
+  try { CANT = (await api('/api/issues/lookup')).cantieri || []; fillLookups(); }
+  catch (e) { /* precompilazione opzionale: il form funziona anche a mano */ }
+}
+
+function uniq(key) { return [...new Set(items.map(i => (i[key] || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'it')); }
+function fillLookups() {
+  const sys = [...new Set([...CANT.map(c => c.impresa).filter(Boolean), ...uniq('system')])].sort((a, b) => a.localeCompare(b, 'it'));
+  $('dlSystem').innerHTML = sys.map(s => '<option value="' + esc(s) + '">').join('');
+  $('dlSub').innerHTML = uniq('subsystem').map(s => '<option value="' + esc(s) + '">').join('');
+  $('dlComune').innerHTML = uniq('comune').map(s => '<option value="' + esc(s) + '">').join('');
+  const cur = $('fSys').value;
+  $('fSys').innerHTML = '<option value="">Tutti i System</option>' + uniq('system').map(s => '<option value="' + esc(s) + '">' + esc(s) + '</option>').join('');
+  $('fSys').value = cur;
+}
+
+function filtered() {
+  const q = $('fQ').value.trim().toLowerCase(), t = $('fTipo').value, s = $('fStato').value, p = $('fPrio').value, y = $('fSys').value, o = $('fOrig').value;
+  return items.filter(it => {
+    if (t && it.prefisso !== t) return false;
+    if (s && it.stato !== s) return false;
+    if (p && it.priority !== p) return false;
+    if (y && (it.system || '').trim() !== y) return false;
+    if (o === 'verbale' && !it.origine_verbale) return false;
+    if (o === 'manuale' && it.origine_verbale) return false;
+    if (kpi === 'open' && !isOpen(it)) return false;
+    if (kpi === 'late' && !isLate(it)) return false;
+    if (kpi === 'hot' && !(isOpen(it) && ['alta', 'critica'].includes(it.priority))) return false;
+    if (kpi === 'nosys' && !(isOpen(it) && !(it.system || '').trim())) return false;
+    if (q) {
+      const hay = [it.codice, it.origine_verbale, it.origine_item, it.cantiere, it.pratica, it.ente, it.lotto, it.comune, it.system, it.subsystem, it.descrizione, it.rilevato_da, it.rif_system_invio].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function renderKpi() {
+  const K = [
+    ['all', 'Totale', items.length, ''],
+    ['open', 'Aperte', items.filter(isOpen).length, ''],
+    ['late', 'In ritardo', items.filter(isLate).length, 'warn'],
+    ['hot', 'Alta / Critica aperte', items.filter(i => isOpen(i) && ['alta', 'critica'].includes(i.priority)).length, 'amber'],
+    ['nosys', 'Aperte senza System', items.filter(i => isOpen(i) && !(i.system || '').trim()).length, 'amber'],
+  ];
+  $('kpis').innerHTML = K.map(([k, l, v, c]) => '<button class="kpi ' + c + ((kpi === k || (k === 'all' && !kpi)) ? ' on' : '') + '" onclick="setKpi(\'' + k + '\')"><div class="k-l">' + l + '</div><div class="k-v">' + v + '</div></button>').join('');
+}
+function setKpi(k) { kpi = (k === 'all' || kpi === k) ? '' : k; render(); }
+function resetFilters() { ['fQ', 'fTipo', 'fStato', 'fPrio', 'fSys', 'fOrig'].forEach(i => $(i).value = ''); kpi = ''; render(); }
+
+function render() {
+  renderKpi();
+  const list = filtered();
+  $('count').textContent = list.length + ' di ' + items.length;
+  $('tbody').innerHTML = list.map(it => {
+    const sys = esc(it.system || ''), sub = esc(it.subsystem || '');
+    return '<tr class="p-' + esc(it.priority) + (isOpen(it) ? '' : ' done') + '" data-id="' + esc(it._id) + '">' +
+      '<td><span class="cod" onclick="openModal(\'' + esc(it._id) + '\')">' + esc(it.codice) + '</span>' + (it.origine_verbale ? '<span class="sub" title="Generata dalla non conformità di un verbale di sopralluogo">da ' + esc(it.origine_verbale) + ' · ' + esc(it.origine_item || '') + '</span>' : '') + '</td>' +
+      '<td><span class="tipo tipo-' + esc(it.prefisso) + '" title="' + esc(TIPI[it.prefisso] || '') + '">' + esc(TIPI_SHORT[it.prefisso] || it.prefisso) + '</span></td>' +
+      '<td>' + esc(it.cantiere || '—') + '<span class="sub">' + esc([it.comune, it.lotto && ('lotto ' + it.lotto)].filter(Boolean).join(' · ')) + '</span>' + (it.pratica || it.ente ? '<span class="sub">' + esc([it.pratica, it.ente].filter(Boolean).join(' · ')) + '</span>' : '') + '</td>' +
+      '<td><input class="cell' + (sys ? '' : ' empty') + '" list="dlSystem" value="' + sys + '" placeholder="da assegnare" onchange="patch(\'' + esc(it._id) + '\',\'system\',this.value,this)"></td>' +
+      '<td><input class="cell' + (sub ? '' : ' empty') + '" list="dlSub" value="' + sub + '" placeholder="da assegnare" onchange="patch(\'' + esc(it._id) + '\',\'subsystem\',this.value,this)"></td>' +
+      '<td class="num">' + fmt(it.data_rilevamento) + '<span class="sub" style="font-family:var(--font-body)">' + esc(it.rilevato_da || '') + '</span></td>' +
+      '<td><div class="desc" onclick="openModal(\'' + esc(it._id) + '\')" title="' + esc(it.descrizione) + '">' + esc(it.descrizione) + '</div></td>' +
+      '<td class="num">' + fmt(it.data_invio) + '<span class="sub" style="font-family:var(--font-body)">' + esc([it.metodo_invio, it.rif_system_invio].filter(Boolean).join(' · ')) + '</span></td>' +
+      '<td><select class="cell" onchange="patch(\'' + esc(it._id) + '\',\'stato\',this.value,this)">' + optsHtml(STATI).replace('value="' + it.stato + '"', 'value="' + it.stato + '" selected') + '</select></td>' +
+      '<td><select class="cell" onchange="patch(\'' + esc(it._id) + '\',\'priority\',this.value,this)">' + optsHtml(PRIO).replace('value="' + it.priority + '"', 'value="' + it.priority + '" selected') + '</select></td>' +
+      '<td class="num' + (isLate(it) ? ' late' : '') + '">' + fmt(it.data_prevista) + (isLate(it) ? '<span class="sub late">in ritardo</span>' : '') + '</td>' +
+      '<td><button class="row-btn" title="Modifica / storico" onclick="openModal(\'' + esc(it._id) + '\')"><svg class="ic" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></td></tr>';
+  }).join('');
+  const e = $('empty');
+  if (!list.length) { e.style.display = ''; e.textContent = items.length ? 'Nessuna issue corrisponde ai filtri.' : 'Nessuna issue registrata. Usa "Nuova issue" per iniziare.'; }
+  else e.style.display = 'none';
+}
+
+async function patch(id, field, value, el) {
+  const it = items.find(x => x._id === id); if (!it) return;
+  if ((it[field] || '') === value.trim()) return;
+  try {
+    const r = await api('/api/issues/' + id, { method: 'PUT', body: JSON.stringify({ [field]: value }) });
+    items[items.indexOf(it)] = r.item; toast('Salvato');
+    if (field === 'system' || field === 'subsystem') { fillLookups(); renderKpi(); if (el) el.classList.toggle('empty', !value.trim()); }
+    else render();
+  } catch (e) { toast('Non salvato: ' + e.message); render(); }
+}
+
+/* ── Autocomplete cantiere/permesso → precompila i dati già presenti ── */
+let acList = [], acIdx = -1;
+function acInput() {
+  const q = $('f_cantiere').value.trim().toLowerCase(), box = $('acBox');
+  if (!q || !CANT.length) { acClose(); return; }
+  const toks = q.split(/\s+/);
+  acList = CANT.filter(c => { const h = [c.codice_cantiere, c.pratica_id, c.ente, c.comune, c.provincia, c.impresa, c.lotto].join(' ').toLowerCase(); return toks.every(t => h.includes(t)); }).slice(0, 8);
+  acIdx = acList.length ? 0 : -1;
+  box.innerHTML = acList.length ? acList.map((c, i) => '<div class="ac-i' + (i === 0 ? ' on' : '') + '" onmousedown="event.preventDefault();acPick(' + i + ')"><b>' + esc(c.codice_cantiere || '—') + '</b> &nbsp;' + esc(c.pratica_id) +
+    '<span>' + esc([c.ente, c.comune, c.impresa].filter(Boolean).join(' · ')) + '</span></div>').join('') : '<div class="ac-none">Nessun cantiere trovato: il valore resta come scritto.</div>';
+  box.classList.add('open');
+}
+function acClose() { $('acBox').classList.remove('open'); acList = []; acIdx = -1; }
+function acMark() { [...$('acBox').children].forEach((el, i) => el.classList.toggle('on', i === acIdx)); }
+function acKey(e) {
+  if (!$('acBox').classList.contains('open') || !acList.length) return;
+  if (e.key === 'ArrowDown') { e.preventDefault(); acIdx = (acIdx + 1) % acList.length; acMark(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); acIdx = (acIdx - 1 + acList.length) % acList.length; acMark(); }
+  else if (e.key === 'Enter') { e.preventDefault(); acPick(acIdx); }
+  else if (e.key === 'Escape') { e.stopPropagation(); acClose(); }
+}
+function acPick(i) {
+  const c = acList[i]; if (!c) return;
+  $('f_cantiere').value = c.codice_cantiere || c.pratica_id;
+  $('f_pratica').value = c.pratica_id; $('f_ente').value = c.ente; $('f_lotto').value = c.lotto;
+  if (c.comune) $('f_comune').value = c.comune;
+  if (c.impresa) $('f_system').value = c.impresa;
+  $('cantHint').textContent = 'Precompilato da ' + (c.codice_cantiere || c.pratica_id) + ': ' + [c.pratica_id, c.ente, c.lotto && ('lotto ' + c.lotto), c.comune, c.impresa].filter(Boolean).join(' · ') + '. I campi restano modificabili.';
+  acClose();
+}
+document.addEventListener('click', e => { if (!e.target.closest('#f_cantiere, #acBox')) acClose(); });
+
+/* ── Modal ── */
+const FIELDS = ['cantiere', 'pratica', 'ente', 'lotto', 'comune', 'system', 'subsystem', 'data_rilevamento', 'rilevato_da', 'descrizione', 'data_invio', 'rif_system_invio', 'metodo_invio', 'stato', 'priority', 'data_prevista'];
+function setTab(t) {
+  $('paneDati').style.display = t === 'dati' ? '' : 'none'; $('paneStorico').style.display = t === 'storico' ? '' : 'none';
+  $('tabDati').classList.toggle('on', t === 'dati'); $('tabStorico').classList.toggle('on', t === 'storico');
+  $('btnSave').style.display = t === 'dati' ? '' : 'none';
+}
+function openModal(id) {
+  editId = id || null;
+  const it = id ? items.find(x => x._id === id) : null;
+  $('f_tipologia').innerHTML = optsHtml(TIPI, 'Seleziona…');
+  $('f_stato').innerHTML = optsHtml(STATI); $('f_priority').innerHTML = optsHtml(PRIO);
+  FIELDS.forEach(f => $('f_' + f).value = '');
+  $('f_stato').value = 'aperta'; $('f_priority').value = 'media'; $('f_data_rilevamento').value = TODAY; $('f_tipologia').value = ''; $('f_tipologia').disabled = false;
+  $('mTabs').style.display = 'none'; $('btnDel').style.display = 'none'; $('tipoHint').style.display = ''; acClose();
+  $('cantHint').textContent = 'Scegliendo un cantiere si precompilano permesso, ente, lotto, comune e System. Si può anche scrivere un valore libero.';
+  $('origHint').style.display = 'none';
+  if (it) {
+    if (it.origine_verbale) { $('origHint').textContent = 'Generata dalla non conformità ' + (it.origine_item || '') + ' del verbale ' + it.origine_verbale + '. Lo stato passa a Risolta da solo se una verifica successiva trova il punto conforme.'; $('origHint').style.display = ''; }
+    $('mTitle').innerHTML = 'Issue <span class="cod">' + esc(it.codice) + '</span>';
+    $('f_tipologia').value = it.prefisso; $('f_tipologia').disabled = true; $('tipoHint').style.display = 'none';
+    FIELDS.forEach(f => $('f_' + f).value = it[f] || '');
+    $('mTabs').style.display = ''; $('btnDel').style.display = '';
+    renderHist(it);
+  } else $('mTitle').textContent = 'Nuova issue';
+  setTab('dati'); $('ov').classList.add('open');
+  setTimeout(() => (it ? $('f_descrizione') : $('f_tipologia')).focus(), 50);
+}
+function closeModal() { $('ov').classList.remove('open'); editId = null; }
+function renderHist(it) {
+  const h = (it.storico || []).slice().reverse();
+  $('hist').innerHTML = h.length ? h.map(e => {
+    const ts = new Date(e.ts), when = isNaN(ts) ? esc(e.ts) : ts.toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' });
+    const dateish = v => /^\d{4}-\d{2}-\d{2}$/.test(v) ? fmt(v) : v;
+    const mods = (e.modifiche || []).map(m => '<div class="h-mod"><b>' + esc(m.campo) + ':</b> <span class="from">' + esc(dateish(m.da) || '—') + '</span> → ' + esc(dateish(m.a) || '—') + '</div>').join('');
+    return '<div class="h-item"><div class="h-top">' + esc(e.azione === 'creata' ? 'Creata' : 'Modificata') + ' da ' + esc(e.utente || '—') + '<span>' + when + '</span></div>' + mods + '</div>';
+  }).join('') : '<div style="color:var(--muted);font-size:12px">Nessuna modifica registrata.</div>';
+}
+async function saveIssue() {
+  const payload = { tipologia: $('f_tipologia').value };
+  FIELDS.forEach(f => payload[f] = $('f_' + f).value);
+  if (!payload.tipologia) { toast('Seleziona la tipologia'); return; }
+  if (!payload.descrizione.trim()) { toast('La descrizione è obbligatoria'); return; }
+  const b = $('btnSave'); b.disabled = true;
+  try {
+    if (editId) {
+      const r = await api('/api/issues/' + editId, { method: 'PUT', body: JSON.stringify(payload) });
+      const i = items.findIndex(x => x._id === editId); if (i >= 0) items[i] = r.item;
+      toast(r.changed ? 'Issue aggiornata' : 'Nessuna modifica');
+    } else {
+      const r = await api('/api/issues', { method: 'POST', body: JSON.stringify(payload) });
+      items.unshift(r.item); toast('Creata ' + r.item.codice);
+      items.sort((a, b) => a.prefisso === b.prefisso ? b.seq - a.seq : a.prefisso.localeCompare(b.prefisso));
+    }
+    closeModal(); fillLookups(); render();
+  } catch (e) { toast(e.message); }
+  finally { b.disabled = false; }
+}
+async function delIssue() {
+  const it = items.find(x => x._id === editId); if (!it) return;
+  if (!confirm('Eliminare definitivamente ' + it.codice + '? Lo storico andrà perso.')) return;
+  try { await api('/api/issues/' + editId, { method: 'DELETE' }); items = items.filter(x => x._id !== editId); closeModal(); fillLookups(); render(); toast('Issue eliminata'); }
+  catch (e) { toast(e.message); }
+}
+
+async function exportXlsx() {
+  const b = $('btnExport'); b.disabled = true;
+  const qs = new URLSearchParams();
+  [['tipologia', 'fTipo'], ['stato', 'fStato'], ['priority', 'fPrio'], ['system', 'fSys'], ['q', 'fQ']].forEach(([k, id]) => { const v = $(id).value.trim(); if (v) qs.set(k, v); });
+  try {
+    const r = await fetch(API + '/api/issues/export.xlsx' + (qs.toString() ? '?' + qs : ''), { headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(typeof d.detail === 'string' ? d.detail : 'Errore ' + r.status); }
+    const url = URL.createObjectURL(await r.blob()), a = document.createElement('a');
+    a.href = url; a.download = 'issue_enri_' + TODAY + '.xlsx'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  } catch (e) { toast('Export non riuscito: ' + e.message); }
+  finally { b.disabled = false; }
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !e.defaultPrevented && !e.cancelBubble) closeModal(); });
+$('ov').addEventListener('mousedown', e => { if (e.target === $('ov')) closeModal(); });
+window.addEventListener('DOMContentLoaded', () => {
+  const u = localStorage.getItem('_enri_user'); if (u) $('topbarUser').textContent = u;
+  $('fTipo').innerHTML = optsHtml(TIPI_SHORT, 'Tutte le tipologie'); $('fStato').innerHTML = optsHtml(STATI, 'Tutti gli stati'); $('fPrio').innerHTML = optsHtml(PRIO, 'Tutte le priority');
+  load(); loadLookup();
+});
+</script>
+</body>
+</html>
