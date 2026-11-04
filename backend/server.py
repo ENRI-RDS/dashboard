@@ -4278,7 +4278,7 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
             cur = _by_code.get(cur["verbale_origine"])
             n += 1
         cliente = bool(cur and cur.get("segnalazione_cliente"))
-        return "2° sopralluogo (verifica " + ("cliente" if cliente else "interna") + ")"
+        return f"{n + 1}° sopralluogo (verifica " + ("cliente" if cliente else "interna") + ")"
 
     wb = openpyxl.Workbook()
 
