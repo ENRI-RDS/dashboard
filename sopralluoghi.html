@@ -616,7 +616,7 @@
             <option value="scaduta">Verifiche scadute</option>
             <option value="risolto">Verifiche risolte</option>
             <option value="non_risolto">Non risolte</option>
-            <option value="figli">Solo 2° sopralluoghi</option>
+            <option value="figli">Solo sopralluoghi di verifica</option>
           </select>
           <select id="filtro-mese" onchange="applyVerbaliFilters()" class="archive-filter-wide">
             <option value="">Filtra mese</option>
@@ -984,7 +984,7 @@ async function _generatePdfCore(f, photos){
     ['Redatto da', f.redattore], ['Gravità anomalie', f.gravita],
     ['Segnalazione cliente', f.segnalazione_cliente || 'NO'],
     ...(f.segnalazione_cliente === 'SI' ? [['Esito verifica segnalazione', ({confermata:'Confermata',non_confermata:'Non confermata'})[f.esito_segnalazione] || '—']] : []),
-    ...(f.verbale_origine ? [['2° sopralluogo — verifica del verbale', esc(f.verbale_origine) + (f.verifica_tipo ? ' (verifica ' + (f.verifica_tipo === 'cliente' ? 'cliente' : 'interna') + ')' : '')]] : []),
+    ...(f.verbale_origine ? [[_verifNCod(f.verbale_origine) + '° sopralluogo — verifica del verbale', esc(f.verbale_origine) + (f.verifica_tipo ? ' (verifica ' + (f.verifica_tipo === 'cliente' ? 'cliente' : 'interna') + ')' : '')]] : []),
     ['N° Foto allegate', f.n_foto],
   ];
   const extraSections = [
@@ -1983,6 +1983,18 @@ function _ckPrevHtml(k, id) {
   return `<div class="ck-prev">↩ ${esc(_verificaDi.codice)}: NC — ${esc(i.rilievo || '—')}${i.azione ? ' · Azione: ' + esc(i.azione) : ''}${i.scad ? ' · Scad. ' + _soprDateDisplay(i.scad) : ''}</div>`;
 }
 
+// Numero d'ordine del sopralluogo nella catena di verifiche: 1 = radice, 2 = prima verifica, 3 = verifica della verifica…
+function _verifN(v) {
+  let n = 1, cur = v;
+  while (cur && cur.verbale_origine && n < 21) { n++; cur = _verbaliAll.find(x => x.codice_verbale === cur.verbale_origine); }
+  return n;
+}
+// N° del verbale che verifica `codice` (usato nel form di creazione, prima che il verbale esista)
+function _verifNCod(codice) {
+  const p = _verbaliAll.find(x => x.codice_verbale === codice);
+  return p ? _verifN(p) + 1 : 2;
+}
+
 // Tipo di verifica risalendo la catena fino al verbale radice: 'cliente' se la radice ha una segnalazione cliente, altrimenti 'interno'
 function _verifRootTipo(v) {
   let cur = v, n = 0;
@@ -2027,7 +2039,7 @@ function _verifChips(v) {
   let h = '';
   if (v.verbale_origine) {
     const t = _verifRootTipo(v);
-    h += `<span class="verif-chip" title="Verifica di ${esc(v.verbale_origine)}">2° SOPRALLUOGO</span><span class="verif-chip ${t}">${t === 'cliente' ? 'CLIENTE' : 'INTERNO'}</span>`;
+    h += `<span class="verif-chip" title="Verifica di ${esc(v.verbale_origine)}">${_verifN(v)}° SOPRALLUOGO</span><span class="verif-chip ${t}">${t === 'cliente' ? 'CLIENTE' : 'INTERNO'}</span>`;
   }
   if (_isSegnCliente(v) && v.esito_segnalazione === 'non_confermata') h += '<span class="verif-chip neutral">NON CONFERMATA</span>';
   return h + _verifStateChip(_verifState(v));
@@ -2037,7 +2049,7 @@ function _verifPreviewHtml(v) {
   let h = '';
   const link = c => { const x = _verbaliAll.find(y => y.codice_verbale === c);
     return x ? `<a href="#" onclick="event.preventDefault();_selectVerbale('${x._id}')">${esc(c)}</a>` : esc(c); };
-  if (v.verbale_origine) h += `<div class="verifica-box"><b>2° SOPRALLUOGO</b> — verifica ${_verifRootTipo(v) === 'cliente' ? 'della segnalazione cliente' : 'interna'} · verbale ${link(v.verbale_origine)}</div>`;
+  if (v.verbale_origine) h += `<div class="verifica-box"><b>${_verifN(v)}° SOPRALLUOGO</b> — verifica ${_verifRootTipo(v) === 'cliente' ? 'della segnalazione cliente' : 'interna'} · verbale ${link(v.verbale_origine)}</div>`;
   const s = _verifState(v);
   if (s && s.figlio) {
     h += `<div class="verifica-box">Verifica eseguita: ${link(s.figlio.codice_verbale)} ${_verifStateChip(s)}</div>`;
@@ -2076,10 +2088,10 @@ function _applyVerificaUI() {
   const b = document.getElementById('verificaBanner');
   if (b) {
     b.style.display = on ? 'flex' : 'none';
-    if (on) document.getElementById('verificaBannerTxt').innerHTML = `<b>2° SOPRALLUOGO</b> — verifica ${_verificaDi.tipo === 'cliente' ? 'della segnalazione cliente' : 'interna'} di <b>${esc(_verificaDi.codice)}</b> · ${_verificaDi.ids.size} punti da riverificare`;
+    if (on) document.getElementById('verificaBannerTxt').innerHTML = `<b>${_verifNCod(_verificaDi.codice)}° SOPRALLUOGO</b> — verifica ${_verificaDi.tipo === 'cliente' ? 'della segnalazione cliente' : 'interna'} di <b>${esc(_verificaDi.codice)}</b> · ${_verificaDi.ids.size} punti da riverificare`;
   }
   const g = document.getElementById('segnClienteGroup'); if (g) g.style.display = on ? 'none' : '';
-  const t = document.querySelector('#formCard .fch-title'); if (t) t.textContent = on ? 'Sopralluogo di verifica' : 'Nuovo verbale di sopralluogo';
+  const t = document.querySelector('#formCard .fch-title'); if (t) t.textContent = on ? 'Sopralluogo di verifica (' + _verifNCod(_verificaDi.codice) + '°)' : 'Nuovo verbale di sopralluogo';
   CK_CATS.forEach(k => { const el = document.getElementById('ck-tab-' + k); if (el) el.style.display = (!on || _ckItemsOf(k).length) ? '' : 'none'; });
   if (on) { const first = CK_CATS.find(k => _ckItemsOf(k).length); if (first) setChecklistTab(first); }
   else renderChecklist();
