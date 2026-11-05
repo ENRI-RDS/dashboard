@@ -686,6 +686,25 @@
   </div>
 </div>
 
+<div class="kpi-modal" id="sysModal" onclick="if(event.target===this)closeSysModal()">
+  <div class="kpi-modal-box" style="width:min(520px,100%)">
+    <div class="kpi-modal-head">
+      <div class="kpi-modal-title" id="sysModalTitle">Segnalazione al System<small id="sysModalSub"></small></div>
+      <button class="kpi-modal-close" onclick="closeSysModal()">Chiudi ✕</button>
+    </div>
+    <div class="kpi-modal-body" style="display:grid;gap:12px;padding-top:14px">
+      <div class="field-group"><label for="sm_subsystem">SubSystem (subappalto) *</label><input type="text" id="sm_subsystem" maxlength="200" autocomplete="off" oninput="this.classList.remove('miss')"></div>
+      <div class="field-group"><label for="sm_data">Data invio segnalazione al System *</label><input type="date" id="sm_data" oninput="this.classList.remove('miss')"></div>
+      <div class="field-group"><label for="sm_metodo">Metodo di invio *</label><input type="text" id="sm_metodo" list="dlMetodoV" maxlength="100" autocomplete="off" oninput="this.classList.remove('miss')"></div>
+      <div class="field-group"><label for="sm_rif">Riferimento System invio *</label><input type="text" id="sm_rif" maxlength="300" autocomplete="off" oninput="this.classList.remove('miss')"></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px">
+        <button class="kpi-modal-close" onclick="closeSysModal()">Annulla</button>
+        <button class="kpi-modal-close" id="sysModalSave" onclick="saveSysModal()" style="background:var(--accent);color:#fff;border-color:var(--accent)">Salva</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="toast">✓ Verbale scaricato</div>
 
 <script>
@@ -1477,6 +1496,9 @@ function _statoChip(esito) {
   return '<span class="stato-chip neutral">—</span>';
 }
 
+function _sysMancano(v) { return !(v.subsystem && v.data_invio_system && v.metodo_invio && v.rif_system_invio); }
+function _sysMancaChip(v) { return _sysMancano(v) ? '<span class="ck-chip nc" title="Segnalazione al System incompleta">Dati System mancanti</span>' : ''; }
+
 function _renderVerbaliList(rows) {
   const list = document.getElementById('verbali-list');
   _renderTableHead();
@@ -1495,7 +1517,7 @@ function _renderVerbaliList(rows) {
       <span class="vr-codice">${v.codice_verbale}${_verifLinkHtml(v)}</span>
       <span class="vr-data">${_soprDateDisplay(v.data_sopralluogo)}</span>
       <span class="vr-comune">${v.comune || '—'}<small>${v.tratta_id || '—'} · ${v.lotto || '—'}</small></span>
-      <span>${_statoChip(v.esito)}${_isSegnCliente(v) ? '<span class="flag-chip">SEGN. CLIENTE</span>' : ''}${_ckChip(v)}${_verifChips(v)}</span>
+      <span>${_statoChip(v.esito)}${_isSegnCliente(v) ? '<span class="flag-chip">SEGN. CLIENTE</span>' : ''}${_ckChip(v)}${_verifChips(v)}${_sysMancaChip(v)}</span>
       ${_areaCellsHtml(v)}
       <span class="vr-actions">
         <button title="Scarica PDF" onclick="event.stopPropagation();generatePdfForRecord('${v._id}')">
@@ -1561,6 +1583,7 @@ function _renderPreview(v) {
         <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;color:#043F75">${v.codice_verbale}</span>
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:10.5px;color:var(--muted)">${v.created_at ? new Date(v.created_at).toLocaleString('it-IT') : ''}</span>
+          <button onclick="openSysModal('${v._id}')" style="background:none;border:1px solid var(--accent);color:var(--accent);border-radius:6px;font-size:10.5px;padding:3px 8px;cursor:pointer">${_sysMancano(v) ? 'Completa dati System' : 'Modifica dati System'}</button>
           ${isAdmin ? `<button onclick="deleteVerbale('${v._id}')" style="background:none;border:1px solid #ef4444;color:#ef4444;border-radius:6px;font-size:10.5px;padding:3px 8px;cursor:pointer">Elimina</button>` : ''}
         </div>
       </div>
@@ -2196,6 +2219,43 @@ function openKpiModal(key, titolo) {
     </div>`;
   }).join('') : '<div style="padding:22px 0;text-align:center;color:var(--muted);font-size:12px">Nessun verbale in questo stato.</div>';
   document.getElementById('kpiModal').classList.add('open');
+}
+
+let _sysModalId = null;
+function openSysModal(id) {
+  const v = _verbaliAll.find(x => x._id === id); if (!v) return;
+  _sysModalId = id;
+  document.getElementById('sysModalSub').textContent = v.codice_verbale + (v.verbale_origine ? ' · verifica' : '');
+  const iso = /^\d{4}-\d{2}-\d{2}/.test(v.data_invio_system || '') ? v.data_invio_system.slice(0, 10) : '';
+  document.getElementById('sm_subsystem').value = v.subsystem || '';
+  document.getElementById('sm_data').value = iso;
+  document.getElementById('sm_metodo').value = v.metodo_invio || '';
+  document.getElementById('sm_rif').value = v.rif_system_invio || '';
+  ['sm_subsystem', 'sm_data', 'sm_metodo', 'sm_rif'].forEach(i => document.getElementById(i).classList.remove('miss'));
+  document.getElementById('sysModal').classList.add('open');
+}
+function closeSysModal() { document.getElementById('sysModal').classList.remove('open'); _sysModalId = null; }
+async function saveSysModal() {
+  const g = i => (document.getElementById(i).value || '').trim();
+  const body = { subsystem: g('sm_subsystem'), data_invio_system: g('sm_data'), metodo_invio: g('sm_metodo'), rif_system_invio: g('sm_rif') };
+  const miss = ['sm_subsystem', 'sm_data', 'sm_metodo', 'sm_rif'].filter(i => !g(i));
+  ['sm_subsystem', 'sm_data', 'sm_metodo', 'sm_rif'].forEach(i => document.getElementById(i).classList.toggle('miss', miss.includes(i)));
+  if (miss.length) { showToast('✗ Compila tutti e 4 i campi'); return; }
+  const id = _sysModalId, btn = document.getElementById('sysModalSave');
+  btn.disabled = true;
+  try {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    const token = localStorage.getItem('_enri_session') || '';
+    const res = await fetch(apiBase + '/api/sopralluoghi/' + id + '/system', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-session-token': token }, body: JSON.stringify(body) });
+    if (!res.ok) { let det = ''; try { det = (await res.json()).detail || ''; } catch (_) {} throw new Error(det || ('HTTP ' + res.status)); }
+    const r = await res.json();
+    closeSysModal();
+    showToast(r.changed ? '✓ Dati System aggiornati' + (r.issues_aggiornate ? ' · ' + r.issues_aggiornate + ' issue riallineate' : '') : 'Nessuna modifica');
+    await loadVerbali();
+    _selectVerbale(id);
+  } catch (e) { showToast('✗ ' + e.message); }
+  finally { btn.disabled = false; }
 }
 
 function closeKpiModal() { document.getElementById('kpiModal').classList.remove('open'); }
