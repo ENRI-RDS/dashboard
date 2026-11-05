@@ -109,6 +109,7 @@
   .segn-esito{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0;font-size:12px;font-weight:600;color:var(--text2);}
   .segn-esito label{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--surface2);white-space:nowrap;font-size:11.5px;}
   .segn-esito label input{width:14px;height:14px;min-height:0;padding:0;margin:0;flex:none;accent-color:var(--warn);cursor:pointer;box-shadow:none;}
+  .field-group input.miss{border-color:var(--err)!important;background:#FDF3F1;}
   .segn-esito.miss{outline:1.5px solid var(--err);outline-offset:3px;border-radius:8px;}
   .verif-chip{display:inline-block;margin-left:5px;padding:2px 7px;border-radius:20px;font-size:9.5px;font-weight:800;white-space:nowrap;background:#D3DEEA;color:#043F75;}
   .verif-chip.todo{background:#FFE7B8;color:#8A5A00;}
@@ -550,6 +551,32 @@
       <textarea id="ck-note-generali" placeholder="Indicazioni di carattere generale o specifiche sul sopralluogo..." oninput="ckGeneralNoteInput()"></textarea>
     </div>
 
+    <div class="field-group" id="segnSystemGroup" style="margin-top:12px">
+      <label>Segnalazione al System *</label>
+      <div class="segn-hint">Obbligatoria in ogni verbale, verifiche comprese. Se non c'è subappalto scrivere «Nessuno».</div>
+      <div class="field-row">
+        <div class="field-group">
+          <label for="subsystem">SubSystem (subappalto) *</label>
+          <input type="text" id="subsystem" maxlength="200" autocomplete="off" oninput="this.classList.remove('miss')">
+        </div>
+        <div class="field-group">
+          <label for="data_invio_system">Data invio segnalazione al System *</label>
+          <input type="date" id="data_invio_system" oninput="this.classList.remove('miss')">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label for="metodo_invio">Metodo di invio *</label>
+          <input type="text" id="metodo_invio" list="dlMetodoV" maxlength="100" autocomplete="off" oninput="this.classList.remove('miss')">
+          <datalist id="dlMetodoV"><option value="PEC"><option value="Email"><option value="Verbale di sopralluogo"><option value="Telefono"><option value="WhatsApp"><option value="Di persona"></datalist>
+        </div>
+        <div class="field-group">
+          <label for="rif_system_invio">Riferimento System invio *</label>
+          <input type="text" id="rif_system_invio" maxlength="300" autocomplete="off" oninput="this.classList.remove('miss')">
+        </div>
+      </div>
+    </div>
+
     <div class="btn-row">
       <button class="btn-download" id="btn-invia" onclick="inviaVerbale()">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -745,6 +772,12 @@ function renderPreviews(){
     full ? `${MAX_FOTO}/${MAX_FOTO} · massimo raggiunto` : `${uploadedPhotos.length}/${MAX_FOTO} foto`;
 }
 
+/* Campi "Segnalazione al System" (obbligatori in ogni verbale, verifiche comprese) */
+function _segnSystemVals() {
+  const g = id => (document.getElementById(id)?.value || '').trim();
+  return { subsystem: g('subsystem'), data_invio_system: g('data_invio_system'), metodo_invio: g('metodo_invio'), rif_system_invio: g('rif_system_invio') };
+}
+
 /* ── DATI CONDIVISI ── */
 function getF(){
   const selCantiere = document.getElementById('n_cantiere');
@@ -759,6 +792,7 @@ function getF(){
     segnalazione_cliente: document.getElementById('segnalazione_cliente')?.checked ? 'SI' : 'NO',
     segnalazione_cliente_note: document.getElementById('segnalazione_cliente')?.checked ? (document.getElementById('segnalazione_cliente_note')?.value || '').trim() : '',
     esito_segnalazione: document.getElementById('segnalazione_cliente')?.checked ? (document.querySelector('input[name="esito_segnalazione"]:checked')?.value || '') : '',
+    subsystem:v('subsystem'), data_invio_system:fmtDate('data_invio_system'), metodo_invio:v('metodo_invio'), rif_system_invio:v('rif_system_invio'),
     verbale_origine: _verificaDi ? _verificaDi.codice : '',
     verifica_tipo: _verificaDi ? _verificaDi.tipo : '',
     // Resto della vecchia sezione "Segnalazioni" (gravità/testo/azioni/date/note)
@@ -894,6 +928,7 @@ async function inviaVerbale(){
         segnalazione_cliente_note: f.segnalazione_cliente_note,
         esito_segnalazione: f.esito_segnalazione,
         verbale_origine:   f.verbale_origine,
+        ..._segnSystemVals(),
         checklist:         ckPayload(),
         note:              '',
         segnalazioni:      '',
@@ -934,6 +969,7 @@ function resetVerbaleForm() {
   const segnNote = document.getElementById('segnalazione_cliente_note'); if (segnNote) segnNote.value = '';
   document.querySelectorAll('input[name="esito_segnalazione"]').forEach(r => r.checked = false);
   document.getElementById('segnEsito')?.classList.remove('miss');
+  ['subsystem', 'data_invio_system', 'metodo_invio', 'rif_system_invio'].forEach(i => { const el = document.getElementById(i); if (el) { el.value = ''; el.classList.remove('miss'); } });
   _verificaDi = null; _ckShowMissing = false;
   uploadedPhotos = [];
   ckReset();
@@ -986,6 +1022,7 @@ async function _generatePdfCore(f, photos){
     ...(f.segnalazione_cliente === 'SI' ? [['Esito verifica segnalazione', ({confermata:'Confermata',non_confermata:'Non confermata'})[f.esito_segnalazione] || '—']] : []),
     ...(f.verbale_origine ? [[_verifNCod(f.verbale_origine) + '° sopralluogo — verifica del verbale', esc(f.verbale_origine) + (f.verifica_tipo ? ' (verifica ' + (f.verifica_tipo === 'cliente' ? 'cliente' : 'interna') + ')' : '')]] : []),
     ['N° Foto allegate', f.n_foto],
+    ...[['SubSystem', f.subsystem], ['Data invio al System', f.data_invio_system], ['Metodo di invio', f.metodo_invio], ['Riferimento System invio', f.rif_system_invio]].filter(([, x]) => x && x !== '—'),
   ];
   const extraSections = [
     ['Segnalazioni / Anomalie rilevate', f.segnalazioni],
@@ -1170,6 +1207,8 @@ async function generatePdfForRecord(id){
     segnalazione_cliente: _isSegnCliente(v) ? 'SI' : 'NO',
     segnalazione_cliente_note: _isSegnCliente(v) ? (v.segnalazione_cliente_note || '') : '',
     esito_segnalazione: _isSegnCliente(v) ? (v.esito_segnalazione || '') : '',
+    subsystem: v.subsystem || '', data_invio_system: v.data_invio_system ? new Date(v.data_invio_system).toLocaleDateString('it-IT') : '',
+    metodo_invio: v.metodo_invio || '', rif_system_invio: v.rif_system_invio || '',
     verbale_origine: v.verbale_origine || '',
     verifica_tipo: v.verbale_origine ? _verifRootTipo(v) : '',
     checklist: _ckOf(v),
@@ -1506,6 +1545,8 @@ function _renderPreview(v) {
     ['Segnalazione cliente', _isSegnCliente(v) ? 'SÌ' : ''],
     ['Note segnalazione cliente', _isSegnCliente(v) ? (v.segnalazione_cliente_note || '') : ''],
     ['Esito verifica segnalazione', _isSegnCliente(v) ? (({confermata:'Confermata',non_confermata:'Non confermata'})[v.esito_segnalazione] || '') : ''],
+    ['SubSystem', esc(v.subsystem || '')], ['Data invio segnalazione al System', v.data_invio_system ? new Date(v.data_invio_system).toLocaleDateString('it-IT') : ''],
+    ['Metodo di invio', esc(v.metodo_invio || '')], ['Riferimento System invio', esc(v.rif_system_invio || '')],
     ['Segnalazioni', v.segnalazioni], ['Azioni richieste', v.azioni_richieste],
     ['Scadenza azioni', v.scadenza_azioni ? new Date(v.scadenza_azioni).toLocaleDateString('it-IT') : ''],
     ['Prossimo sopralluogo', v.prossimo_sopralluogo ? new Date(v.prossimo_sopralluogo).toLocaleDateString('it-IT') : ''],
@@ -2099,6 +2140,13 @@ function _applyVerificaUI() {
 
 function _validaVerbale() {
   _ckShowMissing = false;
+  const _sysCampi = [['subsystem', 'SubSystem'], ['data_invio_system', 'data invio'], ['metodo_invio', 'metodo di invio'], ['rif_system_invio', 'riferimento invio']];
+  const _sysMiss = _sysCampi.filter(([id]) => !(document.getElementById(id)?.value || '').trim());
+  _sysCampi.forEach(([id]) => document.getElementById(id)?.classList.toggle('miss', _sysMiss.some(m => m[0] === id)));
+  if (_sysMiss.length) {
+    document.getElementById(_sysMiss[0][0])?.scrollIntoView({behavior:'smooth', block:'center'});
+    return 'Segnalazione al System: compila ' + _sysMiss.map(m => m[1]).join(', ');
+  }
   const segn = !!document.getElementById('segnalazione_cliente')?.checked && !_verificaDi;
   const esito = document.querySelector('input[name="esito_segnalazione"]:checked')?.value || '';
   if (segn && !esito) {
