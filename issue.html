@@ -161,6 +161,8 @@
       <p>Anomalie e segnalazioni verso le imprese esecutrici (System). Le celle System, SubSystem, Stato e Priority si modificano direttamente in tabella.</p>
     </div>
     <div class="head-actions">
+      <button class="btn ghost" onclick="ricalcolaPriority()" title="Applica le regole automatiche alle issue da verbale ancora a Media e mai modificate a mano">Ricalcola priority</button>
+      <button class="btn ghost" onclick="openLegend()" title="Criteri di assegnazione della priority">Legenda priority</button>
       <button class="btn ghost" id="btnExport" onclick="exportXlsx()" title="Esporta tutte le issue (rispetta ricerca e filtri a tendina)">
         <svg class="ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>Esporta Excel</button>
       <button class="btn primary" onclick="openModal()">
@@ -237,6 +239,17 @@
       <div><button class="btn danger" id="btnDel" onclick="delIssue()" style="display:none">Elimina</button></div>
       <div class="r"><button class="btn ghost" onclick="closeModal()">Annulla</button><button class="btn primary" id="btnSave" onclick="saveIssue()">Salva</button></div>
     </div>
+  </div>
+</div>
+
+<!-- LEGENDA PRIORITY -->
+<div class="ov" id="ovLeg" onclick="if(event.target===this)closeLegend()">
+  <div class="modal" style="max-width:640px">
+    <div class="m-head">
+      <h2>Legenda priority</h2>
+      <button class="x" onclick="closeLegend()" aria-label="Chiudi"><svg class="ic" viewBox="0 0 24 24" style="width:18px;height:18px"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="m-body" id="legBody"></div>
   </div>
 </div>
 
@@ -338,6 +351,31 @@ function filtered() {
 }
 
 let sortK = '', sortD = 1;
+/* Legenda priority: criteri di assegnazione (unico punto da modificare per cambiarli) */
+const PRIO_LEGEND = [
+  { k:'critica', c:'var(--red)',    bg:'var(--redL)',    when:'Qualsiasi issue nata da una segnalazione del cliente. Area di intervento non delimitata o accessi di cantiere aperti (SIC-21, SIC-22): rischio per i terzi.', act:'Da sistemare subito; il System va sollecitato appena inviata.' },
+  { k:'alta',    c:'var(--orange)', bg:'var(--orangeL)', when:'Non conformità di qualità dell\'opera (checklist Qualità: tubi, pozzetti, microdotti, giunzioni, codifica colori).', act:'Da inviare al System entro pochi giorni e verificare con priorità.' },
+  { k:'media',   c:'var(--yellow)', bg:'var(--yellowL)', when:'Altre non conformità di sicurezza, collaudo, ripristini o documentazione che non incidono su qualità dell\'opera o delimitazione del cantiere. È il valore predefinito per le issue inserite a mano.', act:'Gestione ordinaria, controllo alla verifica successiva.' },
+  { k:'bassa',   c:'var(--green)',  bg:'var(--greenL)',  when:'Osservazioni formali o documentali senza impatto su qualità, sicurezza o delimitazione. Si imposta a mano.', act:'Si sistema entro la normale programmazione.' },
+];
+function openLegend() {
+  $('legBody').innerHTML = '<p style="font-size:12px;color:var(--muted);margin-bottom:12px">Le issue create dai verbali ricevono la priority in automatico; l\'admin può cambiarla dalla tabella. Criteri. Contano soprattutto la <b>qualità dell\'opera</b>, la <b>delimitazione del cantiere</b> e le <b>segnalazioni del cliente</b>.</p>' +
+    PRIO_LEGEND.map(l => '<div style="display:flex;gap:12px;padding:11px 12px;margin-bottom:8px;border:1px solid var(--border);border-left:4px solid ' + l.c + ';border-radius:8px;background:' + l.bg + '">' +
+      '<div style="min-width:64px;font-weight:700;font-size:13px;color:' + l.c + '">' + esc(PRIO[l.k]) + '</div>' +
+      '<div style="font-size:12.5px;line-height:1.45"><div>' + esc(l.when) + '</div><div style="margin-top:4px;color:var(--muted)">' + esc(l.act) + '</div></div></div>').join('');
+  $('ovLeg').classList.add('open');
+}
+async function ricalcolaPriority() {
+  try {
+    const d = await api('/api/issues/ricalcola-priority', { method: 'POST', body: JSON.stringify({ dry_run: true }) });
+    if (!d.totale) { toast('Nessuna issue da riclassificare'); return; }
+    if (!confirm(d.totale + ' issue da verbale passeranno da Media a: ' + d.critica + ' Critica, ' + d.alta + ' Alta.\nLe issue con priority già modificata non vengono toccate. Procedere?')) return;
+    const r = await api('/api/issues/ricalcola-priority', { method: 'POST', body: JSON.stringify({}) });
+    items = (await api('/api/issues')).items || []; fillLookups(); render();
+    toast(r.totale + ' issue riclassificate (' + r.critica + ' critiche, ' + r.alta + ' alte)');
+  } catch (e) { toast('✗ ' + e.message); }
+}
+function closeLegend() { $('ovLeg').classList.remove('open'); }
 const PRIO_RANK = { bassa:0, media:1, alta:2, critica:3 }, STATO_RANK = { aperta:0, inviata:1, in_lavorazione:2, risolta:3, chiusa:4 };
 function sortVal(it, k) {
   if (k === 'codice') return (it.prefisso || '') + String(it.seq || 0).padStart(6, '0');
@@ -518,7 +556,7 @@ async function exportXlsx() {
   finally { b.disabled = false; }
 }
 
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && !e.defaultPrevented && !e.cancelBubble) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !e.defaultPrevented && !e.cancelBubble) { closeModal(); closeLegend(); } });
 $('ov').addEventListener('mousedown', e => { if (e.target === $('ov')) closeModal(); });
 window.addEventListener('DOMContentLoaded', () => {
   const u = localStorage.getItem('_enri_user'); if (u) $('topbarUser').textContent = u;
