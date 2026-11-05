@@ -4260,12 +4260,16 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
     Verbali (riepilogo leggibile, un verbale per riga), Checklist dettaglio
     (un item per riga, su qualità/sicurezza/collaudo) e Non conformità (solo
     gli item NC, per il follow-up delle azioni correttive)."""
+    _t0 = time.perf_counter()
     import openpyxl
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
     from openpyxl.worksheet.table import Table, TableStyleInfo
+    _t_imp = time.perf_counter()
 
-    verbali = [d async for d in sopralluoghi_col.find({}).sort("codice_verbale", 1)]
+    # Le firme (immagini base64) non servono all'export: escluse per non trasferirle da Mongo
+    verbali = [d async for d in sopralluoghi_col.find({}, {"firma_impresa": 0, "firma_retelit": 0}).sort("codice_verbale", 1)]
+    _t_db = time.perf_counter()
     _by_code = {d.get("codice_verbale"): d for d in verbali}
 
     def _tipo_verbale(v):
@@ -4305,6 +4309,26 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
         ws.freeze_panes = f"A{row + 1}"
         ws.row_dimensions[row].height = 28
 
+    _AL_TOP = Alignment(vertical="top")
+    _AL_WRAP = Alignment(vertical="top", wrap_text=True)
+
+    def _style_body(ws, wrap_cols):
+        """Bordo + allineamento in un solo passaggio a fine foglio, con oggetti stile
+        condivisi: creare Alignment/ws.cell() per ogni cella era il grosso del tempo
+        (foglio checklist = migliaia di righe × 12 colonne)."""
+        from openpyxl.styles.cell_style import StyleArray
+        wb_ = ws.parent
+        bid = wb_._borders.add(BORDER)
+        a_top = wb_._alignments.add(_AL_TOP)
+        a_wrap = wb_._alignments.add(_AL_WRAP)
+        for cells in ws.iter_rows(min_row=2):
+            for c in cells:
+                st = c._style
+                if st is None:  # cella senza stile: openpyxl lo crea in modo lazy
+                    st = c._style = StyleArray()
+                st.borderId = bid
+                st.alignmentId = a_wrap if c.column in wrap_cols else a_top
+
     def _autofit(ws, widths):
         for i, w in enumerate(widths, start=1):
             ws.column_dimensions[get_column_letter(i)].width = w
@@ -4322,6 +4346,7 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
         "Esito segnalazione", "Tipo", "Verbale origine",
     ]
     ws1.append(cols1)
+    _r1 = 1
     _style_header(ws1, len(cols1))
 
     for v in verbali:
@@ -4353,7 +4378,8 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
             v.get("verbale_origine", ""),
         ]
         ws1.append(row)
-        r = ws1.max_row
+        _r1 += 1
+        r = _r1
         if foto_urls:
             ws1.cell(row=r, column=17).hyperlink = foto_urls[0]
             ws1.cell(row=r, column=17).font = Font(color="043F75", underline="single")
@@ -4368,11 +4394,9 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
             ws1.cell(row=r, column=10).fill = CLIENTE_FILL
         if (v.get("checklist_non_conformi") or 0) > 0:
             ws1.cell(row=r, column=14).fill = NC_FILL
-        for c in range(1, len(cols1) + 1):
-            ws1.cell(row=r, column=c).border = BORDER
-            ws1.cell(row=r, column=c).alignment = Alignment(vertical="top", wrap_text=(c in (4, 11, 18)))
         ws1.cell(row=r, column=2).number_format = "dd/mm/yyyy"
 
+    _style_body(ws1, (4, 11, 18))
     _autofit(ws1, [14, 11, 7, 24, 20, 16, 18, 16, 15, 16, 30, 10, 9, 11, 9, 20, 7, 30, 20, 16, 22, 16])
     if len(verbali) > 0:
         ws1.add_table(Table(
@@ -4412,12 +4436,9 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
                 ]
                 ws2.append(row)
                 n_rows2 += 1
-                r = ws2.max_row
+                r = n_rows2 + 1  # riga 1 = intestazione (ws.max_row è O(n) a ogni chiamata)
                 if st.get("e") == "NC":
                     ws2.cell(row=r, column=7).fill = NC_FILL
-                for c in range(1, len(cols2) + 1):
-                    ws2.cell(row=r, column=c).border = BORDER
-                    ws2.cell(row=r, column=c).alignment = Alignment(vertical="top", wrap_text=(c in (6, 8, 9, 10)))
                 if d_obj:
                     ws2.cell(row=r, column=2).number_format = "dd/mm/yyyy"
                 if scad_obj:
@@ -4435,6 +4456,7 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
             ref=f"A1:{get_column_letter(len(cols2))}{ws2.max_row}",
             tableStyleInfo=TableStyleInfo(name="TableStyleMedium2", showRowStripes=True),
         ))
+    _style_body(ws2, (6, 8, 9, 10))
     _autofit(ws2, [14, 11, 11, 8, 9, 8, 14, 30, 26, 26, 16, 12])
 
     # ── Foglio 3: Non conformità (solo gli item NC, per follow-up) ─────────
@@ -4460,11 +4482,8 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
                 ]
                 ws3.append(row)
                 n_rows3 += 1
-                r = ws3.max_row
+                r = n_rows3 + 1
                 ws3.cell(row=r, column=1).fill = NC_FILL
-                for c in range(1, len(cols3) + 1):
-                    ws3.cell(row=r, column=c).border = BORDER
-                    ws3.cell(row=r, column=c).alignment = Alignment(vertical="top", wrap_text=(c in (7, 8)))
                 ws3.cell(row=r, column=2).number_format = "dd/mm/yyyy"
                 if scad_obj:
                     ws3.cell(row=r, column=10).number_format = "dd/mm/yyyy"
@@ -4474,11 +4493,13 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
             ref=f"A1:{get_column_letter(len(cols3))}{ws3.max_row}",
             tableStyleInfo=TableStyleInfo(name="TableStyleMedium2", showRowStripes=True),
         ))
+    _style_body(ws3, (7, 8))
     _autofit(ws3, [14, 11, 16, 20, 11, 9, 30, 30, 16, 12])
 
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
+    print(f"[export sopralluoghi] {len(verbali)} verbali · import openpyxl {_t_imp - _t0:.2f}s · mongo {_t_db - _t_imp:.2f}s · build+save {time.perf_counter() - _t_db:.2f}s")
     filename = f"sopralluoghi_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
     return Response(
         content=buf.getvalue(),
