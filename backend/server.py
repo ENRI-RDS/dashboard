@@ -3950,6 +3950,35 @@ async def update_issue(issue_id: str, payload: dict, sess: dict = Depends(_requi
     return {"ok": True, "item": _issue_out(d), "changed": True}
 
 
+@app.post("/api/issues/ricalcola-priority")
+async def issues_ricalcola_priority(payload: dict | None = None, sess: dict = Depends(_require_admin_session)):
+    """Riclassifica con le regole automatiche (`_issue_priority_nc`) le issue nate da verbali che sono ancora a
+    'media' e la cui priority non è mai stata modificata (nessuna riga 'Priority' nello storico).
+    Body: {dry_run: true} → solo conteggio, nessuna scrittura."""
+    dry = bool((payload or {}).get("dry_run"))
+    cache: dict = {}
+    out = {"critica": 0, "alta": 0}
+    now = datetime.now(timezone.utc).isoformat()
+    async with _issue_sync_lock:
+        async for iss in issues_col.find({"origine_key": {"$exists": True}, "priority": "media"}):
+            if any(m.get("campo") == "Priority" for h in iss.get("storico") or [] for m in h.get("modifiche") or []):
+                continue  # priority già toccata (a mano o da un ricalcolo precedente)
+            v = await sopralluoghi_col.find_one({"codice_verbale": iss.get("origine_verbale", "")})
+            if not v:
+                continue
+            root = await _sopr_root_code(v, cache)
+            rv = cache.get(root) or (v if root == v.get("codice_verbale") else await sopralluoghi_col.find_one({"codice_verbale": root})) or v
+            new = _issue_priority_nc(iss.get("origine_item", ""), iss.get("origine_cat", ""), rv)
+            if new == "media":
+                continue
+            out[new] += 1
+            if not dry:
+                await issues_col.update_one({"_id": iss["_id"]}, {"$set": {"priority": new, "updated_at": now}, "$push": {"storico": {
+                    "ts": now, "utente": f"Sistema (ricalcolo priority · {sess.get('nome', '')})", "azione": "modificata",
+                    "modifiche": [{"campo": "Priority", "da": "Media", "a": _ISSUE_PRIORITY[new]}]}}})
+    return {"ok": True, "dry_run": dry, "totale": out["critica"] + out["alta"], **out}
+
+
 @app.delete("/api/issues/{issue_id}")
 async def delete_issue(issue_id: str, sess: dict = Depends(_require_admin_session)):
     oid = _issue_oid(issue_id)
@@ -3964,6 +3993,19 @@ async def delete_issue(issue_id: str, sess: dict = Depends(_require_admin_sessio
                                                    "by": sess.get("nome", ""), "at": datetime.now(timezone.utc).isoformat()}},
                                          upsert=True)
     return {"ok": True, "deleted": issue_id}
+
+
+# Priority automatica alla creazione di una issue da NC di un verbale (poi modificabile a mano dall'admin nel registro):
+# critica = segnalazione del cliente (verbale radice) oppure cantiere non delimitato / accessi aperti;
+# alta = non conformità di qualità dell'opera; media = tutto il resto. Legenda in issue.html (PRIO_LEGEND).
+_ISSUE_PRIO_CRITICA_IDS = {"SIC-21", "SIC-22"}
+
+
+def _issue_priority_nc(item_id: str, cat: str, root_verbale: dict | None) -> str:
+    segn = (root_verbale or {}).get("segnalazione_cliente") in (True, "SI", "si", "true", 1, "1")
+    if segn or item_id in _ISSUE_PRIO_CRITICA_IDS:
+        return "critica"
+    return "alta" if cat == "qualita" else "media"
 
 
 def _issue_tipo_item(item_id: str) -> str:
@@ -4085,6 +4127,7 @@ async def _issue_sync_verbali(verbali: list) -> dict:
                             "rilevato_da": v.get("referente_impresa", ""),  # campo storicamente invertito: contiene il redattore
                             "descrizione": "\n".join(parts), "data_prevista": _sopr_date_iso(st.get("scad", "")),
                             **_sopr_invio_fields(cache.get(root) or v),
+                            "priority": _issue_priority_nc(item_id, sez, cache.get(root) or v),
                         })
                         try:
                             await _issue_create(_issue_tipo_item(item_id), rec, f"Sistema (verbale {code})",
