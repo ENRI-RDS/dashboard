@@ -220,7 +220,7 @@
           <div class="fld"><label for="f_lotto">Lotto</label><input id="f_lotto" autocomplete="off"></div>
           <div class="fld"><label for="f_comune">Comune</label><input id="f_comune" list="dlComune" autocomplete="off"></div>
           <div class="fld"><label for="f_system">Impresa esecutrice (System)</label><input id="f_system" list="dlSystem" autocomplete="off"><span class="hint">Può restare vuoto e essere compilato dopo.</span></div>
-          <div class="fld"><label for="f_subsystem">SubSystem (subappalto)</label><input id="f_subsystem" list="dlSub" autocomplete="off"><span class="hint">Può restare vuoto e essere compilato dopo.</span></div>
+          <div class="fld"><label for="f_subsystem">SubSystem (subappalto)</label><input id="f_subsystem" list="dlSub" autocomplete="off"><span class="hint">Se indicato nel verbale d'origine (insieme ai dati di invio al System) viene riportato qui in automatico; si può completare anche dopo.</span></div>
           <div class="fld"><label for="f_data_rilevamento">Data rilevamento</label><input type="date" id="f_data_rilevamento"></div>
           <div class="fld"><label for="f_rilevato_da">Chi ha rilevato l'anomalia</label><input id="f_rilevato_da" autocomplete="off"></div>
           <div class="fld full"><label for="f_descrizione">Descrizione *</label><textarea id="f_descrizione"></textarea></div>
@@ -292,9 +292,9 @@ async function load() {
 async function syncFromVerbali() {
   try {
     const r = await api('/api/issues/sync-sopralluoghi', { method: 'POST' });
-    if (r.created || r.resolved) {
+    if (r.created || r.resolved || r.filled) {
       items = (await api('/api/issues')).items || []; fillLookups(); render();
-      toast([r.created && (r.created + ' nuove issue dalle NC dei verbali'), r.resolved && (r.resolved + ' risolte da verifiche conformi')].filter(Boolean).join(' · '));
+      toast([r.created && (r.created + ' nuove issue dalle NC dei verbali'), r.resolved && (r.resolved + ' risolte da verifiche'), r.filled && (r.filled + ' completate con i dati di invio dei verbali')].filter(Boolean).join(' · '));
     }
   } catch (e) { /* la sync è un di più: la pagina funziona anche senza */ }
 }
