@@ -4275,6 +4275,78 @@ async def delete_sopralluogo(sop_id: str, sess: dict = Depends(_require_session)
     return {"ok": True, "deleted": sop_id}
 
 
+@app.put("/api/sopralluoghi/{sop_id}/system")
+async def update_sopralluogo_system(sop_id: str, payload: dict, sess: dict = Depends(_require_staff_session)):
+    """Aggiorna SOLO i 4 campi \"Segnalazione al System\" di un verbale già salvato (es. verbali precedenti ai campi).
+    Tutti e 4 obbligatori. Traccia chi/quando in `storico_system` e riallinea le issue collegate."""
+    try:
+        oid = ObjectId(sop_id)
+    except Exception:
+        raise HTTPException(400, "ID non valido")
+    doc = await sopralluoghi_col.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Verbale non trovato")
+    _p = payload or {}
+    new = {
+        "subsystem":         str(_p.get("subsystem", "")).strip()[:200],
+        "data_invio_system": _sopr_date_iso(str(_p.get("data_invio_system", "")).strip()),
+        "metodo_invio":      str(_p.get("metodo_invio", "")).strip()[:100],
+        "rif_system_invio":  str(_p.get("rif_system_invio", "")).strip()[:300],
+    }
+    labels = {"subsystem": "SubSystem", "data_invio_system": "data invio",
+              "metodo_invio": "metodo di invio", "rif_system_invio": "riferimento invio"}
+    manc = [lab for k, lab in labels.items() if not new[k]]
+    if manc:
+        raise HTTPException(422, "Segnalazione al System: compilare " + ", ".join(manc))
+    old = {k: (_sopr_date_iso(str(doc.get(k, "") or "").strip()) if k == "data_invio_system"
+               else str(doc.get(k, "") or "").strip()) for k in new}
+    changes = {k: (old[k], new[k]) for k in new if old[k] != new[k]}
+    if not changes:
+        return {"ok": True, "changed": 0, "issues_aggiornate": 0}
+    now = datetime.now(timezone.utc).isoformat()
+    utente = sess.get("nome", "")
+    await sopralluoghi_col.update_one({"_id": oid}, {
+        "$set": {**new, "modificato_da": utente, "modificato_il": now},
+        "$push": {"storico_system": {"ts": now, "utente": utente,
+                                     "modifiche": [{"campo": labels[k], "da": a, "a": b} for k, (a, b) in changes.items()]}}})
+
+    # Riallinea le issue collegate (mai bloccante per il salvataggio del verbale)
+    n_iss = 0
+    try:
+        code = doc.get("codice_verbale", "")
+        merged = {**doc, **new}
+        if not doc.get("verbale_origine"):
+            # verbale radice: aggiorna i campi della issue solo se vuoti o ancora uguali al vecchio valore del verbale
+            # (se qualcuno li ha modificati a mano nel registro issue, non vengono toccati)
+            async for iss in issues_col.find({"origine_verbale": code}):
+                sets, mods = {}, []
+                for src, dst in _SOPR_INVIO_MAP:
+                    if src not in changes:
+                        continue
+                    cur = str(iss.get(dst, "") or "").strip()
+                    if dst == "data_invio":
+                        cur = _sopr_date_iso(cur) or cur
+                    if cur in ("", changes[src][0]):
+                        sets[dst] = new[src]
+                        mods.append({"campo": _ISSUE_FIELDS[dst], "da": cur, "a": new[src]})
+                if sets:
+                    await issues_col.update_one({"_id": iss["_id"]}, {"$set": {**sets, "updated_at": now}, "$push": {"storico": {
+                        "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code, "modifiche": mods}}})
+                    n_iss += 1
+        else:
+            # verifica: la issue conserva i dati del radice, si aggiunge solo una riga di storico
+            summ = _sopr_invio_summary(merged)
+            async for iss in issues_col.find({"storico.verbale": code}):
+                await issues_col.update_one({"_id": iss["_id"]}, {"$set": {"updated_at": now}, "$push": {"storico": {
+                    "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code,
+                    "modifiche": [{"campo": "Invio al System (corretto)", "da": "", "a": summ}]}}})
+                n_iss += 1
+    except Exception as e:
+        print(f"[sopralluoghi] riallineo issue dopo modifica dati System fallito: {type(e).__name__}: {e}")
+    _schedule_sopralluoghi_csv_regen(f"aggiornamento dati System: {doc.get('codice_verbale', '')}")
+    return {"ok": True, "changed": len(changes), "issues_aggiornate": n_iss}
+
+
 @app.get("/api/sopralluoghi")
 async def list_sopralluoghi(sess: dict = Depends(_require_staff_session)):
     """Restituisce tutti i verbali di sopralluogo, ordinati per codice decrescente."""
