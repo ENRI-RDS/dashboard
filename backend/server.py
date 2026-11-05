@@ -3989,12 +3989,14 @@ async def _sopr_root_code(v: dict, cache: dict) -> str:
 async def _issue_sync_verbali(verbali: list) -> dict:
     """Crea/aggiorna le issue a partire dalle checklist dei verbali (da passare in ordine di codice crescente).
     - punto NC → una issue per (verbale radice, punto), con impresa/cantiere/comune/lotto/permesso del verbale;
-    - verifica successiva con punto Conforme → la issue passa a 'Risolta' (una sola volta, rispetta le modifiche manuali);
+    - verifica successiva con punto Conforme o N.A. (es. cantiere spostato) → la issue passa a 'Risolta' (una sola volta, rispetta le modifiche manuali);
     - verifica ancora NC → solo una riga di storico.
     Idempotente: si può rilanciare quante volte si vuole."""
     created = resolved = 0
     cache = {d.get("codice_verbale"): d for d in verbali}
     async with _issue_sync_lock:
+        # chiavi (radice|punto) delle issue già esistenti: per i punti C/NA serve una query solo se esiste una issue
+        known = {d["origine_key"] async for d in issues_col.find({"origine_key": {"$exists": True}}, {"origine_key": 1})}
         for v in verbali:
             code = v.get("codice_verbale", "")
             root = await _sopr_root_code(v, cache)
@@ -4004,9 +4006,11 @@ async def _issue_sync_verbali(verbali: list) -> dict:
             cinfo = None
             for sez in _CK_CATEGORIE:
                 for item_id, st in (ck.get(sez) or {}).items():
-                    if not isinstance(st, dict) or st.get("e") not in ("NC", "C"):
+                    if not isinstance(st, dict) or st.get("e") not in ("NC", "C", "NA"):
                         continue
                     key = f"{root}|{item_id}"
+                    if st["e"] != "NC" and key not in known:
+                        continue
                     iss = await issues_col.find_one({"origine_key": key})
                     now = datetime.now(timezone.utc).isoformat()
                     if st["e"] == "NC":
@@ -4041,6 +4045,7 @@ async def _issue_sync_verbali(verbali: list) -> dict:
                                                 extra={"origine_verbale": code, "origine_item": item_id, "origine_cat": sez, "origine_key": key},
                                                 azione="creata", marker={"verbale": code})
                             created += 1
+                            known.add(key)
                         except Exception as e:
                             if "E11000" not in str(e):
                                 raise
@@ -4049,7 +4054,8 @@ async def _issue_sync_verbali(verbali: list) -> dict:
                         await issues_col.update_one({"_id": iss["_id"]}, {"$set": {"stato": "risolta", "updated_at": now}, "$push": {"storico": {
                             "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code,
                             "modifiche": [{"campo": "Stato avanzamento", "da": _ISSUE_STATI.get(iss.get("stato"), ""), "a": "Risolta"},
-                                          {"campo": "Verifica", "da": "", "a": f"Conforme nel verbale {code}"}]}}})
+                                          {"campo": "Verifica", "da": "", "a": (f"Conforme nel verbale {code}" if st["e"] == "C" else
+                                           f"Non più applicabile (N.A.) nel verbale {code}" + (f": {st['nota']}" if st.get("nota") else ""))}]}}})
                         resolved += 1
     return {"created": created, "resolved": resolved}
 
