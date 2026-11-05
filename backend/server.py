@@ -3986,13 +3986,38 @@ async def _sopr_root_code(v: dict, cache: dict) -> str:
     return cur.get("codice_verbale", "")
 
 
+# campi "Segnalazione al System" del verbale → campi della issue
+_SOPR_INVIO_MAP = (("subsystem", "subsystem"), ("data_invio_system", "data_invio"),
+                   ("metodo_invio", "metodo_invio"), ("rif_system_invio", "rif_system_invio"))
+
+
+def _sopr_invio_fields(v: dict) -> dict:
+    """Valori valorizzati di SubSystem / data / metodo / riferimento invio di un verbale, con i nomi dei campi issue."""
+    out = {}
+    for src, dst in _SOPR_INVIO_MAP:
+        val = str(v.get(src, "") or "").strip()
+        val = _sopr_date_iso(val) if dst == "data_invio" else val[:_ISSUE_TEXT_MAX.get(dst, 300)]
+        if val:
+            out[dst] = val
+    return out
+
+
+def _sopr_invio_summary(v: dict) -> str:
+    """Riepilogo leggibile dell'invio al System di un verbale (per lo storico delle issue)."""
+    d = _sopr_date_iso(str(v.get("data_invio_system", "") or "").strip())
+    sub = str(v.get("subsystem", "") or "").strip()
+    parts = [f"{d[8:10]}/{d[5:7]}/{d[0:4]}" if d else "", str(v.get("metodo_invio", "") or "").strip(),
+             str(v.get("rif_system_invio", "") or "").strip(), f"SubSystem {sub}" if sub else ""]
+    return " · ".join(p for p in parts if p)
+
+
 async def _issue_sync_verbali(verbali: list) -> dict:
     """Crea/aggiorna le issue a partire dalle checklist dei verbali (da passare in ordine di codice crescente).
     - punto NC → una issue per (verbale radice, punto), con impresa/cantiere/comune/lotto/permesso del verbale;
     - verifica successiva con punto Conforme o N.A. (es. cantiere spostato) → la issue passa a 'Risolta' (una sola volta, rispetta le modifiche manuali);
     - verifica ancora NC → solo una riga di storico.
     Idempotente: si può rilanciare quante volte si vuole."""
-    created = resolved = 0
+    created = resolved = filled = 0
     cache = {d.get("codice_verbale"): d for d in verbali}
     async with _issue_sync_lock:
         # chiavi (radice|punto) delle issue già esistenti: per i punti C/NA serve una query solo se esiste una issue
@@ -4015,10 +4040,30 @@ async def _issue_sync_verbali(verbali: list) -> dict:
                     now = datetime.now(timezone.utc).isoformat()
                     if st["e"] == "NC":
                         if iss is not None:
+                            if code == root:
+                                # dati di invio al System inseriti nel verbale radice: completano i campi vuoti della issue (una sola volta per campo)
+                                done = {m.get("campo") for h in iss.get("storico") or []
+                                        if h.get("verbale") == code and str(h.get("utente", "")).startswith("Sistema")
+                                        for m in h.get("modifiche") or []}
+                                fill = {k: x for k, x in _sopr_invio_fields(v).items()
+                                        if not str(iss.get(k, "") or "").strip() and _ISSUE_FIELDS[k] not in done}
+                                if fill:
+                                    await issues_col.update_one({"_id": iss["_id"]}, {"$set": {**fill, "updated_at": now}, "$push": {"storico": {
+                                        "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code,
+                                        "modifiche": [{"campo": _ISSUE_FIELDS[k], "da": "", "a": x} for k, x in fill.items()]}}})
+                                    filled += 1
                             if code != iss.get("origine_verbale") and not any(h.get("verbale") == code for h in iss.get("storico") or []):
-                                await issues_col.update_one({"_id": iss["_id"]}, {"$set": {"updated_at": now}, "$push": {"storico": {
+                                # verifica ancora NC: riga di storico + invio al System di questo verbale (+ campi vuoti della issue)
+                                fill2 = {k: x for k, x in _sopr_invio_fields(v).items() if not str(iss.get(k, "") or "").strip()}
+                                mods = [{"campo": "Verifica", "da": "", "a": f"Ancora non conforme nel verbale {code}"}]
+                                if _sopr_invio_summary(v):
+                                    mods.append({"campo": "Invio al System", "da": "", "a": _sopr_invio_summary(v)})
+                                mods += [{"campo": _ISSUE_FIELDS[k], "da": "", "a": x} for k, x in fill2.items()]
+                                await issues_col.update_one({"_id": iss["_id"]}, {"$set": {**fill2, "updated_at": now}, "$push": {"storico": {
                                     "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code,
-                                    "modifiche": [{"campo": "Verifica", "da": "", "a": f"Ancora non conforme nel verbale {code}"}]}}})
+                                    "modifiche": mods}}})
+                                if fill2:
+                                    filled += 1
                             continue
                         if await issues_skip_col.find_one({"key": key}):
                             continue
@@ -4039,6 +4084,7 @@ async def _issue_sync_verbali(verbali: list) -> dict:
                             "data_rilevamento": _sopr_date_iso(v.get("data_sopralluogo", "")) or str(v.get("created_at", ""))[:10],
                             "rilevato_da": v.get("referente_impresa", ""),  # campo storicamente invertito: contiene il redattore
                             "descrizione": "\n".join(parts), "data_prevista": _sopr_date_iso(st.get("scad", "")),
+                            **_sopr_invio_fields(cache.get(root) or v),
                         })
                         try:
                             await _issue_create(_issue_tipo_item(item_id), rec, f"Sistema (verbale {code})",
@@ -4055,15 +4101,16 @@ async def _issue_sync_verbali(verbali: list) -> dict:
                             "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code,
                             "modifiche": [{"campo": "Stato avanzamento", "da": _ISSUE_STATI.get(iss.get("stato"), ""), "a": "Risolta"},
                                           {"campo": "Verifica", "da": "", "a": (f"Conforme nel verbale {code}" if st["e"] == "C" else
-                                           f"Non più applicabile (N.A.) nel verbale {code}" + (f": {st['nota']}" if st.get("nota") else ""))}]}}})
+                                           f"Non più applicabile (N.A.) nel verbale {code}" + (f": {st['nota']}" if st.get("nota") else ""))}]
+                                         + ([{"campo": "Invio al System", "da": "", "a": _sopr_invio_summary(v)}] if _sopr_invio_summary(v) else [])}}})
                         resolved += 1
-    return {"created": created, "resolved": resolved}
+    return {"created": created, "resolved": resolved, "filled": filled}
 
 
 async def _issue_sync_safe(verbali: list) -> None:
     try:
         r = await _issue_sync_verbali(verbali)
-        if r["created"] or r["resolved"]:
+        if r["created"] or r["resolved"] or r["filled"]:
             print(f"[issues] sync da verbali: {r}")
     except Exception as e:
         print(f"[issues] sync da verbali fallita: {type(e).__name__}: {e}")
@@ -4350,6 +4397,7 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
         "Checklist N.A.", "ID non conformità",
         "N. foto", "Note generali checklist", "Creato il",
         "Esito segnalazione", "Tipo", "Verbale origine",
+        "SubSystem", "Data invio segnalazione al System", "Metodo di invio", "Riferimento System invio",
     ]
     ws1.append(cols1)
     _r1 = 1
@@ -4382,6 +4430,10 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
             {"confermata": "Confermata", "non_confermata": "Non confermata"}.get(v.get("esito_segnalazione", ""), ""),
             _tipo_verbale(v),
             v.get("verbale_origine", ""),
+            v.get("subsystem", ""),
+            _sopr_date_obj(v.get("data_invio_system", "")) or None,
+            v.get("metodo_invio", ""),
+            v.get("rif_system_invio", ""),
         ]
         ws1.append(row)
         _r1 += 1
@@ -4401,9 +4453,11 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
         if (v.get("checklist_non_conformi") or 0) > 0:
             ws1.cell(row=r, column=14).fill = NC_FILL
         ws1.cell(row=r, column=2).number_format = "dd/mm/yyyy"
+        if row[23]:
+            ws1.cell(row=r, column=24).number_format = "dd/mm/yyyy"
 
-    _style_body(ws1, (4, 11, 18))
-    _autofit(ws1, [14, 11, 7, 24, 20, 16, 18, 16, 15, 16, 30, 10, 9, 11, 9, 20, 7, 30, 20, 16, 22, 16])
+    _style_body(ws1, (4, 11, 18, 26))
+    _autofit(ws1, [14, 11, 7, 24, 20, 16, 18, 16, 15, 16, 30, 10, 9, 11, 9, 20, 7, 30, 20, 16, 22, 16, 18, 16, 16, 26])
     if len(verbali) > 0:
         ws1.add_table(Table(
             displayName="TabVerbali",
@@ -4607,6 +4661,12 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
     for _sez, _i, _st in _ncs:
         if not _st.get("azione") or not _st.get("scad"):
             raise HTTPException(422, f"Non conformità {_i}: azione correttiva e scadenza sono obbligatorie")
+    # Segnalazione al System: obbligatoria in ogni verbale (anche nelle verifiche)
+    _sys_manc = [lab for k, lab in (("subsystem", "SubSystem"), ("data_invio_system", "data invio"),
+                                    ("metodo_invio", "metodo di invio"), ("rif_system_invio", "riferimento invio"))
+                 if not (_sopr_date_iso(str(_p.get(k, "")).strip()) if k == "data_invio_system" else str(_p.get(k, "")).strip())]
+    if _sys_manc:
+        raise HTTPException(422, "Segnalazione al System: compilare " + ", ".join(_sys_manc))
     if _origine:
         _parent = await sopralluoghi_col.find_one({"codice_verbale": _origine})
         if not _parent:
@@ -4667,6 +4727,11 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
             str(_p.get("segnalazione_cliente_note", "")).strip()[:2000] if _segn else ""
         ),
         "esito_segnalazione":  _esito_segn,
+        # Segnalazione al System (obbligatoria in ogni verbale): passa alle issue e finisce nel loro storico
+        "subsystem":           str(_p.get("subsystem", "")).strip()[:200],
+        "data_invio_system":   _sopr_date_iso(str(_p.get("data_invio_system", "")).strip()),
+        "metodo_invio":        str(_p.get("metodo_invio", "")).strip()[:100],
+        "rif_system_invio":    str(_p.get("rif_system_invio", "")).strip()[:300],
         "verbale_origine":     _origine,
         "tipo":                "verifica" if _origine else "sopralluogo",
         "note":                str((payload or {}).get("note", "")).strip(),
@@ -5088,6 +5153,7 @@ async def _regenerate_sopralluoghi_csv(note: str = "") -> str | None:
             "checklist_conformi", "checklist_non_conformi", "checklist_na",
             "checklist_compilati", "checklist_nc_ids", "segnalazione_cliente_note",
             "esito_segnalazione", "verbale_origine", "tipo",
+            "subsystem", "data_invio_system", "metodo_invio", "rif_system_invio",
             "created_at",
         ]
         buf = io.StringIO()
