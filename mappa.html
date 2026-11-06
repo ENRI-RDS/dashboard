@@ -106,6 +106,18 @@
   .view-toggle{display:flex;gap:3px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:3px;margin-bottom:10px;}
   .view-btn{font-size:10px;padding:3px 9px;border-radius:5px;border:none;background:transparent;color:var(--retelit-blue);cursor:pointer;font-family:var(--font-body);font-weight:500;transition:all 0.15s;white-space:nowrap;}
   .view-btn.active{background:var(--accent);color:white;}
+  /* Nulla osta: tasto sotto il selettore + legenda pallini */
+  .no-dots-btn{display:flex;align-items:center;gap:7px;width:100%;margin:-4px 0 10px;padding:5px 9px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--retelit-blue);font-family:var(--font-body);font-size:10px;font-weight:500;cursor:pointer;transition:all 0.15s;}
+  .no-dots-btn .no-dots-state{margin-left:auto;font-weight:600;opacity:0.7;}
+  .no-dots-btn.active{background:var(--accent);border-color:var(--accent);color:white;}
+  .no-dots-btn.active .no-dots-state{opacity:1;}
+  .no-dots-ico{display:inline-flex;gap:2px;}
+  .no-dots-ico i,.no-dots-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;}
+  .no-dots-btn.active .no-dots-ico i{box-shadow:0 0 0 1px #fff;}
+  .no-dots-ico .r,.no-dots-legend .r{background:#E53935;}
+  .no-dots-ico .g,.no-dots-legend .g{background:#1E9E6A;}
+  .no-dots-legend{display:flex;gap:14px;margin:-4px 0 10px;font-size:10px;color:var(--text);}
+  .no-dots-legend b{font-weight:600;}
   /* Popup */
   .leaflet-popup-content-wrapper{background:var(--surface)!important;border:none!important;border-radius:14px!important;color:var(--text)!important;box-shadow:0 8px 32px #0000002a, 0 1px 4px #00000014!important;padding:0!important;overflow:hidden!important;}
   .leaflet-popup-content{margin:0!important;width:auto!important;}
@@ -313,6 +325,8 @@
     }
     .sidebar-title{ font-size:10px; margin-bottom:6px; }
     .view-toggle{ margin-bottom:6px; }
+    .no-dots-btn{ margin:-2px 0 6px; padding:4px 8px; }
+    .no-dots-legend{ margin:-2px 0 6px; }
     .view-btn{ font-size:10px; padding:5px 10px; min-height:32px; }
     .filter-row{ gap:4px; }
     .filter-btn{ font-size:10px; padding:4px 9px; min-height:28px; }
@@ -891,6 +905,15 @@
         <button class="view-btn"        id="vbtn-lotto"   onclick="setViewMode('lotto')">Lotto</button>
         <button class="view-btn"        id="vbtn-cluster" onclick="setViewMode('cluster')">Cluster</button>
       </div>
+      <button class="no-dots-btn" id="noDotsBtn" onclick="toggleNoDots()" aria-pressed="false" title="Mostra o nascondi i nulla osta lungo le tratte">
+        <span class="no-dots-ico"><i class="r"></i><i class="g"></i></span>
+        <span>Nulla osta</span>
+        <span class="no-dots-state" id="noDotsState">OFF</span>
+      </button>
+      <div class="no-dots-legend" id="noDotsLegend" style="display:none">
+        <span><i class="r"></i>Mancante <b id="noCntMiss">0</b></span>
+        <span><i class="g"></i>Ottenuto <b id="noCntOk">0</b></span>
+      </div>
       <div class="sidebar-title">Filtra per lotto</div>
       <div class="filter-row" id="filterRow"></div>
     </div>
@@ -1420,6 +1443,71 @@ map.on('popupopen', (e) => {
 // Renderer separati: outlineRenderer NON interattivo, mainRenderer interattivo
 const outlineRenderer = L.canvas({ tolerance: 0 });
 const mainRenderer   = L.canvas({ tolerance: 5 });
+
+// ══ NULLA OSTA: pallini sul tracciato (rosso = mancante, verde = ottenuto) ═══════
+// Si attiva con il tasto "Nulla osta" sotto il selettore. Le tratte con STATO_NULLAOSTA
+// vuoto o "NON NECESSARIO" non hanno pallini; qualsiasi stato diverso da OTTENUTO = mancante.
+let _noDotsOn = false;
+const NO_DOT_OK = '#1E9E6A', NO_DOT_MISS = '#E53935';
+function _noDotColor(p) {
+  const n = (p && p.STATO_NULLAOSTA ? String(p.STATO_NULLAOSTA) : '').trim().toUpperCase();
+  if (!n || n === 'NON NECESSARIO') return null;
+  return n === 'OTTENUTO' ? NO_DOT_OK : NO_DOT_MISS;
+}
+// Layer dei pallini di un lotto: segue il ciclo di vita del layer principale (add/remove da filtri, QTS only, ecc.)
+function _makeNoLayer(geoData, layer) {
+  const noLayer = L.geoJSON(geoData, {
+    renderer: outlineRenderer,
+    filter: f => !!_noDotColor(f.properties),
+    style: f => ({ color: _noDotColor(f.properties), weight: 9, opacity: 0.95, dashArray: '1 10', lineCap: 'round', smoothFactor: 1.5, interactive: false })
+  });
+  layer.on('add',    () => { if (_noDotsOn) { noLayer.addTo(map); _refreshNoDots(); } });
+  layer.on('remove', () => { if (map.hasLayer(noLayer)) map.removeLayer(noLayer); });
+  if (_noDotsOn && map.hasLayer(layer)) noLayer.addTo(map);
+  return noLayer;
+}
+// Allinea i pallini allo stato della tratta (nascosta in modalità scavi, attenuata da cluster/evidenziazione)
+function _refreshNoDots() {
+  if (!_noDotsOn) return;
+  allLayers.forEach(({ layer, noLayer }) => {
+    if (!noLayer || !map.hasLayer(layer)) return;
+    const dots = new Map();
+    noLayer.eachLayer(d => { if (d.feature) dots.set(d.feature, d); });
+    layer.eachLayer(l => {
+      const d = l.feature && dots.get(l.feature);
+      if (!d) return;
+      const o = l.options.opacity;
+      d.setStyle(o > 0 ? { opacity: Math.min(0.95, o), weight: 9 } : { opacity: 0, weight: 0 });
+    });
+  });
+}
+function _updateNoDotsCounts() {
+  let ok = 0, miss = 0;
+  (allFeatures || []).forEach(f => { const c = _noDotColor(f.properties); if (c === NO_DOT_OK) ok++; else if (c) miss++; });
+  const a = document.getElementById('noCntMiss'), b = document.getElementById('noCntOk');
+  if (a) a.textContent = miss;
+  if (b) b.textContent = ok;
+}
+function toggleNoDots() {
+  _noDotsOn = !_noDotsOn;
+  allLayers.forEach(({ layer, noLayer }) => {
+    if (!noLayer) return;
+    if (_noDotsOn) { if (map.hasLayer(layer) && !map.hasLayer(noLayer)) noLayer.addTo(map); }
+    else if (map.hasLayer(noLayer)) map.removeLayer(noLayer);
+  });
+  const btn = document.getElementById('noDotsBtn');
+  if (btn) { btn.classList.toggle('active', _noDotsOn); btn.setAttribute('aria-pressed', String(_noDotsOn)); }
+  const st = document.getElementById('noDotsState'); if (st) st.textContent = _noDotsOn ? 'ON' : 'OFF';
+  const lg = document.getElementById('noDotsLegend'); if (lg) lg.style.display = _noDotsOn ? '' : 'none';
+  _updateNoDotsCounts();
+  _refreshNoDots();
+}
+// Dopo ogni funzione che ristila o mostra/nasconde le tratte, riallinea i pallini
+['setViewMode', 'applyFilterMulti', 'applyFilterClusterMulti', 'applyFilter', 'applyFilterCluster', 'clearHighlight', 'applyHighlight', 'applyHighlightMulti'].forEach(name => {
+  const orig = window[name];
+  if (typeof orig !== 'function') return;
+  window[name] = function () { const r = orig.apply(this, arguments); _refreshNoDots(); return r; };
+});
 // Renderer SVG dedicato al searchMarker: evita che il canvas di default
 // (creato da circleMarker con preferCanvas:true) si sovrapponga al mainRenderer
 // intercettando tutti i click sulle tratte.
@@ -3004,8 +3092,10 @@ function _buildMapLayers(geojson, isUpdate = false) {
         });
       }
     }).addTo(map);
-    allLayers.push({ layer, outlineLayer, lotto });
+    const noLayer = _makeNoLayer(geoData, layer);
+    allLayers.push({ layer, outlineLayer, lotto, noLayer });
   });
+  _updateNoDotsCounts();
 
   if (!isUpdate) {
     const allGroup = L.featureGroup(allLayers.map(x => x.layer));
