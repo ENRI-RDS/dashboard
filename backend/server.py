@@ -5653,28 +5653,9 @@ async def get_cantiere_log_public(cantiere_key: str, sess: dict = Depends(_requi
     return {"log": doc.get("log", []), "cantiere_key": cantiere_key, "pratica_id": doc.get("pratica_id")}
 
 
-# ── Meteo cantiere (Open-Meteo, gratuito, cache in memoria) ──────────────────
-# Soglie "giorno avverso" (override via env). Fonte: Open-Meteo (forecast +
-# archive). Lo storico è dato di rianalisi (modello), non misura da stazione.
-METEO_SOGLIA_PIOGGIA_MM  = float(os.environ.get("METEO_SOGLIA_PIOGGIA_MM", "5"))
-METEO_SOGLIA_GELO_C      = float(os.environ.get("METEO_SOGLIA_GELO_C", "0"))
-METEO_SOGLIA_RAFFICA_KMH = float(os.environ.get("METEO_SOGLIA_RAFFICA_KMH", "50"))
-_METEO_DAILY = "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_gusts_10m_max"
-_meteo_cache: dict = {}                      # key -> (expires_ts, data)
+# ── Meteo cantiere: il server fornisce SOLO le coordinate (centroide tratte).
+# Le chiamate a Open-Meteo le fa il browser (IP dell'utente → niente 429 da IP condiviso Render).
 _centroidi_cache: dict = {"exp": 0.0, "map": {}}   # tratta_id -> (lat, lon)
-
-
-def _meteo_cache_get(key, stale: bool = False):
-    hit = _meteo_cache.get(key)
-    if not hit:
-        return None
-    return hit[1] if (stale or hit[0] > time.time()) else None
-
-
-def _meteo_cache_set(key, data, ttl: int):
-    if len(_meteo_cache) > 500:
-        _meteo_cache.clear()
-    _meteo_cache[key] = (time.time() + ttl, data)
 
 
 def _flatten_coords(c):
@@ -5700,81 +5681,9 @@ async def _tratta_centroidi() -> dict:
     return out
 
 
-OPEN_METEO_API_KEY = os.environ.get("OPEN_METEO_API_KEY", "").strip()   # opzionale (piano commerciale)
-_meteo_block_until = 0.0   # cooldown globale dopo un 429
-
-
-async def _open_meteo(url: str, params: dict) -> dict:
-    global _meteo_block_until
-    if time.time() < _meteo_block_until:
-        raise HTTPException(503, "Servizio meteo temporaneamente sovraccarico, riprova tra qualche minuto")
-    if OPEN_METEO_API_KEY:
-        url = url.replace("//api.", "//customer-api.").replace("//archive-api.", "//customer-archive-api.")
-        params = {**params, "apikey": OPEN_METEO_API_KEY}
-    last = "errore sconosciuto"
-    for attempt in range(3):
-        try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                r = await client.get(url, params=params)
-            if r.status_code == 429 or r.status_code >= 500:
-                last = f"HTTP {r.status_code}"
-                if r.status_code == 429 and attempt == 2:
-                    _meteo_block_until = time.time() + 120
-                    raise HTTPException(503, "Servizio meteo temporaneamente sovraccarico (limite richieste), riprova tra qualche minuto")
-                try:
-                    wait = min(float(r.headers.get("Retry-After", 0)), 5)
-                except ValueError:
-                    wait = 0
-                await asyncio.sleep(wait or (1.5 * (attempt + 1)))
-                continue
-            r.raise_for_status()
-            return r.json()
-        except HTTPException:
-            raise
-        except Exception as e:
-            last = type(e).__name__
-            await asyncio.sleep(1.0 * (attempt + 1))
-    raise HTTPException(502, f"Servizio meteo non raggiungibile ({last})")
-
-
-async def _open_meteo_cached(key, url: str, params: dict, ttl: int) -> dict:
-    """Cache + fallback su dato scaduto se Open-Meteo non risponde."""
-    hit = _meteo_cache_get(key)
-    if hit is not None:
-        return hit
-    try:
-        data = await _open_meteo(url, params)
-    except HTTPException:
-        old = _meteo_cache_get(key, stale=True)
-        if old is not None:
-            return old
-        raise
-    _meteo_cache_set(key, data, ttl)
-    return data
-
-
-def _meteo_days(payload: dict) -> list[dict]:
-    d = (payload or {}).get("daily") or {}
-    out = []
-    for i, day in enumerate(d.get("time") or []):
-        def g(k):
-            v = (d.get(k) or [None] * (i + 1))[i]
-            return None if v is None else v
-        tmax, tmin = g("temperature_2m_max"), g("temperature_2m_min")
-        pioggia, raff = g("precipitation_sum"), g("wind_gusts_10m_max")
-        avverso = []
-        if pioggia is not None and pioggia >= METEO_SOGLIA_PIOGGIA_MM:  avverso.append("pioggia")
-        if tmin is not None and tmin <= METEO_SOGLIA_GELO_C:            avverso.append("gelo")
-        if raff is not None and raff >= METEO_SOGLIA_RAFFICA_KMH:       avverso.append("vento")
-        out.append({"date": day, "code": g("weather_code"), "tmax": tmax, "tmin": tmin,
-                    "pioggia_mm": pioggia, "raffica_kmh": raff, "avverso": avverso})
-    return out
-
-
-@app.get("/api/cantieri/{cantiere_key:path}/meteo")
-async def get_cantiere_meteo(cantiere_key: str, sess: dict = Depends(_require_staff_session)):
-    """Previsione 7 gg + storico (dall'inizio effettivo del cantiere a ieri) con
-    conteggio dei giorni avversi. Coordinate = media dei centroidi delle tratte."""
+@app.get("/api/cantieri/{cantiere_key:path}/coord")
+async def get_cantiere_coord(cantiere_key: str, sess: dict = Depends(_require_staff_session)):
+    """Coordinate (media dei centroidi delle tratte) per il meteo lato browser."""
     doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
     if not doc:
         raise HTTPException(404, "Cantiere non trovato")
@@ -5782,59 +5691,8 @@ async def get_cantiere_meteo(cantiere_key: str, sess: dict = Depends(_require_st
     pts = [centroidi[t["tratta_id"]] for t in (doc.get("tratte") or []) if t.get("tratta_id") in centroidi]
     if not pts:
         raise HTTPException(404, "Coordinate non disponibili per le tratte del cantiere")
-    lat = round(sum(p[0] for p in pts) / len(pts), 2)
-    lon = round(sum(p[1] for p in pts) / len(pts), 2)
-
-    fkey = ("fc", lat, lon)
-    fc = await _open_meteo_cached(fkey, "https://api.open-meteo.com/v1/forecast", {
-        "latitude": lat, "longitude": lon, "daily": _METEO_DAILY,
-        "timezone": "Europe/Rome", "past_days": 7, "forecast_days": 7, "wind_speed_unit": "kmh"}, 1800)
-    giorni = _meteo_days(fc)          # 7 passati + oggi + 6 futuri
-    if len(giorni) < 8:
-        raise HTTPException(502, "Risposta meteo incompleta")
-    oggi = giorni[7]["date"]
-    recenti, previsione = giorni[:7], giorni[7:]
-
-    storico: dict = {"dal": None, "al": None, "giorni": 0, "giorni_avversi": 0, "per_causa": {}, "dettaglio": []}
-    inizio = str(doc.get("data_inizio_effettiva") or "")[:10]
-    try:
-        datetime.strptime(inizio, "%Y-%m-%d")
-    except ValueError:
-        inizio = ""
-    if inizio and inizio < oggi:
-        fine_eff = str(doc.get("data_fine_effettiva") or "")[:10]
-        ieri = recenti[-1]["date"]
-        fine = min(ieri, fine_eff) if fine_eff else ieri
-        if fine >= inizio:
-            serie: list[dict] = []
-            try:
-                if inizio < recenti[0]["date"]:
-                    a_end = (datetime.strptime(recenti[0]["date"], "%Y-%m-%d").date().toordinal() - 1)
-                    a_end = datetime.fromordinal(a_end).date().isoformat()
-                    a_end = min(a_end, fine)
-                    akey = ("ar", lat, lon, inizio, a_end)
-                    ar = await _open_meteo_cached(akey, "https://archive-api.open-meteo.com/v1/archive", {
-                        "latitude": lat, "longitude": lon, "start_date": inizio, "end_date": a_end,
-                        "daily": _METEO_DAILY, "timezone": "Europe/Rome", "wind_speed_unit": "kmh"}, 86400)
-                    serie += _meteo_days(ar)
-                serie += [g for g in recenti if inizio <= g["date"] <= fine]
-                storico["dal"], storico["al"] = inizio, fine
-                storico["giorni"] = len(serie)
-                for g in serie:
-                    for c in g["avverso"]:
-                        storico["per_causa"][c] = storico["per_causa"].get(c, 0) + 1
-                avv = [g for g in serie if g["avverso"]]
-                storico["giorni_avversi"] = len(avv)
-                storico["dettaglio"] = avv[-120:]
-            except HTTPException as e:
-                storico["errore"] = e.detail
-    return {
-        "cantiere_key": cantiere_key, "lat": lat, "lon": lon, "oggi": oggi,
-        "fonte": "Open-Meteo (storico: rianalisi modellistica, non misura da stazione)",
-        "soglie": {"pioggia_mm": METEO_SOGLIA_PIOGGIA_MM, "gelo_c": METEO_SOGLIA_GELO_C,
-                   "raffica_kmh": METEO_SOGLIA_RAFFICA_KMH},
-        "previsione": previsione, "storico": storico,
-    }
+    return {"lat": round(sum(p[0] for p in pts) / len(pts), 2),
+            "lon": round(sum(p[1] for p in pts) / len(pts), 2)}
 
 
 # ── Endpoint impresa: aggiornamento giornaliero ───────────────────────────────
