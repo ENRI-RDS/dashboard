@@ -5664,9 +5664,11 @@ _meteo_cache: dict = {}                      # key -> (expires_ts, data)
 _centroidi_cache: dict = {"exp": 0.0, "map": {}}   # tratta_id -> (lat, lon)
 
 
-def _meteo_cache_get(key):
+def _meteo_cache_get(key, stale: bool = False):
     hit = _meteo_cache.get(key)
-    return hit[1] if hit and hit[0] > time.time() else None
+    if not hit:
+        return None
+    return hit[1] if (stale or hit[0] > time.time()) else None
 
 
 def _meteo_cache_set(key, data, ttl: int):
@@ -5698,14 +5700,57 @@ async def _tratta_centroidi() -> dict:
     return out
 
 
+OPEN_METEO_API_KEY = os.environ.get("OPEN_METEO_API_KEY", "").strip()   # opzionale (piano commerciale)
+_meteo_block_until = 0.0   # cooldown globale dopo un 429
+
+
 async def _open_meteo(url: str, params: dict) -> dict:
+    global _meteo_block_until
+    if time.time() < _meteo_block_until:
+        raise HTTPException(503, "Servizio meteo temporaneamente sovraccarico, riprova tra qualche minuto")
+    if OPEN_METEO_API_KEY:
+        url = url.replace("//api.", "//customer-api.").replace("//archive-api.", "//customer-archive-api.")
+        params = {**params, "apikey": OPEN_METEO_API_KEY}
+    last = "errore sconosciuto"
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                r = await client.get(url, params=params)
+            if r.status_code == 429 or r.status_code >= 500:
+                last = f"HTTP {r.status_code}"
+                if r.status_code == 429 and attempt == 2:
+                    _meteo_block_until = time.time() + 120
+                    raise HTTPException(503, "Servizio meteo temporaneamente sovraccarico (limite richieste), riprova tra qualche minuto")
+                try:
+                    wait = min(float(r.headers.get("Retry-After", 0)), 5)
+                except ValueError:
+                    wait = 0
+                await asyncio.sleep(wait or (1.5 * (attempt + 1)))
+                continue
+            r.raise_for_status()
+            return r.json()
+        except HTTPException:
+            raise
+        except Exception as e:
+            last = type(e).__name__
+            await asyncio.sleep(1.0 * (attempt + 1))
+    raise HTTPException(502, f"Servizio meteo non raggiungibile ({last})")
+
+
+async def _open_meteo_cached(key, url: str, params: dict, ttl: int) -> dict:
+    """Cache + fallback su dato scaduto se Open-Meteo non risponde."""
+    hit = _meteo_cache_get(key)
+    if hit is not None:
+        return hit
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.get(url, params=params)
-        r.raise_for_status()
-        return r.json()
-    except Exception as e:
-        raise HTTPException(502, f"Servizio meteo non raggiungibile: {e}")
+        data = await _open_meteo(url, params)
+    except HTTPException:
+        old = _meteo_cache_get(key, stale=True)
+        if old is not None:
+            return old
+        raise
+    _meteo_cache_set(key, data, ttl)
+    return data
 
 
 def _meteo_days(payload: dict) -> list[dict]:
@@ -5741,12 +5786,9 @@ async def get_cantiere_meteo(cantiere_key: str, sess: dict = Depends(_require_st
     lon = round(sum(p[1] for p in pts) / len(pts), 2)
 
     fkey = ("fc", lat, lon)
-    fc = _meteo_cache_get(fkey)
-    if fc is None:
-        fc = await _open_meteo("https://api.open-meteo.com/v1/forecast", {
-            "latitude": lat, "longitude": lon, "daily": _METEO_DAILY,
-            "timezone": "Europe/Rome", "past_days": 7, "forecast_days": 7, "wind_speed_unit": "kmh"})
-        _meteo_cache_set(fkey, fc, 1800)
+    fc = await _open_meteo_cached(fkey, "https://api.open-meteo.com/v1/forecast", {
+        "latitude": lat, "longitude": lon, "daily": _METEO_DAILY,
+        "timezone": "Europe/Rome", "past_days": 7, "forecast_days": 7, "wind_speed_unit": "kmh"}, 1800)
     giorni = _meteo_days(fc)          # 7 passati + oggi + 6 futuri
     if len(giorni) < 8:
         raise HTTPException(502, "Risposta meteo incompleta")
@@ -5771,12 +5813,9 @@ async def get_cantiere_meteo(cantiere_key: str, sess: dict = Depends(_require_st
                     a_end = datetime.fromordinal(a_end).date().isoformat()
                     a_end = min(a_end, fine)
                     akey = ("ar", lat, lon, inizio, a_end)
-                    ar = _meteo_cache_get(akey)
-                    if ar is None:
-                        ar = await _open_meteo("https://archive-api.open-meteo.com/v1/archive", {
-                            "latitude": lat, "longitude": lon, "start_date": inizio, "end_date": a_end,
-                            "daily": _METEO_DAILY, "timezone": "Europe/Rome", "wind_speed_unit": "kmh"})
-                        _meteo_cache_set(akey, ar, 86400)
+                    ar = await _open_meteo_cached(akey, "https://archive-api.open-meteo.com/v1/archive", {
+                        "latitude": lat, "longitude": lon, "start_date": inizio, "end_date": a_end,
+                        "daily": _METEO_DAILY, "timezone": "Europe/Rome", "wind_speed_unit": "kmh"}, 86400)
                     serie += _meteo_days(ar)
                 serie += [g for g in recenti if inizio <= g["date"] <= fine]
                 storico["dal"], storico["al"] = inizio, fine
