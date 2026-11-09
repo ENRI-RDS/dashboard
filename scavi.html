@@ -1431,10 +1431,11 @@ async function openModalRegistro(cantiereKey) {
       ${r.stato_cantiere === 'sospeso' ? `<div class="modal-stat"><span class="modal-stat-lbl">Ripresa stimata</span><span class="modal-stat-val" style="font-size:13px;color:var(--err)">${fmtD(r.data_ripresa_stimata) || '—'}</span></div>` : ''}
     </div>${r.stato_cantiere === 'sospeso' && r.motivo_blocco ? `<div style="font-size:12px;color:var(--err);margin:-8px 0 14px">⏸ ${r.motivo_blocco}</div>` : ''}` : '';
     if (!log.length) {
-      bodyEl.innerHTML = datesPanel + `<div style="text-align:center;color:var(--muted);padding:20px">Nessun aggiornamento registrato per questo cantiere.</div>`;
+      bodyEl.innerHTML = datesPanel + `<div id="meteoCantiere"></div><div style="text-align:center;color:var(--muted);padding:20px">Nessun aggiornamento registrato per questo cantiere.</div>`;
+      _fillMeteoCantiere(cantiereKey);
       return;
     }
-    bodyEl.innerHTML = datesPanel + `<div style="overflow-x:auto"><table class="cant-table"><thead><tr>
+    bodyEl.innerHTML = datesPanel + `<div id="meteoCantiere"></div><div style="overflow-x:auto"><table class="cant-table"><thead><tr>
         <th>Data</th><th>Stato</th><th>Tecnica</th><th style="text-align:right">Metri</th><th>Note</th>
       </tr></thead><tbody>${log.map(e => {
         const statoUI = STATO_MAP[e.stato_cantiere] || e.stato_cantiere || '—';
@@ -1451,8 +1452,63 @@ async function openModalRegistro(cantiereKey) {
           <td style="font-size:12px;color:var(--muted)">${e.note || '—'}</td>
         </tr>`;
       }).join('')}</tbody></table></div>`;
+    _fillMeteoCantiere(cantiereKey);
   } catch (e) {
     bodyEl.innerHTML = `<div style="text-align:center;color:var(--danger, #C0392B);padding:20px">Errore nel caricamento del registro: ${e.message}</div>`;
+  }
+}
+
+// ── Meteo cantiere (GET /api/cantieri/<key>/meteo — Open-Meteo, lato server) ──
+const _WMO = (c) => c==null ? ['—','n/d'] : c===0 ? ['☀️','Sereno'] : c<=2 ? ['🌤️','Poco nuvoloso'] : c===3 ? ['☁️','Coperto']
+  : c<=48 ? ['🌫️','Nebbia'] : c<=57 ? ['🌦️','Pioviggine'] : c<=67 ? ['🌧️','Pioggia'] : c<=77 ? ['🌨️','Neve']
+  : c<=82 ? ['🌧️','Rovesci'] : c<=86 ? ['🌨️','Rovesci di neve'] : ['⛈️','Temporale'];
+const _GIORNI_IT = ['dom','lun','mar','mer','gio','ven','sab'];
+const _n1 = v => v==null ? '—' : (Math.round(v*10)/10).toString().replace('.', ',');
+
+async function _fillMeteoCantiere(cantiereKey) {
+  const el = document.getElementById('meteoCantiere');
+  if (!el) return;
+  el.style.cssText = 'margin:0 0 14px;font-size:12px;color:var(--muted)';
+  el.textContent = 'Caricamento meteo…';
+  try {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    const res = await fetch(apiBase + '/api/cantieri/' + encodeURIComponent(cantiereKey) + '/meteo', { headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } });
+    if (!res.ok) { let msg = 'HTTP ' + res.status; try { msg = (await res.json()).detail || msg; } catch(_) {} throw new Error(msg); }
+    const m = await res.json();
+    const cells = m.previsione.map((g, i) => {
+      const [ico, lbl] = _WMO(g.code);
+      const dt = new Date(g.date + 'T12:00:00');
+      const avv = g.avverso.length;
+      return `<div title="${lbl}${avv ? ' · avverso: ' + g.avverso.join(', ') : ''}" style="flex:1;min-width:74px;border:1px solid ${avv ? 'var(--warn)' : 'var(--border)'};border-radius:8px;padding:6px 4px;text-align:center;background:${avv ? 'rgba(208,138,26,.08)' : 'transparent'}">
+        <div style="font-size:11px;color:var(--muted)">${i===0 ? 'oggi' : _GIORNI_IT[dt.getDay()]} ${g.date.slice(8)}/${g.date.slice(5,7)}</div>
+        <div style="font-size:20px;line-height:1.3">${ico}</div>
+        <div style="font-family:var(--font-mono);font-size:11px">${_n1(g.tmax)}° / ${_n1(g.tmin)}°</div>
+        <div style="font-size:11px">💧 ${_n1(g.pioggia_mm)} mm</div>
+        <div style="font-size:11px">💨 ${g.raffica_kmh==null ? '—' : Math.round(g.raffica_kmh)} km/h</div>
+      </div>`;
+    }).join('');
+    const st = m.storico || {};
+    let storico = '';
+    if (st.errore) storico = `<div style="margin-top:8px">Storico non disponibile: ${st.errore}</div>`;
+    else if (st.dal) {
+      const pc = st.per_causa || {};
+      const cause = Object.keys(pc).map(k => `${k} ${pc[k]}`).join(' · ');
+      const righe = (st.dettaglio || []).slice().reverse().map(g => `<tr>
+        <td style="font-family:var(--font-mono)">${fmtD(g.date)}</td><td>${g.avverso.join(', ')}</td>
+        <td style="text-align:right;font-family:var(--font-mono)">${_n1(g.pioggia_mm)} mm</td>
+        <td style="text-align:right;font-family:var(--font-mono)">${_n1(g.tmin)}°</td>
+        <td style="text-align:right;font-family:var(--font-mono)">${g.raffica_kmh==null ? '—' : Math.round(g.raffica_kmh)} km/h</td></tr>`).join('');
+      storico = `<div style="margin-top:8px"><b>Storico ${fmtD(st.dal)} – ${fmtD(st.al)}:</b> ${st.giorni_avversi} giorni avversi su ${st.giorni}${cause ? ' (' + cause + ')' : ''}</div>
+        ${righe ? `<details style="margin-top:4px"><summary style="cursor:pointer">Dettaglio giorni avversi</summary>
+          <div style="max-height:180px;overflow:auto;margin-top:4px"><table class="cant-table"><thead><tr><th>Data</th><th>Causa</th><th style="text-align:right">Pioggia</th><th style="text-align:right">T min</th><th style="text-align:right">Raffica</th></tr></thead><tbody>${righe}</tbody></table></div></details>` : ''}`;
+    } else storico = `<div style="margin-top:8px">Storico non disponibile (cantiere senza data di inizio effettivo).</div>`;
+    const so = m.soglie || {};
+    el.style.cssText = 'margin:0 0 14px;font-size:12px;color:var(--muted);border:1px solid var(--border);border-radius:10px;padding:10px 12px';
+    el.innerHTML = `<div style="font-weight:600;margin-bottom:6px">Meteo cantiere</div>
+      <div style="display:flex;gap:6px;overflow-x:auto">${cells}</div>${storico}
+      <div style="margin-top:6px;font-size:10.5px">Giorno avverso: pioggia ≥ ${_n1(so.pioggia_mm)} mm, T min ≤ ${_n1(so.gelo_c)}°, raffiche ≥ ${so.raffica_kmh} km/h. Fonte: Open-Meteo; lo storico è una stima modellistica, non una misura di stazione.</div>`;
+  } catch (e) {
+    el.textContent = 'Meteo non disponibile: ' + e.message;
   }
 }
 
