@@ -5691,8 +5691,10 @@ async def get_cantiere_coord(cantiere_key: str, sess: dict = Depends(_require_st
     pts = [centroidi[t["tratta_id"]] for t in (doc.get("tratte") or []) if t.get("tratta_id") in centroidi]
     if not pts:
         raise HTTPException(404, "Coordinate non disponibili per le tratte del cantiere")
+    comuni = Counter(t.get("comune") for t in (doc.get("tratte") or []) if t.get("comune"))
     return {"lat": round(sum(p[0] for p in pts) / len(pts), 2),
-            "lon": round(sum(p[1] for p in pts) / len(pts), 2)}
+            "lon": round(sum(p[1] for p in pts) / len(pts), 2),
+            "comune": comuni.most_common(1)[0][0] if comuni else ""}
 
 
 # ── Endpoint impresa: aggiornamento giornaliero ───────────────────────────────
