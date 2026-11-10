@@ -339,6 +339,26 @@ async def _require_milestone_session(
     return sess
 
 
+async def _require_issue_read_session(
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+) -> dict:
+    """Registro Issue in sola lettura: ruoli 'admin', 'admin2' e 'field' (il field spunta solo l'Approvazione Bonifica)."""
+    sess = await _require_staff_session(x_session_token)
+    if sess.get("ruolo") not in ("admin", "admin2", "field"):
+        raise HTTPException(403, "Riservato ad admin e field")
+    return sess
+
+
+async def _require_field_session(
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+) -> dict:
+    """Solo ruolo 'field' (letto dal token firmato)."""
+    sess = await _require_staff_session(x_session_token)
+    if sess.get("ruolo") != "field":
+        raise HTTPException(403, "Riservato al ruolo field")
+    return sess
+
+
 _AGENDA_ROLES = ("admin", "admin2", "field")
 
 
@@ -3886,7 +3906,7 @@ def _issue_out(d: dict) -> dict:
 
 
 @app.get("/api/issues")
-async def list_issues(sess: dict = Depends(_require_admin_session)):
+async def list_issues(sess: dict = Depends(_require_issue_read_session)):
     items = []
     async for d in issues_col.find({}).sort([("prefisso", 1), ("seq", -1)]):
         items.append(_issue_out(d))
@@ -3946,6 +3966,30 @@ async def update_issue(issue_id: str, payload: dict, sess: dict = Depends(_requi
     await issues_col.update_one({"_id": oid}, {
         "$set": rec,
         "$push": {"storico": {"ts": now, "utente": sess.get("nome", ""), "azione": "modificata", "modifiche": changes}},
+    })
+    d = await issues_col.find_one({"_id": oid})
+    return {"ok": True, "item": _issue_out(d), "changed": True}
+
+
+@app.post("/api/issues/{issue_id}/approvazione-bonifica")
+async def issue_approvazione_bonifica(issue_id: str, payload: dict, sess: dict = Depends(_require_field_session)):
+    """Flag 'Approvazione Bonifica Field Manager': solo ruolo field. Salva chi ha spuntato e quando; ogni
+    cambio (anche la rimozione) finisce nello storico. Campi fuori da _ISSUE_FIELDS: la PUT admin non li tocca."""
+    oid = _issue_oid(issue_id)
+    cur = await issues_col.find_one({"_id": oid})
+    if not cur:
+        raise HTTPException(404, "Issue non trovata")
+    val = bool((payload or {}).get("value"))
+    if bool(cur.get("bonifica_fm_ok")) == val:
+        return {"ok": True, "item": _issue_out(cur), "changed": False}
+    now = datetime.now(timezone.utc).isoformat()
+    nome = sess.get("nome", "")
+    upd = {"bonifica_fm_ok": val, "bonifica_fm_by": nome if val else "", "bonifica_fm_at": now if val else "", "updated_at": now}
+    await issues_col.update_one({"_id": oid}, {
+        "$set": upd,
+        "$push": {"storico": {"ts": now, "utente": nome, "azione": "modificata",
+                              "modifiche": [{"campo": "Approvazione Bonifica Field Manager",
+                                             "da": "Sì" if cur.get("bonifica_fm_ok") else "No", "a": "Sì" if val else "No"}]}},
     })
     d = await issues_col.find_one({"_id": oid})
     return {"ok": True, "item": _issue_out(d), "changed": True}
