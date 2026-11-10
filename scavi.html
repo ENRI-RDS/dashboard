@@ -2570,11 +2570,14 @@ function closeModalLotto(e) {
   document.getElementById('modalLottoOverlay').classList.remove('open');
 }
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    closeModalLotto();
-    closeModalCluster();
-    closeModalStato();
-  }
+  if (e.key !== 'Escape') return;
+  // chiude solo il popup in primo piano (Registro sta sopra gli altri, z-index 250)
+  const isOpen = id => { const el = document.getElementById(id); return el && el.classList.contains('open'); };
+  if (isOpen('modalRegistroOverlay')) return closeModalRegistro();
+  if (isOpen('scaviChartOverlay')) return closeScaviChart();
+  closeModalLotto();
+  closeModalCluster();
+  closeModalStato();
 });
 
 // ── MODAL CLUSTER ─────────────────────────────────────────────────────────────
