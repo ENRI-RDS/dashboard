@@ -67,30 +67,33 @@
   .count { margin-left:auto; font-size:11px; color:var(--muted); font-family:var(--font-mono); }
 
   .tbl-wrap { background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--sh-xs); overflow-x:auto; }
-  table { width:100%; border-collapse:collapse; min-width:1280px; font-size:12px; }
+  table { width:100%; border-collapse:collapse; table-layout:fixed; min-width:1100px; font-size:12px; }
+  td { overflow-wrap:anywhere; }
   thead th { position:sticky; top:0; background:var(--accent); color:#fff; font-weight:600; font-size:10.5px; text-transform:uppercase;
-    letter-spacing:.05em; text-align:left; padding:10px 10px; white-space:nowrap; }
-  tbody td { padding:8px 10px; border-top:1px solid var(--border); vertical-align:top; }
+    letter-spacing:.03em; text-align:left; padding:10px 6px; line-height:1.25; }
+  tbody td { padding:8px 6px; border-top:1px solid var(--border); vertical-align:top; }
   tbody tr:hover { background:var(--gray-50); }
   tbody tr td:first-child { border-left:3px solid transparent; }
   tr.p-critica td:first-child { border-left-color:var(--red); } tr.p-alta td:first-child { border-left-color:var(--orange); }
   tr.p-media td:first-child { border-left-color:var(--yellow); } tr.p-bassa td:first-child { border-left-color:var(--green); }
   tr.done { opacity:.62; }
-  .cod { font-family:var(--font-mono); font-weight:600; color:var(--accent); white-space:nowrap; cursor:pointer; }
+  .cod { font-family:var(--font-mono); font-weight:600; color:var(--accent); cursor:pointer; }
   .cod:hover { text-decoration:underline; }
   .tipo { display:inline-block; font-size:10.5px; font-weight:600; padding:2px 8px; border-radius:10px; white-space:nowrap; }
   .tipo-In { background:var(--redL); color:var(--red); } .tipo-Cn { background:var(--yellowL); color:var(--yellow); } .tipo-Sc { background:var(--retelit-ice); color:var(--accent); }
   thead th.srt { cursor:pointer; user-select:none; } thead th.srt:hover { background:var(--retelit-teal); }
   thead th.srt::after { content:' ↕'; opacity:.4; } thead th.srt.asc::after { content:' ▲'; opacity:1; } thead th.srt.desc::after { content:' ▼'; opacity:1; }
   .sub { display:block; font-size:10.5px; color:var(--muted); margin-top:1px; }
-  .desc { max-width:340px; line-height:1.4; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; cursor:pointer; white-space:pre-line; }
-  td input.cell, td select.cell { font-family:inherit; font-size:12px; width:100%; min-width:110px; padding:5px 7px; border:1px solid transparent;
+  .desc { max-width:100%; line-height:1.4; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; cursor:pointer; white-space:pre-line; }
+  td input.cell, td select.cell { font-family:inherit; font-size:12px; width:100%; min-width:0; padding:5px 4px; border:1px solid transparent;
     border-radius:6px; background:transparent; color:var(--text); }
   td input.cell:hover, td select.cell:hover { border-color:var(--border2); background:var(--surface); }
   td input.cell:focus, td select.cell:focus { outline:none; border-color:var(--retelit-sky); background:#fff; box-shadow:0 0 0 2px rgba(65,187,217,.2); }
   td input.cell.empty { background:var(--yellowL); border-color:#F2DFB3; }
   .late { color:var(--red); font-weight:700; }
-  .num { font-family:var(--font-mono); white-space:nowrap; }
+  .num { font-family:var(--font-mono); }
+  td.bon { text-align:center; } td.bon input[type=checkbox] { width:18px; height:18px; cursor:pointer; accent-color:#1E9E6A; }
+  td.bon input[type=checkbox]:disabled { cursor:not-allowed; opacity:.55; }
   .empty-box { padding:44px 20px; text-align:center; color:var(--muted); font-size:13px; }
   .row-btn { border:1px solid var(--border2); background:var(--surface); border-radius:6px; padding:5px 8px; cursor:pointer; color:var(--text); }
   .row-btn:hover { background:var(--surface2); }
@@ -158,7 +161,7 @@
   <div class="head">
     <div>
       <h1>Registro Issue</h1>
-      <p>Anomalie e segnalazioni verso le imprese esecutrici (System). Le celle System, SubSystem, Stato e Priority si modificano direttamente in tabella.</p>
+      <p>Anomalie e segnalazioni verso i System. Le celle System, SubSystem, Stato e Priority si modificano direttamente in tabella.</p>
     </div>
     <div class="head-actions">
       <button class="btn ghost" onclick="ricalcolaPriority()" title="Applica le regole automatiche alle issue da verbale ancora a Media e mai modificate a mano">Ricalcola priority</button>
@@ -185,8 +188,9 @@
 
   <div class="tbl-wrap">
     <table>
+      <colgroup><col style="width:7%"><col style="width:7%"><col style="width:14%"><col style="width:8%"><col style="width:8%"><col style="width:7%"><col style="width:14%"><col style="width:8%"><col style="width:7%"><col style="width:6%"><col style="width:6%"><col style="width:7%"><col style="width:3%"></colgroup>
       <thead><tr>
-        <th class="srt" data-k="codice" onclick="setSort('codice')">Codice</th><th class="srt" data-k="tipo" onclick="setSort('tipo')">Tipo</th><th class="srt" data-k="cantiere" onclick="setSort('cantiere')">Cantiere / Comune</th><th class="srt" data-k="system" onclick="setSort('system')">Impresa esecutrice (System)</th><th class="srt" data-k="subsystem" onclick="setSort('subsystem')">SubSystem</th><th class="srt" data-k="data_rilevamento" onclick="setSort('data_rilevamento')">Rilevata</th><th class="srt" data-k="descrizione" onclick="setSort('descrizione')">Descrizione</th><th class="srt" data-k="data_invio" onclick="setSort('data_invio')">Invio al System</th><th class="srt" data-k="stato" onclick="setSort('stato')">Stato</th><th class="srt" data-k="priority" onclick="setSort('priority')">Priority</th><th class="srt" data-k="data_prevista" onclick="setSort('data_prevista')">Prevista</th><th></th>
+        <th class="srt" data-k="codice" onclick="setSort('codice')">Codice</th><th class="srt" data-k="tipo" onclick="setSort('tipo')">Tipo</th><th class="srt" data-k="cantiere" onclick="setSort('cantiere')">Cantiere / Comune</th><th class="srt" data-k="system" onclick="setSort('system')">System</th><th class="srt" data-k="subsystem" onclick="setSort('subsystem')">SubSystem</th><th class="srt" data-k="data_rilevamento" onclick="setSort('data_rilevamento')">Rilevata</th><th class="srt" data-k="descrizione" onclick="setSort('descrizione')">Descrizione</th><th class="srt" data-k="data_invio" onclick="setSort('data_invio')">Invio al System</th><th class="srt" data-k="stato" onclick="setSort('stato')">Stato</th><th class="srt" data-k="priority" onclick="setSort('priority')">Priority</th><th class="srt" data-k="data_prevista" onclick="setSort('data_prevista')">Prevista</th><th class="srt" data-k="bonifica" onclick="setSort('bonifica')" title="Approvazione Bonifica Field Manager">Appr. Bonifica FM</th><th></th>
       </tr></thead>
       <tbody id="tbody"></tbody>
     </table>
@@ -221,7 +225,7 @@
           <div class="fld"><label for="f_ente">Ente</label><input id="f_ente" autocomplete="off"></div>
           <div class="fld"><label for="f_lotto">Lotto</label><input id="f_lotto" autocomplete="off"></div>
           <div class="fld"><label for="f_comune">Comune</label><input id="f_comune" list="dlComune" autocomplete="off"></div>
-          <div class="fld"><label for="f_system">Impresa esecutrice (System)</label><input id="f_system" list="dlSystem" autocomplete="off"><span class="hint">Può restare vuoto e essere compilato dopo.</span></div>
+          <div class="fld"><label for="f_system">System</label><input id="f_system" list="dlSystem" autocomplete="off"><span class="hint">Può restare vuoto e essere compilato dopo.</span></div>
           <div class="fld"><label for="f_subsystem">SubSystem (subappalto)</label><input id="f_subsystem" list="dlSub" autocomplete="off"><span class="hint">Se indicato nel verbale d'origine (insieme ai dati di invio al System) viene riportato qui in automatico; si può completare anche dopo.</span></div>
           <div class="fld"><label for="f_data_rilevamento">Data rilevamento</label><input type="date" id="f_data_rilevamento"></div>
           <div class="fld"><label for="f_rilevato_da">Chi ha rilevato l'anomalia</label><input id="f_rilevato_da" autocomplete="off"></div>
@@ -261,8 +265,12 @@
 <script>
 (() => {
   const r = (localStorage.getItem('_enri_role') || '').toLowerCase();
-  if (!localStorage.getItem('_enri_user') || !['admin', 'admin2'].includes(r)) window.location.replace('hub.html');
+  if (!localStorage.getItem('_enri_user') || !['admin', 'admin2', 'field'].includes(r)) window.location.replace('hub.html');
 })();
+const ROLE = (localStorage.getItem('_enri_role') || '').toLowerCase();
+const IS_FIELD = ROLE === 'field';   // field: sola lettura, può solo spuntare l'Approvazione Bonifica FM
+const RO = IS_FIELD ? ' disabled' : '';
+if (IS_FIELD) document.addEventListener('DOMContentLoaded', () => { document.querySelectorAll('.head-actions .btn').forEach(b => { if (!/Legenda/.test(b.textContent)) b.style.display = 'none'; }); });
 window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
 
 const API = (window.ENRI && ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
@@ -381,6 +389,7 @@ function sortVal(it, k) {
   if (k === 'codice') return (it.prefisso || '') + String(it.seq || 0).padStart(6, '0');
   if (k === 'tipo') return it.prefisso || '';
   if (k === 'priority') return PRIO_RANK[it.priority] ?? -1;
+  if (k === 'bonifica') return it.bonifica_fm_ok ? 1 : 0;
   if (k === 'stato') return STATO_RANK[it.stato] ?? -1;
   return String(it[k] || '').toLowerCase();
 }
@@ -420,19 +429,31 @@ function render() {
       '<td><span class="cod" onclick="openModal(\'' + esc(it._id) + '\')">' + esc(it.codice) + '</span>' + (it.origine_verbale ? '<span class="sub" title="Generata dalla non conformità di un verbale di sopralluogo">da ' + esc(it.origine_verbale) + ' · ' + esc(it.origine_item || '') + '</span>' : '') + '</td>' +
       '<td><span class="tipo tipo-' + esc(it.prefisso) + '" title="' + esc(TIPI[it.prefisso] || '') + '">' + esc(TIPI_SHORT[it.prefisso] || it.prefisso) + '</span></td>' +
       '<td>' + esc(it.cantiere || '—') + '<span class="sub">' + esc([it.comune, it.lotto && ('lotto ' + it.lotto)].filter(Boolean).join(' · ')) + '</span>' + (it.pratica || it.ente ? '<span class="sub">' + esc([it.pratica, it.ente].filter(Boolean).join(' · ')) + '</span>' : '') + '</td>' +
-      '<td><input class="cell' + (sys ? '' : ' empty') + '" list="dlSystem" value="' + sys + '" placeholder="da assegnare" onchange="patch(\'' + esc(it._id) + '\',\'system\',this.value,this)"></td>' +
-      '<td><input class="cell' + (sub ? '' : ' empty') + '" list="dlSub" value="' + sub + '" placeholder="da assegnare" onchange="patch(\'' + esc(it._id) + '\',\'subsystem\',this.value,this)"></td>' +
+      '<td><input class="cell' + (sys ? '' : ' empty') + '" list="dlSystem" value="' + sys + '" placeholder="da assegnare"' + RO + ' onchange="patch(\'' + esc(it._id) + '\',\'system\',this.value,this)"></td>' +
+      '<td><input class="cell' + (sub ? '' : ' empty') + '" list="dlSub" value="' + sub + '" placeholder="da assegnare"' + RO + ' onchange="patch(\'' + esc(it._id) + '\',\'subsystem\',this.value,this)"></td>' +
       '<td class="num">' + fmt(it.data_rilevamento) + '<span class="sub" style="font-family:var(--font-body)">' + esc(it.rilevato_da || '') + '</span></td>' +
       '<td><div class="desc" onclick="openModal(\'' + esc(it._id) + '\')" title="' + esc(it.descrizione) + '">' + esc(it.descrizione) + '</div></td>' +
       '<td class="num">' + fmt(it.data_invio) + '<span class="sub" style="font-family:var(--font-body)">' + esc([it.metodo_invio, it.rif_system_invio].filter(Boolean).join(' · ')) + '</span></td>' +
-      '<td><select class="cell" onchange="patch(\'' + esc(it._id) + '\',\'stato\',this.value,this)">' + optsHtml(STATI).replace('value="' + it.stato + '"', 'value="' + it.stato + '" selected') + '</select></td>' +
-      '<td><select class="cell" onchange="patch(\'' + esc(it._id) + '\',\'priority\',this.value,this)">' + optsHtml(PRIO).replace('value="' + it.priority + '"', 'value="' + it.priority + '" selected') + '</select></td>' +
+      '<td><select class="cell"' + RO + ' onchange="patch(\'' + esc(it._id) + '\',\'stato\',this.value,this)">' + optsHtml(STATI).replace('value="' + it.stato + '"', 'value="' + it.stato + '" selected') + '</select></td>' +
+      '<td><select class="cell"' + RO + ' onchange="patch(\'' + esc(it._id) + '\',\'priority\',this.value,this)">' + optsHtml(PRIO).replace('value="' + it.priority + '"', 'value="' + it.priority + '" selected') + '</select></td>' +
       '<td class="num' + (isLate(it) ? ' late' : '') + '">' + fmt(it.data_prevista) + (isLate(it) ? '<span class="sub late">in ritardo</span>' : '') + '</td>' +
+      '<td class="bon"><input type="checkbox"' + (it.bonifica_fm_ok ? ' checked' : '') + (IS_FIELD ? '' : ' disabled title="Solo il Field Manager può approvare"') +
+        ' onchange="toggleBonifica(\'' + esc(it._id) + '\',this)">' +
+        (it.bonifica_fm_ok ? '<span class="sub">' + esc(it.bonifica_fm_by || '') + (it.bonifica_fm_at ? '<br>' + fmt(it.bonifica_fm_at.slice(0, 10)) : '') + '</span>' : '') + '</td>' +
       '<td><button class="row-btn" title="Modifica / storico" onclick="openModal(\'' + esc(it._id) + '\')"><svg class="ic" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></td></tr>';
   }).join('');
   const e = $('empty');
   if (!list.length) { e.style.display = ''; e.textContent = items.length ? 'Nessuna issue corrisponde ai filtri.' : 'Nessuna issue registrata. Usa "Nuova issue" per iniziare.'; }
   else e.style.display = 'none';
+}
+
+async function toggleBonifica(id, el) {
+  const it = items.find(x => x._id === id); if (!it) return;
+  const val = el.checked;
+  try {
+    const r = await api('/api/issues/' + id + '/approvazione-bonifica', { method: 'POST', body: JSON.stringify({ value: val }) });
+    items[items.indexOf(it)] = r.item; toast(val ? 'Approvazione registrata' : 'Approvazione rimossa'); render();
+  } catch (e) { toast('Non salvato: ' + e.message); render(); }
 }
 
 async function patch(id, field, value, el) {
@@ -486,6 +507,7 @@ function setTab(t) {
   $('btnSave').style.display = t === 'dati' ? '' : 'none';
 }
 function openModal(id) {
+  if (IS_FIELD) return;   // field: sola lettura (descrizione completa nel tooltip)
   editId = id || null;
   const it = id ? items.find(x => x._id === id) : null;
   $('f_tipologia').innerHTML = optsHtml(TIPI, 'Seleziona…');
