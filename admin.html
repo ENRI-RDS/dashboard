@@ -1651,10 +1651,10 @@
         });
         setMsg($('cantLogMsg'), 'Riga aggiornata', true);
         refreshCantLog(CANT_EDIT_KEY);
-        refreshCantieri();
+        _syncCantEditForm();
       }catch(err){ setMsg($('cantLogMsg'), 'Errore: ' + err.message, false); }
     } else if (btn.dataset.logAct === 'delete'){
-      const ok = await showConfirm('Elimina riga storico', 'Eliminare questo caricamento? I metri scavati verranno ricalcolati sulle righe rimaste.', 'Elimina', 'btn btn-danger');
+      const ok = await showConfirm('Elimina riga storico', 'Eliminare questo caricamento? Metri, stato e date correnti verranno riallineati alle righe rimaste.', 'Elimina', 'btn btn-danger');
       if (!ok) return;
       try{
         await api(withTokenQuery('/api/admin/cantieri/' + encodeURIComponent(CANT_EDIT_KEY) + '/log/' + idx), {
@@ -1662,7 +1662,7 @@
         });
         setMsg($('cantLogMsg'), 'Riga eliminata', true);
         refreshCantLog(CANT_EDIT_KEY);
-        refreshCantieri();
+        _syncCantEditForm();
       }catch(err){ setMsg($('cantLogMsg'), 'Errore: ' + err.message, false); }
     }
   });
@@ -1671,7 +1671,18 @@
     const c = ALL_CANTIERI.find(x => x.cantiere_key === cantiereKey);
     if (!c) return;
     CANT_EDIT_KEY = cantiereKey;
-    $('cantEditTitle').textContent = `Modifica cantiere — ${c.codice_cantiere || c.pratica_id || cantiereKey}`;
+    _fillCantEditForm(c);
+    $('cantEditClearLog').checked = false;
+    $('cantEditMsg').textContent = ''; $('cantEditMsg').className = 'msg';
+    $('cantEditPanel').style.display = '';
+    $('cantEditPanel').scrollIntoView({behavior:'smooth', block:'center'});
+    refreshCantLog(cantiereKey);
+  }
+
+  // Compila i campi del form dai dati correnti del cantiere (richiamata anche dopo
+  // modifica/eliminazione di una riga di storico, così il form non resta con valori vecchi).
+  function _fillCantEditForm(c){
+    $('cantEditTitle').textContent = `Modifica cantiere — ${c.codice_cantiere || c.pratica_id || c.cantiere_key}`;
     $('cantEditStato').value = c.stato_cantiere || 'non_avviato';
     _paintStatoSelect($('cantEditStato'));
     $('cantEditMetri').value = c.metri_scavati || 0;
@@ -1680,11 +1691,12 @@
     $('cantEditDataInizio').value = c.data_inizio_effettiva || '';
     $('cantEditDataFine').value = c.data_fine_effettiva || '';
     $('cantEditNote').value = c.note || '';
-    $('cantEditClearLog').checked = false;
-    $('cantEditMsg').textContent = ''; $('cantEditMsg').className = 'msg';
-    $('cantEditPanel').style.display = '';
-    $('cantEditPanel').scrollIntoView({behavior:'smooth', block:'center'});
-    refreshCantLog(cantiereKey);
+  }
+
+  async function _syncCantEditForm(){
+    await refreshCantieri();
+    const c = ALL_CANTIERI.find(x => x.cantiere_key === CANT_EDIT_KEY);
+    if (c) _fillCantEditForm(c);
   }
 
   $('cantEditCancelBtn').addEventListener('click', () => { $('cantEditPanel').style.display = 'none'; CANT_EDIT_KEY = null; });
