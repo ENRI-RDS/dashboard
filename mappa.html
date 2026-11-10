@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="it" translate="no">
+<html lang="it" translate="No">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -7,13 +7,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<title>ENRI — Avanzamento Progettazione</title>
+<title>QTS — Avanzamento Progettazione</title>
 <script src="js/api-config.js"></script>
-<script>function _sessionToken(){ return localStorage.getItem('_enri_session') || ''; }</script>
+<script>function _sessionToken(){ return localStorage.getItem('_qts_session') || ''; }</script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <!-- Anti-FOUC: nasconde la sidebar su mobile PRIMA del primo disegno -->
 <script>
@@ -48,9 +46,35 @@
     --ok:#1E9E6A; --ok-bg:#EBFAF3; --warn:#D08A1A; --warn-bg:#FEF7E7; --err:#C0392B; --err-bg:#FEECEB;
   }
   *{margin:0;padding:0;box-sizing:border-box;}
-  body{font-family:var(--font-body);background:var(--bg);color:var(--text);height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;-webkit-text-size-adjust:100%;}
+  body{font-family:var(--font-body);background:var(--bg);color:var(--text);height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;-webkit-text-size-adjust:100%;padding-left:64px;}
+
+  /* ── SIDEBAR NAV ── */
+  .app-sidebar {
+    position: fixed; left:0; top:0; bottom:0; width:64px;
+    background: var(--retelit-blue);
+    display:flex; flex-direction:column; align-items:center;
+    padding:16px 0; gap:8px; z-index:1001;
+  }
+  .app-sidebar .sidebar-logo {
+    width:34px; height:34px; margin-bottom:10px;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  .app-sidebar a {
+    width:42px; height:42px; border-radius:11px;
+    display:flex; align-items:center; justify-content:center;
+    color: var(--retelit-blue-25); text-decoration:none;
+    flex-shrink:0; transition: background 0.15s, color 0.15s;
+  }
+  .app-sidebar a:hover { background: rgba(255,255,255,.10); color:#fff; }
+  .app-sidebar a.active { background:#fff; color: var(--retelit-blue); }
+  .app-sidebar a.active:hover { background:#fff; color: var(--retelit-blue); }
+
+  @media (max-width:768px) {
+    .app-sidebar { display:none; }
+    body { padding-left:0; }
+  }
   .topbar{display:flex;align-items:center;gap:16px;padding:0 28px;height:58px;background:var(--retelit-blue);flex-shrink:0;z-index:1000;}
-  .logo{font-size:13px;font-weight:700;letter-spacing:0.14em;color:var(--retelit-ice);white-space:nowrap;text-transform:uppercase;}
   .divider-v{width:1px;height:20px;background:var(--retelit-blue-50);flex-shrink:0;}
   .page-title{font-size:13px;font-weight:600;letter-spacing:.04em;color:var(--retelit-ice);white-space:nowrap;text-transform:uppercase;}
   .topbar-back{font-size:12px;color:var(--retelit-sky);font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:8px;border:1px solid var(--retelit-sky);transition:background .15s;background:transparent;cursor:pointer;}
@@ -58,8 +82,6 @@
   .topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
   .btn{font-size:11px;padding:5px 14px;border-radius:5px;background:var(--accent);color:white;border:none;cursor:pointer;font-family:var(--font-body);font-weight:500;transition:opacity 0.2s;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:5px;}
   .btn:hover{opacity:0.85;}
-  .btn.secondary{background:var(--surface2);border:1px solid var(--border);color:var(--text);}
-  .btn.secondary:hover{color:var(--text);}
   .badge{font-size:11px;padding:3px 10px;border-radius:4px;background:rgba(255,255,255,.08);border:1px solid var(--retelit-blue-50);color:var(--retelit-ice);}
   .badge.ok{border-color:#1E9E6A44;color:#1E9E6A;background:#1E9E6A11;}
   .wrap{display:flex;flex:1;overflow:hidden;position:relative;min-height:0;}
@@ -72,6 +94,12 @@
   .filter-btn:hover{border-color:var(--accent);color:var(--text);}
   .filter-btn.active{background:var(--accent);border-color:var(--accent);color:white;}
   .filter-btn.selected{background:var(--accent);border-color:var(--accent);color:white;opacity:0.85;}
+  .no-btn{font-size:10px;padding:3px 9px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:pointer;transition:all 0.15s;font-family:var(--font-body);}
+  .no-btn:hover{border-color:#8E3FD1;color:var(--text);}
+  .no-btn.active{background:#8E3FD1;border-color:#8E3FD1;color:white;}
+  .no-toggle{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--muted);cursor:pointer;margin-top:6px;width:100%;}
+  .no-toggle input{accent-color:#8E3FD1;cursor:pointer;}
+  .no-btn .n{opacity:.75;font-family:var(--font-mono);margin-left:3px;}
   .filter-multi-hint{font-size:9px;color:var(--muted);margin-top:4px;display:block;}
   .sidebar-body{flex:1;overflow-y:auto;}
   .sidebar-body::-webkit-scrollbar{width:4px;}
@@ -106,18 +134,6 @@
   .view-toggle{display:flex;gap:3px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:3px;margin-bottom:10px;}
   .view-btn{font-size:10px;padding:3px 9px;border-radius:5px;border:none;background:transparent;color:var(--retelit-blue);cursor:pointer;font-family:var(--font-body);font-weight:500;transition:all 0.15s;white-space:nowrap;}
   .view-btn.active{background:var(--accent);color:white;}
-  /* Nulla osta: tasto sotto il selettore + legenda pallini */
-  .no-dots-btn{display:flex;align-items:center;gap:7px;width:100%;margin:-4px 0 10px;padding:5px 9px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--retelit-blue);font-family:var(--font-body);font-size:10px;font-weight:500;cursor:pointer;transition:all 0.15s;}
-  .no-dots-btn .no-dots-state{margin-left:auto;font-weight:600;opacity:0.7;}
-  .no-dots-btn.active{background:var(--accent);border-color:var(--accent);color:white;}
-  .no-dots-btn.active .no-dots-state{opacity:1;}
-  .no-dots-ico{display:inline-flex;gap:2px;}
-  .no-dots-ico i,.no-dots-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;}
-  .no-dots-btn.active .no-dots-ico i{box-shadow:0 0 0 1px #fff;}
-  .no-dots-ico .r,.no-dots-legend .r{background:#E53935;}
-  .no-dots-ico .g,.no-dots-legend .g{background:#1E9E6A;}
-  .no-dots-legend{display:flex;gap:14px;margin:-4px 0 10px;font-size:10px;color:var(--text);}
-  .no-dots-legend b{font-weight:600;}
   /* Popup */
   .leaflet-popup-content-wrapper{background:var(--surface)!important;border:none!important;border-radius:14px!important;color:var(--text)!important;box-shadow:0 8px 32px #0000002a, 0 1px 4px #00000014!important;padding:0!important;overflow:hidden!important;}
   .leaflet-popup-content{margin:0!important;width:auto!important;}
@@ -134,7 +150,6 @@
   .popup-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .popup-impresa{font-size:11px;font-weight:600;color:var(--accent);}
   .popup-tratta{font-size:10px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-family:var(--font-mono);}
-  .popup-stato-bar{height:3px;width:100%;margin-top:12px;border-radius:2px;}
   /* Body — due colonne */
   .popup-body{display:flex;gap:0;align-items:stretch;}
   .popup-body-left{flex:1;min-width:0;padding:12px 14px 14px 16px;}
@@ -157,16 +172,8 @@
   .popup-detail-row{display:flex;justify-content:space-between;align-items:center;font-size:11px;margin-bottom:5px;}
   .popup-detail-row .dl{color:var(--muted);}
   .popup-detail-row .dv{font-family:var(--font-mono);font-size:11px;font-weight:600;}
-  .popup-pratica{display:inline-flex;flex-direction:column;align-items:flex-start;font-family:var(--font-mono);font-size:10.5px;font-weight:600;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:4px 9px;margin:2px 3px 2px 0;color:var(--text);}
-  .popup-pratica.aut{background:var(--retelit-blue-25);border-color:var(--retelit-blue-50);color:var(--retelit-blue);}
-  .popup-pratica.no{background:#DDF0F4;border-color:var(--retelit-sky);color:var(--retelit-teal);}
-  .popup-pratica.ord{background:#E2E8EE;border-color:var(--retelit-blue-75);color:var(--retelit-blue-75);}
-  .popup-pratica-code{display:flex;align-items:center;}
+  .popup-pratica{display:inline-flex;flex-direction:column;align-items:flex-start;font-family:var(--font-mono);font-size:10px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:3px 8px;margin:2px 3px 2px 0;}
   .popup-pratica-ente{display:block;font-family:var(--font-body);font-size:9px;font-weight:500;color:var(--muted);margin-top:1px;}
-  .popup-tag{display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:600;padding:3px 9px;border-radius:20px;margin-right:4px;}
-  .popup-tag.ok{background:#e8f5ee;color:#2e7d52;border:1px solid #2e7d5233;}
-  .popup-tag.warn{background:#fef9ec;color:#a07820;border:1px solid #a0782033;}
-  .popup-tag.err{background:#fdecea;color:#c0392b;border:1px solid #c0392b33;}
   /* Loading */
   #loadingOverlay{position:absolute;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:2000;}
   .spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;}
@@ -196,30 +203,16 @@
   .leaflet-control-attribution{background:#ffffffcc!important;color:var(--muted)!important;font-size:9px!important;}
   .leaflet-control-attribution a{color:var(--muted)!important;}
   /* Stats bar */
-  .sidebar-close-btn{ display:none; }
   .stats-bar{position:absolute;bottom:16px;left:16px;z-index:500;display:flex;gap:8px;flex-wrap:wrap;}
   .stat-pill{background:#ffffffdd;backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:20px;padding:5px 14px;font-size:11px;display:flex;align-items:center;gap:6px;color:var(--text);}
   .stat-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
   /* Lavorabile badge nella sidebar */
   .lav-badge{font-size:8px;padding:1px 5px;border-radius:8px;font-family:var(--font-mono);flex-shrink:0;}
   .lav-si{background:#1E9E6A22;color:#1E9E6A;border:1px solid #1E9E6A44;}
-  .lav-no{background:#C0392B22;color:#C0392B;border:1px solid #C0392B44;}
   @keyframes tratta-pulse {
     0%,100% { opacity: 1; }
     50%      { opacity: 0.55; }
   }
-  .btn-back{
-    display:inline-flex;align-items:center;gap:6px;
-    font-size:12px;font-weight:600;padding:6px 14px;
-    border-radius:7px;border:none;cursor:pointer;
-    background:var(--accent);color:#fff;
-    font-family:var(--font-body);
-    text-decoration:none;
-    transition:opacity 0.15s,transform 0.1s;
-    box-shadow:0 1px 4px rgba(4,63,117,.20);
-    flex-shrink:0;
-  }
-  .btn-back:hover{opacity:0.88;transform:translateX(-1px);}
   /* ─── MOBILE BOTTOM-DRAWER LAYOUT ─────────────────────────────── */
 
   /* Drawer toggle button (visibile solo su mobile) */
@@ -254,9 +247,7 @@
       height:auto; flex-wrap:wrap; padding:6px 10px; gap:5px;
       min-height:50px; position:sticky; top:0; z-index:1000;
     }
-    .topbar-left{ gap:6px; flex:0 0 auto; }
     .page-title,.divider-v{ display:none; }
-    .logo{ font-size:11px; letter-spacing:.08em; }
     .topbar-right{
       margin-left:auto; gap:8px; flex-wrap:nowrap; align-items:center;
     }
@@ -271,12 +262,8 @@
     .search-results{ max-height:200px; }
     /* Pulsanti touch-friendly */
     .btn{ font-size:11px; padding:7px 12px; min-height:40px; border-radius:8px; }
-    .btn-back{ font-size:11px; padding:7px 14px; min-height:40px; border-radius:8px; }
-    /* Nasconde su mobile: GeoJSON, Progettazione, Help */
-    .btn-mobile-hidden,
+    /* Nasconde su mobile: GeoJSON, Help */
     button.topbar-back[onclick="exportGeoJSON()"],
-    button.topbar-back[onclick="generaReportAWS()"],
-    a.btn-back[href="index.html?direct=1"],
     .help-btn { display:none !important; }
 
     /* ── Layout: mappa a schermo pieno ── */
@@ -315,23 +302,11 @@
       cursor:grab;
     }
     .sidebar-head{ padding:8px 14px 6px; position:relative; }
-    .sidebar-close-btn{
-      display:block;
-      position:absolute; top:8px; right:10px;
-      background:none; border:none; cursor:pointer;
-      font-size:16px; color:var(--muted);
-      width:30px; height:30px; line-height:30px; text-align:center;
-      border-radius:50%; padding:0;
-    }
     .sidebar-title{ font-size:10px; margin-bottom:6px; }
     .view-toggle{ margin-bottom:6px; }
-    .no-dots-btn{ margin:-2px 0 6px; padding:4px 8px; }
-    .no-dots-legend{ margin:-2px 0 6px; }
     .view-btn{ font-size:10px; padding:5px 10px; min-height:32px; }
     .filter-row{ gap:4px; }
     .filter-btn{ font-size:10px; padding:4px 9px; min-height:28px; }
-    .qts-toggle-row{ margin-top:6px; padding:6px 0 4px; }
-    .qts-label{ font-size:10px; }
     /* Sidebar body: nascosto su mobile — solo filtri visibili */
     .sidebar-body{ display:none !important; }
     .lotto-item{ display:none !important; }
@@ -391,7 +366,6 @@
     .popup-meta{ gap:5px; }
     .popup-impresa{ font-size:10px; }
     .popup-tratta{ font-size:9px; }
-    .popup-stato-bar{ margin-top:7px; height:2px; }
     .popup-body{ flex-direction:column; }
     .popup-body-left{ padding:6px 11px 8px 11px; }
     .popup-body-right{
@@ -506,25 +480,8 @@
   .search-result-main{font-weight:600;color:var(--text);}
   .search-result-sub{color:var(--muted);font-size:10px;margin-top:1px;}
   .search-divider{padding:5px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);background:var(--surface2);border-bottom:1px solid var(--border);}
-  .search-highlight{position:relative;}
-
-  /* QTS toggle */
-  .qts-toggle-row { display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 0 6px;border-top:1px solid var(--border); }
-  .qts-label { font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);flex:1; }
-  .qts-switch { position:relative;width:36px;height:20px;cursor:pointer;flex-shrink:0; }
-  .qts-switch input { opacity:0;width:0;height:0;position:absolute; }
-  .qts-slider { position:absolute;inset:0;background:#c8ccd8;border-radius:20px;transition:background 0.2s; }
-  .qts-slider:before { content:'';position:absolute;height:14px;width:14px;left:3px;top:3px;background:#fff;border-radius:50%;transition:all 0.2s; }
-  .qts-switch input:checked + .qts-slider { background:#0aa3c2; }
-  .qts-switch input:checked + .qts-slider:before { transform:translateX(16px);background:#fff; }
-  .qts-km { font-size:10px;font-family:var(--font-mono);color:var(--retelit-teal); }
-  .qts-only-btn{font-size:10px;padding:4px 10px;border-radius:12px;border:1.5px solid var(--retelit-teal);background:var(--retelit-ice);color:var(--retelit-blue);cursor:pointer;transition:all 0.15s;font-family:var(--font-body);font-weight:500;}
-  .qts-only-btn:hover{border-color:var(--retelit-blue);background:var(--retelit-blue-25);color:var(--retelit-blue);}
-  .qts-only-btn.active{background:var(--retelit-blue);border-color:var(--retelit-blue);color:#fff;}
 
   /* ── SED ATTRAVERSAMENTI ─────────────────────────────── */
-  /* punti nella legenda (cerchio invece di linea) */
-  .legend-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
   .sed-control-btn {
     padding:0 10px; height:36px; border-radius:8px;
     background:var(--surface); border:1px solid var(--border);
@@ -700,7 +657,6 @@
   }
   .measure-control-btn:hover { background:var(--surface2); box-shadow:0 3px 12px #0003; }
   .measure-control-btn.active { background:#fff7ed; border-color:#e07b3a; color:#e07b3a; }
-  .measure-control-btn.busy, .topbar-back.busy { opacity:0.6; cursor:wait; pointer-events:none; }
   .selector-control-btn.active { background:#eef3fb; border-color:var(--accent); color:var(--accent); }
   .selector-badge {
     position:absolute; bottom:90px; left:50%; transform:translateX(-50%);
@@ -801,72 +757,56 @@
     transition:background .15s;flex-shrink:0;
   }
   .help-btn:hover { background:rgba(65,187,217,.15); }
-  /* ── MODAL NEGATI (Report AWS) ── */
-  #deniedOverlay {
-    position:fixed;inset:0;background:#0007;display:flex;align-items:center;
-    justify-content:center;z-index:3000;opacity:0;pointer-events:none;transition:opacity .2s;
-  }
-  #deniedOverlay.open { opacity:1; pointer-events:all; }
-  #deniedOverlay .denied-modal {
-    background:var(--surface);border:1px solid var(--border);border-radius:12px;
-    width:720px;max-width:95vw;max-height:86vh;display:flex;flex-direction:column;
-    box-shadow:0 20px 60px #0005;font-family:var(--font-body);
-  }
-  .denied-head { padding:20px 24px 12px;border-bottom:1px solid var(--border); }
-  .denied-head h3 { font-size:16px;font-weight:700;color:var(--text);margin:0 0 4px; }
-  .denied-head p { font-size:11.5px;color:var(--muted);line-height:1.55;margin:0; }
-  .denied-tools { display:flex;gap:8px;align-items:center;padding:12px 24px;flex-wrap:wrap; }
-  .denied-tools input[type=text], .denied-tools select {
-    font-family:var(--font-body);font-size:12px;padding:6px 10px;border-radius:7px;
-    border:1px solid var(--border);background:var(--gray-50);color:var(--text);outline:none;
-  }
-  .denied-tools input[type=text] { flex:1;min-width:160px; }
-  .denied-tools button {
-    font-family:var(--font-body);font-size:11px;font-weight:600;padding:6px 12px;
-    border-radius:7px;border:1px solid var(--border);background:var(--gray-50);
-    color:var(--retelit-blue);cursor:pointer;
-  }
-  .denied-tools button:hover { background:var(--retelit-ice); }
-  .denied-list { overflow-y:auto;padding:0 24px 8px;flex:1; }
-  .denied-row {
-    display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;
-    border:1px solid transparent;cursor:pointer;
-  }
-  .denied-row:hover { background:var(--gray-50); }
-  .denied-row.on { background:rgba(192,57,43,.08);border-color:rgba(192,57,43,.35); }
-  .denied-row input { accent-color:#C0392B;cursor:pointer;flex-shrink:0; }
-  .denied-code { font-family:var(--font-mono);font-size:11.5px;font-weight:700;color:var(--text);min-width:92px; }
-  .denied-meta { font-size:11px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-  .denied-stato { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;flex-shrink:0; }
-  .denied-foot {
-    padding:12px 24px 18px;border-top:1px solid var(--border);
-    display:flex;justify-content:space-between;align-items:center;gap:12px;
-  }
-  .denied-foot .denied-summary { font-size:11.5px;color:var(--muted); }
-  .denied-foot button {
-    font-family:var(--font-body);font-size:12px;font-weight:700;padding:8px 18px;border-radius:8px;
-    border:none;background:var(--retelit-blue);color:#fff;cursor:pointer;
-  }
-  .denied-empty { padding:28px 4px;text-align:center;font-size:12px;color:var(--muted); }
 
-  /* ── MODALITÀ SELEZIONE PRATICHE PER AGENDA (?seleziona=agenda) ── */
-  #agSelBar{position:fixed;top:68px;left:50%;transform:translateX(-50%);z-index:1200;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-    max-width:calc(100vw - 24px);background:var(--surface,#fff);border:1.5px solid var(--retelit-blue);border-radius:10px;padding:8px 12px;
-    box-shadow:0 4px 16px rgba(4,63,117,.18);font-family:var(--font-body);font-size:12px;color:var(--text);}
-  #agSelBar .ag-t{font-weight:700;color:var(--retelit-blue);}
-  #agSelBar .ag-chips{display:flex;gap:5px;flex-wrap:wrap;max-width:46vw;}
-  #agSelBar .ag-chip{font-family:var(--font-mono);font-size:11px;font-weight:600;background:var(--retelit-ice);color:var(--retelit-blue);border-radius:5px;padding:2px 4px 2px 8px;display:inline-flex;align-items:center;gap:4px;}
-  #agSelBar .ag-chip button{border:none;background:none;color:inherit;cursor:pointer;font-size:14px;line-height:1;padding:0 3px;}
-  #agSelBar .ag-empty{color:var(--muted);}
-  #agSelBar .ag-btn{font-family:var(--font-body);font-size:12px;font-weight:600;padding:6px 14px;border-radius:7px;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text);}
-  #agSelBar .ag-btn.primary{background:var(--retelit-blue);border-color:var(--retelit-blue);color:#fff;}
-  .popup-pratica-pick{cursor:pointer;}
-  .popup-pratica-pick:hover{border-color:var(--retelit-blue);}
-  .popup-pratica-pick.picked{background:var(--retelit-blue);border-color:var(--retelit-blue);color:#fff;}
-  .popup-pratica-pick.picked .popup-pratica-ente{color:#D3DEEA;}
 </style>
 </head>
 <body>
+<nav class="app-sidebar" aria-label="Navigazione principale">
+  <div class="sidebar-logo" aria-hidden="true">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><circle cx="12" cy="4" r="2.2"/><circle cx="4" cy="10" r="2.2"/><circle cx="20" cy="10" r="2.2"/><circle cx="8" cy="19" r="2.2"/><circle cx="16" cy="19" r="2.2"/></svg>
+  </div>
+  <a href="hub.html" title="Hub">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5 12 3l9 5.5V19a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V8.5z"/></svg>
+  </a>
+  <a href="index.html?direct=1" title="Dashboard — Avanzamento Progettazione">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a1.5 1.5 0 0 0-1.5 1.5v15A1.5 1.5 0 0 0 6 21h12a1.5 1.5 0 0 0 1.5-1.5V8.5L14 3z"/><path d="M14 3v5.5H19.5"/><path d="M8 13h8M8 17h5"/></svg>
+  </a>
+  <a href="scavi.html" title="Avanzamento Lavori — Cantieri">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 21.5 20h-19L12 3.5z"/><path d="M12 10v4.5"/><circle cx="12" cy="17.3" r="0.6" fill="currentColor" stroke="none"/></svg>
+  </a>
+  <a href="mappa.html" class="active" title="Mappa Infrastruttura" aria-current="page">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+  </a>
+  <a href="polizze_convenzioni.html" title="Polizze &amp; Convenzioni">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V7L12 2z"/><path d="M9 12l2 2 4-4"/></svg>
+  </a>
+  <a href="sopralluoghi.html" title="Verbale di Sopralluogo">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 17a6 6 0 1 0 0-12 6 6 0 0 0 0 12z"/><path d="M11 11V8M11 14h.01"/><path d="M16.5 16.5 21 21"/></svg>
+  </a>
+  <a id="navGantt" href="gantt.html" title="Gantt — Avanzamento Temporale">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V4M4 20h16"/><path d="m8 16 3-4 3 3 5-7"/></svg>
+  </a>
+  <a href="milestone.html" title="Milestone di Progetto">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+  </a>
+  <a id="navAdmin" href="admin.html" title="Impostazioni — Admin">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+  </a>
+</nav>
+<script>
+(() => {
+  // Nasconde le icone Admin/Gantt della sidebar per i ruoli non abilitati
+  // (stessa regola di ADMIN_ALLOWED_ROLES in hub.html).
+  const _r = (localStorage.getItem('_qts_role') || '').toLowerCase();
+  if (!['admin', 'admin2'].includes(_r)) {
+    const a = document.getElementById('navAdmin');
+    const g = document.getElementById('navGantt');
+    if (a) a.style.display = 'none';
+    if (g) g.style.display = 'none';
+  }
+})();
+</script>
+
 <div class="topbar">
   <img src="data:image/png;base64,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" alt="Retelit" style="height:50px;display:block">
   <div class="divider-v"></div>
@@ -879,8 +819,7 @@
     <button class="search-btn" id="clearSearchBtn" onclick="clearSearch()" style="display:none">&times;</button>
   </div>
   <div class="topbar-right">
-    <button class="topbar-back" id="deniedBtn" onclick="openDeniedModal()" title="Seleziona le pratiche da mostrare come DENIED nel Report AWS">⛔ Negati <span id="deniedCount">0</span></button>
-    <button class="topbar-back" id="reportAwsBtn" onclick="generaReportAWS()" title="Genera un PowerPoint con uno screenshot mappa per cluster (modalità Progettazione)">Report AWS</button>
+    <span class="badge" id="statusBadge">Caricamento</span>
     <button class="topbar-back" onclick="exportGeoJSON()" title="Esporta il tracciato (o i lotti filtrati) in formato GeoJSON">⬇ GeoJSON</button>
     <a href="hub.html" class="topbar-back">&larr; Hub</a>
     <a href="index.html?direct=1" class="topbar-back">Progettazione</a>
@@ -903,42 +842,29 @@
         <button class="view-btn active" id="vbtn-stato"   onclick="setViewMode('stato')">Pratiche</button>
         <button class="view-btn"        id="vbtn-scavi"   onclick="setViewMode('scavi')">Scavi</button>
         <button class="view-btn"        id="vbtn-lotto"   onclick="setViewMode('lotto')">Lotto</button>
-        <button class="view-btn"        id="vbtn-cluster" onclick="setViewMode('cluster')">Cluster</button>
-      </div>
-      <button class="no-dots-btn" id="noDotsBtn" onclick="toggleNoDots()" aria-pressed="false" title="Mostra o nascondi i nulla osta lungo le tratte">
-        <span class="no-dots-ico"><i class="r"></i><i class="g"></i></span>
-        <span>Nulla osta</span>
-        <span class="no-dots-state" id="noDotsState">OFF</span>
-      </button>
-      <div class="no-dots-legend" id="noDotsLegend" style="display:none">
-        <span><i class="r"></i>Mancante <b id="noCntMiss">0</b></span>
-        <span><i class="g"></i>Ottenuto <b id="noCntOk">0</b></span>
       </div>
       <div class="sidebar-title">Filtra per lotto</div>
       <div class="filter-row" id="filterRow"></div>
-    </div>
-      <div class="qts-toggle-row">
-        <span class="qts-label">🟣 Tracciato QTS</span>
-        <span class="qts-km" id="qtsKm" style="display:none"></span>
-        <label class="qts-switch">
-          <input type="checkbox" id="qtsToggle" onchange="toggleQTS(this.checked)">
-          <span class="qts-slider"></span>
-        </label>
-        <button id="qtsOnlyBtn" class="qts-only-btn" onclick="setQTSOnly(!qtsOnlyMode)">Solo QTS</button>
+      <div class="sidebar-title" style="margin-top:10px">Filtra per nulla osta</div>
+      <div class="filter-row" id="noFilterRow">
+        <button class="no-btn active" id="nobtn-tutte"  onclick="setNoFilter('tutte')">Tutte</button>
+        <button class="no-btn"        id="nobtn-con"    onclick="setNoFilter('con')">Con nulla osta<span class="n" id="noCnt-con"></span></button>
+        <button class="no-btn"        id="nobtn-senza"  onclick="setNoFilter('senza')">Senza<span class="n" id="noCnt-senza"></span></button>
+        <label class="no-toggle"><input type="checkbox" id="noDotsBtn" checked onchange="toggleNoDots()"> Mostra stato nulla osta</label>
       </div>
-
+    </div>
     <div class="sidebar-body" id="lottoList"></div>
+  </div>
+  <div id="selectorBadge" class="selector-badge">
+    <span class="selector-badge-code" id="selectorPratica">—</span>
+    <span id="selectorDist">0 m</span>
+    <span class="selector-badge-clear" onclick="clearSelectorHighlight()" title="Cancella selezione">✕</span>
   </div>
   <div id="measureBadge" class="measure-badge">
     <span id="measureDist">0.00 km</span>
     <span class="measure-badge-clear" onclick="clearMeasure()" title="Cancella misura">✕</span>
   </div>
   <div id="measureHint" class="measure-hint">📏 Clicca per aggiungere punti · Doppio click per terminare</div>
-  <div id="selectorBadge" class="selector-badge">
-    <span class="selector-badge-code" id="selectorPratica">—</span>
-    <span id="selectorDist">0 m</span>
-    <span class="selector-badge-clear" onclick="clearSelectorHighlight()" title="Cancella selezione">✕</span>
-  </div>
   <div id="catastaleLoader" class="catastale-loader">
     <div class="catastale-loader-spin"></div>
     <span>Caricamento catasto…</span>
@@ -952,7 +878,7 @@
     <div class="legend-item"><div class="legend-line" style="background:#41BBD9"></div>Inviato / Protocollato</div>
     <div class="legend-item"><div class="legend-line" style="background:#D08A1A"></div>In Verifica / Firma</div>
     <div class="legend-item"><div class="legend-line" style="background:#6B7685"></div>In Attesa / Redazione</div>
-    <div class="legend-item"><div class="legend-line" style="background:#043F75"></div>Invio Preliminare</div>
+    
   </div>
 </div>
 
@@ -966,116 +892,32 @@
 <script>
 const STATO_COLORS = {
   'IN ATTESA':'#6B7685', 'IN REDAZIONE':'#6B7685', 'IN REDAZIONE INTEGRAZIONE':'#436A93',
-  'IN FIRMA RDS':'#D08A1A', 'INVIO PRELIMINARE':'#043F75', 'INVIATO':'#41BBD9', 'PROTOCOLLATO':'#41BBD9',
+  'IN FIRMA RDS':'#D08A1A', 'INVIATO':'#41BBD9', 'PROTOCOLLATO':'#41BBD9',
   'NECESSARIA INTEGRAZIONE':'#C0392B', 'PROTOCOLLATO INTEGRAZIONE':'#436A93', 'OTTENUTO':'#1E9E6A'
 };
 window.STATO_COLORS = STATO_COLORS;
-
-// ── REPORT AWS: legenda semplificata a 4 bucket ────────────────────────────
-// Usata SOLO durante generaReportAWS(): la dashboard continua a mostrare i 10
-// stati reali, il PowerPoint li aggrega in 4 categorie con palette dedicata.
-// Attivata dal flag _awsReportMode, letto da getColorForMode().
-let _awsReportMode = false;
-
-const AWS_BUCKET_COLORS = {
-  'OBTAINED':    '#1E9E6A',
-  'ONGOING':     '#E8912B',
-  'NOT STARTED': '#8A94A6',
-  'DENIED':      '#C0392B'
-};
-// Ordine di visualizzazione nella legenda del report
-const AWS_BUCKET_ORDER = ['OBTAINED', 'ONGOING', 'NOT STARTED', 'DENIED'];
-
-// stato reale (Master.csv / STATO_LEGENDA) → bucket report
-const AWS_BUCKET_BY_STATO = {
-  'IN ATTESA':                 'NOT STARTED',
-  'IN REDAZIONE':              'NOT STARTED',
-  'IN FIRMA RDS':              'ONGOING',
-  'INVIO PRELIMINARE':         'ONGOING',
-  'INVIATO':                   'ONGOING',
-  'PROTOCOLLATO':              'ONGOING',
-  'NECESSARIA INTEGRAZIONE':   'ONGOING',
-  'IN REDAZIONE INTEGRAZIONE': 'ONGOING',
-  'PROTOCOLLATO INTEGRAZIONE': 'ONGOING',
-  'OTTENUTO':                  'OBTAINED',
-  'NO COMPETENZA':             'OBTAINED',
-  // Nessuno stato di diniego esiste oggi nello schema pratiche: aggiungere qui
-  // la voce (es. 'DINIEGO': 'DENIED') non appena verrà introdotta a monte.
-};
-
-function awsBucket(stato) {
-  const s = String(stato || '').replace(/\u00a0/g, ' ').trim().toUpperCase();
-  return AWS_BUCKET_BY_STATO[s] || 'NOT STARTED';
-}
-function awsBucketColor(stato) { return AWS_BUCKET_COLORS[awsBucket(stato)]; }
-
-// ── Selezione manuale dei NEGATI ───────────────────────────────────────────
-// Nessuno stato di diniego esiste a monte (PRATICA_STATO_VALUES non lo prevede):
-// la selezione è manuale, vale SOLO per il Report AWS e non tocca i dati.
-// Chiavi: 'P:<codice pratica>' quando la tratta ha il campo PRATICA valorizzato,
-// altrimenti 'T:<TRATTA_ID>' (fallback per le tratte senza pratica associata).
-const AWS_DENIED_LS_KEY = 'aws_report_denied_v1';
-let _awsDenied = new Set();
-
-function _awsLoadDenied() {
-  try {
-    const raw = localStorage.getItem(AWS_DENIED_LS_KEY);
-    if (raw) _awsDenied = new Set(JSON.parse(raw));
-  } catch (e) { console.warn('[Negati] lettura localStorage fallita', e); }
-}
-function _awsSaveDenied() {
-  try { localStorage.setItem(AWS_DENIED_LS_KEY, JSON.stringify([..._awsDenied])); }
-  catch (e) { console.warn('[Negati] salvataggio localStorage fallito', e); }
-}
-function _awsPraticaKey(p) {
-  const cod = String(p.PRATICA || '').replace(/\u00a0/g, ' ').trim();
-  return cod ? 'P:' + cod.toUpperCase() : '';
-}
-function _awsTrattaKey(p) {
-  const t = String(p.TRATTA_ID ?? p.fid ?? '').trim();
-  return t ? 'T:' + t.toUpperCase() : '';
-}
-// Una tratta è negata se lo è la sua pratica oppure la tratta stessa
-function _awsIsDenied(p) {
-  const pk = _awsPraticaKey(p);
-  if (pk && _awsDenied.has(pk)) return true;
-  const tk = _awsTrattaKey(p);
-  return !!tk && _awsDenied.has(tk);
-}
-_awsLoadDenied();
-document.addEventListener('DOMContentLoaded', () => _awsUpdateDeniedSummary(0));
-
-const IMPRESE = {'1':'Valtellina','1A':'Valtellina','1B':'Soleto','2':'Sertori','2A':'Sielte','2B':'Telebit','3':'Valtellina','4':'Sielte','5':'Circet','6':'Sertori','7':'Valtellina','8':'Sielte'};
-const LOTTO_ORDER = ['1A','1B','2A','2B','1','2','3','4','5','6','7','8'];
-const LOTTI_ATTIVI = ['1A','1B','2A','2B'];
-const LOTTI_AVVIO  = ['1','2','3','4','5','6','7','8'];
+// QTS non ha una mappa lotto→impresa in Master.csv (a differenza di ENRI): vuota finché non disponibile
+const IMPRESE = {};
+// Mappa statica lotto→impresa esecutrice (stessa usata in index.html, IMPRESE_PER_LOTTO):
+// i lotti A/B/C sono tutti Telebit; le pratiche in concomitanza ENRI sono gestite da
+// Sertori (vedi CONCOMITANZA_ENRI in makePopupHtml), quindi hanno la precedenza.
+const IMPRESE_PER_LOTTO = { 'A': 'Telebit', 'B': 'Telebit', 'C': 'Telebit' };
 
 let map, allLayers=[], currentFilter='TUTTI', lottoStats={};
-let currentViewMode = 'stato'; // 'stato' | 'lotto' | 'cluster'
-let qtsOnlyMode = false;
+let currentViewMode = 'stato'; // 'stato' | 'lotto' | 'scavi'
 
-// Colori per lotto
-const LOTTO_COLORS = {
-  '1A':'#4f8ef7','1B':'#89bfff',
-  '2A':'#e07b3a','2B':'#f7a96a',
-  '1':'#3a8c5c','2':'#5cb87a','3':'#c9a227','4':'#e8c050',
-  '5':'#cc3333','6':'#e06868','7':'#a07af7','8':'#ffffff'
-};
-
-// Palette colori per cluster (30 colori distinti)
-const _CLUSTER_PALETTE = [
-  '#e05c9a','#f07cbf','#00b4cc','#33d0e8','#f5a623','#1a6fd4',
-  '#e63946','#a8e84a','#9b59b6','#c39bd3','#1abc9c','#58d6b9',
-  '#e74c3c','#f1948a','#3498db','#85c1e9','#e67e22','#f0a060',
-  '#27ae60','#82e0aa','#8e44ad','#bb8fcf','#16a085','#4ecdc4',
-  '#c0392b','#e88080','#2980b9','#7fb3d3','#d35400','#f0956a',
-];
-
-function getClusterColor(cl) {
-  if (cl == null || cl === '') return '#6b7080';
-  if (String(cl) === '2') return '#1A7D99';
-  const idx = Math.abs(parseInt(cl) || 0) % _CLUSTER_PALETTE.length;
-  return _CLUSTER_PALETTE[idx];
+// Colori per lotto, assegnati dinamicamente sui lotti effettivamente presenti nei dati
+// (QTS usa A/B/C, diversi dagli 1-8/1A-2B di ENRI: niente più elenco hardcoded)
+const LOTTO_PALETTE = ['#3a8c5c','#4f8ef7','#e07b3a','#c9a227','#cc3333','#a07af7','#1E9E6A','#436A93','#D08A1A','#7A3DAA','#5cb87a','#89bfff'];
+// Colori ufficiali da specifica progetto QTS (Path A/B/C)
+const LOTTO_COLORS = { 'A':'#E8C61A', 'B':'#7A3DAA', 'C':'#2D6CDF' };
+function assignLottoColors(stats) {
+  Object.keys(stats).sort((a,b)=>a.localeCompare(b,'it',{numeric:true})).forEach((id,i)=>{
+    if (!LOTTO_COLORS[id]) LOTTO_COLORS[id] = LOTTO_PALETTE[i % LOTTO_PALETTE.length];
+  });
+}
+function lottoOrder(stats) {
+  return Object.keys(stats).sort((a,b)=>a.localeCompare(b,'it',{numeric:true}));
 }
 
 function getScaviColorForFeature(feature) {
@@ -1087,15 +929,87 @@ function getScaviColorForFeature(feature) {
   return c ? (RO_SC_STATO_COLOR[c.stato_cantiere] || RO_SC_STATO_COLOR.non_avviato) : null;
 }
 
+// Tratte che richiedono Nulla Osta: alone tratteggiato sul contorno (visibile a colpo d'occhio, non solo nel popup)
+function _noStato(p) {
+  const n = (p && p.STATO_NULLAOSTA ? String(p.STATO_NULLAOSTA) : '').trim().toUpperCase();
+  return (!n || n === 'NON NECESSARIO') ? null : n;
+}
+let _noDots = true; // toggle pallini nulla osta (alone tratteggiato)
+function _outlineStyle(f, hide) {
+  const n = _noStato(f && f.properties);
+  if (hide) return { opacity:0, weight:0 };
+  if (!n || !_noDots) return { color:'#8899aa', weight:7, opacity:0.25, dashArray:null, lineCap:'round' };
+  return n === 'OTTENUTO'
+    ? { color:'#1E9E6A', weight:11, opacity:0.9, dashArray:'1 11', lineCap:'round' }   // verde = nulla osta ottenuto
+    : { color:'#E53935', weight:11, opacity:0.9, dashArray:'1 11', lineCap:'round' };  // rosso = mancante
+}
+
+function toggleNoDots() {
+  _noDots = !_noDots;
+  const b = document.getElementById('noDotsBtn');
+  if (b) b.checked = _noDots;
+  allLayers.forEach(({outlineLayer}) => {
+    if (!outlineLayer) return;
+    outlineLayer.eachLayer(ol => {
+      if (!ol.feature) return;
+      const c = getColorForMode(ol.feature, currentViewMode);
+      ol.setStyle(_outlineStyle(ol.feature, !_noPass(ol.feature) || (currentViewMode === 'scavi' && c === null)));
+    });
+  });
+  updateLegend(currentViewMode);
+}
+
+// ── Filtro Nulla Osta: tutte / con / senza ──
+let _noFilter = 'tutte';
+function _noPass(f) {
+  if (_noFilter === 'tutte') return true;
+  const req = !!_noStato(f && f.properties);
+  return _noFilter === 'con' ? req : !req;
+}
+const _HIDDEN_STYLE = { opacity:0, weight:0 };
+function _updateNoCounts() {
+  let con = 0, senza = 0;
+  (allFeatures || []).forEach(f => { if (_noStato(f.properties)) con++; else senza++; });
+  const a = document.getElementById('noCnt-con'), b = document.getElementById('noCnt-senza');
+  if (a) a.textContent = con; if (b) b.textContent = senza;
+}
+function setNoFilter(mode) {
+  _noFilter = mode;
+  ['tutte','con','senza'].forEach(m => {
+    const b = document.getElementById('nobtn-' + m);
+    if (b) b.classList.toggle('active', m === mode);
+  });
+  clearHighlight();
+  let bounds = null;
+  allLayers.forEach(({layer, outlineLayer}) => {
+    layer.eachLayer(l => {
+      if (!l.feature) return;
+      const ok = _noPass(l.feature);
+      const c = getColorForMode(l.feature, currentViewMode);
+      const show = ok && !(currentViewMode === 'scavi' && c === null);
+      if (show) {
+        l.setStyle({ color: c, weight:4, opacity:0.95 });
+        l.options.interactive = true;
+        if (mode !== 'tutte' && map.hasLayer(layer)) { const lb = l.getBounds(); bounds = bounds ? bounds.extend(lb) : L.latLngBounds(lb.getSouthWest(), lb.getNorthEast()); }
+      } else {
+        l.setStyle(_HIDDEN_STYLE);
+        l.options.interactive = false;
+      }
+    });
+    if (outlineLayer) outlineLayer.eachLayer(ol => {
+      if (!ol.feature) return;
+      const c = getColorForMode(ol.feature, currentViewMode);
+      ol.setStyle(_outlineStyle(ol.feature, !_noPass(ol.feature) || (currentViewMode === 'scavi' && c === null)));
+    });
+  });
+  if (bounds && bounds.isValid()) map.fitBounds(bounds, { padding:[60,60], maxZoom:15 });
+}
+
 function getColorForMode(feature, mode) {
   const p = feature.properties;
   if (mode === 'lotto')   return LOTTO_COLORS[p.LOTTO] || '#6b7080';
-  if (mode === 'cluster') return getClusterColor(p.CLUSTER ?? p.ID_CLUSTER ?? p.cluster);
   if (mode === 'scavi')   return getScaviColorForFeature(feature);
-  const st = p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE;
-  if (!_awsReportMode) return getColor(st);
-  // Nel report il diniego manuale vince sempre sullo stato reale
-  return _awsIsDenied(p) ? AWS_BUCKET_COLORS['DENIED'] : awsBucketColor(st);
+  return getColor(p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE);
 }
 
 function setViewMode(mode) {
@@ -1103,8 +1017,7 @@ function setViewMode(mode) {
   currentFilter = 'TUTTI';
   // Reset multi-selezioni
   if(typeof selectedLotti !== 'undefined') selectedLotti.clear();
-  if(typeof selectedClusters !== 'undefined') selectedClusters.clear();
-  ['stato','scavi','lotto','cluster'].forEach(m => {
+  ['stato','scavi','lotto'].forEach(m => {
     const btn = document.getElementById('vbtn-'+m);
     if (btn) btn.className = 'view-btn' + (m === mode ? ' active' : '');
   });
@@ -1113,7 +1026,7 @@ function setViewMode(mode) {
     layer.eachLayer(l => {
       if (!l.feature) return;
       const c = getColorForMode(l.feature, mode);
-      if (mode === 'scavi' && c === null) {
+      if ((mode === 'scavi' && c === null) || !_noPass(l.feature)) {
         l.setStyle({ opacity:0, weight:0 });
         l.options.interactive = false;
       } else {
@@ -1124,25 +1037,15 @@ function setViewMode(mode) {
     if (outlineLayer) {
       outlineLayer.eachLayer(ol => {
         if (!ol.feature) return;
-        const hide = mode === 'scavi' && getColorForMode(ol.feature, mode) === null;
-        ol.setStyle({ opacity: hide ? 0 : 0.25, weight: hide ? 0 : 7 });
+        const hide = (mode === 'scavi' && getColorForMode(ol.feature, mode) === null) || !_noPass(ol.feature);
+        ol.setStyle(_outlineStyle(ol.feature, hide));
       });
     }
     if (!map.hasLayer(layer)) map.addLayer(layer);
     if(outlineLayer){ if(!map.hasLayer(outlineLayer)) map.addLayer(outlineLayer); outlineLayer.bringToBack(); }
   });
-  if (qtsOnlyMode) {
-    allLayers.forEach(({layer,outlineLayer}) => {
-      if (map.hasLayer(layer)) map.removeLayer(layer);
-      if (outlineLayer && map.hasLayer(outlineLayer)) map.removeLayer(outlineLayer);
-    });
-  }
   updateLegend(mode);
-  if (mode === 'cluster') {
-    renderFilterCluster();
-  } else {
-    renderFilterLotto(lottoStats);
-  }
+  renderFilterLotto(lottoStats);
 }
 
 // Set dei lotti selezionati (multi-selezione)
@@ -1164,20 +1067,7 @@ function renderFilterLotto(stats) {
   sep0.style.cssText='width:1px;height:16px;background:var(--border);align-self:center;margin:0 4px;';
   fr.appendChild(sep0);
 
-  LOTTI_ATTIVI.forEach(id=>{
-    if(!stats[id]) return;
-    const b=document.createElement('button');
-    b.className='filter-btn'; b.id='fbtn-'+id; b.textContent=id;
-    b.onclick=()=>toggleLotto(id);
-    fr.appendChild(b);
-  });
-
-  const sep1=document.createElement('span');
-  sep1.style.cssText='width:1px;height:16px;background:var(--border);align-self:center;margin:0 4px;';
-  fr.appendChild(sep1);
-
-  LOTTI_AVVIO.forEach(id=>{
-    if(!stats[id]) return;
+  lottoOrder(stats).forEach(id=>{
     const b=document.createElement('button');
     b.className='filter-btn'; b.id='fbtn-'+id; b.textContent=id;
     b.onclick=()=>toggleLotto(id);
@@ -1200,7 +1090,6 @@ function toggleLotto(id) {
 }
 
 function applyFilterMulti() {
-  if (qtsOnlyMode) return;
   // Aggiorna visual dei bottoni
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active','selected'));
   if (selectedLotti.size === 0) {
@@ -1235,103 +1124,6 @@ function applyFilterMulti() {
   currentFilter = selectedLotti.size === 1 ? [...selectedLotti][0] : (selectedLotti.size === 0 ? 'TUTTI' : 'MULTI');
 }
 
-// Set dei cluster selezionati (multi-selezione)
-let selectedClusters = new Set();
-
-function renderFilterCluster() {
-  const fr = document.getElementById('filterRow');
-  const title = fr.previousElementSibling;
-  if (title) title.textContent = 'Filtra per cluster';
-  fr.innerHTML='';
-
-  const clusters = new Set();
-  allFeatures.forEach(f => {
-    const cl = f.properties.CLUSTER ?? f.properties.ID_CLUSTER ?? f.properties.cluster;
-    if (cl != null && cl !== '') clusters.add(String(cl));
-  });
-  const clSorted = [...clusters].sort((a,b) => parseInt(a)-parseInt(b) || a.localeCompare(b));
-
-  const btnT = document.createElement('button');
-  btnT.className='filter-btn active'; btnT.textContent='Tutti';
-  btnT.id='cbtn-TUTTI';
-  btnT.onclick=()=>{ selectedClusters.clear(); applyFilterClusterMulti(); };
-  fr.appendChild(btnT);
-
-  clSorted.forEach(cl => {
-    const color = getClusterColor(cl);
-    const b = document.createElement('button');
-    b.className='filter-btn'; b.id='cbtn-'+cl;
-    b.textContent = 'C'+cl;
-    b.style.cssText = `border-color:${color}44;`;
-    b.onclick=()=>toggleCluster(cl);
-    fr.appendChild(b);
-  });
-
-  const hint = document.createElement('span');
-  hint.className = 'filter-multi-hint';
-  hint.textContent = 'Clicca più cluster per combinarli';
-  fr.appendChild(hint);
-}
-
-function toggleCluster(cl) {
-  if (selectedClusters.has(cl)) { selectedClusters.delete(cl); }
-  else { selectedClusters.add(cl); }
-  applyFilterClusterMulti();
-}
-
-function applyFilterClusterMulti() {
-  if (qtsOnlyMode) return;
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active','selected'));
-  if (selectedClusters.size === 0) {
-    const btnT = document.getElementById('cbtn-TUTTI');
-    if (btnT) btnT.classList.add('active');
-    allLayers.forEach(({layer,outlineLayer}) => {
-      if(!map.hasLayer(layer)) map.addLayer(layer);
-      layer.eachLayer(l => {
-        if(l.feature) l.setStyle({ opacity: 0.95, weight: 4, color: getColorForMode(l.feature, currentViewMode) });
-      });
-      if(outlineLayer){
-        if(!map.hasLayer(outlineLayer)) map.addLayer(outlineLayer);
-        outlineLayer.eachLayer(l => l.setStyle({ opacity: 0.45 }));
-        outlineLayer.bringToBack();
-      }
-    });
-    const g=L.featureGroup(allLayers.map(x=>x.layer));
-    map.fitBounds(g.getBounds(),{padding:[40,40]});
-  } else {
-    selectedClusters.forEach(cl => { const fb=document.getElementById('cbtn-'+cl); if(fb) fb.classList.add('selected'); });
-    const matchLayers = [];
-    allLayers.forEach(({layer,outlineLayer}) => {
-      if(!map.hasLayer(layer)) map.addLayer(layer);
-      layer.eachLayer(l => {
-        if (!l.feature) return;
-        const fcl = String(l.feature.properties.CLUSTER ?? l.feature.properties.ID_CLUSTER ?? l.feature.properties.cluster ?? '');
-        if (selectedClusters.has(fcl)) { matchLayers.push(l); l.setStyle({ opacity: 0.95, weight: 4 }); }
-        else { l.setStyle({ opacity: 0.08, weight: 2 }); }
-      });
-      if(outlineLayer){
-        outlineLayer.eachLayer(l => {
-          if(!l.feature) return;
-          const fcl = String(l.feature.properties.CLUSTER ?? l.feature.properties.ID_CLUSTER ?? l.feature.properties.cluster ?? '');
-          l.setStyle({ opacity: selectedClusters.has(fcl) ? 0.4 : 0 });
-        });
-        outlineLayer.bringToBack();
-      }
-    });
-    if (matchLayers.length > 0) {
-      const g = L.featureGroup(matchLayers);
-      map.fitBounds(g.getBounds(), {padding:[60,60], maxZoom:14});
-    }
-  }
-}
-
-// applyFilterCluster mantenuto per compatibilità
-function applyFilterCluster(cl) {
-  if (cl === 'TUTTI') { selectedClusters.clear(); }
-  else { selectedClusters.clear(); selectedClusters.add(cl); }
-  applyFilterClusterMulti();
-}
-
 function updateLegend(mode) {
   const leg = document.getElementById('legendContainer');
   if (!leg) return;
@@ -1344,8 +1136,7 @@ function updateLegend(mode) {
       <div class="legend-item"><div class="legend-line" style="background:#41BBD9"></div>Inviato / Protocollato</div>
       <div class="legend-item"><div class="legend-line" style="background:#D08A1A"></div>In Verifica / Firma</div>
       <div class="legend-item"><div class="legend-line" style="background:#6B7685"></div>In Attesa / Redazione</div>
-      <div class="legend-item"><div class="legend-line" style="background:#043F75"></div>Invio Preliminare</div>
-      <div class="legend-item"><div class="legend-line" style="background:#1A7D99"></div>Tracciato QTS</div>`;
+      `;
   } else if (mode === 'scavi') {
     leg.innerHTML = `
       <div class="legend-title">Stato scavi</div>
@@ -1359,20 +1150,14 @@ function updateLegend(mode) {
       `<div class="legend-item"><div class="legend-line" style="background:${c}"></div>Lotto ${l}</div>`
     ).join('');
     leg.innerHTML = `<div class="legend-title">Lotto</div>${items}`;
-  } else {
-    // Cluster: legenda dinamica con i cluster presenti nel GeoJSON
-    const clusters = new Set();
-    allFeatures.forEach(f => {
-      const cl = f.properties.CLUSTER ?? f.properties.ID_CLUSTER ?? f.properties.cluster;
-      if (cl != null && cl !== '') clusters.add(String(cl));
-    });
-    const clSorted = [...clusters].sort((a,b) => parseInt(a)-parseInt(b) || a.localeCompare(b));
-    const items = clSorted.map(cl => {
-      const color = getClusterColor(cl);
-      return `<div class="legend-item"><div class="legend-line" style="background:${color}"></div>Cluster ${cl}</div>`;
-    }).join('');
-    leg.innerHTML = `<div class="legend-title">Cluster</div>${items}`;
   }
+  // ── Nulla Osta (alone tratteggiato sul contorno) ──
+  if (_noDots) leg.innerHTML += `
+    <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px">
+      <div class="legend-title">Nulla Osta</div>
+      <div class="legend-item"><div style="width:22px;height:0;border-top:5px dotted #E53935;flex-shrink:0"></div>Mancante</div>
+      <div class="legend-item"><div style="width:22px;height:0;border-top:5px dotted #1E9E6A;flex-shrink:0"></div>Ottenuto</div>
+    </div>`;
   // ── voci SED (condizionali al toggle) ──
   const sedOn = _sedActive;
   if (sedOn) {
@@ -1401,113 +1186,9 @@ function updateLegend(mode) {
 map = L.map('map',{center:[45.48,9.30],zoom:10,zoomControl:true,attributionControl:true,preferCanvas:true,zoomSnap:0.5,zoomDelta:0.5});
 // Chiudi il drawer mobile quando si apre un popup
 map.on('popupopen', () => { if (_isMobile()) closeDrawer(); });
-
-// Evita che il popup finisca sotto elementi fissi sopra la mappa
-// (legenda "Stato", pulsanti "Siti ENRI"/"Pratiche"): controllo reale via
-// getBoundingClientRect dopo l'apertura, non offset statici legati al breakpoint.
-map.on('popupopen', (e) => {
-  const popupEl = e.popup && e.popup._container;
-  if (!popupEl) return;
-  requestAnimationFrame(() => {
-    const popupRect = popupEl.getBoundingClientRect();
-    const margin = 16;
-    let dx = 0, dy = 0;
-
-    // Legenda "Stato" / pulsanti "Siti ENRI" - "Pratiche": sono elementi fissi
-    // sullo schermo (non legati a coordinate geografiche), quindi un panBy
-    // della mappa li allontana efficacemente dal popup.
-    const obstacles = [
-      document.getElementById('legendContainer'),
-      document.querySelector('.leaflet-top.leaflet-right'),
-      document.querySelector('.topbar'),
-    ].filter(Boolean);
-    obstacles.forEach(el => {
-      const r = el.getBoundingClientRect();
-      const overlapX = popupRect.right > r.left && popupRect.left < r.right;
-      const overlapY = popupRect.bottom > r.top && popupRect.top < r.bottom;
-      if (overlapX && overlapY) {
-        const isTopbar = el.classList.contains('topbar');
-        if (isTopbar) {
-          const shiftY = r.bottom - popupRect.top + margin;
-          if (shiftY > dy) dy = -shiftY; // panBy negativo in y = mappa/popup si sposta in basso
-        } else {
-          const shift = popupRect.right - r.left + margin;
-          if (shift > dx) dx = shift;
-        }
-      }
-    });
-
-    if (dx !== 0) map.panBy([dx, dy], { animate: true, duration: 0.2 });
-  });
-});
 // Renderer separati: outlineRenderer NON interattivo, mainRenderer interattivo
 const outlineRenderer = L.canvas({ tolerance: 0 });
 const mainRenderer   = L.canvas({ tolerance: 5 });
-
-// ══ NULLA OSTA: pallini sul tracciato (rosso = mancante, verde = ottenuto) ═══════
-// Si attiva con il tasto "Nulla osta" sotto il selettore. Le tratte con STATO_NULLAOSTA
-// vuoto o "NON NECESSARIO" non hanno pallini; qualsiasi stato diverso da OTTENUTO = mancante.
-let _noDotsOn = false;
-const NO_DOT_OK = '#1E9E6A', NO_DOT_MISS = '#E53935';
-function _noDotColor(p) {
-  const n = (p && p.STATO_NULLAOSTA ? String(p.STATO_NULLAOSTA) : '').trim().toUpperCase();
-  if (!n || n === 'NON NECESSARIO') return null;
-  return n === 'OTTENUTO' ? NO_DOT_OK : NO_DOT_MISS;
-}
-// Layer dei pallini di un lotto: segue il ciclo di vita del layer principale (add/remove da filtri, QTS only, ecc.)
-function _makeNoLayer(geoData, layer) {
-  const noLayer = L.geoJSON(geoData, {
-    renderer: outlineRenderer,
-    filter: f => !!_noDotColor(f.properties),
-    style: f => ({ color: _noDotColor(f.properties), weight: 9, opacity: 0.95, dashArray: '1 10', lineCap: 'round', smoothFactor: 1.5, interactive: false })
-  });
-  layer.on('add',    () => { if (_noDotsOn) { noLayer.addTo(map); _refreshNoDots(); } });
-  layer.on('remove', () => { if (map.hasLayer(noLayer)) map.removeLayer(noLayer); });
-  if (_noDotsOn && map.hasLayer(layer)) noLayer.addTo(map);
-  return noLayer;
-}
-// Allinea i pallini allo stato della tratta (nascosta in modalità scavi, attenuata da cluster/evidenziazione)
-function _refreshNoDots() {
-  if (!_noDotsOn) return;
-  allLayers.forEach(({ layer, noLayer }) => {
-    if (!noLayer || !map.hasLayer(layer)) return;
-    const dots = new Map();
-    noLayer.eachLayer(d => { if (d.feature) dots.set(d.feature, d); });
-    layer.eachLayer(l => {
-      const d = l.feature && dots.get(l.feature);
-      if (!d) return;
-      const o = l.options.opacity;
-      d.setStyle(o > 0 ? { opacity: Math.min(0.95, o), weight: 9 } : { opacity: 0, weight: 0 });
-    });
-  });
-}
-function _updateNoDotsCounts() {
-  let ok = 0, miss = 0;
-  (allFeatures || []).forEach(f => { const c = _noDotColor(f.properties); if (c === NO_DOT_OK) ok++; else if (c) miss++; });
-  const a = document.getElementById('noCntMiss'), b = document.getElementById('noCntOk');
-  if (a) a.textContent = miss;
-  if (b) b.textContent = ok;
-}
-function toggleNoDots() {
-  _noDotsOn = !_noDotsOn;
-  allLayers.forEach(({ layer, noLayer }) => {
-    if (!noLayer) return;
-    if (_noDotsOn) { if (map.hasLayer(layer) && !map.hasLayer(noLayer)) noLayer.addTo(map); }
-    else if (map.hasLayer(noLayer)) map.removeLayer(noLayer);
-  });
-  const btn = document.getElementById('noDotsBtn');
-  if (btn) { btn.classList.toggle('active', _noDotsOn); btn.setAttribute('aria-pressed', String(_noDotsOn)); }
-  const st = document.getElementById('noDotsState'); if (st) st.textContent = _noDotsOn ? 'ON' : 'OFF';
-  const lg = document.getElementById('noDotsLegend'); if (lg) lg.style.display = _noDotsOn ? '' : 'none';
-  _updateNoDotsCounts();
-  _refreshNoDots();
-}
-// Dopo ogni funzione che ristila o mostra/nasconde le tratte, riallinea i pallini
-['setViewMode', 'applyFilterMulti', 'applyFilterClusterMulti', 'applyFilter', 'applyFilterCluster', 'clearHighlight', 'applyHighlight', 'applyHighlightMulti'].forEach(name => {
-  const orig = window[name];
-  if (typeof orig !== 'function') return;
-  window[name] = function () { const r = orig.apply(this, arguments); _refreshNoDots(); return r; };
-});
 // Renderer SVG dedicato al searchMarker: evita che il canvas di default
 // (creato da circleMarker con preferCanvas:true) si sovrapponga al mainRenderer
 // intercettando tutti i click sulle tratte.
@@ -1755,8 +1436,8 @@ function _fixScaleBar() {
 map.on('zoomend moveend', function(){ setTimeout(_fixScaleBar, 30); });
 setTimeout(_fixScaleBar, 800);
 
-// Esporta il tracciato QGIS (tutte le tratte, o solo i lotti attualmente filtrati in
-// sidebar se selectedLotti non è vuoto), con le info pratica già presenti in QGIS.geojson
+// Esporta il tracciato tratte (tutte, o solo i lotti attualmente filtrati in
+// sidebar se selectedLotti non è vuoto), con le info pratica già presenti in QTS.geojson
 // (STATO_AUTORIZZAZIONE, PRATICA, ecc. — qui NON escluse: a differenza dell'export impresa,
 // questa è la vista staff, senza motivo di nasconderle) e i dati cantiere (RO_CANTIERI,
 // caricato da /api/cantieri) aggiunti per TRATTA_ID con prefisso CANTIERE_*.
@@ -1774,7 +1455,6 @@ function _cantiereByTratta(){
 function _prepareExportProps(f, isSed, cantiereMap){
   const props = {...f.properties};
   if (!isSed) {
-    props.CLUSTER = f.properties.CLUSTER ?? f.properties.ID_CLUSTER ?? f.properties.cluster ?? null;
     const c = cantiereMap ? cantiereMap[f.properties.TRATTA_ID] : null;
     if (c) {
       props.CANTIERE_CODICE                 = c.codice_cantiere || null;
@@ -1809,20 +1489,20 @@ async function exportGeoJSON(){
   const lottiSuffix = lottiScope ? lottiScope.join('-') : 'Tutti';
   const tratte = lottiScope ? allFeatures.filter(f => lottiScope.includes(f.properties.LOTTO)) : allFeatures;
   const tratteFeatures = tratte.map(f => ({...f, properties: _prepareExportProps(f, false, cantiereMap)}));
-  _downloadGeoJSON(tratteFeatures, 'ENRI_Lotto_' + lottiSuffix + '_tratte.geojson');
+  _downloadGeoJSON(tratteFeatures, 'QTS_Lotto_' + lottiSuffix + '_tratte.geojson');
 
   const vuoiSed = confirm('Vuoi includere anche gli attraversamenti (SED) in un secondo file?');
   if (vuoiSed) {
     if (btn) { btn.textContent = '⏳...'; btn.disabled = true; }
     try {
-      const geojson = await fetchWithSWR('SED_classificato.geojson', { isJson: true, direct: true });
+      const geojson = await fetchWithSWR('SED_QTS.geojson', { isJson: true, direct: true });
       const sedFeatures = (geojson.features || [])
         .filter(f => !lottiScope || lottiScope.includes(f.properties.LOTTO))
         .map(f => ({...f, properties: _prepareExportProps(f, true, null)}));
       if (sedFeatures.length) {
         // Piccolo ritardo tra i due download: alcuni browser bloccano download multipli simultanei.
         await new Promise(r => setTimeout(r, 400));
-        _downloadGeoJSON(sedFeatures, 'ENRI_Lotto_' + lottiSuffix + '_sed.geojson');
+        _downloadGeoJSON(sedFeatures, 'QTS_Lotto_' + lottiSuffix + '_sed.geojson');
       } else {
         alert('Nessun attraversamento (SED) trovato per il/i lotto/i selezionato/i.');
       }
@@ -1845,7 +1525,6 @@ function makePopupHtml(p, gmapsUrl) {
 
   const statoDisplay = {
     'IN FIRMA RDS':'In Verifica / In Firma',
-    'INVIO PRELIMINARE':'Invio Preliminare',
     'PROTOCOLLATO INTEGRAZIONE':'Protocollato Integrazione',
     'NECESSARIA INTEGRAZIONE':'Necessaria Integrazione',
     'IN REDAZIONE INTEGRAZIONE':'In Redazione Integrazione',
@@ -1859,16 +1538,12 @@ function makePopupHtml(p, gmapsUrl) {
   const pratiche = p.PRATICA ? p.PRATICA.split('|').map(s=>s.trim()).filter(Boolean) : [];
   const tidUp = (p.TRATTA_ID||'').trim().toUpperCase();
   const praticaEnteList = RO_PRATICA_ENTE[tidUp] || [];
+  const _normCod = c => String(c||'').trim().toUpperCase().replace(/\/+$/, '');
   const praticheHtml = pratiche.length
     ? pratiche.map(pr=>{
-        const match = praticaEnteList.find(x => x.codice.toUpperCase() === pr.toUpperCase());
+        const match = praticaEnteList.find(x => _normCod(x.codice) === _normCod(pr));
         const enteLabel = match ? match.ente : '';
-        const prefix = pr.split('/')[0].trim().toUpperCase();
-        const tipoClass = prefix === 'AUT' ? 'aut' : prefix === 'NO' ? 'no' : prefix === 'ORD' ? 'ord' : '';
-        const concBadge = (typeof ENRI !== 'undefined' && ENRI.concomitanzaBadge) ? ENRI.concomitanzaBadge(p.TRATTA_ID) : '';
-        const pickAttr = AG_SEL ? ` data-cod="${pr}" onclick="agSelToggle(this.dataset.cod)" title="Clicca per aggiungere/rimuovere dall'appuntamento"` : '';
-        const pickCls = AG_SEL ? ' popup-pratica-pick' + (AG_SEL_MAP.has(pr.toUpperCase()) ? ' picked' : '') : '';
-        return `<span class="popup-pratica ${tipoClass}${pickCls}"${pickAttr}><span class="popup-pratica-code">${pr}${concBadge}</span>${enteLabel?`<span class="popup-pratica-ente">${enteLabel}</span>`:''}</span>`;
+        return `<span class="popup-pratica"><span class="popup-pratica-code">${pr}</span>${enteLabel?`<span class="popup-pratica-ente">${enteLabel}</span>`:''}</span>`;
       }).join('') : '';
 
   const lav = p.LAVORABILE;
@@ -1880,7 +1555,13 @@ function makePopupHtml(p, gmapsUrl) {
     ? `<div class="popup-detail-row"><span class="dl">Motivo</span><span class="dv" style="color:#c0392b">${p.MOTIVO_NO}</span></div>` : '';
   const noHtml = p.STATO_NULLAOSTA && p.STATO_NULLAOSTA !== 'NON NECESSARIO'
     ? `<div class="popup-detail-row"><span class="dl">Nulla Osta</span><span class="dv" style="color:${getColor(p.STATO_NULLAOSTA)}">${p.STATO_NULLAOSTA}</span></div>` : '';
-  const hasDetail = motivoHtml || noHtml;
+  const enriHtml = p.CONCOMITANZA_ENRI === 'SI'
+    ? `<div class="popup-detail-row"><span class="dl">Concomitanza ENRI</span><span class="dv" style="color:var(--retelit-teal);font-weight:700">SI</span></div>` : '';
+  // Pratiche in concomitanza ENRI sono gestite da Sertori (non dall'impresa del lotto)
+  const impresaTratta = p.CONCOMITANZA_ENRI === 'SI' ? 'Sertori' : (IMPRESE_PER_LOTTO[p.LOTTO] || IMPRESE[p.LOTTO] || '—');
+
+  const enti = [p.ENTE, p['ENTE 2']].filter(Boolean).join(', ') || '—';
+  const hasDetail = motivoHtml || noHtml || enriHtml;
 
   // Cantiere collegato a questa tratta — sola lettura, nessuna azione
   const cantiere = (typeof RO_CANTIERI !== 'undefined')
@@ -1894,7 +1575,7 @@ function makePopupHtml(p, gmapsUrl) {
     const cPct   = cTot > 0 ? Math.min(100, Math.round(cScav/cTot*100)) : 0;
     const cTec   = RO_SC_TECNICA_LABEL[cantiere.tecnica_scavo] || cantiere.tecnica_scavo || '';
     return `<div class="popup-section">
-      <div class="popup-section-title">Cantiere${cantiere.codice_cantiere ? ` <span style="font-family:var(--font-mono);font-weight:700;color:var(--retelit-blue);letter-spacing:0;text-transform:none">${cantiere.codice_cantiere}</span>` : ''}</div>
+      <div class="popup-section-title">Cantiere</div>
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
         <span class="popup-stato" style="background:${cCol}18;color:${cCol};border:1.5px solid ${cCol}44">
           <span class="popup-stato-dot" style="background:${cCol}"></span>${cLbl}
@@ -1984,8 +1665,8 @@ function makePopupHtml(p, gmapsUrl) {
             <span class="popup-field-val">${p.COMUNE||'—'}</span>
           </div>
           <div class="popup-field">
-            <span class="popup-field-label">Cluster</span>
-            <span class="popup-field-val">${p.CLUSTER||'—'}</span>
+            <span class="popup-field-label">Impresa</span>
+            <span class="popup-field-val">${impresaTratta}</span>
           </div>
           <div class="popup-field">
             <span class="popup-field-label">Lunghezza</span>
@@ -1994,13 +1675,6 @@ function makePopupHtml(p, gmapsUrl) {
           ${pratiche.length ? `<div class="popup-field full">
             <span class="popup-field-label">Pratiche</span>
             <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:2px">${praticheHtml}</div>
-          </div>` : `<div class="popup-field">
-            <span class="popup-field-label">Tipologia</span>
-            <span class="popup-field-val">${p.TIPOLOGIA||'—'}</span>
-          </div>`}
-          ${pratiche.length ? `<div class="popup-field">
-            <span class="popup-field-label">Tipologia</span>
-            <span class="popup-field-val">${p.TIPOLOGIA||'—'}</span>
           </div>` : ''}
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:${hasDetail||cantiereHtml?'10px':'0'}">
@@ -2011,7 +1685,7 @@ function makePopupHtml(p, gmapsUrl) {
         </div>
         ${hasDetail ? `<div class="popup-section">
           <div class="popup-section-title">Dettaglio stato</div>
-          ${motivoHtml}${noHtml}
+          ${motivoHtml}${noHtml}${enriHtml}
         </div>` : ''}
         ${cantiereHtml}
       </div>
@@ -2036,16 +1710,14 @@ function _timeout(ms, msg) {
 async function fetchWithSWR(rel, { onUpdate, isJson = true, direct = false } = {}) {
   const qs = '?t=' + Math.floor(Date.now() / 300000); // slot da 5 min
 
-  // File sensibili (Master.csv, QGIS.geojson, SED_classificato.geojson): il backend
+  // File sensibili (Master.csv, QTS.geojson, SED_QTS.geojson): il backend
   // NON li pubblica più su GitHub (SENSITIVE_FILES in server.py, per non esporre
   // i dati imprese senza autenticazione) — quindi la copia statica è congelata
   // per sempre. Per questi file si va sempre e solo su Render.
   if (direct) {
-    const _apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
-    const _url = _apiBase + '/api/data-text/' + rel;
     try {
       const text = await Promise.race([
-        fetch(_url + qs, { headers: { 'x-session-token': _sessionToken() } }).then(r => r.ok ? r.text() : Promise.reject('render-fail')),
+        fetch(rel + qs, { headers: { 'x-session-token': _sessionToken() } }).then(r => r.ok ? r.text() : Promise.reject('render-fail')),
         _timeout(30000, 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.')
       ]);
       return isJson ? JSON.parse(text) : text;
@@ -2094,7 +1766,7 @@ async function fetchWithSWR(rel, { onUpdate, isJson = true, direct = false } = {
 }
 
 async function loadGeoJSON() {
-  return fetchWithSWR('QGIS.geojson', { isJson: true, direct: true });
+  return fetchWithSWR('QTS.geojson', { isJson: true, direct: true });
 }
 
 function buildLottoStats(features) {
@@ -2136,7 +1808,7 @@ function renderSidebar(stats) {
   const list=document.getElementById('lottoList');
   if (!list) return;  // guard
   list.innerHTML='';
-  LOTTO_ORDER.forEach(id=>{
+  lottoOrder(stats).forEach(id=>{
     const s=stats[id]; if(!s) return;
     const color=getColor(s.statoLabel);
     const pct=s.pct.toFixed(1);
@@ -2159,13 +1831,6 @@ function renderSidebar(stats) {
     div.onclick=()=>zoomLotto(id);
     list.appendChild(div);
   });
-}
-
-// applyFilter mantenuto per compatibilità
-function applyFilter(lotto) {
-  if (lotto === 'TUTTI') { selectedLotti.clear(); }
-  else { selectedLotti.clear(); selectedLotti.add(lotto); }
-  applyFilterMulti();
 }
 
 function zoomLotto(id) {
@@ -2305,29 +1970,6 @@ function searchPratiche(query) {
     });
   });
 
-  // Passo 2c: match su CODICE CANTIERE (RO_CANTIERI) → un risultato per cantiere,
-  // posizionato sulla prima tratta del cantiere presente in mappa
-  (typeof RO_CANTIERI !== 'undefined' ? RO_CANTIERI : []).forEach(c => {
-    const cod = (c.codice_cantiere || '').trim();
-    if (!cod || !cod.toUpperCase().includes(q)) return;
-    const tid = (c.tratte || []).map(t => (t.tratta_id || '').trim().toUpperCase()).find(t => trattaIndex.has(t));
-    if (!tid) return;
-    const data = trattaIndex.get(tid);
-    const key = 'C|' + cod.toUpperCase();
-    if (seenResult.has(key)) return;
-    seenResult.add(key);
-    results.unshift({
-      type: 'pratica',
-      feature: data.feature,
-      cantiere: cod,
-      pratica: [...data.praticheSet].join(' · ') || data.tratta,
-      tratta: data.tratta,
-      lotto: data.lotto,
-      stato: data.stato,
-      comune: data.comune
-    });
-  });
-
   return results.slice(0, 15);
 }
 
@@ -2354,7 +1996,7 @@ function renderResults(pratiche, addresses, query) {
     hasAny = true;
     const div = document.createElement('div');
     div.className = 'search-divider';
-    div.textContent = 'Pratiche, Tratte e Cantieri';
+    div.textContent = 'Pratiche e Tratte';
     resultsEl.appendChild(div);
     pratiche.forEach(r => {
       const item = document.createElement('div');
@@ -2363,7 +2005,7 @@ function renderResults(pratiche, addresses, query) {
       item.innerHTML = `
         <span class="search-result-icon">◎</span>
         <div style="flex:1;min-width:0">
-          <div class="search-result-main">${r.cantiere ? `<span style="font-family:var(--font-mono);color:var(--retelit-blue)">${r.cantiere}</span> · ` : ''}${r.pratica}${(typeof ENRI !== 'undefined' && ENRI.concomitanzaBadge) ? ENRI.concomitanzaBadge(r.tratta) : ''}</div>
+          <div class="search-result-main">${r.pratica}</div>
           <div class="search-result-sub">${r.tratta} · Lotto ${r.lotto} · ${r.comune}</div>
         </div>
         <span style="font-size:9px;color:${color};white-space:nowrap;flex-shrink:0">${r.stato}</span>`;
@@ -2426,6 +2068,7 @@ let _highlightedLayers = [];
 
 function clearHighlight() {
   _highlightedLayers.forEach(l => {
+    if (!_noPass(l.feature)) { l.setStyle(_HIDDEN_STYLE); return; }
     l.setStyle({
       weight: 4, opacity: 0.95,
       color: getColorForMode(l.feature, currentViewMode)
@@ -2466,14 +2109,9 @@ function zoomToFeature(feature) {
     const latlng = bounds ? bounds.getCenter() : targetLayer.getLatLng?.();
     if (latlng) {
       map.setView(latlng, 15, {animate: false});
-      // Attende che il renderer canvas abbia ridisegnato dopo lo zoom, poi apre il popup
-      // PRIMA di evidenziare: openPopup chiude l'eventuale popup precedente, il cui
-      // listener once('popupclose') chiama clearHighlight() e cancellerebbe l'highlight appena applicato.
-      requestAnimationFrame(() => {
-        targetLayer.openPopup();
-        applyHighlight(targetLayer);
-        map.getContainer().style.cursor = '';
-      });
+      applyHighlight(targetLayer);
+      targetLayer.openPopup();
+      setTimeout(() => { map.getContainer().style.cursor = ''; }, 0);
     }
   }
   resultsEl.style.display = 'none';
@@ -2489,7 +2127,7 @@ inputEl.addEventListener('input', () => {
   searchTimer = setTimeout(async () => {
     const pratiche = searchPratiche(q);
     // Cerca indirizzo solo se query > 3 chars e non sembra un codice pratica
-    const looksLikePratica = /^(AUT|NO|ORD|TR_|CA\/)/i.test(q);
+    const looksLikePratica = /^(AUT|NO|ORD|TR_)/i.test(q);
     const addresses = (!looksLikePratica && q.length > 3) ? await searchAddress(q) : [];
     renderResults(pratiche, addresses, q);
   }, 350);
@@ -2506,141 +2144,6 @@ document.addEventListener('click', e => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 
-// ── LAYER QTS ───────────────────────────────────────────────────────────────
-let qtsLayer = null;
-let qtsOutlineLayer = null;
-let qtsLoaded = false;
-const QTS_COLOR_HEX = '#1A7D99';
-
-async function loadQTS() {
-  if (qtsLoaded) return;
-  try {
-    const geojson = await fetchWithSWR('QTS.geojson', {
-      isJson: true,
-      onUpdate: (fresh) => {
-        if (!qtsLoaded) return;
-        if (qtsLayer       && map.hasLayer(qtsLayer))        map.removeLayer(qtsLayer);
-        if (qtsOutlineLayer && map.hasLayer(qtsOutlineLayer)) map.removeLayer(qtsOutlineLayer);
-        qtsLoaded = false; qtsLayer = null; qtsOutlineLayer = null;
-        loadQTSFromGeojson(fresh);
-        if (_qtsActive) { qtsOutlineLayer.addTo(map); qtsLayer.addTo(map); }
-      }
-    });
-
-    let totM = 0;
-    geojson.features.forEach(f => {
-      const l = f.properties && (f.properties.LUNGHEZZA || f.properties.lunghezza || 0);
-      totM += Number(l) || 0;
-    });
-
-    qtsOutlineLayer = L.geoJSON(geojson, {
-      renderer: outlineRenderer,
-      style: () => ({ color:'#5577aa', weight:8, opacity:0.3, smoothFactor:1.5, interactive:false })
-    });
-
-    qtsLayer = L.geoJSON(geojson, {
-      renderer: mainRenderer,
-      style: () => ({ color: QTS_COLOR_HEX, weight:4, opacity:0.95, smoothFactor:1.5, dashArray:'8,6' }),
-      onEachFeature: (f, layer) => {
-        const p = f.properties || {};
-        const len = p.LUNGHEZZA || p.lunghezza || '';
-        const desc = [p.NOME || p.nome || p.NAME || '', p.TRATTA_ID || p.tratta_id || ''].filter(Boolean).join(' — ');
-        layer.bindPopup(`<div class="popup-inner">
-          <div class="popup-header" style="border-color:#0aa3c255">
-            <span class="popup-lotto" style="color:${QTS_COLOR_HEX}">QTS</span>
-            ${desc ? `<span class="popup-impresa" style="color:${QTS_COLOR_HEX}">${desc}</span>` : ''}
-          </div>
-          ${len ? `<div class="popup-row"><span class="label">Lunghezza</span><span class="val">${(Number(len)/1000).toFixed(3).replace('.',',')} km</span></div>` : ''}
-          <div style="margin-top:8px"><span class="popup-stato" style="background:#1A7D9922;color:${QTS_COLOR_HEX};border:1px solid #8b5cf644">Tracciato QTS</span></div>
-        </div>`, {maxWidth:320});
-        layer.on('mouseover', e => { e.target.setStyle({weight:7, opacity:1}); e.target.bringToFront(); });
-        layer.on('mouseout',  e => { e.target.setStyle({weight:4, opacity:0.95}); });
-      }
-    });
-
-    qtsLoaded = true;
-
-    if (totM > 0) {
-      const kmEl = document.getElementById('qtsKm');
-      if (kmEl) { kmEl.textContent = (totM/1000).toFixed(1).replace('.',',') + ' km'; kmEl.style.display=''; }
-    }
-
-  } catch(e) {
-    console.warn('QTS layer:', e.message);
-    const tog = document.getElementById('qtsToggle');
-    if (tog) {
-      tog.checked  = false;   // ← resetta lo stato visivo prima di disabilitare
-      tog.disabled = true;
-      tog.parentElement.title = 'QTS.geojson non disponibile';
-    }
-  }
-}
-
-function loadQTSFromGeojson(geojson) {
-  // Ricostruisce i layer QTS da geojson già caricato (usato dall'update SWR)
-  qtsOutlineLayer = L.geoJSON(geojson, {
-    renderer: outlineRenderer,
-    style: () => ({ color:'#5577aa', weight:8, opacity:0.3, smoothFactor:1.5, interactive:false })
-  });
-  qtsLayer = L.geoJSON(geojson, {
-    renderer: mainRenderer,
-    style: () => ({ color: QTS_COLOR_HEX, weight:4, opacity:0.95, smoothFactor:1.5, dashArray:'8,6' })
-  });
-  qtsLoaded = true;
-}
-
-async function setQTSOnly(on) {
-  qtsOnlyMode = !!on;
-  const btn = document.getElementById('qtsOnlyBtn');
-  if (btn) btn.classList.toggle('active', qtsOnlyMode);
-
-  if (qtsOnlyMode) {
-    const tog = document.getElementById('qtsToggle');
-    if (tog && !tog.checked) {
-      tog.checked = true;
-      toggleQTS(true);
-    } else if (tog && tog.checked && !qtsLoaded) {
-      await loadQTS();
-      toggleQTS(true);
-    }
-    allLayers.forEach(({layer,outlineLayer}) => {
-      if (map.hasLayer(layer)) map.removeLayer(layer);
-      if (outlineLayer && map.hasLayer(outlineLayer)) map.removeLayer(outlineLayer);
-    });
-    if (qtsLayer) {
-      const g = L.featureGroup([qtsLayer]);
-      if (g.getBounds && g.getBounds().isValid()) map.fitBounds(g.getBounds(), { padding:[50,50], maxZoom:14 });
-    }
-    return;
-  }
-
-  if (currentViewMode === 'cluster') applyFilterClusterMulti();
-  else applyFilterMulti();
-}
-
-function toggleQTS(on) {
-  if (!on && qtsOnlyMode) setQTSOnly(false);
-  if (on) {
-    if (!qtsLoaded) {
-      loadQTS().then(() => {
-        // Verifica che il checkbox sia ancora attivo prima di aggiungere i layer
-        const tog = document.getElementById('qtsToggle');
-        if (tog && tog.checked && qtsLayer) {
-          if (!map.hasLayer(qtsOutlineLayer)) qtsOutlineLayer.addTo(map).bringToBack();
-          if (!map.hasLayer(qtsLayer)) qtsLayer.addTo(map).bringToFront();
-        }
-      });
-    } else if (qtsLayer) {
-      if (!map.hasLayer(qtsOutlineLayer)) qtsOutlineLayer.addTo(map).bringToBack();
-      if (!map.hasLayer(qtsLayer)) qtsLayer.addTo(map).bringToFront();
-      else qtsLayer.bringToFront();
-    }
-  } else {
-    if (qtsLayer && map.hasLayer(qtsLayer)) map.removeLayer(qtsLayer);
-    if (qtsOutlineLayer && map.hasLayer(qtsOutlineLayer)) map.removeLayer(qtsOutlineLayer);
-  }
-}
-// ─────────────────────────────────────────────────────────────────────────────
 
 // ── LAYER SED ATTRAVERSAMENTI ───────────────────────────────────────────────
 const SED_META = {
@@ -2729,97 +2232,6 @@ let sedLoaded  = false;
 let _sedActive = false;
 let _sedLoading = false; // guard anti race-condition
 
-// Indice pratica → ente, costruito da Master.csv (TRATTA_ID + ENTE + TIPO_PERMESSO + PRATICA).
-// Necessario perché QGIS.geojson aggrega già le pratiche di più righe/enti in un'unica
-// stringa p.PRATICA ("AUT/3/1A | NO/5/1A | ..."), perdendo quale ente corrisponde a quale codice.
-let RO_PRATICA_ENTE = {}; // key: TRATTA_ID upper → [{codice, ente}]
-
-// ── SELEZIONE PRATICHE PER L'AGENDA (mappa.html?seleziona=agenda) ───────────
-// agenda.html salva il form in sessionStorage['agenda_draft'] e apre la mappa in questa modalità:
-// i codici pratica nel popup diventano cliccabili; "Fatto" riscrive draft.mapPick e torna all'agenda.
-const AG_SEL = new URLSearchParams(location.search).get('seleziona') === 'agenda';
-const AG_SEL_MAP = new Map(); // CODICE UPPER → codice come mostrato
-function _agDraft() { try { return JSON.parse(sessionStorage.getItem('agenda_draft') || 'null'); } catch (_) { return null; } }
-function agSelToggle(code) {
-  const k = String(code || '').trim().toUpperCase(); if (!k) return;
-  if (AG_SEL_MAP.has(k)) AG_SEL_MAP.delete(k); else AG_SEL_MAP.set(k, String(code).trim());
-  _agSelRefresh();
-}
-function _agSelRefresh() {
-  const bar = document.getElementById('agSelBar'); if (!bar) return;
-  const chips = [...AG_SEL_MAP.entries()].map(([k, v]) => `<span class="ag-chip">${v}<button type="button" title="Rimuovi" onclick="agSelToggle('${k}')">&times;</button></span>`).join('');
-  bar.querySelector('.ag-chips').innerHTML = chips || '<span class="ag-empty">nessuna pratica selezionata</span>';
-  bar.querySelector('#agSelDone').textContent = 'Fatto' + (AG_SEL_MAP.size ? ' (' + AG_SEL_MAP.size + ')' : '');
-  document.querySelectorAll('.popup-pratica-pick').forEach(el => el.classList.toggle('picked', AG_SEL_MAP.has((el.dataset.cod || '').toUpperCase())));
-}
-// Click su una tratta in modalità agenda: aggiunge tutte le sue pratiche (se già tutte selezionate le rimuove).
-// Per affinare la scelta si usano i chip nel popup o nella barra.
-function agSelFromTratta(p) {
-  const codes = String((p && p.PRATICA) || '').split(/[|;]/).map(x => x.trim()).filter(Boolean);
-  if (!codes.length) return;
-  const allIn = codes.every(c => AG_SEL_MAP.has(c.toUpperCase()));
-  codes.forEach(c => { const k = c.toUpperCase(); if (allIn) AG_SEL_MAP.delete(k); else if (!AG_SEL_MAP.has(k)) AG_SEL_MAP.set(k, c); });
-  _agSelRefresh();
-}
-function agSelFinish(save) {
-  const d = _agDraft();
-  if (d && save) { d.mapPick = [...AG_SEL_MAP.values()]; sessionStorage.setItem('agenda_draft', JSON.stringify(d)); }
-  location.href = 'agenda.html' + (d ? '?ripristina=1' : '');
-}
-function agSelInit() {
-  if (!AG_SEL) return;
-  const d = _agDraft();
-  ((d && d.selPrat) || []).forEach(c => AG_SEL_MAP.set(String(c).trim().toUpperCase(), String(c).trim()));
-  const bar = document.createElement('div'); bar.id = 'agSelBar';
-  bar.innerHTML = '<span class="ag-t">Seleziona le pratiche per l\'appuntamento</span><span class="ag-chips"></span>' +
-    '<button type="button" class="ag-btn primary" id="agSelDone" onclick="agSelFinish(true)">Fatto</button>' +
-    '<button type="button" class="ag-btn" onclick="agSelFinish(false)">Annulla</button>';
-  document.body.appendChild(bar);
-  _agSelRefresh();
-  map.on('popupopen', _agSelRefresh);
-}
-let _praticaEnteLoading = null;
-function loadPraticaEnteIndex() {
-  if (_praticaEnteLoading) return _praticaEnteLoading;
-  _praticaEnteLoading = (async () => {
-    try {
-      const csvText = await fetchWithSWR('Master.csv', { isJson: false, direct: true }).catch(() => null);
-      if (!csvText) return;
-      const rows = csvText.split('\n');
-      const _sep = rows[0].includes('\t') ? '\t' : (rows[0].includes(';') ? ';' : ',');
-      const headers = rows[0].split(_sep).map(h => h.trim().replace(/^"|"$/g,''));
-      const idx = n => headers.findIndex(h => h.toUpperCase() === n.toUpperCase());
-      const iTid = idx('TRATTA_ID'), iEnte = idx('ENTE'), iTipo = idx('TIPO_PERMESSO');
-      const iPrat = idx('PRATICA'), iLotto = idx('LOTTO'), iSrc = idx('Source.Name');
-      if (iTid < 0 || iEnte < 0) return;
-      const idxMap = {};
-      rows.slice(1).forEach(row => {
-        if (!row.trim()) return;
-        const cols = row.split(_sep).map(c => c.trim().replace(/^"|"$/g,''));
-        const tid = (cols[iTid]||'').trim().toUpperCase(); if (!tid) return;
-        const ente = cols[iEnte]||'';
-        const tipo = iTipo >= 0 ? cols[iTipo]||'' : '';
-        const prat = iPrat >= 0 ? cols[iPrat]||'' : '';
-        if (!prat) return;
-        const src   = iSrc  >= 0 ? cols[iSrc] ||'' : '';
-        const lotto = src ? src.replace(/\.xlsx$/i,'').replace(/^Lotto\s*/i,'').trim().toUpperCase()
-                         : (iLotto >= 0 ? cols[iLotto]||'' : '');
-        const tipoPrefix = tipo === 'AUTORIZZAZIONE' ? 'AUT'
-          : tipo === 'NULLA OSTA' ? 'NO'
-          : tipo === 'ORDINANZA'  ? 'ORD'
-          : (tipo.substring(0,3)||'?');
-        const codice = tipoPrefix + '/' + prat + (lotto ? '/'+lotto : '');
-        if (!idxMap[tid]) idxMap[tid] = [];
-        if (!idxMap[tid].some(e => e.codice.toUpperCase() === codice.toUpperCase())) {
-          idxMap[tid].push({ codice, ente });
-        }
-      });
-      RO_PRATICA_ENTE = idxMap;
-    } catch(_) {}
-  })();
-  return _praticaEnteLoading;
-}
-
 async function loadSED() {
   if (sedLoaded || _sedLoading) return;
   _sedLoading = true;
@@ -2834,9 +2246,35 @@ async function _loadSEDInner() {
       const csvResp = csvResp_text ? { ok: true, text: async () => csvResp_text } : { ok: false };
       if (csvResp.ok) {
         const csvText = await csvResp.text();
-        const rows = csvText.split('\n');
-        const _sep = rows[0].includes('\t') ? '\t' : (rows[0].includes(';') ? ';' : ',');
-        const headers = rows[0].split(_sep).map(h => h.trim().replace(/^"|"$/g,''));
+        // Parser CSV quote-aware: split solo su '\n'/separatore FUORI da campi
+        // quotati. Necessario perché le righe scritte da _sync_enri_to_master
+        // (backend) hanno NOTE con newline letterale incorporato (es. "SP45\n
+        // [ENRI] ...", quotato correttamente da pandas to_csv) — uno split
+        // naive su '\n' spezzava quella riga in due, azzerando N_SED/PRATICA
+        // e facendola scartare, così i popup SED restavano sull'ultimo stato
+        // valido (IN REDAZIONE) per le pratiche in concomitanza ENRI. Stesso
+        // bug e stesso fix di index.html/_processMasterText.
+        const firstLineEnd = csvText.indexOf('\n');
+        const firstLine = (firstLineEnd === -1 ? csvText : csvText.slice(0, firstLineEnd)).replace(/\r/, '');
+        const _sep = firstLine.includes('\t') ? '\t' : (firstLine.includes(';') ? ';' : ',');
+        const rows = [];
+        { let row = [], cur = '', inQ = false;
+          const src = csvText.replace(/\r\n/g, '\n');
+          for (let i = 0; i < src.length; i++) {
+            const ch = src[i];
+            if (inQ) {
+              if (ch === '"') { if (src[i+1] === '"') { cur += '"'; i++; } else { inQ = false; } }
+              else cur += ch;
+            } else if (ch === '"') { inQ = true; }
+            else if (ch === _sep) { row.push(cur.trim()); cur = ''; }
+            else if (ch === '\n') { row.push(cur.trim()); rows.push(row); row = []; cur = ''; }
+            else cur += ch;
+          }
+          if (cur !== '' || row.length) { row.push(cur.trim()); rows.push(row); }
+        }
+        if (rows.length && rows[rows.length - 1].every(c => c === '')) rows.pop();
+
+        const headers = rows[0];
         const idx = n => headers.findIndex(h => h.toUpperCase() === n.toUpperCase());
         const iNSed  = idx('N_SED'),    iTipo  = idx('TIPO_PERMESSO');
         const iEnte  = idx('ENTE'),     iStato = idx('STATO_PERMESSO');
@@ -2845,9 +2283,8 @@ async function _loadSEDInner() {
         const iLotto = idx('LOTTO'),    iSrc   = idx('Source.Name');
 
         const permMap = {}; // key: nSed|pratica|tipo → best row
-        rows.slice(1).forEach(row => {
-          if (!row.trim()) return;
-          const cols = row.split(_sep).map(c => c.trim().replace(/^"|"$/g,''));
+        rows.slice(1).forEach(cols => {
+          if (!cols.length || cols.every(c => c === '')) return;
           const nSed = cols[iNSed]; if (!nSed) return;
           const prat = iPrat >= 0 ? cols[iPrat]||'' : '';
           const tipo = iTipo >= 0 ? cols[iTipo]||'' : '';
@@ -2893,7 +2330,7 @@ async function _loadSEDInner() {
     // questi file — vedi loadGeoJSON), si va diretti su Render. Elimina anche
     // il rischio di loop di fetch già osservato quando statico e Render
     // differivano sempre (whitespace/ordine chiavi tra disco e GridFS).
-    const geojson = await fetchWithSWR('SED_classificato.geojson', { isJson: true, direct: true });
+    const geojson = await fetchWithSWR('SED_QTS.geojson', { isJson: true, direct: true });
 
     sedLayer = _buildSedLayer(geojson);
     sedLoaded = true;
@@ -2901,7 +2338,7 @@ async function _loadSEDInner() {
   } catch (e) {
     console.warn('SED layer:', e.message);
     const btn = document.getElementById('sedBtn');
-    if (btn) { btn.style.opacity = '0.45'; btn.style.pointerEvents = 'none'; btn.title = 'SED_classificato.geojson non disponibile'; }
+    if (btn) { btn.style.opacity = '0.45'; btn.style.pointerEvents = 'none'; btn.title = 'SED_QTS.geojson non disponibile'; }
   }
 }
 
@@ -3028,6 +2465,7 @@ function _buildMapLayers(geojson, isUpdate = false) {
   const features = geojson.features.filter(f => f.properties.LOTTO !== 'P');
   allFeatures = features;
   lottoStats = buildLottoStats(features);
+  assignLottoColors(lottoStats);
 
   if (isUpdate) {
     allLayers.forEach(({layer, outlineLayer}) => {
@@ -3045,27 +2483,25 @@ function _buildMapLayers(geojson, isUpdate = false) {
     const geoData = { type: 'FeatureCollection', features: feats };
     const outlineLayer = L.geoJSON(geoData, {
       renderer: outlineRenderer,
-      style: () => ({ color:'#8899aa', weight:7, opacity:0.25, smoothFactor:1.5, interactive:false })
+      style: f => Object.assign(_outlineStyle(f, !_noPass(f)), { smoothFactor:1.5, interactive:false })
     }).addTo(map);
     outlineLayer.bringToBack();
     const layer = L.geoJSON(geoData, {
       renderer: mainRenderer,
-      style: f => ({ color: getColorForMode(f, currentViewMode), weight:4, opacity:0.95, smoothFactor:1.5 }),
+      style: f => _noPass(f) ? ({ color: getColorForMode(f, currentViewMode), weight:4, opacity:0.95, smoothFactor:1.5 }) : Object.assign({ smoothFactor:1.5 }, _HIDDEN_STYLE),
       onEachFeature: (f, layer) => {
         const coords = f.geometry.type === 'MultiLineString'
           ? f.geometry.coordinates.flat() : f.geometry.coordinates;
         const mid = coords[Math.floor(coords.length / 2)];
         const gmapsUrl = mid ? `https://www.google.com/maps?q=${mid[1].toFixed(6)},${mid[0].toFixed(6)}` : null;
         const isMobile = window.innerWidth <= 768;
-        // Contenuto lazy (funzione): il popup si costruisce all'apertura, quando RO_CANTIERI è sicuramente
-        // caricato. Costruirlo qui (eager) lo generava senza sezione Cantiere/bottone Sopralluogo se
-        // /api/cantieri rispondeva dopo il GeoJSON (es. cold start Render, senza cache).
-        layer.bindPopup(() => makePopupHtml(f.properties, gmapsUrl), {
+        layer.bindPopup(makePopupHtml(f.properties, gmapsUrl), {
           maxWidth: isMobile ? Math.min(window.innerWidth - 40, 320) : 640,
           autoPanPaddingTopLeft:  isMobile ? L.point(10, 180) : L.point(10, 70),
           autoPanPaddingBottomRight: isMobile ? L.point(10, 160) : L.point(10, 10),
           // Offset >= metà larghezza max (640/2=320) + margine, così il bordo
-          // sinistro del popup resta sempre a destra del punto cliccato.
+          // sinistro del popup resta sempre a destra del punto cliccato,
+          // senza coprire la tratta selezionata.
           offset: isMobile ? L.point(0, -10) : L.point(360, -10),
         });
         const stato = f.properties.STATO_LEGENDA || f.properties.STATO_AUTORIZZAZIONE || 'IN ATTESA';
@@ -3083,27 +2519,31 @@ function _buildMapLayers(geojson, isUpdate = false) {
         layer.on('mouseover', e => { e.target.setStyle({ weight:6, opacity:1 }); e.target.bringToFront(); });
         layer.on('mouseout', e => {
           if (_highlightedLayers.includes(e.target)) return;
+          if (!_noPass(e.target.feature)) { e.target.setStyle(_HIDDEN_STYLE); return; }
           e.target.setStyle({ weight:4, opacity:0.95, color: getColorForMode(e.target.feature, currentViewMode) });
         });
         layer.on('click', e => {
-          if (AG_SEL) agSelFromTratta(e.target.feature && e.target.feature.properties);
           if (_selectorMode === 'pratica') selectByPraticaFromLayer(e.target);
           else applyHighlight(e.target);
         });
       }
     }).addTo(map);
-    const noLayer = _makeNoLayer(geoData, layer);
-    allLayers.push({ layer, outlineLayer, lotto, noLayer });
+    allLayers.push({ layer, outlineLayer, lotto });
   });
-  _updateNoDotsCounts();
+  _updateNoCounts();
+  if (isUpdate && _noFilter !== 'tutte') allLayers.forEach(({layer}) => layer.eachLayer(l => { if (!_noPass(l.feature)) l.options.interactive = false; }));
 
-  if (!isUpdate) {
+  // Con deep-link ?pratica= niente zoom iniziale su tutto: l'animazione in corso
+  // sovrascriveva il fitBounds sulla pratica (focusPraticaFromUrl lo applica subito dopo).
+  if (!isUpdate && !_hasPraticaDeepLink()) {
     const allGroup = L.featureGroup(allLayers.map(x => x.layer));
     map.fitBounds(allGroup.getBounds(), { padding:[40,40] });
   }
 
   renderSidebar(lottoStats);
   buildStatsBar(lottoStats, features);
+  document.getElementById('statusBadge').textContent = '● ' + features.length + ' tratte';
+  document.getElementById('statusBadge').className = 'badge ok';
   document.getElementById('loadingOverlay').style.display = 'none';
 
   if (isUpdate && currentFilter !== 'TUTTI') {
@@ -3123,9 +2563,59 @@ const RO_SC_STATO_COLOR = {
 };
 const RO_SC_TECNICA_LABEL = { trincea:'Trincea', no_dig:'No Dig', canaletta:'Canaletta' };
 let RO_CANTIERI = [];
+
+// Indice pratica → ente, da Master.csv (TRATTA_ID + ENTE + TIPO_PERMESSO + PRATICA + Source.Name).
+// QTS.geojson aggrega le pratiche di più righe/enti in un'unica stringa p.PRATICA
+// ("AUT/3/A | NO/5/A"), perdendo quale ente corrisponde a quale codice. Stesso codice
+// costruito dal backend (_build_pratica): PREFISSO/PRATICA/LOTTO.
+let RO_PRATICA_ENTE = {}; // TRATTA_ID upper → [{codice, ente}]
+let _praticaEnteLoading = null;
+function loadPraticaEnteIndex() {
+  if (_praticaEnteLoading) return _praticaEnteLoading;
+  _praticaEnteLoading = (async () => {
+    try {
+      const csvText = await fetchWithSWR('Master.csv', { isJson: false, direct: true }).catch(() => null);
+      if (!csvText) return;
+      const src = csvText.replace(/\r\n/g, '\n');
+      const nl = src.indexOf('\n');
+      const first = nl === -1 ? src : src.slice(0, nl);
+      const sep = first.includes('\t') ? '\t' : (first.includes(';') ? ';' : ',');
+      // parser quote-aware (NOTE con newline incorporato non deve spezzare la riga)
+      const rows = []; let row = [], cur = '', inQ = false;
+      for (let i = 0; i < src.length; i++) {
+        const ch = src[i];
+        if (inQ) { if (ch === '"') { if (src[i+1] === '"') { cur += '"'; i++; } else inQ = false; } else cur += ch; }
+        else if (ch === '"') inQ = true;
+        else if (ch === sep) { row.push(cur.trim()); cur = ''; }
+        else if (ch === '\n') { row.push(cur.trim()); rows.push(row); row = []; cur = ''; }
+        else cur += ch;
+      }
+      if (cur !== '' || row.length) { row.push(cur.trim()); rows.push(row); }
+      if (rows.length < 2) return;
+      const H = rows[0].map(h => h.trim().toUpperCase());
+      const ix = n => H.indexOf(n);
+      const iTid = ix('TRATTA_ID'), iEnte = ix('ENTE'), iTipo = ix('TIPO_PERMESSO'), iPrat = ix('PRATICA'), iSrc = ix('SOURCE.NAME');
+      if (iTid < 0 || iEnte < 0 || iPrat < 0) return;
+      const idxMap = {};
+      rows.slice(1).forEach(cols => {
+        const tid = (cols[iTid]||'').trim().toUpperCase(); if (!tid) return;
+        const prat = (cols[iPrat]||'').trim(); if (!prat) return;
+        const ente = cols[iEnte]||'';
+        const tipo = iTipo >= 0 ? (cols[iTipo]||'').trim().toUpperCase() : '';
+        const lotto = (iSrc >= 0 ? (cols[iSrc]||'') : '').replace(/^lotto\s*/i,'').replace(/\.xlsx?$/i,'').trim().toUpperCase();
+        const pref = tipo === 'AUTORIZZAZIONE' ? 'AUT' : tipo === 'NULLA OSTA' ? 'NO' : tipo === 'ORDINANZA' ? 'ORD' : (tipo.substring(0,3)||'?');
+        const codice = pref + '/' + prat + '/' + lotto;
+        (idxMap[tid] = idxMap[tid] || []);
+        if (!idxMap[tid].some(e => e.codice.toUpperCase() === codice.toUpperCase())) idxMap[tid].push({ codice, ente });
+      });
+      RO_PRATICA_ENTE = idxMap;
+    } catch(_) {}
+  })();
+  return _praticaEnteLoading;
+}
 async function _roLoadCantieri(){
   try {
-    const r = await fetch(ENRI.isEnabled ? ENRI.apiBase + '/api/cantieri' : '/api/cantieri', { headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } });
+    const r = await fetch(QTS.isEnabled ? QTS.apiBase + '/api/cantieri' : '/api/cantieri', { headers: { 'x-session-token': localStorage.getItem('_qts_session') || '' } });
     if (r.ok) { const d = await r.json(); RO_CANTIERI = d.cantieri || []; }
   } catch(_) {}
 }
@@ -3140,8 +2630,10 @@ async function _roLoadCantieri(){
     lottoStats=buildLottoStats(features);
 
     _buildMapLayers(geojson);
-    setTimeout(focusPraticaFromUrl, 400); // deep-link da index/agenda: mappa.html?pratica=AUT/3/1A
-    agSelInit();   // modalità selezione pratiche per l'agenda (?seleziona=agenda)
+
+    // deep-link da index: mappa.html?pratica=AUT/3/A (dopo che il layout e' stabile)
+    map.invalidateSize();
+    requestAnimationFrame(focusPraticaFromUrl);
 
   } catch(e){
     document.getElementById('loadingOverlay').innerHTML=`
@@ -3152,6 +2644,10 @@ async function _roLoadCantieri(){
 
 // ── DEEP-LINK PRATICA (?pratica=AUT/3/1A) ───────────────────────────────────
 // Evidenzia tutte le tratte della pratica, inquadra la mappa e mostra il badge selettore.
+function _hasPraticaDeepLink() {
+  return !!(new URLSearchParams(location.search).get('pratica') || '').trim();
+}
+
 function focusPraticaFromUrl() {
   const q = (new URLSearchParams(location.search).get('pratica') || '').trim().toUpperCase();
   if (!q) return;
@@ -3162,7 +2658,11 @@ function focusPraticaFromUrl() {
       if (codes.includes(q)) matched.push(l);
     });
   });
-  if (!matched.length) { alert('Pratica ' + q + ': nessuna tratta trovata in mappa.'); return; }
+  if (!matched.length) {
+    try { map.fitBounds(L.featureGroup(allLayers.map(x => x.layer)).getBounds(), { padding:[40,40], animate:false }); } catch (_) {}
+    alert('Pratica ' + q + ': nessuna tratta trovata in mappa.');
+    return;
+  }
   applyHighlightMulti(matched);
   try { map.fitBounds(L.featureGroup(matched).getBounds(), { padding: [70, 70], maxZoom: 16, animate: false }); } catch (_) {}
   const totale = matched.reduce((s, l) => s + (Number(l.feature?.properties?.LUNGHEZZA) || 0), 0);
@@ -3207,259 +2707,7 @@ const SelectorControl = L.Control.extend({
 });
 new SelectorControl().addTo(map);
 
-// ── REPORT AWS ───────────────────────────────────────────────────────────
-// PowerPoint con uno screenshot della mappa per cluster, in modalità
-// "Progettazione" (currentViewMode 'stato' → colore per STATO_LEGENDA/STATO_AUTORIZZAZIONE).
-// Tasto nella topbar (id="reportAwsBtn"), non più tra i controlli mappa.
 
-function _attendiMappaPronta() {
-  return new Promise(resolve => {
-    let done = false;
-    const finisci = () => { if (!done) { done = true; setTimeout(resolve, 700); } };
-    map.once('moveend', finisci);
-    setTimeout(finisci, 2500); // fallback se i bounds non cambiano (moveend non scatta)
-  });
-}
-
-// Attende il caricamento delle tile del layer di sfondo appena attivato
-// (necessario dopo setBaseLayer, che non scatena 'moveend').
-function _attendiTileLayerPronto(layer, timeoutMs = 3000) {
-  return new Promise(resolve => {
-    let done = false;
-    const finisci = () => { if (!done) { done = true; setTimeout(resolve, 300); } };
-    if (layer && typeof layer.once === 'function') layer.once('load', finisci);
-    setTimeout(finisci, timeoutMs);
-  });
-}
-
-function _dataOggiFile() {
-  const d = new Date();
-  return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
-}
-
-// pptxgenjs sizing:{type:'contain'} richiede di conoscere le dimensioni native
-// dell'immagine per calcolare il rettangolo aspect-corretto: con data URI
-// base64 in browser (nessun file da ispezionare) non ci riesce e ricade su
-// uno stretch semplice che riempie tutto il box, deformando l'immagine se il
-// box non ha le sue stesse proporzioni. Calcoliamo noi il contain a partire
-// dalle dimensioni reali del canvas catturato, così l'immagine finale ha
-// sempre le stesse proporzioni della mappa a schermo, solo centrata nel box.
-function _containFit(imgW, imgH, boxX, boxY, boxW, boxH) {
-  const scale = Math.min(boxW / imgW, boxH / imgH);
-  const w = imgW * scale, h = imgH * scale;
-  return { x: boxX + (boxW - w) / 2, y: boxY + (boxH - h) / 2, w, h };
-}
-
-// ── UI selezione NEGATI ────────────────────────────────────────────────────
-// Aggrega le feature caricate per pratica (o per tratta se PRATICA è vuoto):
-// la stessa granularità con cui il backend assegna una sola AUTORIZZAZIONE
-// per tratta, quindi selezionare una pratica nega tutte le sue tratte.
-function _awsBuildDeniedIndex() {
-  const idx = new Map();
-  (allFeatures || []).forEach(f => {
-    const p = f.properties || {};
-    const key = _awsPraticaKey(p) || _awsTrattaKey(p);
-    if (!key) return;
-    let e = idx.get(key);
-    if (!e) {
-      e = {
-        key,
-        codice: key.startsWith('P:') ? key.slice(2) : 'tratta ' + key.slice(2),
-        isPratica: key.startsWith('P:'),
-        ente: String(p.ENTE || '').trim(),
-        comuni: new Set(),
-        lotto: String(p.LOTTO ?? '').trim(),
-        cluster: String(p.CLUSTER ?? p.ID_CLUSTER ?? p.cluster ?? '').trim(),
-        stato: String(p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE || 'IN ATTESA').trim().toUpperCase(),
-        tratte: 0, metri: 0
-      };
-      idx.set(key, e);
-    }
-    if (p.COMUNE) e.comuni.add(String(p.COMUNE).trim());
-    e.tratte++;
-    e.metri += Number(p.LUNGHEZZA) || 0;
-  });
-  return [...idx.values()].sort((a, b) =>
-    (a.lotto || '').localeCompare(b.lotto || '', 'it', { numeric: true }) ||
-    a.codice.localeCompare(b.codice, 'it', { numeric: true })
-  );
-}
-
-function openDeniedModal() {
-  if (!allFeatures || !allFeatures.length) { alert('Mappa non ancora pronta.'); return; }
-  const sel = document.getElementById('deniedLotto');
-  if (sel && sel.options.length <= 1) {
-    const lotti = [...new Set(allFeatures.map(f => String(f.properties.LOTTO ?? '').trim()).filter(Boolean))]
-      .sort((a, b) => (LOTTO_ORDER.indexOf(a) - LOTTO_ORDER.indexOf(b)) || a.localeCompare(b));
-    lotti.forEach(l => { const o = document.createElement('option'); o.value = l; o.textContent = 'Lotto ' + l; sel.appendChild(o); });
-  }
-  renderDeniedList();
-  document.getElementById('deniedOverlay').classList.add('open');
-}
-function closeDeniedModal() { document.getElementById('deniedOverlay').classList.remove('open'); }
-
-function renderDeniedList() {
-  const q = (document.getElementById('deniedSearch').value || '').trim().toLowerCase();
-  const lot = document.getElementById('deniedLotto').value;
-  const filtro = document.getElementById('deniedFiltro').value;
-  const rows = _awsBuildDeniedIndex().filter(e => {
-    if (lot && e.lotto !== lot) return false;
-    if (filtro === 'selezionate' && !_awsDenied.has(e.key)) return false;
-    if (filtro === 'nonottenute' && (e.stato === 'OTTENUTO' || e.stato === 'NO COMPETENZA')) return false;
-    if (!q) return true;
-    return (e.codice + ' ' + e.ente + ' ' + [...e.comuni].join(' ') + ' ' + e.lotto).toLowerCase().includes(q);
-  });
-  const box = document.getElementById('deniedList');
-  box.innerHTML = rows.length ? rows.map(e => {
-    const on = _awsDenied.has(e.key);
-    const comuni = [...e.comuni].slice(0, 2).join(', ') + (e.comuni.size > 2 ? ` +${e.comuni.size - 2}` : '');
-    return `<label class="denied-row${on ? ' on' : ''}">
-      <input type="checkbox" ${on ? 'checked' : ''} onchange="toggleDenied('${e.key.replace(/'/g, "\\'")}')">
-      <span class="denied-code">${e.codice}</span>
-      <span class="denied-meta">Lotto ${e.lotto || '—'} · ${e.ente || 'ente n/d'}${comuni ? ' · ' + comuni : ''} · ${e.tratte} tratte · ${(e.metri / 1000).toFixed(2).replace('.', ',')} km</span>
-      <span class="denied-stato" style="color:${getColor(e.stato)}">${e.stato}</span>
-    </label>`;
-  }).join('') : '<div class="denied-empty">Nessuna pratica corrisponde ai filtri.</div>';
-  _awsUpdateDeniedSummary(rows.length);
-}
-
-function toggleDenied(key) {
-  if (_awsDenied.has(key)) _awsDenied.delete(key); else _awsDenied.add(key);
-  _awsSaveDenied();
-  renderDeniedList();
-}
-function clearDenied() {
-  if (!_awsDenied.size) return;
-  if (!confirm('Deselezionare tutte le pratiche negate?')) return;
-  _awsDenied.clear(); _awsSaveDenied(); renderDeniedList();
-}
-
-function _awsUpdateDeniedSummary(visibili) {
-  const badge = document.getElementById('deniedCount');
-  if (badge) badge.textContent = _awsDenied.size;
-  const s = document.getElementById('deniedSummary');
-  if (s) s.textContent = `${_awsDenied.size} negate in totale · ${visibili} voci mostrate`;
-}
-
-// Legenda disegnata nativamente nella slide (il #legendContainer della pagina
-// è fuori da #map, quindi non è incluso nello screenshot: va ricostruito qui).
-// Mostra i 4 bucket AWS, non i 10 stati reali della dashboard.
-function _awsAddLegend(slide) {
-  const X0 = 5.95, Y = 0.28, ITEM_W = 1.82, SW_W = 0.30, SW_H = 0.11;
-  AWS_BUCKET_ORDER.forEach((k, i) => {
-    const x = X0 + i * ITEM_W;
-    slide.addShape('rect', {
-      x, y: Y + 0.055, w: SW_W, h: SW_H,
-      fill: { color: AWS_BUCKET_COLORS[k].replace('#', '') }, line: { width: 0 }
-    });
-    slide.addText(k, {
-      x: x + SW_W + 0.08, y: Y - 0.04, w: ITEM_W - SW_W - 0.12, h: 0.28,
-      fontSize: 10, bold: true, fontFace: 'Raleway', color: '3A4150', valign: 'middle'
-    });
-  });
-}
-
-async function generaReportAWS() {
-  const btn = document.getElementById('reportAwsBtn');
-  if (!btn || btn.classList.contains('busy')) return;
-  if (typeof html2canvas === 'undefined' || typeof PptxGenJS === 'undefined') {
-    alert('Librerie di export (html2canvas/pptxgenjs) non disponibili.');
-    return;
-  }
-  const mapEl = document.getElementById('map');
-  if (!mapEl || !allFeatures.length) { alert('Mappa non ancora pronta.'); return; }
-
-  const clusters = new Set();
-  allFeatures.forEach(f => {
-    const cl = f.properties.CLUSTER ?? f.properties.ID_CLUSTER ?? f.properties.cluster;
-    if (cl != null && cl !== '') clusters.add(String(cl));
-  });
-  const clSorted = [...clusters].sort((a, b) => parseInt(a) - parseInt(b) || a.localeCompare(b));
-  if (!clSorted.length) { alert('Nessun cluster trovato nei dati caricati.'); return; }
-
-  const prevMode = currentViewMode;
-  const prevClusters = new Set(selectedClusters);
-  const prevBmapKey = _currentBmapKey;
-
-  // Nascondi i controlli Leaflet overlay (zoom, tasto mappa/satellite, SED,
-  // Misura, Selettore: Tratta, Siti ENRI, Pratiche) solo per la cattura:
-  // non fanno parte del "contenuto mappa" da mettere nel report. Restano
-  // visibili scala e attribuzione (angoli bottom, non toccati).
-  const _ctrlTL = mapEl.querySelector('.leaflet-top.leaflet-left');
-  const _ctrlTR = mapEl.querySelector('.leaflet-top.leaflet-right');
-  const _ctrlTLDisplay = _ctrlTL ? _ctrlTL.style.display : '';
-  const _ctrlTRDisplay = _ctrlTR ? _ctrlTR.style.display : '';
-  if (_ctrlTL) _ctrlTL.style.display = 'none';
-  if (_ctrlTR) _ctrlTR.style.display = 'none';
-
-  btn.classList.add('busy');
-  btn.innerHTML = 'Report AWS…';
-  _awsReportMode = true;   // palette a 4 bucket solo per la cattura
-  setViewMode('stato');    // Progettazione (restyla tutti i layer)
-
-  const pptx = new PptxGenJS();
-  pptx.defineLayout({ name: 'WIDE', width: 13.33, height: 7.5 });
-  pptx.layout = 'WIDE';
-
-  try {
-    for (let i = 0; i < clSorted.length; i++) {
-      const cl = clSorted[i];
-      applyFilterCluster(cl);
-      await _attendiMappaPronta();
-
-      // scale:1 + width/height espliciti (invece del default devicePixelRatio):
-      // su schermi HiDPI html2canvas raddoppiava/triplicava la risoluzione del
-      // canvas rispetto alle dimensioni CSS di #map, gonfiando il file e
-      // producendo, se letto con proporzioni diverse da quelle attese, un
-      // risultato "sfalsato" rispetto a quanto visibile a schermo. JPEG invece
-      // di PNG per contenere ulteriormente il peso (le tile mappa/satellite
-      // sono fotografiche, JPEG comprime molto meglio senza perdita visibile).
-      const H2C_OPTS = {
-        useCORS: true, allowTaint: false, logging: false,
-        scale: 1, width: mapEl.clientWidth, height: mapEl.clientHeight,
-        backgroundColor: '#ffffff'
-      };
-
-      btn.innerHTML = `Report AWS… ${i + 1}/${clSorted.length} (map)`;
-      setBaseLayer('osm');
-      await _attendiTileLayerPronto(_currentBmapLayer);
-      const canvasMappa = await html2canvas(mapEl, H2C_OPTS);
-      const imgMappa = canvasMappa.toDataURL('image/jpeg', 0.85);
-
-      btn.innerHTML = `Report AWS… ${i + 1}/${clSorted.length} (satellite)`;
-      setBaseLayer('satellite');
-      await _attendiTileLayerPronto(_currentBmapLayer);
-      const canvasSat = await html2canvas(mapEl, H2C_OPTS);
-      const imgSat = canvasSat.toDataURL('image/jpeg', 0.85);
-
-      const slide = pptx.addSlide();
-      slide.addText(`Cluster ${cl} — Permitting Approval`, {
-        x: 0.3, y: 0.15, w: 5.5, h: 0.5, fontSize: 20, bold: true,
-        fontFace: 'Raleway', color: '043F75'
-      });
-      _awsAddLegend(slide);
-      const fitMappa = _containFit(canvasMappa.width, canvasMappa.height, 0.3, 0.75, 6.2, 6.2);
-      slide.addImage({ data: imgMappa, x: fitMappa.x, y: fitMappa.y, w: fitMappa.w, h: fitMappa.h });
-      slide.addText('Map', { x: 0.3, y: 7.0, w: 6.2, h: 0.35, fontSize: 12, align: 'center', color: '6b7080', fontFace: 'Raleway' });
-      const fitSat = _containFit(canvasSat.width, canvasSat.height, 6.8, 0.75, 6.2, 6.2);
-      slide.addImage({ data: imgSat, x: fitSat.x, y: fitSat.y, w: fitSat.w, h: fitSat.h });
-      slide.addText('Satellite', { x: 6.8, y: 7.0, w: 6.2, h: 0.35, fontSize: 12, align: 'center', color: '6b7080', fontFace: 'Raleway' });
-    }
-    await pptx.writeFile({ fileName: `Report_AWS_${_dataOggiFile()}.pptx` });
-  } catch (e) {
-    console.error('[Report AWS]', e);
-    alert('Errore nella generazione del report: ' + e.message);
-  } finally {
-    if (_ctrlTL) _ctrlTL.style.display = _ctrlTLDisplay;
-    if (_ctrlTR) _ctrlTR.style.display = _ctrlTRDisplay;
-    setBaseLayer(prevBmapKey);
-    _awsReportMode = false;  // prima di setViewMode: ripristina i colori reali
-    setViewMode(prevMode);
-    if (prevClusters.size) { selectedClusters = prevClusters; applyFilterClusterMulti(); }
-    btn.classList.remove('busy');
-    btn.innerHTML = 'Report AWS';
-  }
-}
 
 function toggleSelectorMode() {
   _selectorMode = _selectorMode === 'tratta' ? 'pratica' : 'tratta';
@@ -3599,162 +2847,6 @@ function _fmtDist(m) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── SITI DI INTERESSE ───────────────────────────────────────────────────────
-const SITI = [
-  { name: 'Caldera',      lat: 45.47689122285669, lon: 9.10359279146746,  note: 'Milano' },
-  { name: 'DATA4',        lat: 45.47135760905800, lon: 9.03687356523146,  note: 'Settimo Milanese' },
-  { name: 'MXP102',       lat: 45.52098760536111, lon: 9.06895054960220,  note: 'Rho' },
-  { name: 'MXP109',       lat: 45.36501718096642, lon: 9.12725039655933,  note: 'Zibido' },
-  { name: 'MXP118',       lat: 45.65566806648370, lon: 9.70478595192444,  note: 'Zanica' },
-  { name: 'MXP133',       lat: 45.26589755160440, lon: 9.20841625292800,  note: 'Bornasco' },
-  { name: 'MXP140',       lat: 45.62960454633557, lon: 9.55124048864611,  note: 'MXP140' },
-  { name: 'MXP76',        lat: 45.70599945172991, lon: 9.58922139762394,  note: 'Aruba' },
-  { name: 'MXP81',        lat: 45.32734400342294, lon: 9.21537621502111,  note: 'Siziano' },
-  { name: 'MXP92',        lat: 45.32392028570824, lon: 9.21346802014885,  note: 'Siziano' },
-];
-
-let _sitiPanelOpen = false;
-
-// Controllo Leaflet per il tasto Siti (topright, sotto lo zoom)
-const SitiControl = L.Control.extend({
-  options: { position: 'topright' },
-  onAdd: function() {
-    const wrap = L.DomUtil.create('div', '');
-    wrap.style.cssText = 'position:relative;';
-    L.DomEvent.disableClickPropagation(wrap);
-    L.DomEvent.disableScrollPropagation(wrap);
-
-    // Tasto
-    const btn = L.DomUtil.create('div', 'siti-control-btn', wrap);
-    btn.id = 'sitiBtn';
-    btn.title = 'Siti di interesse';
-    btn.innerHTML = 'Siti ENRI';
-
-    // Pannello
-    const panel = L.DomUtil.create('div', 'siti-panel', wrap);
-    panel.id = 'sitiPanel';
-    panel.innerHTML = `
-      <div class="siti-panel-head">
-        <div class="siti-panel-title">📍 Siti di interesse</div>
-        <input class="siti-search" id="sitiSearch" type="text"
-               placeholder="Cerca sito…" autocomplete="off">
-      </div>
-      <div class="siti-list" id="sitiList"></div>`;
-
-    L.DomEvent.on(btn, 'click', toggleSitiPanel);
-
-    // Filtro ricerca
-    setTimeout(() => {
-      const inp = document.getElementById('sitiSearch');
-      if (inp) inp.addEventListener('input', e => filterSiti(e.target.value));
-    }, 0);
-
-    return wrap;
-  }
-});
-new SitiControl().addTo(map);
-
-function toggleSitiPanel() {
-  _sitiPanelOpen = !_sitiPanelOpen;
-  const panel = document.getElementById('sitiPanel');
-  const btn   = document.getElementById('sitiBtn');
-  panel.classList.toggle('open', _sitiPanelOpen);
-  btn.classList.toggle('active', _sitiPanelOpen);
-  if (_sitiPanelOpen) {
-    renderSitiList(SITI);
-    setTimeout(() => {
-      const inp = document.getElementById('sitiSearch');
-      if (inp) { inp.value = ''; inp.focus(); }
-    }, 150);
-    setTimeout(() => document.addEventListener('click', _closeSitiOutside), 0);
-  } else {
-    document.removeEventListener('click', _closeSitiOutside);
-  }
-}
-
-function _closeSitiOutside(e) {
-  const panel = document.getElementById('sitiPanel');
-  const btn   = document.getElementById('sitiBtn');
-  if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) {
-    _sitiPanelOpen = false;
-    panel.classList.remove('open');
-    btn.classList.remove('active');
-    document.removeEventListener('click', _closeSitiOutside);
-  }
-}
-
-function renderSitiList(list) {
-  const el = document.getElementById('sitiList');
-  if (!el) return;
-  el.innerHTML = '';
-  if (!list.length) {
-    el.innerHTML = '<div class="sito-empty">Nessun sito trovato</div>';
-    return;
-  }
-  list.forEach(s => {
-    const item = document.createElement('div');
-    item.className = 'sito-item';
-    item.innerHTML = `
-      <div class="sito-icon">📍</div>
-      <div class="sito-info">
-        <div class="sito-name">${s.name}</div>
-        <div class="sito-note">${s.note}</div>
-      </div>
-      <span class="sito-arrow">›</span>`;
-    item.onclick = () => goToSito(s);
-    el.appendChild(item);
-  });
-}
-
-function filterSiti(query) {
-  const q = query.trim().toLowerCase();
-  renderSitiList(q ? SITI.filter(s =>
-    s.name.toLowerCase().includes(q) || s.note.toLowerCase().includes(q)
-  ) : SITI);
-}
-
-let _sitoMarker = null;
-
-function goToSito(s) {
-  // Offset verticale: sposta il centro leggermente verso il basso
-  // così il marker resta visivamente al centro anche con il popup aperto sopra
-  const targetPoint = map.project([s.lat, s.lon], 16).subtract([0, 60]);
-  const targetLatLng = map.unproject(targetPoint, 16);
-  map.setView(targetLatLng, 16, { animate: true });
-
-  // Rimuovi marker precedente
-  if (_sitoMarker) { map.removeLayer(_sitoMarker); _sitoMarker = null; }
-
-  // Cerchietto con popup
-  _sitoMarker = L.circleMarker([s.lat, s.lon], {
-    radius: 10,
-    color: 'var(--retelit-blue)',
-    fillColor: 'var(--retelit-blue)',
-    fillOpacity: 0.25,
-    weight: 2.5,
-    renderer: searchMarkerRenderer
-  }).addTo(map);
-
-  _sitoMarker.bindPopup(`
-    <div style="padding:6px 4px;min-width:130px">
-      <div style="font-size:13px;font-weight:700;color:var(--text)">${s.name}</div>
-      <div style="font-size:11px;color:#1a1d27;margin-top:2px">${s.note}</div>
-    </div>`, { closeButton: false, autoPan: false }
-  ).openPopup();
-
-  // Rimuovi marker alla chiusura del popup
-  _sitoMarker.on('popupclose', () => {
-    if (_sitoMarker) { map.removeLayer(_sitoMarker); _sitoMarker = null; }
-  });
-
-  // Chiudi pannello
-  _sitiPanelOpen = false;
-  document.getElementById('sitiPanel').classList.remove('open');
-  document.getElementById('sitiBtn').classList.remove('active');
-  document.removeEventListener('click', _closeSitiOutside);
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
 // ═══════════════ PANNELLO ELENCO PRATICHE (evidenzia percorso completo) ═══════
 let _pratichePanelOpen = false;
 
@@ -3775,12 +2867,12 @@ function buildPraticheIndex() {
   return [...idx.values()].sort((a, b) => a.pratica.localeCompare(b.pratica));
 }
 
-// Controllo Leaflet per il tasto Pratiche (topright, sotto Siti)
+// Controllo Leaflet per il tasto Pratiche (topright)
 const PraticheControl = L.Control.extend({
   options: { position: 'topright' },
   onAdd: function() {
     const wrap = L.DomUtil.create('div', '');
-    wrap.style.cssText = 'position:relative;margin-top:6px;';
+    wrap.style.cssText = 'position:relative;';
     L.DomEvent.disableClickPropagation(wrap);
     L.DomEvent.disableScrollPropagation(wrap);
 
@@ -4025,30 +3117,6 @@ window.addEventListener('load', () => {
 </script>
 
 <!-- Help Modal -->
-<div id="deniedOverlay" onclick="if(event.target===this)closeDeniedModal()">
-  <div class="denied-modal">
-    <div class="denied-head">
-      <h3>Pratiche negate — Report AWS</h3>
-      <p>Le pratiche selezionate qui vengono mostrate come <strong>DENIED</strong> (rosso) nel PowerPoint generato da «Report AWS». La selezione non modifica in alcun modo i dati della dashboard né Master.csv: è solo una regola di visualizzazione del report, salvata su questo browser.</p>
-    </div>
-    <div class="denied-tools">
-      <input type="text" id="deniedSearch" placeholder="Cerca pratica, ente, comune, tratta…" oninput="renderDeniedList()" autocomplete="off">
-      <select id="deniedLotto" onchange="renderDeniedList()"><option value="">Tutti i lotti</option></select>
-      <select id="deniedFiltro" onchange="renderDeniedList()">
-        <option value="tutte">Tutte</option>
-        <option value="selezionate">Solo selezionate</option>
-        <option value="nonottenute">Escludi ottenute</option>
-      </select>
-      <button onclick="clearDenied()">Deseleziona tutto</button>
-    </div>
-    <div class="denied-list" id="deniedList"></div>
-    <div class="denied-foot">
-      <span class="denied-summary" id="deniedSummary"></span>
-      <button onclick="closeDeniedModal()">Chiudi</button>
-    </div>
-  </div>
-</div>
-
 <div id="helpOverlay" onclick="if(event.target===this)document.getElementById('helpOverlay').classList.remove('open')">
   <div class="help-modal">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
@@ -4060,22 +3128,17 @@ window.addEventListener('load', () => {
 
     <div class="help-section">
       <h4>Modalità di Visualizzazione</h4>
-      <p>I pulsanti <strong>Pratiche · Scavi · Lotto · Cluster</strong> nella barra laterale cambiano il criterio di colorazione delle tratte. <em>Pratiche</em> mostra l'avanzamento autorizzativo con colori che vanno dal grigio (in attesa) al verde (ottenuto). <em>Lotto</em> distingue i quattro lotti attivi (1A, 1B, 2A, 2B) e quelli in avvio (1–8). <em>Cluster</em> raggruppa le tratte per area geografica con una tavolozza di 30 colori distinti. La legenda in basso a sinistra si aggiorna automaticamente al cambio di modalità.</p>
+      <p>I pulsanti <strong>Pratiche · Scavi · Lotto</strong> nella barra laterale cambiano il criterio di colorazione delle tratte. <em>Pratiche</em> mostra l'avanzamento autorizzativo con colori che vanno dal grigio (in attesa) al verde (ottenuto). <em>Lotto</em> distingue i lotti effettivamente presenti nei dati caricati. La legenda in basso a sinistra si aggiorna automaticamente al cambio di modalità.</p>
     </div>
 
     <div class="help-section">
       <h4>Filtri Multi-selezione</h4>
-      <p>In modalità <em>Pratiche</em> e <em>Lotto</em> puoi cliccare su più badge lotto nella barra di filtro per combinarli: la mappa mostra solo i lotti selezionati e fa zoom automatico sull'area risultante. Clicca <strong>Tutti</strong> per tornare alla vista completa. In modalità <em>Cluster</em> funziona allo stesso modo con i cluster: le tratte non selezionate diventano semi-trasparenti per agevolare il confronto.</p>
+      <p>In modalità <em>Pratiche</em> e <em>Lotto</em> puoi cliccare su più badge lotto nella barra di filtro per combinarli: la mappa mostra solo i lotti selezionati e fa zoom automatico sull'area risultante. Clicca <strong>Tutti</strong> per tornare alla vista completa.</p>
     </div>
 
     <div class="help-section">
       <h4>📍 Popup Dettaglio Tratta</h4>
-      <p>Clicca su qualsiasi tratta per aprire il pannello di dettaglio. Trovi: comune, cluster, tipologia, lunghezza, ente destinatario (fino a due enti), stato autorizzativo con badge colorato, stato lavorabilità e motivo di eventuale blocco, nulla osta e ordinanza se presenti, codici pratica associati. La colonna destra mostra l'avanzamento del lotto con due barre grafiche (permessi ottenuti e pratiche inviate+) e il contributo della tratta sul totale del lotto. Un link apre la posizione direttamente in Google Maps.</p>
-    </div>
-
-    <div class="help-section">
-      <h4>🟣 Tracciato QTS</h4>
-      <p>Il toggle <strong>Tracciato QTS</strong> nella barra laterale sovrappone il tracciato di riferimento QTS alla mappa corrente, visualizzato in viola tratteggiato. Il pulsante <strong>Solo QTS</strong> nasconde tutti gli altri layer e centra la vista sul tracciato QTS, utile per confronti rapidi. La lunghezza totale del QTS compare a fianco del toggle una volta caricato il file.</p>
+      <p>Clicca su qualsiasi tratta per aprire il pannello di dettaglio. Trovi: comune, lunghezza, ente destinatario (fino a due enti), stato autorizzativo con badge colorato, stato lavorabilità e motivo di eventuale blocco, nulla osta se presente, codici pratica associati. La colonna destra mostra l'avanzamento del lotto con due barre grafiche (permessi ottenuti e pratiche inviate+) e il contributo della tratta sul totale del lotto. Un link apre la posizione direttamente in Google Maps.</p>
     </div>
 
     <div class="help-section">
@@ -4085,7 +3148,7 @@ window.addEventListener('load', () => {
 
     <div class="help-section">
       <h4>Ricerca Pratiche e Indirizzi</h4>
-      <p>La barra di ricerca nella topbar cerca contemporaneamente tra le pratiche del dataset (per codice pratica, codice cantiere o ID tratta) e tra gli indirizzi italiani via geocoding OpenStreetMap. I risultati sono divisi in due sezioni: <em>Pratiche, Tratte e Cantieri</em> mostra il codice, il lotto e il comune; <em>Indirizzi</em> permette di centrare la mappa su qualsiasi luogo. Selezionando una tratta, questa viene evidenziata in giallo e si apre il popup di dettaglio.</p>
+      <p>La barra di ricerca nella topbar cerca contemporaneamente tra le pratiche del dataset (per codice pratica o ID tratta) e tra gli indirizzi italiani via geocoding OpenStreetMap. I risultati sono divisi in due sezioni: <em>Pratiche e Tratte</em> mostra il codice, il lotto e il comune; <em>Indirizzi</em> permette di centrare la mappa su qualsiasi luogo. Selezionando una tratta, questa viene evidenziata in giallo e si apre il popup di dettaglio.</p>
     </div>
 
     <div class="help-section">
@@ -4114,7 +3177,7 @@ window.addEventListener('load', () => {
     </div>
 
     <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);font-size:10px;color:var(--muted)">
-      I dati si aggiornano ricaricando un nuovo file <strong>QGIS.geojson</strong> nella stessa cartella. Il layer QTS si aggiorna allo stesso modo con <strong>QTS.geojson</strong>.
+      I dati si aggiornano ricaricando un nuovo file <strong>QTS.geojson</strong> nella stessa cartella (tratte) o <strong>SED_QTS.geojson</strong> (attraversamenti).
     </div>
   </div>
 </div>
@@ -4125,14 +3188,14 @@ window.addEventListener('load', () => {
   window.addEventListener('pageshow', (e) => {
     if (e.persisted) location.reload();
   });
-  const _apiBase = () => (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
-  const _sessionToken = () => localStorage.getItem('_enri_session') || '';
+  const _apiBase = () => (window.QTS && window.QTS.apiBase) || localStorage.getItem('qts_api_base') || '';
+  const _sessionToken = () => localStorage.getItem('_qts_session') || '';
   const LOG_BIN_ID   = '69c8fbdced015c742bc8e978';
   const ACCESSI_MAX  = 500;
   const SAVE_INTERVAL_MS = 60_000;
 
-  const utente = localStorage.getItem('_enri_user');
-  const ruolo  = localStorage.getItem('_enri_role') || 'user';
+  const utente = localStorage.getItem('_qts_user');
+  const ruolo  = localStorage.getItem('_qts_role') || 'user';
   if (!utente) return;
 
   const _sessionStart = Date.now();
