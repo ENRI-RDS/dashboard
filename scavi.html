@@ -1483,7 +1483,7 @@ function _meteoLoad(cantiereKey) {
     const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
     const rc = await fetch(apiBase + '/api/cantieri/' + encodeURIComponent(cantiereKey) + '/coord', { headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } });
     if (!rc.ok) throw new Error('coord ' + rc.status);
-    const { lat, lon } = await rc.json();
+    const { lat, lon, comune } = await rc.json();
     const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 10000);
     try {
       const r = await fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon
@@ -1492,7 +1492,7 @@ function _meteoLoad(cantiereKey) {
       const d = (await r.json()).daily || {};
       const byDate = {};
       (d.time || []).forEach((t, i) => { byDate[t] = { code: d.weather_code[i], tmax: d.temperature_2m_max[i], tmin: d.temperature_2m_min[i], pioggia: d.precipitation_sum[i] }; });
-      return { oggi: (d.time || []).slice(-1)[0], byDate };
+      return { oggi: (d.time || []).slice(-1)[0], byDate, comune };
     } finally { clearTimeout(to); }
   })();
   p.catch(() => { delete _meteoCache[cantiereKey]; });   // riprova alla prossima apertura
@@ -1510,7 +1510,7 @@ async function _fillMeteoCantiere(cantiereKey) {
   try {
     const m = await _meteoLoad(cantiereKey);
     const t = m.byDate[m.oggi];
-    if (el && t) { const [k, lbl] = _WMO(t.code); el.innerHTML = `Oggi: <span style="color:var(--accent)">${_meteoIcon(k)}</span> ${lbl} · ${_meteoTxt(t)}`; }
+    if (el && t) { const [k, lbl] = _WMO(t.code); el.innerHTML = `Oggi${m.comune ? ' · ' + m.comune.charAt(0) + m.comune.slice(1).toLowerCase() : ''}: <span style="color:var(--accent)">${_meteoIcon(k)}</span> ${lbl} · ${_meteoTxt(t)}`; }
     cells.forEach(td => {
       const g = m.byDate[td.dataset.d];
       if (!g) return;
