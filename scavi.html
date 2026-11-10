@@ -1477,7 +1477,7 @@ const _meteoIcon = (k, sz=16) => k ? `<svg width="${sz}" height="${sz}" viewBox=
 const _n1 = v => v==null ? '—' : (Math.round(v*10)/10).toString().replace('.', ',');
 const _meteoCache = {};   // cantiereKey -> Promise<{oggi, byDate}>
 
-function _meteoLoad(cantiereKey) {
+function _meteoLoad(cantiereKey, minDate) {
   if (_meteoCache[cantiereKey]) return _meteoCache[cantiereKey];
   const p = (async () => {
     const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
@@ -1492,6 +1492,20 @@ function _meteoLoad(cantiereKey) {
       const d = (await r.json()).daily || {};
       const byDate = {};
       (d.time || []).forEach((t, i) => { byDate[t] = { code: d.weather_code[i], tmax: d.temperature_2m_max[i], tmin: d.temperature_2m_min[i], pioggia: d.precipitation_sum[i] }; });
+      // date più vecchie di quelle coperte dal forecast → archivio Open-Meteo (gratuito)
+      const first = (d.time || [])[0];
+      if (minDate && first && minDate < first) {
+        try {
+          const end = new Date(Date.parse(first + 'T00:00:00Z') - 86400000).toISOString().slice(0, 10);
+          const ra = await fetch('https://archive-api.open-meteo.com/v1/archive?latitude=' + lat + '&longitude=' + lon
+            + '&start_date=' + minDate + '&end_date=' + end
+            + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=Europe%2FRome', { signal: ctl.signal });
+          if (ra.ok) {
+            const a = (await ra.json()).daily || {};
+            (a.time || []).forEach((t, i) => { if (a.weather_code[i] != null) byDate[t] = { code: a.weather_code[i], tmax: a.temperature_2m_max[i], tmin: a.temperature_2m_min[i], pioggia: a.precipitation_sum[i] }; });
+          }
+        } catch (_) { /* resta "—" per le date più vecchie */ }
+      }
       return { oggi: (d.time || []).slice(-1)[0], byDate, comune };
     } finally { clearTimeout(to); }
   })();
@@ -1508,7 +1522,8 @@ async function _fillMeteoCantiere(cantiereKey) {
   const cells = document.querySelectorAll('#modalRegistroBody .mt-cell');
   if (el) el.style.cssText = 'margin:0 0 12px;font-size:12px;color:var(--muted)';
   try {
-    const m = await _meteoLoad(cantiereKey);
+    const minDate = [...cells].map(td => td.dataset.d).filter(Boolean).sort()[0];
+    const m = await _meteoLoad(cantiereKey, minDate);
     const t = m.byDate[m.oggi];
     if (el && t) { const [k, lbl] = _WMO(t.code); el.innerHTML = `Oggi${m.comune ? ' · ' + m.comune.charAt(0) + m.comune.slice(1).toLowerCase() : ''}: <span style="color:var(--accent)">${_meteoIcon(k)}</span> ${lbl} · ${_meteoTxt(t)}`; }
     cells.forEach(td => {
