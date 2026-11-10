@@ -26,7 +26,8 @@ import os
 import re
 import time
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -5765,6 +5766,36 @@ async def admin_sync_cantieri(
     return {"created": created, "total_cantieri": total}
 
 
+_STATI_AVVIATO = {"in_corso", "sospeso", "completato"}
+
+
+def _campi_correnti_da_log(log: list) -> dict:
+    """Riallinea i campi 'correnti' del cantiere all'ultima riga di log rimasta,
+    dopo una correzione/eliminazione admin. Senza questo, stato, tecnica, note,
+    motivo blocco, ripresa e date effettive restavano quelli del caricamento
+    eliminato. Le date effettive si svuotano solo se incoerenti col log rimasto
+    (mai avviato → niente inizio effettivo; ultimo stato non 'completato' → niente fine)."""
+    if not log:
+        return {"stato_cantiere": "non_avviato", "tecnica_scavo": "", "note": "",
+                "motivo_blocco": "", "data_ripresa_stimata": "",
+                "data_inizio_effettiva": "", "data_fine_effettiva": ""}
+    last = log[-1]
+    out = {
+        "stato_cantiere": last.get("stato_cantiere") or "non_avviato",
+        "tecnica_scavo": last.get("tecnica_scavo") or "",
+        "note": last.get("note") or "",
+        "motivo_blocco": last.get("motivo_blocco") or "",
+        "data_ripresa_stimata": last.get("data_ripresa_stimata") or "",
+    }
+    if last.get("impresa"):
+        out["impresa"] = last["impresa"]
+    if not any(e.get("stato_cantiere") in _STATI_AVVIATO for e in log):
+        out["data_inizio_effettiva"] = ""
+    if out["stato_cantiere"] != "completato":
+        out["data_fine_effettiva"] = ""
+    return out
+
+
 @app.put("/api/admin/cantieri/{cantiere_key:path}/log/{idx}")
 async def admin_update_cantiere_log_entry(
     cantiere_key: str,
@@ -5776,8 +5807,9 @@ async def admin_update_cantiere_log_entry(
 ):
     """Corregge una singola riga di storico (log) di un cantiere — es. un
     caricamento errato inserito da un'impresa. metri_scavati viene
-    ricalcolato come somma di tutte le righe di log rimaste, per restare
-    coerente con l'accumulo fatto da POST /api/imprese/cantieri/{key}."""
+    ricalcolato come somma di tutte le righe di log rimaste (coerente con
+    l'accumulo di POST /api/imprese/cantieri/{key}) e i campi correnti
+    (stato, tecnica, note…) sono riallineati all'ultima riga rimasta."""
     _check_token(x_upload_token or token_q)
     doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
     if not doc:
@@ -5809,7 +5841,7 @@ async def admin_update_cantiere_log_entry(
     metri_scavati = sum(float(e.get("metri_realizzati") or 0) for e in log)
     await cantieri_col.update_one(
         {"cantiere_key": cantiere_key},
-        {"$set": {"log": log, "metri_scavati": metri_scavati, "updated_at": _now_iso()}},
+        {"$set": {"log": log, "metri_scavati": metri_scavati, **_campi_correnti_da_log(log), "updated_at": _now_iso()}},
     )
     await _log_admin_action("update_cantiere_log", f"{cantiere_key}#{idx}", x_actor_nome)
     _schedule_cantieri_csv_regen(f"correzione log: {cantiere_key}#{idx}")
@@ -5877,7 +5909,8 @@ async def admin_delete_cantiere_log_entry(
     x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
 ):
     """Elimina una singola riga di storico (es. caricamento di test/duplicato)
-    senza toccare le altre. metri_scavati ricalcolato sulle righe rimaste."""
+    senza toccare le altre. metri_scavati e campi correnti (stato, tecnica, note,
+    date effettive incoerenti…) ricalcolati sulle righe rimaste."""
     _check_token(x_upload_token or token_q)
     doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
     if not doc:
@@ -5890,7 +5923,7 @@ async def admin_delete_cantiere_log_entry(
     metri_scavati = sum(float(e.get("metri_realizzati") or 0) for e in log)
     await cantieri_col.update_one(
         {"cantiere_key": cantiere_key},
-        {"$set": {"log": log, "metri_scavati": metri_scavati, "updated_at": _now_iso()}},
+        {"$set": {"log": log, "metri_scavati": metri_scavati, **_campi_correnti_da_log(log), "updated_at": _now_iso()}},
     )
     await _log_admin_action("delete_cantiere_log", f"{cantiere_key}#{idx}", x_actor_nome)
     _schedule_cantieri_csv_regen(f"eliminazione log: {cantiere_key}#{idx}")
@@ -5976,6 +6009,7 @@ async def update_cantiere(cantiere_key: str, payload: dict, sess: dict = Depends
         "data_fine_prevista", "data_fine_effettiva",
         "metri_realizzati_oggi",   # campo speciale: viene accumulato
         "note", "motivo_blocco", "data_ripresa_stimata",
+        "data_aggiornamento",      # solo per il log: giorno a cui si riferisce l'aggiornamento
     }
     update: dict = {}
     for k, v in (payload or {}).items():
@@ -5985,8 +6019,23 @@ async def update_cantiere(cantiere_key: str, payload: dict, sess: dict = Depends
             raise HTTPException(400, f"stato_cantiere non valido: {v}")
         if k == "tecnica_scavo" and v not in TECNICA_SCAVO_VALUES:
             raise HTTPException(400, f"tecnica_scavo non valida: {v}")
-        if k != "metri_realizzati_oggi":
+        if k not in ("metri_realizzati_oggi", "data_aggiornamento"):
             update[k] = v
+
+    # Giorno dell'aggiornamento: di default oggi (ora italiana); l'impresa può
+    # indicare un giorno passato (max 30 gg) per recuperare un caricamento dimenticato.
+    oggi_it = datetime.now(ZoneInfo("Europe/Rome")).date()
+    data_agg = oggi_it.isoformat()
+    if payload.get("data_aggiornamento"):
+        try:
+            d_agg = datetime.strptime(str(payload["data_aggiornamento"])[:10], "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(400, "data_aggiornamento non valida (formato AAAA-MM-GG)")
+        if d_agg > oggi_it:
+            raise HTTPException(400, "data_aggiornamento non può essere nel futuro")
+        if d_agg < oggi_it - timedelta(days=30):
+            raise HTTPException(400, "data_aggiornamento troppo vecchia (massimo 30 giorni indietro)")
+        data_agg = d_agg.isoformat()
 
     nuovo_stato = payload.get("stato_cantiere", doc.get("stato_cantiere"))
     if nuovo_stato == "allestimento" and not payload.get("data_inizio_prevista") and not doc.get("data_inizio_prevista"):
@@ -6014,12 +6063,21 @@ async def update_cantiere(cantiere_key: str, payload: dict, sess: dict = Depends
             )
         update["$inc"] = {"metri_scavati": metri_oggi}
 
-    update["impresa"]    = nome
+    # Aggiornamento retrodatato (c'è già un log più recente): metri e riga di log
+    # vanno nel giorno giusto, ma NON si sovrascrivono stato/tecnica/note/date
+    # correnti del cantiere con dati più vecchi.
+    log_esistente = doc.get("log") or []
+    ultima_data = max((str(e.get("data") or "") for e in log_esistente), default="")
+    retrodatato = bool(ultima_data) and data_agg < ultima_data
+    if retrodatato:
+        update = {k: v for k, v in update.items() if k == "$inc"}
+    else:
+        update["impresa"] = nome
     update["updated_at"] = _now_iso()
 
     # Log entry giornaliero
     log_entry = {
-        "data":                  _now_iso()[:10],
+        "data":                  data_agg,
         "impresa":               nome,
         "stato_cantiere":        payload.get("stato_cantiere", doc.get("stato_cantiere")),
         "tecnica_scavo":         payload.get("tecnica_scavo", doc.get("tecnica_scavo")),
@@ -6031,7 +6089,12 @@ async def update_cantiere(cantiere_key: str, payload: dict, sess: dict = Depends
 
     # Costruisci update MongoDB
     mongo_set = {k: v for k, v in update.items() if k != "$inc"}
-    mongo_update: dict = {"$set": mongo_set, "$push": {"log": log_entry}}
+    # inserisce la riga al posto giusto per data (dopo l'ultima con data <= nuova),
+    # così lo storico resta in ordine cronologico anche con retrodatazioni
+    pos = len(log_esistente)
+    while pos > 0 and str(log_esistente[pos - 1].get("data") or "") > data_agg:
+        pos -= 1
+    mongo_update: dict = {"$set": mongo_set, "$push": {"log": {"$each": [log_entry], "$position": pos}}}
     if "$inc" in update:
         mongo_update["$inc"] = update["$inc"]
 
