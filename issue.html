@@ -369,12 +369,12 @@ let sortK = '', sortD = 1;
 const PRIO_LEGEND = [
   { k:'critica', c:'var(--red)',    bg:'var(--redL)',    when:'Qualsiasi issue nata da una segnalazione del cliente. Area di intervento non delimitata o accessi di cantiere aperti (SIC-21, SIC-22): rischio per i terzi.', act:'Da sistemare subito; il System va sollecitato appena inviata.' },
   { k:'alta',    c:'var(--orange)', bg:'var(--orangeL)', when:'Non conformità di qualità dell\'opera (checklist Qualità: tubi, pozzetti, microdotti, giunzioni, codifica colori).', act:'Da inviare al System entro pochi giorni e verificare con priorità.' },
-  { k:'media',   c:'var(--yellow)', bg:'var(--yellowL)', when:'Altre non conformità di sicurezza, collaudo, ripristini o documentazione che non incidono su qualità dell\'opera o delimitazione del cantiere. È il valore predefinito per le issue inserite a mano.', act:'Gestione ordinaria, controllo alla verifica successiva.' },
-  { k:'bassa',   c:'var(--green)',  bg:'var(--greenL)',  when:'Osservazioni formali o documentali senza impatto su qualità, sicurezza o delimitazione. Si imposta a mano.', act:'Si sistema entro la normale programmazione.' },
+  { k:'media',   c:'var(--yellow)', bg:'var(--yellowL)', when:'Non conformità di sicurezza con rischio diretto per persone, terzi o ambiente (protezioni scavi e cadute, DPI, attrezzature, sollevamento, bombole e stoccaggi, traffico e segnaletica, emergenza, rifiuti pericolosi, illuminazione), POS/PSC mancanti (SIC-03), collaudo e ripristini. È il valore predefinito per le issue inserite a mano.', act:'Gestione ordinaria, controllo alla verifica successiva.' },
+  { k:'bassa',   c:'var(--green)',  bg:'var(--greenL)',  when:'Punti sicurezza formali, documentali o di ordine, senza rischio immediato: autorizzazioni e tesserini (SIC-01/02), programma lavori, libretti, ordinanze e schede sicurezza (SIC-04/08/41/42), pulizia e ordine (SIC-17/19), CER, separazione e formulari rifiuti (SIC-27/28/31), rumore (SIC-33/37), cartello di cantiere (SIC-43). Assegnata in automatico alle issue da verbale; si imposta a mano per le altre.', act:'Si sistema entro la normale programmazione.' },
 ];
 /* Regola FM: coerente con isQualita()/isFmDaVerificare() */
 const FM_LEGEND = [
-  { c:'var(--accent)', t:'Entra come "da validare dal Field Manager"', d:'Solo le issue generate da un punto NC della checklist Qualità di un verbale (origine_cat = qualità). Il FM approva la bonifica nella colonna "Appr. Bonifica FM" e resta in "Approvazioni FM aperte" finché non spunta.' },
+  { c:'var(--accent)', t:'Entra come "Da validare dal Field Manager"', d:'Solo per le issue generate da un punto NC della checklist Qualità di un verbale. Il Field Manager approva la bonifica tramite la colonna "Appr. Bonifica FM". L\'issue resta tra le "Approvazioni FM aperte" finché l\'approvazione non viene effettuata.' },
   { c:'var(--muted)',  t:'Non entra (colonna "—")', d:'Issue da sicurezza/segnaletica, documentazione o inserite a mano: non richiedono approvazione FM, le gestisce l\'admin.' },
 ];
 function openLegend() {
@@ -390,10 +390,10 @@ async function ricalcolaPriority() {
   try {
     const d = await api('/api/issues/ricalcola-priority', { method: 'POST', body: JSON.stringify({ dry_run: true }) });
     if (!d.totale) { toast('Nessuna issue da riclassificare'); return; }
-    if (!confirm(d.totale + ' issue da verbale passeranno da Media a: ' + d.critica + ' Critica, ' + d.alta + ' Alta.\nLe issue con priority già modificata non vengono toccate. Procedere?')) return;
+    if (!confirm(d.totale + ' issue da verbale passeranno da Media a: ' + d.critica + ' Critica, ' + d.alta + ' Alta, ' + d.bassa + ' Bassa.\nLe issue con priority già modificata non vengono toccate. Procedere?')) return;
     const r = await api('/api/issues/ricalcola-priority', { method: 'POST', body: JSON.stringify({}) });
     items = (await api('/api/issues')).items || []; fillLookups(); render();
-    toast(r.totale + ' issue riclassificate (' + r.critica + ' critiche, ' + r.alta + ' alte)');
+    toast(r.totale + ' issue riclassificate (' + r.critica + ' critiche, ' + r.alta + ' alte, ' + r.bassa + ' basse)');
   } catch (e) { toast('✗ ' + e.message); }
 }
 function closeLegend() { $('ovLeg').classList.remove('open'); }
