@@ -673,8 +673,7 @@
       <span class="card-title">Avanzamento per Cluster</span>
       <span class="card-caption" id="clusterStatus">caricamento…</span>
     </div>
-    <div style="padding:6px 16px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);text-align:right">A destra delle barre: <b style="color:var(--retelit-blue)">Permessi</b> = % e metri autorizzati (ottenuti) · <b style="color:var(--warn)">Scavi</b> = % e metri scavati, sul totale</div>
-        <div class="card-body" style="display:flex;flex-direction:column;gap:0;" id="clusterContainer"></div>
+    <div class="card-body" style="display:flex;flex-direction:column;gap:0;" id="clusterContainer"></div>
     <div class="legend" style="flex-wrap:wrap;row-gap:6px;">
       <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:4px">PERMESSI:</span>
       <div class="legend-item"><div class="legend-dot" style="background:#1E9E6A"></div>Ottenuto</div>
@@ -704,7 +703,6 @@
           <span class="card-title">Avanzamento per Lotto</span>
           <span class="card-caption" id="lottiSubtitle">caricamento…</span>
         </div>
-        <div style="padding:6px 16px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);text-align:right">A destra delle barre: <b style="color:var(--retelit-blue)">Permessi</b> = % e metri autorizzati (ottenuti) · <b style="color:var(--warn)">Scavi</b> = % e metri scavati, sul totale</div>
         <div class="card-body" style="display:flex;flex-direction:column;gap:0;" id="barContainer"></div>
       </div>
 
@@ -1071,6 +1069,8 @@ const STATO_COLOR = {
 const STATO_ORDER = ['in-corso','allestimento','sospeso','completato','non-avviato'];
 
 function fmt(n){ return Math.round(n).toLocaleString('it-IT'); }
+// Valore metri a destra delle barre, con etichetta piccola (autorizzati / scavati)
+function fmtMSfx(n, lbl){ return `${fmt(n)} m<span style="display:inline-block;width:62px;margin-left:5px;font-size:10px;font-weight:600;color:var(--muted);text-align:left;letter-spacing:0">${lbl}</span>`; }
 function fmtD(iso){ if(!iso) return null; const p = iso.split('-'); return p.length===3 ? `${p[2]}/${p[1]}/${p[0]}` : iso; }
 const GIORNI_ABBR = ['dom','lun','mar','mer','gio','ven','sab'];
 function fmtDGiorno(iso){
@@ -2192,8 +2192,8 @@ Object.keys(CLUSTER_PERMESSI).sort((a,b)=>+a-+b).forEach(cl => {
   permRow.appendChild(permPctEl);
 
   const permMEl = document.createElement('span');
-  permMEl.style.cssText = 'min-width:72px;text-align:right;font-size:12px;font-weight:700;font-family:Raleway,sans-serif;color:var(--text2);flex-shrink:0;letter-spacing:-.01em';
-  permMEl.textContent = fmt(ottenutoM) + ' m';
+  permMEl.style.cssText = 'min-width:140px;text-align:right;font-size:12px;font-weight:700;font-family:Raleway,sans-serif;color:var(--text2);flex-shrink:0;letter-spacing:-.01em';
+  permMEl.innerHTML = fmtMSfx(ottenutoM, 'autorizzati');
   permMEl.title = 'Metri autorizzati (permessi ottenuti)';
   permRow.appendChild(permMEl);
 
@@ -2234,8 +2234,8 @@ Object.keys(CLUSTER_PERMESSI).sort((a,b)=>+a-+b).forEach(cl => {
   scaviRow.appendChild(scaviPctEl);
 
   const scaviMEl = document.createElement('span');
-  scaviMEl.style.cssText = 'min-width:72px;text-align:right;font-size:12px;font-family:Raleway,sans-serif;font-weight:700;color:var(--text2);flex-shrink:0;letter-spacing:-.01em';
-  scaviMEl.textContent = haScavo ? fmt(sc.scavati) + ' m' : '—';
+  scaviMEl.style.cssText = 'min-width:140px;text-align:right;font-size:12px;font-family:Raleway,sans-serif;font-weight:700;color:var(--text2);flex-shrink:0;letter-spacing:-.01em';
+  scaviMEl.innerHTML = haScavo ? fmtMSfx(sc.scavati, 'scavati') : '—';
   scaviMEl.title = 'Metri scavati';
   scaviRow.appendChild(scaviMEl);
 
@@ -2304,8 +2304,8 @@ LOTTI.forEach(r => {
   permRow.appendChild(permPctEl);
 
   const permMEl = document.createElement('span');
-  permMEl.style.cssText = 'min-width:72px;text-align:right;font-size:12px;font-weight:700;font-family:Raleway,sans-serif;color:var(--text2);flex-shrink:0;letter-spacing:-.01em';
-  permMEl.textContent = r.permessi ? fmt(ottenutoM) + ' m' : '—';
+  permMEl.style.cssText = 'min-width:140px;text-align:right;font-size:12px;font-weight:700;font-family:Raleway,sans-serif;color:var(--text2);flex-shrink:0;letter-spacing:-.01em';
+  permMEl.innerHTML = r.permessi ? fmtMSfx(ottenutoM, 'autorizzati') : '—';
   permMEl.title = 'Metri autorizzati (permessi ottenuti)';
   permRow.appendChild(permMEl);
 
@@ -2345,7 +2345,7 @@ LOTTI.forEach(r => {
   scaviRow.appendChild(scaviCol);
 
   const pctEl  = document.createElement('span'); pctEl.className = 'bar-pct'; pctEl.style.color = col; pctEl.textContent = r.haCantiere ? r.pct + '%' : '—';
-  const mEl    = document.createElement('span'); mEl.style.cssText = 'min-width:72px;text-align:right;font-size:12px;font-family:Raleway,sans-serif;font-weight:700;color:var(--text2);flex-shrink:0;letter-spacing:-.01em'; mEl.textContent = r.haCantiere ? fmt(r.scavati) + ' m' : '—'; mEl.title = 'Metri scavati';
+  const mEl    = document.createElement('span'); mEl.style.cssText = 'min-width:140px;text-align:right;font-size:12px;font-family:Raleway,sans-serif;font-weight:700;color:var(--text2);flex-shrink:0;letter-spacing:-.01em'; mEl.innerHTML = r.haCantiere ? fmtMSfx(r.scavati, 'scavati') : '—'; mEl.title = 'Metri scavati';
   scaviRow.appendChild(pctEl);
   scaviRow.appendChild(mEl);
 
