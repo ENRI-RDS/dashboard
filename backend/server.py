@@ -4005,7 +4005,7 @@ async def issues_ricalcola_priority(payload: dict | None = None, sess: dict = De
     Body: {dry_run: true} → solo conteggio, nessuna scrittura."""
     dry = bool((payload or {}).get("dry_run"))
     cache: dict = {}
-    out = {"critica": 0, "alta": 0}
+    out = {"critica": 0, "alta": 0, "bassa": 0}
     now = datetime.now(timezone.utc).isoformat()
     async with _issue_sync_lock:
         async for iss in issues_col.find({"origine_key": {"$exists": True}, "priority": "media"}):
@@ -4024,7 +4024,7 @@ async def issues_ricalcola_priority(payload: dict | None = None, sess: dict = De
                 await issues_col.update_one({"_id": iss["_id"]}, {"$set": {"priority": new, "updated_at": now}, "$push": {"storico": {
                     "ts": now, "utente": f"Sistema (ricalcolo priority · {sess.get('nome', '')})", "azione": "modificata",
                     "modifiche": [{"campo": "Priority", "da": "Media", "a": _ISSUE_PRIORITY[new]}]}}})
-    return {"ok": True, "dry_run": dry, "totale": out["critica"] + out["alta"], **out}
+    return {"ok": True, "dry_run": dry, "totale": out["critica"] + out["alta"] + out["bassa"], **out}
 
 
 @app.delete("/api/issues/{issue_id}")
@@ -4045,15 +4045,26 @@ async def delete_issue(issue_id: str, sess: dict = Depends(_require_admin_sessio
 
 # Priority automatica alla creazione di una issue da NC di un verbale (poi modificabile a mano dall'admin nel registro):
 # critica = segnalazione del cliente (verbale radice) oppure cantiere non delimitato / accessi aperti;
-# alta = non conformità di qualità dell'opera; media = tutto il resto. Legenda in issue.html (PRIO_LEGEND).
+# alta = non conformità di qualità dell'opera; bassa = punti sicurezza formali/documentali/di ordine (elenco sotto);
+# media = tutto il resto (incl. POS/PSC SIC-03). Legenda in issue.html (PRIO_LEGEND).
 _ISSUE_PRIO_CRITICA_IDS = {"SIC-21", "SIC-22"}
+_ISSUE_PRIO_BASSA_IDS = {
+    "SIC-01", "SIC-02",                                   # autorizzazioni personale / tesserini
+    "SIC-04", "SIC-08", "SIC-41", "SIC-42",               # programma lavori, libretti, ordinanze, schede sicurezza
+    "SIC-17", "SIC-19",                                   # pulizia strada e aree di cantiere
+    "SIC-27", "SIC-28", "SIC-31",                         # rifiuti: CER, separazione, formulari
+    "SIC-33", "SIC-34", "SIC-35", "SIC-36", "SIC-37",     # rumore
+    "SIC-43",                                             # cartello di cantiere
+}
 
 
 def _issue_priority_nc(item_id: str, cat: str, root_verbale: dict | None) -> str:
     segn = (root_verbale or {}).get("segnalazione_cliente") in (True, "SI", "si", "true", 1, "1")
     if segn or item_id in _ISSUE_PRIO_CRITICA_IDS:
         return "critica"
-    return "alta" if cat == "qualita" else "media"
+    if cat == "qualita":
+        return "alta"
+    return "bassa" if (cat == "sicurezza" and item_id in _ISSUE_PRIO_BASSA_IDS) else "media"
 
 
 def _issue_tipo_item(item_id: str) -> str:
