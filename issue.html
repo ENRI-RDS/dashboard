@@ -79,7 +79,7 @@
   tr.done { opacity:.62; }
   .cod { font-family:var(--font-mono); font-weight:600; color:var(--accent); cursor:pointer; }
   .cod:hover { text-decoration:underline; }
-  .tipo { display:inline-block; font-size:10.5px; font-weight:600; padding:2px 8px; border-radius:10px; white-space:nowrap; }
+  .tipo { display:inline-block; max-width:100%; font-size:10.5px; font-weight:600; line-height:1.25; padding:3px 8px; border-radius:10px; white-space:normal; overflow-wrap:break-word; }
   .tipo-In { background:var(--redL); color:var(--red); } .tipo-Cn { background:var(--yellowL); color:var(--yellow); } .tipo-Sc { background:var(--retelit-ice); color:var(--accent); }
   thead th.srt { cursor:pointer; user-select:none; } thead th.srt:hover { background:var(--retelit-teal); }
   thead th.srt::after { content:' ↕'; opacity:.4; } thead th.srt.asc::after { content:' ▲'; opacity:1; } thead th.srt.desc::after { content:' ▼'; opacity:1; }
@@ -188,7 +188,7 @@
 
   <div class="tbl-wrap">
     <table>
-      <colgroup><col style="width:7%"><col style="width:7%"><col style="width:14%"><col style="width:8%"><col style="width:8%"><col style="width:7%"><col style="width:14%"><col style="width:8%"><col style="width:7%"><col style="width:6%"><col style="width:6%"><col style="width:7%"><col style="width:3%"></colgroup>
+      <colgroup><col style="width:7%"><col style="width:9%"><col style="width:14%"><col style="width:8%"><col style="width:8%"><col style="width:7%"><col style="width:12%"><col style="width:8%"><col style="width:7%"><col style="width:6%"><col style="width:6%"><col style="width:7%"><col style="width:3%"></colgroup>
       <thead><tr>
         <th class="srt" data-k="codice" onclick="setSort('codice')">Codice</th><th class="srt" data-k="tipo" onclick="setSort('tipo')">Tipo</th><th class="srt" data-k="cantiere" onclick="setSort('cantiere')">Cantiere / Comune</th><th class="srt" data-k="system" onclick="setSort('system')">System</th><th class="srt" data-k="subsystem" onclick="setSort('subsystem')">SubSystem</th><th class="srt" data-k="data_rilevamento" onclick="setSort('data_rilevamento')">Rilevata</th><th class="srt" data-k="descrizione" onclick="setSort('descrizione')">Descrizione</th><th class="srt" data-k="data_invio" onclick="setSort('data_invio')">Invio al System</th><th class="srt" data-k="stato" onclick="setSort('stato')">Stato</th><th class="srt" data-k="priority" onclick="setSort('priority')">Priority</th><th class="srt" data-k="data_prevista" onclick="setSort('data_prevista')">Prevista</th><th class="srt" data-k="bonifica" onclick="setSort('bonifica')" title="Approvazione Bonifica Field Manager">Appr. Bonifica FM</th><th></th>
       </tr></thead>
@@ -372,11 +372,18 @@ const PRIO_LEGEND = [
   { k:'media',   c:'var(--yellow)', bg:'var(--yellowL)', when:'Altre non conformità di sicurezza, collaudo, ripristini o documentazione che non incidono su qualità dell\'opera o delimitazione del cantiere. È il valore predefinito per le issue inserite a mano.', act:'Gestione ordinaria, controllo alla verifica successiva.' },
   { k:'bassa',   c:'var(--green)',  bg:'var(--greenL)',  when:'Osservazioni formali o documentali senza impatto su qualità, sicurezza o delimitazione. Si imposta a mano.', act:'Si sistema entro la normale programmazione.' },
 ];
+/* Regola FM: coerente con isQualita()/isFmDaVerificare() */
+const FM_LEGEND = [
+  { c:'var(--accent)', t:'Entra come "da validare dal Field Manager"', d:'Solo le issue generate da un punto NC della checklist Qualità di un verbale (origine_cat = qualità). Il FM approva la bonifica nella colonna "Appr. Bonifica FM" e resta in "Approvazioni FM aperte" finché non spunta.' },
+  { c:'var(--muted)',  t:'Non entra (colonna "—")', d:'Issue da sicurezza/segnaletica, documentazione o inserite a mano: non richiedono approvazione FM, le gestisce l\'admin.' },
+];
 function openLegend() {
   $('legBody').innerHTML = '<p style="font-size:12px;color:var(--muted);margin-bottom:12px">Le issue create dai verbali ricevono la priority in automatico; l\'admin può cambiarla dalla tabella. Criteri. Contano soprattutto la <b>qualità dell\'opera</b>, la <b>delimitazione del cantiere</b> e le <b>segnalazioni del cliente</b>.</p>' +
     PRIO_LEGEND.map(l => '<div style="display:flex;gap:12px;padding:11px 12px;margin-bottom:8px;border:1px solid var(--border);border-left:4px solid ' + l.c + ';border-radius:8px;background:' + l.bg + '">' +
       '<div style="min-width:64px;font-weight:700;font-size:13px;color:' + l.c + '">' + esc(PRIO[l.k]) + '</div>' +
-      '<div style="font-size:12.5px;line-height:1.45"><div>' + esc(l.when) + '</div><div style="margin-top:4px;color:var(--muted)">' + esc(l.act) + '</div></div></div>').join('');
+      '<div style="font-size:12.5px;line-height:1.45"><div>' + esc(l.when) + '</div><div style="margin-top:4px;color:var(--muted)">' + esc(l.act) + '</div></div></div>').join('') +
+    '<h3 style="font-size:13px;margin:16px 0 8px">Assegnazione al Field Manager</h3>' +
+    FM_LEGEND.map(l => '<div style="padding:10px 12px;margin-bottom:8px;border:1px solid var(--border);border-left:4px solid ' + l.c + ';border-radius:8px;font-size:12.5px;line-height:1.45"><b>' + esc(l.t) + '</b><div style="margin-top:3px">' + esc(l.d) + '</div></div>').join('');
   $('ovLeg').classList.add('open');
 }
 async function ricalcolaPriority() {
