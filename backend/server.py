@@ -3982,6 +3982,9 @@ async def issue_approvazione_bonifica(issue_id: str, payload: dict, sess: dict =
     val = bool((payload or {}).get("value"))
     if bool(cur.get("bonifica_fm_ok")) == val:
         return {"ok": True, "item": _issue_out(cur), "changed": False}
+    # Regola: l'approvazione FM riguarda solo le issue nate da un punto NC della checklist Qualità
+    if val and cur.get("origine_cat") != "qualita":
+        raise HTTPException(422, "L'approvazione Field Manager è prevista solo per le issue della checklist Qualità")
     now = datetime.now(timezone.utc).isoformat()
     nome = sess.get("nome", "")
     upd = {"bonifica_fm_ok": val, "bonifica_fm_by": nome if val else "", "bonifica_fm_at": now if val else "", "updated_at": now}
