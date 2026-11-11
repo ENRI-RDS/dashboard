@@ -673,7 +673,8 @@
       <span class="card-title">Avanzamento per Cluster</span>
       <span class="card-caption" id="clusterStatus">caricamento…</span>
     </div>
-    <div class="card-body" style="display:flex;flex-direction:column;gap:0;" id="clusterContainer"></div>
+    <div style="padding:6px 16px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);text-align:right">A destra delle barre: <b style="color:var(--retelit-blue)">Permessi</b> = % e metri autorizzati (ottenuti) · <b style="color:var(--warn)">Scavi</b> = % e metri scavati, sul totale</div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:0;" id="clusterContainer"></div>
     <div class="legend" style="flex-wrap:wrap;row-gap:6px;">
       <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-right:4px">PERMESSI:</span>
       <div class="legend-item"><div class="legend-dot" style="background:#1E9E6A"></div>Ottenuto</div>
@@ -703,6 +704,7 @@
           <span class="card-title">Avanzamento per Lotto</span>
           <span class="card-caption" id="lottiSubtitle">caricamento…</span>
         </div>
+        <div style="padding:6px 16px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);text-align:right">A destra delle barre: <b style="color:var(--retelit-blue)">Permessi</b> = % e metri autorizzati (ottenuti) · <b style="color:var(--warn)">Scavi</b> = % e metri scavati, sul totale</div>
         <div class="card-body" style="display:flex;flex-direction:column;gap:0;" id="barContainer"></div>
       </div>
 
@@ -2191,7 +2193,8 @@ Object.keys(CLUSTER_PERMESSI).sort((a,b)=>+a-+b).forEach(cl => {
 
   const permMEl = document.createElement('span');
   permMEl.style.cssText = 'min-width:72px;text-align:right;font-size:12px;font-weight:700;font-family:Raleway,sans-serif;color:var(--text2);flex-shrink:0;letter-spacing:-.01em';
-  permMEl.textContent = fmt(tot) + ' m';
+  permMEl.textContent = fmt(ottenutoM) + ' m';
+  permMEl.title = 'Metri autorizzati (permessi ottenuti)';
   permRow.appendChild(permMEl);
 
   group.appendChild(permRow);
@@ -2232,7 +2235,8 @@ Object.keys(CLUSTER_PERMESSI).sort((a,b)=>+a-+b).forEach(cl => {
 
   const scaviMEl = document.createElement('span');
   scaviMEl.style.cssText = 'min-width:72px;text-align:right;font-size:12px;font-family:Raleway,sans-serif;font-weight:700;color:var(--text2);flex-shrink:0;letter-spacing:-.01em';
-  scaviMEl.textContent = fmt(tot) + ' m';
+  scaviMEl.textContent = haScavo ? fmt(sc.scavati) + ' m' : '—';
+  scaviMEl.title = 'Metri scavati';
   scaviRow.appendChild(scaviMEl);
 
   group.appendChild(scaviRow);
@@ -2301,7 +2305,8 @@ LOTTI.forEach(r => {
 
   const permMEl = document.createElement('span');
   permMEl.style.cssText = 'min-width:72px;text-align:right;font-size:12px;font-weight:700;font-family:Raleway,sans-serif;color:var(--text2);flex-shrink:0;letter-spacing:-.01em';
-  permMEl.textContent = r.permessiTot > 0 ? fmt(r.permessiTot) + ' m' : '—';
+  permMEl.textContent = r.permessi ? fmt(ottenutoM) + ' m' : '—';
+  permMEl.title = 'Metri autorizzati (permessi ottenuti)';
   permRow.appendChild(permMEl);
 
   group.appendChild(permRow);
@@ -2340,7 +2345,7 @@ LOTTI.forEach(r => {
   scaviRow.appendChild(scaviCol);
 
   const pctEl  = document.createElement('span'); pctEl.className = 'bar-pct'; pctEl.style.color = col; pctEl.textContent = r.haCantiere ? r.pct + '%' : '—';
-  const mEl    = document.createElement('span'); mEl.style.cssText = 'min-width:72px;text-align:right;font-size:12px;font-family:Raleway,sans-serif;font-weight:700;color:var(--text2);flex-shrink:0;letter-spacing:-.01em'; mEl.textContent = fmt(r.metri) + ' m';
+  const mEl    = document.createElement('span'); mEl.style.cssText = 'min-width:72px;text-align:right;font-size:12px;font-family:Raleway,sans-serif;font-weight:700;color:var(--text2);flex-shrink:0;letter-spacing:-.01em'; mEl.textContent = r.haCantiere ? fmt(r.scavati) + ' m' : '—'; mEl.title = 'Metri scavati';
   scaviRow.appendChild(pctEl);
   scaviRow.appendChild(mEl);
 
@@ -2512,6 +2517,10 @@ function openModalLotto(r) {
         <span class="modal-stat-val" style="color:${col}">${pctScavi}%</span>
       </div>
       <div class="modal-stat">
+        <span class="modal-stat-lbl">Metri scavati</span>
+        <span class="modal-stat-val" style="color:${col}">${fmt(metriScav)} m</span>
+      </div>
+      <div class="modal-stat">
         <span class="modal-stat-lbl">Cluster</span>
         <span class="modal-stat-val" style="font-family:var(--font-mono)">${r.cl}</span>
       </div>
@@ -2618,6 +2627,10 @@ function openModalCluster(cl) {
       <div class="modal-stat">
         <span class="modal-stat-lbl">Avanzamento scavi</span>
         <span class="modal-stat-val" style="color:#0B3182">${pctScaviCl}%</span>
+      </div>
+      <div class="modal-stat">
+        <span class="modal-stat-lbl">Metri scavati</span>
+        <span class="modal-stat-val" style="color:#0B3182">${fmt(totScavatiCl)} m</span>
       </div>
       <div class="modal-stat">
         <span class="modal-stat-lbl">Lotti coinvolti</span>
