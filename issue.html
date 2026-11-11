@@ -51,7 +51,7 @@
   .head p { font-size:12px; color:var(--muted); margin-top:2px; }
   .head-actions { display:flex; gap:8px; flex-wrap:wrap; }
 
-  .kpis { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; }
+  .kpis { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:12px; }
   .kpi { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:12px 14px; cursor:pointer;
     box-shadow:var(--sh-xs); transition:border-color .15s, box-shadow .15s; text-align:left; font-family:inherit; }
   .kpi:hover { border-color:var(--retelit-blue-50); box-shadow:var(--sh-sm); }
@@ -337,6 +337,11 @@ function fillLookups() {
   $('fSys').value = cur;
 }
 
+/* Regola Field Manager: l'approvazione bonifica riguarda SOLO le issue nate da un punto NC della checklist Qualità.
+   'Da verificare' = issue Qualità non ancora approvata dal FM. */
+function isQualita(it) { return it.origine_cat === 'qualita'; }
+function isFmDaVerificare(it) { return isQualita(it) && !it.bonifica_fm_ok; }
+
 function filtered() {
   const q = $('fQ').value.trim().toLowerCase(), t = $('fTipo').value, s = $('fStato').value, p = $('fPrio').value, y = $('fSys').value, o = $('fOrig').value;
   return items.filter(it => {
@@ -350,6 +355,7 @@ function filtered() {
     if (kpi === 'late' && !isLate(it)) return false;
     if (kpi === 'hot' && !(isOpen(it) && ['alta', 'critica'].includes(it.priority))) return false;
     if (kpi === 'nosys' && !(isOpen(it) && !(it.system || '').trim())) return false;
+    if (kpi === 'fm' && !isFmDaVerificare(it)) return false;
     if (q) {
       const hay = [it.codice, it.origine_verbale, it.origine_item, it.cantiere, it.pratica, it.ente, it.lotto, it.comune, it.system, it.subsystem, it.descrizione, it.rilevato_da, it.rif_system_invio].join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
@@ -412,6 +418,7 @@ function renderKpi() {
     ['late', 'In ritardo', items.filter(isLate).length, 'warn'],
     ['hot', 'Alta / Critica aperte', items.filter(i => isOpen(i) && ['alta', 'critica'].includes(i.priority)).length, 'amber'],
     ['nosys', 'Aperte senza System', items.filter(i => isOpen(i) && !(i.system || '').trim()).length, 'amber'],
+    ['fm', 'Approvazioni FM aperte', items.filter(isFmDaVerificare).length, 'amber'],
   ];
   $('kpis').innerHTML = K.map(([k, l, v, c]) => '<button class="kpi ' + c + ((kpi === k || (k === 'all' && !kpi)) ? ' on' : '') + '" onclick="setKpi(\'' + k + '\')"><div class="k-l">' + l + '</div><div class="k-v">' + v + '</div></button>').join('');
 }
@@ -437,9 +444,11 @@ function render() {
       '<td><select class="cell"' + RO + ' onchange="patch(\'' + esc(it._id) + '\',\'stato\',this.value,this)">' + optsHtml(STATI).replace('value="' + it.stato + '"', 'value="' + it.stato + '" selected') + '</select></td>' +
       '<td><select class="cell"' + RO + ' onchange="patch(\'' + esc(it._id) + '\',\'priority\',this.value,this)">' + optsHtml(PRIO).replace('value="' + it.priority + '"', 'value="' + it.priority + '" selected') + '</select></td>' +
       '<td class="num' + (isLate(it) ? ' late' : '') + '">' + fmt(it.data_prevista) + (isLate(it) ? '<span class="sub late">in ritardo</span>' : '') + '</td>' +
-      '<td class="bon"><input type="checkbox"' + (it.bonifica_fm_ok ? ' checked' : '') + (IS_FIELD ? '' : ' disabled title="Solo il Field Manager può approvare"') +
+      '<td class="bon">' + ((isQualita(it) || it.bonifica_fm_ok) ?
+        ('<input type="checkbox"' + (it.bonifica_fm_ok ? ' checked' : '') + (IS_FIELD ? '' : ' disabled title="Solo il Field Manager può approvare"') +
         ' onchange="toggleBonifica(\'' + esc(it._id) + '\',this)">' +
-        (it.bonifica_fm_ok ? '<span class="sub">' + esc(it.bonifica_fm_by || '') + (it.bonifica_fm_at ? '<br>' + fmt(it.bonifica_fm_at.slice(0, 10)) : '') + '</span>' : '') + '</td>' +
+        (it.bonifica_fm_ok ? '<span class="sub">' + esc(it.bonifica_fm_by || '') + (it.bonifica_fm_at ? '<br>' + fmt(it.bonifica_fm_at.slice(0, 10)) : '') + '</span>' : ''))
+        : '<span class="sub" title="Approvazione FM prevista solo per le issue della checklist Qualità">—</span>') + '</td>' +
       '<td><button class="row-btn" title="Modifica / storico" onclick="openModal(\'' + esc(it._id) + '\')"><svg class="ic" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></td></tr>';
   }).join('');
   const e = $('empty');
