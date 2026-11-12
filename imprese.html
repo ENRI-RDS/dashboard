@@ -125,6 +125,12 @@ window.loadXLSX = (function(){
   .search input{padding-left:34px;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236C757D' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='7'/><path d='m21 21-4.3-4.3'/></svg>");background-repeat:no-repeat;background-position:11px center}
   .pill-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
   .pill-row .pill{font-size:11px;background:var(--accent-light);color:var(--accent);padding:3px 9px;border-radius:5px;font-weight:600;letter-spacing:.02em}
+  .pill-row.has-cards{gap:10px;margin-top:12px}
+  .lotto-card{appearance:none;font:inherit;text-align:left;cursor:pointer;min-width:120px;padding:9px 14px;border-radius:10px;background:var(--surface);border:1px solid var(--border);color:var(--text);transition:border-color .15s,box-shadow .15s,background .15s}
+  .lotto-card:hover{border-color:var(--accent)}
+  .lotto-card.active{background:var(--accent-light);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .lotto-card .lc-name{font-size:13px;font-weight:700;color:var(--accent)}
+  .lotto-card .lc-meta{font-size:11px;color:var(--muted);margin-top:2px;font-family:var(--font-mono)}
   .submit-bar{position:sticky;bottom:0;background:var(--surface);padding:14px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;margin:14px -20px -20px;border-radius:0 0 14px 14px}
   .guard{display:none;text-align:center;padding:60px 20px}
   .guard h2{font-family:var(--font-display);font-size:22px;margin-bottom:12px}
@@ -589,7 +595,18 @@ window.addEventListener('pageshow', (e) => {
     $('pratBody').innerHTML = `<tr><td colspan="10"><div class="spinner-wrap" data-testid="pratiche-loading"><span class="spinner" aria-hidden="true"></span><span>Caricamento pratiche…</span></div></td></tr>`;
     try {
       const d = await api(`/api/imprese/pratiche?nome=${encodeURIComponent(nome)}`);
-      PRATICHE = (d.pratiche || []).map(p => ({...p, _codice: buildCodice(p)}));
+      // Righe inserite via "Nuova pratica" prima del fix backend hanno LUNGHEZZA vuota:
+      // recuperala da un'altra riga della stessa tratta (la lunghezza è della tratta fisica).
+      const lenByTratta = {};
+      (d.pratiche || []).forEach(p => {
+        const l = String(p.LUNGHEZZA ?? '').trim();
+        if (l && parseFloat(l.replace(',', '.')) > 0) lenByTratta[String(p.TRATTA_ID).trim()] = l;
+      });
+      PRATICHE = (d.pratiche || []).map(p => {
+        const l = String(p.LUNGHEZZA ?? '').trim();
+        const lunghezza = l ? p.LUNGHEZZA : (lenByTratta[String(p.TRATTA_ID).trim()] || p.LUNGHEZZA);
+        return {...p, LUNGHEZZA: lunghezza, _codice: buildCodice(p)};
+      });
       _populateLottoFilter();
       renderPratiche('');
       await _populateEntiSelect();
@@ -605,11 +622,34 @@ window.addEventListener('pageshow', (e) => {
 
   // Mostra il filtro lotto solo se l'impresa ha più di un lotto assegnato
   function _populateLottoFilter() {
+    // Il <select> resta come holder dello stato del filtro (nascosto): il filtro vero sono le card in header.
     const sel = $('filterLotto');
-    if (MY_LOTTI.length <= 1) { sel.style.display = 'none'; sel.innerHTML = ''; return; }
+    sel.style.display = 'none';
+    if (MY_LOTTI.length <= 1) { sel.innerHTML = ''; return; }
     sel.innerHTML = '<option value="">Tutti i lotti</option>' +
       MY_LOTTI.map(l => `<option value="${escapeHtml(lottoFromSource(l))}">${escapeHtml(l)}</option>`).join('');
-    sel.style.display = '';
+    const row = $('lottiPills');
+    row.classList.add('has-cards');
+    row.innerHTML = MY_LOTTI.map(l => {
+      const k = escapeHtml(lottoFromSource(l));
+      return `<button type="button" class="lotto-card" data-lotto="${k}" data-testid="lotto-card-${k}">
+        <div class="lc-name">${escapeHtml(l)}</div><div class="lc-meta">— pratiche</div></button>`;
+    }).join('');
+    row.querySelectorAll('.lotto-card').forEach(c => c.addEventListener('click', () => {
+      sel.value = (sel.value === c.dataset.lotto) ? '' : c.dataset.lotto; // secondo click = rimuove filtro
+      renderPratiche($('searchPratiche').value);
+    }));
+  }
+
+  // Aggiorna conteggi/metri e stato attivo delle card lotto (conteggi indipendenti dal filtro lotto)
+  function _updateLottoCards(stats) {
+    const sel = $('filterLotto')?.value || '';
+    document.querySelectorAll('#lottiPills .lotto-card').forEach(c => {
+      const st = stats[c.dataset.lotto] || { n: 0, m: 0 };
+      c.classList.toggle('active', c.dataset.lotto === sel);
+      c.querySelector('.lc-meta').textContent =
+        `${st.n} pratiche · ${st.m.toLocaleString('it-IT', { maximumFractionDigits: 0 })} m`;
+    });
   }
 
   // Popola il select degli enti con tutti i valori unici presenti in Master.csv
@@ -713,8 +753,8 @@ window.addEventListener('pageshow', (e) => {
   }
 
   // ─── export Excel elenco permessi impresa ─────────────────────────────
-  // A differenza della tabella "Aggiorna pratiche" (che esclude OTTENUTO/NO
-  // COMPETENZA perché non ha senso aggiornarle), l'export include TUTTE le
+  // A differenza della tabella "Aggiorna pratiche" (che ora mostra anche OTTENUTO/NO
+  // COMPETENZA), l'export include TUTTE le
   // pratiche dell'impresa, raggruppate per codice pratica come in renderPratiche().
   function _buildExportRows() {
     const latestMap = new Map();
@@ -890,16 +930,12 @@ window.addEventListener('pageshow', (e) => {
         if (!cur || d >= cur.date) lastRichiestaMap.set(key, { date: d, val: p.DATA_RICHIESTA });
       }
     });
-    // Escludi pratiche già ottenute o non di competenza — non hanno senso da aggiornare
     const deduplicated = Array.from(latestMap.entries()).map(([key, p]) => {
       if (!(p.DATA_RICHIESTA || '').trim()) {
         const fallback = lastRichiestaMap.get(key);
         if (fallback) return { ...p, DATA_RICHIESTA: fallback.val };
       }
       return p;
-    }).filter(p => {
-      const st = (p.STATO_PERMESSO || '').trim();
-      return st !== 'OTTENUTO' && st !== 'NO COMPETENZA';
     });
     // Raggruppa per PRATICA (stesso codice ENTE+TIPO_PERMESSO+PRATICA+lotto): l'aggiornamento
     // si applica comunque a tutte le tratte della pratica insieme (vedi SIBLINGS più sotto),
@@ -924,6 +960,13 @@ window.addEventListener('pageshow', (e) => {
         g._tratte = tratte;
       }
     });
+    const lottoStats = {};
+    pratMap.forEach(p => {
+      const k = lottoFromSource(p['Source.Name']);
+      const st = lottoStats[k] || (lottoStats[k] = { n: 0, m: 0 });
+      st.n++; st.m += p._lunghezzaTot || 0;
+    });
+    _updateLottoCards(lottoStats);
     const soloScadute = $('filterPrevisioneScaduta')?.checked;
     const soloUpdateScaduto = $('filterUpdateScaduto')?.checked;
     const lottoSel = $('filterLotto')?.value || '';
