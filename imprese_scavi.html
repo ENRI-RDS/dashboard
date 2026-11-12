@@ -152,6 +152,10 @@
     flex:1 1 130px; min-width:110px; background:var(--surface); border:1px solid var(--border2);
     border-radius:var(--radius-md); padding:7px 10px;
   }
+  .agg-chip.clickable { cursor:pointer; position:relative; transition:border-color .15s, box-shadow .15s, background .15s, transform .15s; }
+  .agg-chip.clickable:hover { border-color:var(--retelit-blue); transform:translateY(-1px); box-shadow:0 3px 10px rgba(16,24,40,.08); }
+  .agg-chip.clickable:focus-visible { outline:2px solid var(--retelit-blue); outline-offset:2px; }
+  .agg-chip.active { background:var(--retelit-ice); border-color:var(--retelit-blue); box-shadow:0 0 0 1px var(--retelit-blue); }
   .agg-chip-row { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px; }
   .agg-chip-info { display:flex; flex-direction:column; gap:1px; min-width:0; }
   .agg-chip-name { font-size:12px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -1038,11 +1042,15 @@ window.addEventListener('pageshow', (e) => {
       });
       return [...map.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'it', { numeric: true }));
     }
-    function renderChips(entries, prefix, fallbackLabel) {
+    function renderChips(entries, prefix, fallbackLabel, selected) {
       return entries.map(([key, g]) => {
         const pct = g.tot > 0 ? Math.min(100, Math.round(g.scav / g.tot * 100)) : 0;
         const label = key === fallbackLabel ? fallbackLabel : `${prefix} ${key}`;
-        return `<div class="agg-chip">
+        const clickable = key !== fallbackLabel;
+        const attrs = clickable
+          ? ` data-lotto="${escapeHtml(key)}" role="button" tabindex="0" aria-pressed="${key === selected}"`
+          : '';
+        return `<div class="agg-chip${clickable ? ' clickable' : ''}${clickable && key === selected ? ' active' : ''}"${attrs}>
           <div class="agg-chip-row">
             <div class="agg-chip-info">
               <span class="agg-chip-name">${escapeHtml(label)}</span>
@@ -1056,11 +1064,22 @@ window.addEventListener('pageshow', (e) => {
     }
     const FALLBACK_LOTTO = 'Senza lotto';
     const lottoEntries = groupBy('lotto', FALLBACK_LOTTO);
-    $('lottoChips').innerHTML = renderChips(lottoEntries, 'Lotto', FALLBACK_LOTTO);
+    const curLotto = $('filterLotto').value;
+    $('lottoChips').innerHTML = renderChips(lottoEntries, 'Lotto', FALLBACK_LOTTO, curLotto);
+    $('lottoChips').querySelectorAll('.agg-chip.clickable').forEach(chip => {
+      const toggle = () => {
+        const l = chip.dataset.lotto;
+        $('filterLotto').value = ($('filterLotto').value === l) ? '' : l; // secondo click = rimuove filtro
+        applyFilter();
+        renderAggIndicators(ALL_CANTIERI);
+      };
+      chip.addEventListener('click', toggle);
+      chip.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+    });
 
     // Card compatte per stato cantiere
     const statoCounts = {};
-    items.forEach(r => {
+    items.filter(r => !curLotto || r.lotto === curLotto).forEach(r => {
       const s = r.stato_cantiere || 'non_avviato';
       statoCounts[s] = (statoCounts[s] || 0) + 1;
     });
@@ -1135,7 +1154,7 @@ window.addEventListener('pageshow', (e) => {
   }
 
   $('filterStato').addEventListener('change', () => { applyFilter(); renderAggIndicators(ALL_CANTIERI); });
-  $('filterLotto').addEventListener('change', applyFilter);
+  $('filterLotto').addEventListener('change', () => { applyFilter(); renderAggIndicators(ALL_CANTIERI); });
   $('filterComune').addEventListener('change', applyFilter);
   $('filterSearch').addEventListener('input', applyFilter);
   $('btnClearFilters').addEventListener('click', () => {
