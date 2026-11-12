@@ -359,17 +359,17 @@ async def _require_field_session(
     return sess
 
 
-_AGENDA_ROLES = ("admin", "admin2", "field")
+_AGENDA_ROLES = ("admin", "admin2", "field", "dl")
 
 
 async def _require_agenda_session(
     x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
 ) -> dict:
-    """Agenda Enti: ruoli 'admin', 'admin2' e 'field'. Il ruolo
+    """Agenda Enti: ruoli 'admin', 'admin2', 'field' e 'dl'. Il ruolo
     è letto dal token firmato (HMAC/SESSION_SECRET), non falsificabile lato client."""
     sess = await _require_staff_session(x_session_token)
     if sess.get("ruolo") not in _AGENDA_ROLES:
-        raise HTTPException(403, "Agenda riservata ad admin e field")
+        raise HTTPException(403, "Agenda riservata ai ruoli interni autorizzati")
     return sess
 
 
