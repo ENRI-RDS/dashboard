@@ -126,11 +126,19 @@ window.loadXLSX = (function(){
   .pill-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
   .pill-row .pill{font-size:11px;background:var(--accent-light);color:var(--accent);padding:3px 9px;border-radius:5px;font-weight:600;letter-spacing:.02em}
   .pill-row.has-cards{gap:10px;margin-top:12px}
-  .lotto-card{appearance:none;font:inherit;text-align:left;cursor:pointer;min-width:120px;padding:9px 14px;border-radius:10px;background:var(--surface);border:1px solid var(--border);color:var(--text);transition:border-color .15s,box-shadow .15s,background .15s}
-  .lotto-card:hover{border-color:var(--accent)}
-  .lotto-card.active{background:var(--accent-light);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-  .lotto-card .lc-name{font-size:13px;font-weight:700;color:var(--accent)}
-  .lotto-card .lc-meta{font-size:11px;color:var(--muted);margin-top:2px;font-family:var(--font-mono)}
+  .lotto-card{appearance:none;font:inherit;text-align:left;cursor:pointer;position:relative;overflow:hidden;min-width:150px;padding:11px 36px 11px 16px;border-radius:12px;background:var(--surface);border:1px solid var(--border);color:var(--text);box-shadow:0 1px 2px rgba(16,24,40,.04);transition:border-color .15s,box-shadow .15s,background .15s,transform .15s}
+  .lotto-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--border);transition:background .15s}
+  .lotto-card::after{content:'';position:absolute;right:11px;top:11px;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--border);background:var(--surface) center/10px no-repeat;transition:all .15s}
+  .lotto-card:hover{border-color:var(--accent);transform:translateY(-1px);box-shadow:0 4px 12px rgba(16,24,40,.08)}
+  .lotto-card:hover::before{background:var(--accent)}
+  .lotto-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .lotto-card.active{background:var(--accent-light);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),0 4px 12px rgba(16,24,40,.08)}
+  .lotto-card.active::before{background:var(--accent)}
+  .lotto-card.active::after{background-color:var(--accent);border-color:var(--accent);background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12.5l4.5 4.5L19 7.5'/></svg>")}
+  .lotto-card .lc-name{font-size:13px;font-weight:700;color:var(--accent);letter-spacing:.01em}
+  .lotto-card .lc-count{margin-top:5px;font-size:11px;color:var(--muted);display:flex;align-items:baseline;gap:5px}
+  .lotto-card .lc-count b{font-size:20px;font-weight:800;color:var(--text);line-height:1;letter-spacing:-.02em}
+  .lotto-card .lc-meta{font-size:11px;color:var(--muted);margin-top:3px;font-family:var(--font-mono)}
   .submit-bar{position:sticky;bottom:0;background:var(--surface);padding:14px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;margin:14px -20px -20px;border-radius:0 0 14px 14px}
   .guard{display:none;text-align:center;padding:60px 20px}
   .guard h2{font-family:var(--font-display);font-size:22px;margin-bottom:12px}
@@ -633,7 +641,7 @@ window.addEventListener('pageshow', (e) => {
     row.innerHTML = MY_LOTTI.map(l => {
       const k = escapeHtml(lottoFromSource(l));
       return `<button type="button" class="lotto-card" data-lotto="${k}" data-testid="lotto-card-${k}">
-        <div class="lc-name">${escapeHtml(l)}</div><div class="lc-meta">— pratiche</div></button>`;
+        <div class="lc-name">${escapeHtml(l)}</div><div class="lc-count"><b>—</b> pratiche</div><div class="lc-meta">— m</div></button>`;
     }).join('');
     row.querySelectorAll('.lotto-card').forEach(c => c.addEventListener('click', () => {
       sel.value = (sel.value === c.dataset.lotto) ? '' : c.dataset.lotto; // secondo click = rimuove filtro
@@ -647,8 +655,9 @@ window.addEventListener('pageshow', (e) => {
     document.querySelectorAll('#lottiPills .lotto-card').forEach(c => {
       const st = stats[c.dataset.lotto] || { n: 0, m: 0 };
       c.classList.toggle('active', c.dataset.lotto === sel);
-      c.querySelector('.lc-meta').textContent =
-        `${st.n} pratiche · ${st.m.toLocaleString('it-IT', { maximumFractionDigits: 0 })} m`;
+      c.setAttribute('aria-pressed', c.dataset.lotto === sel);
+      c.querySelector('.lc-count b').textContent = st.n;
+      c.querySelector('.lc-meta').textContent = `${st.m.toLocaleString('it-IT', { maximumFractionDigits: 0 })} m`;
     });
   }
 
