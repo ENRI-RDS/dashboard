@@ -2154,6 +2154,14 @@ async def list_pending(
     return {"submissions": items, "count": len(items)}
 
 
+# Colonne di Master.csv che descrivono la tratta fisica (identiche per tutte le righe
+# con lo stesso TRATTA_ID) — ereditate dalle nuove pratiche inserite dalle imprese.
+_TRATTA_STATIC_COLS = (
+    "LUNGHEZZA", "SPAN", "LOTTO", "PROVINCIA", "COMUNE", "CLUSTER", "ROUTE",
+    "TIPOLOGIA", "ENTE 2", "CAMPO AWS",
+)
+
+
 def _apply_changes_to_df(df, submission: dict) -> tuple:
     """Returns (new_df, summary). Raises HTTPException on errors.
 
@@ -2246,6 +2254,20 @@ def _apply_changes_to_df(df, submission: dict) -> tuple:
             if not isinstance(row, dict):
                 continue
             new_row = {c: str(row.get(c, "")) for c in df.columns}
+            # Attributi statici della tratta (non inviati dal form impresa): ereditali
+            # dalle righe già presenti con lo stesso TRATTA_ID, altrimenti LUNGHEZZA ecc.
+            # restano vuoti e vanno reinseriti a mano caricando un Master aggiornato.
+            tid = new_row.get("TRATTA_ID", "").strip()
+            if tid and "TRATTA_ID" in df.columns:
+                same = df[df["TRATTA_ID"].astype(str).str.strip() == tid]
+                if not same.empty:
+                    for col in _TRATTA_STATIC_COLS:
+                        if col not in df.columns or str(new_row.get(col, "")).strip():
+                            continue
+                        vals = same[col].astype(str).str.strip()
+                        vals = vals[(vals != "") & (vals.str.lower() != "nan")]
+                        if not vals.empty:
+                            new_row[col] = vals.iloc[-1]
             if "DATA_UPDATE" in df.columns and not new_row.get("DATA_UPDATE"):
                 new_row["DATA_UPDATE"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
             df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
