@@ -3477,8 +3477,12 @@ function toggleSelectorMode() {
 function selectByPraticaFromLayer(clickedLayer) {
   const raw = (clickedLayer.feature?.properties?.PRATICA || '').trim();
   if (!raw) { applyHighlight(clickedLayer); return; }
-  const codes = raw.split(/[|;,]/).map(s => s.trim().toUpperCase()).filter(Boolean);
-  if (!codes.length) { applyHighlight(clickedLayer); return; }
+  const allCodes = raw.split(/[|;,]/).map(s => s.trim().toUpperCase()).filter(Boolean);
+  if (!allCodes.length) { applyHighlight(clickedLayer); return; }
+  // Solo la pratica principale (AUT) della tratta cliccata: unire anche i NO/ORD
+  // evidenziava tratte di altre autorizzazioni che condividono solo il nulla osta.
+  const aut = allCodes.filter(c => c.startsWith('AUT/'));
+  const codes = aut.length ? aut : allCodes;
 
   const matchedLayers = [];
   allLayers.forEach(({layer}) => {
