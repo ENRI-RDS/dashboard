@@ -317,6 +317,7 @@
         <p class="sub">Correggi o azzera i dati di un cantiere (scavi.html/imprese_scavi.html) inseriti per errore/test da un'impresa. Per svuotare TUTTO usa il bottone "Reset tutti i cantieri" qui sotto — qui invece agisci su un singolo cantiere.</p>
         <div class="row" style="margin-bottom:10px">
           <button class="btn btn-ghost btn-xs" data-act="sync-cantieri" data-testid="sync-cantieri" title="Riallinea tratte/metri dei cantieri a Master.csv senza perdere stato, metri scavati e log">Sincronizza cantieri da Master</button>
+          <span id="cantSyncStatus" style="font-size:12px;margin-left:10px"></span>
           <button class="btn btn-danger btn-xs" data-act="reset-cantieri" data-testid="reset-cantieri">Reset tutti i cantieri</button>
         </div>
         <div class="row" style="margin-bottom:10px;gap:14px;align-items:center;flex-wrap:wrap">
@@ -919,9 +920,22 @@
         openRename(name);
       }
       else if(act === 'sync-cantieri'){
-        const res = await api(withTokenQuery('/api/admin/sync-cantieri'), { headers: authHeaders() });
-        toast(`Sync completato · nuovi cantieri: ${res.created} · totale: ${res.total_cantieri}`);
-        refreshCantieri();
+        const st = $('cantSyncStatus');
+        btn.disabled = true;
+        st.style.color = 'var(--gray-600, #555)';
+        st.textContent = 'Sincronizzazione in corso…';
+        try {
+          const res = await api(withTokenQuery('/api/admin/sync-cantieri'), { headers: authHeaders() });
+          await refreshCantieri();
+          const ora = new Date().toLocaleTimeString('it-IT');
+          st.style.color = 'var(--ok, #1E9E6A)';
+          st.textContent = `✓ Sincronizzato alle ${ora} · nuovi cantieri: ${res.created} · totale: ${res.total_cantieri}`;
+        } catch(err) {
+          st.style.color = 'var(--err, #C0392B)';
+          st.textContent = '✗ Sync fallito: ' + (err && err.message ? err.message : err);
+        } finally {
+          btn.disabled = false;
+        }
       }
       else if(act === 'reset-cantieri'){
         const okReset = await showConfirm('Reset cantieri', 'Svuotare TUTTI i cantieri e ricrearli da Master.csv? Utile solo in test — perde stato/metri/log inseriti dalle imprese.', 'Reset', 'btn btn-danger');
