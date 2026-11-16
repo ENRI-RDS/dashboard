@@ -3927,11 +3927,40 @@ def _issue_out(d: dict) -> dict:
     return d
 
 
+async def _issue_cliente_map(items: list) -> dict:
+    """Per ogni issue nata da un verbale: stato della segnalazione cliente del verbale RADICE
+    ('confermata' | 'non_confermata' | 'si' = flag senza esito | '' = nessuna). Chiave: codice issue."""
+    codes = {d.get("origine_verbale") for d in items if d.get("origine_verbale")}
+    if not codes:
+        return {}
+    proj = {"codice_verbale": 1, "verbale_origine": 1, "segnalazione_cliente": 1, "esito_segnalazione": 1}
+    cache = {d["codice_verbale"]: d async for d in sopralluoghi_col.find({"codice_verbale": {"$in": list(codes)}}, proj)}
+    by_code = {}
+    for code in codes:
+        v = cache.get(code)
+        if not v:
+            continue
+        root = await _sopr_root_code(v, cache)
+        rv = cache.get(root) or v
+        if rv.get("segnalazione_cliente") in (True, "SI", "si", "true", 1, "1"):
+            e = str(rv.get("esito_segnalazione", "") or "").strip().lower()
+            by_code[code] = e if e in ("confermata", "non_confermata") else "si"
+        else:
+            by_code[code] = ""
+    return {d.get("codice", ""): by_code.get(d.get("origine_verbale"), "") for d in items}
+
+
+_ISSUE_CLIENTE_LAB = {"confermata": "Confermata", "non_confermata": "Non confermata", "si": "Sì"}
+
+
 @app.get("/api/issues")
 async def list_issues(sess: dict = Depends(_require_issue_read_session)):
     items = []
     async for d in issues_col.find({}).sort([("prefisso", 1), ("seq", -1)]):
         items.append(_issue_out(d))
+    cm = await _issue_cliente_map(items)
+    for d in items:
+        d["cliente"] = cm.get(d.get("codice", ""), "")
     return {"items": items}
 
 
@@ -4066,7 +4095,7 @@ async def delete_issue(issue_id: str, sess: dict = Depends(_require_admin_sessio
 
 
 # Priority automatica alla creazione di una issue da NC di un verbale (poi modificabile a mano dall'admin nel registro):
-# critica = segnalazione del cliente (verbale radice) oppure cantiere non delimitato / accessi aperti;
+# critica = segnalazione del cliente NON esclusa dall'esito "non confermata" (verbale radice) oppure cantiere non delimitato / accessi aperti;
 # alta = non conformità di qualità dell'opera; bassa = punti sicurezza formali/documentali/di ordine (elenco sotto);
 # media = tutto il resto (incl. POS/PSC SIC-03). Legenda in issue.html (PRIO_LEGEND).
 _ISSUE_PRIO_CRITICA_IDS = {"SIC-21", "SIC-22"}
@@ -4081,7 +4110,9 @@ _ISSUE_PRIO_BASSA_IDS = {
 
 
 def _issue_priority_nc(item_id: str, cat: str, root_verbale: dict | None) -> str:
-    segn = (root_verbale or {}).get("segnalazione_cliente") in (True, "SI", "si", "true", 1, "1")
+    rv = root_verbale or {}
+    segn = rv.get("segnalazione_cliente") in (True, "SI", "si", "true", 1, "1") \
+        and str(rv.get("esito_segnalazione", "") or "").strip().lower() != "non_confermata"
     if segn or item_id in _ISSUE_PRIO_CRITICA_IDS:
         return "critica"
     if cat == "qualita":
@@ -4327,8 +4358,9 @@ async def export_issues_xlsx(
             "chi ha rilevato l'anomalia", "Descrizione", "data invio segnalazione al system",
             "Riferimento System invio", "metodo di invio", "stato avanzamento", "Priority",
             "Link vs documentazione", "data prevista sistemazione",
-            "Lotto", "Permesso / Pratica", "Ente", "Origine (verbale · punto)"]  # ultime 4: extra rispetto alla bozza, in coda
-    _header(ws, cols, [13, 26, 16, 16, 20, 20, 13, 22, 60, 16, 22, 15, 18, 11, 24, 16, 8, 18, 26, 22])
+            "Lotto", "Permesso / Pratica", "Ente", "Origine (verbale · punto)", "Segnalazione cliente"]  # ultime 5: extra rispetto alla bozza, in coda
+    _header(ws, cols, [13, 26, 16, 16, 20, 20, 13, 22, 60, 16, 22, 15, 18, 11, 24, 16, 8, 18, 26, 22, 18])
+    _cm = await _issue_cliente_map(items)
     for d in items:
         ws.append([
             d.get("codice", ""), _ISSUE_TIPI.get(d.get("prefisso"), ""), d.get("cantiere", ""), d.get("comune", ""),
@@ -4341,6 +4373,7 @@ async def export_issues_xlsx(
             _sopr_date_obj(d.get("data_prevista", "")) or None,
             d.get("lotto", ""), d.get("pratica", ""), d.get("ente", ""),
             f"{d['origine_verbale']} · {d.get('origine_item', '')}" if d.get("origine_verbale") else "",
+            _ISSUE_CLIENTE_LAB.get(_cm.get(d.get("codice", ""), ""), ""),
         ])
         r = ws.max_row
         for c in range(1, len(cols) + 1):
@@ -4499,9 +4532,40 @@ async def update_sopralluogo(sop_id: str, payload: dict, sess: dict = Depends(_r
     await sopralluoghi_col.update_one({"_id": oid}, {"$set": sets, "$push": {"storico_modifiche": {"ts": now, "utente": utente, "modifiche": mods[:200]}}})
     code = doc.get("codice_verbale", "")
     _schedule_sopralluoghi_csv_regen(f"modifica verbale: {code} ({utente})")
+    if any(k in sets for k in ("segnalazione_cliente", "esito_segnalazione")) and not doc.get("verbale_origine"):
+        try:
+            await _issue_riallinea_priority_verbale(doc, {**doc, **sets}, now)
+        except Exception as e:
+            print(f"[sopralluoghi] riallineo priority issue dopo modifica verbale fallito: {type(e).__name__}: {e}")
     if "checklist" in sets:
         asyncio.create_task(_issue_sync_safe([{**doc, **sets}]))  # NC nuove → issue; verifiche conformi → issue risolte
     return {"ok": True, "changed": len(mods)}
+
+
+async def _issue_riallinea_priority_verbale(old_doc: dict, root_doc: dict, now: str) -> int:
+    """Ricalcola la priority (`_issue_priority_nc`) delle issue aperte nate dal verbale radice `root_doc`,
+    dopo una modifica della segnalazione cliente. Salta le issue la cui priority è stata cambiata A MANO
+    (riga 'Priority' nello storico di un utente diverso da 'Sistema…'). Ritorna quante issue ha aggiornato."""
+    code = root_doc.get("codice_verbale", "")
+    if not code:
+        return 0
+    n = 0
+    async with _issue_sync_lock:
+        async for iss in issues_col.find({"origine_key": {"$regex": "^" + re.escape(code) + r"\|"}}):
+            if iss.get("stato") in ("risolta", "chiusa"):
+                continue
+            if any(m.get("campo") == "Priority" and not str(h.get("utente", "")).startswith("Sistema")
+                   for h in iss.get("storico") or [] for m in h.get("modifiche") or []):
+                continue
+            new = _issue_priority_nc(iss.get("origine_item", ""), iss.get("origine_cat", ""), root_doc)
+            if new == iss.get("priority"):
+                continue
+            await issues_col.update_one({"_id": iss["_id"]}, {"$set": {"priority": new, "updated_at": now}, "$push": {"storico": {
+                "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code,
+                "modifiche": [{"campo": "Priority", "da": _ISSUE_PRIORITY.get(iss.get("priority"), iss.get("priority", "")),
+                               "a": _ISSUE_PRIORITY.get(new, new)}]}}})
+            n += 1
+    return n
 
 
 @app.put("/api/sopralluoghi/{sop_id}/system")
@@ -4595,6 +4659,12 @@ async def update_sopralluogo_system(sop_id: str, payload: dict, sess: dict = Dep
                 n_iss += 1
     except Exception as e:
         print(f"[sopralluoghi] riallineo issue dopo modifica dati System fallito: {type(e).__name__}: {e}")
+    # Segnalazione cliente cambiata → riallinea la priority delle issue del verbale (solo quelle mai modificate a mano)
+    if segn_mods:
+        try:
+            n_iss += await _issue_riallinea_priority_verbale(doc, {**doc, **segn_sets}, now)
+        except Exception as e:
+            print(f"[sopralluoghi] riallineo priority issue dopo modifica segnalazione cliente fallito: {type(e).__name__}: {e}")
     _schedule_sopralluoghi_csv_regen(f"aggiornamento dati System: {doc.get('codice_verbale', '')}")
     return {"ok": True, "changed": len(changes) + len(segn_mods), "issues_aggiornate": n_iss}
 
