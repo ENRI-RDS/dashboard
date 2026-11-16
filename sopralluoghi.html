@@ -525,11 +525,15 @@
     </div>
 
     <div class="field-group" id="segnClienteGroup">
-      <label class="check-inline" id="segnClienteWrap" for="segnalazione_cliente">
-        <input type="checkbox" id="segnalazione_cliente" onchange="onSegnClienteChange()">
-        Segnalazione cliente
-      </label>
-      <div class="segn-hint">Attiva solo se il sopralluogo è stato richiesto a seguito di una segnalazione ricevuta dal cliente.</div>
+      <div id="segnClienteWrap">
+        <div class="segn-esito" id="segnSiNo">
+          <span>Segnalazione cliente *</span>
+          <label><input type="radio" name="segn_cli_sino" value="SI" onchange="onSegnSiNo()"> SI</label>
+          <label><input type="radio" name="segn_cli_sino" value="NO" onchange="onSegnSiNo()"> NO</label>
+        </div>
+        <input type="checkbox" id="segnalazione_cliente" style="display:none" tabindex="-1" aria-hidden="true">
+      </div>
+      <div class="segn-hint">SI solo se il sopralluogo è stato richiesto a seguito di una segnalazione ricevuta dal cliente.</div>
       <div id="segnClienteNoteBox" style="display:none">
         <div class="segn-esito" id="segnEsito">
           <span>Esito verifica sul posto *</span>
@@ -711,6 +715,16 @@
       <div class="field-group"><label for="sm_data">Data invio segnalazione al System *</label><input type="date" id="sm_data" oninput="this.classList.remove('miss')"></div>
       <div class="field-group"><label for="sm_metodo">Metodo di invio *</label><input type="text" id="sm_metodo" list="dlMetodoV" maxlength="100" autocomplete="off" oninput="this.classList.remove('miss')"></div>
       <div class="field-group"><label for="sm_rif">Riferimento System invio *</label><input type="text" id="sm_rif" maxlength="300" autocomplete="off" oninput="this.classList.remove('miss')"></div>
+      <div id="sm_segn_box" style="border-top:1px solid var(--border,#e2e8f0);padding-top:10px">
+        <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:8px"><input type="checkbox" id="sm_segn" onchange="smSegnToggle()"> Segnalazione cliente</label>
+        <div id="sm_segn_wrap" style="display:none">
+          <div id="sm_segn_esito" style="display:flex;gap:16px;font-size:13px;margin-bottom:8px">
+            <label><input type="radio" name="sm_segn_esito" value="confermata" onchange="document.getElementById('sm_segn_esito').classList.remove('miss')"> Confermata (anomalia)</label>
+            <label><input type="radio" name="sm_segn_esito" value="non_confermata" onchange="document.getElementById('sm_segn_esito').classList.remove('miss')"> Non confermata</label>
+          </div>
+          <textarea id="sm_segn_note" maxlength="2000" placeholder="Nota sulla segnalazione cliente *" oninput="this.classList.remove('miss')" style="width:100%;min-height:60px"></textarea>
+        </div>
+      </div>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px">
         <button class="kpi-modal-close" onclick="closeSysModal()">Annulla</button>
         <button class="kpi-modal-close" id="sysModalSave" onclick="saveSysModal()" style="background:var(--accent);color:#fff;border-color:var(--accent)">Salva</button>
@@ -877,6 +891,12 @@ function getF(){
   };
 }
 
+function onSegnSiNo() {
+  const val = document.querySelector('input[name="segn_cli_sino"]:checked')?.value;
+  const cb = document.getElementById('segnalazione_cliente'); if (cb) cb.checked = val === 'SI';
+  document.getElementById('segnSiNo')?.classList.remove('miss');
+  onSegnClienteChange();
+}
 function onSegnClienteChange() {
   const on = document.getElementById('segnalazione_cliente')?.checked;
   document.getElementById('segnClienteWrap')?.classList.toggle('on', !!on);
@@ -1048,6 +1068,8 @@ function resetVerbaleForm() {
   document.getElementById('redattore').value = u || '';
   const segnCli = document.getElementById('segnalazione_cliente');
   if (segnCli) { segnCli.checked = false; onSegnClienteChange(); }
+  document.querySelectorAll('input[name="segn_cli_sino"]').forEach(r => r.checked = false);
+  document.getElementById('segnSiNo')?.classList.remove('miss');
   const segnNote = document.getElementById('segnalazione_cliente_note'); if (segnNote) segnNote.value = '';
   document.querySelectorAll('input[name="esito_segnalazione"]').forEach(r => r.checked = false);
   document.getElementById('segnEsito')?.classList.remove('miss');
@@ -1646,7 +1668,7 @@ function _renderPreview(v) {
         <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;color:#043F75">${v.codice_verbale}</span>
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:10.5px;color:var(--muted)">${v.created_at ? new Date(v.created_at).toLocaleString('it-IT') : ''}</span>
-          <button onclick="openSysModal('${v._id}')" style="background:none;border:1px solid var(--accent);color:var(--accent);border-radius:6px;font-size:10.5px;padding:3px 8px;cursor:pointer">${_sysMancano(v) ? 'Completa dati System' : 'Modifica dati System'}</button>
+          <button onclick="openSysModal('${v._id}')" style="background:none;border:1px solid var(--accent);color:var(--accent);border-radius:6px;font-size:10.5px;padding:3px 8px;cursor:pointer">${_sysMancano(v) ? 'Completa dati System' : 'Modifica dati System/Cliente'}</button>
           ${isAdmin ? `<button onclick="openEditModal('${v._id}')" style="background:none;border:1px solid var(--accent);color:var(--accent);border-radius:6px;font-size:10.5px;padding:3px 8px;cursor:pointer">Modifica</button>` : ''}
           ${isAdmin ? `<button onclick="deleteVerbale('${v._id}')" style="background:none;border:1px solid #ef4444;color:#ef4444;border-radius:6px;font-size:10.5px;padding:3px 8px;cursor:pointer">Elimina</button>` : ''}
         </div>
@@ -2241,6 +2263,11 @@ function _validaVerbale() {
     document.getElementById(_sysMiss[0][0])?.scrollIntoView({behavior:'smooth', block:'center'});
     return 'Segnalazione al System: compila ' + _sysMiss.map(m => m[1]).join(', ');
   }
+  if (!_verificaDi && !document.querySelector('input[name="segn_cli_sino"]:checked')) {
+    document.getElementById('segnSiNo')?.classList.add('miss');
+    document.getElementById('segnClienteWrap')?.scrollIntoView({behavior:'smooth', block:'center'});
+    return 'Segnalazione cliente: indica SI o NO';
+  }
   const segn = !!document.getElementById('segnalazione_cliente')?.checked && !_verificaDi;
   const esito = document.querySelector('input[name="esito_segnalazione"]:checked')?.value || '';
   if (segn && !esito) {
@@ -2302,9 +2329,17 @@ function openSysModal(id) {
   document.getElementById('sm_data').value = iso;
   document.getElementById('sm_metodo').value = v.metodo_invio || '';
   document.getElementById('sm_rif').value = v.rif_system_invio || '';
-  ['sm_subsystem', 'sm_data', 'sm_metodo', 'sm_rif'].forEach(i => document.getElementById(i).classList.remove('miss'));
+  ['sm_subsystem', 'sm_data', 'sm_metodo', 'sm_rif', 'sm_segn_note'].forEach(i => document.getElementById(i).classList.remove('miss'));
+  document.getElementById('sm_segn_esito').classList.remove('miss');
+  const _isRoot = !v.verbale_origine;
+  document.getElementById('sm_segn_box').style.display = _isRoot ? '' : 'none';
+  document.getElementById('sm_segn').checked = _isRoot && _isSegnCliente(v);
+  document.querySelectorAll('input[name="sm_segn_esito"]').forEach(r => { r.checked = r.value === (v.esito_segnalazione || ''); });
+  document.getElementById('sm_segn_note').value = v.segnalazione_cliente_note || '';
+  smSegnToggle();
   document.getElementById('sysModal').classList.add('open');
 }
+function smSegnToggle() { document.getElementById('sm_segn_wrap').style.display = document.getElementById('sm_segn').checked ? '' : 'none'; }
 function closeSysModal() { document.getElementById('sysModal').classList.remove('open'); _sysModalId = null; }
 async function saveSysModal() {
   const g = i => (document.getElementById(i).value || '').trim();
@@ -2313,6 +2348,20 @@ async function saveSysModal() {
   ['sm_subsystem', 'sm_data', 'sm_metodo', 'sm_rif'].forEach(i => document.getElementById(i).classList.toggle('miss', miss.includes(i)));
   if (miss.length) { showToast('✗ Compila tutti e 4 i campi'); return; }
   const id = _sysModalId, btn = document.getElementById('sysModalSave');
+  const _v = _verbaliAll.find(x => x._id === id);
+  if (_v && !_v.verbale_origine) {
+    const on = document.getElementById('sm_segn').checked;
+    const esito = document.querySelector('input[name="sm_segn_esito"]:checked')?.value || '';
+    const nota = g('sm_segn_note');
+    if (on) {
+      document.getElementById('sm_segn_esito').classList.toggle('miss', !esito);
+      document.getElementById('sm_segn_note').classList.toggle('miss', !nota);
+      if (!esito) { showToast('✗ Segnalazione cliente: indica se è confermata o non confermata'); return; }
+      if (!nota) { showToast('✗ Segnalazione cliente: la nota è obbligatoria'); return; }
+      if (esito === 'confermata' && !_ckStatsOf(_v).nc) { showToast('✗ Confermata: almeno un punto della checklist deve essere NC (usa "Modifica")'); return; }
+    }
+    body.segnalazione_cliente = on; body.esito_segnalazione = on ? esito : ''; body.segnalazione_cliente_note = on ? nota : '';
+  }
   btn.disabled = true;
   try {
     const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
@@ -2322,7 +2371,7 @@ async function saveSysModal() {
     if (!res.ok) { let det = ''; try { det = (await res.json()).detail || ''; } catch (_) {} throw new Error(det || ('HTTP ' + res.status)); }
     const r = await res.json();
     closeSysModal();
-    showToast(r.changed ? '✓ Dati System aggiornati' + (r.issues_aggiornate ? ' · ' + r.issues_aggiornate + ' issue riallineate' : '') : 'Nessuna modifica');
+    showToast(r.changed ? '✓ Dati aggiornati' + (r.issues_aggiornate ? ' · ' + r.issues_aggiornate + ' issue riallineate' : '') : 'Nessuna modifica');
     await loadVerbali();
     _selectVerbale(id);
   } catch (e) { showToast('✗ ' + e.message); }
