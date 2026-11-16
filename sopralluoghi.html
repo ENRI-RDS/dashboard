@@ -77,6 +77,20 @@
   .kpi-modal-title small{display:block;font-size:11px;font-weight:500;color:var(--muted);margin-top:2px;}
   .kpi-modal-body{overflow-y:auto;padding:6px 20px 18px;}
   .kpi-modal-close{background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;font-size:12px;padding:5px 11px;cursor:pointer;}
+  .ed-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px;}
+  .ed-sec{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);margin:10px 0 8px;padding-top:10px;border-top:1px solid var(--border);}
+  .ed-tabs{display:flex;gap:6px;margin-bottom:8px;}
+  .ed-tab{background:none;border:1px solid var(--border);border-radius:8px;font-size:12px;padding:5px 11px;cursor:pointer;color:var(--muted);}
+  .ed-tab.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .ed-area{font-size:11px;font-weight:700;color:var(--muted);margin:10px 0 4px;}
+  .ed-item{border:1px solid var(--border);border-radius:8px;padding:7px 9px;margin-bottom:6px;}
+  .ed-item.nc{border-color:#C0392B;background:#FDF3F1;}
+  .ed-top{display:flex;align-items:center;gap:8px;font-size:12px;}
+  .ed-top .t{flex:1;}
+  .ed-item select,.ed-item input{font-size:12px;padding:4px 6px;}
+  .ed-item input[type=text]{width:100%;margin-top:5px;}
+  .ed-nc{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:5px;}
+  @media(max-width:700px){.ed-grid,.ed-nc{grid-template-columns:1fr;}}
   .km-row{display:grid;grid-template-columns:auto .8fr 1.6fr 1.4fr;gap:10px;align-items:center;padding:9px 6px;border-bottom:1px solid var(--border);font-size:12px;cursor:pointer;}
   .km-row:hover{background:var(--surface2);}
   .km-row.has-segn{background:#FFF7E6;box-shadow:inset 3px 0 0 var(--warn);}
@@ -705,6 +719,46 @@
   </div>
 </div>
 
+<div class="kpi-modal" id="editModal" onclick="if(event.target===this)closeEditModal()">
+  <div class="kpi-modal-box" style="width:min(860px,100%);max-height:92vh">
+    <div class="kpi-modal-head">
+      <div class="kpi-modal-title">Modifica verbale<small id="editModalSub"></small></div>
+      <button class="kpi-modal-close" onclick="closeEditModal()">Chiudi ✕</button>
+    </div>
+    <div class="kpi-modal-body" id="editModalBody" style="padding-top:14px">
+      <div class="ed-grid">
+        <div class="field-group"><label for="ed_data">Data sopralluogo *</label><input type="date" id="ed_data"></div>
+        <div class="field-group"><label for="ed_lotto">Lotto *</label><input type="text" id="ed_lotto" maxlength="50"></div>
+        <div class="field-group" style="grid-column:1/-1"><label for="ed_tratta">N° Cantiere *</label><input type="text" id="ed_tratta" maxlength="300"></div>
+        <div class="field-group"><label for="ed_impresa">Impresa esecutrice *</label><input type="text" id="ed_impresa" maxlength="200"></div>
+        <div class="field-group"><label for="ed_comune">Indirizzo / Località</label><input type="text" id="ed_comune" maxlength="300"></div>
+        <div class="field-group"><label for="ed_redattore">Redatto da</label><input type="text" id="ed_redattore" maxlength="200"></div>
+        <div class="field-group"><label for="ed_ruolo">Ruolo redattore</label><input type="text" id="ed_ruolo" maxlength="200"></div>
+      </div>
+      <div id="ed_segn_box">
+        <div class="ed-sec">Segnalazione cliente</div>
+        <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:8px"><input type="checkbox" id="ed_segn" onchange="edSegnToggle()"> Il sopralluogo nasce da una segnalazione del cliente</label>
+        <div id="ed_segn_wrap" style="display:none">
+          <div style="display:flex;gap:16px;font-size:13px;margin-bottom:8px">
+            <label><input type="radio" name="ed_segn_esito" value="confermata"> Confermata (anomalia)</label>
+            <label><input type="radio" name="ed_segn_esito" value="non_confermata"> Non confermata</label>
+          </div>
+          <textarea id="ed_segn_note" maxlength="2000" placeholder="Note sulla segnalazione cliente (oggetto, data, riferimento…)" style="width:100%;min-height:60px"></textarea>
+        </div>
+      </div>
+      <div class="ed-sec">Checklist</div>
+      <div class="ed-tabs" id="ed_tabs"></div>
+      <div id="ed_ck_body"></div>
+      <div class="field-group" style="margin-top:10px"><label for="ed_ck_note">Note generali checklist</label><textarea id="ed_ck_note" maxlength="4000" style="min-height:60px"></textarea></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px">
+        <button class="kpi-modal-close" onclick="closeEditModal()">Annulla</button>
+        <button class="kpi-modal-close" id="editModalSave" onclick="saveEditModal()" style="background:var(--accent);color:#fff;border-color:var(--accent)">Salva modifiche</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px">I dati "Segnalazione al System" si modificano dal bottone dedicato nell'anteprima. Le issue già generate dal verbale non vengono ricalcolate: eventuali nuove NC ne creano di nuove.</div>
+    </div>
+  </div>
+</div>
+
 <div id="toast">✓ Verbale scaricato</div>
 
 <script>
@@ -912,6 +966,15 @@ async function inviaVerbale(){
   if (!document.getElementById('impresa').value.trim()) { showToast('✗ Inserisci il nome impresa'); return; }
   const errV = _validaVerbale();
   if (errV) { showToast('✗ ' + errV); return; }
+  if (!_verificaDi) {   // sopralluogo radice: avvisa se restano punti senza esito (altrimenti il verbale risulta es. 84/85)
+    const _lab = { qualita:'Qualità', sicurezza:'Sicurezza', collaudo:'Collaudo' };
+    const _miss = CK_CATS.map(k => ({ k, ids: CHECKLIST_DEF[k].items.filter(it => !(_ckState[k][it.id] || {}).e).map(it => it.id) })).filter(m => m.ids.length);
+    if (_miss.length) {
+      const _n = _miss.reduce((a, m) => a + m.ids.length, 0);
+      const _det = _miss.map(m => '• ' + _lab[m.k] + ': ' + m.ids.length + ' senza esito' + (m.ids.length <= 6 ? ' (' + m.ids.join(', ') + ')' : '')).join('\n');
+      if (!confirm('Checklist incompleta: ' + _n + ' punti senza esito.\n\n' + _det + '\n\nOK = invia comunque\nAnnulla = torna a compilare')) { setChecklistTab(_miss[0].k); return; }
+    }
+  }
 
   // Impedisce doppio invio
   if (document.getElementById('codice_verbale').value) {
@@ -1558,7 +1621,7 @@ function _selectVerbale(id) {
 }
 
 function _renderPreview(v) {
-  const isAdmin = (localStorage.getItem('_enri_role') || '').toLowerCase() === 'admin';
+  const isAdmin = ['admin', 'admin2'].includes((localStorage.getItem('_enri_role') || '').toLowerCase());
   const campi = [
     ['Lotto', v.lotto], ['N° Cantiere', v.tratta_id],
     ['Comune / Località', [v.comune, v.localita].filter(Boolean).join(' — ')],
@@ -1584,6 +1647,7 @@ function _renderPreview(v) {
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:10.5px;color:var(--muted)">${v.created_at ? new Date(v.created_at).toLocaleString('it-IT') : ''}</span>
           <button onclick="openSysModal('${v._id}')" style="background:none;border:1px solid var(--accent);color:var(--accent);border-radius:6px;font-size:10.5px;padding:3px 8px;cursor:pointer">${_sysMancano(v) ? 'Completa dati System' : 'Modifica dati System'}</button>
+          ${isAdmin ? `<button onclick="openEditModal('${v._id}')" style="background:none;border:1px solid var(--accent);color:var(--accent);border-radius:6px;font-size:10.5px;padding:3px 8px;cursor:pointer">Modifica</button>` : ''}
           ${isAdmin ? `<button onclick="deleteVerbale('${v._id}')" style="background:none;border:1px solid #ef4444;color:#ef4444;border-radius:6px;font-size:10.5px;padding:3px 8px;cursor:pointer">Elimina</button>` : ''}
         </div>
       </div>
@@ -1680,18 +1744,25 @@ function _ckPreviewHtml(v) {
     </div>`;
 }
 
-async function deleteVerbale(id) {
-  if (!confirm('Eliminare definitivamente questo verbale?')) return;
+async function deleteVerbale(id, cascade) {
+  if (!cascade && !confirm('Eliminare definitivamente questo verbale?\n(Le issue già generate nel registro non vengono eliminate.)')) return;
   try {
     const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
     const token   = localStorage.getItem('_enri_session') || '';
-    const res = await fetch(apiBase + '/api/sopralluoghi/' + id, {
+    const res = await fetch(apiBase + '/api/sopralluoghi/' + id + (cascade ? '?cascade=true' : ''), {
       method: 'DELETE', headers: { 'x-session-token': token }
     });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (res.status === 409) {
+      let det = ''; try { det = (await res.json()).detail || ''; } catch(_) {}
+      if (confirm(det)) return deleteVerbale(id, true);
+      return;
+    }
+    if (!res.ok) { let det = ''; try { det = (await res.json()).detail || ''; } catch(_) {} throw new Error(det || ('HTTP ' + res.status)); }
+    const r = await res.json();
     _selectedVerbaleId = null;
     document.getElementById('preview-body').outerHTML = '<div id="preview-body" class="preview-empty">Seleziona un verbale dall\'archivio per vederne l\'anteprima.</div>';
     await loadVerbali();
+    showToast('✓ Eliminato' + (r.issues_collegate ? ' · ' + r.issues_collegate + ' issue collegate restano nel registro' : ''));
   } catch(e) {
     alert('Errore eliminazione: ' + e.message);
   }
@@ -2252,6 +2323,115 @@ async function saveSysModal() {
     const r = await res.json();
     closeSysModal();
     showToast(r.changed ? '✓ Dati System aggiornati' + (r.issues_aggiornate ? ' · ' + r.issues_aggiornate + ' issue riallineate' : '') : 'Nessuna modifica');
+    await loadVerbali();
+    _selectVerbale(id);
+  } catch (e) { showToast('✗ ' + e.message); }
+  finally { btn.disabled = false; }
+}
+
+// ══ MODIFICA VERBALE (admin/admin2) ═════════════════════════════════════════
+let _edId = null, _edTab = 'qualita', _edCk = {}, _edIsVerifica = false;
+const _ED_LAB = { qualita:'Qualità', sicurezza:'Sicurezza', collaudo:'Collaudo' };
+
+function _edFind(v, id) {   // cerca l'item in tutte le categorie (i verbali vecchi hanno TST/RIP/DOC sotto "qualita")
+  const ck = _ckOf(v);
+  for (const k of CK_CATS) if (ck[k] && ck[k][id]) return ck[k][id];
+  return null;
+}
+function openEditModal(id) {
+  const v = _verbaliAll.find(x => x._id === id); if (!v) return;
+  _edId = id; _edIsVerifica = !!v.verbale_origine; _edTab = 'qualita';
+  document.getElementById('editModalSub').textContent = v.codice_verbale + (_edIsVerifica ? ' · verifica di ' + v.verbale_origine : '');
+  const set = (i, val) => { document.getElementById(i).value = val || ''; };
+  set('ed_data', _soprDateISO(v.data_sopralluogo) || (v.data_sopralluogo || '').slice(0, 10));
+  set('ed_lotto', v.lotto); set('ed_tratta', v.tratta_id); set('ed_impresa', v.impresa); set('ed_comune', v.comune);
+  set('ed_redattore', v.referente_impresa); set('ed_ruolo', v.referente_retelit);   // campi Mongo storicamente invertiti
+  set('ed_ck_note', _ckOf(v).note_generali);
+  document.getElementById('ed_segn_box').style.display = _edIsVerifica ? 'none' : '';
+  document.getElementById('ed_segn').checked = _isSegnCliente(v);
+  document.querySelectorAll('input[name="ed_segn_esito"]').forEach(r => { r.checked = r.value === (v.esito_segnalazione || ''); });
+  set('ed_segn_note', v.segnalazione_cliente_note);
+  edSegnToggle();
+  _edCk = {};
+  CK_CATS.forEach(k => {
+    _edCk[k] = {};
+    CHECKLIST_DEF[k].items.forEach(it => {
+      const s = _edFind(v, it.id);
+      if (s) _edCk[k][it.id] = { e: s.e || '', rilievo: s.rilievo || '', azione: s.azione || '', resp: s.resp || '', scad: _soprDateISO(s.scad) || '', nota: s.nota || '' };
+    });
+  });
+  _edRender();
+  document.getElementById('editModal').classList.add('open');
+}
+function closeEditModal() { document.getElementById('editModal').classList.remove('open'); _edId = null; }
+function edSegnToggle() { document.getElementById('ed_segn_wrap').style.display = document.getElementById('ed_segn').checked ? '' : 'none'; }
+function edTab(k) { _edTab = k; _edRender(); }
+function edSet(k, id, f, val, rerender) {
+  if (!_edCk[k][id]) _edCk[k][id] = { e:'', rilievo:'', azione:'', resp:'', scad:'', nota:'' };
+  const st = _edCk[k][id]; st[f] = val;
+  if (f === 'e' && val !== 'NC') { st.rilievo = ''; st.azione = ''; st.resp = ''; st.scad = ''; }
+  if (rerender) _edRender();
+}
+function _edItems(k) { return CHECKLIST_DEF[k].items.filter(it => !_edIsVerifica || _edCk[k][it.id]); }
+const escA = x => esc(String(x ?? '')).replace(/"/g, '&quot;');
+function _edRender() {
+  const wrap = document.getElementById('editModalBody'), top = wrap.scrollTop;
+  document.getElementById('ed_tabs').innerHTML = CK_CATS.map(k => {
+    const it = _edItems(k), done = it.filter(x => (_edCk[k][x.id] || {}).e).length;
+    return it.length ? `<button type="button" class="ed-tab${k === _edTab ? ' on' : ''}" onclick="edTab('${k}')">${_ED_LAB[k]} ${done}/${it.length}</button>` : '';
+  }).join('');
+  if (!_edItems(_edTab).length) _edTab = CK_CATS.find(k => _edItems(k).length) || 'qualita';
+  const k = _edTab; let html = '', last = null;
+  _edItems(k).forEach(it => {
+    if (it.area !== last) { html += `<div class="ed-area">${esc(it.area)}</div>`; last = it.area; }
+    const st = _edCk[k][it.id] || { e:'', rilievo:'', azione:'', resp:'', scad:'', nota:'' };
+    const opt = (v, l) => `<option value="${v}"${st.e === v ? ' selected' : ''}>${l}</option>`;
+    html += `<div class="ed-item${st.e === 'NC' ? ' nc' : ''}">
+      <div class="ed-top"><span class="ck-id">${it.id}</span><span class="t">${esc(it.t)}</span>
+        <select onchange="edSet('${k}','${it.id}','e',this.value,true)">${opt('', '—')}${opt('C', 'Conforme')}${opt('NC', 'NC')}${opt('NA', 'N.A.')}</select></div>
+      <input type="text" placeholder="Nota" value="${escA(st.nota)}" oninput="edSet('${k}','${it.id}','nota',this.value)">
+      ${st.e === 'NC' ? `<div class="ed-nc">
+        <input type="text" placeholder="Rilievo / non conformità" value="${escA(st.rilievo)}" oninput="edSet('${k}','${it.id}','rilievo',this.value)">
+        <input type="text" placeholder="Azione correttiva *" value="${escA(st.azione)}" oninput="edSet('${k}','${it.id}','azione',this.value)">
+        <input type="text" placeholder="Responsabile" value="${escA(st.resp)}" oninput="edSet('${k}','${it.id}','resp',this.value)">
+        <input type="date" title="Scadenza *" value="${escA(st.scad)}" oninput="edSet('${k}','${it.id}','scad',this.value)">
+      </div>` : ''}
+    </div>`;
+  });
+  document.getElementById('ed_ck_body').innerHTML = html;
+  wrap.scrollTop = top;
+}
+async function saveEditModal() {
+  const g = i => (document.getElementById(i).value || '').trim();
+  const body = { data_sopralluogo: g('ed_data'), lotto: g('ed_lotto'), tratta_id: g('ed_tratta'), impresa: g('ed_impresa'),
+                 comune: g('ed_comune'), referente_impresa: g('ed_redattore'), referente_retelit: g('ed_ruolo') };
+  if (!body.data_sopralluogo || !body.lotto || !body.tratta_id || !body.impresa) { showToast('✗ Data, lotto, cantiere e impresa sono obbligatori'); return; }
+  if (!_edIsVerifica) {
+    const on = document.getElementById('ed_segn').checked;
+    const esito = document.querySelector('input[name="ed_segn_esito"]:checked')?.value || '';
+    if (on && !esito) { showToast('✗ Segnalazione cliente: indica se è confermata o non confermata'); return; }
+    body.segnalazione_cliente = on; body.esito_segnalazione = on ? esito : ''; body.segnalazione_cliente_note = on ? g('ed_segn_note') : '';
+  }
+  const ck = { note_generali: g('ed_ck_note') };
+  for (const k of CK_CATS) {
+    ck[k] = {};
+    for (const [id, st] of Object.entries(_edCk[k])) {
+      if (st.e === 'NC' && (!st.azione.trim() || !st.scad)) { _edTab = k; _edRender(); showToast('✗ Non conformità ' + id + ': azione correttiva e scadenza obbligatorie'); return; }
+      if (st.e || st.nota) ck[k][id] = st;
+    }
+  }
+  body.checklist = ck;
+  const id = _edId, btn = document.getElementById('editModalSave');
+  btn.disabled = true;
+  try {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    const token = localStorage.getItem('_enri_session') || '';
+    const res = await fetch(apiBase + '/api/sopralluoghi/' + id, { method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-session-token': token }, body: JSON.stringify(body) });
+    if (!res.ok) { let det = ''; try { det = (await res.json()).detail || ''; } catch (_) {} throw new Error(det || ('HTTP ' + res.status)); }
+    const r = await res.json();
+    closeEditModal();
+    showToast(r.changed ? '✓ Verbale aggiornato (' + r.changed + ' modifiche)' : 'Nessuna modifica');
     await loadVerbali();
     _selectVerbale(id);
   } catch (e) { showToast('✗ ' + e.message); }
