@@ -4146,16 +4146,17 @@ function renderCoordList(pr) {
   document.getElementById('coordRows').innerHTML = chiavi.map((k, gi) => {
     const rgb = PAL[gi % PAL.length], items = gruppi[k];
     const tot = items.reduce((s, x) => s + x.p.totale, 0), ric = items.reduce((s, x) => s + x.p.ricevute, 0);
+    const imprese = [...new Set(items.map(x => _coCap(x.p.impresa)).filter(Boolean))].join(' / ');
     const righe = items.map(({ p, i }) => {
       const w = n => (p.totale ? (100 * n / p.totale).toFixed(2) : 0);
-      const mun = String(p.municipio || '').replace(/MUNICIPIO\s*/i, 'M');
+      const mun = _coCap(p.municipio || '');
       const tip = `${p.ricevute} ricevute · ${p.inviate} in attesa · ${p.da_inviare} da inviare`;
-      return `<div class="bar-row" onclick="openCoordDetail(${i})" title="${_coEsc(tip)}" style="background:var(--surface);border:1px solid rgba(${rgb},0.22);border-radius:8px;padding:6px 10px">
-        <div class="bar-lotto-wrap" style="width:124px">
-          <span class="bar-lotto-num">${_coEsc(p.pratica)}</span>
-          <span style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:124px">${_coEsc(mun)} · ${_coEsc(_coCap(p.impresa))}</span>
+      return `<div class="bar-row" onclick="openCoordDetail(${i})" title="${_coEsc(tip)}" style="background:var(--surface);border:1px solid rgba(${rgb},0.22);border-radius:6px;padding:2px 10px;gap:10px;min-height:0">
+        <div class="bar-lotto-wrap" style="width:210px;flex-direction:row;align-items:baseline;gap:8px">
+          <span class="bar-lotto-num" style="font-size:13px;white-space:nowrap">${_coEsc(p.pratica)}</span>
+          <span style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px;font-size:11px">${_coEsc(mun)}</span>
         </div>
-        <div class="bar-track">
+        <div class="bar-track" style="height:12px;border-radius:6px">
           <div class="bar-seg" style="width:${w(p.ricevute)}%;background:${_CO_COL.ric}"></div>
           <div class="bar-seg" style="width:${w(p.inviate)}%;background:${_CO_COL.inv}"></div>
         </div>
@@ -4163,14 +4164,15 @@ function renderCoordList(pr) {
         <span style="min-width:48px;text-align:right;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--muted);flex-shrink:0">${p.ricevute}/${p.totale}</span>
       </div>`;
     }).join('');
-    return `<div style="background:rgba(${rgb},0.09);border:1px solid rgba(${rgb},0.30);border-left:5px solid rgb(${rgb});border-radius:12px;padding:10px 12px 12px;margin-bottom:12px">
-      <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 2px 8px">
+    return `<div style="background:rgba(${rgb},0.09);border:1px solid rgba(${rgb},0.30);border-left:5px solid rgb(${rgb});border-radius:12px;padding:6px 10px 8px;margin-bottom:8px">
+      <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 2px 5px">
         <span style="font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgb(${rgb})">Lotto ${_coEsc(k)}</span>
+        ${imprese ? `<span style="font-size:13px;font-weight:600;color:var(--text)">${_coEsc(imprese)}</span>` : ''}
         <span style="font-size:12px;color:var(--muted)">${items.length} ${items.length === 1 ? 'pratica' : 'pratiche'}</span>
         <span style="flex:1"></span>
         <span style="font-size:12px;font-weight:700;font-family:'Raleway',sans-serif;color:var(--text2)">${ric}/${tot} risposte · ${tot ? Math.round(100 * ric / tot) : 0}%</span>
       </div>
-      <div style="display:flex;flex-direction:column;gap:6px">${righe}</div>
+      <div style="display:flex;flex-direction:column;gap:3px">${righe}</div>
     </div>`;
   }).join('');
 }
