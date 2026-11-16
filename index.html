@@ -1045,6 +1045,17 @@ window.loadExcelJS = (function(){
   </div>
 </div>
 
+<!-- Modal dettaglio coordinamenti (richieste agli enti per pratica) -->
+<div class="modal-overlay" id="modalCoordOverlay" onclick="closeModalCoord(event)" role="dialog" aria-modal="true" aria-labelledby="modalCoordTitle">
+  <div class="modal">
+    <div class="modal-title">
+      <span id="modalCoordTitle">Coordinamenti</span>
+      <span class="modal-close" onclick="closeModalCoord()">×</span>
+    </div>
+    <div id="modalCoordBody"></div>
+  </div>
+</div>
+
 <!-- Modal Riepilogo Gruppo -->
 <div class="modal-overlay" id="modalGruppoOverlay" onclick="closeModalGruppo(event)" role="dialog" aria-modal="true" aria-labelledby="modalGruppoTitle">
   <div class="modal" style="width:620px;max-width:95vw">
@@ -1171,7 +1182,7 @@ window.loadExcelJS = (function(){
     </div>
   </div>
   <div class="grid-main">
-    <div class="card">
+    <div class="card" style="display:flex;flex-direction:column">
       <div class="card-header">
         <span class="card-title">Avanzamento per Lotto</span>
         <span style="font-size:15px;font-weight:700;font-family:'Raleway',sans-serif;color:var(--text);letter-spacing:-0.01em" id="totaleMetri">—</span>
@@ -1222,6 +1233,21 @@ window.loadExcelJS = (function(){
         </div>
         <div style="flex:1"></div>
         <span style="font-size:9px;color:var(--muted2);font-style:italic" id="flussoDataRef"></span>
+      </div>
+      <!-- ── COORDINAMENTI MILANO (invio preliminare: richieste agli enti per pratica) ── -->
+      <div id="coordBlock" style="display:none;flex:1 1 0;min-height:150px;overflow-y:auto;border-top:1px solid var(--border);padding:12px 20px 14px;background:var(--surface)">
+        <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:8px">
+          <span style="font-size:12px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);font-weight:600;white-space:nowrap">Coordinamenti Milano</span>
+          <span id="coordTot" style="font-size:12px;font-weight:700;font-family:'Raleway',sans-serif;color:var(--text)"></span>
+          <span style="flex:1"></span>
+          <span style="display:flex;align-items:center;gap:12px;font-size:12px;color:var(--muted)">
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#1E9E6A"></span>Risposta ricevuta</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#41BBD9"></span>Inviata, in attesa</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:var(--surface2);border:1px solid var(--border2)"></span>Da inviare</span>
+          </span>
+        </div>
+        <div id="coordRows" style="display:flex;flex-direction:column;gap:2px"></div>
+        <div id="coordLast" style="margin-top:8px;font-size:12px;color:var(--muted2);font-style:italic"></div>
       </div>
     </div>
     <div class="side">
@@ -3463,7 +3489,7 @@ function closeModal(e) {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     ['modalOverlay','modalGruppoOverlay','modalClusterOverlay',
-     'modalKpiOverlay','helpOverlay']
+     'modalKpiOverlay','modalCoordOverlay','helpOverlay']
       .forEach(id => { const el = document.getElementById(id); if (el && el.classList.contains('open')) window._modalClose(id); });
   }
 });
@@ -4032,6 +4058,128 @@ function renderDashboard(data) {
 
   renderDonut(globalStati, grandTotal);
   renderFlussoMese();
+  if (!window._coLoaded) { window._coLoaded = true; loadCoordinamenti(); }
+}
+
+// ══ COORDINAMENTI MILANO — barra per pratica + dettaglio enti ═════════════════
+const _CO_COL = { ric:'#1E9E6A', inv:'#41BBD9', da:'#8A94A6' };
+const _CO_FIELD_LABEL = { data_invio:'data invio', data_risposta:'data risposta', risposta_ricevuta:'risposta ricevuta',
+  concomitanze:'concomitanze', concomitanze_note:'note concomitanze', data_sopralluogo:'data sopralluogo', verbale:'verbale',
+  riferimento_protocollo:'protocollo', prescrizioni:'prescrizioni', note:'note', contatto:'contatto', tipologia_invio:'mezzo invio' };
+let _coFilter = 'tutte';
+let _coPratica = null;
+
+function _coEsc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function _coD(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || '');
+  return m ? `${m[3]}/${m[2]}/${m[1].slice(2)}` : '';
+}
+function _coCap(s) { s = String(s || '').toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1); }
+
+async function loadCoordinamenti() {
+  if (!document.getElementById('coordBlock')) return;
+  try {
+    const r = await Promise.race([
+      fetch(_apiBase() + '/api/coordinamenti', { headers: { 'x-session-token': _sessionToken() } }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 15000))
+    ]);
+    if (!r.ok) return;               // 401/403/404: il blocco resta nascosto
+    window._coData = await r.json();
+    renderCoordBlock(window._coData);
+  } catch (e) { /* backend in cold-start o offline: blocco nascosto */ }
+}
+
+function renderCoordBlock(d) {
+  const blk = document.getElementById('coordBlock');
+  const pr = (d && d.pratiche) || [];
+  if (!blk || !pr.length) { if (blk) blk.style.display = 'none'; return; }
+  blk.style.display = 'block';
+  const tot = pr.reduce((s, p) => s + p.totale, 0), ric = pr.reduce((s, p) => s + p.ricevute, 0);
+  document.getElementById('coordTot').textContent = `${pr.length} pratiche · ${ric}/${tot} risposte ricevute`;
+  document.getElementById('coordRows').innerHTML = pr.map((p, i) => {
+    const w = n => (p.totale ? (100 * n / p.totale).toFixed(2) : 0);
+    const mun = String(p.municipio || '').replace(/MUNICIPIO\s*/i, 'M');
+    const tip = `${p.ricevute} ricevute · ${p.inviate} in attesa · ${p.da_inviare} da inviare`;
+    return `<div class="bar-row" onclick="openCoordDetail(${i})" title="${_coEsc(tip)}">
+      <div class="bar-lotto-wrap" style="width:124px">
+        <span class="bar-lotto-num">${_coEsc(p.pratica)}</span>
+        <span style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:124px">${_coEsc(mun)} · ${_coEsc(_coCap(p.impresa))}</span>
+      </div>
+      <div class="bar-track">
+        <div class="bar-seg" style="width:${w(p.ricevute)}%;background:${_CO_COL.ric}"></div>
+        <div class="bar-seg" style="width:${w(p.inviate)}%;background:${_CO_COL.inv}"></div>
+      </div>
+      <span class="bar-pct">${Math.round(p.pct_ricevute)}%</span>
+      <span style="min-width:48px;text-align:right;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--muted);flex-shrink:0">${p.ricevute}/${p.totale}</span>
+    </div>`;
+  }).join('');
+  const last = (d.recenti || []).find(r => r.by !== 'import xlsx');
+  document.getElementById('coordLast').textContent = last
+    ? `Ultimo aggiornamento: ${_coCap(last.impresa)} · ${last.pratica} · ${last.ente} · ${_coD(last.ts)}`
+    : 'Nessun aggiornamento caricato dalle imprese';
+}
+
+function openCoordDetail(idx) {
+  const p = ((window._coData || {}).pratiche || [])[idx];
+  if (!p) return;
+  _coPratica = p; _coFilter = 'tutte';
+  document.getElementById('modalCoordTitle').textContent = `${p.pratica} · ${p.municipio} · ${_coCap(p.impresa)}`;
+  _renderCoordDetail();
+  window._modalOpen('modalCoordOverlay');
+}
+
+function setCoordFilter(f) { _coFilter = f; _renderCoordDetail(); }
+
+function _renderCoordDetail() {
+  const p = _coPratica; if (!p) return;
+  const chips = [['tutte', `Tutte (${p.totale})`], ['ricevuta', `Ricevute (${p.ricevute})`],
+                 ['inviata', `In attesa (${p.inviate})`], ['da_inviare', `Da inviare (${p.da_inviare})`]];
+  const chipHtml = chips.map(([k, l]) => `<button type="button" onclick="setCoordFilter('${k}')" style="font-family:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;cursor:pointer;border:1px solid ${_coFilter === k ? 'var(--accent)' : 'var(--border2)'};background:${_coFilter === k ? 'var(--accent)' : 'var(--surface)'};color:${_coFilter === k ? '#fff' : 'var(--text2)'}">${l}</button>`).join('');
+  const kpi = (v, l, c) => `<div style="flex:1;min-width:110px;border:1px solid var(--border);border-radius:10px;padding:10px 14px"><div style="font-size:22px;font-weight:700;font-family:'Raleway',sans-serif;color:${c}">${v}</div><div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">${l}</div></div>`;
+  const stLbl = { ricevuta: ['Ricevuta', _CO_COL.ric], inviata: ['In attesa', '#1A7D99'], da_inviare: ['Da inviare', '#5B6677'] };
+  const rows = p.enti.filter(e => _coFilter === 'tutte' || e.stato === _coFilter).map(e => {
+    const [sl, sc] = stLbl[e.stato];
+    const risp = e.data_risposta ? _coD(e.data_risposta) : (e.risposta_ricevuta ? 'OK (senza data)' : '—');
+    const conc = e.concomitanze === 'SI'
+      ? '<span style="font-weight:700;color:#C0392B">SI</span>' : (e.concomitanze === 'NO' ? 'NO' : '—');
+    const extra = [e.concomitanze_note, e.prescrizioni, e.note].filter(Boolean).map(_coEsc).join(' · ');
+    return `<tr style="border-top:1px solid var(--border)">
+      <td style="padding:8px 8px;vertical-align:top"><div style="font-weight:600;color:var(--text)">${_coEsc(e.ente)}</div><div style="color:var(--muted)">${_coEsc(e.servizio || '')}</div></td>
+      <td style="padding:8px;vertical-align:top;white-space:nowrap"><span style="font-weight:700;color:${sc}">${sl}</span></td>
+      <td style="padding:8px;vertical-align:top"><div>${_coEsc(e.tipologia_invio || '—')}${e.risposte_attese > 1 ? ' (' + e.risposte_attese + ' risposte)' : ''}</div><div style="color:var(--muted);word-break:break-all">${_coEsc(e.contatto || '')}</div></td>
+      <td style="padding:8px;vertical-align:top;white-space:nowrap">${_coD(e.data_invio) || '—'}</td>
+      <td style="padding:8px;vertical-align:top;white-space:nowrap">${risp}</td>
+      <td style="padding:8px;vertical-align:top;text-align:center">${conc}</td>
+      <td style="padding:8px;vertical-align:top;white-space:nowrap">${_coD(e.data_sopralluogo) || '—'}${e.verbale ? '<div style="color:var(--muted)">' + _coEsc(e.verbale) + '</div>' : ''}</td>
+      <td style="padding:8px;vertical-align:top;color:var(--muted)">${extra || '—'}</td></tr>`;
+  }).join('');
+  const hist = ((window._coData || {}).recenti || []).filter(r => r.pratica === p.pratica && r.by !== 'import xlsx').slice(0, 6).map(r => {
+    const ch = Object.keys(r.changes || {}).map(k => _CO_FIELD_LABEL[k] || k).join(', ');
+    return `<div style="font-size:12px;color:var(--muted);padding:3px 0">${_coD(r.ts)} · ${_coEsc(r.by)} · ${_coEsc(r.ente)} — ${_coEsc(ch)}</div>`;
+  }).join('');
+  document.getElementById('modalCoordBody').innerHTML = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      ${kpi(Math.round(p.pct_ricevute) + '%', 'Risposte ricevute', _CO_COL.ric)}
+      ${kpi(p.inviate, 'Inviate, in attesa', '#1A7D99')}
+      ${kpi(p.da_inviare, 'Da inviare', '#5B6677')}
+      ${kpi(p.concomitanze_si, 'Concomitanze SI', p.concomitanze_si ? '#C0392B' : 'var(--text)')}
+      ${kpi(p.sopralluoghi, 'Sopralluoghi', 'var(--accent)')}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${chipHtml}</div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;color:var(--text2)">
+      <thead><tr style="text-align:left;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">
+        <th style="padding:6px 8px">Ente</th><th style="padding:6px 8px">Stato</th><th style="padding:6px 8px">Invio / contatto</th>
+        <th style="padding:6px 8px">Inviata il</th><th style="padding:6px 8px">Risposta</th><th style="padding:6px 8px;text-align:center">Concomitanze</th>
+        <th style="padding:6px 8px">Sopralluogo</th><th style="padding:6px 8px">Note</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="8" style="padding:16px;color:var(--muted)">Nessuna richiesta in questo stato</td></tr>'}</tbody></table></div>
+    ${hist ? `<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px"><div style="font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);font-weight:600;margin-bottom:4px">Ultimi aggiornamenti</div>${hist}</div>` : ''}`;
+}
+
+function closeModalCoord(e) {
+  if (e && e.target !== document.getElementById('modalCoordOverlay')) return;
+  window._modalClose('modalCoordOverlay');
 }
 
 function renderFlussoMese() {
