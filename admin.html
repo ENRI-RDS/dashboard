@@ -245,6 +245,7 @@
         <button class="tab" data-tab="assign" data-testid="tab-assign">Assegnazioni imprese</button>
         <button class="tab" data-tab="cantieri" data-testid="tab-cantieri">Cantieri</button>
         <button class="tab" data-tab="note" data-testid="tab-note">Dati pratiche</button>
+        <button class="tab" data-tab="sopr" data-testid="tab-sopr">Sopralluoghi</button>
         <button class="tab" data-tab="guida" data-testid="tab-guida">Guida procedure</button>
       </div>
 
@@ -501,6 +502,29 @@
         </div>
       </div>
 
+      <!-- SOPRALLUOGHI -->
+      <div class="panel" id="panel-sopr">
+        <p class="sub">Modifica o elimina i verbali di sopralluogo (anche vecchi): dati di testata, flag <b>segnalazione cliente</b> e checklist. Ogni modifica è registrata nello storico del verbale. I dati "Segnalazione al System" si correggono da <code>sopralluoghi.html</code>.</p>
+        <div class="row" style="margin-bottom:10px;gap:12px;align-items:center;flex-wrap:wrap">
+          <input type="text" id="soprSearch" placeholder="Cerca codice, cantiere, impresa, lotto…" style="width:260px" data-testid="sopr-search">
+          <select id="soprFilter" style="width:auto;padding:6px 10px" data-testid="sopr-filter">
+            <option value="">Tutti</option>
+            <option value="cliente">Con segnalazione cliente</option>
+            <option value="nocliente">Senza segnalazione cliente</option>
+            <option value="incompleti">Checklist incompleta</option>
+            <option value="verifiche">Solo verifiche</option>
+          </select>
+          <button class="btn btn-ghost btn-xs" id="soprReload">Ricarica</button>
+          <span id="soprCount" style="font-size:12px;color:var(--muted)"></span>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>Codice</th><th>Data</th><th>Lotto</th><th>Cantiere</th><th>Impresa</th><th>Redatto da</th><th>Checklist</th><th>Cliente</th><th></th></tr></thead>
+            <tbody id="soprBody"><tr><td colspan="9" class="empty">Apri la tab per caricare i verbali</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- GUIDA PROCEDURE -->
       <div class="panel" id="panel-guida">
         <div class="guida-note">
@@ -584,6 +608,46 @@
 </div>
 
 <!-- Confirm modal generico -->
+<div class="modal" id="soprModal">
+  <div class="modal-card" style="max-width:880px">
+    <div class="modal-head">
+      <div><div class="modal-title">Modifica verbale</div><div class="modal-sub" id="soprModalSub"></div></div>
+      <button class="modal-close" id="soprModalClose">×</button>
+    </div>
+    <div id="soprModalBody" style="overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-right:4px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 14px">
+        <div><label>Data sopralluogo *</label><input type="date" id="sp_data"></div>
+        <div><label>Lotto *</label><input type="text" id="sp_lotto" maxlength="50"></div>
+        <div style="grid-column:1/-1"><label>N° Cantiere *</label><input type="text" id="sp_tratta" maxlength="300"></div>
+        <div><label>Impresa esecutrice *</label><input type="text" id="sp_impresa" maxlength="200"></div>
+        <div><label>Indirizzo / Località</label><input type="text" id="sp_comune" maxlength="300"></div>
+        <div><label>Redatto da</label><input type="text" id="sp_redattore" maxlength="200"></div>
+        <div><label>Ruolo redattore</label><input type="text" id="sp_ruolo" maxlength="200"></div>
+      </div>
+      <div id="sp_segn_box" style="border-top:1px solid var(--border);padding-top:10px">
+        <label style="display:flex;gap:8px;align-items:center;margin:0 0 8px"><input type="checkbox" id="sp_segn" style="width:auto"> Segnalazione cliente (il sopralluogo nasce da una segnalazione del cliente)</label>
+        <div id="sp_segn_wrap" style="display:none;gap:8px;flex-direction:column">
+          <div style="display:flex;gap:18px;font-size:13px">
+            <label style="margin:0"><input type="radio" name="sp_esito" value="confermata" style="width:auto"> Confermata (anomalia)</label>
+            <label style="margin:0"><input type="radio" name="sp_esito" value="non_confermata" style="width:auto"> Non confermata</label>
+          </div>
+          <textarea id="sp_segn_note" maxlength="2000" placeholder="Note sulla segnalazione cliente" style="min-height:56px"></textarea>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:10px">
+        <div id="sp_tabs" style="display:flex;gap:6px;margin-bottom:8px"></div>
+        <div id="sp_ck"></div>
+        <label style="margin-top:10px">Note generali checklist</label>
+        <textarea id="sp_ck_note" maxlength="4000" style="min-height:56px"></textarea>
+      </div>
+    </div>
+    <div class="row" style="justify-content:flex-end;gap:8px">
+      <button class="btn btn-ghost" id="soprCancel">Annulla</button>
+      <button class="btn" id="soprSave">Salva modifiche</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="confirmModal">
   <div class="modal-card" style="max-width:420px">
     <div class="modal-head">
@@ -778,6 +842,7 @@
       if (t.dataset.tab === 'assign') refreshAssignments();
       if (t.dataset.tab === 'cantieri') refreshCantieri();
       if (t.dataset.tab === 'note') loadNotePratiche();
+      if (t.dataset.tab === 'sopr') loadSopr();
     });
   });
 
@@ -2138,6 +2203,157 @@
     setMsg(msg, text, !isErr);
     setTimeout(() => { msg.className = 'msg'; }, 4000);
   }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Sopralluoghi: modifica / eliminazione verbali
+  let SOPR = [], SOPR_DEF = null, SOPR_ID = null, SOPR_CK = {}, SOPR_VER = false, SOPR_TAB = 'qualita';
+  const SOPR_CATS = ['qualita','sicurezza','collaudo'], SOPR_LAB = { qualita:'Qualità', sicurezza:'Sicurezza', collaudo:'Collaudo' };
+  const attr = s => escapeHtml(s == null ? '' : s);
+  const soprIso = s => { s = String(s || ''); const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : s.slice(0, 10); };
+  const soprIsSegn = v => v.segnalazione_cliente === true || ['si','true','1'].includes(String(v.segnalazione_cliente).toLowerCase());
+  function soprFind(v, id){ const ck = v.checklist || {}; for (const k of SOPR_CATS) if (ck[k] && ck[k][id]) return ck[k][id]; return null; }
+  function soprStats(v){
+    const ck = v.checklist || {}; let c = 0, nc = 0, tot = 0;
+    SOPR_CATS.forEach(k => Object.values(ck[k] || {}).forEach(x => { if (x.e) { c++; if (x.e === 'NC') nc++; } }));
+    tot = v.verbale_origine ? SOPR_CATS.reduce((a, k) => a + Object.keys(ck[k] || {}).length, 0) : (SOPR_DEF ? SOPR_DEF.length : 85);
+    return { c, nc, tot };
+  }
+  async function loadSopr(){
+    if (!apiBase()) { $('soprBody').innerHTML = '<tr><td colspan="9" class="empty">Imposta API endpoint</td></tr>'; return; }
+    $('soprBody').innerHTML = '<tr><td colspan="9" class="empty">Caricamento…</td></tr>';
+    try {
+      if (!SOPR_DEF) SOPR_DEF = (await api('/api/sopralluoghi/checklist-def')).items;
+      SOPR = (await api('/api/sopralluoghi')).verbali || [];
+      renderSopr();
+    } catch (e) { $('soprBody').innerHTML = `<tr><td colspan="9" class="empty">Errore: ${escapeHtml(e.message)}</td></tr>`; }
+  }
+  function renderSopr(){
+    const q = $('soprSearch').value.trim().toLowerCase(), f = $('soprFilter').value;
+    const rows = SOPR.filter(v => {
+      const st = soprStats(v);
+      if (f === 'cliente' && !soprIsSegn(v)) return false;
+      if (f === 'nocliente' && soprIsSegn(v)) return false;
+      if (f === 'incompleti' && st.c >= st.tot) return false;
+      if (f === 'verifiche' && !v.verbale_origine) return false;
+      return !q || [v.codice_verbale, v.tratta_id, v.impresa, v.lotto, v.comune, v.referente_impresa].join(' ').toLowerCase().includes(q);
+    });
+    $('soprCount').textContent = rows.length + ' / ' + SOPR.length + ' verbali';
+    $('soprBody').innerHTML = rows.length ? rows.map(v => {
+      const st = soprStats(v), inc = st.c < st.tot;
+      return `<tr>
+        <td style="font-family:var(--font-mono);font-weight:700">${escapeHtml(v.codice_verbale || '')}${v.verbale_origine ? '<br><small style="font-weight:400;color:var(--muted)">verifica di ' + escapeHtml(v.verbale_origine) + '</small>' : ''}</td>
+        <td>${escapeHtml(soprIso(v.data_sopralluogo))}</td><td>${escapeHtml(v.lotto || '')}</td><td>${escapeHtml(v.tratta_id || '')}</td>
+        <td>${escapeHtml(v.impresa || '')}</td><td>${escapeHtml(v.referente_impresa || '')}</td>
+        <td style="${inc ? 'color:var(--warn);font-weight:700' : ''}">${st.c}/${st.tot}${st.nc ? ' · ' + st.nc + ' NC' : ''}</td>
+        <td>${soprIsSegn(v) ? '✓ ' + escapeHtml(v.esito_segnalazione === 'confermata' ? 'conf.' : v.esito_segnalazione ? 'non conf.' : '') : '—'}</td>
+        <td style="white-space:nowrap"><button class="btn btn-ghost btn-xs" data-sopr="edit" data-id="${attr(v._id)}">Modifica</button>
+          <button class="btn btn-danger btn-xs" data-sopr="del" data-id="${attr(v._id)}">Elimina</button></td></tr>`;
+    }).join('') : '<tr><td colspan="9" class="empty">Nessun verbale</td></tr>';
+  }
+  $('soprSearch').addEventListener('input', renderSopr);
+  $('soprFilter').addEventListener('change', renderSopr);
+  $('soprReload').addEventListener('click', loadSopr);
+  $('soprBody').addEventListener('click', async ev => {
+    const b = ev.target.closest('[data-sopr]'); if (!b) return;
+    const v = SOPR.find(x => x._id === b.dataset.id); if (!v) return;
+    if (b.dataset.sopr === 'edit') return openSopr(v);
+    const ok = await showConfirm('Elimina verbale', `Eliminare definitivamente ${v.codice_verbale}? Le issue già generate nel registro e le foto su GitHub non vengono eliminate.`, 'Elimina', 'btn btn-danger');
+    if (!ok) return;
+    try {
+      let r;
+      try { r = await api('/api/sopralluoghi/' + v._id, { method: 'DELETE' }); }
+      catch (e) {
+        if (!/verifiche collegate/.test(e.message)) throw e;
+        if (!await showConfirm('Verifiche collegate', e.message, 'Elimina tutto', 'btn btn-danger')) return;
+        r = await api('/api/sopralluoghi/' + v._id + '?cascade=true', { method: 'DELETE' });
+      }
+      toast('Eliminato: ' + (r.deleted || []).join(', ') + (r.issues_collegate ? ' · ' + r.issues_collegate + ' issue collegate restano nel registro' : ''));
+      loadSopr();
+    } catch (e) { toast('Errore: ' + e.message, true); }
+  });
+
+  function openSopr(v){
+    SOPR_ID = v._id; SOPR_VER = !!v.verbale_origine; SOPR_TAB = 'qualita';
+    $('soprModalSub').textContent = v.codice_verbale + (SOPR_VER ? ' · verifica di ' + v.verbale_origine : '');
+    const set = (i, x) => { $(i).value = x || ''; };
+    set('sp_data', soprIso(v.data_sopralluogo)); set('sp_lotto', v.lotto); set('sp_tratta', v.tratta_id); set('sp_impresa', v.impresa);
+    set('sp_comune', v.comune); set('sp_redattore', v.referente_impresa); set('sp_ruolo', v.referente_retelit);   // campi Mongo storicamente invertiti
+    set('sp_ck_note', (v.checklist || {}).note_generali); set('sp_segn_note', v.segnalazione_cliente_note);
+    $('sp_segn_box').style.display = SOPR_VER ? 'none' : '';
+    $('sp_segn').checked = soprIsSegn(v);
+    document.querySelectorAll('input[name="sp_esito"]').forEach(r => { r.checked = r.value === (v.esito_segnalazione || ''); });
+    $('sp_segn_wrap').style.display = $('sp_segn').checked ? 'flex' : 'none';
+    SOPR_CK = { qualita:{}, sicurezza:{}, collaudo:{} };
+    SOPR_DEF.forEach(it => {
+      const s = soprFind(v, it.id);
+      if (s) SOPR_CK[it.cat][it.id] = { e: s.e || '', rilievo: s.rilievo || '', azione: s.azione || '', resp: s.resp || '', scad: soprIso(s.scad), nota: s.nota || '' };
+    });
+    renderSoprCk();
+    $('soprModal').classList.add('open');
+  }
+  $('sp_segn').addEventListener('change', () => { $('sp_segn_wrap').style.display = $('sp_segn').checked ? 'flex' : 'none'; });
+  const soprItems = k => SOPR_DEF.filter(it => it.cat === k && (!SOPR_VER || SOPR_CK[k][it.id]));
+  function renderSoprCk(){
+    const sc = $('soprModalBody'), top = sc.scrollTop;
+    if (!soprItems(SOPR_TAB).length) SOPR_TAB = SOPR_CATS.find(k => soprItems(k).length) || 'qualita';
+    $('sp_tabs').innerHTML = SOPR_CATS.map(k => { const it = soprItems(k); if (!it.length) return '';
+      const done = it.filter(x => (SOPR_CK[k][x.id] || {}).e).length;
+      return `<button type="button" class="btn ${k === SOPR_TAB ? '' : 'btn-ghost'} btn-xs" data-sptab="${k}">${SOPR_LAB[k]} ${done}/${it.length}</button>`; }).join('');
+    let html = '', last = null;
+    soprItems(SOPR_TAB).forEach(it => {
+      if (it.area !== last) { html += `<div style="font-size:11px;font-weight:700;color:var(--muted);margin:10px 0 4px">${escapeHtml(it.area)}</div>`; last = it.area; }
+      const st = SOPR_CK[SOPR_TAB][it.id] || { e:'', rilievo:'', azione:'', resp:'', scad:'', nota:'' };
+      const o = (v, l) => `<option value="${v}"${st.e === v ? ' selected' : ''}>${l}</option>`;
+      html += `<div style="border:1px solid ${st.e === 'NC' ? 'var(--err)' : 'var(--border)'};border-radius:8px;padding:7px 9px;margin-bottom:6px" data-id="${it.id}">
+        <div style="display:flex;gap:8px;align-items:center;font-size:12px"><b style="font-family:var(--font-mono)">${it.id}</b><span style="flex:1">${escapeHtml(it.t)}</span>
+          <select data-f="e" style="width:auto;padding:4px 6px">${o('', '—')}${o('C', 'Conforme')}${o('NC', 'NC')}${o('NA', 'N.A.')}</select></div>
+        <input type="text" data-f="nota" placeholder="Nota" value="${attr(st.nota)}" style="margin-top:5px">
+        ${st.e === 'NC' ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:5px">
+          <input type="text" data-f="rilievo" placeholder="Rilievo / non conformità" value="${attr(st.rilievo)}">
+          <input type="text" data-f="azione" placeholder="Azione correttiva *" value="${attr(st.azione)}">
+          <input type="text" data-f="resp" placeholder="Responsabile" value="${attr(st.resp)}">
+          <input type="date" data-f="scad" title="Scadenza *" value="${attr(st.scad)}"></div>` : ''}</div>`;
+    });
+    $('sp_ck').innerHTML = html; sc.scrollTop = top;
+  }
+  const soprInput = ev => {
+    const el = ev.target.closest('[data-f]'); if (!el) return;
+    const id = el.closest('[data-id]').dataset.id, f = el.dataset.f;
+    const st = SOPR_CK[SOPR_TAB][id] || (SOPR_CK[SOPR_TAB][id] = { e:'', rilievo:'', azione:'', resp:'', scad:'', nota:'' });
+    st[f] = el.value;
+    if (f === 'e') { if (el.value !== 'NC') { st.rilievo = ''; st.azione = ''; st.resp = ''; st.scad = ''; } renderSoprCk(); }
+  };
+  $('sp_ck').addEventListener('change', soprInput);
+  $('sp_ck').addEventListener('input', ev => { if (ev.target.dataset.f !== 'e') soprInput(ev); });
+  $('sp_tabs').addEventListener('click', ev => { const b = ev.target.closest('[data-sptab]'); if (b) { SOPR_TAB = b.dataset.sptab; renderSoprCk(); } });
+  const closeSopr = () => { $('soprModal').classList.remove('open'); SOPR_ID = null; };
+  $('soprModalClose').addEventListener('click', closeSopr); $('soprCancel').addEventListener('click', closeSopr);
+  $('soprSave').addEventListener('click', async () => {
+    const g = i => $(i).value.trim();
+    const body = { data_sopralluogo: g('sp_data'), lotto: g('sp_lotto'), tratta_id: g('sp_tratta'), impresa: g('sp_impresa'),
+                   comune: g('sp_comune'), referente_impresa: g('sp_redattore'), referente_retelit: g('sp_ruolo') };
+    if (!body.data_sopralluogo || !body.lotto || !body.tratta_id || !body.impresa) return toast('Data, lotto, cantiere e impresa sono obbligatori', true);
+    if (!SOPR_VER) {
+      const on = $('sp_segn').checked, esito = document.querySelector('input[name="sp_esito"]:checked')?.value || '';
+      if (on && !esito) return toast('Segnalazione cliente: indica se è confermata o non confermata', true);
+      body.segnalazione_cliente = on; body.esito_segnalazione = on ? esito : ''; body.segnalazione_cliente_note = on ? g('sp_segn_note') : '';
+    }
+    const ck = { note_generali: g('sp_ck_note') };
+    for (const k of SOPR_CATS) {
+      ck[k] = {};
+      for (const [id, st] of Object.entries(SOPR_CK[k])) {
+        if (st.e === 'NC' && (!st.azione.trim() || !st.scad)) { SOPR_TAB = k; renderSoprCk(); return toast(`Non conformità ${id}: azione correttiva e scadenza obbligatorie`, true); }
+        if (st.e || st.nota) ck[k][id] = st;
+      }
+    }
+    body.checklist = ck;
+    $('soprSave').disabled = true;
+    try {
+      const r = await api('/api/sopralluoghi/' + SOPR_ID, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      closeSopr(); toast(r.changed ? `Verbale aggiornato (${r.changed} modifiche)` : 'Nessuna modifica'); loadSopr();
+    } catch (e) { toast('Errore: ' + e.message, true); }
+    finally { $('soprSave').disabled = false; }
+  });
 
   // ──────────────────────────────────────────────────────────────────────
   // Utils
