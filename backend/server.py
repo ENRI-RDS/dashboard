@@ -4384,19 +4384,124 @@ async def export_issues_xlsx(
 
 
 @app.delete("/api/sopralluoghi/{sop_id}")
-async def delete_sopralluogo(sop_id: str, sess: dict = Depends(_require_session)):
-    """Elimina un verbale di sopralluogo — solo admin."""
-    if sess.get("ruolo", "user") != "admin":
-        raise HTTPException(403, "Solo gli admin possono eliminare verbali")
+async def delete_sopralluogo(sop_id: str, cascade: bool = False, sess: dict = Depends(_require_admin_session)):
+    """Elimina un verbale di sopralluogo — admin/admin2. Se esistono verifiche collegate (verbale_origine)
+    risponde 409 con l'elenco, a meno di `?cascade=true` (elimina anche le verifiche, a catena).
+    Le issue nate dal verbale NON vengono toccate (si gestiscono dal registro issue); le foto su GitHub restano."""
     try:
         oid = ObjectId(sop_id)
     except Exception:
         raise HTTPException(400, "ID non valido")
-    res = await sopralluoghi_col.delete_one({"_id": oid})
-    if res.deleted_count == 0:
+    doc = await sopralluoghi_col.find_one({"_id": oid}, {"codice_verbale": 1})
+    if not doc:
         raise HTTPException(404, "Verbale non trovato")
-    _schedule_sopralluoghi_csv_regen(f"eliminazione verbale: {sop_id}")
-    return {"ok": True, "deleted": sop_id}
+    # catena di verifiche discendenti (BFS)
+    codici, frontier = [], [doc.get("codice_verbale", "")]
+    while frontier and len(codici) < 50:
+        figli = [d["codice_verbale"] async for d in sopralluoghi_col.find({"verbale_origine": {"$in": frontier}}, {"codice_verbale": 1})]
+        codici += figli
+        frontier = figli
+    if codici and not cascade:
+        raise HTTPException(409, "Il verbale ha verifiche collegate: " + ", ".join(codici) + ". Eliminare anche queste?")
+    tutti = [doc.get("codice_verbale", "")] + codici
+    await sopralluoghi_col.delete_many({"codice_verbale": {"$in": tutti}})
+    n_iss = await issues_col.count_documents({"origine_verbale": {"$in": tutti}})
+    _schedule_sopralluoghi_csv_regen(f"eliminazione verbale: {', '.join(tutti)} ({sess.get('nome', '')})")
+    return {"ok": True, "deleted": tutti, "issues_collegate": n_iss}
+
+
+_SOPR_EDIT_TEXT = {"lotto": ("Lotto", 50), "tratta_id": ("Cantiere", 300), "impresa": ("Impresa", 200),
+                   "referente_impresa": ("Redatto da", 200), "referente_retelit": ("Ruolo redattore", 200),
+                   "comune": ("Indirizzo / Località", 300)}
+_CK_ESITO_LAB = {"C": "Conforme", "NC": "NC", "NA": "N.A.", "": "—"}
+
+
+@app.put("/api/sopralluoghi/{sop_id}")
+async def update_sopralluogo(sop_id: str, payload: dict, sess: dict = Depends(_require_admin_session)):
+    """Modifica un verbale già salvato — admin/admin2. Aggiornamento PARZIALE: solo le chiavi presenti nel body.
+    Campi: data_sopralluogo, lotto, tratta_id, impresa, referente_impresa, referente_retelit, comune,
+    segnalazione_cliente (+ _note, esito_segnalazione; solo verbali radice), checklist (sostituzione completa).
+    I dati 'Segnalazione al System' hanno il loro endpoint (/system). Ogni modifica finisce in `storico_modifiche`."""
+    try:
+        oid = ObjectId(sop_id)
+    except Exception:
+        raise HTTPException(400, "ID non valido")
+    doc = await sopralluoghi_col.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Verbale non trovato")
+    p = payload or {}
+    sets, mods = {}, []
+
+    def _chg(campo, da, a):
+        mods.append({"campo": campo, "da": str(da), "a": str(a)})
+
+    for k, (lab, mx) in _SOPR_EDIT_TEXT.items():
+        if k in p:
+            v = str(p.get(k, "")).strip()[:mx]
+            if k in ("lotto", "tratta_id", "impresa") and not v:
+                raise HTTPException(422, f"{lab}: valore obbligatorio")
+            if v != str(doc.get(k, "") or ""):
+                _chg(lab, doc.get(k, ""), v); sets[k] = v
+    if "data_sopralluogo" in p:
+        raw = str(p.get("data_sopralluogo", "")).strip()
+        d = _sopr_date_iso(raw)
+        if not d:
+            raise HTTPException(422, "Data sopralluogo non valida")
+        if d != _sopr_date_iso(str(doc.get("data_sopralluogo", "") or "")):
+            _chg("Data sopralluogo", doc.get("data_sopralluogo", ""), d); sets["data_sopralluogo"] = d
+
+    # checklist (sostituzione completa)
+    ck_old = doc.get("checklist") or {}
+    ck_new = ck_old
+    if "checklist" in p:
+        ck_new = _sanitize_checklist(p.get("checklist"))
+        if "note_generali" not in (p.get("checklist") or {}):
+            ck_new["note_generali"] = ck_old.get("note_generali", "")
+        def _flat(ck):
+            return {i: st for sez in _CK_CATEGORIE for i, st in (ck.get(sez) or {}).items() if isinstance(st, dict)}
+        fo, fn = _flat(ck_old), _flat(ck_new)
+        for i in sorted(set(fo) | set(fn)):
+            a, b = fo.get(i) or {}, fn.get(i) or {}
+            if (a.get("e", ""), a.get("nota", "")) != (b.get("e", ""), b.get("nota", "")) or \
+               (b.get("e") == "NC" and any(a.get(f, "") != b.get(f, "") for f in ("rilievo", "azione", "resp", "scad"))):
+                if b.get("e") == "NC" and (not b.get("azione") or not b.get("scad")):
+                    raise HTTPException(422, f"Non conformità {i}: azione correttiva e scadenza sono obbligatorie")
+                _chg(f"Checklist {i}", _CK_ESITO_LAB.get(a.get("e", ""), "—"), _CK_ESITO_LAB.get(b.get("e", ""), "—"))
+        if ck_new.get("note_generali", "") != ck_old.get("note_generali", ""):
+            _chg("Note generali checklist", ck_old.get("note_generali", ""), ck_new.get("note_generali", ""))
+        if any(m["campo"].startswith("Checklist") or m["campo"].startswith("Note generali") for m in mods):
+            sets["checklist"] = ck_new
+            sets.update(_checklist_counts(ck_new))
+
+    # segnalazione cliente (solo verbali radice)
+    if any(k in p for k in ("segnalazione_cliente", "segnalazione_cliente_note", "esito_segnalazione")):
+        if doc.get("verbale_origine"):
+            raise HTTPException(422, "La segnalazione cliente si imposta solo sul verbale di sopralluogo, non sulle verifiche")
+        segn = bool(p.get("segnalazione_cliente", doc.get("segnalazione_cliente", False)))
+        esito = str(p.get("esito_segnalazione", doc.get("esito_segnalazione", ""))).strip().lower() if segn else ""
+        note = str(p.get("segnalazione_cliente_note", doc.get("segnalazione_cliente_note", ""))).strip()[:2000] if segn else ""
+        if segn and esito not in ("confermata", "non_confermata"):
+            raise HTTPException(422, "Segnalazione cliente: indicare se è confermata o non confermata")
+        if segn and esito == "confermata" and not any(
+                st.get("e") == "NC" for sez in _CK_CATEGORIE for st in (ck_new.get(sez) or {}).values() if isinstance(st, dict)):
+            raise HTTPException(422, "Segnalazione confermata: almeno un punto della checklist deve essere non conforme")
+        for k, lab, new in (("segnalazione_cliente", "Segnalazione cliente", segn),
+                            ("esito_segnalazione", "Esito segnalazione", esito),
+                            ("segnalazione_cliente_note", "Note segnalazione cliente", note)):
+            if new != doc.get(k, False if k == "segnalazione_cliente" else ""):
+                _chg(lab, doc.get(k, ""), new); sets[k] = new
+
+    if not mods:
+        return {"ok": True, "changed": 0}
+    now = datetime.now(timezone.utc).isoformat()
+    utente = sess.get("nome", "")
+    sets.update({"modificato_da": utente, "modificato_il": now})
+    await sopralluoghi_col.update_one({"_id": oid}, {"$set": sets, "$push": {"storico_modifiche": {"ts": now, "utente": utente, "modifiche": mods[:200]}}})
+    code = doc.get("codice_verbale", "")
+    _schedule_sopralluoghi_csv_regen(f"modifica verbale: {code} ({utente})")
+    if "checklist" in sets:
+        asyncio.create_task(_issue_sync_safe([{**doc, **sets}]))  # NC nuove → issue; verifiche conformi → issue risolte
+    return {"ok": True, "changed": len(mods)}
 
 
 @app.put("/api/sopralluoghi/{sop_id}/system")
@@ -4501,6 +4606,17 @@ def _sopr_date_obj(raw: str):
         return datetime.strptime(iso, "%Y-%m-%d").date()
     except ValueError:
         return None
+
+
+_CK_CAT_BY_PREFIX = {"PRE": "qualita", "INF": "qualita", "DIV": "qualita", "POZ": "qualita", "MIC": "qualita", "COL": "qualita",
+                     "TST": "collaudo", "RIP": "collaudo", "DOC": "collaudo", "SIC": "sicurezza"}
+
+
+@app.get("/api/sopralluoghi/checklist-def")
+async def sopralluoghi_checklist_def(sess: dict = Depends(_require_staff_session)):
+    """Definizione checklist DL (id, area, testo, categoria) nell'ordine di `_CK_DEF` — usata dall'editor admin."""
+    return {"items": [{"id": i, "area": a, "t": t, "cat": _CK_CAT_BY_PREFIX.get(i.split("-")[0], "qualita")}
+                      for i, (a, t) in _CK_DEF.items()]}
 
 
 @app.get("/api/sopralluoghi/export.xlsx")
