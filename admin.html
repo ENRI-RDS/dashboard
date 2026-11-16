@@ -225,6 +225,7 @@
         <option value="QTS.geojson">QTS.geojson</option>
         <option value="SED_classificato.geojson">SED_classificato.geojson</option>
         <option value="Parametri_configurazione_dashboard_ENRI.xlsx">Parametri_configurazione_dashboard_ENRI.xlsx</option>
+        <option value="AVANZAMENTO_COORDINAMENTI_MILANO.xlsx">AVANZAMENTO_COORDINAMENTI_MILANO.xlsx (coordinamenti)</option>
       </select>
       <div class="dropzone dropzone-inline" id="dropzone" data-testid="dropzone" style="flex:2 1 280px">
         <div class="filename" id="fileName">Trascina un file o <strong>clicca per selezionare</strong> — .xlsx, .xls, .csv, .geojson, .json, max 25 MB</div>
@@ -246,7 +247,6 @@
         <button class="tab" data-tab="cantieri" data-testid="tab-cantieri">Cantieri</button>
         <button class="tab" data-tab="note" data-testid="tab-note">Dati pratiche</button>
         <button class="tab" data-tab="sopr" data-testid="tab-sopr">Sopralluoghi</button>
-        <button class="tab" data-tab="coord" data-testid="tab-coord">Coordinamenti</button>
         <button class="tab" data-tab="guida" data-testid="tab-guida">Guida procedure</button>
       </div>
 
@@ -522,31 +522,6 @@
           <table>
             <thead><tr><th>Codice</th><th>Data</th><th>Lotto</th><th>Cantiere</th><th>Impresa</th><th>Redatto da</th><th>Checklist</th><th>Cliente</th><th></th></tr></thead>
             <tbody id="soprBody"><tr><td colspan="9" class="empty">Apri la tab per caricare i verbali</td></tr></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- COORDINAMENTI (import xlsx + riepilogo) -->
-      <div class="panel" id="panel-coord">
-        <p class="sub">Richieste di coordinamento agli enti (fase Invio Preliminare, Milano): una riga per pratica &times; ente. Importa il foglio <i>ENTI_Tracking_Invii</i> dell'xlsx per creare le richieste mancanti; di default i dati già presenti non vengono sovrascritti, cos&igrave; gli aggiornamenti delle imprese restano.</p>
-        <div class="row" style="gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
-          <div style="flex:2;min-width:240px">
-            <label style="display:block;font-size:11px;margin-bottom:5px">File xlsx</label>
-            <input type="file" id="coordFile" accept=".xlsx" data-testid="coord-file">
-          </div>
-          <div style="flex:1;min-width:180px">
-            <label style="display:block;font-size:11px;margin-bottom:5px">Foglio</label>
-            <input type="text" id="coordSheet" value="ENTI_Tracking_Invii" data-testid="coord-sheet">
-          </div>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding-bottom:10px"><input type="checkbox" id="coordOverwrite" data-testid="coord-overwrite"> Sovrascrivi dati esistenti</label>
-          <button class="btn" id="coordImportBtn" data-testid="coord-import">Importa</button>
-          <button class="btn btn-ghost btn-xs" id="coordRefreshBtn" style="margin-bottom:6px">Aggiorna</button>
-        </div>
-        <div class="msg" id="coordMsg"></div>
-        <div style="overflow-x:auto;margin-top:12px">
-          <table>
-            <thead><tr><th>Pratica</th><th>Impresa</th><th>Municipio</th><th>Richieste</th><th>Ricevute</th><th>In attesa</th><th>Da inviare</th><th>Concomitanze SI</th><th>Ultimo aggiornamento</th></tr></thead>
-            <tbody id="coordBody"><tr><td colspan="9" class="empty">Apri la tab per caricare le pratiche</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -869,7 +844,6 @@
       if (t.dataset.tab === 'cantieri') refreshCantieri();
       if (t.dataset.tab === 'note') loadNotePratiche();
       if (t.dataset.tab === 'sopr') loadSopr();
-      if (t.dataset.tab === 'coord') loadCoord();
     });
   });
 
@@ -1348,7 +1322,7 @@
     // Il file parametri ROS è un xlsx multi-foglio: NON va convertito in CSV
     // (la conversione automatica tiene solo il primo foglio e distruggerebbe
     // regole squadre, tempi autorizzativi, pesi rischio ROS ecc.).
-    if(target === 'Parametri_configurazione_dashboard_ENRI.xlsx') fd.append('convert_to_csv', 'false');
+    if(target === 'Parametri_configurazione_dashboard_ENRI.xlsx' || target === 'AVANZAMENTO_COORDINAMENTI_MILANO.xlsx') fd.append('convert_to_csv', 'false');
     if(token()) fd.append('token', token());
 
     submitBtn.disabled = true; submitBtn.textContent = 'Caricamento…';
@@ -1357,7 +1331,7 @@
       const r = await fetch(apiBase() + '/api/upload', { method: 'POST', body: fd, headers: nome ? { 'x-actor-nome': nome } : {} });
       const data = await r.json();
       if(!r.ok) throw new Error(data.detail || ('HTTP ' + r.status));
-      setMsg(msg, `Caricato: ${data.filename} (${fmtSize(data.size)}${data.rows ? ', '+data.rows+' righe' : ''})`, true);
+      setMsg(msg, `Caricato: ${data.filename} (${fmtSize(data.size)}${data.rows ? ', '+data.rows+' righe' : ''})` + (data.coordinamenti ? ` — coordinamenti: ${data.coordinamenti.created} create, ${data.coordinamenti.updated} aggiornate, ${data.coordinamenti.skipped} invariate` : ''), true);
       fileInput.value = ''; droppedFile = null; updateName();
       refreshAll();
     }catch(err){
@@ -2384,56 +2358,6 @@
 
   // ──────────────────────────────────────────────────────────────────────
   // Utils
-  // ──────────────────────────────────────────────────────────────────────
-  // Coordinamenti: import xlsx + riepilogo per pratica
-  async function loadCoord(){
-    const body = $('coordBody');
-    if(!apiBase()){ body.innerHTML = '<tr><td colspan="9" class="empty">Imposta API endpoint</td></tr>'; return; }
-    body.innerHTML = '<tr><td colspan="9" class="empty">Caricamento…</td></tr>';
-    try{
-      const d = await api('/api/coordinamenti');
-      const pr = d.pratiche || [];
-      if(!pr.length){ body.innerHTML = '<tr><td colspan="9" class="empty">Nessuna richiesta: importa l\'xlsx</td></tr>'; return; }
-      body.innerHTML = pr.map(p => `<tr>
-        <td><b>${escapeHtml(p.pratica)}</b></td><td>${escapeHtml(p.impresa || '')}</td><td>${escapeHtml(p.municipio || '')}</td>
-        <td>${p.totale}</td><td>${p.ricevute} (${Math.round(p.pct_ricevute)}%)</td><td>${p.inviate}</td><td>${p.da_inviare}</td>
-        <td>${p.concomitanze_si}</td><td>${p.ultimo_aggiornamento ? fmtDate(p.ultimo_aggiornamento) : '—'}</td></tr>`).join('');
-    }catch(err){
-      body.innerHTML = `<tr><td colspan="9" class="empty">Errore: ${escapeHtml(err.message)}</td></tr>`;
-    }
-  }
-  $('coordRefreshBtn').addEventListener('click', loadCoord);
-  $('coordImportBtn').addEventListener('click', async () => {
-    const m = $('coordMsg'), btn = $('coordImportBtn');
-    m.className = 'msg';
-    if(!apiBase()) return setMsg(m, "Imposta l'API endpoint", false);
-    const f = $('coordFile').files[0];
-    if(!f) return setMsg(m, 'Seleziona il file xlsx', false);
-    if(!/\.xlsx$/i.test(f.name)) return setMsg(m, 'Serve un file .xlsx', false);
-    const overwrite = $('coordOverwrite').checked;
-    if(overwrite){
-      const ok = await showConfirm('Sovrascrivi coordinamenti', 'Con "Sovrascrivi" i dati dell\'xlsx sostituiscono quelli già presenti, inclusi gli aggiornamenti inseriti dalle imprese. Procedere?', 'Sovrascrivi', 'btn btn-danger');
-      if(!ok) return;
-    }
-    const fd = new FormData();
-    fd.append('file', f);
-    fd.append('sheet', $('coordSheet').value.trim() || 'ENTI_Tracking_Invii');
-    fd.append('overwrite', overwrite ? 'true' : 'false');
-    btn.disabled = true; btn.textContent = 'Importo…';
-    try{
-      const r = await fetch(apiBase() + '/api/admin/coordinamenti/import', { method: 'POST', body: fd, headers: authHeaders() });
-      const data = await r.json().catch(() => ({}));
-      if(!r.ok) throw new Error(data.detail || ('HTTP ' + r.status));
-      setMsg(m, `Import completato: ${data.created} create, ${data.updated} aggiornate, ${data.skipped} invariate (${data.rows} righe nel foglio)`, true);
-      $('coordFile').value = '';
-      loadCoord();
-    }catch(err){
-      setMsg(m, 'Errore: ' + err.message, false);
-    }finally{
-      btn.disabled = false; btn.textContent = 'Importa';
-    }
-  });
-
   function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function cssId(s){ return String(s).replace(/[^a-zA-Z0-9]/g, '-'); }
 
