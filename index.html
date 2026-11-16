@@ -1045,6 +1045,23 @@ window.loadExcelJS = (function(){
   </div>
 </div>
 
+<!-- Modal elenco coordinamenti per pratica (barre) -->
+<div class="modal-overlay" id="modalCoordListOverlay" onclick="closeModalCoordList(event)" role="dialog" aria-modal="true" aria-labelledby="modalCoordListTitle">
+  <div class="modal">
+    <div class="modal-title">
+      <span id="modalCoordListTitle">Coordinamenti Milano · avanzamento per pratica</span>
+      <span class="modal-close" onclick="closeModalCoordList()">×</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-bottom:8px">
+      <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#1E9E6A"></span>Risposta ricevuta</span>
+      <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#41BBD9"></span>Inviata, in attesa</span>
+      <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:var(--surface2);border:1px solid var(--border2)"></span>Da inviare</span>
+      <span style="flex:1"></span><span>Clicca su una pratica per l'elenco enti</span>
+    </div>
+    <div id="coordRows" style="display:flex;flex-direction:column;gap:2px"></div>
+  </div>
+</div>
+
 <!-- Modal dettaglio coordinamenti (richieste agli enti per pratica) -->
 <div class="modal-overlay" id="modalCoordOverlay" onclick="closeModalCoord(event)" role="dialog" aria-modal="true" aria-labelledby="modalCoordTitle">
   <div class="modal">
@@ -1235,18 +1252,14 @@ window.loadExcelJS = (function(){
         <span style="font-size:9px;color:var(--muted2);font-style:italic" id="flussoDataRef"></span>
       </div>
       <!-- ── COORDINAMENTI MILANO (invio preliminare: richieste agli enti per pratica) ── -->
-      <div id="coordBlock" style="display:none;flex:1 1 0;min-height:150px;overflow-y:auto;border-top:1px solid var(--border);padding:12px 20px 14px;background:var(--surface)">
-        <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:8px">
+      <div id="coordBlock" role="button" tabindex="0" aria-label="Apri coordinamenti Milano per pratica" onclick="openCoordList()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openCoordList()}" style="display:none;flex:1 1 auto;min-height:96px;cursor:pointer;border-top:1px solid var(--border);padding:12px 20px 14px;background:var(--surface)">
+        <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:10px">
           <span style="font-size:12px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);font-weight:600;white-space:nowrap">Coordinamenti Milano</span>
           <span id="coordTot" style="font-size:12px;font-weight:700;font-family:'Raleway',sans-serif;color:var(--text)"></span>
           <span style="flex:1"></span>
-          <span style="display:flex;align-items:center;gap:12px;font-size:12px;color:var(--muted)">
-            <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#1E9E6A"></span>Risposta ricevuta</span>
-            <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#41BBD9"></span>Inviata, in attesa</span>
-            <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:var(--surface2);border:1px solid var(--border2)"></span>Da inviare</span>
-          </span>
+          <span style="font-size:12px;font-weight:600;color:var(--accent);white-space:nowrap">Dettaglio per pratica ›</span>
         </div>
-        <div id="coordRows" style="display:flex;flex-direction:column;gap:2px"></div>
+        <div id="coordSummary"></div>
         <div id="coordLast" style="margin-top:8px;font-size:12px;color:var(--muted2);font-style:italic"></div>
       </div>
     </div>
@@ -3489,7 +3502,7 @@ function closeModal(e) {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     ['modalOverlay','modalGruppoOverlay','modalClusterOverlay',
-     'modalKpiOverlay','modalCoordOverlay','helpOverlay']
+     'modalKpiOverlay','modalCoordOverlay','modalCoordListOverlay','helpOverlay']
       .forEach(id => { const el = document.getElementById(id); if (el && el.classList.contains('open')) window._modalClose(id); });
   }
 });
@@ -4098,8 +4111,32 @@ function renderCoordBlock(d) {
   const pr = (d && d.pratiche) || [];
   if (!blk || !pr.length) { if (blk) blk.style.display = 'none'; return; }
   blk.style.display = 'block';
-  const tot = pr.reduce((s, p) => s + p.totale, 0), ric = pr.reduce((s, p) => s + p.ricevute, 0);
+  const sum = k => pr.reduce((s, p) => s + (p[k] || 0), 0);
+  const tot = sum('totale'), ric = sum('ricevute'), inv = sum('inviate'), da = sum('da_inviare');
+  const conc = sum('concomitanze_si'), sop = sum('sopralluoghi');
   document.getElementById('coordTot').textContent = `${pr.length} pratiche · ${ric}/${tot} risposte ricevute`;
+  const w = n => (tot ? (100 * n / tot).toFixed(2) : 0);
+  const stat = (v, l, c) => `<div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:20px;font-weight:700;font-family:'Raleway',sans-serif;color:${c};line-height:1">${v}</span><span style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted)">${l}</span></div>`;
+  document.getElementById('coordSummary').innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+      <div style="flex:1;height:14px;border-radius:7px;overflow:hidden;display:flex;background:var(--surface2);border:1px solid var(--border2)">
+        <div style="width:${w(ric)}%;background:${_CO_COL.ric}"></div>
+        <div style="width:${w(inv)}%;background:${_CO_COL.inv}"></div>
+      </div>
+      <span style="font-size:13px;font-weight:700;font-family:'Raleway',sans-serif;color:var(--text2)">${tot ? Math.round(100 * ric / tot) : 0}%</span>
+    </div>
+    <div style="display:flex;gap:8px 24px;flex-wrap:wrap">
+      ${stat(ric, 'Ricevute', _CO_COL.ric)}${stat(inv, 'In attesa', '#1A7D99')}${stat(da, 'Da inviare', '#5B6677')}
+      ${stat(conc, 'Concomitanze', conc ? '#C0392B' : 'var(--text)')}${stat(sop, 'Sopralluoghi', 'var(--accent)')}
+    </div>`;
+  const last = (d.recenti || []).find(r => r.by !== 'import xlsx');
+  document.getElementById('coordLast').textContent = last
+    ? `Ultimo aggiornamento: ${_coCap(last.impresa)} · ${last.pratica} · ${last.ente} · ${_coD(last.ts)}`
+    : 'Nessun aggiornamento caricato dalle imprese';
+  renderCoordList(pr);
+}
+
+function renderCoordList(pr) {
   document.getElementById('coordRows').innerHTML = pr.map((p, i) => {
     const w = n => (p.totale ? (100 * n / p.totale).toFixed(2) : 0);
     const mun = String(p.municipio || '').replace(/MUNICIPIO\s*/i, 'M');
@@ -4117,10 +4154,12 @@ function renderCoordBlock(d) {
       <span style="min-width:48px;text-align:right;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--muted);flex-shrink:0">${p.ricevute}/${p.totale}</span>
     </div>`;
   }).join('');
-  const last = (d.recenti || []).find(r => r.by !== 'import xlsx');
-  document.getElementById('coordLast').textContent = last
-    ? `Ultimo aggiornamento: ${_coCap(last.impresa)} · ${last.pratica} · ${last.ente} · ${_coD(last.ts)}`
-    : 'Nessun aggiornamento caricato dalle imprese';
+}
+
+function openCoordList() { if (window._coData && (window._coData.pratiche || []).length) window._modalOpen('modalCoordListOverlay'); }
+function closeModalCoordList(e) {
+  if (e && e.target !== document.getElementById('modalCoordListOverlay')) return;
+  window._modalClose('modalCoordListOverlay');
 }
 
 function openCoordDetail(idx) {
@@ -4141,21 +4180,25 @@ function _renderCoordDetail() {
   const chipHtml = chips.map(([k, l]) => `<button type="button" onclick="setCoordFilter('${k}')" style="font-family:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;cursor:pointer;border:1px solid ${_coFilter === k ? 'var(--accent)' : 'var(--border2)'};background:${_coFilter === k ? 'var(--accent)' : 'var(--surface)'};color:${_coFilter === k ? '#fff' : 'var(--text2)'}">${l}</button>`).join('');
   const kpi = (v, l, c) => `<div style="flex:1;min-width:110px;border:1px solid var(--border);border-radius:10px;padding:10px 14px"><div style="font-size:22px;font-weight:700;font-family:'Raleway',sans-serif;color:${c}">${v}</div><div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">${l}</div></div>`;
   const stLbl = { ricevuta: ['Ricevuta', _CO_COL.ric], inviata: ['In attesa', '#1A7D99'], da_inviare: ['Da inviare', '#5B6677'] };
+  const fld = (l, v) => v ? `<div style="min-width:0"><div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted2);margin-bottom:1px">${l}</div><div style="font-size:13px;color:var(--text);word-break:break-word">${v}</div></div>` : '';
   const rows = p.enti.filter(e => _coFilter === 'tutte' || e.stato === _coFilter).map(e => {
     const [sl, sc] = stLbl[e.stato];
-    const risp = e.data_risposta ? _coD(e.data_risposta) : (e.risposta_ricevuta ? 'OK (senza data)' : '—');
-    const conc = e.concomitanze === 'SI'
-      ? '<span style="font-weight:700;color:#C0392B">SI</span>' : (e.concomitanze === 'NO' ? 'NO' : '—');
+    const risp = e.data_risposta ? _coD(e.data_risposta) : (e.risposta_ricevuta ? 'OK (senza data)' : '');
+    const conc = e.concomitanze === 'SI' ? '<span style="font-weight:700;color:#C0392B">SI</span>' : (e.concomitanze === 'NO' ? 'No' : '');
+    const invio = _coEsc(e.tipologia_invio || '') + (e.risposte_attese > 1 ? ' (' + e.risposte_attese + ' risposte)' : '');
+    const sopr = e.data_sopralluogo ? _coD(e.data_sopralluogo) + (e.verbale ? ' · ' + _coEsc(e.verbale) : '') : '';
     const extra = [e.concomitanze_note, e.prescrizioni, e.note].filter(Boolean).map(_coEsc).join(' · ');
-    return `<tr style="border-top:1px solid var(--border)">
-      <td style="padding:8px 8px;vertical-align:top"><div style="font-weight:600;color:var(--text)">${_coEsc(e.ente)}</div><div style="color:var(--muted)">${_coEsc(e.servizio || '')}</div></td>
-      <td style="padding:8px;vertical-align:top;white-space:nowrap"><span style="font-weight:700;color:${sc}">${sl}</span></td>
-      <td style="padding:8px;vertical-align:top"><div>${_coEsc(e.tipologia_invio || '—')}${e.risposte_attese > 1 ? ' (' + e.risposte_attese + ' risposte)' : ''}</div><div style="color:var(--muted);word-break:break-all">${_coEsc(e.contatto || '')}</div></td>
-      <td style="padding:8px;vertical-align:top;white-space:nowrap">${_coD(e.data_invio) || '—'}</td>
-      <td style="padding:8px;vertical-align:top;white-space:nowrap">${risp}</td>
-      <td style="padding:8px;vertical-align:top;text-align:center">${conc}</td>
-      <td style="padding:8px;vertical-align:top;white-space:nowrap">${_coD(e.data_sopralluogo) || '—'}${e.verbale ? '<div style="color:var(--muted)">' + _coEsc(e.verbale) + '</div>' : ''}</td>
-      <td style="padding:8px;vertical-align:top;color:var(--muted)">${extra || '—'}</td></tr>`;
+    return `<div style="border:1px solid var(--border);border-left:4px solid ${sc};border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div style="min-width:0"><div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.3">${_coEsc(e.ente)}</div>${e.servizio ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">${_coEsc(e.servizio)}</div>` : ''}</div>
+        <span style="flex-shrink:0;font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;color:${sc};background:${sc}1F;border:1px solid ${sc}55">${sl}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 18px">
+        ${fld('Invio', invio.trim())}${fld('Contatto', _coEsc(e.contatto || ''))}${fld('Inviata il', _coD(e.data_invio))}
+        ${fld('Risposta', risp)}${fld('Concomitanze', conc)}${fld('Sopralluogo', sopr)}
+      </div>
+      ${extra ? `<div style="font-size:12px;color:var(--text2);background:var(--surface2);border-radius:6px;padding:6px 10px">${extra}</div>` : ''}
+    </div>`;
   }).join('');
   const hist = ((window._coData || {}).recenti || []).filter(r => r.pratica === p.pratica && r.by !== 'import xlsx').slice(0, 6).map(r => {
     const ch = Object.keys(r.changes || {}).map(k => _CO_FIELD_LABEL[k] || k).join(', ');
@@ -4170,12 +4213,7 @@ function _renderCoordDetail() {
       ${kpi(p.sopralluoghi, 'Sopralluoghi', 'var(--accent)')}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${chipHtml}</div>
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;color:var(--text2)">
-      <thead><tr style="text-align:left;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">
-        <th style="padding:6px 8px">Ente</th><th style="padding:6px 8px">Stato</th><th style="padding:6px 8px">Invio / contatto</th>
-        <th style="padding:6px 8px">Inviata il</th><th style="padding:6px 8px">Risposta</th><th style="padding:6px 8px;text-align:center">Concomitanze</th>
-        <th style="padding:6px 8px">Sopralluogo</th><th style="padding:6px 8px">Note</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="8" style="padding:16px;color:var(--muted)">Nessuna richiesta in questo stato</td></tr>'}</tbody></table></div>
+    <div style="display:flex;flex-direction:column;gap:8px">${rows || '<div style="padding:16px;color:var(--muted)">Nessuna richiesta in questo stato</div>'}</div>
     ${hist ? `<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px"><div style="font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);font-weight:600;margin-bottom:4px">Ultimi aggiornamenti</div>${hist}</div>` : ''}`;
 }
 
