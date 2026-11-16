@@ -80,6 +80,8 @@
   .cod { font-family:var(--font-mono); font-weight:600; color:var(--accent); cursor:pointer; }
   .cod:hover { text-decoration:underline; }
   .tipo { display:inline-block; max-width:100%; font-size:10.5px; font-weight:600; line-height:1.25; padding:3px 8px; border-radius:10px; white-space:normal; overflow-wrap:break-word; }
+  .cli { display:inline-block; font-size:10.5px; font-weight:600; line-height:1.25; padding:3px 8px; border-radius:10px; white-space:nowrap; }
+  .cli-confermata { background:var(--redL); color:var(--red); } .cli-si { background:var(--yellowL); color:var(--yellow); } .cli-non_confermata { background:var(--gray-100); color:var(--muted); }
   .tipo-In { background:var(--redL); color:var(--red); } .tipo-Cn { background:var(--yellowL); color:var(--yellow); } .tipo-Sc { background:var(--retelit-ice); color:var(--accent); }
   thead th.srt { cursor:pointer; user-select:none; } thead th.srt:hover { background:var(--retelit-teal); }
   thead th.srt::after { content:' ↕'; opacity:.4; } thead th.srt.asc::after { content:' ▲'; opacity:1; } thead th.srt.desc::after { content:' ▼'; opacity:1; }
@@ -182,15 +184,16 @@
     <select id="fPrio" onchange="render()"><option value="">Tutte le priority</option></select>
     <select id="fSys" onchange="render()"><option value="">Tutti i System</option></select>
     <select id="fOrig" onchange="render()"><option value="">Tutte le origini</option><option value="verbale">Da verbali (NC)</option><option value="manuale">Inserite a mano</option></select>
+    <select id="fCli" onchange="render()"><option value="">Cliente: tutte</option><option value="any">Con segnalazione cliente</option><option value="confermata">Confermata</option><option value="non_confermata">Non confermata</option></select>
     <button class="btn ghost" onclick="resetFilters()">Azzera filtri</button>
     <span class="count" id="count"></span>
   </div>
 
   <div class="tbl-wrap">
     <table>
-      <colgroup><col style="width:7%"><col style="width:9%"><col style="width:14%"><col style="width:8%"><col style="width:8%"><col style="width:7%"><col style="width:12%"><col style="width:8%"><col style="width:7%"><col style="width:6%"><col style="width:6%"><col style="width:7%"><col style="width:3%"></colgroup>
+      <colgroup><col style="width:7%"><col style="width:8%"><col style="width:12%"><col style="width:8%"><col style="width:7%"><col style="width:7%"><col style="width:10%"><col style="width:7%"><col style="width:7%"><col style="width:6%"><col style="width:7%"><col style="width:6%"><col style="width:6%"><col style="width:3%"></colgroup>
       <thead><tr>
-        <th class="srt" data-k="codice" onclick="setSort('codice')">Codice</th><th class="srt" data-k="tipo" onclick="setSort('tipo')">Tipo</th><th class="srt" data-k="cantiere" onclick="setSort('cantiere')">Cantiere / Comune</th><th class="srt" data-k="system" onclick="setSort('system')">System</th><th class="srt" data-k="subsystem" onclick="setSort('subsystem')">SubSystem</th><th class="srt" data-k="data_rilevamento" onclick="setSort('data_rilevamento')">Rilevata</th><th class="srt" data-k="descrizione" onclick="setSort('descrizione')">Descrizione</th><th class="srt" data-k="data_invio" onclick="setSort('data_invio')">Invio al System</th><th class="srt" data-k="stato" onclick="setSort('stato')">Stato</th><th class="srt" data-k="priority" onclick="setSort('priority')">Priority</th><th class="srt" data-k="data_prevista" onclick="setSort('data_prevista')">Prevista</th><th class="srt" data-k="bonifica" onclick="setSort('bonifica')" title="Approvazione Bonifica Field Manager">Appr. Bonifica FM</th><th></th>
+        <th class="srt" data-k="codice" onclick="setSort('codice')">Codice</th><th class="srt" data-k="tipo" onclick="setSort('tipo')">Tipo</th><th class="srt" data-k="cantiere" onclick="setSort('cantiere')">Cantiere / Comune</th><th class="srt" data-k="system" onclick="setSort('system')">System</th><th class="srt" data-k="subsystem" onclick="setSort('subsystem')">SubSystem</th><th class="srt" data-k="data_rilevamento" onclick="setSort('data_rilevamento')">Rilevata</th><th class="srt" data-k="descrizione" onclick="setSort('descrizione')">Descrizione</th><th class="srt" data-k="data_invio" onclick="setSort('data_invio')">Invio al System</th><th class="srt" data-k="stato" onclick="setSort('stato')">Stato</th><th class="srt" data-k="priority" onclick="setSort('priority')">Priority</th><th class="srt" data-k="cliente" onclick="setSort('cliente')" title="Segnalazione cliente del verbale di origine">Cliente</th><th class="srt" data-k="data_prevista" onclick="setSort('data_prevista')">Prevista</th><th class="srt" data-k="bonifica" onclick="setSort('bonifica')" title="Approvazione Bonifica Field Manager">Appr. Bonifica FM</th><th></th>
       </tr></thead>
       <tbody id="tbody"></tbody>
     </table>
@@ -343,12 +346,13 @@ function isQualita(it) { return it.origine_cat === 'qualita'; }
 function isFmDaVerificare(it) { return isQualita(it) && !it.bonifica_fm_ok; }
 
 function filtered() {
-  const q = $('fQ').value.trim().toLowerCase(), t = $('fTipo').value, s = $('fStato').value, p = $('fPrio').value, y = $('fSys').value, o = $('fOrig').value;
+  const q = $('fQ').value.trim().toLowerCase(), t = $('fTipo').value, s = $('fStato').value, p = $('fPrio').value, y = $('fSys').value, o = $('fOrig').value, cl = $('fCli').value;
   return items.filter(it => {
     if (t && it.prefisso !== t) return false;
     if (s && it.stato !== s) return false;
     if (p && it.priority !== p) return false;
     if (y && (it.system || '').trim() !== y) return false;
+    if (cl && !(cl === 'any' ? it.cliente : it.cliente === cl)) return false;
     if (o === 'verbale' && !it.origine_verbale) return false;
     if (o === 'manuale' && it.origine_verbale) return false;
     if (kpi === 'open' && !isOpen(it)) return false;
@@ -367,7 +371,7 @@ function filtered() {
 let sortK = '', sortD = 1;
 /* Legenda priority: criteri di assegnazione (unico punto da modificare per cambiarli) */
 const PRIO_LEGEND = [
-  { k:'critica', c:'var(--red)',    bg:'var(--redL)',    when:'Qualsiasi issue nata da una segnalazione del cliente. Area di intervento non delimitata o accessi di cantiere aperti (SIC-21, SIC-22): rischio per i terzi.', act:'Da sistemare subito; il System va sollecitato appena inviata.' },
+  { k:'critica', c:'var(--red)',    bg:'var(--redL)',    when:'Issue nata da una segnalazione del cliente confermata (o senza esito registrato). Se l\'esito è "non confermata" si applicano le regole normali. Area di intervento non delimitata o accessi di cantiere aperti (SIC-21, SIC-22): rischio per i terzi.', act:'Da sistemare subito; il System va sollecitato appena inviata.' },
   { k:'alta',    c:'var(--orange)', bg:'var(--orangeL)', when:'Non conformità di qualità dell\'opera (checklist Qualità: tubi, pozzetti, microdotti, giunzioni, codifica colori).', act:'Da inviare al System entro pochi giorni e verificare con priorità.' },
   { k:'media',   c:'var(--yellow)', bg:'var(--yellowL)', when:'Non conformità di sicurezza con rischio diretto per persone, terzi o ambiente (protezioni scavi e cadute, DPI, attrezzature, sollevamento, bombole e stoccaggi, traffico e segnaletica, emergenza, rifiuti pericolosi, illuminazione), POS/PSC mancanti (SIC-03), collaudo e ripristini. È il valore predefinito per le issue inserite a mano.', act:'Gestione ordinaria, controllo alla verifica successiva.' },
   { k:'bassa',   c:'var(--green)',  bg:'var(--greenL)',  when:'Punti sicurezza formali, documentali o di ordine, senza rischio immediato: autorizzazioni e tesserini (SIC-01/02), programma lavori, libretti, ordinanze e schede sicurezza (SIC-04/08/41/42), pulizia e ordine (SIC-17/19), CER, separazione e formulari rifiuti (SIC-27/28/31), rumore (SIC-33/37), cartello di cantiere (SIC-43). Assegnata in automatico alle issue da verbale; si imposta a mano per le altre.', act:'Si sistema entro la normale programmazione.' },
@@ -397,11 +401,13 @@ async function ricalcolaPriority() {
   } catch (e) { toast('✗ ' + e.message); }
 }
 function closeLegend() { $('ovLeg').classList.remove('open'); }
+const CLI_LAB = { confermata:'Confermata', non_confermata:'Non confermata', si:'Sì' }, CLI_RANK = { non_confermata:1, si:2, confermata:3 };
 const PRIO_RANK = { bassa:0, media:1, alta:2, critica:3 }, STATO_RANK = { aperta:0, inviata:1, in_lavorazione:2, risolta:3, chiusa:4 };
 function sortVal(it, k) {
   if (k === 'codice') return (it.prefisso || '') + String(it.seq || 0).padStart(6, '0');
   if (k === 'tipo') return it.prefisso || '';
   if (k === 'priority') return PRIO_RANK[it.priority] ?? -1;
+  if (k === 'cliente') return CLI_RANK[it.cliente] || 0;
   if (k === 'bonifica') return it.bonifica_fm_ok ? 1 : 0;
   if (k === 'stato') return STATO_RANK[it.stato] ?? -1;
   return String(it[k] || '').toLowerCase();
@@ -430,7 +436,7 @@ function renderKpi() {
   $('kpis').innerHTML = K.map(([k, l, v, c]) => '<button class="kpi ' + c + ((kpi === k || (k === 'all' && !kpi)) ? ' on' : '') + '" onclick="setKpi(\'' + k + '\')"><div class="k-l">' + l + '</div><div class="k-v">' + v + '</div></button>').join('');
 }
 function setKpi(k) { kpi = (k === 'all' || kpi === k) ? '' : k; render(); }
-function resetFilters() { ['fQ', 'fTipo', 'fStato', 'fPrio', 'fSys', 'fOrig'].forEach(i => $(i).value = ''); kpi = ''; sortK = ''; sortD = 1; render(); }
+function resetFilters() { ['fQ', 'fTipo', 'fStato', 'fPrio', 'fSys', 'fOrig', 'fCli'].forEach(i => $(i).value = ''); kpi = ''; sortK = ''; sortD = 1; render(); }
 
 function render() {
   renderKpi();
@@ -450,6 +456,7 @@ function render() {
       '<td class="num">' + fmt(it.data_invio) + '<span class="sub" style="font-family:var(--font-body)">' + esc([it.metodo_invio, it.rif_system_invio].filter(Boolean).join(' · ')) + '</span></td>' +
       '<td><select class="cell"' + RO + ' onchange="patch(\'' + esc(it._id) + '\',\'stato\',this.value,this)">' + optsHtml(STATI).replace('value="' + it.stato + '"', 'value="' + it.stato + '" selected') + '</select></td>' +
       '<td><select class="cell"' + RO + ' onchange="patch(\'' + esc(it._id) + '\',\'priority\',this.value,this)">' + optsHtml(PRIO).replace('value="' + it.priority + '"', 'value="' + it.priority + '" selected') + '</select></td>' +
+      '<td>' + (it.cliente ? '<span class="cli cli-' + esc(it.cliente) + '" title="Segnalazione cliente del verbale ' + esc(it.origine_verbale || '') + '">' + esc(CLI_LAB[it.cliente] || it.cliente) + '</span>' : '<span class="sub">—</span>') + '</td>' +
       '<td class="num' + (isLate(it) ? ' late' : '') + '">' + fmt(it.data_prevista) + (isLate(it) ? '<span class="sub late">in ritardo</span>' : '') + '</td>' +
       '<td class="bon">' + ((isQualita(it) || it.bonifica_fm_ok) ?
         ('<input type="checkbox"' + (it.bonifica_fm_ok ? ' checked' : '') + (IS_FIELD ? '' : ' disabled title="Solo il Field Manager può approvare"') +
@@ -468,7 +475,7 @@ async function toggleBonifica(id, el) {
   const val = el.checked;
   try {
     const r = await api('/api/issues/' + id + '/approvazione-bonifica', { method: 'POST', body: JSON.stringify({ value: val }) });
-    items[items.indexOf(it)] = r.item; toast(val ? 'Approvazione registrata' : 'Approvazione rimossa'); render();
+    items[items.indexOf(it)] = { ...r.item, cliente: it.cliente }; toast(val ? 'Approvazione registrata' : 'Approvazione rimossa'); render();
   } catch (e) { toast('Non salvato: ' + e.message); render(); }
 }
 
@@ -477,7 +484,7 @@ async function patch(id, field, value, el) {
   if ((it[field] || '') === value.trim()) return;
   try {
     const r = await api('/api/issues/' + id, { method: 'PUT', body: JSON.stringify({ [field]: value }) });
-    items[items.indexOf(it)] = r.item; toast('Salvato');
+    items[items.indexOf(it)] = { ...r.item, cliente: it.cliente }; toast('Salvato');
     if (field === 'system' || field === 'subsystem') { fillLookups(); renderKpi(); if (el) el.classList.toggle('empty', !value.trim()); }
     else render();
   } catch (e) { toast('Non salvato: ' + e.message); render(); }
@@ -563,7 +570,7 @@ async function saveIssue() {
   try {
     if (editId) {
       const r = await api('/api/issues/' + editId, { method: 'PUT', body: JSON.stringify(payload) });
-      const i = items.findIndex(x => x._id === editId); if (i >= 0) items[i] = r.item;
+      const i = items.findIndex(x => x._id === editId); if (i >= 0) items[i] = { ...r.item, cliente: items[i].cliente };
       toast(r.changed ? 'Issue aggiornata' : 'Nessuna modifica');
     } else {
       const r = await api('/api/issues', { method: 'POST', body: JSON.stringify(payload) });
