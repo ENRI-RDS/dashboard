@@ -106,6 +106,7 @@ access_logs_col = db["access_logs"]            # log accessi (ex-JSONBin) — un
 gantt_overrides_col = db["gantt_overrides"]    # override manuali riga Gantt (pct/date/label) per lotto, indip. da invii impresa
 gantt_rates_col = db["gantt_rates"]            # regole tasso scavo (m/giorno) per scope: "global" | "lotto:<ID>" | "impresa:<NOME>" | "pratica:<CODICE>"
 concomitanza_col = db["concomitanza"]          # tratte con lavorazione aggiuntiva concomitante (es. ENRI-QTS, tubo aggiuntivo), keyed per TRATTA_ID
+coordinamenti_col = db["coordinamenti"]    # invio preliminare: una richiesta per pratica x ente (invio, risposta, concomitanze, sopralluogo)
 gridfs = AsyncIOMotorGridFSBucket(db, bucket_name="files")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -843,6 +844,8 @@ async def _on_startup():
         await solleciti_col.create_index("tratta_id")
         await cantieri_col.create_index([("pratica_id", 1), ("ente", 1)])
         await cantieri_col.create_index("lotto")
+        await coordinamenti_col.create_index([("pratica", 1), ("ente_key", 1)], unique=True)
+        await coordinamenti_col.create_index("lotto")
         await sopralluoghi_col.create_index("codice_verbale")
         await issues_col.create_index("codice", unique=True)
         await issues_col.create_index("origine_key", unique=True, partialFilterExpression={"origine_key": {"$type": "string"}})
@@ -6544,3 +6547,305 @@ async def delete_gantt_rate(scope: str, sess: dict = Depends(_require_admin_sess
 # ── Trigger sync cantieri dopo approvazione Master.csv ───────────────────────
 # _sync_cantieri() è già chiamata alla fine di approve_pending_update
 # (vedi hook sotto) — aggiungiamo il trigger se non esiste
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COORDINAMENTI (fase INVIO PRELIMINARE — richieste agli enti per pratica)
+# Una richiesta = un documento per (pratica, ente). Scrittura diretta dell'impresa
+# (nessuna approvazione admin, come solleciti/cantieri). Indipendente da Master.csv:
+# la pratica resta visibile anche dopo che lo stato Master passa a INVIATO.
+# ══════════════════════════════════════════════════════════════════════════════
+COORD_EDITABLE = {
+    "tipologia_invio", "contatto", "data_invio", "data_risposta",
+    "concomitanze", "concomitanze_note", "data_sopralluogo", "verbale",
+    "riferimento_protocollo", "prescrizioni", "note", "risposta_ricevuta",
+}
+
+
+def _coord_date(v) -> str:
+    """datetime / 'GG/MM/AAAA' / 'AAAA-MM-GG' -> 'AAAA-MM-GG'. Vuoto/non parsabile -> ''."""
+    if v is None:
+        return ""
+    if isinstance(v, (datetime, pd.Timestamp)):
+        return "" if pd.isna(v) else v.strftime("%Y-%m-%d")
+    s = str(v).strip()
+    if not s or s.lower() in ("nan", "nat", "none"):
+        return ""
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{2,4})$", s)
+    if m:
+        y = int(m.group(3)); y = y + 2000 if y < 100 else y
+        return f"{y:04d}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+    return ""
+
+
+def _coord_txt(v) -> str:
+    if v is None or (not isinstance(v, str) and pd.isna(v)):
+        return ""
+    return re.sub(r"\s+", " ", str(v).replace("\\n", " ")).strip()
+
+
+def _coord_ente_key(ente: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", _coord_txt(ente).lower()).strip("-")
+
+
+def _coord_lotto(pratica: str) -> str:
+    """'AUT/7/1B' -> '1B' (ultimo segmento del codice pratica)."""
+    return str(pratica or "").split("/")[-1].strip().upper()
+
+
+def _coord_public(d: dict, with_log: bool = False) -> dict:
+    out = {k: v for k, v in d.items() if k != "log"}
+    out["id"] = str(out.pop("_id"))
+    out["log_count"] = len(d.get("log") or [])
+    if with_log:
+        out["log"] = d.get("log") or []
+    return out
+
+
+def _coord_stato(d: dict) -> str:
+    if d.get("risposta_ricevuta") or d.get("data_risposta"):
+        return "ricevuta"
+    if d.get("data_invio"):
+        return "inviata"
+    return "da_inviare"
+
+
+def _coord_summarize(docs: list[dict]) -> list[dict]:
+    """Aggrega le richieste per pratica: totale / ricevute / inviate-senza-risposta / da inviare."""
+    by: dict[str, dict] = {}
+    for d in docs:
+        p = by.setdefault(d["pratica"], {
+            "pratica": d["pratica"], "lotto": d.get("lotto", ""), "municipio": d.get("municipio", ""),
+            "impresa": d.get("impresa", ""), "totale": 0, "ricevute": 0, "inviate": 0, "da_inviare": 0,
+            "concomitanze_si": 0, "sopralluoghi": 0, "ultimo_aggiornamento": "", "enti": [],
+        })
+        st = _coord_stato(d)
+        p["totale"] += 1
+        p[{"ricevuta": "ricevute", "inviata": "inviate", "da_inviare": "da_inviare"}[st]] += 1
+        if d.get("concomitanze") == "SI":
+            p["concomitanze_si"] += 1
+        if d.get("data_sopralluogo"):
+            p["sopralluoghi"] += 1
+        p["ultimo_aggiornamento"] = max(p["ultimo_aggiornamento"], d.get("updated_at") or "")
+        e = _coord_public(d)
+        e["stato"] = st
+        p["enti"].append(e)
+    out = list(by.values())
+    for p in out:
+        p["enti"].sort(key=lambda e: (e.get("ordine") or 999, e.get("ente", "")))
+        p["pct_ricevute"] = round(100 * p["ricevute"] / p["totale"], 1) if p["totale"] else 0
+    out.sort(key=lambda p: (p["pct_ricevute"], p["pratica"]))
+    return out
+
+
+def _coord_recenti(docs: list[dict], limit: int = 30) -> list[dict]:
+    rows = []
+    for d in docs:
+        for lg in (d.get("log") or []):
+            rows.append({"ts": lg.get("ts", ""), "by": lg.get("by", ""), "pratica": d["pratica"],
+                         "ente": d.get("ente", ""), "impresa": d.get("impresa", ""),
+                         "changes": lg.get("changes", {})})
+    rows.sort(key=lambda r: r["ts"], reverse=True)
+    return rows[:limit]
+
+
+@app.get("/api/coordinamenti")
+async def coordinamenti_staff(sess: dict = Depends(_require_staff_session)):
+    """Vista Progettazione: tutte le pratiche con le loro richieste agli enti + feed ultimi aggiornamenti."""
+    docs = [d async for d in coordinamenti_col.find({})]
+    return {"pratiche": _coord_summarize(docs), "recenti": _coord_recenti(docs), "count": len(docs)}
+
+
+@app.get("/api/imprese/coordinamenti")
+async def coordinamenti_impresa(sess: dict = Depends(_require_session)):
+    """Richieste dei lotti assegnati all'impresa autenticata."""
+    assignment = await _find_assignment(sess["nome"])
+    if not assignment:
+        raise HTTPException(404, "Impresa non assegnata")
+    lotti = {_lotto_from_source(str(l)) for l in (assignment.get("lotti") or [])}
+    docs = [d async for d in coordinamenti_col.find({"lotto": {"$in": sorted(lotti)}})]
+    return {"pratiche": _coord_summarize(docs), "recenti": _coord_recenti(docs, 15), "count": len(docs)}
+
+
+async def _coord_apply(doc: dict, fields: dict, by: str) -> dict:
+    """Valida e applica i campi editabili a un documento; ritorna il $set da scrivere."""
+    upd: dict = {}
+    changes: dict = {}
+    for k, v in fields.items():
+        if k not in COORD_EDITABLE:
+            continue
+        if k in ("data_invio", "data_risposta", "data_sopralluogo"):
+            nv = _coord_date(v)
+            if v not in (None, "") and not nv:
+                raise HTTPException(400, f"Data non valida per {k}")
+        elif k == "risposta_ricevuta":
+            nv = v in (True, "true", "True", "1", 1, "SI", "si")
+            if nv == bool(doc.get(k)):
+                continue
+            changes[k] = [bool(doc.get(k)), nv]
+            upd[k] = nv
+            continue
+        elif k == "concomitanze":
+            nv = str(v or "").strip().upper()
+            if nv not in ("", "SI", "NO"):
+                raise HTTPException(400, "concomitanze deve essere SI, NO o vuoto")
+        else:
+            nv = _coord_txt(v)
+        if nv != (doc.get(k) or ""):
+            changes[k] = [doc.get(k) or "", nv]
+            upd[k] = nv
+    di = upd.get("data_invio", doc.get("data_invio") or "")
+    dr = upd.get("data_risposta", doc.get("data_risposta") or "")
+    if dr and not upd.get("risposta_ricevuta", doc.get("risposta_ricevuta")):
+        upd["risposta_ricevuta"] = True      # una data di risposta implica risposta ricevuta
+        changes["risposta_ricevuta"] = [bool(doc.get("risposta_ricevuta")), True]
+    if (dr or upd.get("risposta_ricevuta")) and not di:
+        raise HTTPException(400, "Risposta senza data di invio")
+    if dr and di and dr < di:
+        raise HTTPException(400, "La data di risposta è precedente alla data di invio")
+    if not changes:
+        return {}
+    now = _now_iso()
+    upd["updated_at"] = now
+    upd["updated_by"] = by
+    return {"set": upd, "log": {"ts": now, "by": by, "changes": changes}}
+
+
+async def _coord_get_scoped(coord_id: str, nome: str) -> dict:
+    try:
+        oid = ObjectId(coord_id)
+    except Exception:
+        raise HTTPException(400, "ID non valido")
+    doc = await coordinamenti_col.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Richiesta non trovata")
+    assignment = await _find_assignment(nome)
+    lotti = {_lotto_from_source(str(l)) for l in ((assignment or {}).get("lotti") or [])}
+    if _lotto_from_source(doc.get("lotto", "")) not in lotti:
+        raise HTTPException(403, "Pratica non assegnata a questa impresa")
+    return doc
+
+
+@app.post("/api/imprese/coordinamenti-bulk")
+async def coordinamenti_bulk(payload: dict, sess: dict = Depends(_require_session)):
+    """Stessi campi su più richieste (es. 'inviata a tutti gli enti il gg/mm').
+    Body: {ids:[...], fields:{...}}. Il primo errore di validazione annulla l'intero invio."""
+    ids = payload.get("ids") or []
+    fields = payload.get("fields") or {}
+    if not ids or len(ids) > 100:
+        raise HTTPException(400, "ids: da 1 a 100 richieste")
+    writes = []
+    for cid in ids:
+        doc = await _coord_get_scoped(str(cid), sess["nome"])
+        res = await _coord_apply(doc, fields, sess["nome"])
+        if res:
+            writes.append((doc["_id"], res))
+    for oid, res in writes:
+        await coordinamenti_col.update_one(
+            {"_id": oid},
+            {"$set": res["set"], "$push": {"log": {"$each": [res["log"]], "$slice": -50}}},
+        )
+    return {"ok": True, "updated": len(writes), "unchanged": len(ids) - len(writes)}
+
+
+@app.post("/api/imprese/coordinamenti/{coord_id}")
+async def coordinamenti_update(coord_id: str, payload: dict, sess: dict = Depends(_require_session)):
+    """L'impresa aggiorna una singola richiesta (pratica x ente)."""
+    doc = await _coord_get_scoped(coord_id, sess["nome"])
+    res = await _coord_apply(doc, payload or {}, sess["nome"])
+    if not res:
+        return {"ok": True, "changed": False}
+    await coordinamenti_col.update_one(
+        {"_id": doc["_id"]},
+        {"$set": res["set"], "$push": {"log": {"$each": [res["log"]], "$slice": -50}}},
+    )
+    return {"ok": True, "changed": True, "changes": res["log"]["changes"]}
+
+
+@app.get("/api/coordinamenti/{coord_id}/log")
+async def coordinamenti_log(coord_id: str, sess: dict = Depends(_require_staff_session)):
+    try:
+        doc = await coordinamenti_col.find_one({"_id": ObjectId(coord_id)}, {"log": 1})
+    except Exception:
+        raise HTTPException(400, "ID non valido")
+    if not doc:
+        raise HTTPException(404, "Richiesta non trovata")
+    return {"log": list(reversed(doc.get("log") or []))}
+
+
+@app.post("/api/admin/coordinamenti/import")
+async def coordinamenti_import(
+    file: UploadFile = File(...),
+    sheet: str = Form("ENTI_Tracking_Invii"),
+    overwrite: bool = Form(False),
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Import iniziale/di riallineamento dal foglio ENTI_Tracking_Invii dell'xlsx coordinamenti.
+    overwrite=False (default): crea le richieste mancanti e compila SOLO i campi ancora vuoti,
+    così non si sovrascrive quanto già aggiornato dalle imprese."""
+    _check_token(x_upload_token)
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "Empty file")
+    try:
+        df = pd.read_excel(io.BytesIO(raw), sheet_name=sheet)
+    except Exception as e:
+        raise HTTPException(400, f"Foglio {sheet!r} non leggibile: {e}")
+    need = {"ELENCO ENTI", "ISTANZA", "SERVICE"}
+    if not need.issubset(df.columns):
+        raise HTTPException(400, f"Colonne mancanti: {sorted(need - set(df.columns))}")
+    created = updated = skipped = 0
+    now = _now_iso()
+    for _, r in df.iterrows():
+        pratica = _coord_txt(r.get("ISTANZA")).upper()
+        ente = _coord_txt(r.get("ELENCO ENTI"))
+        if not pratica or not ente:
+            skipped += 1
+            continue
+        tip_raw = _coord_txt(r.get("Tipologia invio"))
+        rec = {
+            "pratica": pratica, "ente_key": _coord_ente_key(ente), "ente": ente,
+            "lotto": _coord_lotto(pratica),
+            "municipio": _coord_txt(r.get("MUNICIPIO")).upper(),
+            "impresa": _coord_txt(r.get("SERVICE")).upper(),
+            "servizio": _coord_txt(r.get("SERVIZIO")),
+            "tipologia_invio": re.sub(r"\s*\(.*?\)\s*", "", tip_raw).strip(),
+            "risposte_attese": 2 if "2 risposte" in tip_raw else 1,
+            "contatto": _coord_txt(r.get("MAIL SERVICE")) or _coord_txt(r.get("CONTATTO RDS")),
+            "ordine": int(r["#"]) if "#" in df.columns and not pd.isna(r.get("#")) else 999,
+            "data_invio": _coord_date(r.get("INVIO IN DATA")),
+            "data_risposta": _coord_date(r.get("RISPOSTA IN DATA")),
+            # alcune imprese (Sertori, Circet) segnano 'OK' senza data: risposta ricevuta ma data ignota
+            "risposta_ricevuta": bool(_coord_date(r.get("RISPOSTA IN DATA")) or _coord_txt(r.get("RISPOSTA IN DATA"))),
+            "concomitanze": _coord_txt(r.get("CONCOMITANZE PROBLEMI")).upper(),
+            "data_sopralluogo": _coord_date(r.get("DATA SOPRALLUOGO")),
+            "verbale": _coord_txt(r.get("VERBALE SOPRALLUOGO")),
+            "note": _coord_txt(r.get("NOTE")),
+        }
+        if rec["concomitanze"] not in ("", "SI", "NO"):
+            rec["concomitanze"] = ""
+        existing = await coordinamenti_col.find_one({"pratica": pratica, "ente_key": rec["ente_key"]})
+        if not existing:
+            rec.update({"updated_at": now, "updated_by": "import xlsx",
+                        "log": [{"ts": now, "by": "import xlsx", "changes": {"import": ["", file.filename or "xlsx"]}}]})
+            await coordinamenti_col.insert_one(rec)
+            created += 1
+            continue
+        patch = {k: v for k, v in rec.items()
+                 if (overwrite or existing.get(k) in (None, "", False)) and v not in (None, "", False) and existing.get(k) != v}
+        if patch:
+            patch["updated_at"] = now
+            patch["updated_by"] = "import xlsx"
+            await coordinamenti_col.update_one(
+                {"_id": existing["_id"]},
+                {"$set": patch, "$push": {"log": {"$each": [{"ts": now, "by": "import xlsx", "changes": {"import": ["", file.filename or "xlsx"]}}], "$slice": -50}}},
+            )
+            updated += 1
+        else:
+            skipped += 1
+    await _log_admin_action("coordinamenti_import", f"{file.filename} created={created} updated={updated}", x_actor_nome)
+    return {"ok": True, "created": created, "updated": updated, "skipped": skipped, "rows": int(len(df))}
