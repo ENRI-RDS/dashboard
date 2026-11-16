@@ -4506,8 +4506,9 @@ async def update_sopralluogo(sop_id: str, payload: dict, sess: dict = Depends(_r
 
 @app.put("/api/sopralluoghi/{sop_id}/system")
 async def update_sopralluogo_system(sop_id: str, payload: dict, sess: dict = Depends(_require_staff_session)):
-    """Aggiorna SOLO i 4 campi \"Segnalazione al System\" di un verbale già salvato (es. verbali precedenti ai campi).
-    Tutti e 4 obbligatori. Traccia chi/quando in `storico_system` e riallinea le issue collegate."""
+    """Aggiorna i 4 campi \"Segnalazione al System\" di un verbale già salvato (es. verbali precedenti ai campi)
+    + (solo verbali radice, opzionale) segnalazione cliente: flag, esito confermata/non_confermata, nota.
+    I 4 campi System sono obbligatori. Traccia chi/quando in `storico_system` e riallinea le issue collegate."""
     try:
         oid = ObjectId(sop_id)
     except Exception:
@@ -4530,14 +4531,36 @@ async def update_sopralluogo_system(sop_id: str, payload: dict, sess: dict = Dep
     old = {k: (_sopr_date_iso(str(doc.get(k, "") or "").strip()) if k == "data_invio_system"
                else str(doc.get(k, "") or "").strip()) for k in new}
     changes = {k: (old[k], new[k]) for k in new if old[k] != new[k]}
-    if not changes:
+
+    # Segnalazione cliente (riapertura flag / esito / nota) — solo verbali radice, stesse regole di PUT /{sop_id}
+    segn_sets, segn_mods = {}, []
+    if any(k in _p for k in ("segnalazione_cliente", "esito_segnalazione", "segnalazione_cliente_note")):
+        if doc.get("verbale_origine"):
+            raise HTTPException(422, "La segnalazione cliente si imposta solo sul verbale di sopralluogo, non sulle verifiche")
+        segn = bool(_p.get("segnalazione_cliente", doc.get("segnalazione_cliente", False)))
+        esito = str(_p.get("esito_segnalazione", doc.get("esito_segnalazione", ""))).strip().lower() if segn else ""
+        nota = str(_p.get("segnalazione_cliente_note", doc.get("segnalazione_cliente_note", ""))).strip()[:2000] if segn else ""
+        if segn and esito not in ("confermata", "non_confermata"):
+            raise HTTPException(422, "Segnalazione cliente: indicare se è confermata o non confermata")
+        if segn and not nota:
+            raise HTTPException(422, "Segnalazione cliente: la nota è obbligatoria")
+        if segn and esito == "confermata" and not any(
+                st.get("e") == "NC" for sez in _CK_CATEGORIE for st in ((doc.get("checklist") or {}).get(sez) or {}).values() if isinstance(st, dict)):
+            raise HTTPException(422, "Segnalazione confermata: almeno un punto della checklist deve essere non conforme")
+        for k, lab, val in (("segnalazione_cliente", "Segnalazione cliente", segn),
+                            ("esito_segnalazione", "Esito segnalazione", esito),
+                            ("segnalazione_cliente_note", "Note segnalazione cliente", nota)):
+            if val != doc.get(k, False if k == "segnalazione_cliente" else ""):
+                segn_mods.append({"campo": lab, "da": str(doc.get(k, "")), "a": str(val)}); segn_sets[k] = val
+
+    if not changes and not segn_mods:
         return {"ok": True, "changed": 0, "issues_aggiornate": 0}
     now = datetime.now(timezone.utc).isoformat()
     utente = sess.get("nome", "")
+    mods_all = [{"campo": labels[k], "da": a, "a": b} for k, (a, b) in changes.items()] + segn_mods
     await sopralluoghi_col.update_one({"_id": oid}, {
-        "$set": {**new, "modificato_da": utente, "modificato_il": now},
-        "$push": {"storico_system": {"ts": now, "utente": utente,
-                                     "modifiche": [{"campo": labels[k], "da": a, "a": b} for k, (a, b) in changes.items()]}}})
+        "$set": {**new, **segn_sets, "modificato_da": utente, "modificato_il": now},
+        "$push": {"storico_system": {"ts": now, "utente": utente, "modifiche": mods_all}}})
 
     # Riallinea le issue collegate (mai bloccante per il salvataggio del verbale)
     n_iss = 0
@@ -4573,7 +4596,7 @@ async def update_sopralluogo_system(sop_id: str, payload: dict, sess: dict = Dep
     except Exception as e:
         print(f"[sopralluoghi] riallineo issue dopo modifica dati System fallito: {type(e).__name__}: {e}")
     _schedule_sopralluoghi_csv_regen(f"aggiornamento dati System: {doc.get('codice_verbale', '')}")
-    return {"ok": True, "changed": len(changes), "issues_aggiornate": n_iss}
+    return {"ok": True, "changed": len(changes) + len(segn_mods), "issues_aggiornate": n_iss}
 
 
 @app.get("/api/sopralluoghi")
