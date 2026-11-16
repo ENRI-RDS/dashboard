@@ -386,6 +386,7 @@ SENSITIVE_FILES = {
     "Cantieri.csv",
     "sopralluoghi.csv",
     "solleciti.csv",
+    "AVANZAMENTO_COORDINAMENTI_MILANO.xlsx",
 }
 
 
@@ -605,8 +606,21 @@ async def upload_file(
 
     # Safety net: anche se il client non passa convert_to_csv=false, il file
     # parametri (multi-foglio) non va MAI appiattito in CSV a un solo foglio.
-    if out_name == PARAMETRI_FILENAME:
+    if out_name in (PARAMETRI_FILENAME, COORDINAMENTI_FILENAME):
         convert_to_csv = False
+
+    # File coordinamenti: validato PRIMA di salvarlo (foglio e colonne attese),
+    # così un xlsx sbagliato non finisce nello storico versioni.
+    coord_df = None
+    if out_name == COORDINAMENTI_FILENAME:
+        try:
+            coord_df = pd.read_excel(io.BytesIO(raw), sheet_name=COORD_SHEET)
+        except Exception as e:
+            raise HTTPException(400, f"Foglio {COORD_SHEET!r} non leggibile: {e}")
+        miss = {"ELENCO ENTI", "ISTANZA", "SERVICE"} - set(coord_df.columns)
+        if miss:
+            raise HTTPException(400, f"Colonne mancanti nel foglio {COORD_SHEET}: {sorted(miss)}")
+        rows = int(len(coord_df))
 
     if ext in {".xlsx", ".xls"} and convert_to_csv:
         try:
@@ -689,6 +703,11 @@ async def upload_file(
     elif rel in GITHUB_PATHS:
         asyncio.create_task(_push_to_github(out_bytes, path=GITHUB_PATHS[rel], label=rel))
 
+    coord_result = None
+    if coord_df is not None:
+        # default non distruttivo: crea le richieste mancanti e compila solo i campi vuoti
+        coord_result = await _coordinamenti_import_df(coord_df, file.filename or rel, False, x_actor_nome)
+
     return JSONResponse({
         "ok": True,
         "id": str(res.inserted_id),
@@ -697,6 +716,7 @@ async def upload_file(
         "rows": rows,
         "converted_from_excel": ext in {".xlsx", ".xls"} and convert_to_csv,
         "pol_conv_preserved": pol_conv_preserved,
+        "coordinamenti": coord_result,
     })
 
 
@@ -6776,28 +6796,13 @@ async def coordinamenti_log(coord_id: str, sess: dict = Depends(_require_staff_s
     return {"log": list(reversed(doc.get("log") or []))}
 
 
-@app.post("/api/admin/coordinamenti/import")
-async def coordinamenti_import(
-    file: UploadFile = File(...),
-    sheet: str = Form("ENTI_Tracking_Invii"),
-    overwrite: bool = Form(False),
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Import iniziale/di riallineamento dal foglio ENTI_Tracking_Invii dell'xlsx coordinamenti.
-    overwrite=False (default): crea le richieste mancanti e compila SOLO i campi ancora vuoti,
-    così non si sovrascrive quanto già aggiornato dalle imprese."""
-    _check_token(x_upload_token)
-    raw = await file.read()
-    if not raw:
-        raise HTTPException(400, "Empty file")
-    try:
-        df = pd.read_excel(io.BytesIO(raw), sheet_name=sheet)
-    except Exception as e:
-        raise HTTPException(400, f"Foglio {sheet!r} non leggibile: {e}")
-    need = {"ELENCO ENTI", "ISTANZA", "SERVICE"}
-    if not need.issubset(df.columns):
-        raise HTTPException(400, f"Colonne mancanti: {sorted(need - set(df.columns))}")
+COORDINAMENTI_FILENAME = "AVANZAMENTO_COORDINAMENTI_MILANO.xlsx"
+COORD_SHEET = "ENTI_Tracking_Invii"
+
+
+async def _coordinamenti_import_df(df: "pd.DataFrame", filename: str, overwrite: bool, actor: str | None) -> dict:
+    """Upsert delle richieste (pratica x ente) dal foglio tracking. overwrite=False: crea le
+    mancanti e compila SOLO i campi ancora vuoti (non tocca gli aggiornamenti delle imprese)."""
     created = updated = skipped = 0
     now = _now_iso()
     for _, r in df.iterrows():
@@ -6831,7 +6836,7 @@ async def coordinamenti_import(
         existing = await coordinamenti_col.find_one({"pratica": pratica, "ente_key": rec["ente_key"]})
         if not existing:
             rec.update({"updated_at": now, "updated_by": "import xlsx",
-                        "log": [{"ts": now, "by": "import xlsx", "changes": {"import": ["", file.filename or "xlsx"]}}]})
+                        "log": [{"ts": now, "by": "import xlsx", "changes": {"import": ["", filename or "xlsx"]}}]})
             await coordinamenti_col.insert_one(rec)
             created += 1
             continue
@@ -6842,10 +6847,36 @@ async def coordinamenti_import(
             patch["updated_by"] = "import xlsx"
             await coordinamenti_col.update_one(
                 {"_id": existing["_id"]},
-                {"$set": patch, "$push": {"log": {"$each": [{"ts": now, "by": "import xlsx", "changes": {"import": ["", file.filename or "xlsx"]}}], "$slice": -50}}},
+                {"$set": patch, "$push": {"log": {"$each": [{"ts": now, "by": "import xlsx", "changes": {"import": ["", filename or "xlsx"]}}], "$slice": -50}}},
             )
             updated += 1
         else:
             skipped += 1
-    await _log_admin_action("coordinamenti_import", f"{file.filename} created={created} updated={updated}", x_actor_nome)
-    return {"ok": True, "created": created, "updated": updated, "skipped": skipped, "rows": int(len(df))}
+    await _log_admin_action("coordinamenti_import", f"{filename} created={created} updated={updated}", actor)
+    return {"created": created, "updated": updated, "skipped": skipped, "rows": int(len(df))}
+
+
+@app.post("/api/admin/coordinamenti/import")
+async def coordinamenti_import(
+    file: UploadFile = File(...),
+    sheet: str = Form("ENTI_Tracking_Invii"),
+    overwrite: bool = Form(False),
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Import iniziale/di riallineamento dal foglio ENTI_Tracking_Invii dell'xlsx coordinamenti.
+    overwrite=False (default): crea le richieste mancanti e compila SOLO i campi ancora vuoti,
+    così non si sovrascrive quanto già aggiornato dalle imprese."""
+    _check_token(x_upload_token)
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "Empty file")
+    try:
+        df = pd.read_excel(io.BytesIO(raw), sheet_name=sheet)
+    except Exception as e:
+        raise HTTPException(400, f"Foglio {sheet!r} non leggibile: {e}")
+    need = {"ELENCO ENTI", "ISTANZA", "SERVICE"}
+    if not need.issubset(df.columns):
+        raise HTTPException(400, f"Colonne mancanti: {sorted(need - set(df.columns))}")
+    res = await _coordinamenti_import_df(df, file.filename or "xlsx", overwrite, x_actor_nome)
+    return {"ok": True, **res}
