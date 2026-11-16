@@ -4078,17 +4078,19 @@ function _coD(iso) {
 }
 function _coCap(s) { s = String(s || '').toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1); }
 
-async function loadCoordinamenti() {
+async function loadCoordinamenti(tentativo = 0) {
   if (!document.getElementById('coordBlock')) return;
+  const _retry = () => { if (tentativo < 3) setTimeout(() => loadCoordinamenti(tentativo + 1), 20000); };
   try {
     const r = await Promise.race([
       fetch(_apiBase() + '/api/coordinamenti', { headers: { 'x-session-token': _sessionToken() } }),
       new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 15000))
     ]);
-    if (!r.ok) return;               // 401/403/404: il blocco resta nascosto
+    if (!r.ok) { console.warn('[coordinamenti] HTTP', r.status); if (r.status >= 500) _retry(); return; }  // 401/403/404: blocco nascosto
     window._coData = await r.json();
+    if (!(window._coData.pratiche || []).length) console.warn('[coordinamenti] risposta vuota (count=' + window._coData.count + '): collection Mongo vuota, importare xlsx da admin');
     renderCoordBlock(window._coData);
-  } catch (e) { /* backend in cold-start o offline: blocco nascosto */ }
+  } catch (e) { console.warn('[coordinamenti]', e.message); _retry(); }  // cold-start Render / offline: riprova (prima non ritentava mai)
 }
 
 function renderCoordBlock(d) {
