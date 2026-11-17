@@ -6579,6 +6579,13 @@ COORD_EDITABLE = {
     "tipologia_invio", "contatto", "data_invio", "data_risposta",
     "concomitanze", "concomitanze_note", "data_sopralluogo", "verbale",
     "riferimento_protocollo", "prescrizioni", "note", "risposta_ricevuta",
+    # pagina impresa "Coordinamenti": riscontro ente / sopralluogo / sollecito / ente critico
+    "tipo_riscontro", "sopralluogo_necessario", "esito_sopralluogo", "data_ultimo_sollecito", "critico",
+}
+COORD_ENUMS = {
+    "tipo_riscontro": ("INTERFERENZA", "NON INTERFERENZA"),
+    "sopralluogo_necessario": ("SI", "NO"),
+    "esito_sopralluogo": ("POSITIVO", "NEGATIVO"),
 }
 
 
@@ -6619,6 +6626,8 @@ def _coord_lotto(pratica: str) -> str:
 def _coord_public(d: dict, with_log: bool = False) -> dict:
     out = {k: v for k, v in d.items() if k != "log"}
     out["id"] = str(out.pop("_id"))
+    if not out.get("tipo_riscontro"):      # dati precedenti: concomitanze SI/NO -> INTERFERENZA/NON INTERFERENZA
+        out["tipo_riscontro"] = {"SI": "INTERFERENZA", "NO": "NON INTERFERENZA"}.get(d.get("concomitanze") or "", "")
     out["log_count"] = len(d.get("log") or [])
     if with_log:
         out["log"] = d.get("log") or []
@@ -6640,13 +6649,18 @@ def _coord_summarize(docs: list[dict]) -> list[dict]:
         p = by.setdefault(d["pratica"], {
             "pratica": d["pratica"], "lotto": d.get("lotto", ""), "municipio": d.get("municipio", ""),
             "impresa": d.get("impresa", ""), "totale": 0, "ricevute": 0, "inviate": 0, "da_inviare": 0,
-            "concomitanze_si": 0, "sopralluoghi": 0, "ultimo_aggiornamento": "", "enti": [],
+            "concomitanze_si": 0, "interferenze": 0, "critici": 0, "critici_aperti": 0, "sopralluoghi": 0, "ultimo_aggiornamento": "", "enti": [],
         })
         st = _coord_stato(d)
         p["totale"] += 1
         p[{"ricevuta": "ricevute", "inviata": "inviate", "da_inviare": "da_inviare"}[st]] += 1
-        if d.get("concomitanze") == "SI":
+        if d.get("tipo_riscontro") == "INTERFERENZA" or (not d.get("tipo_riscontro") and d.get("concomitanze") == "SI"):
             p["concomitanze_si"] += 1
+            p["interferenze"] += 1
+        if d.get("critico"):
+            p["critici"] += 1
+            if st != "ricevuta":
+                p["critici_aperti"] += 1
         if d.get("data_sopralluogo"):
             p["sopralluoghi"] += 1
         p["ultimo_aggiornamento"] = max(p["ultimo_aggiornamento"], d.get("updated_at") or "")
@@ -6697,11 +6711,11 @@ async def _coord_apply(doc: dict, fields: dict, by: str) -> dict:
     for k, v in fields.items():
         if k not in COORD_EDITABLE:
             continue
-        if k in ("data_invio", "data_risposta", "data_sopralluogo"):
+        if k in ("data_invio", "data_risposta", "data_sopralluogo", "data_ultimo_sollecito"):
             nv = _coord_date(v)
             if v not in (None, "") and not nv:
                 raise HTTPException(400, f"Data non valida per {k}")
-        elif k == "risposta_ricevuta":
+        elif k in ("risposta_ricevuta", "critico"):
             nv = v in (True, "true", "True", "1", 1, "SI", "si")
             if nv == bool(doc.get(k)):
                 continue
@@ -6712,6 +6726,10 @@ async def _coord_apply(doc: dict, fields: dict, by: str) -> dict:
             nv = str(v or "").strip().upper()
             if nv not in ("", "SI", "NO"):
                 raise HTTPException(400, "concomitanze deve essere SI, NO o vuoto")
+        elif k in COORD_ENUMS:
+            nv = re.sub(r"\s+", " ", str(v or "")).strip().upper()
+            if nv not in ("",) + COORD_ENUMS[k]:
+                raise HTTPException(400, f"{k} deve essere {' o '.join(COORD_ENUMS[k])} o vuoto")
         else:
             nv = _coord_txt(v)
         if nv != (doc.get(k) or ""):
@@ -6726,6 +6744,15 @@ async def _coord_apply(doc: dict, fields: dict, by: str) -> dict:
         raise HTTPException(400, "Risposta senza data di invio")
     if dr and di and dr < di:
         raise HTTPException(400, "La data di risposta è precedente alla data di invio")
+    ds = upd.get("data_ultimo_sollecito", doc.get("data_ultimo_sollecito") or "")
+    if ds and not di:
+        raise HTTPException(400, "Sollecito senza data di invio")
+    if ds and di and ds < di:
+        raise HTTPException(400, "La data di sollecito è precedente alla data di invio")
+    if upd.get("sopralluogo_necessario", doc.get("sopralluogo_necessario") or "") == "NO" and (
+            upd.get("data_sopralluogo", doc.get("data_sopralluogo") or "")
+            or upd.get("esito_sopralluogo", doc.get("esito_sopralluogo") or "")):
+        raise HTTPException(400, "Sopralluogo non necessario: rimuovere data ed esito, oppure impostare la necessità a SI")
     if not changes:
         return {}
     now = _now_iso()
