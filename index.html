@@ -4078,7 +4078,9 @@ function renderDashboard(data) {
 const _CO_COL = { ric:'#1E9E6A', inv:'#41BBD9', da:'#8A94A6' };
 const _CO_FIELD_LABEL = { data_invio:'data invio', data_risposta:'data risposta', risposta_ricevuta:'risposta ricevuta',
   concomitanze:'concomitanze', concomitanze_note:'note concomitanze', data_sopralluogo:'data sopralluogo', verbale:'verbale',
-  riferimento_protocollo:'protocollo', prescrizioni:'prescrizioni', note:'note', contatto:'contatto', tipologia_invio:'mezzo invio' };
+  riferimento_protocollo:'protocollo', prescrizioni:'prescrizioni', note:'note', contatto:'contatto', tipologia_invio:'mezzo invio',
+  tipo_riscontro:'tipo riscontro', sopralluogo_necessario:'necessità sopralluogo', esito_sopralluogo:'esito sopralluogo',
+  data_ultimo_sollecito:'ultimo sollecito', critico:'ente critico' };
 let _coFilter = 'tutte';
 let _coPratica = null;
 
@@ -4113,7 +4115,7 @@ function renderCoordBlock(d) {
   blk.style.display = 'block';
   const sum = k => pr.reduce((s, p) => s + (p[k] || 0), 0);
   const tot = sum('totale'), ric = sum('ricevute'), inv = sum('inviate'), da = sum('da_inviare');
-  const conc = sum('concomitanze_si'), sop = sum('sopralluoghi');
+  const conc = sum('interferenze') || sum('concomitanze_si'), sop = sum('sopralluoghi');
   document.getElementById('coordTot').textContent = `${pr.length} pratiche · ${ric}/${tot} risposte ricevute`;
   const w = n => (tot ? (100 * n / tot).toFixed(2) : 0);
   const stat = (v, l, c) => `<div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:20px;font-weight:700;font-family:'Raleway',sans-serif;color:${c};line-height:1">${v}</span><span style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted)">${l}</span></div>`;
@@ -4127,7 +4129,7 @@ function renderCoordBlock(d) {
     </div>
     <div style="display:flex;gap:8px 24px;flex-wrap:wrap">
       ${stat(ric, 'Ricevute', _CO_COL.ric)}${stat(inv, 'In attesa', '#1A7D99')}${stat(da, 'Da inviare', '#5B6677')}
-      ${stat(conc, 'Concomitanze', conc ? '#C0392B' : 'var(--text)')}${stat(sop, 'Sopralluoghi', 'var(--accent)')}
+      ${stat(conc, 'Interferenze', conc ? '#C0392B' : 'var(--text)')}${stat(sop, 'Sopralluoghi', 'var(--accent)')}
     </div>`;
   const last = (d.recenti || []).find(r => r.by !== 'import xlsx');
   document.getElementById('coordLast').textContent = last
@@ -4200,27 +4202,30 @@ function _renderCoordDetail() {
                  ['inviata', `In attesa (${p.inviate})`], ['da_inviare', `Da inviare (${p.da_inviare})`]];
   const chipHtml = chips.map(([k, l]) => `<button type="button" onclick="setCoordFilter('${k}')" style="font-family:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;cursor:pointer;border:1px solid ${_coFilter === k ? 'var(--accent)' : 'var(--border2)'};background:${_coFilter === k ? 'var(--accent)' : 'var(--surface)'};color:${_coFilter === k ? '#fff' : 'var(--text2)'}">${l}</button>`).join('');
   const kpi = (v, l, c) => `<div style="flex:1;min-width:110px;border:1px solid var(--border);border-radius:10px;padding:10px 14px"><div style="font-size:22px;font-weight:700;font-family:'Raleway',sans-serif;color:${c}">${v}</div><div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">${l}</div></div>`;
-  const stLbl = { ricevuta: ['Ricevuta', _CO_COL.ric], inviata: ['In attesa', '#1A7D99'], da_inviare: ['Da inviare', '#5B6677'] };
+  const stLbl = { ricevuta: ['Riscontrato', _CO_COL.ric], inviata: ['In attesa', '#1A7D99'], da_inviare: ['Da inviare', '#5B6677'] };
   const th = (t, al) => `<th style="padding:7px 8px;text-align:${al || 'left'};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);background:var(--surface2);border-bottom:2px solid var(--border2);white-space:nowrap;position:sticky;top:0">${t}</th>`;
   const lista = p.enti.filter(e => _coFilter === 'tutte' || e.stato === _coFilter);
-  const haNote = lista.some(e => e.concomitanze_note || e.prescrizioni || e.note);
   const td = (v, st) => `<td style="padding:6px 8px;vertical-align:top;border-bottom:1px solid var(--border);${st || ''}">${v}</td>`;
   const rows = lista.map((e, k) => {
     const [sl, sc] = stLbl[e.stato];
     const risp = e.data_risposta ? _coD(e.data_risposta) : (e.risposta_ricevuta ? 'OK' : '');
-    const conc = e.concomitanze === 'SI' ? '<b style="color:#C0392B">SI</b>' : (e.concomitanze === 'NO' ? 'NO' : '');
-    const sopr = e.data_sopralluogo ? _coD(e.data_sopralluogo) + (e.verbale ? ' · ' + _coEsc(e.verbale) : '') : '';
-    const extra = [e.concomitanze_note, e.prescrizioni, e.note].filter(Boolean).map(_coEsc).join(' · ');
+    const tp = e.tipo_riscontro === 'INTERFERENZA' ? '<b style="color:#C0392B">INTERFERENZA</b>' : (e.tipo_riscontro === 'NON INTERFERENZA' ? 'Non interferenza' : '');
+    const necessario = e.sopralluogo_necessario || (e.data_sopralluogo ? 'SI' : '');
+    const esito = e.esito_sopralluogo === 'POSITIVO' ? '<b style="color:#137A50">POSITIVO</b>' : (e.esito_sopralluogo === 'NEGATIVO' ? '<b style="color:#C0392B">NEGATIVO</b>' : '');
+    const crit = e.critico ? '<div><span style="display:inline-block;margin-top:3px;font-size:10px;font-weight:700;color:#8A2A1F;background:#FEECEB;border:1px solid #E8B4AE;border-radius:4px;padding:0 5px">CRITICO · no tacito assenso</span></div>' : '';
     const zebra = k % 2 ? 'background:var(--surface2);' : '';
     return `<tr style="${zebra}">
-      ${td(`<span style="font-weight:600;color:var(--text)">${_coEsc(e.ente)}</span>`, 'max-width:300px')}
-      ${td(`<span title="${_coEsc(e.servizio || '')}" style="display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px">${_coEsc(e.servizio || '')}</span>`)}
+      ${td(`<span style="font-weight:600;color:var(--text)">${_coEsc(e.ente)}</span>${crit}`, 'max-width:300px')}
+      ${td(`<span title="${_coEsc(e.servizio || '')}" style="display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px">${_coEsc(e.servizio || '')}</span>`)}
       ${td(`<span style="font-weight:700;color:${sc}">${sl}</span>`, 'white-space:nowrap')}
       ${td(_coD(e.data_invio), 'white-space:nowrap')}
+      ${td(_coD(e.data_ultimo_sollecito), 'white-space:nowrap')}
       ${td(risp, 'white-space:nowrap')}
-      ${td(conc, 'text-align:center')}
-      ${td(sopr, 'white-space:nowrap')}
-      ${haNote ? td(`<span style="color:var(--muted)">${extra}</span>`, 'max-width:180px') : ''}
+      ${td(tp, 'white-space:nowrap')}
+      ${td(necessario, 'text-align:center')}
+      ${td(_coD(e.data_sopralluogo), 'white-space:nowrap')}
+      ${td(esito, 'white-space:nowrap')}
+      ${td(`<span style="color:var(--muted)">${_coEsc(e.note || '')}</span>`, 'min-width:140px;max-width:220px')}
     </tr>`;
   }).join('');
   const hist = ((window._coData || {}).recenti || []).filter(r => r.pratica === p.pratica && r.by !== 'import xlsx').slice(0, 6).map(r => {
@@ -4229,16 +4234,16 @@ function _renderCoordDetail() {
   }).join('');
   document.getElementById('modalCoordBody').innerHTML = `
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-      ${kpi(Math.round(p.pct_ricevute) + '%', 'Risposte ricevute', _CO_COL.ric)}
+      ${kpi(Math.round(p.pct_ricevute) + '%', 'Riscontri ricevuti', _CO_COL.ric)}
       ${kpi(p.inviate, 'Inviate, in attesa', '#1A7D99')}
       ${kpi(p.da_inviare, 'Da inviare', '#5B6677')}
-      ${kpi(p.concomitanze_si, 'Concomitanze SI', p.concomitanze_si ? '#C0392B' : 'var(--text)')}
-      ${kpi(p.sopralluoghi, 'Sopralluoghi', 'var(--accent)')}
+      ${kpi(p.interferenze ?? p.concomitanze_si, 'Interferenze', (p.interferenze ?? p.concomitanze_si) ? '#C0392B' : 'var(--text)')}
+      ${kpi(p.enti.filter(e => e.sopralluogo_necessario === 'SI' || e.data_sopralluogo).length, 'Sopralluoghi necessari', 'var(--accent)')}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${chipHtml}</div>
     <div style="overflow:auto;max-height:60vh;border:1px solid var(--border);border-radius:8px"><table style="width:100%;border-collapse:collapse;font-size:12px;color:var(--text2)">
-      <thead><tr>${th('Ente')}${th('Servizio')}${th('Stato')}${th('Inviata il')}${th('Risposta il')}${th('Concom.', 'center')}${th('Sopralluogo')}${haNote ? th('Note') : ''}</tr></thead>
-      <tbody>${rows || '<tr><td colspan="8" style="padding:16px;color:var(--muted)">Nessuna richiesta in questo stato</td></tr>'}</tbody></table></div>
+      <thead><tr>${th('Ente')}${th('Servizio')}${th('Stato')}${th('Inviata il')}${th('Ult. sollecito')}${th('Riscontro il')}${th('Tipo riscontro')}${th('Sopr. necessario', 'center')}${th('Data sopr.')}${th('Esito sopr.')}${th('Note')}</tr></thead>
+      <tbody>${rows || '<tr><td colspan="11" style="padding:16px;color:var(--muted)">Nessuna richiesta in questo stato</td></tr>'}</tbody></table></div>
     ${hist ? `<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px"><div style="font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);font-weight:600;margin-bottom:4px">Ultimi aggiornamenti</div>${hist}</div>` : ''}`;
 }
 
