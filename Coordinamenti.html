@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="it" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ENRI — Coordinamenti (Area Impresa)</title>
+<script src="js/api-config.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --blue:#043F75;--blue-50:#819FB9;--sky:#41BBD9;--teal:#1A7D99;--ice:#D3DEEA;
+    --g50:#F7F8FA;--g100:#EEF1F5;--g200:#DFE4EB;--g300:#C4CDD8;--g400:#9AA5B4;--g500:#5B6677;--g700:#363D48;
+    --ok:#1E9E6A;--ok-t:#137A50;--ok-bg:#E3F6EC;--danger:#C0392B;--danger-t:#8A2A1F;--danger-bg:#FEECEB;--danger-bd:#E8B4AE;
+    --font:"Raleway","Calibri",system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:var(--font);background:var(--g50);color:var(--g700);min-height:100vh;-webkit-font-smoothing:antialiased}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 28px;height:58px;background:var(--blue);position:sticky;top:0;z-index:100}
+  .topbar-left,.topbar-right{display:flex;align-items:center;gap:12px}
+  .topbar-divider{width:1px;height:20px;background:var(--blue-50)}
+  .topbar-title{font-size:13px;font-weight:600;letter-spacing:.04em;color:var(--ice);text-transform:uppercase}
+  .topbar-user{font-size:12px;color:var(--ice);background:rgba(255,255,255,.1);padding:4px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.15)}
+  .topbar-back{font-size:12px;color:var(--sky);font-weight:600;text-decoration:none;padding:4px 10px;border-radius:8px;border:1px solid var(--sky);white-space:nowrap}
+  .topbar-back:hover{background:rgba(65,187,217,.1)}
+  .main{max-width:1600px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:16px}
+  .eyebrow{font-family:"JetBrains Mono",monospace;font-size:11px;text-transform:uppercase;letter-spacing:.15em;color:var(--g500);margin-bottom:4px}
+  .title{font-size:26px;font-weight:700;letter-spacing:-.02em}
+  .pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .pills span{font-size:11px;background:rgba(4,63,117,.07);color:var(--blue);padding:3px 9px;border-radius:5px;font-weight:600}
+  .guard{display:none;text-align:center;padding:60px 20px}
+  .guard h2{font-size:22px;margin-bottom:12px}.guard p{color:var(--g500);max-width:520px;margin:0 auto 18px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 18px;border-radius:8px;border:1px solid var(--blue);cursor:pointer;font:inherit;font-weight:700;font-size:13px;background:var(--blue);color:#fff;text-decoration:none}
+  .btn:hover{filter:brightness(1.1)}.btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn-ghost{background:#fff;color:var(--blue)}
+  .btn-sm{min-height:34px;padding:0 12px;font-size:12px;border-radius:6px}
+  .kpis,.cards{display:flex;gap:12px;flex-wrap:wrap}
+  .kpi{flex:1 1 150px;background:#fff;border:1px solid var(--g200);border-radius:10px;padding:12px 16px}
+  .kpi b{display:block;font-size:26px;line-height:1.1}.kpi span{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--g500)}
+  .pcard{flex:1 1 190px;text-align:left;font:inherit;cursor:pointer;background:#fff;border:1px solid var(--g200);border-radius:10px;padding:10px 14px;color:inherit}
+  .pcard[aria-pressed=true]{border:2px solid var(--blue);padding:9px 13px}
+  .pcard .r1{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.pcard .r1 b{font-size:14px}.pcard .r1 span,.pcard .r3{font-size:12px;color:var(--g500)}
+  .bar{height:8px;border-radius:4px;background:var(--g100);margin:8px 0 5px;overflow:hidden;display:flex}
+  .split{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start}
+  .left{flex:1 1 640px;min-width:0}
+  .right{flex:0 1 380px;min-width:300px;background:#fff;border:1px solid var(--g200);border-radius:12px;padding:16px 20px 20px;box-shadow:0 4px 12px rgba(4,63,117,.08);position:sticky;top:74px;max-height:calc(100vh - 90px);overflow:auto}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  .chip{min-height:36px;padding:0 14px;font:inherit;font-size:13px;font-weight:600;border-radius:999px;cursor:pointer;color:var(--blue);background:#fff;border:1px solid var(--g300)}
+  .chip[aria-pressed=true]{color:#fff;background:var(--blue);border-color:var(--blue)}
+  input[type=text],input[type=search],input[type=date],select,textarea{font:inherit;font-size:13px;color:var(--g700);border:1px solid var(--g300);border-radius:6px;background:#fff;padding:8px 10px;width:100%}
+  .toolbar input[type=search]{width:200px;min-height:36px;padding:0 12px}
+  .tw{overflow-x:auto;background:#fff;border:1px solid var(--g200);border-radius:10px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{padding:9px 8px;text-align:left;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--g500);background:var(--g100);border-bottom:2px solid var(--g300);white-space:nowrap}
+  td{padding:10px 8px;vertical-align:top;border-bottom:1px solid var(--g200)}
+  tr.act td{background:#E8F3FA}
+  .nm{font-weight:700}.sv{font-size:12px;color:var(--g500)}.dim{color:var(--g400)}.nw{white-space:nowrap}
+  .pill{display:inline-block;font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap}
+  .crit{display:inline-block;margin-top:4px;font-size:11px;font-weight:700;color:var(--danger-t);background:var(--danger-bg);border:1px solid var(--danger-bd);border-radius:4px;padding:1px 6px}
+  .note{margin-top:8px;font-size:12px;color:var(--g500)}
+  .tabs{display:flex;align-items:center;border-bottom:1px solid var(--g200);margin-bottom:14px}
+  .tabs .lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--g500);margin-right:10px}
+  .tab{flex:1;min-height:40px;font:inherit;font-size:13px;font-weight:700;cursor:pointer;border:0;border-bottom:3px solid transparent;background:none;color:var(--g500)}
+  .tab[aria-selected=true]{color:var(--blue);border-bottom-color:var(--blue)}
+  .ph{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--g500)}
+  .ph2{font-size:16px;font-weight:700;margin-top:2px}
+  label.l{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--g500);margin:12px 0 4px}
+  .row2{display:flex;gap:10px}.row2>div{flex:1;min-width:0}
+  .critbox{display:flex;align-items:flex-start;gap:10px;margin-top:12px;padding:10px 12px;background:var(--danger-bg);border:1px solid var(--danger-bd);border-radius:8px;cursor:pointer}
+  .critbox input{width:18px;height:18px;margin-top:2px;accent-color:var(--danger)}
+  .critbox b{font-size:13px;color:var(--danger-t)}.critbox small{display:block;font-size:12px;color:var(--g700);margin-top:2px}
+  .seg{display:flex;gap:6px;flex-wrap:wrap}
+  .sopbox{margin-top:14px;padding:4px 12px 12px;background:var(--g50);border:1px solid var(--g200);border-radius:8px}
+  .sep{margin-top:16px;padding-top:4px;border-top:1px solid var(--g200)}
+  .acts{display:flex;gap:10px;margin-top:16px}.acts .btn{min-height:44px}.acts .btn:first-child{flex:1}
+  .msg{margin-top:12px;font-size:13px;font-weight:600;padding:8px 10px;border-radius:6px}
+  .msg.ok{color:var(--ok-t);background:var(--ok-bg)}.msg.err{color:var(--danger-t);background:var(--danger-bg)}
+  .hist{margin-top:16px;padding-top:12px;border-top:1px solid var(--g200);font-size:12px;color:var(--g500)}
+  .hist b{color:var(--g700)}.hist div{margin-top:4px}
+  .empty{padding:24px 8px;color:var(--g500);font-size:13px;text-align:center}
+  [hidden]{display:none!important}
+  :focus-visible{outline:2px solid var(--sky);outline-offset:2px}
+  @media(max-width:900px){.right{position:static;max-height:none}.main{padding:14px}.topbar{padding:0 14px}}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-left">
+    <span style="font-size:14px;font-weight:700;letter-spacing:.08em;color:#fff">ENRI</span>
+    <div class="topbar-divider"></div>
+    <span class="topbar-title">Area Impresa · Coordinamenti</span>
+  </div>
+  <div class="topbar-right">
+    <span class="topbar-user" id="userPill">—</span>
+    <a href="imprese.html" class="topbar-back">← Pratiche</a>
+    <a href="hub.html" class="topbar-back">Hub</a>
+  </div>
+</header>
+
+<div class="guard" id="guard">
+  <h2 id="guardTitle">Accesso non autorizzato</h2>
+  <p id="guardMsg">Per accedere a quest'area devi prima effettuare il login dal portale e la tua impresa deve essere stata abilitata dall'amministratore.</p>
+  <button id="guardRetryBtn" class="btn" type="button" style="display:none;margin-right:10px" onclick="location.reload()">⟳ Riprova</button>
+  <a class="btn btn-ghost" href="hub.html">← Torna al login</a>
+</div>
+
+<div class="main" id="app" style="display:none">
+  <div>
+    <div class="eyebrow">Operatività impresa</div>
+    <div class="title">Coordinamenti con gli enti</div>
+    <div class="pills" id="lottiPills"></div>
+  </div>
+  <div class="toolbar" id="lottoBar" style="margin-bottom:0"></div>
+  <div class="kpis" id="kpis"></div>
+  <div class="cards" id="cards"></div>
+  <div class="split">
+    <section class="left">
+      <div class="toolbar" id="chips"></div>
+      <div class="tw"><table>
+        <thead><tr>
+          <th style="width:36px"><input type="checkbox" id="selAll" aria-label="Seleziona tutte le righe visibili" style="width:18px;height:18px;accent-color:var(--blue)"></th>
+          <th>Ente / servizio</th><th>Stato</th><th>Inviata il</th><th>Ult. sollecito</th><th>Riscontro il</th><th>Tipo riscontro</th><th>Sopralluogo</th><th></th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table></div>
+      <div class="note">Questa tabella è solo di consultazione: per inserire o correggere i dati usa <b>Modifica</b> e il pannello a destra. Con più righe spuntate il pannello passa a Selezione multipla.</div>
+    </section>
+    <aside class="right" id="panel" aria-label="Modifica"></aside>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+  const nome = (localStorage.getItem('_enri_user') || '').trim();
+  const TIPI = ['INTERFERENZA', 'NON INTERFERENZA'];
+  const LABEL = { data_invio:'data invio', data_risposta:'data riscontro', risposta_ricevuta:'riscontro ricevuto', note:'note',
+    tipo_riscontro:'tipo riscontro', sopralluogo_necessario:'necessità sopralluogo', esito_sopralluogo:'esito sopralluogo',
+    data_sopralluogo:'data sopralluogo', data_ultimo_sollecito:'ultimo sollecito', critico:'ente critico' };
+  const STATO = {
+    da_inviare: ['Da inviare', '#5B6677', '#EEF1F5'],
+    inviata:    ['In attesa',  '#1A7D99', '#E3F4F8'],
+    ricevuta:   ['Riscontrato','#137A50', '#E3F6EC'],
+  };
+
+  let PRAT = [], RECENTI = [];
+  let cur = null, lotto = 'tutti', filtro = 'tutte', q = '', activeId = null, mode = 'single';
+  const SEL = new Set();
+  let FORM = {};
+
+  $('userPill').innerHTML = nome ? `<b>${esc(nome)}</b>` : '(non loggato)';
+  if (!nome || !(localStorage.getItem('_enri_session') || '').trim()) return showGuard('Devi loggarti prima', 'Apri il portale e accedi con le tue credenziali.');
+  if (!apiBase) return showGuard('Endpoint API non configurato', "Contatta l'amministratore: l'API endpoint non risulta impostato.");
+
+  async function api(path, opts = {}) {
+    const headers = { ...(opts.headers || {}), 'x-session-token': localStorage.getItem('_enri_session') || '' };
+    const r = await fetch(apiBase + path, { ...opts, headers });
+    const text = await r.text();
+    let data; try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+    if (!r.ok) throw new Error(data.detail || data.raw || ('HTTP ' + r.status));
+    return data;
+  }
+  function showGuard(title, msg, retry) {
+    $('guardTitle').textContent = title; $('guardMsg').textContent = msg;
+    $('guardRetryBtn').style.display = retry ? '' : 'none';
+    $('guard').style.display = 'block'; $('app').style.display = 'none';
+  }
+  const fmt = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? `${m[3]}/${m[2]}/${m[1].slice(2)}` : ''; };
+  const fmtTs = ts => fmt(ts);
+  const d = v => v ? `<span class="nw">${esc(v)}</span>` : '<span class="dim">—</span>';
+
+  async function load() {
+    const r = await api('/api/imprese/coordinamenti');
+    PRAT = r.pratiche || []; RECENTI = r.recenti || [];
+    if (lotto !== 'tutti' && !PRAT.some(p => p.lotto === lotto)) lotto = 'tutti';
+    const pf = pFilt();
+    if (!pf.find(p => p.pratica === cur)) cur = pf.length ? pf[0].pratica : null;
+  }
+  const lottiDisp = () => [...new Set(PRAT.map(p => p.lotto).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'it', { numeric: true }));
+  const pFilt = () => PRAT.filter(p => lotto === 'tutti' || p.lotto === lotto);
+  const pratica = () => PRAT.find(p => p.pratica === cur);
+  const ente = id => { const p = pratica(); return p && p.enti.find(e => e.id === id); };
+  const visibili = () => {
+    const p = pratica(); if (!p) return [];
+    const qq = q.trim().toLowerCase();
+    return p.enti.filter(e =>
+      (filtro === 'tutte' || (filtro === 'critici' ? e.critico : e.stato === filtro)) &&
+      (!qq || (e.ente + ' ' + (e.servizio || '')).toLowerCase().includes(qq)));
+  };
+
+  // ── render ───────────────────────────────────────
+  function renderKpis() {
+    const s = k => pFilt().reduce((a, p) => a + (p[k] || 0), 0);
+    const k = (v, l, c) => `<div class="kpi"><b style="color:${c}">${v}</b><span>${l}</span></div>`;
+    const intf = s('interferenze') || s('concomitanze_si');
+    $('kpis').innerHTML = k(`${s('ricevute')} / ${s('totale')}`, 'Riscontri ricevuti', 'var(--ok)') + k(s('inviate'), 'Inviate, in attesa', 'var(--teal)')
+      + k(s('da_inviare'), 'Da inviare', 'var(--g500)') + k(intf, 'Interferenze', intf ? 'var(--danger)' : 'var(--g700)')
+      + k(s('critici_aperti'), 'Critici senza riscontro', s('critici_aperti') ? 'var(--danger)' : 'var(--g700)');
+  }
+  function renderLottoBar() {
+    const L = lottiDisp();
+    $('lottoBar').hidden = L.length < 2;          // il filtro serve solo a chi ha più lotti
+    $('lottoBar').innerHTML = L.length < 2 ? '' : '<span class="ph" style="margin-right:4px">Lotto</span>'
+      + [['tutti', 'Tutti i lotti (' + PRAT.length + ')'], ...L.map(l => [l, 'Lotto ' + l + ' (' + PRAT.filter(p => p.lotto === l).length + ')'])]
+        .map(([v, t]) => `<button type="button" class="chip" data-lotto="${esc(v)}" aria-pressed="${lotto === v}">${esc(t)}</button>`).join('');
+  }
+  function renderCards() {
+    $('cards').innerHTML = pFilt().map(p => {
+      const w = n => p.totale ? (100 * n / p.totale).toFixed(1) : 0;
+      const mun = String(p.municipio || '').toLowerCase().replace(/^./, c => c.toUpperCase());
+      return `<button type="button" class="pcard" data-p="${esc(p.pratica)}" aria-pressed="${p.pratica === cur}">
+        <div class="r1"><b>${esc(p.pratica)}</b><span>${esc(mun)}</span></div>
+        <div class="bar"><div style="width:${w(p.ricevute)}%;background:var(--ok)"></div><div style="width:${w(p.inviate)}%;background:var(--sky)"></div></div>
+        <div class="r3">${p.ricevute}/${p.totale} riscontri${p.critici_aperti ? ` · <b style="color:var(--danger-t)">${p.critici_aperti} critici</b>` : ''}</div></button>`;
+    }).join('') || '<div class="empty">Nessuna pratica di coordinamento per i tuoi lotti. Se ti aspettavi dati, contatta l\'amministratore (import non ancora eseguito).</div>';
+  }
+  function renderChips() {
+    const p = pratica(); const en = p ? p.enti : [];
+    const n = f => f === 'tutte' ? en.length : f === 'critici' ? en.filter(e => e.critico).length : en.filter(e => e.stato === f).length;
+    const defs = [['tutte', 'Tutte'], ['da_inviare', 'Da inviare'], ['inviata', 'In attesa'], ['ricevuta', 'Riscontrate'], ['critici', 'Critici']];
+    $('chips').innerHTML = defs.map(([f, l]) => `<button type="button" class="chip" data-f="${f}" aria-pressed="${filtro === f}">${l} (${n(f)})</button>`).join('')
+      + '<span style="flex:1"></span><input type="search" id="q" placeholder="Cerca ente…" aria-label="Cerca ente" value="' + esc(q) + '">';
+  }
+  function renderTable() {
+    const rows = visibili();
+    $('tbody').innerHTML = rows.map(e => {
+      const [sl, sc, sb] = STATO[e.stato] || STATO.da_inviare;
+      const risp = e.data_risposta ? fmt(e.data_risposta) : (e.risposta_ricevuta ? 'OK' : '');
+      const tp = e.tipo_riscontro === 'INTERFERENZA' ? '<span class="pill" style="color:var(--danger-t);background:var(--danger-bg)">INTERFERENZA</span>'
+        : e.tipo_riscontro === 'NON INTERFERENZA' ? '<span class="pill" style="color:var(--ok-t);background:var(--ok-bg)">NON INTERFERENZA</span>' : '<span class="dim">—</span>';
+      let sop = '<span class="dim">—</span>';
+      if (e.sopralluogo_necessario === 'NO') sop = 'No';
+      else if (e.sopralluogo_necessario === 'SI' || e.data_sopralluogo) {
+        const es = e.esito_sopralluogo === 'POSITIVO' ? '<span class="pill" style="color:var(--ok-t);background:var(--ok-bg)">POSITIVO</span>'
+          : e.esito_sopralluogo === 'NEGATIVO' ? '<span class="pill" style="color:var(--danger-t);background:var(--danger-bg)">NEGATIVO</span>'
+          : '<span class="sv">esito da inserire</span>';
+        sop = `<div class="nw"><b>Necessario</b>${e.data_sopralluogo ? ' · ' + fmt(e.data_sopralluogo) : ''}</div><div style="margin-top:3px">${es}</div>`;
+      }
+      const act = e.id === activeId;
+      return `<tr class="${act ? 'act' : ''}"><td style="width:36px"><input type="checkbox" data-sel="${e.id}" aria-label="Seleziona ${esc(e.ente)}" style="width:18px;height:18px;accent-color:var(--blue)"${SEL.has(e.id) ? ' checked' : ''}></td>
+        <td style="min-width:200px"><div class="nm">${esc(e.ente)}</div><div class="sv">${esc(e.servizio || '')}</div>${e.critico ? '<span class="crit">CRITICO · no tacito assenso</span>' : ''}</td>
+        <td><span class="pill" style="color:${sc};background:${sb}">${sl}</span></td>
+        <td>${d(fmt(e.data_invio))}</td><td>${d(fmt(e.data_ultimo_sollecito))}</td><td>${d(risp)}</td><td>${tp}</td><td>${sop}</td>
+        <td><button type="button" class="btn btn-sm${act ? '' : ' btn-ghost'}" data-edit="${e.id}">Modifica</button></td></tr>`;
+    }).join('') || '<tr><td colspan="9" class="empty">Nessuna richiesta con questi filtri</td></tr>';
+    const all = $('selAll'); all.checked = rows.length > 0 && rows.every(e => SEL.has(e.id));
+  }
+
+  const seg = (field, opts, val) => `<div class="seg" role="group" aria-label="${field}">${opts.map(o => `<button type="button" class="chip" data-seg="${field}" data-val="${esc(o)}" aria-pressed="${val === o}">${esc(o)}</button>`).join('')}</div>`;
+
+  function renderPanel() {
+    const tabs = `<div class="tabs" role="tablist"><span class="lbl">Modifica</span>
+      <button type="button" class="tab" role="tab" data-mode="single" aria-selected="${mode === 'single'}">Singolo ente</button>
+      <button type="button" class="tab" role="tab" data-mode="multi" aria-selected="${mode === 'multi'}">Selezione multipla (${SEL.size})</button></div>`;
+    $('panel').innerHTML = tabs + (mode === 'multi' ? panelMulti() : panelSingle());
+  }
+  function panelSingle() {
+    const e = ente(activeId), p = pratica();
+    if (!e) return '<div class="empty">Seleziona un ente con <b>Modifica</b> per inserire date, riscontro e sopralluogo.</div>';
+    FORM = { tipo_riscontro: e.tipo_riscontro || '', sopralluogo_necessario: e.sopralluogo_necessario || '', esito_sopralluogo: e.esito_sopralluogo || '' };
+    const hist = RECENTI.filter(r => r.pratica === p.pratica && r.ente === e.ente && r.by !== 'import xlsx').slice(0, 5)
+      .map(r => `<div>${fmtTs(r.ts)} · ${esc(r.by)} — ${esc(Object.keys(r.changes || {}).map(k => LABEL[k] || k).join(', '))}</div>`).join('');
+    const dt = (id, l, v) => `<label class="l" for="${id}">${l}</label><input type="date" id="${id}" value="${esc(v || '')}">`;
+    return `<div class="ph">${esc(p.pratica)} · ${esc(String(p.municipio || '').toLowerCase().replace(/^./, c => c.toUpperCase()))}</div>
+      <div class="ph2">${esc(e.ente)}</div><div class="sv">${esc(e.servizio || '')}</div>
+      <label class="critbox"><input type="checkbox" id="f-critico"${e.critico ? ' checked' : ''}><span><b>Ente / servizio critico e necessario</b><small>Nessuna applicazione del tacito assenso: senza riscontro scritto non si procede.</small></span></label>
+      <div class="row2"><div>${dt('f-invio', 'Data invio', e.data_invio)}</div><div>${dt('f-soll', 'Ultimo sollecito', e.data_ultimo_sollecito)}</div></div>
+      <div class="sep">${dt('f-risc', 'Data riscontro ente', e.data_risposta)}
+        <label class="l">Tipo riscontro ente</label>${seg('tipo_riscontro', TIPI, FORM.tipo_riscontro)}
+        <label class="l">Necessità sopralluogo</label>${seg('sopralluogo_necessario', ['SI', 'NO'], FORM.sopralluogo_necessario)}</div>
+      <div class="sopbox" id="sopbox"${FORM.sopralluogo_necessario === 'SI' ? '' : ' hidden'}>${dt('f-dsop', 'Data sopralluogo', e.data_sopralluogo)}
+        <label class="l">Esito sopralluogo</label>${seg('esito_sopralluogo', ['POSITIVO', 'NEGATIVO'], FORM.esito_sopralluogo)}</div>
+      <label class="l" for="f-note">Note</label><textarea id="f-note" rows="3" maxlength="500">${esc(e.note || '')}</textarea>
+      <div class="acts"><button type="button" class="btn" id="btnSave">Salva</button><button type="button" class="btn btn-ghost" id="btnCancel">Annulla</button></div>
+      <div id="msg" role="status"></div>
+      <div class="hist"><b>Storico</b>${hist || '<div>Nessuna modifica recente</div>'}</div>`;
+  }
+  function panelMulti() {
+    if (!SEL.size) return '<div class="empty">Spunta una o più righe nella tabella per impostare gli stessi dati su tutte.</div>';
+    FORM = { tipo_riscontro: '' };
+    const dt = (id, l) => `<label class="l" for="${id}">${l}</label><input type="date" id="${id}">`;
+    return `<div class="ph2">${SEL.size} ${SEL.size === 1 ? 'ente selezionato' : 'enti selezionati'}</div>
+      <div class="sv">Vengono applicati solo i campi compilati. Se un ente non è valido (es. riscontro prima dell'invio) l'operazione è annullata per tutti.</div>
+      <div class="row2"><div>${dt('m-invio', 'Data invio')}</div><div>${dt('m-soll', 'Ultimo sollecito')}</div></div>
+      ${dt('m-risc', 'Data riscontro ente')}
+      <label class="l">Tipo riscontro ente</label>${seg('tipo_riscontro', TIPI, '')}
+      <div class="acts"><button type="button" class="btn" id="btnApply">Applica a ${SEL.size}</button><button type="button" class="btn btn-ghost" id="btnDesel">Deseleziona</button></div>
+      <div id="msg" role="status"></div>`;
+  }
+  const setMsg = (t, ok) => { const m = $('msg'); if (m) { m.className = 'msg ' + (ok ? 'ok' : 'err'); m.textContent = t; } };
+  function renderAll() { renderLottoBar(); renderKpis(); renderCards(); renderChips(); renderTable(); renderPanel(); }
+
+  // ── azioni ───────────────────────────────────────
+  async function save() {
+    const e = ente(activeId); if (!e) return;
+    const v = id => ($(id).value || '').trim();
+    const want = { data_invio: v('f-invio'), data_ultimo_sollecito: v('f-soll'), data_risposta: v('f-risc'), critico: $('f-critico').checked,
+      tipo_riscontro: FORM.tipo_riscontro, sopralluogo_necessario: FORM.sopralluogo_necessario,
+      data_sopralluogo: FORM.sopralluogo_necessario === 'SI' ? v('f-dsop') : '',
+      esito_sopralluogo: FORM.sopralluogo_necessario === 'SI' ? FORM.esito_sopralluogo : '',
+      note: v('f-note').replace(/\s+/g, ' ') };
+    const cur0 = { data_invio: e.data_invio || '', data_ultimo_sollecito: e.data_ultimo_sollecito || '', data_risposta: e.data_risposta || '', critico: !!e.critico,
+      tipo_riscontro: e.tipo_riscontro || '', sopralluogo_necessario: e.sopralluogo_necessario || '', data_sopralluogo: e.data_sopralluogo || '',
+      esito_sopralluogo: e.esito_sopralluogo || '', note: e.note || '' };
+    const body = {};
+    for (const k of Object.keys(want)) if (want[k] !== cur0[k]) body[k] = want[k];
+    if (body.data_risposta === '' && e.risposta_ricevuta) body.risposta_ricevuta = false;   // data riscontro svuotata: torna "in attesa"
+    if (!Object.keys(body).length) return setMsg('Nessuna modifica da salvare', true);
+    const btn = $('btnSave'); btn.disabled = true;
+    try {
+      await api('/api/imprese/coordinamenti/' + encodeURIComponent(e.id), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      await load(); renderAll(); setMsg('Salvato', true);
+    } catch (err) { btn.disabled = false; setMsg(err.message, false); }
+  }
+  async function applyMulti() {
+    const v = id => ($(id).value || '').trim();
+    const fields = {};
+    if (v('m-invio')) fields.data_invio = v('m-invio');
+    if (v('m-soll')) fields.data_ultimo_sollecito = v('m-soll');
+    if (v('m-risc')) fields.data_risposta = v('m-risc');
+    if (FORM.tipo_riscontro) fields.tipo_riscontro = FORM.tipo_riscontro;
+    if (!Object.keys(fields).length) return setMsg('Compila almeno un campo', false);
+    const btn = $('btnApply'); btn.disabled = true;
+    try {
+      const r = await api('/api/imprese/coordinamenti-bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [...SEL], fields }) });
+      await load(); renderAll(); setMsg(`Aggiornati ${r.updated}, invariati ${r.unchanged}`, true);
+    } catch (err) { btn.disabled = false; setMsg(err.message, false); }
+  }
+
+  document.addEventListener('click', ev => {
+    const t = ev.target.closest('button'); if (!t) return;
+    if (t.dataset.lotto) {
+      lotto = t.dataset.lotto; const pf = pFilt(); cur = pf.length ? pf[0].pratica : null;
+      SEL.clear(); activeId = null; mode = 'single'; return renderAll();
+    }
+    if (t.dataset.p) { cur = t.dataset.p; SEL.clear(); activeId = null; mode = 'single'; return renderAll(); }
+    if (t.dataset.f) { filtro = t.dataset.f; renderChips(); return renderTable(); }
+    if (t.dataset.edit) { activeId = t.dataset.edit; mode = 'single'; renderTable(); return renderPanel(); }
+    if (t.dataset.mode) { mode = t.dataset.mode; return renderPanel(); }
+    if (t.dataset.seg) {
+      const f = t.dataset.seg; FORM[f] = FORM[f] === t.dataset.val ? '' : t.dataset.val;   // secondo click = svuota
+      t.parentElement.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.val === FORM[f])));
+      if (f === 'sopralluogo_necessario' && $('sopbox')) $('sopbox').hidden = FORM[f] !== 'SI';
+      return;
+    }
+    if (t.id === 'btnSave') return save();
+    if (t.id === 'btnApply') return applyMulti();
+    if (t.id === 'btnCancel') { activeId = null; renderTable(); return renderPanel(); }
+    if (t.id === 'btnDesel') { SEL.clear(); renderTable(); return renderPanel(); }
+  });
+  document.addEventListener('change', ev => {
+    const t = ev.target;
+    if (t.dataset && t.dataset.sel) { t.checked ? SEL.add(t.dataset.sel) : SEL.delete(t.dataset.sel); if (SEL.size > 1) mode = 'multi'; renderTable(); renderPanel(); }
+    if (t.id === 'selAll') { visibili().forEach(e => t.checked ? SEL.add(e.id) : SEL.delete(e.id)); if (SEL.size > 1) mode = 'multi'; renderTable(); renderPanel(); }
+  });
+  document.addEventListener('input', ev => { if (ev.target.id === 'q') { q = ev.target.value; renderTable(); } });
+
+  // ── boot ─────────────────────────────────────────
+  (async () => {
+    try {
+      const me = await api('/api/imprese/me?nome=' + encodeURIComponent(nome));
+      const lotti = me.lotti || [];
+      $('lottiPills').innerHTML = lotti.length ? lotti.map(l => `<span>${esc(l)}</span>`).join('') : '<span style="background:var(--danger-bg);color:var(--danger)">nessun lotto assegnato</span>';
+      await load();
+      $('app').style.display = '';
+      renderAll();
+    } catch (e) {
+      const m = String(e.message);
+      if (m.includes('401')) { localStorage.removeItem('_enri_session'); return showGuard('Sessione scaduta', 'La tua sessione non è più valida. Torna al portale e accedi di nuovo.'); }
+      if (m.includes('404')) return showGuard('Impresa non autorizzata', "Il tuo nome non è ancora stato assegnato a un lotto dall'amministratore.");
+      showGuard('Server non raggiungibile', 'Il server si sta avviando (può richiedere 20-30 secondi). Attendi qualche istante e riprova.', true);
+    }
+  })();
+})();
+</script>
+</body>
+</html>
