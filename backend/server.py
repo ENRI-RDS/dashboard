@@ -3945,8 +3945,20 @@ def _issue_clean(p: dict, cur: dict | None = None) -> dict:
     return rec
 
 
+def _issue_chiusa_dl(d: dict) -> bool:
+    """True se l'issue è Risolta/Chiusa e l'ULTIMO cambio di stato è stato fatto dalla sync dei verbali
+    (verifica DL: punto Conforme / N.A.), non a mano da admin. Derivato dallo storico: vale anche per le vecchie issue."""
+    if d.get("stato") not in ("risolta", "chiusa"):
+        return False
+    for h in reversed(d.get("storico") or []):
+        if any(m.get("campo") == "Stato avanzamento" for m in h.get("modifiche") or []):
+            return bool(h.get("verbale"))
+    return False
+
+
 def _issue_out(d: dict) -> dict:
     d["_id"] = str(d["_id"])
+    d["chiusa_dl"] = _issue_chiusa_dl(d)
     return d
 
 
@@ -4059,6 +4071,8 @@ async def issue_approvazione_bonifica(issue_id: str, payload: dict, sess: dict =
     # Regola: l'approvazione FM riguarda solo le issue nate da un punto NC della checklist Qualità
     if val and cur.get("origine_cat") != "qualita":
         raise HTTPException(422, "L'approvazione Field Manager è prevista solo per le issue della checklist Qualità")
+    if val and not _issue_chiusa_dl(cur):
+        raise HTTPException(422, "L'approvazione Field Manager è possibile solo dopo la chiusura dell'issue da parte della DL")
     now = datetime.now(timezone.utc).isoformat()
     nome = sess.get("nome", "")
     upd = {"bonifica_fm_ok": val, "bonifica_fm_by": nome if val else "", "bonifica_fm_at": now if val else "", "updated_at": now}
