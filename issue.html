@@ -341,9 +341,9 @@ function fillLookups() {
 }
 
 /* Regola Field Manager: l'approvazione bonifica riguarda SOLO le issue nate da un punto NC della checklist Qualità.
-   'Da verificare' = issue Qualità non ancora approvata dal FM. */
+   'Da verificare' = issue Qualità chiusa dalla DL (verifica nel verbale) e non ancora approvata dal FM. */
 function isQualita(it) { return it.origine_cat === 'qualita'; }
-function isFmDaVerificare(it) { return isQualita(it) && !it.bonifica_fm_ok; }
+function isFmDaVerificare(it) { return isQualita(it) && it.chiusa_dl && !it.bonifica_fm_ok; }
 
 function filtered() {
   const q = $('fQ').value.trim().toLowerCase(), t = $('fTipo').value, s = $('fStato').value, p = $('fPrio').value, y = $('fSys').value, o = $('fOrig').value, cl = $('fCli').value;
@@ -378,7 +378,7 @@ const PRIO_LEGEND = [
 ];
 /* Regola FM: coerente con isQualita()/isFmDaVerificare() */
 const FM_LEGEND = [
-  { c:'var(--accent)', t:'Entra come "Da validare dal Field Manager"', d:'Solo per le issue generate da un punto NC della checklist Qualità di un verbale. Il Field Manager approva la bonifica tramite la colonna "Appr. Bonifica FM". L\'issue resta tra le "Approvazioni FM aperte" finché l\'approvazione non viene effettuata.' },
+  { c:'var(--accent)', t:'Entra come "Da validare dal Field Manager"', d:'Solo per le issue generate da un punto NC della checklist Qualità di un verbale. Il Field Manager approva la bonifica tramite la colonna "Appr. Bonifica FM". L\'issue entra tra le "Approvazioni FM aperte" solo dopo la chiusura da parte della DL (verifica Conforme/N.A. in un verbale) e vi resta finché l\'approvazione non viene effettuata.' },
   { c:'var(--muted)',  t:'Non entra (colonna "—")', d:'Issue da sicurezza/segnaletica, documentazione o inserite a mano: non richiedono approvazione FM, le gestisce l\'admin.' },
 ];
 function openLegend() {
@@ -459,7 +459,7 @@ function render() {
       '<td>' + (it.cliente ? '<span class="cli cli-' + esc(it.cliente) + '" title="Segnalazione cliente del verbale ' + esc(it.origine_verbale || '') + '">' + esc(CLI_LAB[it.cliente] || it.cliente) + '</span>' : '<span class="sub">—</span>') + '</td>' +
       '<td class="num' + (isLate(it) ? ' late' : '') + '">' + fmt(it.data_prevista) + (isLate(it) ? '<span class="sub late">in ritardo</span>' : '') + '</td>' +
       '<td class="bon">' + ((isQualita(it) || it.bonifica_fm_ok) ?
-        ('<input type="checkbox"' + (it.bonifica_fm_ok ? ' checked' : '') + (IS_FIELD ? '' : ' disabled title="Solo il Field Manager può approvare"') +
+        ('<input type="checkbox"' + (it.bonifica_fm_ok ? ' checked' : '') + (IS_FIELD && (it.chiusa_dl || it.bonifica_fm_ok) ? '' : ' disabled title="' + (IS_FIELD ? 'Approvabile solo dopo la chiusura da parte della DL' : 'Solo il Field Manager può approvare') + '"') +
         ' onchange="toggleBonifica(\'' + esc(it._id) + '\',this)">' +
         (it.bonifica_fm_ok ? '<span class="sub">' + esc(it.bonifica_fm_by || '') + (it.bonifica_fm_at ? '<br>' + fmt(it.bonifica_fm_at.slice(0, 10)) : '') + '</span>' : ''))
         : '<span class="sub" title="Approvazione FM prevista solo per le issue della checklist Qualità">—</span>') + '</td>' +
@@ -475,7 +475,7 @@ async function toggleBonifica(id, el) {
   const val = el.checked;
   try {
     const r = await api('/api/issues/' + id + '/approvazione-bonifica', { method: 'POST', body: JSON.stringify({ value: val }) });
-    items[items.indexOf(it)] = { ...r.item, cliente: it.cliente }; toast(val ? 'Approvazione registrata' : 'Approvazione rimossa'); render();
+    items[items.indexOf(it)] = { ...it, ...r.item }; toast(val ? 'Approvazione registrata' : 'Approvazione rimossa'); render();
   } catch (e) { toast('Non salvato: ' + e.message); render(); }
 }
 
@@ -484,7 +484,7 @@ async function patch(id, field, value, el) {
   if ((it[field] || '') === value.trim()) return;
   try {
     const r = await api('/api/issues/' + id, { method: 'PUT', body: JSON.stringify({ [field]: value }) });
-    items[items.indexOf(it)] = { ...r.item, cliente: it.cliente }; toast('Salvato');
+    items[items.indexOf(it)] = { ...it, ...r.item }; toast('Salvato');
     if (field === 'system' || field === 'subsystem') { fillLookups(); renderKpi(); if (el) el.classList.toggle('empty', !value.trim()); }
     else render();
   } catch (e) { toast('Non salvato: ' + e.message); render(); }
@@ -570,7 +570,7 @@ async function saveIssue() {
   try {
     if (editId) {
       const r = await api('/api/issues/' + editId, { method: 'PUT', body: JSON.stringify(payload) });
-      const i = items.findIndex(x => x._id === editId); if (i >= 0) items[i] = { ...r.item, cliente: items[i].cliente };
+      const i = items.findIndex(x => x._id === editId); if (i >= 0) items[i] = { ...items[i], ...r.item };
       toast(r.changed ? 'Issue aggiornata' : 'Nessuna modifica');
     } else {
       const r = await api('/api/issues', { method: 'POST', body: JSON.stringify(payload) });
