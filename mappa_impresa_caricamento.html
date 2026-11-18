@@ -4395,7 +4395,7 @@ const SC_STATI_IN_CORSO_EFF = ['in_corso'];
 const SC_TECNICA_LABEL = { trincea:'Trincea', no_dig:'No Dig', canaletta:'Canaletta' };
 const SC_STATO_TRANSITIONS = {
   non_avviato:  ['allestimento'],
-  allestimento: ['in_corso'],
+  allestimento: ['in_corso','sospeso'],
   in_corso:     ['sospeso','completato'],
   sospeso:      ['in_corso'],
   completato:   [],
@@ -4556,7 +4556,7 @@ scId('scCancelForm').onclick = () => {
 
 scId('scSubmit').addEventListener('click', async () => {
   if (!SC_SELECTED) return;
-  if (scId('scStato').value !== 'allestimento' && !scId('scTecnica').value) {
+  if (scId('scStato').value !== 'allestimento' && !(scId('scStato').value === 'sospeso' && SC_SELECTED.stato_cantiere === 'allestimento') && !scId('scTecnica').value) {
     scSetMsg('Seleziona la tecnica di scavo prima di salvare', false);
     scId('scTecnica').focus(); return;
   }
