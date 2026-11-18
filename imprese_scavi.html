@@ -868,7 +868,7 @@ window.addEventListener('pageshow', (e) => {
   const TECNICA_LABEL = { trincea:'Trincea', no_dig:'No Dig', canaletta:'Canaletta' };
   const STATO_TRANSITIONS = {
     non_avviato:  ['allestimento'],
-    allestimento: ['in_corso'],
+    allestimento: ['in_corso','sospeso'],
     in_corso:     ['sospeso','completato'],
     sospeso:      ['in_corso'],
     completato:   [],
@@ -1307,7 +1307,7 @@ window.addEventListener('pageshow', (e) => {
   // ── Submit ────────────────────────────────────────────────────────────────
   $('fSubmit').addEventListener('click', async () => {
     if (!SELECTED) return;
-    if ($('fStato').value !== 'allestimento' && !$('fTecnica').value) {
+    if ($('fStato').value !== 'allestimento' && !($('fStato').value === 'sospeso' && SELECTED.stato_cantiere === 'allestimento') && !$('fTecnica').value) {
       setMsg($('msgForm'), 'Seleziona la tecnica di scavo prima di salvare', false);
       $('fTecnica').focus();
       return;
@@ -1462,7 +1462,7 @@ window.addEventListener('pageshow', (e) => {
 
     <div class="help-section">
       <h4>🔄 Stati del cantiere — come funzionano</h4>
-      <p>Il cantiere segue un percorso a tappe, in questo ordine: <strong>Non avviato → Allestimento → In corso → Completato</strong>. Non si può saltare una tappa: da Non avviato si passa solo ad Allestimento, da Allestimento solo a In corso, e così via.</p>
+      <p>Il cantiere segue un percorso a tappe, in questo ordine: <strong>Non avviato → Allestimento → In corso → Completato</strong>. Non si può saltare una tappa: da Non avviato si passa solo ad Allestimento, da Allestimento solo a In corso o a Sospeso, e così via.</p>
       <p style="margin-top:8px">In <strong>Allestimento</strong> i campi metri/tecnica di scavo sono disattivati: è la fase di preparazione, prima che lo scavo vero e proprio inizi, quindi non c'è ancora avanzamento da registrare.</p>
       <p style="margin-top:8px">Da <strong>In corso</strong> puoi passare a <strong>Sospeso</strong> (es. maltempo, interferenze, attese) indicando il motivo del blocco e, se la conosci, la data di ripresa stimata — oppure direttamente a <strong>Completato</strong> quando i lavori sono finiti. Da Sospeso si può solo tornare a In corso.</p>
       <p style="margin-top:8px"><strong>Completato</strong> è uno stato finale: da lì non sono previste ulteriori transizioni, e i campi di aggiornamento vengono disattivati.</p>
