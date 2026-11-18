@@ -2017,6 +2017,9 @@ async def impresa_submit(payload: dict, sess: dict = Depends(_require_session)):
     if typ == "update":
         for ch in changes:
             fields = ch.get("fields") or {}
+            if (str(fields.get("STATO_PERMESSO") or "").strip().upper() == "OTTENUTO"
+                    and not str(fields.get("DATA_APPROVAZIONE") or "").strip()):
+                raise HTTPException(400, "DATA_APPROVAZIONE obbligatoria per lo stato OTTENUTO")
             if str(fields.get("NOTE") or "").strip():
                 fields["NOTE"] = _tag_note(fields["NOTE"], "IMPRESA")
     elif typ == "new":
@@ -2700,6 +2703,8 @@ async def update_admin_pratica(
             if raw["data_approvazione"] and not v:
                 raise HTTPException(400, "data_approvazione non valida")
             fields["DATA_APPROVAZIONE"] = v
+        if fields.get("STATO_PERMESSO") == "OTTENUTO" and not fields.get("DATA_APPROVAZIONE"):
+            raise HTTPException(400, "data_approvazione obbligatoria per lo stato OTTENUTO")
         if "n_sed" in raw:
             fields["N_SED"] = str(raw["n_sed"] or "").strip()
         if "note" in raw:
