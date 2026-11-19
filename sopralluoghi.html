@@ -51,7 +51,7 @@
   /* ── Layout largo: KPI + colonna form / colonna archivio ── */
   .main-wide{max-width:1440px;margin:0 auto;padding:28px 24px 40px;display:flex;flex-direction:column;gap:18px;}
 
-  .kpi-strip{display:grid;grid-template-columns:repeat(8,1fr);gap:12px;}
+  .kpi-strip{display:grid;grid-template-columns:repeat(7,1fr);gap:12px;}
   @media(max-width:1100px){.kpi-strip{grid-template-columns:repeat(3,1fr);}}
   @media(max-width:640px){.kpi-strip{grid-template-columns:repeat(2,1fr);}}
   .kpi-card.is-click{cursor:pointer;transition:box-shadow .15s,transform .1s,border-color .15s;}
@@ -414,37 +414,33 @@
   </div>
 
   <div class="kpi-strip">
+    <div class="kpi-card kpi-warn is-click" onclick="openKpiModal('anomalie','Verbali con anomalie (totali)')">
+      <div class="kpi-value" id="kpi-anomalie">0</div>
+      <div class="kpi-label">Verbali con anomalie</div>
+    </div>
+    <div class="kpi-card kpi-warn is-click" onclick="openKpiModal('anomalie_aperte','Verbali con anomalie aperte')">
+      <div class="kpi-value" id="kpi-anomalie-aperte">0</div>
+      <div class="kpi-label">Anomalie aperte</div>
+    </div>
+    <div class="kpi-card kpi-warn is-click" onclick="openKpiModal('verifiche','Verifiche da eseguire')">
+      <div class="kpi-value" id="kpi-verifiche">0</div>
+      <div class="kpi-label">Verifiche da eseguire</div>
+    </div>
+    <div class="kpi-card kpi-warn is-click" onclick="openKpiModal('segncliente','Verbali con segnalazione cliente')">
+      <div class="kpi-value" id="kpi-segn-cliente">0</div>
+      <div class="kpi-label">Segnalazioni cliente</div>
+    </div>
+    <div class="kpi-card kpi-warn is-click" onclick="openKpiModal('segn_aperte','Segnalazioni cliente aperte')">
+      <div class="kpi-value" id="kpi-segn-aperte">0</div>
+      <div class="kpi-label">Segnalazioni cliente aperte</div>
+    </div>
     <div class="kpi-card is-click" onclick="openKpiModal('oggi','Verbali di oggi')">
       <div class="kpi-value" id="kpi-oggi">0</div>
       <div class="kpi-label">Verbali oggi</div>
     </div>
     <div class="kpi-card is-click" onclick="openKpiModal('tutti','Tutti i verbali')">
       <div class="kpi-value" id="kpi-totale">0</div>
-      <div class="kpi-label">Totale verbali</div>
-    </div>
-    <div class="kpi-card kpi-warn is-click" onclick="openKpiModal('anomalie','Verbali con anomalia')">
-      <div class="kpi-value" id="kpi-anomalie">0</div>
-      <div class="kpi-label">Con anomalia</div>
-    </div>
-    <div class="kpi-card kpi-ok is-click" onclick="openKpiModal('nessuna','Verbali senza anomalia')">
-      <div class="kpi-value" id="kpi-chiusi">0</div>
-      <div class="kpi-label">Nessuna anomalia</div>
-    </div>
-    <div class="kpi-card kpi-warn is-click" onclick="openKpiModal('segncliente','Verbali con segnalazione cliente')">
-      <div class="kpi-value" id="kpi-segn-cliente">0</div>
-      <div class="kpi-label">Segnalazioni cliente</div>
-    </div>
-    <div class="kpi-card kpi-warn is-click" onclick="openKpiModal('verifiche','Verifiche da eseguire')">
-      <div class="kpi-value" id="kpi-verifiche">0</div>
-      <div class="kpi-label">Verifiche da eseguire</div>
-    </div>
-    <div class="kpi-card kpi-warn is-click" onclick="openKpiModal('nc','Verbali con non conformità')">
-      <div class="kpi-value" id="kpi-nc">0</div>
-      <div class="kpi-label">Non conformità</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-value kpi-value-sm" id="kpi-ultimo">—</div>
-      <div class="kpi-label">Ultimo invio</div>
+      <div class="kpi-label">Verbali totali</div>
     </div>
   </div>
 
@@ -1477,22 +1473,14 @@ async function loadVerbali() {
 
 // ── KPI ───────────────────────────────────────────────────────────────────
 function _populateKpis() {
-  const oggi = new Date().toISOString().slice(0,10);
-  const nOggi     = _verbaliAll.filter(v => _soprDateISO(v.data_sopralluogo) === oggi).length;
-  const nAnomalie = _verbaliAll.filter(_isAnomalia).length;
-  const nNessuna  = _verbaliAll.filter(v => _anomaliaStato(v) === 'Nessuna anomalia').length;
-  const ultimo    = _verbaliAll.slice().sort((a,b) => (b.created_at||'').localeCompare(a.created_at||''))[0];
-
-  document.getElementById('kpi-oggi').textContent     = nOggi;
-  document.getElementById('kpi-totale').textContent   = _verbaliAll.length;
-  document.getElementById('kpi-anomalie').textContent = nAnomalie;
-  document.getElementById('kpi-chiusi').textContent   = nNessuna;
-  document.getElementById('kpi-segn-cliente').textContent = _verbaliAll.filter(_isSegnCliente).length;
-  document.getElementById('kpi-verifiche').textContent = _verbaliAll.filter(v => { const s = _verifState(v); return s && (s.stato === 'aperta' || s.stato === 'scaduta'); }).length;
-  document.getElementById('kpi-nc').textContent = _verbaliAll.reduce((a,v) => a + _ckStatsOf(v).nc, 0);
-  document.getElementById('kpi-ultimo').textContent   = ultimo && ultimo.created_at
-    ? new Date(ultimo.created_at).toLocaleString('it-IT', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})
-    : '—';
+  const set = (id, n) => { document.getElementById(id).textContent = n; };
+  set('kpi-anomalie',        _kpiFilter('anomalie').length);
+  set('kpi-anomalie-aperte', _kpiFilter('anomalie_aperte').length);
+  set('kpi-verifiche',       _kpiFilter('verifiche').length);
+  set('kpi-segn-cliente',    _kpiFilter('segncliente').length);
+  set('kpi-segn-aperte',     _kpiFilter('segn_aperte').length);
+  set('kpi-oggi',            _kpiFilter('oggi').length);
+  set('kpi-totale',          _verbaliAll.length);
 }
 
 // ── Filtri (impresa/lotto/comune/stato/mese) ─────────────────────────────────
@@ -1648,23 +1636,34 @@ function _selectVerbale(id) {
 
 function _renderPreview(v) {
   const isAdmin = ['admin', 'admin2'].includes((localStorage.getItem('_enri_role') || '').toLowerCase());
-  const campi = [
-    ['Lotto', v.lotto], ['N° Cantiere', v.tratta_id],
-    ['Comune / Località', [v.comune, v.localita].filter(Boolean).join(' — ')],
-    ['Ruolo redattore', v.referente_retelit], ['Redatto da', v.referente_impresa],
-    ['Impresa esecutrice', v.impresa], ['Gravità / Esito', _anomaliaStato(v) || '—'],
-    ['Segnalazione cliente', _isSegnCliente(v) ? 'SÌ' : ''],
-    ['Note segnalazione cliente', _isSegnCliente(v) ? (v.segnalazione_cliente_note || '') : ''],
-    ['Esito verifica segnalazione', _isSegnCliente(v) ? (({confermata:'Confermata',non_confermata:'Non confermata'})[v.esito_segnalazione] || '') : ''],
-    ['SubSystem', esc(v.subsystem || '')], ['Data invio segnalazione al System', v.data_invio_system ? new Date(v.data_invio_system).toLocaleDateString('it-IT') : ''],
-    ['Metodo di invio', esc(v.metodo_invio || '')], ['Riferimento System invio', esc(v.rif_system_invio || '')],
-    ['Segnalazioni', v.segnalazioni], ['Azioni richieste', v.azioni_richieste],
-    ['Scadenza azioni', v.scadenza_azioni ? new Date(v.scadenza_azioni).toLocaleDateString('it-IT') : ''],
-    ['Prossimo sopralluogo', v.prossimo_sopralluogo ? new Date(v.prossimo_sopralluogo).toLocaleDateString('it-IT') : ''],
-    ['Note', v.note],
-  ].filter(([,val]) => val && val.trim());
-
   const urls = (v.foto_urls || '').split(',').map(u => u.trim()).filter(Boolean);
+  const segn = _isSegnCliente(v);
+  const _d = d => d ? new Date(d).toLocaleDateString('it-IT') : '';
+  // [label, valore, opzionale]: i campi base si vedono sempre ("—" se vuoti), quelli opzionali solo se valorizzati
+  const campi = [
+    ['Data sopralluogo', _soprDateDisplay(v.data_sopralluogo)],
+    ['N° Cantiere', v.tratta_id],
+    ['Lotto', v.lotto],
+    ['Comune / Località', [v.comune, v.localita].filter(Boolean).join(' — ')],
+    ['Impresa esecutrice', v.impresa],
+    ['Ruolo redattore', v.referente_retelit],
+    ['Redatto da', v.referente_impresa],
+    ['Gravità / Esito', _anomaliaStato(v) || (_ckStatsOf(v).compilati ? '' : 'Checklist non compilata')],
+    ['Segnalazione cliente', segn ? 'SÌ' : 'NO'],
+    ['Esito verifica segnalazione', segn ? (({confermata:'Confermata',non_confermata:'Non confermata'})[v.esito_segnalazione] || 'Da valutare') : '', true],
+    ['Note segnalazione cliente', segn ? v.segnalazione_cliente_note : '', true],
+    ['N° Foto allegate', String(urls.length)],
+    ['SubSystem', v.subsystem],
+    ['Data invio segnalazione al System', _d(v.data_invio_system)],
+    ['Metodo di invio', v.metodo_invio],
+    ['Riferimento System invio', v.rif_system_invio],
+    ['Segnalazioni', v.segnalazioni, true], ['Azioni richieste', v.azioni_richieste, true],
+    ['Scadenza azioni', _d(v.scadenza_azioni), true],
+    ['Prossimo sopralluogo', _d(v.prossimo_sopralluogo), true],
+    ['Note', v.note, true],
+  ].map(([l, val, opt]) => [l, String(val ?? '').trim(), opt])
+   .filter(([, val, opt]) => !opt || val)
+   .map(([l, val]) => [l, esc(val) || '—']);
 
   document.getElementById('preview-body').outerHTML = `
     <div id="preview-body">
@@ -1752,12 +1751,13 @@ function _ckPreviewHtml(v) {
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px">
         Conformi ${st.c} · Non conformi ${st.nc} · N.A. ${st.na} · Da verificare ${st.tot - st.compilati}
       </div>
-      ${nc.length ? nc.map(x => `
+      ${nc.length ? '' : '<div style="font-size:11.5px;color:var(--ok);font-weight:600;margin-bottom:4px">Nessuna non conformità rilevata.</div>'}
+      ${_ckAllItems(v).map(x => `
         <div class="pv-ck-item">
           <span class="ck-id">${x.id}</span>
-          <span>${esc(x.t)}<br><small style="color:var(--muted)">${esc(x.area)}${x.rif?' · '+esc(x.rif):''}</small></span>
-          <span class="ck-chip nc">NC</span>
-          ${(x.rilievo || x.azione || x.resp || x.scad || x.nota || x.dim) ? `<div class="pv-ck-nc">
+          <span>${esc(x.t)}${x.segnCliente ? '<span class="ck-chip todo">CLIENTE</span>' : ''}<br><small style="color:var(--muted)">${esc(x.area || '')}${x.rif ? ' · ' + esc(x.rif) : ''}</small></span>
+          <span class="ck-chip ${x.e === 'NC' ? 'nc' : (x.e === 'C' ? 'ok' : 'todo')}">${x.e === 'NC' ? 'NC' : (x.e === 'C' ? 'Conforme' : (x.e === 'NA' ? 'N.A.' : '—'))}</span>
+          ${(x.rilievo || x.azione || x.resp || x.scad || x.nota || x.dim) ? `<div class="pv-ck-nc" style="${x.e === 'NC' ? '' : 'color:var(--text2)'}">
             ${x.dim ? '<b>Dimensione:</b> '+esc(x.dim)+'<br>' : ''}
             ${x.rilievo ? '<b>Rilievo:</b> '+esc(x.rilievo)+'<br>' : ''}
             ${x.azione ? '<b>Azione:</b> '+esc(x.azione)+'<br>' : ''}
@@ -1765,7 +1765,7 @@ function _ckPreviewHtml(v) {
             ${x.scad ? '<b>Scadenza:</b> '+_soprDateDisplay(x.scad) : ''}
             ${x.nota ? '<br><b>Nota:</b> '+esc(x.nota) : ''}
           </div>` : ''}
-        </div>`).join('') : '<div style="font-size:11.5px;color:var(--ok);font-weight:600">Nessuna non conformità rilevata.</div>'}
+        </div>`).join('')}
       ${_ckOf(v).note_generali ? `
       <div style="margin-top:10px;font-size:11px;font-weight:700;color:var(--accent)">Note generali checklist</div>
       <div style="font-size:11.5px;color:var(--text2);white-space:pre-wrap;">${esc(_ckOf(v).note_generali)}</div>` : ''}
@@ -2046,6 +2046,18 @@ function _ckNcList(v) {
   return out;
 }
 
+// Tutti i punti con esito/nota/dimensione (NC per primi), per l'anteprima.
+function _ckAllItems(v) {
+  const ck = _ckOf(v), out = [];
+  CK_CATS.forEach(k => {
+    CHECKLIST_DEF[k].items.forEach(it => {
+      const st = (ck[k] || {})[it.id];
+      if (st && (st.e || st.nota || st.dim)) out.push({ k, ...it, ...st });
+    });
+  });
+  return out.sort((a, b) => (b.e === 'NC') - (a.e === 'NC'));
+}
+
 // Classificazione unica dell'anomalia, usata da KPI, filtro "stato" e modale KPI.
 // Verbali storici: vale l'esito salvato. Verbali nuovi (esito vuoto): derivata dalla checklist
 // (NC>0 → media, critica se segnalazione cliente non esclusa o NC su SIC-21/SIC-22, come la priority issue lato backend;
@@ -2063,6 +2075,11 @@ function _anomaliaStato(v) {
   return st.compilati > 0 ? 'Nessuna anomalia' : '';
 }
 const _isAnomalia = v => { const a = _anomaliaStato(v); return a === 'Anomalia media' || a === 'Anomalia critica'; };
+// Chiusa = verifica risolta, oppure superata da un verbale di verifica (l'eventuale NC residua vive nel figlio, evita doppio conteggio).
+const _verifChiusa = v => { const s = _verifState(v); return !!s && (s.stato === 'risolto' || s.stato === 'non_risolto'); };
+const _isVerifDaFare = v => { const s = _verifState(v); return !!s && (s.stato === 'aperta' || s.stato === 'scaduta'); };
+const _isAnomaliaAperta = v => _isAnomalia(v) && !_verifChiusa(v);
+const _isSegnAperta = v => _isSegnCliente(v) && String(v.esito_segnalazione || '').toLowerCase() !== 'non_confermata' && !_verifChiusa(v);
 
 // ══ COLONNE AREE CHECKLIST ═══════════════════════════════════════════════════
 const CK_AREA_CODE = {
@@ -2327,7 +2344,9 @@ function _kpiFilter(key) {
     case 'nessuna':     return _verbaliAll.filter(v => _anomaliaStato(v) === 'Nessuna anomalia');
     case 'segncliente': return _verbaliAll.filter(_isSegnCliente);
     case 'nc':          return _verbaliAll.filter(v => _ckStatsOf(v).nc > 0);
-    case 'verifiche':   return _verbaliAll.filter(v => { const s = _verifState(v); return s && (s.stato === 'aperta' || s.stato === 'scaduta'); });
+    case 'verifiche':   return _verbaliAll.filter(_isVerifDaFare);
+    case 'anomalie_aperte': return _verbaliAll.filter(_isAnomaliaAperta);
+    case 'segn_aperte': return _verbaliAll.filter(_isSegnAperta);
     default:            return _verbaliAll.slice();
   }
 }
