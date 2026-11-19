@@ -134,6 +134,7 @@
   .verbale-row.is-verifica{box-shadow:inset 3px 0 0 #1A7D99;}
   .verbale-row.is-verifica.has-segn{box-shadow:inset 3px 0 0 #1A7D99;}
   .vr-link{display:block;font-family:'Raleway',sans-serif;font-size:9.5px;font-weight:600;color:#1A7D99;margin-top:2px;}
+  .verif-chip.pozz{background:#043F75;color:#fff;}
   .verif-chip.neutral{background:#EEF1F5;color:#5B6577;}
   .verifica-banner{margin:0 0 14px;padding:10px 14px;border-radius:10px;background:#E6F1F8;border:1px solid #41BBD9;color:#043F75;font-size:12.5px;align-items:center;justify-content:space-between;gap:10px;}
   .verifica-box{margin-top:12px;padding:10px 12px;border-radius:10px;font-size:12px;border:1px solid var(--border);background:var(--surface2);line-height:1.5;}
@@ -524,7 +525,7 @@
   <div class="deeplink-bar" id="deepLinkBar" style="display:none">
     <span id="deepLinkTxt"></span>
     <button type="button" class="dl-open" onclick="document.getElementById('deepLinkBar').style.display='none';toggleNuovoVerbale(true)">Apri nuovo verbale</button>
-    <button type="button" class="dl-x" onclick="document.getElementById('deepLinkBar').style.display='none'">Ignora</button>
+    <button type="button" class="dl-x" onclick="document.getElementById('deepLinkBar').style.display='none';window._pozzettoDL=''">Ignora</button>
   </div>
 
   <div class="top-row">
@@ -571,6 +572,8 @@
       <span class="fch-title">Nuovo verbale di sopralluogo</span>
       <button class="btn-chiudi-form" onclick="toggleNuovoVerbale(false)">Chiudi ✕</button>
     </div>
+
+    <div class="verifica-banner" id="pozzBanner" style="display:none"><span id="pozzBannerTxt"></span></div>
 
     <div class="verifica-banner" id="verificaBanner" style="display:none">
       <span id="verificaBannerTxt"></span>
@@ -1064,6 +1067,26 @@ function onLottoChange() {
 
 
 // ── Pannello "Nuovo verbale" (nascosto di default) ───────────────────────────
+// Verbale categoria POZZETTO (da mappa.html): solo le voci checklist area "Pozzetti" restano da compilare,
+// tutte le altre partono N.A. (modificabili a mano come sempre).
+function _applyPozzettoMode() {
+  const bn = document.getElementById('pozzBanner');
+  if (!window._pozzettoDL || _verificaDi) { if (bn) bn.style.display = 'none'; return; }
+  if (!window._pozzDefaultsApplied) {
+    window._pozzDefaultsApplied = true;
+    CK_CATS.forEach(k => CHECKLIST_DEF[k].items.forEach(it => {
+      if (it.area === 'Pozzetti') return;
+      const st = _ckGet(k, it.id);
+      if (!st.e) st.e = 'NA';
+    }));
+    setChecklistTab('qualita');
+  }
+  if (bn) {
+    document.getElementById('pozzBannerTxt').innerHTML = '<b>VERBALE POZZETTO ' + esc(window._pozzettoDL) + '</b> — checklist precompilata: da compilare solo le voci Pozzetti, le altre sono N.A. (modificabili).';
+    bn.style.display = 'flex';
+  }
+}
+
 function toggleNuovoVerbale(force) {
   const card = document.getElementById('formCard');
   const grid = document.getElementById('layoutGrid');
@@ -1073,6 +1096,7 @@ function toggleNuovoVerbale(force) {
   grid.classList.toggle('solo-archivio', !open);
   btn.classList.toggle('is-open', open);
   if (open) {
+    _applyPozzettoMode();
     if (!document.getElementById('lotto').options.length || document.getElementById('lotto').options.length <= 1) _loadLottiCantieri();
     card.scrollIntoView({behavior:'smooth', block:'start'});
   }
@@ -1133,6 +1157,7 @@ async function inviaVerbale(){
         esito_segnalazione: f.esito_segnalazione,
         verbale_origine:   f.verbale_origine,
         pozzetto:          window._pozzettoDL || '',
+        categoria:         window._pozzettoDL ? 'pozzetto' : '',
         ..._segnSystemVals(),
         checklist:         ckPayload(),
         note:              '',
@@ -1160,6 +1185,8 @@ async function inviaVerbale(){
 
 function resetVerbaleForm() {
   window._pozzettoDL = '';
+  window._pozzDefaultsApplied = false;
+  const _pb = document.getElementById('pozzBanner'); if (_pb) _pb.style.display = 'none';
   document.getElementById('codice_verbale').value = '';
   document.getElementById('data').value = '';
   document.getElementById('lotto').value = '';
@@ -2442,9 +2469,10 @@ function _verifRootTipo(v) {
 }
 
 function _verifLinkHtml(v) {
-  if (v.verbale_origine) return `<span class="vr-link">↳ verifica di ${esc(v.verbale_origine.replace(/^VBS-/, ''))}</span>`;
+  const _pz = v.categoria === 'pozzetto' ? '<span class="verif-chip pozz" style="margin:0 4px 0 0" title="Verbale tipologia pozzetto' + (v.pozzetto ? ' ' + escA(v.pozzetto) : '') + '">POZZETTO</span>' : '';
+  if (v.verbale_origine) return _pz + `<span class="vr-link">↳ verifica di ${esc(v.verbale_origine.replace(/^VBS-/, ''))}</span>`;
   const k = _verbaliAll.filter(x => x.verbale_origine === v.codice_verbale).sort((a, b) => a.codice_verbale.localeCompare(b.codice_verbale));
-  return k.length ? `<span class="vr-link">→ verificato in ${esc(k[k.length - 1].codice_verbale.replace(/^VBS-/, ''))}</span>` : '';
+  return _pz + (k.length ? `<span class="vr-link">→ verificato in ${esc(k[k.length - 1].codice_verbale.replace(/^VBS-/, ''))}</span>` : '');
 }
 
 // Stato di un verbale che richiede verifica (qualunque verbale, semplice o con segnalazione cliente, con almeno una NC).
@@ -2477,7 +2505,7 @@ function _verifStateChip(s) {
 }
 
 function _verifChips(v) {
-  let h = '';
+  let h = v.categoria === 'pozzetto' ? `<span class="verif-chip pozz" title="Verbale tipologia pozzetto">POZZETTO${v.pozzetto ? ' ' + esc(v.pozzetto) : ''}</span>` : '';
   if (v.verbale_origine) {
     const t = _verifRootTipo(v);
     h += `<span class="verif-chip" title="Verifica di ${esc(v.verbale_origine)}">${_verifN(v)}° SOPRALLUOGO</span><span class="verif-chip ${t}">${t === 'cliente' ? 'CLIENTE' : 'INTERNO'}</span>`;
