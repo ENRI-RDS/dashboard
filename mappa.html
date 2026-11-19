@@ -2645,6 +2645,105 @@ function toggleQTS(on) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Popup pozzetto: stesso stile dei popup tratte/SED ───────────────────────
+const _pozzEsc = v => String(v ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const _pozzLabel = p => p.codice || (p.id ? 'ID ' + p.id : '');
+
+// Comune/cantiere non sono nel geojson dei pozzetti: si ricavano dalla tratta più vicina (stesso lotto, fallback tutte).
+function _pozzNearestTratta(ll, lotto) {
+  const kx = Math.cos(ll.lat * Math.PI / 180);
+  const segD = (a, b) => {                                   // distanza² punto-segmento in gradi equirettangolari
+    const ax = (a[0] - ll.lng) * kx, ay = a[1] - ll.lat, bx = (b[0] - ll.lng) * kx, by = b[1] - ll.lat;
+    const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+    const t = L ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L)) : 0;
+    const x = ax + t * dx, y = ay + t * dy; return x * x + y * y;
+  };
+  const best = pool => {
+    let bf = null, bd = Infinity;
+    pool.forEach(t => {
+      const g = t.geometry; if (!g) return;
+      const lines = g.type === 'MultiLineString' ? g.coordinates : (g.type === 'LineString' ? [g.coordinates] : []);
+      lines.forEach(c => { for (let i = 1; i < c.length; i++) { const d = segD(c[i - 1], c[i]); if (d < bd) { bd = d; bf = t; } } });
+    });
+    return bf;
+  };
+  const all = allFeatures || [];
+  return best(all.filter(t => String(t.properties.LOTTO) === String(lotto))) || best(all);
+}
+
+function _pozzCtx(f, layer) {
+  if (layer._pozzCtx) return layer._pozzCtx;
+  const p = f.properties || {};
+  const t = _pozzNearestTratta(layer.getLatLng(), p.Lotto);
+  const tp = t ? t.properties : {};
+  const cant = (t && typeof RO_CANTIERI !== 'undefined') ? RO_CANTIERI.find(c => (c.tratte || []).some(x => x.tratta_id === tp.TRATTA_ID)) : null;
+  return (layer._pozzCtx = { comune: tp.COMUNE || '', cantiere: cant ? (cant.cantiere_key || '') : '' });
+}
+
+function _pozzPopupHtml(f, layer) {
+  const p = f.properties || {}, ll = layer.getLatLng(), ctx = _pozzCtx(f, layer), C = POZZETTI_COLOR;
+  const lab = _pozzLabel(p), impresa = IMPRESE[p.Lotto] || '';
+  const gm = `https://www.google.com/maps?q=${ll.lat.toFixed(6)},${ll.lng.toFixed(6)}`;
+  const fld = (l, v) => `<div class="popup-field"><span class="popup-field-label">${l}</span><span class="popup-field-val" style="font-size:11px">${v ? _pozzEsc(v) : '—'}</span></div>`;
+  const qs = new URLSearchParams({ lotto: p.Lotto || '', cantiere: ctx.cantiere, indirizzo: (lab ? 'Pozzetto ' + lab + ' — ' : '') + ctx.comune, pozzetto: lab });
+  return `<div class="popup-inner sed-popup" data-pozz="${_pozzEsc(lab)}">
+    <div class="popup-head" style="padding:10px 14px 8px">
+      <div class="popup-head-top">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:13px;font-weight:700;font-family:var(--font-mono);color:${C}">Pozzetto</span>
+          ${lab ? `<span style="font-size:11px;font-weight:700;font-family:var(--font-mono);color:var(--text);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 6px">${_pozzEsc(lab)}</span>` : ''}
+        </div>
+        <span style="display:flex;align-items:center;gap:6px">
+          <a class="popup-close-btn" href="${gm}" target="_blank" rel="noopener" title="Apri in Google Maps"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="var(--retelit-blue)"/></svg></a>
+          <button class="popup-close-btn" onclick="this.closest('.leaflet-popup').querySelector('.leaflet-popup-close-button').click()">✕</button>
+        </span>
+      </div>
+      <div style="height:2px;width:100%;margin-top:8px;border-radius:2px;background:${C}33"><div style="height:100%;width:100%;background:${C};opacity:.8"></div></div>
+    </div>
+    <div class="popup-body-left" style="padding:8px 14px">
+      <div class="popup-grid" style="grid-template-columns:1fr 1fr">
+        ${fld('Lotto', p.Lotto)}${fld('Comune', ctx.comune)}${fld('Impresa', impresa)}${fld('Tipo', p.Tipo)}
+        <div class="popup-field full"><span class="popup-field-label">Codice</span><span class="popup-field-val" style="font-size:11px">${p.codice ? _pozzEsc(p.codice) : '—'}</span></div>
+      </div>
+      <div class="popup-section" style="margin-top:6px">
+        <div class="popup-section-title">Verbali di sopralluogo</div>
+        <div class="pozz-verbali" style="font-size:10px;color:var(--muted)">Caricamento…</div>
+      </div>
+    </div>
+    <div style="padding:0 14px 10px">
+      <a class="popup-gmaps-btn" href="sopralluoghi.html?${qs.toString()}" style="font-size:10px;padding:4px 10px">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-5 9l2 2 4-4" stroke="var(--retelit-blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Nuovo sopralluogo
+      </a>
+    </div>
+  </div>`;
+}
+
+// Verbali collegati al pozzetto: il codice pozzetto è scritto nel campo "comune/indirizzo" del verbale (vedi deep-link).
+let _pozzVerbaliCache = null;
+async function _pozzLoadVerbali(f, layer) {
+  const lab = _pozzLabel(f.properties || {});
+  const box = layer.getPopup() && layer.getPopup().getElement() && layer.getPopup().getElement().querySelector('.pozz-verbali');
+  if (!box) return;
+  if (!lab) { box.textContent = 'Nessun codice pozzetto'; return; }
+  try {
+    if (!_pozzVerbaliCache) {
+      const base = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+      const r = await fetch(base + '/api/sopralluoghi', { headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      _pozzVerbaliCache = (await r.json()).verbali || [];
+    }
+    const rx = new RegExp('pozzetto\\s+' + lab.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w-])', 'i');
+    const hit = _pozzVerbaliCache.filter(v => rx.test(String(v.comune || '') + ' ' + String(v.localita || '')))
+      .sort((a, b) => String(b.codice_verbale).localeCompare(String(a.codice_verbale)));
+    box.innerHTML = hit.length ? hit.map(v => `<a class="popup-pratica" style="text-decoration:none;display:flex;margin:0 0 4px" href="sopralluoghi.html?verbale=${encodeURIComponent(v._id)}">
+      <span class="popup-pratica-code">${_pozzEsc(v.codice_verbale)}</span><span class="popup-pratica-ente">${_pozzEsc(v.data_sopralluogo || '')}</span></a>`).join('')
+      : '<span style="font-style:italic">Nessun verbale per questo pozzetto</span>';
+  } catch (e) { box.textContent = 'Verbali non disponibili'; }
+  layer.getPopup().update();
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ── LAYER POZZETTI (pozzetti_merged.geojson, caricato da admin) ──────────────
 let pozzettiLayer = null;
 let pozzettiLoaded = false;
@@ -2660,17 +2759,8 @@ async function loadPozzetti() {
     pozzettiLayer = L.geoJSON(geojson, {
       pointToLayer: (f, ll) => L.circleMarker(ll, { renderer: mainRenderer, radius: _pozzR(), color: '#fff', weight: 1, fillColor: POZZETTI_COLOR, fillOpacity: 0.9 }),
       onEachFeature: (f, layer) => {
-        const p = f.properties || {};
-        const ll = layer.getLatLng();
-        const row = (l, v) => (v === null || v === undefined || v === '') ? '' : `<div class="popup-row"><span class="label">${l}</span><span class="val">${esc(v)}</span></div>`;
-        layer.bindPopup(`<div class="popup-inner">
-          <div class="popup-header" style="border-color:${POZZETTI_COLOR}55">
-            <span class="popup-lotto" style="color:${POZZETTI_COLOR}">Pozzetto</span>
-            ${p.name ? `<span class="popup-impresa" style="color:${POZZETTI_COLOR}">${esc(p.name)}</span>` : ''}
-          </div>
-          ${row('Lotto', p.Lotto)}${row('Cluster', p.Cluster)}${row('Tipo', p.Tipo)}${row('Codice', p.codice)}${row('ID', p.id)}
-          <div style="margin-top:8px"><a class="popup-gmaps-btn" href="https://www.google.com/maps?q=${ll.lat.toFixed(6)},${ll.lng.toFixed(6)}" target="_blank" rel="noopener" style="font-size:10px;padding:4px 10px">Google Maps</a></div>
-        </div>`, { maxWidth: 260 });
+        layer.bindPopup(() => _pozzPopupHtml(f, layer), { maxWidth: 300 });
+        layer.on('popupopen', () => _pozzLoadVerbali(f, layer));
       }
     });
     pozzettiLoaded = true;
