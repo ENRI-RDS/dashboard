@@ -3805,7 +3805,9 @@ _CK_DEF = {
     "DIV-01": ("Diversificazione", "Separazione fisica minima di 8 m tra percorsi dello stesso cluster"),
     "POZ-01": ("Pozzetti", "Distanza media circa 475 m e passo massimo 500 m"),
     "POZ-02": ("Pozzetti", "Pozzetti presenti agli incroci con curva ≥45°"),
-    "POZ-03": ("Pozzetti", "Dimensioni e tipologia conformi alle specifiche"),
+    "POZ-03": ("Pozzetti", "Dimensioni e tipologia conformi alle specifiche"),  # legacy: sostituito da 03A/03B, tenuto per le issue dei verbali vecchi
+    "POZ-03A": ("Pozzetti", "Pozzetto Cliente: dimensione conforme come da contratto"),
+    "POZ-03B": ("Pozzetti", "Pozzetto Retelit: dimensione conforme come da contratto"),
     "POZ-04": ("Pozzetti", "Pozzetti Tipo 1 fronte Data Center e nelle interconnessioni, ove previsti"),
     "POZ-05": ("Pozzetti", "Foro di drenaggio vicino al centro"),
     "POZ-06": ("Pozzetti", "Chiusino in ghisa, dimensionato e con logo Retelit"),
@@ -4307,7 +4309,7 @@ async def _issue_sync_verbali(verbali: list) -> dict:
                                     cinfo = {"pratica": str(cd.get("pratica_id", "") or ""), "ente": str(cd.get("ente", "") or "")}
                         area, testo = _CK_DEF.get(item_id, ("", ""))
                         parts = [f"{item_id} — {area}: {testo}" if testo else item_id]
-                        for lab, k in (("Rilievo", "rilievo"), ("Azione correttiva", "azione"), ("Responsabile", "resp"), ("Nota", "nota")):
+                        for lab, k in (("Dimensione", "dim"), ("Rilievo", "rilievo"), ("Azione correttiva", "azione"), ("Responsabile", "resp"), ("Nota", "nota")):
                             if st.get(k):
                                 parts.append(f"{lab}: {st[k]}")
                         rec = _issue_clean({
@@ -4573,7 +4575,7 @@ async def update_sopralluogo(sop_id: str, payload: dict, sess: dict = Depends(_r
         fo, fn = _flat(ck_old), _flat(ck_new)
         for i in sorted(set(fo) | set(fn)):
             a, b = fo.get(i) or {}, fn.get(i) or {}
-            if (a.get("e", ""), a.get("nota", "")) != (b.get("e", ""), b.get("nota", "")) or \
+            if (a.get("e", ""), a.get("nota", ""), a.get("dim", "")) != (b.get("e", ""), b.get("nota", ""), b.get("dim", "")) or \
                (b.get("e") == "NC" and any(a.get(f, "") != b.get(f, "") for f in ("rilievo", "azione", "resp", "scad"))):
                 if b.get("e") == "NC" and (not b.get("azione") or not b.get("scad")):
                     raise HTTPException(422, f"Non conformità {i}: azione correttiva e scadenza sono obbligatorie")
@@ -4966,14 +4968,14 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
             for item_id, st in sorted(blocco.items()):
                 if not isinstance(st, dict):
                     continue
-                if not (st.get("e") or st.get("nota")):
+                if not (st.get("e") or st.get("nota") or st.get("dim")):
                     continue
                 scad_obj = _sopr_date_obj(st.get("scad", ""))
                 row = [
                     v.get("codice_verbale", ""), d_obj or v.get("data_sopralluogo", ""),
                     cat_label.get(cat, cat), "", item_id, "",
                     {"C": "Conforme", "NC": "Non conforme", "NA": "N.A.", "": "Da verificare"}.get(st.get("e", ""), st.get("e", "")),
-                    st.get("nota", ""),
+                    (f"Dimensione: {st['dim']}. " if st.get("dim") else "") + st.get("nota", ""),
                     st.get("rilievo", ""), st.get("azione", ""), st.get("resp", ""),
                     scad_obj or st.get("scad", ""),
                 ]
@@ -5092,9 +5094,12 @@ def _sanitize_checklist(raw: dict | None) -> dict:
             if esito not in _CK_ESITI:
                 esito = ""
             nota = str(st.get("nota", "")).strip()[:2000]
-            if not esito and not nota:
+            dim = str(st.get("dim", "")).strip()[:120]
+            if not esito and not nota and not dim:
                 continue
             rec = {"e": esito, "nota": nota}
+            if dim:
+                rec["dim"] = dim
             if esito == "NC":
                 rec.update({
                     "rilievo": str(st.get("rilievo", "")).strip(),
