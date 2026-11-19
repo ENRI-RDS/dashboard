@@ -280,8 +280,8 @@ window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); }
 const API = (window.ENRI && ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const TIPI = { In:'Anomalia su infrastruttura (completata o in corso)', Cn:'Segnaletica su cantiere in corso', Sc:'Documentazione sicurezza', Sf:'Anomalia sicurezza di cantiere', Au:'Anomalia autorizzativa', Co:'Anomalia di collaudo' };
-const TIPI_SHORT = { In:'Anomalia infrastruttura', Cn:'Segnaletica cantiere', Sc:'Doc. sicurezza/aut.', Sf:'Anomalia sicurezza', Au:'Anomalia autorizzativa', Co:'Anomalia collaudo' };
+const TIPI = { In:'Anomalia su infrastruttura (completata o in corso)', Cn:'Segnaletica su cantiere in corso', Sf:'Anomalia sicurezza di cantiere (documentazione inclusa)', Au:'Anomalia autorizzativa', Co:'Anomalia di collaudo' };
+const TIPI_SHORT = { In:'Anomalia infrastruttura', Cn:'Segnaletica cantiere', Sf:'Anomalia sicurezza', Au:'Anomalia autorizzativa', Co:'Anomalia collaudo' };
 const STATI = { aperta:'Aperta', inviata:'Inviata al System', in_lavorazione:'In lavorazione', risolta:'Risolta', chiusa:'Chiusa' };
 const PRIO = { bassa:'Bassa', media:'Media', alta:'Alta', critica:'Critica' };
 const CLOSED = ['risolta', 'chiusa'];
@@ -350,7 +350,7 @@ function isFmDaVerificare(it) { return isQualita(it) && it.chiusa_dl && !it.boni
 function filtered() {
   const q = $('fQ').value.trim().toLowerCase(), t = $('fTipo').value, s = $('fStato').value, p = $('fPrio').value, y = $('fSys').value, o = $('fOrig').value, cl = $('fCli').value;
   return items.filter(it => {
-    if (t && it.prefisso !== t) return false;
+    if (t && (it.prefisso === 'Sc' ? 'Sf' : it.prefisso) !== t) return false;
     if (s && it.stato !== s) return false;
     if (p && it.priority !== p) return false;
     if (y && (it.system || '').trim() !== y) return false;
@@ -457,7 +457,7 @@ function render() {
     const sys = esc(it.system || ''), sub = esc(it.subsystem || '');
     return '<tr class="p-' + esc(it.priority) + (isOpen(it) ? '' : ' done') + '" data-id="' + esc(it._id) + '">' +
       '<td><span class="cod" onclick="openModal(\'' + esc(it._id) + '\')">' + esc(it.codice) + '</span>' + (it.origine_verbale ? '<span class="sub" title="Generata dalla non conformità di un verbale di sopralluogo">da ' + esc(it.origine_verbale) + ' · ' + esc(it.origine_item || '') + '</span>' : '') + '</td>' +
-      '<td><span class="tipo tipo-' + esc(it.prefisso) + '" title="' + esc(TIPI[it.prefisso] || '') + '">' + esc(TIPI_SHORT[it.prefisso] || it.prefisso) + '</span></td>' +
+      '<td><span class="tipo tipo-' + esc(it.prefisso === 'Sc' ? 'Sf' : it.prefisso) + '" title="' + esc(TIPI[it.prefisso === 'Sc' ? 'Sf' : it.prefisso] || '') + '">' + esc(TIPI_SHORT[it.prefisso === 'Sc' ? 'Sf' : it.prefisso] || it.prefisso) + '</span></td>' +
       '<td>' + esc(it.cantiere || '—') + '<span class="sub">' + esc([it.comune, it.lotto && ('lotto ' + it.lotto)].filter(Boolean).join(' · ')) + '</span>' + (it.pratica || it.ente ? '<span class="sub">' + esc([it.pratica, it.ente].filter(Boolean).join(' · ')) + '</span>' : '') + '</td>' +
       '<td><input class="cell' + (sys ? '' : ' empty') + '" list="dlSystem" value="' + sys + '" placeholder="da assegnare"' + RO + ' onchange="patch(\'' + esc(it._id) + '\',\'system\',this.value,this)"></td>' +
       '<td><input class="cell' + (sub ? '' : ' empty') + '" list="dlSub" value="' + sub + '" placeholder="da assegnare"' + RO + ' onchange="patch(\'' + esc(it._id) + '\',\'subsystem\',this.value,this)"></td>' +
