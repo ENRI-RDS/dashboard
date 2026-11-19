@@ -1399,6 +1399,15 @@ function updateLegend(mode) {
         </div>
       </div>`;
   }
+  // ── voci Pozzetti (condizionali al toggle, stesso schema della sezione SED) ──
+  if (_pozzActive) {
+    leg.innerHTML += `
+      <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px">
+        <div class="legend-title">Pozzetti</div>
+        ${Object.entries(POZZ_TIPI).map(([tipo, c]) =>
+          `<div class="legend-item"><div class="legend-dot" style="background:${c};border:1.5px solid #fff;box-shadow:0 0 0 1px ${c}66"></div>${tipo.replace('x', '×')}</div>`).join('')}
+      </div>`;
+  }
 }
 
 map = L.map('map',{center:[45.48,9.30],zoom:10,zoomControl:true,attributionControl:true,preferCanvas:true,zoomSnap:0.5,zoomDelta:0.5});
@@ -2681,11 +2690,11 @@ function _pozzCtx(f, layer) {
 }
 
 function _pozzPopupHtml(f, layer) {
-  const p = f.properties || {}, ll = layer.getLatLng(), ctx = _pozzCtx(f, layer), C = POZZETTI_COLOR;
+  const p = f.properties || {}, ll = layer.getLatLng(), ctx = _pozzCtx(f, layer), C = _pozzColor(p.Tipo);
   const lab = _pozzLabel(p), impresa = IMPRESE[p.Lotto] || '';
   const gm = `https://www.google.com/maps?q=${ll.lat.toFixed(6)},${ll.lng.toFixed(6)}`;
   const fld = (l, v) => `<div class="popup-field"><span class="popup-field-label">${l}</span><span class="popup-field-val" style="font-size:11px">${v ? _pozzEsc(v) : '—'}</span></div>`;
-  const qs = new URLSearchParams({ lotto: p.Lotto || '', cantiere: ctx.cantiere, indirizzo: (lab ? 'Pozzetto ' + lab + ' — ' : '') + ctx.comune, pozzetto: lab });
+  const qs = new URLSearchParams({ lotto: p.Lotto || '', cantiere: ctx.cantiere, indirizzo: ctx.comune, pozzetto: lab });
   return `<div class="popup-inner sed-popup" data-pozz="${_pozzEsc(lab)}">
     <div class="popup-head" style="padding:10px 14px 8px">
       <div class="popup-head-top">
@@ -2719,7 +2728,7 @@ function _pozzPopupHtml(f, layer) {
   </div>`;
 }
 
-// Verbali collegati al pozzetto: il codice pozzetto è scritto nel campo "comune/indirizzo" del verbale (vedi deep-link).
+// Verbali collegati al pozzetto: campo `pozzetto` del verbale (valorizzato dal deep-link "Nuovo sopralluogo").
 let _pozzVerbaliCache = null;
 async function _pozzLoadVerbali(f, layer) {
   const lab = _pozzLabel(f.properties || {});
@@ -2733,8 +2742,8 @@ async function _pozzLoadVerbali(f, layer) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       _pozzVerbaliCache = (await r.json()).verbali || [];
     }
-    const rx = new RegExp('pozzetto\\s+' + lab.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w-])', 'i');
-    const hit = _pozzVerbaliCache.filter(v => rx.test(String(v.comune || '') + ' ' + String(v.localita || '')))
+    const key = String(lab).trim().toUpperCase();
+    const hit = _pozzVerbaliCache.filter(v => String(v.pozzetto || '').trim().toUpperCase() === key)
       .sort((a, b) => String(b.codice_verbale).localeCompare(String(a.codice_verbale)));
     box.innerHTML = hit.length ? hit.map(v => `<a class="popup-pratica" style="text-decoration:none;display:flex;margin:0 0 4px" href="sopralluoghi.html?verbale=${encodeURIComponent(v._id)}">
       <span class="popup-pratica-code">${_pozzEsc(v.codice_verbale)}</span><span class="popup-pratica-ente">${_pozzEsc(v.data_sopralluogo || '')}</span></a>`).join('')
@@ -2748,6 +2757,8 @@ async function _pozzLoadVerbali(f, layer) {
 let pozzettiLayer = null;
 let pozzettiLoaded = false;
 const POZZETTI_COLOR = '#043F75';
+const POZZ_TIPI = { '125x80': '#043F75', '224x124': '#41BBD9' };   // colore per tipologia (legenda + marker + popup)
+const _pozzColor = tipo => POZZ_TIPI[String(tipo || '').trim()] || POZZETTI_COLOR;
 const _pozzR = () => { const z = map.getZoom(); return z < 12 ? 3 : (z < 15 ? 5 : 7); };
 
 async function loadPozzetti() {
@@ -2757,7 +2768,7 @@ async function loadPozzetti() {
     const geojson = await fetchWithSWR('pozzetti_merged.geojson', { isJson: true, direct: true });
     const esc = v => String(v).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     pozzettiLayer = L.geoJSON(geojson, {
-      pointToLayer: (f, ll) => L.circleMarker(ll, { renderer: mainRenderer, radius: _pozzR(), color: '#fff', weight: 1, fillColor: POZZETTI_COLOR, fillOpacity: 0.9 }),
+      pointToLayer: (f, ll) => L.circleMarker(ll, { renderer: mainRenderer, radius: _pozzR(), color: '#fff', weight: 1, fillColor: _pozzColor(f.properties && f.properties.Tipo), fillOpacity: 0.9 }),
       onEachFeature: (f, layer) => {
         layer.bindPopup(() => _pozzPopupHtml(f, layer), { maxWidth: 300 });
         layer.on('popupopen', () => _pozzLoadVerbali(f, layer));
@@ -2770,6 +2781,7 @@ async function loadPozzetti() {
   } catch (e) {
     console.warn('Layer pozzetti:', e.message);
     _pozzActive = false;
+    updateLegend(currentViewMode);
     const pb = document.getElementById('pozzettiBtn');
     if (pb) { pb.classList.remove('active'); pb.style.opacity = '0.45'; pb.style.pointerEvents = 'none'; pb.title = 'pozzetti_merged.geojson non disponibile — caricalo da Admin'; }
   }
@@ -2781,6 +2793,7 @@ function togglePozzetti(forced) {
   const btn = document.getElementById('pozzettiBtn');
   if (btn) btn.classList.toggle('active', _pozzActive);
   const on = _pozzActive;
+  updateLegend(currentViewMode);
   if (on) {
     const add = () => {
       if (_pozzActive && pozzettiLayer && !map.hasLayer(pozzettiLayer)) pozzettiLayer.addTo(map).bringToFront();
