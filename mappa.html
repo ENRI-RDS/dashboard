@@ -538,6 +538,9 @@
   }
   .sed-control-btn:hover { background:var(--surface2); box-shadow:0 3px 12px #0003; }
   .sed-control-btn.active { background:#fff7ed; border-color:#b45309; color:#b45309; }
+  .sed-ctrl-row { display:flex; align-items:center; gap:6px; margin-top:8px; margin-left:10px; }
+  .sed-ctrl-row .sed-control-btn { margin:0; }
+  .sed-control-btn.pozz-btn.active { background:var(--retelit-blue-50, #E6F1F8); border-color:var(--retelit-blue, #043F75); color:var(--retelit-blue, #043F75); }
 
   /* Basemap floating control — Google-style thumbnail button */
   .leaflet-top.leaflet-left { display:flex; flex-direction:column; align-items:flex-start; }
@@ -2642,6 +2645,63 @@ function toggleQTS(on) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── LAYER POZZETTI (pozzetti_merged.geojson, caricato da admin) ──────────────
+let pozzettiLayer = null;
+let pozzettiLoaded = false;
+const POZZETTI_COLOR = '#043F75';
+const _pozzR = () => { const z = map.getZoom(); return z < 12 ? 3 : (z < 15 ? 5 : 7); };
+
+async function loadPozzetti() {
+  if (pozzettiLoaded) return;
+  try {
+    // File sensibile: solo via backend (gated), mai da GitHub statico.
+    const geojson = await fetchWithSWR('pozzetti_merged.geojson', { isJson: true, direct: true });
+    const esc = v => String(v).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    pozzettiLayer = L.geoJSON(geojson, {
+      pointToLayer: (f, ll) => L.circleMarker(ll, { renderer: mainRenderer, radius: _pozzR(), color: '#fff', weight: 1, fillColor: POZZETTI_COLOR, fillOpacity: 0.9 }),
+      onEachFeature: (f, layer) => {
+        const p = f.properties || {};
+        const ll = layer.getLatLng();
+        const row = (l, v) => (v === null || v === undefined || v === '') ? '' : `<div class="popup-row"><span class="label">${l}</span><span class="val">${esc(v)}</span></div>`;
+        layer.bindPopup(`<div class="popup-inner">
+          <div class="popup-header" style="border-color:${POZZETTI_COLOR}55">
+            <span class="popup-lotto" style="color:${POZZETTI_COLOR}">Pozzetto</span>
+            ${p.name ? `<span class="popup-impresa" style="color:${POZZETTI_COLOR}">${esc(p.name)}</span>` : ''}
+          </div>
+          ${row('Lotto', p.Lotto)}${row('Cluster', p.Cluster)}${row('Tipo', p.Tipo)}${row('Codice', p.codice)}${row('ID', p.id)}
+          <div style="margin-top:8px"><a class="popup-gmaps-btn" href="https://www.google.com/maps?q=${ll.lat.toFixed(6)},${ll.lng.toFixed(6)}" target="_blank" rel="noopener" style="font-size:10px;padding:4px 10px">Google Maps</a></div>
+        </div>`, { maxWidth: 260 });
+      }
+    });
+    pozzettiLoaded = true;
+    const pb = document.getElementById('pozzettiBtn');
+    if (pb) pb.title = 'Pozzetti (' + (geojson.features || []).length.toLocaleString('it-IT') + ')';
+    map.on('zoomend', () => { if (pozzettiLayer) pozzettiLayer.eachLayer(l => l.setRadius(_pozzR())); });
+  } catch (e) {
+    console.warn('Layer pozzetti:', e.message);
+    _pozzActive = false;
+    const pb = document.getElementById('pozzettiBtn');
+    if (pb) { pb.classList.remove('active'); pb.style.opacity = '0.45'; pb.style.pointerEvents = 'none'; pb.title = 'pozzetti_merged.geojson non disponibile — caricalo da Admin'; }
+  }
+}
+
+let _pozzActive = false;
+function togglePozzetti(forced) {
+  _pozzActive = (forced !== undefined) ? forced : !_pozzActive;
+  const btn = document.getElementById('pozzettiBtn');
+  if (btn) btn.classList.toggle('active', _pozzActive);
+  const on = _pozzActive;
+  if (on) {
+    const add = () => {
+      if (_pozzActive && pozzettiLayer && !map.hasLayer(pozzettiLayer)) pozzettiLayer.addTo(map).bringToFront();
+    };
+    if (!pozzettiLoaded) loadPozzetti().then(add); else add();
+  } else if (pozzettiLayer && map.hasLayer(pozzettiLayer)) {
+    map.removeLayer(pozzettiLayer);
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ── LAYER SED ATTRAVERSAMENTI ───────────────────────────────────────────────
 const SED_META = {
   'FERROVIARIO': {
@@ -3012,13 +3072,19 @@ function toggleSED(forcedState) {
 const SedControl = L.Control.extend({
   options: { position: 'topleft' },
   onAdd: function() {
-    const btn = L.DomUtil.create('div', 'sed-control-btn');
+    const row = L.DomUtil.create('div', 'sed-ctrl-row');
+    const btn = L.DomUtil.create('div', 'sed-control-btn', row);
     btn.id = 'sedBtn';
     btn.title = 'Attraversamenti SED';
     btn.innerHTML = 'SED';
-    L.DomEvent.disableClickPropagation(btn);
     L.DomEvent.on(btn, 'click', () => toggleSED());
-    return btn;
+    const pb = L.DomUtil.create('div', 'sed-control-btn pozz-btn', row);
+    pb.id = 'pozzettiBtn';
+    pb.title = 'Pozzetti';
+    pb.innerHTML = 'POZZETTI';
+    L.DomEvent.on(pb, 'click', () => togglePozzetti());
+    L.DomEvent.disableClickPropagation(row);
+    return row;
   }
 });
 new SedControl().addTo(map);
