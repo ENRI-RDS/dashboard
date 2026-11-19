@@ -82,7 +82,7 @@
   .tipo { display:inline-block; max-width:100%; font-size:10.5px; font-weight:600; line-height:1.25; padding:3px 8px; border-radius:10px; white-space:normal; overflow-wrap:break-word; }
   .cli { display:inline-block; font-size:10.5px; font-weight:600; line-height:1.25; padding:3px 8px; border-radius:10px; white-space:nowrap; }
   .cli-confermata { background:var(--redL); color:var(--red); } .cli-si { background:var(--yellowL); color:var(--yellow); } .cli-non_confermata { background:var(--gray-100); color:var(--muted); }
-  .tipo-In { background:var(--redL); color:var(--red); } .tipo-Cn { background:var(--yellowL); color:var(--yellow); } .tipo-Sc { background:var(--retelit-ice); color:var(--accent); }
+  .tipo-In { background:var(--redL); color:var(--red); } .tipo-Cn { background:var(--yellowL); color:var(--yellow); } .tipo-Sc { background:var(--retelit-ice); color:var(--accent); } .tipo-Sf { background:var(--yellowL); color:var(--yellow); } .tipo-Au { background:#EAEFF5; color:var(--retelit-blue-75); } .tipo-Co { background:#E3F3F8; color:var(--retelit-teal); }
   thead th.srt { cursor:pointer; user-select:none; } thead th.srt:hover { background:var(--retelit-teal); }
   thead th.srt::after { content:' ↕'; opacity:.4; } thead th.srt.asc::after { content:' ▲'; opacity:1; } thead th.srt.desc::after { content:' ▼'; opacity:1; }
   .sub { display:block; font-size:10.5px; color:var(--muted); margin-top:1px; }
@@ -279,8 +279,8 @@ window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); }
 const API = (window.ENRI && ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const TIPI = { In:'Anomalia su infrastruttura (completata o in corso)', Cn:'Segnaletica su cantiere in corso', Sc:'Documentazione sicurezza / autorizzazioni' };
-const TIPI_SHORT = { In:'Anomalia infrastruttura', Cn:'Segnaletica cantiere', Sc:'Doc. sicurezza/aut.' };
+const TIPI = { In:'Anomalia su infrastruttura (completata o in corso)', Cn:'Segnaletica su cantiere in corso', Sc:'Documentazione sicurezza', Sf:'Anomalia sicurezza di cantiere', Au:'Anomalia autorizzativa', Co:'Anomalia di collaudo' };
+const TIPI_SHORT = { In:'Anomalia infrastruttura', Cn:'Segnaletica cantiere', Sc:'Doc. sicurezza/aut.', Sf:'Anomalia sicurezza', Au:'Anomalia autorizzativa', Co:'Anomalia collaudo' };
 const STATI = { aperta:'Aperta', inviata:'Inviata al System', in_lavorazione:'In lavorazione', risolta:'Risolta', chiusa:'Chiusa' };
 const PRIO = { bassa:'Bassa', media:'Media', alta:'Alta', critica:'Critica' };
 const CLOSED = ['risolta', 'chiusa'];
@@ -288,6 +288,7 @@ const iso = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') 
 const TODAY = iso(new Date());
 const fmt = d => d ? d.split('-').reverse().join('/') : '—';
 const isOpen = it => !CLOSED.includes(it.stato);
+const isInfra = it => it.prefisso === 'In' && (!it.origine_item || /^(INF|POZ|MIC|DIV|COL)-/i.test(it.origine_item));   // legacy: In_ da altri punti non contano
 const isLate = it => isOpen(it) && it.data_prevista && it.data_prevista < TODAY;
 
 let items = [], kpi = '', editId = null;
@@ -358,7 +359,7 @@ function filtered() {
     if (kpi === 'open' && !isOpen(it)) return false;
     if (kpi === 'late' && !isLate(it)) return false;
     if (kpi === 'hot' && !(isOpen(it) && ['alta', 'critica'].includes(it.priority))) return false;
-    if (kpi === 'nosys' && !(isOpen(it) && !(it.system || '').trim())) return false;
+    if (kpi === 'infra' && !isInfra(it)) return false;
     if (kpi === 'fm' && !isFmDaVerificare(it)) return false;
     if (q) {
       const hay = [it.codice, it.origine_verbale, it.origine_item, it.cantiere, it.pratica, it.ente, it.lotto, it.comune, it.system, it.subsystem, it.descrizione, it.rilevato_da, it.rif_system_invio].join(' ').toLowerCase();
@@ -430,7 +431,7 @@ function renderKpi() {
     ['open', 'Aperte', items.filter(isOpen).length, ''],
     ['late', 'In ritardo', items.filter(isLate).length, 'warn'],
     ['hot', 'Alta / Critica aperte', items.filter(i => isOpen(i) && ['alta', 'critica'].includes(i.priority)).length, 'amber'],
-    ['nosys', 'Aperte senza System', items.filter(i => isOpen(i) && !(i.system || '').trim()).length, 'amber'],
+    ['infra', 'Anomalie infrastruttura', items.filter(isInfra).length, ''],
     ['fm', 'Approvazioni FM aperte', items.filter(isFmDaVerificare).length, 'amber'],
   ];
   $('kpis').innerHTML = K.map(([k, l, v, c]) => '<button class="kpi ' + c + ((kpi === k || (k === 'all' && !kpi)) ? ' on' : '') + '" onclick="setKpi(\'' + k + '\')"><div class="k-l">' + l + '</div><div class="k-v">' + v + '</div></button>').join('');
