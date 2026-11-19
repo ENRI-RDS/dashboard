@@ -211,7 +211,10 @@
   .ck-b.on.na{background:var(--surface2);border-color:var(--muted);color:var(--muted2);}
   .ck-b.nota{margin-left:auto;}
   .ck-b.nota.on{background:#FFF7E6;border-color:var(--warn);color:#8A5A00;}
-  .ck-dim{display:block;margin-top:5px;max-width:100%;font-size:11.5px;padding:5px 8px;}
+  .ck-dim-wrap{display:flex;align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap;}
+  .ck-dim-lab{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);}
+  .ck-dim-wrap select{flex:1 1 260px;max-width:420px;font-size:12px;padding:6px 10px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text2);font-family:'Raleway',sans-serif;}
+  .ck-dim-wrap select.empty{border-color:var(--warn);}
   .ck-note-box{grid-column:1/-1;margin-top:6px;padding-top:8px;border-top:1px dashed var(--border);}
   .ck-note-box textarea{width:100%;min-height:44px;font-size:11.5px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-family:inherit;margin-top:6px;}
   .ck-nc-box{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;}
@@ -1810,9 +1813,9 @@ const CHECKLIST_DEF = {
     {"id": "DIV-01", "area": "Diversificazione", "t": "Separazione fisica minima di 8 m tra percorsi dello stesso cluster", "rif": "Cap. 6.3"},
     {"id": "POZ-01", "area": "Pozzetti", "t": "Distanza media circa 475 m e passo massimo 500 m", "rif": "Cap. 6.2"},
     {"id": "POZ-02", "area": "Pozzetti", "t": "Pozzetti presenti agli incroci con curva ≥45°", "rif": "Cap. 6.2"},
-    {"id": "POZ-03A", "area": "Pozzetti", "t": "Pozzetto Cliente: dimensione conforme come da contratto", "rif": "Cap. 6.2", "dim": ["1250x800x1330 mm (luce interna 1200x600x1230)", "2240x1240 mm (internal dimension 2000x1000x1500 mm)"]},
-    {"id": "POZ-03B", "area": "Pozzetti", "t": "Pozzetto Retelit: dimensione conforme come da contratto", "rif": "Cap. 6.2", "dim": ["1250x800x1330 mm (luce interna 1200x600x1230)", "900x700x1330 mm (luce interna 900x700x1230)"]},
-    {"id": "POZ-04", "area": "Pozzetti", "t": "Pozzetti Tipo 1 fronte Data Center e nelle interconnessioni, ove previsti", "rif": "Cap. 6.2"},
+    {"id": "POZ-03A", "area": "Pozzetti", "t": "Pozzetto Cliente: dimensione conforme come da contratto", "rif": "Cap. 6.2", "dim": ["125 × 80 × 133 cm · luce interna 120 × 60 × 123 cm", "224 × 124 cm · interna 200 × 100 × 150 cm"]},
+    {"id": "POZ-03B", "area": "Pozzetti", "t": "Pozzetto Retelit: dimensione conforme come da contratto", "rif": "Cap. 6.2", "dim": ["125 × 80 × 133 cm · luce interna 120 × 60 × 123 cm", "90 × 70 × 133 cm · luce interna 90 × 70 × 123 cm"]},
+    {"id": "POZ-04", "area": "Pozzetti", "t": "Pozzetti 224 × 124 cm · interna 200 × 100 × 150 cm fronte Data Center e nelle interconnessioni, ove previsti", "rif": "Cap. 6.2"},
     {"id": "POZ-05", "area": "Pozzetti", "t": "Foro di drenaggio vicino al centro", "rif": "Cap. 6.2"},
     {"id": "POZ-06", "area": "Pozzetti", "t": "Chiusino in ghisa, dimensionato e con logo Retelit", "rif": "Cap. 6.2"},
     {"id": "POZ-07", "area": "Pozzetti", "t": "Pozzetto pulito, accessibile e adeguato", "rif": "Cap. 6.2"},
@@ -1950,7 +1953,7 @@ function setCk(k, id, val) {
 
 function _ckDimSel(it, st, onch, cls) {
   if (!it.dim || st.e === 'NA') return '';
-  return `<select class="${cls}" onchange="${onch}"><option value="">— scegli dimensione —</option>${it.dim.map(d => `<option value="${escA(d)}"${st.dim === d ? ' selected' : ''}>${esc(d)}</option>`).join('')}</select>`;
+  return `<div class="ck-dim-wrap"><span class="ck-dim-lab">Dimensione</span><select class="${st.dim ? '' : 'empty'}" onchange="${onch};this.classList.toggle('empty',!this.value)"><option value="">Seleziona…</option>${it.dim.map(d => `<option value="${escA(d)}"${st.dim === d ? ' selected' : ''}>${esc(d)}</option>`).join('')}</select></div>`;
 }
 
 function setCkField(k, id, field, val) { _ckGet(k, id)[field] = val; }
