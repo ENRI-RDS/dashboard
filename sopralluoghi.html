@@ -211,6 +211,7 @@
   .ck-b.on.na{background:var(--surface2);border-color:var(--muted);color:var(--muted2);}
   .ck-b.nota{margin-left:auto;}
   .ck-b.nota.on{background:#FFF7E6;border-color:var(--warn);color:#8A5A00;}
+  .ck-dim{display:block;margin-top:5px;max-width:100%;font-size:11.5px;padding:5px 8px;}
   .ck-note-box{grid-column:1/-1;margin-top:6px;padding-top:8px;border-top:1px dashed var(--border);}
   .ck-note-box textarea{width:100%;min-height:44px;font-size:11.5px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-family:inherit;margin-top:6px;}
   .ck-nc-box{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;}
@@ -1696,7 +1697,7 @@ function _ckPdfHtml(ck) {
   let any = false, blocks = '';
   CK_CATS.forEach(k => {
     const map = ck[k] || {};
-    const rows = CHECKLIST_DEF[k].items.filter(it => map[it.id] && (map[it.id].e || map[it.id].nota));
+    const rows = CHECKLIST_DEF[k].items.filter(it => map[it.id] && (map[it.id].e || map[it.id].nota || map[it.id].dim));
     if (!rows.length) return;
     any = true;
     const tr = rows.map((it, i) => {
@@ -1711,6 +1712,7 @@ function _ckPdfHtml(ck) {
              ${st.scad ? '<b>Scad.:</b> ' + _soprDateDisplay(st.scad) : ''}
            </div>`;
       }
+      if (st.dim) det += `<div style="font-size:8.5px;color:#363D48;margin-top:3px;line-height:1.45;"><b>Dimensione:</b> ${esc(st.dim)}</div>`;
       if (st.nota) det += `<div style="font-size:8.5px;color:#363D48;margin-top:3px;line-height:1.45;"><b>Nota:</b> ${esc(st.nota)}</div>`;
       return `<tr style="background:${i%2===0?'#F2F5F9':'#ffffff'}">
         <td style="padding:4px 8px;font-size:8.5px;font-family:'JetBrains Mono',monospace;font-weight:700;color:#1A7D99;border:1px solid #DFE4EB;white-space:nowrap;vertical-align:top;">${it.id}</td>
@@ -1752,7 +1754,8 @@ function _ckPreviewHtml(v) {
           <span class="ck-id">${x.id}</span>
           <span>${esc(x.t)}<br><small style="color:var(--muted)">${esc(x.area)}${x.rif?' · '+esc(x.rif):''}</small></span>
           <span class="ck-chip nc">NC</span>
-          ${(x.rilievo || x.azione || x.resp || x.scad || x.nota) ? `<div class="pv-ck-nc">
+          ${(x.rilievo || x.azione || x.resp || x.scad || x.nota || x.dim) ? `<div class="pv-ck-nc">
+            ${x.dim ? '<b>Dimensione:</b> '+esc(x.dim)+'<br>' : ''}
             ${x.rilievo ? '<b>Rilievo:</b> '+esc(x.rilievo)+'<br>' : ''}
             ${x.azione ? '<b>Azione:</b> '+esc(x.azione)+'<br>' : ''}
             ${x.resp ? '<b>Responsabile:</b> '+esc(x.resp)+' ' : ''}
@@ -1807,7 +1810,8 @@ const CHECKLIST_DEF = {
     {"id": "DIV-01", "area": "Diversificazione", "t": "Separazione fisica minima di 8 m tra percorsi dello stesso cluster", "rif": "Cap. 6.3"},
     {"id": "POZ-01", "area": "Pozzetti", "t": "Distanza media circa 475 m e passo massimo 500 m", "rif": "Cap. 6.2"},
     {"id": "POZ-02", "area": "Pozzetti", "t": "Pozzetti presenti agli incroci con curva ≥45°", "rif": "Cap. 6.2"},
-    {"id": "POZ-03", "area": "Pozzetti", "t": "Dimensioni e tipologia conformi alle specifiche", "rif": "Cap. 6.2"},
+    {"id": "POZ-03A", "area": "Pozzetti", "t": "Pozzetto Cliente: dimensione conforme come da contratto", "rif": "Cap. 6.2", "dim": ["1250x800x1330 mm (luce interna 1200x600x1230)", "2240x1240 mm (internal dimension 2000x1000x1500 mm)"]},
+    {"id": "POZ-03B", "area": "Pozzetti", "t": "Pozzetto Retelit: dimensione conforme come da contratto", "rif": "Cap. 6.2", "dim": ["1250x800x1330 mm (luce interna 1200x600x1230)", "900x700x1330 mm (luce interna 900x700x1230)"]},
     {"id": "POZ-04", "area": "Pozzetti", "t": "Pozzetti Tipo 1 fronte Data Center e nelle interconnessioni, ove previsti", "rif": "Cap. 6.2"},
     {"id": "POZ-05", "area": "Pozzetti", "t": "Foro di drenaggio vicino al centro", "rif": "Cap. 6.2"},
     {"id": "POZ-06", "area": "Pozzetti", "t": "Chiusino in ghisa, dimensionato e con logo Retelit", "rif": "Cap. 6.2"},
@@ -1890,7 +1894,7 @@ let _ckNoteOpen = new Set();   // "k:id" — pannello nota espanso (solo UI, si 
 let _ckGeneralNote = '';
 
 function _ckGet(k, id) {
-  if (!_ckState[k][id]) _ckState[k][id] = { e:'', rilievo:'', azione:'', resp:'', scad:'', nota:'' };
+  if (!_ckState[k][id]) _ckState[k][id] = { e:'', rilievo:'', azione:'', resp:'', scad:'', nota:'', dim:'' };
   return _ckState[k][id];
 }
 
@@ -1911,7 +1915,7 @@ function renderChecklist() {
     const noteOpen = _ckNoteOpen.has(k+':'+it.id) || !!st.nota;
     const cls = (st.e==='NC' ? ' is-nc' : (st.e==='NA' ? ' is-na' : ''));
     html += `<div class="ck-item${cls}" data-id="${it.id}">
-      <div class="ck-txt"><span class="ck-id">${it.id}</span>${esc(it.t)}${it.rif?`<span class="ck-rif">${esc(it.rif)}</span>`:''}${_ckPrevHtml(k, it.id)}</div>
+      <div class="ck-txt"><span class="ck-id">${it.id}</span>${esc(it.t)}${it.rif?`<span class="ck-rif">${esc(it.rif)}</span>`:''}${_ckPrevHtml(k, it.id)}${_ckDimSel(it, st, `setCkField('${k}','${it.id}','dim',this.value)`, 'ck-dim')}</div>
       <div class="ck-esiti">
         <button type="button" class="ck-b c${st.e==='C'?' on':''}" onclick="setCk('${k}','${it.id}','C')">Conforme</button>
         <button type="button" class="ck-b nc${st.e==='NC'?' on':''}" onclick="setCk('${k}','${it.id}','NC')">NC</button>
@@ -1944,6 +1948,11 @@ function setCk(k, id, val) {
   if (k === _ckTab) renderChecklist(); else _ckUpdateCounters();
 }
 
+function _ckDimSel(it, st, onch, cls) {
+  if (!it.dim || st.e === 'NA') return '';
+  return `<select class="${cls}" onchange="${onch}"><option value="">— scegli dimensione —</option>${it.dim.map(d => `<option value="${escA(d)}"${st.dim === d ? ' selected' : ''}>${esc(d)}</option>`).join('')}</select>`;
+}
+
 function setCkField(k, id, field, val) { _ckGet(k, id)[field] = val; }
 
 function toggleCkNote(k, id) {
@@ -1962,7 +1971,7 @@ function ckBulk(val) {
     const st = _ckGet(k, it.id);
     st.e = val;
     if (val !== 'NC') { st.rilievo=''; st.azione=''; st.resp=''; st.scad=''; }
-    if (val === '') { st.nota=''; _ckNoteOpen.delete(k+':'+it.id); }
+    if (val === '') { st.nota=''; st.dim=''; _ckNoteOpen.delete(k+':'+it.id); }
   });
   renderChecklist();
 }
@@ -1992,8 +2001,8 @@ function ckPayload() {
     out[k] = {};
     CHECKLIST_DEF[k].items.forEach(it => {
       const st = _ckState[k][it.id];
-      if (!st || (!st.e && !st.nota)) return;
-      out[k][it.id] = { e:st.e||'', rilievo:st.rilievo||'', azione:st.azione||'', resp:st.resp||'', scad:st.scad||'', nota:st.nota||'' };
+      if (!st || (!st.e && !st.nota && !st.dim)) return;
+      out[k][it.id] = { e:st.e||'', rilievo:st.rilievo||'', azione:st.azione||'', resp:st.resp||'', scad:st.scad||'', nota:st.nota||'', dim:st.dim||'' };
     });
   });
   return out;
@@ -2406,7 +2415,7 @@ function openEditModal(id) {
     _edCk[k] = {};
     CHECKLIST_DEF[k].items.forEach(it => {
       const s = _edFind(v, it.id);
-      if (s) _edCk[k][it.id] = { e: s.e || '', rilievo: s.rilievo || '', azione: s.azione || '', resp: s.resp || '', scad: _soprDateISO(s.scad) || '', nota: s.nota || '' };
+      if (s) _edCk[k][it.id] = { e: s.e || '', rilievo: s.rilievo || '', azione: s.azione || '', resp: s.resp || '', scad: _soprDateISO(s.scad) || '', nota: s.nota || '', dim: s.dim || '' };
     });
   });
   _edRender();
@@ -2416,7 +2425,7 @@ function closeEditModal() { document.getElementById('editModal').classList.remov
 function edSegnToggle() { document.getElementById('ed_segn_wrap').style.display = document.getElementById('ed_segn').checked ? '' : 'none'; }
 function edTab(k) { _edTab = k; _edRender(); }
 function edSet(k, id, f, val, rerender) {
-  if (!_edCk[k][id]) _edCk[k][id] = { e:'', rilievo:'', azione:'', resp:'', scad:'', nota:'' };
+  if (!_edCk[k][id]) _edCk[k][id] = { e:'', rilievo:'', azione:'', resp:'', scad:'', nota:'', dim:'' };
   const st = _edCk[k][id]; st[f] = val;
   if (f === 'e' && val !== 'NC') { st.rilievo = ''; st.azione = ''; st.resp = ''; st.scad = ''; }
   if (rerender) _edRender();
@@ -2433,11 +2442,12 @@ function _edRender() {
   const k = _edTab; let html = '', last = null;
   _edItems(k).forEach(it => {
     if (it.area !== last) { html += `<div class="ed-area">${esc(it.area)}</div>`; last = it.area; }
-    const st = _edCk[k][it.id] || { e:'', rilievo:'', azione:'', resp:'', scad:'', nota:'' };
+    const st = _edCk[k][it.id] || { e:'', rilievo:'', azione:'', resp:'', scad:'', nota:'', dim:'' };
     const opt = (v, l) => `<option value="${v}"${st.e === v ? ' selected' : ''}>${l}</option>`;
     html += `<div class="ed-item${st.e === 'NC' ? ' nc' : ''}">
       <div class="ed-top"><span class="ck-id">${it.id}</span><span class="t">${esc(it.t)}</span>
         <select onchange="edSet('${k}','${it.id}','e',this.value,true)">${opt('', '—')}${opt('C', 'Conforme')}${opt('NC', 'NC')}${opt('NA', 'N.A.')}</select></div>
+      ${_ckDimSel(it, st, `edSet('${k}','${it.id}','dim',this.value)`, '')}
       <input type="text" placeholder="Nota" value="${escA(st.nota)}" oninput="edSet('${k}','${it.id}','nota',this.value)">
       ${st.e === 'NC' ? `<div class="ed-nc">
         <input type="text" placeholder="Rilievo / non conformità" value="${escA(st.rilievo)}" oninput="edSet('${k}','${it.id}','rilievo',this.value)">
@@ -2466,7 +2476,7 @@ async function saveEditModal() {
     ck[k] = {};
     for (const [id, st] of Object.entries(_edCk[k])) {
       if (st.e === 'NC' && (!st.azione.trim() || !st.scad)) { _edTab = k; _edRender(); showToast('✗ Non conformità ' + id + ': azione correttiva e scadenza obbligatorie'); return; }
-      if (st.e || st.nota) ck[k][id] = st;
+      if (st.e || st.nota || st.dim) ck[k][id] = st;
     }
   }
   body.checklist = ck;
