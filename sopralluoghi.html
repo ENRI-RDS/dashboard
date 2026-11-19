@@ -462,6 +462,9 @@
   .w-top{display:grid;grid-template-columns:minmax(0,150px) 1fr 24px;gap:8px;align-items:center;font-size:11.5px;padding:4px 0;cursor:pointer;} .w-top:hover span:first-child{text-decoration:underline;}
   .w-top span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} .w-top .tb{height:9px;border-radius:5px;background:#F0A8A0;} .w-top b{text-align:right;color:var(--text2);}
   .w-empty{color:var(--muted);font-size:12px;padding:20px 0;text-align:center;}
+  .deeplink-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 16px;border-radius:12px;background:#EAF2F8;border:1px solid #BFD6E8;font-size:12.5px;font-weight:600;color:var(--accent);}
+  .deeplink-bar .dl-open{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;}
+  .deeplink-bar .dl-x{background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;margin-left:auto;}
 </style>
 </head>
 <body>
@@ -501,6 +504,12 @@
       Nuovo verbale
     </button>
     </div>
+  </div>
+
+  <div class="deeplink-bar" id="deepLinkBar" style="display:none">
+    <span id="deepLinkTxt"></span>
+    <button type="button" class="dl-open" onclick="document.getElementById('deepLinkBar').style.display='none';toggleNuovoVerbale(true)">Apri nuovo verbale</button>
+    <button type="button" class="dl-x" onclick="document.getElementById('deepLinkBar').style.display='none'">Ignora</button>
   </div>
 
   <div class="kpi-strip">
@@ -836,6 +845,7 @@
 <div id="toast">✓ Verbale scaricato</div>
 
 <script>
+const _DL = new URLSearchParams(location.search);   // deep-link (es. da mappa.html): letto una volta, poi l'URL viene ripulito
 window.addEventListener('pageshow', (e) => {
   if (e.persisted) location.reload();
 });
@@ -859,24 +869,28 @@ window.addEventListener('DOMContentLoaded', () => {
 
   renderChecklist();
 
-  // Deep link: apre direttamente il form nuovo verbale
-  const _qp = new URLSearchParams(location.search);
-  if (_qp.get('nuovo') === '1' || _qp.get('lotto') || _qp.get('cantiere')) toggleNuovoVerbale(true);
+  // Deep link (es. bottone "Sopralluogo" della mappa): il form NON si apre da solo. Lotto/cantiere vengono
+  // precompilati (vedi _loadLottiCantieriImpl) e una barra propone di aprire il nuovo verbale.
+  if (_DL.get('nuovo') === '1' || _DL.get('lotto') || _DL.get('cantiere')) {
+    const bits = [_DL.get('lotto') ? 'Lotto ' + _DL.get('lotto') : '', _DL.get('indirizzo') || ''].filter(Boolean).join(' · ');
+    document.getElementById('deepLinkTxt').textContent = 'Nuovo sopralluogo richiesto' + (bits ? ' — ' + bits : '') + '.';
+    document.getElementById('deepLinkBar').style.display = '';
+    history.replaceState(null, '', location.pathname);   // un reload/ritorno alla pagina non lo ripropone
+  }
 
   document.getElementById('topbarUser').textContent = u;
   document.getElementById('redattore').value = u;
   document.getElementById('data').value = new Date().toISOString().split('T')[0];
 
   // Deep-link da mappa.html (bottone "Sopralluogo" nel popup tratta)
-  const dlParams = new URLSearchParams(location.search);
-  const dlIndirizzo = dlParams.get('indirizzo');
+  const dlIndirizzo = _DL.get('indirizzo');
   if (dlIndirizzo) document.getElementById('indirizzo').value = dlIndirizzo;
 });
 
 function v(id){ return document.getElementById(id).value.trim()||'—'; }
 function fmtDate(id){ const val=document.getElementById(id).value; return val?new Date(val).toLocaleDateString('it-IT'):'—'; }
 function gravita(){ return document.querySelector('input[name="gravita"]:checked')?.value||'—'; }
-function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2800); }
 
 /* ── FOTO (max 8) ── */
@@ -990,7 +1004,7 @@ async function _loadLottiCantieriImpl() {
     _lottiData    = data.lotti || {};
     _lottoImpresa = data.lotto_impresa || {};
     const sel = document.getElementById('lotto');
-    const params = new URLSearchParams(location.search);
+    const params = _DL;
     const preLotto = params.get('lotto');
     const current = (preLotto && !_deepLinkApplied) ? preLotto : sel.value;
     sel.innerHTML = '<option value="">— seleziona —</option>' +
@@ -1860,7 +1874,7 @@ function _renderPreview(v) {
 }
 
 let _pvTab = 'dett';
-function _setPvTab(t) { _pvTab = t; const v = _verbaliAll.find(x => x._id === _selectedVerbaleId); if (v) _renderPreview(v); }
+function _setPvTab(t) { _pvTab = t; if (_selectedVerbaleId) _selectVerbale(_selectedVerbaleId); }   // passa da _selectVerbale: errori mostrati nel pannello
 function _closePreview() {
   _selectedVerbaleId = null;
   document.querySelectorAll('.verbale-row.is-selected').forEach(r => r.classList.remove('is-selected'));
@@ -2228,7 +2242,7 @@ function _ckNcList(v) {
   CK_CATS.forEach(k => {
     CHECKLIST_DEF[k].items.forEach(it => {
       const st = (ck[k]||{})[it.id];
-      if (st && st.e === 'NC') out.push({ k, ...it, ...st });
+      if (st && st.e === 'NC') { const { dim: _opts, ...base } = it; out.push({ k, ...base, ...st, dim: st.dim || '' }); }
     });
   });
   return out;
@@ -2240,7 +2254,8 @@ function _ckAllItems(v) {
   CK_CATS.forEach(k => {
     CHECKLIST_DEF[k].items.forEach(it => {
       const st = (ck[k] || {})[it.id];
-      if (st && (st.e || st.nota || st.dim)) out.push({ k, ...it, ...st });
+      // it.dim nella definizione è l'elenco delle misure ammesse (array): non deve finire nel valore scelto st.dim
+      if (st && (st.e || st.nota || st.dim)) { const { dim: _opts, ...base } = it; out.push({ k, ...base, ...st, dim: st.dim || '' }); }
     });
   });
   return out.sort((a, b) => (b.e === 'NC') - (a.e === 'NC'));
