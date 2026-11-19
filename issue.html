@@ -578,8 +578,11 @@ function renderReport() {
   const has = rows.length > 0;
   document.querySelector('#repBody .rep-grid').style.display = has ? '' : 'none';
   $('repEmpty').style.display = has ? 'none' : '';
-  const nSys = new Set(rows.map(repSys)).size, nOpen = rows.filter(isOpen).length, nLate = rows.filter(isLate).length;
-  $('repKpis').innerHTML = [['Issue', rows.length, ''], ['Aperte', nOpen, ''], ['In ritardo', nLate, nLate ? 'warn' : ''], ['Imprese coinvolte', nSys, '']]
+  const cs = {}; rows.forEach(it => { const k = repSys(it); if (k !== 'N/D') cs[k] = (cs[k] || 0) + 1; });
+  const tp = Object.entries(cs).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'it'))[0];
+  const topSys = tp ? '<span style="font-family:var(--font-body);font-size:15px;margin-right:8px">' + esc(tp[0]) + '</span>' + tp[1] : '—';
+  const nOpen = rows.filter(isOpen).length, nLate = rows.filter(isLate).length;
+  $('repKpis').innerHTML = [['Issue', rows.length, ''], ['Aperte', nOpen, ''], ['In ritardo', nLate, nLate ? 'warn' : ''], ['Impresa con più issue', topSys, '']]
     .map(([l, v, c]) => '<div class="rep-kpi ' + c + '"><div class="l">' + l + '</div><div class="v">' + v + '</div></div>').join('');
   if (!has) return;
 
