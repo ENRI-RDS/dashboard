@@ -451,6 +451,17 @@
   .widgets-row .w-aging{gap:14px;} .widgets-row .w-donut{width:84px;height:84px;} .widgets-row .w-donut::after{inset:12px;}
   .widgets-row .w-donut-c b{font-size:15px;} .widgets-row .w-donut-row{gap:16px;} .widgets-row .w-leg{gap:3px;font-size:11.5px;}
   .widgets-row .w-total b{font-size:18px;} .widgets-row .w-col b{font-size:15px;}
+  /* Riga unica compatta: KPI + 2 grafici */
+  .top-row{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:12px;align-items:stretch;}
+  .top-row .kpi-strip{grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;}
+  .top-row .kpi-card{flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:2px;padding:8px 6px;border-radius:12px;}
+  .top-row .kpi-ico{display:none;}
+  .top-row .kpi-txt{display:flex;flex-direction:column;align-items:center;}
+  .top-row .kpi-value{font-size:20px;} .top-row .kpi-label{font-size:10px;line-height:1.2;} .top-row .kpi-sub{font-size:9px;margin-top:1px;}
+  .top-row .widgets-row{gap:8px;} .top-row .w-card{display:flex;flex-direction:column;justify-content:center;}
+  .top-row .w-donut{width:64px;height:64px;} .top-row .w-donut::after{inset:10px;} .top-row .w-donut-c b{font-size:13px;} .top-row .w-donut-c small{display:none;}
+  .top-row .w-aging{gap:10px;} .top-row .w-total b{font-size:16px;} .top-row .w-col b{font-size:13px;} .top-row .w-donut-row{gap:12px;}
+  @media(max-width:1500px){.top-row{grid-template-columns:1fr;}}
   @media(max-width:1000px){.widgets-row{grid-template-columns:1fr;}}
   .w-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;box-shadow:var(--sh-sm);min-height:180px;}
   .w-title{font-weight:800;font-size:13px;color:var(--accent);margin-bottom:12px;}
@@ -516,6 +527,7 @@
     <button type="button" class="dl-x" onclick="document.getElementById('deepLinkBar').style.display='none'">Ignora</button>
   </div>
 
+  <div class="top-row">
   <div class="kpi-strip">
     <div class="kpi-card is-click" onclick="openKpiModal('anomalie','Verbali con anomalie (totali)')">
       <div class="kpi-ico red"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
@@ -546,10 +558,10 @@
       <div class="kpi-txt"><div class="kpi-value " id="kpi-totale">0</div><div class="kpi-label">Verbali totali</div></div>
     </div>
   </div>
+  <div class="widgets-row" id="widgetsRow"></div>
+  </div>
 
   <div class="attivita-bar" id="attivitaBar"></div>
-
-  <div class="widgets-row" id="widgetsRow"></div>
 
   <div class="layout-grid solo-archivio" id="layoutGrid">
 
@@ -1601,7 +1613,7 @@ function _renderWidgets() {
   const b = [0, 0, 0];
   open.forEach(v => { const g = _giorniDa(v); if (g === null) return; b[g <= 7 ? 0 : (g <= 14 ? 1 : 2)]++; });
   const mx = Math.max(1, ...b);
-  const col = (n, l, c, k) => `<div class="w-col ${c}" ${k ? `style="cursor:pointer" onclick="setChip('${k}')"` : ''}><div class="w-bar" style="height:${Math.max(4, Math.round(n * 44 / mx))}px"></div><b>${n}</b><small>${l}</small></div>`;
+  const col = (n, l, c, k) => `<div class="w-col ${c}" ${k ? `style="cursor:pointer" onclick="setChip('${k}')"` : ''}><div class="w-bar" style="height:${Math.max(3, Math.round(n * 30 / mx))}px"></div><b>${n}</b><small>${l}</small></div>`;
   const w1 = `<div class="w-card"><div class="w-title">Anomalie aperte per anzianità</div>
     <div class="w-aging"><div class="w-total"><b>${open.length}</b><small>Totale</small></div>${col(b[0], '0-7 giorni', 'ok')}${col(b[1], '8-14 giorni', 'amber')}${col(b[2], '>14 giorni', 'red', 'anomalie14')}</div></div>`;
   // 2) Stato checklist (ultimi 30 giorni)
