@@ -1345,6 +1345,32 @@ function _filterCantieriByStato(stato) {
   openModalStato(stato);
 }
 
+// ── Data CIL: modificabile solo da DL/admin (il server ricontrolla il ruolo) ──
+const _CIL_CAN_EDIT = ['dl', 'admin', 'admin2'].includes((localStorage.getItem('_enri_role') || '').toLowerCase());
+function _cilCellHtml(r, editable) {
+  const txt = fmtD(r.data_cil) || '—';
+  if (!editable || !_CIL_CAN_EDIT) return `<td style="white-space:nowrap;color:var(--muted)">${txt}</td>`;
+  const k = String(r.cantiere_key || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  return `<td style="white-space:nowrap"><input type="date" value="${r.data_cil || ''}" data-key="${k}" data-prev="${r.data_cil || ''}" onchange="saveCil(this)" title="Data CIL — la modifica è riservata alla DL" style="font:inherit;font-size:12px;padding:2px 4px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text2)"></td>`;
+}
+async function saveCil(inp) {
+  const key = inp.dataset.key, val = inp.value || '', prev = inp.dataset.prev || '';
+  const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+  inp.disabled = true;
+  try {
+    const res = await fetch(apiBase + '/api/cantieri/' + encodeURIComponent(key) + '/cil', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-session-token': localStorage.getItem('_enri_session') || '' },
+      body: JSON.stringify({ data_cil: val }),
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || ('HTTP ' + res.status)); }
+    const r = CANTIERI_RAW.find(x => x.cantiere_key === key); if (r) r.data_cil = val;
+    inp.dataset.prev = val; inp.style.borderColor = 'var(--ok, #1E9E6A)'; setTimeout(() => { inp.style.borderColor = ''; }, 1200);
+  } catch (e) {
+    inp.value = prev; inp.style.borderColor = 'var(--err, #C0392B)';
+    alert('Data CIL non salvata: ' + e.message);
+  } finally { inp.disabled = false; }
+}
+
 // Tabella cantieri riutilizzabile (stesse colonne di "Tutti i Cantieri"), usata da openModalStato e openModalCluster
 function _cantieriTableHtml(rows) {
   if (!rows.length) return `<div style="text-align:center;color:var(--muted);padding:24px">Nessun cantiere.</div>`;
@@ -1354,7 +1380,7 @@ function _cantieriTableHtml(rows) {
         <thead>
           <tr>
             <th>Cod. Cantiere</th><th>Pratica</th><th>Ente</th><th>Lotto</th><th>Cluster</th>
-            <th>Prov.</th><th>Comune</th><th>Impresa</th><th>Stato</th><th>Date</th><th>Avanzamento</th>
+            <th>Prov.</th><th>Comune</th><th>Impresa</th><th>Stato</th><th>Data CIL</th><th>Date</th><th>Avanzamento</th>
             <th style="text-align:right">M. Scavati</th>
             <th style="text-align:center">Registro</th>
           </tr>
@@ -1379,6 +1405,7 @@ function _cantieriTableHtml(rows) {
               <td style="color:var(--muted)">${r.comune || '—'}</td>
               <td style="color:var(--muted);white-space:nowrap">${r.impresa || '—'}</td>
               <td style="white-space:nowrap"><span class="chip ${statoUI}">${STATO_LABEL[statoUI]}</span></td>
+              ${_cilCellHtml(r, false)}
               <td>${_scavoDateCell(r)}</td>
               <td style="max-width:150px">${prog}</td>
               <td style="text-align:right;white-space:nowrap"><span style="font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(scavati)}</span><span style="color:var(--muted)"> / ${fmt(metriTot)}</span></td>
@@ -1588,6 +1615,7 @@ const CANTIERI_COLS = [
   { key:'comune',          label:'Comune',        get:r => r.comune || '—' },
   { key:'impresa',         label:'Impresa',       get:r => r.impresa || '—', tight:true },
   { key:'stato',           label:'Stato',         get:r => STATO_LABEL[STATO_MAP[r.stato_cantiere] || 'non-avviato'], tight:true },
+  { key:'data_cil',        label:'Data CIL',      get:r => fmtD(r.data_cil) || '—', sortVal:r => r.data_cil || '', tight:true },
   { key:'dateInfo',        label:'Date',          get:r => _scavoDatePlain(r), sortVal:r => _scavoDatePlain(r), noFilter:true, tight:true },
   { key:'pct',             label:'Avanz.',        get:r => (r.metri_totali||0) > 0 ? Math.round((r.metri_scavati||0)/r.metri_totali*100) + '%' : '—', numeric:true,
                            sortVal:r => (r.metri_totali||0) > 0 ? Math.round((r.metri_scavati||0)/r.metri_totali*100) : -1 },
@@ -1611,6 +1639,7 @@ function _renderCantieriTableHead() {
     const tightStyle = c.key === 'ente' ? 'width:240px;max-width:240px;'
       : c.key === 'metri' ? 'width:1%;max-width:120px;'
       : c.key === 'dateInfo' ? 'width:1%;max-width:120px;'
+      : c.key === 'data_cil' ? 'width:1%;max-width:120px;'
       : c.key === 'registro' ? 'width:1%;max-width:95px;'
       : c.tight ? 'width:1%;max-width:70px;' : '';
     if (c.action) {
@@ -1787,12 +1816,13 @@ function _renderCantieriTable() {
       <td style="color:var(--muted)">${r.comune || '—'}</td>
       <td style="color:var(--muted);white-space:nowrap">${r.impresa || '—'}</td>
       <td style="white-space:nowrap"><span class="chip ${statoUI}">${STATO_LABEL[statoUI]}</span></td>
+      ${_cilCellHtml(r, true)}
       <td>${_scavoDateCell(r)}</td>
       <td style="max-width:150px">${prog}</td>
       <td style="text-align:right;white-space:nowrap"><span style="font-family:var(--font-display);font-weight:700;font-size:12px">${fmt(scavati)}</span><span style="color:var(--muted)"> / ${fmt(metriTot)}</span></td>
       <td style="text-align:center"><span style="display:inline-flex;align-items:center;justify-content:center;gap:6px">${_registroDotHtml(r)}<button class="btn-registro" onclick="openModalRegistro('${(r.cantiere_key||'').replace(/'/g,"\\'")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Registro</button></span></td>
     </tr>`;
-  }).join('') || `<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:20px">Nessun cantiere trovato.</td></tr>`;
+  }).join('') || `<tr><td colspan="14" style="text-align:center;color:var(--muted);padding:20px">Nessun cantiere trovato.</td></tr>`;
 }
 
 // ── Esporta "Tutti i Cantieri" in Excel (ExcelJS, caricato lazy) ────────────
@@ -1834,6 +1864,7 @@ async function exportCantieriExcel(mode) {
       { h:'Comune',             w:20, v:r => r.comune || '' },
       { h:'Impresa',            w:16, v:r => r.impresa || '' },
       { h:'Stato',              w:14, v:r => STATO_LABEL[STATO_MAP[r.stato_cantiere] || 'non-avviato'] },
+      { h:'Data CIL',           w:12, v:r => toDate(r.data_cil),             f:'dd/mm/yyyy' },
       { h:'Tecnica scavo',      w:13, v:r => TECNICA_LABEL[r.tecnica_scavo] || '' },
       { h:'Inizio previsto',    w:14, v:r => toDate(r.data_inizio_prevista),   f:'dd/mm/yyyy' },
       { h:'Fine prevista',      w:14, v:r => toDate(r.data_fine_prevista),     f:'dd/mm/yyyy' },
