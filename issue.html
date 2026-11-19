@@ -44,16 +44,18 @@
   .btn:hover { opacity:.8; } .btn:disabled { opacity:.5; cursor:default; }
   .btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
   .btn.ghost { background:var(--surface); }
+  .btn.green { background:var(--green); color:#fff; border-color:var(--green); }
   .btn.danger { background:var(--redL); color:var(--red); border-color:#F3C6C1; }
 
   .main { padding:18px 30px 40px; max-width:1760px; margin:0 auto; display:flex; flex-direction:column; gap:16px; }
   .head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; }
   .head h1 { font-size:20px; font-weight:700; color:var(--accent); letter-spacing:-.01em; }
   .head p { font-size:12px; color:var(--muted); margin-top:2px; }
-  .head-actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .head-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; margin-left:auto; }
 
-  .dash { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)) minmax(250px,1.3fr) minmax(250px,1.3fr); gap:12px; }
-  .kpi { display:flex; gap:12px; align-items:flex-start; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 16px; cursor:pointer;
+  .dash { display:grid; grid-template-columns:minmax(0,1.7fr) minmax(250px,1fr) minmax(250px,1fr); gap:12px; align-items:stretch; }
+  .kpis { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+  .kpi { display:flex; gap:12px; align-items:flex-start; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px 16px; cursor:pointer; align-items:center;
     box-shadow:var(--sh-xs); transition:border-color .15s, box-shadow .15s; text-align:left; font-family:inherit; min-width:0; }
   .kpi:hover { border-color:var(--retelit-blue-50); box-shadow:var(--sh-sm); }
   .kpi.on { border-color:var(--accent); box-shadow:0 0 0 2px rgba(4,63,117,.15); }
@@ -218,9 +220,9 @@
   .pg { min-width:28px; height:28px; padding:0 6px; border:1px solid var(--border2); background:var(--surface); border-radius:6px; font-family:inherit; font-size:12px; cursor:pointer; color:var(--text); }
   .pg:hover:not(:disabled) { background:var(--gray-100); } .pg.on { background:var(--accent); border-color:var(--accent); color:#fff; } .pg:disabled { opacity:.4; cursor:default; }
   .pgs .dots { border:none; background:none; cursor:default; display:inline-grid; place-items:center; }
-  @media (max-width:1250px) { .dash { grid-template-columns:repeat(4,minmax(0,1fr)); } .dash .panel { grid-column:span 2; } }
+  @media (max-width:1250px) { .dash { grid-template-columns:repeat(2,minmax(0,1fr)); } .dash .kpis { grid-column:1/-1; grid-template-columns:repeat(4,minmax(0,1fr)); } }
   @media (max-width:900px) {
-    .dash { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .dash { grid-template-columns:1fr; } .dash .kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
     .main { padding:14px 12px 40px; } .kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .grid { grid-template-columns:1fr; }
     .page-title, .divider-v { display:none; }
   }
@@ -245,17 +247,16 @@
   <div class="head">
     <div>
       <h1>Registro Issue</h1>
-      <p>Monitora anomalie e segnalazioni emerse durante i sopralluoghi. Filtra, analizza e segui lo stato di avanzamento. Stato, Priority, System e SubSystem si modificano direttamente in tabella.</p>
     </div>
     <div class="head-actions" style="align-items:center">
       <button class="upd" onclick="load()" title="Ricarica i dati"><svg class="ic" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg><span>Ultimo aggiornamento<br><b id="updTs">—</b></span></button>
       <button class="btn ghost" onclick="openReport()" title="Grafici: numero di issue per impresa (System)">Report per impresa</button>
       <button class="btn ghost" onclick="openLegend()" title="Criteri di assegnazione della priority">Legenda priority</button>
-      <button class="btn ghost" id="btnExport" onclick="exportXlsx()" title="Esporta tutte le issue (rispetta ricerca e filtri a tendina)">
-        <svg class="ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>Esporta Excel</button>
       <button class="btn ghost" onclick="openMenu(event,'tools')" title="Operazioni di riallineamento automatico">Strumenti <svg class="ic" viewBox="0 0 24 24" style="width:12px;height:12px"><path d="m6 9 6 6 6-6"/></svg></button>
       <button class="btn primary" onclick="openModal()">
         <svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Nuova issue</button>
+      <button class="btn green" id="btnExport" onclick="exportXlsx()" title="Esporta tutte le issue (rispetta ricerca e filtri a tendina)">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>Esporta Excel</button>
     </div>
   </div>
 
@@ -676,13 +677,13 @@ function renderKpi() {
   // Barre: issue per System (top 4 + Altro); clic = filtro System
   const bySys = {}; items.forEach(i => { const k = (i.system || '').trim() || 'N/D'; bySys[k] = (bySys[k] || 0) + 1; });
   const ent = Object.entries(bySys).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'it'));
-  const top = ent.slice(0, 4), rest = ent.slice(4).reduce((s, e) => s + e[1], 0); if (rest) top.push(['Altro', rest]);
+  const top = ent;   // tutti i System, nessun raggruppamento
   const mx = Math.max(1, ...top.map(e => e[1])), curS = $('fSys').value;
-  const bh = '<div class="panel"><h4>Issue per System</h4><div class="hbars">' + top.map(([k, n]) => {
-    const on = k !== 'Altro' && k !== 'N/D';
+  const bh = '<div class="panel"><h4>Issue per System <span style="font-weight:500;color:var(--muted)">(' + top.length + ')</span></h4><div class="hbars">' + top.map(([k, n]) => {
+    const on = k !== 'N/D';
     return '<button class="hb' + (on ? '' : ' off') + (curS === k ? ' on' : '') + '"' + (on ? ' data-s="' + esc(k) + '" onclick="pickSys(this.dataset.s)" title="Clic per filtrare"' : '') + '><span class="hl">' + esc(k) + '</span><span class="ht"><i style="width:' + Math.round(n / mx * 100) + '%"></i></span><b>' + n + '</b></button>';
   }).join('') + '</div></div>';
-  $('dash').innerHTML = kh + dh + bh;
+  $('dash').innerHTML = '<div class="kpis">' + kh + '</div>' + dh + bh;
 
   // Preset operativi (stesso filtro `kpi` delle card)
   const CH = [['open', 'Solo aperte', nOpen, ''], ['late', 'In ritardo', nLate, 'red'], ['hot', 'Alta / Critica', nHot, 'red'],
