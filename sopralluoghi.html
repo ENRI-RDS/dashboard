@@ -1311,7 +1311,7 @@ async function generatePdfForRecord(id){
     ruolo: v.referente_retelit || '—',
     redattore: v.referente_impresa || '—',
     n_foto: String(urls.length),
-    gravita: v.esito || '—',
+    gravita: _anomaliaStato(v) || '—',
     segnalazione_cliente: _isSegnCliente(v) ? 'SI' : 'NO',
     segnalazione_cliente_note: _isSegnCliente(v) ? (v.segnalazione_cliente_note || '') : '',
     esito_segnalazione: _isSegnCliente(v) ? (v.esito_segnalazione || '') : '',
@@ -1479,8 +1479,8 @@ async function loadVerbali() {
 function _populateKpis() {
   const oggi = new Date().toISOString().slice(0,10);
   const nOggi     = _verbaliAll.filter(v => _soprDateISO(v.data_sopralluogo) === oggi).length;
-  const nAnomalie = _verbaliAll.filter(v => v.esito === 'Anomalia media' || v.esito === 'Anomalia critica').length;
-  const nNessuna  = _verbaliAll.filter(v => v.esito === 'Nessuna anomalia').length;
+  const nAnomalie = _verbaliAll.filter(_isAnomalia).length;
+  const nNessuna  = _verbaliAll.filter(v => _anomaliaStato(v) === 'Nessuna anomalia').length;
   const ultimo    = _verbaliAll.slice().sort((a,b) => (b.created_at||'').localeCompare(a.created_at||''))[0];
 
   document.getElementById('kpi-oggi').textContent     = nOggi;
@@ -1538,7 +1538,7 @@ function applyVerbaliFilters() {
     if (impresa && v.impresa !== impresa) return false;
     if (lotto && v.lotto !== lotto) return false;
     if (comune && v.comune !== comune) return false;
-    if (stato && v.esito !== stato) return false;
+    if (stato && _anomaliaStato(v) !== stato) return false;
     if (mese && _soprDateISO(v.data_sopralluogo).slice(0,7) !== mese) return false;
     if (segnCli === 'si' && !_isSegnCliente(v)) return false;
     if (segnCli === 'no' && _isSegnCliente(v)) return false;
@@ -1582,7 +1582,7 @@ function _statoChip(esito) {
   if (esito === 'Anomalia critica') return '<span class="stato-chip err">Anomalia critica</span>';
   if (esito === 'Anomalia media') return '<span class="stato-chip warn">Anomalia media</span>';
   if (esito === 'Nessuna anomalia') return '<span class="stato-chip ok">Nessuna anomalia</span>';
-  return '<span class="stato-chip neutral">—</span>';
+  return '';
 }
 
 function _sysMancano(v) { return !(v.subsystem && v.data_invio_system && v.metodo_invio && v.rif_system_invio); }
@@ -1652,7 +1652,7 @@ function _renderPreview(v) {
     ['Lotto', v.lotto], ['N° Cantiere', v.tratta_id],
     ['Comune / Località', [v.comune, v.localita].filter(Boolean).join(' — ')],
     ['Ruolo redattore', v.referente_retelit], ['Redatto da', v.referente_impresa],
-    ['Impresa esecutrice', v.impresa], ['Gravità / Esito', v.esito],
+    ['Impresa esecutrice', v.impresa], ['Gravità / Esito', _anomaliaStato(v) || '—'],
     ['Segnalazione cliente', _isSegnCliente(v) ? 'SÌ' : ''],
     ['Note segnalazione cliente', _isSegnCliente(v) ? (v.segnalazione_cliente_note || '') : ''],
     ['Esito verifica segnalazione', _isSegnCliente(v) ? (({confermata:'Confermata',non_confermata:'Non confermata'})[v.esito_segnalazione] || '') : ''],
@@ -2046,6 +2046,24 @@ function _ckNcList(v) {
   return out;
 }
 
+// Classificazione unica dell'anomalia, usata da KPI, filtro "stato" e modale KPI.
+// Verbali storici: vale l'esito salvato. Verbali nuovi (esito vuoto): derivata dalla checklist
+// (NC>0 → media, critica se segnalazione cliente non esclusa o NC su SIC-21/SIC-22, come la priority issue lato backend;
+// 0 NC con almeno un punto compilato → nessuna anomalia; checklist vuota → '' = non valutato, non conteggiato).
+const _ESITI_LEGACY = ['Anomalia critica', 'Anomalia media', 'Nessuna anomalia'];
+function _anomaliaStato(v) {
+  if (v && _ESITI_LEGACY.includes(v.esito)) return v.esito;
+  const st = _ckStatsOf(v);
+  if (st.nc > 0) {
+    const ck = _ckOf(v);
+    const critNc = CK_CATS.some(k => ['SIC-21', 'SIC-22'].some(id => ((ck[k] || {})[id] || {}).e === 'NC'));
+    const segnAttiva = _isSegnCliente(v) && String(v.esito_segnalazione || '').toLowerCase() !== 'non_confermata';
+    return (critNc || segnAttiva) ? 'Anomalia critica' : 'Anomalia media';
+  }
+  return st.compilati > 0 ? 'Nessuna anomalia' : '';
+}
+const _isAnomalia = v => { const a = _anomaliaStato(v); return a === 'Anomalia media' || a === 'Anomalia critica'; };
+
 // ══ COLONNE AREE CHECKLIST ═══════════════════════════════════════════════════
 const CK_AREA_CODE = {
   'Verifiche preliminari':'PRE','Infrastruttura':'INF','Diversificazione':'DIV','Pozzetti':'POZ',
@@ -2305,8 +2323,8 @@ function _kpiFilter(key) {
   const oggi = new Date().toISOString().slice(0,10);
   switch (key) {
     case 'oggi':        return _verbaliAll.filter(v => _soprDateISO(v.data_sopralluogo) === oggi);
-    case 'anomalie':    return _verbaliAll.filter(v => v.esito === 'Anomalia media' || v.esito === 'Anomalia critica');
-    case 'nessuna':     return _verbaliAll.filter(v => v.esito === 'Nessuna anomalia');
+    case 'anomalie':    return _verbaliAll.filter(_isAnomalia);
+    case 'nessuna':     return _verbaliAll.filter(v => _anomaliaStato(v) === 'Nessuna anomalia');
     case 'segncliente': return _verbaliAll.filter(_isSegnCliente);
     case 'nc':          return _verbaliAll.filter(v => _ckStatsOf(v).nc > 0);
     case 'verifiche':   return _verbaliAll.filter(v => { const s = _verifState(v); return s && (s.stato === 'aperta' || s.stato === 'scaduta'); });
