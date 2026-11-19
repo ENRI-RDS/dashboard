@@ -5238,6 +5238,8 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
         "referente_retelit":   str((payload or {}).get("referente_retelit", "")).strip(),
         "comune":              str((payload or {}).get("comune", "")).strip(),
         "localita":            str((payload or {}).get("localita", "")).strip(),
+        "pozzetto":            str((payload or {}).get("pozzetto", "")).strip()[:80],   # codice pozzetto (deep-link da mappa.html)
+        "categoria":           "pozzetto" if str((payload or {}).get("categoria", "")).strip().lower() == "pozzetto" else "",   # verbale tipologia pozzetto
         "tipo_intervento":     str((payload or {}).get("tipo_intervento", "")).strip(),
         "esito":               str((payload or {}).get("esito", "")).strip(),
         "segnalazione_cliente": _segn,
