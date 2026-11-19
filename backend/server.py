@@ -3880,18 +3880,16 @@ _CK_DEF = {
     "DOC-06": ("Documentazione", "Foto nuovi pozzetti e aggiornamento One GIS completati"),
 }
 
-# Tipologia issue per punto checklist: Cn = segnaletica di cantiere; Sc = documenti/autorizzazioni (personale,
-# documentazione sicurezza); Sf = restanti punti sicurezza (SIC-*); Au = anomalie autorizzative (PRE-*);
+# Tipologia issue per punto checklist: Cn = segnaletica di cantiere; Sf = tutti gli altri punti sicurezza (SIC-*),
+# documentazione e autorizzazioni personale incluse (la vecchia tipologia Sc è stata unita a Sf, rev.362); Au = anomalie autorizzative (PRE-*);
 # Co = anomalie di collaudo (TST/RIP/DOC); In = infrastruttura (INF/POZ/MIC/DIV/COL).
 _ISSUE_CN_IDS = {"SIC-20", "SIC-43"}
-_ISSUE_SC_IDS = {"SIC-01", "SIC-02", "SIC-03"}
 _issue_sync_lock = asyncio.Lock()
 
 _ISSUE_TIPI = {
     "In": "Anomalia su infrastruttura (completata o in corso)",
     "Cn": "Segnaletica su cantiere in corso",
-    "Sc": "Documentazione sicurezza",
-    "Sf": "Anomalia sicurezza di cantiere",
+    "Sf": "Anomalia sicurezza di cantiere (documentazione inclusa)",
     "Au": "Anomalia autorizzativa",
     "Co": "Anomalia di collaudo",
 }
@@ -4035,7 +4033,7 @@ async def create_issue(payload: dict, sess: dict = Depends(_require_admin_sessio
     pref = str((payload or {}).get("tipologia", "")).strip()
     pref = pref[:1].upper() + pref[1:2].lower() if pref else ""
     if pref not in _ISSUE_TIPI:
-        raise HTTPException(422, "Tipologia non valida (In / Cn / Sc / Sf / Au / Co)")
+        raise HTTPException(422, "Tipologia non valida (In / Cn / Sf / Au / Co)")
     doc = await _issue_create(pref, _issue_clean(payload), sess.get("nome", ""))
     return {"ok": True, "item": doc}
 
@@ -4169,8 +4167,6 @@ def _issue_priority_nc(item_id: str, cat: str, root_verbale: dict | None) -> str
 
 
 def _issue_tipo_item(item_id: str) -> str:
-    if item_id in _ISSUE_SC_IDS:
-        return "Sc"
     if item_id in _ISSUE_CN_IDS:
         return "Cn"
     iid = str(item_id).upper()
@@ -4190,8 +4186,8 @@ async def reclassify_issues_sicurezza(sess: dict = Depends(_require_admin_sessio
     invariato (può essere già stato comunicato ai System). Le issue manuali (senza origine_item) non vengono toccate. Idempotente."""
     now = datetime.now(timezone.utc).isoformat()
     n = 0
-    async for d in issues_col.find({"origine_item": {"$type": "string", "$ne": ""}}):
-        new = _issue_tipo_item(d.get("origine_item", ""))
+    async for d in issues_col.find({"$or": [{"origine_item": {"$type": "string", "$ne": ""}}, {"prefisso": "Sc"}]}):
+        new = _issue_tipo_item(d["origine_item"]) if d.get("origine_item") else "Sf"  # senza punto di origine: solo le vecchie Sc (manuali) → Sf
         old = d.get("prefisso")
         if new == old:
             continue
@@ -4485,7 +4481,7 @@ async def export_issues_xlsx(
     _header(ws3, ["Prefisso", "Significato"], [12, 80])
     ws3.append(["In_nnnn", "Progressivo per anomalie riscontrate su infrastrutture completate o in corso"])
     ws3.append(["Cn_nnnn", "Segnaletica su cantieri in corso"])
-    ws3.append(["Sc_nnnn", "Documentazione sicurezza / autorizzazioni"])
+    ws3.append(["Sf_nnnn", "Anomalie sicurezza di cantiere, documentazione e autorizzazioni incluse (le vecchie Sc_nnnn sono state unite a Sf)"])
 
     buf = io.BytesIO()
     wb.save(buf)
