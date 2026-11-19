@@ -2433,7 +2433,9 @@ function _verifState(v, _depth) {
                           .sort((a, b) => a.codice_verbale.localeCompare(b.codice_verbale));
   if (kids.length) {
     const k = kids[kids.length - 1];
-    if (!_ckNcList(k).length) return { stato: 'risolto', figlio: k };
+    // Risolto se nessuna delle NC di questo verbale è ancora NC nel verbale successivo (eventuali NC nuove e diverse vivono nel figlio, che resta da ricontrollare).
+    const kNc = new Set(_ckNcList(k).map(n => n.id));
+    if (!ncs.some(n => kNc.has(n.id))) return { stato: 'risolto', figlio: k };
     // Il 2° verbale ha ancora NC: se la catena a valle le risolve (es. 3° verbale senza NC)
     // anche questo verbale è risolto, altrimenti resta 'non_risolto'.
     const d = _depth || 0;
