@@ -3808,7 +3808,7 @@ _CK_DEF = {
     "POZ-03": ("Pozzetti", "Dimensioni e tipologia conformi alle specifiche"),  # legacy: sostituito da 03A/03B, tenuto per le issue dei verbali vecchi
     "POZ-03A": ("Pozzetti", "Pozzetto Cliente: dimensione conforme come da contratto"),
     "POZ-03B": ("Pozzetti", "Pozzetto Retelit: dimensione conforme come da contratto"),
-    "POZ-04": ("Pozzetti", "Pozzetti Tipo 1 fronte Data Center e nelle interconnessioni, ove previsti"),
+    "POZ-04": ("Pozzetti", "Pozzetti 224 × 124 cm · interna 200 × 100 × 150 cm fronte Data Center e nelle interconnessioni, ove previsti"),
     "POZ-05": ("Pozzetti", "Foro di drenaggio vicino al centro"),
     "POZ-06": ("Pozzetti", "Chiusino in ghisa, dimensionato e con logo Retelit"),
     "POZ-07": ("Pozzetti", "Pozzetto pulito, accessibile e adeguato"),
