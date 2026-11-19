@@ -96,6 +96,7 @@ _master_csv_lock = asyncio.Lock()
 # assegnando lo stesso codice_cantiere (es. "CA/2/1A") a due pratiche diverse.
 _cantieri_sync_lock = asyncio.Lock()
 cantieri_col  = db["cantieri"]                  # stato cantiere per pratica di autorizzazione
+cantieri_cil_col = db["cantieri_cil"]          # Data CIL per cantiere (inserita dalla DL): collection separata, così i rebuild/reset di `cantieri` non la toccano
 sopralluoghi_col = db["sopralluoghi"]          # verbali di sopralluogo
 issues_col = db["issues"]                      # registro issue/anomalie verso i System (imprese)
 issues_skip_col = db["issues_skip"]            # NC di verbale la cui issue è stata eliminata a mano: la sync non la ricrea
@@ -5923,12 +5924,50 @@ async def get_cantieri(lotto: str = "", cluster: str = "", stato: str = "", sess
     if cluster: q["cluster"]        = cluster
     if stato:   q["stato_cantiere"] = stato
     items = []
+    cil = {c["cantiere_key"]: c async for c in cantieri_cil_col.find({}, {"cantiere_key": 1, "data_cil": 1, "updated_by": 1, "updated_at": 1})}
     async for d in cantieri_col.find(q).sort("pratica_id", 1):
         d["_id"] = str(d["_id"])
         d["log_count"] = len(d.get("log") or [])   # segnala se l'impresa ha mai fatto un aggiornamento
         d.pop("log", None)   # non esporre lo storico nel listing
+        c = cil.get(d.get("cantiere_key"))
+        d["data_cil"] = (c or {}).get("data_cil", "")
+        d["data_cil_by"] = (c or {}).get("updated_by", "")
         items.append(d)
     return {"cantieri": items, "count": len(items)}
+
+
+_CIL_ROLES = ("dl", "admin", "admin2")
+
+
+@app.put("/api/cantieri/{cantiere_key:path}/cil")
+async def set_cantiere_cil(cantiere_key: str, payload: dict, sess: dict = Depends(_require_staff_session)):
+    """Imposta la Data CIL di un cantiere (solo DL e admin/admin2). Body: {"data_cil": "AAAA-MM-GG"} oppure "" per cancellarla.
+    Salvata in `cantieri_cil` (non nel documento del cantiere) con storico delle modifiche."""
+    if sess.get("ruolo") not in _CIL_ROLES:
+        raise HTTPException(403, "La Data CIL può essere inserita solo dalla Direzione Lavori")
+    val = str((payload or {}).get("data_cil", "") or "").strip()
+    if val:
+        try:
+            datetime.strptime(val, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(422, "Data CIL non valida (formato AAAA-MM-GG)")
+    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key}, {"codice_cantiere": 1, "pratica_id": 1})
+    if not doc:
+        raise HTTPException(404, "Cantiere non trovato")
+    prev = await cantieri_cil_col.find_one({"cantiere_key": cantiere_key}, {"data_cil": 1})
+    old = (prev or {}).get("data_cil", "")
+    if old == val:
+        return {"ok": True, "data_cil": val, "unchanged": True}
+    now = _now_iso()
+    utente = sess.get("nome", "")
+    await cantieri_cil_col.update_one(
+        {"cantiere_key": cantiere_key},
+        {"$set": {"data_cil": val, "codice_cantiere": doc.get("codice_cantiere", ""), "pratica_id": doc.get("pratica_id", ""),
+                  "updated_by": utente, "updated_at": now},
+         "$push": {"storico": {"ts": now, "utente": utente, "ruolo": sess.get("ruolo"), "da": old, "a": val}}},
+        upsert=True,
+    )
+    return {"ok": True, "data_cil": val, "data_cil_by": utente}
 
 
 @app.post("/api/external/pratica-status")
