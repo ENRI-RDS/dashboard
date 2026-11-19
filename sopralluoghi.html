@@ -888,8 +888,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Deep link (es. bottone "Sopralluogo" della mappa): il form NON si apre da solo. Lotto/cantiere vengono
   // precompilati (vedi _loadLottiCantieriImpl) e una barra propone di aprire il nuovo verbale.
-  if (_DL.get('nuovo') === '1' || _DL.get('lotto') || _DL.get('cantiere')) {
-    const bits = [_DL.get('lotto') ? 'Lotto ' + _DL.get('lotto') : '', _DL.get('indirizzo') || ''].filter(Boolean).join(' · ');
+  if (_DL.get('nuovo') === '1' || _DL.get('lotto') || _DL.get('cantiere') || _DL.get('pozzetto')) {
+    window._pozzettoDL = (_DL.get('pozzetto') || '').trim();   // collegamento verbale↔pozzetto (campo `pozzetto` del verbale)
+    const bits = [_DL.get('lotto') ? 'Lotto ' + _DL.get('lotto') : '', window._pozzettoDL ? 'Pozzetto ' + window._pozzettoDL : '', _DL.get('indirizzo') || ''].filter(Boolean).join(' · ');
     document.getElementById('deepLinkTxt').textContent = 'Nuovo sopralluogo richiesto' + (bits ? ' — ' + bits : '') + '.';
     document.getElementById('deepLinkBar').style.display = '';
     history.replaceState(null, '', location.pathname);   // un reload/ritorno alla pagina non lo ripropone
@@ -1131,6 +1132,7 @@ async function inviaVerbale(){
         segnalazione_cliente_note: f.segnalazione_cliente_note,
         esito_segnalazione: f.esito_segnalazione,
         verbale_origine:   f.verbale_origine,
+        pozzetto:          window._pozzettoDL || '',
         ..._segnSystemVals(),
         checklist:         ckPayload(),
         note:              '',
@@ -1157,6 +1159,7 @@ async function inviaVerbale(){
 }
 
 function resetVerbaleForm() {
+  window._pozzettoDL = '';
   document.getElementById('codice_verbale').value = '';
   document.getElementById('data').value = '';
   document.getElementById('lotto').value = '';
@@ -1568,6 +1571,13 @@ async function loadVerbali() {
     _populateKpis();
     _currentPage = 1;
     applyVerbaliFilters();
+    // Deep-link da mappa.html (pozzetto → verbale): apre l'anteprima del verbale richiesto
+    const dlV = _DL.get('verbale');
+    if (dlV && !window._dlVerbaleDone) {
+      window._dlVerbaleDone = true;
+      const hit = _verbaliAll.find(x => x._id === dlV || x.codice_verbale === dlV);
+      if (hit) _selectVerbale(hit._id);
+    }
   } catch(e) {
     list.innerHTML = `<div style="color:#c0392b;font-size:12px;padding:20px 0;text-align:center">Errore: ${e.message}</div>`;
   }
@@ -1825,6 +1835,7 @@ function _renderPreview(v) {
     ['N° Cantiere', v.tratta_id],
     ['Lotto', v.lotto],
     ['Comune / Località', [v.comune, v.localita].filter(Boolean).join(' — ')],
+    ['Pozzetto', v.pozzetto, true],
     ['Impresa esecutrice', v.impresa],
     ['Ruolo redattore', v.referente_retelit],
     ['Redatto da', v.referente_impresa],
