@@ -1,4276 +1,7037 @@
-<!DOCTYPE html>
-<html lang="it" translate="no">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="google" content="notranslate">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<title>ENRI — Avanzamento Progettazione</title>
-<script src="js/api-config.js"></script>
-<script>function _sessionToken(){ return localStorage.getItem('_enri_session') || ''; }</script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<!-- Anti-FOUC: nasconde la sidebar su mobile PRIMA del primo disegno -->
-<script>
-(function(){
-  var w = window.innerWidth || document.documentElement.clientWidth || screen.width;
-  if(w <= 768){
-    document.addEventListener('DOMContentLoaded', function(){
-      var s = document.getElementById('sidebarEl');
-      if(s){ s.style.display = 'none'; s.style.visibility = 'hidden'; }
-    });
-    // Aggiunge subito la regola tramite style inline globale per massima velocità
-    var st = document.createElement('style');
-    st.textContent = '#sidebarEl { display: none !important; }';
-    st.id = '_antifouc';
-    document.head.appendChild(st);
-  }
-})();
-</script>
-<style>
-  @view-transition { navigation: auto; }
-
-  :root {
-    --retelit-blue:#043F75; --retelit-blue-75:#436A93; --retelit-blue-50:#819FB9; --retelit-blue-25:#C0CFDC;
-    --retelit-sky:#41BBD9;  --retelit-teal:#1A7D99;   --retelit-mist:#ADCAD6;   --retelit-ice:#D3DEEA;
-    --gray-50:#F7F8FA; --gray-200:#DFE4EB; --gray-300:#C4CDD8; --gray-500:#6B7685; --gray-700:#363D48;
-    --font-display:"Raleway","Calibri",system-ui,-apple-system,"Segoe UI",sans-serif;
-    --font-body:"Raleway","Calibri",system-ui,-apple-system,"Segoe UI",sans-serif;
-    --font-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
-    --bg:var(--gray-50); --surface:#ffffff; --surface2:var(--retelit-ice); --border:var(--gray-200);
-    --border2:var(--gray-300); --accent:var(--retelit-blue); --accent2:var(--retelit-teal);
-    --text:var(--gray-700); --text2:var(--gray-700); --muted:var(--gray-500); --muted2:#9AA5B4;
-    --ok:#1E9E6A; --ok-bg:#EBFAF3; --warn:#D08A1A; --warn-bg:#FEF7E7; --err:#C0392B; --err-bg:#FEECEB;
-  }
-  *{margin:0;padding:0;box-sizing:border-box;}
-  body{font-family:var(--font-body);background:var(--bg);color:var(--text);height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;-webkit-text-size-adjust:100%;}
-  .topbar{display:flex;align-items:center;gap:16px;padding:0 28px;height:58px;background:var(--retelit-blue);flex-shrink:0;z-index:1000;}
-  .logo{font-size:13px;font-weight:700;letter-spacing:0.14em;color:var(--retelit-ice);white-space:nowrap;text-transform:uppercase;}
-  .divider-v{width:1px;height:20px;background:var(--retelit-blue-50);flex-shrink:0;}
-  .page-title{font-size:13px;font-weight:600;letter-spacing:.04em;color:var(--retelit-ice);white-space:nowrap;text-transform:uppercase;}
-  .topbar-back{font-size:12px;color:var(--retelit-sky);font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:8px;border:1px solid var(--retelit-sky);transition:background .15s;background:transparent;cursor:pointer;}
-  .topbar-back:hover{background:rgba(65,187,217,.1);}
-  .topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
-  .btn{font-size:11px;padding:5px 14px;border-radius:5px;background:var(--accent);color:white;border:none;cursor:pointer;font-family:var(--font-body);font-weight:500;transition:opacity 0.2s;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:5px;}
-  .btn:hover{opacity:0.85;}
-  .btn.secondary{background:var(--surface2);border:1px solid var(--border);color:var(--text);}
-  .btn.secondary:hover{color:var(--text);}
-  .badge{font-size:11px;padding:3px 10px;border-radius:4px;background:rgba(255,255,255,.08);border:1px solid var(--retelit-blue-50);color:var(--retelit-ice);}
-  .badge.ok{border-color:#1E9E6A44;color:#1E9E6A;background:#1E9E6A11;}
-  .wrap{display:flex;flex:1;overflow:hidden;position:relative;min-height:0;}
-  #map{flex:1;min-height:0;-webkit-tap-highlight-color:transparent;}
-  .sidebar{width:300px;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;}
-  .sidebar-head{padding:14px 16px 10px;border-bottom:1px solid var(--border);flex-shrink:0;}
-  .sidebar-title{font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:10px;}
-  .filter-row{display:flex;flex-wrap:wrap;gap:4px;align-items:center;}
-  .filter-btn{font-size:10px;padding:3px 7px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:pointer;transition:all 0.15s;font-family:var(--font-body);}
-  .filter-btn:hover{border-color:var(--accent);color:var(--text);}
-  .filter-btn.active{background:var(--accent);border-color:var(--accent);color:white;}
-  .filter-btn.selected{background:var(--accent);border-color:var(--accent);color:white;opacity:0.85;}
-  .filter-multi-hint{font-size:9px;color:var(--muted);margin-top:4px;display:block;}
-  .sidebar-body{flex:1;overflow-y:auto;}
-  .sidebar-body::-webkit-scrollbar{width:4px;}
-  .sidebar-body::-webkit-scrollbar-track{background:transparent;}
-  .sidebar-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
-  .lotto-item{padding:10px 16px;border-bottom:1px solid #dde1ec44;cursor:pointer;transition:background 0.15s;display:flex;align-items:center;gap:10px;-webkit-tap-highlight-color:transparent;}
-  .lotto-item:hover{background:var(--surface2);}
-  .lotto-item.active{background:#4f8ef712;border-left:3px solid var(--accent);padding-left:13px;}
-  .lotto-color{width:4px;height:36px;border-radius:2px;flex-shrink:0;}
-  .lotto-info{flex:1;min-width:0;}
-  .lotto-num{font-size:13px;font-weight:600;font-family:var(--font-mono);}
-  .lotto-impresa{font-size:10px;color:var(--accent);}
-  .lotto-sub{font-size:9px;color:var(--muted);margin-top:2px;}
-  .lotto-pct{font-size:13px;font-weight:700;font-family:var(--font-mono);text-align:right;flex-shrink:0;}
-  .legend{padding:12px 16px;border-top:1px solid var(--border);flex-shrink:0;}
-  .map-legend{
-    position:absolute;
-    right:316px;
-    bottom:52px;
-    z-index:600;
-    border:1px solid var(--border);
-    border-radius:10px;
-    background:#ffffffee;
-    backdrop-filter:blur(8px);
-    box-shadow:0 4px 16px #00000018;
-    max-width:250px;
-  }
-  .legend-title{font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:8px;}
-  .legend-item{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--muted);margin-bottom:5px;}
-  .legend-line{width:20px;height:4px;border-radius:2px;flex-shrink:0;}
-  /* View mode toggle */
-  .view-toggle{display:flex;gap:3px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:3px;margin-bottom:10px;}
-  .view-btn{font-size:10px;padding:3px 9px;border-radius:5px;border:none;background:transparent;color:var(--retelit-blue);cursor:pointer;font-family:var(--font-body);font-weight:500;transition:all 0.15s;white-space:nowrap;}
-  .view-btn.active{background:var(--accent);color:white;}
-  /* Nulla osta: tasto sotto il selettore + legenda pallini */
-  .no-dots-btn{display:flex;align-items:center;gap:7px;width:100%;margin:-4px 0 10px;padding:5px 9px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--retelit-blue);font-family:var(--font-body);font-size:10px;font-weight:500;cursor:pointer;transition:all 0.15s;}
-  .no-dots-btn .no-dots-state{margin-left:auto;font-weight:600;opacity:0.7;}
-  .no-dots-btn.active{background:var(--accent);border-color:var(--accent);color:white;}
-  .no-dots-btn.active .no-dots-state{opacity:1;}
-  .no-dots-ico{display:inline-flex;gap:2px;}
-  .no-dots-ico i,.no-dots-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;}
-  .no-dots-btn.active .no-dots-ico i{box-shadow:0 0 0 1px #fff;}
-  .no-dots-ico .r,.no-dots-legend .r{background:#E53935;}
-  .no-dots-ico .g,.no-dots-legend .g{background:#1E9E6A;}
-  .no-dots-legend{display:flex;gap:14px;margin:-4px 0 10px;font-size:10px;color:var(--text);}
-  .no-dots-legend b{font-weight:600;}
-  /* Popup */
-  .leaflet-popup-content-wrapper{background:var(--surface)!important;border:none!important;border-radius:14px!important;color:var(--text)!important;box-shadow:0 8px 32px #0000002a, 0 1px 4px #00000014!important;padding:0!important;overflow:hidden!important;}
-  .leaflet-popup-content{margin:0!important;width:auto!important;}
-  .leaflet-popup-tip-container{display:none;}
-  .leaflet-popup-close-button{display:none!important;}
-  /* Popup layout */
-  .popup-inner{min-width:min(560px, 90vw);max-width:min(640px, 95vw);font-family:var(--font-body);}
-  .popup-inner.sed-popup{min-width:min(260px,88vw);max-width:min(300px,92vw);}
-  .popup-head{padding:14px 16px 12px;position:relative;}
-  .popup-head-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;}
-  .popup-lotto{font-size:18px;font-weight:700;font-family:var(--font-mono);color:var(--text);letter-spacing:-0.02em;}
-  .popup-close-btn{width:24px;height:24px;border-radius:50%;border:none;background:var(--surface2);color:var(--muted);cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background 0.15s,color 0.15s;}
-  .popup-close-btn:hover{background:var(--border);color:var(--text);}
-  .popup-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-  .popup-impresa{font-size:11px;font-weight:600;color:var(--accent);}
-  .popup-tratta{font-size:10px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-family:var(--font-mono);}
-  .popup-stato-bar{height:3px;width:100%;margin-top:12px;border-radius:2px;}
-  /* Body — due colonne */
-  .popup-body{display:flex;gap:0;align-items:stretch;}
-  .popup-body-left{flex:1;min-width:0;padding:12px 14px 14px 16px;}
-  .popup-body-right{width:210px;flex-shrink:0;border-left:1px solid var(--border);padding:12px 16px 14px 14px;display:flex;flex-direction:column;justify-content:flex-start;}
-  .popup-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px 12px;margin-bottom:12px;}
-  .popup-field{display:flex;flex-direction:column;gap:2px;}
-  .popup-field.full{grid-column:1/-1;}
-  .popup-field-label{font-size:9px;text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);font-weight:500;}
-  .popup-field-val{font-size:12px;font-weight:600;color:var(--text);font-family:var(--font-mono);}
-  /* Stato badge */
-  .popup-stato{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;padding:4px 10px;border-radius:20px;font-family:var(--font-body);}
-  .popup-stato-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
-  /* Lavorabile */
-  .popup-lav{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:600;padding:3px 9px;border-radius:20px;}
-  .popup-lav.ok{background:#e8f5ee;color:#2e7d52;border:1px solid #2e7d5233;}
-  .popup-lav.no{background:#fdecea;color:#c0392b;border:1px solid #c0392b33;}
-  /* Section */
-  .popup-section{border-top:1px solid var(--border);padding-top:10px;margin-top:2px;}
-  .popup-section-title{font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);font-weight:500;margin-bottom:8px;}
-  .popup-detail-row{display:flex;justify-content:space-between;align-items:center;font-size:11px;margin-bottom:5px;}
-  .popup-detail-row .dl{color:var(--muted);}
-  .popup-detail-row .dv{font-family:var(--font-mono);font-size:11px;font-weight:600;}
-  .popup-pratica{display:inline-flex;flex-direction:column;align-items:flex-start;font-family:var(--font-mono);font-size:10.5px;font-weight:600;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:4px 9px;margin:2px 3px 2px 0;color:var(--text);}
-  .popup-pratica.aut{background:var(--retelit-blue-25);border-color:var(--retelit-blue-50);color:var(--retelit-blue);}
-  .popup-pratica.no{background:#DDF0F4;border-color:var(--retelit-sky);color:var(--retelit-teal);}
-  .popup-pratica.ord{background:#E2E8EE;border-color:var(--retelit-blue-75);color:var(--retelit-blue-75);}
-  .popup-pratica-code{display:flex;align-items:center;}
-  .popup-pratica-ente{display:block;font-family:var(--font-body);font-size:9px;font-weight:500;color:var(--muted);margin-top:1px;}
-  .popup-tag{display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:600;padding:3px 9px;border-radius:20px;margin-right:4px;}
-  .popup-tag.ok{background:#e8f5ee;color:#2e7d52;border:1px solid #2e7d5233;}
-  .popup-tag.warn{background:#fef9ec;color:#a07820;border:1px solid #a0782033;}
-  .popup-tag.err{background:#fdecea;color:#c0392b;border:1px solid #c0392b33;}
-  /* Loading */
-  #loadingOverlay{position:absolute;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:2000;}
-  .spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;}
-  @keyframes spin{to{transform:rotate(360deg);}}
-  .loading-text{font-size:13px;color:var(--muted);}
-  /* Map */
-  .leaflet-container{background:#f0f0f0!important;touch-action:none;}
-  /* ── SAFE AREA (iPhone notch / Dynamic Island) ── */
-  @supports (padding: env(safe-area-inset-bottom)) {
-    .drawer-toggle { bottom: calc(130px + env(safe-area-inset-bottom)); }
-    .stats-bar { margin-bottom: env(safe-area-inset-bottom); }
-  }
-  @media(max-width:768px) {
-    @supports (padding: env(safe-area-inset-bottom)) {
-      .sidebar { padding-bottom: env(safe-area-inset-bottom); }
-      .measure-badge { bottom: calc(80px + env(safe-area-inset-bottom)); }
-      .selector-badge { bottom: calc(80px + env(safe-area-inset-bottom)); }
-    }
-  }
-  /* ── TOUCH: rimuove il ritardo 300ms su tutti i pulsanti ── */
-  button, a, .filter-btn, .lotto-item, .bmap-thumb-btn, .bmap-card,
-  .search-result-item, .sito-item, .drawer-toggle { touch-action: manipulation; }
-  /* ── OVERSCROLL: previene navigazione accidentale su Android ── */
-  body { overscroll-behavior: contain; }
-  .leaflet-control-zoom a{background:var(--surface)!important;color:var(--text)!important;border-color:var(--border)!important;}
-  .leaflet-control-zoom a:hover{background:var(--surface2)!important;}
-  .leaflet-control-attribution{background:#ffffffcc!important;color:var(--muted)!important;font-size:9px!important;}
-  .leaflet-control-attribution a{color:var(--muted)!important;}
-  /* Stats bar */
-  .sidebar-close-btn{ display:none; }
-  .stats-bar{position:absolute;bottom:16px;left:16px;z-index:500;display:flex;gap:8px;flex-wrap:wrap;}
-  .stat-pill{background:#ffffffdd;backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:20px;padding:5px 14px;font-size:11px;display:flex;align-items:center;gap:6px;color:var(--text);}
-  .stat-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
-  /* Lavorabile badge nella sidebar */
-  .lav-badge{font-size:8px;padding:1px 5px;border-radius:8px;font-family:var(--font-mono);flex-shrink:0;}
-  .lav-si{background:#1E9E6A22;color:#1E9E6A;border:1px solid #1E9E6A44;}
-  .lav-no{background:#C0392B22;color:#C0392B;border:1px solid #C0392B44;}
-  @keyframes tratta-pulse {
-    0%,100% { opacity: 1; }
-    50%      { opacity: 0.55; }
-  }
-  .btn-back{
-    display:inline-flex;align-items:center;gap:6px;
-    font-size:12px;font-weight:600;padding:6px 14px;
-    border-radius:7px;border:none;cursor:pointer;
-    background:var(--accent);color:#fff;
-    font-family:var(--font-body);
-    text-decoration:none;
-    transition:opacity 0.15s,transform 0.1s;
-    box-shadow:0 1px 4px rgba(4,63,117,.20);
-    flex-shrink:0;
-  }
-  .btn-back:hover{opacity:0.88;transform:translateX(-1px);}
-  /* ─── MOBILE BOTTOM-DRAWER LAYOUT ─────────────────────────────── */
-
-  /* Drawer toggle button (visibile solo su mobile) */
-  .drawer-toggle {
-    display:none; /* nascosto su desktop */
-    position:fixed; bottom:130px; left:50%; transform:translateX(-50%);
-    z-index:801;
-    background:#fff; border:none; border-radius:24px;
-    padding:10px 20px; gap:8px;
-    box-shadow:0 4px 16px rgba(0,0,0,.22);
-    font-family:var(--font-body); font-size:13px; font-weight:600;
-    color:var(--text); cursor:pointer; white-space:nowrap;
-    align-items:center;
-    -webkit-tap-highlight-color:transparent;
-    transition:transform .15s, box-shadow .15s;
-  }
-  .drawer-toggle:active { transform:translateX(-50%) scale(.97); }
-  .drawer-toggle-icon { font-size:15px; }
-
-  /* Overlay scuro quando drawer è aperto */
-  .drawer-overlay {
-    display:none;
-    position:fixed; inset:0; z-index:799;
-    background:rgba(0,0,0,.3);
-    -webkit-tap-highlight-color:transparent;
-  }
-  .drawer-overlay.open { display:block; }
-
-  @media(max-width:768px){
-    /* ── Topbar compatta ─ */
-    .topbar{
-      height:auto; flex-wrap:wrap; padding:6px 10px; gap:5px;
-      min-height:50px; position:sticky; top:0; z-index:1000;
-    }
-    .topbar-left{ gap:6px; flex:0 0 auto; }
-    .page-title,.divider-v{ display:none; }
-    .logo{ font-size:11px; letter-spacing:.08em; }
-    .topbar-right{
-      margin-left:auto; gap:8px; flex-wrap:nowrap; align-items:center;
-    }
-    /* Badge compatto su mobile */
-    .badge{ font-size:10px; padding:4px 9px; border-radius:6px; white-space:nowrap; }
-    /* Topbar: seconda riga — barra di ricerca full-width */
-    .search-bar{
-      order:10; flex:0 0 100%;
-      max-width:none; margin:0; width:100%;
-    }
-    .search-input{ font-size:16px !important; padding:8px 12px; border-radius:8px; }
-    .search-results{ max-height:200px; }
-    /* Pulsanti touch-friendly */
-    .btn{ font-size:11px; padding:7px 12px; min-height:40px; border-radius:8px; }
-    .btn-back{ font-size:11px; padding:7px 14px; min-height:40px; border-radius:8px; }
-    /* Nasconde su mobile: GeoJSON, Progettazione, Help */
-    .btn-mobile-hidden,
-    button.topbar-back[onclick="exportGeoJSON()"],
-    button.topbar-back[onclick="generaReportAWS()"],
-    a.btn-back[href="index.html?direct=1"],
-    .help-btn { display:none !important; }
-
-    /* ── Layout: mappa a schermo pieno ── */
-    .wrap{ flex-direction:column; }
-    #map{ flex:1; min-height:0; }
-
-    /* ── Sidebar = bottom drawer ── */
-    .sidebar{
-      position:fixed; bottom:75px; left:10px; right:10px;
-      width:auto !important; height:auto;
-      max-height:52vh;
-      border:1px solid var(--border);
-      border-radius:18px;
-      z-index:800;
-      background:var(--surface);
-      box-shadow:0 -4px 24px rgba(0,0,0,.18);
-      flex-direction:column;
-      transform:translateY(calc(100% + 80px));
-      transition:transform .3s cubic-bezier(.32,.72,0,1);
-      overflow:hidden;
-      display:none;
-    }
-    .sidebar.drawer-open {
-      display:flex;
-      transform:translateY(0);
-    }
-    /* Drawer overlay: copre la mappa sotto il drawer */
-    .drawer-overlay{ background:rgba(0,0,0,.35); }
-    /* Handle grasp bar in cima al drawer */
-    .sidebar::before{
-      content:'';
-      display:block; width:40px; height:5px;
-      background:#c5c8d4; border-radius:3px;
-      margin:8px auto 0;
-      flex-shrink:0;
-      cursor:grab;
-    }
-    .sidebar-head{ padding:8px 14px 6px; position:relative; }
-    .sidebar-close-btn{
-      display:block;
-      position:absolute; top:8px; right:10px;
-      background:none; border:none; cursor:pointer;
-      font-size:16px; color:var(--muted);
-      width:30px; height:30px; line-height:30px; text-align:center;
-      border-radius:50%; padding:0;
-    }
-    .sidebar-title{ font-size:10px; margin-bottom:6px; }
-    .view-toggle{ margin-bottom:6px; }
-    .no-dots-btn{ margin:-2px 0 6px; padding:4px 8px; }
-    .no-dots-legend{ margin:-2px 0 6px; }
-    .view-btn{ font-size:10px; padding:5px 10px; min-height:32px; }
-    .filter-row{ gap:4px; }
-    .filter-btn{ font-size:10px; padding:4px 9px; min-height:28px; }
-    .qts-toggle-row{ margin-top:6px; padding:6px 0 4px; }
-    .qts-label{ font-size:10px; }
-    /* Sidebar body: nascosto su mobile — solo filtri visibili */
-    .sidebar-body{ display:none !important; }
-    .lotto-item{ display:none !important; }
-
-    /* ── Drawer toggle button visibile ── */
-    .drawer-toggle{ display:inline-flex; }
-    .sidebar.drawer-open ~ .drawer-toggle{ display:none !important; }
-
-    /* ── Legenda: angolo TOP-right, sotto topbar+searchbar (evita overlap stats-bar) ── */
-    .map-legend{
-      position:fixed !important;
-      right:8px; top:108px; bottom:auto; left:auto;
-      max-width:148px; padding:7px 9px !important;
-      max-height:calc(45vh); overflow-y:auto;
-      font-size:9px; z-index:600;
-    }
-    .legend-title{ font-size:8px; margin-bottom:4px; }
-    .legend-item{ font-size:9px; margin-bottom:3px; }
-    .legend-line{ width:12px; height:3px; }
-
-    /* ── Stats bar ── */
-    .stats-bar{
-      position:fixed !important;
-      bottom:18px !important; left:8px !important;
-      gap:4px; flex-wrap:wrap; max-width:calc(100vw - 170px);
-    }
-    .stat-pill{ font-size:10px; padding:5px 10px; gap:5px; }
-
-    /* ── Nascondi scala Leaflet su mobile (non c'è spazio, sovrascrive drawer toggle) ── */
-    .leaflet-control-scale{ display:none !important; }
-
-    /* ── Badge misura ── */
-    .measure-badge{ bottom:80px; }
-    .selector-badge{ bottom:80px; }
-    .measure-hint{ top:58px; font-size:10px; }
-    .catastale-notice{ bottom:auto; top:58px; font-size:10px; padding:4px 12px; }
-
-    /* ── Popup compatto su mobile ── */
-    .leaflet-popup-content-wrapper{
-      width:calc(100vw - 40px) !important;
-      max-width:320px !important;
-      max-height:38vh !important;
-      overflow:hidden !important;
-      border-radius:12px !important;
-    }
-    .leaflet-popup-content{
-      margin:0 !important;
-      max-height:38vh !important;
-      overflow-y:auto !important;
-      width:100% !important;
-    }
-    .popup-inner{
-      min-width:0 !important; width:100%; max-width:none;
-    }
-    .popup-head{ padding:7px 11px 6px; }
-    .popup-lotto{ font-size:13px; }
-    .popup-meta{ gap:5px; }
-    .popup-impresa{ font-size:10px; }
-    .popup-tratta{ font-size:9px; }
-    .popup-stato-bar{ margin-top:7px; height:2px; }
-    .popup-body{ flex-direction:column; }
-    .popup-body-left{ padding:6px 11px 8px 11px; }
-    .popup-body-right{
-      width:100% !important; border-left:none;
-      border-top:1px solid var(--border); padding:6px 11px;
-    }
-    .popup-grid{ grid-template-columns:1fr 1fr 1fr; gap:5px 8px; margin-bottom:6px; }
-    .popup-field-label{ font-size:7.5px; }
-    .popup-field-val{ font-size:10px; }
-    .popup-detail-row{ font-size:9.5px; margin-bottom:2px; }
-    .popup-section-title{ font-size:7.5px; margin-bottom:4px; }
-    .popup-section{ padding-top:6px; margin-top:0; }
-
-    /* ── Zoom controls ── */
-    .leaflet-control-zoom a{
-      width:40px !important; height:40px !important;
-      line-height:40px !important; font-size:20px !important;
-    }
-    .leaflet-control-zoom{ margin-left:10px !important; margin-top:10px !important; }
-
-    /* ── Basemap picker ── */
-    .leaflet-basemap-control{ margin-left:10px !important; }
-    .bmap-thumb-btn{ width:44px; height:44px; border-radius:10px; }
-    /* dropdown si apre verso l'alto, orizzontale, non esce dallo schermo */
-    .bmap-dropdown{
-      top: auto !important;
-      bottom: 54px !important;
-      left: 0 !important;
-      right: auto !important;
-      padding: 6px 6px 5px !important;
-    }
-    .bmap-dropdown-title{ font-size:8px !important; padding:0 3px 5px !important; }
-    .bmap-grid{ flex-wrap: nowrap !important; gap: 5px !important; }
-    .bmap-card{ width: 46px !important; padding: 3px !important; }
-    .bmap-card img{ width: 38px !important; height: 28px !important; }
-    .bmap-card span{ font-size: 8px !important; }
-    /* avviso catastale piccolo su mobile */
-    .catastale-notice{
-      font-size: 8px !important;
-      padding: 3px 8px 3px 7px !important;
-      border-radius: 12px !important;
-      gap: 3px !important;
-      bottom: auto !important;
-      top: 58px !important;
-    }
-
-    /* ── Siti panel ── */
-    .siti-panel{ width:calc(100vw - 20px); right:10px; }
-
-    /* ── Measure / siti buttons ── */
-    .measure-control-btn,.siti-control-btn{
-      height:44px; min-width:44px; padding:0 12px; font-size:10px;
-    }
-
-    /* ── Siti button: position:fixed + SOTTO la legenda ── */
-    .leaflet-top.leaflet-right {
-      position: fixed !important;
-      top: 280px !important;
-      right: 8px !important;
-    }
-    /* Siti panel: si apre verso sinistra sotto il bottone ── */
-    .siti-panel {
-      position: fixed !important;
-      top: 330px !important;
-      right: 10px !important;
-      left: 10px !important;
-      width: auto !important;
-    }
-  }
-
-  /* ── PHONES PICCOLI (≤ 480px) ── */
-  @media(max-width:480px){
-    .stats-bar{ bottom:18px !important; max-width:calc(100vw - 160px); }
-    .measure-badge{ bottom:76px; }
-    .selector-badge{ bottom:76px; }
-    .map-legend{ max-width:130px; top:56px; }
-    .sidebar{ max-height:48vh; }
-    /* Siti button sotto la legenda (phone piccoli) */
-    .leaflet-top.leaflet-right {
-      position: fixed !important;
-      top: 230px !important;
-      right: 8px !important;
-    }
-    .siti-panel {
-      top: 280px !important;
-    }
-  }
-
-  /* ── LANDSCAPE MOBILE ── */
-  @media(max-width:768px) and (orientation:landscape){
-    .topbar{ min-height:44px; padding:4px 10px; }
-    .search-bar{ order:0; flex:1; max-width:260px; margin:0 6px; }
-    .topbar-right{ width:auto; margin-left:0; }
-    .sidebar{ max-height:55vh; }
-    .stats-bar{ bottom:18px !important; }
-    .map-legend{ max-width:150px; max-height:100px; }
-    .drawer-toggle{ bottom:14px; }
-  }
-
-  /* Search bar — inline nel topbar */
-  .search-bar{display:flex;gap:6px;flex:1;max-width:380px;margin:0 10px;position:relative;}
-  .search-input{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:11px;color:var(--text);font-family:var(--font-body);outline:none;transition:border-color 0.2s;min-width:0;}
-  .search-input:focus{border-color:var(--accent);}
-  .search-input::placeholder{color:var(--muted);}
-  .search-btn{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--muted);cursor:pointer;font-size:11px;white-space:nowrap;font-family:var(--font-body);transition:all 0.2s;flex-shrink:0;}
-  .search-btn:hover{border-color:var(--accent);color:var(--text);}
-  .search-results{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;box-shadow:0 8px 24px #00000018;display:none;max-height:320px;overflow-y:auto;z-index:2000;}
-  .search-result-item{padding:9px 14px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:1px solid #dde1ec44;transition:background 0.15s;}
-  .search-result-item:last-child{border-bottom:none;}
-  .search-result-item:hover{background:var(--surface2);}
-  .search-result-icon{font-size:13px;flex-shrink:0;}
-  .search-result-main{font-weight:600;color:var(--text);}
-  .search-result-sub{color:var(--muted);font-size:10px;margin-top:1px;}
-  .search-divider{padding:5px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);background:var(--surface2);border-bottom:1px solid var(--border);}
-  .search-highlight{position:relative;}
-
-  /* QTS toggle */
-  .qts-toggle-row { display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 0 6px;border-top:1px solid var(--border); }
-  .qts-label { font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);flex:1; }
-  .qts-switch { position:relative;width:36px;height:20px;cursor:pointer;flex-shrink:0; }
-  .qts-switch input { opacity:0;width:0;height:0;position:absolute; }
-  .qts-slider { position:absolute;inset:0;background:#c8ccd8;border-radius:20px;transition:background 0.2s; }
-  .qts-slider:before { content:'';position:absolute;height:14px;width:14px;left:3px;top:3px;background:#fff;border-radius:50%;transition:all 0.2s; }
-  .qts-switch input:checked + .qts-slider { background:#0aa3c2; }
-  .qts-switch input:checked + .qts-slider:before { transform:translateX(16px);background:#fff; }
-  .qts-km { font-size:10px;font-family:var(--font-mono);color:var(--retelit-teal); }
-  .qts-only-btn{font-size:10px;padding:4px 10px;border-radius:12px;border:1.5px solid var(--retelit-teal);background:var(--retelit-ice);color:var(--retelit-blue);cursor:pointer;transition:all 0.15s;font-family:var(--font-body);font-weight:500;}
-  .qts-only-btn:hover{border-color:var(--retelit-blue);background:var(--retelit-blue-25);color:var(--retelit-blue);}
-  .qts-only-btn.active{background:var(--retelit-blue);border-color:var(--retelit-blue);color:#fff;}
-
-  /* ── SED ATTRAVERSAMENTI ─────────────────────────────── */
-  /* punti nella legenda (cerchio invece di linea) */
-  .legend-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
-  .sed-control-btn {
-    padding:0 10px; height:36px; border-radius:8px;
-    background:var(--surface); border:1px solid var(--border);
-    box-shadow:0 2px 8px #0002;
-    display:flex; align-items:center; justify-content:center; gap:5px;
-    cursor:pointer; font-size:10px; font-weight:700;
-    font-family:var(--font-body); letter-spacing:0.05em;
-    color:var(--text); white-space:nowrap;
-    transition:background 0.15s, box-shadow 0.15s;
-    user-select:none; margin-top:8px; margin-left:10px;
-  }
-  .sed-control-btn:hover { background:var(--surface2); box-shadow:0 3px 12px #0003; }
-  .sed-control-btn.active { background:#fff7ed; border-color:#b45309; color:#b45309; }
-  .sed-ctrl-row { display:flex; align-items:center; gap:6px; margin-top:8px; margin-left:10px; }
-  .sed-ctrl-row .sed-control-btn { margin:0; }
-  .sed-control-btn.pozz-btn.active { background:var(--retelit-blue-50, #E6F1F8); border-color:var(--retelit-blue, #043F75); color:var(--retelit-blue, #043F75); }
-
-  /* Basemap floating control — Google-style thumbnail button */
-  .leaflet-top.leaflet-left { display:flex; flex-direction:column; align-items:flex-start; }
-  .leaflet-basemap-control {
-    background: transparent !important; border: none !important;
-    box-shadow: none !important; overflow: visible; position: relative;
-    margin-top: 8px !important; margin-left: 10px !important;
-  }
-  .bmap-thumb-btn {
-    width: 56px; height: 56px; border-radius: 10px; overflow: hidden; cursor: pointer;
-    border: 2.5px solid #fff; box-shadow: 0 2px 10px #0005;
-    position: relative; display: block; transition: transform 0.15s, box-shadow 0.15s;
-  }
-  .bmap-thumb-btn:hover { transform: scale(1.06); box-shadow: 0 4px 14px #0007; }
-  .bmap-thumb-btn img { width:100%; height:100%; object-fit:cover; display:block; }
-  .bmap-thumb-btn .bmap-label {
-    position: absolute; bottom: 0; left: 0; right: 0;
-    background: linear-gradient(transparent, #000b);
-    color: #fff; font-size: 9px; font-weight: 700;
-    font-family:var(--font-body);
-    text-align: center; padding: 2px 2px 4px;
-    letter-spacing: 0.03em; text-shadow: 0 1px 2px #0008;
-  }
-  .bmap-dropdown {
-    display: none; position: absolute; top: 0; left: 64px;
-    background: #fffffff0; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-    border: 1px solid #dde1ec; border-radius: 12px;
-    box-shadow: 0 6px 24px #00000028; padding: 10px 8px 8px; z-index: 1100;
-  }
-  .bmap-dropdown.open { display:flex; flex-direction:column; gap:4px; }
-  .bmap-dropdown-title {
-    font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em;
-    color: #6b7080; padding: 0 4px 8px;
-    font-family:var(--font-body); font-weight: 600; white-space: nowrap;
-  }
-  .bmap-grid { display:flex; gap:8px; flex-wrap:nowrap; }
-  .bmap-card {
-    display:flex; flex-direction:column; align-items:center; gap:5px;
-    cursor:pointer; padding:5px; border-radius:10px; border:2.5px solid transparent;
-    transition:border-color 0.15s, background 0.15s;
-    background:transparent; width:68px; flex-shrink:0;
-  }
-  .bmap-card:hover { background:#f0f2f7; }
-  .bmap-card.active { border-color:var(--retelit-blue); background:var(--retelit-ice); }
-  .bmap-card img {
-    width:58px; height:40px; border-radius:6px;
-    object-fit:cover; border:1px solid #dde1ec; box-shadow:0 1px 4px #0002; display:block;
-  }
-  .bmap-card span {
-    font-size:10px; font-family:var(--font-body);
-    color:#1a1d27; font-weight:500; text-align:center; line-height:1.2; white-space:nowrap;
-  }
-  .bmap-card.active span { color:var(--retelit-blue); font-weight:700; }
-
-  /* Avviso zoom catastale — cliccabile */
-  .catastale-notice {
-    position:absolute; bottom:68px; left:50%; transform:translateX(-50%);
-    z-index:900; background:#b45309; color:#fff;
-    font-size:11px; font-family:var(--font-body); font-weight:500;
-    padding:6px 16px 6px 12px; border-radius:20px;
-    box-shadow:0 2px 10px #0004; white-space:nowrap;
-    display:none; pointer-events:all; cursor:pointer;
-    transition:background 0.15s, box-shadow 0.15s;
-    user-select:none;
-  }
-  .catastale-notice.visible { display:flex; align-items:center; gap:6px; }
-  .catastale-notice:hover { background:#92400e; box-shadow:0 4px 16px #0006; }
-  .catastale-notice:active { opacity:0.85; }
-  /* Position basemap control flush below zoom control, same column */
-  .leaflet-top.leaflet-left {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0;
-  }
-  /* The basemap control sits right under the zoom bar, same left margin */
-  .leaflet-basemap-control {
-    margin-top: 8px !important;
-    margin-left: 10px !important;
-  }
-  /* ── SITI PANEL ── */
-  .siti-control-btn {
-    padding:0 10px; height:36px; border-radius:8px;
-    background:var(--surface); border:1px solid var(--border);
-    box-shadow:0 2px 8px #0002;
-    display:flex; align-items:center; justify-content:center; gap:5px;
-    cursor:pointer; font-size:10px; font-weight:700;
-    font-family:var(--font-body); letter-spacing:0.05em;
-    color:var(--text); white-space:nowrap;
-    transition:background 0.15s, box-shadow 0.15s;
-    user-select:none;
-  }
-  .siti-control-btn:hover { background:var(--surface2); box-shadow:0 3px 12px #0003; }
-  .siti-control-btn.active { background:var(--retelit-ice); border-color:var(--accent); }
-  .siti-panel {
-    position:absolute; right:46px; top:0;
-    background:#fffffff5; backdrop-filter:blur(12px);
-    border:1px solid var(--border); border-radius:12px;
-    box-shadow:0 8px 32px #00000022;
-    width:260px; max-height:400px;
-    display:flex; flex-direction:column;
-    opacity:0; pointer-events:none;
-    transform:translateX(6px);
-    transition:opacity 0.18s, transform 0.18s;
-    overflow:hidden;
-  }
-  .siti-panel.open { opacity:1; pointer-events:all; transform:translateX(0); }
-  .siti-panel-head {
-    padding:11px 13px 9px;
-    border-bottom:1px solid var(--border);
-    flex-shrink:0;
-  }
-  .siti-panel-title {
-    font-size:10px; text-transform:uppercase; letter-spacing:0.1em;
-    color:var(--muted); font-weight:600;
-  }
-  .siti-search {
-    margin-top:7px; width:100%;
-    background:var(--surface2); border:1px solid var(--border);
-    border-radius:6px; padding:5px 9px;
-    font-size:11px; color:var(--text);
-    font-family:var(--font-body); outline:none;
-    transition:border-color 0.2s; box-sizing:border-box;
-  }
-  .siti-search:focus { border-color:var(--accent); }
-  .siti-search::placeholder { color:var(--muted); }
-  .siti-list { overflow-y:auto; flex:1; padding:5px 0; }
-  .siti-list::-webkit-scrollbar { width:4px; }
-  .siti-list::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
-  .sito-item {
-    display:flex; align-items:center; gap:9px;
-    padding:7px 13px; cursor:pointer;
-    transition:background 0.13s;
-    border-bottom:1px solid #dde1ec22;
-  }
-  .sito-item:last-child { border-bottom:none; }
-  .sito-item:hover { background:var(--surface2); }
-  .sito-icon {
-    width:26px; height:26px; border-radius:7px;
-    background:var(--retelit-ice); color:var(--accent);
-    display:flex; align-items:center; justify-content:center;
-    font-size:13px; flex-shrink:0;
-  }
-  .sito-info { flex:1; min-width:0; }
-  .sito-name { font-size:12px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .sito-note { font-size:9px; color:#1a1d27; font-weight:500; margin-top:1px; }
-  .sito-arrow { color:var(--muted); font-size:13px; flex-shrink:0; }
-  .sito-empty { padding:18px 13px; font-size:11px; color:var(--muted); text-align:center; }
-  /* ── MISURATORE DI DISTANZA ── */
-  .measure-control-btn {
-    padding:0 10px; height:36px; border-radius:8px;
-    background:var(--surface); border:1px solid var(--border);
-    box-shadow:0 2px 8px #0002;
-    display:flex; align-items:center; justify-content:center; gap:5px;
-    cursor:pointer; font-size:10px; font-weight:700;
-    font-family:var(--font-body); letter-spacing:0.05em;
-    color:var(--text); white-space:nowrap;
-    transition:background 0.15s, box-shadow 0.15s;
-    user-select:none; margin-top:8px; margin-left:10px;
-  }
-  .measure-control-btn:hover { background:var(--surface2); box-shadow:0 3px 12px #0003; }
-  .measure-control-btn.active { background:#fff7ed; border-color:#e07b3a; color:#e07b3a; }
-  .measure-control-btn.busy, .topbar-back.busy { opacity:0.6; cursor:wait; pointer-events:none; }
-  .selector-control-btn.active { background:#eef3fb; border-color:var(--accent); color:var(--accent); }
-  .selector-badge {
-    position:absolute; bottom:90px; left:50%; transform:translateX(-50%);
-    z-index:900; background:#1a1d27ee; color:#fff;
-    font-size:12px; font-weight:700; font-family:var(--font-mono);
-    padding:7px 18px; border-radius:20px;
-    box-shadow:0 2px 12px #0005; white-space:nowrap;
-    display:none; align-items:center; gap:8px;
-    backdrop-filter:blur(8px);
-  }
-  .selector-badge.visible { display:flex; }
-  .selector-badge-code { font-family:var(--font-body); font-weight:600; opacity:0.85; }
-  .selector-badge-clear {
-    font-size:14px; cursor:pointer; opacity:0.7;
-    transition:opacity 0.15s; line-height:1;
-  }
-  .selector-badge-clear:hover { opacity:1; }
-  .measure-badge {
-    position:absolute; bottom:90px; left:50%; transform:translateX(-50%);
-    z-index:900; background:#1a1d27ee; color:#fff;
-    font-size:12px; font-weight:700; font-family:var(--font-mono);
-    padding:7px 18px; border-radius:20px;
-    box-shadow:0 2px 12px #0005; white-space:nowrap;
-    display:none; align-items:center; gap:8px;
-    backdrop-filter:blur(8px);
-  }
-  .measure-badge.visible { display:flex; }
-  .measure-badge-clear {
-    font-size:14px; cursor:pointer; opacity:0.7;
-    transition:opacity 0.15s; line-height:1;
-  }
-  .measure-badge-clear:hover { opacity:1; }
-  .measure-hint {
-    position:absolute; top:64px; left:50%; transform:translateX(-50%);
-    z-index:900; background:#1a1d27cc; color:#fff;
-    font-size:11px; font-family:var(--font-body);
-    padding:5px 14px; border-radius:12px;
-    pointer-events:none; white-space:nowrap;
-    display:none;
-  }
-  .measure-hint.visible { display:block; }
-  /* ── TOOLTIP TRATTE ── */
-  .leaflet-tooltip.tratta-tip {
-    background:var(--surface); border:1px solid var(--border);
-    border-radius:7px; color:var(--text);
-    font-family:var(--font-body); font-size:11px;
-    padding:5px 10px; box-shadow:0 3px 12px #00000018;
-    pointer-events:none;
-  }
-  .leaflet-tooltip.tratta-tip::before { display:none; }
-  /* ── CATASTALE LOADER ── */
-  .catastale-loader {
-    position:absolute; bottom:90px; right:56px; z-index:900;
-    background:#ffffffee; border:1px solid var(--border);
-    border-radius:8px; padding:5px 10px;
-    display:none; align-items:center; gap:6px;
-    font-size:10px; color:var(--muted);
-    font-family:var(--font-body);
-    box-shadow:0 2px 8px #0002;
-  }
-  .catastale-loader.visible { display:flex; }
-  .catastale-loader-spin {
-    width:12px; height:12px; border:2px solid var(--border);
-    border-top-color:#b45309; border-radius:50%;
-    animation:spin 0.7s linear infinite; flex-shrink:0;
-  }
-  /* ── GOOGLE MAPS BTN nel popup ── */
-  .popup-gmaps-btn {
-    display:inline-flex; align-items:center; gap:5px;
-    font-size:10px; font-weight:600; padding:4px 10px;
-    border-radius:6px; border:1px solid #dde1ec;
-    background:var(--gray-50); color:var(--retelit-blue);
-    cursor:pointer; text-decoration:none;
-    transition:background 0.15s; font-family:var(--font-body);
-    margin-top:8px;
-  }
-  .popup-gmaps-btn:hover { background:var(--retelit-ice); }
-  /* ── HELP MODAL ── */
-  #helpOverlay {
-    position:fixed;inset:0;background:#0007;display:flex;align-items:center;
-    justify-content:center;z-index:3000;opacity:0;pointer-events:none;transition:opacity .2s;
-  }
-  #helpOverlay.open { opacity:1; pointer-events:all; }
-  #helpOverlay .help-modal {
-    background:var(--surface);border:1px solid var(--border);border-radius:12px;
-    width:620px;max-width:94vw;max-height:82vh;overflow-y:auto;padding:28px 32px;
-    box-shadow:0 20px 60px #0005;
-  }
-  #helpOverlay h3 { font-size:16px;font-weight:700;color:var(--text);margin:0 0 4px; }
-  #helpOverlay .help-section { margin-top:18px; }
-  #helpOverlay .help-section h4 { font-size:11px;font-weight:700;text-transform:uppercase;
-    letter-spacing:.08em;color:var(--accent2);margin:0 0 8px; }
-  #helpOverlay .help-section p { font-size:12px;color:var(--muted);line-height:1.6;margin:0; }
-  .help-btn {
-    background:transparent;border:1px solid var(--retelit-sky);border-radius:7px;
-    color:var(--retelit-sky);font-size:13px;font-weight:700;width:28px;height:28px;
-    cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
-    transition:background .15s;flex-shrink:0;
-  }
-  .help-btn:hover { background:rgba(65,187,217,.15); }
-  /* ── MODAL NEGATI (Report AWS) ── */
-  #deniedOverlay {
-    position:fixed;inset:0;background:#0007;display:flex;align-items:center;
-    justify-content:center;z-index:3000;opacity:0;pointer-events:none;transition:opacity .2s;
-  }
-  #deniedOverlay.open { opacity:1; pointer-events:all; }
-  #deniedOverlay .denied-modal {
-    background:var(--surface);border:1px solid var(--border);border-radius:12px;
-    width:720px;max-width:95vw;max-height:86vh;display:flex;flex-direction:column;
-    box-shadow:0 20px 60px #0005;font-family:var(--font-body);
-  }
-  .denied-head { padding:20px 24px 12px;border-bottom:1px solid var(--border); }
-  .denied-head h3 { font-size:16px;font-weight:700;color:var(--text);margin:0 0 4px; }
-  .denied-head p { font-size:11.5px;color:var(--muted);line-height:1.55;margin:0; }
-  .denied-tools { display:flex;gap:8px;align-items:center;padding:12px 24px;flex-wrap:wrap; }
-  .denied-tools input[type=text], .denied-tools select {
-    font-family:var(--font-body);font-size:12px;padding:6px 10px;border-radius:7px;
-    border:1px solid var(--border);background:var(--gray-50);color:var(--text);outline:none;
-  }
-  .denied-tools input[type=text] { flex:1;min-width:160px; }
-  .denied-tools button {
-    font-family:var(--font-body);font-size:11px;font-weight:600;padding:6px 12px;
-    border-radius:7px;border:1px solid var(--border);background:var(--gray-50);
-    color:var(--retelit-blue);cursor:pointer;
-  }
-  .denied-tools button:hover { background:var(--retelit-ice); }
-  .denied-list { overflow-y:auto;padding:0 24px 8px;flex:1; }
-  .denied-row {
-    display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;
-    border:1px solid transparent;cursor:pointer;
-  }
-  .denied-row:hover { background:var(--gray-50); }
-  .denied-row.on { background:rgba(192,57,43,.08);border-color:rgba(192,57,43,.35); }
-  .denied-row input { accent-color:#C0392B;cursor:pointer;flex-shrink:0; }
-  .denied-code { font-family:var(--font-mono);font-size:11.5px;font-weight:700;color:var(--text);min-width:92px; }
-  .denied-meta { font-size:11px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-  .denied-stato { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;flex-shrink:0; }
-  .denied-foot {
-    padding:12px 24px 18px;border-top:1px solid var(--border);
-    display:flex;justify-content:space-between;align-items:center;gap:12px;
-  }
-  .denied-foot .denied-summary { font-size:11.5px;color:var(--muted); }
-  .denied-foot button {
-    font-family:var(--font-body);font-size:12px;font-weight:700;padding:8px 18px;border-radius:8px;
-    border:none;background:var(--retelit-blue);color:#fff;cursor:pointer;
-  }
-  .denied-empty { padding:28px 4px;text-align:center;font-size:12px;color:var(--muted); }
-
-  /* ── MODALITÀ SELEZIONE PRATICHE PER AGENDA (?seleziona=agenda) ── */
-  #agSelBar{position:fixed;top:68px;left:50%;transform:translateX(-50%);z-index:1200;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-    max-width:calc(100vw - 24px);background:var(--surface,#fff);border:1.5px solid var(--retelit-blue);border-radius:10px;padding:8px 12px;
-    box-shadow:0 4px 16px rgba(4,63,117,.18);font-family:var(--font-body);font-size:12px;color:var(--text);}
-  #agSelBar .ag-t{font-weight:700;color:var(--retelit-blue);}
-  #agSelBar .ag-chips{display:flex;gap:5px;flex-wrap:wrap;max-width:46vw;}
-  #agSelBar .ag-chip{font-family:var(--font-mono);font-size:11px;font-weight:600;background:var(--retelit-ice);color:var(--retelit-blue);border-radius:5px;padding:2px 4px 2px 8px;display:inline-flex;align-items:center;gap:4px;}
-  #agSelBar .ag-chip button{border:none;background:none;color:inherit;cursor:pointer;font-size:14px;line-height:1;padding:0 3px;}
-  #agSelBar .ag-empty{color:var(--muted);}
-  #agSelBar .ag-btn{font-family:var(--font-body);font-size:12px;font-weight:600;padding:6px 14px;border-radius:7px;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text);}
-  #agSelBar .ag-btn.primary{background:var(--retelit-blue);border-color:var(--retelit-blue);color:#fff;}
-  .popup-pratica-pick{cursor:pointer;}
-  .popup-pratica-pick:hover{border-color:var(--retelit-blue);}
-  .popup-pratica-pick.picked{background:var(--retelit-blue);border-color:var(--retelit-blue);color:#fff;}
-  .popup-pratica-pick.picked .popup-pratica-ente{color:#D3DEEA;}
-</style>
-</head>
-<body>
-<div class="topbar">
-  <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAABkCAYAAADDhn8LAAAz3klEQVR42uV9ebwlRXn281Z1n3PvudvsgAyrI8iirEZAjSAgRo0IAYka4ueHCiEoAUmCcUniEsBEEwlq5HMJojEY44giiIRFWUQ2gWEZNmGAgRkYhpk7dz2nu97vj6ruru6u7tN9zr0DmOPvOvzuPd1dXfWuz7uROPRjjOhDAMDmh/Q/+pfm79bfwPZF5mN+x5S5n/0VgcJPfP9uHyr4vWvdnCw3tx6y1srpdyh9NqevBVvXZ7/Xy+8K3pepy9cc9+HM+RA7nks19p0dZ065/0zTATu/XvxMAjElf81e7zx/dtNbdv05snXTOhGDCPDSK85sGBUtiPMElnoRcrwMA9TlgFOMhQJichx6/Dcq3xSO1kh5YssJAxcz2d+h/N9S17B+Bjme4bp3jno4fWGZYMndn0sIycU8VIFoLQFHnL7WRRqFTGofGRe+BzvkXrmAoGJ6gWO93F3gMgAv9cfcAsjxotR988Ag0gfKzHlCLdQInPkeZbRWhTV2JSJRsKlUwtxVNBi5r+ESQi69ryV9uerLUff7FxFZillczyyjk6J3qMBs9ncKmaDiGTNV2Neqf9N04tW/EBWlUq2Lyu9Hvd63FzMNPa5/rtfXz36+kM+suxdUgQy4QHtzH2fPld5DzNseMwPMc0M288Ic9KJkNpqDb1LN9dCcr5T7IN4q59XL/btpNrdlMm8MMh/bNHckxxVJw5ZYYqusll+Ae/CLQDBsHToQBYxAhe/jgVQ1B/B37tONfWkeNE2dj30map5Y6YVm5RfDel0gD2dMLOLfcUaYi+v4BZCltNWf+LsvELnCeRPYfFW8NKXB1rL0ow1VXfeI5+VAVcUDzTifVQUe8UtOOBLNNxNlTayXBDHzvG/Ei8+M6PHZEcF3Q/6IewdAUnGQrbwrvHX3XPR0E0Im6s0AqRqR8DrynAu/Sy80MRa+CBe6+vOr85TDji57Ze59L0vOmubj/eiFgXyEDh6JngiKKKumufreonc0u5frqJS5aG5cdSsomrqOq6yX08wUQ+Tc5dpIOClrb3WqRtUdoULxzKWESmSvmyuLG2LOWXbsIpCCb5C5RzWwxS1YqaKQ9OqryqKIOFUmVKbqBJ41sPqRIb3cZ06eR1XekVLXMGUj21R+HiaFJlIMldZt3ZNzBr4r4Mdpbo8ojRl1Il5MVO76uN6VRSZtqp5ernb2+XfuywepraCZrYOvE8/sX7luHeVMPT2PK32jW4ImzfHeUHem4prn34UH5gxbqUxf7JAB6Xw4sVVJLQNBxAYJ0fwT9wsZ0piLxRPPDdXMySaaH21jzzOy1PubcmUWMho6y7XUE4PQnL8t81aQ7y+OsH6Pa6cX9dqZtw7Fz+sWkMprahbYiiF02npvSxw7rfPPdVtLmL/Y1V8PMRV+Eay5Cy4qtt4qeSuSDM8ryVHqPyzYm7cGe9R7tx4gmOrXsK2aDXJWU51QP1DzXNMlOQOF/eVyco/Xci1nKrOBXTOqySncsw4/9/SerE3ViDiIkC7IKT7sXp6X3xuqxehchT6o/r6kiNsIBwaBiKrWR5pnJU/uhoRRnyJXP4mTornCdCKyGaQX779/YdnLgZTQf3eIhLnS4aFky/JYfeTY8Zztj6ugFZhHtI96Y2K2SY7r6TcNClMhUZa94FzB/FU/3lYzDTkpue2XeKQUBgtnqFClDqiYZ2humJiAPKw6n/Ug5NAr7DyvrUU8bBF6skuiBm5E6f2sgvnSXJVHdbF9CABUXO3oVTOC5uLkqW8DjYgQKka4eSIxb4YG4EuJMJx7p5yraqd5fSZnPApVz36dT6c28sG4+kO5X0+wh/dj1xkW9gVIv6tX07CYJ/Sgwr4IQAUBWj7h9A8egX123QY3378W/+/SX2Ny8wTEyBCkAEKlrPJMmnfneT7ccW0KutbNpcJDV3H2KcS4W43MHAsL3ipbWr6Xdi17pvEIpdr+uEAuqDlcJfV0PyLjEHZm8KN/PAlvO2jv+G/3Pvo0zrnoKlxyzd0IZhTk6AAEgFCV+wgv3o8osM1fyoGcF1rmOFJ17DBAzCCcynImQZC08xv+bi7Zm+bq+5RE2D3PQ2fLFD7xoTfjQ3/4Osy2OwC0tth28RiOPXQfvPXg3bFhfAL3PfQUVKAgGx6YVeIzvGQ+Lo/id5cx6AV5CjvCH5mWUyZRgMShZ3M/y+xFPicoqQtZSuOOUhA6U7M4cK/tcOO/nQ5JAkRJeoMyZoWUWvJefvO9+OTXLsMdDz4DOdgAK9ZNyDi5hvvb2urXGWCi3vNM0qFxsfrZ22wOSFnnKGDu2yDU2lPu3jfNhvm5Sp81x7unoV4bAaB0prL5f9FvIg33eBWlkBDHq0R96xTDpw7OP/NYNDxPQ4SUaBgpBKQkhEohCEK89aC9cO1X/wK77bQYqh1CCIoRr63FHPq8k8TMnnqMUG9rZScoUrx+7tkrhMni7a1JRK4AlupkA6On0sIUPO3Iu0r7JZHBy/UJpR9tIyVBSAHhaRuvrNGX8ASCLRM4+wNH4eA9d0EQhvCk1BokoyOlIHieRLsTYHSgiX1XLAdPz0IQxTUrXPMonQdZE7Wre22vnsZcQLy1CZ22RnuhuXvHXMCVs11OKMdN3nwvLMv5nfFJ7agzAa0BNBo+lAqhOI2KSEnoTE7hgH12wCf+9CgopSCFSK2KUwU/GsXxpIQC48EnnwF8L93ZMRsy/l/7mcdGd/NMR7yVVhdV13hbY1t0I2BC2J7FySccgqMOfAVue3AtvrbyRjy3fhwYG0LDxDLYhJFUR8HnWXzpzD9Cw5MIldLawGLxbPw2DBU8T+KiK2/Bnfc9AW+4BaU47YD9b2cOqlLeWH+jYpj5JSsw3PvQBcWag8MgLdU7m7bg3NPeinNPORp77LwdDj9gN5xwxP7wG4R7HlmHqU0TEA0PkhhCSgRbpvGxDx6J//OWgxCGIaSUpY8KjYZ5+OmNeNfffBOzLECCjFKifCPp/7UMUmbzv6SLZnoz46ic6XtjEMrCZJzZ2wQRkMJDZ3wKhx60Cy48+08QBtqcUqywaGQIR/7eHjj29/fE+MQW3PPAGgSKoEDYZccl+M4nT0TDMz5Hib3LrKWXEAInfvrbuPv+p+ANDxrtAau/b1bz1DFHKpolxKXuPb3QBJiKILsSW8S8+J9by8+dywdT7715jctD2nzK/1X/TpCOfo+OSHztr9+jeYiMQy0lFDOCUGH3HbfFRX/3fvzywjOwx05LwTMBVmy/CCODTR0Zjxxe5vgnrT20hvn3K36NK667D/7YCMIgtCCPNA9zjXesnT3GVODaWzXjXdR7P1leXZtMMEx9NzmuEbnO8FXi6tSH/qFKJg8Xvl/fOq/LxAJRiykMQ0gp9I8wIJhd8RYzDYOERDgxiXM/fDR2W74MQRjG8QqAIYjgSQGlGO1OgIP33hV/ftzrgaCDO+9/FA+ufUYzklKFuVahUvCExKPrNuKs838E0RoEK5V5ebJ5pbLWiHqTUM1joNQ1BnMn6kl2ck3G6I66kfPJEQjOVdvrWEKKuTcEjixhyhX2pGBySq0yAqrFJFS3YEoH3Dqbp9DZNInOxLTWCBI5HFlKgc74FI564974s3e+AWGYoFBE6QUJQRBCL2VyagYIZrFxfBZ/8Ofn45KrbzexDhFrD4o1ivkh4OTz/hPPPTcF2ZAmeEh5SchF8lpkZEUaou0V5y8+1rlHanpdpzvYVwX7J/TRs8F6ClUSONl37LVsgcs0iQ37GmlazQcx46h0b7gOPvzHr8eHjjkESjAeeGQtVDuE12zEuW5EBBUwRlsSKz9/EhYPD8WM4BZGuj5got3Bh//pEmyYDOENDWLDlhA/uPpOXH/nQ3jZkmGsWL7MZPQqsGIEYQjfk/jKD3+BC759LfxFY5amcXXComw5YPXT7avr21y0jqu4QJqDe8Q+5NbwDF5swED07jqGXoFBtPEupUAwOYF//ctj8an3vQX77bYc7zniABzyqp3x1Ibn8chj66FChmx4EEQIx8dxzulH420H7aURJllszSnz94+e/wNc/j93o7FwFCpkCF9ANH088uizuPjym3D7A7/Fih23wQ5LF0IIgpQCv3n4Cbzv099DRzaMwubcFKlI4+ikRyqwnjlPa2QYKheYrHrYtJWIgOaWMIm3AkNXub1jjfOxpBToZDXUI+qWzasZxPMk2uOTeOcRe2Pl505CJwgQRa+FMZu+d/Vt+Ow3rsR9azYAJPHqFUtxy9fPgi+oFIUKQ80c19zxII445UuQw6PgVAtNgrG+EGyZhN9q4MSjDsRh+70cqx9fj39beROemwQ8H2Bbe0Qp40ZFR7lYzA7JyABHWpKjxmYcp39zT4SntSI7rWZHOzzqtyKI4iZudTyApABM+46cctZUmkjrPqLGMir8cp4/ebqolKyokSiFsRbhjm//JXZauhAMhjAzCINQQRAghMD4TBvH/8038PP/WYU/fOv++PG5H0An0I65cDCIYl27Md3u4LUnfRH3rdkIb8DXyFVE2Nb3pRAIlAJPTutTUgpoDcLzJZQih1VTcaMzvklZ0Ks4OTg77zCzHrbqrkkljFpkGXFa4+fHDjpcbC5g1crF/Jm6Vmf+mg1gOH32ml6BI1+NMvckFM+ArYnC11krEeARyrNNSQio6S34/Mfei52XLTJBu2RApzR+xcxsG6MDDbz9dXvh59feg5tWPYbbHliDA3ffKWEko02iFapQwfM8nP3Vn+De1U/DXzSsfQhjImXrvVTImhlHWogalqmQoZQL3eI0vJIyodI7KQwIQGDt33DSbzZbPa2YwcrFF9mptLbPw7mXif0xttabO/huFW/pUydBEEQxregtUBk5UURJBW4scbxWfXb6ZtrXE/G7CyFqmj9pFlNMGn20Apkig28oxWDFyE8KplpKosgXTkMHptSCS1SM9CQ6mydw7FH74QN/cJCGaYUwdJfeSM/TWSs33P0o0PDx/FSAw0/7Cv7vW/fHn7/rTVix/VIAQCfQGbZhGKLh+/jpzffjgu9dB3/hKFTonnaVSlVmggpRmnjIzBhuSgz4EkGojBRla90Uy0HFjMnpNjpTHW1RtAbg+0KvxdFcoOkLtHyBkNlioazYy84mFwn8S4xOqDDVDrUZaPT3WMvTVd1Zk85xW8q13tbm4dSsQidMCgMbHtBq+BrVS9WNk1twxL/U04oFEUJmTMwGKTCFGRgZkJoZWRPc5KxCqKrRql2pG5lsnmQMtzydUgRCJ1SY7ihtwoABRRjwJFqNaO85n/FszVanArxMMTA5G3ZF0Ni0HU35IERJhwoigAOFxUMCt/77Wdhx2UIo1ptmo1W2H3HZr+7F0Wd+HdQaSKTilkksWNTCKce8Dmf88aFYtnA0XsT49CwOeN/n8cjaTZCDDR357mMcXGyKhx1c8cUPYp9dt8VMJ7Syhjknw5RS2DQ+iQeeeAZX3PwA/vu6VRh/fgr+6BBCFRohSiBJCCZn8M1P/THe9tpXYjoMIUBWeXM+gd/G+cm0B2oIgZvuewzH/vW34LeG0Jmaxv57LMel554Us1sObs2On498JE6e4nsC7/7Ud3DdrQ+jOTKE2S2T+NJfvRMnvHEfTIcKUjpGRLMdAbFbwDKUYjQ8iVWPrcfbzrwQofAgBRC0Q2y/dBjXnP9naDV9dAKG7wv84V9eiDtXr4c/2Mxrw5KPJwXa45N4/zGvxTknvxUTM20MNj388u7H8O6PXwQ5OAAhdGjhix89Fu89cl9MdUL9PpTOx+MUx6Q3jZnhC8JDT2/Emz/yFbRZQJB0mFucMum8mBkYqe4gQgh0Jjfjoycfg522WYQgDOBJL2OlMJRSIBLYMD6J0/7xv8Cep/0Wpc0vuWAMm9ohzv361fjOz+/AqccejDe/dk88u3kK5118FR5+ahP8VjOBZ/sZzkKACkMsHRvEfq/YHktGhypdtuOyhXj1iuU4/rD9cfaJR+JjX7kUP/yfu+GNDkEpPfeEGSCPsMcu22LZotHe3EATwxnwG0AISCJ02iFesf0iLF8ypou7RO8wzZaZGUASmBQgGfuu2A7bLB7r0WfVFHL76icRTM/CG/E16wYhtl8yjN2MRRB9Gh6hp+ZD2nbGviu2xTaLRrHM7NHO2yxM+FgB8AT23337nvc+ep8nN4yj3VEQDa9kSkGiZb1sX6PYHNE2FvbbfQejJRhSaGZIBw51avqZF/wIax5/Do1FowhMmgczECil0a6Fo3hywzT+5vzL8amR6xCMTwGzbWC0ZZhJGOece56LTgSgE2DHpUsrM0f0mW0HEIKx2/Il+O9/OAknjfwHvnnpLfBHWmClEAQKi0YHsfuOy/oIh+h3uvuRp4CONjXBCvvvvtz4e30wx2wba55+DvA9dIIQo2ND2HuXl/Udu1mzfiMQaMsBTEAQ4hXL9R60gwBelEQapbDUif1HZq8k7LDdYjAz2p0Qvi/RNjRE0KlEI6MD2GPXbft+n3sfWweeaUMONhF0SoKGkYbLwotsjENigLwG/m3lDXjNK3fEwuFBy5zSJktUwPSjG1fh4ktvhr9gJGaOlMnB2ufwfA9yYAyzE5M4YL+dcfCeO+D+Nc/i6lsfQhgS/OEBA07110F+NlBYef3d6IQqo4YTSQ7jcAPAXjtvg1cZYgpCzdBfOuM4XHP7Q1izfgJe0wOxgvQ8XHnLagxIgUCxFZ23/JqU782gqOpOe/hoSIErb30IaBi0zvfw8NqN+PH1q9AOQ7CBpzmWE2QNi7G9Di1pgyBEQxCe3DiOzVMBhJBQKoQnJC67+X4MNxoIVJhvu0Q2GqUsq1tXcYZKYUAKXH7zaqDha2efBSAlNoxPYrrd0Ymkme7uXEdYsBmWKT1Mz7RjASKssEBUutxs+rj816sx3PSL0+rZMpHiX2khFCjGoJT4yY33ANJzAjtOHs7DvFavVUEIJ6exy8vGcOZ7D8P7334whpoNAAqdQMH3PDyzeRL7v+88PL1xBqIhjR/hDkJJT6IzPoEzT/x9nHfq0fBMDOWqW1fj09+8Cjfc9gjgN+C3GmAOc9BtHTMLM+1S0CdRowqNAYlT/uj1+MKH3wlJhCAM4Hs+PvnNn+KzX74CjUVjCEIFVgDPzCT5LV13Fw6bGEDTMypeq3010wGCsBxp6gbYEEEY3w+kfQhMz3bPNizr+sIAmhKi6WuUDAKhYgw3QtzzHx/DTksWQimNcv3eB/4Jt967Dn6rqdGmirEiTxLam8bxweNfjwv/+l2YbXfQbPi44Z7H8IaTz4dsNuP34al2D1OXMu/nexDNRiWsl4SzYCoJ0LFieMMtPPrsJD583g/x5f+6Dme993C8720Hwfc8zHYCfOhz38HatZvQWDCCMAx1gwQHRi+FQGfzFhyy/874wmnHAMxaRQuBI1/zShx+4O747s9vwz9/9xr8ZvU6YLABz/egwvpdwqSUECNDRrzbCE4klVQyGkUCIQPnf/1n2PVlC3H68YchVAyPgcP23w2fG7zGHuAEb2gw8tJcJqsDxaLMc1lDxWzQNWZ4Aw2d2uDMjqLy+JkFsiljorIiSAGI4Ra65HNneDcTmyCGYiMY4h7ECs1GAx4JC5Kw4yJUsbQ5jZX7vkytyRgpGkdkBpGAHG45MhrYHW3nYj+QqwZ/UyW3Kec4+VeFDK/hgwZ8rH58Mz7w99/D1y+7Ffut2A6/vu8J3HH/WnhjQ0l6uUOyEXSL0NYA4StnHRcjXA1Pl8SGxqw58ajX4IQj9sfFV9yCcy6+Bo+s3QzZ9GLsm1IQbcmAZAbCMDQmThTcU6lGyUCoXzdQ8EmAhlr48S9X4fTjD4MnJIiAZWPD8Js+giAEsfa/jNWmTY4SsJ1SgTczCtJOf4wsWyYo1syjkJ31Vy36RVbYhE2neWYN0XYjVyqAOBNEx8DU8QOQZEtbbyq4uoNODmiZoVL3Y/v/2Cp3cKZUVh+Vkw3nckkchGAziG2/ZcwHxQAChjc4ABoaxM2rnsTNdzwGNHz4wy1tSws4pvQwoADp+2iPb8bfnvl27LNiOYJQwZNJZm8EQYahQkNKnPT2g3H0G16FI067AHc/tB6yNajXYG0tdwnQyigoaWIZIRhQpjO7iRv4QoBZQkqJ2elpbL90NOWbTM92EAQKZBxRhsk8JoojJJyBS+3AKxkYOOlkpJlBC3oqtADt+HUUXI2TP5iNpsjXbETVkxFTJIHZrLbgQtTG/rpihuIQqem55hkikwLAgvKFdAVCnW2/2WqAmWdSu+t7cVcaEgqCZMrJDjNOBtv+Z7ce0abBB5HQKFayPwVQnSFOpQAoBX+wCRoagGKOOxiS3f6ekzG2Ugi0t0zhkAN3xhknvCmV9p7zUUxT6tl2B0vGhnHCmw/AXfeshBwZhAoqOoBmpztTs4i9ZlZAQ0I0pAmUEMIgRDgzAwiJdifEDjstxV+d+OZk7Qzc9dBaqOkOGgubCAJNesFMB2h30jknqXJetvJDhOWPKLMOD6LRcA+QRboNDoEQTM0CRhtq/6UJ2ZBJRNloxygJk807E5m1Bu10K1aX3EzVqVOC+/sSYsADstqSqDg3hssTS1KxhthUzXMIWcSea3htx+0AhAEQTs9YlhCAVhOSHCn1VGPYLDiJpFNpdDV9aWgYBZRoDM6pZ5iGbYyBhsKXzzpeN5lWyrFGTuXkRNplw/gUIL2UBIkYMPuvvfEcBDh4v52x3eJRKGY0PYHbH34Kjzy+AZ4vEQSM7ZeN4ZA9dkC73cHuOy7Bace/ETssXQgVNYcg4OIrfgWgA1ZBnMJ/4N47Y9elQ5jpdEx+GWn73GQ6CmYoSnp7sTGvhNCR4PvWPINVD6+HaESmoxXMyrobYYDX7rsDth0bRCcIMdjwseqJTXj48WchPGFADM7krGnJF3ZCvHr3bbHbdgvQCcP4rJi0r2OnunD0P05G17YaHh5Ztwm3r34SwhNJTgFlIthxh9c6g0Sp65QTtucgMhf4TQRWARaNDuF1h+xuAtnap/zFbx7FVLsDQcKRo1ZieFqZzMSkx0Bne0xV6XJXpbOZkAKd58fxqb94G/Zdsbyk+ULyLKW0+fXks8/juz+7HWK4lYHk2MrK5czLE4gEVDCLL5x+NA5+5U7xX864YCX+5f6r4S8bQ2fjBA7eY3t8/9PvS62iE2hG8DyJi35+K3555xPwRocRBgGk5yOcmsKZ7zoE7z58v55R6E9fdCXuXvU4ZLOBACHyE9sNwwuCmp3G5097O35/r5fHf//4hZfhH772GLxFYybZ025IQSYvCggmtuDUdx6Nk99xcM9r/YfvXIlbb30A3mKN4oGKi78oNW2qigNsNei2gB1mB3BQMExGCEI4HWCvvZfgx+e8P/59AGDF8Z/BmnUzoIbMwcJcpL4zfaOZIhSLojybjANjVe/V/UhB6EzM4ODX7Iqz33ukzrFxmFZsPSuysQkCp/zj97F+/Wb4Y8MIg3x5p9vFNMQigPZsG0oxZjsdNHwPExPT5nkCIIHp6Q7CUOlMACEgCPBNPtm3r7wVp577fXitVlwsFgmOyelZhEohDHSLoVyNvBVfsN8tCEN4noc7738CIOF2wNlKTWECSKI909Hv0W6j0fAxNdNOjHd2OLRxBxeBqdl23HHS92Sci8ZcbE1H5qeUAvc89DQgRQ7uohIUqfr8eS7XKVXqv4wW6XQ6UEoZyFlgy9S0ThOqXEJgYn9k59aZQGFSTERWFms68ttLTpRiwPMZ5532DvhC6FQS4W7rH21xYPpaXbDyevz06rvgL1qIMCjOgCOnbWteFhQ71FIIkPC0ba5bqqDV9OOsZM24jKtuuRdf/dGvsPLae0CNBoQIwcrCVYjiWnwldP2EENVyxzxPa87H1z0PeKICDJ+IKu1s6+fOdkKNTXe9XgDMZq0KRNQlizWdHwUAT2+cBLxGLDxdpJ1FiIl7G+DBORTJyhAp2yIitDshIASk6b+mmGNUtd5ER07y+ZhBKjsfhGom1hdB8wQEnRDbLhnBq3bdTvsdonj2BJF2aaQUePTpDfjEVy6DHBkxaI1bX3DRa0a2KblnBiow0GzgzkeexsT0LFoDDYRKZwRcdPktWLnyFjR3XIYgCBMzLnIQLMtThSFI+rhw5TX43k9vQ3N0FIGZTcJKmdw2FTugnhAImHDfU8+Dmo3SbAHXyiNhVXRdHudhHTA115BH+PqPr8e3f/xrDIyYREwmbaappE9llIQqpMDtD68DNb0EiLEaaxeZLVX4w27snSUiV4NxTivnNNJnfA6bkULFCEKOQwxVwR3tL3KqSM5zu8nVGaOoIbLwJDY9P4knn92MvXfaNk5zF5Q+8CitIupr9ZF/+SE2b56FP9Yy2kMUMgUXufrMhRE1xQx/0MNDDz6FC1Zej7PfcwQ6YQhPCnzmz47B5b96EOMzHZAkR/yMLbBGO5Crn9iA6375ALBkoT6pIlEXvfdgo6tmjlNWiDVD58AXLtE3lIbnrc8Djz+H669fDSxeCIQVJlUN+HEzDRtpYoXYL6TUc6sVJjtTzTO9AshRMMa5+T1WKXXKT8mb5F351sbKjaQ11jpqsEW1nBtdIwDMdBgnffa7+NW9j8L3ZJyQaGPcOhlNp8tfcOkNuOyau+GPDRm/o5fU93QsJ2ZEqyM4KwUx3MIX/+NaPLVxHA3fQ7sTYJdtFuCsPzkM4cQUhA0mWOioSqWvA6NDLciFoxgcGYQ/PJD8jDTNv+bH/F7UNFuZ85HgshOwiS/MfGeoNQg5OozB4UH4w034Q+ZneAD+yCD8YfMzMgB/eBBSyFTaEBktyi60lGrOSaf0dbkhGAT03GaPqDhZoIretiRj78UX3RIJlIIcaOCWe5/C60/5V7znb7+F2x98HJ6UECQQhDrg1Ql0EdaDTz+HT1zwE8ihIZNeUuB3UFXvjTPBThWnniilIH2JZ5/aiH/9wXUgEhBC9+f6i3cdij33Wo7OTNtUtJkeXyYWICk9AUop46ST6SlFSqebx2KQUzEIKQQ84Wpkk2klQWWwfYkZbAffskYXKwN6mcg1JT9kd9YjBkFBSkB6FPc54zi2Rc4Ylm7fpIWjFJT5SXqp6e/aTMUFnM4FpnTRaAfOx1l68aMtRp/X5tXMCl6rCaUUvnf5b/Df196JDx37evzVe47ADssWWg4y8NF//gE2b5rR2iN0F9BHphhloqtujISzHKttS9bWtmJAjC3AN35yOz5y3Bux7cJRBKFCq9nA2X9yKP707G9ANBabehCjzkW+tn56ZgZqfALTDd/YHVbwkLMQpXWAA74OmJKdvpU1sslZPQgrHoF0aXuqapIyfSGnpmagNm/BTJQoaQc4I4srCgqyCWwyA61BCCmSsRNk053+j6npNtTEDGYVwZ0qawcSQx2EbPq57AvbJIqZwZ4zWZAASnkR07v1YT17HhmETAKdhkkbC4YRKsYFl/wKl1yzCqe84zV4+yF7Y9OWaXz5hzfgspsehr9g2DiWlNOPnA3sc8HoFwOBEuc1mslLgBAm+a0h8eyzE/in/7wWXzj1nRoBUQonHH4g/uXV1+CO+55GY3RI5zQJAZDMSaTtloxg772WYmjJYgCRFDUoGgkTm9H1FL7nodHQ6Nl1dz6KLRMzIE9YtGNNlxKc8qWYM+kZGQGRZrK0dop03i7bjeHV++yA1qJRowkkSAiz1sR/E4IgQZBEkB7hxnufwOYpBWoKk/aeBXYJ+63YBsRAy5RFCKGDiyJqm2SyKgiM4aaPxzZM4O5HngF5EhB5+EVF2iVKMCM7ZsK5uFg+80MUxzy6e4DxM+d5/AHFLxWYtjKN4UE8u2kWn/nqz/GZb10NdEIAAt7IkEkwpAJ7MJ8G4OweUnCNlNIwhzAokwIHDDno42v/9Quc/I5D8IrtlyIIAjR8H+eddgyO+sjXoEQDUHqNUEoHzJCMfDvj3W/BGe9+S22Ztdt7z8PmiVl4SJIWNT5OpZCJNjFFKneOolpstmJBVlZxtNZTj3sTTj3uTbVPcc8Tz8GmNc9DkGe0sEqzITO++cn317rnZy++CnfddQXk0oE4ncTWkInlxXk8mSPH3Izfi/udKWvfGAWtNMvNKraa5lGRBmGuZL9VRbwjAmDW1WG+pysMA6UgBvSrBSrpwRRnF3SdYVFkWmlCjn6EUPBIAkLGY93ADAUFTxAmN87gnIuuxLc+fiKYgdlOgMMP3B3HHbkvvn/5XWguaIFDndcUBp34vjYRM2cAT87aPtoPIiI8tu45rH3qGYB8XRBFBFZJirlt8iilG3yHhjmFvTmZBE5yYFqptcapOdl12rJTn6oy331m0wTWPz8DeBIqCHRemCKE5r5KKZNak3WILYKzouFRwHjV/b8FghkgGARUAFD0nojva3FguqMwpRFFIr0eVkqPC49GgbPVP6EqigUrHMFFGiTKc+oDySojasUwXUNMG524P64buan2XE5lQoyNDMKTAp5sAAD8AQ9QYeysR0MgAwbkgjFcctVd+Pj734IVL0tqrf/59GNw9c334/npNvyGNq8WjgyZ+/aCb2hkbPPkDKamZuENN7U0tsyjmEjNu4xk3mOo1TT4LcHduyPR3AtGWn2sVX+e3zKFTZsnIRt+nKtFgrB4wYi+b817++bfp5+fAhqN2N8ZbHip9xwbacVwOpFKNZuIFYtuA4OmuTZay6KFwyYoyrkZjJWiT1b+l1eMlM1P20mej96RlGgogi4VvvBHN+IXL1uNdqi1xE2rHgU1fO2rIwHOGTpnbHqSccrnv4+3HPByTHY08zR8gYWLF+C5JzZAkQcaHMAl196JNWvXoR1GyI5JfWeVNACKiZ1S780coiUFbnloPcgf0MiXQmp2iU0A5Ddw4aU34he33oeptsKwT7jxnsdBAw3D6AUIIivQQBOX3XQvJsbHMd0JTRtVa02x9OV0O1YTKAtCYEAK3PHIOijF8Ej3riJJmG4z/v4bl2HR0ID2z8ieyhuNjSBbv1odRxRAAg8+NQ5qNtBhBg0O4IZVa/D57/wMUx2FAU/it+s26ewHTiDfNKnriDn5Ek88O45zL/5ZnKw4Pt3BltlA90/gqgKdc846Yw7GQL8oPwSoyWmTJm7edNB3pJlbcoUIamYWmO2kw6DDA5Am5wokoKZmgU4nuW/u4Byt/iiz+b4P0WqmWwe6MmGJ9HsEQZK2PzBQrWSUCGp6Fui0U+ZYMURckKfgS4ihAYNuiQTgmpguWIMLbsoUpBCA4cG4Yz+RQDjbAabbyWXSPDcuFRBw9lAmBRUoYGImMY8EgYZbPQh5zjmxv5sMYhzTJHOGrEGh6TQJexNFnK+UEHaowiQNnDWmr9NmqsKJ2SI0DTWHpp1QCpp0gQtCpNaolIoLurp9hDDxBqcIdcxtzNkg2hSN0lLs95VSolt3V85C0xFkS3reC1t2vyBhUL/Eg0laQaEkt0iZUWkyAW6Mr9ObcFWp23v4Hf2EoaqGIlg5QYrZUQOfJoxQKYM0uQO41XvUWlqDGEXVnHUOOsv4OsN1LnZTOPY3rAaXplAiWwiI1PcUMxTCes5u1O+YGR10zGNEqhulLVw4RsBKBBtTqiexFyEac+Vz9NKXu99e3oXXc93vV6yDKT+v+u/HlJJc2SlQ1TK2Occs0ci7Xs4DffTvS2kLLtaONh/FJQ8WQFSllp4jeNeOnFO6v25uf7qec/J0r19mcLg31l8LUtUrEWLxsikjMbOZu6m0faJ8/MTuNUWUC0BS9hruPlmQLBUSO9lUg0CjpmucIHJcE9RwlXhwibbJljVE788FwiCu4IRJB7dmRzrDAlZqrwZQOKVmo3vF52hrhQqMyxmTKP3cCpKrLB5iPl725eujUnW/STmi4Rp3yB0+5RnGjkcQWweRhm+K5YZ14FVbxCTXcTJyo3J1ZkbqWk3cXASaPfyUJ5MhIHKZO1kiZHafaa6kOR2TSBeKlc9gpAxCGu1rPBuxpAiXS2jfNomKhDFnBTNRJebIGZeuCbK9M0dxfygusJurGDSxlGOusAgqsKepEPmxn5OvFKxG5KkYJ/Uy91UU+xcFxBw3FKK01+QaGOQqEyiax8hFzFOwb9nrmDk3hIhz16RTi6KBS1yCH3DWl+OoUyOXInuFjBH5gZncMC8lcuZxLl0RclSFCcte2jXsJpZZVHuIc+5+XCi6ELfyYebKfkqZhCvaF2YuFTtFB08VfDYqME+rCsaiNZMdbKayYjkq1JCUCVjbNUQEKhYA9n0yJl25Y56fO+LFZarW2zOiFGeqTVClB1w4bmuOmRH9BTrjd+rmKXJxMlyl52cla0UzN0cA9V+wpIMpVbYiuq01S+x5Y4pK71fk21D2Dpk1Uy9nUaBbvRzlRolFFZUJ15q9FWWrsjVYsz+tVfT8bEsgqklMUaMG7hFfK9aY7DQ1cwAD9YBkzYmmr+gqWY4+ZzLSnftYyV8p0Jpsz1JMdo4sz516NmmLjUeT7k6OlqPJVKS5gFxjQu0BN3SbT45mgRVME7jyyyhpJEEpFZtvZhE5eVHHRudAUNd+ZKVblpoKZqKQZa9TytlnZCP22YYbaSbLyG2XlshosyJlTzZAmUK+qIThTA6XSxja75XS2llgwUL3uIZ/0QNylUGxXAhA9bp0l7NXqm6zG1I6obH4WdQj0+baQ3O+Fy4VVedTtrCHKq03/3xKY/9FsGQXZMiGT1NxhByBl/gZGeYtg4fJisBxgcnDBQyaWocNERtzzwZdisajRbIrrS2q9y2J9ifdwTJbQ8wOFIu6tUPo4kTXuYLSk8qjBHUuceIEUd5ujrsZUlfidGmfwjVniIctcDgLf3ZlYqrmw2VxPnLUVBc74ske1Pa7asUH0tI818i0DD7NNWigXBJhquVqydjw5Ozz6GhXA8oF2nC6x1heg7imAlFi91HpoMM+nOhuzqcLyiSqhIQUxVhq15al2tJwCQCQ7jqfmG7IaMsu5GPbD1UDjAVjRGp7dkROk7CI8bhPJ5/JcV2BoUZORp0HtJXzyaVeGoDmPne5pktkqdc4eMT9pb3UnZRHdvS7ApqUQrjKJGQJ4eQccaIsbtsTMmUzYqV+IBUETqHgKAAhctH1WmdXhGrNIyGWGOQMRNaL3WiA5n4xjs4VVIBddz2cCmneFJlkJQSQfZY9YqBsDd0ClNwHLNq/braCbMQ9XVuVhKjArLODzV2DwF3Om+vOQe/Dgiz6iGznvv5hwoJofNxiJg+fVmEMe8PrBrOc5qNLkhasIwvZlomQqqmOVCrVaQ7kYP+IYV2Gyp499UorfbxDZJE0PIlXLF8MFaqKtB1lVKfXL0odxl4SCqPWMCkvzH6Uyvyt/zhDkfhwfidrHUWtgCzmc0nBmGwj84uswTZlKSolGq4OZ1PPjFJz77gW5JK6jvqAXrt+swBIyl6nmMGdEDttuxB777INRocHdTFW6TOpwNkniJzp0+0AqyBGLjuao3Y8JfY6Vxv9aDXLT64riJdkX78cus0kO5o5gpRBznLJc05G5BoYSyLBKHv4Jdmt1a3pilZwmssr5cklXYgohVB2Fa6cyRlz7QZbrY84i+y5g60DDQ+777otXrnDEjAzDtpzObbbZoFu1leYV1aci99XZ0WqixJl/BvqVRJy/rdFQHWVZ7gPMx0PoTKYtUgF9EDcnIyOyWmxrgTL3LXBt/N9mVOokq1DuID5KWMmZRmluw/TZY1FwpaR68Zi/22HZQuw187LIAShEyiMtgawz8u3wwIzYryuAevlpCdVt/y4B4ShDIItd9gSGJTJLpdJx0i4IPDVjSEK4ckKcCulinyoRj/YYiMjJtIaaoB79SMp3dGD4E55SUOy6WtL66EyaSZVUUb3s13ZwMkWPvj4s3hm4xb83p47YrTVxOPrN+GOB9ciMOOqs4yfQspc6e45m9lhrpTqZZqbLCGqcZgxClUWyY79hOpIDVl+Rf3cLUr7FxWBhxJ3EWkrkuet00xdhKlSfUxkojE7A7P9xNDKrpWexKbNU7j7t+swMT2L2w1zyIL2RNzF5xJ2863iDFHOM8NWO6uKmcKFPkz9dG7U8MHm5Y0LepJxHeE1l1jnHDJdP1QQm3Ml78TMEA0Pz22exG0PrkWoGFJQPvkxh0u4jC/LB+HSnHl7miunBzaw6Imwa6mWovHCJcU8ZXY790M0XE54zBx3TukVNu2aZjFHRPdCMkrddVNNAClUjA2bJlNmVdmeuSafgS0fpPKCeW5S02s9z5VLnWXoUkZgB7NzJireDXVhx7gxtmoRrAhsVCfNlDeNSkpwqwTWemL2HnsA9CQ8HKieXbNRp96kUD7ZhVglHyHS++/KDM+J2IxLLeJkwG6qmWtWyXHeV0lDrTXaEVQowi+t6bM7hZNK5mZwUhHtOjTKQK2U+T3HvoEDrrXb+Jdomyy0nPUD66IuvRT4ZiFwstdQYqM7v1fw/RjEYM4lOxKqaHlOhJIFJlAF6zIyTbPf5wI6s70JUQSRch+HkYMIHTckVJWi1jQqRmHhfS6qm3lxysQt62QhE2VnwWfNOfuvpjYa2diC3bmjSPKzs09jqca1CZQ5tzCuIpGz0G4WneIu7k3qmLlbhx9EtTTpxg0F5jGnh8vZ5lm387PTh7p1ebHHStjj3jyn2cPVmi1ymZ1c4AOkVWOms6CjPxdZ8oUdkGQ5VMtIhRZT0yA5V3/sZNaeO9xTPmMV9txKh/lFcNfDE+WJLLV1VCyckI4bVM7M7TYCzaIR52Tu6N0yUz3d9SLkcLOod0vRrC1X6R0xTLaehaxNTadklwQK+/GxHUxBWRcAMCPLIn2mui6jSvkrUbfCLzKvTd3Nx2x8wOFcsiWpqGsqdvqE86W4hnkFFxJJcurVRlT0bIp1mxVAJeYwp+bA1VgUW4CM0+wwNFMdTCE4YmxZGqHMBdareK6aj7LDyan8ahEf69lsmn1R/k0SNVH4xtytQ4VDoRcHBoFekjXJNS7bNW8+24UjEgS5AfcOQiJ2Vj6SXVbH5WvkwubSVbstpkfCMSw8w2olWvSsuKbIorHCZhgpo4JLQu2cYVBCrnMj5Ssf0/tXDUUjAJ5r6EoRi1ZlDrKQHTIduPNVW1xNMjE5jZl8nTe5Gbykj2Zp7QJZh5WzlRxhrxjutoOT0aE4vl8y1pkckHWaMFMLrIYIpwjIOg970Gg23yRny3FqrKHdT7i4/ZLrDFzrVg4XuqivmcojTygTgskot8RMs7284oQXzzlllMuKhVybnodREyZSXV64i363XiZFePGQpZJpr9mu4o53y/ksDqLIH5zD5SOFwqrumvU+nDl8KqR4V7pFZh1sXUtF75phWrbhm6Q7JAGOzImS0mPK0wmRslIxub7tF9ePcyUTMEGdKdUFpahRRvY+XldINS5q11KSXI4tVcEJXNhMHXLJ26NknybncMoChuOCd00TQ5oy7eYSNQx37qrEuuv4VAOHbsViXCBgSjR2ysCHW4NQGZTl8v/yKUh69J0Fu5CyOueUxKti1MvVBKLKedtmIQq0VGlXE8cmZwnH3mTqI6OGeqw16Boe4ZLNKpNWnOlfoqoTXhU6nYtPlDxI3R7U70N7HBNjoz8lL28NnjWmXQUtYNEjCRs5c+SRMxVvfJE5W+GgvPKN4nk8+bn81JTspdKnf1gve1Z9jRGgOqPDXqC9rwSL9bLnGbqj+ZBK5UMWvCyGxSWcSMUYR45Wuw1g6mbl591Qt8Sp7rLWIycqWFe3PeCsDc7l13ABkAOUN8ajOSBrKje4CtdG88RmVLCGMtCrkqXQBTSzPJT0bwj4/wejYrUVqyKjAAAAAElFTkSuQmCC" alt="Retelit" style="height:50px;display:block">
-  <div class="divider-v"></div>
-  <span class="page-title">Mappa Avanzamento Progettazione</span>
-  <div class="search-bar" id="searchBar">
-    <input class="search-input" id="searchInput" type="text"
-      placeholder="Cerca indirizzo o tratta ID..."
-      autocomplete="off" spellcheck="false">
-    <div class="search-results" id="searchResults"></div>
-    <button class="search-btn" id="clearSearchBtn" onclick="clearSearch()" style="display:none">&times;</button>
-  </div>
-  <div class="topbar-right">
-    <button class="topbar-back" id="deniedBtn" onclick="openDeniedModal()" title="Seleziona le pratiche da mostrare come DENIED nel Report AWS">⛔ Negati <span id="deniedCount">0</span></button>
-    <button class="topbar-back" id="reportAwsBtn" onclick="generaReportAWS()" title="Genera un PowerPoint con uno screenshot mappa per cluster (modalità Progettazione)">Report AWS</button>
-    <button class="topbar-back" onclick="exportGeoJSON()" title="Esporta il tracciato (o i lotti filtrati) in formato GeoJSON">⬇ GeoJSON</button>
-    <a href="hub.html" class="topbar-back">&larr; Hub</a>
-    <a href="index.html?direct=1" class="topbar-back">Progettazione</a>
-    <button class="help-btn" onclick="openHelp()" title="Guida alla Mappa">?</button>
-  </div>
-</div>
-
-<div class="wrap">
-  <div id="loadingOverlay"><div class="spinner"></div><div class="loading-text">Caricamento tracciati...</div></div>
-  <div id="map"></div>
-  <div id="catastaleNotice" class="catastale-notice"
-       onclick="map.setView(map.getCenter(), 14, {animate:true})"
-       title="Clicca per zoomare al livello 14">
-    Zoom in per il catasto
-  </div>
-  <div class="sidebar" id="sidebarEl">
-    <div class="sidebar-head">
-      <div class="sidebar-title">Visualizzazione</div>
-      <div class="view-toggle">
-        <button class="view-btn active" id="vbtn-stato"   onclick="setViewMode('stato')">Pratiche</button>
-        <button class="view-btn"        id="vbtn-scavi"   onclick="setViewMode('scavi')">Scavi</button>
-        <button class="view-btn"        id="vbtn-lotto"   onclick="setViewMode('lotto')">Lotto</button>
-        <button class="view-btn"        id="vbtn-cluster" onclick="setViewMode('cluster')">Cluster</button>
-      </div>
-      <button class="no-dots-btn" id="noDotsBtn" onclick="toggleNoDots()" aria-pressed="false" title="Mostra o nascondi i nulla osta lungo le tratte">
-        <span class="no-dots-ico"><i class="r"></i><i class="g"></i></span>
-        <span>Nulla osta</span>
-        <span class="no-dots-state" id="noDotsState">OFF</span>
-      </button>
-      <div class="no-dots-legend" id="noDotsLegend" style="display:none">
-        <span><i class="r"></i>Mancante <b id="noCntMiss">0</b></span>
-        <span><i class="g"></i>Ottenuto <b id="noCntOk">0</b></span>
-      </div>
-      <div class="sidebar-title">Filtra per lotto</div>
-      <div class="filter-row" id="filterRow"></div>
-    </div>
-      <div class="qts-toggle-row">
-        <span class="qts-label">🟣 Tracciato QTS</span>
-        <span class="qts-km" id="qtsKm" style="display:none"></span>
-        <label class="qts-switch">
-          <input type="checkbox" id="qtsToggle" onchange="toggleQTS(this.checked)">
-          <span class="qts-slider"></span>
-        </label>
-        <button id="qtsOnlyBtn" class="qts-only-btn" onclick="setQTSOnly(!qtsOnlyMode)">Solo QTS</button>
-      </div>
-
-    <div class="sidebar-body" id="lottoList"></div>
-  </div>
-  <div id="measureBadge" class="measure-badge">
-    <span id="measureDist">0.00 km</span>
-    <span class="measure-badge-clear" onclick="clearMeasure()" title="Cancella misura">✕</span>
-  </div>
-  <div id="measureHint" class="measure-hint">📏 Clicca per aggiungere punti · Doppio click per terminare</div>
-  <div id="selectorBadge" class="selector-badge">
-    <span class="selector-badge-code" id="selectorPratica">—</span>
-    <span id="selectorDist">0 m</span>
-    <span class="selector-badge-clear" onclick="clearSelectorHighlight()" title="Cancella selezione">✕</span>
-  </div>
-  <div id="catastaleLoader" class="catastale-loader">
-    <div class="catastale-loader-spin"></div>
-    <span>Caricamento catasto…</span>
-  </div>
-  <div id="statsBar" class="stats-bar"></div>
-  <div class="legend map-legend" id="legendContainer">
-    <div class="legend-title">Stato</div>
-    <div class="legend-item"><div class="legend-line" style="background:#1E9E6A"></div>Ottenuto</div>
-    <div class="legend-item"><div class="legend-line" style="background:#436A93"></div>Prot. Integrazione</div>
-    <div class="legend-item"><div class="legend-line" style="background:#C0392B"></div>Nec. Integrazione</div>
-    <div class="legend-item"><div class="legend-line" style="background:#41BBD9"></div>Inviato / Protocollato</div>
-    <div class="legend-item"><div class="legend-line" style="background:#D08A1A"></div>In Verifica / Firma</div>
-    <div class="legend-item"><div class="legend-line" style="background:#6B7685"></div>In Attesa / Redazione</div>
-    <div class="legend-item"><div class="legend-line" style="background:#043F75"></div>Invio Preliminare</div>
-  </div>
-</div>
-
-<!-- ── MOBILE DRAWER TOGGLE ─────────────────────────────────────── -->
-<button class="drawer-toggle" id="drawerToggleBtn" onclick="toggleDrawer()">
-  <span class="drawer-toggle-icon">☰</span>
-  <span id="drawerToggleLabel">Lotti e filtri</span>
-</button>
-<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
-
-<script>
-const STATO_COLORS = {
-  'IN ATTESA':'#6B7685', 'IN REDAZIONE':'#6B7685', 'IN REDAZIONE INTEGRAZIONE':'#436A93',
-  'IN FIRMA RDS':'#D08A1A', 'INVIO PRELIMINARE':'#043F75', 'INVIATO':'#41BBD9', 'PROTOCOLLATO':'#41BBD9',
-  'NECESSARIA INTEGRAZIONE':'#C0392B', 'PROTOCOLLATO INTEGRAZIONE':'#436A93', 'OTTENUTO':'#1E9E6A'
-};
-window.STATO_COLORS = STATO_COLORS;
-
-// ── REPORT AWS: legenda semplificata a 4 bucket ────────────────────────────
-// Usata SOLO durante generaReportAWS(): la dashboard continua a mostrare i 10
-// stati reali, il PowerPoint li aggrega in 4 categorie con palette dedicata.
-// Attivata dal flag _awsReportMode, letto da getColorForMode().
-let _awsReportMode = false;
-
-const AWS_BUCKET_COLORS = {
-  'OBTAINED':    '#1E9E6A',
-  'ONGOING':     '#E8912B',
-  'NOT STARTED': '#8A94A6',
-  'DENIED':      '#C0392B'
-};
-// Ordine di visualizzazione nella legenda del report
-const AWS_BUCKET_ORDER = ['OBTAINED', 'ONGOING', 'NOT STARTED', 'DENIED'];
-
-// stato reale (Master.csv / STATO_LEGENDA) → bucket report
-const AWS_BUCKET_BY_STATO = {
-  'IN ATTESA':                 'NOT STARTED',
-  'IN REDAZIONE':              'NOT STARTED',
-  'IN FIRMA RDS':              'ONGOING',
-  'INVIO PRELIMINARE':         'ONGOING',
-  'INVIATO':                   'ONGOING',
-  'PROTOCOLLATO':              'ONGOING',
-  'NECESSARIA INTEGRAZIONE':   'ONGOING',
-  'IN REDAZIONE INTEGRAZIONE': 'ONGOING',
-  'PROTOCOLLATO INTEGRAZIONE': 'ONGOING',
-  'OTTENUTO':                  'OBTAINED',
-  'NO COMPETENZA':             'OBTAINED',
-  // Nessuno stato di diniego esiste oggi nello schema pratiche: aggiungere qui
-  // la voce (es. 'DINIEGO': 'DENIED') non appena verrà introdotta a monte.
-};
-
-function awsBucket(stato) {
-  const s = String(stato || '').replace(/\u00a0/g, ' ').trim().toUpperCase();
-  return AWS_BUCKET_BY_STATO[s] || 'NOT STARTED';
-}
-function awsBucketColor(stato) { return AWS_BUCKET_COLORS[awsBucket(stato)]; }
-
-// ── Selezione manuale dei NEGATI ───────────────────────────────────────────
-// Nessuno stato di diniego esiste a monte (PRATICA_STATO_VALUES non lo prevede):
-// la selezione è manuale, vale SOLO per il Report AWS e non tocca i dati.
-// Chiavi: 'P:<codice pratica>' quando la tratta ha il campo PRATICA valorizzato,
-// altrimenti 'T:<TRATTA_ID>' (fallback per le tratte senza pratica associata).
-const AWS_DENIED_LS_KEY = 'aws_report_denied_v1';
-let _awsDenied = new Set();
-
-function _awsLoadDenied() {
-  try {
-    const raw = localStorage.getItem(AWS_DENIED_LS_KEY);
-    if (raw) _awsDenied = new Set(JSON.parse(raw));
-  } catch (e) { console.warn('[Negati] lettura localStorage fallita', e); }
-}
-function _awsSaveDenied() {
-  try { localStorage.setItem(AWS_DENIED_LS_KEY, JSON.stringify([..._awsDenied])); }
-  catch (e) { console.warn('[Negati] salvataggio localStorage fallito', e); }
-}
-function _awsPraticaKey(p) {
-  const cod = String(p.PRATICA || '').replace(/\u00a0/g, ' ').trim();
-  return cod ? 'P:' + cod.toUpperCase() : '';
-}
-function _awsTrattaKey(p) {
-  const t = String(p.TRATTA_ID ?? p.fid ?? '').trim();
-  return t ? 'T:' + t.toUpperCase() : '';
-}
-// Una tratta è negata se lo è la sua pratica oppure la tratta stessa
-function _awsIsDenied(p) {
-  const pk = _awsPraticaKey(p);
-  if (pk && _awsDenied.has(pk)) return true;
-  const tk = _awsTrattaKey(p);
-  return !!tk && _awsDenied.has(tk);
-}
-_awsLoadDenied();
-document.addEventListener('DOMContentLoaded', () => _awsUpdateDeniedSummary(0));
-
-const IMPRESE = {'1':'Valtellina','1A':'Valtellina','1B':'Soleto','2':'Sertori','2A':'Sielte','2B':'Telebit','3':'Valtellina','4':'Sielte','5':'Circet','6':'Sertori','7':'Valtellina','8':'Sielte'};
-const LOTTO_ORDER = ['1A','1B','2A','2B','1','2','3','4','5','6','7','8'];
-const LOTTI_ATTIVI = ['1A','1B','2A','2B'];
-const LOTTI_AVVIO  = ['1','2','3','4','5','6','7','8'];
-
-let map, allLayers=[], currentFilter='TUTTI', lottoStats={};
-let currentViewMode = 'stato'; // 'stato' | 'lotto' | 'cluster'
-let qtsOnlyMode = false;
-
-// Colori per lotto
-const LOTTO_COLORS = {
-  '1A':'#4f8ef7','1B':'#89bfff',
-  '2A':'#e07b3a','2B':'#f7a96a',
-  '1':'#3a8c5c','2':'#5cb87a','3':'#c9a227','4':'#e8c050',
-  '5':'#cc3333','6':'#e06868','7':'#a07af7','8':'#ffffff'
-};
-
-// Palette colori per cluster (30 colori distinti)
-const _CLUSTER_PALETTE = [
-  '#e05c9a','#f07cbf','#00b4cc','#33d0e8','#f5a623','#1a6fd4',
-  '#e63946','#a8e84a','#9b59b6','#c39bd3','#1abc9c','#58d6b9',
-  '#e74c3c','#f1948a','#3498db','#85c1e9','#e67e22','#f0a060',
-  '#27ae60','#82e0aa','#8e44ad','#bb8fcf','#16a085','#4ecdc4',
-  '#c0392b','#e88080','#2980b9','#7fb3d3','#d35400','#f0956a',
-];
-
-function getClusterColor(cl) {
-  if (cl == null || cl === '') return '#6b7080';
-  if (String(cl) === '2') return '#1A7D99';
-  const idx = Math.abs(parseInt(cl) || 0) % _CLUSTER_PALETTE.length;
-  return _CLUSTER_PALETTE[idx];
-}
-
-function getScaviColorForFeature(feature) {
-  // Colora per stato cantiere (RO_CANTIERI/RO_SC_STATO_COLOR definiti più sotto nel file,
-  // ma la funzione viene invocata solo a interazione utente, quando sono già popolati)
-  if (!RO_CANTIERI.length) return null;
-  const p = feature.properties;
-  const c = RO_CANTIERI.find(x => (x.tratte||[]).some(t => t.tratta_id === p.TRATTA_ID));
-  return c ? (RO_SC_STATO_COLOR[c.stato_cantiere] || RO_SC_STATO_COLOR.non_avviato) : null;
-}
-
-function getColorForMode(feature, mode) {
-  const p = feature.properties;
-  if (mode === 'lotto')   return LOTTO_COLORS[p.LOTTO] || '#6b7080';
-  if (mode === 'cluster') return getClusterColor(p.CLUSTER ?? p.ID_CLUSTER ?? p.cluster);
-  if (mode === 'scavi')   return getScaviColorForFeature(feature);
-  const st = p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE;
-  if (!_awsReportMode) return getColor(st);
-  // Nel report il diniego manuale vince sempre sullo stato reale
-  return _awsIsDenied(p) ? AWS_BUCKET_COLORS['DENIED'] : awsBucketColor(st);
-}
-
-function setViewMode(mode) {
-  currentViewMode = mode;
-  currentFilter = 'TUTTI';
-  // Reset multi-selezioni
-  if(typeof selectedLotti !== 'undefined') selectedLotti.clear();
-  if(typeof selectedClusters !== 'undefined') selectedClusters.clear();
-  ['stato','scavi','lotto','cluster'].forEach(m => {
-    const btn = document.getElementById('vbtn-'+m);
-    if (btn) btn.className = 'view-btn' + (m === mode ? ' active' : '');
-  });
-  // Re-stila tutti i layer e mostra tutti (in modalità scavi, nasconde le tratte senza cantiere associato)
-  allLayers.forEach(({layer,outlineLayer}) => {
-    layer.eachLayer(l => {
-      if (!l.feature) return;
-      const c = getColorForMode(l.feature, mode);
-      if (mode === 'scavi' && c === null) {
-        l.setStyle({ opacity:0, weight:0 });
-        l.options.interactive = false;
-      } else {
-        l.setStyle({ color: c, weight:4, opacity:0.95 });
-        l.options.interactive = true;
-      }
-    });
-    if (outlineLayer) {
-      outlineLayer.eachLayer(ol => {
-        if (!ol.feature) return;
-        const hide = mode === 'scavi' && getColorForMode(ol.feature, mode) === null;
-        ol.setStyle({ opacity: hide ? 0 : 0.25, weight: hide ? 0 : 7 });
-      });
-    }
-    if (!map.hasLayer(layer)) map.addLayer(layer);
-    if(outlineLayer){ if(!map.hasLayer(outlineLayer)) map.addLayer(outlineLayer); outlineLayer.bringToBack(); }
-  });
-  if (qtsOnlyMode) {
-    allLayers.forEach(({layer,outlineLayer}) => {
-      if (map.hasLayer(layer)) map.removeLayer(layer);
-      if (outlineLayer && map.hasLayer(outlineLayer)) map.removeLayer(outlineLayer);
-    });
-  }
-  updateLegend(mode);
-  if (mode === 'cluster') {
-    renderFilterCluster();
-  } else {
-    renderFilterLotto(lottoStats);
-  }
-}
-
-// Set dei lotti selezionati (multi-selezione)
-let selectedLotti = new Set();
-
-function renderFilterLotto(stats) {
-  const fr = document.getElementById('filterRow');
-  const title = fr.previousElementSibling;
-  if (title) title.textContent = 'Filtra per lotto';
-  fr.innerHTML='';
-
-  const btnT = document.createElement('button');
-  btnT.className='filter-btn active'; btnT.textContent='Tutti';
-  btnT.id='fbtn-TUTTI';
-  btnT.onclick=()=>{ selectedLotti.clear(); applyFilterMulti(); };
-  fr.appendChild(btnT);
-
-  const sep0=document.createElement('span');
-  sep0.style.cssText='width:1px;height:16px;background:var(--border);align-self:center;margin:0 4px;';
-  fr.appendChild(sep0);
-
-  LOTTI_ATTIVI.forEach(id=>{
-    if(!stats[id]) return;
-    const b=document.createElement('button');
-    b.className='filter-btn'; b.id='fbtn-'+id; b.textContent=id;
-    b.onclick=()=>toggleLotto(id);
-    fr.appendChild(b);
-  });
-
-  const sep1=document.createElement('span');
-  sep1.style.cssText='width:1px;height:16px;background:var(--border);align-self:center;margin:0 4px;';
-  fr.appendChild(sep1);
-
-  LOTTI_AVVIO.forEach(id=>{
-    if(!stats[id]) return;
-    const b=document.createElement('button');
-    b.className='filter-btn'; b.id='fbtn-'+id; b.textContent=id;
-    b.onclick=()=>toggleLotto(id);
-    fr.appendChild(b);
-  });
-
-  const hint = document.createElement('span');
-  hint.className = 'filter-multi-hint';
-  hint.textContent = 'Clicca più lotti per combinarli';
-  fr.appendChild(hint);
-}
-
-function toggleLotto(id) {
-  if (selectedLotti.has(id)) {
-    selectedLotti.delete(id);
-  } else {
-    selectedLotti.add(id);
-  }
-  applyFilterMulti();
-}
-
-function applyFilterMulti() {
-  if (qtsOnlyMode) return;
-  // Aggiorna visual dei bottoni
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active','selected'));
-  if (selectedLotti.size === 0) {
-    const btnT = document.getElementById('fbtn-TUTTI');
-    if (btnT) btnT.classList.add('active');
-    // Mostra tutti
-    allLayers.forEach(({layer,outlineLayer}) => {
-      if(!map.hasLayer(layer)) map.addLayer(layer);
-      if(outlineLayer){ if(!map.hasLayer(outlineLayer)) map.addLayer(outlineLayer); outlineLayer.bringToBack(); }
-    });
-    const g=L.featureGroup(allLayers.map(x=>x.layer));
-    map.fitBounds(g.getBounds(),{padding:[40,40]});
-  } else {
-    selectedLotti.forEach(id => {
-      const fb = document.getElementById('fbtn-'+id);
-      if (fb) fb.classList.add('selected');
-    });
-    // Mostra/nascondi per lotto selezionato
-    allLayers.forEach(({layer,outlineLayer,lotto:l}) => {
-      const vis = selectedLotti.has(l);
-      if(vis){ if(!map.hasLayer(layer)) map.addLayer(layer); if(outlineLayer&&!map.hasLayer(outlineLayer)) map.addLayer(outlineLayer); }
-      else { if(map.hasLayer(layer)) map.removeLayer(layer); if(outlineLayer&&map.hasLayer(outlineLayer)) map.removeLayer(outlineLayer); }
-      if(outlineLayer&&vis) outlineLayer.bringToBack();
-    });
-    // Zoom su tutti i lotti selezionati
-    const visLayers = allLayers.filter(x=>selectedLotti.has(x.lotto)).map(x=>x.layer);
-    if(visLayers.length>0){ const g=L.featureGroup(visLayers); map.fitBounds(g.getBounds(),{padding:[60,60],maxZoom:13}); }
-  }
-  // Aggiorna highlight sidebar
-  document.querySelectorAll('.lotto-item').forEach(el => el.classList.remove('active'));
-  selectedLotti.forEach(id => { const li=document.getElementById('li-'+id); if(li) li.classList.add('active'); });
-  currentFilter = selectedLotti.size === 1 ? [...selectedLotti][0] : (selectedLotti.size === 0 ? 'TUTTI' : 'MULTI');
-}
-
-// Set dei cluster selezionati (multi-selezione)
-let selectedClusters = new Set();
-
-function renderFilterCluster() {
-  const fr = document.getElementById('filterRow');
-  const title = fr.previousElementSibling;
-  if (title) title.textContent = 'Filtra per cluster';
-  fr.innerHTML='';
-
-  const clusters = new Set();
-  allFeatures.forEach(f => {
-    const cl = f.properties.CLUSTER ?? f.properties.ID_CLUSTER ?? f.properties.cluster;
-    if (cl != null && cl !== '') clusters.add(String(cl));
-  });
-  const clSorted = [...clusters].sort((a,b) => parseInt(a)-parseInt(b) || a.localeCompare(b));
-
-  const btnT = document.createElement('button');
-  btnT.className='filter-btn active'; btnT.textContent='Tutti';
-  btnT.id='cbtn-TUTTI';
-  btnT.onclick=()=>{ selectedClusters.clear(); applyFilterClusterMulti(); };
-  fr.appendChild(btnT);
-
-  clSorted.forEach(cl => {
-    const color = getClusterColor(cl);
-    const b = document.createElement('button');
-    b.className='filter-btn'; b.id='cbtn-'+cl;
-    b.textContent = 'C'+cl;
-    b.style.cssText = `border-color:${color}44;`;
-    b.onclick=()=>toggleCluster(cl);
-    fr.appendChild(b);
-  });
-
-  const hint = document.createElement('span');
-  hint.className = 'filter-multi-hint';
-  hint.textContent = 'Clicca più cluster per combinarli';
-  fr.appendChild(hint);
-}
-
-function toggleCluster(cl) {
-  if (selectedClusters.has(cl)) { selectedClusters.delete(cl); }
-  else { selectedClusters.add(cl); }
-  applyFilterClusterMulti();
-}
-
-function applyFilterClusterMulti() {
-  if (qtsOnlyMode) return;
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active','selected'));
-  if (selectedClusters.size === 0) {
-    const btnT = document.getElementById('cbtn-TUTTI');
-    if (btnT) btnT.classList.add('active');
-    allLayers.forEach(({layer,outlineLayer}) => {
-      if(!map.hasLayer(layer)) map.addLayer(layer);
-      layer.eachLayer(l => {
-        if(l.feature) l.setStyle({ opacity: 0.95, weight: 4, color: getColorForMode(l.feature, currentViewMode) });
-      });
-      if(outlineLayer){
-        if(!map.hasLayer(outlineLayer)) map.addLayer(outlineLayer);
-        outlineLayer.eachLayer(l => l.setStyle({ opacity: 0.45 }));
-        outlineLayer.bringToBack();
-      }
-    });
-    const g=L.featureGroup(allLayers.map(x=>x.layer));
-    map.fitBounds(g.getBounds(),{padding:[40,40]});
-  } else {
-    selectedClusters.forEach(cl => { const fb=document.getElementById('cbtn-'+cl); if(fb) fb.classList.add('selected'); });
-    const matchLayers = [];
-    allLayers.forEach(({layer,outlineLayer}) => {
-      if(!map.hasLayer(layer)) map.addLayer(layer);
-      layer.eachLayer(l => {
-        if (!l.feature) return;
-        const fcl = String(l.feature.properties.CLUSTER ?? l.feature.properties.ID_CLUSTER ?? l.feature.properties.cluster ?? '');
-        if (selectedClusters.has(fcl)) { matchLayers.push(l); l.setStyle({ opacity: 0.95, weight: 4 }); }
-        else { l.setStyle({ opacity: 0.08, weight: 2 }); }
-      });
-      if(outlineLayer){
-        outlineLayer.eachLayer(l => {
-          if(!l.feature) return;
-          const fcl = String(l.feature.properties.CLUSTER ?? l.feature.properties.ID_CLUSTER ?? l.feature.properties.cluster ?? '');
-          l.setStyle({ opacity: selectedClusters.has(fcl) ? 0.4 : 0 });
-        });
-        outlineLayer.bringToBack();
-      }
-    });
-    if (matchLayers.length > 0) {
-      const g = L.featureGroup(matchLayers);
-      map.fitBounds(g.getBounds(), {padding:[60,60], maxZoom:14});
-    }
-  }
-}
-
-// applyFilterCluster mantenuto per compatibilità
-function applyFilterCluster(cl) {
-  if (cl === 'TUTTI') { selectedClusters.clear(); }
-  else { selectedClusters.clear(); selectedClusters.add(cl); }
-  applyFilterClusterMulti();
-}
-
-function updateLegend(mode) {
-  const leg = document.getElementById('legendContainer');
-  if (!leg) return;
-  if (mode === 'stato') {
-    leg.innerHTML = `
-      <div class="legend-title">Stato autorizzazione</div>
-      <div class="legend-item"><div class="legend-line" style="background:#1E9E6A"></div>Ottenuto</div>
-      <div class="legend-item"><div class="legend-line" style="background:#436A93"></div>Prot. Integrazione</div>
-      <div class="legend-item"><div class="legend-line" style="background:#C0392B"></div>Nec. Integrazione</div>
-      <div class="legend-item"><div class="legend-line" style="background:#41BBD9"></div>Inviato / Protocollato</div>
-      <div class="legend-item"><div class="legend-line" style="background:#D08A1A"></div>In Verifica / Firma</div>
-      <div class="legend-item"><div class="legend-line" style="background:#6B7685"></div>In Attesa / Redazione</div>
-      <div class="legend-item"><div class="legend-line" style="background:#043F75"></div>Invio Preliminare</div>
-      <div class="legend-item"><div class="legend-line" style="background:#1A7D99"></div>Tracciato QTS</div>`;
-  } else if (mode === 'scavi') {
-    leg.innerHTML = `
-      <div class="legend-title">Stato scavi</div>
-      <div class="legend-item"><div class="legend-line" style="background:#9AA5B4"></div>Non avviato</div>
-      <div class="legend-item"><div class="legend-line" style="background:#D08A1A"></div>Allestimento</div>
-      <div class="legend-item"><div class="legend-line" style="background:#043F75"></div>In corso</div>
-      <div class="legend-item"><div class="legend-line" style="background:#C0392B"></div>Sospeso</div>
-      <div class="legend-item"><div class="legend-line" style="background:#1E9E6A"></div>Completato</div>`;
-  } else if (mode === 'lotto') {
-    const items = Object.entries(LOTTO_COLORS).map(([l,c]) =>
-      `<div class="legend-item"><div class="legend-line" style="background:${c}"></div>Lotto ${l}</div>`
-    ).join('');
-    leg.innerHTML = `<div class="legend-title">Lotto</div>${items}`;
-  } else {
-    // Cluster: legenda dinamica con i cluster presenti nel GeoJSON
-    const clusters = new Set();
-    allFeatures.forEach(f => {
-      const cl = f.properties.CLUSTER ?? f.properties.ID_CLUSTER ?? f.properties.cluster;
-      if (cl != null && cl !== '') clusters.add(String(cl));
-    });
-    const clSorted = [...clusters].sort((a,b) => parseInt(a)-parseInt(b) || a.localeCompare(b));
-    const items = clSorted.map(cl => {
-      const color = getClusterColor(cl);
-      return `<div class="legend-item"><div class="legend-line" style="background:${color}"></div>Cluster ${cl}</div>`;
-    }).join('');
-    leg.innerHTML = `<div class="legend-title">Cluster</div>${items}`;
-  }
-  // ── voci SED (condizionali al toggle) ──
-  const sedOn = _sedActive;
-  if (sedOn) {
-    leg.innerHTML += `
-      <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px">
-        <div class="legend-title">Attraversamenti SED</div>
-        <div class="legend-item">
-          <div style="width:22px;height:22px;border-radius:50%;background:#fef3c7;border:1.5px solid #b45309;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <svg viewBox="0 0 24 24" width="13" height="13"><rect x="1" y="9" width="17" height="8" rx="2" fill="#b45309"/><rect x="16" y="6" width="6" height="11" rx="1.5" fill="#92400e"/><rect x="17.5" y="7.5" width="3" height="3" rx="0.8" fill="#fef9c3"/><rect x="5" y="11" width="3" height="3" rx="0.6" fill="#fef9c3" opacity="0.9"/><circle cx="5" cy="18.5" r="2.5" fill="#78350f" stroke="#fef3c7" stroke-width="0.8"/><circle cx="11" cy="18.5" r="2.5" fill="#78350f" stroke="#fef3c7" stroke-width="0.8"/><circle cx="18" cy="18.5" r="2.5" fill="#78350f" stroke="#fef3c7" stroke-width="0.8"/></svg>
-          </div>Ferroviario
-        </div>
-        <div class="legend-item">
-          <div style="width:22px;height:22px;border-radius:50%;background:#f0fdf4;border:1.5px solid #16a34a;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <svg viewBox="0 0 20 20" width="12" height="12"><rect x="1" y="7.5" width="18" height="5" rx="2" fill="#374151"/><rect x="8" y="9.25" width="1.5" height="1.5" rx="0.5" fill="#fff"/><rect x="11" y="9.25" width="1.5" height="1.5" rx="0.5" fill="#fff"/><rect x="1" y="7" width="18" height="1" rx="0.5" fill="#f59e0b"/><rect x="1" y="12" width="18" height="1" rx="0.5" fill="#f59e0b"/></svg>
-          </div>Autostradale
-        </div>
-        <div class="legend-item">
-          <div style="width:22px;height:22px;border-radius:50%;background:#e0f2fe;border:1.5px solid #0369a1;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <svg viewBox="0 0 20 20" width="12" height="12"><path d="M1 10 Q3.5 5 6 10 Q8.5 15 11 10 Q13.5 5 16 10 Q17.5 13 19 10" stroke="#0369a1" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M1 14 Q3.5 9 6 14 Q8.5 19 11 14 Q13.5 9 16 14 Q17.5 17 19 14" stroke="#38bdf8" stroke-width="1.8" fill="none" stroke-linecap="round" opacity="0.7"/></svg>
-          </div>Idrico
-        </div>
-      </div>`;
-  }
-}
-
-map = L.map('map',{center:[45.48,9.30],zoom:10,zoomControl:true,attributionControl:true,preferCanvas:true,zoomSnap:0.5,zoomDelta:0.5});
-// Chiudi il drawer mobile quando si apre un popup
-map.on('popupopen', () => { if (_isMobile()) closeDrawer(); });
-
-// Evita che il popup finisca sotto elementi fissi sopra la mappa
-// (legenda "Stato", pulsanti "Siti ENRI"/"Pratiche"): controllo reale via
-// getBoundingClientRect dopo l'apertura, non offset statici legati al breakpoint.
-map.on('popupopen', (e) => {
-  const popupEl = e.popup && e.popup._container;
-  if (!popupEl) return;
-  requestAnimationFrame(() => {
-    const popupRect = popupEl.getBoundingClientRect();
-    const margin = 16;
-    let dx = 0, dy = 0;
-
-    // Legenda "Stato" / pulsanti "Siti ENRI" - "Pratiche": sono elementi fissi
-    // sullo schermo (non legati a coordinate geografiche), quindi un panBy
-    // della mappa li allontana efficacemente dal popup.
-    const obstacles = [
-      document.getElementById('legendContainer'),
-      document.querySelector('.leaflet-top.leaflet-right'),
-      document.querySelector('.topbar'),
-    ].filter(Boolean);
-    obstacles.forEach(el => {
-      const r = el.getBoundingClientRect();
-      const overlapX = popupRect.right > r.left && popupRect.left < r.right;
-      const overlapY = popupRect.bottom > r.top && popupRect.top < r.bottom;
-      if (overlapX && overlapY) {
-        const isTopbar = el.classList.contains('topbar');
-        if (isTopbar) {
-          const shiftY = r.bottom - popupRect.top + margin;
-          if (shiftY > dy) dy = -shiftY; // panBy negativo in y = mappa/popup si sposta in basso
-        } else {
-          const shift = popupRect.right - r.left + margin;
-          if (shift > dx) dx = shift;
-        }
-      }
-    });
-
-    if (dx !== 0) map.panBy([dx, dy], { animate: true, duration: 0.2 });
-  });
-});
-// Renderer separati: outlineRenderer NON interattivo, mainRenderer interattivo
-const outlineRenderer = L.canvas({ tolerance: 0 });
-const mainRenderer   = L.canvas({ tolerance: 5 });
-
-// ══ NULLA OSTA: pallini sul tracciato (rosso = mancante, verde = ottenuto) ═══════
-// Si attiva con il tasto "Nulla osta" sotto il selettore. Le tratte con STATO_NULLAOSTA
-// vuoto o "NON NECESSARIO" non hanno pallini; qualsiasi stato diverso da OTTENUTO = mancante.
-let _noDotsOn = false;
-const NO_DOT_OK = '#1E9E6A', NO_DOT_MISS = '#E53935';
-function _noDotColor(p) {
-  const n = (p && p.STATO_NULLAOSTA ? String(p.STATO_NULLAOSTA) : '').trim().toUpperCase();
-  if (!n || n === 'NON NECESSARIO') return null;
-  return n === 'OTTENUTO' ? NO_DOT_OK : NO_DOT_MISS;
-}
-// Layer dei pallini di un lotto: segue il ciclo di vita del layer principale (add/remove da filtri, QTS only, ecc.)
-function _makeNoLayer(geoData, layer) {
-  const noLayer = L.geoJSON(geoData, {
-    renderer: outlineRenderer,
-    filter: f => !!_noDotColor(f.properties),
-    style: f => ({ color: _noDotColor(f.properties), weight: 9, opacity: 0.95, dashArray: '1 10', lineCap: 'round', smoothFactor: 1.5, interactive: false })
-  });
-  layer.on('add',    () => { if (_noDotsOn) { noLayer.addTo(map); _refreshNoDots(); } });
-  layer.on('remove', () => { if (map.hasLayer(noLayer)) map.removeLayer(noLayer); });
-  if (_noDotsOn && map.hasLayer(layer)) noLayer.addTo(map);
-  return noLayer;
-}
-// Allinea i pallini allo stato della tratta (nascosta in modalità scavi, attenuata da cluster/evidenziazione)
-function _refreshNoDots() {
-  if (!_noDotsOn) return;
-  allLayers.forEach(({ layer, noLayer }) => {
-    if (!noLayer || !map.hasLayer(layer)) return;
-    const dots = new Map();
-    noLayer.eachLayer(d => { if (d.feature) dots.set(d.feature, d); });
-    layer.eachLayer(l => {
-      const d = l.feature && dots.get(l.feature);
-      if (!d) return;
-      const o = l.options.opacity;
-      d.setStyle(o > 0 ? { opacity: Math.min(0.95, o), weight: 9 } : { opacity: 0, weight: 0 });
-    });
-  });
-}
-function _updateNoDotsCounts() {
-  let ok = 0, miss = 0;
-  (allFeatures || []).forEach(f => { const c = _noDotColor(f.properties); if (c === NO_DOT_OK) ok++; else if (c) miss++; });
-  const a = document.getElementById('noCntMiss'), b = document.getElementById('noCntOk');
-  if (a) a.textContent = miss;
-  if (b) b.textContent = ok;
-}
-function toggleNoDots() {
-  _noDotsOn = !_noDotsOn;
-  allLayers.forEach(({ layer, noLayer }) => {
-    if (!noLayer) return;
-    if (_noDotsOn) { if (map.hasLayer(layer) && !map.hasLayer(noLayer)) noLayer.addTo(map); }
-    else if (map.hasLayer(noLayer)) map.removeLayer(noLayer);
-  });
-  const btn = document.getElementById('noDotsBtn');
-  if (btn) { btn.classList.toggle('active', _noDotsOn); btn.setAttribute('aria-pressed', String(_noDotsOn)); }
-  const st = document.getElementById('noDotsState'); if (st) st.textContent = _noDotsOn ? 'ON' : 'OFF';
-  const lg = document.getElementById('noDotsLegend'); if (lg) lg.style.display = _noDotsOn ? '' : 'none';
-  _updateNoDotsCounts();
-  _refreshNoDots();
-}
-// Dopo ogni funzione che ristila o mostra/nasconde le tratte, riallinea i pallini
-['setViewMode', 'applyFilterMulti', 'applyFilterClusterMulti', 'applyFilter', 'applyFilterCluster', 'clearHighlight', 'applyHighlight', 'applyHighlightMulti'].forEach(name => {
-  const orig = window[name];
-  if (typeof orig !== 'function') return;
-  window[name] = function () { const r = orig.apply(this, arguments); _refreshNoDots(); return r; };
-});
-// Renderer SVG dedicato al searchMarker: evita che il canvas di default
-// (creato da circleMarker con preferCanvas:true) si sovrapponga al mainRenderer
-// intercettando tutti i click sulle tratte.
-const searchMarkerRenderer = L.svg();
-
-// ── BASEMAP LAYERS ───────────────────────────────────────────────────────────
-// Miniature statiche — tile reali centrate sull'Italia (zoom 10, Lombardia)
-const BMAP_META = [
-  {
-    key: 'osm',
-    label: 'Mappa',
-    thumb: 'https://tile.openstreetmap.org/10/545/372.png',
-    layer: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>',
-      crossOrigin: true
-    })
-  },
-  {
-    key: 'hybrid',
-    label: 'Ibrida',
-    thumb: 'https://mt1.google.com/vt/lyrs=y&x=545&y=372&z=10',
-    layer: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-      attribution: '© Google Maps',
-      crossOrigin: true, maxZoom: 21
-    })
-  },
-  {
-    key: 'satellite',
-    label: 'Satellite',
-    thumb: 'https://mt1.google.com/vt/lyrs=s&x=545&y=372&z=10',
-    layer: L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-      attribution: '© Google Maps',
-      crossOrigin: true, maxZoom: 21
-    })
-  },
-  {
-    key: 'topo',
-    label: 'Topografica',
-    thumb: 'https://tile.opentopomap.org/10/545/372.png',
-    layer: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-      attribution: '© <a href="https://opentopomap.org">OpenTopoMap</a>',
-      crossOrigin: true, maxZoom: 17
-    })
-  },
-  {
-    key: 'catastale',
-    label: 'Catastale',
-    // SVG inline — griglia di particelle catastali stilizzata
-    thumb: 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="116" height="80" viewBox="0 0 116 80"><rect width="116" height="80" fill="#f5f0e8"/><rect x="2" y="2" width="54" height="36" fill="none" stroke="#c8a96e" stroke-width="1.2"/><rect x="2" y="42" width="24" height="36" fill="none" stroke="#c8a96e" stroke-width="1.2"/><rect x="30" y="42" width="26" height="18" fill="none" stroke="#c8a96e" stroke-width="1.2"/><rect x="30" y="62" width="26" height="16" fill="none" stroke="#c8a96e" stroke-width="1.2"/><rect x="60" y="2" width="54" height="18" fill="none" stroke="#c8a96e" stroke-width="1.2"/><rect x="60" y="24" width="26" height="54" fill="none" stroke="#c8a96e" stroke-width="1.2"/><rect x="90" y="24" width="24" height="28" fill="none" stroke="#c8a96e" stroke-width="1.2"/><rect x="90" y="56" width="24" height="22" fill="none" stroke="#c8a96e" stroke-width="1.2"/><rect x="18" y="14" width="22" height="16" fill="#e8d9bc" stroke="#c8a96e" stroke-width="0.8"/><rect x="68" y="30" width="14" height="10" fill="#e8d9bc" stroke="#c8a96e" stroke-width="0.8"/><text x="6" y="14" font-family="sans-serif" font-size="5" fill="#8b6914">127</text><text x="32" y="52" font-family="sans-serif" font-size="5" fill="#8b6914">43</text><text x="64" y="12" font-family="sans-serif" font-size="5" fill="#8b6914">88</text><text x="92" y="34" font-family="sans-serif" font-size="5" fill="#8b6914">201</text></svg>`),
-    layer: (() => {
-      // WMS 1.3.0 + CRS=EPSG:4258: bbox = lat_min, lon_min, lat_max, lon_max
-      // Il WMS AdE accetta SOLO EPSG:4258 e WMS 1.3.0 (assi invertiti rispetto 1.1.1)
-      const AdeCatastale = L.GridLayer.extend({
-        options: { tileSize: 256, opacity: 1 },
-        _pendingTiles: 0,
-        _updateLoader: function() {
-          const el = document.getElementById('catastaleLoader');
-          if (el) el.classList.toggle('visible', this._pendingTiles > 0);
-        },
-        createTile: function(coords, done) {
-          // AdE non serve particelle sotto zoom 15 — tile trasparente, zero richieste HTTP
-          if (coords.z < 14) {
-            const c = document.createElement('canvas');
-            c.width = c.height = 256;
-            done(null, c);
-            return c;
-          }
-          const img = document.createElement('img');
-          // NON impostare crossOrigin: il WMS AdE non restituisce header CORS,
-          // il browser bloccherebbe silenziosamente le tile (onerror → canvas trasparente).
-          // Le tile caricate senza crossOrigin non sono usabili su canvas per l'export,
-          // ma almeno sono visibili nella mappa.
-          img.style.cssText = 'width:256px;height:256px;display:block;';
-          const n = Math.pow(2, coords.z);
-          const lon_w = (coords.x / n) * 360 - 180;
-          const lon_e = ((coords.x + 1) / n) * 360 - 180;
-          const lat_n = Math.atan(Math.sinh(Math.PI * (1 - 2 * coords.y / n))) * 180 / Math.PI;
-          const lat_s = Math.atan(Math.sinh(Math.PI * (1 - 2 * (coords.y + 1) / n))) * 180 / Math.PI;
-          // WMS 1.3.0 + EPSG:4258: ordine assi → lat_min, lon_min, lat_max, lon_max
-          const bbox = `${lat_s},${lon_w},${lat_n},${lon_e}`;
-          img.src = 'https://wms.cartografia.agenziaentrate.gov.it/inspire/wms/ows01.php'
-            + '?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap'
-            + '&CRS=EPSG:4258'
-            + '&BBOX=' + bbox
-            + '&WIDTH=256&HEIGHT=256'
-            + '&LAYERS=CP.CadastralZoning,acque,strade,CP.CadastralParcel,fabbricati,vestizioni'
-            + '&STYLES=default&FORMAT=image/png&TRANSPARENT=TRUE';
-          this._pendingTiles++;
-          this._updateLoader();
-          const self = this;
-          img.onload  = () => { self._pendingTiles = Math.max(0, self._pendingTiles-1); self._updateLoader(); done(null, img); };
-          img.onerror = () => {
-            self._pendingTiles = Math.max(0, self._pendingTiles-1); self._updateLoader();
-            // WMS ha restituito errore: placeholder trasparente, nessuna icona "immagine rotta"
-            const c = document.createElement('canvas');
-            c.width = c.height = 256;
-            done(null, c);
-          };
-          return img;
-        }
-      });
-      return L.layerGroup([
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-          attribution: '© CartoDB',
-          crossOrigin: true,
-          maxZoom: 21,
-          maxNativeZoom: 19
-        }),
-        new AdeCatastale({
-          attribution: '© <a href="https://www.agenziaentrate.gov.it">Agenzia delle Entrate</a> – CC BY 4.0',
-          maxZoom: 21
+"""
+ENRI Dashboard — Backend API
+============================
+FastAPI service for the ENRI-RDS/dashboard project.
+
+Storage model
+-------------
+MongoDB is the AUTHORITATIVE storage for uploaded files (via GridFS).
+Files committed in the git repo are used as the INITIAL SEED ONLY:
+when no upload exists for a given filename, the API falls back to
+the file on disk (the version pushed on GitHub Pages).
+
+This avoids data loss on Render's ephemeral filesystem AND keeps the
+static GitHub Pages fallback fully functional.
+"""
+from __future__ import annotations
+
+import asyncio
+import base64
+import hashlib
+import hmac
+import csv
+import io
+import json
+import os
+import re
+import time
+from collections import Counter
+from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
+from pathlib import Path
+from typing import Annotated, Any
+
+import httpx
+import pandas as pd
+from bson import ObjectId
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, Header, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, PlainTextResponse, Response, FileResponse
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Config
+# ─────────────────────────────────────────────────────────────────────────────
+ROOT_DIR = Path(__file__).resolve().parent
+load_dotenv(ROOT_DIR / ".env")
+
+MONGO_URL = os.environ["MONGO_URL"]
+DB_NAME = os.environ["DB_NAME"]
+
+# DATA_DIR is the directory containing the git-committed seed files
+# (Master.csv, QGIS.geojson, etc.). It's READ-ONLY in the new model.
+DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT_DIR.parent)).resolve()
+
+_default_origins = (
+    "https://enri-rds.github.io,"
+    "http://localhost:3000,"
+    "http://localhost:5500,"
+    "http://127.0.0.1:5500"
+)
+ALLOWED_ORIGINS = [
+    o.strip() for o in os.environ.get("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()
+]
+
+UPLOAD_TOKEN = os.environ.get("UPLOAD_TOKEN", "").strip()
+
+# Token dedicato, separato da UPLOAD_TOKEN, per l'endpoint read-only di
+# sincronizzazione cross-progetto usato dal backend di QTS (tratte in
+# concomitanza gestite qui su ENRI). Nessun privilegio di scrittura:
+# se compromesso, espone solo stato_autorizzazione/stato_nullaosta delle
+# tratte esplicitamente richieste, non l'intero Master.csv né azioni admin.
+QTS_SYNC_TOKEN = os.environ.get("QTS_SYNC_TOKEN", "").strip()
+ALLOWED_EXT = {".csv", ".xlsx", ".xls", ".geojson", ".json"}
+MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "25"))
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DB
+# ─────────────────────────────────────────────────────────────────────────────
+client = AsyncIOMotorClient(MONGO_URL)
+db = client[DB_NAME]
+uploads_col = db["uploads"]
+admin_actions_col = db["admin_actions"]  # audit: azioni protette da UPLOAD_TOKEN (chi/cosa/quando)
+assignments_col = db["assignments"]            # impresa nome -> {lotti: [...]}
+pending_col = db["pending_updates"]            # submissions from imprese pending admin review
+solleciti_col = db["solleciti"]                # registro solleciti per tratta/pratica
+
+# Lock per serializzare i cicli read-modify-write su Master.csv (GridFS).
+# Senza questo lock, due richieste concorrenti (es. solleciti di imprese diverse)
+# possono leggere la stessa versione e la seconda scrittura sovrascrive/perde la prima.
+_master_csv_lock = asyncio.Lock()
+# Lock per serializzare _sync_cantieri(): senza di esso due esecuzioni concorrenti
+# (es. startup + trigger da approve_pending_update, o due approvazioni ravvicinate,
+# entrambe lanciate come asyncio.create_task non awaitate) possono leggere lo stesso
+# _max_codice_per_lotto() prima che l'altra abbia inserito il proprio documento,
+# assegnando lo stesso codice_cantiere (es. "CA/2/1A") a due pratiche diverse.
+_cantieri_sync_lock = asyncio.Lock()
+cantieri_col  = db["cantieri"]                  # stato cantiere per pratica di autorizzazione
+cantieri_cil_col = db["cantieri_cil"]          # Data CIL per cantiere (inserita dalla DL): collection separata, così i rebuild/reset di `cantieri` non la toccano
+sopralluoghi_col = db["sopralluoghi"]          # verbali di sopralluogo
+issues_col = db["issues"]                      # registro issue/anomalie verso i System (imprese)
+issues_skip_col = db["issues_skip"]            # NC di verbale la cui issue è stata eliminata a mano: la sync non la ricrea
+agenda_col = db["agenda"]                      # appuntamenti richiesti/programmati dagli enti
+agenda_delreq_col = db["agenda_richieste_eliminazione"]  # richieste di eliminazione appuntamento (da approvare)
+pol_conv_dates_col = db["pol_conv_dates"]      # prima data in cui CONVENZIONE/POLIZZA è comparsa per una pratica
+access_logs_col = db["access_logs"]            # log accessi (ex-JSONBin) — un documento per binId, {utenti:[...], accessi:[...]}
+gantt_overrides_col = db["gantt_overrides"]    # override manuali riga Gantt (pct/date/label) per lotto, indip. da invii impresa
+gantt_rates_col = db["gantt_rates"]            # regole tasso scavo (m/giorno) per scope: "global" | "lotto:<ID>" | "impresa:<NOME>" | "pratica:<CODICE>"
+concomitanza_col = db["concomitanza"]          # tratte con lavorazione aggiuntiva concomitante (es. ENRI-QTS, tubo aggiuntivo), keyed per TRATTA_ID
+coordinamenti_col = db["coordinamenti"]    # invio preliminare: una richiesta per pratica x ente (invio, risposta, concomitanze, sopralluogo)
+gridfs = AsyncIOMotorGridFSBucket(db, bucket_name="files")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# App
+# ─────────────────────────────────────────────────────────────────────────────
+app = FastAPI(title="ENRI Dashboard API", version="2.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+_SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9_\-./]+$")
+_EXCLUDE_DIRS  = {"backend", "frontend", "node_modules", "__pycache__", ".git", "memory", "js", "M"}
+_EXCLUDE_FILES = {"dati.csv"}          # file su disco da NON esporre nella lista admin
+# "M" esclusa: cartella di file legacy (es. M/QGIS_3.geojson) non collegati alla
+# dashboard — restano nel repo per storico ma non devono comparire in admin.html
+
+
+def _safe_relpath(name: str) -> str:
+    name = name.replace("\\", "/").lstrip("/")
+    if ".." in name.split("/") or not _SAFE_NAME_RE.match(name):
+        raise HTTPException(400, "Invalid filename")
+    return name
+
+
+def _check_token(token: str | None) -> None:
+    if UPLOAD_TOKEN and token != UPLOAD_TOKEN:
+        raise HTTPException(401, "Invalid or missing upload token")
+
+
+# Ruolo dedicato 'polizza' (rev.283): può aggiornare stato/date/urgenza delle
+# pratiche in polizze_convenzioni.html SENZA conoscere l'UPLOAD_TOKEN condiviso
+# — quel token resta un segreto ad ampio raggio (upload Master.csv, override
+# Gantt, ecc.) e non va distribuito a un ruolo pensato per un solo dominio.
+# Il ruolo va assegnato all'utenza lato Google Sheet collegato all'Apps
+# Script di login (stesso posto di admin/admin2/dl/impresa) — non in questo
+# repo. Entrambe le vie restano valide per compatibilità con chi già usa il
+# token condiviso.
+_POLIZZA_WRITE_ROLES = ("admin", "admin2", "polizza")
+
+def _check_polizza_write_auth(token: str | None, x_session_token: str | None) -> None:
+    if UPLOAD_TOKEN and token == UPLOAD_TOKEN:
+        return
+    sess = _verify_session(x_session_token or "")
+    if sess and sess.get("ruolo") in _POLIZZA_WRITE_ROLES:
+        return
+    raise HTTPException(401, "Accesso non autorizzato: upload token non valido e nessuna sessione con ruolo abilitato (admin/admin2/polizza)")
+
+
+def _check_qts_sync_token(token: str | None) -> None:
+    if not QTS_SYNC_TOKEN or token != QTS_SYNC_TOKEN:
+        raise HTTPException(401, "Invalid or missing sync token")
+
+
+async def _log_admin_action(azione: str, target: str, actor_nome: str | None) -> None:
+    """Audit trail per le azioni protette da UPLOAD_TOKEN (non da sessione, quindi
+    `actor_nome` è auto-dichiarato dal client — utile per tracciare, non per provare)."""
+    try:
+        await admin_actions_col.insert_one({
+            "azione": azione, "target": target,
+            "actor": (actor_nome or "").strip() or "sconosciuto",
+            "timestamp": _now_iso(),
         })
-      ]);
-    })()
-  }
-];
+    except Exception:
+        pass  # l'audit log non deve mai far fallire l'azione principale
 
-let _currentBmapKey = 'osm';
-let _currentBmapLayer = BMAP_META[0].layer;
-_currentBmapLayer.addTo(map);
 
-function _getBmapMeta(key) { return BMAP_META.find(m => m.key === key); }
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
-function setBaseLayer(key) {
-  if (key === _currentBmapKey) return;
-  // rimuovi layer corrente (layerGroup o tileLayer)
-  if (_currentBmapLayer && _currentBmapLayer.remove) _currentBmapLayer.remove();
-  else if (_currentBmapLayer) map.removeLayer(_currentBmapLayer);
-  const meta = _getBmapMeta(key);
-  meta.layer.addTo(map);
-  if (meta.layer.bringToBack) meta.layer.bringToBack();
-  _currentBmapLayer = meta.layer;
-  _currentBmapKey = key;
-  _updateBasemapControl();
-  _updateCatastaleNotice();
+
+def _parse_it_date(s: str):
+    try:
+        return datetime.strptime(str(s).strip(), "%d/%m/%Y")
+    except Exception:
+        return None
+
+
+def _media_type(name: str) -> str:
+    ext = name.rsplit(".", 1)[-1].lower()
+    if ext == "geojson":
+        return "application/geo+json"
+    if ext == "json":
+        return "application/json"
+    if ext == "csv":
+        return "text/csv; charset=utf-8"
+    return "application/octet-stream"
+
+
+def _serialize(doc: dict) -> dict:
+    d = dict(doc)
+    if "_id" in d:
+        d["_id"] = str(d["_id"])
+    if "gridfs_id" in d and isinstance(d["gridfs_id"], ObjectId):
+        d["gridfs_id"] = str(d["gridfs_id"])
+    return d
+
+
+async def _current_upload(filename: str) -> dict | None:
+    """Most recent non-deleted upload for a given filename."""
+    return await uploads_col.find_one(
+        {"filename": filename, "deleted_at": None},
+        sort=[("uploaded_at", -1)],
+    )
+
+
+KEEP_VERSIONS = int(os.environ.get("KEEP_VERSIONS", "4"))
+
+
+async def _prune_old_versions(filename: str, keep: int = KEEP_VERSIONS) -> int:
+    """Mantiene solo le ultime `keep` versioni non cancellate di un file:
+    elimina il blob GridFS e soft-delete (deleted_at) delle versioni più vecchie."""
+    cur = uploads_col.find({"filename": filename, "deleted_at": None}).sort("uploaded_at", -1).skip(keep)
+    n = 0
+    async for doc in cur:
+        gid = doc.get("gridfs_id")
+        if gid:
+            try:
+                await gridfs.delete(gid)
+            except Exception:
+                pass
+        await uploads_col.update_one(
+            {"_id": doc["_id"]},
+            {"$set": {"deleted_at": _now_iso(), "gridfs_id": None}},
+        )
+        n += 1
+    return n
+
+
+async def _read_gridfs(gridfs_id: ObjectId) -> bytes:
+    stream = await gridfs.open_download_stream(gridfs_id)
+    try:
+        return await stream.read()
+    finally:
+        # motor's GridOut.close is synchronous
+        close = getattr(stream, "close", None)
+        if callable(close):
+            res = close()
+            if hasattr(res, "__await__"):
+                await res
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sessioni firmate (usate anche da /api/data* più sotto — definite qui,
+# prima delle routes, perché Depends() valuta il default arg a import-time)
+# ─────────────────────────────────────────────────────────────────────────────
+
+SESSION_SECRET = os.environ.get("SESSION_SECRET", "")
+SESSION_TTL_SECONDS = int(os.environ.get("SESSION_TTL_SECONDS", str(12 * 3600)))  # 12h default
+APPS_SCRIPT_URL = os.environ.get("APPS_SCRIPT_URL", "")
+APPS_SCRIPT_SECRET = os.environ.get("APPS_SCRIPT_SECRET", "")
+
+
+def _sign_session(nome: str, ruolo: str) -> str:
+    if not SESSION_SECRET:
+        raise HTTPException(500, "SESSION_SECRET non configurato sul server")
+    exp = int(time.time()) + SESSION_TTL_SECONDS
+    payload = f"{nome}|{ruolo}|{exp}"
+    sig = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    raw = f"{payload}|{sig}"
+    return base64.urlsafe_b64encode(raw.encode()).decode()
+
+
+def _verify_session(token: str) -> dict | None:
+    if not token or not SESSION_SECRET:
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(token.encode()).decode()
+        nome, ruolo, exp, sig = raw.split("|", 3)
+        payload = f"{nome}|{ruolo}|{exp}"
+        expected = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return None
+        if int(exp) < int(time.time()):
+            return None
+        return {"nome": nome, "ruolo": ruolo}
+    except Exception:
+        return None
+
+
+async def _require_session(
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+) -> dict:
+    """Dependency per gli endpoint /api/imprese/*: il `nome` autenticato viene
+    SEMPRE letto dal token firmato, mai da un parametro passato dal client."""
+    sess = _verify_session(x_session_token or "")
+    if not sess:
+        raise HTTPException(401, "Sessione non valida o scaduta — effettua di nuovo il login")
+    return sess
+
+
+async def _require_staff_session(
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+) -> dict:
+    """Come _require_session ma esclude il ruolo 'impresa' — per endpoint non
+    pensati per le pagine Area Impresa (che usano gli /api/imprese/* scoped)."""
+    sess = await _require_session(x_session_token)
+    if sess.get("ruolo") == "impresa":
+        raise HTTPException(403, "Accesso non consentito per questo ruolo")
+    return sess
+
+
+async def _require_admin_session(
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+) -> dict:
+    """Solo ruolo 'admin' o 'admin2' — per scritture riservate (es. override Gantt)."""
+    sess = await _require_staff_session(x_session_token)
+    if sess.get("ruolo") not in ("admin", "admin2"):
+        raise HTTPException(403, "Riservato ad admin")
+    return sess
+
+
+async def _require_milestone_session(
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+) -> dict:
+    """Come _require_staff_session ma esclude anche il ruolo 'dl' (Direzione
+    Lavori): vede tutto come 'user' tranne la pagina Milestone di Progetto,
+    su richiesta esplicita utente. Il ruolo è letto dal token firmato
+    (HMAC/SESSION_SECRET), non falsificabile lato client."""
+    sess = await _require_staff_session(x_session_token)
+    if sess.get("ruolo") == "dl":
+        raise HTTPException(403, "Milestone di progetto non disponibili per questo ruolo")
+    return sess
+
+
+async def _require_issue_read_session(
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+) -> dict:
+    """Registro Issue in sola lettura: ruoli 'admin', 'admin2' e 'field' (il field spunta solo l'Approvazione Bonifica)."""
+    sess = await _require_staff_session(x_session_token)
+    if sess.get("ruolo") not in ("admin", "admin2", "field"):
+        raise HTTPException(403, "Riservato ad admin e field")
+    return sess
+
+
+async def _require_field_session(
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+) -> dict:
+    """Solo ruolo 'field' (letto dal token firmato)."""
+    sess = await _require_staff_session(x_session_token)
+    if sess.get("ruolo") != "field":
+        raise HTTPException(403, "Riservato al ruolo field")
+    return sess
+
+
+_AGENDA_ROLES = ("admin", "admin2", "field", "dl")
+
+
+async def _require_agenda_session(
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+) -> dict:
+    """Agenda Enti: ruoli 'admin', 'admin2', 'field' e 'dl'. Il ruolo
+    è letto dal token firmato (HMAC/SESSION_SECRET), non falsificabile lato client."""
+    sess = await _require_staff_session(x_session_token)
+    if sess.get("ruolo") not in _AGENDA_ROLES:
+        raise HTTPException(403, "Agenda riservata ai ruoli interni autorizzati")
+    return sess
+
+
+# File "core" con dati di TUTTI i lotti/imprese. In lettura (/api/data*,
+# /api/preview, /api/files) sono riservati ai ruoli interni: le Aree Impresa
+# usano gli endpoint /api/imprese/* già scoped sui propri lotti. Inoltre NON
+# vengono più pubblicati sul repo GitHub pubblico (vedi _push_to_github).
+POZZETTI_FILENAME = "pozzetti_merged.geojson"   # layer pozzetti (Point) mostrato in mappa; upload/download da admin
+
+SENSITIVE_FILES = {
+    "Master.csv",
+    "QGIS.geojson",
+    "Riepilogo_progettazione.csv",
+    "SED_classificato.geojson",
+    "pozzetti_merged.geojson",
+    "Cantieri.csv",
+    "sopralluoghi.csv",
+    "solleciti.csv",
+    "AVANZAMENTO_COORDINAMENTI_MILANO.xlsx",
 }
 
-// ── LEAFLET CUSTOM CONTROL ────────────────────────────────────────────────────
-const BasemapControl = L.Control.extend({
-  options: { position: 'topleft' },
-  onAdd: function(map) {
-    const wrap = L.DomUtil.create('div', 'leaflet-basemap-control');
-    wrap.style.cssText = 'overflow:visible;background:transparent;border:none;box-shadow:none;';
-    L.DomEvent.disableClickPropagation(wrap);
-    L.DomEvent.disableScrollPropagation(wrap);
 
-    // Thumb button — mostra miniatura del layer ATTIVO (come Google Maps)
-    const thumbBtn = L.DomUtil.create('div', 'bmap-thumb-btn', wrap);
-    thumbBtn.id = 'bmapThumbBtn';
-    const thumbImg = L.DomUtil.create('img', '', thumbBtn);
-    thumbImg.id = 'bmapThumbImg';
-    // Imposta subito src e label con il layer corrente (prima che il controllo
-    // venga aggiunto al DOM, document.getElementById non funzionerebbe)
-    const _initMeta = _getBmapMeta(_currentBmapKey);
-    thumbImg.src = _initMeta.thumb;
-    thumbImg.alt = _initMeta.label;
-    const lbl = L.DomUtil.create('div', 'bmap-label', thumbBtn);
-    lbl.id = 'bmapThumbLabel';
-    lbl.textContent = _initMeta.label;
+def _guard_sensitive_read(rel: str, sess: dict) -> None:
+    """Blocca la lettura dei file core da parte del ruolo 'impresa': un token
+    impresa legittimo non deve poter scaricare il dataset intero di tutti i
+    concorrenti via /api/data. I ruoli interni (admin/admin2/user) restano ok."""
+    if Path(rel).name in SENSITIVE_FILES and sess.get("ruolo") == "impresa":
+        raise HTTPException(
+            403,
+            "Accesso non consentito per questo ruolo — le imprese usano gli endpoint /api/imprese/*",
+        )
 
-    // Dropdown
-    const dd = L.DomUtil.create('div', 'bmap-dropdown', wrap);
-    dd.id = 'bmapDropdown';
-    const title = L.DomUtil.create('div', 'bmap-dropdown-title', dd);
-    title.textContent = 'Tipo di mappa';
-    const grid = L.DomUtil.create('div', 'bmap-grid', dd);
 
-    BMAP_META.forEach(m => {
-      const card = L.DomUtil.create('div', 'bmap-card', grid);
-      card.id = 'bmapcard-' + m.key;
-      const img = L.DomUtil.create('img', '', card);
-      img.src = m.thumb;
-      img.alt = m.label;
-      const sp = L.DomUtil.create('span', '', card);
-      sp.textContent = m.label;
-      L.DomEvent.on(card, 'click', function(e) {
-        L.DomEvent.stopPropagation(e);
-        setBaseLayer(m.key);
-        dd.classList.remove('open');
-      });
-    });
-
-    L.DomEvent.on(thumbBtn, 'click', function(e) {
-      L.DomEvent.stopPropagation(e);
-      dd.classList.toggle('open');
-    });
-    document.addEventListener('click', function() { dd.classList.remove('open'); });
-
-    _updateBasemapControl();
-    return wrap;
-  }
-});
-new BasemapControl().addTo(map);
-
-function _updateBasemapControl() {
-  const img = document.getElementById('bmapThumbImg');
-  const lbl = document.getElementById('bmapThumbLabel');
-  if (!img) return;
-  // Mostra miniatura del layer ATTIVO (non il prossimo)
-  const current = _getBmapMeta(_currentBmapKey);
-  img.src = current.thumb;
-  lbl.textContent = current.label;
-  // aggiorna stato active nelle card
-  BMAP_META.forEach(m => {
-    const c = document.getElementById('bmapcard-' + m.key);
-    if (c) c.classList.toggle('active', m.key === _currentBmapKey);
-  });
-}
-
-// Avviso zoom catastale: visibile solo se basemap=catastale e zoom<15
-function _updateCatastaleNotice() {
-  const el = document.getElementById('catastaleNotice');
-  if (!el) return;
-  const show = _currentBmapKey === 'catastale' && map.getZoom() < 14;
-  el.classList.toggle('visible', show);
-}
-map.on('zoomend', _updateCatastaleNotice);
-// ─────────────────────────────────────────────────────────────────────────────
-
-L.control.scale({imperial:false,position:'bottomright',maxWidth:200}).addTo(map);
-// Override diretto del DOM: non dipende da nomi di metodi interni (che cambiano nel build minificato).
-function _fixScaleBar() {
-  var mScale = document.querySelector('.leaflet-control-scale-line');
-  if (!mScale) return;
-  var zoom = map.getZoom();
-  var lat  = map.getCenter().lat * Math.PI / 180;
-  var mpp  = 156543.034 * Math.cos(lat) / Math.pow(2, zoom);
-  var maxMeters = 200 * mpp;
-  var mag   = Math.pow(10, Math.floor(Math.log10(maxMeters)));
-  var n     = maxMeters / mag;
-  var steps = [1, 1.5, 2, 3, 4, 5, 7.5, 10];
-  var best  = steps[0];
-  for (var i = 0; i < steps.length; i++) { if (steps[i] <= n) best = steps[i]; else break; }
-  var meters = best * mag;
-  var label;
-  if (meters >= 1000) {
-    var km = meters / 1000;
-    label = (km === Math.floor(km)) ? km + ' km' : km.toFixed(1) + ' km';
-  } else {
-    label = Math.round(meters) + ' m';
-  }
-  mScale.style.width = Math.round(200 * meters / maxMeters) + 'px';
-  mScale.innerHTML   = label;
-}
-map.on('zoomend moveend', function(){ setTimeout(_fixScaleBar, 30); });
-setTimeout(_fixScaleBar, 800);
-
-// Esporta il tracciato QGIS (tutte le tratte, o solo i lotti attualmente filtrati in
-// sidebar se selectedLotti non è vuoto), con le info pratica già presenti in QGIS.geojson
-// (STATO_AUTORIZZAZIONE, PRATICA, ecc. — qui NON escluse: a differenza dell'export impresa,
-// questa è la vista staff, senza motivo di nasconderle) e i dati cantiere (RO_CANTIERI,
-// caricato da /api/cantieri) aggiunti per TRATTA_ID con prefisso CANTIERE_*.
-// SED (attraversamenti) incluso solo su conferma esplicita, in un FILE SEPARATO dalle tratte:
-// geometrie diverse (MultiLineString vs Point) nello stesso FeatureCollection vengono lette
-// come un solo tipo da molti tool GIS (es. QGIS/GDAL deducono il tipo dalla prima feature),
-// causando geometrie scartate.
-function _cantiereByTratta(){
-  const map = {};
-  (RO_CANTIERI || []).forEach(c => {
-    (c.tratte || []).forEach(t => { if (t.tratta_id) map[t.tratta_id] = c; });
-  });
-  return map;
-}
-function _prepareExportProps(f, isSed, cantiereMap){
-  const props = {...f.properties};
-  if (!isSed) {
-    props.CLUSTER = f.properties.CLUSTER ?? f.properties.ID_CLUSTER ?? f.properties.cluster ?? null;
-    const c = cantiereMap ? cantiereMap[f.properties.TRATTA_ID] : null;
-    if (c) {
-      props.CANTIERE_CODICE                 = c.codice_cantiere || null;
-      props.CANTIERE_STATO                  = c.stato_cantiere || null;
-      props.CANTIERE_IMPRESA                = c.impresa || null;
-      props.CANTIERE_TECNICA_SCAVO          = c.tecnica_scavo || null;
-      props.CANTIERE_METRI_TOTALI           = c.metri_totali ?? null;
-      props.CANTIERE_METRI_SCAVATI          = c.metri_scavati ?? null;
-      props.CANTIERE_DATA_INIZIO_EFFETTIVA  = c.data_inizio_effettiva || null;
-      props.CANTIERE_DATA_FINE_EFFETTIVA    = c.data_fine_effettiva || null;
-      props.CANTIERE_NOTE                   = c.note || null;
+# ─────────────────────────────────────────────────────────────────────────────
+# Routes
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/api/")
+async def root():
+    return {
+        "service": "enri-dashboard-api",
+        "status": "ok",
+        "time": _now_iso(),
+        "version": "2.0.0",
     }
-  }
-  return props;
-}
-function _downloadGeoJSON(features, filename){
-  const fc = { type: 'FeatureCollection', features };
-  const blob = new Blob([JSON.stringify(fc)], { type: 'application/geo+json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
-}
-async function exportGeoJSON(){
-  const btn = document.querySelector('[onclick="exportGeoJSON()"]');
-  if (!allFeatures || !allFeatures.length) { alert('Nessun dato caricato ancora, riprova tra qualche secondo.'); return; }
-  if (!RO_CANTIERI.length) { await _roLoadCantieri(); } // di norma già caricato all'avvio pagina, fallback di sicurezza
-  const cantiereMap = _cantiereByTratta();
-  const lottiScope = selectedLotti.size ? [...selectedLotti] : null; // null = tutti i lotti
-  const lottiSuffix = lottiScope ? lottiScope.join('-') : 'Tutti';
-  const tratte = lottiScope ? allFeatures.filter(f => lottiScope.includes(f.properties.LOTTO)) : allFeatures;
-  const tratteFeatures = tratte.map(f => ({...f, properties: _prepareExportProps(f, false, cantiereMap)}));
-  _downloadGeoJSON(tratteFeatures, 'ENRI_Lotto_' + lottiSuffix + '_tratte.geojson');
-
-  const vuoiSed = confirm('Vuoi includere anche gli attraversamenti (SED) in un secondo file?');
-  if (vuoiSed) {
-    if (btn) { btn.textContent = '⏳...'; btn.disabled = true; }
-    try {
-      const geojson = await fetchWithSWR('SED_classificato.geojson', { isJson: true, direct: true });
-      const sedFeatures = (geojson.features || [])
-        .filter(f => !lottiScope || lottiScope.includes(f.properties.LOTTO))
-        .map(f => ({...f, properties: _prepareExportProps(f, true, null)}));
-      if (sedFeatures.length) {
-        // Piccolo ritardo tra i due download: alcuni browser bloccano download multipli simultanei.
-        await new Promise(r => setTimeout(r, 400));
-        _downloadGeoJSON(sedFeatures, 'ENRI_Lotto_' + lottiSuffix + '_sed.geojson');
-      } else {
-        alert('Nessun attraversamento (SED) trovato per il/i lotto/i selezionato/i.');
-      }
-    } catch(e) {
-      console.warn('Export GeoJSON: SED non disponibile,', e.message);
-      alert('Attraversamenti (SED) non disponibili al momento, esportato solo il tracciato.');
-    } finally {
-      if (btn) { btn.textContent = '⬇ GeoJSON'; btn.disabled = false; }
-    }
-  }
-}
-
-function getColor(stato){ return STATO_COLORS[stato]||'#6B7685'; }
-function fmtM(m){ return m?(m/1000).toFixed(2).replace('.',',')+' km':'—'; }
-
-// Popola il popup con TUTTI i campi disponibili inclusi i nuovi
-function makePopupHtml(p, gmapsUrl) {
-  const stato = p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE || 'IN ATTESA';
-  const color = getColor(stato);
-
-  const statoDisplay = {
-    'IN FIRMA RDS':'In Verifica / In Firma',
-    'INVIO PRELIMINARE':'Invio Preliminare',
-    'PROTOCOLLATO INTEGRAZIONE':'Protocollato Integrazione',
-    'NECESSARIA INTEGRAZIONE':'Necessaria Integrazione',
-    'IN REDAZIONE INTEGRAZIONE':'In Redazione Integrazione',
-    'IN ATTESA':'In Attesa',
-    'IN REDAZIONE':'In Redazione',
-    'INVIATO':'Inviato',
-    'PROTOCOLLATO':'Protocollato',
-    'OTTENUTO':'Ottenuto',
-  }[stato] || stato;
-
-  const pratiche = p.PRATICA ? p.PRATICA.split('|').map(s=>s.trim()).filter(Boolean) : [];
-  const tidUp = (p.TRATTA_ID||'').trim().toUpperCase();
-  const praticaEnteList = RO_PRATICA_ENTE[tidUp] || [];
-  const praticheHtml = pratiche.length
-    ? pratiche.map(pr=>{
-        const match = praticaEnteList.find(x => x.codice.toUpperCase() === pr.toUpperCase());
-        const enteLabel = match ? match.ente : '';
-        const prefix = pr.split('/')[0].trim().toUpperCase();
-        const tipoClass = prefix === 'AUT' ? 'aut' : prefix === 'NO' ? 'no' : prefix === 'ORD' ? 'ord' : '';
-        const concBadge = (typeof ENRI !== 'undefined' && ENRI.concomitanzaBadge) ? ENRI.concomitanzaBadge(p.TRATTA_ID) : '';
-        const pickAttr = AG_SEL ? ` data-cod="${pr}" onclick="agSelToggle(this.dataset.cod)" title="Clicca per aggiungere/rimuovere dall'appuntamento"` : '';
-        const pickCls = AG_SEL ? ' popup-pratica-pick' + (AG_SEL_MAP.has(pr.toUpperCase()) ? ' picked' : '') : '';
-        return `<span class="popup-pratica ${tipoClass}${pickCls}"${pickAttr}><span class="popup-pratica-code">${pr}${concBadge}</span>${enteLabel?`<span class="popup-pratica-ente">${enteLabel}</span>`:''}</span>`;
-      }).join('') : '';
-
-  const lav = p.LAVORABILE;
-  const lavHtml = lav === 'SI'
-    ? '<span class="popup-lav ok">✓ Lavorabile</span>'
-    : lav === 'NO' ? '<span class="popup-lav no">✕ Non lavorabile</span>' : '';
-
-  const motivoHtml = (lav === 'NO' && p.MOTIVO_NO && p.MOTIVO_NO !== 'OK')
-    ? `<div class="popup-detail-row"><span class="dl">Motivo</span><span class="dv" style="color:#c0392b">${p.MOTIVO_NO}</span></div>` : '';
-  const noHtml = p.STATO_NULLAOSTA && p.STATO_NULLAOSTA !== 'NON NECESSARIO'
-    ? `<div class="popup-detail-row"><span class="dl">Nulla Osta</span><span class="dv" style="color:${getColor(p.STATO_NULLAOSTA)}">${p.STATO_NULLAOSTA}</span></div>` : '';
-  const hasDetail = motivoHtml || noHtml;
-
-  // Cantiere collegato a questa tratta — sola lettura, nessuna azione
-  const cantiere = (typeof RO_CANTIERI !== 'undefined')
-    ? RO_CANTIERI.find(c => (c.tratte||[]).some(t => t.tratta_id === p.TRATTA_ID)) : null;
-  const cantiereHtml = cantiere ? (() => {
-    const cStato = cantiere.stato_cantiere || 'non_avviato';
-    const cLbl   = RO_SC_STATO_LABEL[cStato] || cStato;
-    const cCol   = RO_SC_STATO_COLOR[cStato] || '#9AA5B4';
-    const cTot   = cantiere.metri_totali || 0;
-    const cScav  = cantiere.metri_scavati || 0;
-    const cPct   = cTot > 0 ? Math.min(100, Math.round(cScav/cTot*100)) : 0;
-    const cTec   = RO_SC_TECNICA_LABEL[cantiere.tecnica_scavo] || cantiere.tecnica_scavo || '';
-    return `<div class="popup-section">
-      <div class="popup-section-title">Cantiere${cantiere.codice_cantiere ? ` <span style="font-family:var(--font-mono);font-weight:700;color:var(--retelit-blue);letter-spacing:0;text-transform:none">${cantiere.codice_cantiere}</span>` : ''}</div>
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
-        <span class="popup-stato" style="background:${cCol}18;color:${cCol};border:1.5px solid ${cCol}44">
-          <span class="popup-stato-dot" style="background:${cCol}"></span>${cLbl}
-        </span>
-        ${cTec ? `<span style="font-size:10px;color:var(--muted)">${cTec}</span>` : ''}
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-        <span style="font-size:10px;color:var(--muted)">Metri scavati</span>
-        <span style="font-size:11px;font-weight:700;font-family:var(--font-mono);color:${cCol}">${Math.round(cScav)}m / ${Math.round(cTot)}m (${cPct}%)</span>
-      </div>
-      <div style="height:5px;background:${cCol}18;border-radius:3px;overflow:hidden">
-        <div style="height:100%;width:${cPct}%;background:${cCol};border-radius:3px"></div>
-      </div>
-      <a class="popup-gmaps-btn" style="margin-top:8px" href="sopralluoghi.html?lotto=${encodeURIComponent(p.LOTTO||'')}&cantiere=${encodeURIComponent(cantiere.cantiere_key||'')}&indirizzo=${encodeURIComponent(p.COMUNE||'')}">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-5 9l2 2 4-4" stroke="var(--retelit-blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Sopralluogo
-      </a>
-    </div>`;
-  })() : '';
-
-  // % avanzamento lotto (da lottoStats globale)
-  const ls = (typeof lottoStats !== 'undefined') ? lottoStats[p.LOTTO] : null;
-  const lottoPct      = ls ? ls.pct.toFixed(1) : null;
-  const lottoSubmPct  = ls && ls.totale > 0
-    ? ((['INVIATO','PROTOCOLLATO','NECESSARIA INTEGRAZIONE','PROTOCOLLATO INTEGRAZIONE','OTTENUTO']
-        .reduce((s,st)=>s+(ls.stati[st]||0),0) / ls.totale)*100).toFixed(1)
-    : null;
-  const lottoKm       = ls ? (ls.totale/1000).toFixed(2).replace('.',',') : null;
-  const trattaKm      = p.LUNGHEZZA ? (p.LUNGHEZZA/1000).toFixed(3).replace('.',',') : null;
-  const trattaContrib = ls && ls.totale > 0 && p.LUNGHEZZA
-    ? ((p.LUNGHEZZA/ls.totale)*100).toFixed(1)
-    : null;
 
 
-  // Lotto progress per colonna destra (senza border-top, ci pensa il layout)
-  const lottoProgressRightHtml = ls ? `
-    <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);font-weight:500;margin-bottom:10px;">Avanzamento lotto ${p.LOTTO||''}</div>
-    <div style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-        <span style="font-size:10px;color:var(--muted)">Permessi ottenuti</span>
-        <span style="font-size:11px;font-weight:700;font-family:var(--font-mono);color:#2e7d52">${lottoPct}%</span>
-      </div>
-      <div style="height:5px;background:#e8f5ee;border-radius:3px;overflow:hidden">
-        <div style="height:100%;width:${lottoPct}%;background:#1E9E6A;border-radius:3px"></div>
-      </div>
-    </div>
-    <div style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-        <span style="font-size:10px;color:var(--muted)">Pratiche inviate+</span>
-        <span style="font-size:11px;font-weight:700;font-family:var(--font-mono);color:${parseFloat(lottoSubmPct)>0?'var(--retelit-blue)':'var(--muted)'};">${lottoSubmPct}%</span>
-      </div>
-      <div style="height:5px;background:#e8f0fe;border-radius:3px;overflow:hidden">
-        <div style="height:100%;width:${lottoSubmPct}%;background:var(--retelit-blue);border-radius:3px"></div>
-      </div>
-    </div>
-    <div style="border-top:1px solid var(--border);padding-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;font-size:10px;color:var(--muted)">
-      <span>Questa tratta</span>
-      <span>Tot. lotto</span>
-      <strong style="color:var(--text);font-family:var(--font-mono);font-size:11px">${trattaKm} km${trattaContrib?`<span style="font-weight:400;color:var(--muted);font-size:9px"> (${trattaContrib}%)</span>`:''}</strong>
-      <strong style="color:var(--text);font-family:var(--font-mono);font-size:11px">${lottoKm} km</strong>
-    </div>` : '';
+@app.get("/api/health")
+async def health():
+    try:
+        await db.command("ping")
+        mongo_ok = True
+    except Exception:
+        mongo_ok = False
+    return {"ok": True, "mongo": mongo_ok, "time": _now_iso()}
 
-  return `<div class="popup-inner">
-    <div class="popup-head">
-      <div class="popup-head-top">
-        <span style="display:flex;align-items:baseline;gap:8px">
-          <span class="popup-lotto">Lotto ${p.LOTTO||'—'}</span>
-          ${IMPRESE[p.LOTTO]?`<span class="popup-impresa">${IMPRESE[p.LOTTO]}</span>`:''}
-        </span>
-        <span style="display:flex;align-items:center;gap:6px">
-          ${gmapsUrl ? `<a class="popup-close-btn" href="${gmapsUrl}" target="_blank" rel="noopener" title="Apri in Google Maps">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="var(--retelit-blue)"/></svg>
-          </a>` : ''}
-          <button class="popup-close-btn" onclick="this.closest('.leaflet-popup').querySelector('.leaflet-popup-close-button').click()">✕</button>
-        </span>
-      </div>
-      <div class="popup-meta">
-        ${p.TRATTA_ID?`<span class="popup-tratta">${p.TRATTA_ID}</span>`:''}
-      </div>
-      <div style="height:3px;width:100%;margin-top:12px;border-radius:2px;background:${color}33;overflow:hidden"><div style="height:100%;width:100%;background:${color};opacity:0.75"></div></div>
-    </div>
-    <div class="popup-body">
-      <div class="popup-body-left">
-        <div class="popup-grid">
-          <div class="popup-field">
-            <span class="popup-field-label">Comune</span>
-            <span class="popup-field-val">${p.COMUNE||'—'}</span>
-          </div>
-          <div class="popup-field">
-            <span class="popup-field-label">Cluster</span>
-            <span class="popup-field-val">${p.CLUSTER||'—'}</span>
-          </div>
-          <div class="popup-field">
-            <span class="popup-field-label">Lunghezza</span>
-            <span class="popup-field-val">${fmtM(p.LUNGHEZZA)}</span>
-          </div>
-          ${pratiche.length ? `<div class="popup-field full">
-            <span class="popup-field-label">Pratiche</span>
-            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:2px">${praticheHtml}</div>
-          </div>` : `<div class="popup-field">
-            <span class="popup-field-label">Tipologia</span>
-            <span class="popup-field-val">${p.TIPOLOGIA||'—'}</span>
-          </div>`}
-          ${pratiche.length ? `<div class="popup-field">
-            <span class="popup-field-label">Tipologia</span>
-            <span class="popup-field-val">${p.TIPOLOGIA||'—'}</span>
-          </div>` : ''}
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:${hasDetail||cantiereHtml?'10px':'0'}">
-          <span class="popup-stato" style="background:${color}18;color:${color};border:1.5px solid ${color}44">
-            <span class="popup-stato-dot" style="background:${color}"></span>${statoDisplay}
-          </span>
-          ${lavHtml}
-        </div>
-        ${hasDetail ? `<div class="popup-section">
-          <div class="popup-section-title">Dettaglio stato</div>
-          ${motivoHtml}${noHtml}
-        </div>` : ''}
-        ${cantiereHtml}
-      </div>
-      ${ls ? `<div class="popup-body-right">${lottoProgressRightHtml}</div>` : ''}
-    </div>
-  </div>`;
-}
 
-// ── STALE-WHILE-REVALIDATE ──────────────────────────────────────────────────
-// Carica subito il file statico da GitHub Pages (instantaneo),
-// poi aggiorna da Render in background. onUpdate(data) chiamato solo se i dati differiscono.
-function _staticFileUrl(rel) {
-  return window.location.href.replace(/[?#].*$/, '').replace(/[^/]+$/, '') + rel;
-}
+@app.get("/api/files")
+async def list_files(sess: dict = Depends(_require_staff_session)):
+    """Union of:
+    - files with current (non-deleted) GridFS uploads
+    - seed files on disk (excluding system dirs) that aren't shadowed by a
+      Mongo upload
+    """
+    out: dict[str, dict] = {}
 
-function _timeout(ms, msg) {
-  return new Promise((_, reject) =>
-    setTimeout(() => reject(new Error(msg || 'Timeout')), ms)
-  );
-}
+    # 1) Disk seed
+    if DATA_DIR.exists():
+        for p in sorted(DATA_DIR.rglob("*")):
+            if not p.is_file():
+                continue
+            ext = p.suffix.lower()
+            if ext not in {".csv", ".geojson", ".json"}:
+                continue
+            try:
+                rel = p.relative_to(DATA_DIR).as_posix()
+            except ValueError:
+                continue
+            top = rel.split("/", 1)[0]
+            if top in _EXCLUDE_DIRS or top.startswith("."):
+                continue
+            if p.name in _EXCLUDE_FILES:
+                continue
+            out[rel] = {
+                "name": rel,
+                "size": p.stat().st_size,
+                "type": ext[1:],
+                "source": "disk",
+                "modified": _GITHUB_PUSH_TIMES.get(p.name) or datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc).isoformat(),
+                "versions": 0,
+            }
 
-async function fetchWithSWR(rel, { onUpdate, isJson = true, direct = false } = {}) {
-  const qs = '?t=' + Math.floor(Date.now() / 300000); // slot da 5 min
+    # 2) Mongo current versions (override disk)
+    pipeline = [
+        {"$match": {"deleted_at": None}},
+        {"$sort": {"uploaded_at": -1}},
+        {"$group": {
+            "_id": "$filename",
+            "size": {"$first": "$size"},
+            "uploaded_at": {"$first": "$uploaded_at"},
+            "project": {"$first": "$project"},
+            "rows": {"$first": "$rows"},
+            "upload_source": {"$first": "$source"},
+            "note": {"$first": "$note"},
+        }},
+    ]
+    versions_pipeline = [
+        {"$match": {"deleted_at": None}},
+        {"$group": {"_id": "$filename", "count": {"$sum": 1}}},
+    ]
+    version_counts: dict[str, int] = {}
+    async for d in uploads_col.aggregate(versions_pipeline):
+        version_counts[d["_id"]] = d["count"]
 
-  // File sensibili (Master.csv, QGIS.geojson, SED_classificato.geojson): il backend
-  // NON li pubblica più su GitHub (SENSITIVE_FILES in server.py, per non esporre
-  // i dati imprese senza autenticazione) — quindi la copia statica è congelata
-  // per sempre. Per questi file si va sempre e solo su Render.
-  if (direct) {
-    const _apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
-    const _url = _apiBase + '/api/data-text/' + rel;
-    try {
-      const text = await Promise.race([
-        fetch(_url + qs, { headers: { 'x-session-token': _sessionToken() } }).then(r => r.ok ? r.text() : Promise.reject('render-fail')),
-        _timeout(30000, 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.')
-      ]);
-      return isJson ? JSON.parse(text) : text;
-    } catch(e) {
-      throw new Error(e.message || 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.');
-    }
-  }
-
-  // Fetch GitHub statico — timeout 5s tramite Promise.race (no AbortSignal)
-  const staticP = Promise.race([
-    fetch(_staticFileUrl(rel)).then(r => r.ok ? r.text() : Promise.reject('static-fail')),
-    _timeout(5000, 'static-timeout')
-  ]).catch(e => Promise.reject(e));
-
-  // Fetch Render — timeout 30s tramite Promise.race
-  const renderP = Promise.race([
-    fetch(rel + qs, { headers: { 'x-session-token': _sessionToken() } }).then(r => r.ok ? r.text() : Promise.reject('render-fail')),
-    _timeout(30000, 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.')
-  ]).catch(e => Promise.reject(e));
-
-  const parse = text => isJson ? JSON.parse(text) : text;
-
-  let staticText = null;
-  try {
-    staticText = await staticP;
-    const staticData = parse(staticText);
-    // Aggiorna silenziosamente quando Render risponde con dati diversi
-    if (onUpdate) {
-      renderP.then(renderText => {
-        if (renderText && renderText !== staticText) {
-          try { onUpdate(parse(renderText)); } catch(_) {}
+    async for d in uploads_col.aggregate(pipeline):
+        name = d["_id"]
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        out[name] = {
+            "name": name,
+            "size": d["size"],
+            "type": ext,
+            "source": "mongo",
+            "modified": d["uploaded_at"],
+            "project": d.get("project", "main"),
+            "rows": d.get("rows"),
+            "versions": version_counts.get(name, 1),
+            "upload_source": d.get("upload_source") or "admin",  # impresa | derived | admin (upload manuale)
+            "note": d.get("note") or "",
         }
-      }).catch(() => {});
-    } else {
-      renderP.catch(() => {}); // drena la promise
+
+    files = sorted(out.values(), key=lambda x: x["name"])
+    return {"files": files, "count": len(files)}
+
+
+@app.get("/api/data/{filename:path}")
+async def get_data_file(filename: str, sess: dict = Depends(_require_session)):
+    rel = _safe_relpath(filename)
+    _guard_sensitive_read(rel, sess)
+    cur = await _current_upload(rel)
+    if cur:
+        data = await _read_gridfs(cur["gridfs_id"])
+        return Response(content=data, media_type=_media_type(rel))
+    # Fallback to disk seed (git-committed file)
+    path = DATA_DIR / rel
+    if path.exists() and path.is_file():
+        return FileResponse(path, media_type=_media_type(rel), filename=path.name)
+    raise HTTPException(404, f"File not found: {rel}")
+
+
+@app.get("/api/data-text/{filename:path}", response_class=PlainTextResponse)
+async def get_data_text(filename: str, sess: dict = Depends(_require_session)):
+    rel = _safe_relpath(filename)
+    _guard_sensitive_read(rel, sess)
+    cur = await _current_upload(rel)
+    if cur:
+        data = await _read_gridfs(cur["gridfs_id"])
+        return data.decode("utf-8", errors="replace")
+    path = DATA_DIR / rel
+    if path.exists() and path.is_file():
+        return path.read_text(encoding="utf-8", errors="replace")
+    raise HTTPException(404, f"File not found: {rel}")
+
+
+@app.get("/api/preview/{filename:path}")
+async def preview_file(filename: str, max_bytes: int = 8192, sess: dict = Depends(_require_staff_session)):
+    """Returns a short text preview of a file (first max_bytes)."""
+    rel = _safe_relpath(filename)
+    max_bytes = max(256, min(max_bytes, 65536))
+    cur = await _current_upload(rel)
+    if cur:
+        data = (await _read_gridfs(cur["gridfs_id"]))[:max_bytes]
+        source = "mongo"
+        size = cur["size"]
+    else:
+        path = DATA_DIR / rel
+        if not (path.exists() and path.is_file()):
+            raise HTTPException(404, f"File not found: {rel}")
+        size = path.stat().st_size
+        with path.open("rb") as f:
+            data = f.read(max_bytes)
+        source = "disk"
+    return {
+        "filename": rel,
+        "source": source,
+        "size": size,
+        "truncated": size > max_bytes,
+        "content": data.decode("utf-8", errors="replace"),
     }
-    return staticData;
-  } catch(_) {
-    // Statico non disponibile: aspetta Render
-    try {
-      return parse(await renderP);
-    } catch(e) {
-      throw new Error(e.message || 'Il server non risponde. Attendi qualche secondo e ricarica la pagina.');
+
+
+@app.get("/api/uploads")
+async def list_uploads(
+    limit: int = 50,
+    project: str | None = None,
+    filename: str | None = None,
+    include_deleted: bool = False,
+    sess: dict = Depends(_require_staff_session),
+):
+    q: dict = {}
+    if project:
+        q["project"] = project
+    if filename:
+        q["filename"] = filename
+    if not include_deleted:
+        q["deleted_at"] = None
+    cur = uploads_col.find(q).sort("uploaded_at", -1).limit(min(limit, 500))
+    items = [_serialize(d) async for d in cur]
+    return {"uploads": items, "count": len(items)}
+
+
+@app.post("/api/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    target: str = Form(""),
+    project: str = Form("main"),
+    convert_to_csv: bool = Form(True),
+    x_upload_token: Annotated[str | None, Form(alias="token")] = None,
+    header_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    _check_token(x_upload_token or header_token)
+
+    raw = await file.read()
+    if len(raw) == 0:
+        raise HTTPException(400, "Empty file")
+    if len(raw) > MAX_UPLOAD_MB * 1024 * 1024:
+        raise HTTPException(413, f"File too large (>{MAX_UPLOAD_MB} MB)")
+
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in ALLOWED_EXT:
+        raise HTTPException(400, f"Unsupported file type {ext!r}. Allowed: {sorted(ALLOWED_EXT)}")
+
+    rows = None
+    df = None
+    out_name = target.strip() or (file.filename or "uploaded")
+    out_bytes = raw
+
+    # Safety net: anche se il client non passa convert_to_csv=false, il file
+    # parametri (multi-foglio) non va MAI appiattito in CSV a un solo foglio.
+    if out_name in (PARAMETRI_FILENAME, COORDINAMENTI_FILENAME):
+        convert_to_csv = False
+
+    # File coordinamenti: validato PRIMA di salvarlo (foglio e colonne attese),
+    # così un xlsx sbagliato non finisce nello storico versioni.
+    coord_df = None
+    if out_name == COORDINAMENTI_FILENAME:
+        try:
+            coord_df = pd.read_excel(io.BytesIO(raw), sheet_name=COORD_SHEET)
+        except Exception as e:
+            raise HTTPException(400, f"Foglio {COORD_SHEET!r} non leggibile: {e}")
+        miss = {"ELENCO ENTI", "ISTANZA", "SERVICE"} - set(coord_df.columns)
+        if miss:
+            raise HTTPException(400, f"Colonne mancanti nel foglio {COORD_SHEET}: {sorted(miss)}")
+        rows = int(len(coord_df))
+
+    if ext in {".xlsx", ".xls"} and convert_to_csv:
+        try:
+            df = pd.read_excel(io.BytesIO(raw))
+        except Exception as e:
+            raise HTTPException(400, f"Cannot parse Excel: {e}")
+        rows = int(len(df))
+        buf = io.StringIO()
+        df.to_csv(buf, index=False, sep=";")
+        out_bytes = buf.getvalue().encode("utf-8")
+        if not target:
+            out_name = Path(file.filename).stem + ".csv"
+
+    if out_name.lower().endswith(".csv") and rows is None:
+        try:
+            rows = max(0, out_bytes.decode("utf-8", errors="replace").count("\n") - 1)
+        except Exception:
+            rows = None
+
+    rel = _safe_relpath(out_name)
+
+    # Pozzetti: validato PRIMA di salvarlo, così un file sbagliato non sostituisce quello buono.
+    if rel == POZZETTI_FILENAME:
+        try:
+            gj = json.loads(out_bytes.decode("utf-8-sig"))
+            feats = gj.get("features") if isinstance(gj, dict) else None
+            if gj.get("type") != "FeatureCollection" or not feats:
+                raise ValueError("deve essere una FeatureCollection non vuota")
+            bad = sum(1 for f in feats if (f.get("geometry") or {}).get("type") != "Point")
+            if bad:
+                raise ValueError(f"{bad} feature non sono di tipo Point")
+        except Exception as e:
+            raise HTTPException(400, f"{POZZETTI_FILENAME} non valido: {e}")
+        rows = len(feats)
+
+    # Se stiamo sostituendo Master.csv, preserva eventuale stato CONVENZIONE/POLIZZA
+    # già avanzato (RICHIESTA RDS/INVIATA/EMESSA) rispetto a quanto porta il nuovo
+    # file — fix bug: un nuovo export esterno (QGIS/Excel) porta solo SI/NO e
+    # retrocederebbe silenziosamente il workflow tracciato da polizze_convenzioni.html.
+    pol_conv_preserved = 0
+    if rel == MASTER_FILENAME:
+        try:
+            sep_new = _detect_sep(out_bytes)
+            if df is None:
+                new_df = None
+                for enc in ("utf-8", "cp1252", "latin-1"):
+                    try:
+                        new_df = pd.read_csv(io.BytesIO(out_bytes), sep=sep_new, dtype=str, keep_default_na=False, encoding=enc, on_bad_lines="warn")
+                        break
+                    except (UnicodeDecodeError, UnicodeError):
+                        continue
+            else:
+                new_df = df.astype(str)
+            if new_df is not None:
+                old_df = await _read_master_csv()
+                pol_conv_preserved = _preserve_pol_conv_state(old_df, new_df)
+                if pol_conv_preserved:
+                    buf2 = io.StringIO()
+                    new_df.to_csv(buf2, index=False, sep=sep_new)
+                    out_bytes = buf2.getvalue().encode("utf-8")
+        except Exception as e:
+            print(f"[_preserve_pol_conv_state] fallita, procedo senza (upload non bloccato): {e}")
+
+    # Store content in GridFS
+    gridfs_id = await gridfs.upload_from_stream(
+        rel,
+        io.BytesIO(out_bytes),
+        metadata={"project": project or "main", "uploaded_at": _now_iso()},
+    )
+
+    record = {
+        "filename": rel,
+        "original_name": file.filename,
+        "size": len(out_bytes),
+        "content_type": file.content_type or "",
+        "project": project or "main",
+        "rows": rows,
+        "uploaded_at": _now_iso(),
+        "gridfs_id": gridfs_id,
+        "deleted_at": None,
     }
-  }
-}
+    res = await uploads_col.insert_one(record)
+    asyncio.create_task(_prune_old_versions(rel))
+    await _log_admin_action(
+        "upload" + (f" (+{pol_conv_preserved} CONVENZIONE/POLIZZA preservate)" if pol_conv_preserved else ""),
+        rel, x_actor_nome,
+    )
 
-async function loadGeoJSON() {
-  return fetchWithSWR('QGIS.geojson', { isJson: true, direct: true });
-}
+    # Se è Master.csv, rigenera anche i file derivati (Riepilogo_progettazione.csv,
+    # QGIS.geojson) e sincronizza GitHub — stesso comportamento di approve/delete/restore,
+    # altrimenti un upload manuale lascia mappa e barre ferme alla versione precedente.
+    if rel == MASTER_FILENAME:
+        asyncio.create_task(_push_current_master_to_github())
+    elif rel in GITHUB_PATHS:
+        asyncio.create_task(_push_to_github(out_bytes, path=GITHUB_PATHS[rel], label=rel))
 
-function buildLottoStats(features) {
-  const _autLS = (() => { try { return JSON.parse(localStorage.getItem('_autPerLotto')||'{}'); } catch(e){ return {}; } })();
-  const stats = {};
-  features.forEach(f => {
-    const p = f.properties;
-    const lotto = p.LOTTO;
-    if (!lotto||lotto==='P') return;
-    if (!stats[lotto]) stats[lotto]={totale:0,ottenuto:0,lavorabili:0,stati:{},pratiche:new Set()};
-    const l = p.LUNGHEZZA||0;
-    stats[lotto].totale += l;
-    const stato = p.STATO_LEGENDA||p.STATO_AUTORIZZAZIONE||'IN ATTESA';
-    if (stato==='OTTENUTO') stats[lotto].ottenuto += l;
-    stats[lotto].stati[stato]=(stats[lotto].stati[stato]||0)+l;
-    if (p.PRATICA) {
-      const codici = p.PRATICA.split('|').map(s=>s.trim()).filter(Boolean);
-      if (stato==='OTTENUTO')
-        codici.filter(c=>c.startsWith('AUT/')).forEach(c=>stats[lotto].pratiche.add(c));
-      if (p.STATO_NULLAOSTA==='OTTENUTO')
-        codici.filter(c=>c.startsWith('NO/')).forEach(c=>stats[lotto].pratiche.add(c));
-    }  });
-  Object.keys(stats).forEach(k=>{
-    const s = stats[k];
-    s.lavorabili = (_autLS[k] !== undefined) ? _autLS[k] : s.pratiche.size;
-    s.pct = s.totale>0?(s.ottenuto/s.totale*100):0;
-    // Per statoLabel usiamo STATO_LEGENDA aggregato già calcolato (se presente)
-    const nonAttesa = Object.entries(s.stati).filter(([st])=>st!=='IN ATTESA'&&st!=='IN REDAZIONE');
-    s.statoLabel = nonAttesa.length>0 ? nonAttesa.sort((a,b)=>b[1]-a[1])[0][0] : 'IN ATTESA';
-    // pct autorizzato (da STATO_LEGENDA=OTTENUTO)
-    s.pctAutorizzato = s.totale>0 ? (s.ottenuto/s.totale*100) : 0;
-  });
-  return stats;
-}
+    coord_result = None
+    if coord_df is not None:
+        # default non distruttivo: crea le richieste mancanti e compila solo i campi vuoti
+        coord_result = await _coordinamenti_import_df(coord_df, file.filename or rel, False, x_actor_nome)
 
-function renderSidebar(stats) {
-  renderFilterLotto(stats);
-
-  const list=document.getElementById('lottoList');
-  if (!list) return;  // guard
-  list.innerHTML='';
-  LOTTO_ORDER.forEach(id=>{
-    const s=stats[id]; if(!s) return;
-    const color=getColor(s.statoLabel);
-    const pct=s.pct.toFixed(1);
-    const lavBadge = s.lavorabili>0
-      ? `<span class="lav-badge lav-si">${s.lavorabili} aut.</span>`:'';
-    const div=document.createElement('div');
-    div.className='lotto-item'; div.id='li-'+id;
-    div.innerHTML=`
-      <div class="lotto-color" style="background:${color}"></div>
-      <div class="lotto-info">
-        <div class="lotto-num">Lotto ${id}</div>
-        ${IMPRESE[id]?`<div class="lotto-impresa">${IMPRESE[id]}</div>`:''}
-        <div class="lotto-sub">${(s.totale/1000).toFixed(1).replace('.',',')} km</div>
-        <div style="height:3px;background:var(--surface2);border-radius:2px;margin-top:4px;overflow:hidden">
-          <div style="height:100%;width:${s.pct.toFixed(1)}%;background:#1E9E6A;border-radius:2px;transition:width 0.5s"></div>
-        </div>
-      </div>
-      ${lavBadge}
-      <div class="lotto-pct" style="color:${parseFloat(pct)>0?'#1E9E6A':'var(--muted)'}">${pct}%</div>`;
-    div.onclick=()=>zoomLotto(id);
-    list.appendChild(div);
-  });
-}
-
-// applyFilter mantenuto per compatibilità
-function applyFilter(lotto) {
-  if (lotto === 'TUTTI') { selectedLotti.clear(); }
-  else { selectedLotti.clear(); selectedLotti.add(lotto); }
-  applyFilterMulti();
-}
-
-function zoomLotto(id) {
-  document.querySelectorAll('.lotto-item').forEach(el=>el.classList.remove('active'));
-  const li=document.getElementById('li-'+id);
-  if(li){li.classList.add('active');li.scrollIntoView({behavior:'smooth',block:'nearest'});}
-  const layers=allLayers.filter(x=>x.lotto===id).map(x=>x.layer);
-  if(layers.length>0){ const g=L.featureGroup(layers); map.fitBounds(g.getBounds(),{padding:[60,60],maxZoom:13}); }
-}
-
-function buildStatsBar(stats, features) {
-  const bar=document.getElementById('statsBar');
-  if (!bar) return;  // guard: elemento non presente nel DOM
-  bar.innerHTML='';
-  let totTot=0,totOtt=0,totLav=0;
-  Object.values(stats).forEach(s=>{totTot+=s.totale;totOtt+=s.ottenuto;totLav+=s.lavorabili;});
-  const pct=totTot>0?(totOtt/totTot*100).toFixed(1):'0.0';
-  const items=[
-    {color:'#1E9E6A', label:`${pct}% Autorizzato`},
-    {color:'#4a4f6a', label:`${(totTot/1000).toFixed(0)} km totali`},
-    {color:'#4f8ef7', label:`${features.length} tratte`},
-    ...(totLav>0?[{color:'#1E9E6A',label:`${totLav} tratte lavorabili`}]:[]),
-  ];
-  items.forEach(({color,label})=>{
-    const pill=document.createElement('div');
-    pill.className='stat-pill';
-    pill.innerHTML=`<div class="stat-dot" style="background:${color}"></div><span style="color:var(--text)">${label}</span>`;
-    bar.appendChild(pill);
-  });
-}
+    return JSONResponse({
+        "ok": True,
+        "id": str(res.inserted_id),
+        "filename": rel,
+        "size": len(out_bytes),
+        "rows": rows,
+        "converted_from_excel": ext in {".xlsx", ".xls"} and convert_to_csv,
+        "pol_conv_preserved": pol_conv_preserved,
+        "coordinamenti": coord_result,
+    })
 
 
-// ── RICERCA: indirizzo + pratica ─────────────────────────────────────────────
-let allFeatures = [];         // popolato dopo caricamento GeoJSON
-let searchTimer = null;
-let searchMarker = null;
-const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
+@app.delete("/api/uploads/{upload_id}")
+async def delete_upload(
+    upload_id: str,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Soft-delete a single upload version + remove its GridFS blob."""
+    _check_token(x_upload_token or token_q)
+    try:
+        oid = ObjectId(upload_id)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    doc = await uploads_col.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Upload not found")
+    # Determina se questa era la versione corrente PRIMA di cancellarla:
+    # se era una versione vecchia già superata, il contenuto "corrente" non
+    # cambia e non serve pushare/rigenerare nulla su GitHub.
+    was_current = False
+    if doc.get("filename") == MASTER_FILENAME:
+        cur = await _current_upload(MASTER_FILENAME)
+        was_current = bool(cur and cur["_id"] == oid)
+    if doc.get("gridfs_id"):
+        try:
+            await gridfs.delete(doc["gridfs_id"])
+        except Exception:
+            pass
+    await uploads_col.update_one(
+        {"_id": oid},
+        {"$set": {"deleted_at": _now_iso(), "gridfs_id": None}},
+    )
+    await _log_admin_action("delete_version", doc["filename"], x_actor_nome)
+    # Sincronizza GitHub solo se era davvero la versione corrente di Master.csv
+    if was_current:
+        asyncio.create_task(_push_current_master_to_github())
+    return {"deleted": str(oid), "filename": doc["filename"]}
 
-const inputEl   = document.getElementById('searchInput');
-const resultsEl = document.getElementById('searchResults');
-const clearBtn  = document.getElementById('clearSearchBtn');
 
-// Fix: impedisce che il mousedown sulla dropdown venga catturato da Leaflet
-// come inizio di un drag, lasciando il cursore bloccato sulla manina
-resultsEl.addEventListener('mousedown', e => e.stopPropagation());
-L.DomEvent.disableClickPropagation(document.getElementById('searchBar'));
+@app.delete("/api/files/{filename:path}")
+async def delete_file(
+    filename: str,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Soft-delete ALL upload versions of `filename`. After this call, if
+    a disk seed exists, it becomes the served version again; otherwise the
+    file returns 404."""
+    _check_token(x_upload_token or token_q)
+    rel = _safe_relpath(filename)
+    # Collect gridfs ids to remove
+    ids: list[ObjectId] = []
+    async for d in uploads_col.find({"filename": rel, "deleted_at": None}):
+        if d.get("gridfs_id"):
+            ids.append(d["gridfs_id"])
+    for gid in ids:
+        try:
+            await gridfs.delete(gid)
+        except Exception:
+            pass
+    res = await uploads_col.update_many(
+        {"filename": rel, "deleted_at": None},
+        {"$set": {"deleted_at": _now_iso(), "gridfs_id": None}},
+    )
+    await _log_admin_action("delete_all_versions", rel, x_actor_nome)
+    # Se è Master.csv, sincronizza GitHub e rigenera i file derivati con la
+    # versione ora corrente (il seed da disco, se non resta nessun'altra versione)
+    if rel == MASTER_FILENAME:
+        asyncio.create_task(_push_current_master_to_github())
+    return {"filename": rel, "deleted_versions": res.modified_count}
 
-function clearSearch() {
-  inputEl.value = '';
-  resultsEl.style.display = 'none';
-  clearBtn.style.display = 'none';
-  if (searchMarker) {
-    searchMarker.off('popupclose'); // evita loop: rimuoviamo il listener prima di chiudere
-    map.removeLayer(searchMarker);
-    searchMarker = null;
-  }
-  clearHighlight();
-}
 
-// Cerca pratiche nel dataset GeoJSON.
-// Una stessa tratta puo comparire come piu feature (segmenti diversi) con campi PRATICA
-// potenzialmente diversi: prima si costruisce un indice aggregato per TRATTA_ID,
-// poi si cerca su quello.
-function searchPratiche(query) {
-  const q = query.trim().toUpperCase();
-  if (!q || q.length < 2) return [];
+@app.patch("/api/files/{old_name:path}")
+async def rename_file(
+    old_name: str,
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """Rename a file in MongoDB. Disk seed (if any) keeps its original name
+    but it's shadowed by the renamed Mongo entry."""
+    _check_token(x_upload_token or token_q)
+    new_name = (payload or {}).get("new_name", "")
+    if not new_name:
+        raise HTTPException(400, "Missing 'new_name'")
+    old_rel = _safe_relpath(old_name)
+    new_rel = _safe_relpath(new_name)
+    if old_rel == new_rel:
+        return {"ok": True, "filename": new_rel, "updated": 0}
+    # Make sure target name isn't already taken by an active upload
+    clash = await uploads_col.find_one({"filename": new_rel, "deleted_at": None})
+    if clash:
+        raise HTTPException(409, f"Target name already in use: {new_rel}")
+    res = await uploads_col.update_many(
+        {"filename": old_rel, "deleted_at": None},
+        {"$set": {"filename": new_rel}},
+    )
+    return {"ok": True, "from": old_rel, "to": new_rel, "updated": res.modified_count}
 
-  function splitPratiche(raw) {
-    return (raw || '').split(/[|;,]/).map(s => s.trim()).filter(Boolean);
-  }
 
-  // Passo 1: costruisce indice tratta_id → { feature, pratiche (Set unificato), lotto, stato, comune }
-  // Aggrega TUTTE le feature con lo stesso tratta_id cosi non si perde nessuna pratica
-  // presente su segmenti diversi della stessa tratta.
-  const trattaIndex = new Map(); // key: tratta_id uppercase
-  allFeatures.forEach(f => {
-    const p = f.properties;
-    const tid = (p.TRATTA_ID || '').trim();
-    if (!tid) return;
-    const tidUp = tid.toUpperCase();
-    if (!trattaIndex.has(tidUp)) {
-      trattaIndex.set(tidUp, {
-        feature: f,          // prima feature trovata (usata per zoomToFeature)
-        praticheSet: new Set(),
-        tratta: tid,
-        lotto: p.LOTTO,
-        stato: p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE || '',
-        comune: p.COMUNE || ''
-      });
-    }
-    // Aggrega le pratiche di tutti i segmenti
-    splitPratiche(p.PRATICA).forEach(pr => trattaIndex.get(tidUp).praticheSet.add(pr));
-  });
+@app.post("/api/uploads/{upload_id}/restore")
+async def restore_upload(
+    upload_id: str,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Make a past (soft-deleted) version current again, by clearing
+    `deleted_at` on it. NB: doesn't recover GridFS bytes if they were
+    already purged. If gridfs_id is null, this fails."""
+    _check_token(x_upload_token or token_q)
+    try:
+        oid = ObjectId(upload_id)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    doc = await uploads_col.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Upload not found")
+    if not doc.get("gridfs_id"):
+        raise HTTPException(410, "Underlying content was purged; cannot restore")
+    await uploads_col.update_one({"_id": oid}, {"$set": {"deleted_at": None}})
+    await _log_admin_action("restore", doc["filename"], x_actor_nome)
+    # Se è Master.csv, sincronizza GitHub con la versione ripristinata
+    if doc.get("filename") == MASTER_FILENAME:
+        asyncio.create_task(_push_current_master_to_github())
+    return {"ok": True, "restored": str(oid), "filename": doc["filename"]}
 
-  const results = [];
-  const seenResult = new Set(); // evita righe doppie nel risultato finale
 
-  // Passo 2a: match su TRATTA_ID → un risultato per tratta con tutte le pratiche aggregate
-  trattaIndex.forEach((data, tidUp) => {
-    if (tidUp.includes(q)) {
-      const pratiche = [...data.praticheSet];
-      const label = pratiche.length > 0 ? pratiche.join(' · ') : data.tratta;
-      const key = 'T|' + tidUp;
-      if (!seenResult.has(key)) {
-        seenResult.add(key);
-        results.push({
-          type: 'pratica',
-          feature: data.feature,
-          pratica: label,
-          tratta: data.tratta,
-          lotto: data.lotto,
-          stato: data.stato,
-          comune: data.comune
-        });
-      }
-    }
-  });
+@app.on_event("startup")
+async def _on_startup():
+    print(f"[enri-dashboard] DATA_DIR (seed) = {DATA_DIR}")
+    print(f"[enri-dashboard] DB_NAME         = {DB_NAME}")
+    print(f"[enri-dashboard] CORS            = {ALLOWED_ORIGINS}")
+    print(f"[enri-dashboard] UPLOAD_TOKEN    = {'set' if UPLOAD_TOKEN else 'OFF (open)'}")
+    # Indici MongoDB — evitano full collection scan sulle query più frequenti
+    try:
+        await uploads_col.create_index([("filename", 1), ("deleted_at", 1), ("uploaded_at", -1)])
+        await assignments_col.create_index("nome")
+        await pending_col.create_index([("status", 1), ("submitted_at", -1)])
+        await solleciti_col.create_index([("pratica", 1), ("data_sollecito", 1)])
+        await solleciti_col.create_index("tratta_id")
+        await cantieri_col.create_index([("pratica_id", 1), ("ente", 1)])
+        await cantieri_col.create_index("lotto")
+        await coordinamenti_col.create_index([("pratica", 1), ("ente_key", 1)], unique=True)
+        await coordinamenti_col.create_index("lotto")
+        await sopralluoghi_col.create_index("codice_verbale")
+        await issues_col.create_index("codice", unique=True)
+        await issues_col.create_index("origine_key", unique=True, partialFilterExpression={"origine_key": {"$type": "string"}})
+        await issues_skip_col.create_index("key", unique=True)
+        await issues_col.create_index([("prefisso", 1), ("seq", -1)])
+        await agenda_col.create_index([("stato", 1), ("data_appuntamento", 1)])
+        await agenda_delreq_col.create_index([("stato", 1), ("agenda_id", 1)])
+        await gantt_rates_col.create_index("scope", unique=True)
+        print("[enri-dashboard] Indici MongoDB verificati/creati")
+    except Exception as e:
+        print(f"[startup] creazione indici: {e}")
+    # Backfill: ensure pre-existing upload records have a deleted_at field
+    await uploads_col.update_many(
+        {"deleted_at": {"$exists": False}}, {"$set": {"deleted_at": None}}
+    )
+    # Sync cantieri: crea automaticamente cantieri non_avviato per tratte LAVORABILE=SI
+    # Eseguita in background (non awaitata) per non ritardare l'accettazione
+    # delle richieste HTTP (es. /api/health) durante il boot dopo un cold-start.
+    async def _startup_sync_cantieri():
+        try:
+            await _sync_cantieri()
+        except Exception as e:
+            print(f"[startup] _sync_cantieri: {e}")
+    asyncio.create_task(_startup_sync_cantieri())
+    # Backfill sopralluoghi.csv: il vecchio seed statico è stato rimosso dal
+    # repo, rigeneriamo subito il derivato da Mongo così compare in "File
+    # correnti" senza dover aspettare il prossimo verbale/eliminazione.
+    _schedule_sopralluoghi_csv_regen("backfill startup")
+    # Backfill solleciti.csv: idem, così compare subito in "File correnti".
+    _schedule_solleciti_csv_regen("backfill startup")
 
-  // Passo 2b: match su singola PRATICA → un risultato per pratica matchante (per tratta)
-  trattaIndex.forEach((data, tidUp) => {
-    data.praticheSet.forEach(singola => {
-      if (singola.toUpperCase().includes(q)) {
-        const key = 'P|' + singola.toUpperCase() + '|' + tidUp;
-        if (!seenResult.has(key)) {
-          seenResult.add(key);
-          results.push({
-            type: 'pratica',
-            feature: data.feature,
-            pratica: singola,
-            tratta: data.tratta,
-            lotto: data.lotto,
-            stato: data.stato,
-            comune: data.comune
-          });
+
+# ═════════════════════════════════════════════════════════════════════════════
+# IMPRESE (contractor) — assignments + pending updates workflow
+# ─────────────────────────────────────────────────────────────────────────────
+# An "impresa" user logs in via the existing Google Apps Script flow (hub.html).
+# We keep a server-side mapping nome → lotti[] in `assignments`. When the user
+# submits updates / new rows, they go in `pending_updates`; the admin approves
+# and the change is applied to Master.csv (a new GridFS version is created).
+# ═════════════════════════════════════════════════════════════════════════════
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sessione firmata — risolve il problema per cui chiunque potesse fare
+# `localStorage.setItem('_enri_user', 'Nome Impresa')` e impersonare quel
+# nome senza conoscere il codice di accesso (il codice era verificato SOLO
+# da Google Apps Script al login, mai dal backend sulle chiamate successive).
+#
+# Flusso corretto:
+#   1. hub.html invia nome+codice a /api/auth/login (non più direttamente ad
+#      Apps Script: il segreto APPS_SCRIPT_SECRET resta lato server)
+#   2. Il backend verifica nome+codice chiamando Apps Script server-to-server
+#   3. Se ok, firma un token (HMAC, non falsificabile senza SESSION_SECRET)
+#      con nome+ruolo+scadenza, e lo restituisce al browser
+#   4. Ogni chiamata /api/imprese/* richiede questo token nell'header
+#      x-session-token; il `nome` viene SEMPRE preso dal token firmato,
+#      MAI dal parametro `nome` passato dal client (che viene ignorato)
+# ─────────────────────────────────────────────────────────────────────────────
+
+LOGIN_MAX_ATTEMPTS = int(os.environ.get("LOGIN_MAX_ATTEMPTS", "5"))
+LOGIN_LOCKOUT_SECONDS = int(os.environ.get("LOGIN_LOCKOUT_SECONDS", "300"))
+_login_failures: dict[str, list[float]] = {}
+
+
+def _check_login_rate_limit(nome_key: str) -> None:
+    now = time.time()
+    attempts = [t for t in _login_failures.get(nome_key, []) if now - t < LOGIN_LOCKOUT_SECONDS]
+    _login_failures[nome_key] = attempts
+    if len(attempts) >= LOGIN_MAX_ATTEMPTS:
+        wait = int(LOGIN_LOCKOUT_SECONDS - (now - attempts[0]))
+        raise HTTPException(429, f"Troppi tentativi falliti. Riprova tra {max(wait, 1)}s")
+
+
+def _record_login_failure(nome_key: str) -> None:
+    _login_failures.setdefault(nome_key, []).append(time.time())
+
+
+@app.post("/api/auth/login")
+async def auth_login(payload: dict):
+    """Proxy server-to-server verso Google Apps Script: il browser non vede
+    più APPS_SCRIPT_SECRET, e il codice viene verificato per davvero (non solo
+    al primo login, ma e' la base per ogni chiamata successiva tramite il token)."""
+    nome = (payload or {}).get("nome", "").strip()
+    codice = (payload or {}).get("codice", "").strip()
+    if not nome or not codice:
+        raise HTTPException(400, "Nome e codice sono richiesti")
+    nome_key = nome.lower()
+    _check_login_rate_limit(nome_key)
+    if not APPS_SCRIPT_URL or not APPS_SCRIPT_SECRET:
+        raise HTTPException(500, "Login non configurato sul server (APPS_SCRIPT_URL/SECRET mancanti)")
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            r = await client.post(
+                APPS_SCRIPT_URL,
+                content=json.dumps({"secret": APPS_SCRIPT_SECRET, "action": "login", "nome": nome, "codice": codice}),
+                headers={"Content-Type": "text/plain"},
+            )
+    except Exception as e:
+        raise HTTPException(502, f"Servizio di login non raggiungibile: {e}")
+
+    try:
+        data = r.json()
+    except Exception:
+        snippet = r.text[:200].replace("\n", " ")
+        raise HTTPException(502, f"Risposta non valida da Apps Script (HTTP {r.status_code}): {snippet!r}")
+
+    if not data.get("ok"):
+        _record_login_failure(nome_key)
+        raise HTTPException(401, data.get("msg") or "Nome o codice non riconosciuti")
+
+    _login_failures.pop(nome_key, None)
+    nome_canonical = data.get("nome") or nome
+    ruolo = str(data.get("ruolo") or "user").lower()
+    token = _sign_session(nome_canonical, ruolo)
+    return {"ok": True, "token": token, "nome": nome_canonical, "ruolo": ruolo}
+
+
+@app.get("/api/auth/verify")
+async def auth_verify(sess: dict = Depends(_require_session)):
+    """Verifica token di sessione e restituisce nome+ruolo — usato da index.html per la rivalidazione silenziosa."""
+    return {"ok": True, "nome": sess["nome"], "ruolo": sess.get("ruolo", "user")}
+
+
+@app.post("/api/logs/get")
+async def logs_get(payload: dict, sess: dict = Depends(_require_session)):
+    """Log accessi — letto da MongoDB (access_logs). JSONBin/Apps Script non più usati per questo."""
+    bin_id = (payload or {}).get("binId", "")
+    doc = await access_logs_col.find_one({"_id": bin_id}) or {}
+    return {"record": {
+        "utenti":  doc.get("utenti", []),
+        "accessi": doc.get("accessi", []),
+    }}
+
+
+@app.post("/api/logs/put")
+async def logs_put(payload: dict, sess: dict = Depends(_require_session)):
+    """Log accessi — scritto su MongoDB (access_logs). JSONBin/Apps Script non più usati per questo."""
+    bin_id = (payload or {}).get("binId", "")
+    data   = (payload or {}).get("data") or {}
+    if not bin_id:
+        raise HTTPException(400, "binId mancante")
+    await access_logs_col.update_one(
+        {"_id": bin_id},
+        {"$set": {
+            "utenti":  data.get("utenti", []),
+            "accessi": data.get("accessi", []),
+        }},
+        upsert=True,
+    )
+    return {"ok": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Parametri di configurazione (rischio ROS, squadre, capacità, azioni) — rev.??
+# Fonte unica: xlsx caricato da admin.html tramite /api/upload (stesso
+# meccanismo GridFS di Master.csv). Il parsing avviene qui, server-side:
+# il frontend (stato_lotti.html) consuma solo /api/parametri (JSON), mai
+# l'xlsx direttamente — nessuna soglia/peso/produttività è hardcoded in JS.
+# ─────────────────────────────────────────────────────────────────────────────
+PARAMETRI_FILENAME = "Parametri_configurazione_dashboard_ENRI.xlsx"
+
+
+def _pf(row: dict, key: str, default=None):
+    v = row.get(key)
+    return default if v is None else v
+
+
+def _pf_bool_si(row: dict, key: str) -> bool:
+    v = row.get(key)
+    return str(v).strip().lower() == "sì" or str(v).strip().lower() == "si"
+
+
+def _find_header_row(ws, anchor_text: str, max_scan: int = 20) -> int | None:
+    """Cerca nella colonna A, entro le prime `max_scan` righe, la cella che
+    contiene esattamente `anchor_text` e ne restituisce l'indice (1-based).
+    Usato invece di numeri di riga fissi così lo sheet resta parsabile anche
+    se il PM inserisce/rimuove righe di intestazione o note sopra la tabella."""
+    for i in range(1, max_scan + 1):
+        v = ws.cell(row=i, column=1).value
+        if v is not None and str(v).strip() == anchor_text:
+            return i
+    return None
+
+
+def _sheet_table(ws, anchor_text: str, max_scan: int = 20) -> list[dict]:
+    """Legge la tabella che inizia con l'header trovato da `_find_header_row`.
+    Ferma la lettura alla prima riga completamente vuota. Le chiavi del dict
+    sono le intestazioni originali (testo colonna A..N), non rinominate qui —
+    la rinomina in snake_case avviene nel parser specifico di ogni sezione."""
+    hdr_row = _find_header_row(ws, anchor_text, max_scan)
+    if hdr_row is None:
+        return []
+    headers = [c.value for c in ws[hdr_row]]
+    rows = []
+    r = hdr_row + 1
+    while True:
+        cells = [ws.cell(row=r, column=ci + 1).value for ci in range(len(headers))]
+        if all(c is None for c in cells):
+            break
+        row = {}
+        for h, v in zip(headers, cells):
+            if h is not None:
+                row[str(h).strip()] = v
+        rows.append(row)
+        r += 1
+        if r > hdr_row + 500:  # safety stop
+            break
+    return rows
+
+
+def _xlsx_date_to_it(v):
+    """Normalizza una cella data del PARAMETRI xlsx in stringa gg/mm/aaaa.
+    openpyxl restituisce un oggetto datetime/date se la cella è formattata
+    come Data in Excel, una stringa se è General/Testo: il frontend
+    (parseDateIT) si aspetta sempre e solo il formato gg/mm/aaaa."""
+    if v is None or v == "":
+        return v
+    if hasattr(v, "strftime"):
+        return v.strftime("%d/%m/%Y")
+    return v
+
+
+def _parse_parametri_xlsx(raw: bytes) -> dict:
+    import openpyxl
+    wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
+
+    out: dict = {}
+
+    # ── Parametri globali ──
+    globali = {}
+    for row in _sheet_table(wb["Parametri globali"], "Codice"):
+        codice = row.get("Codice")
+        if not codice:
+            continue
+        globali[str(codice).strip()] = {
+            "ambito": row.get("Ambito"),
+            "parametro": row.get("Parametro"),
+            "valore": row.get("Valore"),
+            "unita": row.get("Unità"),
+            "tipo_dato": row.get("Tipo dato"),
+            "modificabile": _pf_bool_si(row, "Modificabile"),
+            "descrizione": row.get("Descrizione / regola"),
         }
-      }
-    });
-  });
+    out["globali"] = globali
 
-  // Passo 2c: match su CODICE CANTIERE (RO_CANTIERI) → un risultato per cantiere,
-  // posizionato sulla prima tratta del cantiere presente in mappa
-  (typeof RO_CANTIERI !== 'undefined' ? RO_CANTIERI : []).forEach(c => {
-    const cod = (c.codice_cantiere || '').trim();
-    if (!cod || !cod.toUpperCase().includes(q)) return;
-    const tid = (c.tratte || []).map(t => (t.tratta_id || '').trim().toUpperCase()).find(t => trattaIndex.has(t));
-    if (!tid) return;
-    const data = trattaIndex.get(tid);
-    const key = 'C|' + cod.toUpperCase();
-    if (seenResult.has(key)) return;
-    seenResult.add(key);
-    results.unshift({
-      type: 'pratica',
-      feature: data.feature,
-      cantiere: cod,
-      pratica: [...data.praticheSet].join(' · ') || data.tratta,
-      tratta: data.tratta,
-      lotto: data.lotto,
-      stato: data.stato,
-      comune: data.comune
-    });
-  });
-
-  return results.slice(0, 15);
-}
-
-// Geocoding Nominatim
-async function searchAddress(query) {
-  const url = `${NOMINATIM}?q=${encodeURIComponent(query + ', Italia')}&format=json&limit=4&addressdetails=1`;
-  try {
-    const resp = await fetch(url, { headers: { 'Accept-Language': 'it' } });
-    const data = await resp.json();
-    return data.map(r => ({
-      type: 'address',
-      display: r.display_name.split(',').slice(0,3).join(', '),
-      lat: parseFloat(r.lat), lon: parseFloat(r.lon),
-      zoom: r.type === 'city' ? 13 : r.type === 'suburb' ? 14 : 16
-    }));
-  } catch { return []; }
-}
-
-function renderResults(pratiche, addresses, query) {
-  resultsEl.innerHTML = '';
-  let hasAny = false;
-
-  if (pratiche.length) {
-    hasAny = true;
-    const div = document.createElement('div');
-    div.className = 'search-divider';
-    div.textContent = 'Pratiche, Tratte e Cantieri';
-    resultsEl.appendChild(div);
-    pratiche.forEach(r => {
-      const item = document.createElement('div');
-      item.className = 'search-result-item';
-      const color = (window.STATO_COLORS||{})[r.stato] || '#6B7685';
-      item.innerHTML = `
-        <span class="search-result-icon">◎</span>
-        <div style="flex:1;min-width:0">
-          <div class="search-result-main">${r.cantiere ? `<span style="font-family:var(--font-mono);color:var(--retelit-blue)">${r.cantiere}</span> · ` : ''}${r.pratica}${(typeof ENRI !== 'undefined' && ENRI.concomitanzaBadge) ? ENRI.concomitanzaBadge(r.tratta) : ''}</div>
-          <div class="search-result-sub">${r.tratta} · Lotto ${r.lotto} · ${r.comune}</div>
-        </div>
-        <span style="font-size:9px;color:${color};white-space:nowrap;flex-shrink:0">${r.stato}</span>`;
-      item.onclick = () => zoomToFeature(r.feature);
-      resultsEl.appendChild(item);
-    });
-  }
-
-  if (addresses.length) {
-    hasAny = true;
-    const div = document.createElement('div');
-    div.className = 'search-divider';
-    div.textContent = 'Indirizzi';
-    resultsEl.appendChild(div);
-    addresses.forEach(r => {
-      const item = document.createElement('div');
-      item.className = 'search-result-item';
-      item.innerHTML = `
-        <span class="search-result-icon">📍</span>
-        <div style="flex:1;min-width:0">
-          <div class="search-result-main">${r.display}</div>
-        </div>`;
-      item.onclick = () => {
-        if (searchMarker) map.removeLayer(searchMarker);
-        const popupHtml = `
-          <div style="display:flex;align-items:center;gap:8px;padding:6px 8px">
-            <span style="font-size:12px;color:var(--text);flex:1">${r.display}</span>
-            <button onclick="clearSearch()" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;line-height:1;padding:0 2px;flex-shrink:0" title="Chiudi">✕</button>
-          </div>`;
-        searchMarker = L.circleMarker([r.lat, r.lon], {
-          radius: 8, color: '#4f8ef7', fillColor: '#4f8ef7', fillOpacity: 0.8, weight: 2,
-          renderer: searchMarkerRenderer   // SVG: non crea canvas in cima al mainRenderer
-        }).addTo(map).bindPopup(popupHtml, {closeButton: false});
-        // Quando si chiude il popup rimuove il marker così le tratte tornano cliccabili
-        searchMarker.on('popupclose', () => {
-          if (searchMarker) { map.removeLayer(searchMarker); searchMarker = null; }
-          clearBtn.style.display = inputEl.value ? 'block' : 'none';
-        });
-        searchMarker.openPopup();
-        map.setView([r.lat, r.lon], r.zoom, {animate: false});
-        setTimeout(() => { map.getContainer().style.cursor = ''; }, 0);
-        resultsEl.style.display = 'none';
-        clearBtn.style.display = 'block';
-      };
-      resultsEl.appendChild(item);
-    });
-  }
-
-  if (!hasAny) {
-    const item = document.createElement('div');
-    item.className = 'search-result-item';
-    item.innerHTML = `<span style="color:var(--muted);font-size:11px">Nessun risultato per "${query}"</span>`;
-    resultsEl.appendChild(item);
-  }
-
-  resultsEl.style.display = 'block';
-}
-
-let _highlightedLayers = [];
-
-function clearHighlight() {
-  _highlightedLayers.forEach(l => {
-    l.setStyle({
-      weight: 4, opacity: 0.95,
-      color: getColorForMode(l.feature, currentViewMode)
-    });
-  });
-  _highlightedLayers = [];
-  const badge = document.getElementById('selectorBadge');
-  if (badge) badge.classList.remove('visible');
-}
-
-function applyHighlight(targetLayer) {
-  clearHighlight();
-  targetLayer.setStyle({ weight: 9, opacity: 1, color: '#f59e0b' });
-  targetLayer.bringToFront();
-  _highlightedLayers = [targetLayer];
-  targetLayer.once('popupclose', clearHighlight);
-}
-
-// Evidenzia più layer insieme (es. tutte le tratte/segmenti di una stessa pratica)
-function applyHighlightMulti(layers) {
-  clearHighlight();
-  layers.forEach(l => {
-    l.setStyle({ weight: 9, opacity: 1, color: '#f59e0b' });
-    l.bringToFront();
-  });
-  _highlightedLayers = layers.slice();
-}
-
-function zoomToFeature(feature) {
-  let targetLayer = null;
-  // Early exit: smette di cercare non appena trova il layer corretto
-  for (const {layer} of allLayers) {
-    if (targetLayer) break;
-    layer.eachLayer(l => { if (!targetLayer && l.feature === feature) targetLayer = l; });
-  }
-  if (targetLayer) {
-    const bounds = targetLayer.getBounds ? targetLayer.getBounds() : null;
-    const latlng = bounds ? bounds.getCenter() : targetLayer.getLatLng?.();
-    if (latlng) {
-      map.setView(latlng, 15, {animate: false});
-      // Attende che il renderer canvas abbia ridisegnato dopo lo zoom, poi apre il popup
-      // PRIMA di evidenziare: openPopup chiude l'eventuale popup precedente, il cui
-      // listener once('popupclose') chiama clearHighlight() e cancellerebbe l'highlight appena applicato.
-      requestAnimationFrame(() => {
-        targetLayer.openPopup();
-        applyHighlight(targetLayer);
-        map.getContainer().style.cursor = '';
-      });
-    }
-  }
-  resultsEl.style.display = 'none';
-  clearBtn.style.display = 'block';
-}
-
-// Debounced input handler
-inputEl.addEventListener('input', () => {
-  const q = inputEl.value.trim();
-  clearBtn.style.display = q ? 'block' : 'none';
-  if (!q) { resultsEl.style.display = 'none'; return; }
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(async () => {
-    const pratiche = searchPratiche(q);
-    // Cerca indirizzo solo se query > 3 chars e non sembra un codice pratica
-    const looksLikePratica = /^(AUT|NO|ORD|TR_|CA\/)/i.test(q);
-    const addresses = (!looksLikePratica && q.length > 3) ? await searchAddress(q) : [];
-    renderResults(pratiche, addresses, q);
-  }, 350);
-});
-
-inputEl.addEventListener('keydown', e => {
-  if (e.key === 'Escape') clearSearch();
-});
-
-// Chiudi dropdown cliccando fuori
-document.addEventListener('click', e => {
-  if (!e.target.closest('#searchBar')) resultsEl.style.display = 'none';
-});
-// ─────────────────────────────────────────────────────────────────────────────
-
-
-// ── LAYER QTS ───────────────────────────────────────────────────────────────
-let qtsLayer = null;
-let qtsOutlineLayer = null;
-let qtsLoaded = false;
-const QTS_COLOR_HEX = '#1A7D99';
-
-async function loadQTS() {
-  if (qtsLoaded) return;
-  try {
-    const geojson = await fetchWithSWR('QTS.geojson', {
-      isJson: true,
-      onUpdate: (fresh) => {
-        if (!qtsLoaded) return;
-        if (qtsLayer       && map.hasLayer(qtsLayer))        map.removeLayer(qtsLayer);
-        if (qtsOutlineLayer && map.hasLayer(qtsOutlineLayer)) map.removeLayer(qtsOutlineLayer);
-        qtsLoaded = false; qtsLayer = null; qtsOutlineLayer = null;
-        loadQTSFromGeojson(fresh);
-        if (_qtsActive) { qtsOutlineLayer.addTo(map); qtsLayer.addTo(map); }
-      }
-    });
-
-    let totM = 0;
-    geojson.features.forEach(f => {
-      const l = f.properties && (f.properties.LUNGHEZZA || f.properties.lunghezza || 0);
-      totM += Number(l) || 0;
-    });
-
-    qtsOutlineLayer = L.geoJSON(geojson, {
-      renderer: outlineRenderer,
-      style: () => ({ color:'#5577aa', weight:8, opacity:0.3, smoothFactor:1.5, interactive:false })
-    });
-
-    qtsLayer = L.geoJSON(geojson, {
-      renderer: mainRenderer,
-      style: () => ({ color: QTS_COLOR_HEX, weight:4, opacity:0.95, smoothFactor:1.5, dashArray:'8,6' }),
-      onEachFeature: (f, layer) => {
-        const p = f.properties || {};
-        const len = p.LUNGHEZZA || p.lunghezza || '';
-        const desc = [p.NOME || p.nome || p.NAME || '', p.TRATTA_ID || p.tratta_id || ''].filter(Boolean).join(' — ');
-        layer.bindPopup(`<div class="popup-inner">
-          <div class="popup-header" style="border-color:#0aa3c255">
-            <span class="popup-lotto" style="color:${QTS_COLOR_HEX}">QTS</span>
-            ${desc ? `<span class="popup-impresa" style="color:${QTS_COLOR_HEX}">${desc}</span>` : ''}
-          </div>
-          ${len ? `<div class="popup-row"><span class="label">Lunghezza</span><span class="val">${(Number(len)/1000).toFixed(3).replace('.',',')} km</span></div>` : ''}
-          <div style="margin-top:8px"><span class="popup-stato" style="background:#1A7D9922;color:${QTS_COLOR_HEX};border:1px solid #8b5cf644">Tracciato QTS</span></div>
-        </div>`, {maxWidth:320});
-        layer.on('mouseover', e => { e.target.setStyle({weight:7, opacity:1}); e.target.bringToFront(); });
-        layer.on('mouseout',  e => { e.target.setStyle({weight:4, opacity:0.95}); });
-      }
-    });
-
-    qtsLoaded = true;
-
-    if (totM > 0) {
-      const kmEl = document.getElementById('qtsKm');
-      if (kmEl) { kmEl.textContent = (totM/1000).toFixed(1).replace('.',',') + ' km'; kmEl.style.display=''; }
-    }
-
-  } catch(e) {
-    console.warn('QTS layer:', e.message);
-    const tog = document.getElementById('qtsToggle');
-    if (tog) {
-      tog.checked  = false;   // ← resetta lo stato visivo prima di disabilitare
-      tog.disabled = true;
-      tog.parentElement.title = 'QTS.geojson non disponibile';
-    }
-  }
-}
-
-function loadQTSFromGeojson(geojson) {
-  // Ricostruisce i layer QTS da geojson già caricato (usato dall'update SWR)
-  qtsOutlineLayer = L.geoJSON(geojson, {
-    renderer: outlineRenderer,
-    style: () => ({ color:'#5577aa', weight:8, opacity:0.3, smoothFactor:1.5, interactive:false })
-  });
-  qtsLayer = L.geoJSON(geojson, {
-    renderer: mainRenderer,
-    style: () => ({ color: QTS_COLOR_HEX, weight:4, opacity:0.95, smoothFactor:1.5, dashArray:'8,6' })
-  });
-  qtsLoaded = true;
-}
-
-async function setQTSOnly(on) {
-  qtsOnlyMode = !!on;
-  const btn = document.getElementById('qtsOnlyBtn');
-  if (btn) btn.classList.toggle('active', qtsOnlyMode);
-
-  if (qtsOnlyMode) {
-    const tog = document.getElementById('qtsToggle');
-    if (tog && !tog.checked) {
-      tog.checked = true;
-      toggleQTS(true);
-    } else if (tog && tog.checked && !qtsLoaded) {
-      await loadQTS();
-      toggleQTS(true);
-    }
-    allLayers.forEach(({layer,outlineLayer}) => {
-      if (map.hasLayer(layer)) map.removeLayer(layer);
-      if (outlineLayer && map.hasLayer(outlineLayer)) map.removeLayer(outlineLayer);
-    });
-    if (qtsLayer) {
-      const g = L.featureGroup([qtsLayer]);
-      if (g.getBounds && g.getBounds().isValid()) map.fitBounds(g.getBounds(), { padding:[50,50], maxZoom:14 });
-    }
-    return;
-  }
-
-  if (currentViewMode === 'cluster') applyFilterClusterMulti();
-  else applyFilterMulti();
-}
-
-function toggleQTS(on) {
-  if (!on && qtsOnlyMode) setQTSOnly(false);
-  if (on) {
-    if (!qtsLoaded) {
-      loadQTS().then(() => {
-        // Verifica che il checkbox sia ancora attivo prima di aggiungere i layer
-        const tog = document.getElementById('qtsToggle');
-        if (tog && tog.checked && qtsLayer) {
-          if (!map.hasLayer(qtsOutlineLayer)) qtsOutlineLayer.addTo(map).bringToBack();
-          if (!map.hasLayer(qtsLayer)) qtsLayer.addTo(map).bringToFront();
+    # ── Regole squadre per stato cantiere ──
+    regole_squadre = {}
+    for row in _sheet_table(wb["Regole squadre cantiere"], "Stato cantiere"):
+        stato = row.get("Stato cantiere")
+        if not stato:
+            continue
+        regole_squadre[str(stato).strip()] = {
+            "squadre_standard": row.get("Squadre standard"),
+            "operativo": _pf_bool_si(row, "Conta come operativo"),
+            "modificabile": _pf_bool_si(row, "Modificabile"),
+            "regola": row.get("Regola"),
+            "note": row.get("Note"),
         }
-      });
-    } else if (qtsLayer) {
-      if (!map.hasLayer(qtsOutlineLayer)) qtsOutlineLayer.addTo(map).bringToBack();
-      if (!map.hasLayer(qtsLayer)) qtsLayer.addTo(map).bringToFront();
-      else qtsLayer.bringToFront();
-    }
-  } else {
-    if (qtsLayer && map.hasLayer(qtsLayer)) map.removeLayer(qtsLayer);
-    if (qtsOutlineLayer && map.hasLayer(qtsOutlineLayer)) map.removeLayer(qtsOutlineLayer);
-  }
-}
-// ─────────────────────────────────────────────────────────────────────────────
+    out["regole_squadre_cantiere"] = regole_squadre
 
-// ── LAYER POZZETTI (pozzetti_merged.geojson, caricato da admin) ──────────────
-let pozzettiLayer = null;
-let pozzettiLoaded = false;
-const POZZETTI_COLOR = '#043F75';
-const _pozzR = () => { const z = map.getZoom(); return z < 12 ? 3 : (z < 15 ? 5 : 7); };
+    # ── Eccezioni squadre per singolo cantiere ──
+    eccezioni = []
+    for row in _sheet_table(wb["Eccezioni per cantiere"], "Codice cantiere"):
+        if not row.get("Codice cantiere"):
+            continue
+        eccezioni.append({
+            "codice_cantiere": row.get("Codice cantiere"),
+            "lotto": row.get("Lotto"),
+            "impresa": row.get("Impresa"),
+            "stato_cantiere": row.get("Stato cantiere"),
+            "squadre_standard": row.get("Squadre standard"),
+            "squadre_override": row.get("Squadre override"),
+            "squadre_effettive": row.get("Squadre effettive"),
+            "data_validita": row.get("Data validità"),
+            "motivazione": row.get("Motivazione"),
+        })
+    out["eccezioni_cantiere"] = eccezioni
 
-async function loadPozzetti() {
-  if (pozzettiLoaded) return;
-  try {
-    // File sensibile: solo via backend (gated), mai da GitHub statico.
-    const geojson = await fetchWithSWR('pozzetti_merged.geojson', { isJson: true, direct: true });
-    const esc = v => String(v).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-    pozzettiLayer = L.geoJSON(geojson, {
-      pointToLayer: (f, ll) => L.circleMarker(ll, { renderer: mainRenderer, radius: _pozzR(), color: '#fff', weight: 1, fillColor: POZZETTI_COLOR, fillOpacity: 0.9 }),
-      onEachFeature: (f, layer) => {
-        const p = f.properties || {};
-        const ll = layer.getLatLng();
-        const row = (l, v) => (v === null || v === undefined || v === '') ? '' : `<div class="popup-row"><span class="label">${l}</span><span class="val">${esc(v)}</span></div>`;
-        layer.bindPopup(`<div class="popup-inner">
-          <div class="popup-header" style="border-color:${POZZETTI_COLOR}55">
-            <span class="popup-lotto" style="color:${POZZETTI_COLOR}">Pozzetto</span>
-            ${p.name ? `<span class="popup-impresa" style="color:${POZZETTI_COLOR}">${esc(p.name)}</span>` : ''}
-          </div>
-          ${row('Lotto', p.Lotto)}${row('Cluster', p.Cluster)}${row('Tipo', p.Tipo)}${row('Codice', p.codice)}${row('ID', p.id)}
-          <div style="margin-top:8px"><a class="popup-gmaps-btn" href="https://www.google.com/maps?q=${ll.lat.toFixed(6)},${ll.lng.toFixed(6)}" target="_blank" rel="noopener" style="font-size:10px;padding:4px 10px">Google Maps</a></div>
-        </div>`, { maxWidth: 260 });
-      }
-    });
-    pozzettiLoaded = true;
-    const pb = document.getElementById('pozzettiBtn');
-    if (pb) pb.title = 'Pozzetti (' + (geojson.features || []).length.toLocaleString('it-IT') + ')';
-    map.on('zoomend', () => { if (pozzettiLayer) pozzettiLayer.eachLayer(l => l.setRadius(_pozzR())); });
-  } catch (e) {
-    console.warn('Layer pozzetti:', e.message);
-    _pozzActive = false;
-    const pb = document.getElementById('pozzettiBtn');
-    if (pb) { pb.classList.remove('active'); pb.style.opacity = '0.45'; pb.style.pointerEvents = 'none'; pb.title = 'pozzetti_merged.geojson non disponibile — caricalo da Admin'; }
-  }
-}
-
-let _pozzActive = false;
-function togglePozzetti(forced) {
-  _pozzActive = (forced !== undefined) ? forced : !_pozzActive;
-  const btn = document.getElementById('pozzettiBtn');
-  if (btn) btn.classList.toggle('active', _pozzActive);
-  const on = _pozzActive;
-  if (on) {
-    const add = () => {
-      if (_pozzActive && pozzettiLayer && !map.hasLayer(pozzettiLayer)) pozzettiLayer.addTo(map).bringToFront();
-    };
-    if (!pozzettiLoaded) loadPozzetti().then(add); else add();
-  } else if (pozzettiLayer && map.hasLayer(pozzettiLayer)) {
-    map.removeLayer(pozzettiLayer);
-  }
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ── LAYER SED ATTRAVERSAMENTI ───────────────────────────────────────────────
-const SED_META = {
-  'FERROVIARIO': {
-    color: '#b45309', bg: '#fef3c7', border:'#b4530966',
-    // locomotiva di profilo
-    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
-      <!-- corpo principale -->
-      <rect x="1" y="9" width="17" height="8" rx="2" fill="#b45309"/>
-      <!-- cabina macchinista -->
-      <rect x="16" y="6" width="6" height="11" rx="1.5" fill="#92400e"/>
-      <!-- finestrino cabina -->
-      <rect x="17.5" y="7.5" width="3" height="3" rx="0.8" fill="#fef9c3"/>
-      <!-- camino -->
-      <rect x="3.5" y="5" width="2.5" height="4" rx="1" fill="#92400e"/>
-      <!-- vapore camino -->
-      <circle cx="3.5" cy="4.5" r="1.2" fill="#d4d4d4" opacity="0.7"/>
-      <circle cx="5.5" cy="3.8" r="0.9" fill="#d4d4d4" opacity="0.5"/>
-      <circle cx="4.5" cy="3" r="0.7" fill="#d4d4d4" opacity="0.4"/>
-      <!-- finestre fiancata -->
-      <rect x="5" y="11" width="3" height="3" rx="0.6" fill="#fef9c3" opacity="0.9"/>
-      <rect x="9.5" y="11" width="3" height="3" rx="0.6" fill="#fef9c3" opacity="0.9"/>
-      <!-- ruote -->
-      <circle cx="5"  cy="18.5" r="2.5" fill="#78350f" stroke="#fef3c7" stroke-width="0.8"/>
-      <circle cx="11" cy="18.5" r="2.5" fill="#78350f" stroke="#fef3c7" stroke-width="0.8"/>
-      <circle cx="18" cy="18.5" r="2.5" fill="#78350f" stroke="#fef3c7" stroke-width="0.8"/>
-      <!-- centro ruote -->
-      <circle cx="5"  cy="18.5" r="0.8" fill="#fef3c7"/>
-      <circle cx="11" cy="18.5" r="0.8" fill="#fef3c7"/>
-      <circle cx="18" cy="18.5" r="0.8" fill="#fef3c7"/>
-      <!-- bielle collegate -->
-      <line x1="5" y1="18.5" x2="11" y2="18.5" stroke="#92400e" stroke-width="1"/>
-      <line x1="11" y1="18.5" x2="18" y2="18.5" stroke="#92400e" stroke-width="1"/>
-      <!-- fanale anteriore -->
-      <circle cx="22" cy="13" r="1.2" fill="#fde68a"/>
-    </svg>`,
-    label: 'Ferroviario'
-  },
-  'AUTOSTRADALE': {
-    color: '#16a34a', bg: '#f0fdf4', border:'#16a34a66',
-    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
-      <rect x="1" y="7.5" width="18" height="5" rx="2" fill="#374151"/>
-      <rect x="8" y="9.25" width="1.5" height="1.5" rx="0.5" fill="#fff"/>
-      <rect x="11" y="9.25" width="1.5" height="1.5" rx="0.5" fill="#fff"/>
-      <rect x="1" y="7" width="18" height="1" rx="0.5" fill="#f59e0b"/>
-      <rect x="1" y="12" width="18" height="1" rx="0.5" fill="#f59e0b"/>
-    </svg>`,
-    label: 'Autostradale'
-  },
-  'IDRICO': {
-    color: '#0369a1', bg: '#e0f2fe', border:'#0369a166',
-    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
-      <path d="M1 10 Q3.5 5 6 10 Q8.5 15 11 10 Q13.5 5 16 10 Q17.5 13 19 10"
-            stroke="#0369a1" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-      <path d="M1 14 Q3.5 9 6 14 Q8.5 19 11 14 Q13.5 9 16 14 Q17.5 17 19 14"
-            stroke="#38bdf8" stroke-width="1.8" fill="none" stroke-linecap="round" opacity="0.7"/>
-    </svg>`,
-    label: 'Idrico'
-  }
-};
-
-// Genera un L.divIcon con l'SVG del tipo SED
-function sedDivIcon(tipo) {
-  const m = SED_META[tipo] || SED_META['IDRICO'];
-  const size = 32;
-  const svgScaled = m.svg
-    .replace(/width="\d+"/, 'width="18"')
-    .replace(/height="\d+"/, 'height="18"');
-  return L.divIcon({
-    className: '',
-    html: `<div style="
-      width:${size}px;height:${size}px;border-radius:50%;
-      background:${m.bg};border:2px solid ${m.color};
-      display:flex;align-items:center;justify-content:center;
-      box-shadow:0 2px 8px #00000035;
-      transform:translate(-50%,-50%);
-      transition:transform 0.15s;
-    ">${svgScaled}</div>`,
-    iconSize: [size, size],
-    iconAnchor: [size/2, size/2]
-  });
-}
-
-let sedLayer   = null;
-let sedLoaded  = false;
-let _sedActive = false;
-let _sedLoading = false; // guard anti race-condition
-
-// Indice pratica → ente, costruito da Master.csv (TRATTA_ID + ENTE + TIPO_PERMESSO + PRATICA).
-// Necessario perché QGIS.geojson aggrega già le pratiche di più righe/enti in un'unica
-// stringa p.PRATICA ("AUT/3/1A | NO/5/1A | ..."), perdendo quale ente corrisponde a quale codice.
-let RO_PRATICA_ENTE = {}; // key: TRATTA_ID upper → [{codice, ente}]
-
-// ── SELEZIONE PRATICHE PER L'AGENDA (mappa.html?seleziona=agenda) ───────────
-// agenda.html salva il form in sessionStorage['agenda_draft'] e apre la mappa in questa modalità:
-// i codici pratica nel popup diventano cliccabili; "Fatto" riscrive draft.mapPick e torna all'agenda.
-const AG_SEL = new URLSearchParams(location.search).get('seleziona') === 'agenda';
-const AG_SEL_MAP = new Map(); // CODICE UPPER → codice come mostrato
-function _agDraft() { try { return JSON.parse(sessionStorage.getItem('agenda_draft') || 'null'); } catch (_) { return null; } }
-function agSelToggle(code) {
-  const k = String(code || '').trim().toUpperCase(); if (!k) return;
-  if (AG_SEL_MAP.has(k)) AG_SEL_MAP.delete(k); else AG_SEL_MAP.set(k, String(code).trim());
-  _agSelRefresh();
-}
-function _agSelRefresh() {
-  const bar = document.getElementById('agSelBar'); if (!bar) return;
-  const chips = [...AG_SEL_MAP.entries()].map(([k, v]) => `<span class="ag-chip">${v}<button type="button" title="Rimuovi" onclick="agSelToggle('${k}')">&times;</button></span>`).join('');
-  bar.querySelector('.ag-chips').innerHTML = chips || '<span class="ag-empty">nessuna pratica selezionata</span>';
-  bar.querySelector('#agSelDone').textContent = 'Fatto' + (AG_SEL_MAP.size ? ' (' + AG_SEL_MAP.size + ')' : '');
-  document.querySelectorAll('.popup-pratica-pick').forEach(el => el.classList.toggle('picked', AG_SEL_MAP.has((el.dataset.cod || '').toUpperCase())));
-}
-// Click su una tratta in modalità agenda: aggiunge tutte le sue pratiche (se già tutte selezionate le rimuove).
-// Per affinare la scelta si usano i chip nel popup o nella barra.
-function agSelFromTratta(p) {
-  const codes = String((p && p.PRATICA) || '').split(/[|;]/).map(x => x.trim()).filter(Boolean);
-  if (!codes.length) return;
-  const allIn = codes.every(c => AG_SEL_MAP.has(c.toUpperCase()));
-  codes.forEach(c => { const k = c.toUpperCase(); if (allIn) AG_SEL_MAP.delete(k); else if (!AG_SEL_MAP.has(k)) AG_SEL_MAP.set(k, c); });
-  _agSelRefresh();
-}
-function agSelFinish(save) {
-  const d = _agDraft();
-  if (d && save) { d.mapPick = [...AG_SEL_MAP.values()]; sessionStorage.setItem('agenda_draft', JSON.stringify(d)); }
-  location.href = 'agenda.html' + (d ? '?ripristina=1' : '');
-}
-function agSelInit() {
-  if (!AG_SEL) return;
-  const d = _agDraft();
-  ((d && d.selPrat) || []).forEach(c => AG_SEL_MAP.set(String(c).trim().toUpperCase(), String(c).trim()));
-  const bar = document.createElement('div'); bar.id = 'agSelBar';
-  bar.innerHTML = '<span class="ag-t">Seleziona le pratiche per l\'appuntamento</span><span class="ag-chips"></span>' +
-    '<button type="button" class="ag-btn primary" id="agSelDone" onclick="agSelFinish(true)">Fatto</button>' +
-    '<button type="button" class="ag-btn" onclick="agSelFinish(false)">Annulla</button>';
-  document.body.appendChild(bar);
-  _agSelRefresh();
-  map.on('popupopen', _agSelRefresh);
-}
-let _praticaEnteLoading = null;
-function loadPraticaEnteIndex() {
-  if (_praticaEnteLoading) return _praticaEnteLoading;
-  _praticaEnteLoading = (async () => {
-    try {
-      const csvText = await fetchWithSWR('Master.csv', { isJson: false, direct: true }).catch(() => null);
-      if (!csvText) return;
-      const rows = csvText.split('\n');
-      const _sep = rows[0].includes('\t') ? '\t' : (rows[0].includes(';') ? ';' : ',');
-      const headers = rows[0].split(_sep).map(h => h.trim().replace(/^"|"$/g,''));
-      const idx = n => headers.findIndex(h => h.toUpperCase() === n.toUpperCase());
-      const iTid = idx('TRATTA_ID'), iEnte = idx('ENTE'), iTipo = idx('TIPO_PERMESSO');
-      const iPrat = idx('PRATICA'), iLotto = idx('LOTTO'), iSrc = idx('Source.Name');
-      if (iTid < 0 || iEnte < 0) return;
-      const idxMap = {};
-      rows.slice(1).forEach(row => {
-        if (!row.trim()) return;
-        const cols = row.split(_sep).map(c => c.trim().replace(/^"|"$/g,''));
-        const tid = (cols[iTid]||'').trim().toUpperCase(); if (!tid) return;
-        const ente = cols[iEnte]||'';
-        const tipo = iTipo >= 0 ? cols[iTipo]||'' : '';
-        const prat = iPrat >= 0 ? cols[iPrat]||'' : '';
-        if (!prat) return;
-        const src   = iSrc  >= 0 ? cols[iSrc] ||'' : '';
-        const lotto = src ? src.replace(/\.xlsx$/i,'').replace(/^Lotto\s*/i,'').trim().toUpperCase()
-                         : (iLotto >= 0 ? cols[iLotto]||'' : '');
-        const tipoPrefix = tipo === 'AUTORIZZAZIONE' ? 'AUT'
-          : tipo === 'NULLA OSTA' ? 'NO'
-          : tipo === 'ORDINANZA'  ? 'ORD'
-          : (tipo.substring(0,3)||'?');
-        const codice = tipoPrefix + '/' + prat + (lotto ? '/'+lotto : '');
-        if (!idxMap[tid]) idxMap[tid] = [];
-        if (!idxMap[tid].some(e => e.codice.toUpperCase() === codice.toUpperCase())) {
-          idxMap[tid].push({ codice, ente });
+    # ── Tempi autorizzativi ──
+    tempi = {}
+    for row in _sheet_table(wb["Tempi autorizzativi"], "Codice"):
+        codice = row.get("Codice")
+        if not codice:
+            continue
+        tempi[str(codice).strip()] = {
+            "tipologia": row.get("Tipologia ente / pratica"),
+            "giorni_attesi": row.get("Giorni attesi"),
+            "soglia_attenzione": row.get("Soglia attenzione"),
+            "soglia_critica": row.get("Soglia critica"),
+            "unita": row.get("Unità"),
+            "peso_milestone_30gg": row.get("Peso se milestone ≤30gg"),
+            "modificabile": _pf_bool_si(row, "Modificabile"),
+            "note": row.get("Note"),
+            "giorni_redazione_pratiche": row.get("Giorni redazione pratiche"),
         }
-      });
-      RO_PRATICA_ENTE = idxMap;
-    } catch(_) {}
-  })();
-  return _praticaEnteLoading;
-}
+    out["tempi_autorizzativi"] = tempi
 
-async function loadSED() {
-  if (sedLoaded || _sedLoading) return;
-  _sedLoading = true;
-  try { await _loadSEDInner(); } finally { _sedLoading = false; }
-}
-
-async function _loadSEDInner() {
-  // Carica Master.csv e indicizza per N_SED (opzionale, non blocca)
-  if (!window._sedFromCSV) {
-    try {
-      const csvResp_text = await fetchWithSWR('Master.csv', { isJson: false, direct: true }).catch(() => null);
-      const csvResp = csvResp_text ? { ok: true, text: async () => csvResp_text } : { ok: false };
-      if (csvResp.ok) {
-        const csvText = await csvResp.text();
-        const rows = csvText.split('\n');
-        const _sep = rows[0].includes('\t') ? '\t' : (rows[0].includes(';') ? ';' : ',');
-        const headers = rows[0].split(_sep).map(h => h.trim().replace(/^"|"$/g,''));
-        const idx = n => headers.findIndex(h => h.toUpperCase() === n.toUpperCase());
-        const iNSed  = idx('N_SED'),    iTipo  = idx('TIPO_PERMESSO');
-        const iEnte  = idx('ENTE'),     iStato = idx('STATO_PERMESSO');
-        const iInvio = idx('DATA_RICHIESTA'), iNote = idx('NOTE');
-        const iPrat  = idx('PRATICA'),  iDum   = idx('DATA_ULTIMA_MODIFICA');
-        const iLotto = idx('LOTTO'),    iSrc   = idx('Source.Name');
-
-        const permMap = {}; // key: nSed|pratica|tipo → best row
-        rows.slice(1).forEach(row => {
-          if (!row.trim()) return;
-          const cols = row.split(_sep).map(c => c.trim().replace(/^"|"$/g,''));
-          const nSed = cols[iNSed]; if (!nSed) return;
-          const prat = iPrat >= 0 ? cols[iPrat]||'' : '';
-          const tipo = iTipo >= 0 ? cols[iTipo]||'' : '';
-          const dum  = iDum  >= 0 ? cols[iDum] ||'' : '';
-          const src  = iSrc  >= 0 ? cols[iSrc] ||'' : '';
-          const lotto= src ? src.replace(/\.xlsx$/i,'').replace(/^Lotto\s*/i,'').trim().toUpperCase()
-                           : (iLotto >= 0 ? cols[iLotto]||'' : '');
-          const key  = nSed + '|' + prat + '|' + tipo;
-          const existing = permMap[key];
-          const dumDate  = dum ? new Date(dum.split('/').reverse().join('-')) : null;
-          const exDate   = existing?.dum ? new Date(existing.dum.split('/').reverse().join('-')) : null;
-          // Costruisce codice leggibile: NO/5/2B
-          const tipoPrefix = tipo === 'AUTORIZZAZIONE' ? 'AUT'
-            : tipo === 'NULLA OSTA' ? 'NO'
-            : tipo === 'ORDINANZA'  ? 'ORD'
-            : (tipo.substring(0,3)||'?');
-          const codice = tipoPrefix + (prat ? '/'+prat : '') + (lotto ? '/'+lotto : '');
-          if (!existing || (dumDate && (!exDate || dumDate >= exDate))) {
-            permMap[key] = {
-              nSed, pratica: codice, tipo,
-              ente:  iEnte  >= 0 ? cols[iEnte] ||'' : '',
-              stato: iStato >= 0 ? cols[iStato]||'' : '',
-              invio: iInvio >= 0 ? cols[iInvio]||'' : '',
-              dum, note: iNote >= 0 ? cols[iNote]||'' : ''
-            };
-          }
-        });
-
-        const map2 = {};
-        Object.values(permMap).forEach(r => {
-          const keys = r.nSed.split(' - ').map(k => k.trim()).filter(Boolean);
-          keys.forEach(k => {
-            if (!map2[k]) map2[k] = [];
-            map2[k].push(r);
-          });
-        });
-        window._sedFromCSV = map2;
-      }
-    } catch(e) { /* CSV non disponibile */ }
-  }
-  try {
-    // File sensibile: niente fast-path GitHub (congelato, mai aggiornato per
-    // questi file — vedi loadGeoJSON), si va diretti su Render. Elimina anche
-    // il rischio di loop di fetch già osservato quando statico e Render
-    // differivano sempre (whitespace/ordine chiavi tra disco e GridFS).
-    const geojson = await fetchWithSWR('SED_classificato.geojson', { isJson: true, direct: true });
-
-    sedLayer = _buildSedLayer(geojson);
-    sedLoaded = true;
-
-  } catch (e) {
-    console.warn('SED layer:', e.message);
-    const btn = document.getElementById('sedBtn');
-    if (btn) { btn.style.opacity = '0.45'; btn.style.pointerEvents = 'none'; btn.title = 'SED_classificato.geojson non disponibile'; }
-  }
-}
-
-function _buildSedLayer(geojson) {
-  return L.geoJSON(geojson, {
-      pointToLayer: (feature, latlng) => {
-        const tipo = feature.properties.TIPO_ATTRAVERSAMENTO || 'IDRICO';
-        return L.marker(latlng, { icon: sedDivIcon(tipo) });
-      },
-      onEachFeature: (f, layer) => {
-        const p    = f.properties || {};
-        const tipo = p.TIPO_ATTRAVERSAMENTO || 'IDRICO';
-        const m    = SED_META[tipo] || SED_META['IDRICO'];
-        const _coords = layer.getLatLng();
-        const gmapsUrlSed = (p.LATITUDINE && p.LONGITUDINE)
-          ? `https://www.google.com/maps?q=${p.LATITUDINE},${p.LONGITUDINE}`
-          : `https://www.google.com/maps?q=${_coords.lat.toFixed(6)},${_coords.lng.toFixed(6)}`;
-        // Pratiche CSV per questo SED
-        const nSedKey = p.N_SED || '';
-        const csvPrats = (window._sedFromCSV && nSedKey && window._sedFromCSV[nSedKey]) ? window._sedFromCSV[nSedKey] : [];
-        const getSC = s => (window.STATO_COLORS||{})[s] || '#6B7685';
-
-        // Raggruppa pratiche per tipo permesso
-        const gruppi = {};
-        csvPrats.forEach(p2 => { if(!gruppi[p2.tipo]) gruppi[p2.tipo]=[]; gruppi[p2.tipo].push(p2); });
-
-        const pratHTML = Object.keys(gruppi).map(tipo => {
-          const rows = gruppi[tipo].map(p2 => {
-            const c = getSC(p2.stato);
-            return `<div class="popup-detail-row" style="display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:4px 6px;padding:4px 0;border-bottom:1px solid var(--border)">
-              <span style="font-size:9px;font-weight:700;color:var(--accent);font-family:var(--font-mono)">${p2.pratica||'—'}</span>
-              <span style="font-size:10px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p2.ente||'—'}</span>
-              <span style="font-size:9px;color:var(--muted2)">${p2.dum||p2.invio||''}</span>
-              <span style="grid-column:1/-1;padding:2px 6px;border-radius:3px;font-size:9px;font-weight:700;color:${c};background:${c}15;border:1px solid ${c}40;display:inline-block;width:fit-content">${p2.stato}</span>
-            </div>`;
-          }).join('');
-          return `<div style="font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700;margin:8px 0 4px;padding-bottom:3px;border-bottom:2px solid var(--border2)">${tipo||'—'}</div>${rows}`;
-        }).join('');
-
-        layer.bindPopup(`<div class="popup-inner sed-popup">
-          <div class="popup-head" style="padding:10px 14px 8px">
-            <div class="popup-head-top">
-              <div style="display:flex;align-items:center;gap:6px">
-                ${p.N_SED ? `<span style="font-size:11px;font-weight:700;font-family:var(--font-mono);color:var(--text);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 6px">${p.N_SED}</span>` : ''}
-                <span class="popup-stato" style="background:${m.bg};color:${m.color};border:1.5px solid ${m.border};padding:1px 7px;font-size:9px">
-                  <span class="popup-stato-dot" style="background:${m.color}"></span>${m.label||tipo}
-                </span>
-                <span style="font-size:11px;color:var(--muted)">Lotto ${p.LOTTO||'—'}</span>
-              </div>
-              <button class="popup-close-btn" onclick="this.closest('.leaflet-popup').querySelector('.leaflet-popup-close-button').click()">✕</button>
-            </div>
-            ${p.name ? `<div style="font-size:12px;font-weight:700;color:var(--text);margin-top:5px">${p.name}</div>` : ''}
-            <div style="height:2px;width:100%;margin-top:8px;border-radius:2px;background:${m.color}33"><div style="height:100%;width:100%;background:${m.color};opacity:.8"></div></div>
-          </div>
-          <div class="popup-body-left" style="padding:8px 14px">
-            <div class="popup-grid">
-              ${p.COMUNE    ? `<div class="popup-field"><span class="popup-field-label">Comune</span><span class="popup-field-val" style="font-size:11px">${p.COMUNE}</span></div>` : ''}
-              ${p.PROVINCIA ? `<div class="popup-field"><span class="popup-field-label">Provincia</span><span class="popup-field-val" style="font-size:11px">${p.PROVINCIA}</span></div>` : ''}
-              ${p.ENTE      ? `<div class="popup-field full"><span class="popup-field-label">Ente</span><span class="popup-field-val" style="font-size:11px">${p.ENTE}</span></div>` : ''}
-            </div>
-            ${csvPrats.length ? `<div class="popup-section" style="margin-top:6px">
-              <div class="popup-section-title">Pratiche (${csvPrats.length})</div>
-              ${pratHTML}
-            </div>` : `<div style="font-size:10px;color:var(--muted);font-style:italic;padding:4px 0">Nessuna pratica associata</div>`}
-          </div>
-          <div style="padding:0 14px 10px">
-            <a class="popup-gmaps-btn" href="${gmapsUrlSed}" target="_blank" rel="noopener" style="font-size:10px;padding:4px 10px">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="var(--retelit-blue)"/></svg>
-              Google Maps
-            </a>
-          </div>
-        </div>`, { maxWidth: 300 });
-
-        layer.on('mouseover', () => {
-          const el = layer.getElement();
-          if (el) { const d = el.querySelector('div'); if(d) d.style.transform='translate(-50%,-50%) scale(1.25)'; }
-        });
-        layer.on('mouseout', () => {
-          const el = layer.getElement();
-          if (el) { const d = el.querySelector('div'); if(d) d.style.transform='translate(-50%,-50%) scale(1)'; }
-        });
-      }
-    });
-}
-
-function toggleSED(forcedState) {
-  _sedActive = (forcedState !== undefined) ? forcedState : !_sedActive;
-  const btn = document.getElementById('sedBtn');
-  if (btn) btn.classList.toggle('active', _sedActive);
-
-  if (_sedActive) {
-    if (!sedLoaded) {
-      loadSED().then(() => {
-        if (_sedActive && sedLayer) sedLayer.addTo(map).bringToFront();
-        updateLegend(currentViewMode);
-      });
-    } else if (sedLayer) {
-      sedLayer.addTo(map).bringToFront();
-      updateLegend(currentViewMode);
+    # ── Rischio ROS: fattori (pesi) + classi ──
+    ws_ros = wb["Rischio ROS"]
+    fattori = []
+    for row in _sheet_table(ws_ros, "Codice fattore"):
+        if not row.get("Codice fattore"):
+            continue
+        fattori.append({
+            "codice": row.get("Codice fattore"),
+            "fattore": row.get("Fattore"),
+            "peso": row.get("Peso"),
+            "misura": row.get("Misura utilizzata"),
+            "soglia_attenzione": row.get("Soglia attenzione"),
+            "soglia_critica": row.get("Soglia critica"),
+            "normalizzazione": row.get("Normalizzazione proposta"),
+            "attivo": _pf_bool_si(row, "Attivo"),
+            "note": row.get("Note"),
+        })
+    peso_totale_attivi = round(sum(float(f["peso"] or 0) for f in fattori if f["attivo"]), 6)
+    classi = []
+    for row in _sheet_table(ws_ros, "Classe"):
+        if not row.get("Classe"):
+            continue
+        classi.append({
+            "classe": row.get("Classe"),
+            "punteggio_min": row.get("Punteggio minimo"),
+            "punteggio_max": row.get("Punteggio massimo"),
+            "colore": row.get("Colore"),
+            "descrizione": row.get("Descrizione"),
+            "azione": row.get("Azione dashboard"),
+        })
+    out["rischio_ros"] = {
+        "fattori": fattori,
+        "peso_totale_attivi": peso_totale_attivi,
+        "peso_valido": abs(peso_totale_attivi - 1.0) < 0.001,
+        "classi": classi,
     }
-  } else {
-    if (sedLayer && map.hasLayer(sedLayer)) map.removeLayer(sedLayer);
-    updateLegend(currentViewMode);
-  }
+
+    # ── Regole azioni ──
+    azioni = []
+    for row in _sheet_table(wb["Regole azioni"], "Priorità"):
+        if row.get("Codice") is None:
+            continue
+        azioni.append({
+            "priorita": row.get("Priorità"),
+            "codice": row.get("Codice"),
+            "condizione": row.get("Condizione oggettiva"),
+            "dato_da_mostrare": row.get("Dato da mostrare"),
+            "azione": row.get("Azione suggerita"),
+            "responsabile": row.get("Responsabile"),
+            "calcolo_quantita": row.get("Calcolo quantità"),
+            "affidabilita_minima": row.get("Affidabilità minima"),
+            "note": row.get("Note"),
+        })
+    azioni.sort(key=lambda a: (a["priorita"] if isinstance(a["priorita"], (int, float)) else 999))
+    out["regole_azioni"] = azioni
+
+    # ── Parametri per lotto (override globali) ──
+    per_lotto = {}
+    for row in _sheet_table(wb["Parametri per lotto"], "Lotto"):
+        lotto = row.get("Lotto")
+        if lotto is None or str(lotto).strip() == "":
+            continue
+        per_lotto[str(lotto).strip()] = {
+            "cluster": row.get("Cluster"),
+            "impresa": row.get("Impresa"),
+            "milestone_contrattuale": _xlsx_date_to_it(row.get("Milestone contrattuale")),
+            "produttivita_standard_squadra": row.get("Produttività standard squadra"),
+            "squadre_lotto_override": row.get("Squadre lotto (override manuale)"),
+            "giorni_lavorativi_settimana": row.get("Giorni lavorativi/settimana"),
+            "efficienza_prevista": row.get("Efficienza prevista"),
+            "produttivita_disponibile": row.get("Produttività disponibile (da squadre effettive)"),
+            "fonte": row.get("Fonte / motivazione"),
+            "data_validita": row.get("Data validità"),
+            "note": row.get("Note"),
+            "data_avvio_progettazione": _xlsx_date_to_it(row.get("Data avvio progettazione")),
+        }
+    out["parametri_lotto"] = per_lotto
+
+    # Nota: lo sheet "Esempio calcolo" è una sandbox del PM per validare le
+    # formule a mano (contiene ipotesi/celle di prova, non parametri) — non
+    # viene esposto da /api/parametri e non è usato dal motore di calcolo.
+
+    return out
+
+
+# Cache in-process: rifà il parsing solo se cambia la versione (gridfs_id/mtime).
+_parametri_cache: dict = {"key": None, "data": None}
+
+
+async def _load_parametri() -> tuple[dict, dict]:
+    """Restituisce (parametri_json, meta). meta include source/uploaded_at
+    per far vedere in dashboard da dove arrivano i numeri."""
+    cur = await _current_upload(PARAMETRI_FILENAME)
+    if cur:
+        cache_key = str(cur.get("gridfs_id"))
+        meta = {"source": "mongo", "filename": PARAMETRI_FILENAME, "uploaded_at": cur.get("uploaded_at")}
+        if _parametri_cache["key"] != cache_key:
+            raw = await _read_gridfs(cur["gridfs_id"])
+            _parametri_cache["key"] = cache_key
+            _parametri_cache["data"] = _parse_parametri_xlsx(raw)
+        return _parametri_cache["data"], meta
+
+    # Fallback: file seed committato nel repo (nessun upload ancora fatto)
+    path = DATA_DIR / PARAMETRI_FILENAME
+    if path.exists() and path.is_file():
+        cache_key = f"disk:{path.stat().st_mtime}"
+        meta = {"source": "disk", "filename": PARAMETRI_FILENAME, "uploaded_at": None}
+        if _parametri_cache["key"] != cache_key:
+            _parametri_cache["key"] = cache_key
+            _parametri_cache["data"] = _parse_parametri_xlsx(path.read_bytes())
+        return _parametri_cache["data"], meta
+
+    raise HTTPException(404, f"Nessun file parametri caricato ({PARAMETRI_FILENAME}) — caricalo da admin.html")
+
+
+MASTER_FILENAME = "Master.csv"
+ROW_KEY_COLS = ("TRATTA_ID", "ENTE", "TIPO_PERMESSO")  # natural key for an update
+
+# Separatore rilevato dal file effettivo — viene impostato in _read_master_csv()
+_detected_sep: str = ";"
+
+def _detect_sep(raw: bytes, encoding: str = "utf-8") -> str:
+    """Auto-detect CSV separator: tab, semicolon or comma."""
+    try:
+        sample = raw[:4096].decode(encoding, errors="replace")
+        first_line = sample.split("\n")[0]
+        counts = {"\t": first_line.count("\t"), ";": first_line.count(";"), ",": first_line.count(",")}
+        return max(counts, key=counts.get)
+    except Exception:
+        return ";"
+
+# Cache in-process per _read_master_csv() — evita di riparsare lo stesso CSV
+# più volte nella stessa request (e tra request ravvicinate finché non cambia versione).
+_master_csv_cache: dict = {"key": None, "df": None}
+
+async def _read_master_csv() -> "pd.DataFrame":
+    """Read the current authoritative Master.csv (Mongo first, then disk seed).
+    Cache in-process: la cache è valida finché la versione corrente (upload _id)
+    non cambia, così le ~11 chiamate per request evitano di rileggere/riparsare
+    lo stesso file da GridFS più volte."""
+    global _detected_sep
+    cur = await _current_upload(MASTER_FILENAME)
+    cache_key = str(cur["_id"]) if cur else "disk-seed"
+
+    cached = _master_csv_cache.get("key")
+    if cached == cache_key and _master_csv_cache.get("df") is not None:
+        return _master_csv_cache["df"]
+
+    if cur:
+        raw = await _read_gridfs(cur["gridfs_id"])
+    else:
+        path = DATA_DIR / MASTER_FILENAME
+        if not path.exists():
+            raise HTTPException(404, "Master.csv not found")
+        raw = path.read_bytes()
+    # Auto-rileva separatore dal contenuto reale del file
+    _detected_sep = _detect_sep(raw)
+    # Master.csv may be UTF-8 or Latin-1/CP1252 depending on the Excel export.
+    # on_bad_lines='warn' evita che UNA riga malformata (es. virgola non quotata
+    # in un campo di testo libero come NOTE) faccia fallire la lettura di tutto
+    # il file: la riga incriminata viene segnalata in log e scartata, il resto
+    # del file resta leggibile.
+    df = None
+    for enc in ("utf-8", "cp1252", "latin-1"):
+        try:
+            df = pd.read_csv(
+                io.BytesIO(raw), sep=_detected_sep, dtype=str, keep_default_na=False,
+                encoding=enc, on_bad_lines="warn",
+            )
+            break
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+    if df is None:
+        # Last resort: replace bad bytes
+        df = pd.read_csv(io.BytesIO(raw), sep=_detected_sep, dtype=str, keep_default_na=False, encoding="utf-8", encoding_errors="replace")
+
+    _master_csv_cache["key"] = cache_key
+    _master_csv_cache["df"]  = df
+    return df
+
+
+QGIS_FILENAME      = "QGIS.geojson"
+RIEPILOGO_FILENAME = "Riepilogo_progettazione.csv"
+CANTIERI_FILENAME  = "Cantieri.csv"
+SOPRALLUOGHI_FILENAME = "sopralluoghi.csv"
+SOLLECITI_FILENAME = "solleciti.csv"
+
+
+async def _read_riepilogo_csv() -> "pd.DataFrame | None":
+    """Legge Riepilogo_progettazione.csv (Mongo se presente, altrimenti seed su
+    disco). Usato per recuperare CLUSTER/PROVINCIA/COMUNE per TRATTA_ID: questi
+    campi non esistono in Master.csv, solo in Riepilogo (ereditati da QGIS.geojson).
+    Ritorna None se il file non e' ancora disponibile (fail-soft: i cantieri
+    vengono comunque creati, solo senza questi campi)."""
+    try:
+        cur = await _current_upload(RIEPILOGO_FILENAME)
+        if cur:
+            raw = await _read_gridfs(cur["gridfs_id"])
+        else:
+            path = DATA_DIR / RIEPILOGO_FILENAME
+            if not path.exists():
+                return None
+            raw = path.read_bytes()
+        sep = _detect_sep(raw)
+        for enc in ("utf-8", "cp1252", "latin-1"):
+            try:
+                return pd.read_csv(
+                    io.BytesIO(raw), sep=sep, dtype=str, keep_default_na=False,
+                    encoding=enc, on_bad_lines="warn",
+                )
+            except (UnicodeDecodeError, UnicodeError):
+                continue
+        return pd.read_csv(io.BytesIO(raw), sep=sep, dtype=str, keep_default_na=False, encoding="utf-8", encoding_errors="replace")
+    except Exception as e:
+        print(f"[_read_riepilogo_csv] errore: {e}")
+        return None
+
+
+GITHUB_REPO     = os.environ.get("GITHUB_REPO", "ENRI-RDS/dashboard")
+GITHUB_BRANCH   = os.environ.get("GITHUB_BRANCH", "main")
+GITHUB_CSV_PATH = os.environ.get("GITHUB_CSV_PATH", "Master.csv")
+
+# Mappa file dashboard -> path nel repo GitHub (override via env se servono sottocartelle)
+GITHUB_PATHS: dict = {
+    "Master.csv":                  GITHUB_CSV_PATH,
+    "Riepilogo_progettazione.csv": os.environ.get("GITHUB_RIEPILOGO_PATH", "Riepilogo_progettazione.csv"),
+    "QGIS.geojson":                os.environ.get("GITHUB_QGIS_PATH", "QGIS.geojson"),
+    "QTS.geojson":                 os.environ.get("GITHUB_QTS_PATH", "QTS.geojson"),
+    "SED_classificato.geojson":    os.environ.get("GITHUB_SED_PATH", "SED_classificato.geojson"),
 }
 
-// Controllo Leaflet per il tasto SED (topleft, sotto Misura)
-const SedControl = L.Control.extend({
-  options: { position: 'topleft' },
-  onAdd: function() {
-    const row = L.DomUtil.create('div', 'sed-ctrl-row');
-    const btn = L.DomUtil.create('div', 'sed-control-btn', row);
-    btn.id = 'sedBtn';
-    btn.title = 'Attraversamenti SED';
-    btn.innerHTML = 'SED';
-    L.DomEvent.on(btn, 'click', () => toggleSED());
-    const pb = L.DomUtil.create('div', 'sed-control-btn pozz-btn', row);
-    pb.id = 'pozzettiBtn';
-    pb.title = 'Pozzetti';
-    pb.innerHTML = 'POZZETTI';
-    L.DomEvent.on(pb, 'click', () => togglePozzetti());
-    L.DomEvent.disableClickPropagation(row);
-    return row;
-  }
-});
-new SedControl().addTo(map);
-// ─────────────────────────────────────────────────────────────────────────────
 
-function _buildMapLayers(geojson, isUpdate = false) {
-  const features = geojson.features.filter(f => f.properties.LOTTO !== 'P');
-  allFeatures = features;
-  lottoStats = buildLottoStats(features);
+_GITHUB_PUSH_TIMES: dict[str, str] = {}   # label/basename -> ISO timestamp ultimo push riuscito
 
-  if (isUpdate) {
-    allLayers.forEach(({layer, outlineLayer}) => {
-      if (map.hasLayer(layer)) map.removeLayer(layer);
-      if (map.hasLayer(outlineLayer)) map.removeLayer(outlineLayer);
-    });
-    allLayers = [];
-    clearHighlight();
-  }
-
-  const lottoGroups = {};
-  features.forEach(f => { const l = f.properties.LOTTO; if (!lottoGroups[l]) lottoGroups[l] = []; lottoGroups[l].push(f); });
-
-  Object.entries(lottoGroups).forEach(([lotto, feats]) => {
-    const geoData = { type: 'FeatureCollection', features: feats };
-    const outlineLayer = L.geoJSON(geoData, {
-      renderer: outlineRenderer,
-      style: () => ({ color:'#8899aa', weight:7, opacity:0.25, smoothFactor:1.5, interactive:false })
-    }).addTo(map);
-    outlineLayer.bringToBack();
-    const layer = L.geoJSON(geoData, {
-      renderer: mainRenderer,
-      style: f => ({ color: getColorForMode(f, currentViewMode), weight:4, opacity:0.95, smoothFactor:1.5 }),
-      onEachFeature: (f, layer) => {
-        const coords = f.geometry.type === 'MultiLineString'
-          ? f.geometry.coordinates.flat() : f.geometry.coordinates;
-        const mid = coords[Math.floor(coords.length / 2)];
-        const gmapsUrl = mid ? `https://www.google.com/maps?q=${mid[1].toFixed(6)},${mid[0].toFixed(6)}` : null;
-        const isMobile = window.innerWidth <= 768;
-        // Contenuto lazy (funzione): il popup si costruisce all'apertura, quando RO_CANTIERI è sicuramente
-        // caricato. Costruirlo qui (eager) lo generava senza sezione Cantiere/bottone Sopralluogo se
-        // /api/cantieri rispondeva dopo il GeoJSON (es. cold start Render, senza cache).
-        layer.bindPopup(() => makePopupHtml(f.properties, gmapsUrl), {
-          maxWidth: isMobile ? Math.min(window.innerWidth - 40, 320) : 640,
-          autoPanPaddingTopLeft:  isMobile ? L.point(10, 180) : L.point(10, 70),
-          autoPanPaddingBottomRight: isMobile ? L.point(10, 160) : L.point(10, 10),
-          // Offset >= metà larghezza max (640/2=320) + margine, così il bordo
-          // sinistro del popup resta sempre a destra del punto cliccato.
-          offset: isMobile ? L.point(0, -10) : L.point(360, -10),
-        });
-        const stato = f.properties.STATO_LEGENDA || f.properties.STATO_AUTORIZZAZIONE || 'IN ATTESA';
-        const comune = f.properties.COMUNE || '';
-        const col = getColor(stato);
-        layer.bindTooltip(`
-          <div style="display:flex;align-items:center;gap:6px">
-            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0"></span>
-            <strong>Lotto ${f.properties.LOTTO||'—'}</strong>
-            <span style="color:var(--muted)">·</span>
-            <span>${stato.charAt(0)+stato.slice(1).toLowerCase()}</span>
-          </div>
-          ${comune ? `<div style="font-size:10px;color:#6b7080;margin-top:2px">${comune}</div>` : ''}
-        `, { className:'tratta-tip', sticky:true, direction:'top', offset:[0,-4] });
-        layer.on('mouseover', e => { e.target.setStyle({ weight:6, opacity:1 }); e.target.bringToFront(); });
-        layer.on('mouseout', e => {
-          if (_highlightedLayers.includes(e.target)) return;
-          e.target.setStyle({ weight:4, opacity:0.95, color: getColorForMode(e.target.feature, currentViewMode) });
-        });
-        layer.on('click', e => {
-          if (AG_SEL) agSelFromTratta(e.target.feature && e.target.feature.properties);
-          if (_selectorMode === 'pratica') selectByPraticaFromLayer(e.target);
-          else applyHighlight(e.target);
-        });
-      }
-    }).addTo(map);
-    const noLayer = _makeNoLayer(geoData, layer);
-    allLayers.push({ layer, outlineLayer, lotto, noLayer });
-  });
-  _updateNoDotsCounts();
-
-  if (!isUpdate) {
-    const allGroup = L.featureGroup(allLayers.map(x => x.layer));
-    map.fitBounds(allGroup.getBounds(), { padding:[40,40] });
-  }
-
-  renderSidebar(lottoStats);
-  buildStatsBar(lottoStats, features);
-  document.getElementById('loadingOverlay').style.display = 'none';
-
-  if (isUpdate && currentFilter !== 'TUTTI') {
-    const saved = currentFilter;
-    currentFilter = 'TUTTI';
-    filterByStato(saved);
-  }
-}
-
-const RO_SC_STATO_LABEL = {
-  non_avviato:'Non avviato', allestimento:'Allestimento',
-  in_corso:'In corso', sospeso:'Sospeso', completato:'Completato',
-};
-const RO_SC_STATO_COLOR = {
-  non_avviato:'#9AA5B4', allestimento:'#D08A1A',
-  in_corso:'#043F75', sospeso:'#C0392B', completato:'#1E9E6A',
-};
-const RO_SC_TECNICA_LABEL = { trincea:'Trincea', no_dig:'No Dig', canaletta:'Canaletta' };
-let RO_CANTIERI = [];
-async function _roLoadCantieri(){
-  try {
-    const r = await fetch(ENRI.isEnabled ? ENRI.apiBase + '/api/cantieri' : '/api/cantieri', { headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } });
-    if (r.ok) { const d = await r.json(); RO_CANTIERI = d.cantieri || []; }
-  } catch(_) {}
-}
-
-(async()=>{
-  try{
-    _roLoadCantieri();
-    loadPraticaEnteIndex();
-    const geojson = await loadGeoJSON();
-    const features=geojson.features.filter(f=>f.properties.LOTTO!=='P');
-    allFeatures = features;
-    lottoStats=buildLottoStats(features);
-
-    _buildMapLayers(geojson);
-    setTimeout(focusPraticaFromUrl, 400); // deep-link da index/agenda: mappa.html?pratica=AUT/3/1A
-    agSelInit();   // modalità selezione pratiche per l'agenda (?seleziona=agenda)
-
-  } catch(e){
-    document.getElementById('loadingOverlay').innerHTML=`
-      <div style="color:#C0392B;font-size:14px">Errore</div>
-      <div style="color:var(--muted);font-size:12px">${e.message}</div>`;
-  }
-})();
-
-// ── DEEP-LINK PRATICA (?pratica=AUT/3/1A) ───────────────────────────────────
-// Evidenzia tutte le tratte della pratica, inquadra la mappa e mostra il badge selettore.
-function focusPraticaFromUrl() {
-  const q = (new URLSearchParams(location.search).get('pratica') || '').trim().toUpperCase();
-  if (!q) return;
-  const matched = [];
-  allLayers.forEach(({layer}) => {
-    layer.eachLayer(l => {
-      const codes = (l.feature?.properties?.PRATICA || '').split(/[|;,]/).map(s => s.trim().toUpperCase());
-      if (codes.includes(q)) matched.push(l);
-    });
-  });
-  if (!matched.length) { alert('Pratica ' + q + ': nessuna tratta trovata in mappa.'); return; }
-  applyHighlightMulti(matched);
-  try { map.fitBounds(L.featureGroup(matched).getBounds(), { padding: [70, 70], maxZoom: 16, animate: false }); } catch (_) {}
-  const totale = matched.reduce((s, l) => s + (Number(l.feature?.properties?.LUNGHEZZA) || 0), 0);
-  document.getElementById('selectorPratica').textContent = q + ` · ${matched.length} tratt${matched.length === 1 ? 'a' : 'e'}`;
-  document.getElementById('selectorDist').textContent = _fmtDist(totale);
-  document.getElementById('selectorBadge').classList.add('visible');
-}
-
-// ── MISURATORE DI DISTANZA ──────────────────────────────────────────────────
-let _measureActive = false;
-let _measurePoints = [];
-let _measureLayers = []; // polyline + markers
-
-const MeasureControl = L.Control.extend({
-  options: { position: 'topleft' },
-  onAdd: function() {
-    const btn = L.DomUtil.create('div', 'measure-control-btn');
-    btn.id = 'measureBtn';
-    btn.innerHTML = 'Misura';
-    btn.title = 'Misuratore di distanza';
-    L.DomEvent.disableClickPropagation(btn);
-    L.DomEvent.on(btn, 'click', toggleMeasure);
-    return btn;
-  }
-});
-new MeasureControl().addTo(map);
-
-// ── SELETTORE: tratta / pratica ─────────────────────────────────────────────
-let _selectorMode = 'tratta'; // 'tratta' | 'pratica'
-
-const SelectorControl = L.Control.extend({
-  options: { position: 'topleft' },
-  onAdd: function() {
-    const btn = L.DomUtil.create('div', 'measure-control-btn selector-control-btn');
-    btn.id = 'selectorBtn';
-    btn.innerHTML = 'Selettore: Tratta';
-    btn.title = 'Modalità di selezione: singola tratta o intera pratica';
-    L.DomEvent.disableClickPropagation(btn);
-    L.DomEvent.on(btn, 'click', toggleSelectorMode);
-    return btn;
-  }
-});
-new SelectorControl().addTo(map);
-
-// ── REPORT AWS ───────────────────────────────────────────────────────────
-// PowerPoint con uno screenshot della mappa per cluster, in modalità
-// "Progettazione" (currentViewMode 'stato' → colore per STATO_LEGENDA/STATO_AUTORIZZAZIONE).
-// Tasto nella topbar (id="reportAwsBtn"), non più tra i controlli mappa.
-
-function _attendiMappaPronta() {
-  return new Promise(resolve => {
-    let done = false;
-    const finisci = () => { if (!done) { done = true; setTimeout(resolve, 700); } };
-    map.once('moveend', finisci);
-    setTimeout(finisci, 2500); // fallback se i bounds non cambiano (moveend non scatta)
-  });
-}
-
-// Attende il caricamento delle tile del layer di sfondo appena attivato
-// (necessario dopo setBaseLayer, che non scatena 'moveend').
-function _attendiTileLayerPronto(layer, timeoutMs = 3000) {
-  return new Promise(resolve => {
-    let done = false;
-    const finisci = () => { if (!done) { done = true; setTimeout(resolve, 300); } };
-    if (layer && typeof layer.once === 'function') layer.once('load', finisci);
-    setTimeout(finisci, timeoutMs);
-  });
-}
-
-function _dataOggiFile() {
-  const d = new Date();
-  return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
-}
-
-// pptxgenjs sizing:{type:'contain'} richiede di conoscere le dimensioni native
-// dell'immagine per calcolare il rettangolo aspect-corretto: con data URI
-// base64 in browser (nessun file da ispezionare) non ci riesce e ricade su
-// uno stretch semplice che riempie tutto il box, deformando l'immagine se il
-// box non ha le sue stesse proporzioni. Calcoliamo noi il contain a partire
-// dalle dimensioni reali del canvas catturato, così l'immagine finale ha
-// sempre le stesse proporzioni della mappa a schermo, solo centrata nel box.
-function _containFit(imgW, imgH, boxX, boxY, boxW, boxH) {
-  const scale = Math.min(boxW / imgW, boxH / imgH);
-  const w = imgW * scale, h = imgH * scale;
-  return { x: boxX + (boxW - w) / 2, y: boxY + (boxH - h) / 2, w, h };
-}
-
-// ── UI selezione NEGATI ────────────────────────────────────────────────────
-// Aggrega le feature caricate per pratica (o per tratta se PRATICA è vuoto):
-// la stessa granularità con cui il backend assegna una sola AUTORIZZAZIONE
-// per tratta, quindi selezionare una pratica nega tutte le sue tratte.
-function _awsBuildDeniedIndex() {
-  const idx = new Map();
-  (allFeatures || []).forEach(f => {
-    const p = f.properties || {};
-    const key = _awsPraticaKey(p) || _awsTrattaKey(p);
-    if (!key) return;
-    let e = idx.get(key);
-    if (!e) {
-      e = {
-        key,
-        codice: key.startsWith('P:') ? key.slice(2) : 'tratta ' + key.slice(2),
-        isPratica: key.startsWith('P:'),
-        ente: String(p.ENTE || '').trim(),
-        comuni: new Set(),
-        lotto: String(p.LOTTO ?? '').trim(),
-        cluster: String(p.CLUSTER ?? p.ID_CLUSTER ?? p.cluster ?? '').trim(),
-        stato: String(p.STATO_LEGENDA || p.STATO_AUTORIZZAZIONE || 'IN ATTESA').trim().toUpperCase(),
-        tratte: 0, metri: 0
-      };
-      idx.set(key, e);
+async def _push_to_github(file_bytes: bytes, path: str = None, label: str = None) -> None:
+    """Aggiorna un file su GitHub via API (Master.csv, QGIS.geojson, Riepilogo_progettazione.csv, ...).
+    In caso di conflitto sha (409 — qualcun altro ha scritto sullo stesso file nel frattempo,
+    es. una modifica manuale in parallelo) rilegge lo sha aggiornato e riprova fino a 3 volte."""
+    path  = path or GITHUB_CSV_PATH
+    label = label or path
+    if os.path.basename(path) in SENSITIVE_FILES:
+        print(f"[GitHub] push disabilitato per file sensibile {path} — NON pubblicato sul repo pubblico (servito solo dal backend gated)")
+        return
+    print(f"[GitHub] push avviato — {len(file_bytes)} bytes, repo={GITHUB_REPO}, path={path}, branch={GITHUB_BRANCH}")
+    token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        print("[GitHub] GITHUB_TOKEN non impostato — skip push")
+        return
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
     }
-    if (p.COMUNE) e.comuni.add(String(p.COMUNE).trim());
-    e.tratte++;
-    e.metri += Number(p.LUNGHEZZA) || 0;
-  });
-  return [...idx.values()].sort((a, b) =>
-    (a.lotto || '').localeCompare(b.lotto || '', 'it', { numeric: true }) ||
-    a.codice.localeCompare(b.codice, 'it', { numeric: true })
-  );
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}"
+    max_tentativi = 3
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            for tentativo in range(1, max_tentativi + 1):
+                r = await client.get(url, headers=headers, params={"ref": GITHUB_BRANCH})
+                if r.status_code not in (200, 404):
+                    print(f"[GitHub] GET {url} → {r.status_code}: {r.text[:200]}")
+                    return
+                sha = r.json().get("sha") if r.status_code == 200 else None
+                payload: dict = {
+                    "message": f"Auto-update {label} via approvazione admin [skip ci]",
+                    "content": base64.b64encode(file_bytes).decode(),
+                    "branch": GITHUB_BRANCH,
+                }
+                if sha:
+                    payload["sha"] = sha
+                resp = await client.put(url, headers=headers, json=payload)
+                if resp.status_code in (200, 201):
+                    extra = f" (tentativo {tentativo}/{max_tentativi})" if tentativo > 1 else ""
+                    print(f"[GitHub] {label} aggiornato sul branch {GITHUB_BRANCH}{extra}")
+                    _GITHUB_PUSH_TIMES[os.path.basename(path)] = _now_iso()
+                    return
+                if resp.status_code == 409 and tentativo < max_tentativi:
+                    print(f"[GitHub] Conflitto sha su {label} (tentativo {tentativo}/{max_tentativi}) — rileggo e riprovo")
+                    await asyncio.sleep(1)
+                    continue
+                print(f"[GitHub] Errore push {label}: {resp.status_code} {resp.text[:300]}")
+                return
+    except Exception as e:
+        print(f"[GitHub] Eccezione {label}: {type(e).__name__}: {e}")
+
+
+
+async def _push_current_master_to_github() -> None:
+    """Legge la versione corrente di Master.csv da MongoDB, la pusha su GitHub
+    e rigenera QGIS.geojson + Riepilogo_progettazione.csv (usata da delete/restore)."""
+    try:
+        df = await _read_master_csv()
+        github_buf = io.StringIO()
+        df.to_csv(github_buf, index=False, sep="\t")
+        github_data = github_buf.getvalue().encode("utf-8")
+        await _push_to_github(github_data, path=GITHUB_PATHS["Master.csv"], label="Master.csv")
+        await _regenerate_derived_files(df, note="restore/delete Master.csv")
+    except Exception as e:
+        print(f"[GitHub] _push_current_master: {e}")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Derivazione QGIS.geojson + Riepilogo_progettazione.csv da Master.csv
+# ─────────────────────────────────────────────────────────────────────────────
+# Regole verificate contro un export reale di Riepilogo_progettazione.csv:
+#   - STATO_LEGENDA è sempre identico a STATO_AUTORIZZAZIONE (0 eccezioni su 692 righe)
+#   - LAVORABILE = SI solo se STATO_AUTORIZZAZIONE = OTTENUTO E (se richiesto)
+#     anche il/i NULLA OSTA sono OTTENUTI (idem ORDINANZA se richiesta)
+#   - Quando una tratta ha PIU' nulla osta (enti diversi), si usa lo stato PIU'
+#     INDIETRO (peggiore) tra l'ultimo stato registrato per ciascun ente
+#   - CAMPO AWS, PROTOCOLLO_AUT, ENTE 2: provengono da un sistema esterno o non
+#     hanno una regola derivabile con certezza dai dati disponibili — NON vengono
+#     toccati dalla rigenerazione, il valore esistente viene preservato.
+# ═════════════════════════════════════════════════════════════════════════════
+
+_STATUS_RANK = {
+    "NECESSARIA INTEGRAZIONE": 0,
+    "IN REDAZIONE INTEGRAZIONE": 1,
+    "IN REDAZIONE": 2,
+    "IN ATTESA": 2,
+    "INVIO PRELIMINARE": 3,
+    "IN FIRMA RDS": 4,
+    "INVIATO": 5,
+    "PROTOCOLLATO INTEGRAZIONE": 6,
+    "PROTOCOLLATO": 7,
+    "OTTENUTO": 8,
 }
 
-function openDeniedModal() {
-  if (!allFeatures || !allFeatures.length) { alert('Mappa non ancora pronta.'); return; }
-  const sel = document.getElementById('deniedLotto');
-  if (sel && sel.options.length <= 1) {
-    const lotti = [...new Set(allFeatures.map(f => String(f.properties.LOTTO ?? '').trim()).filter(Boolean))]
-      .sort((a, b) => (LOTTO_ORDER.indexOf(a) - LOTTO_ORDER.indexOf(b)) || a.localeCompare(b));
-    lotti.forEach(l => { const o = document.createElement('option'); o.value = l; o.textContent = 'Lotto ' + l; sel.appendChild(o); });
-  }
-  renderDeniedList();
-  document.getElementById('deniedOverlay').classList.add('open');
-}
-function closeDeniedModal() { document.getElementById('deniedOverlay').classList.remove('open'); }
+_TIPO_PREFIX = {"AUTORIZZAZIONE": "AUT", "NULLA OSTA": "NO", "ORDINANZA": "ORD"}
 
-function renderDeniedList() {
-  const q = (document.getElementById('deniedSearch').value || '').trim().toLowerCase();
-  const lot = document.getElementById('deniedLotto').value;
-  const filtro = document.getElementById('deniedFiltro').value;
-  const rows = _awsBuildDeniedIndex().filter(e => {
-    if (lot && e.lotto !== lot) return false;
-    if (filtro === 'selezionate' && !_awsDenied.has(e.key)) return false;
-    if (filtro === 'nonottenute' && (e.stato === 'OTTENUTO' || e.stato === 'NO COMPETENZA')) return false;
-    if (!q) return true;
-    return (e.codice + ' ' + e.ente + ' ' + [...e.comuni].join(' ') + ' ' + e.lotto).toLowerCase().includes(q);
-  });
-  const box = document.getElementById('deniedList');
-  box.innerHTML = rows.length ? rows.map(e => {
-    const on = _awsDenied.has(e.key);
-    const comuni = [...e.comuni].slice(0, 2).join(', ') + (e.comuni.size > 2 ? ` +${e.comuni.size - 2}` : '');
-    return `<label class="denied-row${on ? ' on' : ''}">
-      <input type="checkbox" ${on ? 'checked' : ''} onchange="toggleDenied('${e.key.replace(/'/g, "\\'")}')">
-      <span class="denied-code">${e.codice}</span>
-      <span class="denied-meta">Lotto ${e.lotto || '—'} · ${e.ente || 'ente n/d'}${comuni ? ' · ' + comuni : ''} · ${e.tratte} tratte · ${(e.metri / 1000).toFixed(2).replace('.', ',')} km</span>
-      <span class="denied-stato" style="color:${getColor(e.stato)}">${e.stato}</span>
-    </label>`;
-  }).join('') : '<div class="denied-empty">Nessuna pratica corrisponde ai filtri.</div>';
-  _awsUpdateDeniedSummary(rows.length);
-}
 
-function toggleDenied(key) {
-  if (_awsDenied.has(key)) _awsDenied.delete(key); else _awsDenied.add(key);
-  _awsSaveDenied();
-  renderDeniedList();
-}
-function clearDenied() {
-  if (!_awsDenied.size) return;
-  if (!confirm('Deselezionare tutte le pratiche negate?')) return;
-  _awsDenied.clear(); _awsSaveDenied(); renderDeniedList();
-}
+def _norm(s) -> str:
+    return str(s or "").replace("\xa0", " ").strip().upper()
 
-function _awsUpdateDeniedSummary(visibili) {
-  const badge = document.getElementById('deniedCount');
-  if (badge) badge.textContent = _awsDenied.size;
-  const s = document.getElementById('deniedSummary');
-  if (s) s.textContent = `${_awsDenied.size} negate in totale · ${visibili} voci mostrate`;
-}
 
-// Legenda disegnata nativamente nella slide (il #legendContainer della pagina
-// è fuori da #map, quindi non è incluso nello screenshot: va ricostruito qui).
-// Mostra i 4 bucket AWS, non i 10 stati reali della dashboard.
-function _awsAddLegend(slide) {
-  const X0 = 5.95, Y = 0.28, ITEM_W = 1.82, SW_W = 0.30, SW_H = 0.11;
-  AWS_BUCKET_ORDER.forEach((k, i) => {
-    const x = X0 + i * ITEM_W;
-    slide.addShape('rect', {
-      x, y: Y + 0.055, w: SW_W, h: SW_H,
-      fill: { color: AWS_BUCKET_COLORS[k].replace('#', '') }, line: { width: 0 }
-    });
-    slide.addText(k, {
-      x: x + SW_W + 0.08, y: Y - 0.04, w: ITEM_W - SW_W - 0.12, h: 0.28,
-      fontSize: 10, bold: true, fontFace: 'Raleway', color: '3A4150', valign: 'middle'
-    });
-  });
-}
+def _worst_status(statuses: list) -> str:
+    clean = [str(s).strip() for s in statuses
+             if s and str(s).strip() and str(s).strip().upper() != "NO COMPETENZA"]
+    if not clean:
+        return ""
+    return min(clean, key=lambda s: _STATUS_RANK.get(s.upper(), 99))
 
-async function generaReportAWS() {
-  const btn = document.getElementById('reportAwsBtn');
-  if (!btn || btn.classList.contains('busy')) return;
-  if (typeof html2canvas === 'undefined' || typeof PptxGenJS === 'undefined') {
-    alert('Librerie di export (html2canvas/pptxgenjs) non disponibili.');
-    return;
-  }
-  const mapEl = document.getElementById('map');
-  if (!mapEl || !allFeatures.length) { alert('Mappa non ancora pronta.'); return; }
 
-  const clusters = new Set();
-  allFeatures.forEach(f => {
-    const cl = f.properties.CLUSTER ?? f.properties.ID_CLUSTER ?? f.properties.cluster;
-    if (cl != null && cl !== '') clusters.add(String(cl));
-  });
-  const clSorted = [...clusters].sort((a, b) => parseInt(a) - parseInt(b) || a.localeCompare(b));
-  if (!clSorted.length) { alert('Nessun cluster trovato nei dati caricati.'); return; }
+def _latest_per_ente(rows: list, tipo: str) -> list:
+    """Tra le righe di un TIPO_PERMESSO, prende l'ultima riga (cronologicamente
+    piu' recente, assumendo l'ordine di inserimento) per ciascun ente distinto."""
+    by_ente, order = {}, []
+    for r in rows:
+        if _norm(r.get("TIPO_PERMESSO")) != tipo:
+            continue
+        ente = _norm(r.get("ENTE"))
+        if ente not in by_ente:
+            order.append(ente)
+        by_ente[ente] = r  # l'ultima occorrenza trovata vince
+    return [by_ente[e] for e in order]
 
-  const prevMode = currentViewMode;
-  const prevClusters = new Set(selectedClusters);
-  const prevBmapKey = _currentBmapKey;
 
-  // Nascondi i controlli Leaflet overlay (zoom, tasto mappa/satellite, SED,
-  // Misura, Selettore: Tratta, Siti ENRI, Pratiche) solo per la cattura:
-  // non fanno parte del "contenuto mappa" da mettere nel report. Restano
-  // visibili scala e attribuzione (angoli bottom, non toccati).
-  const _ctrlTL = mapEl.querySelector('.leaflet-top.leaflet-left');
-  const _ctrlTR = mapEl.querySelector('.leaflet-top.leaflet-right');
-  const _ctrlTLDisplay = _ctrlTL ? _ctrlTL.style.display : '';
-  const _ctrlTRDisplay = _ctrlTR ? _ctrlTR.style.display : '';
-  if (_ctrlTL) _ctrlTL.style.display = 'none';
-  if (_ctrlTR) _ctrlTR.style.display = 'none';
+def _lotto_from_source(source_name: str) -> str:
+    """'Lotto 1A.xlsx' -> '1A'."""
+    s = str(source_name or "")
+    s = re.sub(r"(?i)^lotto\s*", "", s).strip()
+    s = re.sub(r"(?i)\.xlsx?$", "", s).strip()
+    return s.upper()
 
-  btn.classList.add('busy');
-  btn.innerHTML = 'Report AWS…';
-  _awsReportMode = true;   // palette a 4 bucket solo per la cattura
-  setViewMode('stato');    // Progettazione (restyla tutti i layer)
 
-  const pptx = new PptxGenJS();
-  pptx.defineLayout({ name: 'WIDE', width: 13.33, height: 7.5 });
-  pptx.layout = 'WIDE';
+def _it_date_to_iso(s: str) -> str:
+    """'17/03/2026' -> '2026-03-17'. Stringa vuota/non parsabile -> ''."""
+    s = str(s or "").strip()
+    if not s:
+        return ""
+    try:
+        return datetime.strptime(s, "%d/%m/%Y").strftime("%Y-%m-%d")
+    except Exception:
+        return ""
 
-  try {
-    for (let i = 0; i < clSorted.length; i++) {
-      const cl = clSorted[i];
-      applyFilterCluster(cl);
-      await _attendiMappaPronta();
 
-      // scale:1 + width/height espliciti (invece del default devicePixelRatio):
-      // su schermi HiDPI html2canvas raddoppiava/triplicava la risoluzione del
-      // canvas rispetto alle dimensioni CSS di #map, gonfiando il file e
-      // producendo, se letto con proporzioni diverse da quelle attese, un
-      // risultato "sfalsato" rispetto a quanto visibile a schermo. JPEG invece
-      // di PNG per contenere ulteriormente il peso (le tile mappa/satellite
-      // sono fotografiche, JPEG comprime molto meglio senza perdita visibile).
-      const H2C_OPTS = {
-        useCORS: true, allowTaint: false, logging: false,
-        scale: 1, width: mapEl.clientWidth, height: mapEl.clientHeight,
-        backgroundColor: '#ffffff'
-      };
+def _iso_date_to_it(s: str) -> str:
+    """'2026-03-17' -> '17/03/2026'. Stringa vuota/non parsabile -> ''."""
+    s = str(s or "").strip()
+    if not s:
+        return ""
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").strftime("%d/%m/%Y")
+    except Exception:
+        return ""
 
-      btn.innerHTML = `Report AWS… ${i + 1}/${clSorted.length} (map)`;
-      setBaseLayer('osm');
-      await _attendiTileLayerPronto(_currentBmapLayer);
-      const canvasMappa = await html2canvas(mapEl, H2C_OPTS);
-      const imgMappa = canvasMappa.toDataURL('image/jpeg', 0.85);
 
-      btn.innerHTML = `Report AWS… ${i + 1}/${clSorted.length} (satellite)`;
-      setBaseLayer('satellite');
-      await _attendiTileLayerPronto(_currentBmapLayer);
-      const canvasSat = await html2canvas(mapEl, H2C_OPTS);
-      const imgSat = canvasSat.toDataURL('image/jpeg', 0.85);
+def _build_pratica(rows: list) -> str:
+    """'AUT/24/1A | NO/22/1A | NO/26/1A' — AUT prima, poi NO, poi ORD."""
+    parts, seen = [], set()
+    for tipo, pref in (("AUTORIZZAZIONE", "AUT"), ("NULLA OSTA", "NO"), ("ORDINANZA", "ORD")):
+        for r in rows:
+            if _norm(r.get("TIPO_PERMESSO")) != tipo:
+                continue
+            num = str(r.get("PRATICA") or "").strip()
+            if not num:
+                continue
+            lotto = _lotto_from_source(r.get("Source.Name", ""))
+            tok = f"{pref}/{num}/{lotto}"
+            if tok not in seen:
+                seen.add(tok)
+                parts.append(tok)
+    return " | ".join(parts)
 
-      const slide = pptx.addSlide();
-      slide.addText(`Cluster ${cl} — Permitting Approval`, {
-        x: 0.3, y: 0.15, w: 5.5, h: 0.5, fontSize: 20, bold: true,
-        fontFace: 'Raleway', color: '043F75'
-      });
-      _awsAddLegend(slide);
-      const fitMappa = _containFit(canvasMappa.width, canvasMappa.height, 0.3, 0.75, 6.2, 6.2);
-      slide.addImage({ data: imgMappa, x: fitMappa.x, y: fitMappa.y, w: fitMappa.w, h: fitMappa.h });
-      slide.addText('Map', { x: 0.3, y: 7.0, w: 6.2, h: 0.35, fontSize: 12, align: 'center', color: '6b7080', fontFace: 'Raleway' });
-      const fitSat = _containFit(canvasSat.width, canvasSat.height, 6.8, 0.75, 6.2, 6.2);
-      slide.addImage({ data: imgSat, x: fitSat.x, y: fitSat.y, w: fitSat.w, h: fitSat.h });
-      slide.addText('Satellite', { x: 6.8, y: 7.0, w: 6.2, h: 0.35, fontSize: 12, align: 'center', color: '6b7080', fontFace: 'Raleway' });
+
+def _compute_tratta_summary(master_df: "pd.DataFrame") -> dict:
+    """Per ogni TRATTA_ID calcola: STATO_AUTORIZZAZIONE, STATO_NULLAOSTA,
+    STATO_ORDINANZA, LAVORABILE, MOTIVO_NO, PRATICA, STATO_LEGENDA, ENTE."""
+    if master_df is None or "TRATTA_ID" not in master_df.columns:
+        return {}
+    df = master_df.fillna("")
+    result = {}
+
+    for tratta_id, group in df.groupby(df["TRATTA_ID"].astype(str).str.strip()):
+        tratta_id = tratta_id.strip()
+        if not tratta_id:
+            continue
+        rows = group.to_dict(orient="records")
+
+        # AUTORIZZAZIONE: un solo permesso per tratta -> ultima riga inserita.
+        # Le pratiche chiuse con STATO_PERMESSO=NO COMPETENZA sono superate:
+        # l'ente ha dichiarato di non essere competente, quindi prima o poi
+        # arriva una NUOVA pratica con un ente diverso sulla stessa tratta.
+        # Finché esiste un'alternativa attiva va sempre preferita a NO COMPETENZA;
+        # se invece NO COMPETENZA è l'unica pratica presente, la tratta è
+        # semplicemente in attesa che la nuova pratica venga aperta.
+        aut_rows = [r for r in rows if _norm(r.get("TIPO_PERMESSO")) == "AUTORIZZAZIONE"]
+        aut_rows_attive = [r for r in aut_rows if _norm(r.get("STATO_PERMESSO")) != "NO COMPETENZA"]
+        if aut_rows_attive:
+            aut_row_corrente = aut_rows_attive[-1]
+            stato_aut = _norm(aut_row_corrente.get("STATO_PERMESSO"))
+        elif aut_rows:
+            aut_row_corrente = aut_rows[-1]
+            stato_aut = "IN ATTESA"
+        else:
+            aut_row_corrente = None
+            stato_aut = "IN ATTESA"
+        ente_aut  = str(aut_row_corrente.get("ENTE", "")).strip() if aut_row_corrente else ""
+        need_no   = _norm(aut_row_corrente.get("NULLA OSTA NECESSARIO")) if aut_row_corrente else "NO"
+        need_ord  = _norm(aut_row_corrente.get("ORDINANZA NECESSARIA")) if aut_row_corrente else "NO"
+
+        # NULLA OSTA / ORDINANZA: possono essercene piu' di uno (enti diversi) ->
+        # prendi l'ultimo stato di ciascun ente, poi il PEGGIORE tra questi
+        no_latest  = _latest_per_ente(rows, "NULLA OSTA")
+        stato_no   = _worst_status([r.get("STATO_PERMESSO") for r in no_latest]) if no_latest else (
+            "IN ATTESA" if need_no == "SI" else "NON NECESSARIO"
+        )
+        ord_latest = _latest_per_ente(rows, "ORDINANZA")
+        stato_ord  = _worst_status([r.get("STATO_PERMESSO") for r in ord_latest]) if ord_latest else (
+            "IN ATTESA" if need_ord == "SI" else "NON NECESSARIO"
+        )
+
+        aut_ok = stato_aut == "OTTENUTO"
+        no_ok  = stato_no == "OTTENUTO"
+        ord_ok = stato_ord == "OTTENUTO"
+
+        # Vincolante se il flag sull'AUT lo dichiara necessario OPPURE se
+        # esistono comunque righe reali NULLA OSTA/ORDINANZA per la tratta:
+        # il flag può essere disallineato nei dati sorgente, la pratica no.
+        no_effettivo  = (need_no == "SI") or bool(no_latest)
+        ord_effettivo = (need_ord == "SI") or bool(ord_latest)
+
+        lavorabile = aut_ok
+        if no_effettivo:
+            lavorabile = lavorabile and no_ok
+        if ord_effettivo:
+            lavorabile = lavorabile and ord_ok
+
+        motivi = []
+        if not aut_ok:
+            motivi.append("Manca autorizz")
+        if no_effettivo and not no_ok:
+            motivi.append("Manca nulla osta")
+        if ord_effettivo and not ord_ok:
+            motivi.append("Manca ordinanza")
+
+        result[tratta_id] = {
+            "STATO_AUTORIZZAZIONE": stato_aut,
+            "STATO_LEGENDA":        stato_aut,  # sempre identico, confermato sui dati reali
+            "STATO_NULLAOSTA":      stato_no,
+            "STATO_ORDINANZA":      stato_ord,
+            "LAVORABILE":           "SI" if lavorabile else "NO",
+            "MOTIVO_NO":            " | ".join(motivi),
+            "PRATICA":              _build_pratica(rows),
+            "PRATICA_AUT":          str(aut_row_corrente.get("PRATICA", "")).strip() if aut_row_corrente else "",
+            "ENTE":                 ente_aut,
+            "LUNGHEZZA":            rows[0].get("LUNGHEZZA", 0) if rows else 0,
+        }
+    return result
+
+
+async def _read_current_geojson(filename: str):
+    """Legge un GeoJSON (MongoDB se presente, altrimenti seed su disco)."""
+    cur = await _current_upload(filename)
+    if cur and cur.get("gridfs_id"):
+        raw = await _read_gridfs(cur["gridfs_id"])
+    else:
+        path = DATA_DIR / filename
+        if not path.exists():
+            return None
+        raw = path.read_bytes()
+    for enc in ("utf-8", "cp1252", "latin-1"):
+        try:
+            return json.loads(raw.decode(enc))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+    return None
+
+
+async def _store_derived_file(filename: str, data: bytes, content_type: str, note: str) -> str:
+    """Salva un file derivato (rigenerato) come nuova versione in GridFS."""
+    gid = await gridfs.upload_from_stream(
+        filename, io.BytesIO(data),
+        metadata={"project": "main", "uploaded_at": _now_iso(), "source": "derived", "note": note},
+    )
+    record = {
+        "filename": filename, "original_name": filename, "size": len(data),
+        "content_type": content_type, "project": "main", "rows": None,
+        "uploaded_at": _now_iso(), "gridfs_id": gid, "deleted_at": None,
+        "source": "derived", "note": note,
     }
-    await pptx.writeFile({ fileName: `Report_AWS_${_dataOggiFile()}.pptx` });
-  } catch (e) {
-    console.error('[Report AWS]', e);
-    alert('Errore nella generazione del report: ' + e.message);
-  } finally {
-    if (_ctrlTL) _ctrlTL.style.display = _ctrlTLDisplay;
-    if (_ctrlTR) _ctrlTR.style.display = _ctrlTRDisplay;
-    setBaseLayer(prevBmapKey);
-    _awsReportMode = false;  // prima di setViewMode: ripristina i colori reali
-    setViewMode(prevMode);
-    if (prevClusters.size) { selectedClusters = prevClusters; applyFilterClusterMulti(); }
-    btn.classList.remove('busy');
-    btn.innerHTML = 'Report AWS';
-  }
-}
+    res = await uploads_col.insert_one(record)
+    asyncio.create_task(_prune_old_versions(filename))
+    return str(res.inserted_id)
 
-function toggleSelectorMode() {
-  _selectorMode = _selectorMode === 'tratta' ? 'pratica' : 'tratta';
-  const btn = document.getElementById('selectorBtn');
-  if (btn) {
-    btn.innerHTML = _selectorMode === 'pratica' ? 'Selettore: Pratica' : 'Selettore: Tratta';
-    btn.classList.toggle('active', _selectorMode === 'pratica');
-  }
-  clearSelectorHighlight();
-}
 
-// Evidenzia sulla mappa tutte le tratte della stessa pratica del layer cliccato
-// e ne somma la lunghezza — utile perché ogni permesso viene verificato per
-// singola tratta, ma la lunghezza complessiva di una pratica non è sempre ovvia.
-function selectByPraticaFromLayer(clickedLayer) {
-  const raw = (clickedLayer.feature?.properties?.PRATICA || '').trim();
-  if (!raw) { applyHighlight(clickedLayer); return; }
-  const allCodes = raw.split(/[|;,]/).map(s => s.trim().toUpperCase()).filter(Boolean);
-  if (!allCodes.length) { applyHighlight(clickedLayer); return; }
-  // Solo la pratica principale (AUT) della tratta cliccata: unire anche i NO/ORD
-  // evidenziava tratte di altre autorizzazioni che condividono solo il nulla osta.
-  const aut = allCodes.filter(c => c.startsWith('AUT/'));
-  const codes = aut.length ? aut : allCodes;
+async def _regenerate_derived_files(master_df: "pd.DataFrame", note: str = "") -> dict:
+    """Rigenera QGIS.geojson e Riepilogo_progettazione.csv a partire da Master.csv.
 
-  const matchedLayers = [];
-  allLayers.forEach(({layer}) => {
-    layer.eachLayer(l => {
-      const lRaw = (l.feature?.properties?.PRATICA || '');
-      const lCodes = lRaw.split(/[|;,]/).map(s => s.trim().toUpperCase());
-      if (lCodes.some(c => codes.includes(c))) matchedLayers.push(l);
-    });
-  });
-  if (!matchedLayers.length) { applyHighlight(clickedLayer); return; }
+    Verificato sui file reali: Riepilogo_progettazione.csv e' ESATTAMENTE la
+    tabella attributi di QGIS.geojson esportata in CSV (stesse 21 colonne,
+    stesso ordine, stessi valori, stesso numero di righe — confrontato riga
+    per riga su TR_0103 e sull'intero file). Per questo la patch avviene UNA
+    SOLA VOLTA sulle properties di QGIS.geojson, e Riepilogo viene poi
+    derivato direttamente da quello: i due file non possono piu' disallinearsi.
 
-  applyHighlightMulti(matchedLayers);
-  clickedLayer.once('popupclose', clearHighlight);
+    Vengono aggiornati SOLO i campi calcolati da Master.csv:
+    STATO_AUTORIZZAZIONE, STATO_LEGENDA, STATO_NULLAOSTA, STATO_ORDINANZA,
+    LAVORABILE, MOTIVO_NO, PRATICA, ENTE.
+    Tutto il resto (fid, TIPOLOGIA, PROVINCIA, COMUNE, CLUSTER, ROUTE, ENTE 2,
+    LUNGHEZZA, SPAN, LOTTO, PROTOCOLLO_AUT, CAMPO AWS, geometria) resta
+    esattamente come nel QGIS.geojson esistente.
 
-  const totale = matchedLayers.reduce((s, l) => s + (Number(l.feature?.properties?.LUNGHEZZA) || 0), 0);
-  document.getElementById('selectorPratica').textContent =
-    codes.join(', ') + ` · ${matchedLayers.length} tratt${matchedLayers.length === 1 ? 'a' : 'e'}`;
-  document.getElementById('selectorDist').textContent = _fmtDist(totale);
-  document.getElementById('selectorBadge').classList.add('visible');
-}
+    Fire-and-forget: eventuali errori vengono solo loggati.
+    """
+    # Ordine colonne confermato sul file reale (json.load preserva l'ordine delle key)
+    RIEPILOGO_COLUMNS = [
+        "fid", "TIPOLOGIA", "PROVINCIA", "COMUNE", "CLUSTER", "ROUTE", "ENTE", "ENTE 2",
+        "LUNGHEZZA", "SPAN", "LOTTO", "TRATTA_ID", "MOTIVO_NO", "STATO_AUTORIZZAZIONE",
+        "STATO_NULLAOSTA", "STATO_ORDINANZA", "PROTOCOLLO_AUT", "PRATICA", "LAVORABILE",
+        "STATO_LEGENDA", "CAMPO AWS",
+    ]
 
-function clearSelectorHighlight() {
-  clearHighlight();
-}
+    out_ids: dict = {}
+    try:
+        summary = _compute_tratta_summary(master_df)
+        if not summary:
+            print("[Sync] Master.csv senza TRATTA_ID utilizzabili — skip rigenerazione")
+            return out_ids
 
-function toggleMeasure() {
-  _measureActive = !_measureActive;
-  const btn = document.getElementById('measureBtn');
-  if (btn) btn.classList.toggle('active', _measureActive);
-  if (_measureActive) {
-    map.getContainer().style.cursor = 'crosshair';
-    map.on('click', _measureAddPoint);
-    map.on('dblclick', _measureFinish);
-    document.addEventListener('keydown', _measureKeyDown);
-    document.getElementById('measureHint').classList.add('visible');
-  } else {
-    clearMeasure();
-  }
-}
+        geo = await _read_current_geojson(QGIS_FILENAME)
+        if not geo or not isinstance(geo.get("features"), list):
+            print(f"[Sync] {QGIS_FILENAME} non trovato — skip rigenerazione")
+            return out_ids
 
-function _measureAddPoint(e) {
-  _measurePoints.push(e.latlng);
+        # ── 1. Patch in place delle proprieta' di stato su QGIS.geojson ─────────
+        riepilogo_rows = []
+        for feat in geo["features"]:
+            props = feat.get("properties") or {}
+            tid = str(props.get("TRATTA_ID") or "").strip()
+            s = summary.get(tid)
+            if s:
+                props["STATO_AUTORIZZAZIONE"] = s["STATO_AUTORIZZAZIONE"]
+                props["STATO_LEGENDA"]        = s["STATO_LEGENDA"]
+                props["STATO_NULLAOSTA"]      = s["STATO_NULLAOSTA"]
+                props["STATO_ORDINANZA"]      = s["STATO_ORDINANZA"]
+                props["LAVORABILE"]           = s["LAVORABILE"]
+                props["MOTIVO_NO"]            = s["MOTIVO_NO"]
+                if s["PRATICA"]:
+                    props["PRATICA"] = s["PRATICA"]
+                if s["ENTE"]:
+                    props["ENTE"] = s["ENTE"]
+            feat["properties"] = props
+            # Riga corrispondente per Riepilogo_progettazione.csv — stesse colonne,
+            # stessi valori, derivati dalla stessa feature appena patchata.
+            riepilogo_rows.append({col: props.get(col, "") for col in RIEPILOGO_COLUMNS})
 
-  // Marker punto
-  const dot = L.circleMarker(e.latlng, {
-    radius:5, color:'#e07b3a', fillColor:'#e07b3a',
-    fillOpacity:1, weight:2, renderer:searchMarkerRenderer
-  }).addTo(map);
-  _measureLayers.push(dot);
+        geo_bytes = json.dumps(geo, ensure_ascii=False).encode("utf-8")
+        out_ids["qgis"] = await _store_derived_file(QGIS_FILENAME, geo_bytes, "application/geo+json", note)
+        asyncio.create_task(_push_to_github(geo_bytes, path=GITHUB_PATHS["QGIS.geojson"], label=QGIS_FILENAME))
 
-  if (_measurePoints.length > 1) {
-    // Segmento
-    const seg = L.polyline(
-      [_measurePoints[_measurePoints.length-2], e.latlng],
-      { color:'#e07b3a', weight:2.5, dashArray:'7,5', renderer:searchMarkerRenderer }
-    ).addTo(map);
-    _measureLayers.push(seg);
+        # ── 2. Riepilogo_progettazione.csv: derivato 1:1 da QGIS.geojson ────────
+        riep_df = pd.DataFrame(riepilogo_rows, columns=RIEPILOGO_COLUMNS)
+        rbuf = io.StringIO()
+        riep_df.to_csv(rbuf, index=False)  # virgola, come il file originale
+        rdata = rbuf.getvalue().encode("utf-8")
+        out_ids["riepilogo"] = await _store_derived_file(RIEPILOGO_FILENAME, rdata, "text/csv", note)
+        asyncio.create_task(_push_to_github(rdata, path=GITHUB_PATHS["Riepilogo_progettazione.csv"], label=RIEPILOGO_FILENAME))
 
-    // Label distanza segmento
-    const segDist = _measurePoints[_measurePoints.length-2].distanceTo(e.latlng);
-    const midLat = (_measurePoints[_measurePoints.length-2].lat + e.latlng.lat) / 2;
-    const midLon = (_measurePoints[_measurePoints.length-2].lng + e.latlng.lng) / 2;
-    const segLabel = L.tooltip({ permanent:true, direction:'top', className:'tratta-tip', offset:[0,-4] })
-      .setLatLng([midLat, midLon])
-      .setContent(`<span style="font-size:10px;font-family:var(--font-mono)">${_fmtDist(segDist)}</span>`)
-      .addTo(map);
-    _measureLayers.push(segLabel);
-  }
+        print(f"[Sync] Rigenerati: {list(out_ids.keys())} ({len(summary)} tratte, note={note!r})")
+    except Exception as e:
+        print(f"[Sync] Errore rigenerazione QGIS/Riepilogo: {type(e).__name__}: {e}")
+    return out_ids
 
-  // Totale
-  let total = 0;
-  for (let i=1; i<_measurePoints.length; i++)
-    total += _measurePoints[i-1].distanceTo(_measurePoints[i]);
 
-  const badge = document.getElementById('measureBadge');
-  document.getElementById('measureDist').textContent = _fmtDist(total);
-  badge.classList.add('visible');
-}
 
-function _measureFinish(e) {
-  // il dblclick genera 2 click + 1 dblclick: rimuovi l'ultimo punto duplicato
-  if (_measurePoints.length > 0) {
-    const last = _measureLayers[_measureLayers.length-1];
-    // rimuovi label e segmento dell'ultimo click spurio (i due layer aggiunti)
-    // solo se il punto è identico all'ultimo
-  }
-  _measureActive = false;
-  const btn = document.getElementById('measureBtn');
-  if (btn) btn.classList.remove('active');
-  map.getContainer().style.cursor = '';
-  map.off('click', _measureAddPoint);
-  map.off('dblclick', _measureFinish);
-  document.removeEventListener('keydown', _measureKeyDown);
-  document.getElementById('measureHint').classList.remove('visible');
-}
 
-function clearMeasure() {
-  _measureActive = false;
-  const btn = document.getElementById('measureBtn');
-  if (btn) btn.classList.remove('active');
-  map.getContainer().style.cursor = '';
-  map.off('click', _measureAddPoint);
-  map.off('dblclick', _measureFinish);
-  document.removeEventListener('keydown', _measureKeyDown);
-  _measureLayers.forEach(l => { try { map.removeLayer(l); } catch(_){} });
-  _measureLayers = [];
-  _measurePoints = [];
-  document.getElementById('measureBadge').classList.remove('visible');
-  document.getElementById('measureHint').classList.remove('visible');
-}
 
-function _measureKeyDown(e) { if (e.key === 'Escape') clearMeasure(); }
-
-function _fmtDist(m) {
-  return m >= 1000
-    ? (m/1000).toFixed(2).replace('.',',') + ' km'
-    : Math.round(m) + ' m';
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ── SITI DI INTERESSE ───────────────────────────────────────────────────────
-const SITI = [
-  { name: 'Caldera',      lat: 45.47689122285669, lon: 9.10359279146746,  note: 'Milano' },
-  { name: 'DATA4',        lat: 45.47135760905800, lon: 9.03687356523146,  note: 'Settimo Milanese' },
-  { name: 'MXP102',       lat: 45.52098760536111, lon: 9.06895054960220,  note: 'Rho' },
-  { name: 'MXP109',       lat: 45.36501718096642, lon: 9.12725039655933,  note: 'Zibido' },
-  { name: 'MXP118',       lat: 45.65566806648370, lon: 9.70478595192444,  note: 'Zanica' },
-  { name: 'MXP133',       lat: 45.26589755160440, lon: 9.20841625292800,  note: 'Bornasco' },
-  { name: 'MXP140',       lat: 45.62960454633557, lon: 9.55124048864611,  note: 'MXP140' },
-  { name: 'MXP76',        lat: 45.70599945172991, lon: 9.58922139762394,  note: 'Aruba' },
-  { name: 'MXP81',        lat: 45.32734400342294, lon: 9.21537621502111,  note: 'Siziano' },
-  { name: 'MXP92',        lat: 45.32392028570824, lon: 9.21346802014885,  note: 'Siziano' },
-];
-
-let _sitiPanelOpen = false;
-
-// Controllo Leaflet per il tasto Siti (topright, sotto lo zoom)
-const SitiControl = L.Control.extend({
-  options: { position: 'topright' },
-  onAdd: function() {
-    const wrap = L.DomUtil.create('div', '');
-    wrap.style.cssText = 'position:relative;';
-    L.DomEvent.disableClickPropagation(wrap);
-    L.DomEvent.disableScrollPropagation(wrap);
-
-    // Tasto
-    const btn = L.DomUtil.create('div', 'siti-control-btn', wrap);
-    btn.id = 'sitiBtn';
-    btn.title = 'Siti di interesse';
-    btn.innerHTML = 'Siti ENRI';
-
-    // Pannello
-    const panel = L.DomUtil.create('div', 'siti-panel', wrap);
-    panel.id = 'sitiPanel';
-    panel.innerHTML = `
-      <div class="siti-panel-head">
-        <div class="siti-panel-title">📍 Siti di interesse</div>
-        <input class="siti-search" id="sitiSearch" type="text"
-               placeholder="Cerca sito…" autocomplete="off">
-      </div>
-      <div class="siti-list" id="sitiList"></div>`;
-
-    L.DomEvent.on(btn, 'click', toggleSitiPanel);
-
-    // Filtro ricerca
-    setTimeout(() => {
-      const inp = document.getElementById('sitiSearch');
-      if (inp) inp.addEventListener('input', e => filterSiti(e.target.value));
-    }, 0);
-
-    return wrap;
-  }
-});
-new SitiControl().addTo(map);
-
-function toggleSitiPanel() {
-  _sitiPanelOpen = !_sitiPanelOpen;
-  const panel = document.getElementById('sitiPanel');
-  const btn   = document.getElementById('sitiBtn');
-  panel.classList.toggle('open', _sitiPanelOpen);
-  btn.classList.toggle('active', _sitiPanelOpen);
-  if (_sitiPanelOpen) {
-    renderSitiList(SITI);
-    setTimeout(() => {
-      const inp = document.getElementById('sitiSearch');
-      if (inp) { inp.value = ''; inp.focus(); }
-    }, 150);
-    setTimeout(() => document.addEventListener('click', _closeSitiOutside), 0);
-  } else {
-    document.removeEventListener('click', _closeSitiOutside);
-  }
-}
-
-function _closeSitiOutside(e) {
-  const panel = document.getElementById('sitiPanel');
-  const btn   = document.getElementById('sitiBtn');
-  if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) {
-    _sitiPanelOpen = false;
-    panel.classList.remove('open');
-    btn.classList.remove('active');
-    document.removeEventListener('click', _closeSitiOutside);
-  }
-}
-
-function renderSitiList(list) {
-  const el = document.getElementById('sitiList');
-  if (!el) return;
-  el.innerHTML = '';
-  if (!list.length) {
-    el.innerHTML = '<div class="sito-empty">Nessun sito trovato</div>';
-    return;
-  }
-  list.forEach(s => {
-    const item = document.createElement('div');
-    item.className = 'sito-item';
-    item.innerHTML = `
-      <div class="sito-icon">📍</div>
-      <div class="sito-info">
-        <div class="sito-name">${s.name}</div>
-        <div class="sito-note">${s.note}</div>
-      </div>
-      <span class="sito-arrow">›</span>`;
-    item.onclick = () => goToSito(s);
-    el.appendChild(item);
-  });
-}
-
-function filterSiti(query) {
-  const q = query.trim().toLowerCase();
-  renderSitiList(q ? SITI.filter(s =>
-    s.name.toLowerCase().includes(q) || s.note.toLowerCase().includes(q)
-  ) : SITI);
-}
-
-let _sitoMarker = null;
-
-function goToSito(s) {
-  // Offset verticale: sposta il centro leggermente verso il basso
-  // così il marker resta visivamente al centro anche con il popup aperto sopra
-  const targetPoint = map.project([s.lat, s.lon], 16).subtract([0, 60]);
-  const targetLatLng = map.unproject(targetPoint, 16);
-  map.setView(targetLatLng, 16, { animate: true });
-
-  // Rimuovi marker precedente
-  if (_sitoMarker) { map.removeLayer(_sitoMarker); _sitoMarker = null; }
-
-  // Cerchietto con popup
-  _sitoMarker = L.circleMarker([s.lat, s.lon], {
-    radius: 10,
-    color: 'var(--retelit-blue)',
-    fillColor: 'var(--retelit-blue)',
-    fillOpacity: 0.25,
-    weight: 2.5,
-    renderer: searchMarkerRenderer
-  }).addTo(map);
-
-  _sitoMarker.bindPopup(`
-    <div style="padding:6px 4px;min-width:130px">
-      <div style="font-size:13px;font-weight:700;color:var(--text)">${s.name}</div>
-      <div style="font-size:11px;color:#1a1d27;margin-top:2px">${s.note}</div>
-    </div>`, { closeButton: false, autoPan: false }
-  ).openPopup();
-
-  // Rimuovi marker alla chiusura del popup
-  _sitoMarker.on('popupclose', () => {
-    if (_sitoMarker) { map.removeLayer(_sitoMarker); _sitoMarker = null; }
-  });
-
-  // Chiudi pannello
-  _sitiPanelOpen = false;
-  document.getElementById('sitiPanel').classList.remove('open');
-  document.getElementById('sitiBtn').classList.remove('active');
-  document.removeEventListener('click', _closeSitiOutside);
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ═══════════════ PANNELLO ELENCO PRATICHE (evidenzia percorso completo) ═══════
-let _pratichePanelOpen = false;
-
-function buildPraticheIndex() {
-  const idx = new Map(); // pratica (uppercase) -> {pratica, tratte:Set, lotti:Set, comuni:Set}
-  allFeatures.forEach(f => {
-    const p = f.properties;
-    const codes = (p.PRATICA || '').split(/[|;,]/).map(s => s.trim()).filter(Boolean);
-    codes.forEach(code => {
-      const key = code.toUpperCase();
-      if (!idx.has(key)) idx.set(key, { pratica: code, tratte: new Set(), lotti: new Set(), comuni: new Set() });
-      const e = idx.get(key);
-      if (p.TRATTA_ID) e.tratte.add(p.TRATTA_ID);
-      if (p.LOTTO) e.lotti.add(p.LOTTO);
-      if (p.COMUNE) e.comuni.add(p.COMUNE);
-    });
-  });
-  return [...idx.values()].sort((a, b) => a.pratica.localeCompare(b.pratica));
-}
-
-// Controllo Leaflet per il tasto Pratiche (topright, sotto Siti)
-const PraticheControl = L.Control.extend({
-  options: { position: 'topright' },
-  onAdd: function() {
-    const wrap = L.DomUtil.create('div', '');
-    wrap.style.cssText = 'position:relative;margin-top:6px;';
-    L.DomEvent.disableClickPropagation(wrap);
-    L.DomEvent.disableScrollPropagation(wrap);
-
-    const btn = L.DomUtil.create('div', 'siti-control-btn', wrap);
-    btn.id = 'praticheBtn';
-    btn.title = 'Elenco pratiche (evidenzia percorso completo)';
-    btn.innerHTML = 'Pratiche';
-
-    const panel = L.DomUtil.create('div', 'siti-panel', wrap);
-    panel.id = 'praticheListPanel';
-    panel.innerHTML = `
-      <div class="siti-panel-head">
-        <div class="siti-panel-title">🗂️ Elenco pratiche</div>
-        <input class="siti-search" id="praticheSearch" type="text"
-               placeholder="Filtra per codice, lotto o comune…" autocomplete="off">
-      </div>
-      <div class="siti-list" id="praticheListEl"></div>`;
-
-    L.DomEvent.on(btn, 'click', togglePratichePanel);
-
-    setTimeout(() => {
-      const inp = document.getElementById('praticheSearch');
-      if (inp) inp.addEventListener('input', e => filterPratiche(e.target.value));
-    }, 0);
-
-    return wrap;
-  }
-});
-new PraticheControl().addTo(map);
-
-function togglePratichePanel() {
-  _pratichePanelOpen = !_pratichePanelOpen;
-  const panel = document.getElementById('praticheListPanel');
-  const btn   = document.getElementById('praticheBtn');
-  panel.classList.toggle('open', _pratichePanelOpen);
-  btn.classList.toggle('active', _pratichePanelOpen);
-  if (_pratichePanelOpen) {
-    renderPraticheList(buildPraticheIndex());
-    setTimeout(() => {
-      const inp = document.getElementById('praticheSearch');
-      if (inp) { inp.value = ''; inp.focus(); }
-    }, 150);
-    setTimeout(() => document.addEventListener('click', _closePraticheOutside), 0);
-  } else {
-    document.removeEventListener('click', _closePraticheOutside);
-  }
-}
-
-function _closePraticheOutside(e) {
-  const panel = document.getElementById('praticheListPanel');
-  const btn   = document.getElementById('praticheBtn');
-  if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) {
-    _pratichePanelOpen = false;
-    panel.classList.remove('open');
-    btn.classList.remove('active');
-    document.removeEventListener('click', _closePraticheOutside);
-  }
-}
-
-function renderPraticheList(list) {
-  const el = document.getElementById('praticheListEl');
-  if (!el) return;
-  el.innerHTML = '';
-  if (!list.length) {
-    el.innerHTML = '<div class="sito-empty">Nessuna pratica trovata</div>';
-    return;
-  }
-  list.forEach(e => {
-    const item = document.createElement('div');
-    item.className = 'sito-item';
-    const lotti  = [...e.lotti].join(', ');
-    const comuni = [...e.comuni].join(', ');
-    const nTratte = e.tratte.size;
-    item.innerHTML = `
-      <div class="sito-icon">◎</div>
-      <div class="sito-info">
-        <div class="sito-name">${e.pratica}</div>
-        <div class="sito-note">Lotto ${lotti} · ${nTratte} tratt${nTratte===1?'a':'e'}${comuni ? ' · '+comuni : ''}</div>
-      </div>
-      <span class="sito-arrow">›</span>`;
-    item.onclick = () => selectPraticaCompleta(e.pratica);
-    el.appendChild(item);
-  });
-}
-
-function filterPratiche(query) {
-  const q = query.trim().toUpperCase();
-  const all = buildPraticheIndex();
-  if (!q) { renderPraticheList(all); return; }
-  renderPraticheList(all.filter(e =>
-    e.pratica.toUpperCase().includes(q) ||
-    [...e.lotti].some(l => (l||'').toUpperCase().includes(q)) ||
-    [...e.comuni].some(c => c.toUpperCase().includes(q))
-  ));
-}
-
-// Evidenzia sulla mappa TUTTI i segmenti/tratte associati alla pratica selezionata
-// (non solo il primo trovato) e inquadra l'intero percorso.
-function selectPraticaCompleta(pratica) {
-  const codeUp = pratica.toUpperCase();
-  const matchedLayers = [];
-  allLayers.forEach(({layer}) => {
-    layer.eachLayer(l => {
-      const raw = (l.feature?.properties?.PRATICA || '');
-      const codes = raw.split(/[|;,]/).map(s => s.trim().toUpperCase());
-      if (codes.includes(codeUp)) matchedLayers.push(l);
-    });
-  });
-  if (!matchedLayers.length) return;
-
-  applyHighlightMulti(matchedLayers);
-  const group = L.featureGroup(matchedLayers);
-  map.fitBounds(group.getBounds(), { padding: [40, 40], maxZoom: 16 });
-  setTimeout(() => { map.getContainer().style.cursor = ''; }, 0);
-
-  _pratichePanelOpen = false;
-  document.getElementById('praticheListPanel').classList.remove('open');
-  document.getElementById('praticheBtn').classList.remove('active');
-  document.removeEventListener('click', _closePraticheOutside);
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
-function openHelp() { document.getElementById("helpOverlay").classList.add("open"); }
-
-// ─── MOBILE DRAWER ──────────────────────────────────────────────────────────
-function _isMobile() { return window.innerWidth <= 768; }
-
-function toggleDrawer() {
-  const sidebar = document.getElementById('sidebarEl');
-  const overlay = document.getElementById('drawerOverlay');
-  const label   = document.getElementById('drawerToggleLabel');
-  const icon    = document.querySelector('.drawer-toggle-icon');
-  if (!sidebar) return;
-  const isOpen = sidebar.classList.contains('drawer-open');
-  if (isOpen) {
-    sidebar.classList.remove('drawer-open');
-    if (overlay) overlay.classList.remove('open');
-    if (label)   label.textContent = 'Lotti e filtri';
-    if (icon)    icon.textContent  = '☰';
-    // Nasconde dopo la transizione
-    setTimeout(() => {
-      if (!sidebar.classList.contains('drawer-open')) {
-        sidebar.style.display = 'none';
-        sidebar.style.visibility = 'hidden';
-      }
-    }, 320);
-  } else {
-    // Rimuovi regola anti-FOUC e mostra la sidebar
-    const antifouc = document.getElementById('_antifouc');
-    if (antifouc) antifouc.remove();
-    sidebar.style.visibility = '';
-    sidebar.style.display = 'flex'; // mostra prima della transizione
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        sidebar.classList.add('drawer-open');
-        if (overlay) overlay.classList.add('open');
-      });
-    });
-  }
-}
-
-function closeDrawer() {
-  const sidebar = document.getElementById('sidebarEl');
-  const overlay = document.getElementById('drawerOverlay');
-  const label   = document.getElementById('drawerToggleLabel');
-  const icon    = document.querySelector('.drawer-toggle-icon');
-  if (!sidebar) return;
-  sidebar.classList.remove('drawer-open');
-  if (overlay) overlay.classList.remove('open');
-  if (label)   label.textContent = 'Lotti e filtri';
-  if (icon)    icon.textContent  = '☰';
-  setTimeout(() => {
-    if (!sidebar.classList.contains('drawer-open')) {
-      sidebar.style.display = 'none';
-      sidebar.style.visibility = 'hidden';
+async def _write_master_csv(df: "pd.DataFrame", note: str) -> str:
+    """Persist a new Master.csv version in GridFS and return the new upload id."""
+    buf = io.StringIO()
+    df.to_csv(buf, index=False, sep=_detected_sep)
+    data = buf.getvalue().encode("utf-8")
+    # Per GitHub usiamo sempre tab (formato originale del file nel repo)
+    github_buf = io.StringIO()
+    df.to_csv(github_buf, index=False, sep="\t")
+    github_data = github_buf.getvalue().encode("utf-8")
+    gid = await gridfs.upload_from_stream(
+        MASTER_FILENAME,
+        io.BytesIO(data),
+        metadata={"project": "main", "uploaded_at": _now_iso(), "source": "impresa", "note": note},
+    )
+    record = {
+        "filename": MASTER_FILENAME,
+        "original_name": MASTER_FILENAME,
+        "size": len(data),
+        "content_type": "text/csv",
+        "project": "main",
+        "rows": max(0, len(df)),
+        "uploaded_at": _now_iso(),
+        "gridfs_id": gid,
+        "deleted_at": None,
+        "source": "impresa",
+        "note": note,
     }
-  }, 320);
-}
+    res = await uploads_col.insert_one(record)
+    asyncio.create_task(_prune_old_versions(MASTER_FILENAME))
+    # Aggiorna Master.csv su GitHub e rigenera i file derivati (fire-and-forget)
+    asyncio.create_task(_push_to_github(github_data, path=GITHUB_PATHS["Master.csv"], label="Master.csv"))
+    asyncio.create_task(_regenerate_derived_files(df, note=note))
+    return str(res.inserted_id)
 
-function _positionLegendMobile() {
-  if (!_isMobile()) return;
-  const legend = document.getElementById('legendContainer');
-  if (!legend) return;
-  // Posizione top-right sotto topbar+searchbar — non toccare bottom per evitare overlap stats-bar
-  legend.style.right  = '8px';
-  legend.style.top    = '108px';
-  legend.style.bottom = 'auto';
-}
 
-window.addEventListener('resize', () => {
-  const sidebar = document.getElementById('sidebarEl');
-  if (!_isMobile()) {
-    // Desktop: sidebar sempre visibile, rimuovi stili inline e regola anti-FOUC
-    const antifouc = document.getElementById('_antifouc');
-    if (antifouc) antifouc.remove();
-    if (sidebar) { sidebar.style.display = ''; sidebar.style.visibility = ''; sidebar.classList.remove('drawer-open'); }
-    const overlay = document.getElementById('drawerOverlay');
-    if (overlay) overlay.classList.remove('open');
-  } else {
-    // Mobile: assicura che la sidebar parta nascosta se non è già aperta
-    if (sidebar && !sidebar.classList.contains('drawer-open')) {
-      sidebar.style.display = 'none';
-      sidebar.style.visibility = 'hidden';
+def _serialize_assignment(d: dict) -> dict:
+    out = dict(d)
+    out["_id"] = str(out["_id"])
+    return out
+
+
+# ───────── Imprese (no admin token required, identified by their `nome`) ────
+
+async def _find_assignment(nome: str) -> dict | None:
+    """Cerca un assignment per nome in modo case-insensitive,
+    così 'sertori', 'Sertori' e 'SERTORI' trovano tutti lo stesso record."""
+    return await assignments_col.find_one(
+        {"nome": {"$regex": f"^{re.escape(nome.strip())}$", "$options": "i"}}
+    )
+
+
+# ── Milestone di Progetto — dati serviti da qui (non più embedded in
+# milestone.html) così il controllo di accesso per ruolo è reale lato server,
+# non solo un redirect client-side aggirabile forzando localStorage.
+MILESTONE_IMPRESE_ROWS = [
+    {"lotto": "1A", "cluster": "1–3", "invio": "-", "ottenim": "-", "avvio": "31/05/2026", "p50": "-", "p90": "31/10/2026", "p100": "31/12/2026"},
+    {"lotto": "1B", "cluster": "1", "invio": "-", "ottenim": "-", "avvio": "31/05/2026", "p50": "-", "p90": "31/10/2026", "p100": "31/12/2026"},
+    {"lotto": "2A", "cluster": "2", "invio": "-", "ottenim": "-", "avvio": "20/07/2026", "p50": "-", "p90": "31/10/2026", "p100": "31/12/2026"},
+    {"lotto": "2B", "cluster": "2", "invio": "-", "ottenim": "-", "avvio": "06/07/2026", "p50": "-", "p90": "31/10/2026", "p100": "31/12/2026"},
+    {"lotto": "1", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
+    {"lotto": "2", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
+    {"lotto": "3", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
+    {"lotto": "4", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
+    {"lotto": "5", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
+    {"lotto": "6", "cluster": "3–4", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/10/2026", "p50": "31/05/2027", "p90": "-", "p100": "15/11/2027"},
+    {"lotto": "7", "cluster": "6–7", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/01/2027", "p50": "30/09/2027", "p90": "-", "p100": "31/03/2028"},
+    {"lotto": "8", "cluster": "5", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/01/2027", "p50": "30/09/2027", "p90": "-", "p100": "31/07/2028"},
+]
+
+MILESTONE_CONTRACT_ROWS = [
+    {"milestone": "Permits submission", "p50": "-", "p70": "-", "p100": "31/12/2026", "cavi_testati": "-", "cavi_info": ""},
+    {"milestone": "Authorizations received", "p50": "-", "p70": "-", "p100": "31/12/2027", "cavi_testati": "-", "cavi_info": ""},
+    {"milestone": "Cluster 1", "p50": "-", "p70": "31/12/2026", "p100": "30/04/2027", "cavi_testati": "30/06/2027", "cavi_info": "Intra MXP102 · P0"},
+    {"milestone": "Cluster 2", "p50": "31/12/2026", "p70": "-", "p100": "31/05/2027", "cavi_testati": "31/07/2027", "cavi_info": "Intra MXP109 · P0"},
+    {"milestone": "Cluster 3", "p50": "31/05/2027", "p70": "-", "p100": "31/03/2028", "cavi_testati": "30/06/2028", "cavi_info": "Inter AZ · P1"},
+    {"milestone": "Cluster 4", "p50": "-", "p70": "-", "p100": "31/03/2028", "cavi_testati": "30/06/2028", "cavi_info": "Inter AZ - MXP064 · P1"},
+    {"milestone": "Cluster 5", "p50": "-", "p70": "-", "p100": "30/06/2028", "cavi_testati": "31/08/2028", "cavi_info": "Intra MXP133 · P2"},
+    {"milestone": "Cluster 6", "p50": "-", "p70": "-", "p100": "31/12/2028", "cavi_testati": "31/03/2029", "cavi_info": "Intra MXP118 · P3"},
+    {"milestone": "Cluster 7", "p50": "-", "p70": "-", "p100": "31/12/2028", "cavi_testati": "31/03/2029", "cavi_info": "Intra MXP140 · TBC"},
+]
+
+
+@app.get("/api/milestone")
+async def get_milestone(sess: dict = Depends(_require_milestone_session)):
+    """Dati di milestone.html. Accesso negato (403) al ruolo 'dl', in aggiunta
+    al redirect client-side già presente sulla pagina — qui il controllo è
+    reale perché il ruolo viene dal token firmato server-side."""
+    return {"imprese": MILESTONE_IMPRESE_ROWS, "contract": MILESTONE_CONTRACT_ROWS}
+
+
+@app.get("/api/parametri")
+async def get_parametri(sess: dict = Depends(_require_staff_session)):
+    """Parametri di configurazione (rischio ROS, squadre, capacità, azioni,
+    tempi autorizzativi) usati da stato_lotti.html. Parsati server-side dallo
+    xlsx caricato via admin.html — nessun valore è hardcoded nel frontend.
+    403 per il ruolo 'impresa' (dato interno di pianificazione, non pratiche)."""
+    data, meta = await _load_parametri()
+    return {**data, "_meta": meta}
+
+
+@app.get("/api/enti")
+async def get_enti(sess: dict = Depends(_require_session)):
+    """Restituisce tutti gli enti unici presenti in Master.csv, ordinati alfabeticamente."""
+    df = await _read_master_csv()
+    if df is None or "ENTE" not in df.columns:
+        return {"enti": []}
+    enti = sorted(
+        {str(v).strip() for v in df["ENTE"].dropna() if str(v).strip()},
+        key=lambda x: x.lower()
+    )
+    return {"enti": enti}
+
+
+@app.get("/api/concomitanze")
+async def get_concomitanze(sess: dict = Depends(_require_session)):
+    """Elenco TRATTA_ID con lavorazione aggiuntiva concomitante (es. tubo extra
+    per sovrapposizione con un altro progetto). Dato tecnico sulla tratta fisica,
+    non legato a una specifica impresa: nessuno scoping per lotto, visibile a
+    qualunque sessione valida (staff o impresa)."""
+    docs = [d async for d in concomitanza_col.find({})]
+    return {
+        "tratta_ids": [d["_id"] for d in docs],
+        "nota_by_tratta": {d["_id"]: d.get("nota", "") for d in docs},
+        "count": len(docs),
     }
-  }
-  _positionLegendMobile();
-});
-window.addEventListener('load', () => {
-  _positionLegendMobile();
-  // ── Inizializzazione sicura sidebar su mobile ──
-  const sidebar = document.getElementById('sidebarEl');
-  if (sidebar && _isMobile()) {
-    sidebar.style.display = 'none';
-    sidebar.style.visibility = 'hidden';
-    sidebar.classList.remove('drawer-open');
-    const overlay = document.getElementById('drawerOverlay');
-    if (overlay) overlay.classList.remove('open');
-  } else if (sidebar && !_isMobile()) {
-    // Desktop: assicura visibilità
-    const antifouc = document.getElementById('_antifouc');
-    if (antifouc) antifouc.remove();
-    sidebar.style.display = '';
-    sidebar.style.visibility = '';
-  }
-  // ── Swipe verso il basso per chiudere il drawer ──
-  if (sidebar) {
-    let _touchStartY = 0;
-    let _touchStartX = 0;
-    sidebar.addEventListener('touchstart', e => {
-      _touchStartY = e.touches[0].clientY;
-      _touchStartX = e.touches[0].clientX;
-    }, { passive: true });
-    sidebar.addEventListener('touchend', e => {
-      const dy = e.changedTouches[0].clientY - _touchStartY;
-      const dx = Math.abs(e.changedTouches[0].clientX - _touchStartX);
-      // Swipe verso il basso di almeno 60px e più verticale che orizzontale
-      if (dy > 60 && dy > dx) closeDrawer();
-    }, { passive: true });
-  }
-});
-// ────────────────────────────────────────────────────────────────────────────
-</script>
 
-<!-- Help Modal -->
-<div id="deniedOverlay" onclick="if(event.target===this)closeDeniedModal()">
-  <div class="denied-modal">
-    <div class="denied-head">
-      <h3>Pratiche negate — Report AWS</h3>
-      <p>Le pratiche selezionate qui vengono mostrate come <strong>DENIED</strong> (rosso) nel PowerPoint generato da «Report AWS». La selezione non modifica in alcun modo i dati della dashboard né Master.csv: è solo una regola di visualizzazione del report, salvata su questo browser.</p>
-    </div>
-    <div class="denied-tools">
-      <input type="text" id="deniedSearch" placeholder="Cerca pratica, ente, comune, tratta…" oninput="renderDeniedList()" autocomplete="off">
-      <select id="deniedLotto" onchange="renderDeniedList()"><option value="">Tutti i lotti</option></select>
-      <select id="deniedFiltro" onchange="renderDeniedList()">
-        <option value="tutte">Tutte</option>
-        <option value="selezionate">Solo selezionate</option>
-        <option value="nonottenute">Escludi ottenute</option>
-      </select>
-      <button onclick="clearDenied()">Deseleziona tutto</button>
-    </div>
-    <div class="denied-list" id="deniedList"></div>
-    <div class="denied-foot">
-      <span class="denied-summary" id="deniedSummary"></span>
-      <button onclick="closeDeniedModal()">Chiudi</button>
-    </div>
-  </div>
-</div>
 
-<div id="helpOverlay" onclick="if(event.target===this)document.getElementById('helpOverlay').classList.remove('open')">
-  <div class="help-modal">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-      <h3>Guida — Mappa Avanzamento</h3>
-      <span onclick="document.getElementById('helpOverlay').classList.remove('open')"
-        style="cursor:pointer;color:var(--muted);font-size:22px;line-height:1">×</span>
-    </div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Panoramica delle funzionalità disponibili</div>
+@app.post("/api/admin/concomitanze/import")
+async def import_concomitanze(
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+):
+    """Sostituisce l'intero elenco concomitanze per una 'fonte' (es. 'ENRI-QTS').
+    Body: {fonte: str, nota: str, tratta_ids: [...]} oppure un GeoJSON
+    FeatureCollection con TRATTA_ID nelle properties di ogni feature — in tal
+    caso i TRATTA_ID vengono estratti automaticamente. Richiede x-upload-token."""
+    _check_token(x_upload_token)
+    fonte = str((payload or {}).get("fonte", "")).strip() or "ENRI-QTS"
+    nota = str((payload or {}).get("nota", "")).strip() or "Tubo aggiuntivo"
 
-    <div class="help-section">
-      <h4>Modalità di Visualizzazione</h4>
-      <p>I pulsanti <strong>Pratiche · Scavi · Lotto · Cluster</strong> nella barra laterale cambiano il criterio di colorazione delle tratte. <em>Pratiche</em> mostra l'avanzamento autorizzativo con colori che vanno dal grigio (in attesa) al verde (ottenuto). <em>Lotto</em> distingue i quattro lotti attivi (1A, 1B, 2A, 2B) e quelli in avvio (1–8). <em>Cluster</em> raggruppa le tratte per area geografica con una tavolozza di 30 colori distinti. La legenda in basso a sinistra si aggiorna automaticamente al cambio di modalità.</p>
-    </div>
+    if payload.get("type") == "FeatureCollection":
+        tratta_ids = sorted({
+            str((f.get("properties") or {}).get("TRATTA_ID", "")).strip()
+            for f in payload.get("features", [])
+            if str((f.get("properties") or {}).get("TRATTA_ID", "")).strip()
+        })
+    else:
+        tratta_ids = sorted({str(t).strip() for t in payload.get("tratta_ids", []) if str(t).strip()})
 
-    <div class="help-section">
-      <h4>Filtri Multi-selezione</h4>
-      <p>In modalità <em>Pratiche</em> e <em>Lotto</em> puoi cliccare su più badge lotto nella barra di filtro per combinarli: la mappa mostra solo i lotti selezionati e fa zoom automatico sull'area risultante. Clicca <strong>Tutti</strong> per tornare alla vista completa. In modalità <em>Cluster</em> funziona allo stesso modo con i cluster: le tratte non selezionate diventano semi-trasparenti per agevolare il confronto.</p>
-    </div>
+    if not tratta_ids:
+        raise HTTPException(400, "Nessun TRATTA_ID trovato nel payload")
 
-    <div class="help-section">
-      <h4>📍 Popup Dettaglio Tratta</h4>
-      <p>Clicca su qualsiasi tratta per aprire il pannello di dettaglio. Trovi: comune, cluster, tipologia, lunghezza, ente destinatario (fino a due enti), stato autorizzativo con badge colorato, stato lavorabilità e motivo di eventuale blocco, nulla osta e ordinanza se presenti, codici pratica associati. La colonna destra mostra l'avanzamento del lotto con due barre grafiche (permessi ottenuti e pratiche inviate+) e il contributo della tratta sul totale del lotto. Un link apre la posizione direttamente in Google Maps.</p>
-    </div>
+    # Upsert per _id (non delete+insert): un TRATTA_ID può in teoria comparire
+    # anche in un'altra 'fonte' futura, l'_id deve restare univoco a livello
+    # di intera collection, non solo all'interno della fonte.
+    await concomitanza_col.delete_many({"fonte": fonte, "_id": {"$nin": tratta_ids}})
+    for tid in tratta_ids:
+        await concomitanza_col.update_one(
+            {"_id": tid},
+            {"$set": {"fonte": fonte, "nota": nota, "updated_at": _now_iso()}},
+            upsert=True,
+        )
+    await _log_admin_action("import_concomitanze", fonte, (payload or {}).get("actor"))
+    return {"ok": True, "fonte": fonte, "count": len(tratta_ids), "tratta_ids": tratta_ids}
 
-    <div class="help-section">
-      <h4>🟣 Tracciato QTS</h4>
-      <p>Il toggle <strong>Tracciato QTS</strong> nella barra laterale sovrappone il tracciato di riferimento QTS alla mappa corrente, visualizzato in viola tratteggiato. Il pulsante <strong>Solo QTS</strong> nasconde tutti gli altri layer e centra la vista sul tracciato QTS, utile per confronti rapidi. La lunghezza totale del QTS compare a fianco del toggle una volta caricato il file.</p>
-    </div>
 
-    <div class="help-section">
-      <h4>Tipi di Mappa (Basemap)</h4>
-      <p>Il controllo in basso a sinistra (miniatura della mappa corrente) permette di cambiare il layer di sfondo tra cinque opzioni: <strong>Mappa</strong> (OpenStreetMap), <strong>Ibrida</strong> e <strong>Satellite</strong> (Google Maps), <strong>Topografica</strong> (OpenTopoMap) e <strong>Catastale</strong> (WMS Agenzia delle Entrate). Il layer catastale si attiva automaticamente a partire dallo zoom 14 e richiede una connessione all'esterno; un avviso compare se serve fare zoom in.</p>
-    </div>
+@app.get("/api/imprese/me")
+async def impresa_me(sess: dict = Depends(_require_session)):
+    """Returns the impresa's profile if they are assigned, else 404.
+    Il nome viene dal token di sessione firmato, non da un parametro client."""
+    doc = await _find_assignment(sess["nome"])
+    if not doc:
+        raise HTTPException(404, "Impresa non assegnata")
+    return {"nome": doc["nome"], "lotti": doc.get("lotti", []), "active": bool(doc.get("active", True))}
 
-    <div class="help-section">
-      <h4>Ricerca Pratiche e Indirizzi</h4>
-      <p>La barra di ricerca nella topbar cerca contemporaneamente tra le pratiche del dataset (per codice pratica, codice cantiere o ID tratta) e tra gli indirizzi italiani via geocoding OpenStreetMap. I risultati sono divisi in due sezioni: <em>Pratiche, Tratte e Cantieri</em> mostra il codice, il lotto e il comune; <em>Indirizzi</em> permette di centrare la mappa su qualsiasi luogo. Selezionando una tratta, questa viene evidenziata in giallo e si apre il popup di dettaglio.</p>
-    </div>
 
-    <div class="help-section">
-      <h4>📍 Siti di Interesse</h4>
-      <p>Il pulsante <strong>Siti</strong> in alto a destra apre un pannello con i principali siti tecnici (data center, nodi di rete, ecc.) localizzati lungo il tracciato. Usa la barra di ricerca interna per filtrare per nome o descrizione. Cliccando su un sito la mappa si centra sulla posizione con un marker temporaneo e un popup identificativo.</p>
-    </div>
+@app.get("/api/imprese/pratiche")
+async def impresa_pratiche(sess: dict = Depends(_require_session)):
+    """Returns Master.csv rows whose Source.Name matches one of the user's lotti
+    (confronto per codice lotto esatto, non substring — così 'Lotto 2' non
+    aggancia per errore 'Lotto 2A.xlsx' o eventuali lotti a doppia cifra)."""
+    doc = await _find_assignment(sess["nome"])
+    if not doc or not doc.get("active", True):
+        raise HTTPException(404, "Impresa non autorizzata")
+    lotti = {_lotto_from_source(l) for l in doc.get("lotti", []) if str(l).strip()}
+    df = await _read_master_csv()
+    if "Source.Name" not in df.columns or not lotti:
+        return {"pratiche": [], "lotti": sorted(lotti), "total": 0}
+    mask = df["Source.Name"].apply(lambda x: _lotto_from_source(x) in lotti)
+    sub = df[mask]
+    pratiche = sub.fillna("").to_dict(orient="records")
+    return {"pratiche": pratiche, "lotti": sorted(lotti), "total": len(pratiche)}
 
-    <div class="help-section">
-      <h4>⬇ Esporta GeoJSON</h4>
-      <p>Il pulsante <strong>GeoJSON</strong> in alto esporta il tracciato in un file da salvare sul tuo computer, con tutte le info pratica (stato autorizzativo, ente, codici pratica, ecc.) e cantiere (stato, metri scavati/totali, impresa, date) associate a ogni tratta: se hai un filtro lotto attivo in sidebar esporta solo quei lotti, altrimenti esporta tutto il tracciato. Su richiesta puoi includere anche gli attraversamenti (SED) in un secondo file separato.</p>
-    </div>
 
-    <div class="help-section">
-      <h4>Misuratore di Distanza</h4>
-      <p>Il pulsante <strong>Misura</strong>, posizionato sotto il selettore di mappa in alto a sinistra, attiva la modalità di misurazione. Clicca sulla mappa per aggiungere punti: ogni segmento mostra la distanza parziale con un'etichetta, il badge in basso al centro aggiorna la distanza totale. Doppio click per terminare la misurazione; il tasto <strong>×</strong> nel badge o il tasto <kbd>Esc</kbd> cancellano tutto. La misura viene espressa in metri sotto il chilometro, in km sopra.</p>
-    </div>
+@app.get("/api/imprese/master-sed")
+async def impresa_master_sed(sess: dict = Depends(_require_session)):
+    """GeoJSON (QGIS.geojson + SED_classificato.geojson) filtrati ai SOLI lotti
+    assegnati all'impresa (nome dal token firmato). Le pagine Area Impresa usano
+    questo endpoint invece di scaricare i file interi con i lotti di tutti i
+    concorrenti. Stesso pattern di scoping di /api/imprese/pratiche."""
+    doc = await _find_assignment(sess["nome"])
+    if not doc or not doc.get("active", True):
+        raise HTTPException(404, "Impresa non autorizzata")
+    lotti = {_lotto_from_source(l) for l in doc.get("lotti", []) if str(l).strip()}
 
-    <div class="help-section">
-      <h4>Barra Statistiche</h4>
-      <p>La barra in basso a sinistra mostra in tempo reale: percentuale complessiva dei permessi ottenuti, chilometri totali, numero di tratte e tratte lavorabili. I valori si aggiornano all'avvio in base a tutti i dati caricati.</p>
-    </div>
+    def _scope(geo: "dict | None") -> dict:
+        if not geo or not isinstance(geo.get("features"), list):
+            return {"type": "FeatureCollection", "features": []}
+        feats = [
+            f for f in geo["features"]
+            if str((f.get("properties") or {}).get("LOTTO", "")).strip().upper() in lotti
+        ]
+        out = {k: v for k, v in geo.items() if k != "features"}
+        out.setdefault("type", "FeatureCollection")
+        out["features"] = feats
+        return out
 
-    <div class="help-section">
-      <h4>Esportazioni</h4>
-      <p><strong>Immagine</strong> — genera uno screenshot PNG ad alta risoluzione (2×) della mappa con la legenda sovrapposta nell'angolo in basso a destra; il file viene scaricato con la data odierna nel nome.</p>
-    </div>
+    qgis = _scope(await _read_current_geojson("QGIS.geojson"))
+    sed = _scope(await _read_current_geojson("SED_classificato.geojson"))
+    return {"qgis": qgis, "sed": sed, "lotti": sorted(lotti)}
 
-    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);font-size:10px;color:var(--muted)">
-      I dati si aggiornano ricaricando un nuovo file <strong>QGIS.geojson</strong> nella stessa cartella. Il layer QTS si aggiorna allo stesso modo con <strong>QTS.geojson</strong>.
-    </div>
-  </div>
-</div>
 
-<!-- ── TRACKING ACCESSI (mappa) — usa proxy backend sicuro (no secret in chiaro) ── -->
-<script>
-(function(){
-  window.addEventListener('pageshow', (e) => {
-    if (e.persisted) location.reload();
-  });
-  const _apiBase = () => (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
-  const _sessionToken = () => localStorage.getItem('_enri_session') || '';
-  const LOG_BIN_ID   = '69c8fbdced015c742bc8e978';
-  const ACCESSI_MAX  = 500;
-  const SAVE_INTERVAL_MS = 60_000;
+@app.post("/api/imprese/submit")
+async def impresa_submit(payload: dict, sess: dict = Depends(_require_session)):
+    """Body: {type: 'update'|'new', changes: [...]}. Il `nome` arriva dalla
+    sessione firmata: anche se il client invia un 'nome' diverso nel body,
+    viene ignorato — non e' piu' possibile inviare submission per conto di
+    un'altra impresa semplicemente cambiando un parametro.
+    For 'update': each change has {tratta_id, ente, tipo_permesso, fields:{col:val}}
+    For 'new': each change is a full row dict.
+    Goes into pending_updates with status='pending'."""
+    nome = sess["nome"]
+    typ = (payload or {}).get("type", "").strip()
+    changes = (payload or {}).get("changes") or []
+    if typ not in {"update", "new"}:
+        raise HTTPException(400, "type must be 'update' or 'new'")
+    if not isinstance(changes, list) or not changes:
+        raise HTTPException(400, "Empty 'changes' array")
+    doc = await _find_assignment(nome)
+    if not doc or not doc.get("active", True):
+        raise HTTPException(403, "Impresa non autorizzata")
 
-  const utente = localStorage.getItem('_enri_user');
-  const ruolo  = localStorage.getItem('_enri_role') || 'user';
-  if (!utente) return;
+    # Tagga le eventuali note con [IMPRESA] cosi' index.html/admin.html possono
+    # distinguerle dalle note admin (v. _tag_note / add_admin_note)
+    if typ == "update":
+        for ch in changes:
+            fields = ch.get("fields") or {}
+            if (str(fields.get("STATO_PERMESSO") or "").strip().upper() == "OTTENUTO"
+                    and not str(fields.get("DATA_APPROVAZIONE") or "").strip()):
+                raise HTTPException(400, "DATA_APPROVAZIONE obbligatoria per lo stato OTTENUTO")
+            if str(fields.get("NOTE") or "").strip():
+                fields["NOTE"] = _tag_note(fields["NOTE"], "IMPRESA")
+    elif typ == "new":
+        for row in changes:
+            if isinstance(row, dict) and str(row.get("NOTE") or "").strip():
+                row["NOTE"] = _tag_note(row["NOTE"], "IMPRESA")
 
-  const _sessionStart = Date.now();
-  let _sessionTs      = null;
-  let _cachedData     = null;
+    record = {
+        "nome": nome,
+        "type": typ,
+        "changes": changes,
+        "status": "pending",
+        "submitted_at": _now_iso(),
+        "reviewed_at": None,
+        "reviewed_by": None,
+        "applied_upload_id": None,
+        "note": (payload or {}).get("note", ""),
+    }
+    res = await pending_col.insert_one(record)
+    return {"ok": True, "id": str(res.inserted_id), "count": len(changes)}
 
-  async function _proxyGet(binId) {
-    const res = await fetch(_apiBase() + '/api/logs/get', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session-token': _sessionToken() },
-      body: JSON.stringify({ binId })
-    });
-    const json = await res.json();
-    return { utenti:  Array.isArray(json.record?.utenti)  ? json.record.utenti  : [],
-             accessi: Array.isArray(json.record?.accessi) ? json.record.accessi : [] };
-  }
 
-  function _proxyPut(binId, data, keepalive) {
-    return fetch(_apiBase() + '/api/logs/put', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session-token': _sessionToken() },
-      body: JSON.stringify({ binId, data }),
-      ...(keepalive ? { keepalive: true } : {})
-    });
-  }
+@app.get("/api/imprese/my-submissions")
+async def my_submissions(limit: int = 50, sess: dict = Depends(_require_session)):
+    cur = pending_col.find({"nome": sess["nome"]}).sort("submitted_at", -1).limit(min(limit, 200))
+    items = []
+    async for d in cur:
+        d["_id"] = str(d["_id"])
+        items.append(d)
+    return {"submissions": items, "count": len(items)}
 
-  async function _getIP() {
-    try { const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
-          return (await r.json()).ip || null; } catch(_) { return null; }
-  }
 
-  // Aggiorna durata nella cache locale e salva
-  function _flushDurata() {
-    if (!_sessionTs || !_cachedData) return;
-    const entry = _cachedData.accessi.find(a => a.ts === _sessionTs);
-    if (!entry) return;
-    const durata = Math.round((Date.now() - _sessionStart) / 60_000);
-    if (entry.durata === durata) return;
-    entry.durata = durata;
-    _proxyPut(LOG_BIN_ID, _cachedData, true).catch(() => {});
-  }
+@app.delete("/api/imprese/submissions/{sub_id}")
+async def delete_my_submission(sub_id: str, sess: dict = Depends(_require_session)):
+    """L'impresa può cancellare solo le proprie submission ancora in stato pending.
+    Il confronto usa il nome dalla sessione, non un parametro client."""
+    try:
+        oid = ObjectId(sub_id)
+    except Exception:
+        raise HTTPException(400, "ID submission non valido")
+    doc = await pending_col.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Submission non trovata")
+    if doc.get("nome") != sess["nome"]:
+        raise HTTPException(403, "Non autorizzato")
+    if doc.get("status") != "pending":
+        raise HTTPException(409, "Solo le richieste in attesa possono essere eliminate")
+    await pending_col.delete_one({"_id": oid})
+    return {"deleted": sub_id}
 
-  // ── Registra accesso all'avvio ──────────────────────────────────────────
-  Promise.all([_proxyGet(LOG_BIN_ID), _getIP()]).then(([data, ip]) => {
-    const entry = {
-      ts: new Date().toISOString(),
-      utente, ruolo, ip,
-      ua: navigator.userAgent.substring(0, 120),
-      durata: 0, lotti: [], nAperture: 0, pagina: 'mappa'
-    };
-    data.accessi.push(entry);
-    if (data.accessi.length > ACCESSI_MAX)
-      data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
-    if (!data.utenti.includes(utente)) data.utenti.push(utente);
-    _sessionTs  = entry.ts;
-    _cachedData = data;
-    _proxyPut(LOG_BIN_ID, data).catch(() => {});
 
-    // Salva durata ogni minuto
-    setInterval(_flushDurata, SAVE_INTERVAL_MS);
-  }).catch(() => {});
+# ───────── Admin: assignments management ────────────────────────────────────
 
-  // ── Trigger di uscita — tre eventi per massima copertura mobile/desktop ──
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') _flushDurata();
-  });
-  window.addEventListener('pagehide', _flushDurata);
-  window.addEventListener('beforeunload', _flushDurata);
-})();
-</script>
+@app.get("/api/admin/assignments")
+async def list_assignments(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    _check_token(x_upload_token or token_q)
+    cur = assignments_col.find({}).sort("nome", 1)
+    items = [_serialize_assignment(d) async for d in cur]
+    return {"assignments": items, "count": len(items)}
 
-</body>
-</html>
+
+@app.put("/api/admin/assignments/{nome}")
+async def upsert_assignment(
+    nome: str,
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    _check_token(x_upload_token or token_q)
+    nome = nome.strip()
+    lotti = (payload or {}).get("lotti", [])
+    active = bool((payload or {}).get("active", True))
+    if not nome:
+        raise HTTPException(400, "nome required")
+    if not isinstance(lotti, list):
+        raise HTTPException(400, "lotti must be a list")
+    doc = {"nome": nome, "lotti": [str(x) for x in lotti], "active": active, "updated_at": _now_iso()}
+    await assignments_col.update_one({"nome": nome}, {"$set": doc, "$setOnInsert": {"created_at": _now_iso()}}, upsert=True)
+    out = await _find_assignment(nome)
+    return _serialize_assignment(out)
+
+
+@app.delete("/api/admin/assignments/{nome}")
+async def delete_assignment(
+    nome: str,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    _check_token(x_upload_token or token_q)
+    res = await assignments_col.delete_one({"nome": nome})
+    return {"deleted": res.deleted_count}
+
+
+# ───────── Admin: pending updates approval queue ────────────────────────────
+
+@app.get("/api/admin/pending-updates")
+async def list_pending(
+    status: str = "pending",
+    limit: int = 100,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    _check_token(x_upload_token or token_q)
+    q: dict = {}
+    if status and status != "all":
+        q["status"] = status
+    cur = pending_col.find(q).sort("submitted_at", -1).limit(min(limit, 500))
+    items = []
+    async for d in cur:
+        d["_id"] = str(d["_id"])
+        items.append(d)
+    # Arricchisce ogni change con lo stato attuale dal Master.csv
+    try:
+        df = await _read_master_csv()
+        for sub in items:
+            if sub.get("type") != "update":
+                continue
+            for ch in sub.get("changes", []):
+                tratta  = str(ch.get("tratta_id") or "").strip()
+                ente    = str(ch.get("ente") or "").strip()
+                tipo    = str(ch.get("tipo_permesso") or "").strip()
+                pratica = str(ch.get("original_pratica") or "").strip()
+                if not tratta:
+                    continue
+                mask = df["TRATTA_ID"].astype(str).str.strip() == tratta
+                if ente:
+                    mask = mask & (df["ENTE"].astype(str).str.strip() == ente)
+                if tipo:
+                    mask = mask & (df["TIPO_PERMESSO"].astype(str).str.strip() == tipo)
+                if pratica and "PRATICA" in df.columns:
+                    mp = mask & (df["PRATICA"].astype(str).str.strip() == pratica)
+                    if mp.any():
+                        mask = mp
+                rows = df[mask]
+                if rows.empty:
+                    continue
+                # NB: DATA_ULTIMA_MODIFICA è testo DD/MM/YYYY — ordinare come stringa
+                # è sbagliato (es. "26/03/2026" > "02/07/2026" lessicograficamente pur
+                # essendo antecedente). Serve un parsing esplicito a datetime.
+                _dum_dt = pd.to_datetime(rows["DATA_ULTIMA_MODIFICA"], format="%d/%m/%Y", errors="coerce")
+                row = rows.loc[_dum_dt.sort_values(ascending=False, na_position="last").index[0]]
+                ch["_stato_attuale"]     = str(row.get("STATO_PERMESSO", "") or "")
+                ch["_data_richiesta"]    = str(row.get("DATA_RICHIESTA", "") or "")
+                ch["_data_ult_mod"]      = str(row.get("DATA_ULTIMA_MODIFICA", "") or "")
+                ch["_data_approvazione"] = str(row.get("DATA_APPROVAZIONE", "") or "")
+                ch["_nulla_osta"] = str(row.get("NULLA OSTA NECESSARIO", "") or "").strip()
+                # Ricava lotto da Source.Name (es. "Lotto1.xlsx" → "1A", "Lotto3.xlsx" → "3A")
+                src = str(row.get("Source.Name", "") or "")
+                import re as _re
+                lm = _re.search(r'[Ll]otto\s*(\w+)', src)
+                ch["_lotto"] = lm.group(1) if lm else ""
+    except Exception as e:
+        print(f"[pending-updates] enrich error: {e}")
+
+    return {"submissions": items, "count": len(items)}
+
+
+# Colonne di Master.csv che descrivono la tratta fisica (identiche per tutte le righe
+# con lo stesso TRATTA_ID) — ereditate dalle nuove pratiche inserite dalle imprese.
+_TRATTA_STATIC_COLS = (
+    "LUNGHEZZA", "SPAN", "LOTTO", "PROVINCIA", "COMUNE", "CLUSTER", "ROUTE",
+    "TIPOLOGIA", "ENTE 2", "CAMPO AWS",
+)
+
+
+def _apply_changes_to_df(df, submission: dict) -> tuple:
+    """Returns (new_df, summary). Raises HTTPException on errors.
+
+    Comportamento di default (in_place=False, usato da imprese.html e dalle
+    NOTE admin): copia l'ultima riga e inserisce una nuova riga subito dopo,
+    per mantenere lo storico di chi ha scritto cosa e quando.
+
+    in_place=True (usato dalla correzione dati admin — stato/date/N_SED):
+    sovrascrive i campi direttamente sulla riga esistente, senza duplicarla.
+    Una correzione di un dato inesatto non è un evento di business da
+    storicizzare come le note o gli aggiornamenti di stato dell'impresa: se
+    duplicassimo la riga, il dato sbagliato originale resterebbe comunque nel
+    CSV (anche se ignorato dalle pagine che leggono solo l'ultima riga)."""
+    typ = submission["type"]
+    changes = submission["changes"]
+    in_place = bool(submission.get("in_place"))
+    summary = {"updated": 0, "added": 0, "not_found": 0}
+    if typ == "update":
+        for ch in changes:
+            tratta = (ch.get("tratta_id") or "").strip()
+            ente   = (ch.get("ente") or "").strip()
+            tipo   = (ch.get("tipo_permesso") or "").strip()
+            fields = ch.get("fields") or {}
+            if not tratta:
+                continue
+            mask = df["TRATTA_ID"].astype(str).str.strip() == tratta
+            if ente:
+                mask = mask & (df["ENTE"].astype(str).str.strip() == ente)
+            if tipo:
+                mask = mask & (df["TIPO_PERMESSO"].astype(str).str.strip() == tipo)
+            # Se la submission include anche PRATICA, usa come discriminante
+            # per distinguere pratiche diverse sulla stessa tratta+ente+tipo
+            pratica_key = str(fields.get("PRATICA") or ch.get("pratica") or "").strip()
+            if not pratica_key and "PRATICA" in df.columns:
+                # Prova a ricavarlo dalla submission (campo originale della riga)
+                pratica_key = str(ch.get("original_pratica") or "").strip()
+            if pratica_key and "PRATICA" in df.columns:
+                mask_p = mask & (df["PRATICA"].astype(str).str.strip() == pratica_key)
+                idx_p  = df.index[mask_p].tolist()
+                if idx_p:   # usa il filtro per pratica solo se trova qualcosa
+                    idx = idx_p
+                else:
+                    idx = df.index[mask].tolist()
+            else:
+                idx = df.index[mask].tolist()
+            if not idx:
+                summary["not_found"] += 1
+                continue
+            # Auto-set DATA_ULTIMA_MODIFICA se non fornita (solo su cambio stato)
+            if "DATA_ULTIMA_MODIFICA" not in fields and "STATO_PERMESSO" in fields:
+                fields["DATA_ULTIMA_MODIFICA"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+            # DATA_UPDATE: qualsiasi tocco dell'impresa sulla pratica (stato, nota, o altro campo), non solo cambio stato
+            if "DATA_UPDATE" in df.columns and "DATA_UPDATE" not in fields:
+                fields["DATA_UPDATE"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+            last_idx = idx[-1]
+            if in_place:
+                # Correzione: sovrascrive i campi sulla riga esistente, nessuna nuova riga
+                if ch.get("preserve_note_tag") and "NOTE" in fields and fields["NOTE"]:
+                    # Non cambiare l'autore mostrato (RETELIT/IMPRESA): si sta
+                    # solo correggendo il testo di una nota già esistente.
+                    existing = str(df.loc[last_idx, "NOTE"]) if "NOTE" in df.columns else ""
+                    m = _NOTE_TAG_RE.match(existing or "")
+                    tag_prefix = m.group(0) if m else ""
+                    fields["NOTE"] = f"{tag_prefix}{fields['NOTE']}"
+                for col, val in fields.items():
+                    if col in df.columns:
+                        df.loc[last_idx, col] = str(val)
+                summary["updated"] += 1
+                continue
+            # Copia l'ultima riga esistente e inserisce la nuova SUBITO DOPO
+            # in modo da mantenere le righe dello stesso iter vicine
+            last_row = df.loc[last_idx].copy()
+            for col, val in fields.items():
+                if col in df.columns:
+                    last_row[col] = str(val)
+            # La nota NON deve mai essere ereditata implicitamente dalla riga precedente:
+            # se questo aggiornamento non la include esplicitamente, la nuova riga resta
+            # senza nota (il frontend imprese.html la rende comunque obbligatoria, questo
+            # è un secondo livello di sicurezza per qualsiasi altro chiamante).
+            if "NOTE" in df.columns and "NOTE" not in fields:
+                last_row["NOTE"] = ""
+            new_row_df = pd.DataFrame([last_row])
+            # Dividi il DataFrame prima e dopo il punto di inserimento
+            top    = df.iloc[:last_idx + 1]
+            bottom = df.iloc[last_idx + 1:]
+            df = pd.concat([top, new_row_df, bottom], ignore_index=True)
+            summary["updated"] += 1
+    elif typ == "new":
+        for row in changes:
+            if not isinstance(row, dict):
+                continue
+            new_row = {c: str(row.get(c, "")) for c in df.columns}
+            # Attributi statici della tratta (non inviati dal form impresa): ereditali
+            # dalle righe già presenti con lo stesso TRATTA_ID, altrimenti LUNGHEZZA ecc.
+            # restano vuoti e vanno reinseriti a mano caricando un Master aggiornato.
+            tid = new_row.get("TRATTA_ID", "").strip()
+            if tid and "TRATTA_ID" in df.columns:
+                same = df[df["TRATTA_ID"].astype(str).str.strip() == tid]
+                if not same.empty:
+                    for col in _TRATTA_STATIC_COLS:
+                        if col not in df.columns or str(new_row.get(col, "")).strip():
+                            continue
+                        vals = same[col].astype(str).str.strip()
+                        vals = vals[(vals != "") & (vals.str.lower() != "nan")]
+                        if not vals.empty:
+                            new_row[col] = vals.iloc[-1]
+            if "DATA_UPDATE" in df.columns and not new_row.get("DATA_UPDATE"):
+                new_row["DATA_UPDATE"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+            summary["added"] += 1
+    return df, summary
+
+
+@app.post("/api/admin/regenerate-derived")
+async def regenerate_derived(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """Rigenera QGIS.geojson + Riepilogo_progettazione.csv dal Master.csv corrente
+    senza modificarlo — utile dopo un fix a _compute_tratta_summary per applicare
+    la nuova logica ai dati già presenti, senza dover re-uploadare Master.csv."""
+    _check_token(x_upload_token or token_q)
+    df = await _read_master_csv()
+    result = await _regenerate_derived_files(df, note="force regenerate (manual)")
+    return {"ok": True, "result": result}
+
+
+@app.post("/api/admin/backfill-data-update-solleciti")
+async def backfill_data_update_solleciti(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """One-off (rev.147): valorizza DATA_UPDATE per le tratte con solleciti registrati
+    PRIMA del fix del bug di matching (mask rotta su 'pratica' → touch mai avvenuto).
+    Per ogni tratta_id in 'solleciti', prende la data_sollecito più recente e la usa
+    come DATA_UPDATE se è più recente di quella già presente (o se assente).
+    Non tocca le tratte senza solleciti. Idempotente: rieseguibile senza effetti collaterali
+    (non peggiora mai una DATA_UPDATE già più recente di quella dei solleciti)."""
+    _check_token(x_upload_token or token_q)
+
+    def _parse_it(s: str):
+        try:
+            return datetime.strptime(str(s).strip(), "%d/%m/%Y")
+        except Exception:
+            return None
+
+    # Max data_sollecito per tratta_id
+    max_per_tratta: dict[str, datetime] = {}
+    async for d in solleciti_col.find({}, {"tratta_id": 1, "data_sollecito": 1}):
+        tid = str(d.get("tratta_id", "")).strip()
+        dt = _parse_it(d.get("data_sollecito", ""))
+        if not tid or not dt:
+            continue
+        if tid not in max_per_tratta or dt > max_per_tratta[tid]:
+            max_per_tratta[tid] = dt
+
+    async with _master_csv_lock:
+        df = await _read_master_csv()
+        if "TRATTA_ID" not in df.columns:
+            return {
+                "ok": False,
+                "error": "colonna TRATTA_ID assente da Master.csv",
+                "colonne_trovate": df.columns.tolist(),
+            }
+        if "DATA_UPDATE" not in df.columns:
+            df["DATA_UPDATE"] = ""
+            column_created = True
+        else:
+            column_created = False
+
+        touched = []
+        col_tratta = df["TRATTA_ID"].astype(str).str.strip()
+        for tid, sol_dt in max_per_tratta.items():
+            mask = col_tratta == tid
+            if not mask.any():
+                continue
+            existing_raw = df.loc[mask, "DATA_UPDATE"].iloc[0]
+            existing_dt = _parse_it(existing_raw)
+            if existing_dt and existing_dt >= sol_dt:
+                continue  # già più recente (o uguale), non sovrascrivere
+            new_val = sol_dt.strftime("%d/%m/%Y")
+            df.loc[mask, "DATA_UPDATE"] = new_val
+            touched.append({"tratta_id": tid, "data_update": new_val})
+
+        if touched or column_created:
+            await _write_master_csv(
+                df,
+                note=f"Backfill one-off rev.147: DATA_UPDATE da storico solleciti ({len(touched)} tratte)"
+                     + (" + colonna creata" if column_created else ""),
+            )
+
+    return {"ok": True, "touched": len(touched), "column_created": column_created, "detail": touched}
+
+
+@app.post("/api/admin/backfill-fix-data-update-overreach")
+async def backfill_fix_data_update_overreach(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """One-off (rev.248): corregge il bug per cui _touch_data_update/_touch_data_update_multi
+    (prima del fix) scrivevano DATA_UPDATE=oggi su TUTTE le righe storicizzate con lo stesso
+    TRATTA_ID — inclusi altri iter/tipo_permesso sulla stessa tratta e righe storiche vecchie
+    dello stesso iter — invece che solo sull'ultima riga del gruppo tratta+tipo_permesso.
+
+    Per ogni gruppo (TRATTA_ID, TIPO_PERMESSO): azzera DATA_UPDATE su tutte le righe tranne
+    l'ultima (idx[-1], la più recente). Il frontend (index.html) ricade su DATA_ULTIMA_MODIFICA
+    quando DATA_UPDATE è vuota, recuperando la datazione corretta delle note storiche.
+    Non tocca NOTE/STATO_PERMESSO/DATA_ULTIMA_MODIFICA/altri campi. Idempotente: rieseguibile
+    senza effetti collaterali (le righe già a DATA_UPDATE vuota vengono saltate)."""
+    _check_token(x_upload_token or token_q)
+
+    async with _master_csv_lock:
+        df = await _read_master_csv()
+        if "TRATTA_ID" not in df.columns or "DATA_UPDATE" not in df.columns:
+            return {
+                "ok": False,
+                "error": "colonna TRATTA_ID o DATA_UPDATE assente da Master.csv",
+                "colonne_trovate": df.columns.tolist(),
+            }
+
+        has_tipo = "TIPO_PERMESSO" in df.columns
+        group_cols = ["TRATTA_ID", "TIPO_PERMESSO"] if has_tipo else ["TRATTA_ID"]
+        cleared = []
+
+        for _, idx_arr in df.groupby(
+            [df[c].astype(str).str.strip() for c in group_cols]
+        ).groups.items():
+            idx = list(idx_arr)
+            if len(idx) < 2:
+                continue  # gruppo con una sola riga: nulla da correggere
+            for i in idx[:-1]:  # tutte tranne l'ultima
+                existing = str(df.loc[i, "DATA_UPDATE"] or "").strip()
+                if not existing or existing.lower() == "nan":
+                    continue
+                cleared.append({
+                    "tratta_id": str(df.loc[i, "TRATTA_ID"]),
+                    "tipo_permesso": str(df.loc[i, "TIPO_PERMESSO"]) if has_tipo else "",
+                    "pratica": str(df.loc[i, "PRATICA"]) if "PRATICA" in df.columns else "",
+                    "data_update_rimossa": existing,
+                })
+                df.loc[i, "DATA_UPDATE"] = ""
+
+        if cleared:
+            await _write_master_csv(
+                df,
+                note=f"Backfill one-off rev.248: azzerato DATA_UPDATE errato su {len(cleared)} righe storiche non-ultime",
+            )
+
+    return {"ok": True, "cleared": len(cleared), "detail": cleared}
+
+
+
+async def edit_pending(
+    sub_id: str,
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Corregge i dati (`changes`) di una submission impresa ancora in stato 'pending',
+    prima di approvarla — es. errori di digitazione o dati di test inviati per sbaglio.
+    Non è modificabile una submission già approvata/rifiutata (usare direttamente
+    la tabella Cantieri/Master per correzioni post-approvazione)."""
+    _check_token(x_upload_token or token_q)
+    try:
+        oid = ObjectId(sub_id)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    sub = await pending_col.find_one({"_id": oid})
+    if not sub:
+        raise HTTPException(404, "Submission not found")
+    if sub.get("status") != "pending":
+        raise HTTPException(409, f"Non modificabile: già {sub.get('status')}")
+    changes = payload.get("changes")
+    if not isinstance(changes, list):
+        raise HTTPException(400, "'changes' deve essere una lista")
+    await pending_col.update_one(
+        {"_id": oid},
+        {"$set": {"changes": changes, "edited_at": _now_iso(), "edited_by": x_actor_nome or "admin"}},
+    )
+    await _log_admin_action("edit_pending_update", sub_id, x_actor_nome)
+    return {"ok": True}
+
+
+@app.post("/api/admin/pending-updates/{sub_id}/approve")
+async def approve_pending(
+    sub_id: str,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    _check_token(x_upload_token or token_q)
+    try:
+        oid = ObjectId(sub_id)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    sub = await pending_col.find_one({"_id": oid})
+    if not sub:
+        raise HTTPException(404, "Submission not found")
+    if sub.get("status") != "pending":
+        raise HTTPException(409, f"Already {sub.get('status')}")
+    async with _master_csv_lock:
+        df = await _read_master_csv()
+        new_df, summary = _apply_changes_to_df(df, sub)
+        note = f"Submission {sub_id} from {sub['nome']} ({sub['type']})"
+        upload_id = await _write_master_csv(new_df, note=note)
+    reviewer = x_actor_nome or "admin"
+    await pending_col.update_one(
+        {"_id": oid},
+        {"$set": {"status": "approved", "reviewed_at": _now_iso(), "reviewed_by": reviewer, "applied_upload_id": upload_id, "summary": summary}},
+    )
+    await _log_admin_action("approve_pending_update", sub_id, x_actor_nome)
+    # Sync cantieri: crea automaticamente cantieri non_avviato per le nuove tratte lavorabili
+    asyncio.create_task(_sync_cantieri())
+    return {"ok": True, "summary": summary, "new_upload_id": upload_id}
+
+
+@app.post("/api/admin/pending-updates/{sub_id}/reject")
+async def reject_pending(
+    sub_id: str,
+    payload: dict | None = None,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    _check_token(x_upload_token or token_q)
+    try:
+        oid = ObjectId(sub_id)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    note = ((payload or {}).get("note") or "").strip()
+    reviewer = x_actor_nome or "admin"
+    res = await pending_col.update_one(
+        {"_id": oid, "status": "pending"},
+        {"$set": {"status": "rejected", "reviewed_at": _now_iso(), "reviewed_by": reviewer, "reviewed_note": note}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(404, "Submission not found or not pending")
+    await _log_admin_action("reject_pending_update", sub_id, x_actor_nome)
+    return {"ok": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NOTE ADMIN — l'admin annota una pratica con lo stesso meccanismo delle imprese
+# (stessa pipeline _apply_changes_to_df: nuova riga copiata dall'ultima esistente,
+# NOTE valorizzata, DATA_UPDATE stampata). Distinguibile da una nota impresa via
+# prefisso [RETELIT]/[IMPRESA] (_tag_note) — index.html/admin.html lo parsano
+# per mostrare l'etichetta "Retelit"/"Impresa" e nascondono il prefisso grezzo.
+# ─────────────────────────────────────────────────────────────────────────────
+_NOTE_TAG_RE = re.compile(r"^\[(RETELIT|IMPRESA)\]\s*")
+_NOTE_WS_RE = re.compile(r"\s+")
+
+
+def _sanitize_note_text(note: str) -> str:
+    """Rimuove newline/tab/altri whitespace di controllo da una NOTE,
+    collassandoli in uno spazio singolo. Master.csv e' quotato correttamente
+    quindi un \\n dentro un campo non rompe il CSV di per se', ma e'
+    esattamente il pattern che ha gia' causato bug su parser non quote-aware
+    a valle (v. AGENT_BRIEF, righe spezzate su campi multi-riga) — meglio non
+    farlo mai entrare in origine."""
+    if not note:
+        return note
+    return _NOTE_WS_RE.sub(" ", note).strip()
+
+
+def _tag_note(note: str, tag: str) -> str:
+    """Prefissa una NOTE con [RETELIT]/[IMPRESA] per distinguerne l'autore in
+    index.html/admin.html. Rimuove un eventuale tag preesistente prima di
+    riapplicarlo, cosi' un admin che modifica una submission impresa (PUT
+    /api/admin/pending-updates/{id}) non produce prefissi impilati."""
+    note = _sanitize_note_text((note or "").strip())
+    if not note:
+        return note
+    note = _NOTE_TAG_RE.sub("", note)
+    return f"[{tag}] {note}"
+@app.get("/api/admin/pratiche-search")
+async def search_pratiche_admin(
+    q: str = "",
+    limit: int = 800,
+    sess: dict = Depends(_require_staff_session),
+):
+    """Cerca pratiche in Master.csv per TRATTA_ID / codice pratica / ente / lotto,
+    deduplicate all'ultima riga (Master.csv è append-only, storico incluso).
+    Usata da admin.html per trovare la pratica a cui aggiungere una nota."""
+    df = await _read_master_csv()
+    if df is None or df.empty:
+        return {"results": []}
+    needed = {"TRATTA_ID", "ENTE", "TIPO_PERMESSO", "PRATICA", "Source.Name", "STATO_PERMESSO", "NOTE"}
+    missing = needed - set(df.columns)
+    if missing:
+        return {"results": [], "error": f"Colonne mancanti in Master.csv: {sorted(missing)}"}
+    work = df.fillna("")
+    q_norm = q.strip().lower()
+    if q_norm:
+        hay = (
+            work["TRATTA_ID"].astype(str) + " " + work["PRATICA"].astype(str) + " " +
+            work["ENTE"].astype(str) + " " + work["Source.Name"].astype(str)
+        ).str.lower()
+        work = work[hay.str.contains(re.escape(q_norm), na=False)]
+    if work.empty:
+        return {"results": []}
+    work = work.assign(_key=(
+        work["TRATTA_ID"].astype(str).str.strip() + "|" + work["ENTE"].astype(str).str.strip() + "|" +
+        work["TIPO_PERMESSO"].astype(str).str.strip() + "|" + work["PRATICA"].astype(str).str.strip()
+    ))
+    latest = work.drop_duplicates(subset="_key", keep="last")
+    # Righe senza numero PRATICA non sono rappresentabili come "pratica" e non
+    # possono ricevere note (add_admin_note richiede una pratica valida) →
+    # escluse dalla tabella, come richiesto dall'utente.
+    latest = latest[latest["PRATICA"].astype(str).str.strip() != ""]
+    # Le pratiche già OTTENUTO non necessitano più di note (emesse, chiuse) →
+    # escluse dalla tabella, come richiesto dall'utente.
+    latest = latest[latest["STATO_PERMESSO"].astype(str).str.strip().str.upper() != "OTTENUTO"]
+    if latest.empty:
+        return {"results": []}
+    # Raggruppa per pratica (ENTE+TIPO_PERMESSO+PRATICA): una pratica AUTORIZZAZIONE
+    # copre piu' tratte, e la nota va condivisa su tutte come fa imprese.html
+    # (PR_SIBLINGS).
+    latest = latest.assign(_lotto=latest["Source.Name"].apply(_lotto_from_source))
+    latest = latest.assign(_gkey=(
+        latest["ENTE"].astype(str).str.strip() + "|" + latest["TIPO_PERMESSO"].astype(str).str.strip() + "|" +
+        latest["PRATICA"].astype(str).str.strip() + "|" + latest["_lotto"]
+    ))
+    PREFIX = {"AUTORIZZAZIONE": "AUT", "NULLA OSTA": "NO", "ORDINANZA": "ORD"}
+    out = []
+    for _, grp in latest.groupby("_gkey", sort=False):
+        with_note = grp[grp["NOTE"].astype(str).str.strip() != ""]
+        rep = with_note.iloc[-1] if not with_note.empty else grp.iloc[0]
+        tipo = str(rep.get("TIPO_PERMESSO", "")).strip()
+        pratica_num = str(rep.get("PRATICA", "")).strip()
+        lotto = rep.get("_lotto", "") or _lotto_from_source(rep.get("Source.Name", ""))
+        pref = PREFIX.get(tipo, (tipo[:3] or "").upper())
+        tratta_ids = sorted({t for t in grp["TRATTA_ID"].astype(str).str.strip() if t})
+        out.append({
+            "tratta_ids": tratta_ids,
+            "tratta_id": tratta_ids[0] if tratta_ids else "",
+            "n_tratte": len(tratta_ids),
+            "ente": str(rep.get("ENTE", "")).strip(),
+            "tipo_permesso": tipo,
+            "pratica": pratica_num,
+            "lotto": lotto,
+            "codice": f"{pref}/{pratica_num}/{lotto}" if pratica_num else "",
+            "stato_permesso": str(rep.get("STATO_PERMESSO", "")).strip(),
+            "note_attuale": str(rep.get("NOTE", "")).strip(),
+            "data_richiesta": _it_date_to_iso(rep.get("DATA_RICHIESTA", "")),
+            "data_prevista_rilascio": _it_date_to_iso(rep.get("DATA_PREVISTA_RILASCIO", "")),
+            "data_approvazione": _it_date_to_iso(rep.get("DATA_APPROVAZIONE", "")),
+            "n_sed": str(rep.get("N_SED", "")).strip(),
+        })
+    out.sort(key=lambda x: x["codice"])
+    return {"results": out[:max(1, min(limit, 800))]}
+
+
+PRATICA_STATO_VALUES = [
+    "IN ATTESA", "IN REDAZIONE", "IN FIRMA RDS", "INVIO PRELIMINARE",
+    "INVIATO", "PROTOCOLLATO", "NECESSARIA INTEGRAZIONE",
+    "IN REDAZIONE INTEGRAZIONE", "PROTOCOLLATO INTEGRAZIONE",
+    "OTTENUTO", "NO COMPETENZA",
+]
+
+
+@app.post("/api/admin/pratiche/update")
+async def update_admin_pratica(
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Modifica diretta dei dati di una pratica (stato, date, nota, n. SED)
+    esattamente come farebbe un'impresa da imprese.html, attraverso
+    _apply_changes_to_df: nessuna approvazione richiesta (l'admin è già
+    l'autorità), scrittura diretta su Master.csv, applicata a TUTTE le tratte
+    della pratica (stessa pipeline già usata da add_admin_note, generalizzata
+    a più campi)."""
+    _check_token(x_upload_token or token_q)
+    p = payload or {}
+    ente = str(p.get("ente") or "").strip()
+    tipo = str(p.get("tipo_permesso") or "").strip()
+    pratica = str(p.get("pratica") or "").strip()
+    tratte = [str(t).strip() for t in (p.get("tratta_ids") or []) if str(t).strip()]
+    single = str(p.get("tratta_id") or "").strip()
+    if single and single not in tratte:
+        tratte.append(single)
+    if not tratte:
+        raise HTTPException(400, "tratta_ids (o tratta_id) è obbligatorio")
+
+    raw = p.get("fields") or {}
+    mode = str(p.get("mode") or "").strip().lower()
+    if mode not in ("data", "note"):
+        # Fallback per eventuali chiamate legacy senza mode esplicito
+        mode = "note" if set(raw.keys()) <= {"note"} else "data"
+
+    fields: dict = {}
+    if mode == "data":
+        if "stato_permesso" in raw:
+            v = str(raw["stato_permesso"] or "").strip()
+            if v and v not in PRATICA_STATO_VALUES:
+                raise HTTPException(400, f"stato_permesso non valido: {v}")
+            if v:
+                fields["STATO_PERMESSO"] = v
+        if "data_richiesta" in raw:
+            v = _iso_date_to_it(raw["data_richiesta"])
+            if raw["data_richiesta"] and not v:
+                raise HTTPException(400, "data_richiesta non valida")
+            fields["DATA_RICHIESTA"] = v
+        if "data_prevista_rilascio" in raw:
+            v = _iso_date_to_it(raw["data_prevista_rilascio"])
+            if raw["data_prevista_rilascio"] and not v:
+                raise HTTPException(400, "data_prevista_rilascio non valida")
+            fields["DATA_PREVISTA_RILASCIO"] = v
+        if "data_approvazione" in raw:
+            v = _iso_date_to_it(raw["data_approvazione"])
+            if raw["data_approvazione"] and not v:
+                raise HTTPException(400, "data_approvazione non valida")
+            fields["DATA_APPROVAZIONE"] = v
+        if fields.get("STATO_PERMESSO") == "OTTENUTO" and not fields.get("DATA_APPROVAZIONE"):
+            raise HTTPException(400, "data_approvazione obbligatoria per lo stato OTTENUTO")
+        if "n_sed" in raw:
+            fields["N_SED"] = str(raw["n_sed"] or "").strip()
+        if "note" in raw:
+            # Correzione diretta della nota esistente: NON si ritagga come
+            # RETELIT — chi l'ha scritta in origine (Impresa o Retelit) resta
+            # l'autore mostrato, si corregge solo il testo.
+            # _apply_changes_to_df preserva il tag esistente sulla riga.
+            fields["NOTE"] = _sanitize_note_text(str(raw["note"] or ""))
+        if not fields:
+            raise HTTPException(400, "Nessun campo valido da aggiornare")
+        in_place = True
+        preserve_note_tag = True
+    else:
+        text = str(raw.get("note") or "").strip()
+        if not text:
+            raise HTTPException(400, "note è obbligatoria")
+        # Nuova nota: sempre taggata RETELIT, sempre una nuova riga di storico
+        fields["NOTE"] = _tag_note(text, "RETELIT")
+        in_place = False
+        preserve_note_tag = False
+
+    submission = {
+        "type": "update",
+        "in_place": in_place,
+        "changes": [{
+            "tratta_id": t, "ente": ente, "tipo_permesso": tipo,
+            "original_pratica": pratica,
+            "preserve_note_tag": preserve_note_tag,
+            "fields": dict(fields),
+        } for t in tratte],
+    }
+    async with _master_csv_lock:
+        df = await _read_master_csv()
+        new_df, summary = _apply_changes_to_df(df, submission)
+        if summary.get("updated", 0) == 0:
+            raise HTTPException(404, "Nessuna riga trovata per TRATTA_ID/ENTE/TIPO_PERMESSO/PRATICA indicati")
+        reviewer = x_actor_nome or "admin"
+        upload_id = await _write_master_csv(new_df, note=f"Admin update by {reviewer} on {len(tratte)} tratta/e ({tratte[0]}{'…' if len(tratte)>1 else ''})")
+    await _log_admin_action("update_pratica", f"{'+'.join(tratte)}|{ente}|{tipo}|{pratica}", x_actor_nome)
+    return {"ok": True, "summary": summary, "new_upload_id": upload_id}
+
+
+def _pratica_note_history_core(df: "pd.DataFrame", ente: str, tipo_permesso: str, pratica: str, lotto: str) -> list[dict]:
+    """Logica condivisa: storico di TUTTE le note inserite nel tempo su una pratica,
+    raccolte da OGNI riga grezza di Master.csv (non solo l'ultima per tratta) e
+    deduplicate per (testo, data) — stessa logica di praticaNotesRaw in index.html."""
+    if df is None or df.empty:
+        return []
+    needed = {"ENTE", "TIPO_PERMESSO", "PRATICA", "Source.Name", "NOTE"}
+    if needed - set(df.columns):
+        return []
+    work = df.fillna("")
+    mask = (
+        (work["ENTE"].astype(str).str.strip() == ente) &
+        (work["TIPO_PERMESSO"].astype(str).str.strip() == tipo_permesso) &
+        (work["PRATICA"].astype(str).str.strip() == pratica)
+    )
+    work = work[mask]
+    work = work[work["Source.Name"].apply(_lotto_from_source) == lotto]
+    has_stato = "STATO_PERMESSO" in work.columns
+    has_tratta = "TRATTA_ID" in work.columns
+    # Replica esatta di effectiveDateRaw in index.html (praticaNotesRaw): se una riga è un
+    # aggiornamento SOLO-NOTA (stessa tratta, stesso STATO_PERMESSO, stessa DATA_ULTIMA_MODIFICA
+    # già vista prima), la vera data dell'evento è DATA_UPDATE, non DATA_ULTIMA_MODIFICA.
+    # Senza questo fallback due note distinte con stessa dum collassano sulla stessa data.
+    stato_seen = []  # lista di {stato, date, tratta_ids: set()}
+    seen = set()
+    notes = []
+    for _, row in work.iterrows():
+        stato = str(row.get("STATO_PERMESSO", "")).strip() if has_stato else ""
+        tratta = str(row.get("TRATTA_ID", "")).strip() if has_tratta else ""
+        dum = str(row.get("DATA_ULTIMA_MODIFICA", "")).strip()
+        data_update = str(row.get("DATA_UPDATE", "")).strip()
+        note_date_raw = dum or data_update
+        is_continuation = any(
+            s["stato"] == stato and s["date"] == note_date_raw and tratta in s["tratta_ids"]
+            for s in stato_seen
+        )
+        effective_date = data_update if (is_continuation and data_update) else note_date_raw
+        merge_target = next((s for s in stato_seen if s["stato"] == stato and s["date"] == effective_date), None)
+        if merge_target is not None:
+            merge_target["tratta_ids"].add(tratta)
+        else:
+            stato_seen.append({"stato": stato, "date": effective_date, "tratta_ids": {tratta}})
+
+        note = str(row.get("NOTE", "")).strip()
+        if not note:
+            continue
+        # Dedup per solo testo nota (non (nota, data)): la stessa nota invariata viene
+        # riportata dal CSV su più righe di cambio stato consecutive con date diverse,
+        # non è un evento nuovo ogni volta — stessa logica di index.html (praticaNotesRaw).
+        if note in seen:
+            continue
+        seen.add(note)
+        notes.append({"note": note, "date": effective_date})
+    notes.sort(key=lambda n: _it_date_to_iso(n["date"]), reverse=True)
+    return notes
+
+
+@app.get("/api/admin/pratiche/note-history")
+async def pratica_note_history(
+    ente: str, tipo_permesso: str, pratica: str, lotto: str,
+    sess: dict = Depends(_require_staff_session),
+):
+    """Storico note per staff/admin. Serve anche a poterle correggere con /pratiche/note/correct."""
+    df = await _read_master_csv()
+    return {"notes": _pratica_note_history_core(df, ente, tipo_permesso, pratica, lotto)}
+
+
+@app.get("/api/imprese/pratiche/note-history")
+async def impresa_pratica_note_history(
+    ente: str, tipo_permesso: str, pratica: str, lotto: str,
+    sess: dict = Depends(_require_session),
+):
+    """Come /api/admin/pratiche/note-history ma per l'Area Impresa: sola lettura,
+    nessuna correzione/eliminazione, e ristretto ai soli lotti assegnati all'impresa
+    (nome preso dal token di sessione firmato, stesso pattern di /api/imprese/pratiche)."""
+    doc = await _find_assignment(sess["nome"])
+    if not doc or not doc.get("active", True):
+        raise HTTPException(404, "Impresa non autorizzata")
+    lotti = {_lotto_from_source(l) for l in doc.get("lotti", []) if str(l).strip()}
+    if lotto not in lotti:
+        raise HTTPException(403, "Lotto non assegnato a questa impresa")
+    df = await _read_master_csv()
+    return {"notes": _pratica_note_history_core(df, ente, tipo_permesso, pratica, lotto)}
+
+
+@app.post("/api/admin/pratiche/note/correct")
+async def correct_pratica_note(
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Corregge il testo di una nota STORICA (anche non l'ultima) su una pratica.
+    A differenza di /pratiche/update (mode=data), che tocca solo l'ultima riga per
+    tratta, qui si cerca per testo+data della nota su TUTTE le righe grezze di
+    Master.csv del gruppo pratica (ente+tipo+pratica+lotto) — la stessa nota storica
+    è duplicata su ogni tratta attraversata dalla pratica in quell'evento, quindi la
+    correzione va propagata su tutte, non solo sull'ultima riga di ciascuna tratta."""
+    _check_token(x_upload_token or token_q)
+    p = payload or {}
+    ente = str(p.get("ente") or "").strip()
+    tipo = str(p.get("tipo_permesso") or "").strip()
+    pratica = str(p.get("pratica") or "").strip()
+    lotto = str(p.get("lotto") or "").strip()
+    old_note = str(p.get("old_note") or "").strip()
+    old_date = str(p.get("old_date") or "").strip()
+    new_text = str(p.get("new_note") or "").strip()
+    if not (ente and tipo and pratica and lotto and old_note):
+        raise HTTPException(400, "ente, tipo_permesso, pratica, lotto e old_note sono obbligatori")
+    if not new_text:
+        raise HTTPException(400, "new_note è obbligatoria")
+
+    async with _master_csv_lock:
+        df = await _read_master_csv()
+        if df is None or df.empty:
+            raise HTTPException(404, "Master.csv non disponibile")
+        needed = {"ENTE", "TIPO_PERMESSO", "PRATICA", "Source.Name", "NOTE"}
+        if needed - set(df.columns):
+            raise HTTPException(400, "Colonne mancanti in Master.csv")
+        mask = (
+            (df["ENTE"].astype(str).str.strip() == ente) &
+            (df["TIPO_PERMESSO"].astype(str).str.strip() == tipo) &
+            (df["PRATICA"].astype(str).str.strip() == pratica) &
+            (df["Source.Name"].apply(_lotto_from_source) == lotto) &
+            (df["NOTE"].astype(str).str.strip() == old_note)
+        )
+        # NB: old_date NON viene più usata per filtrare. Lo storico note (v.
+        # _pratica_note_history_core) dedupe ora per solo testo, quindi una voce
+        # visualizzata con una data può corrispondere a più righe fisiche con quello
+        # stesso testo ma date diverse (nota invariata riportata su più cambi stato).
+        # Filtrare anche per data correggerebbe/eliminerebbe solo una di quelle righe,
+        # lasciando le altre col testo vecchio — il doppione riapparirebbe al
+        # prossimo touch di DATA_UPDATE. old_date resta accettato per compatibilità
+        # ma è ignorato: l'identità della nota è il testo.
+        idx = df.index[mask].tolist()
+        if not idx:
+            raise HTTPException(404, "Nessuna riga trovata per quella nota — verifica che il testo combaci esattamente")
+        # Preserva il tag [RETELIT]/[IMPRESA] esistente su ciascuna riga: si corregge
+        # solo il testo, non l'autore mostrato.
+        for i in idx:
+            existing = str(df.loc[i, "NOTE"]) if "NOTE" in df.columns else ""
+            m = _NOTE_TAG_RE.match(existing or "")
+            tag_prefix = m.group(0) if m else ""
+            df.loc[i, "NOTE"] = f"{tag_prefix}{new_text}"
+        reviewer = x_actor_nome or "admin"
+        upload_id = await _write_master_csv(
+            df, note=f"Admin note-correct by {reviewer} on {len(idx)} riga/e ({ente}|{tipo}|{pratica}|{lotto})"
+        )
+    await _log_admin_action("correct_pratica_note", f"{ente}|{tipo}|{pratica}|{lotto}", x_actor_nome)
+    return {"ok": True, "updated": len(idx), "new_upload_id": upload_id}
+
+
+@app.post("/api/admin/pratiche/note/delete")
+async def delete_pratica_note(
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Elimina (svuota) una nota STORICA su tutte le righe grezze di Master.csv che
+    la condividono — stesso matching di /pratiche/note/correct (ente+tipo+pratica+
+    lotto+testo[+data]), ma il campo NOTE viene azzerato invece che riscritto. Non
+    rimuove la riga fisica del CSV (Master.csv resta append-only), solo il testo
+    della nota su quell'evento storico."""
+    _check_token(x_upload_token or token_q)
+    p = payload or {}
+    ente = str(p.get("ente") or "").strip()
+    tipo = str(p.get("tipo_permesso") or "").strip()
+    pratica = str(p.get("pratica") or "").strip()
+    lotto = str(p.get("lotto") or "").strip()
+    old_note = str(p.get("old_note") or "").strip()
+    old_date = str(p.get("old_date") or "").strip()
+    if not (ente and tipo and pratica and lotto and old_note):
+        raise HTTPException(400, "ente, tipo_permesso, pratica, lotto e old_note sono obbligatori")
+
+    async with _master_csv_lock:
+        df = await _read_master_csv()
+        if df is None or df.empty:
+            raise HTTPException(404, "Master.csv non disponibile")
+        needed = {"ENTE", "TIPO_PERMESSO", "PRATICA", "Source.Name", "NOTE"}
+        if needed - set(df.columns):
+            raise HTTPException(400, "Colonne mancanti in Master.csv")
+        mask = (
+            (df["ENTE"].astype(str).str.strip() == ente) &
+            (df["TIPO_PERMESSO"].astype(str).str.strip() == tipo) &
+            (df["PRATICA"].astype(str).str.strip() == pratica) &
+            (df["Source.Name"].apply(_lotto_from_source) == lotto) &
+            (df["NOTE"].astype(str).str.strip() == old_note)
+        )
+        # V. nota in note/correct: old_date non filtra più, stesso motivo.
+        idx = df.index[mask].tolist()
+        if not idx:
+            raise HTTPException(404, "Nessuna riga trovata per quella nota — verifica che il testo combaci esattamente")
+        for i in idx:
+            df.loc[i, "NOTE"] = ""
+        reviewer = x_actor_nome or "admin"
+        upload_id = await _write_master_csv(
+            df, note=f"Admin note-delete by {reviewer} on {len(idx)} riga/e ({ente}|{tipo}|{pratica}|{lotto})"
+        )
+    await _log_admin_action("delete_pratica_note", f"{ente}|{tipo}|{pratica}|{lotto}", x_actor_nome)
+    return {"ok": True, "updated": len(idx), "new_upload_id": upload_id}
+
+
+
+_POL_CONV_ALLOWED_FIELDS = {"CONVENZIONE", "POLIZZA"}
+_POL_CONV_ALLOWED_VALUES = {"NECESSARIA", "RICHIESTA RDS", "INVIATA", "EMESSA", ""}
+# SI/NO sono i soli valori che l'impresa può scrivere (checkbox "è necessaria?"),
+# usati anche come default nelle esportazioni esterne (QGIS/Excel) che alimentano
+# nuovi upload di Master.csv. NECESSARIA/RICHIESTA RDS/INVIATA/EMESSA sono invece
+# lo stato di workflow avanzato manualmente da polizze_convenzioni.html: un nuovo
+# upload che porta solo SI/NO per una pratica già oltre NECESSARIA non deve mai
+# retrocederla (bug segnalato dall'utente: polizze/convenzioni tornate a
+# "NECESSARIA" dopo un caricamento di Master.csv aggiornato).
+_POL_CONV_RANK = {"": 0, "NO": 0, "SI": 1, "NECESSARIA": 1, "RICHIESTA RDS": 2, "INVIATA": 3, "EMESSA": 4}
+
+
+def _preserve_pol_conv_state(old_df: "pd.DataFrame", new_df: "pd.DataFrame") -> int:
+    """Prima di sostituire Master.csv con un nuovo upload, riporta nel nuovo file
+    lo stato CONVENZIONE/POLIZZA più avanzato già presente nel file corrente, per
+    ogni lotto+pratica, se il nuovo file porterebbe una retrocessione (es. SI/NO
+    grezzo dalla fonte esterna sopra un INVIATA/EMESSA impostato a mano). Non tocca
+    nulla se il nuovo valore è uguale o più avanzato. Ritorna il numero di celle
+    corrette, per il log di audit."""
+    def _extract_lotto(src) -> str:
+        return str(src).replace(".xlsx", "").replace(".xls", "").replace("Lotto ", "").strip().upper()
+
+    src_col_old = next((c for c in old_df.columns if c.strip().upper().replace(".", "").replace(" ", "") in {"SOURCENAME", "SOURCE_NAME"}), None)
+    prat_col_old = next((c for c in old_df.columns if c.strip().upper() == "PRATICA"), None)
+    if src_col_old is None or prat_col_old is None:
+        return 0
+
+    # stato più avanzato già visto nel file corrente, per (lotto, pratica, campo)
+    best: dict[tuple, str] = {}
+    for col_name, field in (("CONVENZIONE", "CONVENZIONE"), ("POLIZZA", "POLIZZA")):
+        real_old = next((c for c in old_df.columns if c.strip().upper() == col_name), None)
+        if real_old is None:
+            continue
+        for _, row in old_df.iterrows():
+            val = str(row.get(real_old, "")).strip().upper()
+            if _POL_CONV_RANK.get(val, 0) < 2:  # sotto RICHIESTA RDS: niente da preservare
+                continue
+            lotto = _extract_lotto(row.get(src_col_old, ""))
+            pratica = str(row.get(prat_col_old, "")).strip()
+            if not lotto or not pratica:
+                continue
+            key = (lotto, pratica, field)
+            if key not in best or _POL_CONV_RANK.get(val, 0) > _POL_CONV_RANK.get(best[key], 0):
+                best[key] = val
+
+    if not best:
+        return 0
+
+    src_col_new = next((c for c in new_df.columns if c.strip().upper().replace(".", "").replace(" ", "") in {"SOURCENAME", "SOURCE_NAME"}), None)
+    prat_col_new = next((c for c in new_df.columns if c.strip().upper() == "PRATICA"), None)
+    if src_col_new is None or prat_col_new is None:
+        return 0
+
+    touched = 0
+    for col_name, field in (("CONVENZIONE", "CONVENZIONE"), ("POLIZZA", "POLIZZA")):
+        real_new = next((c for c in new_df.columns if c.strip().upper() == col_name), None)
+        if real_new is None:
+            continue
+        lotti_new = new_df[src_col_new].astype(str).apply(_extract_lotto)
+        pratiche_new = new_df[prat_col_new].astype(str).str.strip()
+        for i in new_df.index:
+            key = (lotti_new.loc[i], pratiche_new.loc[i], field)
+            preserved = best.get(key)
+            if preserved is None:
+                continue
+            cur = str(new_df.at[i, real_new]).strip().upper()
+            if _POL_CONV_RANK.get(cur, 0) < _POL_CONV_RANK.get(preserved, 0):
+                new_df.at[i, real_new] = preserved
+                touched += 1
+    return touched
+
+
+@app.get("/api/admin/polizze-convenzioni/data-richiesta")
+async def get_pol_conv_date_richiesta(sess: dict = Depends(_require_staff_session)):
+    """Per ogni pratica con CONVENZIONE/POLIZZA valorizzata, fissa la data
+    DATA_ULTIMA_MODIFICA dal Master.csv come data di prima richiesta.
+    La data viene salvata una sola volta — i giri successivi non la toccano."""
+    df = await _read_master_csv()
+    src_col    = next((c for c in df.columns if c.strip().upper().replace(".", "").replace(" ", "") in {"SOURCENAME", "SOURCE_NAME"}), None)
+    pratica_col = next((c for c in df.columns if c.strip().upper() == "PRATICA"), None)
+    conv_col   = next((c for c in df.columns if c.strip().upper() == "CONVENZIONE"), None)
+    pol_col    = next((c for c in df.columns if c.strip().upper() == "POLIZZA"), None)
+    data_col   = next((c for c in df.columns if c.strip().upper() == "DATA_ULTIMA_MODIFICA"), None)
+    if src_col is None or pratica_col is None:
+        return {"date": {}}
+    if conv_col is None and pol_col is None:
+        # Nessuna delle 2 colonne è nel Master: NON toccare la collection esistente
+        # (altrimenti il delete_many sotto, con seen_keys vuoto, cancellerebbe
+        # tutte le date già raccolte in precedenza).
+        dates, dates_invio, dates_rds, dates_emissione = {}, {}, {}, {}
+        urgenti = {}
+        prot_ente = {}
+        async for d in pol_conv_dates_col.find({}):
+            dates[d["_id"]] = d.get("data_richiesta", "")
+            dates_invio[d["_id"]] = d.get("data_invio", "")
+            dates_rds[d["_id"]] = d.get("data_richiesta_rds", "")
+            dates_emissione[d["_id"]] = d.get("data_emissione", "")
+            if d.get("urgente"):
+                urgenti[d["_id"]] = True
+            if d.get("prot_ente"):
+                prot_ente[d["_id"]] = d["prot_ente"]
+        return {"date": dates, "date_invio": dates_invio, "date_richiesta_rds": dates_rds, "date_emissione": dates_emissione, "urgenti": urgenti, "prot_ente": prot_ente}
+
+    def _extract_lotto(src: str) -> str:
+        return str(src).replace(".xlsx", "").replace(".xls", "").replace("Lotto ", "").strip().upper()
+
+    seen_keys = set()
+    for col, field in ((conv_col, "CONVENZIONE"), (pol_col, "POLIZZA")):
+        if col is None:
+            continue
+        for _, row in df.iterrows():
+            val = str(row.get(col, "")).strip()
+            if not val:
+                continue
+            lotto   = _extract_lotto(row.get(src_col, ""))
+            pratica = str(row.get(pratica_col, "")).strip()
+            if not lotto or not pratica:
+                continue
+            key = f"{lotto}|{pratica}|{field}"
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            data_mod = str(row.get(data_col, "")).strip() if data_col else ""
+            # Fissa solo alla prima rilevazione, anche se il documento esiste
+            # già (es. creato prima da un data_invio su INVIATA).
+            existing = await pol_conv_dates_col.find_one({"_id": key})
+            if existing is None:
+                await pol_conv_dates_col.insert_one({"_id": key, "data_richiesta": data_mod})
+            elif not existing.get("data_richiesta"):
+                await pol_conv_dates_col.update_one({"_id": key}, {"$set": {"data_richiesta": data_mod}})
+
+    # Rimuove chiavi non più presenti nel Master — solo se ne abbiamo trovate
+    # di nuove: seen_keys vuoto per un problema transitorio (CSV non ancora
+    # sincronizzato, colonne rinominate) non deve azzerare la collection.
+    if seen_keys:
+        await pol_conv_dates_col.delete_many({"_id": {"$nin": list(seen_keys)}})
+
+    dates, dates_invio, dates_rds, dates_emissione = {}, {}, {}, {}
+    urgenti = {}
+    prot_ente = {}
+    async for d in pol_conv_dates_col.find({}):
+        dates[d["_id"]] = d.get("data_richiesta", "")
+        dates_invio[d["_id"]] = d.get("data_invio", "")
+        dates_rds[d["_id"]] = d.get("data_richiesta_rds", "")
+        dates_emissione[d["_id"]] = d.get("data_emissione", "")
+        if d.get("urgente"):
+            urgenti[d["_id"]] = True
+        if d.get("prot_ente"):
+            prot_ente[d["_id"]] = d["prot_ente"]
+    return {"date": dates, "date_invio": dates_invio, "date_richiesta_rds": dates_rds, "date_emissione": dates_emissione, "urgenti": urgenti, "prot_ente": prot_ente}
+
+
+@app.post("/api/admin/polizze-convenzioni/set-urgente")
+async def set_pol_conv_urgente(
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+):
+    """Flegga/sfleggia una pratica come urgente (gestito da admin/admin2/polizza).
+    Body: {lotto, pratica, field: "CONVENZIONE"|"POLIZZA", urgente: bool}
+    Richiede x-upload-token OPPURE x-session-token con ruolo abilitato (rev.283).
+    Scrive solo su pol_conv_dates_col, non su Master.csv."""
+    _check_polizza_write_auth(x_upload_token or token_q, x_session_token)
+
+    lotto   = str((payload or {}).get("lotto", "")).strip().upper()
+    pratica = str((payload or {}).get("pratica", "")).strip()
+    field   = str((payload or {}).get("field", "")).strip().upper()
+    urgente = bool((payload or {}).get("urgente", False))
+
+    if not lotto or not pratica:
+        raise HTTPException(400, "lotto e pratica sono obbligatori")
+    if field not in _POL_CONV_ALLOWED_FIELDS:
+        raise HTTPException(400, f"field deve essere uno tra {sorted(_POL_CONV_ALLOWED_FIELDS)}")
+
+    key = f"{lotto}|{pratica}|{field}"
+    if urgente:
+        await pol_conv_dates_col.update_one({"_id": key}, {"$set": {"urgente": True}}, upsert=True)
+    else:
+        await pol_conv_dates_col.update_one({"_id": key}, {"$unset": {"urgente": ""}}, upsert=True)
+
+    return {"ok": True, "key": key, "urgente": urgente}
+
+
+@app.post("/api/admin/polizze-convenzioni/set-prot-ente")
+async def set_pol_conv_prot_ente(
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+):
+    """Imposta/cancella il Prot. Ente (protocollo assegnato dall'ente, testo libero)
+    per una pratica CONVENZIONE/POLIZZA — oggi usato solo dalla colonna \"Prot. Ente\"
+    di polizze_convenzioni.html (tabella Polizze).
+    Body: {lotto, pratica, field: "CONVENZIONE"|"POLIZZA", prot_ente: str (max 80, "" per cancellare)}
+    Richiede x-upload-token OPPURE x-session-token con ruolo abilitato (rev.283).
+    Scrive solo su pol_conv_dates_col, non su Master.csv."""
+    _check_polizza_write_auth(x_upload_token or token_q, x_session_token)
+
+    lotto     = str((payload or {}).get("lotto", "")).strip().upper()
+    pratica   = str((payload or {}).get("pratica", "")).strip()
+    field     = str((payload or {}).get("field", "")).strip().upper()
+    prot_ente = str((payload or {}).get("prot_ente", "")).strip()
+
+    if not lotto or not pratica:
+        raise HTTPException(400, "lotto e pratica sono obbligatori")
+    if field not in _POL_CONV_ALLOWED_FIELDS:
+        raise HTTPException(400, f"field deve essere uno tra {sorted(_POL_CONV_ALLOWED_FIELDS)}")
+    if len(prot_ente) > 80:
+        raise HTTPException(400, "prot_ente troppo lungo (max 80 caratteri)")
+
+    key = f"{lotto}|{pratica}|{field}"
+    if prot_ente:
+        await pol_conv_dates_col.update_one({"_id": key}, {"$set": {"prot_ente": prot_ente}}, upsert=True)
+    else:
+        await pol_conv_dates_col.update_one({"_id": key}, {"$unset": {"prot_ente": ""}}, upsert=True)
+
+    return {"ok": True, "key": key, "prot_ente": prot_ente}
+
+
+@app.post("/api/admin/polizze-convenzioni/update")
+async def update_polizza_convenzione(
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+):
+    """Aggiorna CONVENZIONE e/o POLIZZA per tutte le righe lotto+pratica nel Master CSV.
+    Body: {lotto: "2B", pratica: "11", fields: {CONVENZIONE?: val, POLIZZA?: val}}
+    Valori ammessi: NECESSARIA | RICHIESTA RDS | INVIATA | EMESSA | "" (vuoto = cancella)
+    Richiede x-upload-token OPPURE x-session-token con ruolo abilitato (rev.283).
+    Scrive su MongoDB e pusha su GitHub."""
+    _check_polizza_write_auth(x_upload_token or token_q, x_session_token)
+
+    lotto   = str((payload or {}).get("lotto",   "")).strip().upper()
+    pratica = str((payload or {}).get("pratica", "")).strip()
+    fields  = (payload or {}).get("fields") or {}
+
+    if not lotto or not pratica:
+        raise HTTPException(400, "lotto e pratica sono obbligatori")
+    if not fields:
+        raise HTTPException(400, "fields non puo essere vuoto")
+
+    bad_fields = set(fields.keys()) - _POL_CONV_ALLOWED_FIELDS
+    if bad_fields:
+        raise HTTPException(400, f"Campi non consentiti: {bad_fields}")
+    for k, v in fields.items():
+        if str(v).strip().upper() not in {s.upper() for s in _POL_CONV_ALLOWED_VALUES}:
+            raise HTTPException(400, f"Valore non ammesso per {k}: '{v}'")
+
+    async with _master_csv_lock:
+        df = await _read_master_csv()
+
+        def _extract_lotto(src: str) -> str:
+            return src.replace(".xlsx", "").replace(".xls", "").replace("Lotto ", "").strip().upper()
+
+        src_col = next((c for c in df.columns if c.strip().upper().replace(".", "").replace(" ", "") in {"SOURCENAME", "SOURCE_NAME"}), None)
+        if src_col is None:
+            raise HTTPException(500, "Colonna SOURCE.NAME non trovata nel Master CSV")
+
+        pratica_col = next((c for c in df.columns if c.strip().upper() == "PRATICA"), None)
+        if pratica_col is None:
+            raise HTTPException(500, "Colonna PRATICA non trovata nel Master CSV")
+
+        mask = (
+            df[src_col].astype(str).apply(_extract_lotto) == lotto
+        ) & (
+            df[pratica_col].astype(str).str.strip() == pratica
+        )
+
+        matched = int(mask.sum())
+        if matched == 0:
+            raise HTTPException(404, f"Nessuna riga trovata per lotto={lotto} pratica={pratica}")
+
+        for col, val in fields.items():
+            real_col = next((c for c in df.columns if c.strip().upper() == col.upper()), None)
+            if real_col is None:
+                raise HTTPException(500, f"Colonna {col} non trovata nel Master CSV")
+            df.loc[mask, real_col] = str(val).strip()
+
+        note = f"Admin update polizze/convenzioni: lotto={lotto} pratica={pratica} fields={fields}"
+        upload_id = await _write_master_csv(df, note=note)
+
+    today_str = datetime.now().strftime("%d/%m/%Y")
+    STATO_DATE_FIELD = {"INVIATA": "data_invio", "RICHIESTA RDS": "data_richiesta_rds", "EMESSA": "data_emissione"}
+    for col, val in fields.items():
+        date_field = STATO_DATE_FIELD.get(str(val).strip().upper())
+        if not date_field:
+            continue
+        key = f"{lotto}|{pratica}|{col.upper()}"
+        existing = await pol_conv_dates_col.find_one({"_id": key})
+        if existing is None:
+            await pol_conv_dates_col.insert_one({"_id": key, date_field: today_str})
+        elif not existing.get(date_field):
+            await pol_conv_dates_col.update_one({"_id": key}, {"$set": {date_field: today_str}})
+
+    return {"ok": True, "rows_updated": matched, "new_upload_id": upload_id}
+
+
+_POL_CONV_DATE_KEYS = {
+    "richiesta": "data_richiesta",
+    "richiesta_rds": "data_richiesta_rds",
+    "invio": "data_invio",
+    "emissione": "data_emissione",
+}
+
+
+@app.post("/api/admin/polizze-convenzioni/set-date")
+async def set_pol_conv_date(
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
+):
+    """Modifica manuale di una delle 4 date CONVENZIONE/POLIZZA (Richiesta,
+    Richiesta RDS, Invio, Emissione) — a differenza di STATO_DATE_FIELD (rev.197-
+    202), che le fissa automaticamente e una sola volta al primo cambio di stato,
+    questo endpoint permette una correzione manuale in qualunque momento, per
+    sistemare casi passati (es. persi da un bug come rev.213) o errori futuri.
+    Body: {lotto, pratica, field: "CONVENZIONE"|"POLIZZA",
+           date_key: "richiesta"|"richiesta_rds"|"invio"|"emissione",
+           value: "GG/MM/AAAA" oppure "" per cancellare}
+    Richiede x-upload-token OPPURE x-session-token con ruolo abilitato (rev.283).
+    Scrive solo su pol_conv_dates_col, non su Master.csv."""
+    _check_polizza_write_auth(x_upload_token or token_q, x_session_token)
+
+    lotto    = str((payload or {}).get("lotto", "")).strip().upper()
+    pratica  = str((payload or {}).get("pratica", "")).strip()
+    field    = str((payload or {}).get("field", "")).strip().upper()
+    date_key = str((payload or {}).get("date_key", "")).strip().lower()
+    value    = str((payload or {}).get("value", "")).strip()
+
+    if not lotto or not pratica:
+        raise HTTPException(400, "lotto e pratica sono obbligatori")
+    if field not in _POL_CONV_ALLOWED_FIELDS:
+        raise HTTPException(400, f"field deve essere uno tra {sorted(_POL_CONV_ALLOWED_FIELDS)}")
+    mongo_field = _POL_CONV_DATE_KEYS.get(date_key)
+    if mongo_field is None:
+        raise HTTPException(400, f"date_key deve essere uno tra {sorted(_POL_CONV_DATE_KEYS)}")
+    if value:
+        try:
+            datetime.strptime(value, "%d/%m/%Y")
+        except ValueError:
+            raise HTTPException(400, "value deve essere in formato GG/MM/AAAA (o vuoto per cancellare)")
+
+    key = f"{lotto}|{pratica}|{field}"
+    if value:
+        await pol_conv_dates_col.update_one({"_id": key}, {"$set": {mongo_field: value}}, upsert=True)
+    else:
+        await pol_conv_dates_col.update_one({"_id": key}, {"$unset": {mongo_field: ""}}, upsert=True)
+
+    return {"ok": True, "key": key, "date_key": date_key, "value": value}
+
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# AGENDA ENTI — appuntamenti richiesti e programmati dagli enti
+# ─────────────────────────────────────────────────────────────────────────────
+_AGENDA_STATI = ("richiesto", "programmato", "svolto", "annullato")
+_AGENDA_TIPI = ("incontro_istituzionale", "tavolo_tecnico", "altro")
+
+
+def _agenda_clean(p: dict) -> dict:
+    """Valida e normalizza il payload di un appuntamento (create/update)."""
+    p = p or {}
+
+    def _s(k: str, n: int = 300) -> str:
+        return str(p.get(k, "") or "").strip()[:n]
+
+    def _d(k: str) -> str:
+        v = _s(k, 10)
+        if v:
+            try:
+                datetime.strptime(v, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(422, f"{k}: data non valida (atteso AAAA-MM-GG)")
+        return v
+
+    def _list(k: str, maxn: int, maxlen: int) -> list:
+        raw = p.get(k) or []
+        if not isinstance(raw, list):
+            raise HTTPException(422, f"{k}: atteso un elenco")
+        out: list = []
+        for v in raw[:maxn]:
+            v = str(v or "").strip()[:maxlen]
+            if v and v.upper() not in {o.upper() for o in out}:
+                out.append(v)
+        return out
+
+    pratiche = _list("pratiche", 30, 60)
+    enti = _list("enti", 30, 200)
+    if not enti and _s("ente", 200):
+        enti = [_s("ente", 200)]
+    lotti = sorted({c.split("/")[-1].upper() for c in pratiche if c.count("/") >= 2 and c.split("/")[-1]})
+
+    rec = {
+        "ente": ", ".join(enti)[:500],
+        "enti": enti,
+        "pratiche": pratiche,
+        "lotti": lotti,
+        "tipo": _s("tipo", 40).lower() or "altro",
+        "stato": _s("stato", 20).lower() or "richiesto",
+        "oggetto": _s("oggetto", 300),
+        "riferimento": ", ".join(pratiche)[:500],    # compat: pratiche in testo; fonte di verità = "pratiche"
+        "data_richiesta": _d("data_richiesta"),
+        "data_appuntamento": _d("data_appuntamento"),
+        "ora": _s("ora", 5),
+        "luogo": _s("luogo", 300),
+        "referente": _s("referente", 200),           # referente lato ente
+        "partecipanti": _s("partecipanti", 300),     # partecipanti lato Retelit/impresa
+        "note": _s("note", 2000),
+        "esito": _s("esito", 2000),
+    }
+    if not rec["ente"]:
+        raise HTTPException(422, "Ente obbligatorio")
+    if rec["tipo"] not in _AGENDA_TIPI:
+        raise HTTPException(422, "Tipo appuntamento non valido")
+    if rec["stato"] not in _AGENDA_STATI:
+        raise HTTPException(422, "Stato non valido")
+    if rec["ora"] and not re.match(r"^([01]\d|2[0-3]):[0-5]\d$", rec["ora"]):
+        raise HTTPException(422, "Ora non valida (atteso HH:MM)")
+    if rec["stato"] in ("programmato", "svolto") and not rec["data_appuntamento"]:
+        raise HTTPException(422, "Data appuntamento obbligatoria per appuntamenti programmati/svolti")
+    if rec["stato"] == "svolto" and not rec["esito"]:
+        raise HTTPException(422, "Esito obbligatorio per appuntamenti svolti")
+    return rec
+
+
+def _agenda_oid(agenda_id: str) -> ObjectId:
+    try:
+        return ObjectId(agenda_id)
+    except Exception:
+        raise HTTPException(400, "ID non valido")
+
+
+@app.get("/api/agenda/pratiche")
+async def agenda_pratiche(sess: dict = Depends(_require_agenda_session)):
+    """Elenco codici pratica con relativo ente (da Master.csv), per l'autocompilazione
+    dell'ente nel form agenda. Codice = PREFISSO/PRATICA/LOTTO (stesso formato della mappa)."""
+    df = await _read_master_csv()
+    if df is None or not {"ENTE", "PRATICA", "TIPO_PERMESSO"}.issubset(df.columns):
+        return {"pratiche": []}
+    prefix = {"AUTORIZZAZIONE": "AUT", "NULLA OSTA": "NO", "ORDINANZA": "ORD"}
+    seen, out = set(), []
+    for _, r in df.iterrows():
+        prat = str(r.get("PRATICA", "") or "").strip()
+        ente = str(r.get("ENTE", "") or "").strip()
+        if not prat or not ente:
+            continue
+        tipo = str(r.get("TIPO_PERMESSO", "") or "").strip().upper()
+        pre = prefix.get(tipo, tipo[:3] or "?")
+        lotto = _lotto_from_source(r.get("Source.Name", "")) if "Source.Name" in df.columns else ""
+        codice = f"{pre}/{prat}" + (f"/{lotto}" if lotto else "")
+        if (codice.upper(), ente) in seen:
+            continue
+        seen.add((codice.upper(), ente))
+        out.append({"codice": codice, "ente": ente})
+    out.sort(key=lambda x: x["codice"])
+    return {"pratiche": out}
+
+
+@app.get("/api/agenda")
+async def list_agenda(sess: dict = Depends(_require_agenda_session)):
+    """Tutti gli appuntamenti con gli enti (ordinamento lato client)."""
+    pend = {}
+    async for r in agenda_delreq_col.find({"stato": "pending"}):
+        pend[r["agenda_id"]] = {"richiesto_da": r.get("richiesto_da", ""), "richiesto_il": r.get("richiesto_il", ""), "azione": r.get("azione", "elimina")}
+    items = []
+    async for d in agenda_col.find({}):
+        d["_id"] = str(d["_id"])
+        if d["_id"] in pend:
+            d["eliminazione_richiesta"] = pend[d["_id"]]
+        items.append(d)
+    return {"items": items}
+
+
+@app.post("/api/agenda")
+async def create_agenda(payload: dict, sess: dict = Depends(_require_agenda_session)):
+    rec = _agenda_clean(payload)
+    now = datetime.now(timezone.utc).isoformat()
+    if not rec["data_richiesta"]:
+        rec["data_richiesta"] = now[:10]
+    rec.update({"created_by": sess.get("nome", ""), "created_at": now, "updated_at": now})
+    res = await agenda_col.insert_one(rec)
+    rec["_id"] = str(res.inserted_id)
+    return {"ok": True, "item": rec}
+
+
+@app.put("/api/agenda/{agenda_id}")
+async def update_agenda(agenda_id: str, payload: dict, sess: dict = Depends(_require_agenda_session)):
+    oid = _agenda_oid(agenda_id)
+    rec = _agenda_clean(payload)
+    is_admin = sess.get("ruolo") in ("admin", "admin2")
+    if rec.get("stato") == "annullato":
+        cur = await agenda_col.find_one({"_id": oid}, {"stato": 1})
+        if cur and cur.get("stato") != "annullato" and not is_admin:
+            raise HTTPException(403, "L'annullamento va richiesto a un admin (richiesta di annullamento)")
+    rec.update({"updated_by": sess.get("nome", ""),
+                "updated_at": datetime.now(timezone.utc).isoformat()})
+    res = await agenda_col.update_one({"_id": oid}, {"$set": rec})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Appuntamento non trovato")
+    d = await agenda_col.find_one({"_id": oid})
+    d["_id"] = str(d["_id"])
+    if rec.get("stato") == "annullato" and is_admin:
+        await _agenda_close_delreqs(agenda_id, "approved", sess, "annullato direttamente da admin")
+    return {"ok": True, "item": d}
+
+
+@app.delete("/api/agenda/{agenda_id}")
+async def delete_agenda(agenda_id: str, sess: dict = Depends(_require_admin_session)):
+    """Elimina un appuntamento — solo admin/admin2. Gli altri ruoli (es. field)
+    possono solo inviare una richiesta di eliminazione (vedi sotto)."""
+    res = await agenda_col.delete_one({"_id": _agenda_oid(agenda_id)})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Appuntamento non trovato")
+    await _agenda_close_delreqs(agenda_id, "approved", sess, "eliminato direttamente da admin")
+    return {"ok": True, "deleted": agenda_id}
+
+
+async def _agenda_close_delreqs(agenda_id: str, stato: str, sess: dict, nota: str = "") -> None:
+    """Chiude le richieste di eliminazione ancora pendenti per un appuntamento."""
+    await agenda_delreq_col.update_many(
+        {"agenda_id": agenda_id, "stato": "pending"},
+        {"$set": {"stato": stato, "gestita_da": sess.get("nome", ""), "gestita_il": _now_iso(), "nota_admin": nota[:500]}},
+    )
+
+
+# ── Richieste di eliminazione: chi non è admin non cancella, chiede ───────────
+@app.post("/api/agenda/{agenda_id}/richiesta-eliminazione")
+async def agenda_request_delete(agenda_id: str, payload: dict, sess: dict = Depends(_require_agenda_session)):
+    motivo = str((payload or {}).get("motivo", "") or "").strip()[:500]
+    if len(motivo) < 3:
+        raise HTTPException(422, "Indica il motivo della richiesta")
+    azione = "annulla" if (payload or {}).get("azione") == "annulla" else "elimina"
+    d = await agenda_col.find_one({"_id": _agenda_oid(agenda_id)})
+    if not d:
+        raise HTTPException(404, "Appuntamento non trovato")
+    if azione == "annulla" and d.get("stato") not in ("richiesto", "programmato"):
+        raise HTTPException(422, "Si possono annullare solo appuntamenti richiesti o programmati")
+    if await agenda_delreq_col.find_one({"agenda_id": agenda_id, "stato": "pending"}):
+        raise HTTPException(409, "Esiste già una richiesta in attesa per questo appuntamento")
+    rec = {
+        "agenda_id": agenda_id,
+        "azione": azione,
+        "snapshot": {k: d.get(k) for k in ("enti", "ente", "pratiche", "tipo", "oggetto", "stato", "data_appuntamento", "ora", "luogo")},
+        "motivo": motivo,
+        "stato": "pending",
+        "richiesto_da": sess.get("nome", ""),
+        "ruolo": sess.get("ruolo", ""),
+        "richiesto_il": _now_iso(),
+    }
+    res = await agenda_delreq_col.insert_one(rec)
+    return {"ok": True, "id": str(res.inserted_id)}
+
+
+@app.get("/api/agenda/richieste-eliminazione")
+async def agenda_list_delreqs(stato: str = "pending", sess: dict = Depends(_require_admin_session)):
+    q = {} if stato == "all" else {"stato": "pending"}
+    out = []
+    async for r in agenda_delreq_col.find(q).sort("richiesto_il", -1):
+        r["_id"] = str(r["_id"])
+        out.append(r)
+    return {"items": out}
+
+
+@app.post("/api/agenda/richieste-eliminazione/{req_id}/approve")
+async def agenda_approve_delreq(req_id: str, sess: dict = Depends(_require_admin_session)):
+    r = await agenda_delreq_col.find_one({"_id": _agenda_oid(req_id)})
+    if not r:
+        raise HTTPException(404, "Richiesta non trovata")
+    if r.get("stato") != "pending":
+        raise HTTPException(409, "Richiesta già gestita")
+    if r.get("azione") == "annulla":
+        oid = _agenda_oid(r["agenda_id"])
+        d = await agenda_col.find_one({"_id": oid})
+        if not d:
+            raise HTTPException(404, "Appuntamento non trovato")
+        riga = f'Annullato: {r.get("motivo", "")} (richiesto da {r.get("richiesto_da", "")})'
+        esito = "\n".join(x for x in (d.get("esito"), riga) if x)[:2000]
+        await agenda_col.update_one({"_id": oid}, {"$set": {"stato": "annullato", "esito": esito,
+                                    "updated_by": sess.get("nome", ""), "updated_at": _now_iso()}})
+        await _agenda_close_delreqs(r["agenda_id"], "approved", sess)
+        d = await agenda_col.find_one({"_id": oid}); d["_id"] = str(d["_id"])
+        return {"ok": True, "annullato": r["agenda_id"], "item": d}
+    await agenda_col.delete_one({"_id": _agenda_oid(r["agenda_id"])})
+    await _agenda_close_delreqs(r["agenda_id"], "approved", sess)
+    return {"ok": True, "deleted": r["agenda_id"]}
+
+
+@app.post("/api/agenda/richieste-eliminazione/{req_id}/reject")
+async def agenda_reject_delreq(req_id: str, payload: dict | None = None, sess: dict = Depends(_require_admin_session)):
+    r = await agenda_delreq_col.find_one({"_id": _agenda_oid(req_id)})
+    if not r:
+        raise HTTPException(404, "Richiesta non trovata")
+    if r.get("stato") != "pending":
+        raise HTTPException(409, "Richiesta già gestita")
+    await _agenda_close_delreqs(r["agenda_id"], "rejected", sess, str((payload or {}).get("nota", "") or "").strip())
+    return {"ok": True}
+
+
+# ── Export Excel di tutti gli appuntamenti ────────────────────────────────────
+@app.get("/api/agenda/export.xlsx")
+async def agenda_export_xlsx(sess: dict = Depends(_require_agenda_session)):
+    import openpyxl
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.table import Table, TableStyleInfo
+
+    pend = {r["agenda_id"] async for r in agenda_delreq_col.find({"stato": "pending"})}
+    docs = [d async for d in agenda_col.find({})]
+    # per data appuntamento crescente; senza data (richieste) in fondo per data richiesta
+    docs.sort(key=lambda d: (d.get("data_appuntamento") or "9999-12-31", d.get("ora") or "", d.get("data_richiesta") or ""))
+
+    def _date(v):
+        try:
+            return datetime.strptime(v, "%Y-%m-%d") if v else None
+        except ValueError:
+            return v or None
+
+    def _dt_it(v):
+        try:
+            return datetime.fromisoformat(v).astimezone().strftime("%d/%m/%Y %H:%M") if v else ""
+        except ValueError:
+            return v or ""
+
+    tipi = {"incontro_istituzionale": "Incontro istituzionale", "tavolo_tecnico": "Tavolo tecnico", "altro": "Altro"}
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Agenda"
+    cols = ["Data appuntamento", "Ora", "Stato", "Da chiudere", "Tipo", "Ente/i", "Pratiche", "Lotto/i", "Oggetto", "Luogo",
+            "Referente ente", "Partecipanti", "Data richiesta", "Note", "Esito", "Eliminazione richiesta", "Creato da", "Creato il"]
+    ws.append(cols)
+    thin = Side(style="thin", color="DFE4EB")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    for c in range(1, len(cols) + 1):
+        cell = ws.cell(row=1, column=c)
+        cell.fill = PatternFill("solid", fgColor="043F75")
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.alignment = Alignment(vertical="center", wrap_text=True)
+        cell.border = border
+    ws.row_dimensions[1].height = 28
+    ws.freeze_panes = "A2"
+
+    for d in docs:
+        enti = d.get("enti") or ([d["ente"]] if d.get("ente") else [])
+        prat = d.get("pratiche") or ([d["riferimento"]] if d.get("riferimento") else [])
+        late = d.get("stato") == "programmato" and (d.get("data_appuntamento") or "9999") < today
+        ws.append([
+            _date(d.get("data_appuntamento")), d.get("ora", ""), (d.get("stato") or "").capitalize(), "Sì" if late else "",
+            tipi.get(d.get("tipo"), d.get("tipo", "")), ", ".join(enti), ", ".join(prat), ", ".join(d.get("lotti") or []),
+            d.get("oggetto", ""), d.get("luogo", ""), d.get("referente", ""), d.get("partecipanti", ""),
+            _date(d.get("data_richiesta")), d.get("note", ""), d.get("esito", ""),
+            "Sì" if str(d["_id"]) in pend else "", d.get("created_by", ""), _dt_it(d.get("created_at", "")),
+        ])
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+        for cell in row:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+            cell.border = border
+        for idx in (0, 12):
+            if row[idx].value:
+                row[idx].number_format = "DD/MM/YYYY"
+    if ws.max_row >= 2:
+        ws.add_table(Table(displayName="TabAgenda", ref=f"A1:{get_column_letter(len(cols))}{ws.max_row}",
+                           tableStyleInfo=TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)))
+    for i, w in enumerate([16, 8, 13, 11, 22, 34, 30, 9, 40, 26, 22, 28, 15, 40, 40, 14, 20, 17], start=1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    filename = f"agenda_enti_{today}.xlsx"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── Export calendario (.ics) per Outlook/Google ───────────────────────────────
+def _ics_esc(t: str) -> str:
+    return (str(t or "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
+            .replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\\n"))
+
+
+def _ics_fold(line: str) -> str:
+    """RFC 5545: righe max 75 ottetti, continuazione con spazio iniziale (senza spezzare i caratteri UTF-8)."""
+    out, cur, curb = [], "", 0
+    for ch in line:
+        b = len(ch.encode("utf-8"))
+        if curb + b > 75:
+            out.append(cur)
+            cur, curb = " " + ch, 1 + b
+        else:
+            cur += ch
+            curb += b
+    out.append(cur)
+    return "\r\n".join(out)
+
+
+_ICS_TZ = (
+    "BEGIN:VTIMEZONE\r\nTZID:Europe/Rome\r\n"
+    "BEGIN:DAYLIGHT\r\nTZOFFSETFROM:+0100\r\nTZOFFSETTO:+0200\r\nTZNAME:CEST\r\nDTSTART:19700329T020000\r\n"
+    "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU\r\nEND:DAYLIGHT\r\n"
+    "BEGIN:STANDARD\r\nTZOFFSETFROM:+0200\r\nTZOFFSETTO:+0100\r\nTZNAME:CET\r\nDTSTART:19701025T030000\r\n"
+    "RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\n"
+)
+
+
+@app.get("/api/agenda/export.ics")
+async def agenda_export_ics(
+    agenda_id: str = Query(..., alias="id"),
+    sess: dict = Depends(_require_agenda_session),
+):
+    """Calendario iCalendar del singolo appuntamento `id` (se ha una data). UID stabile = reimportando
+    il file i client aggiornano gli eventi invece di duplicarli (quando lo supportano)."""
+    from datetime import timedelta
+    today = datetime.now().strftime("%Y-%m-%d")
+    d = await agenda_col.find_one({"_id": _agenda_oid(agenda_id)})
+    if not d:
+        raise HTTPException(404, "Appuntamento non trovato")
+    if not d.get("data_appuntamento"):
+        raise HTTPException(422, "L'appuntamento non ha ancora una data")
+    docs = [d]
+    docs.sort(key=lambda d: (d.get("data_appuntamento") or "", d.get("ora") or ""))
+
+    tipi = {"incontro_istituzionale": "Incontro istituzionale", "tavolo_tecnico": "Tavolo tecnico", "altro": "Altro"}
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//ENRI//Agenda Enti//IT", "CALSCALE:GREGORIAN",
+             "X-WR-CALNAME:Agenda Enti ENRI", "X-WR-TIMEZONE:Europe/Rome"]
+    out = "\r\n".join(_ics_fold(x) for x in lines) + "\r\n" + _ICS_TZ
+    for d in docs:
+        try:
+            day = datetime.strptime(d["data_appuntamento"], "%Y-%m-%d")
+        except (KeyError, ValueError):
+            continue
+        enti = d.get("enti") or ([d["ente"]] if d.get("ente") else [])
+        prat = d.get("pratiche") or ([d["riferimento"]] if d.get("riferimento") else [])
+        summary = f'{tipi.get(d.get("tipo"), "Appuntamento")} — {", ".join(enti)}'.strip(" —")
+        desc = [f"Stato: {(d.get('stato') or '').capitalize()}"]
+        for lab, key in (("Oggetto", "oggetto"), ("Referente ente", "referente"), ("Partecipanti", "partecipanti"),
+                         ("Note", "note"), ("Esito", "esito")):
+            if d.get(key):
+                desc.append(f"{lab}: {d[key]}")
+        if prat:
+            desc.insert(1, "Pratiche: " + ", ".join(prat))
+        ev = ["BEGIN:VEVENT", f"UID:{d['_id']}@enri-agenda", f"DTSTAMP:{stamp}"]
+        ora = d.get("ora") or ""
+        if re.match(r"^([01]\d|2[0-3]):[0-5]\d$", ora):
+            st = datetime.strptime(f'{d["data_appuntamento"]} {ora}', "%Y-%m-%d %H:%M")
+            ev += [f'DTSTART;TZID=Europe/Rome:{st.strftime("%Y%m%dT%H%M%S")}',
+                   f'DTEND;TZID=Europe/Rome:{(st + timedelta(hours=1)).strftime("%Y%m%dT%H%M%S")}']
+        else:
+            ev += [f'DTSTART;VALUE=DATE:{day.strftime("%Y%m%d")}',
+                   f'DTEND;VALUE=DATE:{(day + timedelta(days=1)).strftime("%Y%m%d")}']
+        try:
+            seq = int(datetime.fromisoformat(d.get("updated_at") or d.get("created_at")).timestamp())
+        except (TypeError, ValueError):
+            seq = 0
+        ev += [f"SEQUENCE:{seq}", f"SUMMARY:{_ics_esc(summary)}"]
+        if d.get("luogo"):
+            ev.append(f'LOCATION:{_ics_esc(d["luogo"])}')
+        ev += [f'DESCRIPTION:{_ics_esc(chr(10).join(desc))}',
+               "STATUS:" + ("CANCELLED" if d.get("stato") == "annullato" else "CONFIRMED"), "END:VEVENT"]
+        out += "\r\n".join(_ics_fold(x) for x in ev) + "\r\n"
+    out += "END:VCALENDAR\r\n"
+    filename = f"agenda_enti_{today}.ics" if not agenda_id else f"appuntamento_{today}.ics"
+    return Response(
+        content=out.encode("utf-8"),
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SOPRALLUOGHI — verbali di sopralluogo
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/lotti-cantieri")
+async def get_lotti_cantieri(sess: dict = Depends(_require_staff_session)):
+    """Restituisce lotti distinti (da Master.csv) e i loro cantieri (da MongoDB)."""
+    lotti_master = []
+
+    # Leggi lotti da Master.csv — prova più nomi colonna
+    try:
+        df = await _read_master_csv()
+        if df is not None:
+            col = next((c for c in df.columns if c.strip().lower() in
+                        ("source.name", "source name", "lotto", "lotti", "nome_lotto")), None)
+            print(f"[lotti-cantieri] colonne disponibili: {list(df.columns[:10])}, colonna lotto: {col}")
+            if col:
+                raw = df[col].dropna().unique().tolist()
+                lotti_master = sorted({_lotto_from_source(r) for r in raw if str(r).strip()})
+                print(f"[lotti-cantieri] lotti da Master.csv: {lotti_master}")
+    except Exception as e:
+        print(f"[lotti-cantieri] errore lettura Master.csv: {e}")
+
+    # Cantieri da MongoDB — raggruppati per lotto
+    cantieri_map: dict = {}
+    async for doc in cantieri_col.find({}, {"cantiere_key": 1, "lotto": 1, "ente": 1}):
+        lotto = _lotto_from_source(doc.get("lotto", ""))
+        key   = str(doc.get("cantiere_key", "")).strip()
+        if not lotto or not key:
+            continue
+        num   = key.split("|")[0].strip() if "|" in key else key
+        ente  = str(doc.get("ente", "")).strip()
+        codice = f"CA/{num}/{lotto}"
+        label  = f"{codice} — {ente}" if ente else codice
+        if lotto not in cantieri_map:
+            cantieri_map[lotto] = []
+        if not any(c["value"] == key for c in cantieri_map[lotto]):
+            cantieri_map[lotto].append({"value": key, "label": label, "num": num})
+
+    # Unisce: lotti dal Master + lotti dai cantieri (fallback se Master fallisce)
+    tutti_lotti = sorted(set(lotti_master) | set(cantieri_map.keys()))
+    result = {l: sorted(cantieri_map.get(l, []), key=lambda x: x["num"]) for l in tutti_lotti}
+
+    # Mappa lotto → impresa assegnata (per auto-popolare il campo impresa)
+    lotto_impresa = {}
+    async for a in assignments_col.find({}, {"nome": 1, "lotti": 1}):
+        nome_impresa = a.get("nome", "")
+        for l in (a.get("lotti") or []):
+            lotto_norm = _lotto_from_source(l)
+            if lotto_norm:
+                lotto_impresa[lotto_norm] = nome_impresa
+
+    print(f"[lotti-cantieri] lotti finali: {list(result.keys())}")
+    print(f"[lotti-cantieri] lotto_impresa: {lotto_impresa}")
+    return {"lotti": result, "lotto_impresa": lotto_impresa}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ISSUE — registro anomalie/segnalazioni verso i System (imprese). Solo admin/admin2.
+# Codice = prefisso per tipologia + progressivo per prefisso: In_0001, Cn_0001, Sc_0001.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Copia di CHECKLIST_DEF (sopralluoghi.html): id -> (area, testo). Serve a descrivere le issue nate dalle NC dei verbali.
+# Se la checklist cambia nel frontend, va riallineata qui (vedi AGENT_BRIEF §5.13).
+_CK_DEF = {
+    "PRE-01": ("Verifiche preliminari", "Autorizzazione valida e disponibile per il tratto in lavorazione"),
+    "PRE-02": ("Verifiche preliminari", "Tracciato conforme al progetto autorizzato; eventuali varianti approvate"),
+    "PRE-03": ("Verifiche preliminari", "Tracciato su suolo pubblico o diritto di passaggio pubblico"),
+    "PRE-04": ("Verifiche preliminari", "Impresa esecutrice e subappaltatori preventivamente autorizzati"),
+    "PRE-05": ("Verifiche preliminari", "Prescrizioni degli enti recepite nelle lavorazioni"),
+    "INF-01": ("Infrastruttura", "Pacco Tubi 1 conforme: 2 monotubi vuoti Ø63 mm e 1 bundle con 7 minitubi 16/13,5 mm"),
+    "INF-02": ("Infrastruttura", "Pacco Tubi 2 conforme: 1 bundle Ø63 mm con 9 minitubi 14/12 mm, salvo tratte Lotto 2"),
+    "INF-03": ("Infrastruttura", "Pacchi tubi separati con pozzetti dedicati"),
+    "INF-04": ("Infrastruttura", "Tubi e microdotti integri, puliti e privi di deformazioni o ostruzioni"),
+    "INF-05": ("Infrastruttura", "Cordino di tiro presente nei tubi Ø63 mm vuoti"),
+    "INF-06": ("Infrastruttura", "Tappi idonei presenti su tubi e microdotti nei pozzetti"),
+    "DIV-01": ("Diversificazione", "Separazione fisica minima di 8 m tra percorsi dello stesso cluster"),
+    "POZ-01": ("Pozzetti", "Distanza media circa 475 m e passo massimo 500 m"),
+    "POZ-02": ("Pozzetti", "Pozzetti presenti agli incroci con curva ≥45°"),
+    "POZ-03": ("Pozzetti", "Dimensioni e tipologia conformi alle specifiche"),  # legacy: sostituito da 03A/03B, tenuto per le issue dei verbali vecchi
+    "POZ-03A": ("Pozzetti", "Pozzetto Cliente: dimensione conforme come da contratto"),
+    "POZ-03B": ("Pozzetti", "Pozzetto Retelit: dimensione conforme come da contratto"),
+    "POZ-04": ("Pozzetti", "Pozzetti 224 × 124 cm · interna 200 × 100 × 150 cm fronte Data Center e nelle interconnessioni, ove previsti"),
+    "POZ-05": ("Pozzetti", "Foro di drenaggio vicino al centro"),
+    "POZ-06": ("Pozzetti", "Chiusino in ghisa, dimensionato e con logo Retelit"),
+    "POZ-07": ("Pozzetti", "Pozzetto pulito, accessibile e adeguato"),
+    "MIC-01": ("Microdotti e giunzioni", "Colori distinti e continuità cromatica nelle giunzioni"),
+    "MIC-02": ("Microdotti e giunzioni", "Microdotti tagliati a 600 mm dall’ingresso del pozzetto"),
+    "MIC-03": ("Microdotti e giunzioni", "Coupler e tappi approvati con tenuta ermetica"),
+    "MIC-04": ("Microdotti e giunzioni", "Coupler non sepolti in incroci, ponti o aree difficili"),
+    "MIC-05": ("Microdotti e giunzioni", "Giunzioni incapsulate e sigillate ai due estremi"),
+    "MIC-06": ("Microdotti e giunzioni", "Buca riempita con materiale vagliato e microdotti sostenuti"),
+    "MIC-07": ("Microdotti e giunzioni", "Ball Marker sui giunti a profondità ≤1 m"),
+    "COL-01": ("Codifica cromatica", "Tubi RDS identificati in blu"),
+    "COL-02": ("Codifica cromatica", "Tubi Cliente identificati in rosso, giallo e verde"),
+    "COL-03": ("Codifica cromatica", "Marcatura visibile, continua e resistente"),
+    "SIC-01": ("Autorizzazioni personale", "Presenza in cantiere di personale autorizzato"),
+    "SIC-02": ("Autorizzazioni personale", "Presenza dei tesserini identificativi"),
+    "SIC-03": ("Documentazione sicurezza", "Presenza di POS, PSC, eventuale PIMUS, notifica preliminare aggiornata e piano di emergenza"),
+    "SIC-04": ("Programmazione lavori", "Rispetto del programma lavori settimanale"),
+    "SIC-05": ("Programmazione lavori", "Presenza del preposto indicato dall’impresa"),
+    "SIC-06": ("DPI", "Presenza e corretto utilizzo dei DPI previsti dal POS e formazione specifica"),
+    "SIC-07": ("Macchine e attrezzature", "Utilizzo corretto delle attrezzature rispetto al POS e formazione richiesta"),
+    "SIC-08": ("Macchine e attrezzature", "Documentazione sicurezza e libretti uso/manutenzione disponibili"),
+    "SIC-09": ("Macchine e attrezzature", "Fasce di sollevamento idonee e prive di usura"),
+    "SIC-10": ("Macchine e attrezzature", "Specchietti retrovisori e cicalino funzionanti"),
+    "SIC-11": ("Stoccaggio materiali", "Bombole identificate, separate, verticali e distinte tra piene e vuote"),
+    "SIC-12": ("Stoccaggio materiali", "Materiali stoccati in modo idoneo e stabile"),
+    "SIC-13": ("Protezione scavi", "Protezioni contro il rischio di seppellimento"),
+    "SIC-14": ("Lavori in quota", "Protezioni collettive contro le cadute dall’alto"),
+    "SIC-15": ("Cadute sotto 2 m", "Protezioni contro le cadute, anche negli scavi"),
+    "SIC-16": ("Caduta materiali", "Protezioni contro la caduta di materiali"),
+    "SIC-17": ("Viabilità e pulizia", "Pulizia della sede stradale adiacente"),
+    "SIC-18": ("Viabilità e pulizia", "Movieri e segnaletica per regolazione traffico"),
+    "SIC-19": ("Viabilità e pulizia", "Ordine e pulizia delle aree di cantiere"),
+    "SIC-20": ("Segnaletica", "Segnaletica di cantiere, emergenza e stradale conforme"),
+    "SIC-43": ("Segnaletica", "Cartello di cantiere presente, anche in formato ridotto, posizionato in prossimità dei cantieri mobili"),
+    "SIC-21": ("Recinzioni e delimitazioni", "Area di intervento correttamente delimitata"),
+    "SIC-22": ("Recinzioni e delimitazioni", "Accessi di cantiere correttamente chiusi"),
+    "SIC-23": ("Apprestamenti igienico-sanitari", "Apprestamenti conformi al POS"),
+    "SIC-24": ("Presidi emergenza", "Cassetta primo soccorso o pacchetto medicazione idoneo"),
+    "SIC-25": ("Presidi emergenza", "Estintori presenti"),
+    "SIC-26": ("Presidi emergenza", "Addetti primo soccorso e antincendio presenti"),
+    "SIC-27": ("Gestione rifiuti", "Rifiuti identificati con corretto codice CER"),
+    "SIC-28": ("Gestione rifiuti", "Rifiuti separati per tipologie omogenee"),
+    "SIC-29": ("Gestione rifiuti", "Deposito temporaneo delimitato e protetto da sversamenti"),
+    "SIC-30": ("Gestione rifiuti", "Contenitori rifiuti pericolosi integri ed etichettati"),
+    "SIC-31": ("Gestione rifiuti", "Formulari rifiuti completi e conservati"),
+    "SIC-32": ("Gestione rifiuti", "Kit antiversamento presente e pronto"),
+    "SIC-33": ("Rumore", "Prescrizioni POS per il rumore rispettate"),
+    "SIC-34": ("Rumore", "Autorizzazione o deroga acustica presente, se richiesta"),
+    "SIC-35": ("Rumore", "Orari e limiti delle lavorazioni rumorose rispettati"),
+    "SIC-36": ("Rumore", "Silenziatori e carter in buono stato"),
+    "SIC-37": ("Rumore", "Barriere antirumore presso recettori sensibili, se previste"),
+    "SIC-38": ("Illuminazione", "Illuminazione adeguata e conforme al POS"),
+    "SIC-39": ("Altro", "Assenza di focolai"),
+    "SIC-40": ("Altro", "Spezzoni e tondini adeguatamente protetti"),
+    "SIC-41": ("Altro", "Ordinanze stradali disponibili e personale formato"),
+    "SIC-42": ("Altro", "Schede sicurezza sostanze disponibili e contenitori etichettati"),
+    "TST-01": ("Collaudi", "Mandrinatura su ogni tratta pozzetto-pozzetto dei Ø63 mm non bundle"),
+    "TST-02": ("Collaudi", "Verbale mandrinatura completo"),
+    "TST-03": ("Collaudi", "Test pressione su condotti e microdotti previsti"),
+    "TST-04": ("Collaudi", "Nessun calo pressione, perdita, deformazione o cedimento"),
+    "TST-05": ("Collaudi", "Verbale pressione completo"),
+    "RIP-01": ("Ripristini", "Ripristino provvisorio sicuro e senza cedimenti"),
+    "RIP-02": ("Ripristini", "Ripristino definitivo conforme alle prescrizioni"),
+    "DOC-01": ("Documentazione", "Checklist conformità disponibile"),
+    "DOC-02": ("Documentazione", "Butterfly diagram disponibile e coerente"),
+    "DOC-03": ("Documentazione", "Permessi, autorizzazioni e test disponibili"),
+    "DOC-04": ("Documentazione", "As-built GIS e DWG completi"),
+    "DOC-05": ("Documentazione", "Due foto georeferenziate per ogni giunto"),
+    "DOC-06": ("Documentazione", "Foto nuovi pozzetti e aggiornamento One GIS completati"),
+}
+
+# Tipologia issue per punto checklist: Cn = segnaletica di cantiere; Sf = tutti gli altri punti sicurezza (SIC-*),
+# documentazione e autorizzazioni personale incluse (la vecchia tipologia Sc è stata unita a Sf, rev.362); Au = anomalie autorizzative (PRE-*);
+# Co = anomalie di collaudo (TST/RIP/DOC); In = infrastruttura (INF/POZ/MIC/DIV/COL).
+_ISSUE_CN_IDS = {"SIC-20", "SIC-43"}
+_issue_sync_lock = asyncio.Lock()
+
+_ISSUE_TIPI = {
+    "In": "Anomalia su infrastruttura (completata o in corso)",
+    "Cn": "Segnaletica su cantiere in corso",
+    "Sf": "Anomalia sicurezza di cantiere (documentazione inclusa)",
+    "Au": "Anomalia autorizzativa",
+    "Co": "Anomalia di collaudo",
+}
+_ISSUE_STATI = {
+    "aperta": "Aperta", "inviata": "Inviata al System", "in_lavorazione": "In lavorazione",
+    "risolta": "Risolta", "chiusa": "Chiusa",
+}
+_ISSUE_PRIORITY = {"bassa": "Bassa", "media": "Media", "alta": "Alta", "critica": "Critica"}
+# campo -> etichetta (usata nello storico e nell'export)
+_ISSUE_FIELDS = {
+    "cantiere": "Cantiere", "comune": "Comune", "system": "System", "subsystem": "SubSystem",
+    "pratica": "Permesso / Pratica", "ente": "Ente", "lotto": "Lotto",
+    "data_rilevamento": "Data rilevamento", "rilevato_da": "Chi ha rilevato l'anomalia",
+    "descrizione": "Descrizione", "data_invio": "Data invio segnalazione al System",
+    "rif_system_invio": "Riferimento System invio", "metodo_invio": "Metodo di invio",
+    "stato": "Stato avanzamento", "priority": "Priority", "data_prevista": "Data prevista sistemazione",
+}
+_ISSUE_DATE_FIELDS = ("data_rilevamento", "data_invio", "data_prevista")
+_ISSUE_TEXT_MAX = {"descrizione": 4000, "pratica": 80, "ente": 200, "lotto": 20, "cantiere": 200, "comune": 120, "system": 200, "subsystem": 200,
+                   "rilevato_da": 200, "rif_system_invio": 300, "metodo_invio": 100}
+_issue_code_lock = asyncio.Lock()
+
+
+def _issue_oid(issue_id: str) -> ObjectId:
+    try:
+        return ObjectId(issue_id)
+    except Exception:
+        raise HTTPException(400, "ID non valido")
+
+
+def _issue_clean(p: dict, cur: dict | None = None) -> dict:
+    """Valida il payload e lo fonde sul documento corrente (update parziale: i campi
+    assenti dal payload restano invariati). Restituisce solo i campi gestiti."""
+    p = p or {}
+    base = {k: (cur or {}).get(k, "") for k in _ISSUE_FIELDS}
+    rec = dict(base)
+    for k in _ISSUE_FIELDS:
+        if k not in p:
+            continue
+        v = str(p.get(k) or "").strip()
+        if k in _ISSUE_DATE_FIELDS:
+            if v:
+                try:
+                    datetime.strptime(v, "%Y-%m-%d")
+                except ValueError:
+                    raise HTTPException(422, f"{_ISSUE_FIELDS[k]}: data non valida (atteso AAAA-MM-GG)")
+        elif k in ("stato", "priority"):
+            v = v.lower()
+        else:
+            v = v[:_ISSUE_TEXT_MAX.get(k, 300)]
+        rec[k] = v
+    if not rec["stato"]:
+        rec["stato"] = "aperta"
+    if not rec["priority"]:
+        rec["priority"] = "media"
+    if rec["stato"] not in _ISSUE_STATI:
+        raise HTTPException(422, "Stato avanzamento non valido")
+    if rec["priority"] not in _ISSUE_PRIORITY:
+        raise HTTPException(422, "Priority non valida")
+    if not rec["descrizione"]:
+        raise HTTPException(422, "Descrizione obbligatoria")
+    return rec
+
+
+def _issue_chiusa_dl(d: dict) -> bool:
+    """True se l'issue è Risolta/Chiusa e l'ULTIMO cambio di stato è stato fatto dalla sync dei verbali
+    (verifica DL: punto Conforme / N.A.), non a mano da admin. Derivato dallo storico: vale anche per le vecchie issue."""
+    if d.get("stato") not in ("risolta", "chiusa"):
+        return False
+    for h in reversed(d.get("storico") or []):
+        if any(m.get("campo") == "Stato avanzamento" for m in h.get("modifiche") or []):
+            return bool(h.get("verbale"))
+    return False
+
+
+def _issue_out(d: dict) -> dict:
+    d["_id"] = str(d["_id"])
+    d["chiusa_dl"] = _issue_chiusa_dl(d)
+    return d
+
+
+async def _issue_cliente_map(items: list) -> dict:
+    """Per ogni issue nata da un verbale: stato della segnalazione cliente del verbale RADICE
+    ('confermata' | 'non_confermata' | 'si' = flag senza esito | '' = nessuna). Chiave: codice issue."""
+    codes = {d.get("origine_verbale") for d in items if d.get("origine_verbale")}
+    if not codes:
+        return {}
+    proj = {"codice_verbale": 1, "verbale_origine": 1, "segnalazione_cliente": 1, "esito_segnalazione": 1}
+    cache = {d["codice_verbale"]: d async for d in sopralluoghi_col.find({"codice_verbale": {"$in": list(codes)}}, proj)}
+    by_code = {}
+    for code in codes:
+        v = cache.get(code)
+        if not v:
+            continue
+        root = await _sopr_root_code(v, cache)
+        rv = cache.get(root) or v
+        if rv.get("segnalazione_cliente") in (True, "SI", "si", "true", 1, "1"):
+            e = str(rv.get("esito_segnalazione", "") or "").strip().lower()
+            by_code[code] = e if e in ("confermata", "non_confermata") else "si"
+        else:
+            by_code[code] = ""
+    return {d.get("codice", ""): by_code.get(d.get("origine_verbale"), "") for d in items}
+
+
+_ISSUE_CLIENTE_LAB = {"confermata": "Confermata", "non_confermata": "Non confermata", "si": "Sì"}
+
+
+@app.get("/api/issues")
+async def list_issues(sess: dict = Depends(_require_issue_read_session)):
+    items = []
+    async for d in issues_col.find({}).sort([("prefisso", 1), ("seq", -1)]):
+        items.append(_issue_out(d))
+    cm = await _issue_cliente_map(items)
+    for d in items:
+        d["cliente"] = cm.get(d.get("codice", ""), "")
+    return {"items": items}
+
+
+async def _issue_create(pref: str, rec: dict, utente: str, extra: dict | None = None,
+                        azione: str = "creata", marker: dict | None = None) -> dict:
+    """Inserisce una issue assegnando il codice {prefisso}_{NNNN} (progressivo per prefisso)."""
+    now = datetime.now(timezone.utc).isoformat()
+    if not rec.get("data_rilevamento"):
+        rec["data_rilevamento"] = now[:10]
+    async with _issue_code_lock:
+        last = await issues_col.find_one({"prefisso": pref}, sort=[("seq", -1)])
+        seq = int((last or {}).get("seq", 0)) + 1
+        doc = {
+            **rec, **(extra or {}),
+            "prefisso": pref, "seq": seq, "codice": f"{pref}_{seq:04d}",
+            "created_by": utente, "created_at": now, "updated_at": now,
+            "storico": [{"ts": now, "utente": utente, "azione": azione, "modifiche": [], **(marker or {})}],
+        }
+        res = await issues_col.insert_one(doc)
+    doc["_id"] = str(res.inserted_id)
+    return doc
+
+
+@app.post("/api/issues")
+async def create_issue(payload: dict, sess: dict = Depends(_require_admin_session)):
+    pref = str((payload or {}).get("tipologia", "")).strip()
+    pref = pref[:1].upper() + pref[1:2].lower() if pref else ""
+    if pref not in _ISSUE_TIPI:
+        raise HTTPException(422, "Tipologia non valida (In / Cn / Sf / Au / Co)")
+    doc = await _issue_create(pref, _issue_clean(payload), sess.get("nome", ""))
+    return {"ok": True, "item": doc}
+
+
+@app.put("/api/issues/{issue_id}")
+async def update_issue(issue_id: str, payload: dict, sess: dict = Depends(_require_admin_session)):
+    """Update parziale (anche un solo campo, per la modifica in cella). Ogni variazione
+    viene registrata nello storico con utente, data/ora e valore precedente/nuovo."""
+    oid = _issue_oid(issue_id)
+    cur = await issues_col.find_one({"_id": oid})
+    if not cur:
+        raise HTTPException(404, "Issue non trovata")
+    if "tipologia" in (payload or {}) and str(payload["tipologia"]).strip()[:2].lower() != cur["prefisso"].lower():
+        raise HTTPException(422, "La tipologia non è modificabile (il codice dipende da essa)")
+    rec = _issue_clean(payload, cur)
+    def _disp(k: str, v: str) -> str:
+        return {"stato": _ISSUE_STATI, "priority": _ISSUE_PRIORITY}.get(k, {}).get(v, v)
+
+    changes = [{"campo": _ISSUE_FIELDS[k], "da": _disp(k, str(cur.get(k, "") or "")), "a": _disp(k, rec[k])}
+               for k in _ISSUE_FIELDS if str(cur.get(k, "") or "") != rec[k]]
+    if not changes:
+        return {"ok": True, "item": _issue_out(cur), "changed": False}
+    now = datetime.now(timezone.utc).isoformat()
+    rec.update({"updated_by": sess.get("nome", ""), "updated_at": now})
+    await issues_col.update_one({"_id": oid}, {
+        "$set": rec,
+        "$push": {"storico": {"ts": now, "utente": sess.get("nome", ""), "azione": "modificata", "modifiche": changes}},
+    })
+    d = await issues_col.find_one({"_id": oid})
+    return {"ok": True, "item": _issue_out(d), "changed": True}
+
+
+@app.post("/api/issues/{issue_id}/approvazione-bonifica")
+async def issue_approvazione_bonifica(issue_id: str, payload: dict, sess: dict = Depends(_require_field_session)):
+    """Flag 'Approvazione Bonifica Field Manager': solo ruolo field. Salva chi ha spuntato e quando; ogni
+    cambio (anche la rimozione) finisce nello storico. Campi fuori da _ISSUE_FIELDS: la PUT admin non li tocca."""
+    oid = _issue_oid(issue_id)
+    cur = await issues_col.find_one({"_id": oid})
+    if not cur:
+        raise HTTPException(404, "Issue non trovata")
+    val = bool((payload or {}).get("value"))
+    if bool(cur.get("bonifica_fm_ok")) == val:
+        return {"ok": True, "item": _issue_out(cur), "changed": False}
+    # Regola: l'approvazione FM riguarda solo le issue nate da un punto NC della checklist Qualità
+    if val and cur.get("origine_cat") != "qualita":
+        raise HTTPException(422, "L'approvazione Field Manager è prevista solo per le issue della checklist Qualità")
+    if val and not _issue_chiusa_dl(cur):
+        raise HTTPException(422, "L'approvazione Field Manager è possibile solo dopo la chiusura dell'issue da parte della DL")
+    now = datetime.now(timezone.utc).isoformat()
+    nome = sess.get("nome", "")
+    upd = {"bonifica_fm_ok": val, "bonifica_fm_by": nome if val else "", "bonifica_fm_at": now if val else "", "updated_at": now}
+    await issues_col.update_one({"_id": oid}, {
+        "$set": upd,
+        "$push": {"storico": {"ts": now, "utente": nome, "azione": "modificata",
+                              "modifiche": [{"campo": "Approvazione Bonifica Field Manager",
+                                             "da": "Sì" if cur.get("bonifica_fm_ok") else "No", "a": "Sì" if val else "No"}]}},
+    })
+    d = await issues_col.find_one({"_id": oid})
+    return {"ok": True, "item": _issue_out(d), "changed": True}
+
+
+@app.post("/api/issues/ricalcola-priority")
+async def issues_ricalcola_priority(payload: dict | None = None, sess: dict = Depends(_require_admin_session)):
+    """Riclassifica con le regole automatiche (`_issue_priority_nc`) le issue nate da verbali che sono ancora a
+    'media' e la cui priority non è mai stata modificata (nessuna riga 'Priority' nello storico).
+    Body: {dry_run: true} → solo conteggio, nessuna scrittura."""
+    dry = bool((payload or {}).get("dry_run"))
+    cache: dict = {}
+    out = {"critica": 0, "alta": 0, "bassa": 0}
+    now = datetime.now(timezone.utc).isoformat()
+    async with _issue_sync_lock:
+        async for iss in issues_col.find({"origine_key": {"$exists": True}, "priority": "media"}):
+            if any(m.get("campo") == "Priority" for h in iss.get("storico") or [] for m in h.get("modifiche") or []):
+                continue  # priority già toccata (a mano o da un ricalcolo precedente)
+            v = await sopralluoghi_col.find_one({"codice_verbale": iss.get("origine_verbale", "")})
+            if not v:
+                continue
+            root = await _sopr_root_code(v, cache)
+            rv = cache.get(root) or (v if root == v.get("codice_verbale") else await sopralluoghi_col.find_one({"codice_verbale": root})) or v
+            new = _issue_priority_nc(iss.get("origine_item", ""), iss.get("origine_cat", ""), rv)
+            if new == "media":
+                continue
+            out[new] += 1
+            if not dry:
+                await issues_col.update_one({"_id": iss["_id"]}, {"$set": {"priority": new, "updated_at": now}, "$push": {"storico": {
+                    "ts": now, "utente": f"Sistema (ricalcolo priority · {sess.get('nome', '')})", "azione": "modificata",
+                    "modifiche": [{"campo": "Priority", "da": "Media", "a": _ISSUE_PRIORITY[new]}]}}})
+    return {"ok": True, "dry_run": dry, "totale": out["critica"] + out["alta"] + out["bassa"], **out}
+
+
+@app.delete("/api/issues/{issue_id}")
+async def delete_issue(issue_id: str, sess: dict = Depends(_require_admin_session)):
+    oid = _issue_oid(issue_id)
+    cur = await issues_col.find_one({"_id": oid})
+    res = await issues_col.delete_one({"_id": oid})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Issue non trovata")
+    if cur and cur.get("origine_key"):
+        # issue nata da una NC di verbale: ricordo l'eliminazione, altrimenti la sync la ricreerebbe
+        await issues_skip_col.update_one({"key": cur["origine_key"]},
+                                         {"$set": {"key": cur["origine_key"], "codice": cur.get("codice", ""),
+                                                   "by": sess.get("nome", ""), "at": datetime.now(timezone.utc).isoformat()}},
+                                         upsert=True)
+    return {"ok": True, "deleted": issue_id}
+
+
+# Priority automatica alla creazione di una issue da NC di un verbale (poi modificabile a mano dall'admin nel registro):
+# critica = segnalazione del cliente NON esclusa dall'esito "non confermata" (verbale radice) oppure cantiere non delimitato / accessi aperti;
+# alta = non conformità di qualità dell'opera; bassa = punti sicurezza formali/documentali/di ordine (elenco sotto);
+# media = tutto il resto (incl. POS/PSC SIC-03). Legenda in issue.html (PRIO_LEGEND).
+_ISSUE_PRIO_CRITICA_IDS = {"SIC-21", "SIC-22"}
+_ISSUE_PRIO_BASSA_IDS = {
+    "SIC-01", "SIC-02",                                   # autorizzazioni personale / tesserini
+    "SIC-04", "SIC-08", "SIC-41", "SIC-42",               # programma lavori, libretti, ordinanze, schede sicurezza
+    "SIC-17", "SIC-19",                                   # pulizia strada e aree di cantiere
+    "SIC-27", "SIC-28", "SIC-31",                         # rifiuti: CER, separazione, formulari
+    "SIC-33", "SIC-34", "SIC-35", "SIC-36", "SIC-37",     # rumore
+    "SIC-43",                                             # cartello di cantiere
+}
+
+
+def _issue_priority_nc(item_id: str, cat: str, root_verbale: dict | None) -> str:
+    rv = root_verbale or {}
+    segn = rv.get("segnalazione_cliente") in (True, "SI", "si", "true", 1, "1") \
+        and str(rv.get("esito_segnalazione", "") or "").strip().lower() != "non_confermata"
+    if segn or item_id in _ISSUE_PRIO_CRITICA_IDS:
+        return "critica"
+    if cat == "qualita":
+        return "alta"
+    return "bassa" if (cat == "sicurezza" and item_id in _ISSUE_PRIO_BASSA_IDS) else "media"
+
+
+def _issue_tipo_item(item_id: str) -> str:
+    if item_id in _ISSUE_CN_IDS:
+        return "Cn"
+    iid = str(item_id).upper()
+    if iid.startswith("SIC-"):
+        return "Sf"
+    if iid.startswith("PRE-"):
+        return "Au"
+    if iid.startswith(("TST-", "RIP-", "DOC-")):
+        return "Co"
+    return "In"
+
+
+@app.post("/api/admin/issues/reclassify-sicurezza")
+async def reclassify_issues_sicurezza(sess: dict = Depends(_require_admin_session)):
+    """One-off: riallinea la tipologia (`prefisso`) delle issue da verbale esistenti alle regole di `_issue_tipo_item`
+    (rev.359: In=INF/POZ/MIC/DIV/COL, Sf=SIC-*, Au=PRE-*, Co=TST/RIP/DOC). Cambia solo `prefisso`: `codice` resta
+    invariato (può essere già stato comunicato ai System). Le issue manuali (senza origine_item) non vengono toccate. Idempotente."""
+    now = datetime.now(timezone.utc).isoformat()
+    n = 0
+    async for d in issues_col.find({"$or": [{"origine_item": {"$type": "string", "$ne": ""}}, {"prefisso": "Sc"}]}):
+        new = _issue_tipo_item(d["origine_item"]) if d.get("origine_item") else "Sf"  # senza punto di origine: solo le vecchie Sc (manuali) → Sf
+        old = d.get("prefisso")
+        if new == old:
+            continue
+        await issues_col.update_one({"_id": d["_id"]}, {
+            "$set": {"prefisso": new, "updated_at": now},
+            "$push": {"storico": {"ts": now, "utente": sess.get("nome", ""), "azione": "modificata",
+                                   "modifiche": [{"campo": "Tipologia", "da": _ISSUE_TIPI.get(old, old), "a": _ISSUE_TIPI[new]}]}},
+        })
+        n += 1
+    return {"ok": True, "reclassified": n}
+
+
+async def _sopr_root_code(v: dict, cache: dict) -> str:
+    """Codice del primo verbale della catena (sopralluogo → verifiche): le NC ripetute nelle verifiche
+    appartengono alla stessa issue."""
+    cur, n = v, 0
+    while cur.get("verbale_origine") and n < 20:
+        code = cur["verbale_origine"]
+        nxt = cache.get(code)
+        if nxt is None:
+            nxt = await sopralluoghi_col.find_one({"codice_verbale": code})
+            if nxt is None:
+                return code
+            cache[code] = nxt
+        cur, n = nxt, n + 1
+    return cur.get("codice_verbale", "")
+
+
+# campi "Segnalazione al System" del verbale → campi della issue
+_SOPR_INVIO_MAP = (("subsystem", "subsystem"), ("data_invio_system", "data_invio"),
+                   ("metodo_invio", "metodo_invio"), ("rif_system_invio", "rif_system_invio"))
+
+
+def _sopr_invio_fields(v: dict) -> dict:
+    """Valori valorizzati di SubSystem / data / metodo / riferimento invio di un verbale, con i nomi dei campi issue."""
+    out = {}
+    for src, dst in _SOPR_INVIO_MAP:
+        val = str(v.get(src, "") or "").strip()
+        val = _sopr_date_iso(val) if dst == "data_invio" else val[:_ISSUE_TEXT_MAX.get(dst, 300)]
+        if val:
+            out[dst] = val
+    return out
+
+
+def _sopr_invio_summary(v: dict) -> str:
+    """Riepilogo leggibile dell'invio al System di un verbale (per lo storico delle issue)."""
+    d = _sopr_date_iso(str(v.get("data_invio_system", "") or "").strip())
+    sub = str(v.get("subsystem", "") or "").strip()
+    parts = [f"{d[8:10]}/{d[5:7]}/{d[0:4]}" if d else "", str(v.get("metodo_invio", "") or "").strip(),
+             str(v.get("rif_system_invio", "") or "").strip(), f"SubSystem {sub}" if sub else ""]
+    return " · ".join(p for p in parts if p)
+
+
+async def _issue_sync_verbali(verbali: list) -> dict:
+    """Crea/aggiorna le issue a partire dalle checklist dei verbali (da passare in ordine di codice crescente).
+    - punto NC → una issue per (verbale radice, punto), con impresa/cantiere/comune/lotto/permesso del verbale;
+    - verifica successiva con punto Conforme o N.A. (es. cantiere spostato) → la issue passa a 'Risolta' (una sola volta, rispetta le modifiche manuali);
+    - verifica ancora NC → solo una riga di storico.
+    Idempotente: si può rilanciare quante volte si vuole."""
+    created = resolved = filled = 0
+    cache = {d.get("codice_verbale"): d for d in verbali}
+    async with _issue_sync_lock:
+        # chiavi (radice|punto) delle issue già esistenti: per i punti C/NA serve una query solo se esiste una issue
+        known = {d["origine_key"] async for d in issues_col.find({"origine_key": {"$exists": True}}, {"origine_key": 1})}
+        for v in verbali:
+            code = v.get("codice_verbale", "")
+            root = await _sopr_root_code(v, cache)
+            ck = v.get("checklist") or {}
+            label = str(v.get("tratta_id", "") or "").strip()
+            cod_cant = label.split(" — ")[0].strip() if label not in ("", "—") else ""
+            cinfo = None
+            for sez in _CK_CATEGORIE:
+                for item_id, st in (ck.get(sez) or {}).items():
+                    if not isinstance(st, dict) or st.get("e") not in ("NC", "C", "NA"):
+                        continue
+                    key = f"{root}|{item_id}"
+                    if st["e"] != "NC" and key not in known:
+                        continue
+                    iss = await issues_col.find_one({"origine_key": key})
+                    now = datetime.now(timezone.utc).isoformat()
+                    if st["e"] == "NC":
+                        if iss is not None:
+                            if code == root:
+                                # dati di invio al System inseriti nel verbale radice: completano i campi vuoti della issue (una sola volta per campo)
+                                done = {m.get("campo") for h in iss.get("storico") or []
+                                        if h.get("verbale") == code and str(h.get("utente", "")).startswith("Sistema")
+                                        for m in h.get("modifiche") or []}
+                                fill = {k: x for k, x in _sopr_invio_fields(v).items()
+                                        if not str(iss.get(k, "") or "").strip() and _ISSUE_FIELDS[k] not in done}
+                                if fill:
+                                    await issues_col.update_one({"_id": iss["_id"]}, {"$set": {**fill, "updated_at": now}, "$push": {"storico": {
+                                        "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code,
+                                        "modifiche": [{"campo": _ISSUE_FIELDS[k], "da": "", "a": x} for k, x in fill.items()]}}})
+                                    filled += 1
+                            if code != iss.get("origine_verbale") and not any(h.get("verbale") == code for h in iss.get("storico") or []):
+                                # verifica ancora NC: riga di storico + invio al System di questo verbale (+ campi vuoti della issue)
+                                fill2 = {k: x for k, x in _sopr_invio_fields(v).items() if not str(iss.get(k, "") or "").strip()}
+                                mods = [{"campo": "Verifica", "da": "", "a": f"Ancora non conforme nel verbale {code}"}]
+                                if _sopr_invio_summary(v):
+                                    mods.append({"campo": "Invio al System", "da": "", "a": _sopr_invio_summary(v)})
+                                mods += [{"campo": _ISSUE_FIELDS[k], "da": "", "a": x} for k, x in fill2.items()]
+                                await issues_col.update_one({"_id": iss["_id"]}, {"$set": {**fill2, "updated_at": now}, "$push": {"storico": {
+                                    "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code,
+                                    "modifiche": mods}}})
+                                if fill2:
+                                    filled += 1
+                            continue
+                        if await issues_skip_col.find_one({"key": key}):
+                            continue
+                        if cinfo is None:
+                            cinfo = {}
+                            if cod_cant.startswith("CA/"):
+                                cd = await cantieri_col.find_one({"codice_cantiere": cod_cant})
+                                if cd:
+                                    cinfo = {"pratica": str(cd.get("pratica_id", "") or ""), "ente": str(cd.get("ente", "") or "")}
+                        area, testo = _CK_DEF.get(item_id, ("", ""))
+                        parts = [f"{item_id} — {area}: {testo}" if testo else item_id]
+                        for lab, k in (("Dimensione", "dim"), ("Rilievo", "rilievo"), ("Azione correttiva", "azione"), ("Responsabile", "resp"), ("Nota", "nota")):
+                            if st.get(k):
+                                parts.append(f"{lab}: {st[k]}")
+                        rec = _issue_clean({
+                            "cantiere": cod_cant or label, "pratica": cinfo.get("pratica", ""), "ente": cinfo.get("ente", ""),
+                            "lotto": v.get("lotto", ""), "comune": v.get("comune", ""), "system": v.get("impresa", ""),
+                            "data_rilevamento": _sopr_date_iso(v.get("data_sopralluogo", "")) or str(v.get("created_at", ""))[:10],
+                            "rilevato_da": v.get("referente_impresa", ""),  # campo storicamente invertito: contiene il redattore
+                            "descrizione": "\n".join(parts), "data_prevista": _sopr_date_iso(st.get("scad", "")),
+                            **_sopr_invio_fields(cache.get(root) or v),
+                            "priority": _issue_priority_nc(item_id, sez, cache.get(root) or v),
+                        })
+                        try:
+                            await _issue_create(_issue_tipo_item(item_id), rec, f"Sistema (verbale {code})",
+                                                extra={"origine_verbale": code, "origine_item": item_id, "origine_cat": sez, "origine_key": key},
+                                                azione="creata", marker={"verbale": code})
+                            created += 1
+                            known.add(key)
+                        except Exception as e:
+                            if "E11000" not in str(e):
+                                raise
+                    elif iss is not None and code != iss.get("origine_verbale") and iss.get("stato") not in ("risolta", "chiusa") \
+                            and not any(h.get("verbale") == code for h in iss.get("storico") or []):
+                        await issues_col.update_one({"_id": iss["_id"]}, {"$set": {"stato": "risolta", "updated_at": now}, "$push": {"storico": {
+                            "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code,
+                            "modifiche": [{"campo": "Stato avanzamento", "da": _ISSUE_STATI.get(iss.get("stato"), ""), "a": "Risolta"},
+                                          {"campo": "Verifica", "da": "", "a": (f"Conforme nel verbale {code}" if st["e"] == "C" else
+                                           f"Non più applicabile (N.A.) nel verbale {code}" + (f": {st['nota']}" if st.get("nota") else ""))}]
+                                         + ([{"campo": "Invio al System", "da": "", "a": _sopr_invio_summary(v)}] if _sopr_invio_summary(v) else [])}}})
+                        resolved += 1
+    return {"created": created, "resolved": resolved, "filled": filled}
+
+
+async def _issue_sync_safe(verbali: list) -> None:
+    try:
+        r = await _issue_sync_verbali(verbali)
+        if r["created"] or r["resolved"] or r["filled"]:
+            print(f"[issues] sync da verbali: {r}")
+    except Exception as e:
+        print(f"[issues] sync da verbali fallita: {type(e).__name__}: {e}")
+
+
+@app.post("/api/issues/sync-sopralluoghi")
+async def sync_issues_from_sopralluoghi(sess: dict = Depends(_require_admin_session)):
+    """Allinea il registro con le NC dei verbali (idempotente; chiamata anche all'apertura della pagina)."""
+    verbali = [d async for d in sopralluoghi_col.find({}).sort("codice_verbale", 1)]
+    return {"ok": True, "scanned": len(verbali), **(await _issue_sync_verbali(verbali))}
+
+
+@app.get("/api/issues/lookup")
+async def issues_lookup(sess: dict = Depends(_require_admin_session)):
+    """Cantieri già presenti (collection `cantieri`, 1 per pratica AUT ottenuta) per precompilare la
+    issue partendo da codice cantiere o permesso: comune, impresa (= System), lotto, ente."""
+    lotto_impresa: dict = {}
+    async for a in assignments_col.find({}, {"nome": 1, "lotti": 1}):
+        for l in (a.get("lotti") or []):
+            ln = _lotto_from_source(l)
+            if ln:
+                lotto_impresa[ln] = a.get("nome", "")
+    rows = []
+    async for d in cantieri_col.find({}, {"codice_cantiere": 1, "cantiere_key": 1, "pratica_id": 1, "ente": 1, "lotto": 1,
+                                          "cluster": 1, "provincia": 1, "comune": 1, "impresa": 1}):
+        lotto = _lotto_from_source(d.get("lotto", ""))
+        rows.append({
+            "codice_cantiere": str(d.get("codice_cantiere", "") or "").strip(),
+            "pratica_id": str(d.get("pratica_id", "") or "").strip(),
+            "ente": str(d.get("ente", "") or "").strip(),
+            "lotto": lotto,
+            "comune": str(d.get("comune", "") or "").strip(),
+            "provincia": str(d.get("provincia", "") or "").strip(),
+            "impresa": str(d.get("impresa", "") or "").strip() or lotto_impresa.get(lotto, ""),
+        })
+    rows.sort(key=lambda r: (r["lotto"], r["codice_cantiere"] or r["pratica_id"]))
+    return {"cantieri": rows}
+
+
+@app.get("/api/issues/export.xlsx")
+async def export_issues_xlsx(
+    tipologia: str = "", stato: str = "", priority: str = "", system: str = "", q: str = "",
+    sess: dict = Depends(_require_admin_session),
+):
+    """Excel nel formato della bozza richiesta (16 colonne, stesso ordine) + fogli Storico e
+    Legenda codici. Accetta gli stessi filtri della pagina."""
+    import openpyxl
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.table import Table, TableStyleInfo
+
+    items = []
+    async for d in issues_col.find({}).sort([("prefisso", 1), ("seq", 1)]):
+        if tipologia and d.get("prefisso") != tipologia:
+            continue
+        if stato and d.get("stato") != stato:
+            continue
+        if priority and d.get("priority") != priority:
+            continue
+        if system and (d.get("system") or "").strip().lower() != system.strip().lower():
+            continue
+        if q:
+            hay = " ".join(str(d.get(k, "")) for k in ("codice", *_ISSUE_FIELDS)).lower()
+            if q.strip().lower() not in hay:
+                continue
+        items.append(d)
+
+    wb = openpyxl.Workbook()
+    HFILL = PatternFill("solid", fgColor="043F75")
+    HFONT = Font(color="FFFFFF", bold=True, size=10.5)
+    THIN = Side(style="thin", color="D9DEE6")
+    BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
+    PRIO_FILL = {"critica": "F8D0CC", "alta": "FDE3C8", "media": "FFF3C4", "bassa": "E4F5EC"}
+    STATO_FILL = {"risolta": "E4F5EC", "chiusa": "E4F5EC"}
+
+    def _header(ws, cols, widths):
+        ws.append(cols)
+        for c in range(1, len(cols) + 1):
+            cell = ws.cell(row=1, column=c)
+            cell.fill, cell.font, cell.border = HFILL, HFONT, BORDER
+            cell.alignment = Alignment(vertical="center", wrap_text=True)
+        ws.row_dimensions[1].height = 30
+        ws.freeze_panes = "B2"
+        for i, w in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+
+    ws = wb.active
+    ws.title = "Foglio1"
+    cols = ["Codice Issue", "Tipologia", "Cantiere", "Comune", "System", "SubSystem", "data rilevamento",
+            "chi ha rilevato l'anomalia", "Descrizione", "data invio segnalazione al system",
+            "Riferimento System invio", "metodo di invio", "stato avanzamento", "Priority",
+            "Link vs documentazione", "data prevista sistemazione",
+            "Lotto", "Permesso / Pratica", "Ente", "Origine (verbale · punto)", "Segnalazione cliente"]  # ultime 5: extra rispetto alla bozza, in coda
+    _header(ws, cols, [13, 26, 16, 16, 20, 20, 13, 22, 60, 16, 22, 15, 18, 11, 24, 16, 8, 18, 26, 22, 18])
+    _cm = await _issue_cliente_map(items)
+    for d in items:
+        ws.append([
+            d.get("codice", ""), _ISSUE_TIPI.get(d.get("prefisso"), ""), d.get("cantiere", ""), d.get("comune", ""),
+            d.get("system", ""), d.get("subsystem", ""),
+            _sopr_date_obj(d.get("data_rilevamento", "")) or None, d.get("rilevato_da", ""),
+            d.get("descrizione", ""), _sopr_date_obj(d.get("data_invio", "")) or None,
+            d.get("rif_system_invio", ""), d.get("metodo_invio", ""),
+            _ISSUE_STATI.get(d.get("stato"), ""), _ISSUE_PRIORITY.get(d.get("priority"), ""),
+            "",  # Link vs documentazione: colonna mantenuta per compatibilità col modello, compilabile a mano
+            _sopr_date_obj(d.get("data_prevista", "")) or None,
+            d.get("lotto", ""), d.get("pratica", ""), d.get("ente", ""),
+            f"{d['origine_verbale']} · {d.get('origine_item', '')}" if d.get("origine_verbale") else "",
+            _ISSUE_CLIENTE_LAB.get(_cm.get(d.get("codice", ""), ""), ""),
+        ])
+        r = ws.max_row
+        for c in range(1, len(cols) + 1):
+            cell = ws.cell(row=r, column=c)
+            cell.border = BORDER
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+        for c in (7, 10, 16):
+            ws.cell(row=r, column=c).number_format = "DD/MM/YYYY"
+        ws.cell(row=r, column=14).fill = PatternFill("solid", fgColor=PRIO_FILL.get(d.get("priority"), "FFFFFF"))
+        if d.get("stato") in STATO_FILL:
+            ws.cell(row=r, column=13).fill = PatternFill("solid", fgColor=STATO_FILL[d["stato"]])
+    if items:
+        ws.add_table(Table(displayName="Issue", ref=f"A1:{get_column_letter(len(cols))}{ws.max_row}",
+                           tableStyleInfo=TableStyleInfo(name="TableStyleLight1", showRowStripes=False)))
+
+    ws2 = wb.create_sheet("Storico")
+    _header(ws2, ["Codice Issue", "Data e ora (UTC)", "Utente", "Azione", "Campo", "Da", "A"], [13, 20, 20, 12, 30, 30, 30])
+    for d in items:
+        for h in d.get("storico") or []:
+            ts = str(h.get("ts", ""))[:19].replace("T", " ")
+            mods = h.get("modifiche") or []
+            if not mods:
+                ws2.append([d.get("codice", ""), ts, h.get("utente", ""), h.get("azione", ""), "", "", ""])
+            for m in mods:
+                ws2.append([d.get("codice", ""), ts, h.get("utente", ""), h.get("azione", ""),
+                            m.get("campo", ""), m.get("da", ""), m.get("a", "")])
+
+    ws3 = wb.create_sheet("Legenda codici")
+    _header(ws3, ["Prefisso", "Significato"], [12, 80])
+    ws3.append(["In_nnnn", "Progressivo per anomalie riscontrate su infrastrutture completate o in corso"])
+    ws3.append(["Cn_nnnn", "Segnaletica su cantieri in corso"])
+    ws3.append(["Sf_nnnn", "Anomalie sicurezza di cantiere, documentazione e autorizzazioni incluse (le vecchie Sc_nnnn sono state unite a Sf)"])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="issue_enri_{datetime.now().strftime("%Y-%m-%d")}.xlsx"'},
+    )
+
+
+@app.delete("/api/sopralluoghi/{sop_id}")
+async def delete_sopralluogo(sop_id: str, cascade: bool = False, sess: dict = Depends(_require_admin_session)):
+    """Elimina un verbale di sopralluogo — admin/admin2. Se esistono verifiche collegate (verbale_origine)
+    risponde 409 con l'elenco, a meno di `?cascade=true` (elimina anche le verifiche, a catena).
+    Le issue nate dal verbale NON vengono toccate (si gestiscono dal registro issue); le foto su GitHub restano."""
+    try:
+        oid = ObjectId(sop_id)
+    except Exception:
+        raise HTTPException(400, "ID non valido")
+    doc = await sopralluoghi_col.find_one({"_id": oid}, {"codice_verbale": 1})
+    if not doc:
+        raise HTTPException(404, "Verbale non trovato")
+    # catena di verifiche discendenti (BFS)
+    codici, frontier = [], [doc.get("codice_verbale", "")]
+    while frontier and len(codici) < 50:
+        figli = [d["codice_verbale"] async for d in sopralluoghi_col.find({"verbale_origine": {"$in": frontier}}, {"codice_verbale": 1})]
+        codici += figli
+        frontier = figli
+    if codici and not cascade:
+        raise HTTPException(409, "Il verbale ha verifiche collegate: " + ", ".join(codici) + ". Eliminare anche queste?")
+    tutti = [doc.get("codice_verbale", "")] + codici
+    await sopralluoghi_col.delete_many({"codice_verbale": {"$in": tutti}})
+    n_iss = await issues_col.count_documents({"origine_verbale": {"$in": tutti}})
+    _schedule_sopralluoghi_csv_regen(f"eliminazione verbale: {', '.join(tutti)} ({sess.get('nome', '')})")
+    return {"ok": True, "deleted": tutti, "issues_collegate": n_iss}
+
+
+_SOPR_EDIT_TEXT = {"lotto": ("Lotto", 50), "tratta_id": ("Cantiere", 300), "impresa": ("Impresa", 200),
+                   "referente_impresa": ("Redatto da", 200), "referente_retelit": ("Ruolo redattore", 200),
+                   "comune": ("Indirizzo / Località", 300)}
+_CK_ESITO_LAB = {"C": "Conforme", "NC": "NC", "NA": "N.A.", "": "—"}
+
+
+@app.put("/api/sopralluoghi/{sop_id}")
+async def update_sopralluogo(sop_id: str, payload: dict, sess: dict = Depends(_require_admin_session)):
+    """Modifica un verbale già salvato — admin/admin2. Aggiornamento PARZIALE: solo le chiavi presenti nel body.
+    Campi: data_sopralluogo, lotto, tratta_id, impresa, referente_impresa, referente_retelit, comune,
+    segnalazione_cliente (+ _note, esito_segnalazione; solo verbali radice), checklist (sostituzione completa).
+    I dati 'Segnalazione al System' hanno il loro endpoint (/system). Ogni modifica finisce in `storico_modifiche`."""
+    try:
+        oid = ObjectId(sop_id)
+    except Exception:
+        raise HTTPException(400, "ID non valido")
+    doc = await sopralluoghi_col.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Verbale non trovato")
+    p = payload or {}
+    sets, mods = {}, []
+
+    def _chg(campo, da, a):
+        mods.append({"campo": campo, "da": str(da), "a": str(a)})
+
+    for k, (lab, mx) in _SOPR_EDIT_TEXT.items():
+        if k in p:
+            v = str(p.get(k, "")).strip()[:mx]
+            if k in ("lotto", "tratta_id", "impresa") and not v:
+                raise HTTPException(422, f"{lab}: valore obbligatorio")
+            if v != str(doc.get(k, "") or ""):
+                _chg(lab, doc.get(k, ""), v); sets[k] = v
+    if "data_sopralluogo" in p:
+        raw = str(p.get("data_sopralluogo", "")).strip()
+        d = _sopr_date_iso(raw)
+        if not d:
+            raise HTTPException(422, "Data sopralluogo non valida")
+        if d != _sopr_date_iso(str(doc.get("data_sopralluogo", "") or "")):
+            _chg("Data sopralluogo", doc.get("data_sopralluogo", ""), d); sets["data_sopralluogo"] = d
+
+    # checklist (sostituzione completa)
+    ck_old = doc.get("checklist") or {}
+    ck_new = ck_old
+    if "checklist" in p:
+        ck_new = _sanitize_checklist(p.get("checklist"))
+        if "note_generali" not in (p.get("checklist") or {}):
+            ck_new["note_generali"] = ck_old.get("note_generali", "")
+        def _flat(ck):
+            return {i: st for sez in _CK_CATEGORIE for i, st in (ck.get(sez) or {}).items() if isinstance(st, dict)}
+        fo, fn = _flat(ck_old), _flat(ck_new)
+        for i in sorted(set(fo) | set(fn)):
+            a, b = fo.get(i) or {}, fn.get(i) or {}
+            if (a.get("e", ""), a.get("nota", ""), a.get("dim", "")) != (b.get("e", ""), b.get("nota", ""), b.get("dim", "")) or \
+               (b.get("e") == "NC" and any(a.get(f, "") != b.get(f, "") for f in ("rilievo", "azione", "resp", "scad"))):
+                if b.get("e") == "NC" and (not b.get("azione") or not b.get("scad")):
+                    raise HTTPException(422, f"Non conformità {i}: azione correttiva e scadenza sono obbligatorie")
+                _chg(f"Checklist {i}", _CK_ESITO_LAB.get(a.get("e", ""), "—"), _CK_ESITO_LAB.get(b.get("e", ""), "—"))
+        if ck_new.get("note_generali", "") != ck_old.get("note_generali", ""):
+            _chg("Note generali checklist", ck_old.get("note_generali", ""), ck_new.get("note_generali", ""))
+        if any(m["campo"].startswith("Checklist") or m["campo"].startswith("Note generali") for m in mods):
+            sets["checklist"] = ck_new
+            sets.update(_checklist_counts(ck_new))
+
+    # segnalazione cliente (solo verbali radice)
+    if any(k in p for k in ("segnalazione_cliente", "segnalazione_cliente_note", "esito_segnalazione")):
+        if doc.get("verbale_origine"):
+            raise HTTPException(422, "La segnalazione cliente si imposta solo sul verbale di sopralluogo, non sulle verifiche")
+        segn = bool(p.get("segnalazione_cliente", doc.get("segnalazione_cliente", False)))
+        esito = str(p.get("esito_segnalazione", doc.get("esito_segnalazione", ""))).strip().lower() if segn else ""
+        note = str(p.get("segnalazione_cliente_note", doc.get("segnalazione_cliente_note", ""))).strip()[:2000] if segn else ""
+        if segn and esito not in ("confermata", "non_confermata"):
+            raise HTTPException(422, "Segnalazione cliente: indicare se è confermata o non confermata")
+        if segn and esito == "confermata" and not any(
+                st.get("e") == "NC" for sez in _CK_CATEGORIE for st in (ck_new.get(sez) or {}).values() if isinstance(st, dict)):
+            raise HTTPException(422, "Segnalazione confermata: almeno un punto della checklist deve essere non conforme")
+        for k, lab, new in (("segnalazione_cliente", "Segnalazione cliente", segn),
+                            ("esito_segnalazione", "Esito segnalazione", esito),
+                            ("segnalazione_cliente_note", "Note segnalazione cliente", note)):
+            if new != doc.get(k, False if k == "segnalazione_cliente" else ""):
+                _chg(lab, doc.get(k, ""), new); sets[k] = new
+
+    if not mods:
+        return {"ok": True, "changed": 0}
+    now = datetime.now(timezone.utc).isoformat()
+    utente = sess.get("nome", "")
+    sets.update({"modificato_da": utente, "modificato_il": now})
+    await sopralluoghi_col.update_one({"_id": oid}, {"$set": sets, "$push": {"storico_modifiche": {"ts": now, "utente": utente, "modifiche": mods[:200]}}})
+    code = doc.get("codice_verbale", "")
+    _schedule_sopralluoghi_csv_regen(f"modifica verbale: {code} ({utente})")
+    if any(k in sets for k in ("segnalazione_cliente", "esito_segnalazione")) and not doc.get("verbale_origine"):
+        try:
+            await _issue_riallinea_priority_verbale(doc, {**doc, **sets}, now)
+        except Exception as e:
+            print(f"[sopralluoghi] riallineo priority issue dopo modifica verbale fallito: {type(e).__name__}: {e}")
+    if "checklist" in sets:
+        asyncio.create_task(_issue_sync_safe([{**doc, **sets}]))  # NC nuove → issue; verifiche conformi → issue risolte
+    return {"ok": True, "changed": len(mods)}
+
+
+async def _issue_riallinea_priority_verbale(old_doc: dict, root_doc: dict, now: str) -> int:
+    """Ricalcola la priority (`_issue_priority_nc`) delle issue aperte nate dal verbale radice `root_doc`,
+    dopo una modifica della segnalazione cliente. Salta le issue la cui priority è stata cambiata A MANO
+    (riga 'Priority' nello storico di un utente diverso da 'Sistema…'). Ritorna quante issue ha aggiornato."""
+    code = root_doc.get("codice_verbale", "")
+    if not code:
+        return 0
+    n = 0
+    async with _issue_sync_lock:
+        async for iss in issues_col.find({"origine_key": {"$regex": "^" + re.escape(code) + r"\|"}}):
+            if iss.get("stato") in ("risolta", "chiusa"):
+                continue
+            if any(m.get("campo") == "Priority" and not str(h.get("utente", "")).startswith("Sistema")
+                   for h in iss.get("storico") or [] for m in h.get("modifiche") or []):
+                continue
+            new = _issue_priority_nc(iss.get("origine_item", ""), iss.get("origine_cat", ""), root_doc)
+            if new == iss.get("priority"):
+                continue
+            await issues_col.update_one({"_id": iss["_id"]}, {"$set": {"priority": new, "updated_at": now}, "$push": {"storico": {
+                "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code,
+                "modifiche": [{"campo": "Priority", "da": _ISSUE_PRIORITY.get(iss.get("priority"), iss.get("priority", "")),
+                               "a": _ISSUE_PRIORITY.get(new, new)}]}}})
+            n += 1
+    return n
+
+
+@app.put("/api/sopralluoghi/{sop_id}/system")
+async def update_sopralluogo_system(sop_id: str, payload: dict, sess: dict = Depends(_require_staff_session)):
+    """Aggiorna i 4 campi \"Segnalazione al System\" di un verbale già salvato (es. verbali precedenti ai campi)
+    + (solo verbali radice, opzionale) segnalazione cliente: flag, esito confermata/non_confermata, nota.
+    I 4 campi System sono obbligatori. Traccia chi/quando in `storico_system` e riallinea le issue collegate."""
+    try:
+        oid = ObjectId(sop_id)
+    except Exception:
+        raise HTTPException(400, "ID non valido")
+    doc = await sopralluoghi_col.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Verbale non trovato")
+    _p = payload or {}
+    new = {
+        "subsystem":         str(_p.get("subsystem", "")).strip()[:200],
+        "data_invio_system": _sopr_date_iso(str(_p.get("data_invio_system", "")).strip()),
+        "metodo_invio":      str(_p.get("metodo_invio", "")).strip()[:100],
+        "rif_system_invio":  str(_p.get("rif_system_invio", "")).strip()[:300],
+    }
+    labels = {"subsystem": "SubSystem", "data_invio_system": "data invio",
+              "metodo_invio": "metodo di invio", "rif_system_invio": "riferimento invio"}
+    manc = [lab for k, lab in labels.items() if not new[k]]
+    if manc:
+        raise HTTPException(422, "Segnalazione al System: compilare " + ", ".join(manc))
+    old = {k: (_sopr_date_iso(str(doc.get(k, "") or "").strip()) if k == "data_invio_system"
+               else str(doc.get(k, "") or "").strip()) for k in new}
+    changes = {k: (old[k], new[k]) for k in new if old[k] != new[k]}
+
+    # Segnalazione cliente (riapertura flag / esito / nota) — solo verbali radice, stesse regole di PUT /{sop_id}
+    segn_sets, segn_mods = {}, []
+    if any(k in _p for k in ("segnalazione_cliente", "esito_segnalazione", "segnalazione_cliente_note")):
+        if doc.get("verbale_origine"):
+            raise HTTPException(422, "La segnalazione cliente si imposta solo sul verbale di sopralluogo, non sulle verifiche")
+        segn = bool(_p.get("segnalazione_cliente", doc.get("segnalazione_cliente", False)))
+        esito = str(_p.get("esito_segnalazione", doc.get("esito_segnalazione", ""))).strip().lower() if segn else ""
+        nota = str(_p.get("segnalazione_cliente_note", doc.get("segnalazione_cliente_note", ""))).strip()[:2000] if segn else ""
+        if segn and esito not in ("confermata", "non_confermata"):
+            raise HTTPException(422, "Segnalazione cliente: indicare se è confermata o non confermata")
+        if segn and not nota:
+            raise HTTPException(422, "Segnalazione cliente: la nota è obbligatoria")
+        if segn and esito == "confermata" and not any(
+                st.get("e") == "NC" for sez in _CK_CATEGORIE for st in ((doc.get("checklist") or {}).get(sez) or {}).values() if isinstance(st, dict)):
+            raise HTTPException(422, "Segnalazione confermata: almeno un punto della checklist deve essere non conforme")
+        for k, lab, val in (("segnalazione_cliente", "Segnalazione cliente", segn),
+                            ("esito_segnalazione", "Esito segnalazione", esito),
+                            ("segnalazione_cliente_note", "Note segnalazione cliente", nota)):
+            if val != doc.get(k, False if k == "segnalazione_cliente" else ""):
+                segn_mods.append({"campo": lab, "da": str(doc.get(k, "")), "a": str(val)}); segn_sets[k] = val
+
+    if not changes and not segn_mods:
+        return {"ok": True, "changed": 0, "issues_aggiornate": 0}
+    now = datetime.now(timezone.utc).isoformat()
+    utente = sess.get("nome", "")
+    mods_all = [{"campo": labels[k], "da": a, "a": b} for k, (a, b) in changes.items()] + segn_mods
+    await sopralluoghi_col.update_one({"_id": oid}, {
+        "$set": {**new, **segn_sets, "modificato_da": utente, "modificato_il": now},
+        "$push": {"storico_system": {"ts": now, "utente": utente, "modifiche": mods_all}}})
+
+    # Riallinea le issue collegate (mai bloccante per il salvataggio del verbale)
+    n_iss = 0
+    try:
+        code = doc.get("codice_verbale", "")
+        merged = {**doc, **new}
+        if not doc.get("verbale_origine"):
+            # verbale radice: aggiorna i campi della issue solo se vuoti o ancora uguali al vecchio valore del verbale
+            # (se qualcuno li ha modificati a mano nel registro issue, non vengono toccati)
+            async for iss in issues_col.find({"origine_verbale": code}):
+                sets, mods = {}, []
+                for src, dst in _SOPR_INVIO_MAP:
+                    if src not in changes:
+                        continue
+                    cur = str(iss.get(dst, "") or "").strip()
+                    if dst == "data_invio":
+                        cur = _sopr_date_iso(cur) or cur
+                    if cur in ("", changes[src][0]):
+                        sets[dst] = new[src]
+                        mods.append({"campo": _ISSUE_FIELDS[dst], "da": cur, "a": new[src]})
+                if sets:
+                    await issues_col.update_one({"_id": iss["_id"]}, {"$set": {**sets, "updated_at": now}, "$push": {"storico": {
+                        "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code, "modifiche": mods}}})
+                    n_iss += 1
+        else:
+            # verifica: la issue conserva i dati del radice, si aggiunge solo una riga di storico
+            summ = _sopr_invio_summary(merged)
+            async for iss in issues_col.find({"storico.verbale": code}):
+                await issues_col.update_one({"_id": iss["_id"]}, {"$set": {"updated_at": now}, "$push": {"storico": {
+                    "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code,
+                    "modifiche": [{"campo": "Invio al System (corretto)", "da": "", "a": summ}]}}})
+                n_iss += 1
+    except Exception as e:
+        print(f"[sopralluoghi] riallineo issue dopo modifica dati System fallito: {type(e).__name__}: {e}")
+    # Segnalazione cliente cambiata → riallinea la priority delle issue del verbale (solo quelle mai modificate a mano)
+    if segn_mods:
+        try:
+            n_iss += await _issue_riallinea_priority_verbale(doc, {**doc, **segn_sets}, now)
+        except Exception as e:
+            print(f"[sopralluoghi] riallineo priority issue dopo modifica segnalazione cliente fallito: {type(e).__name__}: {e}")
+    _schedule_sopralluoghi_csv_regen(f"aggiornamento dati System: {doc.get('codice_verbale', '')}")
+    return {"ok": True, "changed": len(changes) + len(segn_mods), "issues_aggiornate": n_iss}
+
+
+@app.get("/api/sopralluoghi")
+async def list_sopralluoghi(sess: dict = Depends(_require_staff_session)):
+    """Restituisce tutti i verbali di sopralluogo, ordinati per codice decrescente."""
+    verbali = []
+    async for d in sopralluoghi_col.find({}).sort("codice_verbale", -1):
+        d["_id"] = str(d["_id"])
+        verbali.append(d)
+    return {"verbali": verbali}
+
+
+def _sopr_date_iso(raw: str) -> str:
+    """Normalizza una data verbale (ISO yyyy-mm-dd o gg/mm/aaaa legacy) in ISO."""
+    raw = (raw or "").strip()
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", raw):
+        return raw
+    m = re.match(r"^(\d{2})/(\d{2})/(\d{4})$", raw)
+    if m:
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    return ""
+
+
+def _sopr_date_obj(raw: str):
+    """Come sopra ma restituisce un date Python (per celle Excel formattate come data), o None."""
+    iso = _sopr_date_iso(raw)
+    if not iso:
+        return None
+    try:
+        return datetime.strptime(iso, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+_CK_CAT_BY_PREFIX = {"PRE": "qualita", "INF": "qualita", "DIV": "qualita", "POZ": "qualita", "MIC": "qualita", "COL": "qualita",
+                     "TST": "collaudo", "RIP": "collaudo", "DOC": "collaudo", "SIC": "sicurezza"}
+
+
+@app.get("/api/sopralluoghi/checklist-def")
+async def sopralluoghi_checklist_def(sess: dict = Depends(_require_staff_session)):
+    """Definizione checklist DL (id, area, testo, categoria) nell'ordine di `_CK_DEF` — usata dall'editor admin."""
+    return {"items": [{"id": i, "area": a, "t": t, "cat": _CK_CAT_BY_PREFIX.get(i.split("-")[0], "qualita")}
+                      for i, (a, t) in _CK_DEF.items()]}
+
+
+def _esito_effettivo(v: dict) -> str:
+    """Esito 'effettivo' di un verbale (allineato a _anomaliaStato di sopralluoghi.html): esito storico se valorizzato,
+    altrimenti derivato dalla checklist (NC>0 = media; critica se NC su SIC-21/22 o segnalazione cliente non 'non_confermata';
+    0 NC con ≥1 punto compilato = nessuna anomalia; checklist vuota = '')."""
+    esito = str(v.get("esito", "") or "").strip()
+    if esito in ("Anomalia critica", "Anomalia media", "Nessuna anomalia"):
+        return esito
+    nc = v.get("checklist_non_conformi", 0) or 0
+    if nc > 0:
+        nc_ids = {x.strip() for x in str(v.get("checklist_nc_ids", "") or "").split(",") if x.strip()}
+        segn = v.get("segnalazione_cliente") in (True, "SI", "si", "true", 1, "1") \
+            and str(v.get("esito_segnalazione", "") or "").strip().lower() != "non_confermata"
+        return "Anomalia critica" if (segn or nc_ids & _ISSUE_PRIO_CRITICA_IDS) else "Anomalia media"
+    return "Nessuna anomalia" if (v.get("checklist_compilati", 0) or 0) > 0 else ""
+
+
+@app.get("/api/sopralluoghi/export.xlsx")
+async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session)):
+    """Estrazione Excel dei verbali di sopralluogo su 3 fogli:
+    Verbali (riepilogo leggibile, un verbale per riga), Checklist dettaglio
+    (un item per riga, su qualità/sicurezza/collaudo) e Non conformità (solo
+    gli item NC, per il follow-up delle azioni correttive)."""
+    _t0 = time.perf_counter()
+    import openpyxl
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.table import Table, TableStyleInfo
+    _t_imp = time.perf_counter()
+
+    # Le firme (immagini base64) non servono all'export: escluse per non trasferirle da Mongo
+    verbali = [d async for d in sopralluoghi_col.find({}, {"firma_impresa": 0, "firma_retelit": 0}).sort("codice_verbale", 1)]
+    _t_db = time.perf_counter()
+    _by_code = {d.get("codice_verbale"): d for d in verbali}
+
+    def _tipo_verbale(v):
+        """'Sopralluogo' oppure '2° sopralluogo (verifica cliente|interna)': il tipo si
+        ricava risalendo la catena di verbale_origine fino alla radice."""
+        if not v.get("verbale_origine"):
+            return "Sopralluogo"
+        cur, n = v, 0
+        while cur and cur.get("verbale_origine") and n < 20:
+            cur = _by_code.get(cur["verbale_origine"])
+            n += 1
+        cliente = bool(cur and cur.get("segnalazione_cliente"))
+        return f"{n + 1}° sopralluogo (verifica " + ("cliente" if cliente else "interna") + ")"
+
+    wb = openpyxl.Workbook()
+
+    HEADER_FILL = PatternFill("solid", fgColor="043F75")
+    HEADER_FONT = Font(color="FFFFFF", bold=True, size=10.5)
+    THIN = Side(style="thin", color="D9DEE6")
+    BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
+    NC_FILL = PatternFill("solid", fgColor="FDECEA")
+    OK_FILL = PatternFill("solid", fgColor="E4F5EC")
+    WARN_FILL = PatternFill("solid", fgColor="FFF3E0")
+    CLIENTE_FILL = PatternFill("solid", fgColor="FFE7B8")
+
+    def _style_header(ws, ncols, row=1):
+        for c in range(1, ncols + 1):
+            cell = ws.cell(row=row, column=c)
+            cell.fill = HEADER_FILL
+            cell.font = HEADER_FONT
+            cell.alignment = Alignment(vertical="center", wrap_text=True)
+            cell.border = BORDER
+        # Nota: usare ws.cell(row=row+1, ...) per calcolare la coordinata delle
+        # freeze panes istanzierebbe quella cella nel foglio, spostando di una
+        # riga ogni successivo ws.append() (max_row si aggiornerebbe subito a
+        # row+1 anche senza dati) — si costruisce la coordinata come stringa.
+        ws.freeze_panes = f"A{row + 1}"
+        ws.row_dimensions[row].height = 28
+
+    _AL_TOP = Alignment(vertical="top")
+    _AL_WRAP = Alignment(vertical="top", wrap_text=True)
+
+    def _style_body(ws, wrap_cols):
+        """Bordo + allineamento in un solo passaggio a fine foglio, con oggetti stile
+        condivisi: creare Alignment/ws.cell() per ogni cella era il grosso del tempo
+        (foglio checklist = migliaia di righe × 12 colonne)."""
+        from openpyxl.styles.cell_style import StyleArray
+        wb_ = ws.parent
+        bid = wb_._borders.add(BORDER)
+        a_top = wb_._alignments.add(_AL_TOP)
+        a_wrap = wb_._alignments.add(_AL_WRAP)
+        for cells in ws.iter_rows(min_row=2):
+            for c in cells:
+                st = c._style
+                if st is None:  # cella senza stile: openpyxl lo crea in modo lazy
+                    st = c._style = StyleArray()
+                st.borderId = bid
+                st.alignmentId = a_wrap if c.column in wrap_cols else a_top
+
+    def _autofit(ws, widths):
+        for i, w in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+
+    # ── Foglio 1: Verbali ────────────────────────────────────────────────────
+    ws1 = wb.active
+    ws1.title = "Verbali"
+    cols1 = [
+        "Codice", "Data", "Lotto", "Tratta / Cantiere", "Comune", "Impresa",
+        "Redatto da", "Ruolo redattore", "Esito", "Segnalazione cliente",
+        "Note segnalazione cliente",
+        "Checklist compilati", "Checklist conformi", "Checklist non conformi",
+        "Checklist N.A.", "ID non conformità",
+        "N. foto", "Note generali checklist", "Creato il",
+        "Esito segnalazione", "Tipo", "Verbale origine",
+        "SubSystem", "Data invio segnalazione al System", "Metodo di invio", "Riferimento System invio",
+    ]
+    ws1.append(cols1)
+    _r1 = 1
+    _style_header(ws1, len(cols1))
+
+    for v in verbali:
+        ck = v.get("checklist") or {}
+        d_obj = _sopr_date_obj(v.get("data_sopralluogo", ""))
+        foto_urls = [u.strip() for u in (v.get("foto_urls") or "").split(",") if u.strip()]
+        row = [
+            v.get("codice_verbale", ""),
+            d_obj or v.get("data_sopralluogo", ""),
+            v.get("lotto", ""),
+            v.get("tratta_id", ""),
+            v.get("comune", ""),
+            v.get("impresa", ""),
+            v.get("referente_impresa", ""),   # nome campo storico: contiene il redattore
+            v.get("referente_retelit", ""),   # nome campo storico: contiene il ruolo
+            _esito_effettivo(v) or "—",
+            "SÌ" if v.get("segnalazione_cliente") in (True, "SI", "si", "true", 1, "1") else "NO",
+            v.get("segnalazione_cliente_note", ""),
+            v.get("checklist_compilati", 0) or 0,
+            v.get("checklist_conformi", 0) or 0,
+            v.get("checklist_non_conformi", 0) or 0,
+            v.get("checklist_na", 0) or 0,
+            v.get("checklist_nc_ids", ""),
+            len(foto_urls),
+            ck.get("note_generali", ""),
+            v.get("created_at", ""),
+            {"confermata": "Confermata", "non_confermata": "Non confermata"}.get(v.get("esito_segnalazione", ""), ""),
+            _tipo_verbale(v),
+            v.get("verbale_origine", ""),
+            v.get("subsystem", ""),
+            _sopr_date_obj(v.get("data_invio_system", "")) or None,
+            v.get("metodo_invio", ""),
+            v.get("rif_system_invio", ""),
+        ]
+        ws1.append(row)
+        _r1 += 1
+        r = _r1
+        if foto_urls:
+            ws1.cell(row=r, column=17).hyperlink = foto_urls[0]
+            ws1.cell(row=r, column=17).font = Font(color="043F75", underline="single")
+        esito_val = _esito_effettivo(v)
+        if esito_val == "Anomalia critica":
+            ws1.cell(row=r, column=9).fill = NC_FILL
+        elif esito_val == "Anomalia media":
+            ws1.cell(row=r, column=9).fill = WARN_FILL
+        elif esito_val == "Nessuna anomalia":
+            ws1.cell(row=r, column=9).fill = OK_FILL
+        if row[9] == "SÌ":
+            ws1.cell(row=r, column=10).fill = CLIENTE_FILL
+        if (v.get("checklist_non_conformi") or 0) > 0:
+            ws1.cell(row=r, column=14).fill = NC_FILL
+        ws1.cell(row=r, column=2).number_format = "dd/mm/yyyy"
+        if row[23]:
+            ws1.cell(row=r, column=24).number_format = "dd/mm/yyyy"
+
+    _style_body(ws1, (4, 11, 18, 26))
+    _autofit(ws1, [14, 11, 7, 24, 20, 16, 18, 16, 15, 16, 30, 10, 9, 11, 9, 20, 7, 30, 20, 16, 22, 16, 18, 16, 16, 26])
+    if len(verbali) > 0:
+        ws1.add_table(Table(
+            displayName="TabVerbali",
+            ref=f"A1:{get_column_letter(len(cols1))}{len(verbali) + 1}",
+            tableStyleInfo=TableStyleInfo(name="TableStyleMedium2", showRowStripes=True),
+        ))
+
+    # ── Foglio 2: Checklist dettaglio (un item per riga) ────────────────────
+    ws2 = wb.create_sheet("Checklist dettaglio")
+    cols2 = ["Codice verbale", "Data", "Categoria", "Area", "ID item", "Descrizione",
+             "Esito", "Nota", "Rilievo", "Azione correttiva",
+             "Responsabile", "Scadenza"]
+    ws2.append(cols2)
+    _style_header(ws2, len(cols2))
+    cat_label = {"qualita": "Qualità", "sicurezza": "Sicurezza", "collaudo": "Collaudo"}
+    def_by_cat = {}  # cache id -> {area, t} per categoria, popolata al volo dal primo verbale che la usa
+    n_rows2 = 0
+    for v in verbali:
+        ck = v.get("checklist") or {}
+        d_obj = _sopr_date_obj(v.get("data_sopralluogo", ""))
+        for cat in ("qualita", "sicurezza", "collaudo"):
+            blocco = ck.get(cat) or {}
+            for item_id, st in sorted(blocco.items()):
+                if not isinstance(st, dict):
+                    continue
+                if not (st.get("e") or st.get("nota") or st.get("dim")):
+                    continue
+                scad_obj = _sopr_date_obj(st.get("scad", ""))
+                row = [
+                    v.get("codice_verbale", ""), d_obj or v.get("data_sopralluogo", ""),
+                    cat_label.get(cat, cat), "", item_id, "",
+                    {"C": "Conforme", "NC": "Non conforme", "NA": "N.A.", "": "Da verificare"}.get(st.get("e", ""), st.get("e", "")),
+                    (f"Dimensione: {st['dim']}. " if st.get("dim") else "") + st.get("nota", ""),
+                    st.get("rilievo", ""), st.get("azione", ""), st.get("resp", ""),
+                    scad_obj or st.get("scad", ""),
+                ]
+                ws2.append(row)
+                n_rows2 += 1
+                r = n_rows2 + 1  # riga 1 = intestazione (ws.max_row è O(n) a ogni chiamata)
+                if st.get("e") == "NC":
+                    ws2.cell(row=r, column=7).fill = NC_FILL
+                if d_obj:
+                    ws2.cell(row=r, column=2).number_format = "dd/mm/yyyy"
+                if scad_obj:
+                    ws2.cell(row=r, column=12).number_format = "dd/mm/yyyy"
+
+    # Compila la colonna Area leggendo il prefisso dell'ID (PRE/INF/.../SIC/TST/RIP/DOC):
+    # la definizione completa (CHECKLIST_DEF) vive solo nel frontend, il backend non ne
+    # ha una copia — la colonna "Descrizione" resta vuota per lo stesso motivo.
+    if n_rows2:
+        for r in range(2, ws2.max_row + 1):
+            item_id = ws2.cell(row=r, column=5).value or ""
+            ws2.cell(row=r, column=4).value = item_id.split("-")[0] if "-" in item_id else ""
+        ws2.add_table(Table(
+            displayName="TabChecklist",
+            ref=f"A1:{get_column_letter(len(cols2))}{ws2.max_row}",
+            tableStyleInfo=TableStyleInfo(name="TableStyleMedium2", showRowStripes=True),
+        ))
+    _style_body(ws2, (6, 8, 9, 10))
+    _autofit(ws2, [14, 11, 11, 8, 9, 8, 14, 30, 26, 26, 16, 12])
+
+    # ── Foglio 3: Non conformità (solo gli item NC, per follow-up) ─────────
+    ws3 = wb.create_sheet("Non conformità")
+    cols3 = ["Codice verbale", "Data", "Impresa", "Comune", "Categoria", "ID item",
+             "Rilievo", "Azione correttiva", "Responsabile", "Scadenza"]
+    ws3.append(cols3)
+    _style_header(ws3, len(cols3))
+    n_rows3 = 0
+    for v in verbali:
+        ck = v.get("checklist") or {}
+        d_obj = _sopr_date_obj(v.get("data_sopralluogo", ""))
+        for cat in ("qualita", "sicurezza", "collaudo"):
+            for item_id, st in sorted((ck.get(cat) or {}).items()):
+                if not isinstance(st, dict) or st.get("e") != "NC":
+                    continue
+                scad_obj = _sopr_date_obj(st.get("scad", ""))
+                row = [
+                    v.get("codice_verbale", ""), d_obj or v.get("data_sopralluogo", ""),
+                    v.get("impresa", ""), v.get("comune", ""), cat_label.get(cat, cat), item_id,
+                    st.get("rilievo", ""),
+                    st.get("azione", ""), st.get("resp", ""), scad_obj or st.get("scad", ""),
+                ]
+                ws3.append(row)
+                n_rows3 += 1
+                r = n_rows3 + 1
+                ws3.cell(row=r, column=1).fill = NC_FILL
+                ws3.cell(row=r, column=2).number_format = "dd/mm/yyyy"
+                if scad_obj:
+                    ws3.cell(row=r, column=10).number_format = "dd/mm/yyyy"
+    if n_rows3:
+        ws3.add_table(Table(
+            displayName="TabNC",
+            ref=f"A1:{get_column_letter(len(cols3))}{ws3.max_row}",
+            tableStyleInfo=TableStyleInfo(name="TableStyleMedium2", showRowStripes=True),
+        ))
+    _style_body(ws3, (7, 8))
+    _autofit(ws3, [14, 11, 16, 20, 11, 9, 30, 30, 16, 12])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    print(f"[export sopralluoghi] {len(verbali)} verbali · import openpyxl {_t_imp - _t0:.2f}s · mongo {_t_db - _t_imp:.2f}s · build+save {time.perf_counter() - _t_db:.2f}s")
+    filename = f"sopralluoghi_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/sopralluoghi/next-codice")
+async def sopralluogo_next_codice(sess: dict = Depends(_require_staff_session)):
+    """Restituisce il prossimo codice verbale progressivo."""
+    last = await sopralluoghi_col.find_one({}, sort=[("codice_verbale", -1)])
+    next_n = 1
+    if last and last.get("codice_verbale"):
+        try:
+            next_n = int(str(last["codice_verbale"]).split("-")[-1]) + 1
+        except (ValueError, IndexError):
+            count = await sopralluoghi_col.count_documents({})
+            next_n = count + 1
+    year = _now_iso()[:4]
+    return {"codice": f"VBS-{year}-{next_n:04d}", "numero": next_n}
+
+
+_CK_ESITI = {"C", "NC", "NA"}
+_CK_CATEGORIE = ("qualita", "sicurezza", "collaudo")
+
+
+def _sanitize_checklist(raw: dict | None) -> dict:
+    """Normalizza la checklist DL ricevuta dal frontend: esito valido (o vuoto),
+    campi di non conformità solo per gli item NC; nota libera per-item sempre
+    ammessa, indipendente dall'esito. La 'segnalazione cliente' è un flag del
+    solo verbale (non per-item). Un item è mantenuto se ha un esito valido
+    oppure una nota valorizzata."""
+    out = {sez: {} for sez in _CK_CATEGORIE}
+    out["note_generali"] = ""
+    if not isinstance(raw, dict):
+        return out
+    out["note_generali"] = str(raw.get("note_generali", "")).strip()[:4000]
+    for sez in _CK_CATEGORIE:
+        blocco = raw.get(sez) or {}
+        if not isinstance(blocco, dict):
+            continue
+        for item_id, st in blocco.items():
+            if not isinstance(st, dict):
+                continue
+            esito = str(st.get("e", "")).strip().upper()
+            if esito not in _CK_ESITI:
+                esito = ""
+            nota = str(st.get("nota", "")).strip()[:2000]
+            dim = str(st.get("dim", "")).strip()[:120]
+            if not esito and not nota and not dim:
+                continue
+            rec = {"e": esito, "nota": nota}
+            if dim:
+                rec["dim"] = dim
+            if esito == "NC":
+                rec.update({
+                    "rilievo": str(st.get("rilievo", "")).strip(),
+                    "azione":  str(st.get("azione", "")).strip(),
+                    "resp":    str(st.get("resp", "")).strip(),
+                    "scad":    str(st.get("scad", "")).strip(),
+                })
+            out[sez][str(item_id).strip()[:20]] = rec
+    return out
+
+
+def _checklist_counts(ck: dict) -> dict:
+    tot = {"C": 0, "NC": 0, "NA": 0}
+    nc_ids = []
+    for sez in _CK_CATEGORIE:
+        for item_id, st in (ck.get(sez) or {}).items():
+            e = st.get("e")
+            if e in tot:
+                tot[e] += 1
+            if e == "NC":
+                nc_ids.append(item_id)
+    return {
+        "checklist_conformi":     tot["C"],
+        "checklist_non_conformi": tot["NC"],
+        "checklist_na":           tot["NA"],
+        "checklist_compilati":    tot["C"] + tot["NC"] + tot["NA"],
+        "checklist_nc_ids":       ", ".join(sorted(nc_ids)),
+    }
+
+
+@app.post("/api/sopralluoghi")
+async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_session)):
+    """Salva un verbale di sopralluogo su MongoDB (unica fonte, nessun export CSV su GitHub).
+    Le foto (se presenti, come data URL base64) vengono caricate su GitHub in
+    sopralluoghi/foto/{codice_verbale}/ per non saturare lo storage MongoDB gratuito."""
+    # ── Validazione (prima di qualunque upload/scrittura) ────────────────────
+    _p = payload or {}
+    _ck = _sanitize_checklist(_p.get("checklist"))
+    _origine = str(_p.get("verbale_origine", "")).strip()
+    _segn = bool(_p.get("segnalazione_cliente", False)) and not _origine
+    _esito_segn = str(_p.get("esito_segnalazione", "")).strip().lower() if _segn else ""
+    if _segn and _esito_segn not in ("confermata", "non_confermata"):
+        raise HTTPException(422, "Segnalazione cliente: indicare se è confermata o non confermata")
+    _ncs = [(sez, i, st) for sez in _CK_CATEGORIE for i, st in _ck[sez].items() if st.get("e") == "NC"]
+    if _segn and _esito_segn == "confermata" and not _ncs:
+        raise HTTPException(422, "Segnalazione confermata: almeno un punto della checklist deve essere non conforme")
+    for _sez, _i, _st in _ncs:
+        if not _st.get("azione") or not _st.get("scad"):
+            raise HTTPException(422, f"Non conformità {_i}: azione correttiva e scadenza sono obbligatorie")
+    # Segnalazione al System: obbligatoria in ogni verbale (anche nelle verifiche)
+    _sys_manc = [lab for k, lab in (("subsystem", "SubSystem"), ("data_invio_system", "data invio"),
+                                    ("metodo_invio", "metodo di invio"), ("rif_system_invio", "riferimento invio"))
+                 if not (_sopr_date_iso(str(_p.get(k, "")).strip()) if k == "data_invio_system" else str(_p.get(k, "")).strip())]
+    if _sys_manc:
+        raise HTTPException(422, "Segnalazione al System: compilare " + ", ".join(_sys_manc))
+    if _origine:
+        _parent = await sopralluoghi_col.find_one({"codice_verbale": _origine})
+        if not _parent:
+            raise HTTPException(422, f"Verbale di origine {_origine} non trovato")
+        _pck = _parent.get("checklist") or {}
+        _miss = [i for sez in _CK_CATEGORIE for i, st in (_pck.get(sez) or {}).items()
+                 if isinstance(st, dict) and st.get("e") == "NC" and not (_ck[sez].get(i) or {}).get("e")]
+        if _miss:
+            raise HTTPException(422, "Sopralluogo di verifica: compilare l'esito di tutti i punti da riverificare (" + ", ".join(sorted(_miss)) + ")")
+
+    last = await sopralluoghi_col.find_one({}, sort=[("codice_verbale", -1)])
+    next_n = 1
+    if last and last.get("codice_verbale"):
+        try:
+            next_n = int(str(last["codice_verbale"]).split("-")[-1]) + 1
+        except (ValueError, IndexError):
+            count = await sopralluoghi_col.count_documents({})
+            next_n = count + 1
+    year = _now_iso()[:4]
+    codice = f"VBS-{year}-{next_n:04d}"
+
+    # Upload foto su GitHub (max 8, ciascuna come data URL base64 dal frontend)
+    foto_urls = []
+    foto_in = (payload or {}).get("foto") or []
+    for i, foto in enumerate(foto_in[:8]):
+        try:
+            data_url = foto.get("dataUrl", "") if isinstance(foto, dict) else str(foto)
+            if "," not in data_url:
+                continue
+            header, b64data = data_url.split(",", 1)
+            ext = "jpg"
+            if "png" in header:
+                ext = "png"
+            elif "webp" in header:
+                ext = "webp"
+            img_bytes = base64.b64decode(b64data)
+            github_path = f"sopralluoghi/foto/{codice}/foto_{i+1}.{ext}"
+            await _push_to_github(img_bytes, path=github_path, label=f"foto {i+1} — {codice}")
+            raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/{github_path}"
+            foto_urls.append(raw_url)
+        except Exception as e:
+            print(f"[sopralluoghi] errore upload foto {i+1}: {e}")
+
+    record = {
+        "codice_verbale":      codice,
+        "data_sopralluogo":    str((payload or {}).get("data_sopralluogo", "")).strip(),
+        "lotto":               str((payload or {}).get("lotto", "")).strip(),
+        "tratta_id":           str((payload or {}).get("tratta_id", "")).strip(),
+        "impresa":             str((payload or {}).get("impresa", sess["nome"])).strip(),
+        "referente_impresa":   str((payload or {}).get("referente_impresa", "")).strip(),
+        "referente_retelit":   str((payload or {}).get("referente_retelit", "")).strip(),
+        "comune":              str((payload or {}).get("comune", "")).strip(),
+        "localita":            str((payload or {}).get("localita", "")).strip(),
+        "tipo_intervento":     str((payload or {}).get("tipo_intervento", "")).strip(),
+        "esito":               str((payload or {}).get("esito", "")).strip(),
+        "segnalazione_cliente": _segn,
+        "segnalazione_cliente_note": (
+            str(_p.get("segnalazione_cliente_note", "")).strip()[:2000] if _segn else ""
+        ),
+        "esito_segnalazione":  _esito_segn,
+        # Segnalazione al System (obbligatoria in ogni verbale): passa alle issue e finisce nel loro storico
+        "subsystem":           str(_p.get("subsystem", "")).strip()[:200],
+        "data_invio_system":   _sopr_date_iso(str(_p.get("data_invio_system", "")).strip()),
+        "metodo_invio":        str(_p.get("metodo_invio", "")).strip()[:100],
+        "rif_system_invio":    str(_p.get("rif_system_invio", "")).strip()[:300],
+        "verbale_origine":     _origine,
+        "tipo":                "verifica" if _origine else "sopralluogo",
+        "note":                str((payload or {}).get("note", "")).strip(),
+        "segnalazioni":        str((payload or {}).get("segnalazioni", "")).strip(),
+        "azioni_richieste":    str((payload or {}).get("azioni_richieste", "")).strip(),
+        "scadenza_azioni":     str((payload or {}).get("scadenza_azioni", "")).strip(),
+        "prossimo_sopralluogo": str((payload or {}).get("prossimo_sopralluogo", "")).strip(),
+        "firma_impresa":       str((payload or {}).get("firma_impresa", "")).strip(),
+        "firma_retelit":       str((payload or {}).get("firma_retelit", "")).strip(),
+        "foto_urls":           ", ".join(foto_urls),
+        "created_at":          _now_iso(),
+    }
+    record["checklist"] = _ck
+    record.update(_checklist_counts(_ck))
+    await sopralluoghi_col.insert_one(record)
+    _schedule_sopralluoghi_csv_regen(f"nuovo verbale: {codice}")
+    asyncio.create_task(_issue_sync_safe([record]))  # NC → issue nel registro (e verifiche conformi → issue risolte)
+    return {"ok": True, "codice_verbale": codice, "foto_urls": foto_urls}
+
+
+# SOLLECITI — registro solleciti per tratta/pratica
+# ─────────────────────────────────────────────────────────────────────────────
+# Ogni sollecito viene scritto direttamente su MongoDB (senza approvazione admin).
+# Nessuna sincronizzazione su GitHub: MongoDB è l'unica fonte (rev. TODO-versione).
+# ═════════════════════════════════════════════════════════════════════════════
+
+SOLLECITI_COLS = ["_id", "tratta_id", "pratica", "ente", "tipo_permesso", "stato_permesso",
+                  "lunghezza", "data_richiesta", "data_ultima_modifica",
+                  "numero_sollecito", "tipo_sollecito", "data_sollecito", "note", "impresa", "created_at"]
+
+
+@app.get("/api/imprese/solleciti")
+async def get_solleciti(sess: dict = Depends(_require_session)):
+    """Restituisce i solleciti dell'impresa autenticata, filtrati per le tratte dei suoi lotti."""
+    nome = sess["nome"]
+    # Recupera i lotti assegnati
+    assignment = await _find_assignment(nome)
+    if not assignment:
+        return {"solleciti": [], "count": 0}
+    lotti = {_lotto_from_source(l) for l in (assignment.get("lotti") or []) if str(l).strip()}
+
+    # Legge le tratte dei lotti dell'impresa dal Master.csv (match esatto, non substring:
+    # "Lotto 2" non deve agganciare "Lotto 2A" — stesso criterio di impresa_pratiche/get_cantieri_impresa)
+    try:
+        df = await _read_master_csv()
+        tratte_impresa: set[str] = set()
+        if "Source.Name" in df.columns and lotti:
+            mask = df["Source.Name"].apply(lambda x: _lotto_from_source(x) in lotti)
+            tratte_impresa.update(df.loc[mask, "TRATTA_ID"].astype(str).str.strip().tolist())
+    except Exception:
+        tratte_impresa = set()
+
+    cur = solleciti_col.find(
+        {"tratta_id": {"$in": list(tratte_impresa)}} if tratte_impresa else {"impresa": nome}
+    ).sort("created_at", -1).limit(500)
+    items = []
+    async for d in cur:
+        d["_id"] = str(d["_id"])
+        items.append(d)
+    return {"solleciti": items, "count": len(items)}
+
+
+async def _touch_data_update(tratta_id: str, pratica: str, tipo_permesso: str = "") -> None:
+    """Aggiorna DATA_UPDATE=oggi SOLO sull'ultima riga storicizzata del gruppo
+    tratta+tipo_permesso toccato da un sollecito. Un TRATTA_ID può avere più iter
+    (es. AUTORIZZAZIONE e NULLA OSTA sulla stessa tratta) e ciascun iter più righe
+    storicizzate nel tempo (una per nota/cambio stato): mascherare solo su TRATTA_ID
+    le toccava TUTTE, retro-datando a oggi anche note storiche vecchie (bug segnalato
+    dall'utente: note vecchie duplicate con data odierna nel popup Storico Note)."""
+    try:
+        async with _master_csv_lock:
+            df = await _read_master_csv()
+            if "DATA_UPDATE" not in df.columns or "TRATTA_ID" not in df.columns:
+                return
+            mask = df["TRATTA_ID"].astype(str).str.strip() == str(tratta_id).strip()
+            if tipo_permesso and "TIPO_PERMESSO" in df.columns:
+                mask_t = mask & (df["TIPO_PERMESSO"].astype(str).str.strip().str.upper() == tipo_permesso.strip().upper())
+                if mask_t.any():
+                    mask = mask_t
+            idx = df.index[mask].tolist()
+            if not idx:
+                return
+            df.loc[idx[-1], "DATA_UPDATE"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+            await _write_master_csv(df, note=f"Sollecito tratta {tratta_id} pratica {pratica}: touch DATA_UPDATE")
+    except Exception as e:
+        print(f"[_touch_data_update] {e}")
+
+
+async def _touch_data_update_multi(keys: list) -> None:
+    """Come _touch_data_update ma per più pratiche in un solo read+write di Master.csv."""
+    try:
+        async with _master_csv_lock:
+            df = await _read_master_csv()
+            if "DATA_UPDATE" not in df.columns or "TRATTA_ID" not in df.columns:
+                return
+            oggi = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+            any_hit = False
+            has_tipo = "TIPO_PERMESSO" in df.columns
+            for tratta_id, pratica, tipo_permesso in keys:
+                mask = df["TRATTA_ID"].astype(str).str.strip() == str(tratta_id).strip()
+                if tipo_permesso and has_tipo:
+                    mask_t = mask & (df["TIPO_PERMESSO"].astype(str).str.strip().str.upper() == tipo_permesso.strip().upper())
+                    if mask_t.any():
+                        mask = mask_t
+                idx = df.index[mask].tolist()
+                if idx:
+                    df.loc[idx[-1], "DATA_UPDATE"] = oggi
+                    any_hit = True
+            if any_hit:
+                await _write_master_csv(df, note=f"Solleciti bulk ({len(keys)}): touch DATA_UPDATE")
+    except Exception as e:
+        print(f"[_touch_data_update_multi] {e}")
+
+
+@app.post("/api/imprese/solleciti")
+async def add_sollecito(payload: dict, sess: dict = Depends(_require_session)):
+    """Inserisce un nuovo sollecito. Scrittura diretta senza approvazione admin."""
+    nome = sess["nome"]
+    tratta_id    = str((payload or {}).get("tratta_id", "")).strip()
+    pratica      = str((payload or {}).get("pratica", "")).strip()
+    tipo         = str((payload or {}).get("tipo_sollecito", "")).strip()
+    data_sol     = str((payload or {}).get("data_sollecito", "")).strip()
+    note         = str((payload or {}).get("note", "")).strip()
+    ente         = str((payload or {}).get("ente", "")).strip()
+    tipo_perm    = str((payload or {}).get("tipo_permesso", "")).strip()
+    stato_perm   = str((payload or {}).get("stato_permesso", "")).strip()
+    lunghezza    = str((payload or {}).get("lunghezza", "")).strip()
+    data_rich    = str((payload or {}).get("data_richiesta", "")).strip()
+    data_ult_mod = str((payload or {}).get("data_ultima_modifica", "")).strip()
+    try:
+        numero_sol = int((payload or {}).get("numero_sollecito") or 1)
+    except (TypeError, ValueError):
+        numero_sol = 1
+
+    if not tratta_id:
+        raise HTTPException(400, "tratta_id obbligatorio")
+    if tipo not in ("PEC", "MAIL", "TELEFONICO"):
+        raise HTTPException(400, "tipo_sollecito deve essere PEC, MAIL o TELEFONICO")
+    if not data_sol:
+        raise HTTPException(400, "data_sollecito obbligatoria")
+    _dt_sol = _parse_it_date(data_sol)
+    if _dt_sol and _dt_sol.date() > datetime.now(timezone.utc).date():
+        raise HTTPException(400, "data_sollecito non può essere futura")
+
+    record = {
+        "tratta_id":           tratta_id,
+        "pratica":             pratica,
+        "tipo_sollecito":      tipo,
+        "data_sollecito":      data_sol,
+        "note":                note,
+        "impresa":             nome,
+        "ente":                ente,
+        "tipo_permesso":       tipo_perm,
+        "stato_permesso":      stato_perm,
+        "lunghezza":           lunghezza,
+        "data_richiesta":      data_rich,
+        "data_ultima_modifica": data_ult_mod,
+        "numero_sollecito":    numero_sol,
+        "created_at":          _now_iso(),
+    }
+    res = await solleciti_col.insert_one(record)
+    asyncio.create_task(_touch_data_update(tratta_id, pratica, tipo_perm))
+    _schedule_solleciti_csv_regen(f"nuovo sollecito: {tratta_id}")
+    return {"ok": True, "id": str(res.inserted_id)}
+
+
+@app.post("/api/imprese/solleciti/bulk-insert")
+async def bulk_insert_solleciti(payload: dict, sess: dict = Depends(_require_session)):
+    """Inserisce più solleciti in una sola chiamata e fa un unico push GitHub."""
+    nome  = sess["nome"]
+    items = (payload or {}).get("items", [])
+    if not items or not isinstance(items, list):
+        raise HTTPException(400, "items obbligatorio")
+
+    inserted = []
+    touch_keys = []
+    for item in items:
+        tratta_id = str(item.get("tratta_id", "")).strip()
+        tipo      = str(item.get("tipo_sollecito", "")).strip()
+        data_sol  = str(item.get("data_sollecito", "")).strip()
+        if not tratta_id or tipo not in ("PEC", "MAIL", "TELEFONICO") or not data_sol:
+            continue
+        _dt_sol = _parse_it_date(data_sol)
+        if _dt_sol and _dt_sol.date() > datetime.now(timezone.utc).date():
+            continue
+        record = {
+            "tratta_id":           tratta_id,
+            "pratica":             str(item.get("pratica", "")).strip(),
+            "tipo_sollecito":      tipo,
+            "data_sollecito":      data_sol,
+            "note":                str(item.get("note", "")).strip(),
+            "impresa":             nome,
+            "ente":                str(item.get("ente", "")).strip(),
+            "tipo_permesso":       str(item.get("tipo_permesso", "")).strip(),
+            "stato_permesso":      str(item.get("stato_permesso", "")).strip(),
+            "lunghezza":           str(item.get("lunghezza", "")).strip(),
+            "data_richiesta":      str(item.get("data_richiesta", "")).strip(),
+            "data_ultima_modifica": str(item.get("data_ultima_modifica", "")).strip(),
+            "numero_sollecito":    int(item.get("numero_sollecito") or 1),
+            "created_at":          _now_iso(),
+        }
+        res = await solleciti_col.insert_one(record)
+        inserted.append(str(res.inserted_id))
+        touch_keys.append((tratta_id, record["pratica"], record["tipo_permesso"]))
+
+    if inserted:
+        asyncio.create_task(_touch_data_update_multi(touch_keys))
+        _schedule_solleciti_csv_regen(f"bulk-insert: {len(inserted)} solleciti")
+    return {"ok": True, "inserted": inserted, "count": len(inserted)}
+
+
+@app.delete("/api/imprese/solleciti/{sol_id}")
+async def delete_sollecito(sol_id: str, sess: dict = Depends(_require_session)):
+    """L'impresa può eliminare solo i propri solleciti."""
+    try:
+        oid = ObjectId(sol_id)
+    except Exception:
+        raise HTTPException(400, "ID non valido")
+    doc = await solleciti_col.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Sollecito non trovato")
+    if doc.get("impresa") != sess["nome"]:
+        raise HTTPException(403, "Non autorizzato")
+    await solleciti_col.delete_one({"_id": oid})
+    _schedule_solleciti_csv_regen(f"eliminazione sollecito: {sol_id}")
+    return {"deleted": sol_id}
+
+
+
+
+@app.get("/api/admin/solleciti")
+async def admin_get_solleciti(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q:        Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """Restituisce tutti i solleciti (vista admin, senza filtro impresa)."""
+    _check_token(x_upload_token or token_q)
+    items = []
+    async for d in solleciti_col.find({}).sort("data_sollecito", -1):
+        d["_id"] = str(d["_id"])
+        items.append(d)
+    return {"solleciti": items, "count": len(items)}
+
+
+@app.get("/api/staff/solleciti")
+async def staff_get_solleciti(sess: dict = Depends(_require_staff_session)):
+    """Restituisce tutti i solleciti per le pagine staff (index.html ecc.), letti
+    direttamente da MongoDB — non dipende dal push/deploy su GitHub Pages, a
+    differenza dal vecchio CSV statico, ormai rimosso (vedi AGENT_BRIEF)."""
+    items = []
+    async for d in solleciti_col.find({}).sort("created_at", -1):
+        items.append({
+            "pratica":  str(d.get("pratica", "") or ""),
+            "tratta":   str(d.get("tratta_id", "") or ""),
+            "tipo":     str(d.get("tipo_sollecito", "") or ""),
+            "data":     str(d.get("data_sollecito", "") or ""),
+            "note":     str(d.get("note", "") or ""),
+            "impresa":  str(d.get("impresa", "") or ""),
+        })
+    return {"solleciti": items, "count": len(items)}
+
+@app.post("/api/imprese/solleciti/bulk-delete")
+async def bulk_delete_solleciti(payload: dict, sess: dict = Depends(_require_session)):
+    """Elimina più solleciti in una sola chiamata e fa un unico push GitHub."""
+    ids = (payload or {}).get("ids", [])
+    if not ids or not isinstance(ids, list):
+        raise HTTPException(400, "ids obbligatorio")
+    deleted = []
+    for sol_id in ids:
+        try:
+            oid = ObjectId(str(sol_id))
+        except Exception:
+            continue
+        doc = await solleciti_col.find_one({"_id": oid})
+        if not doc or doc.get("impresa") != sess["nome"]:
+            continue
+        await solleciti_col.delete_one({"_id": oid})
+        deleted.append(str(sol_id))
+    if deleted:
+        _schedule_solleciti_csv_regen(f"bulk-delete: {len(deleted)} solleciti")
+    return {"deleted": deleted, "count": len(deleted)}
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CANTIERI — stato avanzamento scavi per PRATICA di AUTORIZZAZIONE
+# ─────────────────────────────────────────────────────────────────────────────
+# Un cantiere = una pratica di AUTORIZZAZIONE ottenuta (non una singola tratta:
+# una stessa autorizzazione può coprire più tratte). Il NULLA OSTA/ORDINANZA
+# non sono un cantiere a sé: sono permessi accessori che possono mancare su
+# alcune tratte della stessa autorizzazione. Quelle tratte restano elencate
+# nel cantiere con 'lavorabile'=false, ma è un flag SOLO indicativo (usato
+# in mappa per colorare le tratte non ancora cantierabili): NON esclude i
+# metri dal totale rendicontabile dall'impresa. metri_totali conta sempre
+# tutta la lunghezza della pratica autorizzata.
+#
+# Flusso:
+#   1. Ogni volta che il Master.csv viene aggiornato, _sync_cantieri() raggruppa
+#      le tratte con AUTORIZZAZIONE OTTENUTA per (ente, numero pratica, lotto)
+#      e crea/aggiorna un documento cantiere per pratica.
+#   2. L'impresa aggiorna giornalmente i metri realizzati e lo stato cantiere
+#      a livello di pratica (un solo stato/contatore per tutte le tratte).
+#   3. scavi.html legge GET /api/cantieri (pubblico) per popolare i grafici.
+# ═════════════════════════════════════════════════════════════════════════════
+
+STATO_CANTIERE_VALUES = ["non_avviato", "allestimento", "in_corso", "sospeso", "completato"]
+TECNICA_SCAVO_VALUES  = ["trincea", "no_dig", "canaletta", ""]
+
+
+async def _max_codice_per_lotto() -> dict:
+    """Numero massimo di codice_cantiere (CA/N/lotto) già assegnato per ciascun
+    lotto, per continuare la sequenza senza mai riassegnare un numero usato."""
+    cache: dict[str, int] = {}
+    async for d in cantieri_col.find(
+        {"codice_cantiere": {"$regex": "^CA/"}}, {"lotto": 1, "codice_cantiere": 1}
+    ):
+        m = re.match(r"^CA/(\d+)/", d.get("codice_cantiere", ""))
+        if not m:
+            continue
+        lotto = d.get("lotto", "")
+        cache[lotto] = max(cache.get(lotto, 0), int(m.group(1)))
+    return cache
+
+
+async def _backfill_codici_cantiere(cache: dict) -> int:
+    """Assegna codice_cantiere ai cantieri creati prima dell'introduzione del
+    campo. Progressivo stabile per lotto — una volta scritto su un documento
+    non viene mai più toccato, nemmeno da sync successivi. Ordine pratica_id
+    (unico riferimento disponibile per i cantieri storici, non essendoci un
+    timestamp di creazione)."""
+    n = 0
+    async for d in cantieri_col.find(
+        {"$or": [{"codice_cantiere": {"$exists": False}}, {"codice_cantiere": ""}]}
+    ).sort([("lotto", 1), ("pratica_id", 1)]):
+        lotto = d.get("lotto", "")
+        cache[lotto] = cache.get(lotto, 0) + 1
+        codice = f"CA/{cache[lotto]}/{lotto}"
+        await cantieri_col.update_one({"_id": d["_id"]}, {"$set": {"codice_cantiere": codice}})
+        n += 1
+    if n:
+        print(f"[sync_cantieri] assegnato codice_cantiere a {n} cantieri storici")
+    return n
+
+
+async def _dedupe_codici_cantiere(cache: dict) -> int:
+    """Ripara codice_cantiere duplicati già presenti in Mongo (causati dalla race
+    condition di _sync_cantieri risolta con _cantieri_sync_lock — v. commento sopra
+    la definizione del lock: due esecuzioni concorrenti potevano leggere lo stesso
+    _max_codice_per_lotto() e assegnare lo stesso codice a due pratiche diverse).
+    Per ogni codice duplicato mantiene invariato il documento più vecchio (_id più
+    basso) e riassegna un nuovo codice progressivo ai restanti."""
+    groups: dict[str, list] = {}
+    async for d in cantieri_col.find(
+        {"codice_cantiere": {"$regex": "^CA/"}}, {"lotto": 1, "codice_cantiere": 1}
+    ):
+        groups.setdefault(d["codice_cantiere"], []).append(d)
+
+    n = 0
+    for codice, docs in groups.items():
+        if len(docs) < 2:
+            continue
+        docs.sort(key=lambda d: d["_id"])
+        for d in docs[1:]:  # il primo (più vecchio) mantiene il codice originale
+            lotto = d.get("lotto", "")
+            cache[lotto] = cache.get(lotto, 0) + 1
+            nuovo = f"CA/{cache[lotto]}/{lotto}"
+            await cantieri_col.update_one({"_id": d["_id"]}, {"$set": {"codice_cantiere": nuovo}})
+            print(f"[sync_cantieri] riassegnato codice duplicato {codice} → {nuovo} (_id={d['_id']})")
+            n += 1
+    return n
+
+
+async def _regenerate_cantieri_csv(note: str = "") -> str | None:
+    """Rigenera Cantieri.csv (snapshot corrente della collection cantieri) come
+    file derivato in GridFS — compare in 'File correnti' come Master.csv/QGIS,
+    scaricabile con lo stesso bottone 'Scarica'. Fire-and-forget: eventuali
+    errori vengono solo loggati."""
+    try:
+        cols = [
+            "codice_cantiere", "pratica_id", "ente", "lotto", "cluster", "impresa",
+            "provincia", "comune", "stato_cantiere", "tecnica_scavo",
+            "metri_scavati", "metri_totali", "metri_totali_potenziali",
+            "data_inizio_prevista", "data_inizio_effettiva",
+            "data_fine_prevista", "data_fine_effettiva",
+            "motivo_blocco", "data_ripresa_stimata", "note", "updated_at", "log_count",
+        ]
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+        w.writeheader()
+        n = 0
+        async for d in cantieri_col.find({}).sort("pratica_id", 1):
+            d["log_count"] = len(d.get("log") or [])
+            w.writerow({k: d.get(k, "") for k in cols})
+            n += 1
+        data = buf.getvalue().encode("utf-8-sig")  # BOM per apertura corretta in Excel
+        gid = await _store_derived_file(CANTIERI_FILENAME, data, "text/csv", note)
+        print(f"[cantieri_csv] rigenerato Cantieri.csv ({n} righe)")
+        return gid
+    except Exception as e:
+        print(f"[cantieri_csv] errore rigenerazione: {type(e).__name__}: {e}")
+        return None
+
+
+def _schedule_cantieri_csv_regen(note: str = "") -> None:
+    asyncio.create_task(_regenerate_cantieri_csv(note))
+
+
+async def _regenerate_sopralluoghi_csv(note: str = "") -> str | None:
+    """Rigenera sopralluoghi.csv come file derivato in GridFS a partire dalla
+    collection sopralluoghi_col (unica fonte dei verbali) — sostituisce il
+    vecchio seed statico rimosso dal repo, compare in 'File correnti' con lo
+    stesso bottone 'Scarica'. Fire-and-forget: eventuali errori solo loggati."""
+    try:
+        cols = [
+            "codice_verbale", "data_sopralluogo", "lotto", "tratta_id", "impresa",
+            "referente_impresa", "referente_retelit", "comune", "localita",
+            "tipo_intervento", "esito", "segnalazione_cliente", "note", "segnalazioni", "azioni_richieste",
+            "scadenza_azioni", "prossimo_sopralluogo", "firma_impresa",
+            "firma_retelit", "foto_urls",
+            "checklist_conformi", "checklist_non_conformi", "checklist_na",
+            "checklist_compilati", "checklist_nc_ids", "segnalazione_cliente_note",
+            "esito_segnalazione", "verbale_origine", "tipo",
+            "subsystem", "data_invio_system", "metodo_invio", "rif_system_invio",
+            "created_at",
+        ]
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+        w.writeheader()
+        n = 0
+        async for d in sopralluoghi_col.find({}).sort("codice_verbale", 1):
+            row = {k: d.get(k, "") for k in cols}
+            row["segnalazione_cliente"] = "SI" if d.get("segnalazione_cliente") else "NO"
+            w.writerow(row)
+            n += 1
+        data = buf.getvalue().encode("utf-8-sig")
+        gid = await _store_derived_file(SOPRALLUOGHI_FILENAME, data, "text/csv", note)
+        print(f"[sopralluoghi_csv] rigenerato sopralluoghi.csv ({n} righe)")
+        return gid
+    except Exception as e:
+        print(f"[sopralluoghi_csv] errore rigenerazione: {type(e).__name__}: {e}")
+        return None
+
+
+def _schedule_sopralluoghi_csv_regen(note: str = "") -> None:
+    asyncio.create_task(_regenerate_sopralluoghi_csv(note))
+
+
+async def _regenerate_solleciti_csv(note: str = "") -> str | None:
+    """Rigenera solleciti.csv come file derivato in GridFS a partire dalla
+    collection solleciti_col — compare in 'File correnti' con lo stesso
+    bottone 'Scarica'. Fire-and-forget: eventuali errori solo loggati."""
+    try:
+        cols = [
+            "tratta_id", "pratica", "tipo_sollecito", "data_sollecito", "note",
+            "impresa", "ente", "tipo_permesso", "stato_permesso", "lunghezza",
+            "data_richiesta", "data_ultima_modifica", "numero_sollecito", "created_at",
+        ]
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+        w.writeheader()
+        n = 0
+        async for d in solleciti_col.find({}).sort("data_sollecito", -1):
+            w.writerow({k: d.get(k, "") for k in cols})
+            n += 1
+        data = buf.getvalue().encode("utf-8-sig")
+        gid = await _store_derived_file(SOLLECITI_FILENAME, data, "text/csv", note)
+        print(f"[solleciti_csv] rigenerato solleciti.csv ({n} righe)")
+        return gid
+    except Exception as e:
+        print(f"[solleciti_csv] errore rigenerazione: {type(e).__name__}: {e}")
+        return None
+
+
+def _schedule_solleciti_csv_regen(note: str = "") -> None:
+    asyncio.create_task(_regenerate_solleciti_csv(note))
+
+
+async def _sync_cantieri() -> int:
+    """Wrapper serializzato: vedi _sync_cantieri_impl per la logica. Il lock evita
+    che due esecuzioni concorrenti assegnino lo stesso codice_cantiere (v. commento
+    su _cantieri_sync_lock)."""
+    async with _cantieri_sync_lock:
+        result = await _sync_cantieri_impl()
+    _schedule_cantieri_csv_regen("sync da Master.csv")
+    return result
+
+
+async def _sync_cantieri_impl() -> int:
+    """Raggruppa le tratte con AUTORIZZAZIONE OTTENUTA per pratica (ente, numero,
+    lotto) e crea/aggiorna un documento cantiere per pratica. metri_totali conta
+    TUTTE le tratte della pratica (autorizzazione ottenuta), indipendentemente
+    da 'lavorabile': quel flag è solo indicativo per la visualizzazione in
+    mappa (NULLA OSTA/ORDINANZA ottenuti) e non deve limitare i metri che
+    un'impresa può rendicontare come scavati sul cantiere.
+    Ritorna il numero di nuovi cantieri (nuove pratiche) creati."""
+    try:
+        df = await _read_master_csv()
+        summary = _compute_tratta_summary(df)
+    except Exception as e:
+        print(f"[sync_cantieri] errore lettura master: {e}")
+        return 0
+
+    # CLUSTER/PROVINCIA/COMUNE non esistono in Master.csv: vengono recuperati da
+    # Riepilogo_progettazione.csv (che li eredita da QGIS.geojson), indicizzati
+    # per TRATTA_ID. Fail-soft: se il file non è disponibile i cantieri vengono
+    # comunque creati, semplicemente senza questi tre campi.
+    geo_by_tratta: dict[str, dict] = {}
+    try:
+        riep_df = await _read_riepilogo_csv()
+        if riep_df is not None and "TRATTA_ID" in riep_df.columns:
+            for _, row in riep_df.iterrows():
+                tid = str(row.get("TRATTA_ID", "")).strip()
+                if not tid:
+                    continue
+                geo_by_tratta[tid] = {
+                    "cluster":   str(row.get("CLUSTER", "")).strip(),
+                    "provincia": str(row.get("PROVINCIA", "")).strip(),
+                    "comune":    str(row.get("COMUNE", "")).strip(),
+                }
+    except Exception as e:
+        print(f"[sync_cantieri] errore lettura riepilogo (cluster/provincia/comune): {e}")
+
+    codice_cache = await _max_codice_per_lotto()
+    await _backfill_codici_cantiere(codice_cache)
+    await _dedupe_codici_cantiere(codice_cache)
+
+    # Mappa lotto → impresa assegnata (stessa fonte di /api/lotti-cantieri) per
+    # popolare/backfillare 'impresa' sia sui cantieri esistenti che su quelli nuovi.
+    lotto_impresa: dict[str, str] = {}
+    async for a in assignments_col.find({}, {"nome": 1, "lotti": 1}):
+        nome_impresa = a.get("nome", "")
+        for l in (a.get("lotti") or []):
+            lotto_norm = _lotto_from_source(l)
+            if lotto_norm:
+                lotto_impresa[lotto_norm] = nome_impresa
+
+    groups: dict[tuple, dict] = {}
+    for tratta_id, info in summary.items():
+        if info.get("STATO_AUTORIZZAZIONE") != "OTTENUTO":
+            continue  # niente cantiere finché l'autorizzazione non è ottenuta
+        pratica_num = (info.get("PRATICA_AUT") or "").strip()
+        if not pratica_num:
+            continue
+        rows = df[df["TRATTA_ID"].astype(str).str.strip() == tratta_id]
+        lotto = _lotto_from_source(rows.iloc[0].get("Source.Name", "")) if not rows.empty else ""
+        geo   = geo_by_tratta.get(tratta_id, {})
+        cluster   = geo.get("cluster", "")
+        provincia = geo.get("provincia", "")
+        comune    = geo.get("comune", "")
+        try:
+            raw_lung = info.get("LUNGHEZZA", 0)
+            lunghezza = 0.0 if pd.isna(raw_lung) else float(str(raw_lung).replace(",", "."))
+        except Exception:
+            lunghezza = 0.0
+
+        ente_display = re.sub(r"\s+", " ", str(info.get("ENTE", ""))).strip()
+        ente_key = ente_display.upper()
+        key = (ente_key, pratica_num, lotto)
+        g = groups.setdefault(key, {
+            "cantiere_key": f"{pratica_num}|{lotto}|{ente_key}",
+            "pratica_id": f"AUT/{pratica_num}/{lotto}",
+            "ente": ente_display, "lotto": lotto, "cluster": cluster,
+            "tratte": [],
+        })
+        g["tratte"].append({
+            "tratta_id":  tratta_id,
+            "lunghezza":  lunghezza,
+            "lavorabile": info.get("LAVORABILE") == "SI",
+            "motivo_no":  info.get("MOTIVO_NO", ""),
+            "provincia":  provincia,
+            "comune":     comune,
+        })
+
+    created = 0
+    stato_rank = {s: i for i, s in enumerate(STATO_CANTIERE_VALUES)}
+    for key, g in groups.items():
+        # metri_totali = tutte le tratte della pratica (autorizzazione ottenuta),
+        # a prescindere da 'lavorabile' — quel flag è solo per la mappa e non
+        # deve ridurre il totale su cui l'impresa rendiconta i metri scavati.
+        metri_totali     = sum(t["lunghezza"] for t in g["tratte"])
+        metri_totali_pot = sum(t["lunghezza"] for t in g["tratte"])
+        # provincia/comune del cantiere: il valore più frequente tra le sue tratte
+        provincia_count = Counter(t["provincia"] for t in g["tratte"] if t.get("provincia"))
+        comune_count     = Counter(t["comune"]    for t in g["tratte"] if t.get("comune"))
+        provincia_cantiere = provincia_count.most_common(1)[0][0] if provincia_count else ""
+        comune_cantiere     = comune_count.most_common(1)[0][0] if comune_count else ""
+
+        existing = await cantieri_col.find_one({"cantiere_key": g["cantiere_key"]})
+        if existing:
+            await cantieri_col.update_one(
+                {"_id": existing["_id"]},
+                {"$set": {
+                    "tratte": g["tratte"], "lotto": g["lotto"], "cluster": g["cluster"],
+                    "metri_totali": metri_totali, "metri_totali_potenziali": metri_totali_pot,
+                    "provincia": provincia_cantiere, "comune": comune_cantiere,
+                    "impresa": lotto_impresa.get(g["lotto"], existing.get("impresa", "")),
+                }},
+            )
+            continue
+
+        # Migrazione best-effort: se esistevano già documenti del VECCHIO schema
+        # (1 per tratta_id, pre-raggruppamento per pratica), recupera l'avanzamento
+        # già inserito dall'impresa prima di accorparli nel nuovo cantiere.
+        tratta_ids = [t["tratta_id"] for t in g["tratte"]]
+        old_docs = await cantieri_col.find(
+            {"tratta_id": {"$in": tratta_ids}, "pratica_id": {"$exists": False}}
+        ).to_list(length=None)
+
+        metri_scavati  = sum(float(d.get("metri_scavati", 0) or 0) for d in old_docs)
+        old_log = [
+            {**entry, "tratta_id": d.get("tratta_id")}
+            for d in old_docs for entry in d.get("log", [])
+        ]
+        stato_cantiere = max(
+            (d.get("stato_cantiere", "non_avviato") for d in old_docs),
+            key=lambda s: stato_rank.get(s, 0), default="non_avviato",
+        )
+        tecnica_scavo = next((d.get("tecnica_scavo") for d in old_docs if d.get("tecnica_scavo")), "")
+        impresa       = lotto_impresa.get(g["lotto"]) or next((d.get("impresa") for d in old_docs if d.get("impresa")), "")
+
+        codice_cache[g["lotto"]] = codice_cache.get(g["lotto"], 0) + 1
+        codice_cantiere = f"CA/{codice_cache[g['lotto']]}/{g['lotto']}"
+
+        doc = {
+            "cantiere_key": g["cantiere_key"],
+            "codice_cantiere": codice_cantiere,
+            "pratica_id": g["pratica_id"], "ente": g["ente"], "lotto": g["lotto"], "cluster": g["cluster"],
+            "provincia": provincia_cantiere, "comune": comune_cantiere,
+            "tratte": g["tratte"],
+            "metri_totali": metri_totali, "metri_totali_potenziali": metri_totali_pot,
+            "stato_cantiere": stato_cantiere, "tecnica_scavo": tecnica_scavo,
+            "data_inizio_prevista": "", "data_inizio_effettiva": "",
+            "data_fine_prevista": "", "data_fine_effettiva": "",
+            "metri_scavati": metri_scavati, "note": "",
+            "motivo_blocco": "", "data_ripresa_stimata": "",
+            "impresa": impresa, "updated_at": _now_iso(),
+            "log": old_log,
+        }
+        await cantieri_col.insert_one(doc)
+        if old_docs:
+            await cantieri_col.delete_many({"_id": {"$in": [d["_id"] for d in old_docs]}})
+        created += 1
+
+    # Pulizia doppioni: cantieri creati prima dell'introduzione di 'cantiere_key'
+    # (schema intermedio: solo pratica_id+ente, niente cantiere_key) oppure prima
+    # della normalizzazione di 'ente' (spazi multipli/maiuscole diverse → stessa
+    # pratica vista come due chiavi diverse). $nin su un campo assente include
+    # anche i documenti dove il campo non esiste affatto (schema intermedio).
+    touched_keys = {g["cantiere_key"] for g in groups.values()}
+    merged = 0
+    async for orphan in cantieri_col.find({
+        "pratica_id": {"$exists": True},
+        "cantiere_key": {"$nin": list(touched_keys)},
+    }):
+        m = re.match(r"^AUT/(.+)/([^/]+)$", orphan.get("pratica_id") or "")
+        if not m:
+            continue
+        o_num, o_lotto = m.group(1), m.group(2)
+        o_ente_key = re.sub(r"\s+", " ", str(orphan.get("ente", ""))).strip().upper()
+        target_key = f"{o_num}|{o_lotto}|{o_ente_key}"
+        if target_key == orphan.get("cantiere_key") or target_key not in touched_keys:
+            continue  # non è un doppione da normalizzazione: lascialo (es. autorizzazione non più OTTENUTA)
+        target = await cantieri_col.find_one({"cantiere_key": target_key})
+        if not target:
+            continue
+        await cantieri_col.update_one(
+            {"_id": target["_id"]},
+            {"$inc": {"metri_scavati": float(orphan.get("metri_scavati", 0) or 0)},
+             "$push": {"log": {"$each": orphan.get("log", [])}}},
+        )
+        await cantieri_col.delete_one({"_id": orphan["_id"]})
+        merged += 1
+    if merged:
+        print(f"[sync_cantieri] uniti {merged} cantieri duplicati (variazioni di formattazione ente)")
+
+    if created:
+        print(f"[sync_cantieri] creati {created} nuovi cantieri (per pratica)")
+    return created
+
+
+
+# ── Endpoint pubblico: lista cantieri ────────────────────────────────────────
+
+@app.get("/api/cantieri")
+async def get_cantieri(lotto: str = "", cluster: str = "", stato: str = "", sess: dict = Depends(_require_staff_session)):
+    """Lista cantieri (pubblica), uno per pratica di autorizzazione. Filtrabile
+    per lotto, cluster, stato."""
+    q: dict = {}
+    if lotto:   q["lotto"]          = lotto
+    if cluster: q["cluster"]        = cluster
+    if stato:   q["stato_cantiere"] = stato
+    items = []
+    cil = {c["cantiere_key"]: c async for c in cantieri_cil_col.find({}, {"cantiere_key": 1, "data_cil": 1, "updated_by": 1, "updated_at": 1})}
+    async for d in cantieri_col.find(q).sort("pratica_id", 1):
+        d["_id"] = str(d["_id"])
+        d["log_count"] = len(d.get("log") or [])   # segnala se l'impresa ha mai fatto un aggiornamento
+        d.pop("log", None)   # non esporre lo storico nel listing
+        c = cil.get(d.get("cantiere_key"))
+        d["data_cil"] = (c or {}).get("data_cil", "")
+        d["data_cil_by"] = (c or {}).get("updated_by", "")
+        items.append(d)
+    return {"cantieri": items, "count": len(items)}
+
+
+_CIL_ROLES = ("dl", "admin", "admin2")
+
+
+@app.put("/api/cantieri/{cantiere_key:path}/cil")
+async def set_cantiere_cil(cantiere_key: str, payload: dict, sess: dict = Depends(_require_staff_session)):
+    """Imposta la Data CIL di un cantiere (solo DL e admin/admin2). Body: {"data_cil": "AAAA-MM-GG"} oppure "" per cancellarla.
+    Salvata in `cantieri_cil` (non nel documento del cantiere) con storico delle modifiche."""
+    if sess.get("ruolo") not in _CIL_ROLES:
+        raise HTTPException(403, "La Data CIL può essere inserita solo dalla Direzione Lavori")
+    val = str((payload or {}).get("data_cil", "") or "").strip()
+    if val:
+        try:
+            datetime.strptime(val, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(422, "Data CIL non valida (formato AAAA-MM-GG)")
+    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key}, {"codice_cantiere": 1, "pratica_id": 1})
+    if not doc:
+        raise HTTPException(404, "Cantiere non trovato")
+    prev = await cantieri_cil_col.find_one({"cantiere_key": cantiere_key}, {"data_cil": 1})
+    old = (prev or {}).get("data_cil", "")
+    if old == val:
+        return {"ok": True, "data_cil": val, "unchanged": True}
+    now = _now_iso()
+    utente = sess.get("nome", "")
+    await cantieri_cil_col.update_one(
+        {"cantiere_key": cantiere_key},
+        {"$set": {"data_cil": val, "codice_cantiere": doc.get("codice_cantiere", ""), "pratica_id": doc.get("pratica_id", ""),
+                  "updated_by": utente, "updated_at": now},
+         "$push": {"storico": {"ts": now, "utente": utente, "ruolo": sess.get("ruolo"), "da": old, "a": val}}},
+        upsert=True,
+    )
+    return {"ok": True, "data_cil": val, "data_cil_by": utente}
+
+
+@app.post("/api/external/pratica-status")
+async def external_pratica_status(
+    payload: dict,
+    x_sync_token: Annotated[str | None, Header(alias="x-sync-token")] = None,
+):
+    """Endpoint READ-ONLY dedicato alla sincronizzazione cross-progetto con QTS:
+    le tratte in concomitanza hanno la pratica di autorizzazione aperta e
+    seguita qui su ENRI, non su QTS/Telebit — QTS deve poter leggere lo stato
+    corrente senza duplicare la pratica. La corrispondenza tra i due progetti
+    NON è per TRATTA_ID (numerazioni indipendenti, spesso più tratte QTS ->
+    una sola pratica ENRI) ma per identità di pratica: ente + tipo_permesso +
+    numero + lotto, la stessa chiave usata da /api/admin/pratiche-search.
+
+    Body atteso: {"items": [{"ente": str, "tipo_permesso": "AUTORIZZAZIONE"|
+    "NULLA OSTA"|"ORDINANZA", "numero": str, "lotto": str}, ...]}
+
+    Protetto da QTS_SYNC_TOKEN, separato da UPLOAD_TOKEN: nessuna scrittura,
+    nessun dato oltre lo stato delle pratiche esplicitamente richieste (mai
+    l'intero Master.csv)."""
+    _check_qts_sync_token(x_sync_token)
+    items = (payload or {}).get("items") or []
+    if not items:
+        raise HTTPException(400, "Body 'items' obbligatorio (lista di {ente, tipo_permesso, numero, lotto})")
+
+    df = await _read_master_csv()
+    if df is None or df.empty:
+        return {"pratiche": [{**it, "trovata": False} for it in items], "checked_at": _now_iso()}
+    work = df.fillna("")
+    work = work.assign(_lotto=work["Source.Name"].apply(_lotto_from_source))
+    ente_col   = work["ENTE"].astype(str).str.strip().str.upper()
+    tipo_col   = work["TIPO_PERMESSO"].astype(str).str.strip().str.upper()
+    numero_col = work["PRATICA"].astype(str).str.strip()
+
+    out = []
+    for it in items:
+        ente   = str(it.get("ente", "")).strip()
+        tipo   = str(it.get("tipo_permesso", "")).strip().upper()
+        numero = str(it.get("numero", "")).strip()
+        lotto  = str(it.get("lotto", "")).strip().upper()
+        match = work[
+            (ente_col == ente.upper()) & (tipo_col == tipo) &
+            (numero_col == numero) & (work["_lotto"] == lotto)
+        ]
+        if match.empty:
+            out.append({"ente": ente, "tipo_permesso": tipo, "numero": numero, "lotto": lotto, "trovata": False})
+            continue
+        rep = match.iloc[-1]  # ultima riga inserita per questa pratica = stato attuale
+        out.append({
+            "ente": ente, "tipo_permesso": tipo, "numero": numero, "lotto": lotto,
+            "trovata": True,
+            "stato_permesso": str(rep.get("STATO_PERMESSO", "")).strip(),
+            "data_richiesta": str(rep.get("DATA_RICHIESTA", "")).strip(),
+            "data_approvazione": str(rep.get("DATA_APPROVAZIONE", "")).strip(),
+            "data_prevista_rilascio": str(rep.get("DATA_PREVISTA_RILASCIO", "")).strip(),
+            "nota": str(rep.get("NOTE", "")).strip(),
+        })
+    return {"pratiche": out, "checked_at": _now_iso()}
+
+
+@app.get("/api/cantieri/scavi-timeseries")
+async def get_scavi_timeseries(
+    lotto: str = "",
+    data_da: str = "",
+    data_a: str = "",
+    sess: dict = Depends(_require_staff_session),
+):
+    """Serie storica metri scavati per giorno e impresa, aggregata sui log dei
+    cantieri (vedi update_cantiere/log_entry). Usata dal grafico 'Scavi nel
+    tempo' (mappa.html, vista Scavi). Filtro opzionale per lotto e per
+    intervallo date inclusivo (formato YYYY-MM-DD, confrontabile come
+    stringa grazie al formato ISO); se omesse copre l'intero storico.
+    Aggregazione fatta lato Mongo per evitare N+1 fetch (un cantiere per
+    pratica, ciascuno col proprio storico log)."""
+    pipeline: list = []
+    if lotto:
+        pipeline.append({"$match": {"lotto": lotto}})
+    pipeline.append({"$unwind": "$log"})
+    log_match: dict = {"log.metri_realizzati": {"$gt": 0}}
+    data_range: dict = {}
+    if data_da: data_range["$gte"] = data_da
+    if data_a:  data_range["$lte"] = data_a
+    if data_range:
+        log_match["log.data"] = data_range
+    pipeline.append({"$match": log_match})
+    pipeline.append({
+        "$group": {
+            "_id": {"data": "$log.data", "impresa": "$log.impresa"},
+            "metri": {"$sum": "$log.metri_realizzati"},
+        }
+    })
+    out = []
+    async for d in cantieri_col.aggregate(pipeline):
+        out.append({"data": d["_id"]["data"], "impresa": d["_id"]["impresa"] or "N/D", "metri": round(d["metri"], 1)})
+    out.sort(key=lambda x: (x["data"], x["impresa"]))
+    return {"serie": out, "count": len(out)}
+
+
+@app.get("/api/cantieri/{cantiere_key:path}/log")
+async def get_cantiere_log_public(cantiere_key: str, sess: dict = Depends(_require_staff_session)):
+    """Storico aggiornamenti di un cantiere (pubblico, sola lettura — no session).
+    Usato dal 'Registro Cantiere' in scavi.html."""
+    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
+    if not doc:
+        raise HTTPException(404, "Cantiere non trovato")
+    return {"log": doc.get("log", []), "cantiere_key": cantiere_key, "pratica_id": doc.get("pratica_id")}
+
+
+# ── Meteo cantiere: il server fornisce SOLO le coordinate (centroide tratte).
+# Le chiamate a Open-Meteo le fa il browser (IP dell'utente → niente 429 da IP condiviso Render).
+_centroidi_cache: dict = {"exp": 0.0, "map": {}}   # tratta_id -> (lat, lon)
+
+
+def _flatten_coords(c):
+    if c and isinstance(c[0], (int, float)):
+        yield c
+    else:
+        for x in (c or []):
+            yield from _flatten_coords(x)
+
+
+async def _tratta_centroidi() -> dict:
+    """Centroide (media vertici) per TRATTA_ID da QGIS.geojson, cache 1h."""
+    if _centroidi_cache["exp"] > time.time() and _centroidi_cache["map"]:
+        return _centroidi_cache["map"]
+    geo = await _read_current_geojson(QGIS_FILENAME)
+    out: dict = {}
+    for f in ((geo or {}).get("features") or []):
+        tid = str((f.get("properties") or {}).get("TRATTA_ID", "")).strip()
+        pts = list(_flatten_coords((f.get("geometry") or {}).get("coordinates")))
+        if tid and pts:
+            out[tid] = (sum(p[1] for p in pts) / len(pts), sum(p[0] for p in pts) / len(pts))
+    _centroidi_cache.update({"exp": time.time() + 3600, "map": out})
+    return out
+
+
+@app.get("/api/cantieri/{cantiere_key:path}/coord")
+async def get_cantiere_coord(cantiere_key: str, sess: dict = Depends(_require_staff_session)):
+    """Coordinate (media dei centroidi delle tratte) per il meteo lato browser."""
+    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
+    if not doc:
+        raise HTTPException(404, "Cantiere non trovato")
+    centroidi = await _tratta_centroidi()
+    pts = [centroidi[t["tratta_id"]] for t in (doc.get("tratte") or []) if t.get("tratta_id") in centroidi]
+    if not pts:
+        raise HTTPException(404, "Coordinate non disponibili per le tratte del cantiere")
+    comuni = Counter(t.get("comune") for t in (doc.get("tratte") or []) if t.get("comune"))
+    return {"lat": round(sum(p[0] for p in pts) / len(pts), 2),
+            "lon": round(sum(p[1] for p in pts) / len(pts), 2),
+            "comune": comuni.most_common(1)[0][0] if comuni else ""}
+
+
+# ── Endpoint impresa: aggiornamento giornaliero ───────────────────────────────
+
+@app.get("/api/admin/actions")
+async def list_admin_actions(
+    limit: int = 100,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """Log azioni admin (upload/delete/restore/prune) — vedi _log_admin_action."""
+    _check_token(x_upload_token or token_q)
+    cur = admin_actions_col.find({}).sort("timestamp", -1).limit(min(limit, 500))
+    items = [_serialize(d) async for d in cur]
+    return {"actions": items, "count": len(items)}
+
+
+@app.post("/api/admin/prune-versions")
+async def admin_prune_versions(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """One-shot: applica KEEP_VERSIONS all'arretrato già esistente (il prune
+    automatico dopo ogni upload agisce solo sui filename toccati da quel momento in poi)."""
+    _check_token(x_upload_token or token_q)
+    filenames = await uploads_col.distinct("filename", {"deleted_at": None})
+    result = {}
+    for fn in filenames:
+        result[fn] = await _prune_old_versions(fn)
+    await _log_admin_action("prune_versions", ",".join(filenames) or "-", x_actor_nome)
+    return {"pruned": result, "keep_versions": KEEP_VERSIONS}
+
+
+@app.delete("/api/admin/sopralluoghi/reset")
+async def admin_reset_sopralluoghi(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """Svuota la collection sopralluoghi (solo test/dev)."""
+    _check_token(x_upload_token or token_q)
+    deleted = (await sopralluoghi_col.delete_many({})).deleted_count
+    _schedule_sopralluoghi_csv_regen("reset totale")
+    return {"deleted": deleted}
+
+
+@app.delete("/api/admin/cantieri/reset")
+async def admin_reset_cantieri(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """Svuota la collection cantieri (solo test/dev) e la ricrea da Master.csv."""
+    _check_token(x_upload_token or token_q)
+    deleted = (await cantieri_col.delete_many({})).deleted_count
+    created = await _sync_cantieri()
+    return {"deleted": deleted, "recreated": created}
+
+
+@app.get("/api/admin/sync-cantieri")
+async def admin_sync_cantieri(
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+):
+    """Forza la sincronizzazione dei cantieri (solo admin)."""
+    _check_token(x_upload_token or token_q)
+    created = await _sync_cantieri()
+    total = await cantieri_col.count_documents({})
+    return {"created": created, "total_cantieri": total}
+
+
+_STATI_AVVIATO = {"in_corso", "sospeso", "completato"}
+
+
+def _campi_correnti_da_log(log: list) -> dict:
+    """Riallinea i campi 'correnti' del cantiere all'ultima riga di log rimasta,
+    dopo una correzione/eliminazione admin. Senza questo, stato, tecnica, note,
+    motivo blocco, ripresa e date effettive restavano quelli del caricamento
+    eliminato. Le date effettive si svuotano solo se incoerenti col log rimasto
+    (mai avviato → niente inizio effettivo; ultimo stato non 'completato' → niente fine)."""
+    if not log:
+        return {"stato_cantiere": "non_avviato", "tecnica_scavo": "", "note": "",
+                "motivo_blocco": "", "data_ripresa_stimata": "",
+                "data_inizio_effettiva": "", "data_fine_effettiva": ""}
+    last = log[-1]
+    out = {
+        "stato_cantiere": last.get("stato_cantiere") or "non_avviato",
+        "tecnica_scavo": last.get("tecnica_scavo") or "",
+        "note": last.get("note") or "",
+        "motivo_blocco": last.get("motivo_blocco") or "",
+        "data_ripresa_stimata": last.get("data_ripresa_stimata") or "",
+    }
+    if last.get("impresa"):
+        out["impresa"] = last["impresa"]
+    if not any(e.get("stato_cantiere") in _STATI_AVVIATO for e in log):
+        out["data_inizio_effettiva"] = ""
+    if out["stato_cantiere"] != "completato":
+        out["data_fine_effettiva"] = ""
+    return out
+
+
+@app.put("/api/admin/cantieri/{cantiere_key:path}/log/{idx}")
+async def admin_update_cantiere_log_entry(
+    cantiere_key: str,
+    idx: int,
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Corregge una singola riga di storico (log) di un cantiere — es. un
+    caricamento errato inserito da un'impresa. metri_scavati viene
+    ricalcolato come somma di tutte le righe di log rimaste (coerente con
+    l'accumulo di POST /api/imprese/cantieri/{key}) e i campi correnti
+    (stato, tecnica, note…) sono riallineati all'ultima riga rimasta."""
+    _check_token(x_upload_token or token_q)
+    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
+    if not doc:
+        raise HTTPException(404, "Cantiere non trovato")
+    log = doc.get("log") or []
+    if idx < 0 or idx >= len(log):
+        raise HTTPException(404, "Voce di storico non trovata")
+
+    allowed = {
+        "data", "impresa", "stato_cantiere", "tecnica_scavo",
+        "metri_realizzati", "note", "motivo_blocco", "data_ripresa_stimata",
+    }
+    entry = dict(log[idx])
+    for k, v in (payload or {}).items():
+        if k not in allowed:
+            continue
+        if k == "stato_cantiere" and v not in STATO_CANTIERE_VALUES:
+            raise HTTPException(400, f"stato_cantiere non valido: {v}")
+        if k == "tecnica_scavo" and v and v not in TECNICA_SCAVO_VALUES:
+            raise HTTPException(400, f"tecnica_scavo non valida: {v}")
+        if k == "metri_realizzati":
+            try:
+                v = max(0.0, float(v))
+            except Exception:
+                raise HTTPException(400, "metri_realizzati deve essere un numero")
+        entry[k] = v
+    log[idx] = entry
+
+    metri_scavati = sum(float(e.get("metri_realizzati") or 0) for e in log)
+    await cantieri_col.update_one(
+        {"cantiere_key": cantiere_key},
+        {"$set": {"log": log, "metri_scavati": metri_scavati, **_campi_correnti_da_log(log), "updated_at": _now_iso()}},
+    )
+    await _log_admin_action("update_cantiere_log", f"{cantiere_key}#{idx}", x_actor_nome)
+    _schedule_cantieri_csv_regen(f"correzione log: {cantiere_key}#{idx}")
+    return {"ok": True, "cantiere_key": cantiere_key, "idx": idx, "metri_scavati": metri_scavati}
+
+
+@app.put("/api/admin/cantieri/{cantiere_key:path}")
+async def admin_update_cantiere(
+    cantiere_key: str,
+    payload: dict,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Correzione admin di un cantiere: a differenza di POST /api/imprese/cantieri/{key}
+    (scrittura impresa, metri_scavati SEMPRE in accumulo via $inc), qui i campi passati
+    vengono impostati DIRETTAMENTE — utile per correggere dati di test/errati senza dover
+    passare da un valore negativo (non ammesso) o azzerare tutto il cantiere.
+    Non tocca il log storico salvo che 'clear_log' sia True."""
+    _check_token(x_upload_token or token_q)
+    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
+    if not doc:
+        raise HTTPException(404, "Cantiere non trovato")
+
+    allowed = {
+        "stato_cantiere", "tecnica_scavo", "metri_scavati",
+        "data_inizio_prevista", "data_inizio_effettiva",
+        "data_fine_prevista", "data_fine_effettiva",
+        "note", "motivo_blocco", "data_ripresa_stimata", "impresa",
+    }
+    mongo_set: dict = {}
+    for k, v in (payload or {}).items():
+        if k not in allowed:
+            continue
+        if k == "stato_cantiere" and v not in STATO_CANTIERE_VALUES:
+            raise HTTPException(400, f"stato_cantiere non valido: {v}")
+        if k == "tecnica_scavo" and v and v not in TECNICA_SCAVO_VALUES:
+            raise HTTPException(400, f"tecnica_scavo non valida: {v}")
+        if k == "metri_scavati":
+            try:
+                v = max(0.0, float(v))
+            except Exception:
+                raise HTTPException(400, "metri_scavati deve essere un numero")
+        mongo_set[k] = v
+
+    mongo_update: dict = {"$set": mongo_set} if mongo_set else {}
+    if payload.get("clear_log"):
+        mongo_update["$set"] = {**mongo_set, "log": []}
+    if not mongo_update:
+        raise HTTPException(400, "Nessun campo valido da aggiornare")
+    mongo_update["$set"]["updated_at"] = _now_iso()
+
+    await cantieri_col.update_one({"cantiere_key": cantiere_key}, mongo_update)
+    await _log_admin_action("update_cantiere", cantiere_key, x_actor_nome)
+    _schedule_cantieri_csv_regen(f"correzione admin: {cantiere_key}")
+    return {"ok": True, "cantiere_key": cantiere_key}
+
+
+@app.delete("/api/admin/cantieri/{cantiere_key:path}/log/{idx}")
+async def admin_delete_cantiere_log_entry(
+    cantiere_key: str,
+    idx: int,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Elimina una singola riga di storico (es. caricamento di test/duplicato)
+    senza toccare le altre. metri_scavati e campi correnti (stato, tecnica, note,
+    date effettive incoerenti…) ricalcolati sulle righe rimaste."""
+    _check_token(x_upload_token or token_q)
+    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
+    if not doc:
+        raise HTTPException(404, "Cantiere non trovato")
+    log = doc.get("log") or []
+    if idx < 0 or idx >= len(log):
+        raise HTTPException(404, "Voce di storico non trovata")
+    del log[idx]
+
+    metri_scavati = sum(float(e.get("metri_realizzati") or 0) for e in log)
+    await cantieri_col.update_one(
+        {"cantiere_key": cantiere_key},
+        {"$set": {"log": log, "metri_scavati": metri_scavati, **_campi_correnti_da_log(log), "updated_at": _now_iso()}},
+    )
+    await _log_admin_action("delete_cantiere_log", f"{cantiere_key}#{idx}", x_actor_nome)
+    _schedule_cantieri_csv_regen(f"eliminazione log: {cantiere_key}#{idx}")
+    return {"ok": True, "cantiere_key": cantiere_key, "idx": idx, "metri_scavati": metri_scavati}
+
+
+@app.delete("/api/admin/cantieri/{cantiere_key:path}/reset")
+async def admin_reset_single_cantiere(
+    cantiere_key: str,
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Riporta UN SOLO cantiere allo stato 'pristino' (non_avviato, 0 metri, log
+    vuoto) senza toccare gli altri e senza ricrearlo — a differenza di
+    DELETE /api/admin/cantieri/reset che svuota TUTTA la collection. Utile per
+    rimuovere avanzamenti di test inseriti per errore da un'impresa. Metadati
+    (cantiere_key, codice_cantiere, pratica_id, ente, lotto, metri_totali, impresa)
+    restano invariati."""
+    _check_token(x_upload_token or token_q)
+    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
+    if not doc:
+        raise HTTPException(404, "Cantiere non trovato")
+    await cantieri_col.update_one(
+        {"cantiere_key": cantiere_key},
+        {"$set": {
+            "stato_cantiere": "non_avviato", "tecnica_scavo": "",
+            "data_inizio_prevista": "", "data_inizio_effettiva": "",
+            "data_fine_prevista": "", "data_fine_effettiva": "",
+            "metri_scavati": 0.0, "note": "",
+            "motivo_blocco": "", "data_ripresa_stimata": "",
+            "log": [], "updated_at": _now_iso(),
+        }},
+    )
+    await _log_admin_action("reset_single_cantiere", cantiere_key, x_actor_nome)
+    _schedule_cantieri_csv_regen(f"reset singolo: {cantiere_key}")
+    return {"ok": True, "cantiere_key": cantiere_key}
+
+
+@app.get("/api/imprese/cantieri")
+async def get_cantieri_impresa(sess: dict = Depends(_require_session)):
+    """Cantieri (per pratica) nei lotti dell'impresa autenticata."""
+    nome = sess["nome"]
+    assignment = await _find_assignment(nome)
+    if not assignment:
+        return {"cantieri": [], "count": 0, "debug": "no assignment found"}
+    # Normalizza i lotti dell'impresa con _lotto_from_source
+    raw_lotti = [str(l) for l in (assignment.get("lotti") or [])]
+    lotti = [_lotto_from_source(l) for l in raw_lotti]
+    items = []
+    async for d in cantieri_col.find({}).sort("pratica_id", 1):
+        d["_id"] = str(d["_id"])
+        d["log_count"] = len(d.get("log") or [])
+        d.pop("log", None)
+        cant_lotto = _lotto_from_source(str(d.get("lotto") or ""))
+        if cant_lotto in lotti:
+            items.append(d)
+    return {"cantieri": items, "count": len(items)}
+
+
+@app.post("/api/imprese/cantieri/{cantiere_key:path}")
+async def update_cantiere(cantiere_key: str, payload: dict, sess: dict = Depends(_require_session)):
+    """L'impresa aggiorna lo stato cantiere e i metri realizzati oggi (a livello
+    di pratica: un solo stato/contatore per tutte le tratte della pratica).
+    cantiere_key (non pratica_id) perché pratica_id ('AUT/24/1A') non è garantito
+    univoco tra enti diversi sullo stesso lotto/numero."""
+    nome = sess["nome"]
+    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
+    if not doc:
+        raise HTTPException(404, "Cantiere non trovato")
+
+    # Verifica che la pratica appartenga ai lotti dell'impresa
+    assignment = await _find_assignment(nome)
+    raw_lotti = [str(l) for l in ((assignment or {}).get("lotti") or [])]
+    lotti = [_lotto_from_source(l) for l in raw_lotti]
+    if _lotto_from_source(str(doc.get("lotto") or "")) not in lotti:
+        raise HTTPException(403, "Pratica non assegnata a questa impresa")
+
+    # Campi aggiornabili dall'impresa
+    allowed = {
+        "stato_cantiere", "tecnica_scavo",
+        "data_inizio_prevista", "data_inizio_effettiva",
+        "data_fine_prevista", "data_fine_effettiva",
+        "metri_realizzati_oggi",   # campo speciale: viene accumulato
+        "note", "motivo_blocco", "data_ripresa_stimata",
+        "data_aggiornamento",      # solo per il log: giorno a cui si riferisce l'aggiornamento
+    }
+    update: dict = {}
+    for k, v in (payload or {}).items():
+        if k not in allowed:
+            continue
+        if k == "stato_cantiere" and v not in STATO_CANTIERE_VALUES:
+            raise HTTPException(400, f"stato_cantiere non valido: {v}")
+        if k == "tecnica_scavo" and v not in TECNICA_SCAVO_VALUES:
+            raise HTTPException(400, f"tecnica_scavo non valida: {v}")
+        if k not in ("metri_realizzati_oggi", "data_aggiornamento"):
+            update[k] = v
+
+    # Giorno dell'aggiornamento: di default oggi (ora italiana); l'impresa può
+    # indicare un giorno passato (max 30 gg) per recuperare un caricamento dimenticato.
+    oggi_it = datetime.now(ZoneInfo("Europe/Rome")).date()
+    data_agg = oggi_it.isoformat()
+    if payload.get("data_aggiornamento"):
+        try:
+            d_agg = datetime.strptime(str(payload["data_aggiornamento"])[:10], "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(400, "data_aggiornamento non valida (formato AAAA-MM-GG)")
+        if d_agg > oggi_it:
+            raise HTTPException(400, "data_aggiornamento non può essere nel futuro")
+        if d_agg < oggi_it - timedelta(days=30):
+            raise HTTPException(400, "data_aggiornamento troppo vecchia (massimo 30 giorni indietro)")
+        data_agg = d_agg.isoformat()
+
+    nuovo_stato = payload.get("stato_cantiere", doc.get("stato_cantiere"))
+    if nuovo_stato == "allestimento" and not payload.get("data_inizio_prevista") and not doc.get("data_inizio_prevista"):
+        raise HTTPException(400, "data_inizio_prevista obbligatoria per lo stato Allestimento")
+    if nuovo_stato == "in_corso" and not doc.get("data_inizio_effettiva") and not payload.get("data_inizio_effettiva"):
+        raise HTTPException(400, "data_inizio_effettiva obbligatoria al primo avvio cantiere")
+    if nuovo_stato == "completato" and not payload.get("data_fine_effettiva") and not doc.get("data_fine_effettiva"):
+        raise HTTPException(400, "data_fine_effettiva obbligatoria per chiudere il cantiere")
+
+    # Accumula metri giornalieri (con cap su metri_totali)
+    metri_oggi = 0.0
+    if "metri_realizzati_oggi" in payload:
+        try:
+            metri_oggi = max(0.0, float(payload["metri_realizzati_oggi"]))
+        except Exception:
+            raise HTTPException(400, "metri_realizzati_oggi deve essere un numero")
+        metri_totali   = float(doc.get("metri_totali", 0) or 0)
+        metri_scavati_attuali = float(doc.get("metri_scavati", 0) or 0)
+        rimanenti = max(0.0, metri_totali - metri_scavati_attuali)
+        if metri_totali > 0 and metri_oggi > rimanenti:
+            raise HTTPException(
+                400,
+                f"Metri inseriti ({metri_oggi:.0f}m) superano i metri rimanenti "
+                f"del cantiere ({rimanenti:.0f}m su {metri_totali:.0f}m totali)."
+            )
+        update["$inc"] = {"metri_scavati": metri_oggi}
+
+    # Aggiornamento retrodatato (c'è già un log più recente): metri e riga di log
+    # vanno nel giorno giusto, ma NON si sovrascrivono stato/tecnica/note/date
+    # correnti del cantiere con dati più vecchi.
+    log_esistente = doc.get("log") or []
+    ultima_data = max((str(e.get("data") or "") for e in log_esistente), default="")
+    retrodatato = bool(ultima_data) and data_agg < ultima_data
+    if retrodatato:
+        update = {k: v for k, v in update.items() if k == "$inc"}
+    else:
+        update["impresa"] = nome
+    update["updated_at"] = _now_iso()
+
+    # Log entry giornaliero
+    log_entry = {
+        "data":                  data_agg,
+        "impresa":               nome,
+        "stato_cantiere":        payload.get("stato_cantiere", doc.get("stato_cantiere")),
+        "tecnica_scavo":         payload.get("tecnica_scavo", doc.get("tecnica_scavo")),
+        "metri_realizzati":      metri_oggi,
+        "note":                  payload.get("note", ""),
+        "motivo_blocco":         payload.get("motivo_blocco", ""),
+        "data_ripresa_stimata":  payload.get("data_ripresa_stimata", ""),
+    }
+
+    # Costruisci update MongoDB
+    mongo_set = {k: v for k, v in update.items() if k != "$inc"}
+    # inserisce la riga al posto giusto per data (dopo l'ultima con data <= nuova),
+    # così lo storico resta in ordine cronologico anche con retrodatazioni
+    pos = len(log_esistente)
+    while pos > 0 and str(log_esistente[pos - 1].get("data") or "") > data_agg:
+        pos -= 1
+    mongo_update: dict = {"$set": mongo_set, "$push": {"log": {"$each": [log_entry], "$position": pos}}}
+    if "$inc" in update:
+        mongo_update["$inc"] = update["$inc"]
+
+    await cantieri_col.update_one({"cantiere_key": cantiere_key}, mongo_update)
+    _schedule_cantieri_csv_regen(f"aggiornamento impresa: {cantiere_key}")
+    return {"ok": True, "cantiere_key": cantiere_key, "pratica_id": doc.get("pratica_id")}
+
+
+@app.get("/api/imprese/cantieri/{cantiere_key:path}/log")
+async def get_cantiere_log(cantiere_key: str, sess: dict = Depends(_require_session)):
+    """Storico aggiornamenti giornalieri di un cantiere (pratica)."""
+    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
+    if not doc:
+        raise HTTPException(404, "Cantiere non trovato")
+
+    # Verifica che la pratica appartenga ai lotti dell'impresa (stesso controllo di update_cantiere)
+    assignment = await _find_assignment(sess["nome"])
+    raw_lotti = [str(l) for l in ((assignment or {}).get("lotti") or [])]
+    lotti = [_lotto_from_source(l) for l in raw_lotti]
+    if _lotto_from_source(str(doc.get("lotto") or "")) not in lotti:
+        raise HTTPException(403, "Pratica non assegnata a questa impresa")
+
+    return {"log": doc.get("log", []), "cantiere_key": cantiere_key, "pratica_id": doc.get("pratica_id")}
+
+
+# ── Gantt: override manuali per riga (pct/date/label), indipendenti dagli ───
+# invii impresa — non tutte le fasi (es. materiali) derivano da un invio.
+# Chiave riga: {lotto}|{row_id}, row_id = indice della riga nell'array
+# GANTT_ROWS lato frontend (statico, quindi stabile).
+
+@app.get("/api/gantt/overrides")
+async def get_gantt_overrides(lotto: str = "", sess: dict = Depends(_require_staff_session)):
+    if not lotto:
+        raise HTTPException(400, "lotto required")
+    cur = gantt_overrides_col.find({"lotto": lotto})
+    out = {}
+    async for d in cur:
+        out[str(d["row_id"])] = {
+            "pct": d.get("pct"),
+            "start": d.get("start"),
+            "end": d.get("end"),
+            "date": d.get("date"),
+            "label": d.get("label"),
+            "sub": d.get("sub"),
+            "dep_pred": d.get("dep_pred"),
+            "dep_type": d.get("dep_type"),
+            "dep_lag": d.get("dep_lag"),
+            "updated_at": d.get("updated_at"),
+            "updated_by": d.get("updated_by"),
+        }
+    return {"lotto": lotto, "overrides": out}
+
+
+@app.put("/api/gantt/overrides/{lotto}/{row_id}")
+async def upsert_gantt_override(lotto: str, row_id: str, payload: dict, sess: dict = Depends(_require_admin_session)):
+    fields = {}
+    for k in ("pct", "start", "end", "date", "label", "sub", "dep_pred", "dep_type", "dep_lag"):
+        if k in (payload or {}):
+            fields[k] = payload[k]
+    if not fields:
+        raise HTTPException(400, "Nessun campo da aggiornare")
+    if "pct" in fields:
+        try:
+            fields["pct"] = max(0, min(100, int(fields["pct"])))
+        except (TypeError, ValueError):
+            raise HTTPException(400, "pct deve essere un intero 0-100")
+    if "dep_pred" in fields:
+        dep_pred = fields["dep_pred"]
+        if dep_pred in (None, ""):
+            fields["dep_pred"] = None
+        else:
+            try:
+                dep_pred_int = int(dep_pred)
+            except (TypeError, ValueError):
+                raise HTTPException(400, "dep_pred deve essere un id riga intero")
+            if str(dep_pred_int) == str(row_id):
+                raise HTTPException(400, "Un task non può dipendere da se stesso")
+            fields["dep_pred"] = dep_pred_int
+    if "dep_type" in fields and fields["dep_type"] not in ("FS", "SS"):
+        raise HTTPException(400, "dep_type deve essere 'FS' o 'SS'")
+    if "dep_lag" in fields:
+        try:
+            fields["dep_lag"] = max(0, int(fields["dep_lag"]))
+        except (TypeError, ValueError):
+            raise HTTPException(400, "dep_lag deve essere un intero >= 0")
+    doc = {"lotto": lotto, "row_id": row_id, **fields,
+           "updated_at": _now_iso(), "updated_by": sess["nome"]}
+    await gantt_overrides_col.update_one(
+        {"lotto": lotto, "row_id": row_id},
+        {"$set": doc, "$setOnInsert": {"created_at": _now_iso()}},
+        upsert=True,
+    )
+    return {"ok": True, "lotto": lotto, "row_id": row_id, **fields}
+
+
+@app.delete("/api/gantt/overrides/{lotto}/{row_id}")
+async def delete_gantt_override(lotto: str, row_id: str, sess: dict = Depends(_require_admin_session)):
+    """Ripristina il valore automatico/baseline per la riga (rimuove l'override manuale)."""
+    res = await gantt_overrides_col.delete_one({"lotto": lotto, "row_id": row_id})
+    return {"deleted": res.deleted_count}
+
+
+# ── Tasso di produzione scavo (m/giorno), configurabile per scope ────────────
+# scope è una stringa libera con 4 forme valide:
+#   "global"              → default di fallback, usato se nessuna regola più specifica esiste
+#   "lotto:<ID>"           es. "lotto:1A"
+#   "impresa:<NOME>"       es. "impresa:ROSSI SPA" (nome esatto come in assignments_col)
+#   "pratica:<CODICE>"     es. "pratica:AUT/1/1A" (codice pratica completo, univoco anche tra lotti)
+# Il frontend risolve la priorità (pratica > impresa > lotto > global) leggendo tutte le
+# regole in un colpo solo via GET e applicando la più specifica per ciascuna pratica.
+_GANTT_RATE_SCOPE_PREFIXES = ("lotto:", "impresa:", "pratica:")
+
+
+def _validate_gantt_rate_scope(scope: str) -> None:
+    if scope == "global" or scope.startswith(_GANTT_RATE_SCOPE_PREFIXES):
+        return
+    raise HTTPException(400, "scope deve essere 'global', 'lotto:<ID>', 'impresa:<NOME>' o 'pratica:<CODICE>'")
+
+
+@app.get("/api/gantt/rates")
+async def get_gantt_rates(sess: dict = Depends(_require_staff_session)):
+    cur = gantt_rates_col.find({})
+    out = {}
+    async for d in cur:
+        out[d["scope"]] = {
+            "m_giorno": d.get("m_giorno"),
+            "updated_at": d.get("updated_at"),
+            "updated_by": d.get("updated_by"),
+        }
+    return {"rates": out}
+
+
+@app.put("/api/gantt/rates/{scope:path}")
+async def upsert_gantt_rate(scope: str, payload: dict, sess: dict = Depends(_require_admin_session)):
+    _validate_gantt_rate_scope(scope)
+    try:
+        m_giorno = float((payload or {}).get("m_giorno"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "m_giorno deve essere un numero")
+    if m_giorno <= 0 or m_giorno > 10000:
+        raise HTTPException(400, "m_giorno deve essere un valore positivo plausibile (0-10000)")
+    doc = {"scope": scope, "m_giorno": m_giorno, "updated_at": _now_iso(), "updated_by": sess["nome"]}
+    await gantt_rates_col.update_one(
+        {"scope": scope},
+        {"$set": doc, "$setOnInsert": {"created_at": _now_iso()}},
+        upsert=True,
+    )
+    return {"ok": True, "scope": scope, "m_giorno": m_giorno}
+
+
+@app.delete("/api/gantt/rates/{scope:path}")
+async def delete_gantt_rate(scope: str, sess: dict = Depends(_require_admin_session)):
+    """Rimuove la regola per questo scope: la pratica ricade sul livello meno specifico successivo."""
+    res = await gantt_rates_col.delete_one({"scope": scope})
+    return {"deleted": res.deleted_count}
+
+
+# ── Trigger sync cantieri dopo approvazione Master.csv ───────────────────────
+# _sync_cantieri() è già chiamata alla fine di approve_pending_update
+# (vedi hook sotto) — aggiungiamo il trigger se non esiste
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COORDINAMENTI (fase INVIO PRELIMINARE — richieste agli enti per pratica)
+# Una richiesta = un documento per (pratica, ente). Scrittura diretta dell'impresa
+# (nessuna approvazione admin, come solleciti/cantieri). Indipendente da Master.csv:
+# la pratica resta visibile anche dopo che lo stato Master passa a INVIATO.
+# ══════════════════════════════════════════════════════════════════════════════
+COORD_EDITABLE = {
+    "tipologia_invio", "contatto", "data_invio", "data_risposta",
+    "concomitanze", "concomitanze_note", "data_sopralluogo", "verbale",
+    "riferimento_protocollo", "prescrizioni", "note", "risposta_ricevuta",
+    # pagina impresa "Coordinamenti": riscontro ente / sopralluogo / sollecito / ente critico
+    "tipo_riscontro", "sopralluogo_necessario", "esito_sopralluogo", "data_ultimo_sollecito", "critico",
+}
+COORD_ENUMS = {
+    "tipo_riscontro": ("INTERFERENZA", "NON INTERFERENZA"),
+    "sopralluogo_necessario": ("SI", "NO"),
+    "esito_sopralluogo": ("POSITIVO", "NEGATIVO"),
+}
+
+
+def _coord_date(v) -> str:
+    """datetime / 'GG/MM/AAAA' / 'AAAA-MM-GG' -> 'AAAA-MM-GG'. Vuoto/non parsabile -> ''."""
+    if v is None:
+        return ""
+    if isinstance(v, (datetime, pd.Timestamp)):
+        return "" if pd.isna(v) else v.strftime("%Y-%m-%d")
+    s = str(v).strip()
+    if not s or s.lower() in ("nan", "nat", "none"):
+        return ""
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{2,4})$", s)
+    if m:
+        y = int(m.group(3)); y = y + 2000 if y < 100 else y
+        return f"{y:04d}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+    return ""
+
+
+def _coord_txt(v) -> str:
+    if v is None or (not isinstance(v, str) and pd.isna(v)):
+        return ""
+    return re.sub(r"\s+", " ", str(v).replace("\\n", " ")).strip()
+
+
+def _coord_ente_key(ente: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", _coord_txt(ente).lower()).strip("-")
+
+
+def _coord_lotto(pratica: str) -> str:
+    """'AUT/7/1B' -> '1B' (ultimo segmento del codice pratica)."""
+    return str(pratica or "").split("/")[-1].strip().upper()
+
+
+def _coord_public(d: dict, with_log: bool = False) -> dict:
+    out = {k: v for k, v in d.items() if k != "log"}
+    out["id"] = str(out.pop("_id"))
+    if not out.get("tipo_riscontro"):      # dati precedenti: concomitanze SI/NO -> INTERFERENZA/NON INTERFERENZA
+        out["tipo_riscontro"] = {"SI": "INTERFERENZA", "NO": "NON INTERFERENZA"}.get(d.get("concomitanze") or "", "")
+    out["log_count"] = len(d.get("log") or [])
+    if with_log:
+        out["log"] = d.get("log") or []
+    return out
+
+
+def _coord_stato(d: dict) -> str:
+    if d.get("risposta_ricevuta") or d.get("data_risposta"):
+        return "ricevuta"
+    if d.get("data_invio"):
+        return "inviata"
+    return "da_inviare"
+
+
+def _coord_summarize(docs: list[dict]) -> list[dict]:
+    """Aggrega le richieste per pratica: totale / ricevute / inviate-senza-risposta / da inviare."""
+    by: dict[str, dict] = {}
+    for d in docs:
+        p = by.setdefault(d["pratica"], {
+            "pratica": d["pratica"], "lotto": d.get("lotto", ""), "municipio": d.get("municipio", ""),
+            "impresa": d.get("impresa", ""), "totale": 0, "ricevute": 0, "inviate": 0, "da_inviare": 0,
+            "concomitanze_si": 0, "interferenze": 0, "critici": 0, "critici_aperti": 0, "sopralluoghi": 0, "ultimo_aggiornamento": "", "enti": [],
+        })
+        st = _coord_stato(d)
+        p["totale"] += 1
+        p[{"ricevuta": "ricevute", "inviata": "inviate", "da_inviare": "da_inviare"}[st]] += 1
+        if d.get("tipo_riscontro") == "INTERFERENZA" or (not d.get("tipo_riscontro") and d.get("concomitanze") == "SI"):
+            p["concomitanze_si"] += 1
+            p["interferenze"] += 1
+        if d.get("critico"):
+            p["critici"] += 1
+            if st != "ricevuta":
+                p["critici_aperti"] += 1
+        if d.get("data_sopralluogo"):
+            p["sopralluoghi"] += 1
+        p["ultimo_aggiornamento"] = max(p["ultimo_aggiornamento"], d.get("updated_at") or "")
+        e = _coord_public(d)
+        e["stato"] = st
+        p["enti"].append(e)
+    out = list(by.values())
+    for p in out:
+        p["enti"].sort(key=lambda e: (e.get("ordine") or 999, e.get("ente", "")))
+        p["pct_ricevute"] = round(100 * p["ricevute"] / p["totale"], 1) if p["totale"] else 0
+    out.sort(key=lambda p: (p["pct_ricevute"], p["pratica"]))
+    return out
+
+
+def _coord_recenti(docs: list[dict], limit: int = 30) -> list[dict]:
+    rows = []
+    for d in docs:
+        for lg in (d.get("log") or []):
+            rows.append({"ts": lg.get("ts", ""), "by": lg.get("by", ""), "pratica": d["pratica"],
+                         "ente": d.get("ente", ""), "impresa": d.get("impresa", ""),
+                         "changes": lg.get("changes", {})})
+    rows.sort(key=lambda r: r["ts"], reverse=True)
+    return rows[:limit]
+
+
+@app.get("/api/coordinamenti")
+async def coordinamenti_staff(sess: dict = Depends(_require_staff_session)):
+    """Vista Progettazione: tutte le pratiche con le loro richieste agli enti + feed ultimi aggiornamenti."""
+    docs = [d async for d in coordinamenti_col.find({})]
+    return {"pratiche": _coord_summarize(docs), "recenti": _coord_recenti(docs), "count": len(docs)}
+
+
+@app.get("/api/imprese/coordinamenti")
+async def coordinamenti_impresa(sess: dict = Depends(_require_session)):
+    """Richieste dei lotti assegnati all'impresa autenticata."""
+    assignment = await _find_assignment(sess["nome"])
+    if not assignment:
+        raise HTTPException(404, "Impresa non assegnata")
+    lotti = {_lotto_from_source(str(l)) for l in (assignment.get("lotti") or [])}
+    docs = [d async for d in coordinamenti_col.find({"lotto": {"$in": sorted(lotti)}})]
+    return {"pratiche": _coord_summarize(docs), "recenti": _coord_recenti(docs, 15), "count": len(docs)}
+
+
+async def _coord_apply(doc: dict, fields: dict, by: str) -> dict:
+    """Valida e applica i campi editabili a un documento; ritorna il $set da scrivere."""
+    upd: dict = {}
+    changes: dict = {}
+    for k, v in fields.items():
+        if k not in COORD_EDITABLE:
+            continue
+        if k in ("data_invio", "data_risposta", "data_sopralluogo", "data_ultimo_sollecito"):
+            nv = _coord_date(v)
+            if v not in (None, "") and not nv:
+                raise HTTPException(400, f"Data non valida per {k}")
+        elif k in ("risposta_ricevuta", "critico"):
+            nv = v in (True, "true", "True", "1", 1, "SI", "si")
+            if nv == bool(doc.get(k)):
+                continue
+            changes[k] = [bool(doc.get(k)), nv]
+            upd[k] = nv
+            continue
+        elif k == "concomitanze":
+            nv = str(v or "").strip().upper()
+            if nv not in ("", "SI", "NO"):
+                raise HTTPException(400, "concomitanze deve essere SI, NO o vuoto")
+        elif k in COORD_ENUMS:
+            nv = re.sub(r"\s+", " ", str(v or "")).strip().upper()
+            if nv not in ("",) + COORD_ENUMS[k]:
+                raise HTTPException(400, f"{k} deve essere {' o '.join(COORD_ENUMS[k])} o vuoto")
+        else:
+            nv = _coord_txt(v)
+        if nv != (doc.get(k) or ""):
+            changes[k] = [doc.get(k) or "", nv]
+            upd[k] = nv
+    di = upd.get("data_invio", doc.get("data_invio") or "")
+    dr = upd.get("data_risposta", doc.get("data_risposta") or "")
+    if dr and not upd.get("risposta_ricevuta", doc.get("risposta_ricevuta")):
+        upd["risposta_ricevuta"] = True      # una data di risposta implica risposta ricevuta
+        changes["risposta_ricevuta"] = [bool(doc.get("risposta_ricevuta")), True]
+    if (dr or upd.get("risposta_ricevuta")) and not di:
+        raise HTTPException(400, "Risposta senza data di invio")
+    if dr and di and dr < di:
+        raise HTTPException(400, "La data di risposta è precedente alla data di invio")
+    ds = upd.get("data_ultimo_sollecito", doc.get("data_ultimo_sollecito") or "")
+    if ds and not di:
+        raise HTTPException(400, "Sollecito senza data di invio")
+    if ds and di and ds < di:
+        raise HTTPException(400, "La data di sollecito è precedente alla data di invio")
+    if upd.get("sopralluogo_necessario", doc.get("sopralluogo_necessario") or "") == "NO" and (
+            upd.get("data_sopralluogo", doc.get("data_sopralluogo") or "")
+            or upd.get("esito_sopralluogo", doc.get("esito_sopralluogo") or "")):
+        raise HTTPException(400, "Sopralluogo non necessario: rimuovere data ed esito, oppure impostare la necessità a SI")
+    if not changes:
+        return {}
+    now = _now_iso()
+    upd["updated_at"] = now
+    upd["updated_by"] = by
+    return {"set": upd, "log": {"ts": now, "by": by, "changes": changes}}
+
+
+async def _coord_get_scoped(coord_id: str, nome: str) -> dict:
+    try:
+        oid = ObjectId(coord_id)
+    except Exception:
+        raise HTTPException(400, "ID non valido")
+    doc = await coordinamenti_col.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Richiesta non trovata")
+    assignment = await _find_assignment(nome)
+    lotti = {_lotto_from_source(str(l)) for l in ((assignment or {}).get("lotti") or [])}
+    if _lotto_from_source(doc.get("lotto", "")) not in lotti:
+        raise HTTPException(403, "Pratica non assegnata a questa impresa")
+    return doc
+
+
+@app.post("/api/imprese/coordinamenti-bulk")
+async def coordinamenti_bulk(payload: dict, sess: dict = Depends(_require_session)):
+    """Stessi campi su più richieste (es. 'inviata a tutti gli enti il gg/mm').
+    Body: {ids:[...], fields:{...}}. Il primo errore di validazione annulla l'intero invio."""
+    ids = payload.get("ids") or []
+    fields = payload.get("fields") or {}
+    if not ids or len(ids) > 100:
+        raise HTTPException(400, "ids: da 1 a 100 richieste")
+    writes = []
+    for cid in ids:
+        doc = await _coord_get_scoped(str(cid), sess["nome"])
+        res = await _coord_apply(doc, fields, sess["nome"])
+        if res:
+            writes.append((doc["_id"], res))
+    for oid, res in writes:
+        await coordinamenti_col.update_one(
+            {"_id": oid},
+            {"$set": res["set"], "$push": {"log": {"$each": [res["log"]], "$slice": -50}}},
+        )
+    return {"ok": True, "updated": len(writes), "unchanged": len(ids) - len(writes)}
+
+
+@app.post("/api/imprese/coordinamenti/{coord_id}")
+async def coordinamenti_update(coord_id: str, payload: dict, sess: dict = Depends(_require_session)):
+    """L'impresa aggiorna una singola richiesta (pratica x ente)."""
+    doc = await _coord_get_scoped(coord_id, sess["nome"])
+    res = await _coord_apply(doc, payload or {}, sess["nome"])
+    if not res:
+        return {"ok": True, "changed": False}
+    await coordinamenti_col.update_one(
+        {"_id": doc["_id"]},
+        {"$set": res["set"], "$push": {"log": {"$each": [res["log"]], "$slice": -50}}},
+    )
+    return {"ok": True, "changed": True, "changes": res["log"]["changes"]}
+
+
+@app.get("/api/coordinamenti/{coord_id}/log")
+async def coordinamenti_log(coord_id: str, sess: dict = Depends(_require_staff_session)):
+    try:
+        doc = await coordinamenti_col.find_one({"_id": ObjectId(coord_id)}, {"log": 1})
+    except Exception:
+        raise HTTPException(400, "ID non valido")
+    if not doc:
+        raise HTTPException(404, "Richiesta non trovata")
+    return {"log": list(reversed(doc.get("log") or []))}
+
+
+COORDINAMENTI_FILENAME = "AVANZAMENTO_COORDINAMENTI_MILANO.xlsx"
+COORD_SHEET = "ENTI_Tracking_Invii"
+
+
+async def _coordinamenti_import_df(df: "pd.DataFrame", filename: str, overwrite: bool, actor: str | None) -> dict:
+    """Upsert delle richieste (pratica x ente) dal foglio tracking. overwrite=False: crea le
+    mancanti e compila SOLO i campi ancora vuoti (non tocca gli aggiornamenti delle imprese)."""
+    created = updated = skipped = 0
+    now = _now_iso()
+    for _, r in df.iterrows():
+        pratica = _coord_txt(r.get("ISTANZA")).upper()
+        ente = _coord_txt(r.get("ELENCO ENTI"))
+        if not pratica or not ente:
+            skipped += 1
+            continue
+        tip_raw = _coord_txt(r.get("Tipologia invio"))
+        rec = {
+            "pratica": pratica, "ente_key": _coord_ente_key(ente), "ente": ente,
+            "lotto": _coord_lotto(pratica),
+            "municipio": _coord_txt(r.get("MUNICIPIO")).upper(),
+            "impresa": _coord_txt(r.get("SERVICE")).upper(),
+            "servizio": _coord_txt(r.get("SERVIZIO")),
+            "tipologia_invio": re.sub(r"\s*\(.*?\)\s*", "", tip_raw).strip(),
+            "risposte_attese": 2 if "2 risposte" in tip_raw else 1,
+            "contatto": _coord_txt(r.get("MAIL SERVICE")) or _coord_txt(r.get("CONTATTO RDS")),
+            "ordine": int(r["#"]) if "#" in df.columns and not pd.isna(r.get("#")) else 999,
+            "data_invio": _coord_date(r.get("INVIO IN DATA")),
+            "data_risposta": _coord_date(r.get("RISPOSTA IN DATA")),
+            # alcune imprese (Sertori, Circet) segnano 'OK' senza data: risposta ricevuta ma data ignota
+            "risposta_ricevuta": bool(_coord_date(r.get("RISPOSTA IN DATA")) or _coord_txt(r.get("RISPOSTA IN DATA"))),
+            "concomitanze": _coord_txt(r.get("CONCOMITANZE PROBLEMI")).upper(),
+            "data_sopralluogo": _coord_date(r.get("DATA SOPRALLUOGO")),
+            "verbale": _coord_txt(r.get("VERBALE SOPRALLUOGO")),
+            "note": _coord_txt(r.get("NOTE")),
+        }
+        if rec["concomitanze"] not in ("", "SI", "NO"):
+            rec["concomitanze"] = ""
+        existing = await coordinamenti_col.find_one({"pratica": pratica, "ente_key": rec["ente_key"]})
+        if not existing:
+            rec.update({"updated_at": now, "updated_by": "import xlsx",
+                        "log": [{"ts": now, "by": "import xlsx", "changes": {"import": ["", filename or "xlsx"]}}]})
+            await coordinamenti_col.insert_one(rec)
+            created += 1
+            continue
+        patch = {k: v for k, v in rec.items()
+                 if (overwrite or existing.get(k) in (None, "", False)) and v not in (None, "", False) and existing.get(k) != v}
+        if patch:
+            patch["updated_at"] = now
+            patch["updated_by"] = "import xlsx"
+            await coordinamenti_col.update_one(
+                {"_id": existing["_id"]},
+                {"$set": patch, "$push": {"log": {"$each": [{"ts": now, "by": "import xlsx", "changes": {"import": ["", filename or "xlsx"]}}], "$slice": -50}}},
+            )
+            updated += 1
+        else:
+            skipped += 1
+    await _log_admin_action("coordinamenti_import", f"{filename} created={created} updated={updated}", actor)
+    return {"created": created, "updated": updated, "skipped": skipped, "rows": int(len(df))}
+
+
+@app.post("/api/admin/coordinamenti/import")
+async def coordinamenti_import(
+    file: UploadFile = File(...),
+    sheet: str = Form("ENTI_Tracking_Invii"),
+    overwrite: bool = Form(False),
+    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
+    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
+):
+    """Import iniziale/di riallineamento dal foglio ENTI_Tracking_Invii dell'xlsx coordinamenti.
+    overwrite=False (default): crea le richieste mancanti e compila SOLO i campi ancora vuoti,
+    così non si sovrascrive quanto già aggiornato dalle imprese."""
+    _check_token(x_upload_token)
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "Empty file")
+    try:
+        df = pd.read_excel(io.BytesIO(raw), sheet_name=sheet)
+    except Exception as e:
+        raise HTTPException(400, f"Foglio {sheet!r} non leggibile: {e}")
+    need = {"ELENCO ENTI", "ISTANZA", "SERVICE"}
+    if not need.issubset(df.columns):
+        raise HTTPException(400, f"Colonne mancanti: {sorted(need - set(df.columns))}")
+    res = await _coordinamenti_import_df(df, file.filename or "xlsx", overwrite, x_actor_nome)
+    return {"ok": True, **res}
