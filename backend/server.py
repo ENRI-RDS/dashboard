@@ -4788,6 +4788,22 @@ async def sopralluoghi_checklist_def(sess: dict = Depends(_require_staff_session
                       for i, (a, t) in _CK_DEF.items()]}
 
 
+def _esito_effettivo(v: dict) -> str:
+    """Esito 'effettivo' di un verbale (allineato a _anomaliaStato di sopralluoghi.html): esito storico se valorizzato,
+    altrimenti derivato dalla checklist (NC>0 = media; critica se NC su SIC-21/22 o segnalazione cliente non 'non_confermata';
+    0 NC con ≥1 punto compilato = nessuna anomalia; checklist vuota = '')."""
+    esito = str(v.get("esito", "") or "").strip()
+    if esito in ("Anomalia critica", "Anomalia media", "Nessuna anomalia"):
+        return esito
+    nc = v.get("checklist_non_conformi", 0) or 0
+    if nc > 0:
+        nc_ids = {x.strip() for x in str(v.get("checklist_nc_ids", "") or "").split(",") if x.strip()}
+        segn = v.get("segnalazione_cliente") in (True, "SI", "si", "true", 1, "1") \
+            and str(v.get("esito_segnalazione", "") or "").strip().lower() != "non_confermata"
+        return "Anomalia critica" if (segn or nc_ids & _ISSUE_PRIO_CRITICA_IDS) else "Anomalia media"
+    return "Nessuna anomalia" if (v.get("checklist_compilati", 0) or 0) > 0 else ""
+
+
 @app.get("/api/sopralluoghi/export.xlsx")
 async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session)):
     """Estrazione Excel dei verbali di sopralluogo su 3 fogli:
@@ -4897,7 +4913,7 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
             v.get("impresa", ""),
             v.get("referente_impresa", ""),   # nome campo storico: contiene il redattore
             v.get("referente_retelit", ""),   # nome campo storico: contiene il ruolo
-            v.get("esito", "") or "—",
+            _esito_effettivo(v) or "—",
             "SÌ" if v.get("segnalazione_cliente") in (True, "SI", "si", "true", 1, "1") else "NO",
             v.get("segnalazione_cliente_note", ""),
             v.get("checklist_compilati", 0) or 0,
@@ -4922,7 +4938,7 @@ async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session))
         if foto_urls:
             ws1.cell(row=r, column=17).hyperlink = foto_urls[0]
             ws1.cell(row=r, column=17).font = Font(color="043F75", underline="single")
-        esito_val = str(v.get("esito", ""))
+        esito_val = _esito_effettivo(v)
         if esito_val == "Anomalia critica":
             ws1.cell(row=r, column=9).fill = NC_FILL
         elif esito_val == "Anomalia media":
