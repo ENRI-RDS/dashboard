@@ -446,7 +446,11 @@
   .pv-ico.nc{background:var(--err);} .pv-ico.part{background:var(--warn);}
   .pv-photos{grid-template-columns:repeat(2,1fr);} .pv-photos img{width:100%;border-radius:8px;}
 
-  .widgets-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;}
+  .widgets-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+  .widgets-row .w-card{padding:10px 14px;min-height:0;} .widgets-row .w-title{font-size:12px;margin-bottom:6px;}
+  .widgets-row .w-aging{gap:14px;} .widgets-row .w-donut{width:84px;height:84px;} .widgets-row .w-donut::after{inset:12px;}
+  .widgets-row .w-donut-c b{font-size:15px;} .widgets-row .w-donut-row{gap:16px;} .widgets-row .w-leg{gap:3px;font-size:11.5px;}
+  .widgets-row .w-total b{font-size:18px;} .widgets-row .w-col b{font-size:15px;}
   @media(max-width:1000px){.widgets-row{grid-template-columns:1fr;}}
   .w-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;box-shadow:var(--sh-sm);min-height:180px;}
   .w-title{font-weight:800;font-size:13px;color:var(--accent);margin-bottom:12px;}
@@ -544,6 +548,8 @@
   </div>
 
   <div class="attivita-bar" id="attivitaBar"></div>
+
+  <div class="widgets-row" id="widgetsRow"></div>
 
   <div class="layout-grid solo-archivio" id="layoutGrid">
 
@@ -727,7 +733,7 @@
           <label class="fb-sel">Lotto<select id="filtro-lotto" onchange="applyVerbaliFilters()"><option value="">Tutti</option></select></label>
           <label class="fb-sel">Impresa<select id="filtro-impresa" onchange="applyVerbaliFilters()"><option value="">Tutte</option></select></label>
           <label class="fb-sel">Anomalie<select id="filtro-stato" onchange="applyVerbaliFilters()">
-            <option value="">Tutte</option><option value="Nessuna anomalia">Nessuna anomalia</option><option value="Anomalia media">Anomalia media</option><option value="Anomalia critica">Anomalia critica</option></select></label>
+            <option value="">Tutte</option><option value="Nessuna anomalia">Nessuna anomalia</option><option value="anom">Con anomalia</option></select></label>
           <label class="fb-sel">Periodo<select id="filtro-mese" onchange="applyVerbaliFilters()"><option value="">Tutti</option></select></label>
           <button type="button" class="btn-filtri" id="btnFiltri" onclick="toggleFiltri()">Altri filtri <span class="filtri-badge" id="filtriBadge" style="display:none">0</span></button>
           <button type="button" class="fb-clear" onclick="azzeraFiltri()">Pulisci filtri</button>
@@ -760,7 +766,6 @@
     </div>
   </div>
 
-  <div class="widgets-row" id="widgetsRow"></div>
 </div>
 
 <div class="kpi-modal" id="kpiModal" onclick="if(event.target===this)closeKpiModal()">
@@ -1596,7 +1601,7 @@ function _renderWidgets() {
   const b = [0, 0, 0];
   open.forEach(v => { const g = _giorniDa(v); if (g === null) return; b[g <= 7 ? 0 : (g <= 14 ? 1 : 2)]++; });
   const mx = Math.max(1, ...b);
-  const col = (n, l, c, k) => `<div class="w-col ${c}" ${k ? `style="cursor:pointer" onclick="setChip('${k}')"` : ''}><div class="w-bar" style="height:${Math.max(4, Math.round(n * 70 / mx))}px"></div><b>${n}</b><small>${l}</small></div>`;
+  const col = (n, l, c, k) => `<div class="w-col ${c}" ${k ? `style="cursor:pointer" onclick="setChip('${k}')"` : ''}><div class="w-bar" style="height:${Math.max(4, Math.round(n * 44 / mx))}px"></div><b>${n}</b><small>${l}</small></div>`;
   const w1 = `<div class="w-card"><div class="w-title">Anomalie aperte per anzianità</div>
     <div class="w-aging"><div class="w-total"><b>${open.length}</b><small>Totale</small></div>${col(b[0], '0-7 giorni', 'ok')}${col(b[1], '8-14 giorni', 'amber')}${col(b[2], '>14 giorni', 'red', 'anomalie14')}</div></div>`;
   // 2) Stato checklist (ultimi 30 giorni)
@@ -1613,15 +1618,7 @@ function _renderWidgets() {
       <div class="w-donut" style="background:conic-gradient(#1E9E6A 0 ${pc}%,#C0392B ${pc}% ${pc + pa}%,#D08A1A ${pc + pa}% 100%)"><div class="w-donut-c"><b>${pc}%</b><small>OK</small></div></div>
       <div class="w-leg"><div><i style="background:#1E9E6A"></i>Completate<b>${pc}%</b></div><div><i style="background:#C0392B"></i>Con anomalie<b>${pa}%</b></div><div><i style="background:#D08A1A"></i>Da verificare<b>${pd}%</b></div></div></div></div>`;
   }
-  // 3) Top cantieri con anomalie aperte
-  const g = {};
-  open.forEach(v => { const k = v.tratta_id || v.comune || '—'; g[k] = (g[k] || 0) + (_ckStatsOf(v).nc || 1); });
-  const top = Object.entries(g).sort((x, y) => y[1] - x[1]).slice(0, 5);
-  const tm = top.length ? top[0][1] : 1;
-  const w3 = `<div class="w-card"><div class="w-title">Top cantieri con anomalie aperte</div>` + (top.length
-    ? top.map(([k, n]) => `<div class="w-top" data-k="${escA(k)}" onclick="filtraCantiere(this.dataset.k)" title="${escA(k)}"><span>${esc(k)}</span><div class="tb" style="width:${Math.round(n * 100 / tm)}%"></div><b>${n}</b></div>`).join('')
-    : '<div class="w-empty">Nessuna anomalia aperta</div>') + '</div>';
-  el.innerHTML = w1 + w2 + w3;
+  el.innerHTML = w1 + w2;
 }
 
 // ── Filtri (impresa/lotto/comune/stato/mese) ─────────────────────────────────
@@ -1668,7 +1665,7 @@ function applyVerbaliFilters() {
     if (impresa && v.impresa !== impresa) return false;
     if (lotto && v.lotto !== lotto) return false;
     if (comune && v.comune !== comune) return false;
-    if (stato && _anomaliaStato(v) !== stato) return false;
+    if (stato === 'anom' ? !_isAnomalia(v) : (stato && _anomaliaStato(v) !== stato)) return false;
     if (mese && _soprDateISO(v.data_sopralluogo).slice(0,7) !== mese) return false;
     if (segnCli === 'si' && !_isSegnCliente(v)) return false;
     if (segnCli === 'no' && _isSegnCliente(v)) return false;
@@ -1711,16 +1708,14 @@ function _ckChip(v) {
 function _esitoPill(v) {
   const a = _anomaliaStato(v), vs = _verifState(v);
   if (_isAnomalia(v) && vs && vs.stato === 'risolto') return '<span class="es-pill green">Risolta</span>';
-  if (a === 'Anomalia critica') return '<span class="es-pill red">Critica</span>';
-  if (a === 'Anomalia media') return '<span class="es-pill red">Con anomalia</span>';
+  if (a === 'Anomalia critica' || a === 'Anomalia media') return '<span class="es-pill red">Con anomalia</span>';
   if (_isVerifDaFare(v)) return '<span class="es-pill amber">Da verificare</span>';
   if (a === 'Nessuna anomalia') return '<span class="es-pill green">OK</span>';
   return '<span class="es-pill grey">Da compilare</span>';
 }
 
 function _statoChip(esito) {
-  if (esito === 'Anomalia critica') return '<span class="stato-chip err">Anomalia critica</span>';
-  if (esito === 'Anomalia media') return '<span class="stato-chip warn">Anomalia media</span>';
+  if (esito === 'Anomalia critica' || esito === 'Anomalia media') return '<span class="stato-chip err">Con anomalia</span>';
   if (esito === 'Nessuna anomalia') return '<span class="stato-chip ok">Nessuna anomalia</span>';
   return '';
 }
@@ -2229,7 +2224,7 @@ function _ckStatsOf(v) {
   const ck = _ckOf(v);
   let tot=0, c=0, nc=0, na=0;
   CK_CATS.forEach(k => {
-    tot += (v && v.verbale_origine) ? Object.keys(ck[k] || {}).length : CHECKLIST_DEF[k].items.length;
+    tot += (v && v.verbale_origine) ? Object.keys(ck[k] || {}).length : CHECKLIST_DEF[k].items.length - (((ck[k] || {})['POZ-03'] && !(ck[k] || {})['POZ-03A']) ? 1 : 0);  // legacy: POZ-03 poi diviso in 03A/03B
     Object.values(ck[k] || {}).forEach(x => {
       if (x.e==='C') c++; else if (x.e==='NC') nc++; else if (x.e==='NA') na++;
     });
