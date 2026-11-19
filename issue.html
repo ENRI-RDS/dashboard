@@ -167,6 +167,7 @@
     </div>
     <div class="head-actions">
       <button class="btn ghost" onclick="ricalcolaPriority()" title="Applica le regole automatiche alle issue da verbale ancora a Media e mai modificate a mano">Ricalcola priority</button>
+      <button class="btn ghost" onclick="riallineaTipologie()" title="Riallinea la tipologia delle issue da verbale alle regole attuali (es. punti SIC → Anomalia sicurezza). Il codice non cambia">Riallinea tipologie</button>
       <button class="btn ghost" onclick="openLegend()" title="Criteri di assegnazione della priority">Legenda priority</button>
       <button class="btn ghost" id="btnExport" onclick="exportXlsx()" title="Esporta tutte le issue (rispetta ricerca e filtri a tendina)">
         <svg class="ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>Esporta Excel</button>
@@ -399,6 +400,14 @@ async function ricalcolaPriority() {
     const r = await api('/api/issues/ricalcola-priority', { method: 'POST', body: JSON.stringify({}) });
     items = (await api('/api/issues')).items || []; fillLookups(); render();
     toast(r.totale + ' issue riclassificate (' + r.critica + ' critiche, ' + r.alta + ' alte, ' + r.bassa + ' basse)');
+  } catch (e) { toast('✗ ' + e.message); }
+}
+async function riallineaTipologie() {
+  if (!confirm('Riallineo la tipologia delle issue da verbale alle regole attuali (es. punti SIC → Anomalia sicurezza di cantiere).\nIl codice delle issue non cambia e le issue create a mano non vengono toccate. Procedere?')) return;
+  try {
+    const r = await api('/api/admin/issues/reclassify-sicurezza', { method: 'POST' });
+    items = (await api('/api/issues')).items || []; fillLookups(); render();
+    toast(r.reclassified + ' issue riallineate');
   } catch (e) { toast('✗ ' + e.message); }
 }
 function closeLegend() { $('ovLeg').classList.remove('open'); }
