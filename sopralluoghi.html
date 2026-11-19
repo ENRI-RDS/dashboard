@@ -971,7 +971,14 @@ let _lottiData = {};
 let _lottoImpresa = {};
 let _deepLinkApplied = false;
 
-async function _loadLottiCantieri() {
+// Single-flight: all'avvio e all'apertura del form (deep-link da mappa) la funzione partiva due volte
+// in parallelo e la seconda ricostruiva il menu cantieri cancellando quello preselezionato.
+let _lottiPromise = null;
+function _loadLottiCantieri() {
+  if (!_lottiPromise) _lottiPromise = _loadLottiCantieriImpl().finally(() => { _lottiPromise = null; });
+  return _lottiPromise;
+}
+async function _loadLottiCantieriImpl() {
   try {
     const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
     const token   = localStorage.getItem('_enri_session') || '';
@@ -994,7 +1001,10 @@ async function _loadLottiCantieri() {
       const preCantiere = params.get('cantiere');
       if (preCantiere) {
         const selCant = document.getElementById('n_cantiere');
-        if ([...selCant.options].some(o => o.value === preCantiere)) selCant.value = preCantiere;
+        const opts = [...selCant.options];
+        const num = String(preCantiere).split('|')[0].trim();
+        const hit = opts.find(o => o.value === preCantiere) || (num ? opts.find(o => o.value.split('|')[0].trim() === num) : null);
+        if (hit) selCant.value = hit.value;
       }
     }
   } catch(e) { console.warn('Lotti non caricati:', e); }
@@ -1356,7 +1366,7 @@ async function generatePdfForRecord(id){
   const v = _verbaliAll.find(x => x._id === id);
   if (!v) { showToast('✗ Verbale non trovato'); return; }
   const fmtIt = iso => iso ? new Date(iso).toLocaleDateString('it-IT') : '—';
-  const urls = (v.foto_urls || '').split(',').map(u => u.trim()).filter(Boolean);
+  const urls = String(Array.isArray(v.foto_urls) ? v.foto_urls.join(',') : (v.foto_urls || '')).split(',').map(u => u.trim()).filter(Boolean);
   const f = {
     codice_verbale: v.codice_verbale || '—',
     n_cantiere: v.tratta_id || '—',
@@ -1467,6 +1477,7 @@ let _verbaliAll = [];
 // prima del fix erano in formato it-IT (dd/mm/yyyy) — gestiamo entrambi.
 function _soprDateISO(str) {
   if (!str) return '';
+  str = String(str);
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
   const m = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
@@ -1765,12 +1776,26 @@ function _selectVerbale(id) {
   _selectedVerbaleId = id;
   const v = _verbaliAll.find(x => x._id === id);
   document.querySelectorAll('.verbale-row').forEach(r => r.classList.toggle('is-selected', r.dataset.id === id));
-  if (v) _renderPreview(v);
+  if (!v) return;
+  try { _renderPreview(v); }
+  catch (e) {
+    console.error('Anteprima verbale:', e);
+    document.getElementById('preview-body').outerHTML = `<div id="preview-body" class="preview-empty" style="color:var(--err)">Impossibile mostrare ${esc(String(v.codice_verbale || ''))}: ${esc(String(e.message || e))}</div>`;
+  }
+  _revealPreview();
+}
+
+// Con il form "Nuovo verbale" aperto l'anteprima va sotto la tabella (fuori schermo): portala in vista.
+function _revealPreview() {
+  const c = document.getElementById('preview-card');
+  if (!c || !c.scrollIntoView) return;
+  const r = c.getBoundingClientRect();
+  if (r.top > window.innerHeight * 0.7 || r.bottom < 100) c.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function _renderPreview(v) {
   const isAdmin = ['admin', 'admin2'].includes((localStorage.getItem('_enri_role') || '').toLowerCase());
-  const urls = (v.foto_urls || '').split(',').map(u => u.trim()).filter(Boolean);
+  const urls = String(Array.isArray(v.foto_urls) ? v.foto_urls.join(',') : (v.foto_urls || '')).split(',').map(u => u.trim()).filter(Boolean);
   const segn = _isSegnCliente(v);
   const _d = d => d ? new Date(d).toLocaleDateString('it-IT') : '';
   // [label, valore, opzionale]: i campi base si vedono sempre ("—" se vuoti), quelli opzionali solo se valorizzati
