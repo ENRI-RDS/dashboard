@@ -48,10 +48,11 @@
   .btn.danger { background:var(--redL); color:var(--red); border-color:#F3C6C1; }
 
   .main { padding:12px 24px 40px; max-width:1760px; margin:0 auto; display:flex; flex-direction:column; gap:10px; }
-  .head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .head { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:12px; }
   .head h1 { font-size:20px; font-weight:700; color:var(--accent); letter-spacing:-.01em; }
   .head p { font-size:12px; color:var(--muted); margin-top:2px; }
-  .head-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; margin-left:auto; }
+  .head-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .ha-l { justify-content:flex-start; } .ha-c { justify-content:center; } .ha-r { justify-content:flex-end; }
 
   .dash { display:grid; grid-template-columns:minmax(0,1.7fr) minmax(250px,1fr) minmax(250px,1fr); gap:10px; align-items:stretch; }
   .kpis { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
@@ -144,19 +145,20 @@
   .row-btn { border:1px solid var(--border2); background:var(--surface); border-radius:6px; padding:5px 8px; cursor:pointer; color:var(--text); }
   .row-btn:hover { background:var(--surface2); }
 
-  .rep-tool { display:flex; gap:16px; align-items:center; flex-wrap:wrap; padding:12px 20px; border-bottom:1px solid var(--border); background:var(--surface2); }
+  .rep-tool { display:flex; gap:14px; align-items:center; flex-wrap:wrap; padding:8px 16px; border-bottom:1px solid var(--border); background:var(--surface2); }
   .rep-tool label { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; display:flex; align-items:center; gap:6px; }
   .rep-tool select { font-family:inherit; font-size:12px; padding:6px 10px; border:1px solid var(--border2); border-radius:8px; background:var(--surface); color:var(--text); text-transform:none; letter-spacing:0; }
-  .rep-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:14px; }
-  .rep-kpi { border:1px solid var(--border); border-radius:10px; padding:10px 14px; }
+  .rep-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-bottom:10px; }
+  .rep-kpi { border:1px solid var(--border); border-radius:10px; padding:6px 12px; display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
   .rep-kpi .l { font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
-  .rep-kpi .v { font-size:24px; font-weight:700; color:var(--accent); font-family:var(--font-mono); margin-top:2px; }
+  .rep-kpi .v { font-size:20px; font-weight:700; color:var(--accent); font-family:var(--font-mono); }
   .rep-kpi.warn .v { color:var(--red); }
-  .rep-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-  .rep-card { border:1px solid var(--border); border-radius:10px; padding:12px 14px; min-width:0; }
-  .rep-card.wide { grid-column:1/-1; }
-  .rep-card h4 { font-size:12px; font-weight:700; color:var(--accent); margin-bottom:8px; }
-  .rep-cv { position:relative; height:300px; }
+  .rep-grid { display:grid; grid-template-columns:1.5fr 1fr 1fr; gap:10px; }
+  .rep-card { border:1px solid var(--border); border-radius:10px; padding:10px 12px; min-width:0; }
+  @media (max-width:1100px) { .rep-grid { grid-template-columns:1fr 1fr; } .rep-card.wide { grid-column:1/-1; } }
+  #ovRep .m-head { padding:10px 16px; } #ovRep .m-body { padding:12px 16px; }
+  .rep-card h4 { font-size:12px; font-weight:700; color:var(--accent); margin-bottom:6px; }
+  .rep-cv { position:relative; height:270px; }
   .rep-empty { padding:40px 0; text-align:center; color:var(--muted); font-size:13px; }
   @media (max-width:800px) { .rep-grid { grid-template-columns:1fr; } .rep-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } }
   .ov { position:fixed; inset:0; background:rgba(4,25,48,.45); display:none; align-items:flex-start; justify-content:center; padding:4vh 16px; z-index:100; overflow-y:auto; }
@@ -227,6 +229,7 @@
   .pgs .dots { border:none; background:none; cursor:default; display:inline-grid; place-items:center; }
   @media (max-width:1250px) { .dash { grid-template-columns:repeat(2,minmax(0,1fr)); } .dash .kpis { grid-column:1/-1; grid-template-columns:repeat(4,minmax(0,1fr)); } }
   @media (max-width:900px) {
+    .head { grid-template-columns:1fr; } .head-actions { justify-content:center !important; }
     .dash { grid-template-columns:1fr; } .dash .kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
     .main { padding:14px 12px 40px; } .kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .grid { grid-template-columns:1fr; }
     .page-title, .divider-v { display:none; }
@@ -250,16 +253,17 @@
 
 <div class="main">
   <div class="head">
-    <div>
-      <h1>Registro Issue</h1>
-    </div>
-    <div class="head-actions" style="align-items:center">
-      <button class="upd" onclick="load()" title="Ricarica i dati"><svg class="ic" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg><span>Ultimo aggiornamento<br><b id="updTs">—</b></span></button>
-      <button class="btn ghost" onclick="openReport()" title="Grafici: numero di issue per impresa (System)">Report per impresa</button>
+    <div class="head-actions ha-l">
       <button class="btn ghost" onclick="openLegend()" title="Criteri di assegnazione della priority">Legenda priority</button>
       <button class="btn ghost" onclick="openMenu(event,'tools')" title="Operazioni di riallineamento automatico">Strumenti <svg class="ic" viewBox="0 0 24 24" style="width:12px;height:12px"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+    <div class="head-actions ha-c">
       <button class="btn primary" onclick="openModal()">
         <svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Nuova issue</button>
+    </div>
+    <div class="head-actions ha-r">
+      <button class="upd" onclick="load()" title="Ricarica i dati"><svg class="ic" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg><span>Ultimo aggiornamento<br><b id="updTs">—</b></span></button>
+      <button class="btn ghost" onclick="openReport()" title="Grafici: numero di issue per impresa (System)">Report per impresa</button>
       <button class="btn green" id="btnExport" onclick="exportXlsx()" title="Esporta tutte le issue (rispetta ricerca e filtri a tendina)">
         <svg class="ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>Esporta Excel</button>
     </div>
@@ -364,8 +368,8 @@
   </div>
 </div>
 
-<div class="ov" id="ovRep" onclick="if(event.target===this)closeReport()">
-  <div class="modal" style="max-width:1100px">
+<div class="ov" id="ovRep" style="padding:2vh 16px" onclick="if(event.target===this)closeReport()">
+  <div class="modal" style="max-width:min(1500px,96vw)">
     <div class="m-head">
       <h2>Report issue per impresa</h2>
       <button class="x" onclick="closeReport()" aria-label="Chiudi"><svg class="ic" viewBox="0 0 24 24" style="width:18px;height:18px"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
@@ -591,7 +595,7 @@ function renderReport() {
   const keys = Object.keys(defs[0]);
   const keyOf = it => by === 'tipo' ? repTipo(it) : it[defs[1]];
   $('rt1').textContent = 'Issue per impresa, per ' + ({ stato: 'stato', priority: 'priority', tipo: 'tipologia' })[by];
-  $('cw1').style.height = Math.max(240, sys.length * 34 + 90) + 'px';
+  $('cw1').style.height = Math.min(380, Math.max(270, sys.length * 24 + 90)) + 'px';
   mk('cv1', { type: 'bar',
     data: { labels: sys, datasets: keys.map(k => ({ label: defs[0][k], backgroundColor: REP_COL[by][k], borderWidth: 0,
       data: sys.map(s => rows.filter(it => repSys(it) === s && keyOf(it) === k).length) })).filter(d => d.data.some(Boolean)) },
