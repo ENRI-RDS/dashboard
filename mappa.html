@@ -2716,7 +2716,7 @@ function _pozzPopupHtml(f, layer) {
       </div>
       <div class="popup-section" style="margin-top:6px">
         <div class="popup-section-title">Verbali di sopralluogo</div>
-        <div class="pozz-verbali" style="font-size:10px;color:var(--muted)">Caricamento…</div>
+        <div class="pozz-verbali" style="font-size:10px;color:var(--muted)">${layer._pozzVerbHtml || 'Caricamento…'}</div>
       </div>
     </div>
     <div style="padding:0 14px 10px">
@@ -2745,10 +2745,11 @@ async function _pozzLoadVerbali(f, layer) {
     const key = String(lab).trim().toUpperCase();
     const hit = _pozzVerbaliCache.filter(v => String(v.pozzetto || '').trim().toUpperCase() === key)
       .sort((a, b) => String(b.codice_verbale).localeCompare(String(a.codice_verbale)));
-    box.innerHTML = hit.length ? hit.map(v => `<a class="popup-pratica" style="text-decoration:none;display:flex;margin:0 0 4px" href="sopralluoghi.html?verbale=${encodeURIComponent(v._id)}">
+    layer._pozzVerbHtml = hit.length ? hit.map(v => `<a class="popup-pratica" style="text-decoration:none;display:flex;margin:0 0 4px" href="sopralluoghi.html?verbale=${encodeURIComponent(v._id)}">
       <span class="popup-pratica-code">${_pozzEsc(v.codice_verbale)}</span><span class="popup-pratica-ente">${_pozzEsc(v.data_sopralluogo || '')}</span></a>`).join('')
       : '<span style="font-style:italic">Nessun verbale per questo pozzetto</span>';
-  } catch (e) { box.textContent = 'Verbali non disponibili'; }
+    box.innerHTML = layer._pozzVerbHtml;   // update() sotto rigenera il popup dalla funzione: il risultato è in layer._pozzVerbHtml
+  } catch (e) { box.textContent = 'Verbali non disponibili'; return; }
   layer.getPopup().update();
 }
 // ─────────────────────────────────────────────────────────────────────────────
