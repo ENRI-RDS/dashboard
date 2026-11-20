@@ -876,7 +876,7 @@
   <span class="page-title">Mappa Avanzamento Progettazione</span>
   <div class="search-bar" id="searchBar">
     <input class="search-input" id="searchInput" type="text"
-      placeholder="Cerca indirizzo o tratta ID..."
+      placeholder="Cerca indirizzo, tratta ID o coordinate..."
       autocomplete="off" spellcheck="false">
     <div class="search-results" id="searchResults"></div>
     <button class="search-btn" id="clearSearchBtn" onclick="clearSearch()" style="display:none">&times;</button>
@@ -2358,6 +2358,90 @@ async function searchAddress(query) {
   } catch { return []; }
 }
 
+// Marker di ricerca (indirizzi e coordinate): pallino + popup, centra la mappa
+function _showSearchPoint(r) {
+  if (searchMarker) map.removeLayer(searchMarker);
+  const popupHtml = `
+    <div style="padding:6px 8px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:var(--text);flex:1">${r.display}</span>
+        <button onclick="clearSearch()" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;line-height:1;padding:0 2px;flex-shrink:0" title="Chiudi">✕</button>
+      </div>
+      ${r.extraHtml || ''}
+    </div>`;
+  searchMarker = L.circleMarker([r.lat, r.lon], {
+    radius: 8, color: '#4f8ef7', fillColor: '#4f8ef7', fillOpacity: 0.8, weight: 2,
+    renderer: searchMarkerRenderer   // SVG: non crea canvas in cima al mainRenderer
+  }).addTo(map).bindPopup(popupHtml, {closeButton: false});
+  // Quando si chiude il popup rimuove il marker così le tratte tornano cliccabili
+  searchMarker.on('popupclose', () => {
+    if (searchMarker) { map.removeLayer(searchMarker); searchMarker = null; }
+    clearBtn.style.display = inputEl.value ? 'block' : 'none';
+  });
+  searchMarker.openPopup();
+  map.setView([r.lat, r.lon], r.zoom, {animate: false});
+  setTimeout(() => { map.getContainer().style.cursor = ''; }, 0);
+  resultsEl.style.display = 'none';
+  clearBtn.style.display = 'block';
+}
+
+// Riconosce coordinate scritte nei formati più comuni:
+//  decimali  45.4642, 9.1900 · 45,4642 9,1900 · 45.4642;9.1900 · -33.86 151.21
+//  con lettere  45.4642N 9.1900E · N45.4642 E9.19 · 45.46 N, 9.19 O (O = Ovest)
+//  gradi/primi/secondi  45°27'51.1"N 9°11'24.0"E
+//  link Google Maps con @lat,lon oppure ?q=lat,lon
+// Ritorna {lat, lon} oppure null. Se l'ordine è invertito (lon, lat) per coordinate italiane lo corregge.
+function parseCoordinates(raw) {
+  let s = String(raw || '').trim();
+  if (!s) return null;
+  const um = s.match(/[@=](-?\d{1,3}\.\d+),\s*(-?\d{1,3}\.\d+)/);   // URL Google Maps
+  if (um) s = um[1] + ', ' + um[2];
+  s = s.replace(/[′’‘]/g, "'").replace(/[″”“]/g, '"').replace(/[º˚]/g, '°');
+  const re = /(?:([NSEWO])\s*)?(-?\d{1,3}(?:[.,]\d+)?)\s*(?:°\s*(?:(\d{1,2}(?:[.,]\d+)?)\s*'\s*)?(?:(\d{1,2}(?:[.,]\d+)?)\s*(?:"|'')\s*)?)?\s*(?:([NSEWO])(?![\dA-Za-z]))?/gi;
+  const ms = [...s.matchAll(re)];
+  if (ms.length !== 2) return null;
+  if (s.replace(re, '').replace(/[\s,;/|]/g, '') !== '') return null;      // altro testo → non sono coordinate
+  const num = x => parseFloat(String(x).replace(',', '.'));
+  const vals = ms.map(m => {
+    const L = (m[1] || m[5] || '').toUpperCase();
+    const deg = num(m[2]), neg = String(m[2]).startsWith('-') || 'SWO'.includes(L) && L !== '';
+    const dms = m[3] !== undefined || m[4] !== undefined;
+    const v = Math.abs(deg) + (m[3] ? num(m[3]) / 60 : 0) + (m[4] ? num(m[4]) / 3600 : 0);
+    return { v: neg ? -v : v, L, plain: !L && !s.includes('°'), dec: /[.,]\d/.test(m[2]), dms };
+  });
+  // coordinate "nude": servono i decimali in entrambi i numeri, altrimenti "12 34" sarebbe un punto
+  if (vals.every(x => x.plain) && !vals.every(x => x.dec)) return null;
+  let lat, lon;
+  const isLat = x => 'NS'.includes(x.L) && x.L !== '', isLon = x => 'EWO'.includes(x.L) && x.L !== '';
+  if (isLat(vals[0]) && isLon(vals[1])) { lat = vals[0].v; lon = vals[1].v; }
+  else if (isLon(vals[0]) && isLat(vals[1])) { lat = vals[1].v; lon = vals[0].v; }
+  else if (vals[0].L || vals[1].L) return null;                              // lettere incoerenti (es. N + N)
+  else {
+    lat = vals[0].v; lon = vals[1].v;
+    if (Math.abs(lat) > 90 || (lat >= 6 && lat <= 19 && lon >= 35 && lon <= 48)) { [lat, lon] = [lon, lat]; }
+  }
+  if (!(Math.abs(lat) <= 90 && Math.abs(lon) <= 180)) return null;
+  return { lat, lon };
+}
+
+function _coordPoint(c) {
+  const lat = c.lat.toFixed(6), lon = c.lon.toFixed(6);
+  const gm = `https://www.google.com/maps?q=${lat},${lon}`;
+  return { type: 'coord', display: `${lat}, ${lon}`, lat: c.lat, lon: c.lon, zoom: 17,
+    extraHtml: `<div style="margin-top:6px;font-size:11px"><a href="${gm}" target="_blank" rel="noopener" style="color:var(--retelit-blue);font-weight:600">Apri in Google Maps ↗</a></div>` };
+}
+
+function renderCoordResult(c) {
+  const r = _coordPoint(c);
+  resultsEl.innerHTML = '<div class="search-divider">Coordinate</div>';
+  const item = document.createElement('div');
+  item.className = 'search-result-item';
+  item.innerHTML = `<span class="search-result-icon">📍</span><div style="flex:1;min-width:0"><div class="search-result-main" style="font-family:var(--font-mono)">${r.display}</div><div class="search-result-sub">Vai al punto sulla mappa</div></div>`;
+  item.onclick = () => _showSearchPoint(r);
+  resultsEl.appendChild(item);
+  resultsEl.style.display = 'block';
+}
+
 function renderResults(pratiche, addresses, query) {
   resultsEl.innerHTML = '';
   let hasAny = false;
@@ -2398,28 +2482,7 @@ function renderResults(pratiche, addresses, query) {
         <div style="flex:1;min-width:0">
           <div class="search-result-main">${r.display}</div>
         </div>`;
-      item.onclick = () => {
-        if (searchMarker) map.removeLayer(searchMarker);
-        const popupHtml = `
-          <div style="display:flex;align-items:center;gap:8px;padding:6px 8px">
-            <span style="font-size:12px;color:var(--text);flex:1">${r.display}</span>
-            <button onclick="clearSearch()" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;line-height:1;padding:0 2px;flex-shrink:0" title="Chiudi">✕</button>
-          </div>`;
-        searchMarker = L.circleMarker([r.lat, r.lon], {
-          radius: 8, color: '#4f8ef7', fillColor: '#4f8ef7', fillOpacity: 0.8, weight: 2,
-          renderer: searchMarkerRenderer   // SVG: non crea canvas in cima al mainRenderer
-        }).addTo(map).bindPopup(popupHtml, {closeButton: false});
-        // Quando si chiude il popup rimuove il marker così le tratte tornano cliccabili
-        searchMarker.on('popupclose', () => {
-          if (searchMarker) { map.removeLayer(searchMarker); searchMarker = null; }
-          clearBtn.style.display = inputEl.value ? 'block' : 'none';
-        });
-        searchMarker.openPopup();
-        map.setView([r.lat, r.lon], r.zoom, {animate: false});
-        setTimeout(() => { map.getContainer().style.cursor = ''; }, 0);
-        resultsEl.style.display = 'none';
-        clearBtn.style.display = 'block';
-      };
+      item.onclick = () => _showSearchPoint(r);
       resultsEl.appendChild(item);
     });
   }
@@ -2499,6 +2562,8 @@ inputEl.addEventListener('input', () => {
   if (!q) { resultsEl.style.display = 'none'; return; }
   clearTimeout(searchTimer);
   searchTimer = setTimeout(async () => {
+    const coord = parseCoordinates(q);
+    if (coord) { renderCoordResult(coord); return; }
     const pratiche = searchPratiche(q);
     // Cerca indirizzo solo se query > 3 chars e non sembra un codice pratica
     const looksLikePratica = /^(AUT|NO|ORD|TR_|CA\/)/i.test(q);
@@ -2509,6 +2574,10 @@ inputEl.addEventListener('input', () => {
 
 inputEl.addEventListener('keydown', e => {
   if (e.key === 'Escape') clearSearch();
+  if (e.key === 'Enter') {                       // Invio su coordinate valide: vai direttamente al punto
+    const coord = parseCoordinates(inputEl.value);
+    if (coord) { clearTimeout(searchTimer); _showSearchPoint(_coordPoint(coord)); }
+  }
 });
 
 // Chiudi dropdown cliccando fuori
