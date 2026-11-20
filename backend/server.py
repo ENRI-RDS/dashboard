@@ -1,7039 +1,2881 @@
-"""
-ENRI Dashboard — Backend API
-============================
-FastAPI service for the ENRI-RDS/dashboard project.
-
-Storage model
--------------
-MongoDB is the AUTHORITATIVE storage for uploaded files (via GridFS).
-Files committed in the git repo are used as the INITIAL SEED ONLY:
-when no upload exists for a given filename, the API falls back to
-the file on disk (the version pushed on GitHub Pages).
-
-This avoids data loss on Render's ephemeral filesystem AND keeps the
-static GitHub Pages fallback fully functional.
-"""
-from __future__ import annotations
-
-import asyncio
-import base64
-import hashlib
-import hmac
-import csv
-import io
-import json
-import os
-import re
-import time
-from collections import Counter
-from datetime import datetime, timezone, timedelta
-from zoneinfo import ZoneInfo
-from pathlib import Path
-from typing import Annotated, Any
-
-import httpx
-import pandas as pd
-from bson import ObjectId
-from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, Header, Query
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse, Response, FileResponse
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Config
-# ─────────────────────────────────────────────────────────────────────────────
-ROOT_DIR = Path(__file__).resolve().parent
-load_dotenv(ROOT_DIR / ".env")
-
-MONGO_URL = os.environ["MONGO_URL"]
-DB_NAME = os.environ["DB_NAME"]
-
-# DATA_DIR is the directory containing the git-committed seed files
-# (Master.csv, QGIS.geojson, etc.). It's READ-ONLY in the new model.
-DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT_DIR.parent)).resolve()
-
-_default_origins = (
-    "https://enri-rds.github.io,"
-    "http://localhost:3000,"
-    "http://localhost:5500,"
-    "http://127.0.0.1:5500"
-)
-ALLOWED_ORIGINS = [
-    o.strip() for o in os.environ.get("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()
-]
-
-UPLOAD_TOKEN = os.environ.get("UPLOAD_TOKEN", "").strip()
-
-# Token dedicato, separato da UPLOAD_TOKEN, per l'endpoint read-only di
-# sincronizzazione cross-progetto usato dal backend di QTS (tratte in
-# concomitanza gestite qui su ENRI). Nessun privilegio di scrittura:
-# se compromesso, espone solo stato_autorizzazione/stato_nullaosta delle
-# tratte esplicitamente richieste, non l'intero Master.csv né azioni admin.
-QTS_SYNC_TOKEN = os.environ.get("QTS_SYNC_TOKEN", "").strip()
-ALLOWED_EXT = {".csv", ".xlsx", ".xls", ".geojson", ".json"}
-MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "25"))
-
-# ─────────────────────────────────────────────────────────────────────────────
-# DB
-# ─────────────────────────────────────────────────────────────────────────────
-client = AsyncIOMotorClient(MONGO_URL)
-db = client[DB_NAME]
-uploads_col = db["uploads"]
-admin_actions_col = db["admin_actions"]  # audit: azioni protette da UPLOAD_TOKEN (chi/cosa/quando)
-assignments_col = db["assignments"]            # impresa nome -> {lotti: [...]}
-pending_col = db["pending_updates"]            # submissions from imprese pending admin review
-solleciti_col = db["solleciti"]                # registro solleciti per tratta/pratica
-
-# Lock per serializzare i cicli read-modify-write su Master.csv (GridFS).
-# Senza questo lock, due richieste concorrenti (es. solleciti di imprese diverse)
-# possono leggere la stessa versione e la seconda scrittura sovrascrive/perde la prima.
-_master_csv_lock = asyncio.Lock()
-# Lock per serializzare _sync_cantieri(): senza di esso due esecuzioni concorrenti
-# (es. startup + trigger da approve_pending_update, o due approvazioni ravvicinate,
-# entrambe lanciate come asyncio.create_task non awaitate) possono leggere lo stesso
-# _max_codice_per_lotto() prima che l'altra abbia inserito il proprio documento,
-# assegnando lo stesso codice_cantiere (es. "CA/2/1A") a due pratiche diverse.
-_cantieri_sync_lock = asyncio.Lock()
-cantieri_col  = db["cantieri"]                  # stato cantiere per pratica di autorizzazione
-cantieri_cil_col = db["cantieri_cil"]          # Data CIL per cantiere (inserita dalla DL): collection separata, così i rebuild/reset di `cantieri` non la toccano
-sopralluoghi_col = db["sopralluoghi"]          # verbali di sopralluogo
-issues_col = db["issues"]                      # registro issue/anomalie verso i System (imprese)
-issues_skip_col = db["issues_skip"]            # NC di verbale la cui issue è stata eliminata a mano: la sync non la ricrea
-agenda_col = db["agenda"]                      # appuntamenti richiesti/programmati dagli enti
-agenda_delreq_col = db["agenda_richieste_eliminazione"]  # richieste di eliminazione appuntamento (da approvare)
-pol_conv_dates_col = db["pol_conv_dates"]      # prima data in cui CONVENZIONE/POLIZZA è comparsa per una pratica
-access_logs_col = db["access_logs"]            # log accessi (ex-JSONBin) — un documento per binId, {utenti:[...], accessi:[...]}
-gantt_overrides_col = db["gantt_overrides"]    # override manuali riga Gantt (pct/date/label) per lotto, indip. da invii impresa
-gantt_rates_col = db["gantt_rates"]            # regole tasso scavo (m/giorno) per scope: "global" | "lotto:<ID>" | "impresa:<NOME>" | "pratica:<CODICE>"
-concomitanza_col = db["concomitanza"]          # tratte con lavorazione aggiuntiva concomitante (es. ENRI-QTS, tubo aggiuntivo), keyed per TRATTA_ID
-coordinamenti_col = db["coordinamenti"]    # invio preliminare: una richiesta per pratica x ente (invio, risposta, concomitanze, sopralluogo)
-gridfs = AsyncIOMotorGridFSBucket(db, bucket_name="files")
-
-# ─────────────────────────────────────────────────────────────────────────────
-# App
-# ─────────────────────────────────────────────────────────────────────────────
-app = FastAPI(title="ENRI Dashboard API", version="2.0.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["Content-Disposition"],
-)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Helpers
-# ─────────────────────────────────────────────────────────────────────────────
-_SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9_\-./]+$")
-_EXCLUDE_DIRS  = {"backend", "frontend", "node_modules", "__pycache__", ".git", "memory", "js", "M"}
-_EXCLUDE_FILES = {"dati.csv"}          # file su disco da NON esporre nella lista admin
-# "M" esclusa: cartella di file legacy (es. M/QGIS_3.geojson) non collegati alla
-# dashboard — restano nel repo per storico ma non devono comparire in admin.html
-
-
-def _safe_relpath(name: str) -> str:
-    name = name.replace("\\", "/").lstrip("/")
-    if ".." in name.split("/") or not _SAFE_NAME_RE.match(name):
-        raise HTTPException(400, "Invalid filename")
-    return name
-
-
-def _check_token(token: str | None) -> None:
-    if UPLOAD_TOKEN and token != UPLOAD_TOKEN:
-        raise HTTPException(401, "Invalid or missing upload token")
-
-
-# Ruolo dedicato 'polizza' (rev.283): può aggiornare stato/date/urgenza delle
-# pratiche in polizze_convenzioni.html SENZA conoscere l'UPLOAD_TOKEN condiviso
-# — quel token resta un segreto ad ampio raggio (upload Master.csv, override
-# Gantt, ecc.) e non va distribuito a un ruolo pensato per un solo dominio.
-# Il ruolo va assegnato all'utenza lato Google Sheet collegato all'Apps
-# Script di login (stesso posto di admin/admin2/dl/impresa) — non in questo
-# repo. Entrambe le vie restano valide per compatibilità con chi già usa il
-# token condiviso.
-_POLIZZA_WRITE_ROLES = ("admin", "admin2", "polizza")
-
-def _check_polizza_write_auth(token: str | None, x_session_token: str | None) -> None:
-    if UPLOAD_TOKEN and token == UPLOAD_TOKEN:
-        return
-    sess = _verify_session(x_session_token or "")
-    if sess and sess.get("ruolo") in _POLIZZA_WRITE_ROLES:
-        return
-    raise HTTPException(401, "Accesso non autorizzato: upload token non valido e nessuna sessione con ruolo abilitato (admin/admin2/polizza)")
-
-
-def _check_qts_sync_token(token: str | None) -> None:
-    if not QTS_SYNC_TOKEN or token != QTS_SYNC_TOKEN:
-        raise HTTPException(401, "Invalid or missing sync token")
-
-
-async def _log_admin_action(azione: str, target: str, actor_nome: str | None) -> None:
-    """Audit trail per le azioni protette da UPLOAD_TOKEN (non da sessione, quindi
-    `actor_nome` è auto-dichiarato dal client — utile per tracciare, non per provare)."""
-    try:
-        await admin_actions_col.insert_one({
-            "azione": azione, "target": target,
-            "actor": (actor_nome or "").strip() or "sconosciuto",
-            "timestamp": _now_iso(),
-        })
-    except Exception:
-        pass  # l'audit log non deve mai far fallire l'azione principale
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _parse_it_date(s: str):
-    try:
-        return datetime.strptime(str(s).strip(), "%d/%m/%Y")
-    except Exception:
-        return None
-
-
-def _media_type(name: str) -> str:
-    ext = name.rsplit(".", 1)[-1].lower()
-    if ext == "geojson":
-        return "application/geo+json"
-    if ext == "json":
-        return "application/json"
-    if ext == "csv":
-        return "text/csv; charset=utf-8"
-    return "application/octet-stream"
-
-
-def _serialize(doc: dict) -> dict:
-    d = dict(doc)
-    if "_id" in d:
-        d["_id"] = str(d["_id"])
-    if "gridfs_id" in d and isinstance(d["gridfs_id"], ObjectId):
-        d["gridfs_id"] = str(d["gridfs_id"])
-    return d
-
-
-async def _current_upload(filename: str) -> dict | None:
-    """Most recent non-deleted upload for a given filename."""
-    return await uploads_col.find_one(
-        {"filename": filename, "deleted_at": None},
-        sort=[("uploaded_at", -1)],
-    )
-
-
-KEEP_VERSIONS = int(os.environ.get("KEEP_VERSIONS", "4"))
-
-
-async def _prune_old_versions(filename: str, keep: int = KEEP_VERSIONS) -> int:
-    """Mantiene solo le ultime `keep` versioni non cancellate di un file:
-    elimina il blob GridFS e soft-delete (deleted_at) delle versioni più vecchie."""
-    cur = uploads_col.find({"filename": filename, "deleted_at": None}).sort("uploaded_at", -1).skip(keep)
-    n = 0
-    async for doc in cur:
-        gid = doc.get("gridfs_id")
-        if gid:
-            try:
-                await gridfs.delete(gid)
-            except Exception:
-                pass
-        await uploads_col.update_one(
-            {"_id": doc["_id"]},
-            {"$set": {"deleted_at": _now_iso(), "gridfs_id": None}},
-        )
-        n += 1
-    return n
-
-
-async def _read_gridfs(gridfs_id: ObjectId) -> bytes:
-    stream = await gridfs.open_download_stream(gridfs_id)
-    try:
-        return await stream.read()
-    finally:
-        # motor's GridOut.close is synchronous
-        close = getattr(stream, "close", None)
-        if callable(close):
-            res = close()
-            if hasattr(res, "__await__"):
-                await res
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Sessioni firmate (usate anche da /api/data* più sotto — definite qui,
-# prima delle routes, perché Depends() valuta il default arg a import-time)
-# ─────────────────────────────────────────────────────────────────────────────
-
-SESSION_SECRET = os.environ.get("SESSION_SECRET", "")
-SESSION_TTL_SECONDS = int(os.environ.get("SESSION_TTL_SECONDS", str(12 * 3600)))  # 12h default
-APPS_SCRIPT_URL = os.environ.get("APPS_SCRIPT_URL", "")
-APPS_SCRIPT_SECRET = os.environ.get("APPS_SCRIPT_SECRET", "")
-
-
-def _sign_session(nome: str, ruolo: str) -> str:
-    if not SESSION_SECRET:
-        raise HTTPException(500, "SESSION_SECRET non configurato sul server")
-    exp = int(time.time()) + SESSION_TTL_SECONDS
-    payload = f"{nome}|{ruolo}|{exp}"
-    sig = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    raw = f"{payload}|{sig}"
-    return base64.urlsafe_b64encode(raw.encode()).decode()
-
-
-def _verify_session(token: str) -> dict | None:
-    if not token or not SESSION_SECRET:
-        return None
-    try:
-        raw = base64.urlsafe_b64decode(token.encode()).decode()
-        nome, ruolo, exp, sig = raw.split("|", 3)
-        payload = f"{nome}|{ruolo}|{exp}"
-        expected = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(sig, expected):
-            return None
-        if int(exp) < int(time.time()):
-            return None
-        return {"nome": nome, "ruolo": ruolo}
-    except Exception:
-        return None
-
-
-async def _require_session(
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-) -> dict:
-    """Dependency per gli endpoint /api/imprese/*: il `nome` autenticato viene
-    SEMPRE letto dal token firmato, mai da un parametro passato dal client."""
-    sess = _verify_session(x_session_token or "")
-    if not sess:
-        raise HTTPException(401, "Sessione non valida o scaduta — effettua di nuovo il login")
-    return sess
-
-
-async def _require_staff_session(
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-) -> dict:
-    """Come _require_session ma esclude il ruolo 'impresa' — per endpoint non
-    pensati per le pagine Area Impresa (che usano gli /api/imprese/* scoped)."""
-    sess = await _require_session(x_session_token)
-    if sess.get("ruolo") == "impresa":
-        raise HTTPException(403, "Accesso non consentito per questo ruolo")
-    return sess
-
-
-async def _require_admin_session(
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-) -> dict:
-    """Solo ruolo 'admin' o 'admin2' — per scritture riservate (es. override Gantt)."""
-    sess = await _require_staff_session(x_session_token)
-    if sess.get("ruolo") not in ("admin", "admin2"):
-        raise HTTPException(403, "Riservato ad admin")
-    return sess
-
-
-async def _require_milestone_session(
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-) -> dict:
-    """Come _require_staff_session ma esclude anche il ruolo 'dl' (Direzione
-    Lavori): vede tutto come 'user' tranne la pagina Milestone di Progetto,
-    su richiesta esplicita utente. Il ruolo è letto dal token firmato
-    (HMAC/SESSION_SECRET), non falsificabile lato client."""
-    sess = await _require_staff_session(x_session_token)
-    if sess.get("ruolo") == "dl":
-        raise HTTPException(403, "Milestone di progetto non disponibili per questo ruolo")
-    return sess
-
-
-async def _require_issue_read_session(
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-) -> dict:
-    """Registro Issue in sola lettura: ruoli 'admin', 'admin2' e 'field' (il field spunta solo l'Approvazione Bonifica)."""
-    sess = await _require_staff_session(x_session_token)
-    if sess.get("ruolo") not in ("admin", "admin2", "field"):
-        raise HTTPException(403, "Riservato ad admin e field")
-    return sess
-
-
-async def _require_field_session(
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-) -> dict:
-    """Solo ruolo 'field' (letto dal token firmato)."""
-    sess = await _require_staff_session(x_session_token)
-    if sess.get("ruolo") != "field":
-        raise HTTPException(403, "Riservato al ruolo field")
-    return sess
-
-
-_AGENDA_ROLES = ("admin", "admin2", "field", "dl")
-
-
-async def _require_agenda_session(
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-) -> dict:
-    """Agenda Enti: ruoli 'admin', 'admin2', 'field' e 'dl'. Il ruolo
-    è letto dal token firmato (HMAC/SESSION_SECRET), non falsificabile lato client."""
-    sess = await _require_staff_session(x_session_token)
-    if sess.get("ruolo") not in _AGENDA_ROLES:
-        raise HTTPException(403, "Agenda riservata ai ruoli interni autorizzati")
-    return sess
-
-
-# File "core" con dati di TUTTI i lotti/imprese. In lettura (/api/data*,
-# /api/preview, /api/files) sono riservati ai ruoli interni: le Aree Impresa
-# usano gli endpoint /api/imprese/* già scoped sui propri lotti. Inoltre NON
-# vengono più pubblicati sul repo GitHub pubblico (vedi _push_to_github).
-POZZETTI_FILENAME = "pozzetti_merged.geojson"   # layer pozzetti (Point) mostrato in mappa; upload/download da admin
-
-SENSITIVE_FILES = {
-    "Master.csv",
-    "QGIS.geojson",
-    "Riepilogo_progettazione.csv",
-    "SED_classificato.geojson",
-    "pozzetti_merged.geojson",
-    "Cantieri.csv",
-    "sopralluoghi.csv",
-    "solleciti.csv",
-    "AVANZAMENTO_COORDINAMENTI_MILANO.xlsx",
+<!DOCTYPE html> <html lang="it" translate="no"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <meta name="google" content="notranslate"> <title>ENRI — Sopralluoghi</title> <script src="js/api-config.js"></script> <link href="https://fonts.googleapis.com/css2?family=Raleway:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+  :root {
+    --bg:#F7F8FA; --surface:#FFFFFF; --surface2:#EEF1F5;
+    --border:#DFE4EB; --border2:#C4CDD8;
+    --accent:#043F75; --accent2:#1A7D99;
+    --teal:#1A7D99; --sky:#41BBD9;
+    --ok:#1E9E6A; --warn:#D08A1A; --err:#C0392B;
+    --text:#363D48; --text2:#363D48; --muted:#6B7685; --muted2:#9AA5B4;
+    --retelit-blue:#043F75; --retelit-blue-75:#436A93; --retelit-blue-50:#819FB9; --retelit-blue-25:#C0CFDC;
+    --retelit-sky:#41BBD9; --retelit-teal:#1A7D99; --retelit-mist:#ADCAD6; --retelit-ice:#D3DEEA;
+    --sh-xs:0 1px 3px rgba(4,63,117,.06),0 1px 2px rgba(0,0,0,.04);
+    --sh-sm:0 2px 8px rgba(4,63,117,.08),0 1px 4px rgba(0,0,0,.05);
+    --sh-md:0 4px 20px rgba(4,63,117,.10),0 2px 8px rgba(0,0,0,.06);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:'Raleway',Calibri,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:58px;background:var(--retelit-blue);position:sticky;top:0;z-index:50;}
+  .topbar-left{display:flex;align-items:center;gap:16px;}
+  .topbar-right{display:flex;align-items:center;gap:8px;}
+  .logo{font-family:'Raleway',sans-serif;font-size:13px;font-weight:700;letter-spacing:.14em;color:var(--retelit-ice);text-transform:uppercase;}
+  .divider-v{width:1px;height:20px;background:var(--retelit-blue-50);}
+  .page-title{font-size:13px;font-weight:600;letter-spacing:.04em;color:var(--retelit-ice);text-transform:uppercase;}
+  .topbar-back{font-size:12px;color:var(--retelit-sky);font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:8px;border:1px solid var(--retelit-sky);transition:background .15s;}
+  .topbar-back:hover{background:rgba(65,187,217,.1);}
+  .btn-sm{font-size:11px;padding:6px 14px;border-radius:6px;background:transparent;color:var(--muted);border:1px solid var(--border2);cursor:pointer;font-family:'Raleway',sans-serif;font-weight:600;transition:all .18s;text-decoration:none;display:inline-flex;align-items:center;}
+  .btn-sm:hover{background:var(--surface2);color:var(--text);}
+
+  .main{max-width:720px;margin:0 auto;padding:28px 24px;display:flex;flex-direction:column;gap:20px;}
+
+  .page-header{display:flex;flex-direction:column;gap:3px;}
+  .eyebrow{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:var(--teal);}
+  .page-h1{font-family:'Raleway',sans-serif;font-size:22px;font-weight:700;letter-spacing:-.025em;color:var(--accent);line-height:1.2;}
+  .page-sub{font-size:12px;color:var(--muted);margin-top:2px;}
+
+  .form-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:26px 34px;box-shadow:var(--sh-sm);display:flex;flex-direction:column;gap:0;position:relative;overflow:hidden;}
+  .form-card::before{content:'';position:absolute;top:0;left:0;bottom:0;width:3px;border-radius:14px 0 0 14px;background:linear-gradient(180deg,#1A7D99,#41BBD9);}
+
+  .section-label{font-family:'Raleway',sans-serif;font-size:15px;font-weight:700;color:var(--accent);margin-top:24px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+  .section-label:first-child{margin-top:0;}
+  .section-label:first-child{margin-top:0;}
+
+  .field-group{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  @media(max-width:500px){.field-row{grid-template-columns:1fr;}}
+
+  /* ── Layout largo: KPI + colonna form / colonna archivio ── */
+  .main-wide{max-width:1440px;margin:0 auto;padding:28px 24px 40px;display:flex;flex-direction:column;gap:18px;}
+
+  .kpi-strip{display:grid;grid-template-columns:repeat(7,1fr);gap:12px;}
+  @media(max-width:1100px){.kpi-strip{grid-template-columns:repeat(3,1fr);}}
+  @media(max-width:640px){.kpi-strip{grid-template-columns:repeat(2,1fr);}}
+  .kpi-card.is-click{cursor:pointer;transition:box-shadow .15s,transform .1s,border-color .15s;}
+  .kpi-card.is-click:hover{box-shadow:var(--sh-sm);border-color:var(--accent);transform:translateY(-1px);}
+  .kpi-card.is-click:active{transform:none;}
+  /* ── Colonne aree checklist ── */
+  .area-switch{display:flex;align-items:center;gap:6px;margin:0 0 8px;flex-wrap:wrap;}
+  .area-switch span{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted2);}
+  .area-switch button{font-size:10.5px;padding:4px 10px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer;}
+  .area-switch button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700;}
+  .archive-table-scroll{overflow-x:auto;}
+  .ac-head{display:flex;align-items:flex-end;justify-content:center;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-height:150px;font-family:'Raleway',sans-serif;font-size:10.5px;font-weight:700;text-align:left;color:var(--text2);letter-spacing:0;text-transform:none;padding-bottom:2px;}
+  .ac-cell{display:block;text-align:center;font-size:11px;font-weight:800;line-height:20px;height:20px;border-radius:5px;background:var(--surface2);color:var(--muted2);}
+  .ac-cell.nc{background:#FDECEA;color:var(--err);box-shadow:inset 0 0 0 1px var(--err);}
+  .ac-cell.ok{background:#E4F5EC;color:var(--ok);}
+  .ac-cell.part{background:#FFF3E0;color:var(--warn);}
+  /* ── Modale KPI ── */
+  .kpi-modal{position:fixed;inset:0;background:rgba(4,63,117,.45);display:none;align-items:center;justify-content:center;z-index:900;padding:24px;}
+  .kpi-modal.open{display:flex;}
+  .kpi-modal-box{background:var(--surface);border-radius:14px;width:min(920px,100%);max-height:82vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(4,63,117,.25);overflow:hidden;}
+  .kpi-modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);}
+  .kpi-modal-title{font-size:15px;font-weight:700;color:var(--accent);}
+  .kpi-modal-title small{display:block;font-size:11px;font-weight:500;color:var(--muted);margin-top:2px;}
+  .kpi-modal-body{overflow-y:auto;padding:6px 20px 18px;}
+  .kpi-modal-close{background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;font-size:12px;padding:5px 11px;cursor:pointer;}
+  .ed-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px;}
+  .ed-sec{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);margin:10px 0 8px;padding-top:10px;border-top:1px solid var(--border);}
+  .ed-tabs{display:flex;gap:6px;margin-bottom:8px;}
+  .ed-tab{background:none;border:1px solid var(--border);border-radius:8px;font-size:12px;padding:5px 11px;cursor:pointer;color:var(--muted);}
+  .ed-tab.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .ed-area{font-size:11px;font-weight:700;color:var(--muted);margin:10px 0 4px;}
+  .ed-item{border:1px solid var(--border);border-radius:8px;padding:7px 9px;margin-bottom:6px;}
+  .ed-item.nc{border-color:#C0392B;background:#FDF3F1;}
+  .ed-top{display:flex;align-items:center;gap:8px;font-size:12px;}
+  .ed-top .t{flex:1;}
+  .ed-item select,.ed-item input{font-size:12px;padding:4px 6px;}
+  .ed-item input[type=text]{width:100%;margin-top:5px;}
+  .ed-nc{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:5px;}
+  @media(max-width:700px){.ed-grid,.ed-nc{grid-template-columns:1fr;}}
+  .km-row{display:grid;grid-template-columns:auto .8fr 1.6fr 1.4fr;gap:10px;align-items:center;padding:9px 6px;border-bottom:1px solid var(--border);font-size:12px;cursor:pointer;}
+  .km-row:hover{background:var(--surface2);}
+  .km-row.has-segn{background:#FFF7E6;box-shadow:inset 3px 0 0 var(--warn);}
+  .km-row .vr-codice{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11.5px;color:var(--accent);}
+  .km-row small{display:block;color:var(--muted);font-size:10px;}
+  .kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;box-shadow:var(--sh-xs);display:flex;flex-direction:column;gap:2px;}
+  .kpi-value{font-family:'Raleway',sans-serif;font-size:24px;font-weight:800;color:var(--accent);letter-spacing:-.02em;line-height:1.15;}
+  .kpi-value-sm{font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;}
+  .kpi-label{font-size:10.5px;color:var(--muted);font-weight:600;letter-spacing:.02em;}
+  .kpi-card.kpi-warn .kpi-value{color:var(--warn);}
+  .kpi-card.kpi-ok .kpi-value{color:var(--ok);}
+
+  .layout-grid{display:grid;grid-template-columns:minmax(480px,620px) 1fr;gap:20px;align-items:start;}
+  .layout-grid.solo-archivio{grid-template-columns:1fr;}
+  @media(max-width:980px){.layout-grid{grid-template-columns:1fr;}}
+  .page-header-row{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+  .btn-nuovo{display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#fff;border:none;border-radius:10px;padding:10px 18px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;transition:background .15s,box-shadow .15s;box-shadow:var(--sh-sm);}
+  .btn-nuovo:hover{background:#032E56;}
+  .btn-nuovo.is-open{background:var(--surface2);color:var(--text2);border:1px solid var(--border);}
+  .form-card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+  .form-card-head .fch-title{font-size:15px;font-weight:700;color:var(--accent);}
+  .btn-chiudi-form{background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;font-size:11px;padding:4px 10px;cursor:pointer;}
+  .verbale-row.has-segn{background:#FFF7E6;box-shadow:inset 3px 0 0 var(--warn);}
+  .verbale-row.has-segn:hover{background:#FFEFD1;}
+  .verbale-row.has-segn.is-selected{background:#FBE7C4;}
+  .flag-chip{display:inline-block;margin-left:5px;padding:2px 7px;border-radius:20px;font-size:9.5px;font-weight:800;background:#FFE7B8;color:#8A5A00;white-space:nowrap;}
+  .check-inline{display:flex;align-items:center;gap:9px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);cursor:pointer;font-size:12.5px;font-weight:600;color:var(--text2);}
+  .check-inline input{width:16px;height:16px;accent-color:var(--warn);cursor:pointer;}
+  .check-inline.on{background:#FFF7E6;border-color:var(--warn);color:#8A5A00;}
+  .segn-esito{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0;font-size:12px;font-weight:600;color:var(--text2);}
+  .segn-esito label{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--surface2);white-space:nowrap;font-size:11.5px;}
+  .segn-esito label input{width:14px;height:14px;min-height:0;padding:0;margin:0;flex:none;accent-color:var(--warn);cursor:pointer;box-shadow:none;}
+  .field-group input.miss{border-color:var(--err)!important;background:#FDF3F1;}
+  .segn-esito.miss{outline:1.5px solid var(--err);outline-offset:3px;border-radius:8px;}
+  .verif-chip{display:inline-block;margin-left:5px;padding:2px 7px;border-radius:20px;font-size:9.5px;font-weight:800;white-space:nowrap;background:#D3DEEA;color:#043F75;}
+  .verif-chip.todo{background:#FFE7B8;color:#8A5A00;}
+  .verif-chip.late{background:#FDECEA;color:var(--err);}
+  .verif-chip.ok{background:#E4F5EC;color:var(--ok);}
+  .verif-chip.cliente{background:#FFE7B8;color:#8A5A00;}
+  .verif-chip.interno{background:#E6F1F8;color:#043F75;box-shadow:inset 0 0 0 1px #41BBD9;}
+  .verbale-row.is-verifica{box-shadow:inset 3px 0 0 #1A7D99;}
+  .verbale-row.is-verifica.has-segn{box-shadow:inset 3px 0 0 #1A7D99;}
+  .vr-link{display:block;font-family:'Raleway',sans-serif;font-size:9.5px;font-weight:600;color:#1A7D99;margin-top:2px;}
+  .verif-chip.pozz{background:#043F75;color:#fff;}
+  .verif-chip.neutral{background:#EEF1F5;color:#5B6577;}
+  .verifica-banner{margin:0 0 14px;padding:10px 14px;border-radius:10px;background:#E6F1F8;border:1px solid #41BBD9;color:#043F75;font-size:12.5px;align-items:center;justify-content:space-between;gap:10px;}
+  .verifica-box{margin-top:12px;padding:10px 12px;border-radius:10px;font-size:12px;border:1px solid var(--border);background:var(--surface2);line-height:1.5;}
+  .btn-verifica{margin-top:6px;padding:7px 12px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:12px;font-weight:700;cursor:pointer;}
+  .ck-prev{font-size:10.5px;color:var(--muted);margin-top:3px;line-height:1.4;font-weight:400;}
+  .ck-nc-box .miss{border-color:var(--err)!important;background:#FDF3F1;}
+  .segn-hint{font-size:11px;color:var(--muted);line-height:1.4;}
+  #segnClienteNoteBox textarea{width:100%;min-height:60px;font-size:12.5px;padding:8px 10px;border:1px solid var(--warn);border-radius:8px;font-family:inherit;background:#FFFCF5;}
+
+  .right-col{display:flex;flex-direction:column;gap:18px;min-width:0;}
+
+  .archive-card,.preview-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px;box-shadow:var(--sh-sm);position:relative;overflow:hidden;}
+  .archive-card::before,.preview-card::before{content:'';position:absolute;top:0;left:0;bottom:0;width:3px;border-radius:14px 0 0 14px;background:linear-gradient(180deg,#1A7D99,#41BBD9);}
+  .archive-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+  .btn-export{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--accent2);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;}
+  .btn-export:hover{background:var(--surface2);}
+  .btn-export:disabled{opacity:.55;cursor:wait;}
+  .archive-title{font-family:'Raleway',sans-serif;font-weight:700;font-size:15px;color:var(--accent);}
+
+  .archive-toolbar{display:flex;gap:8px;margin-bottom:8px;}
+  .archive-search{flex:1;min-width:0;box-sizing:border-box;padding:8px 12px;border:1px solid var(--border2);border-radius:8px;font-size:12.5px;font-family:'Raleway',sans-serif;}
+  .btn-filtri{position:relative;display:inline-flex;align-items:center;gap:6px;padding:8px 13px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text2);font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap;}
+  .btn-filtri:hover{background:var(--surface2);}
+  .btn-filtri.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .filtri-badge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;border-radius:20px;background:var(--warn);color:#fff;font-size:9.5px;font-weight:800;}
+  .archive-filters{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;padding:10px;background:var(--surface2);border-radius:10px;}
+  .archive-filters select{padding:6px 8px;border:1px solid var(--border2);border-radius:7px;font-size:11.5px;font-family:'Raleway',sans-serif;color:var(--text2);background:var(--surface);}
+  .archive-filter-wide{grid-column:1/-1;}
+  .btn-azzera-filtri{padding:6px 8px;border:1px solid var(--border2);border-radius:7px;font-size:11px;font-weight:600;background:var(--surface);color:var(--muted);cursor:pointer;}
+  .btn-azzera-filtri:hover{color:var(--err);border-color:var(--err);}
+  @media(max-width:640px){.archive-filters{grid-template-columns:1fr;}}
+
+  .archive-table-head{display:grid;grid-template-columns:.62fr .5fr 1.3fr 1fr .55fr;gap:6px;padding:0 10px 6px;align-items:end;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);border-bottom:1px solid var(--border);margin-bottom:2px;}
+  .archive-table-head.has-areas{padding-bottom:6px;}
+  @media(max-width:760px){.archive-table-head{display:none;}}
+
+  .verbale-row{display:grid;grid-template-columns:.62fr .5fr 1.3fr 1fr .55fr;gap:6px;align-items:center;padding:9px 10px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;font-size:12px;}
+  .verbale-row:hover{background:var(--surface2);}
+  .verbale-row.is-selected{background:#EAF2F8;}
+  .verbale-row .vr-codice{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11.5px;color:var(--accent);}
+  .verbale-row .vr-data{color:var(--muted);font-size:11px;}
+  .verbale-row .vr-comune{color:var(--text2);}
+  .verbale-row .vr-comune small{display:block;color:var(--muted);font-size:10px;}
+  @media(max-width:760px){.verbale-row{grid-template-columns:1fr !important;gap:2px;padding:10px;}
+    .ac-cell{display:inline-block;width:auto;min-width:34px;padding:0 4px;margin:2px 3px 0 0;}}
+
+
+  /* ── Checklist DL ─────────────────────────────────────────────────────────── */
+  .ck-wrap{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);}
+  .ck-tabs{display:flex;gap:0;background:var(--surface2);border-bottom:1px solid var(--border);}
+  .ck-tab{flex:1;padding:10px 14px;font-size:12px;font-weight:700;color:var(--muted);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;}
+  .ck-tab.active{color:var(--accent);background:var(--surface);border-bottom-color:var(--accent);}
+  .ck-tab .ck-tab-badge{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:20px;font-size:9.5px;background:var(--surface2);color:var(--muted);}
+  .ck-tab.active .ck-tab-badge{background:#EAF2F8;color:var(--accent);}
+  .ck-tab .ck-tab-badge.nc{background:#FDECEA;color:var(--err);}
+  .ck-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap;}
+  .ck-progress{font-size:11px;color:var(--muted);font-weight:600;}
+  .ck-progress b{color:var(--accent);}
+  .ck-bulk{display:flex;gap:6px;}
+  .ck-bulk button{font-size:10.5px;padding:4px 9px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer;}
+  .ck-bulk button:hover{background:var(--surface2);}
+  .ck-body{max-height:520px;overflow-y:auto;}
+  .ck-area{padding:7px 14px;background:var(--surface2);font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:1;}
+  .ck-item{padding:9px 14px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start;}
+  .ck-item.is-nc{background:#FDF0EE;}
+  .ck-item.is-na{opacity:.55;}
+  .ck-txt{font-size:12px;color:var(--text2);line-height:1.4;}
+  .ck-id{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:var(--accent);margin-right:6px;}
+  .ck-rif{display:block;font-size:10px;color:var(--muted);margin-top:2px;}
+  .ck-esiti{display:flex;gap:4px;}
+  .ck-b{border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:10px;font-weight:700;padding:4px 8px;border-radius:7px;cursor:pointer;white-space:nowrap;}
+  .ck-b:hover{background:var(--surface2);}
+  .ck-b.on.c{background:#E4F5EC;border-color:var(--ok);color:var(--ok);}
+  .ck-b.on.nc{background:#FDECEA;border-color:var(--err);color:var(--err);}
+  .ck-b.on.na{background:var(--surface2);border-color:var(--muted);color:var(--muted2);}
+  .ck-b.nota{margin-left:auto;}
+  .ck-b.nota.on{background:#FFF7E6;border-color:var(--warn);color:#8A5A00;}
+  .ck-dim-wrap{display:flex;align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap;}
+  .ck-dim-lab{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);}
+  .ck-dim-wrap select{flex:1 1 260px;max-width:420px;font-size:12px;padding:6px 10px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text2);font-family:'Raleway',sans-serif;}
+  .ck-dim-wrap select.empty{border-color:var(--warn);}
+  .ck-note-box{grid-column:1/-1;margin-top:6px;padding-top:8px;border-top:1px dashed var(--border);}
+  .ck-note-box textarea{width:100%;min-height:44px;font-size:11.5px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-family:inherit;margin-top:6px;}
+  .ck-nc-box{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;}
+  .ck-nc-box textarea{min-height:44px;grid-column:1/-1;}
+  .ck-nc-box input,.ck-nc-box textarea{width:100%;font-size:11.5px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-family:inherit;}
+  .ck-nc-box label{font-size:10px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;}
+  .ck-chip{display:inline-block;padding:2px 7px;border-radius:20px;font-size:9.5px;font-weight:800;white-space:nowrap;margin-left:5px;}
+  .ck-chip.nc{background:#FDECEA;color:var(--err);}
+  .ck-chip.ok{background:#E4F5EC;color:var(--ok);}
+  .ck-chip.todo{background:var(--surface2);color:var(--muted);}
+  .pv-ck-item{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:start;padding:6px 0;border-bottom:1px solid var(--border);font-size:11.5px;}
+  .pv-ck-item .ck-id{margin:0;}
+  .pv-ck-nc{grid-column:1/-1;font-size:11px;color:var(--err);padding-left:2px;}
+  .stato-chip{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;}
+  .stato-chip.ok{background:#E4F5EC;color:var(--ok);}
+  .stato-chip.warn{background:#FFF3E0;color:var(--warn);}
+  .stato-chip.err{background:#FDECEA;color:var(--err);}
+  .stato-chip.neutral{background:var(--surface2);color:var(--muted);}
+
+  .vr-actions{display:flex;justify-content:flex-end;gap:5px;}
+  .vr-actions button{background:none;border:1px solid var(--border2);border-radius:6px;color:var(--accent2);cursor:pointer;padding:3px 6px;display:flex;align-items:center;}
+  .vr-actions button:hover{background:var(--surface2);}
+
+  .archive-pagination{display:flex;align-items:center;justify-content:center;gap:4px;margin-top:12px;flex-wrap:wrap;}
+  .archive-pagination button{min-width:26px;height:26px;padding:0 6px;border:1px solid var(--border2);background:var(--surface);border-radius:6px;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--text2);cursor:pointer;}
+  .archive-pagination button:hover{background:var(--surface2);}
+  .archive-pagination button.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .archive-pagination button:disabled{opacity:.4;cursor:default;}
+
+  .preview-empty{color:var(--muted);font-size:12px;text-align:center;padding:30px 0;}
+  .preview-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;}
+  @media(max-width:560px){.preview-grid{grid-template-columns:1fr;}}
+  .preview-field{display:flex;flex-direction:column;gap:2px;padding:6px 0;border-bottom:1px solid #eef0f3;}
+  .preview-field span.pf-label{font-size:9.5px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;}
+  .preview-field span.pf-val{font-size:12.5px;color:var(--text2);}
+  .preview-photos{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px;}
+  @media(max-width:560px){.preview-photos{grid-template-columns:repeat(2,1fr);}}
+  .preview-photos img{width:100%;height:88px;object-fit:cover;border-radius:8px;border:1px solid var(--border);}
+
+  label{font-size:11px;font-weight:600;color:var(--text2);letter-spacing:.02em;}
+  input,textarea,select{
+    width:100%;padding:9px 12px;
+    border:1.5px solid var(--border2);border-radius:8px;
+    font-family:'Raleway',sans-serif;font-size:13px;color:var(--text);
+    background:var(--surface2);outline:none;transition:border-color .2s,box-shadow .2s,background .2s;
+  }
+  input:focus,textarea:focus,select:focus{border-color:var(--teal);background:var(--surface);box-shadow:0 0 0 3px rgba(26,125,153,.1);}
+  textarea{resize:vertical;min-height:72px;line-height:1.6;}
+
+  .divider-h{border:none;border-top:1px solid var(--border);margin:20px 0 4px;}
+
+  /* RADIO GROUP */
+  .radio-group{display:flex;gap:8px;flex-wrap:wrap;}
+  .radio-pill input{display:none;}
+  .radio-pill label{
+    display:inline-flex;align-items:center;gap:5px;
+    padding:6px 14px;border-radius:20px;
+    font-size:11px;font-weight:600;cursor:pointer;
+    border:1.5px solid var(--border2);background:var(--surface2);
+    color:var(--muted);transition:all .18s;
+  }
+  .radio-pill input:checked + label{border-color:var(--teal);background:#1A7D991A;color:var(--teal);}
+  .radio-pill.sev-alta input:checked + label{border-color:#C0392B;background:#C0392B1A;color:#C0392B;}
+  .radio-pill.sev-media input:checked + label{border-color:#D08A1A;background:#D08A1A1A;color:#D08A1A;}
+
+  /* LEGGENDA GRAVITÀ */
+  .legend-hints{margin-top:8px;display:flex;flex-direction:column;gap:3px;}
+  .legend-hint{font-size:11px;color:var(--muted2);display:flex;align-items:baseline;gap:5px;}
+  .legend-hint .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;position:relative;top:0px;}
+  .legend-hint .dot.media{background:#D08A1A;}
+  .legend-hint .dot.critica{background:#C0392B;}
+  .legend-hint strong{font-weight:600;font-size:11px;}
+  .legend-hint strong.media{color:#D08A1A;}
+  .legend-hint strong.critica{color:#C0392B;}
+
+  /* DOWNLOAD BTN */
+  .btn-download{
+    margin-top:24px;width:100%;padding:13px;
+    background:var(--teal);color:#fff;border:none;border-radius:10px;
+    font-family:'Raleway',sans-serif;font-size:14px;font-weight:700;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    box-shadow:0 3px 14px rgba(26,125,153,.28);
+    transition:background .2s,transform .18s,box-shadow .18s;
+  }
+  .btn-download:hover{background:#14647A;transform:translateY(-1px);box-shadow:0 6px 22px rgba(26,125,153,.36);}
+  .btn-download:active{transform:translateY(0);}
+
+  #toast{
+    position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(20px);
+    background:#363D48;color:#fff;padding:10px 20px;border-radius:10px;
+    font-size:13px;font-weight:600;opacity:0;transition:all .3s;pointer-events:none;
+    display:flex;align-items:center;gap:8px;white-space:nowrap;
+    box-shadow:0 8px 28px rgba(0,0,0,.22);
+  }
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  #authGuard{
+    position:fixed;inset:0;background:rgba(11,25,70,.55);
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    z-index:9999;display:flex;align-items:center;justify-content:center;
+  }
+  .guard-box{
+    background:var(--surface);border-radius:16px;padding:36px 40px;
+    text-align:center;max-width:340px;
+    box-shadow:0 32px 80px rgba(4,63,117,.22);
+  }
+  .guard-box svg{color:var(--teal);margin-bottom:14px;}
+  .guard-box h2{font-family:'Raleway',sans-serif;font-size:18px;font-weight:700;margin-bottom:8px;}
+  .guard-box p{font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.6;}
+  .guard-box a{
+    display:inline-block;padding:10px 24px;border-radius:8px;
+    background:var(--accent);color:#fff;text-decoration:none;
+    font-size:13px;font-weight:700;
+  }
+
+  /* FOTO UPLOAD */
+  .foto-upload-area{
+    border:2px dashed var(--border2);border-radius:10px;
+    padding:18px;text-align:center;cursor:pointer;
+    background:var(--surface2);transition:border-color .2s,background .2s;
+    position:relative;
+  }
+  .foto-upload-area:hover{border-color:var(--teal);background:#1A7D990A;}
+  .foto-upload-area input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+  .foto-upload-icon{color:var(--muted2);margin-bottom:6px;}
+  .foto-upload-text{font-size:12px;color:var(--muted);font-weight:500;}
+  .foto-upload-text span{color:var(--teal);font-weight:700;}
+  .foto-preview{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+  .foto-thumb{
+    width:64px;height:64px;border-radius:8px;object-fit:cover;
+    border:2px solid var(--border);position:relative;
+  }
+  .foto-thumb-wrap{position:relative;display:inline-block;}
+  .foto-remove{
+    position:absolute;top:-6px;right:-6px;
+    width:18px;height:18px;border-radius:50%;
+    background:#C0392B;color:#fff;border:none;cursor:pointer;
+    font-size:11px;line-height:18px;text-align:center;font-weight:700;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .foto-count{font-size:11px;color:var(--muted);margin-top:6px;font-family:'JetBrains Mono',monospace;}
+
+  /* BTN ROW */
+  .btn-row{display:flex;gap:10px;margin-top:24px;}
+  .btn-download{
+    flex:1;padding:13px;
+    background:var(--teal);color:#fff;border:none;border-radius:10px;
+    font-family:'Raleway',sans-serif;font-size:13px;font-weight:700;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:7px;
+    box-shadow:0 3px 14px rgba(26,125,153,.28);
+    transition:background .2s,transform .18s,box-shadow .18s;
+  }
+  .btn-download:hover{background:#14647A;transform:translateY(-1px);box-shadow:0 6px 22px rgba(26,125,153,.36);}
+  .btn-download:active{transform:translateY(0);}
+  .btn-download.excel{background:#1E9E6A;box-shadow:0 3px 14px rgba(30,158,106,.25);}
+  .btn-download.excel:hover{background:#15805A;box-shadow:0 6px 22px rgba(30,158,106,.35);}
+  .btn-download.pdf{background:var(--accent2);box-shadow:0 3px 14px rgba(26,125,153,.25);}
+  .btn-download.pdf:hover{background:#14647A;box-shadow:0 6px 22px rgba(26,125,153,.35);}
+  @media(max-width:500px){.btn-row{flex-direction:column;}}
+
+  /* ── Restyle da mockup Designer (rev.373) ── */
+  .main-wide{max-width:1600px;}
+  .page-header-right{display:flex;align-items:center;gap:18px;}
+  .last-upd{font-size:11px;color:var(--muted);}
+  .kpi-strip{grid-template-columns:repeat(auto-fit,minmax(176px,1fr));}
+  .kpi-card{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:14px;text-align:left;}
+  .kpi-ico{flex:none;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#EAF2F8;color:var(--accent);}
+  .kpi-ico.red{background:#FDECEA;color:var(--err);} .kpi-ico.amber{background:#FFF3E0;color:var(--warn);}
+  .kpi-txt{min-width:0;}
+  .kpi-card .kpi-value.red{color:var(--err);} .kpi-card .kpi-value.amber{color:var(--warn);}
+  .kpi-label{font-size:11.5px;font-weight:600;color:var(--text2);line-height:1.25;}
+  .kpi-sub{font-size:10.5px;font-weight:700;color:var(--err);margin-top:2px;min-height:0;}
+  .kpi-sub:empty{display:none;}
+
+  .attivita-bar{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:11px 18px;border-radius:12px;background:#FDECEA;border:1px solid #F5C6C0;font-size:12.5px;color:var(--text2);}
+  .attivita-bar.ok{background:#E8F6EF;border-color:#BFE4D2;}
+  .ab-title{font-weight:800;color:var(--err);letter-spacing:.03em;font-size:12px;text-transform:uppercase;}
+  .attivita-bar.ok .ab-title{color:var(--ok);}
+  .ab-item{cursor:pointer;} .ab-item b{font-size:15px;color:var(--err);margin-right:3px;} .ab-item.amber b{color:var(--warn);} .ab-item:hover{text-decoration:underline;}
+  .ab-hint{margin-left:auto;font-size:11px;color:var(--err);}
+
+  .arch-split{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:18px;align-items:start;}
+  .layout-grid:not(.solo-archivio) .arch-split{grid-template-columns:1fr;}
+  @media(max-width:1180px){.arch-split{grid-template-columns:1fr;}}
+  .arch-split .preview-card{position:sticky;top:72px;max-height:calc(100vh - 90px);overflow:auto;padding:18px;}
+  .arch-sub{font-size:11.5px;color:var(--muted);margin-top:2px;}
+  .archive-pagination{justify-content:space-between;}
+  .pg-info{font-size:11px;color:var(--muted);} .pg-btns{display:flex;gap:4px;align-items:center;flex-wrap:wrap;}
+
+  .filter-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:10px;}
+  .filter-bar .fb-search{flex:1 1 220px;min-width:180px;}
+  .fb-sel{display:flex;flex-direction:column;gap:3px;font-size:10.5px;font-weight:700;color:var(--muted);}
+  .fb-sel select{padding:7px 8px;border:1px solid var(--border2);border-radius:8px;font-size:12px;font-family:'Raleway',sans-serif;color:var(--text2);background:var(--surface);min-width:112px;max-width:150px;}
+  .fb-clear{background:none;border:none;color:var(--accent2);font-size:11.5px;font-weight:700;cursor:pointer;padding:8px 4px;}
+  .fb-clear:hover{color:var(--err);}
+  .chip-row{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 14px;}
+  .fchip{border:1px solid var(--border2);background:var(--surface);color:var(--text2);border-radius:8px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Raleway',sans-serif;}
+  .fchip.red{color:var(--err);border-color:#F0B9B2;background:#FEF5F4;} .fchip.amber{color:#8A5A00;border-color:#EBCB8F;background:#FFF9EC;} .fchip.blue{color:var(--accent2);border-color:#A9D3DE;background:#F1F9FB;}
+  .fchip.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+  .verbale-row>span{min-width:0;}
+  .archive-table-head .c,.verbale-row .c{text-align:center;justify-self:center;}
+  .vr-comune{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} .vr-comune small{overflow:hidden;text-overflow:ellipsis;}
+  .es-pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:10.5px;font-weight:700;white-space:nowrap;}
+  .es-pill.red{background:#FDECEA;color:var(--err);} .es-pill.green{background:#E3F5EC;color:var(--ok);} .es-pill.amber{background:#FFF3E0;color:var(--warn);} .es-pill.grey{background:var(--surface2);color:var(--muted);}
+  .num-pill{display:inline-block;min-width:26px;text-align:center;padding:2px 7px;border-radius:7px;background:var(--surface2);color:var(--muted);font-size:11.5px;font-weight:800;}
+  .num-pill.red{background:#FDECEA;color:var(--err);} .num-pill.amber{background:#FFF3E0;color:var(--warn);}
+  .gg{font-weight:800;font-size:11.5px;color:var(--muted);} .gg.red{color:var(--err);} .gg.amber{color:var(--warn);}
+  .cli-link{color:var(--accent2);font-weight:700;font-size:11.5px;} .cli-link.open{color:var(--warn);}
+  .muted-d{color:var(--muted2);}
+
+  .pv-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .pv-code{font-family:'JetBrains Mono',monospace;font-weight:800;font-size:15px;color:var(--accent);}
+  .pv-x{background:none;border:none;font-size:16px;color:var(--muted);cursor:pointer;line-height:1;}
+  .pv-meta{font-size:10.5px;color:var(--muted);margin:2px 0 8px;}
+  .pv-btns{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+  .pv-tabs{display:flex;border-bottom:1px solid var(--border);margin:6px 0 12px;}
+  .pv-tab{flex:1;background:none;border:none;border-bottom:2px solid transparent;padding:8px 4px;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;font-family:'Raleway',sans-serif;}
+  .pv-tab.on{color:var(--accent);border-bottom-color:var(--accent);}
+  .pv-sec{font-size:12.5px;font-weight:800;color:var(--accent);margin:4px 0 8px;}
+  .pv-kv{display:grid;grid-template-columns:118px 1fr;gap:8px;padding:5px 0;font-size:12px;border-bottom:1px solid #eef0f3;}
+  .pv-kv>span:first-child{color:var(--muted);font-size:11px;} .pv-kv>span:last-child{color:var(--text);word-break:break-word;}
+  .pv-prog{font-size:11.5px;color:var(--muted);margin-bottom:5px;}
+  .pv-bar{height:7px;border-radius:6px;background:var(--surface2);overflow:hidden;margin-bottom:12px;} .pv-bar i{display:block;height:100%;background:var(--ok);border-radius:6px;}
+  .pv-area{display:grid;grid-template-columns:22px 1fr auto;gap:8px;align-items:center;padding:7px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;font-size:12px;}
+  .pv-area small{color:var(--muted);margin-left:4px;font-size:10px;}
+  .pv-area.nc{border-color:#F0B9B2;background:#FEF8F7;} .pv-area.nc .pv-area-r{color:var(--err);font-weight:800;} .pv-area-r{color:var(--muted);font-size:11px;font-weight:700;}
+  .pv-ico{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff;background:var(--ok);}
+  .pv-ico.nc{background:var(--err);} .pv-ico.part{background:var(--warn);}
+  .pv-photos{grid-template-columns:repeat(2,1fr);} .pv-photos img{width:100%;border-radius:8px;}
+
+  .widgets-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+  .widgets-row .w-card{padding:10px 14px;min-height:0;} .widgets-row .w-title{font-size:12px;margin-bottom:6px;}
+  .widgets-row .w-aging{gap:14px;} .widgets-row .w-donut{width:84px;height:84px;} .widgets-row .w-donut::after{inset:12px;}
+  .widgets-row .w-donut-c b{font-size:15px;} .widgets-row .w-donut-row{gap:16px;} .widgets-row .w-leg{gap:3px;font-size:11.5px;}
+  .widgets-row .w-total b{font-size:18px;} .widgets-row .w-col b{font-size:15px;}
+  /* Riga unica compatta: KPI + 2 grafici */
+  .top-row{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,.82fr) minmax(0,.4fr);gap:12px;align-items:stretch;}
+  .poz-card{cursor:pointer;display:flex;flex-direction:column;justify-content:center;gap:8px;min-height:0;transition:box-shadow .15s,border-color .15s,transform .1s;}
+  .poz-card:hover{box-shadow:var(--sh-sm);border-color:var(--accent);transform:translateY(-1px);}
+  .poz-card .w-title{margin-bottom:0;}
+  .poz-nums{display:flex;gap:18px;} .poz-nums div{display:flex;flex-direction:column;} .poz-nums b{font-size:22px;font-weight:800;color:var(--accent);line-height:1.1;} .poz-nums div.red b{color:var(--err);} .poz-nums small{font-size:10.5px;color:var(--muted);font-weight:600;}
+  .poz-sub{font-size:10px;color:var(--muted);}
+  .km-row.poz{grid-template-columns:auto .8fr 1.3fr 1.3fr auto;cursor:default;} .btn-poz-prev{background:none;border:1px solid var(--border);color:var(--accent);border-radius:8px;font-size:11px;font-weight:700;padding:4px 10px;cursor:pointer;} .btn-poz-prev:hover{border-color:var(--accent);background:var(--surface2);}
+  .top-row .kpi-strip{grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;}
+  .top-row .kpi-card{flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:2px;padding:8px 6px;border-radius:12px;}
+  .top-row .kpi-ico{display:none;}
+  .top-row .kpi-txt{display:flex;flex-direction:column;align-items:center;}
+  .top-row .kpi-value{font-size:20px;} .top-row .kpi-label{font-size:10px;line-height:1.2;} .top-row .kpi-sub{font-size:9px;margin-top:1px;}
+  .top-row .widgets-row{gap:8px;} .top-row .w-card{display:flex;flex-direction:column;justify-content:center;}
+  .top-row .w-donut{width:64px;height:64px;} .top-row .w-donut::after{inset:10px;} .top-row .w-donut-c b{font-size:13px;} .top-row .w-donut-c small{display:none;}
+  .top-row .w-aging{gap:10px;} .top-row .w-total b{font-size:16px;} .top-row .w-col b{font-size:13px;} .top-row .w-donut-row{gap:12px;}
+  @media(max-width:1500px){.top-row{grid-template-columns:1fr;}}
+  @media(max-width:1000px){.widgets-row{grid-template-columns:1fr;}}
+  .w-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;box-shadow:var(--sh-sm);min-height:180px;}
+  .w-title{font-weight:800;font-size:13px;color:var(--accent);margin-bottom:12px;}
+  .w-aging{display:flex;align-items:flex-end;gap:22px;}
+  .w-total{display:flex;flex-direction:column;align-items:center;} .w-total b{font-size:22px;color:var(--accent);} .w-total small,.w-col small{font-size:10.5px;color:var(--muted);}
+  .w-col{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;} .w-col b{font-size:18px;} .w-col.ok b{color:var(--ok);} .w-col.amber b{color:var(--warn);} .w-col.red b{color:var(--err);}
+  .w-bar{width:100%;max-width:38px;border-radius:3px 3px 0 0;} .w-col.ok .w-bar{background:#7FD1AE;} .w-col.amber .w-bar{background:#F2B33D;} .w-col.red .w-bar{background:var(--err);}
+  .w-donut-row{display:flex;align-items:center;gap:22px;}
+  .w-donut{width:128px;height:128px;border-radius:50%;position:relative;flex:none;}
+  .w-donut::after{content:'';position:absolute;inset:18px;border-radius:50%;background:var(--surface);}
+  .w-donut-c{position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;} .w-donut-c b{font-size:20px;color:var(--accent);} .w-donut-c small{font-size:10px;color:var(--muted);}
+  .w-leg{display:flex;flex-direction:column;gap:7px;font-size:12px;} .w-leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;} .w-leg b{margin-left:10px;}
+  .w-top{display:grid;grid-template-columns:minmax(0,150px) 1fr 24px;gap:8px;align-items:center;font-size:11.5px;padding:4px 0;cursor:pointer;} .w-top:hover span:first-child{text-decoration:underline;}
+  .w-top span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} .w-top .tb{height:9px;border-radius:5px;background:#F0A8A0;} .w-top b{text-align:right;color:var(--text2);}
+  .w-empty{color:var(--muted);font-size:12px;padding:20px 0;text-align:center;}
+  .deeplink-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 16px;border-radius:12px;background:#EAF2F8;border:1px solid #BFD6E8;font-size:12.5px;font-weight:600;color:var(--accent);}
+  .deeplink-bar .dl-open{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;}
+  .deeplink-bar .dl-x{background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;margin-left:auto;}
+</style>
+</head>
+<body>
+
+<div id="authGuard" style="display:none">
+  <div class="guard-box">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    <h2>Accesso richiesto</h2>
+    <p>Devi effettuare l'accesso al portale per utilizzare questa pagina.</p>
+    <a href="hub.html">Vai al portale</a>
+  </div>
+</div>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <img src="data:image/png;base64,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" alt="Retelit" style="height:50px;display:block">
+    <div class="divider-v"></div>
+    <span class="page-title">Sopralluoghi</span>
+  </div>
+  <div class="topbar-right">
+    <span id="topbarUser" style="font-size:11px;color:var(--retelit-ice);font-family:'JetBrains Mono',monospace;"></span>
+    <a href="hub.html" class="topbar-back">&larr; Hub</a>
+  </div>
+</div>
+
+<div class="main-wide">
+
+  <div class="page-header-row">
+    <div class="page-header">
+      <div class="eyebrow">Cantieri</div>
+      <div class="page-h1">Sopralluoghi</div>
+      <div class="page-sub">Monitora, filtra e gestisci i verbali di sopralluogo.</div>
+    </div>
+    <div class="page-header-right"><span class="last-upd" id="lastUpd"></span>
+    <button class="btn-nuovo" id="btnNuovoVerbale" onclick="toggleNuovoVerbale()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Nuovo verbale
+    </button>
+    </div>
+  </div>
+
+  <div class="deeplink-bar" id="deepLinkBar" style="display:none">
+    <span id="deepLinkTxt"></span>
+    <button type="button" class="dl-open" onclick="document.getElementById('deepLinkBar').style.display='none';toggleNuovoVerbale(true)">Apri nuovo verbale</button>
+    <button type="button" class="dl-x" onclick="document.getElementById('deepLinkBar').style.display='none';window._pozzettoDL=''">Ignora</button>
+  </div>
+
+  <div class="top-row">
+  <div class="kpi-strip">
+    <div class="kpi-card is-click" onclick="openKpiModal('anomalie','Verbali con anomalie (totali)')">
+      <div class="kpi-ico red"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+      <div class="kpi-txt"><div class="kpi-value red" id="kpi-anomalie">0</div><div class="kpi-label">Verbali con anomalie</div></div>
+    </div>
+    <div class="kpi-card is-click" onclick="openKpiModal('anomalie_aperte','Verbali con anomalie aperte')">
+      <div class="kpi-ico red"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
+      <div class="kpi-txt"><div class="kpi-value red" id="kpi-anomalie-aperte">0</div><div class="kpi-label">Anomalie aperte</div><div class="kpi-sub" id="kpi-sub-anomalie-aperte"></div></div>
+    </div>
+    <div class="kpi-card is-click" onclick="openKpiModal('verifiche','Verifiche da eseguire')">
+      <div class="kpi-ico amber"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+      <div class="kpi-txt"><div class="kpi-value amber" id="kpi-verifiche">0</div><div class="kpi-label">Verifiche da eseguire</div><div class="kpi-sub" id="kpi-sub-verifiche"></div></div>
+    </div>
+    <div class="kpi-card is-click" onclick="openKpiModal('segncliente','Verbali con segnalazione cliente')">
+      <div class="kpi-ico "><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+      <div class="kpi-txt"><div class="kpi-value " id="kpi-segn-cliente">0</div><div class="kpi-label">Segnalazioni cliente</div></div>
+    </div>
+    <div class="kpi-card is-click" onclick="openKpiModal('segn_aperte','Segnalazioni cliente aperte')">
+      <div class="kpi-ico amber"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+      <div class="kpi-txt"><div class="kpi-value amber" id="kpi-segn-aperte">0</div><div class="kpi-label">Segnalazioni cliente aperte</div></div>
+    </div>
+    <div class="kpi-card is-click" onclick="openKpiModal('oggi','Verbali di oggi')">
+      <div class="kpi-ico "><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+      <div class="kpi-txt"><div class="kpi-value " id="kpi-oggi">0</div><div class="kpi-label">Verbali oggi</div></div>
+    </div>
+    <div class="kpi-card is-click" onclick="openKpiModal('tutti','Tutti i verbali')">
+      <div class="kpi-ico "><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+      <div class="kpi-txt"><div class="kpi-value " id="kpi-totale">0</div><div class="kpi-label">Verbali totali</div></div>
+    </div>
+  </div>
+  <div class="widgets-row" id="widgetsRow"></div>
+  <div class="w-card poz-card" id="pozCard" onclick="openPozzettiModal()" title="Verbali dei pozzetti">
+    <div class="w-title">Pozzetti</div>
+    <div class="poz-nums"><div><b id="poz-verificati">0</b><small>Verificati</small></div><div class="red"><b id="poz-anomalie">0</b><small>Con anomalie</small></div></div>
+    <div class="poz-sub" id="poz-sub"></div>
+  </div>
+  </div>
+
+  <div class="attivita-bar" id="attivitaBar"></div>
+
+  <div class="layout-grid solo-archivio" id="layoutGrid">
+
+  <div class="form-card" id="formCard" style="display:none">
+
+    <div class="form-card-head">
+      <span class="fch-title">Nuovo verbale di sopralluogo</span>
+      <button class="btn-chiudi-form" onclick="toggleNuovoVerbale(false)">Chiudi ✕</button>
+    </div>
+
+    <div class="verifica-banner" id="pozzBanner" style="display:none"><span id="pozzBannerTxt"></span></div>
+
+    <div class="verifica-banner" id="verificaBanner" style="display:none">
+      <span id="verificaBannerTxt"></span>
+      <button type="button" class="btn-chiudi-form" onclick="resetVerbaleForm()">Annulla verifica</button>
+    </div>
+
+    <div class="section-label">Identificazione</div>
+
+    <div class="field-row">
+      <div class="field-group">
+        <label for="codice_verbale">Codice Verbale</label>
+        <input type="text" id="codice_verbale" readonly placeholder="Generato all'invio"
+               style="background:#f4f6fa;color:#888;cursor:not-allowed;font-family:'JetBrains Mono',monospace;font-weight:600">
+      </div>
+      <div class="field-group">
+        <label for="data">Data Sopralluogo</label>
+        <input type="date" id="data">
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-group">
+        <label for="lotto">Lotto</label>
+        <select id="lotto" onchange="onLottoChange()">
+          <option value="">— seleziona —</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label for="n_cantiere">N° Cantiere</label>
+        <select id="n_cantiere">
+          <option value="">— seleziona prima il lotto —</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <label for="indirizzo">Indirizzo / Località</label>
+      <input type="text" id="indirizzo" placeholder="Via Roma 12, Pavia (PV)">
+    </div>
+
+    <div class="field-row">
+      <div class="field-group">
+        <label for="impresa">Impresa esecutrice</label>
+        <input type="text" id="impresa" readonly placeholder="Seleziona prima il lotto"
+               style="background:#f4f6fa;color:#888;cursor:not-allowed">
+      </div>
+      <div class="field-group">
+        <label for="ruolo">Ruolo redattore</label>
+        <select id="ruolo">
+          <option value="Direttore Lavori">Direttore Lavori</option>
+          <option value="Field Manager">Field Manager</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label for="redattore">Redatto da</label>
+        <input type="text" id="redattore" placeholder="Nome Cognome">
+      </div>
+    </div>
+
+    <div class="field-group">
+      <label>Foto allegate</label>
+      <div class="foto-upload-area" id="fotoArea">
+        <input type="file" id="fotoInput" accept="image/*" multiple onchange="handleFoto(this)">
+        <div class="foto-upload-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        </div>
+        <div class="foto-upload-text"><span>Clicca</span> per aggiungere foto · max 8</div>
+      </div>
+      <div class="foto-preview" id="fotoPreview"></div>
+      <div class="foto-count" id="fotoCount"></div>
+    </div>
+
+    <div class="field-group" id="segnClienteGroup">
+      <div id="segnClienteWrap">
+        <div class="segn-esito" id="segnSiNo">
+          <span>Segnalazione cliente *</span>
+          <label><input type="radio" name="segn_cli_sino" value="SI" onchange="onSegnSiNo()"> SI</label>
+          <label><input type="radio" name="segn_cli_sino" value="NO" onchange="onSegnSiNo()"> NO</label>
+        </div>
+        <input type="checkbox" id="segnalazione_cliente" style="display:none" tabindex="-1" aria-hidden="true">
+      </div>
+      <div class="segn-hint">SI solo se il sopralluogo è stato richiesto a seguito di una segnalazione ricevuta dal cliente.</div>
+      <div id="segnClienteNoteBox" style="display:none">
+        <div class="segn-esito" id="segnEsito">
+          <span>Esito verifica sul posto *</span>
+          <label><input type="radio" name="esito_segnalazione" value="confermata" onchange="document.getElementById('segnEsito').classList.remove('miss')"> Confermata (anomalia)</label>
+          <label><input type="radio" name="esito_segnalazione" value="non_confermata" onchange="document.getElementById('segnEsito').classList.remove('miss')"> Non confermata</label>
+        </div>
+        <textarea id="segnalazione_cliente_note" maxlength="2000" placeholder="Note sulla segnalazione cliente (oggetto, data, riferimento…)"></textarea>
+      </div>
+    </div>
+
+    <hr class="divider-h">
+    <div class="section-label">Checklist Direzione Lavori</div>
+
+    <div class="ck-wrap">
+      <div class="ck-tabs">
+        <button type="button" class="ck-tab active" id="ck-tab-qualita" onclick="setChecklistTab('qualita')">Qualità <span class="ck-tab-badge" id="ck-badge-qualita">0/0</span></button>
+        <button type="button" class="ck-tab" id="ck-tab-sicurezza" onclick="setChecklistTab('sicurezza')">Sicurezza <span class="ck-tab-badge" id="ck-badge-sicurezza">0/0</span></button>
+        <button type="button" class="ck-tab" id="ck-tab-collaudo" onclick="setChecklistTab('collaudo')">Collaudo <span class="ck-tab-badge" id="ck-badge-collaudo">0/0</span></button>
+      </div>
+      <div class="ck-toolbar">
+        <span class="ck-progress" id="ck-progress">—</span>
+        <span class="ck-bulk">
+          <button type="button" onclick="ckBulk('C')">Tutti conformi</button>
+          <button type="button" onclick="ckBulk('NA')">Tutti N.A.</button>
+          <button type="button" onclick="ckBulk('')">Azzera</button>
+        </span>
+      </div>
+      <div class="ck-body" id="ck-body"></div>
+    </div>
+
+    <div class="field-group" style="margin-top:12px">
+      <label for="ck-note-generali">Note generali checklist</label>
+      <textarea id="ck-note-generali" placeholder="Indicazioni di carattere generale o specifiche sul sopralluogo..." oninput="ckGeneralNoteInput()"></textarea>
+    </div>
+
+    <div class="field-group" id="segnSystemGroup" style="margin-top:12px">
+      <label>Segnalazione al System *</label>
+      <div class="segn-hint">Obbligatoria in ogni verbale, verifiche comprese.</div>
+      <div class="field-row">
+        <div class="field-group">
+          <label for="subsystem">SubSystem (subappalto) *</label>
+          <input type="text" id="subsystem" maxlength="200" autocomplete="off" oninput="this.classList.remove('miss')">
+        </div>
+        <div class="field-group">
+          <label for="data_invio_system">Data invio segnalazione al System *</label>
+          <input type="date" id="data_invio_system" oninput="this.classList.remove('miss')">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label for="metodo_invio">Metodo di invio *</label>
+          <input type="text" id="metodo_invio" list="dlMetodoV" maxlength="100" autocomplete="off" oninput="this.classList.remove('miss')">
+          <datalist id="dlMetodoV"><option value="PEC"><option value="Email"><option value="Telefono"><option value="WhatsApp"><option value="Di persona"></datalist>
+        </div>
+        <div class="field-group">
+          <label for="rif_system_invio">Riferimento System invio *</label>
+          <input type="text" id="rif_system_invio" maxlength="300" autocomplete="off" oninput="this.classList.remove('miss')">
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn-download" id="btn-invia" onclick="inviaVerbale()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Invia verbale
+      </button>
+      <button class="btn-download pdf" onclick="generatePdf()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Scarica PDF
+      </button>
+    </div>
+
+  </div>
+
+    <div class="right-col">
+    <div class="arch-split">
+
+      <div class="archive-card">
+        <div class="archive-header">
+          <div><span class="archive-title">Verbali di sopralluogo</span><div class="arch-sub" id="archCount"></div></div>
+          <button type="button" class="btn-export" id="btnExportCsv" onclick="exportVerbaliCsv()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Esporta Excel
+          </button>
+        </div>
+
+        <div class="filter-bar">
+          <input type="text" id="verbali-search" placeholder="Cerca per codice, comune, cantiere…" oninput="applyVerbaliFilters()" class="archive-search fb-search">
+          <label class="fb-sel">Comune<select id="filtro-comune" onchange="applyVerbaliFilters()"><option value="">Tutti</option></select></label>
+          <label class="fb-sel">Lotto<select id="filtro-lotto" onchange="applyVerbaliFilters()"><option value="">Tutti</option></select></label>
+          <label class="fb-sel">Impresa<select id="filtro-impresa" onchange="applyVerbaliFilters()"><option value="">Tutte</option></select></label>
+          <label class="fb-sel">Anomalie<select id="filtro-stato" onchange="applyVerbaliFilters()">
+            <option value="">Tutte</option><option value="Nessuna anomalia">Nessuna anomalia</option><option value="anom">Con anomalia</option></select></label>
+          <label class="fb-sel">Periodo<select id="filtro-mese" onchange="applyVerbaliFilters()"><option value="">Tutti</option></select></label>
+          <button type="button" class="btn-filtri" id="btnFiltri" onclick="toggleFiltri()">Altri filtri <span class="filtri-badge" id="filtriBadge" style="display:none">0</span></button>
+          <button type="button" class="fb-clear" onclick="azzeraFiltri()">Pulisci filtri</button>
+        </div>
+
+        <div class="archive-filters" id="archiveFilters" style="display:none">
+          <select id="filtro-nc" onchange="applyVerbaliFilters()">
+            <option value="">Checklist: tutte</option><option value="nc">Con non conformità</option><option value="ok">Senza non conformità</option><option value="incompleta">Checklist incompleta</option></select>
+          <select id="filtro-segn-cliente" onchange="applyVerbaliFilters()">
+            <option value="">Segnalazione cliente: tutte</option><option value="si">Solo con segnalazione</option><option value="no">Solo senza segnalazione</option></select>
+          <select id="filtro-verifica" onchange="applyVerbaliFilters()" class="archive-filter-wide">
+            <option value="">Verifiche: tutte</option><option value="da_fare">Verifiche da eseguire</option><option value="scaduta">Verifiche scadute</option><option value="risolto">Verifiche risolte</option><option value="non_risolto">Non risolte</option><option value="figli">Solo sopralluoghi di verifica</option></select>
+        </div>
+
+        <div class="chip-row" id="chipRow"></div>
+
+        <div class="archive-table-scroll">
+          <div class="archive-table-head" id="archive-table-head"></div>
+          <div id="verbali-list"></div>
+        </div>
+
+        <div id="verbali-pagination" class="archive-pagination"></div>
+      </div>
+
+      <div class="preview-card" id="preview-card">
+        <div id="preview-body" class="preview-empty">Seleziona un verbale dall'archivio per vederne il dettaglio.</div>
+      </div>
+
+    </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="kpi-modal" id="kpiModal" onclick="if(event.target===this)closeKpiModal()">
+  <div class="kpi-modal-box">
+    <div class="kpi-modal-head">
+      <div class="kpi-modal-title" id="kpiModalTitle">—<small id="kpiModalSub"></small></div>
+      <div style="display:flex;gap:8px;align-items:center"><span id="kpiModalActions"></span><button class="kpi-modal-close" onclick="closeKpiModal()">Chiudi ✕</button></div>
+    </div>
+    <div class="kpi-modal-body" id="kpiModalBody"></div>
+  </div>
+</div>
+
+<div class="kpi-modal" id="sysModal" onclick="if(event.target===this)closeSysModal()">
+  <div class="kpi-modal-box" style="width:min(520px,100%)">
+    <div class="kpi-modal-head">
+      <div class="kpi-modal-title" id="sysModalTitle">Segnalazione al System<small id="sysModalSub"></small></div>
+      <button class="kpi-modal-close" onclick="closeSysModal()">Chiudi ✕</button>
+    </div>
+    <div class="kpi-modal-body" style="display:grid;gap:12px;padding-top:14px">
+      <div class="field-group"><label for="sm_subsystem">SubSystem (subappalto) *</label><input type="text" id="sm_subsystem" maxlength="200" autocomplete="off" oninput="this.classList.remove('miss')"></div>
+      <div class="field-group"><label for="sm_data">Data invio segnalazione al System *</label><input type="date" id="sm_data" oninput="this.classList.remove('miss')"></div>
+      <div class="field-group"><label for="sm_metodo">Metodo di invio *</label><input type="text" id="sm_metodo" list="dlMetodoV" maxlength="100" autocomplete="off" oninput="this.classList.remove('miss')"></div>
+      <div class="field-group"><label for="sm_rif">Riferimento System invio *</label><input type="text" id="sm_rif" maxlength="300" autocomplete="off" oninput="this.classList.remove('miss')"></div>
+      <div id="sm_segn_box" style="border-top:1px solid var(--border,#e2e8f0);padding-top:10px">
+        <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:8px"><input type="checkbox" id="sm_segn" onchange="smSegnToggle()"> Segnalazione cliente</label>
+        <div id="sm_segn_wrap" style="display:none">
+          <div id="sm_segn_esito" style="display:flex;gap:16px;font-size:13px;margin-bottom:8px">
+            <label><input type="radio" name="sm_segn_esito" value="confermata" onchange="document.getElementById('sm_segn_esito').classList.remove('miss')"> Confermata (anomalia)</label>
+            <label><input type="radio" name="sm_segn_esito" value="non_confermata" onchange="document.getElementById('sm_segn_esito').classList.remove('miss')"> Non confermata</label>
+          </div>
+          <textarea id="sm_segn_note" maxlength="2000" placeholder="Nota sulla segnalazione cliente *" oninput="this.classList.remove('miss')" style="width:100%;min-height:60px"></textarea>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px">
+        <button class="kpi-modal-close" onclick="closeSysModal()">Annulla</button>
+        <button class="kpi-modal-close" id="sysModalSave" onclick="saveSysModal()" style="background:var(--accent);color:#fff;border-color:var(--accent)">Salva</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="kpi-modal" id="editModal" onclick="if(event.target===this)closeEditModal()">
+  <div class="kpi-modal-box" style="width:min(860px,100%);max-height:92vh">
+    <div class="kpi-modal-head">
+      <div class="kpi-modal-title">Modifica verbale<small id="editModalSub"></small></div>
+      <button class="kpi-modal-close" onclick="closeEditModal()">Chiudi ✕</button>
+    </div>
+    <div class="kpi-modal-body" id="editModalBody" style="padding-top:14px">
+      <div class="ed-grid">
+        <div class="field-group"><label for="ed_data">Data sopralluogo *</label><input type="date" id="ed_data"></div>
+        <div class="field-group"><label for="ed_lotto">Lotto *</label><input type="text" id="ed_lotto" maxlength="50"></div>
+        <div class="field-group" style="grid-column:1/-1"><label for="ed_tratta">N° Cantiere *</label><input type="text" id="ed_tratta" maxlength="300"></div>
+        <div class="field-group"><label for="ed_impresa">Impresa esecutrice *</label><input type="text" id="ed_impresa" maxlength="200"></div>
+        <div class="field-group"><label for="ed_comune">Indirizzo / Località</label><input type="text" id="ed_comune" maxlength="300"></div>
+        <div class="field-group"><label for="ed_redattore">Redatto da</label><input type="text" id="ed_redattore" maxlength="200"></div>
+        <div class="field-group"><label for="ed_ruolo">Ruolo redattore</label><input type="text" id="ed_ruolo" maxlength="200"></div>
+      </div>
+      <div id="ed_segn_box">
+        <div class="ed-sec">Segnalazione cliente</div>
+        <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:8px"><input type="checkbox" id="ed_segn" onchange="edSegnToggle()"> Il sopralluogo nasce da una segnalazione del cliente</label>
+        <div id="ed_segn_wrap" style="display:none">
+          <div style="display:flex;gap:16px;font-size:13px;margin-bottom:8px">
+            <label><input type="radio" name="ed_segn_esito" value="confermata"> Confermata (anomalia)</label>
+            <label><input type="radio" name="ed_segn_esito" value="non_confermata"> Non confermata</label>
+          </div>
+          <textarea id="ed_segn_note" maxlength="2000" placeholder="Note sulla segnalazione cliente (oggetto, data, riferimento…)" style="width:100%;min-height:60px"></textarea>
+        </div>
+      </div>
+      <div class="ed-sec">Checklist</div>
+      <div class="ed-tabs" id="ed_tabs"></div>
+      <div id="ed_ck_body"></div>
+      <div class="field-group" style="margin-top:10px"><label for="ed_ck_note">Note generali checklist</label><textarea id="ed_ck_note" maxlength="4000" style="min-height:60px"></textarea></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px">
+        <button class="kpi-modal-close" onclick="closeEditModal()">Annulla</button>
+        <button class="kpi-modal-close" id="editModalSave" onclick="saveEditModal()" style="background:var(--accent);color:#fff;border-color:var(--accent)">Salva modifiche</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px">I dati "Segnalazione al System" si modificano dal bottone dedicato nell'anteprima. Le issue già generate dal verbale non vengono ricalcolate: eventuali nuove NC ne creano di nuove.</div>
+    </div>
+  </div>
+</div>
+
+<div id="toast">✓ Verbale scaricato</div>
+
+<script>
+const _DL = new URLSearchParams(location.search);   // deep-link (es. da mappa.html): letto una volta, poi l'URL viene ripulito
+window.addEventListener('pageshow', (e) => {
+  if (e.persisted) location.reload();
+});
+window.addEventListener('DOMContentLoaded', () => {
+  const u = localStorage.getItem('_enri_user');
+  if (!u) { document.getElementById('authGuard').style.display='flex'; return; }
+  const tok = localStorage.getItem('_enri_session');
+  if (!tok) {
+    document.getElementById('authGuard').style.display='flex';
+    document.getElementById('authGuard').querySelector('p').textContent = 'Sessione scaduta. Effettua di nuovo il login.';
+    return;
+  }
+  // Pre-compila redattore con utente corrente
+  const redEl = document.getElementById('redattore');
+  if (redEl && !redEl.value) redEl.value = u;
+
+  // Carica lotti e cantieri dal backend
+  _loadLottiCantieri();
+  // Carica archivio verbali (dashboard, sempre visibile)
+  loadVerbali();
+
+  renderChecklist();
+
+  // Deep link (es. bottone "Sopralluogo" della mappa): il form NON si apre da solo. Lotto/cantiere vengono
+  // precompilati (vedi _loadLottiCantieriImpl) e una barra propone di aprire il nuovo verbale.
+  if (_DL.get('nuovo') === '1' || _DL.get('lotto') || _DL.get('cantiere') || _DL.get('pozzetto')) {
+    window._pozzettoDL = (_DL.get('pozzetto') || '').trim();   // collegamento verbale↔pozzetto (campo `pozzetto` del verbale)
+    const bits = [_DL.get('lotto') ? 'Lotto ' + _DL.get('lotto') : '', window._pozzettoDL ? 'Pozzetto ' + window._pozzettoDL : '', _DL.get('indirizzo') || ''].filter(Boolean).join(' · ');
+    document.getElementById('deepLinkTxt').textContent = 'Nuovo sopralluogo richiesto' + (bits ? ' — ' + bits : '') + '.';
+    document.getElementById('deepLinkBar').style.display = '';
+    history.replaceState(null, '', location.pathname);   // un reload/ritorno alla pagina non lo ripropone
+  }
+
+  document.getElementById('topbarUser').textContent = u;
+  document.getElementById('redattore').value = u;
+  document.getElementById('data').value = new Date().toISOString().split('T')[0];
+
+  // Deep-link da mappa.html (bottone "Sopralluogo" nel popup tratta)
+  const dlIndirizzo = _DL.get('indirizzo');
+  if (dlIndirizzo) document.getElementById('indirizzo').value = dlIndirizzo;
+});
+
+function v(id){ return document.getElementById(id).value.trim()||'—'; }
+function fmtDate(id){ const val=document.getElementById(id).value; return val?new Date(val).toLocaleDateString('it-IT'):'—'; }
+function gravita(){ return document.querySelector('input[name="gravita"]:checked')?.value||'—'; }
+function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2800); }
+
+/* ── FOTO (max 8) ── */
+const MAX_FOTO = 8;
+const RETELIT_B64 = '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AAAkIAAAAABAAgIAAACABAQAAAAASEAAAAAAkIAAAAAAIAEBAAAAABIQAAAAACQgAAAAAEACAgAAAIAEBAAAAAAJCAAAAACQgAAAAAAgAQEAAAAAEhAAAAAAJCAAAAAASEAAAAAAgAQEAAAAAAkIAAAAAJCAAAAAACABAQAAAAASEAAAAAAkIAAAAABIQAAAAACABAQAAAAACQgAAAAAkIAAAAAAIAEBAAAAQAICAAAAACQgAAAAAEhAAAAAAIAEBAAAAAAJCAAAAAASEAAAAAAgAQEAAABAAgIAAAAAJCAAAAAASEAAAAAAkIAAAAAAAAkIAAAAABIQAAAAACABAQAAAEACAgAAAIAEBAAAAABIQAAAAACQgAAAAAAACQgAAAAAEhAAAAAAJCAAAAAAQAICAAAAgAQEAAAAAEhAAAAAAJCAAAAAAAAJCAAAAAASEAAAAAAkIAAAAABAAgIAAACABAQAAAAASEAAAAAAkIAAAAAAIAEBAAAAABIQAAAAACQgAAAAAEACAgAAAIAEBAAAAAAJCAAAAACQgAAAAAAgAQEAAAAAEhAAAAAAJCAAAAAASEAAAAAAgAQEAAAAAAkIAAAAAJCAAAAAACABAQAAAEACAgAAAAAkIAAAAACW5P8DpUmn9J8Qru0AAAAASUVORK5CYII=';
+let uploadedPhotos = []; // {dataUrl, name, ext, nw, nh}
+
+function handleFoto(input) {
+  const remaining = MAX_FOTO - uploadedPhotos.length;
+  if (remaining <= 0) { input.value=''; return; }
+  Array.from(input.files).slice(0, remaining).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        uploadedPhotos.push({ dataUrl:e.target.result, name:file.name,
+          ext: file.type.includes('png')?'png':'jpeg', nw:img.naturalWidth, nh:img.naturalHeight });
+        renderPreviews();
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value = '';
+}
+
+function removeFoto(idx){ uploadedPhotos.splice(idx,1); renderPreviews(); }
+
+function renderPreviews(){
+  const preview=document.getElementById('fotoPreview');
+  const count=document.getElementById('fotoCount');
+  const input=document.getElementById('fotoInput');
+  const area=document.getElementById('fotoArea');
+  const full = uploadedPhotos.length >= MAX_FOTO;
+  input.disabled=full; area.style.opacity=full?'0.55':'1'; area.style.pointerEvents=full?'none':'auto';
+  preview.innerHTML = uploadedPhotos.map((p,i)=>
+    `<div class="foto-thumb-wrap"><img class="foto-thumb" src="${p.dataUrl}" title="${p.name}">
+     <button class="foto-remove" onclick="removeFoto(${i})">✕</button></div>`).join('');
+  count.textContent = !uploadedPhotos.length ? '' :
+    full ? `${MAX_FOTO}/${MAX_FOTO} · massimo raggiunto` : `${uploadedPhotos.length}/${MAX_FOTO} foto`;
+}
+
+/* Campi "Segnalazione al System" (obbligatori in ogni verbale, verifiche comprese) */
+function _segnSystemVals() {
+  const g = id => (document.getElementById(id)?.value || '').trim();
+  return { subsystem: g('subsystem'), data_invio_system: g('data_invio_system'), metodo_invio: g('metodo_invio'), rif_system_invio: g('rif_system_invio') };
+}
+
+/* ── DATI CONDIVISI ── */
+function getF(){
+  const selCantiere = document.getElementById('n_cantiere');
+  const cantLabel = selCantiere?.options[selCantiere.selectedIndex]?.text || selCantiere?.value || '—';
+  return {
+    codice_verbale:v('codice_verbale'),
+    n_cantiere: cantLabel !== '— seleziona cantiere —' ? cantLabel : '—',
+    data:fmtDate('data'), indirizzo:v('indirizzo'),
+    lotto:v('lotto'), impresa:v('impresa'), ruolo:v('ruolo'), redattore:v('redattore'),
+    n_foto:String(uploadedPhotos.length),
+    checklist: ckPayload(),
+    segnalazione_cliente: document.getElementById('segnalazione_cliente')?.checked ? 'SI' : 'NO',
+    segnalazione_cliente_note: document.getElementById('segnalazione_cliente')?.checked ? (document.getElementById('segnalazione_cliente_note')?.value || '').trim() : '',
+    esito_segnalazione: document.getElementById('segnalazione_cliente')?.checked ? (document.querySelector('input[name="esito_segnalazione"]:checked')?.value || '') : '',
+    subsystem:v('subsystem'), data_invio_system:fmtDate('data_invio_system'), metodo_invio:v('metodo_invio'), rif_system_invio:v('rif_system_invio'),
+    verbale_origine: _verificaDi ? _verificaDi.codice : '',
+    verifica_tipo: _verificaDi ? _verificaDi.tipo : '',
+    // Resto della vecchia sezione "Segnalazioni" (gravità/testo/azioni/date/note)
+    // rimosso dal form di compilazione — resta solo in lettura sui verbali già
+    // esistenti, sostituito dalla checklist DL. Campi mantenuti vuoti per
+    // compatibilità payload.
+    gravita:'—', segnalazioni:'—', azioni:'—',
+    scadenza_azioni:'—', prossimo_sopr:'—', note:'—',
+  };
+}
+
+function onSegnSiNo() {
+  const val = document.querySelector('input[name="segn_cli_sino"]:checked')?.value;
+  const cb = document.getElementById('segnalazione_cliente'); if (cb) cb.checked = val === 'SI';
+  document.getElementById('segnSiNo')?.classList.remove('miss');
+  onSegnClienteChange();
+}
+function onSegnClienteChange() {
+  const on = document.getElementById('segnalazione_cliente')?.checked;
+  document.getElementById('segnClienteWrap')?.classList.toggle('on', !!on);
+  const nb = document.getElementById('segnClienteNoteBox');
+  if (nb) nb.style.display = on ? '' : 'none';
+}
+
+// Griglia foto: 1→full, 2→[0,1], 3→[0,1]+[2], 4→[0,1]+[2,3]
+/* ══ EXCEL — riga singola da incollare nel master ══ */
+// ── Lotti e cantieri dinamici ────────────────────────────────────────────────
+let _lottiData = {};
+let _lottoImpresa = {};
+let _deepLinkApplied = false;
+
+// Single-flight: all'avvio e all'apertura del form (deep-link da mappa) la funzione partiva due volte
+// in parallelo e la seconda ricostruiva il menu cantieri cancellando quello preselezionato.
+let _lottiPromise = null;
+function _loadLottiCantieri() {
+  if (!_lottiPromise) _lottiPromise = _loadLottiCantieriImpl().finally(() => { _lottiPromise = null; });
+  return _lottiPromise;
+}
+async function _loadLottiCantieriImpl() {
+  try {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    const token   = localStorage.getItem('_enri_session') || '';
+    const res = await fetch(apiBase + '/api/lotti-cantieri', {
+      headers: { 'x-session-token': token }
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    _lottiData    = data.lotti || {};
+    _lottoImpresa = data.lotto_impresa || {};
+    const sel = document.getElementById('lotto');
+    const params = _DL;
+    const preLotto = params.get('lotto');
+    const current = (preLotto && !_deepLinkApplied) ? preLotto : sel.value;
+    sel.innerHTML = '<option value="">— seleziona —</option>' +
+      Object.keys(_lottiData).map(l => `<option value="${l}"${l===current?' selected':''}>${l}</option>`).join('');
+    if (current) onLottoChange();
+    if (preLotto && !_deepLinkApplied) {
+      _deepLinkApplied = true;
+      const preCantiere = params.get('cantiere');
+      if (preCantiere) {
+        const selCant = document.getElementById('n_cantiere');
+        const opts = [...selCant.options];
+        const num = String(preCantiere).split('|')[0].trim();
+        const hit = opts.find(o => o.value === preCantiere) || (num ? opts.find(o => o.value.split('|')[0].trim() === num) : null);
+        if (hit) selCant.value = hit.value;
+      }
+    }
+  } catch(e) { console.warn('Lotti non caricati:', e); }
+}
+
+function onLottoChange() {
+  const lotto = document.getElementById('lotto').value;
+  const sel   = document.getElementById('n_cantiere');
+  const cantieri = _lottiData[lotto] || [];
+  if (!cantieri.length) {
+    sel.innerHTML = '<option value="">— nessun cantiere disponibile —</option>';
+  } else {
+    sel.innerHTML = '<option value="">— seleziona cantiere —</option>' +
+      cantieri.map(c => `<option value="${c.value}">${c.label}</option>`).join('');
+  }
+
+  // Imposta impresa esecutrice in base al lotto (campo non editabile)
+  const impField = document.getElementById('impresa');
+  const impresa  = _lottoImpresa[lotto];
+  if (impField) {
+    impField.value = impresa || '';
+    impField.placeholder = impresa ? '' : 'Nessuna impresa assegnata a questo lotto';
+  }
 }
 
 
-def _guard_sensitive_read(rel: str, sess: dict) -> None:
-    """Blocca la lettura dei file core da parte del ruolo 'impresa': un token
-    impresa legittimo non deve poter scaricare il dataset intero di tutti i
-    concorrenti via /api/data. I ruoli interni (admin/admin2/user) restano ok."""
-    if Path(rel).name in SENSITIVE_FILES and sess.get("ruolo") == "impresa":
-        raise HTTPException(
-            403,
-            "Accesso non consentito per questo ruolo — le imprese usano gli endpoint /api/imprese/*",
-        )
+// ── Pannello "Nuovo verbale" (nascosto di default) ───────────────────────────
+// Verbale categoria POZZETTO (da mappa.html): solo le voci checklist area "Pozzetti" restano da compilare,
+// tutte le altre partono N.A. (modificabili a mano come sempre).
+function _applyPozzettoMode() {
+  const bn = document.getElementById('pozzBanner');
+  if (!window._pozzettoDL || _verificaDi) { if (bn) bn.style.display = 'none'; return; }
+  if (!window._pozzDefaultsApplied) {
+    window._pozzDefaultsApplied = true;
+    CK_CATS.forEach(k => CHECKLIST_DEF[k].items.forEach(it => {
+      if (it.area === 'Pozzetti') return;
+      const st = _ckGet(k, it.id);
+      if (!st.e) st.e = 'NA';
+    }));
+    setChecklistTab('qualita');
+  }
+  if (bn) {
+    document.getElementById('pozzBannerTxt').innerHTML = '<b>VERBALE POZZETTO ' + esc(window._pozzettoDL) + '</b> — checklist precompilata: da compilare solo le voci Pozzetti, le altre sono N.A. (modificabili).';
+    bn.style.display = 'flex';
+  }
+}
 
+function toggleNuovoVerbale(force) {
+  const card = document.getElementById('formCard');
+  const grid = document.getElementById('layoutGrid');
+  const btn  = document.getElementById('btnNuovoVerbale');
+  const open = (force === undefined) ? (card.style.display === 'none') : !!force;
+  card.style.display = open ? '' : 'none';
+  grid.classList.toggle('solo-archivio', !open);
+  btn.classList.toggle('is-open', open);
+  if (open) {
+    _applyPozzettoMode();
+    if (!document.getElementById('lotto').options.length || document.getElementById('lotto').options.length <= 1) _loadLottiCantieri();
+    card.scrollIntoView({behavior:'smooth', block:'start'});
+  }
+}
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Routes
-# ─────────────────────────────────────────────────────────────────────────────
-@app.get("/api/")
-async def root():
-    return {
-        "service": "enri-dashboard-api",
-        "status": "ok",
-        "time": _now_iso(),
-        "version": "2.0.0",
+async function inviaVerbale(){
+  const btn = document.getElementById('btn-invia');
+  const f = getF();
+
+  // Validazione campi obbligatori
+  if (!document.getElementById('data').value) { showToast('✗ Inserisci la data del sopralluogo'); return; }
+  if (!document.getElementById('n_cantiere').value.trim()) { showToast('✗ Inserisci il numero cantiere'); return; }
+  if (!document.getElementById('impresa').value.trim()) { showToast('✗ Inserisci il nome impresa'); return; }
+  const errV = _validaVerbale();
+  if (errV) { showToast('✗ ' + errV); return; }
+  if (!_verificaDi) {   // sopralluogo radice: avvisa se restano punti senza esito (altrimenti il verbale risulta es. 84/85)
+    const _lab = { qualita:'Qualità', sicurezza:'Sicurezza', collaudo:'Collaudo' };
+    const _miss = CK_CATS.map(k => ({ k, ids: CHECKLIST_DEF[k].items.filter(it => !(_ckState[k][it.id] || {}).e).map(it => it.id) })).filter(m => m.ids.length);
+    if (_miss.length) {
+      const _n = _miss.reduce((a, m) => a + m.ids.length, 0);
+      const _det = _miss.map(m => '• ' + _lab[m.k] + ': ' + m.ids.length + ' senza esito' + (m.ids.length <= 6 ? ' (' + m.ids.join(', ') + ')' : '')).join('\n');
+      if (!confirm('Checklist incompleta: ' + _n + ' punti senza esito.\n\n' + _det + '\n\nOK = invia comunque\nAnnulla = torna a compilare')) { setChecklistTab(_miss[0].k); return; }
+    }
+  }
+
+  // Impedisce doppio invio
+  if (document.getElementById('codice_verbale').value) {
+    showToast('✗ Verbale già inviato — codice: ' + document.getElementById('codice_verbale').value);
+    return;
+  }
+
+  const SVG_INVIA = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
+  if (btn) { btn.disabled = true; btn.innerHTML = SVG_INVIA + ' Invio in corso…'; }
+  try {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    const token   = localStorage.getItem('_enri_session') || '';
+    if (!apiBase) throw new Error('API endpoint non configurato — torna all\'hub e riaccedi');
+    if (!token) {
+      showToast('✗ Sessione scaduta — riaccedi dall\'hub');
+      setTimeout(() => { window.location.href = 'hub.html'; }, 2000);
+      return;
+    }
+    const res = await fetch(apiBase + '/api/sopralluoghi', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-session-token': token },
+      body: JSON.stringify({
+        data_sopralluogo:  document.getElementById('data').value || '',
+        lotto:             f.lotto,
+        tratta_id:         f.n_cantiere,
+        impresa:           f.impresa,
+        referente_impresa: f.redattore,
+        referente_retelit: f.ruolo,
+        comune:            f.indirizzo,
+        tipo_intervento:   '',
+        esito:             '',
+        segnalazione_cliente: document.getElementById('segnalazione_cliente')?.checked || false,
+        segnalazione_cliente_note: f.segnalazione_cliente_note,
+        esito_segnalazione: f.esito_segnalazione,
+        verbale_origine:   f.verbale_origine,
+        pozzetto:          window._pozzettoDL || '',
+        categoria:         window._pozzettoDL ? 'pozzetto' : '',
+        ..._segnSystemVals(),
+        checklist:         ckPayload(),
+        note:              '',
+        segnalazioni:      '',
+        azioni_richieste:  '',
+        scadenza_azioni:   '',
+        prossimo_sopralluogo: '',
+        foto:              uploadedPhotos.map(p => ({ dataUrl: p.dataUrl, name: p.name })),
+      })
+    });
+    if (!res.ok) {
+      let det = ''; try { det = (await res.json()).detail || ''; } catch(_) {}
+      throw new Error(det || ('HTTP ' + res.status));
+    }
+    const data = await res.json();
+    showToast('✓ Verbale inviato — ' + data.codice_verbale);
+    await loadVerbali();
+    resetVerbaleForm();
+  } catch(e) {
+    showToast('✗ Errore invio: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = SVG_INVIA + ' Invia verbale'; }
+  }
+}
+
+function resetVerbaleForm() {
+  window._pozzettoDL = '';
+  window._pozzDefaultsApplied = false;
+  const _pb = document.getElementById('pozzBanner'); if (_pb) _pb.style.display = 'none';
+  document.getElementById('codice_verbale').value = '';
+  document.getElementById('data').value = '';
+  document.getElementById('lotto').value = '';
+  document.getElementById('n_cantiere').innerHTML = '<option value="">— seleziona prima il lotto —</option>';
+  document.getElementById('indirizzo').value = '';
+  document.getElementById('impresa').value = '';
+  document.getElementById('impresa').placeholder = 'Seleziona prima il lotto';
+  document.getElementById('ruolo').value = 'Direttore Lavori';
+  const u = localStorage.getItem('_enri_user');
+  document.getElementById('redattore').value = u || '';
+  const segnCli = document.getElementById('segnalazione_cliente');
+  if (segnCli) { segnCli.checked = false; onSegnClienteChange(); }
+  document.querySelectorAll('input[name="segn_cli_sino"]').forEach(r => r.checked = false);
+  document.getElementById('segnSiNo')?.classList.remove('miss');
+  const segnNote = document.getElementById('segnalazione_cliente_note'); if (segnNote) segnNote.value = '';
+  document.querySelectorAll('input[name="esito_segnalazione"]').forEach(r => r.checked = false);
+  document.getElementById('segnEsito')?.classList.remove('miss');
+  ['subsystem', 'data_invio_system', 'metodo_invio', 'rif_system_invio'].forEach(i => { const el = document.getElementById(i); if (el) { el.value = ''; el.classList.remove('miss'); } });
+  _verificaDi = null; _ckShowMissing = false;
+  uploadedPhotos = [];
+  ckReset();
+  _applyVerificaUI();
+  const fotoInput = document.getElementById('fotoInput');
+  if (fotoInput) fotoInput.value = '';
+  renderPreviews();
+}
+
+/* ══ PDF via html2canvas ══ */
+async function _generatePdfCore(f, photos){
+  const nc = f.n_cantiere !== '—' ? f.n_cantiere.replace(/\s/g,'_') : 'cantiere';
+
+  // ── helpers ──────────────────────────────────────────────
+  function makePrintDiv(innerHTML){
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-1;width:794px;background:#F7F8FA;font-family:"Raleway",sans-serif;color:#363D48;padding:0;';
+    d.innerHTML = innerHTML;
+    document.body.appendChild(d);
+    return d;
+  }
+
+  async function capture(el){
+    return html2canvas(el, {
+      scale: 2, useCORS: true, allowTaint: true,
+      backgroundColor: '#F7F8FA', logging: false,
+      width: 794,
+    });
+  }
+
+  function addCanvasToPdf(pdf, canvas, addPage){
+    const pW = 210, pH = 297;
+    const mmPerPx = pW / canvas.width;
+    const totalH = canvas.height * mmPerPx;
+    const pages = Math.ceil(totalH / pH);
+    for (let p = 0; p < pages; p++){
+      if (addPage || p > 0) pdf.addPage();
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.93), 'JPEG', 0, -p * pH, pW, totalH);
+    }
+  }
+
+  // ── campi e sezioni ──────────────────────────────────────
+  const fields = [
+    ['Codice Verbale', f.codice_verbale || '—'],
+    ['N° Cantiere', f.n_cantiere], ['Data Sopralluogo', f.data],
+    ['Indirizzo / Località', f.indirizzo], ['Impresa esecutrice', f.impresa],
+    ['Lotto', f.lotto], ['Ruolo redattore', f.ruolo],
+    ['Redatto da', f.redattore], ['Gravità anomalie', f.gravita],
+    ['Segnalazione cliente', f.segnalazione_cliente || 'NO'],
+    ...(f.segnalazione_cliente === 'SI' ? [['Esito verifica segnalazione', ({confermata:'Confermata',non_confermata:'Non confermata'})[f.esito_segnalazione] || '—']] : []),
+    ...(f.verbale_origine ? [[_verifNCod(f.verbale_origine) + '° sopralluogo — verifica del verbale', esc(f.verbale_origine) + (f.verifica_tipo ? ' (verifica ' + (f.verifica_tipo === 'cliente' ? 'cliente' : 'interna') + ')' : '')]] : []),
+    ['N° Foto allegate', f.n_foto],
+    ...[['SubSystem', f.subsystem], ['Data invio al System', f.data_invio_system], ['Metodo di invio', f.metodo_invio], ['Riferimento System invio', f.rif_system_invio]].filter(([, x]) => x && x !== '—'),
+  ];
+  const extraSections = [
+    ['Segnalazioni / Anomalie rilevate', f.segnalazioni],
+    ["Azioni richieste all'impresa", f.azioni],
+    ['Scadenza azioni', f.scadenza_azioni],
+    ['Prossimo sopralluogo', f.prossimo_sopr],
+    ['Note libere', f.note],
+  ].filter(([,v]) => v && v !== '—');
+  if (f.segnalazione_cliente === 'SI' && f.segnalazione_cliente_note) extraSections.unshift(['Note segnalazione cliente', esc(f.segnalazione_cliente_note)]);
+
+  const gravColor = f.gravita === 'Anomalia critica' ? '#C0392B'
+                  : f.gravita === 'Anomalia media'   ? '#D08A1A' : '#1A7D99';
+
+  const tableRows = fields.map(([lbl, val], i) => `
+    <tr style="background:${i%2===0?'#D3DEEA':'#ffffff'}">
+      <td style="padding:6px 12px;font-size:10px;font-weight:700;color:#1A7D99;width:200px;border:1px solid #DFE4EB;">${lbl}</td>
+      <td style="padding:6px 12px;font-size:10.5px;color:#363D48;border:1px solid #DFE4EB;">${val}</td>
+    </tr>`).join('');
+
+  const sectHtml = extraSections.map(([title, val]) => `
+    <div style="margin-bottom:12px;">
+      <div style="font-size:8px;font-weight:700;color:#1A7D99;letter-spacing:.14em;text-transform:uppercase;margin-bottom:5px;font-family:'JetBrains Mono',monospace;">${title}</div>
+      <div style="font-size:10px;color:#363D48;line-height:1.6;background:#fff;border:1.5px solid #C4CDD8;border-radius:8px;padding:8px 12px;white-space:pre-wrap;">${val}</div>
+    </div>`).join('');
+
+  const ckHtml = _ckPdfHtml(f.checklist);
+
+  const cardStyle = 'background:#fff;border:1px solid #DFE4EB;border-radius:14px;padding:16px 20px 14px 24px;box-shadow:0 2px 8px rgba(4,63,117,.07);position:relative;margin-bottom:14px;';
+  const stripeStyle = 'position:absolute;top:0;left:0;bottom:0;width:3px;border-radius:14px 0 0 14px;background:linear-gradient(180deg,#1A7D99,#41BBD9);';
+  const secLabel = 'font-family:"JetBrains Mono",monospace;font-size:8px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:#1A7D99;margin-bottom:10px;';
+
+  // ── pagina 1: form ────────────────────────────────────────
+  const mainHtml = `
+    <div style="background:#043F75;padding:14px 36px;display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-size:9px;color:rgba(255,255,255,.6);letter-spacing:.18em;text-transform:uppercase;margin-bottom:3px;">Progetto ENRI · Infrastruttura Fibra Ottica</div>
+        <div style="font-size:20px;font-weight:700;color:#fff;letter-spacing:-.025em;">Verbale di Sopralluogo</div>
+      </div>
+      <img src="data:image/png;base64,${RETELIT_B64}" style="height:52px;object-fit:contain;">
+    </div>
+    <div style="padding:18px 28px;">
+
+      <div style="${cardStyle}">
+        <div style="${stripeStyle}"></div>
+        <div style="${secLabel}">Identificazione</div>
+        <table style="width:100%;border-collapse:collapse;">${tableRows}</table>
+      </div>
+
+      ${extraSections.length ? `
+      <div style="${cardStyle.replace('margin-bottom:22px','margin-bottom:22px').replace('#1A7D99,#41BBD9',gravColor+','+gravColor+'99')}">
+        <div style="position:absolute;top:0;left:0;bottom:0;width:3px;border-radius:14px 0 0 14px;background:linear-gradient(180deg,${gravColor},${gravColor}99);"></div>
+        <div style="${secLabel}">Segnalazioni</div>
+        ${sectHtml}
+      </div>` : ''}
+
+      ${ckHtml}
+
+      <div style="${cardStyle}">
+        <div style="${stripeStyle}"></div>
+        <div style="${secLabel}">Firme</div>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr>
+            <td style="width:33%;padding:6px 10px;font-size:10px;font-weight:700;color:#1A7D99;background:#D3DEEA;border:1px solid #DFE4EB;">Ruolo</td>
+            <td style="width:33%;padding:6px 10px;font-size:10px;font-weight:700;color:#1A7D99;background:#D3DEEA;border:1px solid #DFE4EB;">Nome</td>
+            <td style="width:33%;padding:6px 10px;font-size:10px;font-weight:700;color:#1A7D99;background:#D3DEEA;border:1px solid #DFE4EB;">Firma</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 10px;font-size:11px;border:1px solid #DFE4EB;">${f.ruolo}</td>
+            <td style="padding:8px 10px;font-size:11px;border:1px solid #DFE4EB;">${f.redattore}</td>
+            <td style="padding:8px 10px;height:46px;border:1px solid #DFE4EB;"></td>
+          </tr>
+        </table>
+      </div>
+
+    </div>`;
+
+  // ── pagina foto: una card per immagine, nessun taglio ─────
+  const photoCardHtml = photos.length ? `
+    <div style="padding:28px 36px;">
+      <div style="${cardStyle}">
+        <div style="${stripeStyle}"></div>
+        <div style="${secLabel}">Foto allegate</div>
+        <div style="display:flex;flex-direction:column;gap:20px;">
+          ${photos.map((p,i) => `
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <img src="${p.dataUrl}" style="width:100%;height:auto;border-radius:8px;border:1px solid #DFE4EB;display:block;">
+              <span style="font-size:10px;color:#9AA5B4;font-family:'JetBrains Mono',monospace;">Foto ${i+1}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>` : '';
+
+  await document.fonts.ready;
+  await new Promise(r => setTimeout(r, 280));
+  showToast('⏳ Generazione PDF…');
+
+  let mainDiv, photoDiv;
+  try {
+    const {jsPDF} = window.jspdf;
+    const pdf = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
+
+    // Cattura pagina 1 (form)
+    mainDiv = makePrintDiv(mainHtml);
+    await new Promise(r => setTimeout(r, 120));
+    const mainCanvas = await capture(mainDiv);
+    addCanvasToPdf(pdf, mainCanvas, false);
+
+    // Cattura pagine foto — 4 foto per pagina (griglia 2x2), tante pagine quante servono
+    for (let start = 0; start < photos.length; start += 4) {
+      const chunk = photos.slice(start, start + 4);
+      const n = chunk.length;
+      // Griglia: 1=full, 2=affiancate, 3=2+1, 4=2x2
+      const rows = n===1 ? [[0]]
+                 : n===2 ? [[0,1]]
+                 : n===3 ? [[0,1],[2]]
+                 :         [[0,1],[2,3]];
+
+      const imgStyle = (full) =>
+        `width:100%;height:auto;max-height:${full?'500px':'420px'};object-fit:contain;background:#EEF1F5;border-radius:8px;border:1px solid #DFE4EB;display:block;`;
+
+      const rowsHtml = rows.map(row => `
+        <div style="display:flex;gap:10px;margin-bottom:12px;">
+          ${row.map(i => `
+            <div style="display:flex;flex-direction:column;gap:5px;${row.length===1?'width:100%':'flex:1;'}">
+              <img src="${chunk[i].dataUrl}" style="${imgStyle(row.length===1)}">
+              <span style="font-size:10px;color:#9AA5B4;font-family:'JetBrains Mono',monospace;">Foto ${start+i+1}</span>
+            </div>`).join('')}
+        </div>`).join('');
+
+      const allPhotosHtml = `
+        <div style="padding:18px 28px;">
+          <div style="${cardStyle}margin-bottom:0;">
+            <div style="${stripeStyle}"></div>
+            <div style="${secLabel}">Foto allegate · ${start+1}–${start+n} di ${photos.length}</div>
+            ${rowsHtml}
+          </div>
+        </div>`;
+
+      photoDiv = makePrintDiv(allPhotosHtml);
+      await new Promise(r => setTimeout(r, 120));
+      const photoCanvas = await capture(photoDiv);
+      addCanvasToPdf(pdf, photoCanvas, true);
+      document.body.removeChild(photoDiv);
+      photoDiv = null;
     }
 
+    const dt = f.data !== '—' ? f.data.replace(/\//g,'-') : 'data';
+    pdf.save(`Verbale_Sopralluogo_${nc}_${dt}.pdf`);
+    showToast('✓ PDF scaricato');
+  } catch(e) {
+    console.error(e);
+    showToast('✗ Errore generazione PDF');
+  } finally {
+    if (mainDiv && mainDiv.parentNode) mainDiv.parentNode.removeChild(mainDiv);
+    if (photoDiv && photoDiv.parentNode) photoDiv.parentNode.removeChild(photoDiv);
+  }
+}
 
-@app.get("/api/health")
-async def health():
-    try:
-        await db.command("ping")
-        mongo_ok = True
-    except Exception:
-        mongo_ok = False
-    return {"ok": True, "mongo": mongo_ok, "time": _now_iso()}
+async function generatePdf(){
+  await _generatePdfCore(getF(), uploadedPhotos);
+}
 
+// Rigenera il PDF a partire da un verbale già archiviato (record Mongo),
+// riusando lo stesso motore html2canvas/jsPDF di generatePdf(). Le foto sono
+// caricate dagli URL GitHub raw (CORS aperto, come già avviene per le anteprime).
+async function generatePdfForRecord(id){
+  const v = _verbaliAll.find(x => x._id === id);
+  if (!v) { showToast('✗ Verbale non trovato'); return; }
+  const fmtIt = iso => iso ? new Date(iso).toLocaleDateString('it-IT') : '—';
+  const urls = String(Array.isArray(v.foto_urls) ? v.foto_urls.join(',') : (v.foto_urls || '')).split(',').map(u => u.trim()).filter(Boolean);
+  const f = {
+    codice_verbale: v.codice_verbale || '—',
+    n_cantiere: v.tratta_id || '—',
+    data: _soprDateDisplay(v.data_sopralluogo),
+    indirizzo: v.comune || '—',
+    lotto: v.lotto || '—',
+    impresa: v.impresa || '—',
+    ruolo: v.referente_retelit || '—',
+    redattore: v.referente_impresa || '—',
+    n_foto: String(urls.length),
+    gravita: _anomaliaStato(v) || '—',
+    segnalazione_cliente: _isSegnCliente(v) ? 'SI' : 'NO',
+    segnalazione_cliente_note: _isSegnCliente(v) ? (v.segnalazione_cliente_note || '') : '',
+    esito_segnalazione: _isSegnCliente(v) ? (v.esito_segnalazione || '') : '',
+    subsystem: v.subsystem || '', data_invio_system: v.data_invio_system ? new Date(v.data_invio_system).toLocaleDateString('it-IT') : '',
+    metodo_invio: v.metodo_invio || '', rif_system_invio: v.rif_system_invio || '',
+    verbale_origine: v.verbale_origine || '',
+    verifica_tipo: v.verbale_origine ? _verifRootTipo(v) : '',
+    checklist: _ckOf(v),
+    segnalazioni: v.segnalazioni || '—',
+    azioni: v.azioni_richieste || '—',
+    scadenza_azioni: fmtIt(v.scadenza_azioni),
+    prossimo_sopr: fmtIt(v.prossimo_sopralluogo),
+    note: v.note || '—',
+  };
+  await _generatePdfCore(f, urls.map(u => ({ dataUrl: u })));
+}</script>
+<!-- ── TRACKING ACCESSI (sopralluoghi) — usa proxy backend sicuro (no secret in chiaro) ── -->
+<script>
+(function(){
+  const _apiBase = () => (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+  const _sessionToken = () => localStorage.getItem('_enri_session') || '';
+  const LOG_BIN_ID   = '69c8fbdced015c742bc8e978';
+  const ACCESSI_MAX  = 500;
 
-@app.get("/api/files")
-async def list_files(sess: dict = Depends(_require_staff_session)):
-    """Union of:
-    - files with current (non-deleted) GridFS uploads
-    - seed files on disk (excluding system dirs) that aren't shadowed by a
-      Mongo upload
-    """
-    out: dict[str, dict] = {}
+  const utente = localStorage.getItem('_enri_user');
+  const ruolo  = localStorage.getItem('_enri_role') || 'user';
+  if (!utente) return;
 
-    # 1) Disk seed
-    if DATA_DIR.exists():
-        for p in sorted(DATA_DIR.rglob("*")):
-            if not p.is_file():
-                continue
-            ext = p.suffix.lower()
-            if ext not in {".csv", ".geojson", ".json"}:
-                continue
-            try:
-                rel = p.relative_to(DATA_DIR).as_posix()
-            except ValueError:
-                continue
-            top = rel.split("/", 1)[0]
-            if top in _EXCLUDE_DIRS or top.startswith("."):
-                continue
-            if p.name in _EXCLUDE_FILES:
-                continue
-            out[rel] = {
-                "name": rel,
-                "size": p.stat().st_size,
-                "type": ext[1:],
-                "source": "disk",
-                "modified": _GITHUB_PUSH_TIMES.get(p.name) or datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc).isoformat(),
-                "versions": 0,
-            }
+  let _sessionStart = Date.now();
+  let _sessionTs    = null;
+  let _logCache     = null;
 
-    # 2) Mongo current versions (override disk)
-    pipeline = [
-        {"$match": {"deleted_at": None}},
-        {"$sort": {"uploaded_at": -1}},
-        {"$group": {
-            "_id": "$filename",
-            "size": {"$first": "$size"},
-            "uploaded_at": {"$first": "$uploaded_at"},
-            "project": {"$first": "$project"},
-            "rows": {"$first": "$rows"},
-            "upload_source": {"$first": "$source"},
-            "note": {"$first": "$note"},
-        }},
-    ]
-    versions_pipeline = [
-        {"$match": {"deleted_at": None}},
-        {"$group": {"_id": "$filename", "count": {"$sum": 1}}},
-    ]
-    version_counts: dict[str, int] = {}
-    async for d in uploads_col.aggregate(versions_pipeline):
-        version_counts[d["_id"]] = d["count"]
+  async function _proxyGet(binId) {
+    const res = await fetch(_apiBase() + '/api/logs/get', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session-token': _sessionToken() },
+      body: JSON.stringify({ binId })
+    });
+    const json = await res.json();
+    return { utenti:  Array.isArray(json.record?.utenti)  ? json.record.utenti  : [],
+             accessi: Array.isArray(json.record?.accessi) ? json.record.accessi : [] };
+  }
 
-    async for d in uploads_col.aggregate(pipeline):
-        name = d["_id"]
-        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
-        out[name] = {
-            "name": name,
-            "size": d["size"],
-            "type": ext,
-            "source": "mongo",
-            "modified": d["uploaded_at"],
-            "project": d.get("project", "main"),
-            "rows": d.get("rows"),
-            "versions": version_counts.get(name, 1),
-            "upload_source": d.get("upload_source") or "admin",  # impresa | derived | admin (upload manuale)
-            "note": d.get("note") or "",
-        }
+  async function _proxyPut(binId, data, keepalive) {
+    return fetch(_apiBase() + '/api/logs/put', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session-token': _sessionToken() },
+      body: JSON.stringify({ binId, data }),
+      ...(keepalive ? { keepalive: true } : {})
+    });
+  }
 
-    files = sorted(out.values(), key=lambda x: x["name"])
-    return {"files": files, "count": len(files)}
+  async function _getIP() {
+    try { const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
+          return (await r.json()).ip || null; } catch(_) { return null; }
+  }
 
+  // Log accesso all'apertura
+  Promise.all([_proxyGet(LOG_BIN_ID), _getIP()]).then(([data, ip]) => {
+    const entry = { ts: new Date().toISOString(), utente, ruolo, ip,
+      ua: navigator.userAgent.substring(0, 120),
+      durata: 0, lotti: [], nAperture: 0, pagina: 'sopralluoghi' };
+    data.accessi.push(entry);
+    if (data.accessi.length > ACCESSI_MAX) data.accessi.splice(0, data.accessi.length - ACCESSI_MAX);
+    if (!data.utenti.includes(utente)) data.utenti.push(utente);
+    _sessionTs = entry.ts;
+    _logCache  = data;
+    _proxyPut(LOG_BIN_ID, data).catch(() => {});
+  }).catch(() => {});
 
-@app.get("/api/data/{filename:path}")
-async def get_data_file(filename: str, sess: dict = Depends(_require_session)):
-    rel = _safe_relpath(filename)
-    _guard_sensitive_read(rel, sess)
-    cur = await _current_upload(rel)
-    if cur:
-        data = await _read_gridfs(cur["gridfs_id"])
-        return Response(content=data, media_type=_media_type(rel))
-    # Fallback to disk seed (git-committed file)
-    path = DATA_DIR / rel
-    if path.exists() and path.is_file():
-        return FileResponse(path, media_type=_media_type(rel), filename=path.name)
-    raise HTTPException(404, f"File not found: {rel}")
-
-
-@app.get("/api/data-text/{filename:path}", response_class=PlainTextResponse)
-async def get_data_text(filename: str, sess: dict = Depends(_require_session)):
-    rel = _safe_relpath(filename)
-    _guard_sensitive_read(rel, sess)
-    cur = await _current_upload(rel)
-    if cur:
-        data = await _read_gridfs(cur["gridfs_id"])
-        return data.decode("utf-8", errors="replace")
-    path = DATA_DIR / rel
-    if path.exists() and path.is_file():
-        return path.read_text(encoding="utf-8", errors="replace")
-    raise HTTPException(404, f"File not found: {rel}")
-
-
-@app.get("/api/preview/{filename:path}")
-async def preview_file(filename: str, max_bytes: int = 8192, sess: dict = Depends(_require_staff_session)):
-    """Returns a short text preview of a file (first max_bytes)."""
-    rel = _safe_relpath(filename)
-    max_bytes = max(256, min(max_bytes, 65536))
-    cur = await _current_upload(rel)
-    if cur:
-        data = (await _read_gridfs(cur["gridfs_id"]))[:max_bytes]
-        source = "mongo"
-        size = cur["size"]
-    else:
-        path = DATA_DIR / rel
-        if not (path.exists() and path.is_file()):
-            raise HTTPException(404, f"File not found: {rel}")
-        size = path.stat().st_size
-        with path.open("rb") as f:
-            data = f.read(max_bytes)
-        source = "disk"
-    return {
-        "filename": rel,
-        "source": source,
-        "size": size,
-        "truncated": size > max_bytes,
-        "content": data.decode("utf-8", errors="replace"),
+  // beforeunload: aggiorna durata usando cache locale
+  window.addEventListener('beforeunload', () => {
+    if (!_sessionTs) return;
+    const durataMin = Math.round((Date.now() - _sessionStart) / 60000);
+    if (_logCache) {
+      const entry = _logCache.accessi.find(a => a.ts === _sessionTs);
+      if (entry) {
+        entry.durata = durataMin;
+        _proxyPut(LOG_BIN_ID, _logCache, true);
+        return;
+      }
     }
+    // fallback senza cache
+    _proxyGet(LOG_BIN_ID).then(data => {
+      const entry = data.accessi.find(a => a.ts === _sessionTs);
+      if (!entry) return;
+      entry.durata = durataMin;
+      _proxyPut(LOG_BIN_ID, data, true);
+    }).catch(() => {});
+  });
+})();
+</script>
 
+<script>
+// ── Storico verbali ──────────────────────────────────────────────────────────
+let _verbaliAll = [];
 
-@app.get("/api/uploads")
-async def list_uploads(
-    limit: int = 50,
-    project: str | None = None,
-    filename: str | None = None,
-    include_deleted: bool = False,
-    sess: dict = Depends(_require_staff_session),
-):
-    q: dict = {}
-    if project:
-        q["project"] = project
-    if filename:
-        q["filename"] = filename
-    if not include_deleted:
-        q["deleted_at"] = None
-    cur = uploads_col.find(q).sort("uploaded_at", -1).limit(min(limit, 500))
-    items = [_serialize(d) async for d in cur]
-    return {"uploads": items, "count": len(items)}
+// data_sopralluogo è ISO (yyyy-mm-dd) sui verbali nuovi, ma i record salvati
+// prima del fix erano in formato it-IT (dd/mm/yyyy) — gestiamo entrambi.
+function _soprDateISO(str) {
+  if (!str) return '';
+  str = String(str);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  const m = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+}
+function _soprDateDisplay(str) {
+  const iso = _soprDateISO(str);
+  if (!iso) return str || '—';
+  const [y,mo,d] = iso.split('-');
+  return `${d}/${mo}/${y}`;
+}
 
+// ── Esportazione Excel (tutti i verbali, 3 fogli: Verbali / Checklist dettaglio / Non conformità) ──
+async function exportVerbaliCsv() {
+  const btn = document.getElementById('btnExportCsv');
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = 'Esportazione…';
+  try {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    const token   = localStorage.getItem('_enri_session') || '';
+    if (!apiBase) throw new Error('API endpoint non configurato');
+    if (!token) throw new Error('Sessione scaduta — riaccedi dall\'hub');
+    const res = await fetch(apiBase + '/api/sopralluoghi/export.xlsx', {
+      headers: { 'x-session-token': token }
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'sopralluoghi_' + new Date().toISOString().slice(0,10) + '.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    showToast('✓ Esportazione avviata');
+  } catch(e) {
+    showToast('✗ Errore esportazione: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+}
 
-@app.post("/api/upload")
-async def upload_file(
-    file: UploadFile = File(...),
-    target: str = Form(""),
-    project: str = Form("main"),
-    convert_to_csv: bool = Form(True),
-    x_upload_token: Annotated[str | None, Form(alias="token")] = None,
-    header_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    _check_token(x_upload_token or header_token)
-
-    raw = await file.read()
-    if len(raw) == 0:
-        raise HTTPException(400, "Empty file")
-    if len(raw) > MAX_UPLOAD_MB * 1024 * 1024:
-        raise HTTPException(413, f"File too large (>{MAX_UPLOAD_MB} MB)")
-
-    ext = Path(file.filename or "").suffix.lower()
-    if ext not in ALLOWED_EXT:
-        raise HTTPException(400, f"Unsupported file type {ext!r}. Allowed: {sorted(ALLOWED_EXT)}")
-
-    rows = None
-    df = None
-    out_name = target.strip() or (file.filename or "uploaded")
-    out_bytes = raw
-
-    # Safety net: anche se il client non passa convert_to_csv=false, il file
-    # parametri (multi-foglio) non va MAI appiattito in CSV a un solo foglio.
-    if out_name in (PARAMETRI_FILENAME, COORDINAMENTI_FILENAME):
-        convert_to_csv = False
-
-    # File coordinamenti: validato PRIMA di salvarlo (foglio e colonne attese),
-    # così un xlsx sbagliato non finisce nello storico versioni.
-    coord_df = None
-    if out_name == COORDINAMENTI_FILENAME:
-        try:
-            coord_df = pd.read_excel(io.BytesIO(raw), sheet_name=COORD_SHEET)
-        except Exception as e:
-            raise HTTPException(400, f"Foglio {COORD_SHEET!r} non leggibile: {e}")
-        miss = {"ELENCO ENTI", "ISTANZA", "SERVICE"} - set(coord_df.columns)
-        if miss:
-            raise HTTPException(400, f"Colonne mancanti nel foglio {COORD_SHEET}: {sorted(miss)}")
-        rows = int(len(coord_df))
-
-    if ext in {".xlsx", ".xls"} and convert_to_csv:
-        try:
-            df = pd.read_excel(io.BytesIO(raw))
-        except Exception as e:
-            raise HTTPException(400, f"Cannot parse Excel: {e}")
-        rows = int(len(df))
-        buf = io.StringIO()
-        df.to_csv(buf, index=False, sep=";")
-        out_bytes = buf.getvalue().encode("utf-8")
-        if not target:
-            out_name = Path(file.filename).stem + ".csv"
-
-    if out_name.lower().endswith(".csv") and rows is None:
-        try:
-            rows = max(0, out_bytes.decode("utf-8", errors="replace").count("\n") - 1)
-        except Exception:
-            rows = None
-
-    rel = _safe_relpath(out_name)
-
-    # Pozzetti: validato PRIMA di salvarlo, così un file sbagliato non sostituisce quello buono.
-    if rel == POZZETTI_FILENAME:
-        try:
-            gj = json.loads(out_bytes.decode("utf-8-sig"))
-            feats = gj.get("features") if isinstance(gj, dict) else None
-            if gj.get("type") != "FeatureCollection" or not feats:
-                raise ValueError("deve essere una FeatureCollection non vuota")
-            bad = sum(1 for f in feats if (f.get("geometry") or {}).get("type") != "Point")
-            if bad:
-                raise ValueError(f"{bad} feature non sono di tipo Point")
-        except Exception as e:
-            raise HTTPException(400, f"{POZZETTI_FILENAME} non valido: {e}")
-        rows = len(feats)
-
-    # Se stiamo sostituendo Master.csv, preserva eventuale stato CONVENZIONE/POLIZZA
-    # già avanzato (RICHIESTA RDS/INVIATA/EMESSA) rispetto a quanto porta il nuovo
-    # file — fix bug: un nuovo export esterno (QGIS/Excel) porta solo SI/NO e
-    # retrocederebbe silenziosamente il workflow tracciato da polizze_convenzioni.html.
-    pol_conv_preserved = 0
-    if rel == MASTER_FILENAME:
-        try:
-            sep_new = _detect_sep(out_bytes)
-            if df is None:
-                new_df = None
-                for enc in ("utf-8", "cp1252", "latin-1"):
-                    try:
-                        new_df = pd.read_csv(io.BytesIO(out_bytes), sep=sep_new, dtype=str, keep_default_na=False, encoding=enc, on_bad_lines="warn")
-                        break
-                    except (UnicodeDecodeError, UnicodeError):
-                        continue
-            else:
-                new_df = df.astype(str)
-            if new_df is not None:
-                old_df = await _read_master_csv()
-                pol_conv_preserved = _preserve_pol_conv_state(old_df, new_df)
-                if pol_conv_preserved:
-                    buf2 = io.StringIO()
-                    new_df.to_csv(buf2, index=False, sep=sep_new)
-                    out_bytes = buf2.getvalue().encode("utf-8")
-        except Exception as e:
-            print(f"[_preserve_pol_conv_state] fallita, procedo senza (upload non bloccato): {e}")
-
-    # Store content in GridFS
-    gridfs_id = await gridfs.upload_from_stream(
-        rel,
-        io.BytesIO(out_bytes),
-        metadata={"project": project or "main", "uploaded_at": _now_iso()},
-    )
-
-    record = {
-        "filename": rel,
-        "original_name": file.filename,
-        "size": len(out_bytes),
-        "content_type": file.content_type or "",
-        "project": project or "main",
-        "rows": rows,
-        "uploaded_at": _now_iso(),
-        "gridfs_id": gridfs_id,
-        "deleted_at": None,
+async function loadVerbali() {
+  const list = document.getElementById('verbali-list');
+  list.innerHTML = '<div style="color:#888;font-size:12px;padding:20px 0;text-align:center">Caricamento…</div>';
+  try {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    const token   = localStorage.getItem('_enri_session') || '';
+    const res = await fetch(apiBase + '/api/sopralluoghi', {
+      headers: { 'x-session-token': token }
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    _verbaliAll = (data.verbali || []).sort((a,b) => b.codice_verbale.localeCompare(a.codice_verbale));
+    _populateVerbaliFilterOptions();
+    _populateKpis();
+    _currentPage = 1;
+    applyVerbaliFilters();
+    // Deep-link da mappa.html (pozzetto → verbale): apre l'anteprima del verbale richiesto
+    const dlV = _DL.get('verbale');
+    if (dlV && !window._dlVerbaleDone) {
+      window._dlVerbaleDone = true;
+      const hit = _verbaliAll.find(x => x._id === dlV || x.codice_verbale === dlV);
+      if (hit) _selectVerbale(hit._id);
     }
-    res = await uploads_col.insert_one(record)
-    asyncio.create_task(_prune_old_versions(rel))
-    await _log_admin_action(
-        "upload" + (f" (+{pol_conv_preserved} CONVENZIONE/POLIZZA preservate)" if pol_conv_preserved else ""),
-        rel, x_actor_nome,
-    )
+  } catch(e) {
+    list.innerHTML = `<div style="color:#c0392b;font-size:12px;padding:20px 0;text-align:center">Errore: ${e.message}</div>`;
+  }
+}
 
-    # Se è Master.csv, rigenera anche i file derivati (Riepilogo_progettazione.csv,
-    # QGIS.geojson) e sincronizza GitHub — stesso comportamento di approve/delete/restore,
-    # altrimenti un upload manuale lascia mappa e barre ferme alla versione precedente.
-    if rel == MASTER_FILENAME:
-        asyncio.create_task(_push_current_master_to_github())
-    elif rel in GITHUB_PATHS:
-        asyncio.create_task(_push_to_github(out_bytes, path=GITHUB_PATHS[rel], label=rel))
+// ── KPI ───────────────────────────────────────────────────────────────────
+function _populateKpis() {
+  const set = (id, t) => { const e = document.getElementById(id); if (e) e.textContent = t; };
+  const nAp = _kpiFilter('anomalie_aperte').length;
+  const n14 = _verbaliAll.filter(_CHIP_PRED.anomalie14).length;
+  const nVer = _kpiFilter('verifiche').length;
+  const nScad = _verbaliAll.filter(v => { const s = _verifState(v); return s && s.stato === 'scaduta'; }).length;
+  const nInc = _verbaliAll.filter(_CHIP_PRED.incompleti).length;
+  set('kpi-anomalie',        _kpiFilter('anomalie').length);
+  set('kpi-anomalie-aperte', nAp);
+  set('kpi-verifiche',       nVer);
+  set('kpi-segn-cliente',    _kpiFilter('segncliente').length);
+  set('kpi-segn-aperte',     _kpiFilter('segn_aperte').length);
+  set('kpi-oggi',            _kpiFilter('oggi').length);
+  set('kpi-totale',          _verbaliAll.length);
+  _renderPozCard();
+  set('kpi-sub-anomalie-aperte', n14 ? `↑ ${n14} da >14 giorni` : '');
+  set('kpi-sub-verifiche',       nScad ? `↑ ${nScad} scadute` : '');
+  const now = new Date();
+  set('lastUpd', 'Ultimo aggiornamento: ' + now.toLocaleDateString('it-IT') + ' ' + now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }));
 
-    coord_result = None
-    if coord_df is not None:
-        # default non distruttivo: crea le richieste mancanti e compila solo i campi vuoti
-        coord_result = await _coordinamenti_import_df(coord_df, file.filename or rel, False, x_actor_nome)
+  const bar = document.getElementById('attivitaBar');
+  if (bar) {
+    const it = [[nAp, 'anomalie aperte', 'anomalie_aperte', ''], [nVer, 'verifiche da eseguire', 'verifiche', 'amber'],
+                [n14, 'anomalie da >14 giorni', 'anomalie14', ''], [nInc, 'verbali con checklist incompleta', 'incompleti', 'amber']].filter(x => x[0] > 0);
+    bar.classList.toggle('ok', !it.length);
+    bar.innerHTML = it.length
+      ? '<span class="ab-title">⚠ Attività da gestire</span>' + it.map(([n, l, k, c]) => `<span class="ab-item ${c}" onclick="setChip('${k}')"><b>${n}</b>${l}</span>`).join('') + '<span class="ab-hint">Clicca sui numeri per filtrare la tabella</span>'
+      : '<span class="ab-title">✓ Nessuna attività da gestire</span>';
+  }
+  _renderChips();
+  _renderWidgets();
+}
 
-    return JSONResponse({
-        "ok": True,
-        "id": str(res.inserted_id),
-        "filename": rel,
-        "size": len(out_bytes),
-        "rows": rows,
-        "converted_from_excel": ext in {".xlsx", ".xls"} and convert_to_csv,
-        "pol_conv_preserved": pol_conv_preserved,
-        "coordinamenti": coord_result,
-    })
+function _renderWidgets() {
+  const el = document.getElementById('widgetsRow'); if (!el) return;
+  // 1) Anomalie aperte per anzianità
+  const open = _verbaliAll.filter(_isAnomaliaAperta);
+  const b = [0, 0, 0];
+  open.forEach(v => { const g = _giorniDa(v); if (g === null) return; b[g <= 7 ? 0 : (g <= 14 ? 1 : 2)]++; });
+  const mx = Math.max(1, ...b);
+  const col = (n, l, c, k) => `<div class="w-col ${c}" ${k ? `style="cursor:pointer" onclick="setChip('${k}')"` : ''}><div class="w-bar" style="height:${Math.max(3, Math.round(n * 30 / mx))}px"></div><b>${n}</b><small>${l}</small></div>`;
+  const w1 = `<div class="w-card"><div class="w-title">Anomalie aperte per anzianità</div>
+    <div class="w-aging"><div class="w-total"><b>${open.length}</b><small>Totale</small></div>${col(b[0], '0-7 giorni', 'ok')}${col(b[1], '8-14 giorni', 'amber')}${col(b[2], '>14 giorni', 'red', 'anomalie14')}</div></div>`;
+  // 2) Stato checklist (ultimi 30 giorni)
+  const rec = _verbaliAll.filter(v => { const g = _giorniDa(v); return g !== null && g >= 0 && g <= 30; });
+  let w2;
+  if (!rec.length) w2 = `<div class="w-card"><div class="w-title">Stato checklist (ultimi 30 giorni)</div><div class="w-empty">Nessun verbale negli ultimi 30 giorni</div></div>`;
+  else {
+    const nA = rec.filter(_isAnomalia).length;
+    const nD = rec.filter(v => !_isAnomalia(v) && _isIncompleto(v)).length;
+    const nC = rec.length - nA - nD;
+    const p = n => Math.round(n * 100 / rec.length);
+    const pc = p(nC), pa = p(nA), pd = Math.max(0, 100 - pc - pa);
+    w2 = `<div class="w-card"><div class="w-title">Stato checklist (ultimi 30 giorni)</div><div class="w-donut-row">
+      <div class="w-donut" style="background:conic-gradient(#1E9E6A 0 ${pc}%,#C0392B ${pc}% ${pc + pa}%,#D08A1A ${pc + pa}% 100%)"><div class="w-donut-c"><b>${pc}%</b><small>OK</small></div></div>
+      <div class="w-leg"><div><i style="background:#1E9E6A"></i>Completate<b>${pc}%</b></div><div><i style="background:#C0392B"></i>Con anomalie<b>${pa}%</b></div><div><i style="background:#D08A1A"></i>Da verificare<b>${pd}%</b></div></div></div></div>`;
+  }
+  el.innerHTML = w1 + w2;
+}
 
+// ── Filtri (impresa/lotto/comune/stato/mese) ─────────────────────────────────
+function _populateVerbaliFilterOptions() {
+  const fill = (id, values, placeholder) => {
+    const sel = document.getElementById(id);
+    const current = sel.value;
+    sel.innerHTML = `<option value="">${placeholder}</option>` +
+      values.map(v => `<option value="${v}">${v}</option>`).join('');
+    if (values.includes(current)) sel.value = current;
+  };
+  const distinct = key => [...new Set(_verbaliAll.map(v => (v[key] || '').trim()).filter(Boolean))].sort();
+  fill('filtro-impresa', distinct('impresa'), 'Tutte le imprese');
+  fill('filtro-lotto',   distinct('lotto'),   'Tutti i lotti');
+  fill('filtro-comune',  distinct('comune'),  'Tutti i comuni');
 
-@app.delete("/api/uploads/{upload_id}")
-async def delete_upload(
-    upload_id: str,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Soft-delete a single upload version + remove its GridFS blob."""
-    _check_token(x_upload_token or token_q)
-    try:
-        oid = ObjectId(upload_id)
-    except Exception:
-        raise HTTPException(400, "Invalid id")
-    doc = await uploads_col.find_one({"_id": oid})
-    if not doc:
-        raise HTTPException(404, "Upload not found")
-    # Determina se questa era la versione corrente PRIMA di cancellarla:
-    # se era una versione vecchia già superata, il contenuto "corrente" non
-    # cambia e non serve pushare/rigenerare nulla su GitHub.
-    was_current = False
-    if doc.get("filename") == MASTER_FILENAME:
-        cur = await _current_upload(MASTER_FILENAME)
-        was_current = bool(cur and cur["_id"] == oid)
-    if doc.get("gridfs_id"):
-        try:
-            await gridfs.delete(doc["gridfs_id"])
-        except Exception:
-            pass
-    await uploads_col.update_one(
-        {"_id": oid},
-        {"$set": {"deleted_at": _now_iso(), "gridfs_id": None}},
-    )
-    await _log_admin_action("delete_version", doc["filename"], x_actor_nome)
-    # Sincronizza GitHub solo se era davvero la versione corrente di Master.csv
-    if was_current:
-        asyncio.create_task(_push_current_master_to_github())
-    return {"deleted": str(oid), "filename": doc["filename"]}
+  const mesiIt = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+  const mesi = [...new Set(_verbaliAll.map(v => _soprDateISO(v.data_sopralluogo).slice(0,7)).filter(m => /^\d{4}-\d{2}$/.test(m)))]
+    .sort().reverse();
+  const selMese = document.getElementById('filtro-mese');
+  const currentMese = selMese.value;
+  selMese.innerHTML = '<option value="">Tutti</option>' +
+    mesi.map(m => `<option value="${m}">${mesiIt[+m.slice(5,7)-1]} ${m.slice(0,4)}</option>`).join('');
+  if (mesi.includes(currentMese)) selMese.value = currentMese;
+}
 
+let _currentPage = 1;
+const _PAGE_SIZE = 10;
 
-@app.delete("/api/files/{filename:path}")
-async def delete_file(
-    filename: str,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Soft-delete ALL upload versions of `filename`. After this call, if
-    a disk seed exists, it becomes the served version again; otherwise the
-    file returns 404."""
-    _check_token(x_upload_token or token_q)
-    rel = _safe_relpath(filename)
-    # Collect gridfs ids to remove
-    ids: list[ObjectId] = []
-    async for d in uploads_col.find({"filename": rel, "deleted_at": None}):
-        if d.get("gridfs_id"):
-            ids.append(d["gridfs_id"])
-    for gid in ids:
-        try:
-            await gridfs.delete(gid)
-        except Exception:
-            pass
-    res = await uploads_col.update_many(
-        {"filename": rel, "deleted_at": None},
-        {"$set": {"deleted_at": _now_iso(), "gridfs_id": None}},
-    )
-    await _log_admin_action("delete_all_versions", rel, x_actor_nome)
-    # Se è Master.csv, sincronizza GitHub e rigenera i file derivati con la
-    # versione ora corrente (il seed da disco, se non resta nessun'altra versione)
-    if rel == MASTER_FILENAME:
-        asyncio.create_task(_push_current_master_to_github())
-    return {"filename": rel, "deleted_versions": res.modified_count}
+function applyVerbaliFilters() {
+  _updateFiltriBadge();
+  const q       = (document.getElementById('verbali-search')?.value || '').toLowerCase().trim();
+  const impresa = document.getElementById('filtro-impresa')?.value || '';
+  const lotto   = document.getElementById('filtro-lotto')?.value || '';
+  const comune  = document.getElementById('filtro-comune')?.value || '';
+  const stato   = document.getElementById('filtro-stato')?.value || '';
+  const mese    = document.getElementById('filtro-mese')?.value || '';
+  const segnCli = document.getElementById('filtro-segn-cliente')?.value || '';
+  const fNc     = document.getElementById('filtro-nc')?.value || '';
+  const fVer    = document.getElementById('filtro-verifica')?.value || '';
 
-
-@app.patch("/api/files/{old_name:path}")
-async def rename_file(
-    old_name: str,
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    """Rename a file in MongoDB. Disk seed (if any) keeps its original name
-    but it's shadowed by the renamed Mongo entry."""
-    _check_token(x_upload_token or token_q)
-    new_name = (payload or {}).get("new_name", "")
-    if not new_name:
-        raise HTTPException(400, "Missing 'new_name'")
-    old_rel = _safe_relpath(old_name)
-    new_rel = _safe_relpath(new_name)
-    if old_rel == new_rel:
-        return {"ok": True, "filename": new_rel, "updated": 0}
-    # Make sure target name isn't already taken by an active upload
-    clash = await uploads_col.find_one({"filename": new_rel, "deleted_at": None})
-    if clash:
-        raise HTTPException(409, f"Target name already in use: {new_rel}")
-    res = await uploads_col.update_many(
-        {"filename": old_rel, "deleted_at": None},
-        {"$set": {"filename": new_rel}},
-    )
-    return {"ok": True, "from": old_rel, "to": new_rel, "updated": res.modified_count}
-
-
-@app.post("/api/uploads/{upload_id}/restore")
-async def restore_upload(
-    upload_id: str,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Make a past (soft-deleted) version current again, by clearing
-    `deleted_at` on it. NB: doesn't recover GridFS bytes if they were
-    already purged. If gridfs_id is null, this fails."""
-    _check_token(x_upload_token or token_q)
-    try:
-        oid = ObjectId(upload_id)
-    except Exception:
-        raise HTTPException(400, "Invalid id")
-    doc = await uploads_col.find_one({"_id": oid})
-    if not doc:
-        raise HTTPException(404, "Upload not found")
-    if not doc.get("gridfs_id"):
-        raise HTTPException(410, "Underlying content was purged; cannot restore")
-    await uploads_col.update_one({"_id": oid}, {"$set": {"deleted_at": None}})
-    await _log_admin_action("restore", doc["filename"], x_actor_nome)
-    # Se è Master.csv, sincronizza GitHub con la versione ripristinata
-    if doc.get("filename") == MASTER_FILENAME:
-        asyncio.create_task(_push_current_master_to_github())
-    return {"ok": True, "restored": str(oid), "filename": doc["filename"]}
-
-
-@app.on_event("startup")
-async def _on_startup():
-    print(f"[enri-dashboard] DATA_DIR (seed) = {DATA_DIR}")
-    print(f"[enri-dashboard] DB_NAME         = {DB_NAME}")
-    print(f"[enri-dashboard] CORS            = {ALLOWED_ORIGINS}")
-    print(f"[enri-dashboard] UPLOAD_TOKEN    = {'set' if UPLOAD_TOKEN else 'OFF (open)'}")
-    # Indici MongoDB — evitano full collection scan sulle query più frequenti
-    try:
-        await uploads_col.create_index([("filename", 1), ("deleted_at", 1), ("uploaded_at", -1)])
-        await assignments_col.create_index("nome")
-        await pending_col.create_index([("status", 1), ("submitted_at", -1)])
-        await solleciti_col.create_index([("pratica", 1), ("data_sollecito", 1)])
-        await solleciti_col.create_index("tratta_id")
-        await cantieri_col.create_index([("pratica_id", 1), ("ente", 1)])
-        await cantieri_col.create_index("lotto")
-        await coordinamenti_col.create_index([("pratica", 1), ("ente_key", 1)], unique=True)
-        await coordinamenti_col.create_index("lotto")
-        await sopralluoghi_col.create_index("codice_verbale")
-        await issues_col.create_index("codice", unique=True)
-        await issues_col.create_index("origine_key", unique=True, partialFilterExpression={"origine_key": {"$type": "string"}})
-        await issues_skip_col.create_index("key", unique=True)
-        await issues_col.create_index([("prefisso", 1), ("seq", -1)])
-        await agenda_col.create_index([("stato", 1), ("data_appuntamento", 1)])
-        await agenda_delreq_col.create_index([("stato", 1), ("agenda_id", 1)])
-        await gantt_rates_col.create_index("scope", unique=True)
-        print("[enri-dashboard] Indici MongoDB verificati/creati")
-    except Exception as e:
-        print(f"[startup] creazione indici: {e}")
-    # Backfill: ensure pre-existing upload records have a deleted_at field
-    await uploads_col.update_many(
-        {"deleted_at": {"$exists": False}}, {"$set": {"deleted_at": None}}
-    )
-    # Sync cantieri: crea automaticamente cantieri non_avviato per tratte LAVORABILE=SI
-    # Eseguita in background (non awaitata) per non ritardare l'accettazione
-    # delle richieste HTTP (es. /api/health) durante il boot dopo un cold-start.
-    async def _startup_sync_cantieri():
-        try:
-            await _sync_cantieri()
-        except Exception as e:
-            print(f"[startup] _sync_cantieri: {e}")
-    asyncio.create_task(_startup_sync_cantieri())
-    # Backfill sopralluoghi.csv: il vecchio seed statico è stato rimosso dal
-    # repo, rigeneriamo subito il derivato da Mongo così compare in "File
-    # correnti" senza dover aspettare il prossimo verbale/eliminazione.
-    _schedule_sopralluoghi_csv_regen("backfill startup")
-    # Backfill solleciti.csv: idem, così compare subito in "File correnti".
-    _schedule_solleciti_csv_regen("backfill startup")
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# IMPRESE (contractor) — assignments + pending updates workflow
-# ─────────────────────────────────────────────────────────────────────────────
-# An "impresa" user logs in via the existing Google Apps Script flow (hub.html).
-# We keep a server-side mapping nome → lotti[] in `assignments`. When the user
-# submits updates / new rows, they go in `pending_updates`; the admin approves
-# and the change is applied to Master.csv (a new GridFS version is created).
-# ═════════════════════════════════════════════════════════════════════════════
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Sessione firmata — risolve il problema per cui chiunque potesse fare
-# `localStorage.setItem('_enri_user', 'Nome Impresa')` e impersonare quel
-# nome senza conoscere il codice di accesso (il codice era verificato SOLO
-# da Google Apps Script al login, mai dal backend sulle chiamate successive).
-#
-# Flusso corretto:
-#   1. hub.html invia nome+codice a /api/auth/login (non più direttamente ad
-#      Apps Script: il segreto APPS_SCRIPT_SECRET resta lato server)
-#   2. Il backend verifica nome+codice chiamando Apps Script server-to-server
-#   3. Se ok, firma un token (HMAC, non falsificabile senza SESSION_SECRET)
-#      con nome+ruolo+scadenza, e lo restituisce al browser
-#   4. Ogni chiamata /api/imprese/* richiede questo token nell'header
-#      x-session-token; il `nome` viene SEMPRE preso dal token firmato,
-#      MAI dal parametro `nome` passato dal client (che viene ignorato)
-# ─────────────────────────────────────────────────────────────────────────────
-
-LOGIN_MAX_ATTEMPTS = int(os.environ.get("LOGIN_MAX_ATTEMPTS", "5"))
-LOGIN_LOCKOUT_SECONDS = int(os.environ.get("LOGIN_LOCKOUT_SECONDS", "300"))
-_login_failures: dict[str, list[float]] = {}
-
-
-def _check_login_rate_limit(nome_key: str) -> None:
-    now = time.time()
-    attempts = [t for t in _login_failures.get(nome_key, []) if now - t < LOGIN_LOCKOUT_SECONDS]
-    _login_failures[nome_key] = attempts
-    if len(attempts) >= LOGIN_MAX_ATTEMPTS:
-        wait = int(LOGIN_LOCKOUT_SECONDS - (now - attempts[0]))
-        raise HTTPException(429, f"Troppi tentativi falliti. Riprova tra {max(wait, 1)}s")
-
-
-def _record_login_failure(nome_key: str) -> None:
-    _login_failures.setdefault(nome_key, []).append(time.time())
-
-
-@app.post("/api/auth/login")
-async def auth_login(payload: dict):
-    """Proxy server-to-server verso Google Apps Script: il browser non vede
-    più APPS_SCRIPT_SECRET, e il codice viene verificato per davvero (non solo
-    al primo login, ma e' la base per ogni chiamata successiva tramite il token)."""
-    nome = (payload or {}).get("nome", "").strip()
-    codice = (payload or {}).get("codice", "").strip()
-    if not nome or not codice:
-        raise HTTPException(400, "Nome e codice sono richiesti")
-    nome_key = nome.lower()
-    _check_login_rate_limit(nome_key)
-    if not APPS_SCRIPT_URL or not APPS_SCRIPT_SECRET:
-        raise HTTPException(500, "Login non configurato sul server (APPS_SCRIPT_URL/SECRET mancanti)")
-    try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            r = await client.post(
-                APPS_SCRIPT_URL,
-                content=json.dumps({"secret": APPS_SCRIPT_SECRET, "action": "login", "nome": nome, "codice": codice}),
-                headers={"Content-Type": "text/plain"},
-            )
-    except Exception as e:
-        raise HTTPException(502, f"Servizio di login non raggiungibile: {e}")
-
-    try:
-        data = r.json()
-    except Exception:
-        snippet = r.text[:200].replace("\n", " ")
-        raise HTTPException(502, f"Risposta non valida da Apps Script (HTTP {r.status_code}): {snippet!r}")
-
-    if not data.get("ok"):
-        _record_login_failure(nome_key)
-        raise HTTPException(401, data.get("msg") or "Nome o codice non riconosciuti")
-
-    _login_failures.pop(nome_key, None)
-    nome_canonical = data.get("nome") or nome
-    ruolo = str(data.get("ruolo") or "user").lower()
-    token = _sign_session(nome_canonical, ruolo)
-    return {"ok": True, "token": token, "nome": nome_canonical, "ruolo": ruolo}
-
-
-@app.get("/api/auth/verify")
-async def auth_verify(sess: dict = Depends(_require_session)):
-    """Verifica token di sessione e restituisce nome+ruolo — usato da index.html per la rivalidazione silenziosa."""
-    return {"ok": True, "nome": sess["nome"], "ruolo": sess.get("ruolo", "user")}
-
-
-@app.post("/api/logs/get")
-async def logs_get(payload: dict, sess: dict = Depends(_require_session)):
-    """Log accessi — letto da MongoDB (access_logs). JSONBin/Apps Script non più usati per questo."""
-    bin_id = (payload or {}).get("binId", "")
-    doc = await access_logs_col.find_one({"_id": bin_id}) or {}
-    return {"record": {
-        "utenti":  doc.get("utenti", []),
-        "accessi": doc.get("accessi", []),
-    }}
-
-
-@app.post("/api/logs/put")
-async def logs_put(payload: dict, sess: dict = Depends(_require_session)):
-    """Log accessi — scritto su MongoDB (access_logs). JSONBin/Apps Script non più usati per questo."""
-    bin_id = (payload or {}).get("binId", "")
-    data   = (payload or {}).get("data") or {}
-    if not bin_id:
-        raise HTTPException(400, "binId mancante")
-    await access_logs_col.update_one(
-        {"_id": bin_id},
-        {"$set": {
-            "utenti":  data.get("utenti", []),
-            "accessi": data.get("accessi", []),
-        }},
-        upsert=True,
-    )
-    return {"ok": True}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Parametri di configurazione (rischio ROS, squadre, capacità, azioni) — rev.??
-# Fonte unica: xlsx caricato da admin.html tramite /api/upload (stesso
-# meccanismo GridFS di Master.csv). Il parsing avviene qui, server-side:
-# il frontend (stato_lotti.html) consuma solo /api/parametri (JSON), mai
-# l'xlsx direttamente — nessuna soglia/peso/produttività è hardcoded in JS.
-# ─────────────────────────────────────────────────────────────────────────────
-PARAMETRI_FILENAME = "Parametri_configurazione_dashboard_ENRI.xlsx"
-
-
-def _pf(row: dict, key: str, default=None):
-    v = row.get(key)
-    return default if v is None else v
-
-
-def _pf_bool_si(row: dict, key: str) -> bool:
-    v = row.get(key)
-    return str(v).strip().lower() == "sì" or str(v).strip().lower() == "si"
-
-
-def _find_header_row(ws, anchor_text: str, max_scan: int = 20) -> int | None:
-    """Cerca nella colonna A, entro le prime `max_scan` righe, la cella che
-    contiene esattamente `anchor_text` e ne restituisce l'indice (1-based).
-    Usato invece di numeri di riga fissi così lo sheet resta parsabile anche
-    se il PM inserisce/rimuove righe di intestazione o note sopra la tabella."""
-    for i in range(1, max_scan + 1):
-        v = ws.cell(row=i, column=1).value
-        if v is not None and str(v).strip() == anchor_text:
-            return i
-    return None
-
-
-def _sheet_table(ws, anchor_text: str, max_scan: int = 20) -> list[dict]:
-    """Legge la tabella che inizia con l'header trovato da `_find_header_row`.
-    Ferma la lettura alla prima riga completamente vuota. Le chiavi del dict
-    sono le intestazioni originali (testo colonna A..N), non rinominate qui —
-    la rinomina in snake_case avviene nel parser specifico di ogni sezione."""
-    hdr_row = _find_header_row(ws, anchor_text, max_scan)
-    if hdr_row is None:
-        return []
-    headers = [c.value for c in ws[hdr_row]]
-    rows = []
-    r = hdr_row + 1
-    while True:
-        cells = [ws.cell(row=r, column=ci + 1).value for ci in range(len(headers))]
-        if all(c is None for c in cells):
-            break
-        row = {}
-        for h, v in zip(headers, cells):
-            if h is not None:
-                row[str(h).strip()] = v
-        rows.append(row)
-        r += 1
-        if r > hdr_row + 500:  # safety stop
-            break
-    return rows
-
-
-def _xlsx_date_to_it(v):
-    """Normalizza una cella data del PARAMETRI xlsx in stringa gg/mm/aaaa.
-    openpyxl restituisce un oggetto datetime/date se la cella è formattata
-    come Data in Excel, una stringa se è General/Testo: il frontend
-    (parseDateIT) si aspetta sempre e solo il formato gg/mm/aaaa."""
-    if v is None or v == "":
-        return v
-    if hasattr(v, "strftime"):
-        return v.strftime("%d/%m/%Y")
-    return v
-
-
-def _parse_parametri_xlsx(raw: bytes) -> dict:
-    import openpyxl
-    wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
-
-    out: dict = {}
-
-    # ── Parametri globali ──
-    globali = {}
-    for row in _sheet_table(wb["Parametri globali"], "Codice"):
-        codice = row.get("Codice")
-        if not codice:
-            continue
-        globali[str(codice).strip()] = {
-            "ambito": row.get("Ambito"),
-            "parametro": row.get("Parametro"),
-            "valore": row.get("Valore"),
-            "unita": row.get("Unità"),
-            "tipo_dato": row.get("Tipo dato"),
-            "modificabile": _pf_bool_si(row, "Modificabile"),
-            "descrizione": row.get("Descrizione / regola"),
-        }
-    out["globali"] = globali
-
-    # ── Regole squadre per stato cantiere ──
-    regole_squadre = {}
-    for row in _sheet_table(wb["Regole squadre cantiere"], "Stato cantiere"):
-        stato = row.get("Stato cantiere")
-        if not stato:
-            continue
-        regole_squadre[str(stato).strip()] = {
-            "squadre_standard": row.get("Squadre standard"),
-            "operativo": _pf_bool_si(row, "Conta come operativo"),
-            "modificabile": _pf_bool_si(row, "Modificabile"),
-            "regola": row.get("Regola"),
-            "note": row.get("Note"),
-        }
-    out["regole_squadre_cantiere"] = regole_squadre
-
-    # ── Eccezioni squadre per singolo cantiere ──
-    eccezioni = []
-    for row in _sheet_table(wb["Eccezioni per cantiere"], "Codice cantiere"):
-        if not row.get("Codice cantiere"):
-            continue
-        eccezioni.append({
-            "codice_cantiere": row.get("Codice cantiere"),
-            "lotto": row.get("Lotto"),
-            "impresa": row.get("Impresa"),
-            "stato_cantiere": row.get("Stato cantiere"),
-            "squadre_standard": row.get("Squadre standard"),
-            "squadre_override": row.get("Squadre override"),
-            "squadre_effettive": row.get("Squadre effettive"),
-            "data_validita": row.get("Data validità"),
-            "motivazione": row.get("Motivazione"),
-        })
-    out["eccezioni_cantiere"] = eccezioni
-
-    # ── Tempi autorizzativi ──
-    tempi = {}
-    for row in _sheet_table(wb["Tempi autorizzativi"], "Codice"):
-        codice = row.get("Codice")
-        if not codice:
-            continue
-        tempi[str(codice).strip()] = {
-            "tipologia": row.get("Tipologia ente / pratica"),
-            "giorni_attesi": row.get("Giorni attesi"),
-            "soglia_attenzione": row.get("Soglia attenzione"),
-            "soglia_critica": row.get("Soglia critica"),
-            "unita": row.get("Unità"),
-            "peso_milestone_30gg": row.get("Peso se milestone ≤30gg"),
-            "modificabile": _pf_bool_si(row, "Modificabile"),
-            "note": row.get("Note"),
-            "giorni_redazione_pratiche": row.get("Giorni redazione pratiche"),
-        }
-    out["tempi_autorizzativi"] = tempi
-
-    # ── Rischio ROS: fattori (pesi) + classi ──
-    ws_ros = wb["Rischio ROS"]
-    fattori = []
-    for row in _sheet_table(ws_ros, "Codice fattore"):
-        if not row.get("Codice fattore"):
-            continue
-        fattori.append({
-            "codice": row.get("Codice fattore"),
-            "fattore": row.get("Fattore"),
-            "peso": row.get("Peso"),
-            "misura": row.get("Misura utilizzata"),
-            "soglia_attenzione": row.get("Soglia attenzione"),
-            "soglia_critica": row.get("Soglia critica"),
-            "normalizzazione": row.get("Normalizzazione proposta"),
-            "attivo": _pf_bool_si(row, "Attivo"),
-            "note": row.get("Note"),
-        })
-    peso_totale_attivi = round(sum(float(f["peso"] or 0) for f in fattori if f["attivo"]), 6)
-    classi = []
-    for row in _sheet_table(ws_ros, "Classe"):
-        if not row.get("Classe"):
-            continue
-        classi.append({
-            "classe": row.get("Classe"),
-            "punteggio_min": row.get("Punteggio minimo"),
-            "punteggio_max": row.get("Punteggio massimo"),
-            "colore": row.get("Colore"),
-            "descrizione": row.get("Descrizione"),
-            "azione": row.get("Azione dashboard"),
-        })
-    out["rischio_ros"] = {
-        "fattori": fattori,
-        "peso_totale_attivi": peso_totale_attivi,
-        "peso_valido": abs(peso_totale_attivi - 1.0) < 0.001,
-        "classi": classi,
+  const rows = _verbaliAll.filter(v => {
+    if (_chip && _CHIP_PRED[_chip] && !_CHIP_PRED[_chip](v)) return false;
+    if (impresa && v.impresa !== impresa) return false;
+    if (lotto && v.lotto !== lotto) return false;
+    if (comune && v.comune !== comune) return false;
+    if (stato === 'anom' ? !_isAnomalia(v) : (stato && _anomaliaStato(v) !== stato)) return false;
+    if (mese && _soprDateISO(v.data_sopralluogo).slice(0,7) !== mese) return false;
+    if (segnCli === 'si' && !_isSegnCliente(v)) return false;
+    if (segnCli === 'no' && _isSegnCliente(v)) return false;
+    if (fVer) {
+      const vs = _verifState(v);
+      if (fVer === 'da_fare' && !(vs && (vs.stato === 'aperta' || vs.stato === 'scaduta'))) return false;
+      if (fVer === 'figli' && !v.verbale_origine) return false;
+      if (['scaduta','risolto','non_risolto'].includes(fVer) && !(vs && vs.stato === fVer)) return false;
     }
+    if (fNc) {
+      const cs = _ckStatsOf(v);
+      if (fNc === 'nc' && cs.nc === 0) return false;
+      if (fNc === 'ok' && cs.nc > 0) return false;
+      if (fNc === 'incompleta' && cs.compilati >= cs.tot) return false;
+    }
+    if (q && ![v.codice_verbale, v.tratta_id, v.lotto, v.impresa, v.data_sopralluogo, v.comune, v.segnalazioni, v.azioni_richieste, v.segnalazione_cliente_note, v.verbale_origine]
+              .join(' ').toLowerCase().includes(q)) return false;
+    return true;
+  });
 
-    # ── Regole azioni ──
-    azioni = []
-    for row in _sheet_table(wb["Regole azioni"], "Priorità"):
-        if row.get("Codice") is None:
-            continue
-        azioni.append({
-            "priorita": row.get("Priorità"),
-            "codice": row.get("Codice"),
-            "condizione": row.get("Condizione oggettiva"),
-            "dato_da_mostrare": row.get("Dato da mostrare"),
-            "azione": row.get("Azione suggerita"),
-            "responsabile": row.get("Responsabile"),
-            "calcolo_quantita": row.get("Calcolo quantità"),
-            "affidabilita_minima": row.get("Affidabilità minima"),
-            "note": row.get("Note"),
-        })
-    azioni.sort(key=lambda a: (a["priorita"] if isinstance(a["priorita"], (int, float)) else 999))
-    out["regole_azioni"] = azioni
+  _currentPage = Math.min(_currentPage, Math.max(1, Math.ceil(rows.length / _PAGE_SIZE)));
+  _renderVerbaliList(rows);
+}
 
-    # ── Parametri per lotto (override globali) ──
-    per_lotto = {}
-    for row in _sheet_table(wb["Parametri per lotto"], "Lotto"):
-        lotto = row.get("Lotto")
-        if lotto is None or str(lotto).strip() == "":
-            continue
-        per_lotto[str(lotto).strip()] = {
-            "cluster": row.get("Cluster"),
-            "impresa": row.get("Impresa"),
-            "milestone_contrattuale": _xlsx_date_to_it(row.get("Milestone contrattuale")),
-            "produttivita_standard_squadra": row.get("Produttività standard squadra"),
-            "squadre_lotto_override": row.get("Squadre lotto (override manuale)"),
-            "giorni_lavorativi_settimana": row.get("Giorni lavorativi/settimana"),
-            "efficienza_prevista": row.get("Efficienza prevista"),
-            "produttivita_disponibile": row.get("Produttività disponibile (da squadre effettive)"),
-            "fonte": row.get("Fonte / motivazione"),
-            "data_validita": row.get("Data validità"),
-            "note": row.get("Note"),
-            "data_avvio_progettazione": _xlsx_date_to_it(row.get("Data avvio progettazione")),
-        }
-    out["parametri_lotto"] = per_lotto
+function filterVerbali(q) { applyVerbaliFilters(); }
 
-    # Nota: lo sheet "Esempio calcolo" è una sandbox del PM per validare le
-    # formule a mano (contiene ipotesi/celle di prova, non parametri) — non
-    # viene esposto da /api/parametri e non è usato dal motore di calcolo.
+function _isSegnCliente(v) {
+  const x = v && v.segnalazione_cliente;
+  return x === true || x === 'SI' || x === 'si' || x === 'true' || x === 1 || x === '1';
+}
 
-    return out
+function _ckChip(v) {
+  const st = _ckStatsOf(v);
+  if (st.nc > 0) return `<span class="ck-chip nc">${st.nc} NC</span>`;
+  if (st.compilati === 0) return '<span class="ck-chip todo">checklist vuota</span>';
+  if (st.compilati < st.tot) return `<span class="ck-chip todo">${st.compilati}/${st.tot}</span>`;
+  return '<span class="ck-chip ok">checklist OK</span>';
+}
 
+function _esitoPill(v) {
+  const a = _anomaliaStato(v), vs = _verifState(v);
+  if (_isAnomalia(v) && vs && vs.stato === 'risolto') return '<span class="es-pill green">Risolta</span>';
+  if (a === 'Anomalia critica' || a === 'Anomalia media') return '<span class="es-pill red">Con anomalia</span>';
+  if (_isVerifDaFare(v)) return '<span class="es-pill amber">Da verificare</span>';
+  if (a === 'Nessuna anomalia') return '<span class="es-pill green">OK</span>';
+  return '<span class="es-pill grey">Da compilare</span>';
+}
 
-# Cache in-process: rifà il parsing solo se cambia la versione (gridfs_id/mtime).
-_parametri_cache: dict = {"key": None, "data": None}
+function _statoChip(esito) {
+  if (esito === 'Anomalia critica' || esito === 'Anomalia media') return '<span class="stato-chip err">Con anomalia</span>';
+  if (esito === 'Nessuna anomalia') return '<span class="stato-chip ok">Nessuna anomalia</span>';
+  return '';
+}
 
+function _sysMancano(v) { return !(v.subsystem && v.data_invio_system && v.metodo_invio && v.rif_system_invio); }
+function _sysMancaChip(v) { return _sysMancano(v) ? '<span class="ck-chip nc" title="Segnalazione al System incompleta">Dati System mancanti</span>' : ''; }
 
-async def _load_parametri() -> tuple[dict, dict]:
-    """Restituisce (parametri_json, meta). meta include source/uploaded_at
-    per far vedere in dashboard da dove arrivano i numeri."""
-    cur = await _current_upload(PARAMETRI_FILENAME)
-    if cur:
-        cache_key = str(cur.get("gridfs_id"))
-        meta = {"source": "mongo", "filename": PARAMETRI_FILENAME, "uploaded_at": cur.get("uploaded_at")}
-        if _parametri_cache["key"] != cache_key:
-            raw = await _read_gridfs(cur["gridfs_id"])
-            _parametri_cache["key"] = cache_key
-            _parametri_cache["data"] = _parse_parametri_xlsx(raw)
-        return _parametri_cache["data"], meta
+function _renderVerbaliList(rows) {
+  const list = document.getElementById('verbali-list');
+  const ac = document.getElementById('archCount'); if (ac) ac.textContent = rows.length + ' verbali trovati';
+  _renderTableHead();
+  if (!rows.length) {
+    list.innerHTML = '<div style="color:#888;font-size:12px;padding:20px 0;text-align:center">Nessun verbale trovato</div>';
+    document.getElementById('verbali-pagination').innerHTML = '';
+    return;
+  }
 
-    # Fallback: file seed committato nel repo (nessun upload ancora fatto)
-    path = DATA_DIR / PARAMETRI_FILENAME
-    if path.exists() and path.is_file():
-        cache_key = f"disk:{path.stat().st_mtime}"
-        meta = {"source": "disk", "filename": PARAMETRI_FILENAME, "uploaded_at": None}
-        if _parametri_cache["key"] != cache_key:
-            _parametri_cache["key"] = cache_key
-            _parametri_cache["data"] = _parse_parametri_xlsx(path.read_bytes())
-        return _parametri_cache["data"], meta
+  const totalPages = Math.max(1, Math.ceil(rows.length / _PAGE_SIZE));
+  _currentPage = Math.min(Math.max(1, _currentPage), totalPages);
+  const pageRows = rows.slice((_currentPage - 1) * _PAGE_SIZE, _currentPage * _PAGE_SIZE);
 
-    raise HTTPException(404, f"Nessun file parametri caricato ({PARAMETRI_FILENAME}) — caricalo da admin.html")
+  list.innerHTML = pageRows.map(v => `
+    <div data-id="${v._id}" style="grid-template-columns:${_gridCols()};${_gridMinWidth() ? 'min-width:'+_gridMinWidth()+';' : ''}" class="verbale-row${v._id === _selectedVerbaleId ? ' is-selected' : ''}${_isSegnCliente(v) ? ' has-segn' : ''}${v.verbale_origine ? ' is-verifica' : ''}">
+      <span class="vr-codice">${v.codice_verbale}${_verifLinkHtml(v)}</span>
+      <span class="vr-data">${_soprDateDisplay(v.data_sopralluogo)}</span>
+      <span class="vr-comune" title="${escA(v.comune || '')}">${v.comune || '—'}<small>${v.tratta_id || '—'}</small></span>
+      <span>${v.lotto || '—'}</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escA(v.impresa || '')}">${v.impresa || '—'}</span>
+      <span>${_esitoPill(v)}${_sysMancaChip(v)}</span>
+      <span class="c"><span class="num-pill ${_ckStatsOf(v).nc ? (_isAnomaliaAperta(v) ? 'red' : '') : ''}">${_ckStatsOf(v).nc}</span></span>
+      <span class="c"><span class="num-pill ${_isVerifDaFare(v) ? 'amber' : ''}">${_isVerifDaFare(v) ? _ckStatsOf(v).nc : 0}</span></span>
+      <span class="c">${_isSegnCliente(v) ? `<span class="cli-link ${_isSegnAperta(v) ? 'open' : ''}">Cliente</span>` : '<span class="muted-d">–</span>'}</span>
+      <span class="c">${(() => { const g = _giorniApertura(v); return g === null ? '<span class="muted-d">–</span>' : `<span class="gg ${g > 14 ? 'red' : (g > 7 ? 'amber' : '')}">${g} gg</span>`; })()}</span>
+      <span class="vr-actions">
+        <button title="Scarica PDF" onclick="event.stopPropagation();generatePdfForRecord('${v._id}')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+      </span>
+    </div>`).join('');
 
+  list.querySelectorAll('.verbale-row').forEach(row => {
+    row.addEventListener('click', () => _selectVerbale(row.dataset.id));
+  });
 
-MASTER_FILENAME = "Master.csv"
-ROW_KEY_COLS = ("TRATTA_ID", "ENTE", "TIPO_PERMESSO")  # natural key for an update
+  // Paginazione
+  const pag = document.getElementById('verbali-pagination');
+  const info = `<span class="pg-info">Mostra ${pageRows.length} di ${rows.length} risultati</span>`;
+  if (totalPages <= 1) { pag.innerHTML = info; return; }
+  let html = `<button ${_currentPage===1?'disabled':''} onclick="_goToPage(${_currentPage-1})">&lsaquo;</button>`;
+  for (let p = 1; p <= totalPages; p++) {
+    if (p === 1 || p === totalPages || Math.abs(p - _currentPage) <= 1) {
+      html += `<button class="${p===_currentPage?'active':''}" onclick="_goToPage(${p})">${p}</button>`;
+    } else if (p === 2 || p === totalPages - 1) {
+      html += `<span style="padding:0 2px;color:var(--muted2);font-size:11px">…</span>`;
+    }
+  }
+  html += `<button ${_currentPage===totalPages?'disabled':''} onclick="_goToPage(${_currentPage+1})">&rsaquo;</button>`;
+  pag.innerHTML = info + '<span class="pg-btns">' + html + '</span>';
+}
 
-# Separatore rilevato dal file effettivo — viene impostato in _read_master_csv()
-_detected_sep: str = ";"
+function _goToPage(p) { _currentPage = p; applyVerbaliFilters(); }
 
-def _detect_sep(raw: bytes, encoding: str = "utf-8") -> str:
-    """Auto-detect CSV separator: tab, semicolon or comma."""
-    try:
-        sample = raw[:4096].decode(encoding, errors="replace")
-        first_line = sample.split("\n")[0]
-        counts = {"\t": first_line.count("\t"), ";": first_line.count(";"), ",": first_line.count(",")}
-        return max(counts, key=counts.get)
-    except Exception:
-        return ";"
+// ── Anteprima inline (colonna destra, sotto l'archivio) ──────────────────────
+let _selectedVerbaleId = null;
 
-# Cache in-process per _read_master_csv() — evita di riparsare lo stesso CSV
-# più volte nella stessa request (e tra request ravvicinate finché non cambia versione).
-_master_csv_cache: dict = {"key": None, "df": None}
+function _selectVerbale(id) {
+  _selectedVerbaleId = id;
+  const v = _verbaliAll.find(x => x._id === id);
+  document.querySelectorAll('.verbale-row').forEach(r => r.classList.toggle('is-selected', r.dataset.id === id));
+  if (!v) return;
+  try { _renderPreview(v); }
+  catch (e) {
+    console.error('Anteprima verbale:', e);
+    document.getElementById('preview-body').outerHTML = `<div id="preview-body" class="preview-empty" style="color:var(--err)">Impossibile mostrare ${esc(String(v.codice_verbale || ''))}: ${esc(String(e.message || e))}</div>`;
+  }
+  _revealPreview();
+}
 
-async def _read_master_csv() -> "pd.DataFrame":
-    """Read the current authoritative Master.csv (Mongo first, then disk seed).
-    Cache in-process: la cache è valida finché la versione corrente (upload _id)
-    non cambia, così le ~11 chiamate per request evitano di rileggere/riparsare
-    lo stesso file da GridFS più volte."""
-    global _detected_sep
-    cur = await _current_upload(MASTER_FILENAME)
-    cache_key = str(cur["_id"]) if cur else "disk-seed"
+// Con il form "Nuovo verbale" aperto l'anteprima va sotto la tabella (fuori schermo): portala in vista.
+function _revealPreview() {
+  const c = document.getElementById('preview-card');
+  if (!c || !c.scrollIntoView) return;
+  const r = c.getBoundingClientRect();
+  if (r.top > window.innerHeight * 0.7 || r.bottom < 100) c.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
-    cached = _master_csv_cache.get("key")
-    if cached == cache_key and _master_csv_cache.get("df") is not None:
-        return _master_csv_cache["df"]
+function _renderPreview(v) {
+  const isAdmin = ['admin', 'admin2'].includes((localStorage.getItem('_enri_role') || '').toLowerCase());
+  const urls = String(Array.isArray(v.foto_urls) ? v.foto_urls.join(',') : (v.foto_urls || '')).split(',').map(u => u.trim()).filter(Boolean);
+  const segn = _isSegnCliente(v);
+  const _d = d => d ? new Date(d).toLocaleDateString('it-IT') : '';
+  // [label, valore, opzionale]: i campi base si vedono sempre ("—" se vuoti), quelli opzionali solo se valorizzati
+  const campi = [
+    ['Data sopralluogo', _soprDateDisplay(v.data_sopralluogo)],
+    ['N° Cantiere', v.tratta_id],
+    ['Lotto', v.lotto],
+    ['Comune / Località', [v.comune, v.localita].filter(Boolean).join(' — ')],
+    ['Pozzetto', v.pozzetto, true],
+    ['Impresa esecutrice', v.impresa],
+    ['Ruolo redattore', v.referente_retelit],
+    ['Redatto da', v.referente_impresa],
+    ['Gravità / Esito', _anomaliaStato(v) || (_ckStatsOf(v).compilati ? '' : 'Checklist non compilata')],
+    ['Segnalazione cliente', segn ? 'SÌ' : 'NO'],
+    ['Esito verifica segnalazione', segn ? (({confermata:'Confermata',non_confermata:'Non confermata'})[v.esito_segnalazione] || 'Da valutare') : '', true],
+    ['Note segnalazione cliente', segn ? v.segnalazione_cliente_note : '', true],
+    ['N° Foto allegate', String(urls.length)],
+    ['SubSystem', v.subsystem],
+    ['Data invio segnalazione al System', _d(v.data_invio_system)],
+    ['Metodo di invio', v.metodo_invio],
+    ['Riferimento System invio', v.rif_system_invio],
+    ['Segnalazioni', v.segnalazioni, true], ['Azioni richieste', v.azioni_richieste, true],
+    ['Scadenza azioni', _d(v.scadenza_azioni), true],
+    ['Prossimo sopralluogo', _d(v.prossimo_sopralluogo), true],
+    ['Note', v.note, true],
+  ].map(([l, val, opt]) => [l, String(val ?? '').trim(), opt])
+   .filter(([, val, opt]) => !opt || val)
+   .map(([l, val]) => [l, esc(val) || '—']);
+  const st = _ckStatsOf(v), nNc = st.nc, gg = _giorniApertura(v);
+  const tabs = [['dett', 'Dettagli'], ['check', 'Checklist'], ['anom', 'Anomalie' + (nNc ? ` (${nNc})` : '')], ['foto', 'Foto' + (urls.length ? ` (${urls.length})` : '')]];
+  let pane = '';
+  if (_pvTab === 'check') {
+    const pct = st.tot ? Math.round(st.compilati * 100 / st.tot) : 0;
+    pane = `<div class="pv-sec">Checklist</div><div class="pv-prog">${st.compilati} / ${st.tot} completate</div>
+      <div class="pv-bar"><i style="width:${pct}%"></i></div>${_pvAreasHtml(v)}${_ckPreviewHtml(v)}`;
+  } else if (_pvTab === 'anom') {
+    const ncs = _ckAllItems(v).filter(x => x.e === 'NC');
+    pane = `<div class="pv-sec">Anomalie</div>` + (ncs.length ? ncs.map(_pvCkItemHtml).join('') : '<div class="preview-empty">Nessuna non conformità rilevata.</div>');
+  } else if (_pvTab === 'foto') {
+    pane = `<div class="pv-sec">Foto allegate</div>` + (urls.length
+      ? `<div class="preview-photos pv-photos">${urls.map(u => `<a href="${u}" target="_blank" rel="noopener"><img src="${u}" loading="lazy"></a>`).join('')}</div>`
+      : '<div class="preview-empty">Nessuna foto allegata.</div>');
+  } else {
+    pane = `<div class="pv-sec">Informazioni generali</div>
+      <div class="pv-kv"><span>Stato</span><span>${_esitoPill(v)}</span></div>
+      ${gg !== null ? `<div class="pv-kv"><span>Giorni apertura</span><span><b class="gg ${gg > 14 ? 'red' : (gg > 7 ? 'amber' : '')}">${gg} gg</b></span></div>` : ''}
+      ${campi.map(([label, val]) => `<div class="pv-kv"><span>${label}</span><span>${val}</span></div>`).join('')}
+      ${_verifPreviewHtml(v)}`;
+  }
 
-    if cur:
-        raw = await _read_gridfs(cur["gridfs_id"])
-    else:
-        path = DATA_DIR / MASTER_FILENAME
-        if not path.exists():
-            raise HTTPException(404, "Master.csv not found")
-        raw = path.read_bytes()
-    # Auto-rileva separatore dal contenuto reale del file
-    _detected_sep = _detect_sep(raw)
-    # Master.csv may be UTF-8 or Latin-1/CP1252 depending on the Excel export.
-    # on_bad_lines='warn' evita che UNA riga malformata (es. virgola non quotata
-    # in un campo di testo libero come NOTE) faccia fallire la lettura di tutto
-    # il file: la riga incriminata viene segnalata in log e scartata, il resto
-    # del file resta leggibile.
-    df = None
-    for enc in ("utf-8", "cp1252", "latin-1"):
-        try:
-            df = pd.read_csv(
-                io.BytesIO(raw), sep=_detected_sep, dtype=str, keep_default_na=False,
-                encoding=enc, on_bad_lines="warn",
-            )
-            break
-        except (UnicodeDecodeError, UnicodeError):
-            continue
-    if df is None:
-        # Last resort: replace bad bytes
-        df = pd.read_csv(io.BytesIO(raw), sep=_detected_sep, dtype=str, keep_default_na=False, encoding="utf-8", encoding_errors="replace")
+  document.getElementById('preview-body').outerHTML = `
+    <div id="preview-body">
+      <div class="pv-head"><span class="pv-code">${v.codice_verbale}</span><button class="pv-x" title="Chiudi" onclick="_closePreview()">✕</button></div>
+      <div class="pv-meta">${v.created_at ? new Date(v.created_at).toLocaleString('it-IT') : ''}</div>
+      <div class="pv-btns">
+        <button onclick="openSysModal('${v._id}')" style="background:none;border:1px solid var(--accent);color:var(--accent);border-radius:6px;font-size:10.5px;padding:3px 8px;cursor:pointer">${_sysMancano(v) ? 'Completa dati System' : 'Modifica dati System/Cliente'}</button>
+        ${isAdmin ? `<button onclick="openEditModal('${v._id}')" style="background:none;border:1px solid var(--accent);color:var(--accent);border-radius:6px;font-size:10.5px;padding:3px 8px;cursor:pointer">Modifica</button>` : ''}
+        ${isAdmin ? `<button onclick="deleteVerbale('${v._id}')" style="background:none;border:1px solid #ef4444;color:#ef4444;border-radius:6px;font-size:10.5px;padding:3px 8px;cursor:pointer">Elimina</button>` : ''}
+      </div>
+      <div class="pv-tabs">${tabs.map(([k, l]) => `<button class="pv-tab ${_pvTab === k ? 'on' : ''}" onclick="_setPvTab('${k}')">${l}</button>`).join('')}</div>
+      ${pane}
+    </div>`;
+}
 
-    _master_csv_cache["key"] = cache_key
-    _master_csv_cache["df"]  = df
-    return df
+let _pvTab = 'dett';
+function _setPvTab(t) { _pvTab = t; if (_selectedVerbaleId) _selectVerbale(_selectedVerbaleId); }   // passa da _selectVerbale: errori mostrati nel pannello
+function _closePreview() {
+  _selectedVerbaleId = null;
+  document.querySelectorAll('.verbale-row.is-selected').forEach(r => r.classList.remove('is-selected'));
+  document.getElementById('preview-body').outerHTML = '<div id="preview-body" class="preview-empty">Seleziona un verbale dall\'archivio per vederne il dettaglio.</div>';
+}
+function _pvAreasHtml(v) {
+  let h = '';
+  CK_CATS.forEach(k => _ckAreas(k).forEach(a => {
+    const x = _ckAreaStat(v, k, a.ids);
+    if (!x.comp) return;
+    const cls = x.nc ? 'nc' : (x.comp < x.tot ? 'part' : '');
+    h += `<div class="pv-area ${x.nc ? 'nc' : ''}"><span class="pv-ico ${cls}">${x.nc ? '!' : (x.comp < x.tot ? '·' : '✓')}</span><span>${esc(a.area)}<small>${esc(CHECKLIST_DEF[k].label)}</small></span><span class="pv-area-r">${x.nc ? x.nc + (x.nc === 1 ? ' anomalia' : ' anomalie') : x.comp + '/' + x.tot}</span></div>`;
+  }));
+  return h;
+}
+function _pvCkItemHtml(x) {
+  return `
+        <div class="pv-ck-item">
+          <span class="ck-id">${x.id}</span>
+          <span>${esc(x.t)}${x.segnCliente ? '<span class="ck-chip todo">CLIENTE</span>' : ''}<br><small style="color:var(--muted)">${esc(x.area || '')}${x.rif ? ' · ' + esc(x.rif) : ''}</small></span>
+          <span class="ck-chip ${x.e === 'NC' ? 'nc' : (x.e === 'C' ? 'ok' : 'todo')}">${x.e === 'NC' ? 'NC' : (x.e === 'C' ? 'Conforme' : (x.e === 'NA' ? 'N.A.' : '—'))}</span>
+          ${(x.rilievo || x.azione || x.resp || x.scad || x.nota || x.dim) ? `<div class="pv-ck-nc" style="${x.e === 'NC' ? '' : 'color:var(--text2)'}">
+            ${x.dim ? '<b>Dimensione:</b> '+esc(x.dim)+'<br>' : ''}
+            ${x.rilievo ? '<b>Rilievo:</b> '+esc(x.rilievo)+'<br>' : ''}
+            ${x.azione ? '<b>Azione:</b> '+esc(x.azione)+'<br>' : ''}
+            ${x.resp ? '<b>Responsabile:</b> '+esc(x.resp)+' ' : ''}
+            ${x.scad ? '<b>Scadenza:</b> '+_soprDateDisplay(x.scad) : ''}
+            ${x.nota ? '<br><b>Nota:</b> '+esc(x.nota) : ''}
+          </div>` : ''}
+        </div>`;
+}
 
+function _ckPdfHtml(ck) {
+  if (!ck) return '';
+  const cardStyle = 'background:#fff;border:1px solid #DFE4EB;border-radius:14px;padding:16px 20px 14px 24px;position:relative;margin-bottom:14px;';
+  const secLabel = 'font-family:"JetBrains Mono",monospace;font-size:8px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:#1A7D99;margin-bottom:10px;';
+  let any = false, blocks = '';
+  CK_CATS.forEach(k => {
+    const map = ck[k] || {};
+    const rows = CHECKLIST_DEF[k].items.filter(it => map[it.id] && (map[it.id].e || map[it.id].nota || map[it.id].dim));
+    if (!rows.length) return;
+    any = true;
+    const tr = rows.map((it, i) => {
+      const st = map[it.id];
+      const col = st.e === 'NC' ? '#C0392B' : (st.e === 'C' ? '#1E8E4E' : '#7A8598');
+      let det = '';
+      if (st.e === 'NC' && (st.rilievo || st.azione || st.resp || st.scad)) {
+        det += `<div style="font-size:8.5px;color:#C0392B;margin-top:3px;line-height:1.45;">
+             ${st.rilievo ? '<b>Rilievo:</b> ' + esc(st.rilievo) + '<br>' : ''}
+             ${st.azione ? '<b>Azione:</b> ' + esc(st.azione) + '<br>' : ''}
+             ${st.resp ? '<b>Resp.:</b> ' + esc(st.resp) + ' ' : ''}
+             ${st.scad ? '<b>Scad.:</b> ' + _soprDateDisplay(st.scad) : ''}
+           </div>`;
+      }
+      if (st.dim) det += `<div style="font-size:8.5px;color:#363D48;margin-top:3px;line-height:1.45;"><b>Dimensione:</b> ${esc(st.dim)}</div>`;
+      if (st.nota) det += `<div style="font-size:8.5px;color:#363D48;margin-top:3px;line-height:1.45;"><b>Nota:</b> ${esc(st.nota)}</div>`;
+      return `<tr style="background:${i%2===0?'#F2F5F9':'#ffffff'}">
+        <td style="padding:4px 8px;font-size:8.5px;font-family:'JetBrains Mono',monospace;font-weight:700;color:#1A7D99;border:1px solid #DFE4EB;white-space:nowrap;vertical-align:top;">${it.id}</td>
+        <td style="padding:4px 8px;font-size:9px;color:#363D48;border:1px solid #DFE4EB;">${esc(it.t)}${det}</td>
+        <td style="padding:4px 8px;font-size:8.5px;font-weight:700;color:${col};border:1px solid #DFE4EB;white-space:nowrap;vertical-align:top;">${CK_ESITI[st.e] || st.e}</td>
+      </tr>`;
+    }).join('');
+    const nNc = rows.filter(it => map[it.id].e === 'NC').length;
+    blocks += `<div style="${cardStyle}">
+      <div style="position:absolute;top:0;left:0;bottom:0;width:3px;border-radius:14px 0 0 14px;background:linear-gradient(180deg,${nNc?'#C0392B,#C0392B99':'#1A7D99,#41BBD9'});"></div>
+      <div style="${secLabel}">Checklist ${CHECKLIST_DEF[k].label} — ${rows.length}/${CHECKLIST_DEF[k].items.length} verificati · ${nNc} non conformità</div>
+      <table style="width:100%;border-collapse:collapse;">${tr}</table>
+    </div>`;
+  });
+  if (ck.note_generali) {
+    any = true;
+    blocks += `<div style="${cardStyle}">
+      <div style="${secLabel}">Note generali checklist</div>
+      <div style="font-size:9px;color:#363D48;line-height:1.5;white-space:pre-wrap;">${esc(ck.note_generali)}</div>
+    </div>`;
+  }
+  return any ? blocks : '';
+}
 
-QGIS_FILENAME      = "QGIS.geojson"
-RIEPILOGO_FILENAME = "Riepilogo_progettazione.csv"
-CANTIERI_FILENAME  = "Cantieri.csv"
-SOPRALLUOGHI_FILENAME = "sopralluoghi.csv"
-SOLLECITI_FILENAME = "solleciti.csv"
+function _ckPreviewHtml(v) {
+  const st = _ckStatsOf(v);
+  if (!st.compilati) return '<div style="margin-top:10px;font-size:11.5px;color:var(--muted)">Checklist non compilata.</div>';
+  const nc = _ckNcList(v);
+  return `
+    <div style="margin-top:12px">
+      <div class="archive-title" style="margin-bottom:6px">Checklist DL
+        <span class="ck-chip ${nc.length?'nc':'ok'}">${st.compilati}/${st.tot} compilati · ${st.nc} NC</span>
+      </div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px">
+        Conformi ${st.c} · Non conformi ${st.nc} · N.A. ${st.na} · Da verificare ${st.tot - st.compilati}
+      </div>
+      ${nc.length ? '' : '<div style="font-size:11.5px;color:var(--ok);font-weight:600;margin-bottom:4px">Nessuna non conformità rilevata.</div>'}
+      ${_ckAllItems(v).map(_pvCkItemHtml).join('')}
+      ${_ckOf(v).note_generali ? `
+      <div style="margin-top:10px;font-size:11px;font-weight:700;color:var(--accent)">Note generali checklist</div>
+      <div style="font-size:11.5px;color:var(--text2);white-space:pre-wrap;">${esc(_ckOf(v).note_generali)}</div>` : ''}
+    </div>`;
+}
 
-
-async def _read_riepilogo_csv() -> "pd.DataFrame | None":
-    """Legge Riepilogo_progettazione.csv (Mongo se presente, altrimenti seed su
-    disco). Usato per recuperare CLUSTER/PROVINCIA/COMUNE per TRATTA_ID: questi
-    campi non esistono in Master.csv, solo in Riepilogo (ereditati da QGIS.geojson).
-    Ritorna None se il file non e' ancora disponibile (fail-soft: i cantieri
-    vengono comunque creati, solo senza questi campi)."""
-    try:
-        cur = await _current_upload(RIEPILOGO_FILENAME)
-        if cur:
-            raw = await _read_gridfs(cur["gridfs_id"])
-        else:
-            path = DATA_DIR / RIEPILOGO_FILENAME
-            if not path.exists():
-                return None
-            raw = path.read_bytes()
-        sep = _detect_sep(raw)
-        for enc in ("utf-8", "cp1252", "latin-1"):
-            try:
-                return pd.read_csv(
-                    io.BytesIO(raw), sep=sep, dtype=str, keep_default_na=False,
-                    encoding=enc, on_bad_lines="warn",
-                )
-            except (UnicodeDecodeError, UnicodeError):
-                continue
-        return pd.read_csv(io.BytesIO(raw), sep=sep, dtype=str, keep_default_na=False, encoding="utf-8", encoding_errors="replace")
-    except Exception as e:
-        print(f"[_read_riepilogo_csv] errore: {e}")
-        return None
-
-
-GITHUB_REPO     = os.environ.get("GITHUB_REPO", "ENRI-RDS/dashboard")
-GITHUB_BRANCH   = os.environ.get("GITHUB_BRANCH", "main")
-GITHUB_CSV_PATH = os.environ.get("GITHUB_CSV_PATH", "Master.csv")
-
-# Mappa file dashboard -> path nel repo GitHub (override via env se servono sottocartelle)
-GITHUB_PATHS: dict = {
-    "Master.csv":                  GITHUB_CSV_PATH,
-    "Riepilogo_progettazione.csv": os.environ.get("GITHUB_RIEPILOGO_PATH", "Riepilogo_progettazione.csv"),
-    "QGIS.geojson":                os.environ.get("GITHUB_QGIS_PATH", "QGIS.geojson"),
-    "QTS.geojson":                 os.environ.get("GITHUB_QTS_PATH", "QTS.geojson"),
-    "SED_classificato.geojson":    os.environ.get("GITHUB_SED_PATH", "SED_classificato.geojson"),
+async function deleteVerbale(id, cascade) {
+  if (!cascade && !confirm('Eliminare definitivamente questo verbale?\n(Le issue già generate nel registro non vengono eliminate.)')) return;
+  try {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    const token   = localStorage.getItem('_enri_session') || '';
+    const res = await fetch(apiBase + '/api/sopralluoghi/' + id + (cascade ? '?cascade=true' : ''), {
+      method: 'DELETE', headers: { 'x-session-token': token }
+    });
+    if (res.status === 409) {
+      let det = ''; try { det = (await res.json()).detail || ''; } catch(_) {}
+      if (confirm(det)) return deleteVerbale(id, true);
+      return;
+    }
+    if (!res.ok) { let det = ''; try { det = (await res.json()).detail || ''; } catch(_) {} throw new Error(det || ('HTTP ' + res.status)); }
+    const r = await res.json();
+    _selectedVerbaleId = null;
+    document.getElementById('preview-body').outerHTML = '<div id="preview-body" class="preview-empty">Seleziona un verbale dall\'archivio per vederne l\'anteprima.</div>';
+    await loadVerbali();
+    showToast('✓ Eliminato' + (r.issues_collegate ? ' · ' + r.issues_collegate + ' issue collegate restano nel registro' : ''));
+  } catch(e) {
+    alert('Errore eliminazione: ' + e.message);
+  }
 }
 
 
-_GITHUB_PUSH_TIMES: dict[str, str] = {}   # label/basename -> ISO timestamp ultimo push riuscito
+// ══ CHECKLIST DL (Qualità + Sicurezza) ═══════════════════════════════════════
+const CHECKLIST_DEF = {
+  qualita: { label: 'Qualità', items: [{"id": "PRE-01", "area": "Verifiche preliminari", "t": "Autorizzazione valida e disponibile per il tratto in lavorazione", "rif": "Cap. 5"},
+    {"id": "PRE-02", "area": "Verifiche preliminari", "t": "Tracciato conforme al progetto autorizzato; eventuali varianti approvate", "rif": "Cap. 5"},
+    {"id": "PRE-03", "area": "Verifiche preliminari", "t": "Tracciato su suolo pubblico o diritto di passaggio pubblico", "rif": "Cap. 5.7"},
+    {"id": "PRE-04", "area": "Verifiche preliminari", "t": "Impresa esecutrice e subappaltatori preventivamente autorizzati", "rif": "Cap. 9.2"},
+    {"id": "PRE-05", "area": "Verifiche preliminari", "t": "Prescrizioni degli enti recepite nelle lavorazioni", "rif": "Cap. 5.5"},
+    {"id": "INF-01", "area": "Infrastruttura", "t": "Pacco Tubi 1 conforme: 2 monotubi vuoti Ø63 mm e 1 bundle con 7 minitubi 16/13,5 mm", "rif": "Cap. 6.1"},
+    {"id": "INF-02", "area": "Infrastruttura", "t": "Pacco Tubi 2 conforme: 1 bundle Ø63 mm con 9 minitubi 14/12 mm, salvo tratte Lotto 2", "rif": "Cap. 6.1"},
+    {"id": "INF-03", "area": "Infrastruttura", "t": "Pacchi tubi separati con pozzetti dedicati", "rif": "Cap. 6.1"},
+    {"id": "INF-04", "area": "Infrastruttura", "t": "Tubi e microdotti integri, puliti e privi di deformazioni o ostruzioni", "rif": "Cap. 7"},
+    {"id": "INF-05", "area": "Infrastruttura", "t": "Cordino di tiro presente nei tubi Ø63 mm vuoti", "rif": "Cap. 6.4"},
+    {"id": "INF-06", "area": "Infrastruttura", "t": "Tappi idonei presenti su tubi e microdotti nei pozzetti", "rif": "Cap. 6.4"},
+    {"id": "DIV-01", "area": "Diversificazione", "t": "Separazione fisica minima di 8 m tra percorsi dello stesso cluster", "rif": "Cap. 6.3"},
+    {"id": "POZ-01", "area": "Pozzetti", "t": "Distanza media circa 475 m e passo massimo 500 m", "rif": "Cap. 6.2"},
+    {"id": "POZ-02", "area": "Pozzetti", "t": "Pozzetti presenti agli incroci con curva ≥45°", "rif": "Cap. 6.2"},
+    {"id": "POZ-03A", "area": "Pozzetti", "t": "Pozzetto Cliente: dimensione conforme come da contratto", "rif": "Cap. 6.2", "dim": ["125 × 80 × 133 cm · luce interna 120 × 60 × 123 cm", "224 × 124 cm · interna 200 × 100 × 150 cm"]},
+    {"id": "POZ-03B", "area": "Pozzetti", "t": "Pozzetto Retelit: dimensione conforme come da contratto", "rif": "Cap. 6.2", "dim": ["125 × 80 × 133 cm · luce interna 120 × 60 × 123 cm", "90 × 70 × 133 cm · luce interna 90 × 70 × 123 cm"]},
+    {"id": "POZ-04", "area": "Pozzetti", "t": "Pozzetti 224 × 124 cm · interna 200 × 100 × 150 cm fronte Data Center e nelle interconnessioni, ove previsti", "rif": "Cap. 6.2"},
+    {"id": "POZ-05", "area": "Pozzetti", "t": "Foro di drenaggio vicino al centro", "rif": "Cap. 6.2"},
+    {"id": "POZ-06", "area": "Pozzetti", "t": "Chiusino in ghisa, dimensionato e con logo Retelit", "rif": "Cap. 6.2"},
+    {"id": "POZ-07", "area": "Pozzetti", "t": "Pozzetto pulito, accessibile e adeguato", "rif": "Cap. 6.2"},
+    {"id": "MIC-01", "area": "Microdotti e giunzioni", "t": "Colori distinti e continuità cromatica nelle giunzioni", "rif": "Cap. 6.4"},
+    {"id": "MIC-02", "area": "Microdotti e giunzioni", "t": "Microdotti tagliati a 600 mm dall’ingresso del pozzetto", "rif": "Cap. 6.4"},
+    {"id": "MIC-03", "area": "Microdotti e giunzioni", "t": "Coupler e tappi approvati con tenuta ermetica", "rif": "Cap. 6.4"},
+    {"id": "MIC-04", "area": "Microdotti e giunzioni", "t": "Coupler non sepolti in incroci, ponti o aree difficili", "rif": "Cap. 6.4"},
+    {"id": "MIC-05", "area": "Microdotti e giunzioni", "t": "Giunzioni incapsulate e sigillate ai due estremi", "rif": "Cap. 6.4"},
+    {"id": "MIC-06", "area": "Microdotti e giunzioni", "t": "Buca riempita con materiale vagliato e microdotti sostenuti", "rif": "Cap. 6.4"},
+    {"id": "MIC-07", "area": "Microdotti e giunzioni", "t": "Ball Marker sui giunti a profondità ≤1 m", "rif": "Cap. 6.4"},
+    {"id": "COL-01", "area": "Codifica cromatica", "t": "Tubi RDS identificati in blu", "rif": "Cap. 6.5.1"},
+    {"id": "COL-02", "area": "Codifica cromatica", "t": "Tubi Cliente identificati in rosso, giallo e verde", "rif": "Cap. 6.5.1"},
+    {"id": "COL-03", "area": "Codifica cromatica", "t": "Marcatura visibile, continua e resistente", "rif": "Cap. 6.5.2"}] },
+  sicurezza: { label: 'Sicurezza', items: [{"id": "SIC-01", "area": "Autorizzazioni personale", "t": "Presenza in cantiere di personale autorizzato"},
+    {"id": "SIC-02", "area": "Autorizzazioni personale", "t": "Presenza dei tesserini identificativi"},
+    {"id": "SIC-03", "area": "Documentazione sicurezza", "t": "Presenza di POS, PSC, eventuale PIMUS, notifica preliminare aggiornata e piano di emergenza"},
+    {"id": "SIC-04", "area": "Programmazione lavori", "t": "Rispetto del programma lavori settimanale"},
+    {"id": "SIC-05", "area": "Programmazione lavori", "t": "Presenza del preposto indicato dall’impresa"},
+    {"id": "SIC-06", "area": "DPI", "t": "Presenza e corretto utilizzo dei DPI previsti dal POS e formazione specifica"},
+    {"id": "SIC-07", "area": "Macchine e attrezzature", "t": "Utilizzo corretto delle attrezzature rispetto al POS e formazione richiesta"},
+    {"id": "SIC-08", "area": "Macchine e attrezzature", "t": "Documentazione sicurezza e libretti uso/manutenzione disponibili"},
+    {"id": "SIC-09", "area": "Macchine e attrezzature", "t": "Fasce di sollevamento idonee e prive di usura"},
+    {"id": "SIC-10", "area": "Macchine e attrezzature", "t": "Specchietti retrovisori e cicalino funzionanti"},
+    {"id": "SIC-11", "area": "Stoccaggio materiali", "t": "Bombole identificate, separate, verticali e distinte tra piene e vuote"},
+    {"id": "SIC-12", "area": "Stoccaggio materiali", "t": "Materiali stoccati in modo idoneo e stabile"},
+    {"id": "SIC-13", "area": "Protezione scavi", "t": "Protezioni contro il rischio di seppellimento"},
+    {"id": "SIC-14", "area": "Lavori in quota", "t": "Protezioni collettive contro le cadute dall’alto"},
+    {"id": "SIC-15", "area": "Cadute sotto 2 m", "t": "Protezioni contro le cadute, anche negli scavi"},
+    {"id": "SIC-16", "area": "Caduta materiali", "t": "Protezioni contro la caduta di materiali"},
+    {"id": "SIC-17", "area": "Viabilità e pulizia", "t": "Pulizia della sede stradale adiacente"},
+    {"id": "SIC-18", "area": "Viabilità e pulizia", "t": "Movieri e segnaletica per regolazione traffico"},
+    {"id": "SIC-19", "area": "Viabilità e pulizia", "t": "Ordine e pulizia delle aree di cantiere"},
+    {"id": "SIC-20", "area": "Segnaletica", "t": "Segnaletica di cantiere, emergenza e stradale conforme"},
+    {"id": "SIC-43", "area": "Segnaletica", "t": "Cartello di cantiere presente, anche in formato ridotto, posizionato in prossimità dei cantieri mobili", "rif": ""},
+    {"id": "SIC-21", "area": "Recinzioni e delimitazioni", "t": "Area di intervento correttamente delimitata"},
+    {"id": "SIC-22", "area": "Recinzioni e delimitazioni", "t": "Accessi di cantiere correttamente chiusi"},
+    {"id": "SIC-23", "area": "Apprestamenti igienico-sanitari", "t": "Apprestamenti conformi al POS"},
+    {"id": "SIC-24", "area": "Presidi emergenza", "t": "Cassetta primo soccorso o pacchetto medicazione idoneo"},
+    {"id": "SIC-25", "area": "Presidi emergenza", "t": "Estintori presenti"},
+    {"id": "SIC-26", "area": "Presidi emergenza", "t": "Addetti primo soccorso e antincendio presenti"},
+    {"id": "SIC-27", "area": "Gestione rifiuti", "t": "Rifiuti identificati con corretto codice CER"},
+    {"id": "SIC-28", "area": "Gestione rifiuti", "t": "Rifiuti separati per tipologie omogenee"},
+    {"id": "SIC-29", "area": "Gestione rifiuti", "t": "Deposito temporaneo delimitato e protetto da sversamenti"},
+    {"id": "SIC-30", "area": "Gestione rifiuti", "t": "Contenitori rifiuti pericolosi integri ed etichettati"},
+    {"id": "SIC-31", "area": "Gestione rifiuti", "t": "Formulari rifiuti completi e conservati"},
+    {"id": "SIC-32", "area": "Gestione rifiuti", "t": "Kit antiversamento presente e pronto"},
+    {"id": "SIC-33", "area": "Rumore", "t": "Prescrizioni POS per il rumore rispettate"},
+    {"id": "SIC-34", "area": "Rumore", "t": "Autorizzazione o deroga acustica presente, se richiesta"},
+    {"id": "SIC-35", "area": "Rumore", "t": "Orari e limiti delle lavorazioni rumorose rispettati"},
+    {"id": "SIC-36", "area": "Rumore", "t": "Silenziatori e carter in buono stato"},
+    {"id": "SIC-37", "area": "Rumore", "t": "Barriere antirumore presso recettori sensibili, se previste"},
+    {"id": "SIC-38", "area": "Illuminazione", "t": "Illuminazione adeguata e conforme al POS"},
+    {"id": "SIC-39", "area": "Altro", "t": "Assenza di focolai"},
+    {"id": "SIC-40", "area": "Altro", "t": "Spezzoni e tondini adeguatamente protetti"},
+    {"id": "SIC-41", "area": "Altro", "t": "Ordinanze stradali disponibili e personale formato"},
+    {"id": "SIC-42", "area": "Altro", "t": "Schede sicurezza sostanze disponibili e contenitori etichettati"}] },
+  collaudo: { label: 'Collaudo', items: [{"id": "TST-01", "area": "Collaudi", "t": "Mandrinatura su ogni tratta pozzetto-pozzetto dei Ø63 mm non bundle", "rif": "Cap. 7.1 e 7.3"},
+    {"id": "TST-02", "area": "Collaudi", "t": "Verbale mandrinatura completo", "rif": "Cap. 7.1"},
+    {"id": "TST-03", "area": "Collaudi", "t": "Test pressione su condotti e microdotti previsti", "rif": "Cap. 7.2 e 7.3"},
+    {"id": "TST-04", "area": "Collaudi", "t": "Nessun calo pressione, perdita, deformazione o cedimento", "rif": "Cap. 7.2"},
+    {"id": "TST-05", "area": "Collaudi", "t": "Verbale pressione completo", "rif": "Cap. 7.2"},
+    {"id": "RIP-01", "area": "Ripristini", "t": "Ripristino provvisorio sicuro e senza cedimenti", "rif": "Cap. 9.1"},
+    {"id": "RIP-02", "area": "Ripristini", "t": "Ripristino definitivo conforme alle prescrizioni", "rif": "Cap. 5.5 e 9.1"},
+    {"id": "DOC-01", "area": "Documentazione", "t": "Checklist conformità disponibile", "rif": "Cap. 8.1"},
+    {"id": "DOC-02", "area": "Documentazione", "t": "Butterfly diagram disponibile e coerente", "rif": "Cap. 8.1"},
+    {"id": "DOC-03", "area": "Documentazione", "t": "Permessi, autorizzazioni e test disponibili", "rif": "Cap. 8.1"},
+    {"id": "DOC-04", "area": "Documentazione", "t": "As-built GIS e DWG completi", "rif": "Cap. 8.1"},
+    {"id": "DOC-05", "area": "Documentazione", "t": "Due foto georeferenziate per ogni giunto", "rif": "Cap. 8.1"},
+    {"id": "DOC-06", "area": "Documentazione", "t": "Foto nuovi pozzetti e aggiornamento One GIS completati", "rif": "Cap. 9.1"}] }
+};
 
-async def _push_to_github(file_bytes: bytes, path: str = None, label: str = None) -> None:
-    """Aggiorna un file su GitHub via API (Master.csv, QGIS.geojson, Riepilogo_progettazione.csv, ...).
-    In caso di conflitto sha (409 — qualcun altro ha scritto sullo stesso file nel frattempo,
-    es. una modifica manuale in parallelo) rilegge lo sha aggiornato e riprova fino a 3 volte."""
-    path  = path or GITHUB_CSV_PATH
-    label = label or path
-    if os.path.basename(path) in SENSITIVE_FILES:
-        print(f"[GitHub] push disabilitato per file sensibile {path} — NON pubblicato sul repo pubblico (servito solo dal backend gated)")
-        return
-    print(f"[GitHub] push avviato — {len(file_bytes)} bytes, repo={GITHUB_REPO}, path={path}, branch={GITHUB_BRANCH}")
-    token = os.environ.get("GITHUB_TOKEN")
-    if not token:
-        print("[GitHub] GITHUB_TOKEN non impostato — skip push")
-        return
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}"
-    max_tentativi = 3
-    try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            for tentativo in range(1, max_tentativi + 1):
-                r = await client.get(url, headers=headers, params={"ref": GITHUB_BRANCH})
-                if r.status_code not in (200, 404):
-                    print(f"[GitHub] GET {url} → {r.status_code}: {r.text[:200]}")
-                    return
-                sha = r.json().get("sha") if r.status_code == 200 else None
-                payload: dict = {
-                    "message": f"Auto-update {label} via approvazione admin [skip ci]",
-                    "content": base64.b64encode(file_bytes).decode(),
-                    "branch": GITHUB_BRANCH,
-                }
-                if sha:
-                    payload["sha"] = sha
-                resp = await client.put(url, headers=headers, json=payload)
-                if resp.status_code in (200, 201):
-                    extra = f" (tentativo {tentativo}/{max_tentativi})" if tentativo > 1 else ""
-                    print(f"[GitHub] {label} aggiornato sul branch {GITHUB_BRANCH}{extra}")
-                    _GITHUB_PUSH_TIMES[os.path.basename(path)] = _now_iso()
-                    return
-                if resp.status_code == 409 and tentativo < max_tentativi:
-                    print(f"[GitHub] Conflitto sha su {label} (tentativo {tentativo}/{max_tentativi}) — rileggo e riprovo")
-                    await asyncio.sleep(1)
-                    continue
-                print(f"[GitHub] Errore push {label}: {resp.status_code} {resp.text[:300]}")
-                return
-    except Exception as e:
-        print(f"[GitHub] Eccezione {label}: {type(e).__name__}: {e}")
+const CK_ESITI = { 'C':'Conforme', 'NC':'Non conforme', 'NA':'N.A.', '':'Da verificare' };
+const CK_CATS = ['qualita', 'sicurezza', 'collaudo'];
+let _ckTab = 'qualita';
+let _ckState = { qualita:{}, sicurezza:{}, collaudo:{} };   // id -> {e, rilievo, azione, resp, scad, nota}
+let _verificaDi = null;       // {codice, ids:Set('k:id'), info:{'k:id':{rilievo,azione,scad}}} se si sta compilando un 2° sopralluogo
+let _ckShowMissing = false;   // evidenzia azione/scadenza mancanti sulle NC
+let _ckNoteOpen = new Set();   // "k:id" — pannello nota espanso (solo UI, si auto-espande se c'è già un contenuto)
+let _ckGeneralNote = '';
 
-
-
-async def _push_current_master_to_github() -> None:
-    """Legge la versione corrente di Master.csv da MongoDB, la pusha su GitHub
-    e rigenera QGIS.geojson + Riepilogo_progettazione.csv (usata da delete/restore)."""
-    try:
-        df = await _read_master_csv()
-        github_buf = io.StringIO()
-        df.to_csv(github_buf, index=False, sep="\t")
-        github_data = github_buf.getvalue().encode("utf-8")
-        await _push_to_github(github_data, path=GITHUB_PATHS["Master.csv"], label="Master.csv")
-        await _regenerate_derived_files(df, note="restore/delete Master.csv")
-    except Exception as e:
-        print(f"[GitHub] _push_current_master: {e}")
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# Derivazione QGIS.geojson + Riepilogo_progettazione.csv da Master.csv
-# ─────────────────────────────────────────────────────────────────────────────
-# Regole verificate contro un export reale di Riepilogo_progettazione.csv:
-#   - STATO_LEGENDA è sempre identico a STATO_AUTORIZZAZIONE (0 eccezioni su 692 righe)
-#   - LAVORABILE = SI solo se STATO_AUTORIZZAZIONE = OTTENUTO E (se richiesto)
-#     anche il/i NULLA OSTA sono OTTENUTI (idem ORDINANZA se richiesta)
-#   - Quando una tratta ha PIU' nulla osta (enti diversi), si usa lo stato PIU'
-#     INDIETRO (peggiore) tra l'ultimo stato registrato per ciascun ente
-#   - CAMPO AWS, PROTOCOLLO_AUT, ENTE 2: provengono da un sistema esterno o non
-#     hanno una regola derivabile con certezza dai dati disponibili — NON vengono
-#     toccati dalla rigenerazione, il valore esistente viene preservato.
-# ═════════════════════════════════════════════════════════════════════════════
-
-_STATUS_RANK = {
-    "NECESSARIA INTEGRAZIONE": 0,
-    "IN REDAZIONE INTEGRAZIONE": 1,
-    "IN REDAZIONE": 2,
-    "IN ATTESA": 2,
-    "INVIO PRELIMINARE": 3,
-    "IN FIRMA RDS": 4,
-    "INVIATO": 5,
-    "PROTOCOLLATO INTEGRAZIONE": 6,
-    "PROTOCOLLATO": 7,
-    "OTTENUTO": 8,
+function _ckGet(k, id) {
+  if (!_ckState[k][id]) _ckState[k][id] = { e:'', rilievo:'', azione:'', resp:'', scad:'', nota:'', dim:'' };
+  return _ckState[k][id];
 }
 
-_TIPO_PREFIX = {"AUTORIZZAZIONE": "AUT", "NULLA OSTA": "NO", "ORDINANZA": "ORD"}
-
-
-def _norm(s) -> str:
-    return str(s or "").replace("\xa0", " ").strip().upper()
-
-
-def _worst_status(statuses: list) -> str:
-    clean = [str(s).strip() for s in statuses
-             if s and str(s).strip() and str(s).strip().upper() != "NO COMPETENZA"]
-    if not clean:
-        return ""
-    return min(clean, key=lambda s: _STATUS_RANK.get(s.upper(), 99))
-
-
-def _latest_per_ente(rows: list, tipo: str) -> list:
-    """Tra le righe di un TIPO_PERMESSO, prende l'ultima riga (cronologicamente
-    piu' recente, assumendo l'ordine di inserimento) per ciascun ente distinto."""
-    by_ente, order = {}, []
-    for r in rows:
-        if _norm(r.get("TIPO_PERMESSO")) != tipo:
-            continue
-        ente = _norm(r.get("ENTE"))
-        if ente not in by_ente:
-            order.append(ente)
-        by_ente[ente] = r  # l'ultima occorrenza trovata vince
-    return [by_ente[e] for e in order]
-
-
-def _lotto_from_source(source_name: str) -> str:
-    """'Lotto 1A.xlsx' -> '1A'."""
-    s = str(source_name or "")
-    s = re.sub(r"(?i)^lotto\s*", "", s).strip()
-    s = re.sub(r"(?i)\.xlsx?$", "", s).strip()
-    return s.upper()
-
-
-def _it_date_to_iso(s: str) -> str:
-    """'17/03/2026' -> '2026-03-17'. Stringa vuota/non parsabile -> ''."""
-    s = str(s or "").strip()
-    if not s:
-        return ""
-    try:
-        return datetime.strptime(s, "%d/%m/%Y").strftime("%Y-%m-%d")
-    except Exception:
-        return ""
-
-
-def _iso_date_to_it(s: str) -> str:
-    """'2026-03-17' -> '17/03/2026'. Stringa vuota/non parsabile -> ''."""
-    s = str(s or "").strip()
-    if not s:
-        return ""
-    try:
-        return datetime.strptime(s, "%Y-%m-%d").strftime("%d/%m/%Y")
-    except Exception:
-        return ""
-
-
-def _build_pratica(rows: list) -> str:
-    """'AUT/24/1A | NO/22/1A | NO/26/1A' — AUT prima, poi NO, poi ORD."""
-    parts, seen = [], set()
-    for tipo, pref in (("AUTORIZZAZIONE", "AUT"), ("NULLA OSTA", "NO"), ("ORDINANZA", "ORD")):
-        for r in rows:
-            if _norm(r.get("TIPO_PERMESSO")) != tipo:
-                continue
-            num = str(r.get("PRATICA") or "").strip()
-            if not num:
-                continue
-            lotto = _lotto_from_source(r.get("Source.Name", ""))
-            tok = f"{pref}/{num}/{lotto}"
-            if tok not in seen:
-                seen.add(tok)
-                parts.append(tok)
-    return " | ".join(parts)
-
-
-def _compute_tratta_summary(master_df: "pd.DataFrame") -> dict:
-    """Per ogni TRATTA_ID calcola: STATO_AUTORIZZAZIONE, STATO_NULLAOSTA,
-    STATO_ORDINANZA, LAVORABILE, MOTIVO_NO, PRATICA, STATO_LEGENDA, ENTE."""
-    if master_df is None or "TRATTA_ID" not in master_df.columns:
-        return {}
-    df = master_df.fillna("")
-    result = {}
-
-    for tratta_id, group in df.groupby(df["TRATTA_ID"].astype(str).str.strip()):
-        tratta_id = tratta_id.strip()
-        if not tratta_id:
-            continue
-        rows = group.to_dict(orient="records")
-
-        # AUTORIZZAZIONE: un solo permesso per tratta -> ultima riga inserita.
-        # Le pratiche chiuse con STATO_PERMESSO=NO COMPETENZA sono superate:
-        # l'ente ha dichiarato di non essere competente, quindi prima o poi
-        # arriva una NUOVA pratica con un ente diverso sulla stessa tratta.
-        # Finché esiste un'alternativa attiva va sempre preferita a NO COMPETENZA;
-        # se invece NO COMPETENZA è l'unica pratica presente, la tratta è
-        # semplicemente in attesa che la nuova pratica venga aperta.
-        aut_rows = [r for r in rows if _norm(r.get("TIPO_PERMESSO")) == "AUTORIZZAZIONE"]
-        aut_rows_attive = [r for r in aut_rows if _norm(r.get("STATO_PERMESSO")) != "NO COMPETENZA"]
-        if aut_rows_attive:
-            aut_row_corrente = aut_rows_attive[-1]
-            stato_aut = _norm(aut_row_corrente.get("STATO_PERMESSO"))
-        elif aut_rows:
-            aut_row_corrente = aut_rows[-1]
-            stato_aut = "IN ATTESA"
-        else:
-            aut_row_corrente = None
-            stato_aut = "IN ATTESA"
-        ente_aut  = str(aut_row_corrente.get("ENTE", "")).strip() if aut_row_corrente else ""
-        need_no   = _norm(aut_row_corrente.get("NULLA OSTA NECESSARIO")) if aut_row_corrente else "NO"
-        need_ord  = _norm(aut_row_corrente.get("ORDINANZA NECESSARIA")) if aut_row_corrente else "NO"
-
-        # NULLA OSTA / ORDINANZA: possono essercene piu' di uno (enti diversi) ->
-        # prendi l'ultimo stato di ciascun ente, poi il PEGGIORE tra questi
-        no_latest  = _latest_per_ente(rows, "NULLA OSTA")
-        stato_no   = _worst_status([r.get("STATO_PERMESSO") for r in no_latest]) if no_latest else (
-            "IN ATTESA" if need_no == "SI" else "NON NECESSARIO"
-        )
-        ord_latest = _latest_per_ente(rows, "ORDINANZA")
-        stato_ord  = _worst_status([r.get("STATO_PERMESSO") for r in ord_latest]) if ord_latest else (
-            "IN ATTESA" if need_ord == "SI" else "NON NECESSARIO"
-        )
-
-        aut_ok = stato_aut == "OTTENUTO"
-        no_ok  = stato_no == "OTTENUTO"
-        ord_ok = stato_ord == "OTTENUTO"
-
-        # Vincolante se il flag sull'AUT lo dichiara necessario OPPURE se
-        # esistono comunque righe reali NULLA OSTA/ORDINANZA per la tratta:
-        # il flag può essere disallineato nei dati sorgente, la pratica no.
-        no_effettivo  = (need_no == "SI") or bool(no_latest)
-        ord_effettivo = (need_ord == "SI") or bool(ord_latest)
-
-        lavorabile = aut_ok
-        if no_effettivo:
-            lavorabile = lavorabile and no_ok
-        if ord_effettivo:
-            lavorabile = lavorabile and ord_ok
-
-        motivi = []
-        if not aut_ok:
-            motivi.append("Manca autorizz")
-        if no_effettivo and not no_ok:
-            motivi.append("Manca nulla osta")
-        if ord_effettivo and not ord_ok:
-            motivi.append("Manca ordinanza")
-
-        result[tratta_id] = {
-            "STATO_AUTORIZZAZIONE": stato_aut,
-            "STATO_LEGENDA":        stato_aut,  # sempre identico, confermato sui dati reali
-            "STATO_NULLAOSTA":      stato_no,
-            "STATO_ORDINANZA":      stato_ord,
-            "LAVORABILE":           "SI" if lavorabile else "NO",
-            "MOTIVO_NO":            " | ".join(motivi),
-            "PRATICA":              _build_pratica(rows),
-            "PRATICA_AUT":          str(aut_row_corrente.get("PRATICA", "")).strip() if aut_row_corrente else "",
-            "ENTE":                 ente_aut,
-            "LUNGHEZZA":            rows[0].get("LUNGHEZZA", 0) if rows else 0,
-        }
-    return result
-
-
-async def _read_current_geojson(filename: str):
-    """Legge un GeoJSON (MongoDB se presente, altrimenti seed su disco)."""
-    cur = await _current_upload(filename)
-    if cur and cur.get("gridfs_id"):
-        raw = await _read_gridfs(cur["gridfs_id"])
-    else:
-        path = DATA_DIR / filename
-        if not path.exists():
-            return None
-        raw = path.read_bytes()
-    for enc in ("utf-8", "cp1252", "latin-1"):
-        try:
-            return json.loads(raw.decode(enc))
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            continue
-    return None
-
-
-async def _store_derived_file(filename: str, data: bytes, content_type: str, note: str) -> str:
-    """Salva un file derivato (rigenerato) come nuova versione in GridFS."""
-    gid = await gridfs.upload_from_stream(
-        filename, io.BytesIO(data),
-        metadata={"project": "main", "uploaded_at": _now_iso(), "source": "derived", "note": note},
-    )
-    record = {
-        "filename": filename, "original_name": filename, "size": len(data),
-        "content_type": content_type, "project": "main", "rows": None,
-        "uploaded_at": _now_iso(), "gridfs_id": gid, "deleted_at": None,
-        "source": "derived", "note": note,
-    }
-    res = await uploads_col.insert_one(record)
-    asyncio.create_task(_prune_old_versions(filename))
-    return str(res.inserted_id)
-
-
-async def _regenerate_derived_files(master_df: "pd.DataFrame", note: str = "") -> dict:
-    """Rigenera QGIS.geojson e Riepilogo_progettazione.csv a partire da Master.csv.
-
-    Verificato sui file reali: Riepilogo_progettazione.csv e' ESATTAMENTE la
-    tabella attributi di QGIS.geojson esportata in CSV (stesse 21 colonne,
-    stesso ordine, stessi valori, stesso numero di righe — confrontato riga
-    per riga su TR_0103 e sull'intero file). Per questo la patch avviene UNA
-    SOLA VOLTA sulle properties di QGIS.geojson, e Riepilogo viene poi
-    derivato direttamente da quello: i due file non possono piu' disallinearsi.
-
-    Vengono aggiornati SOLO i campi calcolati da Master.csv:
-    STATO_AUTORIZZAZIONE, STATO_LEGENDA, STATO_NULLAOSTA, STATO_ORDINANZA,
-    LAVORABILE, MOTIVO_NO, PRATICA, ENTE.
-    Tutto il resto (fid, TIPOLOGIA, PROVINCIA, COMUNE, CLUSTER, ROUTE, ENTE 2,
-    LUNGHEZZA, SPAN, LOTTO, PROTOCOLLO_AUT, CAMPO AWS, geometria) resta
-    esattamente come nel QGIS.geojson esistente.
-
-    Fire-and-forget: eventuali errori vengono solo loggati.
-    """
-    # Ordine colonne confermato sul file reale (json.load preserva l'ordine delle key)
-    RIEPILOGO_COLUMNS = [
-        "fid", "TIPOLOGIA", "PROVINCIA", "COMUNE", "CLUSTER", "ROUTE", "ENTE", "ENTE 2",
-        "LUNGHEZZA", "SPAN", "LOTTO", "TRATTA_ID", "MOTIVO_NO", "STATO_AUTORIZZAZIONE",
-        "STATO_NULLAOSTA", "STATO_ORDINANZA", "PROTOCOLLO_AUT", "PRATICA", "LAVORABILE",
-        "STATO_LEGENDA", "CAMPO AWS",
-    ]
-
-    out_ids: dict = {}
-    try:
-        summary = _compute_tratta_summary(master_df)
-        if not summary:
-            print("[Sync] Master.csv senza TRATTA_ID utilizzabili — skip rigenerazione")
-            return out_ids
-
-        geo = await _read_current_geojson(QGIS_FILENAME)
-        if not geo or not isinstance(geo.get("features"), list):
-            print(f"[Sync] {QGIS_FILENAME} non trovato — skip rigenerazione")
-            return out_ids
-
-        # ── 1. Patch in place delle proprieta' di stato su QGIS.geojson ─────────
-        riepilogo_rows = []
-        for feat in geo["features"]:
-            props = feat.get("properties") or {}
-            tid = str(props.get("TRATTA_ID") or "").strip()
-            s = summary.get(tid)
-            if s:
-                props["STATO_AUTORIZZAZIONE"] = s["STATO_AUTORIZZAZIONE"]
-                props["STATO_LEGENDA"]        = s["STATO_LEGENDA"]
-                props["STATO_NULLAOSTA"]      = s["STATO_NULLAOSTA"]
-                props["STATO_ORDINANZA"]      = s["STATO_ORDINANZA"]
-                props["LAVORABILE"]           = s["LAVORABILE"]
-                props["MOTIVO_NO"]            = s["MOTIVO_NO"]
-                if s["PRATICA"]:
-                    props["PRATICA"] = s["PRATICA"]
-                if s["ENTE"]:
-                    props["ENTE"] = s["ENTE"]
-            feat["properties"] = props
-            # Riga corrispondente per Riepilogo_progettazione.csv — stesse colonne,
-            # stessi valori, derivati dalla stessa feature appena patchata.
-            riepilogo_rows.append({col: props.get(col, "") for col in RIEPILOGO_COLUMNS})
-
-        geo_bytes = json.dumps(geo, ensure_ascii=False).encode("utf-8")
-        out_ids["qgis"] = await _store_derived_file(QGIS_FILENAME, geo_bytes, "application/geo+json", note)
-        asyncio.create_task(_push_to_github(geo_bytes, path=GITHUB_PATHS["QGIS.geojson"], label=QGIS_FILENAME))
-
-        # ── 2. Riepilogo_progettazione.csv: derivato 1:1 da QGIS.geojson ────────
-        riep_df = pd.DataFrame(riepilogo_rows, columns=RIEPILOGO_COLUMNS)
-        rbuf = io.StringIO()
-        riep_df.to_csv(rbuf, index=False)  # virgola, come il file originale
-        rdata = rbuf.getvalue().encode("utf-8")
-        out_ids["riepilogo"] = await _store_derived_file(RIEPILOGO_FILENAME, rdata, "text/csv", note)
-        asyncio.create_task(_push_to_github(rdata, path=GITHUB_PATHS["Riepilogo_progettazione.csv"], label=RIEPILOGO_FILENAME))
-
-        print(f"[Sync] Rigenerati: {list(out_ids.keys())} ({len(summary)} tratte, note={note!r})")
-    except Exception as e:
-        print(f"[Sync] Errore rigenerazione QGIS/Riepilogo: {type(e).__name__}: {e}")
-    return out_ids
-
-
-
-
-
-async def _write_master_csv(df: "pd.DataFrame", note: str) -> str:
-    """Persist a new Master.csv version in GridFS and return the new upload id."""
-    buf = io.StringIO()
-    df.to_csv(buf, index=False, sep=_detected_sep)
-    data = buf.getvalue().encode("utf-8")
-    # Per GitHub usiamo sempre tab (formato originale del file nel repo)
-    github_buf = io.StringIO()
-    df.to_csv(github_buf, index=False, sep="\t")
-    github_data = github_buf.getvalue().encode("utf-8")
-    gid = await gridfs.upload_from_stream(
-        MASTER_FILENAME,
-        io.BytesIO(data),
-        metadata={"project": "main", "uploaded_at": _now_iso(), "source": "impresa", "note": note},
-    )
-    record = {
-        "filename": MASTER_FILENAME,
-        "original_name": MASTER_FILENAME,
-        "size": len(data),
-        "content_type": "text/csv",
-        "project": "main",
-        "rows": max(0, len(df)),
-        "uploaded_at": _now_iso(),
-        "gridfs_id": gid,
-        "deleted_at": None,
-        "source": "impresa",
-        "note": note,
-    }
-    res = await uploads_col.insert_one(record)
-    asyncio.create_task(_prune_old_versions(MASTER_FILENAME))
-    # Aggiorna Master.csv su GitHub e rigenera i file derivati (fire-and-forget)
-    asyncio.create_task(_push_to_github(github_data, path=GITHUB_PATHS["Master.csv"], label="Master.csv"))
-    asyncio.create_task(_regenerate_derived_files(df, note=note))
-    return str(res.inserted_id)
-
-
-def _serialize_assignment(d: dict) -> dict:
-    out = dict(d)
-    out["_id"] = str(out["_id"])
-    return out
-
-
-# ───────── Imprese (no admin token required, identified by their `nome`) ────
-
-async def _find_assignment(nome: str) -> dict | None:
-    """Cerca un assignment per nome in modo case-insensitive,
-    così 'sertori', 'Sertori' e 'SERTORI' trovano tutti lo stesso record."""
-    return await assignments_col.find_one(
-        {"nome": {"$regex": f"^{re.escape(nome.strip())}$", "$options": "i"}}
-    )
-
-
-# ── Milestone di Progetto — dati serviti da qui (non più embedded in
-# milestone.html) così il controllo di accesso per ruolo è reale lato server,
-# non solo un redirect client-side aggirabile forzando localStorage.
-MILESTONE_IMPRESE_ROWS = [
-    {"lotto": "1A", "cluster": "1–3", "invio": "-", "ottenim": "-", "avvio": "31/05/2026", "p50": "-", "p90": "31/10/2026", "p100": "31/12/2026"},
-    {"lotto": "1B", "cluster": "1", "invio": "-", "ottenim": "-", "avvio": "31/05/2026", "p50": "-", "p90": "31/10/2026", "p100": "31/12/2026"},
-    {"lotto": "2A", "cluster": "2", "invio": "-", "ottenim": "-", "avvio": "20/07/2026", "p50": "-", "p90": "31/10/2026", "p100": "31/12/2026"},
-    {"lotto": "2B", "cluster": "2", "invio": "-", "ottenim": "-", "avvio": "06/07/2026", "p50": "-", "p90": "31/10/2026", "p100": "31/12/2026"},
-    {"lotto": "1", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
-    {"lotto": "2", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
-    {"lotto": "3", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
-    {"lotto": "4", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
-    {"lotto": "5", "cluster": "3", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/08/2026", "p50": "30/04/2027", "p90": "-", "p100": "15/11/2027"},
-    {"lotto": "6", "cluster": "3–4", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/10/2026", "p50": "31/05/2027", "p90": "-", "p100": "15/11/2027"},
-    {"lotto": "7", "cluster": "6–7", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/01/2027", "p50": "30/09/2027", "p90": "-", "p100": "31/03/2028"},
-    {"lotto": "8", "cluster": "5", "invio": "30/09/2026", "ottenim": "30/09/2027", "avvio": "31/01/2027", "p50": "30/09/2027", "p90": "-", "p100": "31/07/2028"},
-]
-
-MILESTONE_CONTRACT_ROWS = [
-    {"milestone": "Permits submission", "p50": "-", "p70": "-", "p100": "31/12/2026", "cavi_testati": "-", "cavi_info": ""},
-    {"milestone": "Authorizations received", "p50": "-", "p70": "-", "p100": "31/12/2027", "cavi_testati": "-", "cavi_info": ""},
-    {"milestone": "Cluster 1", "p50": "-", "p70": "31/12/2026", "p100": "30/04/2027", "cavi_testati": "30/06/2027", "cavi_info": "Intra MXP102 · P0"},
-    {"milestone": "Cluster 2", "p50": "31/12/2026", "p70": "-", "p100": "31/05/2027", "cavi_testati": "31/07/2027", "cavi_info": "Intra MXP109 · P0"},
-    {"milestone": "Cluster 3", "p50": "31/05/2027", "p70": "-", "p100": "31/03/2028", "cavi_testati": "30/06/2028", "cavi_info": "Inter AZ · P1"},
-    {"milestone": "Cluster 4", "p50": "-", "p70": "-", "p100": "31/03/2028", "cavi_testati": "30/06/2028", "cavi_info": "Inter AZ - MXP064 · P1"},
-    {"milestone": "Cluster 5", "p50": "-", "p70": "-", "p100": "30/06/2028", "cavi_testati": "31/08/2028", "cavi_info": "Intra MXP133 · P2"},
-    {"milestone": "Cluster 6", "p50": "-", "p70": "-", "p100": "31/12/2028", "cavi_testati": "31/03/2029", "cavi_info": "Intra MXP118 · P3"},
-    {"milestone": "Cluster 7", "p50": "-", "p70": "-", "p100": "31/12/2028", "cavi_testati": "31/03/2029", "cavi_info": "Intra MXP140 · TBC"},
-]
-
-
-@app.get("/api/milestone")
-async def get_milestone(sess: dict = Depends(_require_milestone_session)):
-    """Dati di milestone.html. Accesso negato (403) al ruolo 'dl', in aggiunta
-    al redirect client-side già presente sulla pagina — qui il controllo è
-    reale perché il ruolo viene dal token firmato server-side."""
-    return {"imprese": MILESTONE_IMPRESE_ROWS, "contract": MILESTONE_CONTRACT_ROWS}
-
-
-@app.get("/api/parametri")
-async def get_parametri(sess: dict = Depends(_require_staff_session)):
-    """Parametri di configurazione (rischio ROS, squadre, capacità, azioni,
-    tempi autorizzativi) usati da stato_lotti.html. Parsati server-side dallo
-    xlsx caricato via admin.html — nessun valore è hardcoded nel frontend.
-    403 per il ruolo 'impresa' (dato interno di pianificazione, non pratiche)."""
-    data, meta = await _load_parametri()
-    return {**data, "_meta": meta}
-
-
-@app.get("/api/enti")
-async def get_enti(sess: dict = Depends(_require_session)):
-    """Restituisce tutti gli enti unici presenti in Master.csv, ordinati alfabeticamente."""
-    df = await _read_master_csv()
-    if df is None or "ENTE" not in df.columns:
-        return {"enti": []}
-    enti = sorted(
-        {str(v).strip() for v in df["ENTE"].dropna() if str(v).strip()},
-        key=lambda x: x.lower()
-    )
-    return {"enti": enti}
-
-
-@app.get("/api/concomitanze")
-async def get_concomitanze(sess: dict = Depends(_require_session)):
-    """Elenco TRATTA_ID con lavorazione aggiuntiva concomitante (es. tubo extra
-    per sovrapposizione con un altro progetto). Dato tecnico sulla tratta fisica,
-    non legato a una specifica impresa: nessuno scoping per lotto, visibile a
-    qualunque sessione valida (staff o impresa)."""
-    docs = [d async for d in concomitanza_col.find({})]
-    return {
-        "tratta_ids": [d["_id"] for d in docs],
-        "nota_by_tratta": {d["_id"]: d.get("nota", "") for d in docs},
-        "count": len(docs),
-    }
-
-
-@app.post("/api/admin/concomitanze/import")
-async def import_concomitanze(
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-):
-    """Sostituisce l'intero elenco concomitanze per una 'fonte' (es. 'ENRI-QTS').
-    Body: {fonte: str, nota: str, tratta_ids: [...]} oppure un GeoJSON
-    FeatureCollection con TRATTA_ID nelle properties di ogni feature — in tal
-    caso i TRATTA_ID vengono estratti automaticamente. Richiede x-upload-token."""
-    _check_token(x_upload_token)
-    fonte = str((payload or {}).get("fonte", "")).strip() or "ENRI-QTS"
-    nota = str((payload or {}).get("nota", "")).strip() or "Tubo aggiuntivo"
-
-    if payload.get("type") == "FeatureCollection":
-        tratta_ids = sorted({
-            str((f.get("properties") or {}).get("TRATTA_ID", "")).strip()
-            for f in payload.get("features", [])
-            if str((f.get("properties") or {}).get("TRATTA_ID", "")).strip()
-        })
-    else:
-        tratta_ids = sorted({str(t).strip() for t in payload.get("tratta_ids", []) if str(t).strip()})
-
-    if not tratta_ids:
-        raise HTTPException(400, "Nessun TRATTA_ID trovato nel payload")
-
-    # Upsert per _id (non delete+insert): un TRATTA_ID può in teoria comparire
-    # anche in un'altra 'fonte' futura, l'_id deve restare univoco a livello
-    # di intera collection, non solo all'interno della fonte.
-    await concomitanza_col.delete_many({"fonte": fonte, "_id": {"$nin": tratta_ids}})
-    for tid in tratta_ids:
-        await concomitanza_col.update_one(
-            {"_id": tid},
-            {"$set": {"fonte": fonte, "nota": nota, "updated_at": _now_iso()}},
-            upsert=True,
-        )
-    await _log_admin_action("import_concomitanze", fonte, (payload or {}).get("actor"))
-    return {"ok": True, "fonte": fonte, "count": len(tratta_ids), "tratta_ids": tratta_ids}
-
-
-@app.get("/api/imprese/me")
-async def impresa_me(sess: dict = Depends(_require_session)):
-    """Returns the impresa's profile if they are assigned, else 404.
-    Il nome viene dal token di sessione firmato, non da un parametro client."""
-    doc = await _find_assignment(sess["nome"])
-    if not doc:
-        raise HTTPException(404, "Impresa non assegnata")
-    return {"nome": doc["nome"], "lotti": doc.get("lotti", []), "active": bool(doc.get("active", True))}
-
-
-@app.get("/api/imprese/pratiche")
-async def impresa_pratiche(sess: dict = Depends(_require_session)):
-    """Returns Master.csv rows whose Source.Name matches one of the user's lotti
-    (confronto per codice lotto esatto, non substring — così 'Lotto 2' non
-    aggancia per errore 'Lotto 2A.xlsx' o eventuali lotti a doppia cifra)."""
-    doc = await _find_assignment(sess["nome"])
-    if not doc or not doc.get("active", True):
-        raise HTTPException(404, "Impresa non autorizzata")
-    lotti = {_lotto_from_source(l) for l in doc.get("lotti", []) if str(l).strip()}
-    df = await _read_master_csv()
-    if "Source.Name" not in df.columns or not lotti:
-        return {"pratiche": [], "lotti": sorted(lotti), "total": 0}
-    mask = df["Source.Name"].apply(lambda x: _lotto_from_source(x) in lotti)
-    sub = df[mask]
-    pratiche = sub.fillna("").to_dict(orient="records")
-    return {"pratiche": pratiche, "lotti": sorted(lotti), "total": len(pratiche)}
-
-
-@app.get("/api/imprese/master-sed")
-async def impresa_master_sed(sess: dict = Depends(_require_session)):
-    """GeoJSON (QGIS.geojson + SED_classificato.geojson) filtrati ai SOLI lotti
-    assegnati all'impresa (nome dal token firmato). Le pagine Area Impresa usano
-    questo endpoint invece di scaricare i file interi con i lotti di tutti i
-    concorrenti. Stesso pattern di scoping di /api/imprese/pratiche."""
-    doc = await _find_assignment(sess["nome"])
-    if not doc or not doc.get("active", True):
-        raise HTTPException(404, "Impresa non autorizzata")
-    lotti = {_lotto_from_source(l) for l in doc.get("lotti", []) if str(l).strip()}
-
-    def _scope(geo: "dict | None") -> dict:
-        if not geo or not isinstance(geo.get("features"), list):
-            return {"type": "FeatureCollection", "features": []}
-        feats = [
-            f for f in geo["features"]
-            if str((f.get("properties") or {}).get("LOTTO", "")).strip().upper() in lotti
-        ]
-        out = {k: v for k, v in geo.items() if k != "features"}
-        out.setdefault("type", "FeatureCollection")
-        out["features"] = feats
-        return out
-
-    qgis = _scope(await _read_current_geojson("QGIS.geojson"))
-    sed = _scope(await _read_current_geojson("SED_classificato.geojson"))
-    return {"qgis": qgis, "sed": sed, "lotti": sorted(lotti)}
-
-
-@app.post("/api/imprese/submit")
-async def impresa_submit(payload: dict, sess: dict = Depends(_require_session)):
-    """Body: {type: 'update'|'new', changes: [...]}. Il `nome` arriva dalla
-    sessione firmata: anche se il client invia un 'nome' diverso nel body,
-    viene ignorato — non e' piu' possibile inviare submission per conto di
-    un'altra impresa semplicemente cambiando un parametro.
-    For 'update': each change has {tratta_id, ente, tipo_permesso, fields:{col:val}}
-    For 'new': each change is a full row dict.
-    Goes into pending_updates with status='pending'."""
-    nome = sess["nome"]
-    typ = (payload or {}).get("type", "").strip()
-    changes = (payload or {}).get("changes") or []
-    if typ not in {"update", "new"}:
-        raise HTTPException(400, "type must be 'update' or 'new'")
-    if not isinstance(changes, list) or not changes:
-        raise HTTPException(400, "Empty 'changes' array")
-    doc = await _find_assignment(nome)
-    if not doc or not doc.get("active", True):
-        raise HTTPException(403, "Impresa non autorizzata")
-
-    # Tagga le eventuali note con [IMPRESA] cosi' index.html/admin.html possono
-    # distinguerle dalle note admin (v. _tag_note / add_admin_note)
-    if typ == "update":
-        for ch in changes:
-            fields = ch.get("fields") or {}
-            if (str(fields.get("STATO_PERMESSO") or "").strip().upper() == "OTTENUTO"
-                    and not str(fields.get("DATA_APPROVAZIONE") or "").strip()):
-                raise HTTPException(400, "DATA_APPROVAZIONE obbligatoria per lo stato OTTENUTO")
-            if str(fields.get("NOTE") or "").strip():
-                fields["NOTE"] = _tag_note(fields["NOTE"], "IMPRESA")
-    elif typ == "new":
-        for row in changes:
-            if isinstance(row, dict) and str(row.get("NOTE") or "").strip():
-                row["NOTE"] = _tag_note(row["NOTE"], "IMPRESA")
-
-    record = {
-        "nome": nome,
-        "type": typ,
-        "changes": changes,
-        "status": "pending",
-        "submitted_at": _now_iso(),
-        "reviewed_at": None,
-        "reviewed_by": None,
-        "applied_upload_id": None,
-        "note": (payload or {}).get("note", ""),
-    }
-    res = await pending_col.insert_one(record)
-    return {"ok": True, "id": str(res.inserted_id), "count": len(changes)}
-
-
-@app.get("/api/imprese/my-submissions")
-async def my_submissions(limit: int = 50, sess: dict = Depends(_require_session)):
-    cur = pending_col.find({"nome": sess["nome"]}).sort("submitted_at", -1).limit(min(limit, 200))
-    items = []
-    async for d in cur:
-        d["_id"] = str(d["_id"])
-        items.append(d)
-    return {"submissions": items, "count": len(items)}
-
-
-@app.delete("/api/imprese/submissions/{sub_id}")
-async def delete_my_submission(sub_id: str, sess: dict = Depends(_require_session)):
-    """L'impresa può cancellare solo le proprie submission ancora in stato pending.
-    Il confronto usa il nome dalla sessione, non un parametro client."""
-    try:
-        oid = ObjectId(sub_id)
-    except Exception:
-        raise HTTPException(400, "ID submission non valido")
-    doc = await pending_col.find_one({"_id": oid})
-    if not doc:
-        raise HTTPException(404, "Submission non trovata")
-    if doc.get("nome") != sess["nome"]:
-        raise HTTPException(403, "Non autorizzato")
-    if doc.get("status") != "pending":
-        raise HTTPException(409, "Solo le richieste in attesa possono essere eliminate")
-    await pending_col.delete_one({"_id": oid})
-    return {"deleted": sub_id}
-
-
-# ───────── Admin: assignments management ────────────────────────────────────
-
-@app.get("/api/admin/assignments")
-async def list_assignments(
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    _check_token(x_upload_token or token_q)
-    cur = assignments_col.find({}).sort("nome", 1)
-    items = [_serialize_assignment(d) async for d in cur]
-    return {"assignments": items, "count": len(items)}
-
-
-@app.put("/api/admin/assignments/{nome}")
-async def upsert_assignment(
-    nome: str,
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    _check_token(x_upload_token or token_q)
-    nome = nome.strip()
-    lotti = (payload or {}).get("lotti", [])
-    active = bool((payload or {}).get("active", True))
-    if not nome:
-        raise HTTPException(400, "nome required")
-    if not isinstance(lotti, list):
-        raise HTTPException(400, "lotti must be a list")
-    doc = {"nome": nome, "lotti": [str(x) for x in lotti], "active": active, "updated_at": _now_iso()}
-    await assignments_col.update_one({"nome": nome}, {"$set": doc, "$setOnInsert": {"created_at": _now_iso()}}, upsert=True)
-    out = await _find_assignment(nome)
-    return _serialize_assignment(out)
-
-
-@app.delete("/api/admin/assignments/{nome}")
-async def delete_assignment(
-    nome: str,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    _check_token(x_upload_token or token_q)
-    res = await assignments_col.delete_one({"nome": nome})
-    return {"deleted": res.deleted_count}
-
-
-# ───────── Admin: pending updates approval queue ────────────────────────────
-
-@app.get("/api/admin/pending-updates")
-async def list_pending(
-    status: str = "pending",
-    limit: int = 100,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    _check_token(x_upload_token or token_q)
-    q: dict = {}
-    if status and status != "all":
-        q["status"] = status
-    cur = pending_col.find(q).sort("submitted_at", -1).limit(min(limit, 500))
-    items = []
-    async for d in cur:
-        d["_id"] = str(d["_id"])
-        items.append(d)
-    # Arricchisce ogni change con lo stato attuale dal Master.csv
-    try:
-        df = await _read_master_csv()
-        for sub in items:
-            if sub.get("type") != "update":
-                continue
-            for ch in sub.get("changes", []):
-                tratta  = str(ch.get("tratta_id") or "").strip()
-                ente    = str(ch.get("ente") or "").strip()
-                tipo    = str(ch.get("tipo_permesso") or "").strip()
-                pratica = str(ch.get("original_pratica") or "").strip()
-                if not tratta:
-                    continue
-                mask = df["TRATTA_ID"].astype(str).str.strip() == tratta
-                if ente:
-                    mask = mask & (df["ENTE"].astype(str).str.strip() == ente)
-                if tipo:
-                    mask = mask & (df["TIPO_PERMESSO"].astype(str).str.strip() == tipo)
-                if pratica and "PRATICA" in df.columns:
-                    mp = mask & (df["PRATICA"].astype(str).str.strip() == pratica)
-                    if mp.any():
-                        mask = mp
-                rows = df[mask]
-                if rows.empty:
-                    continue
-                # NB: DATA_ULTIMA_MODIFICA è testo DD/MM/YYYY — ordinare come stringa
-                # è sbagliato (es. "26/03/2026" > "02/07/2026" lessicograficamente pur
-                # essendo antecedente). Serve un parsing esplicito a datetime.
-                _dum_dt = pd.to_datetime(rows["DATA_ULTIMA_MODIFICA"], format="%d/%m/%Y", errors="coerce")
-                row = rows.loc[_dum_dt.sort_values(ascending=False, na_position="last").index[0]]
-                ch["_stato_attuale"]     = str(row.get("STATO_PERMESSO", "") or "")
-                ch["_data_richiesta"]    = str(row.get("DATA_RICHIESTA", "") or "")
-                ch["_data_ult_mod"]      = str(row.get("DATA_ULTIMA_MODIFICA", "") or "")
-                ch["_data_approvazione"] = str(row.get("DATA_APPROVAZIONE", "") or "")
-                ch["_nulla_osta"] = str(row.get("NULLA OSTA NECESSARIO", "") or "").strip()
-                # Ricava lotto da Source.Name (es. "Lotto1.xlsx" → "1A", "Lotto3.xlsx" → "3A")
-                src = str(row.get("Source.Name", "") or "")
-                import re as _re
-                lm = _re.search(r'[Ll]otto\s*(\w+)', src)
-                ch["_lotto"] = lm.group(1) if lm else ""
-    except Exception as e:
-        print(f"[pending-updates] enrich error: {e}")
-
-    return {"submissions": items, "count": len(items)}
-
-
-# Colonne di Master.csv che descrivono la tratta fisica (identiche per tutte le righe
-# con lo stesso TRATTA_ID) — ereditate dalle nuove pratiche inserite dalle imprese.
-_TRATTA_STATIC_COLS = (
-    "LUNGHEZZA", "SPAN", "LOTTO", "PROVINCIA", "COMUNE", "CLUSTER", "ROUTE",
-    "TIPOLOGIA", "ENTE 2", "CAMPO AWS",
-)
-
-
-def _apply_changes_to_df(df, submission: dict) -> tuple:
-    """Returns (new_df, summary). Raises HTTPException on errors.
-
-    Comportamento di default (in_place=False, usato da imprese.html e dalle
-    NOTE admin): copia l'ultima riga e inserisce una nuova riga subito dopo,
-    per mantenere lo storico di chi ha scritto cosa e quando.
-
-    in_place=True (usato dalla correzione dati admin — stato/date/N_SED):
-    sovrascrive i campi direttamente sulla riga esistente, senza duplicarla.
-    Una correzione di un dato inesatto non è un evento di business da
-    storicizzare come le note o gli aggiornamenti di stato dell'impresa: se
-    duplicassimo la riga, il dato sbagliato originale resterebbe comunque nel
-    CSV (anche se ignorato dalle pagine che leggono solo l'ultima riga)."""
-    typ = submission["type"]
-    changes = submission["changes"]
-    in_place = bool(submission.get("in_place"))
-    summary = {"updated": 0, "added": 0, "not_found": 0}
-    if typ == "update":
-        for ch in changes:
-            tratta = (ch.get("tratta_id") or "").strip()
-            ente   = (ch.get("ente") or "").strip()
-            tipo   = (ch.get("tipo_permesso") or "").strip()
-            fields = ch.get("fields") or {}
-            if not tratta:
-                continue
-            mask = df["TRATTA_ID"].astype(str).str.strip() == tratta
-            if ente:
-                mask = mask & (df["ENTE"].astype(str).str.strip() == ente)
-            if tipo:
-                mask = mask & (df["TIPO_PERMESSO"].astype(str).str.strip() == tipo)
-            # Se la submission include anche PRATICA, usa come discriminante
-            # per distinguere pratiche diverse sulla stessa tratta+ente+tipo
-            pratica_key = str(fields.get("PRATICA") or ch.get("pratica") or "").strip()
-            if not pratica_key and "PRATICA" in df.columns:
-                # Prova a ricavarlo dalla submission (campo originale della riga)
-                pratica_key = str(ch.get("original_pratica") or "").strip()
-            if pratica_key and "PRATICA" in df.columns:
-                mask_p = mask & (df["PRATICA"].astype(str).str.strip() == pratica_key)
-                idx_p  = df.index[mask_p].tolist()
-                if idx_p:   # usa il filtro per pratica solo se trova qualcosa
-                    idx = idx_p
-                else:
-                    idx = df.index[mask].tolist()
-            else:
-                idx = df.index[mask].tolist()
-            if not idx:
-                summary["not_found"] += 1
-                continue
-            # Auto-set DATA_ULTIMA_MODIFICA se non fornita (solo su cambio stato)
-            if "DATA_ULTIMA_MODIFICA" not in fields and "STATO_PERMESSO" in fields:
-                fields["DATA_ULTIMA_MODIFICA"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
-            # DATA_UPDATE: qualsiasi tocco dell'impresa sulla pratica (stato, nota, o altro campo), non solo cambio stato
-            if "DATA_UPDATE" in df.columns and "DATA_UPDATE" not in fields:
-                fields["DATA_UPDATE"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
-            last_idx = idx[-1]
-            if in_place:
-                # Correzione: sovrascrive i campi sulla riga esistente, nessuna nuova riga
-                if ch.get("preserve_note_tag") and "NOTE" in fields and fields["NOTE"]:
-                    # Non cambiare l'autore mostrato (RETELIT/IMPRESA): si sta
-                    # solo correggendo il testo di una nota già esistente.
-                    existing = str(df.loc[last_idx, "NOTE"]) if "NOTE" in df.columns else ""
-                    m = _NOTE_TAG_RE.match(existing or "")
-                    tag_prefix = m.group(0) if m else ""
-                    fields["NOTE"] = f"{tag_prefix}{fields['NOTE']}"
-                for col, val in fields.items():
-                    if col in df.columns:
-                        df.loc[last_idx, col] = str(val)
-                summary["updated"] += 1
-                continue
-            # Copia l'ultima riga esistente e inserisce la nuova SUBITO DOPO
-            # in modo da mantenere le righe dello stesso iter vicine
-            last_row = df.loc[last_idx].copy()
-            for col, val in fields.items():
-                if col in df.columns:
-                    last_row[col] = str(val)
-            # La nota NON deve mai essere ereditata implicitamente dalla riga precedente:
-            # se questo aggiornamento non la include esplicitamente, la nuova riga resta
-            # senza nota (il frontend imprese.html la rende comunque obbligatoria, questo
-            # è un secondo livello di sicurezza per qualsiasi altro chiamante).
-            if "NOTE" in df.columns and "NOTE" not in fields:
-                last_row["NOTE"] = ""
-            new_row_df = pd.DataFrame([last_row])
-            # Dividi il DataFrame prima e dopo il punto di inserimento
-            top    = df.iloc[:last_idx + 1]
-            bottom = df.iloc[last_idx + 1:]
-            df = pd.concat([top, new_row_df, bottom], ignore_index=True)
-            summary["updated"] += 1
-    elif typ == "new":
-        for row in changes:
-            if not isinstance(row, dict):
-                continue
-            new_row = {c: str(row.get(c, "")) for c in df.columns}
-            # Attributi statici della tratta (non inviati dal form impresa): ereditali
-            # dalle righe già presenti con lo stesso TRATTA_ID, altrimenti LUNGHEZZA ecc.
-            # restano vuoti e vanno reinseriti a mano caricando un Master aggiornato.
-            tid = new_row.get("TRATTA_ID", "").strip()
-            if tid and "TRATTA_ID" in df.columns:
-                same = df[df["TRATTA_ID"].astype(str).str.strip() == tid]
-                if not same.empty:
-                    for col in _TRATTA_STATIC_COLS:
-                        if col not in df.columns or str(new_row.get(col, "")).strip():
-                            continue
-                        vals = same[col].astype(str).str.strip()
-                        vals = vals[(vals != "") & (vals.str.lower() != "nan")]
-                        if not vals.empty:
-                            new_row[col] = vals.iloc[-1]
-            if "DATA_UPDATE" in df.columns and not new_row.get("DATA_UPDATE"):
-                new_row["DATA_UPDATE"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
-            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-            summary["added"] += 1
-    return df, summary
-
-
-@app.post("/api/admin/regenerate-derived")
-async def regenerate_derived(
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    """Rigenera QGIS.geojson + Riepilogo_progettazione.csv dal Master.csv corrente
-    senza modificarlo — utile dopo un fix a _compute_tratta_summary per applicare
-    la nuova logica ai dati già presenti, senza dover re-uploadare Master.csv."""
-    _check_token(x_upload_token or token_q)
-    df = await _read_master_csv()
-    result = await _regenerate_derived_files(df, note="force regenerate (manual)")
-    return {"ok": True, "result": result}
-
-
-@app.post("/api/admin/backfill-data-update-solleciti")
-async def backfill_data_update_solleciti(
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    """One-off (rev.147): valorizza DATA_UPDATE per le tratte con solleciti registrati
-    PRIMA del fix del bug di matching (mask rotta su 'pratica' → touch mai avvenuto).
-    Per ogni tratta_id in 'solleciti', prende la data_sollecito più recente e la usa
-    come DATA_UPDATE se è più recente di quella già presente (o se assente).
-    Non tocca le tratte senza solleciti. Idempotente: rieseguibile senza effetti collaterali
-    (non peggiora mai una DATA_UPDATE già più recente di quella dei solleciti)."""
-    _check_token(x_upload_token or token_q)
-
-    def _parse_it(s: str):
-        try:
-            return datetime.strptime(str(s).strip(), "%d/%m/%Y")
-        except Exception:
-            return None
-
-    # Max data_sollecito per tratta_id
-    max_per_tratta: dict[str, datetime] = {}
-    async for d in solleciti_col.find({}, {"tratta_id": 1, "data_sollecito": 1}):
-        tid = str(d.get("tratta_id", "")).strip()
-        dt = _parse_it(d.get("data_sollecito", ""))
-        if not tid or not dt:
-            continue
-        if tid not in max_per_tratta or dt > max_per_tratta[tid]:
-            max_per_tratta[tid] = dt
-
-    async with _master_csv_lock:
-        df = await _read_master_csv()
-        if "TRATTA_ID" not in df.columns:
-            return {
-                "ok": False,
-                "error": "colonna TRATTA_ID assente da Master.csv",
-                "colonne_trovate": df.columns.tolist(),
-            }
-        if "DATA_UPDATE" not in df.columns:
-            df["DATA_UPDATE"] = ""
-            column_created = True
-        else:
-            column_created = False
-
-        touched = []
-        col_tratta = df["TRATTA_ID"].astype(str).str.strip()
-        for tid, sol_dt in max_per_tratta.items():
-            mask = col_tratta == tid
-            if not mask.any():
-                continue
-            existing_raw = df.loc[mask, "DATA_UPDATE"].iloc[0]
-            existing_dt = _parse_it(existing_raw)
-            if existing_dt and existing_dt >= sol_dt:
-                continue  # già più recente (o uguale), non sovrascrivere
-            new_val = sol_dt.strftime("%d/%m/%Y")
-            df.loc[mask, "DATA_UPDATE"] = new_val
-            touched.append({"tratta_id": tid, "data_update": new_val})
-
-        if touched or column_created:
-            await _write_master_csv(
-                df,
-                note=f"Backfill one-off rev.147: DATA_UPDATE da storico solleciti ({len(touched)} tratte)"
-                     + (" + colonna creata" if column_created else ""),
-            )
-
-    return {"ok": True, "touched": len(touched), "column_created": column_created, "detail": touched}
-
-
-@app.post("/api/admin/backfill-fix-data-update-overreach")
-async def backfill_fix_data_update_overreach(
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    """One-off (rev.248): corregge il bug per cui _touch_data_update/_touch_data_update_multi
-    (prima del fix) scrivevano DATA_UPDATE=oggi su TUTTE le righe storicizzate con lo stesso
-    TRATTA_ID — inclusi altri iter/tipo_permesso sulla stessa tratta e righe storiche vecchie
-    dello stesso iter — invece che solo sull'ultima riga del gruppo tratta+tipo_permesso.
-
-    Per ogni gruppo (TRATTA_ID, TIPO_PERMESSO): azzera DATA_UPDATE su tutte le righe tranne
-    l'ultima (idx[-1], la più recente). Il frontend (index.html) ricade su DATA_ULTIMA_MODIFICA
-    quando DATA_UPDATE è vuota, recuperando la datazione corretta delle note storiche.
-    Non tocca NOTE/STATO_PERMESSO/DATA_ULTIMA_MODIFICA/altri campi. Idempotente: rieseguibile
-    senza effetti collaterali (le righe già a DATA_UPDATE vuota vengono saltate)."""
-    _check_token(x_upload_token or token_q)
-
-    async with _master_csv_lock:
-        df = await _read_master_csv()
-        if "TRATTA_ID" not in df.columns or "DATA_UPDATE" not in df.columns:
-            return {
-                "ok": False,
-                "error": "colonna TRATTA_ID o DATA_UPDATE assente da Master.csv",
-                "colonne_trovate": df.columns.tolist(),
-            }
-
-        has_tipo = "TIPO_PERMESSO" in df.columns
-        group_cols = ["TRATTA_ID", "TIPO_PERMESSO"] if has_tipo else ["TRATTA_ID"]
-        cleared = []
-
-        for _, idx_arr in df.groupby(
-            [df[c].astype(str).str.strip() for c in group_cols]
-        ).groups.items():
-            idx = list(idx_arr)
-            if len(idx) < 2:
-                continue  # gruppo con una sola riga: nulla da correggere
-            for i in idx[:-1]:  # tutte tranne l'ultima
-                existing = str(df.loc[i, "DATA_UPDATE"] or "").strip()
-                if not existing or existing.lower() == "nan":
-                    continue
-                cleared.append({
-                    "tratta_id": str(df.loc[i, "TRATTA_ID"]),
-                    "tipo_permesso": str(df.loc[i, "TIPO_PERMESSO"]) if has_tipo else "",
-                    "pratica": str(df.loc[i, "PRATICA"]) if "PRATICA" in df.columns else "",
-                    "data_update_rimossa": existing,
-                })
-                df.loc[i, "DATA_UPDATE"] = ""
-
-        if cleared:
-            await _write_master_csv(
-                df,
-                note=f"Backfill one-off rev.248: azzerato DATA_UPDATE errato su {len(cleared)} righe storiche non-ultime",
-            )
-
-    return {"ok": True, "cleared": len(cleared), "detail": cleared}
-
-
-
-async def edit_pending(
-    sub_id: str,
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Corregge i dati (`changes`) di una submission impresa ancora in stato 'pending',
-    prima di approvarla — es. errori di digitazione o dati di test inviati per sbaglio.
-    Non è modificabile una submission già approvata/rifiutata (usare direttamente
-    la tabella Cantieri/Master per correzioni post-approvazione)."""
-    _check_token(x_upload_token or token_q)
-    try:
-        oid = ObjectId(sub_id)
-    except Exception:
-        raise HTTPException(400, "Invalid id")
-    sub = await pending_col.find_one({"_id": oid})
-    if not sub:
-        raise HTTPException(404, "Submission not found")
-    if sub.get("status") != "pending":
-        raise HTTPException(409, f"Non modificabile: già {sub.get('status')}")
-    changes = payload.get("changes")
-    if not isinstance(changes, list):
-        raise HTTPException(400, "'changes' deve essere una lista")
-    await pending_col.update_one(
-        {"_id": oid},
-        {"$set": {"changes": changes, "edited_at": _now_iso(), "edited_by": x_actor_nome or "admin"}},
-    )
-    await _log_admin_action("edit_pending_update", sub_id, x_actor_nome)
-    return {"ok": True}
-
-
-@app.post("/api/admin/pending-updates/{sub_id}/approve")
-async def approve_pending(
-    sub_id: str,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    _check_token(x_upload_token or token_q)
-    try:
-        oid = ObjectId(sub_id)
-    except Exception:
-        raise HTTPException(400, "Invalid id")
-    sub = await pending_col.find_one({"_id": oid})
-    if not sub:
-        raise HTTPException(404, "Submission not found")
-    if sub.get("status") != "pending":
-        raise HTTPException(409, f"Already {sub.get('status')}")
-    async with _master_csv_lock:
-        df = await _read_master_csv()
-        new_df, summary = _apply_changes_to_df(df, sub)
-        note = f"Submission {sub_id} from {sub['nome']} ({sub['type']})"
-        upload_id = await _write_master_csv(new_df, note=note)
-    reviewer = x_actor_nome or "admin"
-    await pending_col.update_one(
-        {"_id": oid},
-        {"$set": {"status": "approved", "reviewed_at": _now_iso(), "reviewed_by": reviewer, "applied_upload_id": upload_id, "summary": summary}},
-    )
-    await _log_admin_action("approve_pending_update", sub_id, x_actor_nome)
-    # Sync cantieri: crea automaticamente cantieri non_avviato per le nuove tratte lavorabili
-    asyncio.create_task(_sync_cantieri())
-    return {"ok": True, "summary": summary, "new_upload_id": upload_id}
-
-
-@app.post("/api/admin/pending-updates/{sub_id}/reject")
-async def reject_pending(
-    sub_id: str,
-    payload: dict | None = None,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    _check_token(x_upload_token or token_q)
-    try:
-        oid = ObjectId(sub_id)
-    except Exception:
-        raise HTTPException(400, "Invalid id")
-    note = ((payload or {}).get("note") or "").strip()
-    reviewer = x_actor_nome or "admin"
-    res = await pending_col.update_one(
-        {"_id": oid, "status": "pending"},
-        {"$set": {"status": "rejected", "reviewed_at": _now_iso(), "reviewed_by": reviewer, "reviewed_note": note}},
-    )
-    if res.matched_count == 0:
-        raise HTTPException(404, "Submission not found or not pending")
-    await _log_admin_action("reject_pending_update", sub_id, x_actor_nome)
-    return {"ok": True}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# NOTE ADMIN — l'admin annota una pratica con lo stesso meccanismo delle imprese
-# (stessa pipeline _apply_changes_to_df: nuova riga copiata dall'ultima esistente,
-# NOTE valorizzata, DATA_UPDATE stampata). Distinguibile da una nota impresa via
-# prefisso [RETELIT]/[IMPRESA] (_tag_note) — index.html/admin.html lo parsano
-# per mostrare l'etichetta "Retelit"/"Impresa" e nascondono il prefisso grezzo.
-# ─────────────────────────────────────────────────────────────────────────────
-_NOTE_TAG_RE = re.compile(r"^\[(RETELIT|IMPRESA)\]\s*")
-_NOTE_WS_RE = re.compile(r"\s+")
-
-
-def _sanitize_note_text(note: str) -> str:
-    """Rimuove newline/tab/altri whitespace di controllo da una NOTE,
-    collassandoli in uno spazio singolo. Master.csv e' quotato correttamente
-    quindi un \\n dentro un campo non rompe il CSV di per se', ma e'
-    esattamente il pattern che ha gia' causato bug su parser non quote-aware
-    a valle (v. AGENT_BRIEF, righe spezzate su campi multi-riga) — meglio non
-    farlo mai entrare in origine."""
-    if not note:
-        return note
-    return _NOTE_WS_RE.sub(" ", note).strip()
-
-
-def _tag_note(note: str, tag: str) -> str:
-    """Prefissa una NOTE con [RETELIT]/[IMPRESA] per distinguerne l'autore in
-    index.html/admin.html. Rimuove un eventuale tag preesistente prima di
-    riapplicarlo, cosi' un admin che modifica una submission impresa (PUT
-    /api/admin/pending-updates/{id}) non produce prefissi impilati."""
-    note = _sanitize_note_text((note or "").strip())
-    if not note:
-        return note
-    note = _NOTE_TAG_RE.sub("", note)
-    return f"[{tag}] {note}"
-@app.get("/api/admin/pratiche-search")
-async def search_pratiche_admin(
-    q: str = "",
-    limit: int = 800,
-    sess: dict = Depends(_require_staff_session),
-):
-    """Cerca pratiche in Master.csv per TRATTA_ID / codice pratica / ente / lotto,
-    deduplicate all'ultima riga (Master.csv è append-only, storico incluso).
-    Usata da admin.html per trovare la pratica a cui aggiungere una nota."""
-    df = await _read_master_csv()
-    if df is None or df.empty:
-        return {"results": []}
-    needed = {"TRATTA_ID", "ENTE", "TIPO_PERMESSO", "PRATICA", "Source.Name", "STATO_PERMESSO", "NOTE"}
-    missing = needed - set(df.columns)
-    if missing:
-        return {"results": [], "error": f"Colonne mancanti in Master.csv: {sorted(missing)}"}
-    work = df.fillna("")
-    q_norm = q.strip().lower()
-    if q_norm:
-        hay = (
-            work["TRATTA_ID"].astype(str) + " " + work["PRATICA"].astype(str) + " " +
-            work["ENTE"].astype(str) + " " + work["Source.Name"].astype(str)
-        ).str.lower()
-        work = work[hay.str.contains(re.escape(q_norm), na=False)]
-    if work.empty:
-        return {"results": []}
-    work = work.assign(_key=(
-        work["TRATTA_ID"].astype(str).str.strip() + "|" + work["ENTE"].astype(str).str.strip() + "|" +
-        work["TIPO_PERMESSO"].astype(str).str.strip() + "|" + work["PRATICA"].astype(str).str.strip()
-    ))
-    latest = work.drop_duplicates(subset="_key", keep="last")
-    # Righe senza numero PRATICA non sono rappresentabili come "pratica" e non
-    # possono ricevere note (add_admin_note richiede una pratica valida) →
-    # escluse dalla tabella, come richiesto dall'utente.
-    latest = latest[latest["PRATICA"].astype(str).str.strip() != ""]
-    # Le pratiche già OTTENUTO non necessitano più di note (emesse, chiuse) →
-    # escluse dalla tabella, come richiesto dall'utente.
-    latest = latest[latest["STATO_PERMESSO"].astype(str).str.strip().str.upper() != "OTTENUTO"]
-    if latest.empty:
-        return {"results": []}
-    # Raggruppa per pratica (ENTE+TIPO_PERMESSO+PRATICA): una pratica AUTORIZZAZIONE
-    # copre piu' tratte, e la nota va condivisa su tutte come fa imprese.html
-    # (PR_SIBLINGS).
-    latest = latest.assign(_lotto=latest["Source.Name"].apply(_lotto_from_source))
-    latest = latest.assign(_gkey=(
-        latest["ENTE"].astype(str).str.strip() + "|" + latest["TIPO_PERMESSO"].astype(str).str.strip() + "|" +
-        latest["PRATICA"].astype(str).str.strip() + "|" + latest["_lotto"]
-    ))
-    PREFIX = {"AUTORIZZAZIONE": "AUT", "NULLA OSTA": "NO", "ORDINANZA": "ORD"}
-    out = []
-    for _, grp in latest.groupby("_gkey", sort=False):
-        with_note = grp[grp["NOTE"].astype(str).str.strip() != ""]
-        rep = with_note.iloc[-1] if not with_note.empty else grp.iloc[0]
-        tipo = str(rep.get("TIPO_PERMESSO", "")).strip()
-        pratica_num = str(rep.get("PRATICA", "")).strip()
-        lotto = rep.get("_lotto", "") or _lotto_from_source(rep.get("Source.Name", ""))
-        pref = PREFIX.get(tipo, (tipo[:3] or "").upper())
-        tratta_ids = sorted({t for t in grp["TRATTA_ID"].astype(str).str.strip() if t})
-        out.append({
-            "tratta_ids": tratta_ids,
-            "tratta_id": tratta_ids[0] if tratta_ids else "",
-            "n_tratte": len(tratta_ids),
-            "ente": str(rep.get("ENTE", "")).strip(),
-            "tipo_permesso": tipo,
-            "pratica": pratica_num,
-            "lotto": lotto,
-            "codice": f"{pref}/{pratica_num}/{lotto}" if pratica_num else "",
-            "stato_permesso": str(rep.get("STATO_PERMESSO", "")).strip(),
-            "note_attuale": str(rep.get("NOTE", "")).strip(),
-            "data_richiesta": _it_date_to_iso(rep.get("DATA_RICHIESTA", "")),
-            "data_prevista_rilascio": _it_date_to_iso(rep.get("DATA_PREVISTA_RILASCIO", "")),
-            "data_approvazione": _it_date_to_iso(rep.get("DATA_APPROVAZIONE", "")),
-            "n_sed": str(rep.get("N_SED", "")).strip(),
-        })
-    out.sort(key=lambda x: x["codice"])
-    return {"results": out[:max(1, min(limit, 800))]}
-
-
-PRATICA_STATO_VALUES = [
-    "IN ATTESA", "IN REDAZIONE", "IN FIRMA RDS", "INVIO PRELIMINARE",
-    "INVIATO", "PROTOCOLLATO", "NECESSARIA INTEGRAZIONE",
-    "IN REDAZIONE INTEGRAZIONE", "PROTOCOLLATO INTEGRAZIONE",
-    "OTTENUTO", "NO COMPETENZA",
-]
-
-
-@app.post("/api/admin/pratiche/update")
-async def update_admin_pratica(
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Modifica diretta dei dati di una pratica (stato, date, nota, n. SED)
-    esattamente come farebbe un'impresa da imprese.html, attraverso
-    _apply_changes_to_df: nessuna approvazione richiesta (l'admin è già
-    l'autorità), scrittura diretta su Master.csv, applicata a TUTTE le tratte
-    della pratica (stessa pipeline già usata da add_admin_note, generalizzata
-    a più campi)."""
-    _check_token(x_upload_token or token_q)
-    p = payload or {}
-    ente = str(p.get("ente") or "").strip()
-    tipo = str(p.get("tipo_permesso") or "").strip()
-    pratica = str(p.get("pratica") or "").strip()
-    tratte = [str(t).strip() for t in (p.get("tratta_ids") or []) if str(t).strip()]
-    single = str(p.get("tratta_id") or "").strip()
-    if single and single not in tratte:
-        tratte.append(single)
-    if not tratte:
-        raise HTTPException(400, "tratta_ids (o tratta_id) è obbligatorio")
-
-    raw = p.get("fields") or {}
-    mode = str(p.get("mode") or "").strip().lower()
-    if mode not in ("data", "note"):
-        # Fallback per eventuali chiamate legacy senza mode esplicito
-        mode = "note" if set(raw.keys()) <= {"note"} else "data"
-
-    fields: dict = {}
-    if mode == "data":
-        if "stato_permesso" in raw:
-            v = str(raw["stato_permesso"] or "").strip()
-            if v and v not in PRATICA_STATO_VALUES:
-                raise HTTPException(400, f"stato_permesso non valido: {v}")
-            if v:
-                fields["STATO_PERMESSO"] = v
-        if "data_richiesta" in raw:
-            v = _iso_date_to_it(raw["data_richiesta"])
-            if raw["data_richiesta"] and not v:
-                raise HTTPException(400, "data_richiesta non valida")
-            fields["DATA_RICHIESTA"] = v
-        if "data_prevista_rilascio" in raw:
-            v = _iso_date_to_it(raw["data_prevista_rilascio"])
-            if raw["data_prevista_rilascio"] and not v:
-                raise HTTPException(400, "data_prevista_rilascio non valida")
-            fields["DATA_PREVISTA_RILASCIO"] = v
-        if "data_approvazione" in raw:
-            v = _iso_date_to_it(raw["data_approvazione"])
-            if raw["data_approvazione"] and not v:
-                raise HTTPException(400, "data_approvazione non valida")
-            fields["DATA_APPROVAZIONE"] = v
-        if fields.get("STATO_PERMESSO") == "OTTENUTO" and not fields.get("DATA_APPROVAZIONE"):
-            raise HTTPException(400, "data_approvazione obbligatoria per lo stato OTTENUTO")
-        if "n_sed" in raw:
-            fields["N_SED"] = str(raw["n_sed"] or "").strip()
-        if "note" in raw:
-            # Correzione diretta della nota esistente: NON si ritagga come
-            # RETELIT — chi l'ha scritta in origine (Impresa o Retelit) resta
-            # l'autore mostrato, si corregge solo il testo.
-            # _apply_changes_to_df preserva il tag esistente sulla riga.
-            fields["NOTE"] = _sanitize_note_text(str(raw["note"] or ""))
-        if not fields:
-            raise HTTPException(400, "Nessun campo valido da aggiornare")
-        in_place = True
-        preserve_note_tag = True
-    else:
-        text = str(raw.get("note") or "").strip()
-        if not text:
-            raise HTTPException(400, "note è obbligatoria")
-        # Nuova nota: sempre taggata RETELIT, sempre una nuova riga di storico
-        fields["NOTE"] = _tag_note(text, "RETELIT")
-        in_place = False
-        preserve_note_tag = False
-
-    submission = {
-        "type": "update",
-        "in_place": in_place,
-        "changes": [{
-            "tratta_id": t, "ente": ente, "tipo_permesso": tipo,
-            "original_pratica": pratica,
-            "preserve_note_tag": preserve_note_tag,
-            "fields": dict(fields),
-        } for t in tratte],
-    }
-    async with _master_csv_lock:
-        df = await _read_master_csv()
-        new_df, summary = _apply_changes_to_df(df, submission)
-        if summary.get("updated", 0) == 0:
-            raise HTTPException(404, "Nessuna riga trovata per TRATTA_ID/ENTE/TIPO_PERMESSO/PRATICA indicati")
-        reviewer = x_actor_nome or "admin"
-        upload_id = await _write_master_csv(new_df, note=f"Admin update by {reviewer} on {len(tratte)} tratta/e ({tratte[0]}{'…' if len(tratte)>1 else ''})")
-    await _log_admin_action("update_pratica", f"{'+'.join(tratte)}|{ente}|{tipo}|{pratica}", x_actor_nome)
-    return {"ok": True, "summary": summary, "new_upload_id": upload_id}
-
-
-def _pratica_note_history_core(df: "pd.DataFrame", ente: str, tipo_permesso: str, pratica: str, lotto: str) -> list[dict]:
-    """Logica condivisa: storico di TUTTE le note inserite nel tempo su una pratica,
-    raccolte da OGNI riga grezza di Master.csv (non solo l'ultima per tratta) e
-    deduplicate per (testo, data) — stessa logica di praticaNotesRaw in index.html."""
-    if df is None or df.empty:
-        return []
-    needed = {"ENTE", "TIPO_PERMESSO", "PRATICA", "Source.Name", "NOTE"}
-    if needed - set(df.columns):
-        return []
-    work = df.fillna("")
-    mask = (
-        (work["ENTE"].astype(str).str.strip() == ente) &
-        (work["TIPO_PERMESSO"].astype(str).str.strip() == tipo_permesso) &
-        (work["PRATICA"].astype(str).str.strip() == pratica)
-    )
-    work = work[mask]
-    work = work[work["Source.Name"].apply(_lotto_from_source) == lotto]
-    has_stato = "STATO_PERMESSO" in work.columns
-    has_tratta = "TRATTA_ID" in work.columns
-    # Replica esatta di effectiveDateRaw in index.html (praticaNotesRaw): se una riga è un
-    # aggiornamento SOLO-NOTA (stessa tratta, stesso STATO_PERMESSO, stessa DATA_ULTIMA_MODIFICA
-    # già vista prima), la vera data dell'evento è DATA_UPDATE, non DATA_ULTIMA_MODIFICA.
-    # Senza questo fallback due note distinte con stessa dum collassano sulla stessa data.
-    stato_seen = []  # lista di {stato, date, tratta_ids: set()}
-    seen = set()
-    notes = []
-    for _, row in work.iterrows():
-        stato = str(row.get("STATO_PERMESSO", "")).strip() if has_stato else ""
-        tratta = str(row.get("TRATTA_ID", "")).strip() if has_tratta else ""
-        dum = str(row.get("DATA_ULTIMA_MODIFICA", "")).strip()
-        data_update = str(row.get("DATA_UPDATE", "")).strip()
-        note_date_raw = dum or data_update
-        is_continuation = any(
-            s["stato"] == stato and s["date"] == note_date_raw and tratta in s["tratta_ids"]
-            for s in stato_seen
-        )
-        effective_date = data_update if (is_continuation and data_update) else note_date_raw
-        merge_target = next((s for s in stato_seen if s["stato"] == stato and s["date"] == effective_date), None)
-        if merge_target is not None:
-            merge_target["tratta_ids"].add(tratta)
-        else:
-            stato_seen.append({"stato": stato, "date": effective_date, "tratta_ids": {tratta}})
-
-        note = str(row.get("NOTE", "")).strip()
-        if not note:
-            continue
-        # Dedup per solo testo nota (non (nota, data)): la stessa nota invariata viene
-        # riportata dal CSV su più righe di cambio stato consecutive con date diverse,
-        # non è un evento nuovo ogni volta — stessa logica di index.html (praticaNotesRaw).
-        if note in seen:
-            continue
-        seen.add(note)
-        notes.append({"note": note, "date": effective_date})
-    notes.sort(key=lambda n: _it_date_to_iso(n["date"]), reverse=True)
-    return notes
-
-
-@app.get("/api/admin/pratiche/note-history")
-async def pratica_note_history(
-    ente: str, tipo_permesso: str, pratica: str, lotto: str,
-    sess: dict = Depends(_require_staff_session),
-):
-    """Storico note per staff/admin. Serve anche a poterle correggere con /pratiche/note/correct."""
-    df = await _read_master_csv()
-    return {"notes": _pratica_note_history_core(df, ente, tipo_permesso, pratica, lotto)}
-
-
-@app.get("/api/imprese/pratiche/note-history")
-async def impresa_pratica_note_history(
-    ente: str, tipo_permesso: str, pratica: str, lotto: str,
-    sess: dict = Depends(_require_session),
-):
-    """Come /api/admin/pratiche/note-history ma per l'Area Impresa: sola lettura,
-    nessuna correzione/eliminazione, e ristretto ai soli lotti assegnati all'impresa
-    (nome preso dal token di sessione firmato, stesso pattern di /api/imprese/pratiche)."""
-    doc = await _find_assignment(sess["nome"])
-    if not doc or not doc.get("active", True):
-        raise HTTPException(404, "Impresa non autorizzata")
-    lotti = {_lotto_from_source(l) for l in doc.get("lotti", []) if str(l).strip()}
-    if lotto not in lotti:
-        raise HTTPException(403, "Lotto non assegnato a questa impresa")
-    df = await _read_master_csv()
-    return {"notes": _pratica_note_history_core(df, ente, tipo_permesso, pratica, lotto)}
-
-
-@app.post("/api/admin/pratiche/note/correct")
-async def correct_pratica_note(
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Corregge il testo di una nota STORICA (anche non l'ultima) su una pratica.
-    A differenza di /pratiche/update (mode=data), che tocca solo l'ultima riga per
-    tratta, qui si cerca per testo+data della nota su TUTTE le righe grezze di
-    Master.csv del gruppo pratica (ente+tipo+pratica+lotto) — la stessa nota storica
-    è duplicata su ogni tratta attraversata dalla pratica in quell'evento, quindi la
-    correzione va propagata su tutte, non solo sull'ultima riga di ciascuna tratta."""
-    _check_token(x_upload_token or token_q)
-    p = payload or {}
-    ente = str(p.get("ente") or "").strip()
-    tipo = str(p.get("tipo_permesso") or "").strip()
-    pratica = str(p.get("pratica") or "").strip()
-    lotto = str(p.get("lotto") or "").strip()
-    old_note = str(p.get("old_note") or "").strip()
-    old_date = str(p.get("old_date") or "").strip()
-    new_text = str(p.get("new_note") or "").strip()
-    if not (ente and tipo and pratica and lotto and old_note):
-        raise HTTPException(400, "ente, tipo_permesso, pratica, lotto e old_note sono obbligatori")
-    if not new_text:
-        raise HTTPException(400, "new_note è obbligatoria")
-
-    async with _master_csv_lock:
-        df = await _read_master_csv()
-        if df is None or df.empty:
-            raise HTTPException(404, "Master.csv non disponibile")
-        needed = {"ENTE", "TIPO_PERMESSO", "PRATICA", "Source.Name", "NOTE"}
-        if needed - set(df.columns):
-            raise HTTPException(400, "Colonne mancanti in Master.csv")
-        mask = (
-            (df["ENTE"].astype(str).str.strip() == ente) &
-            (df["TIPO_PERMESSO"].astype(str).str.strip() == tipo) &
-            (df["PRATICA"].astype(str).str.strip() == pratica) &
-            (df["Source.Name"].apply(_lotto_from_source) == lotto) &
-            (df["NOTE"].astype(str).str.strip() == old_note)
-        )
-        # NB: old_date NON viene più usata per filtrare. Lo storico note (v.
-        # _pratica_note_history_core) dedupe ora per solo testo, quindi una voce
-        # visualizzata con una data può corrispondere a più righe fisiche con quello
-        # stesso testo ma date diverse (nota invariata riportata su più cambi stato).
-        # Filtrare anche per data correggerebbe/eliminerebbe solo una di quelle righe,
-        # lasciando le altre col testo vecchio — il doppione riapparirebbe al
-        # prossimo touch di DATA_UPDATE. old_date resta accettato per compatibilità
-        # ma è ignorato: l'identità della nota è il testo.
-        idx = df.index[mask].tolist()
-        if not idx:
-            raise HTTPException(404, "Nessuna riga trovata per quella nota — verifica che il testo combaci esattamente")
-        # Preserva il tag [RETELIT]/[IMPRESA] esistente su ciascuna riga: si corregge
-        # solo il testo, non l'autore mostrato.
-        for i in idx:
-            existing = str(df.loc[i, "NOTE"]) if "NOTE" in df.columns else ""
-            m = _NOTE_TAG_RE.match(existing or "")
-            tag_prefix = m.group(0) if m else ""
-            df.loc[i, "NOTE"] = f"{tag_prefix}{new_text}"
-        reviewer = x_actor_nome or "admin"
-        upload_id = await _write_master_csv(
-            df, note=f"Admin note-correct by {reviewer} on {len(idx)} riga/e ({ente}|{tipo}|{pratica}|{lotto})"
-        )
-    await _log_admin_action("correct_pratica_note", f"{ente}|{tipo}|{pratica}|{lotto}", x_actor_nome)
-    return {"ok": True, "updated": len(idx), "new_upload_id": upload_id}
-
-
-@app.post("/api/admin/pratiche/note/delete")
-async def delete_pratica_note(
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Elimina (svuota) una nota STORICA su tutte le righe grezze di Master.csv che
-    la condividono — stesso matching di /pratiche/note/correct (ente+tipo+pratica+
-    lotto+testo[+data]), ma il campo NOTE viene azzerato invece che riscritto. Non
-    rimuove la riga fisica del CSV (Master.csv resta append-only), solo il testo
-    della nota su quell'evento storico."""
-    _check_token(x_upload_token or token_q)
-    p = payload or {}
-    ente = str(p.get("ente") or "").strip()
-    tipo = str(p.get("tipo_permesso") or "").strip()
-    pratica = str(p.get("pratica") or "").strip()
-    lotto = str(p.get("lotto") or "").strip()
-    old_note = str(p.get("old_note") or "").strip()
-    old_date = str(p.get("old_date") or "").strip()
-    if not (ente and tipo and pratica and lotto and old_note):
-        raise HTTPException(400, "ente, tipo_permesso, pratica, lotto e old_note sono obbligatori")
-
-    async with _master_csv_lock:
-        df = await _read_master_csv()
-        if df is None or df.empty:
-            raise HTTPException(404, "Master.csv non disponibile")
-        needed = {"ENTE", "TIPO_PERMESSO", "PRATICA", "Source.Name", "NOTE"}
-        if needed - set(df.columns):
-            raise HTTPException(400, "Colonne mancanti in Master.csv")
-        mask = (
-            (df["ENTE"].astype(str).str.strip() == ente) &
-            (df["TIPO_PERMESSO"].astype(str).str.strip() == tipo) &
-            (df["PRATICA"].astype(str).str.strip() == pratica) &
-            (df["Source.Name"].apply(_lotto_from_source) == lotto) &
-            (df["NOTE"].astype(str).str.strip() == old_note)
-        )
-        # V. nota in note/correct: old_date non filtra più, stesso motivo.
-        idx = df.index[mask].tolist()
-        if not idx:
-            raise HTTPException(404, "Nessuna riga trovata per quella nota — verifica che il testo combaci esattamente")
-        for i in idx:
-            df.loc[i, "NOTE"] = ""
-        reviewer = x_actor_nome or "admin"
-        upload_id = await _write_master_csv(
-            df, note=f"Admin note-delete by {reviewer} on {len(idx)} riga/e ({ente}|{tipo}|{pratica}|{lotto})"
-        )
-    await _log_admin_action("delete_pratica_note", f"{ente}|{tipo}|{pratica}|{lotto}", x_actor_nome)
-    return {"ok": True, "updated": len(idx), "new_upload_id": upload_id}
-
-
-
-_POL_CONV_ALLOWED_FIELDS = {"CONVENZIONE", "POLIZZA"}
-_POL_CONV_ALLOWED_VALUES = {"NECESSARIA", "RICHIESTA RDS", "INVIATA", "EMESSA", ""}
-# SI/NO sono i soli valori che l'impresa può scrivere (checkbox "è necessaria?"),
-# usati anche come default nelle esportazioni esterne (QGIS/Excel) che alimentano
-# nuovi upload di Master.csv. NECESSARIA/RICHIESTA RDS/INVIATA/EMESSA sono invece
-# lo stato di workflow avanzato manualmente da polizze_convenzioni.html: un nuovo
-# upload che porta solo SI/NO per una pratica già oltre NECESSARIA non deve mai
-# retrocederla (bug segnalato dall'utente: polizze/convenzioni tornate a
-# "NECESSARIA" dopo un caricamento di Master.csv aggiornato).
-_POL_CONV_RANK = {"": 0, "NO": 0, "SI": 1, "NECESSARIA": 1, "RICHIESTA RDS": 2, "INVIATA": 3, "EMESSA": 4}
-
-
-def _preserve_pol_conv_state(old_df: "pd.DataFrame", new_df: "pd.DataFrame") -> int:
-    """Prima di sostituire Master.csv con un nuovo upload, riporta nel nuovo file
-    lo stato CONVENZIONE/POLIZZA più avanzato già presente nel file corrente, per
-    ogni lotto+pratica, se il nuovo file porterebbe una retrocessione (es. SI/NO
-    grezzo dalla fonte esterna sopra un INVIATA/EMESSA impostato a mano). Non tocca
-    nulla se il nuovo valore è uguale o più avanzato. Ritorna il numero di celle
-    corrette, per il log di audit."""
-    def _extract_lotto(src) -> str:
-        return str(src).replace(".xlsx", "").replace(".xls", "").replace("Lotto ", "").strip().upper()
-
-    src_col_old = next((c for c in old_df.columns if c.strip().upper().replace(".", "").replace(" ", "") in {"SOURCENAME", "SOURCE_NAME"}), None)
-    prat_col_old = next((c for c in old_df.columns if c.strip().upper() == "PRATICA"), None)
-    if src_col_old is None or prat_col_old is None:
-        return 0
-
-    # stato più avanzato già visto nel file corrente, per (lotto, pratica, campo)
-    best: dict[tuple, str] = {}
-    for col_name, field in (("CONVENZIONE", "CONVENZIONE"), ("POLIZZA", "POLIZZA")):
-        real_old = next((c for c in old_df.columns if c.strip().upper() == col_name), None)
-        if real_old is None:
-            continue
-        for _, row in old_df.iterrows():
-            val = str(row.get(real_old, "")).strip().upper()
-            if _POL_CONV_RANK.get(val, 0) < 2:  # sotto RICHIESTA RDS: niente da preservare
-                continue
-            lotto = _extract_lotto(row.get(src_col_old, ""))
-            pratica = str(row.get(prat_col_old, "")).strip()
-            if not lotto or not pratica:
-                continue
-            key = (lotto, pratica, field)
-            if key not in best or _POL_CONV_RANK.get(val, 0) > _POL_CONV_RANK.get(best[key], 0):
-                best[key] = val
-
-    if not best:
-        return 0
-
-    src_col_new = next((c for c in new_df.columns if c.strip().upper().replace(".", "").replace(" ", "") in {"SOURCENAME", "SOURCE_NAME"}), None)
-    prat_col_new = next((c for c in new_df.columns if c.strip().upper() == "PRATICA"), None)
-    if src_col_new is None or prat_col_new is None:
-        return 0
-
-    touched = 0
-    for col_name, field in (("CONVENZIONE", "CONVENZIONE"), ("POLIZZA", "POLIZZA")):
-        real_new = next((c for c in new_df.columns if c.strip().upper() == col_name), None)
-        if real_new is None:
-            continue
-        lotti_new = new_df[src_col_new].astype(str).apply(_extract_lotto)
-        pratiche_new = new_df[prat_col_new].astype(str).str.strip()
-        for i in new_df.index:
-            key = (lotti_new.loc[i], pratiche_new.loc[i], field)
-            preserved = best.get(key)
-            if preserved is None:
-                continue
-            cur = str(new_df.at[i, real_new]).strip().upper()
-            if _POL_CONV_RANK.get(cur, 0) < _POL_CONV_RANK.get(preserved, 0):
-                new_df.at[i, real_new] = preserved
-                touched += 1
-    return touched
-
-
-@app.get("/api/admin/polizze-convenzioni/data-richiesta")
-async def get_pol_conv_date_richiesta(sess: dict = Depends(_require_staff_session)):
-    """Per ogni pratica con CONVENZIONE/POLIZZA valorizzata, fissa la data
-    DATA_ULTIMA_MODIFICA dal Master.csv come data di prima richiesta.
-    La data viene salvata una sola volta — i giri successivi non la toccano."""
-    df = await _read_master_csv()
-    src_col    = next((c for c in df.columns if c.strip().upper().replace(".", "").replace(" ", "") in {"SOURCENAME", "SOURCE_NAME"}), None)
-    pratica_col = next((c for c in df.columns if c.strip().upper() == "PRATICA"), None)
-    conv_col   = next((c for c in df.columns if c.strip().upper() == "CONVENZIONE"), None)
-    pol_col    = next((c for c in df.columns if c.strip().upper() == "POLIZZA"), None)
-    data_col   = next((c for c in df.columns if c.strip().upper() == "DATA_ULTIMA_MODIFICA"), None)
-    if src_col is None or pratica_col is None:
-        return {"date": {}}
-    if conv_col is None and pol_col is None:
-        # Nessuna delle 2 colonne è nel Master: NON toccare la collection esistente
-        # (altrimenti il delete_many sotto, con seen_keys vuoto, cancellerebbe
-        # tutte le date già raccolte in precedenza).
-        dates, dates_invio, dates_rds, dates_emissione = {}, {}, {}, {}
-        urgenti = {}
-        prot_ente = {}
-        async for d in pol_conv_dates_col.find({}):
-            dates[d["_id"]] = d.get("data_richiesta", "")
-            dates_invio[d["_id"]] = d.get("data_invio", "")
-            dates_rds[d["_id"]] = d.get("data_richiesta_rds", "")
-            dates_emissione[d["_id"]] = d.get("data_emissione", "")
-            if d.get("urgente"):
-                urgenti[d["_id"]] = True
-            if d.get("prot_ente"):
-                prot_ente[d["_id"]] = d["prot_ente"]
-        return {"date": dates, "date_invio": dates_invio, "date_richiesta_rds": dates_rds, "date_emissione": dates_emissione, "urgenti": urgenti, "prot_ente": prot_ente}
-
-    def _extract_lotto(src: str) -> str:
-        return str(src).replace(".xlsx", "").replace(".xls", "").replace("Lotto ", "").strip().upper()
-
-    seen_keys = set()
-    for col, field in ((conv_col, "CONVENZIONE"), (pol_col, "POLIZZA")):
-        if col is None:
-            continue
-        for _, row in df.iterrows():
-            val = str(row.get(col, "")).strip()
-            if not val:
-                continue
-            lotto   = _extract_lotto(row.get(src_col, ""))
-            pratica = str(row.get(pratica_col, "")).strip()
-            if not lotto or not pratica:
-                continue
-            key = f"{lotto}|{pratica}|{field}"
-            if key in seen_keys:
-                continue
-            seen_keys.add(key)
-            data_mod = str(row.get(data_col, "")).strip() if data_col else ""
-            # Fissa solo alla prima rilevazione, anche se il documento esiste
-            # già (es. creato prima da un data_invio su INVIATA).
-            existing = await pol_conv_dates_col.find_one({"_id": key})
-            if existing is None:
-                await pol_conv_dates_col.insert_one({"_id": key, "data_richiesta": data_mod})
-            elif not existing.get("data_richiesta"):
-                await pol_conv_dates_col.update_one({"_id": key}, {"$set": {"data_richiesta": data_mod}})
-
-    # Rimuove chiavi non più presenti nel Master — solo se ne abbiamo trovate
-    # di nuove: seen_keys vuoto per un problema transitorio (CSV non ancora
-    # sincronizzato, colonne rinominate) non deve azzerare la collection.
-    if seen_keys:
-        await pol_conv_dates_col.delete_many({"_id": {"$nin": list(seen_keys)}})
-
-    dates, dates_invio, dates_rds, dates_emissione = {}, {}, {}, {}
-    urgenti = {}
-    prot_ente = {}
-    async for d in pol_conv_dates_col.find({}):
-        dates[d["_id"]] = d.get("data_richiesta", "")
-        dates_invio[d["_id"]] = d.get("data_invio", "")
-        dates_rds[d["_id"]] = d.get("data_richiesta_rds", "")
-        dates_emissione[d["_id"]] = d.get("data_emissione", "")
-        if d.get("urgente"):
-            urgenti[d["_id"]] = True
-        if d.get("prot_ente"):
-            prot_ente[d["_id"]] = d["prot_ente"]
-    return {"date": dates, "date_invio": dates_invio, "date_richiesta_rds": dates_rds, "date_emissione": dates_emissione, "urgenti": urgenti, "prot_ente": prot_ente}
-
-
-@app.post("/api/admin/polizze-convenzioni/set-urgente")
-async def set_pol_conv_urgente(
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-):
-    """Flegga/sfleggia una pratica come urgente (gestito da admin/admin2/polizza).
-    Body: {lotto, pratica, field: "CONVENZIONE"|"POLIZZA", urgente: bool}
-    Richiede x-upload-token OPPURE x-session-token con ruolo abilitato (rev.283).
-    Scrive solo su pol_conv_dates_col, non su Master.csv."""
-    _check_polizza_write_auth(x_upload_token or token_q, x_session_token)
-
-    lotto   = str((payload or {}).get("lotto", "")).strip().upper()
-    pratica = str((payload or {}).get("pratica", "")).strip()
-    field   = str((payload or {}).get("field", "")).strip().upper()
-    urgente = bool((payload or {}).get("urgente", False))
-
-    if not lotto or not pratica:
-        raise HTTPException(400, "lotto e pratica sono obbligatori")
-    if field not in _POL_CONV_ALLOWED_FIELDS:
-        raise HTTPException(400, f"field deve essere uno tra {sorted(_POL_CONV_ALLOWED_FIELDS)}")
-
-    key = f"{lotto}|{pratica}|{field}"
-    if urgente:
-        await pol_conv_dates_col.update_one({"_id": key}, {"$set": {"urgente": True}}, upsert=True)
-    else:
-        await pol_conv_dates_col.update_one({"_id": key}, {"$unset": {"urgente": ""}}, upsert=True)
-
-    return {"ok": True, "key": key, "urgente": urgente}
-
-
-@app.post("/api/admin/polizze-convenzioni/set-prot-ente")
-async def set_pol_conv_prot_ente(
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-):
-    """Imposta/cancella il Prot. Ente (protocollo assegnato dall'ente, testo libero)
-    per una pratica CONVENZIONE/POLIZZA — oggi usato solo dalla colonna \"Prot. Ente\"
-    di polizze_convenzioni.html (tabella Polizze).
-    Body: {lotto, pratica, field: "CONVENZIONE"|"POLIZZA", prot_ente: str (max 80, "" per cancellare)}
-    Richiede x-upload-token OPPURE x-session-token con ruolo abilitato (rev.283).
-    Scrive solo su pol_conv_dates_col, non su Master.csv."""
-    _check_polizza_write_auth(x_upload_token or token_q, x_session_token)
-
-    lotto     = str((payload or {}).get("lotto", "")).strip().upper()
-    pratica   = str((payload or {}).get("pratica", "")).strip()
-    field     = str((payload or {}).get("field", "")).strip().upper()
-    prot_ente = str((payload or {}).get("prot_ente", "")).strip()
-
-    if not lotto or not pratica:
-        raise HTTPException(400, "lotto e pratica sono obbligatori")
-    if field not in _POL_CONV_ALLOWED_FIELDS:
-        raise HTTPException(400, f"field deve essere uno tra {sorted(_POL_CONV_ALLOWED_FIELDS)}")
-    if len(prot_ente) > 80:
-        raise HTTPException(400, "prot_ente troppo lungo (max 80 caratteri)")
-
-    key = f"{lotto}|{pratica}|{field}"
-    if prot_ente:
-        await pol_conv_dates_col.update_one({"_id": key}, {"$set": {"prot_ente": prot_ente}}, upsert=True)
-    else:
-        await pol_conv_dates_col.update_one({"_id": key}, {"$unset": {"prot_ente": ""}}, upsert=True)
-
-    return {"ok": True, "key": key, "prot_ente": prot_ente}
-
-
-@app.post("/api/admin/polizze-convenzioni/update")
-async def update_polizza_convenzione(
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-):
-    """Aggiorna CONVENZIONE e/o POLIZZA per tutte le righe lotto+pratica nel Master CSV.
-    Body: {lotto: "2B", pratica: "11", fields: {CONVENZIONE?: val, POLIZZA?: val}}
-    Valori ammessi: NECESSARIA | RICHIESTA RDS | INVIATA | EMESSA | "" (vuoto = cancella)
-    Richiede x-upload-token OPPURE x-session-token con ruolo abilitato (rev.283).
-    Scrive su MongoDB e pusha su GitHub."""
-    _check_polizza_write_auth(x_upload_token or token_q, x_session_token)
-
-    lotto   = str((payload or {}).get("lotto",   "")).strip().upper()
-    pratica = str((payload or {}).get("pratica", "")).strip()
-    fields  = (payload or {}).get("fields") or {}
-
-    if not lotto or not pratica:
-        raise HTTPException(400, "lotto e pratica sono obbligatori")
-    if not fields:
-        raise HTTPException(400, "fields non puo essere vuoto")
-
-    bad_fields = set(fields.keys()) - _POL_CONV_ALLOWED_FIELDS
-    if bad_fields:
-        raise HTTPException(400, f"Campi non consentiti: {bad_fields}")
-    for k, v in fields.items():
-        if str(v).strip().upper() not in {s.upper() for s in _POL_CONV_ALLOWED_VALUES}:
-            raise HTTPException(400, f"Valore non ammesso per {k}: '{v}'")
-
-    async with _master_csv_lock:
-        df = await _read_master_csv()
-
-        def _extract_lotto(src: str) -> str:
-            return src.replace(".xlsx", "").replace(".xls", "").replace("Lotto ", "").strip().upper()
-
-        src_col = next((c for c in df.columns if c.strip().upper().replace(".", "").replace(" ", "") in {"SOURCENAME", "SOURCE_NAME"}), None)
-        if src_col is None:
-            raise HTTPException(500, "Colonna SOURCE.NAME non trovata nel Master CSV")
-
-        pratica_col = next((c for c in df.columns if c.strip().upper() == "PRATICA"), None)
-        if pratica_col is None:
-            raise HTTPException(500, "Colonna PRATICA non trovata nel Master CSV")
-
-        mask = (
-            df[src_col].astype(str).apply(_extract_lotto) == lotto
-        ) & (
-            df[pratica_col].astype(str).str.strip() == pratica
-        )
-
-        matched = int(mask.sum())
-        if matched == 0:
-            raise HTTPException(404, f"Nessuna riga trovata per lotto={lotto} pratica={pratica}")
-
-        for col, val in fields.items():
-            real_col = next((c for c in df.columns if c.strip().upper() == col.upper()), None)
-            if real_col is None:
-                raise HTTPException(500, f"Colonna {col} non trovata nel Master CSV")
-            df.loc[mask, real_col] = str(val).strip()
-
-        note = f"Admin update polizze/convenzioni: lotto={lotto} pratica={pratica} fields={fields}"
-        upload_id = await _write_master_csv(df, note=note)
-
-    today_str = datetime.now().strftime("%d/%m/%Y")
-    STATO_DATE_FIELD = {"INVIATA": "data_invio", "RICHIESTA RDS": "data_richiesta_rds", "EMESSA": "data_emissione"}
-    for col, val in fields.items():
-        date_field = STATO_DATE_FIELD.get(str(val).strip().upper())
-        if not date_field:
-            continue
-        key = f"{lotto}|{pratica}|{col.upper()}"
-        existing = await pol_conv_dates_col.find_one({"_id": key})
-        if existing is None:
-            await pol_conv_dates_col.insert_one({"_id": key, date_field: today_str})
-        elif not existing.get(date_field):
-            await pol_conv_dates_col.update_one({"_id": key}, {"$set": {date_field: today_str}})
-
-    return {"ok": True, "rows_updated": matched, "new_upload_id": upload_id}
-
-
-_POL_CONV_DATE_KEYS = {
-    "richiesta": "data_richiesta",
-    "richiesta_rds": "data_richiesta_rds",
-    "invio": "data_invio",
-    "emissione": "data_emissione",
+function setChecklistTab(k) {
+  _ckTab = k;
+  CK_CATS.forEach(x => document.getElementById('ck-tab-'+x)?.classList.toggle('active', x===k));
+  renderChecklist();
 }
 
-
-@app.post("/api/admin/polizze-convenzioni/set-date")
-async def set_pol_conv_date(
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_session_token: Annotated[str | None, Header(alias="x-session-token")] = None,
-):
-    """Modifica manuale di una delle 4 date CONVENZIONE/POLIZZA (Richiesta,
-    Richiesta RDS, Invio, Emissione) — a differenza di STATO_DATE_FIELD (rev.197-
-    202), che le fissa automaticamente e una sola volta al primo cambio di stato,
-    questo endpoint permette una correzione manuale in qualunque momento, per
-    sistemare casi passati (es. persi da un bug come rev.213) o errori futuri.
-    Body: {lotto, pratica, field: "CONVENZIONE"|"POLIZZA",
-           date_key: "richiesta"|"richiesta_rds"|"invio"|"emissione",
-           value: "GG/MM/AAAA" oppure "" per cancellare}
-    Richiede x-upload-token OPPURE x-session-token con ruolo abilitato (rev.283).
-    Scrive solo su pol_conv_dates_col, non su Master.csv."""
-    _check_polizza_write_auth(x_upload_token or token_q, x_session_token)
-
-    lotto    = str((payload or {}).get("lotto", "")).strip().upper()
-    pratica  = str((payload or {}).get("pratica", "")).strip()
-    field    = str((payload or {}).get("field", "")).strip().upper()
-    date_key = str((payload or {}).get("date_key", "")).strip().lower()
-    value    = str((payload or {}).get("value", "")).strip()
-
-    if not lotto or not pratica:
-        raise HTTPException(400, "lotto e pratica sono obbligatori")
-    if field not in _POL_CONV_ALLOWED_FIELDS:
-        raise HTTPException(400, f"field deve essere uno tra {sorted(_POL_CONV_ALLOWED_FIELDS)}")
-    mongo_field = _POL_CONV_DATE_KEYS.get(date_key)
-    if mongo_field is None:
-        raise HTTPException(400, f"date_key deve essere uno tra {sorted(_POL_CONV_DATE_KEYS)}")
-    if value:
-        try:
-            datetime.strptime(value, "%d/%m/%Y")
-        except ValueError:
-            raise HTTPException(400, "value deve essere in formato GG/MM/AAAA (o vuoto per cancellare)")
-
-    key = f"{lotto}|{pratica}|{field}"
-    if value:
-        await pol_conv_dates_col.update_one({"_id": key}, {"$set": {mongo_field: value}}, upsert=True)
-    else:
-        await pol_conv_dates_col.update_one({"_id": key}, {"$unset": {mongo_field: ""}}, upsert=True)
-
-    return {"ok": True, "key": key, "date_key": date_key, "value": value}
-
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# AGENDA ENTI — appuntamenti richiesti e programmati dagli enti
-# ─────────────────────────────────────────────────────────────────────────────
-_AGENDA_STATI = ("richiesto", "programmato", "svolto", "annullato")
-_AGENDA_TIPI = ("incontro_istituzionale", "tavolo_tecnico", "altro")
-
-
-def _agenda_clean(p: dict) -> dict:
-    """Valida e normalizza il payload di un appuntamento (create/update)."""
-    p = p or {}
-
-    def _s(k: str, n: int = 300) -> str:
-        return str(p.get(k, "") or "").strip()[:n]
-
-    def _d(k: str) -> str:
-        v = _s(k, 10)
-        if v:
-            try:
-                datetime.strptime(v, "%Y-%m-%d")
-            except ValueError:
-                raise HTTPException(422, f"{k}: data non valida (atteso AAAA-MM-GG)")
-        return v
-
-    def _list(k: str, maxn: int, maxlen: int) -> list:
-        raw = p.get(k) or []
-        if not isinstance(raw, list):
-            raise HTTPException(422, f"{k}: atteso un elenco")
-        out: list = []
-        for v in raw[:maxn]:
-            v = str(v or "").strip()[:maxlen]
-            if v and v.upper() not in {o.upper() for o in out}:
-                out.append(v)
-        return out
-
-    pratiche = _list("pratiche", 30, 60)
-    enti = _list("enti", 30, 200)
-    if not enti and _s("ente", 200):
-        enti = [_s("ente", 200)]
-    lotti = sorted({c.split("/")[-1].upper() for c in pratiche if c.count("/") >= 2 and c.split("/")[-1]})
-
-    rec = {
-        "ente": ", ".join(enti)[:500],
-        "enti": enti,
-        "pratiche": pratiche,
-        "lotti": lotti,
-        "tipo": _s("tipo", 40).lower() or "altro",
-        "stato": _s("stato", 20).lower() or "richiesto",
-        "oggetto": _s("oggetto", 300),
-        "riferimento": ", ".join(pratiche)[:500],    # compat: pratiche in testo; fonte di verità = "pratiche"
-        "data_richiesta": _d("data_richiesta"),
-        "data_appuntamento": _d("data_appuntamento"),
-        "ora": _s("ora", 5),
-        "luogo": _s("luogo", 300),
-        "referente": _s("referente", 200),           # referente lato ente
-        "partecipanti": _s("partecipanti", 300),     # partecipanti lato Retelit/impresa
-        "note": _s("note", 2000),
-        "esito": _s("esito", 2000),
-    }
-    if not rec["ente"]:
-        raise HTTPException(422, "Ente obbligatorio")
-    if rec["tipo"] not in _AGENDA_TIPI:
-        raise HTTPException(422, "Tipo appuntamento non valido")
-    if rec["stato"] not in _AGENDA_STATI:
-        raise HTTPException(422, "Stato non valido")
-    if rec["ora"] and not re.match(r"^([01]\d|2[0-3]):[0-5]\d$", rec["ora"]):
-        raise HTTPException(422, "Ora non valida (atteso HH:MM)")
-    if rec["stato"] in ("programmato", "svolto") and not rec["data_appuntamento"]:
-        raise HTTPException(422, "Data appuntamento obbligatoria per appuntamenti programmati/svolti")
-    if rec["stato"] == "svolto" and not rec["esito"]:
-        raise HTTPException(422, "Esito obbligatorio per appuntamenti svolti")
-    return rec
-
-
-def _agenda_oid(agenda_id: str) -> ObjectId:
-    try:
-        return ObjectId(agenda_id)
-    except Exception:
-        raise HTTPException(400, "ID non valido")
-
-
-@app.get("/api/agenda/pratiche")
-async def agenda_pratiche(sess: dict = Depends(_require_agenda_session)):
-    """Elenco codici pratica con relativo ente (da Master.csv), per l'autocompilazione
-    dell'ente nel form agenda. Codice = PREFISSO/PRATICA/LOTTO (stesso formato della mappa)."""
-    df = await _read_master_csv()
-    if df is None or not {"ENTE", "PRATICA", "TIPO_PERMESSO"}.issubset(df.columns):
-        return {"pratiche": []}
-    prefix = {"AUTORIZZAZIONE": "AUT", "NULLA OSTA": "NO", "ORDINANZA": "ORD"}
-    seen, out = set(), []
-    for _, r in df.iterrows():
-        prat = str(r.get("PRATICA", "") or "").strip()
-        ente = str(r.get("ENTE", "") or "").strip()
-        if not prat or not ente:
-            continue
-        tipo = str(r.get("TIPO_PERMESSO", "") or "").strip().upper()
-        pre = prefix.get(tipo, tipo[:3] or "?")
-        lotto = _lotto_from_source(r.get("Source.Name", "")) if "Source.Name" in df.columns else ""
-        codice = f"{pre}/{prat}" + (f"/{lotto}" if lotto else "")
-        if (codice.upper(), ente) in seen:
-            continue
-        seen.add((codice.upper(), ente))
-        out.append({"codice": codice, "ente": ente})
-    out.sort(key=lambda x: x["codice"])
-    return {"pratiche": out}
-
-
-@app.get("/api/agenda")
-async def list_agenda(sess: dict = Depends(_require_agenda_session)):
-    """Tutti gli appuntamenti con gli enti (ordinamento lato client)."""
-    pend = {}
-    async for r in agenda_delreq_col.find({"stato": "pending"}):
-        pend[r["agenda_id"]] = {"richiesto_da": r.get("richiesto_da", ""), "richiesto_il": r.get("richiesto_il", ""), "azione": r.get("azione", "elimina")}
-    items = []
-    async for d in agenda_col.find({}):
-        d["_id"] = str(d["_id"])
-        if d["_id"] in pend:
-            d["eliminazione_richiesta"] = pend[d["_id"]]
-        items.append(d)
-    return {"items": items}
-
-
-@app.post("/api/agenda")
-async def create_agenda(payload: dict, sess: dict = Depends(_require_agenda_session)):
-    rec = _agenda_clean(payload)
-    now = datetime.now(timezone.utc).isoformat()
-    if not rec["data_richiesta"]:
-        rec["data_richiesta"] = now[:10]
-    rec.update({"created_by": sess.get("nome", ""), "created_at": now, "updated_at": now})
-    res = await agenda_col.insert_one(rec)
-    rec["_id"] = str(res.inserted_id)
-    return {"ok": True, "item": rec}
-
-
-@app.put("/api/agenda/{agenda_id}")
-async def update_agenda(agenda_id: str, payload: dict, sess: dict = Depends(_require_agenda_session)):
-    oid = _agenda_oid(agenda_id)
-    rec = _agenda_clean(payload)
-    is_admin = sess.get("ruolo") in ("admin", "admin2")
-    if rec.get("stato") == "annullato":
-        cur = await agenda_col.find_one({"_id": oid}, {"stato": 1})
-        if cur and cur.get("stato") != "annullato" and not is_admin:
-            raise HTTPException(403, "L'annullamento va richiesto a un admin (richiesta di annullamento)")
-    rec.update({"updated_by": sess.get("nome", ""),
-                "updated_at": datetime.now(timezone.utc).isoformat()})
-    res = await agenda_col.update_one({"_id": oid}, {"$set": rec})
-    if res.matched_count == 0:
-        raise HTTPException(404, "Appuntamento non trovato")
-    d = await agenda_col.find_one({"_id": oid})
-    d["_id"] = str(d["_id"])
-    if rec.get("stato") == "annullato" and is_admin:
-        await _agenda_close_delreqs(agenda_id, "approved", sess, "annullato direttamente da admin")
-    return {"ok": True, "item": d}
-
-
-@app.delete("/api/agenda/{agenda_id}")
-async def delete_agenda(agenda_id: str, sess: dict = Depends(_require_admin_session)):
-    """Elimina un appuntamento — solo admin/admin2. Gli altri ruoli (es. field)
-    possono solo inviare una richiesta di eliminazione (vedi sotto)."""
-    res = await agenda_col.delete_one({"_id": _agenda_oid(agenda_id)})
-    if res.deleted_count == 0:
-        raise HTTPException(404, "Appuntamento non trovato")
-    await _agenda_close_delreqs(agenda_id, "approved", sess, "eliminato direttamente da admin")
-    return {"ok": True, "deleted": agenda_id}
-
-
-async def _agenda_close_delreqs(agenda_id: str, stato: str, sess: dict, nota: str = "") -> None:
-    """Chiude le richieste di eliminazione ancora pendenti per un appuntamento."""
-    await agenda_delreq_col.update_many(
-        {"agenda_id": agenda_id, "stato": "pending"},
-        {"$set": {"stato": stato, "gestita_da": sess.get("nome", ""), "gestita_il": _now_iso(), "nota_admin": nota[:500]}},
-    )
-
-
-# ── Richieste di eliminazione: chi non è admin non cancella, chiede ───────────
-@app.post("/api/agenda/{agenda_id}/richiesta-eliminazione")
-async def agenda_request_delete(agenda_id: str, payload: dict, sess: dict = Depends(_require_agenda_session)):
-    motivo = str((payload or {}).get("motivo", "") or "").strip()[:500]
-    if len(motivo) < 3:
-        raise HTTPException(422, "Indica il motivo della richiesta")
-    azione = "annulla" if (payload or {}).get("azione") == "annulla" else "elimina"
-    d = await agenda_col.find_one({"_id": _agenda_oid(agenda_id)})
-    if not d:
-        raise HTTPException(404, "Appuntamento non trovato")
-    if azione == "annulla" and d.get("stato") not in ("richiesto", "programmato"):
-        raise HTTPException(422, "Si possono annullare solo appuntamenti richiesti o programmati")
-    if await agenda_delreq_col.find_one({"agenda_id": agenda_id, "stato": "pending"}):
-        raise HTTPException(409, "Esiste già una richiesta in attesa per questo appuntamento")
-    rec = {
-        "agenda_id": agenda_id,
-        "azione": azione,
-        "snapshot": {k: d.get(k) for k in ("enti", "ente", "pratiche", "tipo", "oggetto", "stato", "data_appuntamento", "ora", "luogo")},
-        "motivo": motivo,
-        "stato": "pending",
-        "richiesto_da": sess.get("nome", ""),
-        "ruolo": sess.get("ruolo", ""),
-        "richiesto_il": _now_iso(),
-    }
-    res = await agenda_delreq_col.insert_one(rec)
-    return {"ok": True, "id": str(res.inserted_id)}
-
-
-@app.get("/api/agenda/richieste-eliminazione")
-async def agenda_list_delreqs(stato: str = "pending", sess: dict = Depends(_require_admin_session)):
-    q = {} if stato == "all" else {"stato": "pending"}
-    out = []
-    async for r in agenda_delreq_col.find(q).sort("richiesto_il", -1):
-        r["_id"] = str(r["_id"])
-        out.append(r)
-    return {"items": out}
-
-
-@app.post("/api/agenda/richieste-eliminazione/{req_id}/approve")
-async def agenda_approve_delreq(req_id: str, sess: dict = Depends(_require_admin_session)):
-    r = await agenda_delreq_col.find_one({"_id": _agenda_oid(req_id)})
-    if not r:
-        raise HTTPException(404, "Richiesta non trovata")
-    if r.get("stato") != "pending":
-        raise HTTPException(409, "Richiesta già gestita")
-    if r.get("azione") == "annulla":
-        oid = _agenda_oid(r["agenda_id"])
-        d = await agenda_col.find_one({"_id": oid})
-        if not d:
-            raise HTTPException(404, "Appuntamento non trovato")
-        riga = f'Annullato: {r.get("motivo", "")} (richiesto da {r.get("richiesto_da", "")})'
-        esito = "\n".join(x for x in (d.get("esito"), riga) if x)[:2000]
-        await agenda_col.update_one({"_id": oid}, {"$set": {"stato": "annullato", "esito": esito,
-                                    "updated_by": sess.get("nome", ""), "updated_at": _now_iso()}})
-        await _agenda_close_delreqs(r["agenda_id"], "approved", sess)
-        d = await agenda_col.find_one({"_id": oid}); d["_id"] = str(d["_id"])
-        return {"ok": True, "annullato": r["agenda_id"], "item": d}
-    await agenda_col.delete_one({"_id": _agenda_oid(r["agenda_id"])})
-    await _agenda_close_delreqs(r["agenda_id"], "approved", sess)
-    return {"ok": True, "deleted": r["agenda_id"]}
-
-
-@app.post("/api/agenda/richieste-eliminazione/{req_id}/reject")
-async def agenda_reject_delreq(req_id: str, payload: dict | None = None, sess: dict = Depends(_require_admin_session)):
-    r = await agenda_delreq_col.find_one({"_id": _agenda_oid(req_id)})
-    if not r:
-        raise HTTPException(404, "Richiesta non trovata")
-    if r.get("stato") != "pending":
-        raise HTTPException(409, "Richiesta già gestita")
-    await _agenda_close_delreqs(r["agenda_id"], "rejected", sess, str((payload or {}).get("nota", "") or "").strip())
-    return {"ok": True}
-
-
-# ── Export Excel di tutti gli appuntamenti ────────────────────────────────────
-@app.get("/api/agenda/export.xlsx")
-async def agenda_export_xlsx(sess: dict = Depends(_require_agenda_session)):
-    import openpyxl
-    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-    from openpyxl.utils import get_column_letter
-    from openpyxl.worksheet.table import Table, TableStyleInfo
-
-    pend = {r["agenda_id"] async for r in agenda_delreq_col.find({"stato": "pending"})}
-    docs = [d async for d in agenda_col.find({})]
-    # per data appuntamento crescente; senza data (richieste) in fondo per data richiesta
-    docs.sort(key=lambda d: (d.get("data_appuntamento") or "9999-12-31", d.get("ora") or "", d.get("data_richiesta") or ""))
-
-    def _date(v):
-        try:
-            return datetime.strptime(v, "%Y-%m-%d") if v else None
-        except ValueError:
-            return v or None
-
-    def _dt_it(v):
-        try:
-            return datetime.fromisoformat(v).astimezone().strftime("%d/%m/%Y %H:%M") if v else ""
-        except ValueError:
-            return v or ""
-
-    tipi = {"incontro_istituzionale": "Incontro istituzionale", "tavolo_tecnico": "Tavolo tecnico", "altro": "Altro"}
-    today = datetime.now().strftime("%Y-%m-%d")
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Agenda"
-    cols = ["Data appuntamento", "Ora", "Stato", "Da chiudere", "Tipo", "Ente/i", "Pratiche", "Lotto/i", "Oggetto", "Luogo",
-            "Referente ente", "Partecipanti", "Data richiesta", "Note", "Esito", "Eliminazione richiesta", "Creato da", "Creato il"]
-    ws.append(cols)
-    thin = Side(style="thin", color="DFE4EB")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    for c in range(1, len(cols) + 1):
-        cell = ws.cell(row=1, column=c)
-        cell.fill = PatternFill("solid", fgColor="043F75")
-        cell.font = Font(bold=True, color="FFFFFF")
-        cell.alignment = Alignment(vertical="center", wrap_text=True)
-        cell.border = border
-    ws.row_dimensions[1].height = 28
-    ws.freeze_panes = "A2"
-
-    for d in docs:
-        enti = d.get("enti") or ([d["ente"]] if d.get("ente") else [])
-        prat = d.get("pratiche") or ([d["riferimento"]] if d.get("riferimento") else [])
-        late = d.get("stato") == "programmato" and (d.get("data_appuntamento") or "9999") < today
-        ws.append([
-            _date(d.get("data_appuntamento")), d.get("ora", ""), (d.get("stato") or "").capitalize(), "Sì" if late else "",
-            tipi.get(d.get("tipo"), d.get("tipo", "")), ", ".join(enti), ", ".join(prat), ", ".join(d.get("lotti") or []),
-            d.get("oggetto", ""), d.get("luogo", ""), d.get("referente", ""), d.get("partecipanti", ""),
-            _date(d.get("data_richiesta")), d.get("note", ""), d.get("esito", ""),
-            "Sì" if str(d["_id"]) in pend else "", d.get("created_by", ""), _dt_it(d.get("created_at", "")),
-        ])
-    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
-        for cell in row:
-            cell.alignment = Alignment(vertical="top", wrap_text=True)
-            cell.border = border
-        for idx in (0, 12):
-            if row[idx].value:
-                row[idx].number_format = "DD/MM/YYYY"
-    if ws.max_row >= 2:
-        ws.add_table(Table(displayName="TabAgenda", ref=f"A1:{get_column_letter(len(cols))}{ws.max_row}",
-                           tableStyleInfo=TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)))
-    for i, w in enumerate([16, 8, 13, 11, 22, 34, 30, 9, 40, 26, 22, 28, 15, 40, 40, 14, 20, 17], start=1):
-        ws.column_dimensions[get_column_letter(i)].width = w
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    filename = f"agenda_enti_{today}.xlsx"
-    return Response(
-        content=buf.getvalue(),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-# ── Export calendario (.ics) per Outlook/Google ───────────────────────────────
-def _ics_esc(t: str) -> str:
-    return (str(t or "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
-            .replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\\n"))
-
-
-def _ics_fold(line: str) -> str:
-    """RFC 5545: righe max 75 ottetti, continuazione con spazio iniziale (senza spezzare i caratteri UTF-8)."""
-    out, cur, curb = [], "", 0
-    for ch in line:
-        b = len(ch.encode("utf-8"))
-        if curb + b > 75:
-            out.append(cur)
-            cur, curb = " " + ch, 1 + b
-        else:
-            cur += ch
-            curb += b
-    out.append(cur)
-    return "\r\n".join(out)
-
-
-_ICS_TZ = (
-    "BEGIN:VTIMEZONE\r\nTZID:Europe/Rome\r\n"
-    "BEGIN:DAYLIGHT\r\nTZOFFSETFROM:+0100\r\nTZOFFSETTO:+0200\r\nTZNAME:CEST\r\nDTSTART:19700329T020000\r\n"
-    "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU\r\nEND:DAYLIGHT\r\n"
-    "BEGIN:STANDARD\r\nTZOFFSETFROM:+0200\r\nTZOFFSETTO:+0100\r\nTZNAME:CET\r\nDTSTART:19701025T030000\r\n"
-    "RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\n"
-)
-
-
-@app.get("/api/agenda/export.ics")
-async def agenda_export_ics(
-    agenda_id: str = Query(..., alias="id"),
-    sess: dict = Depends(_require_agenda_session),
-):
-    """Calendario iCalendar del singolo appuntamento `id` (se ha una data). UID stabile = reimportando
-    il file i client aggiornano gli eventi invece di duplicarli (quando lo supportano)."""
-    from datetime import timedelta
-    today = datetime.now().strftime("%Y-%m-%d")
-    d = await agenda_col.find_one({"_id": _agenda_oid(agenda_id)})
-    if not d:
-        raise HTTPException(404, "Appuntamento non trovato")
-    if not d.get("data_appuntamento"):
-        raise HTTPException(422, "L'appuntamento non ha ancora una data")
-    docs = [d]
-    docs.sort(key=lambda d: (d.get("data_appuntamento") or "", d.get("ora") or ""))
-
-    tipi = {"incontro_istituzionale": "Incontro istituzionale", "tavolo_tecnico": "Tavolo tecnico", "altro": "Altro"}
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//ENRI//Agenda Enti//IT", "CALSCALE:GREGORIAN",
-             "X-WR-CALNAME:Agenda Enti ENRI", "X-WR-TIMEZONE:Europe/Rome"]
-    out = "\r\n".join(_ics_fold(x) for x in lines) + "\r\n" + _ICS_TZ
-    for d in docs:
-        try:
-            day = datetime.strptime(d["data_appuntamento"], "%Y-%m-%d")
-        except (KeyError, ValueError):
-            continue
-        enti = d.get("enti") or ([d["ente"]] if d.get("ente") else [])
-        prat = d.get("pratiche") or ([d["riferimento"]] if d.get("riferimento") else [])
-        summary = f'{tipi.get(d.get("tipo"), "Appuntamento")} — {", ".join(enti)}'.strip(" —")
-        desc = [f"Stato: {(d.get('stato') or '').capitalize()}"]
-        for lab, key in (("Oggetto", "oggetto"), ("Referente ente", "referente"), ("Partecipanti", "partecipanti"),
-                         ("Note", "note"), ("Esito", "esito")):
-            if d.get(key):
-                desc.append(f"{lab}: {d[key]}")
-        if prat:
-            desc.insert(1, "Pratiche: " + ", ".join(prat))
-        ev = ["BEGIN:VEVENT", f"UID:{d['_id']}@enri-agenda", f"DTSTAMP:{stamp}"]
-        ora = d.get("ora") or ""
-        if re.match(r"^([01]\d|2[0-3]):[0-5]\d$", ora):
-            st = datetime.strptime(f'{d["data_appuntamento"]} {ora}', "%Y-%m-%d %H:%M")
-            ev += [f'DTSTART;TZID=Europe/Rome:{st.strftime("%Y%m%dT%H%M%S")}',
-                   f'DTEND;TZID=Europe/Rome:{(st + timedelta(hours=1)).strftime("%Y%m%dT%H%M%S")}']
-        else:
-            ev += [f'DTSTART;VALUE=DATE:{day.strftime("%Y%m%d")}',
-                   f'DTEND;VALUE=DATE:{(day + timedelta(days=1)).strftime("%Y%m%d")}']
-        try:
-            seq = int(datetime.fromisoformat(d.get("updated_at") or d.get("created_at")).timestamp())
-        except (TypeError, ValueError):
-            seq = 0
-        ev += [f"SEQUENCE:{seq}", f"SUMMARY:{_ics_esc(summary)}"]
-        if d.get("luogo"):
-            ev.append(f'LOCATION:{_ics_esc(d["luogo"])}')
-        ev += [f'DESCRIPTION:{_ics_esc(chr(10).join(desc))}',
-               "STATUS:" + ("CANCELLED" if d.get("stato") == "annullato" else "CONFIRMED"), "END:VEVENT"]
-        out += "\r\n".join(_ics_fold(x) for x in ev) + "\r\n"
-    out += "END:VCALENDAR\r\n"
-    filename = f"agenda_enti_{today}.ics" if not agenda_id else f"appuntamento_{today}.ics"
-    return Response(
-        content=out.encode("utf-8"),
-        media_type="text/calendar; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# SOPRALLUOGHI — verbali di sopralluogo
-# ─────────────────────────────────────────────────────────────────────────────
-
-@app.get("/api/lotti-cantieri")
-async def get_lotti_cantieri(sess: dict = Depends(_require_staff_session)):
-    """Restituisce lotti distinti (da Master.csv) e i loro cantieri (da MongoDB)."""
-    lotti_master = []
-
-    # Leggi lotti da Master.csv — prova più nomi colonna
-    try:
-        df = await _read_master_csv()
-        if df is not None:
-            col = next((c for c in df.columns if c.strip().lower() in
-                        ("source.name", "source name", "lotto", "lotti", "nome_lotto")), None)
-            print(f"[lotti-cantieri] colonne disponibili: {list(df.columns[:10])}, colonna lotto: {col}")
-            if col:
-                raw = df[col].dropna().unique().tolist()
-                lotti_master = sorted({_lotto_from_source(r) for r in raw if str(r).strip()})
-                print(f"[lotti-cantieri] lotti da Master.csv: {lotti_master}")
-    except Exception as e:
-        print(f"[lotti-cantieri] errore lettura Master.csv: {e}")
-
-    # Cantieri da MongoDB — raggruppati per lotto
-    cantieri_map: dict = {}
-    async for doc in cantieri_col.find({}, {"cantiere_key": 1, "lotto": 1, "ente": 1}):
-        lotto = _lotto_from_source(doc.get("lotto", ""))
-        key   = str(doc.get("cantiere_key", "")).strip()
-        if not lotto or not key:
-            continue
-        num   = key.split("|")[0].strip() if "|" in key else key
-        ente  = str(doc.get("ente", "")).strip()
-        codice = f"CA/{num}/{lotto}"
-        label  = f"{codice} — {ente}" if ente else codice
-        if lotto not in cantieri_map:
-            cantieri_map[lotto] = []
-        if not any(c["value"] == key for c in cantieri_map[lotto]):
-            cantieri_map[lotto].append({"value": key, "label": label, "num": num})
-
-    # Unisce: lotti dal Master + lotti dai cantieri (fallback se Master fallisce)
-    tutti_lotti = sorted(set(lotti_master) | set(cantieri_map.keys()))
-    result = {l: sorted(cantieri_map.get(l, []), key=lambda x: x["num"]) for l in tutti_lotti}
-
-    # Mappa lotto → impresa assegnata (per auto-popolare il campo impresa)
-    lotto_impresa = {}
-    async for a in assignments_col.find({}, {"nome": 1, "lotti": 1}):
-        nome_impresa = a.get("nome", "")
-        for l in (a.get("lotti") or []):
-            lotto_norm = _lotto_from_source(l)
-            if lotto_norm:
-                lotto_impresa[lotto_norm] = nome_impresa
-
-    print(f"[lotti-cantieri] lotti finali: {list(result.keys())}")
-    print(f"[lotti-cantieri] lotto_impresa: {lotto_impresa}")
-    return {"lotti": result, "lotto_impresa": lotto_impresa}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# ISSUE — registro anomalie/segnalazioni verso i System (imprese). Solo admin/admin2.
-# Codice = prefisso per tipologia + progressivo per prefisso: In_0001, Cn_0001, Sc_0001.
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Copia di CHECKLIST_DEF (sopralluoghi.html): id -> (area, testo). Serve a descrivere le issue nate dalle NC dei verbali.
-# Se la checklist cambia nel frontend, va riallineata qui (vedi AGENT_BRIEF §5.13).
-_CK_DEF = {
-    "PRE-01": ("Verifiche preliminari", "Autorizzazione valida e disponibile per il tratto in lavorazione"),
-    "PRE-02": ("Verifiche preliminari", "Tracciato conforme al progetto autorizzato; eventuali varianti approvate"),
-    "PRE-03": ("Verifiche preliminari", "Tracciato su suolo pubblico o diritto di passaggio pubblico"),
-    "PRE-04": ("Verifiche preliminari", "Impresa esecutrice e subappaltatori preventivamente autorizzati"),
-    "PRE-05": ("Verifiche preliminari", "Prescrizioni degli enti recepite nelle lavorazioni"),
-    "INF-01": ("Infrastruttura", "Pacco Tubi 1 conforme: 2 monotubi vuoti Ø63 mm e 1 bundle con 7 minitubi 16/13,5 mm"),
-    "INF-02": ("Infrastruttura", "Pacco Tubi 2 conforme: 1 bundle Ø63 mm con 9 minitubi 14/12 mm, salvo tratte Lotto 2"),
-    "INF-03": ("Infrastruttura", "Pacchi tubi separati con pozzetti dedicati"),
-    "INF-04": ("Infrastruttura", "Tubi e microdotti integri, puliti e privi di deformazioni o ostruzioni"),
-    "INF-05": ("Infrastruttura", "Cordino di tiro presente nei tubi Ø63 mm vuoti"),
-    "INF-06": ("Infrastruttura", "Tappi idonei presenti su tubi e microdotti nei pozzetti"),
-    "DIV-01": ("Diversificazione", "Separazione fisica minima di 8 m tra percorsi dello stesso cluster"),
-    "POZ-01": ("Pozzetti", "Distanza media circa 475 m e passo massimo 500 m"),
-    "POZ-02": ("Pozzetti", "Pozzetti presenti agli incroci con curva ≥45°"),
-    "POZ-03": ("Pozzetti", "Dimensioni e tipologia conformi alle specifiche"),  # legacy: sostituito da 03A/03B, tenuto per le issue dei verbali vecchi
-    "POZ-03A": ("Pozzetti", "Pozzetto Cliente: dimensione conforme come da contratto"),
-    "POZ-03B": ("Pozzetti", "Pozzetto Retelit: dimensione conforme come da contratto"),
-    "POZ-04": ("Pozzetti", "Pozzetti 224 × 124 cm · interna 200 × 100 × 150 cm fronte Data Center e nelle interconnessioni, ove previsti"),
-    "POZ-05": ("Pozzetti", "Foro di drenaggio vicino al centro"),
-    "POZ-06": ("Pozzetti", "Chiusino in ghisa, dimensionato e con logo Retelit"),
-    "POZ-07": ("Pozzetti", "Pozzetto pulito, accessibile e adeguato"),
-    "MIC-01": ("Microdotti e giunzioni", "Colori distinti e continuità cromatica nelle giunzioni"),
-    "MIC-02": ("Microdotti e giunzioni", "Microdotti tagliati a 600 mm dall’ingresso del pozzetto"),
-    "MIC-03": ("Microdotti e giunzioni", "Coupler e tappi approvati con tenuta ermetica"),
-    "MIC-04": ("Microdotti e giunzioni", "Coupler non sepolti in incroci, ponti o aree difficili"),
-    "MIC-05": ("Microdotti e giunzioni", "Giunzioni incapsulate e sigillate ai due estremi"),
-    "MIC-06": ("Microdotti e giunzioni", "Buca riempita con materiale vagliato e microdotti sostenuti"),
-    "MIC-07": ("Microdotti e giunzioni", "Ball Marker sui giunti a profondità ≤1 m"),
-    "COL-01": ("Codifica cromatica", "Tubi RDS identificati in blu"),
-    "COL-02": ("Codifica cromatica", "Tubi Cliente identificati in rosso, giallo e verde"),
-    "COL-03": ("Codifica cromatica", "Marcatura visibile, continua e resistente"),
-    "SIC-01": ("Autorizzazioni personale", "Presenza in cantiere di personale autorizzato"),
-    "SIC-02": ("Autorizzazioni personale", "Presenza dei tesserini identificativi"),
-    "SIC-03": ("Documentazione sicurezza", "Presenza di POS, PSC, eventuale PIMUS, notifica preliminare aggiornata e piano di emergenza"),
-    "SIC-04": ("Programmazione lavori", "Rispetto del programma lavori settimanale"),
-    "SIC-05": ("Programmazione lavori", "Presenza del preposto indicato dall’impresa"),
-    "SIC-06": ("DPI", "Presenza e corretto utilizzo dei DPI previsti dal POS e formazione specifica"),
-    "SIC-07": ("Macchine e attrezzature", "Utilizzo corretto delle attrezzature rispetto al POS e formazione richiesta"),
-    "SIC-08": ("Macchine e attrezzature", "Documentazione sicurezza e libretti uso/manutenzione disponibili"),
-    "SIC-09": ("Macchine e attrezzature", "Fasce di sollevamento idonee e prive di usura"),
-    "SIC-10": ("Macchine e attrezzature", "Specchietti retrovisori e cicalino funzionanti"),
-    "SIC-11": ("Stoccaggio materiali", "Bombole identificate, separate, verticali e distinte tra piene e vuote"),
-    "SIC-12": ("Stoccaggio materiali", "Materiali stoccati in modo idoneo e stabile"),
-    "SIC-13": ("Protezione scavi", "Protezioni contro il rischio di seppellimento"),
-    "SIC-14": ("Lavori in quota", "Protezioni collettive contro le cadute dall’alto"),
-    "SIC-15": ("Cadute sotto 2 m", "Protezioni contro le cadute, anche negli scavi"),
-    "SIC-16": ("Caduta materiali", "Protezioni contro la caduta di materiali"),
-    "SIC-17": ("Viabilità e pulizia", "Pulizia della sede stradale adiacente"),
-    "SIC-18": ("Viabilità e pulizia", "Movieri e segnaletica per regolazione traffico"),
-    "SIC-19": ("Viabilità e pulizia", "Ordine e pulizia delle aree di cantiere"),
-    "SIC-20": ("Segnaletica", "Segnaletica di cantiere, emergenza e stradale conforme"),
-    "SIC-43": ("Segnaletica", "Cartello di cantiere presente, anche in formato ridotto, posizionato in prossimità dei cantieri mobili"),
-    "SIC-21": ("Recinzioni e delimitazioni", "Area di intervento correttamente delimitata"),
-    "SIC-22": ("Recinzioni e delimitazioni", "Accessi di cantiere correttamente chiusi"),
-    "SIC-23": ("Apprestamenti igienico-sanitari", "Apprestamenti conformi al POS"),
-    "SIC-24": ("Presidi emergenza", "Cassetta primo soccorso o pacchetto medicazione idoneo"),
-    "SIC-25": ("Presidi emergenza", "Estintori presenti"),
-    "SIC-26": ("Presidi emergenza", "Addetti primo soccorso e antincendio presenti"),
-    "SIC-27": ("Gestione rifiuti", "Rifiuti identificati con corretto codice CER"),
-    "SIC-28": ("Gestione rifiuti", "Rifiuti separati per tipologie omogenee"),
-    "SIC-29": ("Gestione rifiuti", "Deposito temporaneo delimitato e protetto da sversamenti"),
-    "SIC-30": ("Gestione rifiuti", "Contenitori rifiuti pericolosi integri ed etichettati"),
-    "SIC-31": ("Gestione rifiuti", "Formulari rifiuti completi e conservati"),
-    "SIC-32": ("Gestione rifiuti", "Kit antiversamento presente e pronto"),
-    "SIC-33": ("Rumore", "Prescrizioni POS per il rumore rispettate"),
-    "SIC-34": ("Rumore", "Autorizzazione o deroga acustica presente, se richiesta"),
-    "SIC-35": ("Rumore", "Orari e limiti delle lavorazioni rumorose rispettati"),
-    "SIC-36": ("Rumore", "Silenziatori e carter in buono stato"),
-    "SIC-37": ("Rumore", "Barriere antirumore presso recettori sensibili, se previste"),
-    "SIC-38": ("Illuminazione", "Illuminazione adeguata e conforme al POS"),
-    "SIC-39": ("Altro", "Assenza di focolai"),
-    "SIC-40": ("Altro", "Spezzoni e tondini adeguatamente protetti"),
-    "SIC-41": ("Altro", "Ordinanze stradali disponibili e personale formato"),
-    "SIC-42": ("Altro", "Schede sicurezza sostanze disponibili e contenitori etichettati"),
-    "TST-01": ("Collaudi", "Mandrinatura su ogni tratta pozzetto-pozzetto dei Ø63 mm non bundle"),
-    "TST-02": ("Collaudi", "Verbale mandrinatura completo"),
-    "TST-03": ("Collaudi", "Test pressione su condotti e microdotti previsti"),
-    "TST-04": ("Collaudi", "Nessun calo pressione, perdita, deformazione o cedimento"),
-    "TST-05": ("Collaudi", "Verbale pressione completo"),
-    "RIP-01": ("Ripristini", "Ripristino provvisorio sicuro e senza cedimenti"),
-    "RIP-02": ("Ripristini", "Ripristino definitivo conforme alle prescrizioni"),
-    "DOC-01": ("Documentazione", "Checklist conformità disponibile"),
-    "DOC-02": ("Documentazione", "Butterfly diagram disponibile e coerente"),
-    "DOC-03": ("Documentazione", "Permessi, autorizzazioni e test disponibili"),
-    "DOC-04": ("Documentazione", "As-built GIS e DWG completi"),
-    "DOC-05": ("Documentazione", "Due foto georeferenziate per ogni giunto"),
-    "DOC-06": ("Documentazione", "Foto nuovi pozzetti e aggiornamento One GIS completati"),
+function renderChecklist() {
+  const k = _ckTab;
+  const body = document.getElementById('ck-body');
+  if (!body) return;
+  let html = '', lastArea = null;
+  _ckItemsOf(k).forEach(it => {
+    if (it.area !== lastArea) { html += `<div class="ck-area">${esc(it.area)}</div>`; lastArea = it.area; }
+    const st = _ckGet(k, it.id);
+    const noteOpen = _ckNoteOpen.has(k+':'+it.id) || !!st.nota;
+    const cls = (st.e==='NC' ? ' is-nc' : (st.e==='NA' ? ' is-na' : ''));
+    html += `<div class="ck-item${cls}" data-id="${it.id}">
+      <div class="ck-txt"><span class="ck-id">${it.id}</span>${esc(it.t)}${it.rif?`<span class="ck-rif">${esc(it.rif)}</span>`:''}${_ckPrevHtml(k, it.id)}${_ckDimSel(it, st, `setCkField('${k}','${it.id}','dim',this.value)`, 'ck-dim')}</div>
+      <div class="ck-esiti">
+        <button type="button" class="ck-b c${st.e==='C'?' on':''}" onclick="setCk('${k}','${it.id}','C')">Conforme</button>
+        <button type="button" class="ck-b nc${st.e==='NC'?' on':''}" onclick="setCk('${k}','${it.id}','NC')">NC</button>
+        <button type="button" class="ck-b na${st.e==='NA'?' on':''}" onclick="setCk('${k}','${it.id}','NA')">N.A.</button>
+        <button type="button" class="ck-b nota${noteOpen?' on':''}" onclick="toggleCkNote('${k}','${it.id}')" title="Nota">🗒 Nota</button>
+      </div>
+      ${st.e==='NC' ? `<div class="ck-nc-box">
+        <div style="grid-column:1/-1"><label>Rilievo / Non conformità</label>
+          <textarea oninput="setCkField('${k}','${it.id}','rilievo',this.value)">${esc(st.rilievo||'')}</textarea></div>
+        <div style="grid-column:1/-1"><label>Azione correttiva *</label>
+          <textarea class="${_ckMiss(st.azione)}" oninput="setCkField('${k}','${it.id}','azione',this.value)">${esc(st.azione||'')}</textarea></div>
+        <div><label>Responsabile</label>
+          <input type="text" value="${esc(st.resp||'')}" oninput="setCkField('${k}','${it.id}','resp',this.value)"></div>
+        <div><label>Scadenza *</label>
+          <input type="date" class="${_ckMiss(st.scad)}" value="${st.scad||''}" oninput="setCkField('${k}','${it.id}','scad',this.value)"></div>
+      </div>` : ''}
+      ${noteOpen ? `<div class="ck-note-box">
+        <textarea placeholder="Nota su questo punto..." oninput="setCkField('${k}','${it.id}','nota',this.value)">${esc(st.nota||'')}</textarea>
+      </div>` : ''}
+    </div>`;
+  });
+  body.innerHTML = html;
+  _ckUpdateCounters();
 }
 
-# Tipologia issue per punto checklist: Cn = segnaletica di cantiere; Sf = tutti gli altri punti sicurezza (SIC-*),
-# documentazione e autorizzazioni personale incluse (la vecchia tipologia Sc è stata unita a Sf, rev.362); Au = anomalie autorizzative (PRE-*);
-# Co = anomalie di collaudo (TST/RIP/DOC); In = infrastruttura (INF/POZ/MIC/DIV/COL).
-_ISSUE_CN_IDS = {"SIC-20", "SIC-43"}
-_issue_sync_lock = asyncio.Lock()
-
-_ISSUE_TIPI = {
-    "In": "Anomalia su infrastruttura (completata o in corso)",
-    "Cn": "Segnaletica su cantiere in corso",
-    "Sf": "Anomalia sicurezza di cantiere (documentazione inclusa)",
-    "Au": "Anomalia autorizzativa",
-    "Co": "Anomalia di collaudo",
-}
-_ISSUE_STATI = {
-    "aperta": "Aperta", "inviata": "Inviata al System", "in_lavorazione": "In lavorazione",
-    "risolta": "Risolta", "chiusa": "Chiusa",
-}
-_ISSUE_PRIORITY = {"bassa": "Bassa", "media": "Media", "alta": "Alta", "critica": "Critica"}
-# campo -> etichetta (usata nello storico e nell'export)
-_ISSUE_FIELDS = {
-    "cantiere": "Cantiere", "comune": "Comune", "system": "System", "subsystem": "SubSystem",
-    "pratica": "Permesso / Pratica", "ente": "Ente", "lotto": "Lotto",
-    "data_rilevamento": "Data rilevamento", "rilevato_da": "Chi ha rilevato l'anomalia",
-    "descrizione": "Descrizione", "data_invio": "Data invio segnalazione al System",
-    "rif_system_invio": "Riferimento System invio", "metodo_invio": "Metodo di invio",
-    "stato": "Stato avanzamento", "priority": "Priority", "data_prevista": "Data prevista sistemazione",
-}
-_ISSUE_DATE_FIELDS = ("data_rilevamento", "data_invio", "data_prevista")
-_ISSUE_TEXT_MAX = {"descrizione": 4000, "pratica": 80, "ente": 200, "lotto": 20, "cantiere": 200, "comune": 120, "system": 200, "subsystem": 200,
-                   "rilevato_da": 200, "rif_system_invio": 300, "metodo_invio": 100}
-_issue_code_lock = asyncio.Lock()
-
-
-def _issue_oid(issue_id: str) -> ObjectId:
-    try:
-        return ObjectId(issue_id)
-    except Exception:
-        raise HTTPException(400, "ID non valido")
-
-
-def _issue_clean(p: dict, cur: dict | None = None) -> dict:
-    """Valida il payload e lo fonde sul documento corrente (update parziale: i campi
-    assenti dal payload restano invariati). Restituisce solo i campi gestiti."""
-    p = p or {}
-    base = {k: (cur or {}).get(k, "") for k in _ISSUE_FIELDS}
-    rec = dict(base)
-    for k in _ISSUE_FIELDS:
-        if k not in p:
-            continue
-        v = str(p.get(k) or "").strip()
-        if k in _ISSUE_DATE_FIELDS:
-            if v:
-                try:
-                    datetime.strptime(v, "%Y-%m-%d")
-                except ValueError:
-                    raise HTTPException(422, f"{_ISSUE_FIELDS[k]}: data non valida (atteso AAAA-MM-GG)")
-        elif k in ("stato", "priority"):
-            v = v.lower()
-        else:
-            v = v[:_ISSUE_TEXT_MAX.get(k, 300)]
-        rec[k] = v
-    if not rec["stato"]:
-        rec["stato"] = "aperta"
-    if not rec["priority"]:
-        rec["priority"] = "media"
-    if rec["stato"] not in _ISSUE_STATI:
-        raise HTTPException(422, "Stato avanzamento non valido")
-    if rec["priority"] not in _ISSUE_PRIORITY:
-        raise HTTPException(422, "Priority non valida")
-    if not rec["descrizione"]:
-        raise HTTPException(422, "Descrizione obbligatoria")
-    return rec
-
-
-def _issue_chiusa_dl(d: dict) -> bool:
-    """True se l'issue è Risolta/Chiusa e l'ULTIMO cambio di stato è stato fatto dalla sync dei verbali
-    (verifica DL: punto Conforme / N.A.), non a mano da admin. Derivato dallo storico: vale anche per le vecchie issue."""
-    if d.get("stato") not in ("risolta", "chiusa"):
-        return False
-    for h in reversed(d.get("storico") or []):
-        if any(m.get("campo") == "Stato avanzamento" for m in h.get("modifiche") or []):
-            return bool(h.get("verbale"))
-    return False
-
-
-def _issue_out(d: dict) -> dict:
-    d["_id"] = str(d["_id"])
-    d["chiusa_dl"] = _issue_chiusa_dl(d)
-    return d
-
-
-async def _issue_cliente_map(items: list) -> dict:
-    """Per ogni issue nata da un verbale: stato della segnalazione cliente del verbale RADICE
-    ('confermata' | 'non_confermata' | 'si' = flag senza esito | '' = nessuna). Chiave: codice issue."""
-    codes = {d.get("origine_verbale") for d in items if d.get("origine_verbale")}
-    if not codes:
-        return {}
-    proj = {"codice_verbale": 1, "verbale_origine": 1, "segnalazione_cliente": 1, "esito_segnalazione": 1}
-    cache = {d["codice_verbale"]: d async for d in sopralluoghi_col.find({"codice_verbale": {"$in": list(codes)}}, proj)}
-    by_code = {}
-    for code in codes:
-        v = cache.get(code)
-        if not v:
-            continue
-        root = await _sopr_root_code(v, cache)
-        rv = cache.get(root) or v
-        if rv.get("segnalazione_cliente") in (True, "SI", "si", "true", 1, "1"):
-            e = str(rv.get("esito_segnalazione", "") or "").strip().lower()
-            by_code[code] = e if e in ("confermata", "non_confermata") else "si"
-        else:
-            by_code[code] = ""
-    return {d.get("codice", ""): by_code.get(d.get("origine_verbale"), "") for d in items}
-
-
-_ISSUE_CLIENTE_LAB = {"confermata": "Confermata", "non_confermata": "Non confermata", "si": "Sì"}
-
-
-@app.get("/api/issues")
-async def list_issues(sess: dict = Depends(_require_issue_read_session)):
-    items = []
-    async for d in issues_col.find({}).sort([("prefisso", 1), ("seq", -1)]):
-        items.append(_issue_out(d))
-    cm = await _issue_cliente_map(items)
-    for d in items:
-        d["cliente"] = cm.get(d.get("codice", ""), "")
-    return {"items": items}
-
-
-async def _issue_create(pref: str, rec: dict, utente: str, extra: dict | None = None,
-                        azione: str = "creata", marker: dict | None = None) -> dict:
-    """Inserisce una issue assegnando il codice {prefisso}_{NNNN} (progressivo per prefisso)."""
-    now = datetime.now(timezone.utc).isoformat()
-    if not rec.get("data_rilevamento"):
-        rec["data_rilevamento"] = now[:10]
-    async with _issue_code_lock:
-        last = await issues_col.find_one({"prefisso": pref}, sort=[("seq", -1)])
-        seq = int((last or {}).get("seq", 0)) + 1
-        doc = {
-            **rec, **(extra or {}),
-            "prefisso": pref, "seq": seq, "codice": f"{pref}_{seq:04d}",
-            "created_by": utente, "created_at": now, "updated_at": now,
-            "storico": [{"ts": now, "utente": utente, "azione": azione, "modifiche": [], **(marker or {})}],
-        }
-        res = await issues_col.insert_one(doc)
-    doc["_id"] = str(res.inserted_id)
-    return doc
-
-
-@app.post("/api/issues")
-async def create_issue(payload: dict, sess: dict = Depends(_require_admin_session)):
-    pref = str((payload or {}).get("tipologia", "")).strip()
-    pref = pref[:1].upper() + pref[1:2].lower() if pref else ""
-    if pref not in _ISSUE_TIPI:
-        raise HTTPException(422, "Tipologia non valida (In / Cn / Sf / Au / Co)")
-    doc = await _issue_create(pref, _issue_clean(payload), sess.get("nome", ""))
-    return {"ok": True, "item": doc}
-
-
-@app.put("/api/issues/{issue_id}")
-async def update_issue(issue_id: str, payload: dict, sess: dict = Depends(_require_admin_session)):
-    """Update parziale (anche un solo campo, per la modifica in cella). Ogni variazione
-    viene registrata nello storico con utente, data/ora e valore precedente/nuovo."""
-    oid = _issue_oid(issue_id)
-    cur = await issues_col.find_one({"_id": oid})
-    if not cur:
-        raise HTTPException(404, "Issue non trovata")
-    if "tipologia" in (payload or {}) and str(payload["tipologia"]).strip()[:2].lower() != cur["prefisso"].lower():
-        raise HTTPException(422, "La tipologia non è modificabile (il codice dipende da essa)")
-    rec = _issue_clean(payload, cur)
-    def _disp(k: str, v: str) -> str:
-        return {"stato": _ISSUE_STATI, "priority": _ISSUE_PRIORITY}.get(k, {}).get(v, v)
-
-    changes = [{"campo": _ISSUE_FIELDS[k], "da": _disp(k, str(cur.get(k, "") or "")), "a": _disp(k, rec[k])}
-               for k in _ISSUE_FIELDS if str(cur.get(k, "") or "") != rec[k]]
-    if not changes:
-        return {"ok": True, "item": _issue_out(cur), "changed": False}
-    now = datetime.now(timezone.utc).isoformat()
-    rec.update({"updated_by": sess.get("nome", ""), "updated_at": now})
-    await issues_col.update_one({"_id": oid}, {
-        "$set": rec,
-        "$push": {"storico": {"ts": now, "utente": sess.get("nome", ""), "azione": "modificata", "modifiche": changes}},
-    })
-    d = await issues_col.find_one({"_id": oid})
-    return {"ok": True, "item": _issue_out(d), "changed": True}
-
-
-@app.post("/api/issues/{issue_id}/approvazione-bonifica")
-async def issue_approvazione_bonifica(issue_id: str, payload: dict, sess: dict = Depends(_require_field_session)):
-    """Flag 'Approvazione Bonifica Field Manager': solo ruolo field. Salva chi ha spuntato e quando; ogni
-    cambio (anche la rimozione) finisce nello storico. Campi fuori da _ISSUE_FIELDS: la PUT admin non li tocca."""
-    oid = _issue_oid(issue_id)
-    cur = await issues_col.find_one({"_id": oid})
-    if not cur:
-        raise HTTPException(404, "Issue non trovata")
-    val = bool((payload or {}).get("value"))
-    if bool(cur.get("bonifica_fm_ok")) == val:
-        return {"ok": True, "item": _issue_out(cur), "changed": False}
-    # Regola: l'approvazione FM riguarda solo le issue nate da un punto NC della checklist Qualità
-    if val and cur.get("origine_cat") != "qualita":
-        raise HTTPException(422, "L'approvazione Field Manager è prevista solo per le issue della checklist Qualità")
-    if val and not _issue_chiusa_dl(cur):
-        raise HTTPException(422, "L'approvazione Field Manager è possibile solo dopo la chiusura dell'issue da parte della DL")
-    now = datetime.now(timezone.utc).isoformat()
-    nome = sess.get("nome", "")
-    upd = {"bonifica_fm_ok": val, "bonifica_fm_by": nome if val else "", "bonifica_fm_at": now if val else "", "updated_at": now}
-    await issues_col.update_one({"_id": oid}, {
-        "$set": upd,
-        "$push": {"storico": {"ts": now, "utente": nome, "azione": "modificata",
-                              "modifiche": [{"campo": "Approvazione Bonifica Field Manager",
-                                             "da": "Sì" if cur.get("bonifica_fm_ok") else "No", "a": "Sì" if val else "No"}]}},
-    })
-    d = await issues_col.find_one({"_id": oid})
-    return {"ok": True, "item": _issue_out(d), "changed": True}
-
-
-@app.post("/api/issues/ricalcola-priority")
-async def issues_ricalcola_priority(payload: dict | None = None, sess: dict = Depends(_require_admin_session)):
-    """Riclassifica con le regole automatiche (`_issue_priority_nc`) le issue nate da verbali che sono ancora a
-    'media' e la cui priority non è mai stata modificata (nessuna riga 'Priority' nello storico).
-    Body: {dry_run: true} → solo conteggio, nessuna scrittura."""
-    dry = bool((payload or {}).get("dry_run"))
-    cache: dict = {}
-    out = {"critica": 0, "alta": 0, "bassa": 0}
-    now = datetime.now(timezone.utc).isoformat()
-    async with _issue_sync_lock:
-        async for iss in issues_col.find({"origine_key": {"$exists": True}, "priority": "media"}):
-            if any(m.get("campo") == "Priority" for h in iss.get("storico") or [] for m in h.get("modifiche") or []):
-                continue  # priority già toccata (a mano o da un ricalcolo precedente)
-            v = await sopralluoghi_col.find_one({"codice_verbale": iss.get("origine_verbale", "")})
-            if not v:
-                continue
-            root = await _sopr_root_code(v, cache)
-            rv = cache.get(root) or (v if root == v.get("codice_verbale") else await sopralluoghi_col.find_one({"codice_verbale": root})) or v
-            new = _issue_priority_nc(iss.get("origine_item", ""), iss.get("origine_cat", ""), rv)
-            if new == "media":
-                continue
-            out[new] += 1
-            if not dry:
-                await issues_col.update_one({"_id": iss["_id"]}, {"$set": {"priority": new, "updated_at": now}, "$push": {"storico": {
-                    "ts": now, "utente": f"Sistema (ricalcolo priority · {sess.get('nome', '')})", "azione": "modificata",
-                    "modifiche": [{"campo": "Priority", "da": "Media", "a": _ISSUE_PRIORITY[new]}]}}})
-    return {"ok": True, "dry_run": dry, "totale": out["critica"] + out["alta"] + out["bassa"], **out}
-
-
-@app.delete("/api/issues/{issue_id}")
-async def delete_issue(issue_id: str, sess: dict = Depends(_require_admin_session)):
-    oid = _issue_oid(issue_id)
-    cur = await issues_col.find_one({"_id": oid})
-    res = await issues_col.delete_one({"_id": oid})
-    if res.deleted_count == 0:
-        raise HTTPException(404, "Issue non trovata")
-    if cur and cur.get("origine_key"):
-        # issue nata da una NC di verbale: ricordo l'eliminazione, altrimenti la sync la ricreerebbe
-        await issues_skip_col.update_one({"key": cur["origine_key"]},
-                                         {"$set": {"key": cur["origine_key"], "codice": cur.get("codice", ""),
-                                                   "by": sess.get("nome", ""), "at": datetime.now(timezone.utc).isoformat()}},
-                                         upsert=True)
-    return {"ok": True, "deleted": issue_id}
-
-
-# Priority automatica alla creazione di una issue da NC di un verbale (poi modificabile a mano dall'admin nel registro):
-# critica = segnalazione del cliente NON esclusa dall'esito "non confermata" (verbale radice) oppure cantiere non delimitato / accessi aperti;
-# alta = non conformità di qualità dell'opera; bassa = punti sicurezza formali/documentali/di ordine (elenco sotto);
-# media = tutto il resto (incl. POS/PSC SIC-03). Legenda in issue.html (PRIO_LEGEND).
-_ISSUE_PRIO_CRITICA_IDS = {"SIC-21", "SIC-22"}
-_ISSUE_PRIO_BASSA_IDS = {
-    "SIC-01", "SIC-02",                                   # autorizzazioni personale / tesserini
-    "SIC-04", "SIC-08", "SIC-41", "SIC-42",               # programma lavori, libretti, ordinanze, schede sicurezza
-    "SIC-17", "SIC-19",                                   # pulizia strada e aree di cantiere
-    "SIC-27", "SIC-28", "SIC-31",                         # rifiuti: CER, separazione, formulari
-    "SIC-33", "SIC-34", "SIC-35", "SIC-36", "SIC-37",     # rumore
-    "SIC-43",                                             # cartello di cantiere
+function setCk(k, id, val) {
+  const st = _ckGet(k, id);
+  st.e = (st.e === val) ? '' : val;     // ri-click = azzera
+  if (st.e !== 'NC') { st.rilievo=''; st.azione=''; st.resp=''; st.scad=''; }
+  if (k === _ckTab) renderChecklist(); else _ckUpdateCounters();
 }
 
-
-def _issue_priority_nc(item_id: str, cat: str, root_verbale: dict | None) -> str:
-    rv = root_verbale or {}
-    segn = rv.get("segnalazione_cliente") in (True, "SI", "si", "true", 1, "1") \
-        and str(rv.get("esito_segnalazione", "") or "").strip().lower() != "non_confermata"
-    if segn or item_id in _ISSUE_PRIO_CRITICA_IDS:
-        return "critica"
-    if cat == "qualita":
-        return "alta"
-    return "bassa" if (cat == "sicurezza" and item_id in _ISSUE_PRIO_BASSA_IDS) else "media"
-
-
-def _issue_tipo_item(item_id: str) -> str:
-    if item_id in _ISSUE_CN_IDS:
-        return "Cn"
-    iid = str(item_id).upper()
-    if iid.startswith("SIC-"):
-        return "Sf"
-    if iid.startswith("PRE-"):
-        return "Au"
-    if iid.startswith(("TST-", "RIP-", "DOC-")):
-        return "Co"
-    return "In"
-
-
-@app.post("/api/admin/issues/reclassify-sicurezza")
-async def reclassify_issues_sicurezza(sess: dict = Depends(_require_admin_session)):
-    """One-off: riallinea la tipologia (`prefisso`) delle issue da verbale esistenti alle regole di `_issue_tipo_item`
-    (rev.359: In=INF/POZ/MIC/DIV/COL, Sf=SIC-*, Au=PRE-*, Co=TST/RIP/DOC). Cambia solo `prefisso`: `codice` resta
-    invariato (può essere già stato comunicato ai System). Le issue manuali (senza origine_item) non vengono toccate. Idempotente."""
-    now = datetime.now(timezone.utc).isoformat()
-    n = 0
-    async for d in issues_col.find({"$or": [{"origine_item": {"$type": "string", "$ne": ""}}, {"prefisso": "Sc"}]}):
-        new = _issue_tipo_item(d["origine_item"]) if d.get("origine_item") else "Sf"  # senza punto di origine: solo le vecchie Sc (manuali) → Sf
-        old = d.get("prefisso")
-        if new == old:
-            continue
-        await issues_col.update_one({"_id": d["_id"]}, {
-            "$set": {"prefisso": new, "updated_at": now},
-            "$push": {"storico": {"ts": now, "utente": sess.get("nome", ""), "azione": "modificata",
-                                   "modifiche": [{"campo": "Tipologia", "da": _ISSUE_TIPI.get(old, old), "a": _ISSUE_TIPI[new]}]}},
-        })
-        n += 1
-    return {"ok": True, "reclassified": n}
-
-
-async def _sopr_root_code(v: dict, cache: dict) -> str:
-    """Codice del primo verbale della catena (sopralluogo → verifiche): le NC ripetute nelle verifiche
-    appartengono alla stessa issue."""
-    cur, n = v, 0
-    while cur.get("verbale_origine") and n < 20:
-        code = cur["verbale_origine"]
-        nxt = cache.get(code)
-        if nxt is None:
-            nxt = await sopralluoghi_col.find_one({"codice_verbale": code})
-            if nxt is None:
-                return code
-            cache[code] = nxt
-        cur, n = nxt, n + 1
-    return cur.get("codice_verbale", "")
-
-
-# campi "Segnalazione al System" del verbale → campi della issue
-_SOPR_INVIO_MAP = (("subsystem", "subsystem"), ("data_invio_system", "data_invio"),
-                   ("metodo_invio", "metodo_invio"), ("rif_system_invio", "rif_system_invio"))
-
-
-def _sopr_invio_fields(v: dict) -> dict:
-    """Valori valorizzati di SubSystem / data / metodo / riferimento invio di un verbale, con i nomi dei campi issue."""
-    out = {}
-    for src, dst in _SOPR_INVIO_MAP:
-        val = str(v.get(src, "") or "").strip()
-        val = _sopr_date_iso(val) if dst == "data_invio" else val[:_ISSUE_TEXT_MAX.get(dst, 300)]
-        if val:
-            out[dst] = val
-    return out
-
-
-def _sopr_invio_summary(v: dict) -> str:
-    """Riepilogo leggibile dell'invio al System di un verbale (per lo storico delle issue)."""
-    d = _sopr_date_iso(str(v.get("data_invio_system", "") or "").strip())
-    sub = str(v.get("subsystem", "") or "").strip()
-    parts = [f"{d[8:10]}/{d[5:7]}/{d[0:4]}" if d else "", str(v.get("metodo_invio", "") or "").strip(),
-             str(v.get("rif_system_invio", "") or "").strip(), f"SubSystem {sub}" if sub else ""]
-    return " · ".join(p for p in parts if p)
-
-
-async def _issue_sync_verbali(verbali: list) -> dict:
-    """Crea/aggiorna le issue a partire dalle checklist dei verbali (da passare in ordine di codice crescente).
-    - punto NC → una issue per (verbale radice, punto), con impresa/cantiere/comune/lotto/permesso del verbale;
-    - verifica successiva con punto Conforme o N.A. (es. cantiere spostato) → la issue passa a 'Risolta' (una sola volta, rispetta le modifiche manuali);
-    - verifica ancora NC → solo una riga di storico.
-    Idempotente: si può rilanciare quante volte si vuole."""
-    created = resolved = filled = 0
-    cache = {d.get("codice_verbale"): d for d in verbali}
-    async with _issue_sync_lock:
-        # chiavi (radice|punto) delle issue già esistenti: per i punti C/NA serve una query solo se esiste una issue
-        known = {d["origine_key"] async for d in issues_col.find({"origine_key": {"$exists": True}}, {"origine_key": 1})}
-        for v in verbali:
-            code = v.get("codice_verbale", "")
-            root = await _sopr_root_code(v, cache)
-            ck = v.get("checklist") or {}
-            label = str(v.get("tratta_id", "") or "").strip()
-            cod_cant = label.split(" — ")[0].strip() if label not in ("", "—") else ""
-            cinfo = None
-            for sez in _CK_CATEGORIE:
-                for item_id, st in (ck.get(sez) or {}).items():
-                    if not isinstance(st, dict) or st.get("e") not in ("NC", "C", "NA"):
-                        continue
-                    key = f"{root}|{item_id}"
-                    if st["e"] != "NC" and key not in known:
-                        continue
-                    iss = await issues_col.find_one({"origine_key": key})
-                    now = datetime.now(timezone.utc).isoformat()
-                    if st["e"] == "NC":
-                        if iss is not None:
-                            if code == root:
-                                # dati di invio al System inseriti nel verbale radice: completano i campi vuoti della issue (una sola volta per campo)
-                                done = {m.get("campo") for h in iss.get("storico") or []
-                                        if h.get("verbale") == code and str(h.get("utente", "")).startswith("Sistema")
-                                        for m in h.get("modifiche") or []}
-                                fill = {k: x for k, x in _sopr_invio_fields(v).items()
-                                        if not str(iss.get(k, "") or "").strip() and _ISSUE_FIELDS[k] not in done}
-                                if fill:
-                                    await issues_col.update_one({"_id": iss["_id"]}, {"$set": {**fill, "updated_at": now}, "$push": {"storico": {
-                                        "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code,
-                                        "modifiche": [{"campo": _ISSUE_FIELDS[k], "da": "", "a": x} for k, x in fill.items()]}}})
-                                    filled += 1
-                            if code != iss.get("origine_verbale") and not any(h.get("verbale") == code for h in iss.get("storico") or []):
-                                # verifica ancora NC: riga di storico + invio al System di questo verbale (+ campi vuoti della issue)
-                                fill2 = {k: x for k, x in _sopr_invio_fields(v).items() if not str(iss.get(k, "") or "").strip()}
-                                mods = [{"campo": "Verifica", "da": "", "a": f"Ancora non conforme nel verbale {code}"}]
-                                if _sopr_invio_summary(v):
-                                    mods.append({"campo": "Invio al System", "da": "", "a": _sopr_invio_summary(v)})
-                                mods += [{"campo": _ISSUE_FIELDS[k], "da": "", "a": x} for k, x in fill2.items()]
-                                await issues_col.update_one({"_id": iss["_id"]}, {"$set": {**fill2, "updated_at": now}, "$push": {"storico": {
-                                    "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code,
-                                    "modifiche": mods}}})
-                                if fill2:
-                                    filled += 1
-                            continue
-                        if await issues_skip_col.find_one({"key": key}):
-                            continue
-                        if cinfo is None:
-                            cinfo = {}
-                            if cod_cant.startswith("CA/"):
-                                cd = await cantieri_col.find_one({"codice_cantiere": cod_cant})
-                                if cd:
-                                    cinfo = {"pratica": str(cd.get("pratica_id", "") or ""), "ente": str(cd.get("ente", "") or "")}
-                        area, testo = _CK_DEF.get(item_id, ("", ""))
-                        parts = [f"{item_id} — {area}: {testo}" if testo else item_id]
-                        for lab, k in (("Dimensione", "dim"), ("Rilievo", "rilievo"), ("Azione correttiva", "azione"), ("Responsabile", "resp"), ("Nota", "nota")):
-                            if st.get(k):
-                                parts.append(f"{lab}: {st[k]}")
-                        rec = _issue_clean({
-                            "cantiere": cod_cant or label, "pratica": cinfo.get("pratica", ""), "ente": cinfo.get("ente", ""),
-                            "lotto": v.get("lotto", ""), "comune": v.get("comune", ""), "system": v.get("impresa", ""),
-                            "data_rilevamento": _sopr_date_iso(v.get("data_sopralluogo", "")) or str(v.get("created_at", ""))[:10],
-                            "rilevato_da": v.get("referente_impresa", ""),  # campo storicamente invertito: contiene il redattore
-                            "descrizione": "\n".join(parts), "data_prevista": _sopr_date_iso(st.get("scad", "")),
-                            **_sopr_invio_fields(cache.get(root) or v),
-                            "priority": _issue_priority_nc(item_id, sez, cache.get(root) or v),
-                        })
-                        try:
-                            await _issue_create(_issue_tipo_item(item_id), rec, f"Sistema (verbale {code})",
-                                                extra={"origine_verbale": code, "origine_item": item_id, "origine_cat": sez, "origine_key": key},
-                                                azione="creata", marker={"verbale": code})
-                            created += 1
-                            known.add(key)
-                        except Exception as e:
-                            if "E11000" not in str(e):
-                                raise
-                    elif iss is not None and code != iss.get("origine_verbale") and iss.get("stato") not in ("risolta", "chiusa") \
-                            and not any(h.get("verbale") == code for h in iss.get("storico") or []):
-                        await issues_col.update_one({"_id": iss["_id"]}, {"$set": {"stato": "risolta", "updated_at": now}, "$push": {"storico": {
-                            "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code,
-                            "modifiche": [{"campo": "Stato avanzamento", "da": _ISSUE_STATI.get(iss.get("stato"), ""), "a": "Risolta"},
-                                          {"campo": "Verifica", "da": "", "a": (f"Conforme nel verbale {code}" if st["e"] == "C" else
-                                           f"Non più applicabile (N.A.) nel verbale {code}" + (f": {st['nota']}" if st.get("nota") else ""))}]
-                                         + ([{"campo": "Invio al System", "da": "", "a": _sopr_invio_summary(v)}] if _sopr_invio_summary(v) else [])}}})
-                        resolved += 1
-    return {"created": created, "resolved": resolved, "filled": filled}
-
-
-async def _issue_sync_safe(verbali: list) -> None:
-    try:
-        r = await _issue_sync_verbali(verbali)
-        if r["created"] or r["resolved"] or r["filled"]:
-            print(f"[issues] sync da verbali: {r}")
-    except Exception as e:
-        print(f"[issues] sync da verbali fallita: {type(e).__name__}: {e}")
-
-
-@app.post("/api/issues/sync-sopralluoghi")
-async def sync_issues_from_sopralluoghi(sess: dict = Depends(_require_admin_session)):
-    """Allinea il registro con le NC dei verbali (idempotente; chiamata anche all'apertura della pagina)."""
-    verbali = [d async for d in sopralluoghi_col.find({}).sort("codice_verbale", 1)]
-    return {"ok": True, "scanned": len(verbali), **(await _issue_sync_verbali(verbali))}
-
-
-@app.get("/api/issues/lookup")
-async def issues_lookup(sess: dict = Depends(_require_admin_session)):
-    """Cantieri già presenti (collection `cantieri`, 1 per pratica AUT ottenuta) per precompilare la
-    issue partendo da codice cantiere o permesso: comune, impresa (= System), lotto, ente."""
-    lotto_impresa: dict = {}
-    async for a in assignments_col.find({}, {"nome": 1, "lotti": 1}):
-        for l in (a.get("lotti") or []):
-            ln = _lotto_from_source(l)
-            if ln:
-                lotto_impresa[ln] = a.get("nome", "")
-    rows = []
-    async for d in cantieri_col.find({}, {"codice_cantiere": 1, "cantiere_key": 1, "pratica_id": 1, "ente": 1, "lotto": 1,
-                                          "cluster": 1, "provincia": 1, "comune": 1, "impresa": 1}):
-        lotto = _lotto_from_source(d.get("lotto", ""))
-        rows.append({
-            "codice_cantiere": str(d.get("codice_cantiere", "") or "").strip(),
-            "pratica_id": str(d.get("pratica_id", "") or "").strip(),
-            "ente": str(d.get("ente", "") or "").strip(),
-            "lotto": lotto,
-            "comune": str(d.get("comune", "") or "").strip(),
-            "provincia": str(d.get("provincia", "") or "").strip(),
-            "impresa": str(d.get("impresa", "") or "").strip() or lotto_impresa.get(lotto, ""),
-        })
-    rows.sort(key=lambda r: (r["lotto"], r["codice_cantiere"] or r["pratica_id"]))
-    return {"cantieri": rows}
-
-
-@app.get("/api/issues/export.xlsx")
-async def export_issues_xlsx(
-    tipologia: str = "", stato: str = "", priority: str = "", system: str = "", q: str = "",
-    sess: dict = Depends(_require_admin_session),
-):
-    """Excel nel formato della bozza richiesta (16 colonne, stesso ordine) + fogli Storico e
-    Legenda codici. Accetta gli stessi filtri della pagina."""
-    import openpyxl
-    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-    from openpyxl.utils import get_column_letter
-    from openpyxl.worksheet.table import Table, TableStyleInfo
-
-    items = []
-    async for d in issues_col.find({}).sort([("prefisso", 1), ("seq", 1)]):
-        if tipologia and d.get("prefisso") != tipologia:
-            continue
-        if stato and d.get("stato") != stato:
-            continue
-        if priority and d.get("priority") != priority:
-            continue
-        if system and (d.get("system") or "").strip().lower() != system.strip().lower():
-            continue
-        if q:
-            hay = " ".join(str(d.get(k, "")) for k in ("codice", *_ISSUE_FIELDS)).lower()
-            if q.strip().lower() not in hay:
-                continue
-        items.append(d)
-
-    wb = openpyxl.Workbook()
-    HFILL = PatternFill("solid", fgColor="043F75")
-    HFONT = Font(color="FFFFFF", bold=True, size=10.5)
-    THIN = Side(style="thin", color="D9DEE6")
-    BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
-    PRIO_FILL = {"critica": "F8D0CC", "alta": "FDE3C8", "media": "FFF3C4", "bassa": "E4F5EC"}
-    STATO_FILL = {"risolta": "E4F5EC", "chiusa": "E4F5EC"}
-
-    def _header(ws, cols, widths):
-        ws.append(cols)
-        for c in range(1, len(cols) + 1):
-            cell = ws.cell(row=1, column=c)
-            cell.fill, cell.font, cell.border = HFILL, HFONT, BORDER
-            cell.alignment = Alignment(vertical="center", wrap_text=True)
-        ws.row_dimensions[1].height = 30
-        ws.freeze_panes = "B2"
-        for i, w in enumerate(widths, start=1):
-            ws.column_dimensions[get_column_letter(i)].width = w
-
-    ws = wb.active
-    ws.title = "Foglio1"
-    cols = ["Codice Issue", "Tipologia", "Cantiere", "Comune", "System", "SubSystem", "data rilevamento",
-            "chi ha rilevato l'anomalia", "Descrizione", "data invio segnalazione al system",
-            "Riferimento System invio", "metodo di invio", "stato avanzamento", "Priority",
-            "Link vs documentazione", "data prevista sistemazione",
-            "Lotto", "Permesso / Pratica", "Ente", "Origine (verbale · punto)", "Segnalazione cliente"]  # ultime 5: extra rispetto alla bozza, in coda
-    _header(ws, cols, [13, 26, 16, 16, 20, 20, 13, 22, 60, 16, 22, 15, 18, 11, 24, 16, 8, 18, 26, 22, 18])
-    _cm = await _issue_cliente_map(items)
-    for d in items:
-        ws.append([
-            d.get("codice", ""), _ISSUE_TIPI.get(d.get("prefisso"), ""), d.get("cantiere", ""), d.get("comune", ""),
-            d.get("system", ""), d.get("subsystem", ""),
-            _sopr_date_obj(d.get("data_rilevamento", "")) or None, d.get("rilevato_da", ""),
-            d.get("descrizione", ""), _sopr_date_obj(d.get("data_invio", "")) or None,
-            d.get("rif_system_invio", ""), d.get("metodo_invio", ""),
-            _ISSUE_STATI.get(d.get("stato"), ""), _ISSUE_PRIORITY.get(d.get("priority"), ""),
-            "",  # Link vs documentazione: colonna mantenuta per compatibilità col modello, compilabile a mano
-            _sopr_date_obj(d.get("data_prevista", "")) or None,
-            d.get("lotto", ""), d.get("pratica", ""), d.get("ente", ""),
-            f"{d['origine_verbale']} · {d.get('origine_item', '')}" if d.get("origine_verbale") else "",
-            _ISSUE_CLIENTE_LAB.get(_cm.get(d.get("codice", ""), ""), ""),
-        ])
-        r = ws.max_row
-        for c in range(1, len(cols) + 1):
-            cell = ws.cell(row=r, column=c)
-            cell.border = BORDER
-            cell.alignment = Alignment(vertical="top", wrap_text=True)
-        for c in (7, 10, 16):
-            ws.cell(row=r, column=c).number_format = "DD/MM/YYYY"
-        ws.cell(row=r, column=14).fill = PatternFill("solid", fgColor=PRIO_FILL.get(d.get("priority"), "FFFFFF"))
-        if d.get("stato") in STATO_FILL:
-            ws.cell(row=r, column=13).fill = PatternFill("solid", fgColor=STATO_FILL[d["stato"]])
-    if items:
-        ws.add_table(Table(displayName="Issue", ref=f"A1:{get_column_letter(len(cols))}{ws.max_row}",
-                           tableStyleInfo=TableStyleInfo(name="TableStyleLight1", showRowStripes=False)))
-
-    ws2 = wb.create_sheet("Storico")
-    _header(ws2, ["Codice Issue", "Data e ora (UTC)", "Utente", "Azione", "Campo", "Da", "A"], [13, 20, 20, 12, 30, 30, 30])
-    for d in items:
-        for h in d.get("storico") or []:
-            ts = str(h.get("ts", ""))[:19].replace("T", " ")
-            mods = h.get("modifiche") or []
-            if not mods:
-                ws2.append([d.get("codice", ""), ts, h.get("utente", ""), h.get("azione", ""), "", "", ""])
-            for m in mods:
-                ws2.append([d.get("codice", ""), ts, h.get("utente", ""), h.get("azione", ""),
-                            m.get("campo", ""), m.get("da", ""), m.get("a", "")])
-
-    ws3 = wb.create_sheet("Legenda codici")
-    _header(ws3, ["Prefisso", "Significato"], [12, 80])
-    ws3.append(["In_nnnn", "Progressivo per anomalie riscontrate su infrastrutture completate o in corso"])
-    ws3.append(["Cn_nnnn", "Segnaletica su cantieri in corso"])
-    ws3.append(["Sf_nnnn", "Anomalie sicurezza di cantiere, documentazione e autorizzazioni incluse (le vecchie Sc_nnnn sono state unite a Sf)"])
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    return Response(
-        content=buf.getvalue(),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="issue_enri_{datetime.now().strftime("%Y-%m-%d")}.xlsx"'},
-    )
-
-
-@app.delete("/api/sopralluoghi/{sop_id}")
-async def delete_sopralluogo(sop_id: str, cascade: bool = False, sess: dict = Depends(_require_admin_session)):
-    """Elimina un verbale di sopralluogo — admin/admin2. Se esistono verifiche collegate (verbale_origine)
-    risponde 409 con l'elenco, a meno di `?cascade=true` (elimina anche le verifiche, a catena).
-    Le issue nate dal verbale NON vengono toccate (si gestiscono dal registro issue); le foto su GitHub restano."""
-    try:
-        oid = ObjectId(sop_id)
-    except Exception:
-        raise HTTPException(400, "ID non valido")
-    doc = await sopralluoghi_col.find_one({"_id": oid}, {"codice_verbale": 1})
-    if not doc:
-        raise HTTPException(404, "Verbale non trovato")
-    # catena di verifiche discendenti (BFS)
-    codici, frontier = [], [doc.get("codice_verbale", "")]
-    while frontier and len(codici) < 50:
-        figli = [d["codice_verbale"] async for d in sopralluoghi_col.find({"verbale_origine": {"$in": frontier}}, {"codice_verbale": 1})]
-        codici += figli
-        frontier = figli
-    if codici and not cascade:
-        raise HTTPException(409, "Il verbale ha verifiche collegate: " + ", ".join(codici) + ". Eliminare anche queste?")
-    tutti = [doc.get("codice_verbale", "")] + codici
-    await sopralluoghi_col.delete_many({"codice_verbale": {"$in": tutti}})
-    n_iss = await issues_col.count_documents({"origine_verbale": {"$in": tutti}})
-    _schedule_sopralluoghi_csv_regen(f"eliminazione verbale: {', '.join(tutti)} ({sess.get('nome', '')})")
-    return {"ok": True, "deleted": tutti, "issues_collegate": n_iss}
-
-
-_SOPR_EDIT_TEXT = {"lotto": ("Lotto", 50), "tratta_id": ("Cantiere", 300), "impresa": ("Impresa", 200),
-                   "referente_impresa": ("Redatto da", 200), "referente_retelit": ("Ruolo redattore", 200),
-                   "comune": ("Indirizzo / Località", 300)}
-_CK_ESITO_LAB = {"C": "Conforme", "NC": "NC", "NA": "N.A.", "": "—"}
-
-
-@app.put("/api/sopralluoghi/{sop_id}")
-async def update_sopralluogo(sop_id: str, payload: dict, sess: dict = Depends(_require_admin_session)):
-    """Modifica un verbale già salvato — admin/admin2. Aggiornamento PARZIALE: solo le chiavi presenti nel body.
-    Campi: data_sopralluogo, lotto, tratta_id, impresa, referente_impresa, referente_retelit, comune,
-    segnalazione_cliente (+ _note, esito_segnalazione; solo verbali radice), checklist (sostituzione completa).
-    I dati 'Segnalazione al System' hanno il loro endpoint (/system). Ogni modifica finisce in `storico_modifiche`."""
-    try:
-        oid = ObjectId(sop_id)
-    except Exception:
-        raise HTTPException(400, "ID non valido")
-    doc = await sopralluoghi_col.find_one({"_id": oid})
-    if not doc:
-        raise HTTPException(404, "Verbale non trovato")
-    p = payload or {}
-    sets, mods = {}, []
-
-    def _chg(campo, da, a):
-        mods.append({"campo": campo, "da": str(da), "a": str(a)})
-
-    for k, (lab, mx) in _SOPR_EDIT_TEXT.items():
-        if k in p:
-            v = str(p.get(k, "")).strip()[:mx]
-            if k in ("lotto", "tratta_id", "impresa") and not v:
-                raise HTTPException(422, f"{lab}: valore obbligatorio")
-            if v != str(doc.get(k, "") or ""):
-                _chg(lab, doc.get(k, ""), v); sets[k] = v
-    if "data_sopralluogo" in p:
-        raw = str(p.get("data_sopralluogo", "")).strip()
-        d = _sopr_date_iso(raw)
-        if not d:
-            raise HTTPException(422, "Data sopralluogo non valida")
-        if d != _sopr_date_iso(str(doc.get("data_sopralluogo", "") or "")):
-            _chg("Data sopralluogo", doc.get("data_sopralluogo", ""), d); sets["data_sopralluogo"] = d
-
-    # checklist (sostituzione completa)
-    ck_old = doc.get("checklist") or {}
-    ck_new = ck_old
-    if "checklist" in p:
-        ck_new = _sanitize_checklist(p.get("checklist"))
-        if "note_generali" not in (p.get("checklist") or {}):
-            ck_new["note_generali"] = ck_old.get("note_generali", "")
-        def _flat(ck):
-            return {i: st for sez in _CK_CATEGORIE for i, st in (ck.get(sez) or {}).items() if isinstance(st, dict)}
-        fo, fn = _flat(ck_old), _flat(ck_new)
-        for i in sorted(set(fo) | set(fn)):
-            a, b = fo.get(i) or {}, fn.get(i) or {}
-            if (a.get("e", ""), a.get("nota", ""), a.get("dim", "")) != (b.get("e", ""), b.get("nota", ""), b.get("dim", "")) or \
-               (b.get("e") == "NC" and any(a.get(f, "") != b.get(f, "") for f in ("rilievo", "azione", "resp", "scad"))):
-                if b.get("e") == "NC" and (not b.get("azione") or not b.get("scad")):
-                    raise HTTPException(422, f"Non conformità {i}: azione correttiva e scadenza sono obbligatorie")
-                _chg(f"Checklist {i}", _CK_ESITO_LAB.get(a.get("e", ""), "—"), _CK_ESITO_LAB.get(b.get("e", ""), "—"))
-        if ck_new.get("note_generali", "") != ck_old.get("note_generali", ""):
-            _chg("Note generali checklist", ck_old.get("note_generali", ""), ck_new.get("note_generali", ""))
-        if any(m["campo"].startswith("Checklist") or m["campo"].startswith("Note generali") for m in mods):
-            sets["checklist"] = ck_new
-            sets.update(_checklist_counts(ck_new))
-
-    # segnalazione cliente (solo verbali radice)
-    if any(k in p for k in ("segnalazione_cliente", "segnalazione_cliente_note", "esito_segnalazione")):
-        if doc.get("verbale_origine"):
-            raise HTTPException(422, "La segnalazione cliente si imposta solo sul verbale di sopralluogo, non sulle verifiche")
-        segn = bool(p.get("segnalazione_cliente", doc.get("segnalazione_cliente", False)))
-        esito = str(p.get("esito_segnalazione", doc.get("esito_segnalazione", ""))).strip().lower() if segn else ""
-        note = str(p.get("segnalazione_cliente_note", doc.get("segnalazione_cliente_note", ""))).strip()[:2000] if segn else ""
-        if segn and esito not in ("confermata", "non_confermata"):
-            raise HTTPException(422, "Segnalazione cliente: indicare se è confermata o non confermata")
-        if segn and esito == "confermata" and not any(
-                st.get("e") == "NC" for sez in _CK_CATEGORIE for st in (ck_new.get(sez) or {}).values() if isinstance(st, dict)):
-            raise HTTPException(422, "Segnalazione confermata: almeno un punto della checklist deve essere non conforme")
-        for k, lab, new in (("segnalazione_cliente", "Segnalazione cliente", segn),
-                            ("esito_segnalazione", "Esito segnalazione", esito),
-                            ("segnalazione_cliente_note", "Note segnalazione cliente", note)):
-            if new != doc.get(k, False if k == "segnalazione_cliente" else ""):
-                _chg(lab, doc.get(k, ""), new); sets[k] = new
-
-    if not mods:
-        return {"ok": True, "changed": 0}
-    now = datetime.now(timezone.utc).isoformat()
-    utente = sess.get("nome", "")
-    sets.update({"modificato_da": utente, "modificato_il": now})
-    await sopralluoghi_col.update_one({"_id": oid}, {"$set": sets, "$push": {"storico_modifiche": {"ts": now, "utente": utente, "modifiche": mods[:200]}}})
-    code = doc.get("codice_verbale", "")
-    _schedule_sopralluoghi_csv_regen(f"modifica verbale: {code} ({utente})")
-    if any(k in sets for k in ("segnalazione_cliente", "esito_segnalazione")) and not doc.get("verbale_origine"):
-        try:
-            await _issue_riallinea_priority_verbale(doc, {**doc, **sets}, now)
-        except Exception as e:
-            print(f"[sopralluoghi] riallineo priority issue dopo modifica verbale fallito: {type(e).__name__}: {e}")
-    if "checklist" in sets:
-        asyncio.create_task(_issue_sync_safe([{**doc, **sets}]))  # NC nuove → issue; verifiche conformi → issue risolte
-    return {"ok": True, "changed": len(mods)}
-
-
-async def _issue_riallinea_priority_verbale(old_doc: dict, root_doc: dict, now: str) -> int:
-    """Ricalcola la priority (`_issue_priority_nc`) delle issue aperte nate dal verbale radice `root_doc`,
-    dopo una modifica della segnalazione cliente. Salta le issue la cui priority è stata cambiata A MANO
-    (riga 'Priority' nello storico di un utente diverso da 'Sistema…'). Ritorna quante issue ha aggiornato."""
-    code = root_doc.get("codice_verbale", "")
-    if not code:
-        return 0
-    n = 0
-    async with _issue_sync_lock:
-        async for iss in issues_col.find({"origine_key": {"$regex": "^" + re.escape(code) + r"\|"}}):
-            if iss.get("stato") in ("risolta", "chiusa"):
-                continue
-            if any(m.get("campo") == "Priority" and not str(h.get("utente", "")).startswith("Sistema")
-                   for h in iss.get("storico") or [] for m in h.get("modifiche") or []):
-                continue
-            new = _issue_priority_nc(iss.get("origine_item", ""), iss.get("origine_cat", ""), root_doc)
-            if new == iss.get("priority"):
-                continue
-            await issues_col.update_one({"_id": iss["_id"]}, {"$set": {"priority": new, "updated_at": now}, "$push": {"storico": {
-                "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code,
-                "modifiche": [{"campo": "Priority", "da": _ISSUE_PRIORITY.get(iss.get("priority"), iss.get("priority", "")),
-                               "a": _ISSUE_PRIORITY.get(new, new)}]}}})
-            n += 1
-    return n
-
-
-@app.put("/api/sopralluoghi/{sop_id}/system")
-async def update_sopralluogo_system(sop_id: str, payload: dict, sess: dict = Depends(_require_staff_session)):
-    """Aggiorna i 4 campi \"Segnalazione al System\" di un verbale già salvato (es. verbali precedenti ai campi)
-    + (solo verbali radice, opzionale) segnalazione cliente: flag, esito confermata/non_confermata, nota.
-    I 4 campi System sono obbligatori. Traccia chi/quando in `storico_system` e riallinea le issue collegate."""
-    try:
-        oid = ObjectId(sop_id)
-    except Exception:
-        raise HTTPException(400, "ID non valido")
-    doc = await sopralluoghi_col.find_one({"_id": oid})
-    if not doc:
-        raise HTTPException(404, "Verbale non trovato")
-    _p = payload or {}
-    new = {
-        "subsystem":         str(_p.get("subsystem", "")).strip()[:200],
-        "data_invio_system": _sopr_date_iso(str(_p.get("data_invio_system", "")).strip()),
-        "metodo_invio":      str(_p.get("metodo_invio", "")).strip()[:100],
-        "rif_system_invio":  str(_p.get("rif_system_invio", "")).strip()[:300],
-    }
-    labels = {"subsystem": "SubSystem", "data_invio_system": "data invio",
-              "metodo_invio": "metodo di invio", "rif_system_invio": "riferimento invio"}
-    manc = [lab for k, lab in labels.items() if not new[k]]
-    if manc:
-        raise HTTPException(422, "Segnalazione al System: compilare " + ", ".join(manc))
-    old = {k: (_sopr_date_iso(str(doc.get(k, "") or "").strip()) if k == "data_invio_system"
-               else str(doc.get(k, "") or "").strip()) for k in new}
-    changes = {k: (old[k], new[k]) for k in new if old[k] != new[k]}
-
-    # Segnalazione cliente (riapertura flag / esito / nota) — solo verbali radice, stesse regole di PUT /{sop_id}
-    segn_sets, segn_mods = {}, []
-    if any(k in _p for k in ("segnalazione_cliente", "esito_segnalazione", "segnalazione_cliente_note")):
-        if doc.get("verbale_origine"):
-            raise HTTPException(422, "La segnalazione cliente si imposta solo sul verbale di sopralluogo, non sulle verifiche")
-        segn = bool(_p.get("segnalazione_cliente", doc.get("segnalazione_cliente", False)))
-        esito = str(_p.get("esito_segnalazione", doc.get("esito_segnalazione", ""))).strip().lower() if segn else ""
-        nota = str(_p.get("segnalazione_cliente_note", doc.get("segnalazione_cliente_note", ""))).strip()[:2000] if segn else ""
-        if segn and esito not in ("confermata", "non_confermata"):
-            raise HTTPException(422, "Segnalazione cliente: indicare se è confermata o non confermata")
-        if segn and not nota:
-            raise HTTPException(422, "Segnalazione cliente: la nota è obbligatoria")
-        if segn and esito == "confermata" and not any(
-                st.get("e") == "NC" for sez in _CK_CATEGORIE for st in ((doc.get("checklist") or {}).get(sez) or {}).values() if isinstance(st, dict)):
-            raise HTTPException(422, "Segnalazione confermata: almeno un punto della checklist deve essere non conforme")
-        for k, lab, val in (("segnalazione_cliente", "Segnalazione cliente", segn),
-                            ("esito_segnalazione", "Esito segnalazione", esito),
-                            ("segnalazione_cliente_note", "Note segnalazione cliente", nota)):
-            if val != doc.get(k, False if k == "segnalazione_cliente" else ""):
-                segn_mods.append({"campo": lab, "da": str(doc.get(k, "")), "a": str(val)}); segn_sets[k] = val
-
-    if not changes and not segn_mods:
-        return {"ok": True, "changed": 0, "issues_aggiornate": 0}
-    now = datetime.now(timezone.utc).isoformat()
-    utente = sess.get("nome", "")
-    mods_all = [{"campo": labels[k], "da": a, "a": b} for k, (a, b) in changes.items()] + segn_mods
-    await sopralluoghi_col.update_one({"_id": oid}, {
-        "$set": {**new, **segn_sets, "modificato_da": utente, "modificato_il": now},
-        "$push": {"storico_system": {"ts": now, "utente": utente, "modifiche": mods_all}}})
-
-    # Riallinea le issue collegate (mai bloccante per il salvataggio del verbale)
-    n_iss = 0
-    try:
-        code = doc.get("codice_verbale", "")
-        merged = {**doc, **new}
-        if not doc.get("verbale_origine"):
-            # verbale radice: aggiorna i campi della issue solo se vuoti o ancora uguali al vecchio valore del verbale
-            # (se qualcuno li ha modificati a mano nel registro issue, non vengono toccati)
-            async for iss in issues_col.find({"origine_verbale": code}):
-                sets, mods = {}, []
-                for src, dst in _SOPR_INVIO_MAP:
-                    if src not in changes:
-                        continue
-                    cur = str(iss.get(dst, "") or "").strip()
-                    if dst == "data_invio":
-                        cur = _sopr_date_iso(cur) or cur
-                    if cur in ("", changes[src][0]):
-                        sets[dst] = new[src]
-                        mods.append({"campo": _ISSUE_FIELDS[dst], "da": cur, "a": new[src]})
-                if sets:
-                    await issues_col.update_one({"_id": iss["_id"]}, {"$set": {**sets, "updated_at": now}, "$push": {"storico": {
-                        "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code, "modifiche": mods}}})
-                    n_iss += 1
-        else:
-            # verifica: la issue conserva i dati del radice, si aggiunge solo una riga di storico
-            summ = _sopr_invio_summary(merged)
-            async for iss in issues_col.find({"storico.verbale": code}):
-                await issues_col.update_one({"_id": iss["_id"]}, {"$set": {"updated_at": now}, "$push": {"storico": {
-                    "ts": now, "utente": f"Sistema (verbale {code})", "azione": "modificata", "verbale": code,
-                    "modifiche": [{"campo": "Invio al System (corretto)", "da": "", "a": summ}]}}})
-                n_iss += 1
-    except Exception as e:
-        print(f"[sopralluoghi] riallineo issue dopo modifica dati System fallito: {type(e).__name__}: {e}")
-    # Segnalazione cliente cambiata → riallinea la priority delle issue del verbale (solo quelle mai modificate a mano)
-    if segn_mods:
-        try:
-            n_iss += await _issue_riallinea_priority_verbale(doc, {**doc, **segn_sets}, now)
-        except Exception as e:
-            print(f"[sopralluoghi] riallineo priority issue dopo modifica segnalazione cliente fallito: {type(e).__name__}: {e}")
-    _schedule_sopralluoghi_csv_regen(f"aggiornamento dati System: {doc.get('codice_verbale', '')}")
-    return {"ok": True, "changed": len(changes) + len(segn_mods), "issues_aggiornate": n_iss}
-
-
-@app.get("/api/sopralluoghi")
-async def list_sopralluoghi(sess: dict = Depends(_require_staff_session)):
-    """Restituisce tutti i verbali di sopralluogo, ordinati per codice decrescente."""
-    verbali = []
-    async for d in sopralluoghi_col.find({}).sort("codice_verbale", -1):
-        d["_id"] = str(d["_id"])
-        verbali.append(d)
-    return {"verbali": verbali}
-
-
-def _sopr_date_iso(raw: str) -> str:
-    """Normalizza una data verbale (ISO yyyy-mm-dd o gg/mm/aaaa legacy) in ISO."""
-    raw = (raw or "").strip()
-    if re.match(r"^\d{4}-\d{2}-\d{2}$", raw):
-        return raw
-    m = re.match(r"^(\d{2})/(\d{2})/(\d{4})$", raw)
-    if m:
-        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
-    return ""
-
-
-def _sopr_date_obj(raw: str):
-    """Come sopra ma restituisce un date Python (per celle Excel formattate come data), o None."""
-    iso = _sopr_date_iso(raw)
-    if not iso:
-        return None
-    try:
-        return datetime.strptime(iso, "%Y-%m-%d").date()
-    except ValueError:
-        return None
-
-
-_CK_CAT_BY_PREFIX = {"PRE": "qualita", "INF": "qualita", "DIV": "qualita", "POZ": "qualita", "MIC": "qualita", "COL": "qualita",
-                     "TST": "collaudo", "RIP": "collaudo", "DOC": "collaudo", "SIC": "sicurezza"}
-
-
-@app.get("/api/sopralluoghi/checklist-def")
-async def sopralluoghi_checklist_def(sess: dict = Depends(_require_staff_session)):
-    """Definizione checklist DL (id, area, testo, categoria) nell'ordine di `_CK_DEF` — usata dall'editor admin."""
-    return {"items": [{"id": i, "area": a, "t": t, "cat": _CK_CAT_BY_PREFIX.get(i.split("-")[0], "qualita")}
-                      for i, (a, t) in _CK_DEF.items()]}
-
-
-def _esito_effettivo(v: dict) -> str:
-    """Esito 'effettivo' di un verbale (allineato a _anomaliaStato di sopralluoghi.html): esito storico se valorizzato,
-    altrimenti derivato dalla checklist (NC>0 = media; critica se NC su SIC-21/22 o segnalazione cliente non 'non_confermata';
-    0 NC con ≥1 punto compilato = nessuna anomalia; checklist vuota = '')."""
-    esito = str(v.get("esito", "") or "").strip()
-    if esito in ("Anomalia critica", "Anomalia media", "Nessuna anomalia"):
-        return esito
-    nc = v.get("checklist_non_conformi", 0) or 0
-    if nc > 0:
-        nc_ids = {x.strip() for x in str(v.get("checklist_nc_ids", "") or "").split(",") if x.strip()}
-        segn = v.get("segnalazione_cliente") in (True, "SI", "si", "true", 1, "1") \
-            and str(v.get("esito_segnalazione", "") or "").strip().lower() != "non_confermata"
-        return "Anomalia critica" if (segn or nc_ids & _ISSUE_PRIO_CRITICA_IDS) else "Anomalia media"
-    return "Nessuna anomalia" if (v.get("checklist_compilati", 0) or 0) > 0 else ""
-
-
-@app.get("/api/sopralluoghi/export.xlsx")
-async def export_sopralluoghi_xlsx(sess: dict = Depends(_require_staff_session)):
-    """Estrazione Excel dei verbali di sopralluogo su 3 fogli:
-    Verbali (riepilogo leggibile, un verbale per riga), Checklist dettaglio
-    (un item per riga, su qualità/sicurezza/collaudo) e Non conformità (solo
-    gli item NC, per il follow-up delle azioni correttive)."""
-    _t0 = time.perf_counter()
-    import openpyxl
-    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-    from openpyxl.utils import get_column_letter
-    from openpyxl.worksheet.table import Table, TableStyleInfo
-    _t_imp = time.perf_counter()
-
-    # Le firme (immagini base64) non servono all'export: escluse per non trasferirle da Mongo
-    verbali = [d async for d in sopralluoghi_col.find({}, {"firma_impresa": 0, "firma_retelit": 0}).sort("codice_verbale", 1)]
-    _t_db = time.perf_counter()
-    _by_code = {d.get("codice_verbale"): d for d in verbali}
-
-    def _tipo_verbale(v):
-        """'Sopralluogo' oppure '2° sopralluogo (verifica cliente|interna)': il tipo si
-        ricava risalendo la catena di verbale_origine fino alla radice."""
-        if not v.get("verbale_origine"):
-            return "Sopralluogo"
-        cur, n = v, 0
-        while cur and cur.get("verbale_origine") and n < 20:
-            cur = _by_code.get(cur["verbale_origine"])
-            n += 1
-        cliente = bool(cur and cur.get("segnalazione_cliente"))
-        return f"{n + 1}° sopralluogo (verifica " + ("cliente" if cliente else "interna") + ")"
-
-    wb = openpyxl.Workbook()
-
-    HEADER_FILL = PatternFill("solid", fgColor="043F75")
-    HEADER_FONT = Font(color="FFFFFF", bold=True, size=10.5)
-    THIN = Side(style="thin", color="D9DEE6")
-    BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
-    NC_FILL = PatternFill("solid", fgColor="FDECEA")
-    OK_FILL = PatternFill("solid", fgColor="E4F5EC")
-    WARN_FILL = PatternFill("solid", fgColor="FFF3E0")
-    CLIENTE_FILL = PatternFill("solid", fgColor="FFE7B8")
-
-    def _style_header(ws, ncols, row=1):
-        for c in range(1, ncols + 1):
-            cell = ws.cell(row=row, column=c)
-            cell.fill = HEADER_FILL
-            cell.font = HEADER_FONT
-            cell.alignment = Alignment(vertical="center", wrap_text=True)
-            cell.border = BORDER
-        # Nota: usare ws.cell(row=row+1, ...) per calcolare la coordinata delle
-        # freeze panes istanzierebbe quella cella nel foglio, spostando di una
-        # riga ogni successivo ws.append() (max_row si aggiornerebbe subito a
-        # row+1 anche senza dati) — si costruisce la coordinata come stringa.
-        ws.freeze_panes = f"A{row + 1}"
-        ws.row_dimensions[row].height = 28
-
-    _AL_TOP = Alignment(vertical="top")
-    _AL_WRAP = Alignment(vertical="top", wrap_text=True)
-
-    def _style_body(ws, wrap_cols):
-        """Bordo + allineamento in un solo passaggio a fine foglio, con oggetti stile
-        condivisi: creare Alignment/ws.cell() per ogni cella era il grosso del tempo
-        (foglio checklist = migliaia di righe × 12 colonne)."""
-        from openpyxl.styles.cell_style import StyleArray
-        wb_ = ws.parent
-        bid = wb_._borders.add(BORDER)
-        a_top = wb_._alignments.add(_AL_TOP)
-        a_wrap = wb_._alignments.add(_AL_WRAP)
-        for cells in ws.iter_rows(min_row=2):
-            for c in cells:
-                st = c._style
-                if st is None:  # cella senza stile: openpyxl lo crea in modo lazy
-                    st = c._style = StyleArray()
-                st.borderId = bid
-                st.alignmentId = a_wrap if c.column in wrap_cols else a_top
-
-    def _autofit(ws, widths):
-        for i, w in enumerate(widths, start=1):
-            ws.column_dimensions[get_column_letter(i)].width = w
-
-    # ── Foglio 1: Verbali ────────────────────────────────────────────────────
-    ws1 = wb.active
-    ws1.title = "Verbali"
-    cols1 = [
-        "Codice", "Data", "Lotto", "Tratta / Cantiere", "Comune", "Impresa",
-        "Redatto da", "Ruolo redattore", "Esito", "Segnalazione cliente",
-        "Note segnalazione cliente",
-        "Checklist compilati", "Checklist conformi", "Checklist non conformi",
-        "Checklist N.A.", "ID non conformità",
-        "N. foto", "Note generali checklist", "Creato il",
-        "Esito segnalazione", "Tipo", "Verbale origine",
-        "SubSystem", "Data invio segnalazione al System", "Metodo di invio", "Riferimento System invio",
-    ]
-    ws1.append(cols1)
-    _r1 = 1
-    _style_header(ws1, len(cols1))
-
-    for v in verbali:
-        ck = v.get("checklist") or {}
-        d_obj = _sopr_date_obj(v.get("data_sopralluogo", ""))
-        foto_urls = [u.strip() for u in (v.get("foto_urls") or "").split(",") if u.strip()]
-        row = [
-            v.get("codice_verbale", ""),
-            d_obj or v.get("data_sopralluogo", ""),
-            v.get("lotto", ""),
-            v.get("tratta_id", ""),
-            v.get("comune", ""),
-            v.get("impresa", ""),
-            v.get("referente_impresa", ""),   # nome campo storico: contiene il redattore
-            v.get("referente_retelit", ""),   # nome campo storico: contiene il ruolo
-            _esito_effettivo(v) or "—",
-            "SÌ" if v.get("segnalazione_cliente") in (True, "SI", "si", "true", 1, "1") else "NO",
-            v.get("segnalazione_cliente_note", ""),
-            v.get("checklist_compilati", 0) or 0,
-            v.get("checklist_conformi", 0) or 0,
-            v.get("checklist_non_conformi", 0) or 0,
-            v.get("checklist_na", 0) or 0,
-            v.get("checklist_nc_ids", ""),
-            len(foto_urls),
-            ck.get("note_generali", ""),
-            v.get("created_at", ""),
-            {"confermata": "Confermata", "non_confermata": "Non confermata"}.get(v.get("esito_segnalazione", ""), ""),
-            _tipo_verbale(v),
-            v.get("verbale_origine", ""),
-            v.get("subsystem", ""),
-            _sopr_date_obj(v.get("data_invio_system", "")) or None,
-            v.get("metodo_invio", ""),
-            v.get("rif_system_invio", ""),
-        ]
-        ws1.append(row)
-        _r1 += 1
-        r = _r1
-        if foto_urls:
-            ws1.cell(row=r, column=17).hyperlink = foto_urls[0]
-            ws1.cell(row=r, column=17).font = Font(color="043F75", underline="single")
-        esito_val = _esito_effettivo(v)
-        if esito_val == "Anomalia critica":
-            ws1.cell(row=r, column=9).fill = NC_FILL
-        elif esito_val == "Anomalia media":
-            ws1.cell(row=r, column=9).fill = WARN_FILL
-        elif esito_val == "Nessuna anomalia":
-            ws1.cell(row=r, column=9).fill = OK_FILL
-        if row[9] == "SÌ":
-            ws1.cell(row=r, column=10).fill = CLIENTE_FILL
-        if (v.get("checklist_non_conformi") or 0) > 0:
-            ws1.cell(row=r, column=14).fill = NC_FILL
-        ws1.cell(row=r, column=2).number_format = "dd/mm/yyyy"
-        if row[23]:
-            ws1.cell(row=r, column=24).number_format = "dd/mm/yyyy"
-
-    _style_body(ws1, (4, 11, 18, 26))
-    _autofit(ws1, [14, 11, 7, 24, 20, 16, 18, 16, 15, 16, 30, 10, 9, 11, 9, 20, 7, 30, 20, 16, 22, 16, 18, 16, 16, 26])
-    if len(verbali) > 0:
-        ws1.add_table(Table(
-            displayName="TabVerbali",
-            ref=f"A1:{get_column_letter(len(cols1))}{len(verbali) + 1}",
-            tableStyleInfo=TableStyleInfo(name="TableStyleMedium2", showRowStripes=True),
-        ))
-
-    # ── Foglio 2: Checklist dettaglio (un item per riga) ────────────────────
-    ws2 = wb.create_sheet("Checklist dettaglio")
-    cols2 = ["Codice verbale", "Data", "Categoria", "Area", "ID item", "Descrizione",
-             "Esito", "Nota", "Rilievo", "Azione correttiva",
-             "Responsabile", "Scadenza"]
-    ws2.append(cols2)
-    _style_header(ws2, len(cols2))
-    cat_label = {"qualita": "Qualità", "sicurezza": "Sicurezza", "collaudo": "Collaudo"}
-    def_by_cat = {}  # cache id -> {area, t} per categoria, popolata al volo dal primo verbale che la usa
-    n_rows2 = 0
-    for v in verbali:
-        ck = v.get("checklist") or {}
-        d_obj = _sopr_date_obj(v.get("data_sopralluogo", ""))
-        for cat in ("qualita", "sicurezza", "collaudo"):
-            blocco = ck.get(cat) or {}
-            for item_id, st in sorted(blocco.items()):
-                if not isinstance(st, dict):
-                    continue
-                if not (st.get("e") or st.get("nota") or st.get("dim")):
-                    continue
-                scad_obj = _sopr_date_obj(st.get("scad", ""))
-                row = [
-                    v.get("codice_verbale", ""), d_obj or v.get("data_sopralluogo", ""),
-                    cat_label.get(cat, cat), "", item_id, "",
-                    {"C": "Conforme", "NC": "Non conforme", "NA": "N.A.", "": "Da verificare"}.get(st.get("e", ""), st.get("e", "")),
-                    (f"Dimensione: {st['dim']}. " if st.get("dim") else "") + st.get("nota", ""),
-                    st.get("rilievo", ""), st.get("azione", ""), st.get("resp", ""),
-                    scad_obj or st.get("scad", ""),
-                ]
-                ws2.append(row)
-                n_rows2 += 1
-                r = n_rows2 + 1  # riga 1 = intestazione (ws.max_row è O(n) a ogni chiamata)
-                if st.get("e") == "NC":
-                    ws2.cell(row=r, column=7).fill = NC_FILL
-                if d_obj:
-                    ws2.cell(row=r, column=2).number_format = "dd/mm/yyyy"
-                if scad_obj:
-                    ws2.cell(row=r, column=12).number_format = "dd/mm/yyyy"
-
-    # Compila la colonna Area leggendo il prefisso dell'ID (PRE/INF/.../SIC/TST/RIP/DOC):
-    # la definizione completa (CHECKLIST_DEF) vive solo nel frontend, il backend non ne
-    # ha una copia — la colonna "Descrizione" resta vuota per lo stesso motivo.
-    if n_rows2:
-        for r in range(2, ws2.max_row + 1):
-            item_id = ws2.cell(row=r, column=5).value or ""
-            ws2.cell(row=r, column=4).value = item_id.split("-")[0] if "-" in item_id else ""
-        ws2.add_table(Table(
-            displayName="TabChecklist",
-            ref=f"A1:{get_column_letter(len(cols2))}{ws2.max_row}",
-            tableStyleInfo=TableStyleInfo(name="TableStyleMedium2", showRowStripes=True),
-        ))
-    _style_body(ws2, (6, 8, 9, 10))
-    _autofit(ws2, [14, 11, 11, 8, 9, 8, 14, 30, 26, 26, 16, 12])
-
-    # ── Foglio 3: Non conformità (solo gli item NC, per follow-up) ─────────
-    ws3 = wb.create_sheet("Non conformità")
-    cols3 = ["Codice verbale", "Data", "Impresa", "Comune", "Categoria", "ID item",
-             "Rilievo", "Azione correttiva", "Responsabile", "Scadenza"]
-    ws3.append(cols3)
-    _style_header(ws3, len(cols3))
-    n_rows3 = 0
-    for v in verbali:
-        ck = v.get("checklist") or {}
-        d_obj = _sopr_date_obj(v.get("data_sopralluogo", ""))
-        for cat in ("qualita", "sicurezza", "collaudo"):
-            for item_id, st in sorted((ck.get(cat) or {}).items()):
-                if not isinstance(st, dict) or st.get("e") != "NC":
-                    continue
-                scad_obj = _sopr_date_obj(st.get("scad", ""))
-                row = [
-                    v.get("codice_verbale", ""), d_obj or v.get("data_sopralluogo", ""),
-                    v.get("impresa", ""), v.get("comune", ""), cat_label.get(cat, cat), item_id,
-                    st.get("rilievo", ""),
-                    st.get("azione", ""), st.get("resp", ""), scad_obj or st.get("scad", ""),
-                ]
-                ws3.append(row)
-                n_rows3 += 1
-                r = n_rows3 + 1
-                ws3.cell(row=r, column=1).fill = NC_FILL
-                ws3.cell(row=r, column=2).number_format = "dd/mm/yyyy"
-                if scad_obj:
-                    ws3.cell(row=r, column=10).number_format = "dd/mm/yyyy"
-    if n_rows3:
-        ws3.add_table(Table(
-            displayName="TabNC",
-            ref=f"A1:{get_column_letter(len(cols3))}{ws3.max_row}",
-            tableStyleInfo=TableStyleInfo(name="TableStyleMedium2", showRowStripes=True),
-        ))
-    _style_body(ws3, (7, 8))
-    _autofit(ws3, [14, 11, 16, 20, 11, 9, 30, 30, 16, 12])
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    print(f"[export sopralluoghi] {len(verbali)} verbali · import openpyxl {_t_imp - _t0:.2f}s · mongo {_t_db - _t_imp:.2f}s · build+save {time.perf_counter() - _t_db:.2f}s")
-    filename = f"sopralluoghi_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
-    return Response(
-        content=buf.getvalue(),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-@app.get("/api/sopralluoghi/next-codice")
-async def sopralluogo_next_codice(sess: dict = Depends(_require_staff_session)):
-    """Restituisce il prossimo codice verbale progressivo."""
-    last = await sopralluoghi_col.find_one({}, sort=[("codice_verbale", -1)])
-    next_n = 1
-    if last and last.get("codice_verbale"):
-        try:
-            next_n = int(str(last["codice_verbale"]).split("-")[-1]) + 1
-        except (ValueError, IndexError):
-            count = await sopralluoghi_col.count_documents({})
-            next_n = count + 1
-    year = _now_iso()[:4]
-    return {"codice": f"VBS-{year}-{next_n:04d}", "numero": next_n}
-
-
-_CK_ESITI = {"C", "NC", "NA"}
-_CK_CATEGORIE = ("qualita", "sicurezza", "collaudo")
-
-
-def _sanitize_checklist(raw: dict | None) -> dict:
-    """Normalizza la checklist DL ricevuta dal frontend: esito valido (o vuoto),
-    campi di non conformità solo per gli item NC; nota libera per-item sempre
-    ammessa, indipendente dall'esito. La 'segnalazione cliente' è un flag del
-    solo verbale (non per-item). Un item è mantenuto se ha un esito valido
-    oppure una nota valorizzata."""
-    out = {sez: {} for sez in _CK_CATEGORIE}
-    out["note_generali"] = ""
-    if not isinstance(raw, dict):
-        return out
-    out["note_generali"] = str(raw.get("note_generali", "")).strip()[:4000]
-    for sez in _CK_CATEGORIE:
-        blocco = raw.get(sez) or {}
-        if not isinstance(blocco, dict):
-            continue
-        for item_id, st in blocco.items():
-            if not isinstance(st, dict):
-                continue
-            esito = str(st.get("e", "")).strip().upper()
-            if esito not in _CK_ESITI:
-                esito = ""
-            nota = str(st.get("nota", "")).strip()[:2000]
-            dim = str(st.get("dim", "")).strip()[:120]
-            if not esito and not nota and not dim:
-                continue
-            rec = {"e": esito, "nota": nota}
-            if dim:
-                rec["dim"] = dim
-            if esito == "NC":
-                rec.update({
-                    "rilievo": str(st.get("rilievo", "")).strip(),
-                    "azione":  str(st.get("azione", "")).strip(),
-                    "resp":    str(st.get("resp", "")).strip(),
-                    "scad":    str(st.get("scad", "")).strip(),
-                })
-            out[sez][str(item_id).strip()[:20]] = rec
-    return out
-
-
-def _checklist_counts(ck: dict) -> dict:
-    tot = {"C": 0, "NC": 0, "NA": 0}
-    nc_ids = []
-    for sez in _CK_CATEGORIE:
-        for item_id, st in (ck.get(sez) or {}).items():
-            e = st.get("e")
-            if e in tot:
-                tot[e] += 1
-            if e == "NC":
-                nc_ids.append(item_id)
-    return {
-        "checklist_conformi":     tot["C"],
-        "checklist_non_conformi": tot["NC"],
-        "checklist_na":           tot["NA"],
-        "checklist_compilati":    tot["C"] + tot["NC"] + tot["NA"],
-        "checklist_nc_ids":       ", ".join(sorted(nc_ids)),
-    }
-
-
-@app.post("/api/sopralluoghi")
-async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_session)):
-    """Salva un verbale di sopralluogo su MongoDB (unica fonte, nessun export CSV su GitHub).
-    Le foto (se presenti, come data URL base64) vengono caricate su GitHub in
-    sopralluoghi/foto/{codice_verbale}/ per non saturare lo storage MongoDB gratuito."""
-    # ── Validazione (prima di qualunque upload/scrittura) ────────────────────
-    _p = payload or {}
-    _ck = _sanitize_checklist(_p.get("checklist"))
-    _origine = str(_p.get("verbale_origine", "")).strip()
-    _segn = bool(_p.get("segnalazione_cliente", False)) and not _origine
-    _esito_segn = str(_p.get("esito_segnalazione", "")).strip().lower() if _segn else ""
-    if _segn and _esito_segn not in ("confermata", "non_confermata"):
-        raise HTTPException(422, "Segnalazione cliente: indicare se è confermata o non confermata")
-    _ncs = [(sez, i, st) for sez in _CK_CATEGORIE for i, st in _ck[sez].items() if st.get("e") == "NC"]
-    if _segn and _esito_segn == "confermata" and not _ncs:
-        raise HTTPException(422, "Segnalazione confermata: almeno un punto della checklist deve essere non conforme")
-    for _sez, _i, _st in _ncs:
-        if not _st.get("azione") or not _st.get("scad"):
-            raise HTTPException(422, f"Non conformità {_i}: azione correttiva e scadenza sono obbligatorie")
-    # Segnalazione al System: obbligatoria in ogni verbale (anche nelle verifiche)
-    _sys_manc = [lab for k, lab in (("subsystem", "SubSystem"), ("data_invio_system", "data invio"),
-                                    ("metodo_invio", "metodo di invio"), ("rif_system_invio", "riferimento invio"))
-                 if not (_sopr_date_iso(str(_p.get(k, "")).strip()) if k == "data_invio_system" else str(_p.get(k, "")).strip())]
-    if _sys_manc:
-        raise HTTPException(422, "Segnalazione al System: compilare " + ", ".join(_sys_manc))
-    if _origine:
-        _parent = await sopralluoghi_col.find_one({"codice_verbale": _origine})
-        if not _parent:
-            raise HTTPException(422, f"Verbale di origine {_origine} non trovato")
-        _pck = _parent.get("checklist") or {}
-        _miss = [i for sez in _CK_CATEGORIE for i, st in (_pck.get(sez) or {}).items()
-                 if isinstance(st, dict) and st.get("e") == "NC" and not (_ck[sez].get(i) or {}).get("e")]
-        if _miss:
-            raise HTTPException(422, "Sopralluogo di verifica: compilare l'esito di tutti i punti da riverificare (" + ", ".join(sorted(_miss)) + ")")
-
-    last = await sopralluoghi_col.find_one({}, sort=[("codice_verbale", -1)])
-    next_n = 1
-    if last and last.get("codice_verbale"):
-        try:
-            next_n = int(str(last["codice_verbale"]).split("-")[-1]) + 1
-        except (ValueError, IndexError):
-            count = await sopralluoghi_col.count_documents({})
-            next_n = count + 1
-    year = _now_iso()[:4]
-    codice = f"VBS-{year}-{next_n:04d}"
-
-    # Upload foto su GitHub (max 8, ciascuna come data URL base64 dal frontend)
-    foto_urls = []
-    foto_in = (payload or {}).get("foto") or []
-    for i, foto in enumerate(foto_in[:8]):
-        try:
-            data_url = foto.get("dataUrl", "") if isinstance(foto, dict) else str(foto)
-            if "," not in data_url:
-                continue
-            header, b64data = data_url.split(",", 1)
-            ext = "jpg"
-            if "png" in header:
-                ext = "png"
-            elif "webp" in header:
-                ext = "webp"
-            img_bytes = base64.b64decode(b64data)
-            github_path = f"sopralluoghi/foto/{codice}/foto_{i+1}.{ext}"
-            await _push_to_github(img_bytes, path=github_path, label=f"foto {i+1} — {codice}")
-            raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/{github_path}"
-            foto_urls.append(raw_url)
-        except Exception as e:
-            print(f"[sopralluoghi] errore upload foto {i+1}: {e}")
-
-    record = {
-        "codice_verbale":      codice,
-        "data_sopralluogo":    str((payload or {}).get("data_sopralluogo", "")).strip(),
-        "lotto":               str((payload or {}).get("lotto", "")).strip(),
-        "tratta_id":           str((payload or {}).get("tratta_id", "")).strip(),
-        "impresa":             str((payload or {}).get("impresa", sess["nome"])).strip(),
-        "referente_impresa":   str((payload or {}).get("referente_impresa", "")).strip(),
-        "referente_retelit":   str((payload or {}).get("referente_retelit", "")).strip(),
-        "comune":              str((payload or {}).get("comune", "")).strip(),
-        "localita":            str((payload or {}).get("localita", "")).strip(),
-        "pozzetto":            str((payload or {}).get("pozzetto", "")).strip()[:80],   # codice pozzetto (deep-link da mappa.html)
-        "categoria":           "pozzetto" if str((payload or {}).get("categoria", "")).strip().lower() == "pozzetto" else "",   # verbale tipologia pozzetto
-        "tipo_intervento":     str((payload or {}).get("tipo_intervento", "")).strip(),
-        "esito":               str((payload or {}).get("esito", "")).strip(),
-        "segnalazione_cliente": _segn,
-        "segnalazione_cliente_note": (
-            str(_p.get("segnalazione_cliente_note", "")).strip()[:2000] if _segn else ""
-        ),
-        "esito_segnalazione":  _esito_segn,
-        # Segnalazione al System (obbligatoria in ogni verbale): passa alle issue e finisce nel loro storico
-        "subsystem":           str(_p.get("subsystem", "")).strip()[:200],
-        "data_invio_system":   _sopr_date_iso(str(_p.get("data_invio_system", "")).strip()),
-        "metodo_invio":        str(_p.get("metodo_invio", "")).strip()[:100],
-        "rif_system_invio":    str(_p.get("rif_system_invio", "")).strip()[:300],
-        "verbale_origine":     _origine,
-        "tipo":                "verifica" if _origine else "sopralluogo",
-        "note":                str((payload or {}).get("note", "")).strip(),
-        "segnalazioni":        str((payload or {}).get("segnalazioni", "")).strip(),
-        "azioni_richieste":    str((payload or {}).get("azioni_richieste", "")).strip(),
-        "scadenza_azioni":     str((payload or {}).get("scadenza_azioni", "")).strip(),
-        "prossimo_sopralluogo": str((payload or {}).get("prossimo_sopralluogo", "")).strip(),
-        "firma_impresa":       str((payload or {}).get("firma_impresa", "")).strip(),
-        "firma_retelit":       str((payload or {}).get("firma_retelit", "")).strip(),
-        "foto_urls":           ", ".join(foto_urls),
-        "created_at":          _now_iso(),
-    }
-    record["checklist"] = _ck
-    record.update(_checklist_counts(_ck))
-    await sopralluoghi_col.insert_one(record)
-    _schedule_sopralluoghi_csv_regen(f"nuovo verbale: {codice}")
-    asyncio.create_task(_issue_sync_safe([record]))  # NC → issue nel registro (e verifiche conformi → issue risolte)
-    return {"ok": True, "codice_verbale": codice, "foto_urls": foto_urls}
-
-
-# SOLLECITI — registro solleciti per tratta/pratica
-# ─────────────────────────────────────────────────────────────────────────────
-# Ogni sollecito viene scritto direttamente su MongoDB (senza approvazione admin).
-# Nessuna sincronizzazione su GitHub: MongoDB è l'unica fonte (rev. TODO-versione).
-# ═════════════════════════════════════════════════════════════════════════════
-
-SOLLECITI_COLS = ["_id", "tratta_id", "pratica", "ente", "tipo_permesso", "stato_permesso",
-                  "lunghezza", "data_richiesta", "data_ultima_modifica",
-                  "numero_sollecito", "tipo_sollecito", "data_sollecito", "note", "impresa", "created_at"]
-
-
-@app.get("/api/imprese/solleciti")
-async def get_solleciti(sess: dict = Depends(_require_session)):
-    """Restituisce i solleciti dell'impresa autenticata, filtrati per le tratte dei suoi lotti."""
-    nome = sess["nome"]
-    # Recupera i lotti assegnati
-    assignment = await _find_assignment(nome)
-    if not assignment:
-        return {"solleciti": [], "count": 0}
-    lotti = {_lotto_from_source(l) for l in (assignment.get("lotti") or []) if str(l).strip()}
-
-    # Legge le tratte dei lotti dell'impresa dal Master.csv (match esatto, non substring:
-    # "Lotto 2" non deve agganciare "Lotto 2A" — stesso criterio di impresa_pratiche/get_cantieri_impresa)
-    try:
-        df = await _read_master_csv()
-        tratte_impresa: set[str] = set()
-        if "Source.Name" in df.columns and lotti:
-            mask = df["Source.Name"].apply(lambda x: _lotto_from_source(x) in lotti)
-            tratte_impresa.update(df.loc[mask, "TRATTA_ID"].astype(str).str.strip().tolist())
-    except Exception:
-        tratte_impresa = set()
-
-    cur = solleciti_col.find(
-        {"tratta_id": {"$in": list(tratte_impresa)}} if tratte_impresa else {"impresa": nome}
-    ).sort("created_at", -1).limit(500)
-    items = []
-    async for d in cur:
-        d["_id"] = str(d["_id"])
-        items.append(d)
-    return {"solleciti": items, "count": len(items)}
-
-
-async def _touch_data_update(tratta_id: str, pratica: str, tipo_permesso: str = "") -> None:
-    """Aggiorna DATA_UPDATE=oggi SOLO sull'ultima riga storicizzata del gruppo
-    tratta+tipo_permesso toccato da un sollecito. Un TRATTA_ID può avere più iter
-    (es. AUTORIZZAZIONE e NULLA OSTA sulla stessa tratta) e ciascun iter più righe
-    storicizzate nel tempo (una per nota/cambio stato): mascherare solo su TRATTA_ID
-    le toccava TUTTE, retro-datando a oggi anche note storiche vecchie (bug segnalato
-    dall'utente: note vecchie duplicate con data odierna nel popup Storico Note)."""
-    try:
-        async with _master_csv_lock:
-            df = await _read_master_csv()
-            if "DATA_UPDATE" not in df.columns or "TRATTA_ID" not in df.columns:
-                return
-            mask = df["TRATTA_ID"].astype(str).str.strip() == str(tratta_id).strip()
-            if tipo_permesso and "TIPO_PERMESSO" in df.columns:
-                mask_t = mask & (df["TIPO_PERMESSO"].astype(str).str.strip().str.upper() == tipo_permesso.strip().upper())
-                if mask_t.any():
-                    mask = mask_t
-            idx = df.index[mask].tolist()
-            if not idx:
-                return
-            df.loc[idx[-1], "DATA_UPDATE"] = datetime.now(timezone.utc).strftime("%d/%m/%Y")
-            await _write_master_csv(df, note=f"Sollecito tratta {tratta_id} pratica {pratica}: touch DATA_UPDATE")
-    except Exception as e:
-        print(f"[_touch_data_update] {e}")
-
-
-async def _touch_data_update_multi(keys: list) -> None:
-    """Come _touch_data_update ma per più pratiche in un solo read+write di Master.csv."""
-    try:
-        async with _master_csv_lock:
-            df = await _read_master_csv()
-            if "DATA_UPDATE" not in df.columns or "TRATTA_ID" not in df.columns:
-                return
-            oggi = datetime.now(timezone.utc).strftime("%d/%m/%Y")
-            any_hit = False
-            has_tipo = "TIPO_PERMESSO" in df.columns
-            for tratta_id, pratica, tipo_permesso in keys:
-                mask = df["TRATTA_ID"].astype(str).str.strip() == str(tratta_id).strip()
-                if tipo_permesso and has_tipo:
-                    mask_t = mask & (df["TIPO_PERMESSO"].astype(str).str.strip().str.upper() == tipo_permesso.strip().upper())
-                    if mask_t.any():
-                        mask = mask_t
-                idx = df.index[mask].tolist()
-                if idx:
-                    df.loc[idx[-1], "DATA_UPDATE"] = oggi
-                    any_hit = True
-            if any_hit:
-                await _write_master_csv(df, note=f"Solleciti bulk ({len(keys)}): touch DATA_UPDATE")
-    except Exception as e:
-        print(f"[_touch_data_update_multi] {e}")
-
-
-@app.post("/api/imprese/solleciti")
-async def add_sollecito(payload: dict, sess: dict = Depends(_require_session)):
-    """Inserisce un nuovo sollecito. Scrittura diretta senza approvazione admin."""
-    nome = sess["nome"]
-    tratta_id    = str((payload or {}).get("tratta_id", "")).strip()
-    pratica      = str((payload or {}).get("pratica", "")).strip()
-    tipo         = str((payload or {}).get("tipo_sollecito", "")).strip()
-    data_sol     = str((payload or {}).get("data_sollecito", "")).strip()
-    note         = str((payload or {}).get("note", "")).strip()
-    ente         = str((payload or {}).get("ente", "")).strip()
-    tipo_perm    = str((payload or {}).get("tipo_permesso", "")).strip()
-    stato_perm   = str((payload or {}).get("stato_permesso", "")).strip()
-    lunghezza    = str((payload or {}).get("lunghezza", "")).strip()
-    data_rich    = str((payload or {}).get("data_richiesta", "")).strip()
-    data_ult_mod = str((payload or {}).get("data_ultima_modifica", "")).strip()
-    try:
-        numero_sol = int((payload or {}).get("numero_sollecito") or 1)
-    except (TypeError, ValueError):
-        numero_sol = 1
-
-    if not tratta_id:
-        raise HTTPException(400, "tratta_id obbligatorio")
-    if tipo not in ("PEC", "MAIL", "TELEFONICO"):
-        raise HTTPException(400, "tipo_sollecito deve essere PEC, MAIL o TELEFONICO")
-    if not data_sol:
-        raise HTTPException(400, "data_sollecito obbligatoria")
-    _dt_sol = _parse_it_date(data_sol)
-    if _dt_sol and _dt_sol.date() > datetime.now(timezone.utc).date():
-        raise HTTPException(400, "data_sollecito non può essere futura")
-
-    record = {
-        "tratta_id":           tratta_id,
-        "pratica":             pratica,
-        "tipo_sollecito":      tipo,
-        "data_sollecito":      data_sol,
-        "note":                note,
-        "impresa":             nome,
-        "ente":                ente,
-        "tipo_permesso":       tipo_perm,
-        "stato_permesso":      stato_perm,
-        "lunghezza":           lunghezza,
-        "data_richiesta":      data_rich,
-        "data_ultima_modifica": data_ult_mod,
-        "numero_sollecito":    numero_sol,
-        "created_at":          _now_iso(),
-    }
-    res = await solleciti_col.insert_one(record)
-    asyncio.create_task(_touch_data_update(tratta_id, pratica, tipo_perm))
-    _schedule_solleciti_csv_regen(f"nuovo sollecito: {tratta_id}")
-    return {"ok": True, "id": str(res.inserted_id)}
-
-
-@app.post("/api/imprese/solleciti/bulk-insert")
-async def bulk_insert_solleciti(payload: dict, sess: dict = Depends(_require_session)):
-    """Inserisce più solleciti in una sola chiamata e fa un unico push GitHub."""
-    nome  = sess["nome"]
-    items = (payload or {}).get("items", [])
-    if not items or not isinstance(items, list):
-        raise HTTPException(400, "items obbligatorio")
-
-    inserted = []
-    touch_keys = []
-    for item in items:
-        tratta_id = str(item.get("tratta_id", "")).strip()
-        tipo      = str(item.get("tipo_sollecito", "")).strip()
-        data_sol  = str(item.get("data_sollecito", "")).strip()
-        if not tratta_id or tipo not in ("PEC", "MAIL", "TELEFONICO") or not data_sol:
-            continue
-        _dt_sol = _parse_it_date(data_sol)
-        if _dt_sol and _dt_sol.date() > datetime.now(timezone.utc).date():
-            continue
-        record = {
-            "tratta_id":           tratta_id,
-            "pratica":             str(item.get("pratica", "")).strip(),
-            "tipo_sollecito":      tipo,
-            "data_sollecito":      data_sol,
-            "note":                str(item.get("note", "")).strip(),
-            "impresa":             nome,
-            "ente":                str(item.get("ente", "")).strip(),
-            "tipo_permesso":       str(item.get("tipo_permesso", "")).strip(),
-            "stato_permesso":      str(item.get("stato_permesso", "")).strip(),
-            "lunghezza":           str(item.get("lunghezza", "")).strip(),
-            "data_richiesta":      str(item.get("data_richiesta", "")).strip(),
-            "data_ultima_modifica": str(item.get("data_ultima_modifica", "")).strip(),
-            "numero_sollecito":    int(item.get("numero_sollecito") or 1),
-            "created_at":          _now_iso(),
-        }
-        res = await solleciti_col.insert_one(record)
-        inserted.append(str(res.inserted_id))
-        touch_keys.append((tratta_id, record["pratica"], record["tipo_permesso"]))
-
-    if inserted:
-        asyncio.create_task(_touch_data_update_multi(touch_keys))
-        _schedule_solleciti_csv_regen(f"bulk-insert: {len(inserted)} solleciti")
-    return {"ok": True, "inserted": inserted, "count": len(inserted)}
-
-
-@app.delete("/api/imprese/solleciti/{sol_id}")
-async def delete_sollecito(sol_id: str, sess: dict = Depends(_require_session)):
-    """L'impresa può eliminare solo i propri solleciti."""
-    try:
-        oid = ObjectId(sol_id)
-    except Exception:
-        raise HTTPException(400, "ID non valido")
-    doc = await solleciti_col.find_one({"_id": oid})
-    if not doc:
-        raise HTTPException(404, "Sollecito non trovato")
-    if doc.get("impresa") != sess["nome"]:
-        raise HTTPException(403, "Non autorizzato")
-    await solleciti_col.delete_one({"_id": oid})
-    _schedule_solleciti_csv_regen(f"eliminazione sollecito: {sol_id}")
-    return {"deleted": sol_id}
-
-
-
-
-@app.get("/api/admin/solleciti")
-async def admin_get_solleciti(
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q:        Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    """Restituisce tutti i solleciti (vista admin, senza filtro impresa)."""
-    _check_token(x_upload_token or token_q)
-    items = []
-    async for d in solleciti_col.find({}).sort("data_sollecito", -1):
-        d["_id"] = str(d["_id"])
-        items.append(d)
-    return {"solleciti": items, "count": len(items)}
-
-
-@app.get("/api/staff/solleciti")
-async def staff_get_solleciti(sess: dict = Depends(_require_staff_session)):
-    """Restituisce tutti i solleciti per le pagine staff (index.html ecc.), letti
-    direttamente da MongoDB — non dipende dal push/deploy su GitHub Pages, a
-    differenza dal vecchio CSV statico, ormai rimosso (vedi AGENT_BRIEF)."""
-    items = []
-    async for d in solleciti_col.find({}).sort("created_at", -1):
-        items.append({
-            "pratica":  str(d.get("pratica", "") or ""),
-            "tratta":   str(d.get("tratta_id", "") or ""),
-            "tipo":     str(d.get("tipo_sollecito", "") or ""),
-            "data":     str(d.get("data_sollecito", "") or ""),
-            "note":     str(d.get("note", "") or ""),
-            "impresa":  str(d.get("impresa", "") or ""),
-        })
-    return {"solleciti": items, "count": len(items)}
-
-@app.post("/api/imprese/solleciti/bulk-delete")
-async def bulk_delete_solleciti(payload: dict, sess: dict = Depends(_require_session)):
-    """Elimina più solleciti in una sola chiamata e fa un unico push GitHub."""
-    ids = (payload or {}).get("ids", [])
-    if not ids or not isinstance(ids, list):
-        raise HTTPException(400, "ids obbligatorio")
-    deleted = []
-    for sol_id in ids:
-        try:
-            oid = ObjectId(str(sol_id))
-        except Exception:
-            continue
-        doc = await solleciti_col.find_one({"_id": oid})
-        if not doc or doc.get("impresa") != sess["nome"]:
-            continue
-        await solleciti_col.delete_one({"_id": oid})
-        deleted.append(str(sol_id))
-    if deleted:
-        _schedule_solleciti_csv_regen(f"bulk-delete: {len(deleted)} solleciti")
-    return {"deleted": deleted, "count": len(deleted)}
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# CANTIERI — stato avanzamento scavi per PRATICA di AUTORIZZAZIONE
-# ─────────────────────────────────────────────────────────────────────────────
-# Un cantiere = una pratica di AUTORIZZAZIONE ottenuta (non una singola tratta:
-# una stessa autorizzazione può coprire più tratte). Il NULLA OSTA/ORDINANZA
-# non sono un cantiere a sé: sono permessi accessori che possono mancare su
-# alcune tratte della stessa autorizzazione. Quelle tratte restano elencate
-# nel cantiere con 'lavorabile'=false, ma è un flag SOLO indicativo (usato
-# in mappa per colorare le tratte non ancora cantierabili): NON esclude i
-# metri dal totale rendicontabile dall'impresa. metri_totali conta sempre
-# tutta la lunghezza della pratica autorizzata.
-#
-# Flusso:
-#   1. Ogni volta che il Master.csv viene aggiornato, _sync_cantieri() raggruppa
-#      le tratte con AUTORIZZAZIONE OTTENUTA per (ente, numero pratica, lotto)
-#      e crea/aggiorna un documento cantiere per pratica.
-#   2. L'impresa aggiorna giornalmente i metri realizzati e lo stato cantiere
-#      a livello di pratica (un solo stato/contatore per tutte le tratte).
-#   3. scavi.html legge GET /api/cantieri (pubblico) per popolare i grafici.
-# ═════════════════════════════════════════════════════════════════════════════
-
-STATO_CANTIERE_VALUES = ["non_avviato", "allestimento", "in_corso", "sospeso", "completato"]
-TECNICA_SCAVO_VALUES  = ["trincea", "no_dig", "canaletta", ""]
-
-
-async def _max_codice_per_lotto() -> dict:
-    """Numero massimo di codice_cantiere (CA/N/lotto) già assegnato per ciascun
-    lotto, per continuare la sequenza senza mai riassegnare un numero usato."""
-    cache: dict[str, int] = {}
-    async for d in cantieri_col.find(
-        {"codice_cantiere": {"$regex": "^CA/"}}, {"lotto": 1, "codice_cantiere": 1}
-    ):
-        m = re.match(r"^CA/(\d+)/", d.get("codice_cantiere", ""))
-        if not m:
-            continue
-        lotto = d.get("lotto", "")
-        cache[lotto] = max(cache.get(lotto, 0), int(m.group(1)))
-    return cache
-
-
-async def _backfill_codici_cantiere(cache: dict) -> int:
-    """Assegna codice_cantiere ai cantieri creati prima dell'introduzione del
-    campo. Progressivo stabile per lotto — una volta scritto su un documento
-    non viene mai più toccato, nemmeno da sync successivi. Ordine pratica_id
-    (unico riferimento disponibile per i cantieri storici, non essendoci un
-    timestamp di creazione)."""
-    n = 0
-    async for d in cantieri_col.find(
-        {"$or": [{"codice_cantiere": {"$exists": False}}, {"codice_cantiere": ""}]}
-    ).sort([("lotto", 1), ("pratica_id", 1)]):
-        lotto = d.get("lotto", "")
-        cache[lotto] = cache.get(lotto, 0) + 1
-        codice = f"CA/{cache[lotto]}/{lotto}"
-        await cantieri_col.update_one({"_id": d["_id"]}, {"$set": {"codice_cantiere": codice}})
-        n += 1
-    if n:
-        print(f"[sync_cantieri] assegnato codice_cantiere a {n} cantieri storici")
-    return n
-
-
-async def _dedupe_codici_cantiere(cache: dict) -> int:
-    """Ripara codice_cantiere duplicati già presenti in Mongo (causati dalla race
-    condition di _sync_cantieri risolta con _cantieri_sync_lock — v. commento sopra
-    la definizione del lock: due esecuzioni concorrenti potevano leggere lo stesso
-    _max_codice_per_lotto() e assegnare lo stesso codice a due pratiche diverse).
-    Per ogni codice duplicato mantiene invariato il documento più vecchio (_id più
-    basso) e riassegna un nuovo codice progressivo ai restanti."""
-    groups: dict[str, list] = {}
-    async for d in cantieri_col.find(
-        {"codice_cantiere": {"$regex": "^CA/"}}, {"lotto": 1, "codice_cantiere": 1}
-    ):
-        groups.setdefault(d["codice_cantiere"], []).append(d)
-
-    n = 0
-    for codice, docs in groups.items():
-        if len(docs) < 2:
-            continue
-        docs.sort(key=lambda d: d["_id"])
-        for d in docs[1:]:  # il primo (più vecchio) mantiene il codice originale
-            lotto = d.get("lotto", "")
-            cache[lotto] = cache.get(lotto, 0) + 1
-            nuovo = f"CA/{cache[lotto]}/{lotto}"
-            await cantieri_col.update_one({"_id": d["_id"]}, {"$set": {"codice_cantiere": nuovo}})
-            print(f"[sync_cantieri] riassegnato codice duplicato {codice} → {nuovo} (_id={d['_id']})")
-            n += 1
-    return n
-
-
-async def _regenerate_cantieri_csv(note: str = "") -> str | None:
-    """Rigenera Cantieri.csv (snapshot corrente della collection cantieri) come
-    file derivato in GridFS — compare in 'File correnti' come Master.csv/QGIS,
-    scaricabile con lo stesso bottone 'Scarica'. Fire-and-forget: eventuali
-    errori vengono solo loggati."""
-    try:
-        cols = [
-            "codice_cantiere", "pratica_id", "ente", "lotto", "cluster", "impresa",
-            "provincia", "comune", "stato_cantiere", "tecnica_scavo",
-            "metri_scavati", "metri_totali", "metri_totali_potenziali",
-            "data_inizio_prevista", "data_inizio_effettiva",
-            "data_fine_prevista", "data_fine_effettiva",
-            "motivo_blocco", "data_ripresa_stimata", "note", "updated_at", "log_count",
-        ]
-        buf = io.StringIO()
-        w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
-        w.writeheader()
-        n = 0
-        async for d in cantieri_col.find({}).sort("pratica_id", 1):
-            d["log_count"] = len(d.get("log") or [])
-            w.writerow({k: d.get(k, "") for k in cols})
-            n += 1
-        data = buf.getvalue().encode("utf-8-sig")  # BOM per apertura corretta in Excel
-        gid = await _store_derived_file(CANTIERI_FILENAME, data, "text/csv", note)
-        print(f"[cantieri_csv] rigenerato Cantieri.csv ({n} righe)")
-        return gid
-    except Exception as e:
-        print(f"[cantieri_csv] errore rigenerazione: {type(e).__name__}: {e}")
-        return None
-
-
-def _schedule_cantieri_csv_regen(note: str = "") -> None:
-    asyncio.create_task(_regenerate_cantieri_csv(note))
-
-
-async def _regenerate_sopralluoghi_csv(note: str = "") -> str | None:
-    """Rigenera sopralluoghi.csv come file derivato in GridFS a partire dalla
-    collection sopralluoghi_col (unica fonte dei verbali) — sostituisce il
-    vecchio seed statico rimosso dal repo, compare in 'File correnti' con lo
-    stesso bottone 'Scarica'. Fire-and-forget: eventuali errori solo loggati."""
-    try:
-        cols = [
-            "codice_verbale", "data_sopralluogo", "lotto", "tratta_id", "impresa",
-            "referente_impresa", "referente_retelit", "comune", "localita",
-            "tipo_intervento", "esito", "segnalazione_cliente", "note", "segnalazioni", "azioni_richieste",
-            "scadenza_azioni", "prossimo_sopralluogo", "firma_impresa",
-            "firma_retelit", "foto_urls",
-            "checklist_conformi", "checklist_non_conformi", "checklist_na",
-            "checklist_compilati", "checklist_nc_ids", "segnalazione_cliente_note",
-            "esito_segnalazione", "verbale_origine", "tipo",
-            "subsystem", "data_invio_system", "metodo_invio", "rif_system_invio",
-            "created_at",
-        ]
-        buf = io.StringIO()
-        w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
-        w.writeheader()
-        n = 0
-        async for d in sopralluoghi_col.find({}).sort("codice_verbale", 1):
-            row = {k: d.get(k, "") for k in cols}
-            row["segnalazione_cliente"] = "SI" if d.get("segnalazione_cliente") else "NO"
-            w.writerow(row)
-            n += 1
-        data = buf.getvalue().encode("utf-8-sig")
-        gid = await _store_derived_file(SOPRALLUOGHI_FILENAME, data, "text/csv", note)
-        print(f"[sopralluoghi_csv] rigenerato sopralluoghi.csv ({n} righe)")
-        return gid
-    except Exception as e:
-        print(f"[sopralluoghi_csv] errore rigenerazione: {type(e).__name__}: {e}")
-        return None
-
-
-def _schedule_sopralluoghi_csv_regen(note: str = "") -> None:
-    asyncio.create_task(_regenerate_sopralluoghi_csv(note))
-
-
-async def _regenerate_solleciti_csv(note: str = "") -> str | None:
-    """Rigenera solleciti.csv come file derivato in GridFS a partire dalla
-    collection solleciti_col — compare in 'File correnti' con lo stesso
-    bottone 'Scarica'. Fire-and-forget: eventuali errori solo loggati."""
-    try:
-        cols = [
-            "tratta_id", "pratica", "tipo_sollecito", "data_sollecito", "note",
-            "impresa", "ente", "tipo_permesso", "stato_permesso", "lunghezza",
-            "data_richiesta", "data_ultima_modifica", "numero_sollecito", "created_at",
-        ]
-        buf = io.StringIO()
-        w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
-        w.writeheader()
-        n = 0
-        async for d in solleciti_col.find({}).sort("data_sollecito", -1):
-            w.writerow({k: d.get(k, "") for k in cols})
-            n += 1
-        data = buf.getvalue().encode("utf-8-sig")
-        gid = await _store_derived_file(SOLLECITI_FILENAME, data, "text/csv", note)
-        print(f"[solleciti_csv] rigenerato solleciti.csv ({n} righe)")
-        return gid
-    except Exception as e:
-        print(f"[solleciti_csv] errore rigenerazione: {type(e).__name__}: {e}")
-        return None
-
-
-def _schedule_solleciti_csv_regen(note: str = "") -> None:
-    asyncio.create_task(_regenerate_solleciti_csv(note))
-
-
-async def _sync_cantieri() -> int:
-    """Wrapper serializzato: vedi _sync_cantieri_impl per la logica. Il lock evita
-    che due esecuzioni concorrenti assegnino lo stesso codice_cantiere (v. commento
-    su _cantieri_sync_lock)."""
-    async with _cantieri_sync_lock:
-        result = await _sync_cantieri_impl()
-    _schedule_cantieri_csv_regen("sync da Master.csv")
-    return result
-
-
-async def _sync_cantieri_impl() -> int:
-    """Raggruppa le tratte con AUTORIZZAZIONE OTTENUTA per pratica (ente, numero,
-    lotto) e crea/aggiorna un documento cantiere per pratica. metri_totali conta
-    TUTTE le tratte della pratica (autorizzazione ottenuta), indipendentemente
-    da 'lavorabile': quel flag è solo indicativo per la visualizzazione in
-    mappa (NULLA OSTA/ORDINANZA ottenuti) e non deve limitare i metri che
-    un'impresa può rendicontare come scavati sul cantiere.
-    Ritorna il numero di nuovi cantieri (nuove pratiche) creati."""
-    try:
-        df = await _read_master_csv()
-        summary = _compute_tratta_summary(df)
-    except Exception as e:
-        print(f"[sync_cantieri] errore lettura master: {e}")
-        return 0
-
-    # CLUSTER/PROVINCIA/COMUNE non esistono in Master.csv: vengono recuperati da
-    # Riepilogo_progettazione.csv (che li eredita da QGIS.geojson), indicizzati
-    # per TRATTA_ID. Fail-soft: se il file non è disponibile i cantieri vengono
-    # comunque creati, semplicemente senza questi tre campi.
-    geo_by_tratta: dict[str, dict] = {}
-    try:
-        riep_df = await _read_riepilogo_csv()
-        if riep_df is not None and "TRATTA_ID" in riep_df.columns:
-            for _, row in riep_df.iterrows():
-                tid = str(row.get("TRATTA_ID", "")).strip()
-                if not tid:
-                    continue
-                geo_by_tratta[tid] = {
-                    "cluster":   str(row.get("CLUSTER", "")).strip(),
-                    "provincia": str(row.get("PROVINCIA", "")).strip(),
-                    "comune":    str(row.get("COMUNE", "")).strip(),
-                }
-    except Exception as e:
-        print(f"[sync_cantieri] errore lettura riepilogo (cluster/provincia/comune): {e}")
-
-    codice_cache = await _max_codice_per_lotto()
-    await _backfill_codici_cantiere(codice_cache)
-    await _dedupe_codici_cantiere(codice_cache)
-
-    # Mappa lotto → impresa assegnata (stessa fonte di /api/lotti-cantieri) per
-    # popolare/backfillare 'impresa' sia sui cantieri esistenti che su quelli nuovi.
-    lotto_impresa: dict[str, str] = {}
-    async for a in assignments_col.find({}, {"nome": 1, "lotti": 1}):
-        nome_impresa = a.get("nome", "")
-        for l in (a.get("lotti") or []):
-            lotto_norm = _lotto_from_source(l)
-            if lotto_norm:
-                lotto_impresa[lotto_norm] = nome_impresa
-
-    groups: dict[tuple, dict] = {}
-    for tratta_id, info in summary.items():
-        if info.get("STATO_AUTORIZZAZIONE") != "OTTENUTO":
-            continue  # niente cantiere finché l'autorizzazione non è ottenuta
-        pratica_num = (info.get("PRATICA_AUT") or "").strip()
-        if not pratica_num:
-            continue
-        rows = df[df["TRATTA_ID"].astype(str).str.strip() == tratta_id]
-        lotto = _lotto_from_source(rows.iloc[0].get("Source.Name", "")) if not rows.empty else ""
-        geo   = geo_by_tratta.get(tratta_id, {})
-        cluster   = geo.get("cluster", "")
-        provincia = geo.get("provincia", "")
-        comune    = geo.get("comune", "")
-        try:
-            raw_lung = info.get("LUNGHEZZA", 0)
-            lunghezza = 0.0 if pd.isna(raw_lung) else float(str(raw_lung).replace(",", "."))
-        except Exception:
-            lunghezza = 0.0
-
-        ente_display = re.sub(r"\s+", " ", str(info.get("ENTE", ""))).strip()
-        ente_key = ente_display.upper()
-        key = (ente_key, pratica_num, lotto)
-        g = groups.setdefault(key, {
-            "cantiere_key": f"{pratica_num}|{lotto}|{ente_key}",
-            "pratica_id": f"AUT/{pratica_num}/{lotto}",
-            "ente": ente_display, "lotto": lotto, "cluster": cluster,
-            "tratte": [],
-        })
-        g["tratte"].append({
-            "tratta_id":  tratta_id,
-            "lunghezza":  lunghezza,
-            "lavorabile": info.get("LAVORABILE") == "SI",
-            "motivo_no":  info.get("MOTIVO_NO", ""),
-            "provincia":  provincia,
-            "comune":     comune,
-        })
-
-    created = 0
-    stato_rank = {s: i for i, s in enumerate(STATO_CANTIERE_VALUES)}
-    for key, g in groups.items():
-        # metri_totali = tutte le tratte della pratica (autorizzazione ottenuta),
-        # a prescindere da 'lavorabile' — quel flag è solo per la mappa e non
-        # deve ridurre il totale su cui l'impresa rendiconta i metri scavati.
-        metri_totali     = sum(t["lunghezza"] for t in g["tratte"])
-        metri_totali_pot = sum(t["lunghezza"] for t in g["tratte"])
-        # provincia/comune del cantiere: il valore più frequente tra le sue tratte
-        provincia_count = Counter(t["provincia"] for t in g["tratte"] if t.get("provincia"))
-        comune_count     = Counter(t["comune"]    for t in g["tratte"] if t.get("comune"))
-        provincia_cantiere = provincia_count.most_common(1)[0][0] if provincia_count else ""
-        comune_cantiere     = comune_count.most_common(1)[0][0] if comune_count else ""
-
-        existing = await cantieri_col.find_one({"cantiere_key": g["cantiere_key"]})
-        if existing:
-            await cantieri_col.update_one(
-                {"_id": existing["_id"]},
-                {"$set": {
-                    "tratte": g["tratte"], "lotto": g["lotto"], "cluster": g["cluster"],
-                    "metri_totali": metri_totali, "metri_totali_potenziali": metri_totali_pot,
-                    "provincia": provincia_cantiere, "comune": comune_cantiere,
-                    "impresa": lotto_impresa.get(g["lotto"], existing.get("impresa", "")),
-                }},
-            )
-            continue
-
-        # Migrazione best-effort: se esistevano già documenti del VECCHIO schema
-        # (1 per tratta_id, pre-raggruppamento per pratica), recupera l'avanzamento
-        # già inserito dall'impresa prima di accorparli nel nuovo cantiere.
-        tratta_ids = [t["tratta_id"] for t in g["tratte"]]
-        old_docs = await cantieri_col.find(
-            {"tratta_id": {"$in": tratta_ids}, "pratica_id": {"$exists": False}}
-        ).to_list(length=None)
-
-        metri_scavati  = sum(float(d.get("metri_scavati", 0) or 0) for d in old_docs)
-        old_log = [
-            {**entry, "tratta_id": d.get("tratta_id")}
-            for d in old_docs for entry in d.get("log", [])
-        ]
-        stato_cantiere = max(
-            (d.get("stato_cantiere", "non_avviato") for d in old_docs),
-            key=lambda s: stato_rank.get(s, 0), default="non_avviato",
-        )
-        tecnica_scavo = next((d.get("tecnica_scavo") for d in old_docs if d.get("tecnica_scavo")), "")
-        impresa       = lotto_impresa.get(g["lotto"]) or next((d.get("impresa") for d in old_docs if d.get("impresa")), "")
-
-        codice_cache[g["lotto"]] = codice_cache.get(g["lotto"], 0) + 1
-        codice_cantiere = f"CA/{codice_cache[g['lotto']]}/{g['lotto']}"
-
-        doc = {
-            "cantiere_key": g["cantiere_key"],
-            "codice_cantiere": codice_cantiere,
-            "pratica_id": g["pratica_id"], "ente": g["ente"], "lotto": g["lotto"], "cluster": g["cluster"],
-            "provincia": provincia_cantiere, "comune": comune_cantiere,
-            "tratte": g["tratte"],
-            "metri_totali": metri_totali, "metri_totali_potenziali": metri_totali_pot,
-            "stato_cantiere": stato_cantiere, "tecnica_scavo": tecnica_scavo,
-            "data_inizio_prevista": "", "data_inizio_effettiva": "",
-            "data_fine_prevista": "", "data_fine_effettiva": "",
-            "metri_scavati": metri_scavati, "note": "",
-            "motivo_blocco": "", "data_ripresa_stimata": "",
-            "impresa": impresa, "updated_at": _now_iso(),
-            "log": old_log,
-        }
-        await cantieri_col.insert_one(doc)
-        if old_docs:
-            await cantieri_col.delete_many({"_id": {"$in": [d["_id"] for d in old_docs]}})
-        created += 1
-
-    # Pulizia doppioni: cantieri creati prima dell'introduzione di 'cantiere_key'
-    # (schema intermedio: solo pratica_id+ente, niente cantiere_key) oppure prima
-    # della normalizzazione di 'ente' (spazi multipli/maiuscole diverse → stessa
-    # pratica vista come due chiavi diverse). $nin su un campo assente include
-    # anche i documenti dove il campo non esiste affatto (schema intermedio).
-    touched_keys = {g["cantiere_key"] for g in groups.values()}
-    merged = 0
-    async for orphan in cantieri_col.find({
-        "pratica_id": {"$exists": True},
-        "cantiere_key": {"$nin": list(touched_keys)},
-    }):
-        m = re.match(r"^AUT/(.+)/([^/]+)$", orphan.get("pratica_id") or "")
-        if not m:
-            continue
-        o_num, o_lotto = m.group(1), m.group(2)
-        o_ente_key = re.sub(r"\s+", " ", str(orphan.get("ente", ""))).strip().upper()
-        target_key = f"{o_num}|{o_lotto}|{o_ente_key}"
-        if target_key == orphan.get("cantiere_key") or target_key not in touched_keys:
-            continue  # non è un doppione da normalizzazione: lascialo (es. autorizzazione non più OTTENUTA)
-        target = await cantieri_col.find_one({"cantiere_key": target_key})
-        if not target:
-            continue
-        await cantieri_col.update_one(
-            {"_id": target["_id"]},
-            {"$inc": {"metri_scavati": float(orphan.get("metri_scavati", 0) or 0)},
-             "$push": {"log": {"$each": orphan.get("log", [])}}},
-        )
-        await cantieri_col.delete_one({"_id": orphan["_id"]})
-        merged += 1
-    if merged:
-        print(f"[sync_cantieri] uniti {merged} cantieri duplicati (variazioni di formattazione ente)")
-
-    if created:
-        print(f"[sync_cantieri] creati {created} nuovi cantieri (per pratica)")
-    return created
-
-
-
-# ── Endpoint pubblico: lista cantieri ────────────────────────────────────────
-
-@app.get("/api/cantieri")
-async def get_cantieri(lotto: str = "", cluster: str = "", stato: str = "", sess: dict = Depends(_require_staff_session)):
-    """Lista cantieri (pubblica), uno per pratica di autorizzazione. Filtrabile
-    per lotto, cluster, stato."""
-    q: dict = {}
-    if lotto:   q["lotto"]          = lotto
-    if cluster: q["cluster"]        = cluster
-    if stato:   q["stato_cantiere"] = stato
-    items = []
-    cil = {c["cantiere_key"]: c async for c in cantieri_cil_col.find({}, {"cantiere_key": 1, "data_cil": 1, "updated_by": 1, "updated_at": 1})}
-    async for d in cantieri_col.find(q).sort("pratica_id", 1):
-        d["_id"] = str(d["_id"])
-        d["log_count"] = len(d.get("log") or [])   # segnala se l'impresa ha mai fatto un aggiornamento
-        d.pop("log", None)   # non esporre lo storico nel listing
-        c = cil.get(d.get("cantiere_key"))
-        d["data_cil"] = (c or {}).get("data_cil", "")
-        d["data_cil_by"] = (c or {}).get("updated_by", "")
-        items.append(d)
-    return {"cantieri": items, "count": len(items)}
-
-
-_CIL_ROLES = ("dl", "admin", "admin2")
-
-
-@app.put("/api/cantieri/{cantiere_key:path}/cil")
-async def set_cantiere_cil(cantiere_key: str, payload: dict, sess: dict = Depends(_require_staff_session)):
-    """Imposta la Data CIL di un cantiere (solo DL e admin/admin2). Body: {"data_cil": "AAAA-MM-GG"} oppure "" per cancellarla.
-    Salvata in `cantieri_cil` (non nel documento del cantiere) con storico delle modifiche."""
-    if sess.get("ruolo") not in _CIL_ROLES:
-        raise HTTPException(403, "La Data CIL può essere inserita solo dalla Direzione Lavori")
-    val = str((payload or {}).get("data_cil", "") or "").strip()
-    if val:
-        try:
-            datetime.strptime(val, "%Y-%m-%d")
-        except ValueError:
-            raise HTTPException(422, "Data CIL non valida (formato AAAA-MM-GG)")
-    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key}, {"codice_cantiere": 1, "pratica_id": 1})
-    if not doc:
-        raise HTTPException(404, "Cantiere non trovato")
-    prev = await cantieri_cil_col.find_one({"cantiere_key": cantiere_key}, {"data_cil": 1})
-    old = (prev or {}).get("data_cil", "")
-    if old == val:
-        return {"ok": True, "data_cil": val, "unchanged": True}
-    now = _now_iso()
-    utente = sess.get("nome", "")
-    await cantieri_cil_col.update_one(
-        {"cantiere_key": cantiere_key},
-        {"$set": {"data_cil": val, "codice_cantiere": doc.get("codice_cantiere", ""), "pratica_id": doc.get("pratica_id", ""),
-                  "updated_by": utente, "updated_at": now},
-         "$push": {"storico": {"ts": now, "utente": utente, "ruolo": sess.get("ruolo"), "da": old, "a": val}}},
-        upsert=True,
-    )
-    return {"ok": True, "data_cil": val, "data_cil_by": utente}
-
-
-@app.post("/api/external/pratica-status")
-async def external_pratica_status(
-    payload: dict,
-    x_sync_token: Annotated[str | None, Header(alias="x-sync-token")] = None,
-):
-    """Endpoint READ-ONLY dedicato alla sincronizzazione cross-progetto con QTS:
-    le tratte in concomitanza hanno la pratica di autorizzazione aperta e
-    seguita qui su ENRI, non su QTS/Telebit — QTS deve poter leggere lo stato
-    corrente senza duplicare la pratica. La corrispondenza tra i due progetti
-    NON è per TRATTA_ID (numerazioni indipendenti, spesso più tratte QTS ->
-    una sola pratica ENRI) ma per identità di pratica: ente + tipo_permesso +
-    numero + lotto, la stessa chiave usata da /api/admin/pratiche-search.
-
-    Body atteso: {"items": [{"ente": str, "tipo_permesso": "AUTORIZZAZIONE"|
-    "NULLA OSTA"|"ORDINANZA", "numero": str, "lotto": str}, ...]}
-
-    Protetto da QTS_SYNC_TOKEN, separato da UPLOAD_TOKEN: nessuna scrittura,
-    nessun dato oltre lo stato delle pratiche esplicitamente richieste (mai
-    l'intero Master.csv)."""
-    _check_qts_sync_token(x_sync_token)
-    items = (payload or {}).get("items") or []
-    if not items:
-        raise HTTPException(400, "Body 'items' obbligatorio (lista di {ente, tipo_permesso, numero, lotto})")
-
-    df = await _read_master_csv()
-    if df is None or df.empty:
-        return {"pratiche": [{**it, "trovata": False} for it in items], "checked_at": _now_iso()}
-    work = df.fillna("")
-    work = work.assign(_lotto=work["Source.Name"].apply(_lotto_from_source))
-    ente_col   = work["ENTE"].astype(str).str.strip().str.upper()
-    tipo_col   = work["TIPO_PERMESSO"].astype(str).str.strip().str.upper()
-    numero_col = work["PRATICA"].astype(str).str.strip()
-
-    out = []
-    for it in items:
-        ente   = str(it.get("ente", "")).strip()
-        tipo   = str(it.get("tipo_permesso", "")).strip().upper()
-        numero = str(it.get("numero", "")).strip()
-        lotto  = str(it.get("lotto", "")).strip().upper()
-        match = work[
-            (ente_col == ente.upper()) & (tipo_col == tipo) &
-            (numero_col == numero) & (work["_lotto"] == lotto)
-        ]
-        if match.empty:
-            out.append({"ente": ente, "tipo_permesso": tipo, "numero": numero, "lotto": lotto, "trovata": False})
-            continue
-        rep = match.iloc[-1]  # ultima riga inserita per questa pratica = stato attuale
-        out.append({
-            "ente": ente, "tipo_permesso": tipo, "numero": numero, "lotto": lotto,
-            "trovata": True,
-            "stato_permesso": str(rep.get("STATO_PERMESSO", "")).strip(),
-            "data_richiesta": str(rep.get("DATA_RICHIESTA", "")).strip(),
-            "data_approvazione": str(rep.get("DATA_APPROVAZIONE", "")).strip(),
-            "data_prevista_rilascio": str(rep.get("DATA_PREVISTA_RILASCIO", "")).strip(),
-            "nota": str(rep.get("NOTE", "")).strip(),
-        })
-    return {"pratiche": out, "checked_at": _now_iso()}
-
-
-@app.get("/api/cantieri/scavi-timeseries")
-async def get_scavi_timeseries(
-    lotto: str = "",
-    data_da: str = "",
-    data_a: str = "",
-    sess: dict = Depends(_require_staff_session),
-):
-    """Serie storica metri scavati per giorno e impresa, aggregata sui log dei
-    cantieri (vedi update_cantiere/log_entry). Usata dal grafico 'Scavi nel
-    tempo' (mappa.html, vista Scavi). Filtro opzionale per lotto e per
-    intervallo date inclusivo (formato YYYY-MM-DD, confrontabile come
-    stringa grazie al formato ISO); se omesse copre l'intero storico.
-    Aggregazione fatta lato Mongo per evitare N+1 fetch (un cantiere per
-    pratica, ciascuno col proprio storico log)."""
-    pipeline: list = []
-    if lotto:
-        pipeline.append({"$match": {"lotto": lotto}})
-    pipeline.append({"$unwind": "$log"})
-    log_match: dict = {"log.metri_realizzati": {"$gt": 0}}
-    data_range: dict = {}
-    if data_da: data_range["$gte"] = data_da
-    if data_a:  data_range["$lte"] = data_a
-    if data_range:
-        log_match["log.data"] = data_range
-    pipeline.append({"$match": log_match})
-    pipeline.append({
-        "$group": {
-            "_id": {"data": "$log.data", "impresa": "$log.impresa"},
-            "metri": {"$sum": "$log.metri_realizzati"},
-        }
-    })
-    out = []
-    async for d in cantieri_col.aggregate(pipeline):
-        out.append({"data": d["_id"]["data"], "impresa": d["_id"]["impresa"] or "N/D", "metri": round(d["metri"], 1)})
-    out.sort(key=lambda x: (x["data"], x["impresa"]))
-    return {"serie": out, "count": len(out)}
-
-
-@app.get("/api/cantieri/{cantiere_key:path}/log")
-async def get_cantiere_log_public(cantiere_key: str, sess: dict = Depends(_require_staff_session)):
-    """Storico aggiornamenti di un cantiere (pubblico, sola lettura — no session).
-    Usato dal 'Registro Cantiere' in scavi.html."""
-    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
-    if not doc:
-        raise HTTPException(404, "Cantiere non trovato")
-    return {"log": doc.get("log", []), "cantiere_key": cantiere_key, "pratica_id": doc.get("pratica_id")}
-
-
-# ── Meteo cantiere: il server fornisce SOLO le coordinate (centroide tratte).
-# Le chiamate a Open-Meteo le fa il browser (IP dell'utente → niente 429 da IP condiviso Render).
-_centroidi_cache: dict = {"exp": 0.0, "map": {}}   # tratta_id -> (lat, lon)
-
-
-def _flatten_coords(c):
-    if c and isinstance(c[0], (int, float)):
-        yield c
-    else:
-        for x in (c or []):
-            yield from _flatten_coords(x)
-
-
-async def _tratta_centroidi() -> dict:
-    """Centroide (media vertici) per TRATTA_ID da QGIS.geojson, cache 1h."""
-    if _centroidi_cache["exp"] > time.time() and _centroidi_cache["map"]:
-        return _centroidi_cache["map"]
-    geo = await _read_current_geojson(QGIS_FILENAME)
-    out: dict = {}
-    for f in ((geo or {}).get("features") or []):
-        tid = str((f.get("properties") or {}).get("TRATTA_ID", "")).strip()
-        pts = list(_flatten_coords((f.get("geometry") or {}).get("coordinates")))
-        if tid and pts:
-            out[tid] = (sum(p[1] for p in pts) / len(pts), sum(p[0] for p in pts) / len(pts))
-    _centroidi_cache.update({"exp": time.time() + 3600, "map": out})
-    return out
-
-
-@app.get("/api/cantieri/{cantiere_key:path}/coord")
-async def get_cantiere_coord(cantiere_key: str, sess: dict = Depends(_require_staff_session)):
-    """Coordinate (media dei centroidi delle tratte) per il meteo lato browser."""
-    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
-    if not doc:
-        raise HTTPException(404, "Cantiere non trovato")
-    centroidi = await _tratta_centroidi()
-    pts = [centroidi[t["tratta_id"]] for t in (doc.get("tratte") or []) if t.get("tratta_id") in centroidi]
-    if not pts:
-        raise HTTPException(404, "Coordinate non disponibili per le tratte del cantiere")
-    comuni = Counter(t.get("comune") for t in (doc.get("tratte") or []) if t.get("comune"))
-    return {"lat": round(sum(p[0] for p in pts) / len(pts), 2),
-            "lon": round(sum(p[1] for p in pts) / len(pts), 2),
-            "comune": comuni.most_common(1)[0][0] if comuni else ""}
-
-
-# ── Endpoint impresa: aggiornamento giornaliero ───────────────────────────────
-
-@app.get("/api/admin/actions")
-async def list_admin_actions(
-    limit: int = 100,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    """Log azioni admin (upload/delete/restore/prune) — vedi _log_admin_action."""
-    _check_token(x_upload_token or token_q)
-    cur = admin_actions_col.find({}).sort("timestamp", -1).limit(min(limit, 500))
-    items = [_serialize(d) async for d in cur]
-    return {"actions": items, "count": len(items)}
-
-
-@app.post("/api/admin/prune-versions")
-async def admin_prune_versions(
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """One-shot: applica KEEP_VERSIONS all'arretrato già esistente (il prune
-    automatico dopo ogni upload agisce solo sui filename toccati da quel momento in poi)."""
-    _check_token(x_upload_token or token_q)
-    filenames = await uploads_col.distinct("filename", {"deleted_at": None})
-    result = {}
-    for fn in filenames:
-        result[fn] = await _prune_old_versions(fn)
-    await _log_admin_action("prune_versions", ",".join(filenames) or "-", x_actor_nome)
-    return {"pruned": result, "keep_versions": KEEP_VERSIONS}
-
-
-@app.delete("/api/admin/sopralluoghi/reset")
-async def admin_reset_sopralluoghi(
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    """Svuota la collection sopralluoghi (solo test/dev)."""
-    _check_token(x_upload_token or token_q)
-    deleted = (await sopralluoghi_col.delete_many({})).deleted_count
-    _schedule_sopralluoghi_csv_regen("reset totale")
-    return {"deleted": deleted}
-
-
-@app.delete("/api/admin/cantieri/reset")
-async def admin_reset_cantieri(
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    """Svuota la collection cantieri (solo test/dev) e la ricrea da Master.csv."""
-    _check_token(x_upload_token or token_q)
-    deleted = (await cantieri_col.delete_many({})).deleted_count
-    created = await _sync_cantieri()
-    return {"deleted": deleted, "recreated": created}
-
-
-@app.get("/api/admin/sync-cantieri")
-async def admin_sync_cantieri(
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-):
-    """Forza la sincronizzazione dei cantieri (solo admin)."""
-    _check_token(x_upload_token or token_q)
-    created = await _sync_cantieri()
-    total = await cantieri_col.count_documents({})
-    return {"created": created, "total_cantieri": total}
-
-
-_STATI_AVVIATO = {"in_corso", "sospeso", "completato"}
-
-
-def _campi_correnti_da_log(log: list) -> dict:
-    """Riallinea i campi 'correnti' del cantiere all'ultima riga di log rimasta,
-    dopo una correzione/eliminazione admin. Senza questo, stato, tecnica, note,
-    motivo blocco, ripresa e date effettive restavano quelli del caricamento
-    eliminato. Le date effettive si svuotano solo se incoerenti col log rimasto
-    (mai avviato → niente inizio effettivo; ultimo stato non 'completato' → niente fine)."""
-    if not log:
-        return {"stato_cantiere": "non_avviato", "tecnica_scavo": "", "note": "",
-                "motivo_blocco": "", "data_ripresa_stimata": "",
-                "data_inizio_effettiva": "", "data_fine_effettiva": ""}
-    last = log[-1]
-    out = {
-        "stato_cantiere": last.get("stato_cantiere") or "non_avviato",
-        "tecnica_scavo": last.get("tecnica_scavo") or "",
-        "note": last.get("note") or "",
-        "motivo_blocco": last.get("motivo_blocco") or "",
-        "data_ripresa_stimata": last.get("data_ripresa_stimata") or "",
-    }
-    if last.get("impresa"):
-        out["impresa"] = last["impresa"]
-    if not any(e.get("stato_cantiere") in _STATI_AVVIATO for e in log):
-        out["data_inizio_effettiva"] = ""
-    if out["stato_cantiere"] != "completato":
-        out["data_fine_effettiva"] = ""
-    return out
-
-
-@app.put("/api/admin/cantieri/{cantiere_key:path}/log/{idx}")
-async def admin_update_cantiere_log_entry(
-    cantiere_key: str,
-    idx: int,
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Corregge una singola riga di storico (log) di un cantiere — es. un
-    caricamento errato inserito da un'impresa. metri_scavati viene
-    ricalcolato come somma di tutte le righe di log rimaste (coerente con
-    l'accumulo di POST /api/imprese/cantieri/{key}) e i campi correnti
-    (stato, tecnica, note…) sono riallineati all'ultima riga rimasta."""
-    _check_token(x_upload_token or token_q)
-    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
-    if not doc:
-        raise HTTPException(404, "Cantiere non trovato")
-    log = doc.get("log") or []
-    if idx < 0 or idx >= len(log):
-        raise HTTPException(404, "Voce di storico non trovata")
-
-    allowed = {
-        "data", "impresa", "stato_cantiere", "tecnica_scavo",
-        "metri_realizzati", "note", "motivo_blocco", "data_ripresa_stimata",
-    }
-    entry = dict(log[idx])
-    for k, v in (payload or {}).items():
-        if k not in allowed:
-            continue
-        if k == "stato_cantiere" and v not in STATO_CANTIERE_VALUES:
-            raise HTTPException(400, f"stato_cantiere non valido: {v}")
-        if k == "tecnica_scavo" and v and v not in TECNICA_SCAVO_VALUES:
-            raise HTTPException(400, f"tecnica_scavo non valida: {v}")
-        if k == "metri_realizzati":
-            try:
-                v = max(0.0, float(v))
-            except Exception:
-                raise HTTPException(400, "metri_realizzati deve essere un numero")
-        entry[k] = v
-    log[idx] = entry
-
-    metri_scavati = sum(float(e.get("metri_realizzati") or 0) for e in log)
-    await cantieri_col.update_one(
-        {"cantiere_key": cantiere_key},
-        {"$set": {"log": log, "metri_scavati": metri_scavati, **_campi_correnti_da_log(log), "updated_at": _now_iso()}},
-    )
-    await _log_admin_action("update_cantiere_log", f"{cantiere_key}#{idx}", x_actor_nome)
-    _schedule_cantieri_csv_regen(f"correzione log: {cantiere_key}#{idx}")
-    return {"ok": True, "cantiere_key": cantiere_key, "idx": idx, "metri_scavati": metri_scavati}
-
-
-@app.put("/api/admin/cantieri/{cantiere_key:path}")
-async def admin_update_cantiere(
-    cantiere_key: str,
-    payload: dict,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Correzione admin di un cantiere: a differenza di POST /api/imprese/cantieri/{key}
-    (scrittura impresa, metri_scavati SEMPRE in accumulo via $inc), qui i campi passati
-    vengono impostati DIRETTAMENTE — utile per correggere dati di test/errati senza dover
-    passare da un valore negativo (non ammesso) o azzerare tutto il cantiere.
-    Non tocca il log storico salvo che 'clear_log' sia True."""
-    _check_token(x_upload_token or token_q)
-    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
-    if not doc:
-        raise HTTPException(404, "Cantiere non trovato")
-
-    allowed = {
-        "stato_cantiere", "tecnica_scavo", "metri_scavati",
-        "data_inizio_prevista", "data_inizio_effettiva",
-        "data_fine_prevista", "data_fine_effettiva",
-        "note", "motivo_blocco", "data_ripresa_stimata", "impresa",
-    }
-    mongo_set: dict = {}
-    for k, v in (payload or {}).items():
-        if k not in allowed:
-            continue
-        if k == "stato_cantiere" and v not in STATO_CANTIERE_VALUES:
-            raise HTTPException(400, f"stato_cantiere non valido: {v}")
-        if k == "tecnica_scavo" and v and v not in TECNICA_SCAVO_VALUES:
-            raise HTTPException(400, f"tecnica_scavo non valida: {v}")
-        if k == "metri_scavati":
-            try:
-                v = max(0.0, float(v))
-            except Exception:
-                raise HTTPException(400, "metri_scavati deve essere un numero")
-        mongo_set[k] = v
-
-    mongo_update: dict = {"$set": mongo_set} if mongo_set else {}
-    if payload.get("clear_log"):
-        mongo_update["$set"] = {**mongo_set, "log": []}
-    if not mongo_update:
-        raise HTTPException(400, "Nessun campo valido da aggiornare")
-    mongo_update["$set"]["updated_at"] = _now_iso()
-
-    await cantieri_col.update_one({"cantiere_key": cantiere_key}, mongo_update)
-    await _log_admin_action("update_cantiere", cantiere_key, x_actor_nome)
-    _schedule_cantieri_csv_regen(f"correzione admin: {cantiere_key}")
-    return {"ok": True, "cantiere_key": cantiere_key}
-
-
-@app.delete("/api/admin/cantieri/{cantiere_key:path}/log/{idx}")
-async def admin_delete_cantiere_log_entry(
-    cantiere_key: str,
-    idx: int,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Elimina una singola riga di storico (es. caricamento di test/duplicato)
-    senza toccare le altre. metri_scavati e campi correnti (stato, tecnica, note,
-    date effettive incoerenti…) ricalcolati sulle righe rimaste."""
-    _check_token(x_upload_token or token_q)
-    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
-    if not doc:
-        raise HTTPException(404, "Cantiere non trovato")
-    log = doc.get("log") or []
-    if idx < 0 or idx >= len(log):
-        raise HTTPException(404, "Voce di storico non trovata")
-    del log[idx]
-
-    metri_scavati = sum(float(e.get("metri_realizzati") or 0) for e in log)
-    await cantieri_col.update_one(
-        {"cantiere_key": cantiere_key},
-        {"$set": {"log": log, "metri_scavati": metri_scavati, **_campi_correnti_da_log(log), "updated_at": _now_iso()}},
-    )
-    await _log_admin_action("delete_cantiere_log", f"{cantiere_key}#{idx}", x_actor_nome)
-    _schedule_cantieri_csv_regen(f"eliminazione log: {cantiere_key}#{idx}")
-    return {"ok": True, "cantiere_key": cantiere_key, "idx": idx, "metri_scavati": metri_scavati}
-
-
-@app.delete("/api/admin/cantieri/{cantiere_key:path}/reset")
-async def admin_reset_single_cantiere(
-    cantiere_key: str,
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    token_q: Annotated[str | None, Query(alias="x_upload_token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Riporta UN SOLO cantiere allo stato 'pristino' (non_avviato, 0 metri, log
-    vuoto) senza toccare gli altri e senza ricrearlo — a differenza di
-    DELETE /api/admin/cantieri/reset che svuota TUTTA la collection. Utile per
-    rimuovere avanzamenti di test inseriti per errore da un'impresa. Metadati
-    (cantiere_key, codice_cantiere, pratica_id, ente, lotto, metri_totali, impresa)
-    restano invariati."""
-    _check_token(x_upload_token or token_q)
-    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
-    if not doc:
-        raise HTTPException(404, "Cantiere non trovato")
-    await cantieri_col.update_one(
-        {"cantiere_key": cantiere_key},
-        {"$set": {
-            "stato_cantiere": "non_avviato", "tecnica_scavo": "",
-            "data_inizio_prevista": "", "data_inizio_effettiva": "",
-            "data_fine_prevista": "", "data_fine_effettiva": "",
-            "metri_scavati": 0.0, "note": "",
-            "motivo_blocco": "", "data_ripresa_stimata": "",
-            "log": [], "updated_at": _now_iso(),
-        }},
-    )
-    await _log_admin_action("reset_single_cantiere", cantiere_key, x_actor_nome)
-    _schedule_cantieri_csv_regen(f"reset singolo: {cantiere_key}")
-    return {"ok": True, "cantiere_key": cantiere_key}
-
-
-@app.get("/api/imprese/cantieri")
-async def get_cantieri_impresa(sess: dict = Depends(_require_session)):
-    """Cantieri (per pratica) nei lotti dell'impresa autenticata."""
-    nome = sess["nome"]
-    assignment = await _find_assignment(nome)
-    if not assignment:
-        return {"cantieri": [], "count": 0, "debug": "no assignment found"}
-    # Normalizza i lotti dell'impresa con _lotto_from_source
-    raw_lotti = [str(l) for l in (assignment.get("lotti") or [])]
-    lotti = [_lotto_from_source(l) for l in raw_lotti]
-    items = []
-    async for d in cantieri_col.find({}).sort("pratica_id", 1):
-        d["_id"] = str(d["_id"])
-        d["log_count"] = len(d.get("log") or [])
-        d.pop("log", None)
-        cant_lotto = _lotto_from_source(str(d.get("lotto") or ""))
-        if cant_lotto in lotti:
-            items.append(d)
-    return {"cantieri": items, "count": len(items)}
-
-
-@app.post("/api/imprese/cantieri/{cantiere_key:path}")
-async def update_cantiere(cantiere_key: str, payload: dict, sess: dict = Depends(_require_session)):
-    """L'impresa aggiorna lo stato cantiere e i metri realizzati oggi (a livello
-    di pratica: un solo stato/contatore per tutte le tratte della pratica).
-    cantiere_key (non pratica_id) perché pratica_id ('AUT/24/1A') non è garantito
-    univoco tra enti diversi sullo stesso lotto/numero."""
-    nome = sess["nome"]
-    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
-    if not doc:
-        raise HTTPException(404, "Cantiere non trovato")
-
-    # Verifica che la pratica appartenga ai lotti dell'impresa
-    assignment = await _find_assignment(nome)
-    raw_lotti = [str(l) for l in ((assignment or {}).get("lotti") or [])]
-    lotti = [_lotto_from_source(l) for l in raw_lotti]
-    if _lotto_from_source(str(doc.get("lotto") or "")) not in lotti:
-        raise HTTPException(403, "Pratica non assegnata a questa impresa")
-
-    # Campi aggiornabili dall'impresa
-    allowed = {
-        "stato_cantiere", "tecnica_scavo",
-        "data_inizio_prevista", "data_inizio_effettiva",
-        "data_fine_prevista", "data_fine_effettiva",
-        "metri_realizzati_oggi",   # campo speciale: viene accumulato
-        "note", "motivo_blocco", "data_ripresa_stimata",
-        "data_aggiornamento",      # solo per il log: giorno a cui si riferisce l'aggiornamento
-    }
-    update: dict = {}
-    for k, v in (payload or {}).items():
-        if k not in allowed:
-            continue
-        if k == "stato_cantiere" and v not in STATO_CANTIERE_VALUES:
-            raise HTTPException(400, f"stato_cantiere non valido: {v}")
-        if k == "tecnica_scavo" and v not in TECNICA_SCAVO_VALUES:
-            raise HTTPException(400, f"tecnica_scavo non valida: {v}")
-        if k not in ("metri_realizzati_oggi", "data_aggiornamento"):
-            update[k] = v
-
-    # Giorno dell'aggiornamento: di default oggi (ora italiana); l'impresa può
-    # indicare un giorno passato (max 30 gg) per recuperare un caricamento dimenticato.
-    oggi_it = datetime.now(ZoneInfo("Europe/Rome")).date()
-    data_agg = oggi_it.isoformat()
-    if payload.get("data_aggiornamento"):
-        try:
-            d_agg = datetime.strptime(str(payload["data_aggiornamento"])[:10], "%Y-%m-%d").date()
-        except ValueError:
-            raise HTTPException(400, "data_aggiornamento non valida (formato AAAA-MM-GG)")
-        if d_agg > oggi_it:
-            raise HTTPException(400, "data_aggiornamento non può essere nel futuro")
-        if d_agg < oggi_it - timedelta(days=30):
-            raise HTTPException(400, "data_aggiornamento troppo vecchia (massimo 30 giorni indietro)")
-        data_agg = d_agg.isoformat()
-
-    nuovo_stato = payload.get("stato_cantiere", doc.get("stato_cantiere"))
-    if nuovo_stato == "allestimento" and not payload.get("data_inizio_prevista") and not doc.get("data_inizio_prevista"):
-        raise HTTPException(400, "data_inizio_prevista obbligatoria per lo stato Allestimento")
-    if nuovo_stato == "in_corso" and not doc.get("data_inizio_effettiva") and not payload.get("data_inizio_effettiva"):
-        raise HTTPException(400, "data_inizio_effettiva obbligatoria al primo avvio cantiere")
-    if nuovo_stato == "completato" and not payload.get("data_fine_effettiva") and not doc.get("data_fine_effettiva"):
-        raise HTTPException(400, "data_fine_effettiva obbligatoria per chiudere il cantiere")
-
-    # Accumula metri giornalieri (con cap su metri_totali)
-    metri_oggi = 0.0
-    if "metri_realizzati_oggi" in payload:
-        try:
-            metri_oggi = max(0.0, float(payload["metri_realizzati_oggi"]))
-        except Exception:
-            raise HTTPException(400, "metri_realizzati_oggi deve essere un numero")
-        metri_totali   = float(doc.get("metri_totali", 0) or 0)
-        metri_scavati_attuali = float(doc.get("metri_scavati", 0) or 0)
-        rimanenti = max(0.0, metri_totali - metri_scavati_attuali)
-        if metri_totali > 0 and metri_oggi > rimanenti:
-            raise HTTPException(
-                400,
-                f"Metri inseriti ({metri_oggi:.0f}m) superano i metri rimanenti "
-                f"del cantiere ({rimanenti:.0f}m su {metri_totali:.0f}m totali)."
-            )
-        update["$inc"] = {"metri_scavati": metri_oggi}
-
-    # Aggiornamento retrodatato (c'è già un log più recente): metri e riga di log
-    # vanno nel giorno giusto, ma NON si sovrascrivono stato/tecnica/note/date
-    # correnti del cantiere con dati più vecchi.
-    log_esistente = doc.get("log") or []
-    ultima_data = max((str(e.get("data") or "") for e in log_esistente), default="")
-    retrodatato = bool(ultima_data) and data_agg < ultima_data
-    if retrodatato:
-        update = {k: v for k, v in update.items() if k == "$inc"}
-    else:
-        update["impresa"] = nome
-    update["updated_at"] = _now_iso()
-
-    # Log entry giornaliero
-    log_entry = {
-        "data":                  data_agg,
-        "impresa":               nome,
-        "stato_cantiere":        payload.get("stato_cantiere", doc.get("stato_cantiere")),
-        "tecnica_scavo":         payload.get("tecnica_scavo", doc.get("tecnica_scavo")),
-        "metri_realizzati":      metri_oggi,
-        "note":                  payload.get("note", ""),
-        "motivo_blocco":         payload.get("motivo_blocco", ""),
-        "data_ripresa_stimata":  payload.get("data_ripresa_stimata", ""),
-    }
-
-    # Costruisci update MongoDB
-    mongo_set = {k: v for k, v in update.items() if k != "$inc"}
-    # inserisce la riga al posto giusto per data (dopo l'ultima con data <= nuova),
-    # così lo storico resta in ordine cronologico anche con retrodatazioni
-    pos = len(log_esistente)
-    while pos > 0 and str(log_esistente[pos - 1].get("data") or "") > data_agg:
-        pos -= 1
-    mongo_update: dict = {"$set": mongo_set, "$push": {"log": {"$each": [log_entry], "$position": pos}}}
-    if "$inc" in update:
-        mongo_update["$inc"] = update["$inc"]
-
-    await cantieri_col.update_one({"cantiere_key": cantiere_key}, mongo_update)
-    _schedule_cantieri_csv_regen(f"aggiornamento impresa: {cantiere_key}")
-    return {"ok": True, "cantiere_key": cantiere_key, "pratica_id": doc.get("pratica_id")}
-
-
-@app.get("/api/imprese/cantieri/{cantiere_key:path}/log")
-async def get_cantiere_log(cantiere_key: str, sess: dict = Depends(_require_session)):
-    """Storico aggiornamenti giornalieri di un cantiere (pratica)."""
-    doc = await cantieri_col.find_one({"cantiere_key": cantiere_key})
-    if not doc:
-        raise HTTPException(404, "Cantiere non trovato")
-
-    # Verifica che la pratica appartenga ai lotti dell'impresa (stesso controllo di update_cantiere)
-    assignment = await _find_assignment(sess["nome"])
-    raw_lotti = [str(l) for l in ((assignment or {}).get("lotti") or [])]
-    lotti = [_lotto_from_source(l) for l in raw_lotti]
-    if _lotto_from_source(str(doc.get("lotto") or "")) not in lotti:
-        raise HTTPException(403, "Pratica non assegnata a questa impresa")
-
-    return {"log": doc.get("log", []), "cantiere_key": cantiere_key, "pratica_id": doc.get("pratica_id")}
-
-
-# ── Gantt: override manuali per riga (pct/date/label), indipendenti dagli ───
-# invii impresa — non tutte le fasi (es. materiali) derivano da un invio.
-# Chiave riga: {lotto}|{row_id}, row_id = indice della riga nell'array
-# GANTT_ROWS lato frontend (statico, quindi stabile).
-
-@app.get("/api/gantt/overrides")
-async def get_gantt_overrides(lotto: str = "", sess: dict = Depends(_require_staff_session)):
-    if not lotto:
-        raise HTTPException(400, "lotto required")
-    cur = gantt_overrides_col.find({"lotto": lotto})
-    out = {}
-    async for d in cur:
-        out[str(d["row_id"])] = {
-            "pct": d.get("pct"),
-            "start": d.get("start"),
-            "end": d.get("end"),
-            "date": d.get("date"),
-            "label": d.get("label"),
-            "sub": d.get("sub"),
-            "dep_pred": d.get("dep_pred"),
-            "dep_type": d.get("dep_type"),
-            "dep_lag": d.get("dep_lag"),
-            "updated_at": d.get("updated_at"),
-            "updated_by": d.get("updated_by"),
-        }
-    return {"lotto": lotto, "overrides": out}
-
-
-@app.put("/api/gantt/overrides/{lotto}/{row_id}")
-async def upsert_gantt_override(lotto: str, row_id: str, payload: dict, sess: dict = Depends(_require_admin_session)):
-    fields = {}
-    for k in ("pct", "start", "end", "date", "label", "sub", "dep_pred", "dep_type", "dep_lag"):
-        if k in (payload or {}):
-            fields[k] = payload[k]
-    if not fields:
-        raise HTTPException(400, "Nessun campo da aggiornare")
-    if "pct" in fields:
-        try:
-            fields["pct"] = max(0, min(100, int(fields["pct"])))
-        except (TypeError, ValueError):
-            raise HTTPException(400, "pct deve essere un intero 0-100")
-    if "dep_pred" in fields:
-        dep_pred = fields["dep_pred"]
-        if dep_pred in (None, ""):
-            fields["dep_pred"] = None
-        else:
-            try:
-                dep_pred_int = int(dep_pred)
-            except (TypeError, ValueError):
-                raise HTTPException(400, "dep_pred deve essere un id riga intero")
-            if str(dep_pred_int) == str(row_id):
-                raise HTTPException(400, "Un task non può dipendere da se stesso")
-            fields["dep_pred"] = dep_pred_int
-    if "dep_type" in fields and fields["dep_type"] not in ("FS", "SS"):
-        raise HTTPException(400, "dep_type deve essere 'FS' o 'SS'")
-    if "dep_lag" in fields:
-        try:
-            fields["dep_lag"] = max(0, int(fields["dep_lag"]))
-        except (TypeError, ValueError):
-            raise HTTPException(400, "dep_lag deve essere un intero >= 0")
-    doc = {"lotto": lotto, "row_id": row_id, **fields,
-           "updated_at": _now_iso(), "updated_by": sess["nome"]}
-    await gantt_overrides_col.update_one(
-        {"lotto": lotto, "row_id": row_id},
-        {"$set": doc, "$setOnInsert": {"created_at": _now_iso()}},
-        upsert=True,
-    )
-    return {"ok": True, "lotto": lotto, "row_id": row_id, **fields}
-
-
-@app.delete("/api/gantt/overrides/{lotto}/{row_id}")
-async def delete_gantt_override(lotto: str, row_id: str, sess: dict = Depends(_require_admin_session)):
-    """Ripristina il valore automatico/baseline per la riga (rimuove l'override manuale)."""
-    res = await gantt_overrides_col.delete_one({"lotto": lotto, "row_id": row_id})
-    return {"deleted": res.deleted_count}
-
-
-# ── Tasso di produzione scavo (m/giorno), configurabile per scope ────────────
-# scope è una stringa libera con 4 forme valide:
-#   "global"              → default di fallback, usato se nessuna regola più specifica esiste
-#   "lotto:<ID>"           es. "lotto:1A"
-#   "impresa:<NOME>"       es. "impresa:ROSSI SPA" (nome esatto come in assignments_col)
-#   "pratica:<CODICE>"     es. "pratica:AUT/1/1A" (codice pratica completo, univoco anche tra lotti)
-# Il frontend risolve la priorità (pratica > impresa > lotto > global) leggendo tutte le
-# regole in un colpo solo via GET e applicando la più specifica per ciascuna pratica.
-_GANTT_RATE_SCOPE_PREFIXES = ("lotto:", "impresa:", "pratica:")
-
-
-def _validate_gantt_rate_scope(scope: str) -> None:
-    if scope == "global" or scope.startswith(_GANTT_RATE_SCOPE_PREFIXES):
-        return
-    raise HTTPException(400, "scope deve essere 'global', 'lotto:<ID>', 'impresa:<NOME>' o 'pratica:<CODICE>'")
-
-
-@app.get("/api/gantt/rates")
-async def get_gantt_rates(sess: dict = Depends(_require_staff_session)):
-    cur = gantt_rates_col.find({})
-    out = {}
-    async for d in cur:
-        out[d["scope"]] = {
-            "m_giorno": d.get("m_giorno"),
-            "updated_at": d.get("updated_at"),
-            "updated_by": d.get("updated_by"),
-        }
-    return {"rates": out}
-
-
-@app.put("/api/gantt/rates/{scope:path}")
-async def upsert_gantt_rate(scope: str, payload: dict, sess: dict = Depends(_require_admin_session)):
-    _validate_gantt_rate_scope(scope)
-    try:
-        m_giorno = float((payload or {}).get("m_giorno"))
-    except (TypeError, ValueError):
-        raise HTTPException(400, "m_giorno deve essere un numero")
-    if m_giorno <= 0 or m_giorno > 10000:
-        raise HTTPException(400, "m_giorno deve essere un valore positivo plausibile (0-10000)")
-    doc = {"scope": scope, "m_giorno": m_giorno, "updated_at": _now_iso(), "updated_by": sess["nome"]}
-    await gantt_rates_col.update_one(
-        {"scope": scope},
-        {"$set": doc, "$setOnInsert": {"created_at": _now_iso()}},
-        upsert=True,
-    )
-    return {"ok": True, "scope": scope, "m_giorno": m_giorno}
-
-
-@app.delete("/api/gantt/rates/{scope:path}")
-async def delete_gantt_rate(scope: str, sess: dict = Depends(_require_admin_session)):
-    """Rimuove la regola per questo scope: la pratica ricade sul livello meno specifico successivo."""
-    res = await gantt_rates_col.delete_one({"scope": scope})
-    return {"deleted": res.deleted_count}
-
-
-# ── Trigger sync cantieri dopo approvazione Master.csv ───────────────────────
-# _sync_cantieri() è già chiamata alla fine di approve_pending_update
-# (vedi hook sotto) — aggiungiamo il trigger se non esiste
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# COORDINAMENTI (fase INVIO PRELIMINARE — richieste agli enti per pratica)
-# Una richiesta = un documento per (pratica, ente). Scrittura diretta dell'impresa
-# (nessuna approvazione admin, come solleciti/cantieri). Indipendente da Master.csv:
-# la pratica resta visibile anche dopo che lo stato Master passa a INVIATO.
-# ══════════════════════════════════════════════════════════════════════════════
-COORD_EDITABLE = {
-    "tipologia_invio", "contatto", "data_invio", "data_risposta",
-    "concomitanze", "concomitanze_note", "data_sopralluogo", "verbale",
-    "riferimento_protocollo", "prescrizioni", "note", "risposta_ricevuta",
-    # pagina impresa "Coordinamenti": riscontro ente / sopralluogo / sollecito / ente critico
-    "tipo_riscontro", "sopralluogo_necessario", "esito_sopralluogo", "data_ultimo_sollecito", "critico",
-}
-COORD_ENUMS = {
-    "tipo_riscontro": ("INTERFERENZA", "NON INTERFERENZA"),
-    "sopralluogo_necessario": ("SI", "NO"),
-    "esito_sopralluogo": ("POSITIVO", "NEGATIVO"),
+function _ckDimSel(it, st, onch, cls) {
+  if (!it.dim || st.e === 'NA') return '';
+  return `<div class="ck-dim-wrap"><span class="ck-dim-lab">Dimensione</span><select class="${st.dim ? '' : 'empty'}" onchange="${onch};this.classList.toggle('empty',!this.value)"><option value="">Seleziona…</option>${it.dim.map(d => `<option value="${escA(d)}"${st.dim === d ? ' selected' : ''}>${esc(d)}</option>`).join('')}</select></div>`;
 }
 
+function setCkField(k, id, field, val) { _ckGet(k, id)[field] = val; }
 
-def _coord_date(v) -> str:
-    """datetime / 'GG/MM/AAAA' / 'AAAA-MM-GG' -> 'AAAA-MM-GG'. Vuoto/non parsabile -> ''."""
-    if v is None:
-        return ""
-    if isinstance(v, (datetime, pd.Timestamp)):
-        return "" if pd.isna(v) else v.strftime("%Y-%m-%d")
-    s = str(v).strip()
-    if not s or s.lower() in ("nan", "nat", "none"):
-        return ""
-    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
-    if m:
-        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
-    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{2,4})$", s)
-    if m:
-        y = int(m.group(3)); y = y + 2000 if y < 100 else y
-        return f"{y:04d}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
-    return ""
+function toggleCkNote(k, id) {
+  const key = k + ':' + id;
+  if (_ckNoteOpen.has(key)) _ckNoteOpen.delete(key); else _ckNoteOpen.add(key);
+  renderChecklist();
+}
 
+function ckGeneralNoteInput() {
+  _ckGeneralNote = document.getElementById('ck-note-generali')?.value || '';
+}
 
-def _coord_txt(v) -> str:
-    if v is None or (not isinstance(v, str) and pd.isna(v)):
-        return ""
-    return re.sub(r"\s+", " ", str(v).replace("\\n", " ")).strip()
+function ckBulk(val) {
+  const k = _ckTab;
+  _ckItemsOf(k).forEach(it => {
+    const st = _ckGet(k, it.id);
+    st.e = val;
+    if (val !== 'NC') { st.rilievo=''; st.azione=''; st.resp=''; st.scad=''; }
+    if (val === '') { st.nota=''; st.dim=''; _ckNoteOpen.delete(k+':'+it.id); }
+  });
+  renderChecklist();
+}
 
+function _ckStats(k) {
+  const items = _ckItemsOf(k);
+  let c=0, nc=0, na=0;
+  items.forEach(it => { const e=(_ckState[k][it.id]||{}).e; if(e==='C')c++; else if(e==='NC')nc++; else if(e==='NA')na++; });
+  return { tot:items.length, c, nc, na, compilati:c+nc+na, todo:items.length-(c+nc+na) };
+}
 
-def _coord_ente_key(ente: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", _coord_txt(ente).lower()).strip("-")
+function _ckUpdateCounters() {
+  CK_CATS.forEach(k => {
+    const st = _ckStats(k);
+    const b = document.getElementById('ck-badge-'+k);
+    if (b) { b.textContent = st.nc ? `${st.compilati}/${st.tot} · ${st.nc} NC` : `${st.compilati}/${st.tot}`;
+             b.classList.toggle('nc', st.nc>0); }
+  });
+  const st = _ckStats(_ckTab);
+  const p = document.getElementById('ck-progress');
+  if (p) p.innerHTML = `Compilati <b>${st.compilati}/${st.tot}</b> · Conformi ${st.c} · Non conformi ${st.nc} · N.A. ${st.na} · Da verificare ${st.todo}`;
+}
 
+function ckPayload() {
+  const out = { note_generali: _ckGeneralNote || '' };
+  CK_CATS.forEach(k => {
+    out[k] = {};
+    CHECKLIST_DEF[k].items.forEach(it => {
+      const st = _ckState[k][it.id];
+      if (!st || (!st.e && !st.nota && !st.dim)) return;
+      out[k][it.id] = { e:st.e||'', rilievo:st.rilievo||'', azione:st.azione||'', resp:st.resp||'', scad:st.scad||'', nota:st.nota||'', dim:st.dim||'' };
+    });
+  });
+  return out;
+}
 
-def _coord_lotto(pratica: str) -> str:
-    """'AUT/7/1B' -> '1B' (ultimo segmento del codice pratica)."""
-    return str(pratica or "").split("/")[-1].strip().upper()
+function ckReset() {
+  _ckState = { qualita:{}, sicurezza:{}, collaudo:{} };
+  _ckNoteOpen = new Set();
+  _ckGeneralNote = '';
+  const gn = document.getElementById('ck-note-generali'); if (gn) gn.value = '';
+  _ckTab = 'qualita';
+  setChecklistTab('qualita');
+}
 
+// ── Letture su un verbale salvato ───────────────────────────────────────────
+function _ckOf(v) { return (v && v.checklist) || { qualita:{}, sicurezza:{}, collaudo:{} }; }
 
-def _coord_public(d: dict, with_log: bool = False) -> dict:
-    out = {k: v for k, v in d.items() if k != "log"}
-    out["id"] = str(out.pop("_id"))
-    if not out.get("tipo_riscontro"):      # dati precedenti: concomitanze SI/NO -> INTERFERENZA/NON INTERFERENZA
-        out["tipo_riscontro"] = {"SI": "INTERFERENZA", "NO": "NON INTERFERENZA"}.get(d.get("concomitanze") or "", "")
-    out["log_count"] = len(d.get("log") or [])
-    if with_log:
-        out["log"] = d.get("log") or []
-    return out
+function _ckStatsOf(v) {
+  const ck = _ckOf(v);
+  let tot=0, c=0, nc=0, na=0;
+  CK_CATS.forEach(k => {
+    tot += (v && v.verbale_origine) ? Object.keys(ck[k] || {}).length : CHECKLIST_DEF[k].items.length - (((ck[k] || {})['POZ-03'] && !(ck[k] || {})['POZ-03A']) ? 1 : 0);  // legacy: POZ-03 poi diviso in 03A/03B
+    Object.values(ck[k] || {}).forEach(x => {
+      if (x.e==='C') c++; else if (x.e==='NC') nc++; else if (x.e==='NA') na++;
+    });
+  });
+  return { tot, c, nc, na, compilati:c+nc+na };
+}
 
+function _ckNcList(v) {
+  const ck = _ckOf(v); const out = [];
+  CK_CATS.forEach(k => {
+    CHECKLIST_DEF[k].items.forEach(it => {
+      const st = (ck[k]||{})[it.id];
+      if (st && st.e === 'NC') { const { dim: _opts, ...base } = it; out.push({ k, ...base, ...st, dim: st.dim || '' }); }
+    });
+  });
+  return out;
+}
 
-def _coord_stato(d: dict) -> str:
-    if d.get("risposta_ricevuta") or d.get("data_risposta"):
-        return "ricevuta"
-    if d.get("data_invio"):
-        return "inviata"
-    return "da_inviare"
+// Tutti i punti con esito/nota/dimensione (NC per primi), per l'anteprima.
+function _ckAllItems(v) {
+  const ck = _ckOf(v), out = [];
+  CK_CATS.forEach(k => {
+    CHECKLIST_DEF[k].items.forEach(it => {
+      const st = (ck[k] || {})[it.id];
+      // it.dim nella definizione è l'elenco delle misure ammesse (array): non deve finire nel valore scelto st.dim
+      if (st && (st.e || st.nota || st.dim)) { const { dim: _opts, ...base } = it; out.push({ k, ...base, ...st, dim: st.dim || '' }); }
+    });
+  });
+  return out.sort((a, b) => (b.e === 'NC') - (a.e === 'NC'));
+}
 
+// Classificazione unica dell'anomalia, usata da KPI, filtro "stato" e modale KPI.
+// Verbali storici: vale l'esito salvato. Verbali nuovi (esito vuoto): derivata dalla checklist
+// (NC>0 → media, critica se segnalazione cliente non esclusa o NC su SIC-21/SIC-22, come la priority issue lato backend;
+// 0 NC con almeno un punto compilato → nessuna anomalia; checklist vuota → '' = non valutato, non conteggiato).
+const _ESITI_LEGACY = ['Anomalia critica', 'Anomalia media', 'Nessuna anomalia'];
+function _anomaliaStato(v) {
+  if (v && _ESITI_LEGACY.includes(v.esito)) return v.esito;
+  const st = _ckStatsOf(v);
+  if (st.nc > 0) {
+    const ck = _ckOf(v);
+    const critNc = CK_CATS.some(k => ['SIC-21', 'SIC-22'].some(id => ((ck[k] || {})[id] || {}).e === 'NC'));
+    const segnAttiva = _isSegnCliente(v) && String(v.esito_segnalazione || '').toLowerCase() !== 'non_confermata';
+    return (critNc || segnAttiva) ? 'Anomalia critica' : 'Anomalia media';
+  }
+  return st.compilati > 0 ? 'Nessuna anomalia' : '';
+}
+const _isAnomalia = v => { const a = _anomaliaStato(v); return a === 'Anomalia media' || a === 'Anomalia critica'; };
+// Chiusa = verifica risolta, oppure superata da un verbale di verifica (l'eventuale NC residua vive nel figlio, evita doppio conteggio).
+const _verifChiusa = v => { const s = _verifState(v); return !!s && (s.stato === 'risolto' || s.stato === 'non_risolto'); };
+const _isVerifDaFare = v => { const s = _verifState(v); return !!s && (s.stato === 'aperta' || s.stato === 'scaduta'); };
+const _isAnomaliaAperta = v => _isAnomalia(v) && !_verifChiusa(v);
+const _isSegnAperta = v => _isSegnCliente(v) && String(v.esito_segnalazione || '').toLowerCase() !== 'non_confermata' && !_verifChiusa(v);
+const _giorniDa = v => { const d = new Date(_soprDateISO(v.data_sopralluogo) + 'T00:00:00'); return isNaN(d) ? null : Math.floor((Date.now() - d.getTime()) / 864e5); };
+const _giorniApertura = v => _isAnomaliaAperta(v) ? _giorniDa(v) : null;
+const _isIncompleto = v => { const c = _ckStatsOf(v); return c.compilati < c.tot; };
+const _CHIP_PRED = {
+  anomalie: v => _isAnomalia(v), anomalie_aperte: v => _isAnomaliaAperta(v), verifiche: v => _isVerifDaFare(v),
+  cliente: v => _isSegnCliente(v), segn_aperte: v => _isSegnAperta(v), incompleti: v => _isIncompleto(v),
+  ultimi7: v => { const g = _giorniDa(v); return g !== null && g >= 0 && g <= 7; },
+  anomalie14: v => { const g = _giorniApertura(v); return g !== null && g > 14; },
+};
+let _chip = '';
+function setChip(k) { _chip = (_chip === k) ? '' : k; _currentPage = 1; _renderChips(); applyVerbaliFilters(); }
+function _renderChips() {
+  const el = document.getElementById('chipRow'); if (!el) return;
+  const defs = [['', 'Tutti', ''], ['anomalie', 'Con anomalie', 'red'], ['verifiche', 'Da verificare', 'amber'], ['cliente', 'Cliente', 'red'], ['ultimi7', 'Ultimi 7 giorni', 'blue']];
+  el.innerHTML = defs.map(([k, l, c]) => {
+    const n = k ? _verbaliAll.filter(_CHIP_PRED[k]).length : _verbaliAll.length;
+    return `<button type="button" class="fchip ${c} ${_chip === k ? 'on' : ''}" onclick="setChip('${k}')">${l} (${n})</button>`;
+  }).join('');
+}
+function filtraCantiere(k) { document.getElementById('verbali-search').value = k; _currentPage = 1; applyVerbaliFilters(); }
 
-def _coord_summarize(docs: list[dict]) -> list[dict]:
-    """Aggrega le richieste per pratica: totale / ricevute / inviate-senza-risposta / da inviare."""
-    by: dict[str, dict] = {}
-    for d in docs:
-        p = by.setdefault(d["pratica"], {
-            "pratica": d["pratica"], "lotto": d.get("lotto", ""), "municipio": d.get("municipio", ""),
-            "impresa": d.get("impresa", ""), "totale": 0, "ricevute": 0, "inviate": 0, "da_inviare": 0,
-            "concomitanze_si": 0, "interferenze": 0, "critici": 0, "critici_aperti": 0, "sopralluoghi": 0, "ultimo_aggiornamento": "", "enti": [],
-        })
-        st = _coord_stato(d)
-        p["totale"] += 1
-        p[{"ricevuta": "ricevute", "inviata": "inviate", "da_inviare": "da_inviare"}[st]] += 1
-        if d.get("tipo_riscontro") == "INTERFERENZA" or (not d.get("tipo_riscontro") and d.get("concomitanze") == "SI"):
-            p["concomitanze_si"] += 1
-            p["interferenze"] += 1
-        if d.get("critico"):
-            p["critici"] += 1
-            if st != "ricevuta":
-                p["critici_aperti"] += 1
-        if d.get("data_sopralluogo"):
-            p["sopralluoghi"] += 1
-        p["ultimo_aggiornamento"] = max(p["ultimo_aggiornamento"], d.get("updated_at") or "")
-        e = _coord_public(d)
-        e["stato"] = st
-        p["enti"].append(e)
-    out = list(by.values())
-    for p in out:
-        p["enti"].sort(key=lambda e: (e.get("ordine") or 999, e.get("ente", "")))
-        p["pct_ricevute"] = round(100 * p["ricevute"] / p["totale"], 1) if p["totale"] else 0
-    out.sort(key=lambda p: (p["pct_ricevute"], p["pratica"]))
-    return out
+// ══ COLONNE AREE CHECKLIST ═══════════════════════════════════════════════════
+const CK_AREA_CODE = {
+  'Verifiche preliminari':'PRE','Infrastruttura':'INF','Diversificazione':'DIV','Pozzetti':'POZ',
+  'Microdotti e giunzioni':'MIC','Codifica cromatica':'COL','Collaudi':'TST','Ripristini':'RIP',
+  'Documentazione':'DOC','Autorizzazioni personale':'AUT','Documentazione sicurezza':'DSI',
+  'Programmazione lavori':'PRG','DPI':'DPI','Macchine e attrezzature':'MAC','Stoccaggio materiali':'STO',
+  'Protezione scavi':'SCA','Lavori in quota':'QUO','Cadute sotto 2 m':'CAD','Caduta materiali':'CDM',
+  'Viabilità e pulizia':'VIA','Segnaletica':'SEG','Recinzioni e delimitazioni':'REC',
+  'Apprestamenti igienico-sanitari':'IGN','Presidi emergenza':'EMG','Gestione rifiuti':'RIF',
+  'Rumore':'RUM','Illuminazione':'ILL','Altro':'ALT',
+};
+function _ckAreaCode(a) { return CK_AREA_CODE[a] || a.slice(0,3).toUpperCase(); }
 
+let _areaCols = 'none';   // 'qualita' | 'sicurezza' | 'none'
 
-def _coord_recenti(docs: list[dict], limit: int = 30) -> list[dict]:
-    rows = []
-    for d in docs:
-        for lg in (d.get("log") or []):
-            rows.append({"ts": lg.get("ts", ""), "by": lg.get("by", ""), "pratica": d["pratica"],
-                         "ente": d.get("ente", ""), "impresa": d.get("impresa", ""),
-                         "changes": lg.get("changes", {})})
-    rows.sort(key=lambda r: r["ts"], reverse=True)
-    return rows[:limit]
+function _ckAreas(k) {
+  if (k === 'none') return [];
+  const seen = [];
+  CHECKLIST_DEF[k].items.forEach(it => { if (!seen.includes(it.area)) seen.push(it.area); });
+  return seen.map(a => ({ area:a, code:_ckAreaCode(a), ids: CHECKLIST_DEF[k].items.filter(i => i.area===a).map(i => i.id) }));
+}
 
+function _ckAreaStat(v, k, ids) {
+  const map = _ckOf(v)[k] || {};
+  let nc=0, comp=0;
+  ids.forEach(id => { const st = map[id]; if (st && st.e) { comp++; if (st.e==='NC') nc++; } });
+  return { nc, comp, tot: ids.length };
+}
 
-@app.get("/api/coordinamenti")
-async def coordinamenti_staff(sess: dict = Depends(_require_staff_session)):
-    """Vista Progettazione: tutte le pratiche con le loro richieste agli enti + feed ultimi aggiornamenti."""
-    docs = [d async for d in coordinamenti_col.find({})]
-    return {"pratiche": _coord_summarize(docs), "recenti": _coord_recenti(docs), "count": len(docs)}
+function _gridCols() { return '94px 66px minmax(150px,1.5fr) 40px minmax(70px,.8fr) 108px 62px 66px 60px 76px 34px'; }
+function _gridMinWidth() { return '880px'; }
 
+// ── Pannello filtri a comparsa ────────────────────────────────────────────────
+function toggleFiltri(force) {
+  const panel = document.getElementById('archiveFilters');
+  const btn   = document.getElementById('btnFiltri');
+  const open  = (force === undefined) ? (panel.style.display === 'none') : !!force;
+  panel.style.display = open ? '' : 'none';
+  btn.classList.toggle('on', open);
+}
 
-@app.get("/api/imprese/coordinamenti")
-async def coordinamenti_impresa(sess: dict = Depends(_require_session)):
-    """Richieste dei lotti assegnati all'impresa autenticata."""
-    assignment = await _find_assignment(sess["nome"])
-    if not assignment:
-        raise HTTPException(404, "Impresa non assegnata")
-    lotti = {_lotto_from_source(str(l)) for l in (assignment.get("lotti") or [])}
-    docs = [d async for d in coordinamenti_col.find({"lotto": {"$in": sorted(lotti)}})]
-    return {"pratiche": _coord_summarize(docs), "recenti": _coord_recenti(docs, 15), "count": len(docs)}
+function azzeraFiltri() {
+  ['filtro-impresa','filtro-lotto','filtro-comune','filtro-stato','filtro-nc','filtro-segn-cliente','filtro-verifica','filtro-mese'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  document.getElementById('verbali-search').value = '';
+  _chip = ''; _renderChips();
+  applyVerbaliFilters();
+}
 
+function _updateFiltriBadge() {
+  const ids = ['filtro-nc','filtro-segn-cliente','filtro-verifica'];
+  const n = ids.reduce((a,id) => a + (document.getElementById(id)?.value ? 1 : 0), 0);
+  const b = document.getElementById('filtriBadge');
+  if (!b) return;
+  b.textContent = n;
+  b.style.display = n ? '' : 'none';
+}
 
-async def _coord_apply(doc: dict, fields: dict, by: str) -> dict:
-    """Valida e applica i campi editabili a un documento; ritorna il $set da scrivere."""
-    upd: dict = {}
-    changes: dict = {}
-    for k, v in fields.items():
-        if k not in COORD_EDITABLE:
-            continue
-        if k in ("data_invio", "data_risposta", "data_sopralluogo", "data_ultimo_sollecito"):
-            nv = _coord_date(v)
-            if v not in (None, "") and not nv:
-                raise HTTPException(400, f"Data non valida per {k}")
-        elif k in ("risposta_ricevuta", "critico"):
-            nv = v in (True, "true", "True", "1", 1, "SI", "si")
-            if nv == bool(doc.get(k)):
-                continue
-            changes[k] = [bool(doc.get(k)), nv]
-            upd[k] = nv
-            continue
-        elif k == "concomitanze":
-            nv = str(v or "").strip().upper()
-            if nv not in ("", "SI", "NO"):
-                raise HTTPException(400, "concomitanze deve essere SI, NO o vuoto")
-        elif k in COORD_ENUMS:
-            nv = re.sub(r"\s+", " ", str(v or "")).strip().upper()
-            if nv not in ("",) + COORD_ENUMS[k]:
-                raise HTTPException(400, f"{k} deve essere {' o '.join(COORD_ENUMS[k])} o vuoto")
-        else:
-            nv = _coord_txt(v)
-        if nv != (doc.get(k) or ""):
-            changes[k] = [doc.get(k) or "", nv]
-            upd[k] = nv
-    di = upd.get("data_invio", doc.get("data_invio") or "")
-    dr = upd.get("data_risposta", doc.get("data_risposta") or "")
-    if dr and not upd.get("risposta_ricevuta", doc.get("risposta_ricevuta")):
-        upd["risposta_ricevuta"] = True      # una data di risposta implica risposta ricevuta
-        changes["risposta_ricevuta"] = [bool(doc.get("risposta_ricevuta")), True]
-    if (dr or upd.get("risposta_ricevuta")) and not di:
-        raise HTTPException(400, "Risposta senza data di invio")
-    if dr and di and dr < di:
-        raise HTTPException(400, "La data di risposta è precedente alla data di invio")
-    ds = upd.get("data_ultimo_sollecito", doc.get("data_ultimo_sollecito") or "")
-    if ds and not di:
-        raise HTTPException(400, "Sollecito senza data di invio")
-    if ds and di and ds < di:
-        raise HTTPException(400, "La data di sollecito è precedente alla data di invio")
-    if upd.get("sopralluogo_necessario", doc.get("sopralluogo_necessario") or "") == "NO" and (
-            upd.get("data_sopralluogo", doc.get("data_sopralluogo") or "")
-            or upd.get("esito_sopralluogo", doc.get("esito_sopralluogo") or "")):
-        raise HTTPException(400, "Sopralluogo non necessario: rimuovere data ed esito, oppure impostare la necessità a SI")
-    if not changes:
-        return {}
-    now = _now_iso()
-    upd["updated_at"] = now
-    upd["updated_by"] = by
-    return {"set": upd, "log": {"ts": now, "by": by, "changes": changes}}
+function setAreaCols(k) {
+  _areaCols = k;
+  ['qualita','sicurezza','collaudo','none'].forEach(x => document.getElementById('as-'+x)?.classList.toggle('on', x===k));
+  applyVerbaliFilters();
+}
 
+function _renderTableHead() {
+  const head = document.getElementById('archive-table-head');
+  if (!head) return;
+  const areas = _ckAreas(_areaCols);
+  head.style.gridTemplateColumns = _gridCols();
+  const mw = _gridMinWidth();
+  head.style.minWidth = mw || '';
+  head.classList.toggle('has-areas', areas.length > 0);
+  head.innerHTML = '<span>Verbale</span><span>Data</span><span>Cantiere / Comune</span><span>Lotto</span><span>Impresa</span><span>Esito</span><span class="c">Anomalie</span><span class="c">Verifiche</span><span class="c">Cliente</span><span class="c">Gg apertura</span><span></span>';
+}
 
-async def _coord_get_scoped(coord_id: str, nome: str) -> dict:
-    try:
-        oid = ObjectId(coord_id)
-    except Exception:
-        raise HTTPException(400, "ID non valido")
-    doc = await coordinamenti_col.find_one({"_id": oid})
-    if not doc:
-        raise HTTPException(404, "Richiesta non trovata")
-    assignment = await _find_assignment(nome)
-    lotti = {_lotto_from_source(str(l)) for l in ((assignment or {}).get("lotti") or [])}
-    if _lotto_from_source(doc.get("lotto", "")) not in lotti:
-        raise HTTPException(403, "Pratica non assegnata a questa impresa")
-    return doc
+function _areaCellsHtml(v) {
+  const areas = _ckAreas(_areaCols);
+  if (!areas.length) return '';
+  return areas.map(a => {
+    const st = _ckAreaStat(v, _areaCols, a.ids);
+    const cls = st.nc ? 'nc' : (st.comp === 0 ? '' : (st.comp < st.tot ? 'part' : 'ok'));
+    const txt = st.nc ? st.nc : (st.comp === 0 ? '·' : (st.comp < st.tot ? st.comp : '✓'));
+    const tip = `${a.area} — ${st.comp}/${st.tot} verificati${st.nc ? ', ' + st.nc + ' non conformità' : ''}`;
+    return `<span class="ac-cell ${cls}" title="${esc(tip)}">${txt}</span>`;
+  }).join('');
+}
 
+// ══ SEGNALAZIONE CLIENTE → VERIFICA → 2° SOPRALLUOGO ═════════════════════════
+function _ckItemsOf(k) {
+  const all = CHECKLIST_DEF[k].items;
+  return _verificaDi ? all.filter(it => _verificaDi.ids.has(k + ':' + it.id)) : all;
+}
+function _ckMiss(v) { return (_ckShowMissing && !String(v || '').trim()) ? 'miss' : ''; }
+function _ckPrevHtml(k, id) {
+  const i = _verificaDi && _verificaDi.info[k + ':' + id];
+  if (!i) return '';
+  return `<div class="ck-prev">↩ ${esc(_verificaDi.codice)}: NC — ${esc(i.rilievo || '—')}${i.azione ? ' · Azione: ' + esc(i.azione) : ''}${i.scad ? ' · Scad. ' + _soprDateDisplay(i.scad) : ''}</div>`;
+}
 
-@app.post("/api/imprese/coordinamenti-bulk")
-async def coordinamenti_bulk(payload: dict, sess: dict = Depends(_require_session)):
-    """Stessi campi su più richieste (es. 'inviata a tutti gli enti il gg/mm').
-    Body: {ids:[...], fields:{...}}. Il primo errore di validazione annulla l'intero invio."""
-    ids = payload.get("ids") or []
-    fields = payload.get("fields") or {}
-    if not ids or len(ids) > 100:
-        raise HTTPException(400, "ids: da 1 a 100 richieste")
-    writes = []
-    for cid in ids:
-        doc = await _coord_get_scoped(str(cid), sess["nome"])
-        res = await _coord_apply(doc, fields, sess["nome"])
-        if res:
-            writes.append((doc["_id"], res))
-    for oid, res in writes:
-        await coordinamenti_col.update_one(
-            {"_id": oid},
-            {"$set": res["set"], "$push": {"log": {"$each": [res["log"]], "$slice": -50}}},
-        )
-    return {"ok": True, "updated": len(writes), "unchanged": len(ids) - len(writes)}
+// Numero d'ordine del sopralluogo nella catena di verifiche: 1 = radice, 2 = prima verifica, 3 = verifica della verifica…
+function _verifN(v) {
+  let n = 1, cur = v;
+  while (cur && cur.verbale_origine && n < 21) { n++; cur = _verbaliAll.find(x => x.codice_verbale === cur.verbale_origine); }
+  return n;
+}
+// N° del verbale che verifica `codice` (usato nel form di creazione, prima che il verbale esista)
+function _verifNCod(codice) {
+  const p = _verbaliAll.find(x => x.codice_verbale === codice);
+  return p ? _verifN(p) + 1 : 2;
+}
 
+// Tipo di verifica risalendo la catena fino al verbale radice: 'cliente' se la radice ha una segnalazione cliente, altrimenti 'interno'
+function _verifRootTipo(v) {
+  let cur = v, n = 0;
+  while (cur && cur.verbale_origine && n++ < 20) cur = _verbaliAll.find(x => x.codice_verbale === cur.verbale_origine);
+  return (cur && _isSegnCliente(cur)) ? 'cliente' : 'interno';
+}
 
-@app.post("/api/imprese/coordinamenti/{coord_id}")
-async def coordinamenti_update(coord_id: str, payload: dict, sess: dict = Depends(_require_session)):
-    """L'impresa aggiorna una singola richiesta (pratica x ente)."""
-    doc = await _coord_get_scoped(coord_id, sess["nome"])
-    res = await _coord_apply(doc, payload or {}, sess["nome"])
-    if not res:
-        return {"ok": True, "changed": False}
-    await coordinamenti_col.update_one(
-        {"_id": doc["_id"]},
-        {"$set": res["set"], "$push": {"log": {"$each": [res["log"]], "$slice": -50}}},
-    )
-    return {"ok": True, "changed": True, "changes": res["log"]["changes"]}
+function _verifLinkHtml(v) {
+  const _pz = v.categoria === 'pozzetto' ? '<span class="verif-chip pozz" style="margin:0 4px 0 0" title="Verbale tipologia pozzetto' + (v.pozzetto ? ' ' + escA(v.pozzetto) : '') + '">POZZETTO</span>' : '';
+  if (v.verbale_origine) return _pz + `<span class="vr-link">↳ verifica di ${esc(v.verbale_origine.replace(/^VBS-/, ''))}</span>`;
+  const k = _verbaliAll.filter(x => x.verbale_origine === v.codice_verbale).sort((a, b) => a.codice_verbale.localeCompare(b.codice_verbale));
+  return _pz + (k.length ? `<span class="vr-link">→ verificato in ${esc(k[k.length - 1].codice_verbale.replace(/^VBS-/, ''))}</span>` : '');
+}
 
+// Stato di un verbale che richiede verifica (qualunque verbale, semplice o con segnalazione cliente, con almeno una NC).
+// null = non richiede verifica. Lo stato è calcolato al volo dai verbali collegati.
+function _verifState(v, _depth) {
+  const ncs = _ckNcList(v);
+  if (!ncs.length) return null;
+  const kids = _verbaliAll.filter(x => x.verbale_origine === v.codice_verbale)
+                          .sort((a, b) => a.codice_verbale.localeCompare(b.codice_verbale));
+  if (kids.length) {
+    const k = kids[kids.length - 1];
+    // Risolto se nessuna delle NC di questo verbale è ancora NC nel verbale successivo (eventuali NC nuove e diverse vivono nel figlio, che resta da ricontrollare).
+    const kNc = new Set(_ckNcList(k).map(n => n.id));
+    if (!ncs.some(n => kNc.has(n.id))) return { stato: 'risolto', figlio: k };
+    // Il 2° verbale ha ancora NC: se la catena a valle le risolve (es. 3° verbale senza NC)
+    // anche questo verbale è risolto, altrimenti resta 'non_risolto'.
+    const d = _depth || 0;
+    const sk = d < 20 ? _verifState(k, d + 1) : null;
+    return { stato: (sk && sk.stato === 'risolto') ? 'risolto' : 'non_risolto', figlio: k };
+  }
+  const scad = ncs.map(x => x.scad).filter(Boolean).sort().pop() || '';
+  const oggi = new Date().toISOString().slice(0, 10);
+  return { stato: (scad && scad < oggi) ? 'scaduta' : 'aperta', scad };
+}
 
-@app.get("/api/coordinamenti/{coord_id}/log")
-async def coordinamenti_log(coord_id: str, sess: dict = Depends(_require_staff_session)):
-    try:
-        doc = await coordinamenti_col.find_one({"_id": ObjectId(coord_id)}, {"log": 1})
-    except Exception:
-        raise HTTPException(400, "ID non valido")
-    if not doc:
-        raise HTTPException(404, "Richiesta non trovata")
-    return {"log": list(reversed(doc.get("log") or []))}
+function _verifStateChip(s) {
+  if (!s) return '';
+  const m = { aperta:['todo','VERIFICA DA FARE'], scaduta:['late','VERIFICA SCADUTA'], risolto:['ok','RISOLTO'], non_risolto:['late','NON RISOLTO'] }[s.stato];
+  return `<span class="verif-chip ${m[0]}">${m[1]}</span>`;
+}
 
+function _verifChips(v) {
+  let h = v.categoria === 'pozzetto' ? `<span class="verif-chip pozz" title="Verbale tipologia pozzetto">POZZETTO${v.pozzetto ? ' ' + esc(v.pozzetto) : ''}</span>` : '';
+  if (v.verbale_origine) {
+    const t = _verifRootTipo(v);
+    h += `<span class="verif-chip" title="Verifica di ${esc(v.verbale_origine)}">${_verifN(v)}° SOPRALLUOGO</span><span class="verif-chip ${t}">${t === 'cliente' ? 'CLIENTE' : 'INTERNO'}</span>`;
+  }
+  if (_isSegnCliente(v) && v.esito_segnalazione === 'non_confermata') h += '<span class="verif-chip neutral">NON CONFERMATA</span>';
+  return h + _verifStateChip(_verifState(v));
+}
 
-COORDINAMENTI_FILENAME = "AVANZAMENTO_COORDINAMENTI_MILANO.xlsx"
-COORD_SHEET = "ENTI_Tracking_Invii"
+function _verifPreviewHtml(v) {
+  let h = '';
+  const link = c => { const x = _verbaliAll.find(y => y.codice_verbale === c);
+    return x ? `<a href="#" onclick="event.preventDefault();_selectVerbale('${x._id}')">${esc(c)}</a>` : esc(c); };
+  if (v.verbale_origine) h += `<div class="verifica-box"><b>${_verifN(v)}° SOPRALLUOGO</b> — verifica ${_verifRootTipo(v) === 'cliente' ? 'della segnalazione cliente' : 'interna'} · verbale ${link(v.verbale_origine)}</div>`;
+  const s = _verifState(v);
+  if (s && s.figlio) {
+    h += `<div class="verifica-box">Verifica eseguita: ${link(s.figlio.codice_verbale)} ${_verifStateChip(s)}</div>`;
+  } else if (s) {
+    h += `<div class="verifica-box">${s.stato === 'scaduta' ? '⚠ <b>Verifica scaduta</b>' : '<b>Verifica da eseguire</b>'}${s.scad ? ' — entro ' + _soprDateDisplay(s.scad) : ''}
+      <div><button type="button" class="btn-verifica" onclick="creaVerifica('${v._id}')">Crea sopralluogo di verifica</button></div></div>`;
+  }
+  return h;
+}
 
+async function creaVerifica(id) {
+  const p = _verbaliAll.find(x => x._id === id);
+  if (!p) return;
+  const nc = _ckNcList(p);
+  if (!nc.length) { showToast('✗ Nessuna non conformità da verificare'); return; }
+  resetVerbaleForm();
+  _verificaDi = { codice: p.codice_verbale, ids: new Set(nc.map(x => x.k + ':' + x.id)), info: {}, tipo: _verifRootTipo(p) };
+  nc.forEach(x => { _verificaDi.info[x.k + ':' + x.id] = { rilievo: x.rilievo, azione: x.azione, scad: x.scad }; });
+  toggleNuovoVerbale(true);
+  const selL = document.getElementById('lotto');
+  if (selL.options.length <= 1) await _loadLottiCantieri();
+  document.getElementById('data').value = new Date().toISOString().split('T')[0];
+  selL.value = p.lotto || '';
+  if (selL.value) onLottoChange();
+  const selC = document.getElementById('n_cantiere');
+  const opt = [...selC.options].find(o => o.text === p.tratta_id || o.value === p.tratta_id);
+  if (opt) selC.value = opt.value;
+  document.getElementById('indirizzo').value = p.comune || '';
+  const imp = document.getElementById('impresa');
+  if (!imp.value) imp.value = p.impresa || '';
+  _applyVerificaUI();
+}
 
-async def _coordinamenti_import_df(df: "pd.DataFrame", filename: str, overwrite: bool, actor: str | None) -> dict:
-    """Upsert delle richieste (pratica x ente) dal foglio tracking. overwrite=False: crea le
-    mancanti e compila SOLO i campi ancora vuoti (non tocca gli aggiornamenti delle imprese)."""
-    created = updated = skipped = 0
-    now = _now_iso()
-    for _, r in df.iterrows():
-        pratica = _coord_txt(r.get("ISTANZA")).upper()
-        ente = _coord_txt(r.get("ELENCO ENTI"))
-        if not pratica or not ente:
-            skipped += 1
-            continue
-        tip_raw = _coord_txt(r.get("Tipologia invio"))
-        rec = {
-            "pratica": pratica, "ente_key": _coord_ente_key(ente), "ente": ente,
-            "lotto": _coord_lotto(pratica),
-            "municipio": _coord_txt(r.get("MUNICIPIO")).upper(),
-            "impresa": _coord_txt(r.get("SERVICE")).upper(),
-            "servizio": _coord_txt(r.get("SERVIZIO")),
-            "tipologia_invio": re.sub(r"\s*\(.*?\)\s*", "", tip_raw).strip(),
-            "risposte_attese": 2 if "2 risposte" in tip_raw else 1,
-            "contatto": _coord_txt(r.get("MAIL SERVICE")) or _coord_txt(r.get("CONTATTO RDS")),
-            "ordine": int(r["#"]) if "#" in df.columns and not pd.isna(r.get("#")) else 999,
-            "data_invio": _coord_date(r.get("INVIO IN DATA")),
-            "data_risposta": _coord_date(r.get("RISPOSTA IN DATA")),
-            # alcune imprese (Sertori, Circet) segnano 'OK' senza data: risposta ricevuta ma data ignota
-            "risposta_ricevuta": bool(_coord_date(r.get("RISPOSTA IN DATA")) or _coord_txt(r.get("RISPOSTA IN DATA"))),
-            "concomitanze": _coord_txt(r.get("CONCOMITANZE PROBLEMI")).upper(),
-            "data_sopralluogo": _coord_date(r.get("DATA SOPRALLUOGO")),
-            "verbale": _coord_txt(r.get("VERBALE SOPRALLUOGO")),
-            "note": _coord_txt(r.get("NOTE")),
-        }
-        if rec["concomitanze"] not in ("", "SI", "NO"):
-            rec["concomitanze"] = ""
-        existing = await coordinamenti_col.find_one({"pratica": pratica, "ente_key": rec["ente_key"]})
-        if not existing:
-            rec.update({"updated_at": now, "updated_by": "import xlsx",
-                        "log": [{"ts": now, "by": "import xlsx", "changes": {"import": ["", filename or "xlsx"]}}]})
-            await coordinamenti_col.insert_one(rec)
-            created += 1
-            continue
-        patch = {k: v for k, v in rec.items()
-                 if (overwrite or existing.get(k) in (None, "", False)) and v not in (None, "", False) and existing.get(k) != v}
-        if patch:
-            patch["updated_at"] = now
-            patch["updated_by"] = "import xlsx"
-            await coordinamenti_col.update_one(
-                {"_id": existing["_id"]},
-                {"$set": patch, "$push": {"log": {"$each": [{"ts": now, "by": "import xlsx", "changes": {"import": ["", filename or "xlsx"]}}], "$slice": -50}}},
-            )
-            updated += 1
-        else:
-            skipped += 1
-    await _log_admin_action("coordinamenti_import", f"{filename} created={created} updated={updated}", actor)
-    return {"created": created, "updated": updated, "skipped": skipped, "rows": int(len(df))}
+function _applyVerificaUI() {
+  const on = !!_verificaDi;
+  const b = document.getElementById('verificaBanner');
+  if (b) {
+    b.style.display = on ? 'flex' : 'none';
+    if (on) document.getElementById('verificaBannerTxt').innerHTML = `<b>${_verifNCod(_verificaDi.codice)}° SOPRALLUOGO</b> — verifica ${_verificaDi.tipo === 'cliente' ? 'della segnalazione cliente' : 'interna'} di <b>${esc(_verificaDi.codice)}</b> · ${_verificaDi.ids.size} punti da riverificare`;
+  }
+  const g = document.getElementById('segnClienteGroup'); if (g) g.style.display = on ? 'none' : '';
+  const t = document.querySelector('#formCard .fch-title'); if (t) t.textContent = on ? 'Sopralluogo di verifica (' + _verifNCod(_verificaDi.codice) + '°)' : 'Nuovo verbale di sopralluogo';
+  CK_CATS.forEach(k => { const el = document.getElementById('ck-tab-' + k); if (el) el.style.display = (!on || _ckItemsOf(k).length) ? '' : 'none'; });
+  if (on) { const first = CK_CATS.find(k => _ckItemsOf(k).length); if (first) setChecklistTab(first); }
+  else renderChecklist();
+}
 
+function _validaVerbale() {
+  _ckShowMissing = false;
+  const _sysCampi = [['subsystem', 'SubSystem'], ['data_invio_system', 'data invio'], ['metodo_invio', 'metodo di invio'], ['rif_system_invio', 'riferimento invio']];
+  const _sysMiss = _sysCampi.filter(([id]) => !(document.getElementById(id)?.value || '').trim());
+  _sysCampi.forEach(([id]) => document.getElementById(id)?.classList.toggle('miss', _sysMiss.some(m => m[0] === id)));
+  if (_sysMiss.length) {
+    document.getElementById(_sysMiss[0][0])?.scrollIntoView({behavior:'smooth', block:'center'});
+    return 'Segnalazione al System: compila ' + _sysMiss.map(m => m[1]).join(', ');
+  }
+  if (!_verificaDi && !document.querySelector('input[name="segn_cli_sino"]:checked')) {
+    document.getElementById('segnSiNo')?.classList.add('miss');
+    document.getElementById('segnClienteWrap')?.scrollIntoView({behavior:'smooth', block:'center'});
+    return 'Segnalazione cliente: indica SI o NO';
+  }
+  const segn = !!document.getElementById('segnalazione_cliente')?.checked && !_verificaDi;
+  const esito = document.querySelector('input[name="esito_segnalazione"]:checked')?.value || '';
+  if (segn && !esito) {
+    document.getElementById('segnEsito')?.classList.add('miss');
+    document.getElementById('segnClienteWrap')?.scrollIntoView({behavior:'smooth', block:'center'});
+    return 'Segnalazione cliente: indica se è confermata o non confermata';
+  }
+  const p = ckPayload(); let nNc = 0, bad = null;
+  CK_CATS.forEach(k => Object.entries(p[k]).forEach(([id, st]) => {
+    if (st.e === 'NC') { nNc++; if (!bad && (!st.azione.trim() || !st.scad)) bad = { k, id }; }
+  }));
+  if (bad) { _ckShowMissing = true; setChecklistTab(bad.k); return `Non conformità ${bad.id}: azione correttiva e scadenza sono obbligatorie`; }
+  if (segn && esito === 'confermata' && !nNc) return 'Segnalazione confermata: almeno un punto della checklist deve essere non conforme';
+  if (_verificaDi) {
+    const miss = [..._verificaDi.ids].filter(key => { const [k, id] = key.split(':'); return !(p[k] || {})[id]?.e; });
+    if (miss.length) { setChecklistTab(miss[0].split(':')[0]); return `Compila l'esito di tutti i punti da verificare (${miss.length} mancanti)`; }
+  }
+  return null;
+}
 
-@app.post("/api/admin/coordinamenti/import")
-async def coordinamenti_import(
-    file: UploadFile = File(...),
-    sheet: str = Form("ENTI_Tracking_Invii"),
-    overwrite: bool = Form(False),
-    x_upload_token: Annotated[str | None, Header(alias="x-upload-token")] = None,
-    x_actor_nome: Annotated[str | None, Header(alias="x-actor-nome")] = None,
-):
-    """Import iniziale/di riallineamento dal foglio ENTI_Tracking_Invii dell'xlsx coordinamenti.
-    overwrite=False (default): crea le richieste mancanti e compila SOLO i campi ancora vuoti,
-    così non si sovrascrive quanto già aggiornato dalle imprese."""
-    _check_token(x_upload_token)
-    raw = await file.read()
-    if not raw:
-        raise HTTPException(400, "Empty file")
-    try:
-        df = pd.read_excel(io.BytesIO(raw), sheet_name=sheet)
-    except Exception as e:
-        raise HTTPException(400, f"Foglio {sheet!r} non leggibile: {e}")
-    need = {"ELENCO ENTI", "ISTANZA", "SERVICE"}
-    if not need.issubset(df.columns):
-        raise HTTPException(400, f"Colonne mancanti: {sorted(need - set(df.columns))}")
-    res = await _coordinamenti_import_df(df, file.filename or "xlsx", overwrite, x_actor_nome)
-    return {"ok": True, **res}
+// ══ MODALE KPI ═══════════════════════════════════════════════════════════════
+function _kpiFilter(key) {
+  const oggi = new Date().toISOString().slice(0,10);
+  switch (key) {
+    case 'oggi':        return _verbaliAll.filter(v => _soprDateISO(v.data_sopralluogo) === oggi);
+    case 'anomalie':    return _verbaliAll.filter(_isAnomalia);
+    case 'nessuna':     return _verbaliAll.filter(v => _anomaliaStato(v) === 'Nessuna anomalia');
+    case 'segncliente': return _verbaliAll.filter(_isSegnCliente);
+    case 'nc':          return _verbaliAll.filter(v => _ckStatsOf(v).nc > 0);
+    case 'verifiche':   return _verbaliAll.filter(_isVerifDaFare);
+    case 'anomalie_aperte': return _verbaliAll.filter(_isAnomaliaAperta);
+    case 'segn_aperte': return _verbaliAll.filter(_isSegnAperta);
+    default:            return _verbaliAll.slice();
+  }
+}
+
+function openKpiModal(key, titolo) {
+  const _ka = document.getElementById('kpiModalActions'); if (_ka) _ka.innerHTML = '';
+  const rows = _kpiFilter(key);
+  document.getElementById('kpiModalTitle').innerHTML =
+    `${esc(titolo)}<small>${rows.length} verbal${rows.length===1?'e':'i'}</small>`;
+  const body = document.getElementById('kpiModalBody');
+  body.innerHTML = rows.length ? rows.map(v => {
+    const st = _ckStatsOf(v);
+    return `<div class="km-row${_isSegnCliente(v)?' has-segn':''}" onclick="_kpiPick('${v._id}')">
+      <span class="vr-codice">${v.codice_verbale}</span>
+      <span>${_soprDateDisplay(v.data_sopralluogo)}<small>${esc(v.impresa||'—')}</small></span>
+      <span>${esc(v.comune||'—')}<small>${esc(v.tratta_id||'—')} · ${esc(v.lotto||'—')}</small></span>
+      <span>${_statoChip(v.esito)}${_isSegnCliente(v)?'<span class="flag-chip">SEGN. CLIENTE</span>':''}${st.nc?`<span class="ck-chip nc">${st.nc} NC</span>`:''}${_verifChips(v)}</span>
+    </div>`;
+  }).join('') : '<div style="padding:22px 0;text-align:center;color:var(--muted);font-size:12px">Nessun verbale in questo stato.</div>';
+  document.getElementById('kpiModal').classList.add('open');
+}
+
+let _sysModalId = null;
+function openSysModal(id) {
+  const v = _verbaliAll.find(x => x._id === id); if (!v) return;
+  _sysModalId = id;
+  document.getElementById('sysModalSub').textContent = v.codice_verbale + (v.verbale_origine ? ' · verifica' : '');
+  const iso = /^\d{4}-\d{2}-\d{2}/.test(v.data_invio_system || '') ? v.data_invio_system.slice(0, 10) : '';
+  document.getElementById('sm_subsystem').value = v.subsystem || '';
+  document.getElementById('sm_data').value = iso;
+  document.getElementById('sm_metodo').value = v.metodo_invio || '';
+  document.getElementById('sm_rif').value = v.rif_system_invio || '';
+  ['sm_subsystem', 'sm_data', 'sm_metodo', 'sm_rif', 'sm_segn_note'].forEach(i => document.getElementById(i).classList.remove('miss'));
+  document.getElementById('sm_segn_esito').classList.remove('miss');
+  const _isRoot = !v.verbale_origine;
+  document.getElementById('sm_segn_box').style.display = _isRoot ? '' : 'none';
+  document.getElementById('sm_segn').checked = _isRoot && _isSegnCliente(v);
+  document.querySelectorAll('input[name="sm_segn_esito"]').forEach(r => { r.checked = r.value === (v.esito_segnalazione || ''); });
+  document.getElementById('sm_segn_note').value = v.segnalazione_cliente_note || '';
+  smSegnToggle();
+  document.getElementById('sysModal').classList.add('open');
+}
+function smSegnToggle() { document.getElementById('sm_segn_wrap').style.display = document.getElementById('sm_segn').checked ? '' : 'none'; }
+function closeSysModal() { document.getElementById('sysModal').classList.remove('open'); _sysModalId = null; }
+async function saveSysModal() {
+  const g = i => (document.getElementById(i).value || '').trim();
+  const body = { subsystem: g('sm_subsystem'), data_invio_system: g('sm_data'), metodo_invio: g('sm_metodo'), rif_system_invio: g('sm_rif') };
+  const miss = ['sm_subsystem', 'sm_data', 'sm_metodo', 'sm_rif'].filter(i => !g(i));
+  ['sm_subsystem', 'sm_data', 'sm_metodo', 'sm_rif'].forEach(i => document.getElementById(i).classList.toggle('miss', miss.includes(i)));
+  if (miss.length) { showToast('✗ Compila tutti e 4 i campi'); return; }
+  const id = _sysModalId, btn = document.getElementById('sysModalSave');
+  const _v = _verbaliAll.find(x => x._id === id);
+  if (_v && !_v.verbale_origine) {
+    const on = document.getElementById('sm_segn').checked;
+    const esito = document.querySelector('input[name="sm_segn_esito"]:checked')?.value || '';
+    const nota = g('sm_segn_note');
+    if (on) {
+      document.getElementById('sm_segn_esito').classList.toggle('miss', !esito);
+      document.getElementById('sm_segn_note').classList.toggle('miss', !nota);
+      if (!esito) { showToast('✗ Segnalazione cliente: indica se è confermata o non confermata'); return; }
+      if (!nota) { showToast('✗ Segnalazione cliente: la nota è obbligatoria'); return; }
+      if (esito === 'confermata' && !_ckStatsOf(_v).nc) { showToast('✗ Confermata: almeno un punto della checklist deve essere NC (usa "Modifica")'); return; }
+    }
+    body.segnalazione_cliente = on; body.esito_segnalazione = on ? esito : ''; body.segnalazione_cliente_note = on ? nota : '';
+  }
+  btn.disabled = true;
+  try {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    const token = localStorage.getItem('_enri_session') || '';
+    const res = await fetch(apiBase + '/api/sopralluoghi/' + id + '/system', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-session-token': token }, body: JSON.stringify(body) });
+    if (!res.ok) { let det = ''; try { det = (await res.json()).detail || ''; } catch (_) {} throw new Error(det || ('HTTP ' + res.status)); }
+    const r = await res.json();
+    closeSysModal();
+    showToast(r.changed ? '✓ Dati aggiornati' + (r.issues_aggiornate ? ' · ' + r.issues_aggiornate + ' issue riallineate' : '') : 'Nessuna modifica');
+    await loadVerbali();
+    _selectVerbale(id);
+  } catch (e) { showToast('✗ ' + e.message); }
+  finally { btn.disabled = false; }
+}
+
+// ══ MODIFICA VERBALE (admin/admin2) ═════════════════════════════════════════
+let _edId = null, _edTab = 'qualita', _edCk = {}, _edIsVerifica = false;
+const _ED_LAB = { qualita:'Qualità', sicurezza:'Sicurezza', collaudo:'Collaudo' };
+
+function _edFind(v, id) {   // cerca l'item in tutte le categorie (i verbali vecchi hanno TST/RIP/DOC sotto "qualita")
+  const ck = _ckOf(v);
+  for (const k of CK_CATS) if (ck[k] && ck[k][id]) return ck[k][id];
+  return null;
+}
+function openEditModal(id) {
+  const v = _verbaliAll.find(x => x._id === id); if (!v) return;
+  _edId = id; _edIsVerifica = !!v.verbale_origine; _edTab = 'qualita';
+  document.getElementById('editModalSub').textContent = v.codice_verbale + (_edIsVerifica ? ' · verifica di ' + v.verbale_origine : '');
+  const set = (i, val) => { document.getElementById(i).value = val || ''; };
+  set('ed_data', _soprDateISO(v.data_sopralluogo) || (v.data_sopralluogo || '').slice(0, 10));
+  set('ed_lotto', v.lotto); set('ed_tratta', v.tratta_id); set('ed_impresa', v.impresa); set('ed_comune', v.comune);
+  set('ed_redattore', v.referente_impresa); set('ed_ruolo', v.referente_retelit);   // campi Mongo storicamente invertiti
+  set('ed_ck_note', _ckOf(v).note_generali);
+  document.getElementById('ed_segn_box').style.display = _edIsVerifica ? 'none' : '';
+  document.getElementById('ed_segn').checked = _isSegnCliente(v);
+  document.querySelectorAll('input[name="ed_segn_esito"]').forEach(r => { r.checked = r.value === (v.esito_segnalazione || ''); });
+  set('ed_segn_note', v.segnalazione_cliente_note);
+  edSegnToggle();
+  _edCk = {};
+  CK_CATS.forEach(k => {
+    _edCk[k] = {};
+    CHECKLIST_DEF[k].items.forEach(it => {
+      const s = _edFind(v, it.id);
+      if (s) _edCk[k][it.id] = { e: s.e || '', rilievo: s.rilievo || '', azione: s.azione || '', resp: s.resp || '', scad: _soprDateISO(s.scad) || '', nota: s.nota || '', dim: s.dim || '' };
+    });
+  });
+  _edRender();
+  document.getElementById('editModal').classList.add('open');
+}
+function closeEditModal() { document.getElementById('editModal').classList.remove('open'); _edId = null; }
+function edSegnToggle() { document.getElementById('ed_segn_wrap').style.display = document.getElementById('ed_segn').checked ? '' : 'none'; }
+function edTab(k) { _edTab = k; _edRender(); }
+function edSet(k, id, f, val, rerender) {
+  if (!_edCk[k][id]) _edCk[k][id] = { e:'', rilievo:'', azione:'', resp:'', scad:'', nota:'', dim:'' };
+  const st = _edCk[k][id]; st[f] = val;
+  if (f === 'e' && val !== 'NC') { st.rilievo = ''; st.azione = ''; st.resp = ''; st.scad = ''; }
+  if (rerender) _edRender();
+}
+function _edItems(k) { return CHECKLIST_DEF[k].items.filter(it => !_edIsVerifica || _edCk[k][it.id]); }
+const escA = x => esc(String(x ?? '')).replace(/"/g, '&quot;');
+function _edRender() {
+  const wrap = document.getElementById('editModalBody'), top = wrap.scrollTop;
+  document.getElementById('ed_tabs').innerHTML = CK_CATS.map(k => {
+    const it = _edItems(k), done = it.filter(x => (_edCk[k][x.id] || {}).e).length;
+    return it.length ? `<button type="button" class="ed-tab${k === _edTab ? ' on' : ''}" onclick="edTab('${k}')">${_ED_LAB[k]} ${done}/${it.length}</button>` : '';
+  }).join('');
+  if (!_edItems(_edTab).length) _edTab = CK_CATS.find(k => _edItems(k).length) || 'qualita';
+  const k = _edTab; let html = '', last = null;
+  _edItems(k).forEach(it => {
+    if (it.area !== last) { html += `<div class="ed-area">${esc(it.area)}</div>`; last = it.area; }
+    const st = _edCk[k][it.id] || { e:'', rilievo:'', azione:'', resp:'', scad:'', nota:'', dim:'' };
+    const opt = (v, l) => `<option value="${v}"${st.e === v ? ' selected' : ''}>${l}</option>`;
+    html += `<div class="ed-item${st.e === 'NC' ? ' nc' : ''}">
+      <div class="ed-top"><span class="ck-id">${it.id}</span><span class="t">${esc(it.t)}</span>
+        <select onchange="edSet('${k}','${it.id}','e',this.value,true)">${opt('', '—')}${opt('C', 'Conforme')}${opt('NC', 'NC')}${opt('NA', 'N.A.')}</select></div>
+      ${_ckDimSel(it, st, `edSet('${k}','${it.id}','dim',this.value)`, '')}
+      <input type="text" placeholder="Nota" value="${escA(st.nota)}" oninput="edSet('${k}','${it.id}','nota',this.value)">
+      ${st.e === 'NC' ? `<div class="ed-nc">
+        <input type="text" placeholder="Rilievo / non conformità" value="${escA(st.rilievo)}" oninput="edSet('${k}','${it.id}','rilievo',this.value)">
+        <input type="text" placeholder="Azione correttiva *" value="${escA(st.azione)}" oninput="edSet('${k}','${it.id}','azione',this.value)">
+        <input type="text" placeholder="Responsabile" value="${escA(st.resp)}" oninput="edSet('${k}','${it.id}','resp',this.value)">
+        <input type="date" title="Scadenza *" value="${escA(st.scad)}" oninput="edSet('${k}','${it.id}','scad',this.value)">
+      </div>` : ''}
+    </div>`;
+  });
+  document.getElementById('ed_ck_body').innerHTML = html;
+  wrap.scrollTop = top;
+}
+async function saveEditModal() {
+  const g = i => (document.getElementById(i).value || '').trim();
+  const body = { data_sopralluogo: g('ed_data'), lotto: g('ed_lotto'), tratta_id: g('ed_tratta'), impresa: g('ed_impresa'),
+                 comune: g('ed_comune'), referente_impresa: g('ed_redattore'), referente_retelit: g('ed_ruolo') };
+  if (!body.data_sopralluogo || !body.lotto || !body.tratta_id || !body.impresa) { showToast('✗ Data, lotto, cantiere e impresa sono obbligatori'); return; }
+  if (!_edIsVerifica) {
+    const on = document.getElementById('ed_segn').checked;
+    const esito = document.querySelector('input[name="ed_segn_esito"]:checked')?.value || '';
+    if (on && !esito) { showToast('✗ Segnalazione cliente: indica se è confermata o non confermata'); return; }
+    body.segnalazione_cliente = on; body.esito_segnalazione = on ? esito : ''; body.segnalazione_cliente_note = on ? g('ed_segn_note') : '';
+  }
+  const ck = { note_generali: g('ed_ck_note') };
+  for (const k of CK_CATS) {
+    ck[k] = {};
+    for (const [id, st] of Object.entries(_edCk[k])) {
+      if (st.e === 'NC' && (!st.azione.trim() || !st.scad)) { _edTab = k; _edRender(); showToast('✗ Non conformità ' + id + ': azione correttiva e scadenza obbligatorie'); return; }
+      if (st.e || st.nota || st.dim) ck[k][id] = st;
+    }
+  }
+  body.checklist = ck;
+  const id = _edId, btn = document.getElementById('editModalSave');
+  btn.disabled = true;
+  try {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    const token = localStorage.getItem('_enri_session') || '';
+    const res = await fetch(apiBase + '/api/sopralluoghi/' + id, { method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-session-token': token }, body: JSON.stringify(body) });
+    if (!res.ok) { let det = ''; try { det = (await res.json()).detail || ''; } catch (_) {} throw new Error(det || ('HTTP ' + res.status)); }
+    const r = await res.json();
+    closeEditModal();
+    showToast(r.changed ? '✓ Verbale aggiornato (' + r.changed + ' modifiche)' : 'Nessuna modifica');
+    await loadVerbali();
+    _selectVerbale(id);
+  } catch (e) { showToast('✗ ' + e.message); }
+  finally { btn.disabled = false; }
+}
+
+function closeKpiModal() { document.getElementById('kpiModal').classList.remove('open'); const a = document.getElementById('kpiModalActions'); if (a) a.innerHTML = ''; }
+
+// ══ POZZETTI: card in alto + elenco verbali + Excel ═════════════════════════
+const _pozVerbali = () => _verbaliAll.filter(v => v.categoria === 'pozzetto');
+function _pozStats() {
+  const g = {};
+  _pozVerbali().forEach(v => { const k = String(v.pozzetto || v.codice_verbale).trim().toUpperCase(); (g[k] = g[k] || []).push(v); });
+  const keys = Object.keys(g);
+  return { verbali: _pozVerbali().length, verificati: keys.length, anomalie: keys.filter(k => g[k].some(_isAnomaliaAperta)).length };
+}
+function _renderPozCard() {
+  const s = _pozStats(), set = (i, x) => { const e = document.getElementById(i); if (e) e.textContent = x; };
+  set('poz-verificati', s.verificati); set('poz-anomalie', s.anomalie);
+  set('poz-sub', s.verbali + ' verbal' + (s.verbali === 1 ? 'e' : 'i') + ' pozzetto');
+}
+function openPozzettiModal() {
+  const rows = _pozVerbali().sort((a, b) => String(b.codice_verbale).localeCompare(String(a.codice_verbale)));
+  document.getElementById('kpiModalTitle').innerHTML = `Verbali pozzetti<small>${rows.length} verbal${rows.length === 1 ? 'e' : 'i'}</small>`;
+  document.getElementById('kpiModalActions').innerHTML = '<button class="kpi-modal-close" id="btnPozXlsx" onclick="exportPozzettiXlsx()">⬇ Excel</button>';
+  document.getElementById('kpiModalBody').innerHTML = rows.length ? rows.map(v => {
+    const st = _ckStatsOf(v);
+    return `<div class="km-row poz">
+      <span class="vr-codice">${esc(v.codice_verbale)}</span>
+      <span>${esc(v.pozzetto || '—')}<small>${_soprDateDisplay(v.data_sopralluogo)}</small></span>
+      <span>${esc(v.comune || '—')}<small>${esc(v.tratta_id || '—')} · ${esc(v.lotto || '—')}</small></span>
+      <span>${_statoChip(v.esito)}${st.nc ? `<span class="ck-chip nc">${st.nc} NC</span>` : ''}<small>${esc(v.impresa || '—')}</small></span>
+      <button class="btn-poz-prev" onclick="_kpiPick('${v._id}')">Anteprima</button>
+    </div>`;
+  }).join('') : '<div style="padding:22px 0;text-align:center;color:var(--muted);font-size:12px">Nessun verbale pozzetto.</div>';
+  document.getElementById('kpiModal').classList.add('open');
+}
+async function exportPozzettiXlsx() {
+  const btn = document.getElementById('btnPozXlsx'), orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = 'Esportazione…'; }
+  try {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    const token = localStorage.getItem('_enri_session') || '';
+    if (!apiBase) throw new Error('API endpoint non configurato');
+    if (!token) throw new Error('Sessione scaduta — riaccedi dall\'hub');
+    const res = await fetch(apiBase + '/api/sopralluoghi/export.xlsx?categoria=pozzetto', { headers: { 'x-session-token': token } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await res.blob());
+    a.download = 'sopralluoghi_pozzetti_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    showToast('✓ Esportazione avviata');
+  } catch (e) { showToast('✗ Errore esportazione: ' + e.message); }
+  finally { if (btn) { btn.disabled = false; btn.innerHTML = orig; } }
+}
+
+function _kpiPick(id) {
+  closeKpiModal();
+  const v = _verbaliAll.find(x => x._id === id);
+  _selectedVerbaleId = id;
+  if (v) _renderPreview(v);
+  document.getElementById('preview-card')?.scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeKpiModal(); });
+
+</script>
+</body>
+</html>
