@@ -453,7 +453,13 @@
   .widgets-row .w-donut-c b{font-size:15px;} .widgets-row .w-donut-row{gap:16px;} .widgets-row .w-leg{gap:3px;font-size:11.5px;}
   .widgets-row .w-total b{font-size:18px;} .widgets-row .w-col b{font-size:15px;}
   /* Riga unica compatta: KPI + 2 grafici */
-  .top-row{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:12px;align-items:stretch;}
+  .top-row{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,.82fr) minmax(0,.4fr);gap:12px;align-items:stretch;}
+  .poz-card{cursor:pointer;display:flex;flex-direction:column;justify-content:center;gap:8px;min-height:0;transition:box-shadow .15s,border-color .15s,transform .1s;}
+  .poz-card:hover{box-shadow:var(--sh-sm);border-color:var(--accent);transform:translateY(-1px);}
+  .poz-card .w-title{margin-bottom:0;}
+  .poz-nums{display:flex;gap:18px;} .poz-nums div{display:flex;flex-direction:column;} .poz-nums b{font-size:22px;font-weight:800;color:var(--accent);line-height:1.1;} .poz-nums div.red b{color:var(--err);} .poz-nums small{font-size:10.5px;color:var(--muted);font-weight:600;}
+  .poz-sub{font-size:10px;color:var(--muted);}
+  .km-row.poz{grid-template-columns:auto .8fr 1.3fr 1.3fr auto;cursor:default;} .btn-poz-prev{background:none;border:1px solid var(--border);color:var(--accent);border-radius:8px;font-size:11px;font-weight:700;padding:4px 10px;cursor:pointer;} .btn-poz-prev:hover{border-color:var(--accent);background:var(--surface2);}
   .top-row .kpi-strip{grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;}
   .top-row .kpi-card{flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:2px;padding:8px 6px;border-radius:12px;}
   .top-row .kpi-ico{display:none;}
@@ -560,6 +566,11 @@
     </div>
   </div>
   <div class="widgets-row" id="widgetsRow"></div>
+  <div class="w-card poz-card" id="pozCard" onclick="openPozzettiModal()" title="Verbali dei pozzetti">
+    <div class="w-title">Pozzetti</div>
+    <div class="poz-nums"><div><b id="poz-verificati">0</b><small>Verificati</small></div><div class="red"><b id="poz-anomalie">0</b><small>Con anomalie</small></div></div>
+    <div class="poz-sub" id="poz-sub"></div>
+  </div>
   </div>
 
   <div class="attivita-bar" id="attivitaBar"></div>
@@ -787,7 +798,7 @@
   <div class="kpi-modal-box">
     <div class="kpi-modal-head">
       <div class="kpi-modal-title" id="kpiModalTitle">—<small id="kpiModalSub"></small></div>
-      <button class="kpi-modal-close" onclick="closeKpiModal()">Chiudi ✕</button>
+      <div style="display:flex;gap:8px;align-items:center"><span id="kpiModalActions"></span><button class="kpi-modal-close" onclick="closeKpiModal()">Chiudi ✕</button></div>
     </div>
     <div class="kpi-modal-body" id="kpiModalBody"></div>
   </div>
@@ -1625,6 +1636,7 @@ function _populateKpis() {
   set('kpi-segn-aperte',     _kpiFilter('segn_aperte').length);
   set('kpi-oggi',            _kpiFilter('oggi').length);
   set('kpi-totale',          _verbaliAll.length);
+  _renderPozCard();
   set('kpi-sub-anomalie-aperte', n14 ? `↑ ${n14} da >14 giorni` : '');
   set('kpi-sub-verifiche',       nScad ? `↑ ${nScad} scadute` : '');
   const now = new Date();
@@ -2617,6 +2629,7 @@ function _kpiFilter(key) {
 }
 
 function openKpiModal(key, titolo) {
+  const _ka = document.getElementById('kpiModalActions'); if (_ka) _ka.innerHTML = '';
   const rows = _kpiFilter(key);
   document.getElementById('kpiModalTitle').innerHTML =
     `${esc(titolo)}<small>${rows.length} verbal${rows.length===1?'e':'i'}</small>`;
@@ -2802,7 +2815,56 @@ async function saveEditModal() {
   finally { btn.disabled = false; }
 }
 
-function closeKpiModal() { document.getElementById('kpiModal').classList.remove('open'); }
+function closeKpiModal() { document.getElementById('kpiModal').classList.remove('open'); const a = document.getElementById('kpiModalActions'); if (a) a.innerHTML = ''; }
+
+// ══ POZZETTI: card in alto + elenco verbali + Excel ═════════════════════════
+const _pozVerbali = () => _verbaliAll.filter(v => v.categoria === 'pozzetto');
+function _pozStats() {
+  const g = {};
+  _pozVerbali().forEach(v => { const k = String(v.pozzetto || v.codice_verbale).trim().toUpperCase(); (g[k] = g[k] || []).push(v); });
+  const keys = Object.keys(g);
+  return { verbali: _pozVerbali().length, verificati: keys.length, anomalie: keys.filter(k => g[k].some(_isAnomaliaAperta)).length };
+}
+function _renderPozCard() {
+  const s = _pozStats(), set = (i, x) => { const e = document.getElementById(i); if (e) e.textContent = x; };
+  set('poz-verificati', s.verificati); set('poz-anomalie', s.anomalie);
+  set('poz-sub', s.verbali + ' verbal' + (s.verbali === 1 ? 'e' : 'i') + ' pozzetto');
+}
+function openPozzettiModal() {
+  const rows = _pozVerbali().sort((a, b) => String(b.codice_verbale).localeCompare(String(a.codice_verbale)));
+  document.getElementById('kpiModalTitle').innerHTML = `Verbali pozzetti<small>${rows.length} verbal${rows.length === 1 ? 'e' : 'i'}</small>`;
+  document.getElementById('kpiModalActions').innerHTML = '<button class="kpi-modal-close" id="btnPozXlsx" onclick="exportPozzettiXlsx()">⬇ Excel</button>';
+  document.getElementById('kpiModalBody').innerHTML = rows.length ? rows.map(v => {
+    const st = _ckStatsOf(v);
+    return `<div class="km-row poz">
+      <span class="vr-codice">${esc(v.codice_verbale)}</span>
+      <span>${esc(v.pozzetto || '—')}<small>${_soprDateDisplay(v.data_sopralluogo)}</small></span>
+      <span>${esc(v.comune || '—')}<small>${esc(v.tratta_id || '—')} · ${esc(v.lotto || '—')}</small></span>
+      <span>${_statoChip(v.esito)}${st.nc ? `<span class="ck-chip nc">${st.nc} NC</span>` : ''}<small>${esc(v.impresa || '—')}</small></span>
+      <button class="btn-poz-prev" onclick="_kpiPick('${v._id}')">Anteprima</button>
+    </div>`;
+  }).join('') : '<div style="padding:22px 0;text-align:center;color:var(--muted);font-size:12px">Nessun verbale pozzetto.</div>';
+  document.getElementById('kpiModal').classList.add('open');
+}
+async function exportPozzettiXlsx() {
+  const btn = document.getElementById('btnPozXlsx'), orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = 'Esportazione…'; }
+  try {
+    const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+    const token = localStorage.getItem('_enri_session') || '';
+    if (!apiBase) throw new Error('API endpoint non configurato');
+    if (!token) throw new Error('Sessione scaduta — riaccedi dall\'hub');
+    const res = await fetch(apiBase + '/api/sopralluoghi/export.xlsx?categoria=pozzetto', { headers: { 'x-session-token': token } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await res.blob());
+    a.download = 'sopralluoghi_pozzetti_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    showToast('✓ Esportazione avviata');
+  } catch (e) { showToast('✗ Errore esportazione: ' + e.message); }
+  finally { if (btn) { btn.disabled = false; btn.innerHTML = orig; } }
+}
 
 function _kpiPick(id) {
   closeKpiModal();
