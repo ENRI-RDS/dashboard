@@ -4035,6 +4035,16 @@ async def _issue_create(pref: str, rec: dict, utente: str, extra: dict | None = 
     async with _issue_code_lock:
         last = await issues_col.find_one({"prefisso": pref}, sort=[("seq", -1)])
         seq = int((last or {}).get("seq", 0)) + 1
+        # Il reclassify (rev.359) cambia solo `prefisso`, non `codice`: esistono issue con codice "In_NNNN" ma prefisso "Sf".
+        # Il progressivo per prefisso può quindi ricadere su un codice già occupato → E11000 (prima ignorato in silenzio dalla sync,
+        # nessuna issue INF/POZ/MIC creata). Si parte dopo il massimo codice esistente con questo prefisso e si salta ogni codice occupato.
+        async for d in issues_col.find({"codice": {"$regex": f"^{pref}_\\d+$"}}, {"codice": 1}):
+            try:
+                seq = max(seq, int(str(d["codice"]).split("_", 1)[1]) + 1)
+            except (ValueError, IndexError):
+                pass
+        while await issues_col.find_one({"codice": f"{pref}_{seq:04d}"}, {"_id": 1}):
+            seq += 1
         doc = {
             **rec, **(extra or {}),
             "prefisso": pref, "seq": seq, "codice": f"{pref}_{seq:04d}",
@@ -4160,7 +4170,7 @@ async def delete_issue(issue_id: str, sess: dict = Depends(_require_admin_sessio
 
 # Priority automatica alla creazione di una issue da NC di un verbale (poi modificabile a mano dall'admin nel registro):
 # critica = segnalazione del cliente NON esclusa dall'esito "non confermata" (verbale radice) oppure cantiere non delimitato / accessi aperti;
-# alta = non conformità di qualità dell'opera; bassa = punti sicurezza formali/documentali/di ordine (elenco sotto);
+# alta = non conformità di qualità dell'opera, voci POZ-* e verbali tipologia pozzetto (qualunque NC); bassa = punti sicurezza formali/documentali/di ordine (elenco sotto);
 # media = tutto il resto (incl. POS/PSC SIC-03). Legenda in issue.html (PRIO_LEGEND).
 _ISSUE_PRIO_CRITICA_IDS = {"SIC-21", "SIC-22"}
 _ISSUE_PRIO_BASSA_IDS = {
@@ -4179,8 +4189,8 @@ def _issue_priority_nc(item_id: str, cat: str, root_verbale: dict | None) -> str
         and str(rv.get("esito_segnalazione", "") or "").strip().lower() != "non_confermata"
     if segn or item_id in _ISSUE_PRIO_CRITICA_IDS:
         return "critica"
-    if cat == "qualita":
-        return "alta"
+    if cat == "qualita" or str(item_id).startswith("POZ-") or rv.get("categoria") == "pozzetto":
+        return "alta"   # NC di qualità, di voci Pozzetti o di qualunque punto di un verbale tipologia pozzetto
     return "bassa" if (cat == "sicurezza" and item_id in _ISSUE_PRIO_BASSA_IDS) else "media"
 
 
@@ -4916,7 +4926,7 @@ async def export_sopralluoghi_xlsx(categoria: str = "", sess: dict = Depends(_re
         "N. foto", "Note generali checklist", "Creato il",
         "Esito segnalazione", "Tipo", "Verbale origine",
         "SubSystem", "Data invio segnalazione al System", "Metodo di invio", "Riferimento System invio",
-        "Categoria", "Pozzetto",
+        "Categoria", "Pozzetto", "Coordinate pozzetto",
     ]
     ws1.append(cols1)
     _r1 = 1
@@ -4955,6 +4965,7 @@ async def export_sopralluoghi_xlsx(categoria: str = "", sess: dict = Depends(_re
             v.get("rif_system_invio", ""),
             "Pozzetto" if v.get("categoria") == "pozzetto" else "Standard",
             v.get("pozzetto", ""),
+            (f"{v['pozzetto_lat']:.6f}, {v['pozzetto_lng']:.6f}" + (" (modificate)" if v.get("pozzetto_coord_modificate") else "") if isinstance(v.get("pozzetto_lat"), (int, float)) and isinstance(v.get("pozzetto_lng"), (int, float)) else ""),
         ]
         ws1.append(row)
         _r1 += 1
@@ -5236,6 +5247,21 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
         except Exception as e:
             print(f"[sopralluoghi] errore upload foto {i+1}: {e}")
 
+    _poz_lat = _poz_lng = _poz_olat = _poz_olng = None
+    if str((payload or {}).get("categoria", "")).strip().lower() == "pozzetto":
+        if not str((payload or {}).get("pozzetto", "")).strip():
+            raise HTTPException(422, "Verbale pozzetto: nome del pozzetto obbligatorio")
+        try:
+            _poz_lat = float((payload or {}).get("pozzetto_lat")); _poz_lng = float((payload or {}).get("pozzetto_lng"))
+        except (TypeError, ValueError):
+            raise HTTPException(422, "Verbale pozzetto: coordinate del pozzetto verificato obbligatorie")
+        if not (-90 <= _poz_lat <= 90 and -180 <= _poz_lng <= 180):
+            raise HTTPException(422, "Verbale pozzetto: coordinate non valide")
+        try:
+            _poz_olat = float((payload or {}).get("pozzetto_lat_orig")); _poz_olng = float((payload or {}).get("pozzetto_lng_orig"))
+        except (TypeError, ValueError):
+            _poz_olat = _poz_olng = None
+
     record = {
         "codice_verbale":      codice,
         "data_sopralluogo":    str((payload or {}).get("data_sopralluogo", "")).strip(),
@@ -5246,7 +5272,10 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
         "referente_retelit":   str((payload or {}).get("referente_retelit", "")).strip(),
         "comune":              str((payload or {}).get("comune", "")).strip(),
         "localita":            str((payload or {}).get("localita", "")).strip(),
-        "pozzetto":            str((payload or {}).get("pozzetto", "")).strip()[:80],   # codice pozzetto (deep-link da mappa.html)
+        "pozzetto":            str((payload or {}).get("pozzetto", "")).strip()[:80],   # codice pozzetto (deep-link da mappa.html o scelta manuale)
+        "pozzetto_lat":        _poz_lat, "pozzetto_lng": _poz_lng,
+        "pozzetto_coord_modificate": bool((payload or {}).get("pozzetto_coord_modificate")) if _poz_lat is not None else False,   # coordinate diverse da quelle in archivio (pozzetti_merged.geojson)
+        "pozzetto_lat_orig":   _poz_olat, "pozzetto_lng_orig": _poz_olng,   # coordinate del pozzetto verificato (obbligatorie se categoria pozzetto)
         "categoria":           "pozzetto" if str((payload or {}).get("categoria", "")).strip().lower() == "pozzetto" else "",   # verbale tipologia pozzetto
         "tipo_intervento":     str((payload or {}).get("tipo_intervento", "")).strip(),
         "esito":               str((payload or {}).get("esito", "")).strip(),
