@@ -124,6 +124,7 @@
   .segn-esito label{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--surface2);white-space:nowrap;font-size:11.5px;}
   .segn-esito label input{width:14px;height:14px;min-height:0;padding:0;margin:0;flex:none;accent-color:var(--warn);cursor:pointer;box-shadow:none;}
   .field-group input.miss{border-color:var(--err)!important;background:#FDF3F1;}
+  .poz-chk{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;margin:2px 0 10px;} .poz-chk small{font-weight:400;color:var(--muted);} #pozzFields{margin-bottom:6px;} .poz-chk-sm{margin:6px 0 0;font-size:12px;} #pozzetto_coord[readonly]{background:#f4f6fa;color:#555;}
   .segn-esito.miss{outline:1.5px solid var(--err);outline-offset:3px;border-radius:8px;}
   .verif-chip{display:inline-block;margin-left:5px;padding:2px 7px;border-radius:20px;font-size:9.5px;font-weight:800;white-space:nowrap;background:#D3DEEA;color:#043F75;}
   .verif-chip.todo{background:#FFE7B8;color:#8A5A00;}
@@ -538,7 +539,7 @@
   <div class="deeplink-bar" id="deepLinkBar" style="display:none">
     <span id="deepLinkTxt"></span>
     <button type="button" class="dl-open" onclick="document.getElementById('deepLinkBar').style.display='none';toggleNuovoVerbale(true)">Apri nuovo verbale</button>
-    <button type="button" class="dl-x" onclick="document.getElementById('deepLinkBar').style.display='none';window._pozzettoDL=''">Ignora</button>
+    <button type="button" class="dl-x" onclick="document.getElementById('deepLinkBar').style.display='none';window._pozzettoDL='';_pozReset(true)">Ignora</button>
   </div>
 
   <div class="top-row">
@@ -577,7 +578,7 @@
     </div>
     <div class="w-card seg-card poz-card" onclick="openPozzettiModal()" title="Verbali dei pozzetti">
       <div class="w-head"><div class="w-hico violet"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.7z"/><polyline points="3.3 7 12 12 20.7 7"/><line x1="12" y1="22" x2="12" y2="12"/></svg></div><div class="w-title">Pozzetti</div><button class="w-chev" onclick="event.stopPropagation();openPozzettiModal()" title="Apri elenco">›</button></div>
-      <div class="seg-nums three"><div><b id="poz-verificati">0</b><small>Verificati</small></div><div class="red"><b id="poz-anomalie">0</b><small>Con anomalie</small></div><div><b id="poz-totale">0</b><small>Totale</small></div></div>
+      <div class="seg-nums three"><div><b id="poz-verificati">0</b><small>Conformi</small></div><div class="red"><b id="poz-anomalie">0</b><small>Con anomalie</small></div><div><b id="poz-totale">0</b><small>Totale</small></div></div>
     </div>
   </div>
   </div>
@@ -609,6 +610,22 @@
       <div class="field-group">
         <label for="data">Data Sopralluogo</label>
         <input type="date" id="data">
+      </div>
+    </div>
+
+    <div id="pozzWrap">
+      <label class="poz-chk"><input type="checkbox" id="chkPozz" onchange="onPozzToggle()"> Verbale pozzetto <small>(sopralluogo su un singolo pozzetto)</small></label>
+      <div class="field-row" id="pozzFields" style="display:none">
+        <div class="field-group">
+          <label for="pozzetto_nome">Pozzetto *</label>
+          <input type="text" id="pozzetto_nome" list="pozzettiList" autocomplete="off" placeholder="Scegli o scrivi il codice del pozzetto" oninput="onPozzNomeInput()">
+          <datalist id="pozzettiList"></datalist>
+        </div>
+        <div class="field-group">
+          <label for="pozzetto_coord">Coordinate pozzetto verificato *</label>
+          <input type="text" id="pozzetto_coord" inputmode="decimal" autocomplete="off" readonly placeholder="Si compilano scegliendo il pozzetto" oninput="this.classList.remove('miss')">
+          <label class="poz-chk poz-chk-sm"><input type="checkbox" id="chkPozCoordMod" onchange="onPozzCoordModToggle()"> Modifica coordinate <small>(diverse da quelle in archivio)</small></label>
+        </div>
       </div>
     </div>
 
@@ -911,6 +928,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // precompilati (vedi _loadLottiCantieriImpl) e una barra propone di aprire il nuovo verbale.
   if (_DL.get('nuovo') === '1' || _DL.get('lotto') || _DL.get('cantiere') || _DL.get('pozzetto')) {
     window._pozzettoDL = (_DL.get('pozzetto') || '').trim();   // collegamento verbale↔pozzetto (campo `pozzetto` del verbale)
+    if (window._pozzettoDL) _pozPrefill(window._pozzettoDL);
     const bits = [_DL.get('lotto') ? 'Lotto ' + _DL.get('lotto') : '', window._pozzettoDL ? 'Pozzetto ' + window._pozzettoDL : '', _DL.get('indirizzo') || ''].filter(Boolean).join(' · ');
     document.getElementById('deepLinkTxt').textContent = 'Nuovo sopralluogo richiesto' + (bits ? ' — ' + bits : '') + '.';
     document.getElementById('deepLinkBar').style.display = '';
@@ -1089,20 +1107,125 @@ function onLottoChange() {
 // tutte le altre partono N.A. (modificabili a mano come sempre).
 function _applyPozzettoMode() {
   const bn = document.getElementById('pozzBanner');
-  if (!window._pozzettoDL || _verificaDi) { if (bn) bn.style.display = 'none'; return; }
+  const w = document.getElementById('pozzWrap'); if (w) w.style.display = _verificaDi ? 'none' : '';
+  if (!_pozOn() || _verificaDi) { if (bn) bn.style.display = 'none'; return; }
   if (!window._pozzDefaultsApplied) {
     window._pozzDefaultsApplied = true;
+    _pozAutoNA = [];
     CK_CATS.forEach(k => CHECKLIST_DEF[k].items.forEach(it => {
       if (it.area === 'Pozzetti') return;
       const st = _ckGet(k, it.id);
-      if (!st.e) st.e = 'NA';
+      if (!st.e) { st.e = 'NA'; _pozAutoNA.push([k, it.id]); }
     }));
     setChecklistTab('qualita');
   }
   if (bn) {
-    document.getElementById('pozzBannerTxt').innerHTML = '<b>VERBALE POZZETTO ' + esc(window._pozzettoDL) + '</b> — checklist precompilata: da compilare solo le voci Pozzetti, le altre sono N.A. (modificabili).';
+    const n = (document.getElementById('pozzetto_nome')?.value || '').trim();
+    document.getElementById('pozzBannerTxt').innerHTML = '<b>VERBALE POZZETTO' + (n ? ' ' + esc(n) : '') + '</b> — checklist precompilata: da compilare solo le voci Pozzetti, le altre sono N.A. (modificabili).';
     bn.style.display = 'flex';
   }
+}
+
+// ── Verbale pozzetto: flag + nome (tra i pozzetti esistenti, con scrittura manuale) + coordinate verificate ──
+var _pozList, _pozListP, _pozAutoNA;   // var: l'init (deep-link) può girare prima di questo punto
+const _pozOn = () => !!document.getElementById('chkPozz')?.checked;
+const _pozNorm = s => String(s || '').trim().toUpperCase();
+function _loadPozList() {
+  if (_pozListP) return _pozListP;
+  const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+  const token = localStorage.getItem('_enri_session') || '';
+  _pozListP = fetch(apiBase + '/api/data-text/pozzetti_merged.geojson', { headers: { 'x-session-token': token } })
+    .then(r => r.ok ? r.text() : Promise.reject(new Error('HTTP ' + r.status)))
+    .then(t => {
+      const m = new Map();
+      (JSON.parse(t).features || []).forEach(f => {
+        const p = f.properties || {}, lab = p.codice || (p.id ? 'ID ' + p.id : '');   // stessa etichetta usata da mappa.html
+        const g = f.geometry && f.geometry.type === 'Point' ? f.geometry.coordinates : null;   // GeoJSON: [lng, lat]
+        if (lab) m.set(_pozNorm(lab), { lab, lotto: p.Lotto || '', tipo: p.Tipo || '', lat: g ? +g[1] : null, lng: g ? +g[0] : null });
+      });
+      _pozList = m;
+      document.getElementById('pozzettiList').innerHTML = [...m.values()]
+        .sort((a, b) => a.lab.localeCompare(b.lab, 'it', { numeric: true }))
+        .map(x => '<option value="' + esc(x.lab).replace(/"/g, '&quot;') + '">' + esc([x.lotto && 'Lotto ' + x.lotto, x.tipo].filter(Boolean).join(' · ')) + '</option>').join('');
+    })
+    .catch(e => { console.warn('Elenco pozzetti non disponibile:', e.message); _pozListP = null; });
+  return _pozListP;
+}
+function _pozPrefill(nome) {
+  const c = document.getElementById('chkPozz'); if (!c) return;
+  c.checked = true;
+  document.getElementById('pozzetto_nome').value = nome;
+  document.getElementById('pozzFields').style.display = '';
+  Promise.resolve(_loadPozList()).then(_pozSyncCoord);
+}
+function onPozzToggle() {
+  const on = _pozOn();
+  document.getElementById('pozzFields').style.display = on ? '' : 'none';
+  if (on) Promise.resolve(_loadPozList()).then(_pozSyncCoord); else _pozReset(true);
+  _applyPozzettoMode();
+}
+function onPozzNomeInput() { document.getElementById('pozzetto_nome').classList.remove('miss'); _pozSyncCoord(); if (_pozOn()) _applyPozzettoMode(); }
+const _pozFmt = (lat, lng) => lat.toFixed(6) + ', ' + lng.toFixed(6);
+// Precompila le coordinate dal pozzetto scelto (da elenco); modificabili solo con il flag "Modifica coordinate"
+function _pozSyncCoord() {
+  const nEl = document.getElementById('pozzetto_nome'), ce = document.getElementById('pozzetto_coord'), mod = document.getElementById('chkPozCoordMod');
+  if (!nEl || !ce || !mod) return;
+  const hit = _pozList && _pozList.get(_pozNorm(nEl.value));
+  if (hit) {
+    if (ce.dataset.poz !== hit.lab) {   // pozzetto cambiato: ricarica le coordinate d'archivio e azzera il flag
+      ce.dataset.poz = hit.lab; mod.checked = false;
+      ce.value = hit.lat != null ? _pozFmt(hit.lat, hit.lng) : '';
+    }
+  } else if (ce.dataset.poz) { ce.dataset.poz = ''; mod.checked = false; ce.value = ''; }
+  const noOrig = !!hit && hit.lat == null;   // pozzetto senza geometria: coordinate da inserire a mano
+  if (noOrig) mod.checked = true;
+  ce.readOnly = !mod.checked;
+  ce.classList.remove('miss');
+}
+function onPozzCoordModToggle() {
+  const ce = document.getElementById('pozzetto_coord'), mod = document.getElementById('chkPozCoordMod');
+  const hit = _pozList && _pozList.get(_pozNorm(document.getElementById('pozzetto_nome').value));
+  if (!mod.checked && hit && hit.lat != null) ce.value = _pozFmt(hit.lat, hit.lng);   // annulla la modifica: torna all'archivio
+  ce.readOnly = !mod.checked;
+  if (mod.checked) ce.focus();
+}
+// Azzera il blocco pozzetto; revertChecklist=true ripristina i N.A. messi in automatico (non quelli modificati a mano)
+function _pozReset(revertChecklist) {
+  const c = document.getElementById('chkPozz'); if (c) c.checked = false;
+  ['pozzetto_nome', 'pozzetto_coord'].forEach(i => { const el = document.getElementById(i); if (el) { el.value = ''; el.classList.remove('miss'); delete el.dataset.poz; } });
+  const _cm = document.getElementById('chkPozCoordMod'); if (_cm) _cm.checked = false;
+  const _ce = document.getElementById('pozzetto_coord'); if (_ce) _ce.readOnly = true;
+  const f = document.getElementById('pozzFields'); if (f) f.style.display = 'none';
+  const b = document.getElementById('pozzBanner'); if (b) b.style.display = 'none';
+  if (revertChecklist && window._pozzDefaultsApplied) {
+    (_pozAutoNA || []).forEach(([k, id]) => { const st = _ckGet(k, id); if (st.e === 'NA' && !st.nota) st.e = ''; });
+    renderChecklist();
+  }
+  _pozAutoNA = []; window._pozzDefaultsApplied = false;
+}
+function _pozParseCoord(s) {
+  const m = String(s || '').trim().match(/^(-?\d{1,2}(?:\.\d+)?)\s*[,;\s]\s*(-?\d{1,3}(?:\.\d+)?)$/);
+  if (!m) return null;
+  const lat = +m[1], lng = +m[2];
+  return (lat >= 35 && lat <= 48 && lng >= 6 && lng <= 19) ? { lat, lng } : null;   // bbox Italia: intercetta anche lat/lng invertiti
+}
+// Ritorna { err } oppure { nome, lat, lng } (null se il verbale non è di tipo pozzetto)
+async function _pozValida() {
+  if (!_pozOn() || _verificaDi) return null;
+  const nomeEl = document.getElementById('pozzetto_nome'), coordEl = document.getElementById('pozzetto_coord');
+  const fail = (el, err) => { el.classList.add('miss'); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); return { err }; };
+  let nome = nomeEl.value.trim();
+  if (!nome) return fail(nomeEl, 'Verbale pozzetto: scegli il pozzetto');
+  await _loadPozList();
+  if (!_pozList) return fail(nomeEl, 'Elenco pozzetti non disponibile: riprova tra poco');
+  const hit = _pozList.get(_pozNorm(nome));
+  if (!hit) return fail(nomeEl, 'Pozzetto "' + nome + '" non presente nell\'elenco: scegline uno esistente');
+  nome = hit.lab; nomeEl.value = nome; _pozSyncCoord();
+  const c = _pozParseCoord(coordEl.value);
+  if (!c) return fail(coordEl, 'Coordinate pozzetto verificato obbligatorie nel formato lat, lng (es. 45.123456, 9.123456)');
+  const orig = hit.lat != null ? { lat: hit.lat, lng: hit.lng } : null;
+  const modificate = !!orig && (Math.abs(c.lat - orig.lat) > 1e-6 || Math.abs(c.lng - orig.lng) > 1e-6);
+  return { nome, ...c, modificate, olat: orig ? orig.lat : null, olng: orig ? orig.lng : null };
 }
 
 function toggleNuovoVerbale(force) {
@@ -1128,6 +1251,8 @@ async function inviaVerbale(){
   if (!document.getElementById('data').value) { showToast('✗ Inserisci la data del sopralluogo'); return; }
   if (!document.getElementById('n_cantiere').value.trim()) { showToast('✗ Inserisci il numero cantiere'); return; }
   if (!document.getElementById('impresa').value.trim()) { showToast('✗ Inserisci il nome impresa'); return; }
+  const _poz = await _pozValida();
+  if (_poz && _poz.err) { showToast('✗ ' + _poz.err); return; }
   const errV = _validaVerbale();
   if (errV) { showToast('✗ ' + errV); return; }
   if (!_verificaDi) {   // sopralluogo radice: avvisa se restano punti senza esito (altrimenti il verbale risulta es. 84/85)
@@ -1174,8 +1299,13 @@ async function inviaVerbale(){
         segnalazione_cliente_note: f.segnalazione_cliente_note,
         esito_segnalazione: f.esito_segnalazione,
         verbale_origine:   f.verbale_origine,
-        pozzetto:          window._pozzettoDL || '',
-        categoria:         window._pozzettoDL ? 'pozzetto' : '',
+        pozzetto:          _poz ? _poz.nome : '',
+        categoria:         _poz ? 'pozzetto' : '',
+        pozzetto_lat:      _poz ? _poz.lat : null,
+        pozzetto_lng:      _poz ? _poz.lng : null,
+        pozzetto_coord_modificate: _poz ? _poz.modificate : false,
+        pozzetto_lat_orig: _poz ? _poz.olat : null,
+        pozzetto_lng_orig: _poz ? _poz.olng : null,
         ..._segnSystemVals(),
         checklist:         ckPayload(),
         note:              '',
@@ -1203,8 +1333,7 @@ async function inviaVerbale(){
 
 function resetVerbaleForm() {
   window._pozzettoDL = '';
-  window._pozzDefaultsApplied = false;
-  const _pb = document.getElementById('pozzBanner'); if (_pb) _pb.style.display = 'none';
+  _pozReset(false);   // lo stato checklist viene azzerato da ckReset() più sotto
   document.getElementById('codice_verbale').value = '';
   document.getElementById('data').value = '';
   document.getElementById('lotto').value = '';
@@ -1886,6 +2015,7 @@ function _renderPreview(v) {
     ['Lotto', v.lotto],
     ['Comune / Località', [v.comune, v.localita].filter(Boolean).join(' — ')],
     ['Pozzetto', v.pozzetto, true],
+    ['Coordinate pozzetto verificato', (typeof v.pozzetto_lat === 'number' && typeof v.pozzetto_lng === 'number') ? v.pozzetto_lat.toFixed(6) + ', ' + v.pozzetto_lng.toFixed(6) + (v.pozzetto_coord_modificate ? ' (modificate rispetto all\'archivio)' : '') : '', true],
     ['Impresa esecutrice', v.impresa],
     ['Ruolo redattore', v.referente_retelit],
     ['Redatto da', v.referente_impresa],
