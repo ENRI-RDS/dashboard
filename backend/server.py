@@ -4821,14 +4821,16 @@ def _esito_effettivo(v: dict) -> str:
     altrimenti derivato dalla checklist (NC>0 = media; critica se NC su SIC-21/22 o segnalazione cliente non 'non_confermata';
     0 NC con ≥1 punto compilato = nessuna anomalia; checklist vuota = '')."""
     esito = str(v.get("esito", "") or "").strip()
-    if esito in ("Anomalia critica", "Anomalia media", "Nessuna anomalia"):
+    if esito in ("Anomalia critica", "Anomalia alta", "Anomalia media", "Nessuna anomalia"):
         return esito
     nc = v.get("checklist_non_conformi", 0) or 0
     if nc > 0:
         nc_ids = {x.strip() for x in str(v.get("checklist_nc_ids", "") or "").split(",") if x.strip()}
         segn = v.get("segnalazione_cliente") in (True, "SI", "si", "true", 1, "1") \
             and str(v.get("esito_segnalazione", "") or "").strip().lower() != "non_confermata"
-        return "Anomalia critica" if (segn or nc_ids & _ISSUE_PRIO_CRITICA_IDS) else "Anomalia media"
+        if segn or nc_ids & _ISSUE_PRIO_CRITICA_IDS:
+            return "Anomalia critica"
+        return "Anomalia alta" if v.get("categoria") == "pozzetto" else "Anomalia media"   # NC su verbale pozzetto = alta (come la priority issue)
     return "Nessuna anomalia" if (v.get("checklist_compilati", 0) or 0) > 0 else ""
 
 
@@ -4976,6 +4978,8 @@ async def export_sopralluoghi_xlsx(categoria: str = "", sess: dict = Depends(_re
         esito_val = _esito_effettivo(v)
         if esito_val == "Anomalia critica":
             ws1.cell(row=r, column=9).fill = NC_FILL
+        elif esito_val == "Anomalia alta":
+            ws1.cell(row=r, column=9).fill = PatternFill("solid", fgColor="F8CBAD")
         elif esito_val == "Anomalia media":
             ws1.cell(row=r, column=9).fill = WARN_FILL
         elif esito_val == "Nessuna anomalia":
