@@ -124,7 +124,7 @@
   .segn-esito label{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--surface2);white-space:nowrap;font-size:11.5px;}
   .segn-esito label input{width:14px;height:14px;min-height:0;padding:0;margin:0;flex:none;accent-color:var(--warn);cursor:pointer;box-shadow:none;}
   .field-group input.miss{border-color:var(--err)!important;background:#FDF3F1;}
-  .poz-chk{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;margin:2px 0 10px;} .poz-chk small{font-weight:400;color:var(--muted);} #pozzFields{margin-bottom:6px;} .poz-chk-sm{margin:6px 0 0;font-size:12px;} #pozzetto_coord[readonly]{background:#f4f6fa;color:#555;}
+  .poz-chk{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;margin:2px 0 10px;} .poz-chk small{font-weight:400;color:var(--muted);} #pozzFields{margin-bottom:6px;} .poz-chk input{width:auto;flex:none;margin:0;padding:0;} .poz-chk-sm{margin:6px 0 0;font-size:12px;} #pozzetto_coord[readonly]{background:#f4f6fa;color:#555;}
   .segn-esito.miss{outline:1.5px solid var(--err);outline-offset:3px;border-radius:8px;}
   .verif-chip{display:inline-block;margin-left:5px;padding:2px 7px;border-radius:20px;font-size:9.5px;font-weight:800;white-space:nowrap;background:#D3DEEA;color:#043F75;}
   .verif-chip.todo{background:#FFE7B8;color:#8A5A00;}
@@ -614,7 +614,7 @@
     </div>
 
     <div id="pozzWrap">
-      <label class="poz-chk"><input type="checkbox" id="chkPozz" onchange="onPozzToggle()"> Verbale pozzetto <small>(sopralluogo su un singolo pozzetto)</small></label>
+      <label class="poz-chk"><input type="checkbox" id="chkPozz" onchange="onPozzToggle()"> Verbale pozzetto</label>
       <div class="field-row" id="pozzFields" style="display:none">
         <div class="field-group">
           <label for="pozzetto_nome">Pozzetto *</label>
@@ -1416,6 +1416,7 @@ async function _generatePdfCore(f, photos){
   if (f.segnalazione_cliente === 'SI' && f.segnalazione_cliente_note) extraSections.unshift(['Note segnalazione cliente', esc(f.segnalazione_cliente_note)]);
 
   const gravColor = f.gravita === 'Anomalia critica' ? '#C0392B'
+                  : f.gravita === 'Anomalia alta'    ? '#E07B1A'
                   : f.gravita === 'Anomalia media'   ? '#D08A1A' : '#1A7D99';
 
   const tableRows = fields.map(([lbl, val], i) => `
@@ -1909,14 +1910,14 @@ function _ckChip(v) {
 function _esitoPill(v) {
   const a = _anomaliaStato(v), vs = _verifState(v);
   if (_isAnomalia(v) && vs && vs.stato === 'risolto') return '<span class="es-pill green">Risolta</span>';
-  if (a === 'Anomalia critica' || a === 'Anomalia media') return '<span class="es-pill red">Con anomalia</span>';
+  if (a === 'Anomalia critica' || a === 'Anomalia alta' || a === 'Anomalia media') return '<span class="es-pill red">Con anomalia</span>';
   if (_isVerifDaFare(v)) return '<span class="es-pill amber">Da verificare</span>';
   if (a === 'Nessuna anomalia') return '<span class="es-pill green">OK</span>';
   return '<span class="es-pill grey">Da compilare</span>';
 }
 
 function _statoChip(esito) {
-  if (esito === 'Anomalia critica' || esito === 'Anomalia media') return '<span class="stato-chip err">Con anomalia</span>';
+  if (esito === 'Anomalia critica' || esito === 'Anomalia alta' || esito === 'Anomalia media') return '<span class="stato-chip err">Con anomalia</span>';
   if (esito === 'Nessuna anomalia') return '<span class="stato-chip ok">Nessuna anomalia</span>';
   return '';
 }
@@ -2463,19 +2464,19 @@ function _ckAllItems(v) {
 // Verbali storici: vale l'esito salvato. Verbali nuovi (esito vuoto): derivata dalla checklist
 // (NC>0 → media, critica se segnalazione cliente non esclusa o NC su SIC-21/SIC-22, come la priority issue lato backend;
 // 0 NC con almeno un punto compilato → nessuna anomalia; checklist vuota → '' = non valutato, non conteggiato).
-const _ESITI_LEGACY = ['Anomalia critica', 'Anomalia media', 'Nessuna anomalia'];
+const _ESITI_LEGACY = ['Anomalia critica', 'Anomalia alta', 'Anomalia media', 'Nessuna anomalia'];
 function _anomaliaStato(v) {
   if (v && _ESITI_LEGACY.includes(v.esito)) return v.esito;
   const st = _ckStatsOf(v);
   if (st.nc > 0) {
-    const ck = _ckOf(v);
+    const ck = _ckOf(v);   // NC su verbale pozzetto → 'Anomalia alta' (come la priority Alta delle issue), salvo critica
     const critNc = CK_CATS.some(k => ['SIC-21', 'SIC-22'].some(id => ((ck[k] || {})[id] || {}).e === 'NC'));
     const segnAttiva = _isSegnCliente(v) && String(v.esito_segnalazione || '').toLowerCase() !== 'non_confermata';
-    return (critNc || segnAttiva) ? 'Anomalia critica' : 'Anomalia media';
+    return (critNc || segnAttiva) ? 'Anomalia critica' : (v && v.categoria === 'pozzetto' ? 'Anomalia alta' : 'Anomalia media');
   }
   return st.compilati > 0 ? 'Nessuna anomalia' : '';
 }
-const _isAnomalia = v => { const a = _anomaliaStato(v); return a === 'Anomalia media' || a === 'Anomalia critica'; };
+const _isAnomalia = v => { const a = _anomaliaStato(v); return a === 'Anomalia media' || a === 'Anomalia alta' || a === 'Anomalia critica'; };
 // Chiusa = verifica risolta, oppure superata da un verbale di verifica (l'eventuale NC residua vive nel figlio, evita doppio conteggio).
 const _verifChiusa = v => { const s = _verifState(v); return !!s && (s.stato === 'risolto' || s.stato === 'non_risolto'); };
 const _isVerifDaFare = v => { const s = _verifState(v); return !!s && (s.stato === 'aperta' || s.stato === 'scaduta'); };
