@@ -621,8 +621,8 @@
       </div>
       <div class="field-row" id="pozzNewRow" style="display:none">
         <div class="field-group"><label for="pozz_new_codice">Codice (assegnato dal sistema)</label><input type="text" id="pozz_new_codice" disabled placeholder="assegnato al salvataggio"></div>
-        <div class="field-group"><label for="pozz_new_lotto">Lotto *</label><select id="pozz_new_lotto" onchange="this.classList.remove('miss')"><option value="">— scegli —</option><option value="1">Lotto 1</option><option value="1A">Lotto 1A</option><option value="1B">Lotto 1B</option><option value="2">Lotto 2</option><option value="2A">Lotto 2A</option><option value="2B">Lotto 2B</option><option value="3">Lotto 3</option><option value="4">Lotto 4</option><option value="5">Lotto 5</option><option value="6">Lotto 6</option><option value="7">Lotto 7</option><option value="8">Lotto 8</option></select></div>
-        <div class="field-group"><label for="pozz_new_cluster">Cluster (dal cantiere) *</label><input type="text" id="pozz_new_cluster" readonly autocomplete="off" placeholder="scegli il cantiere" oninput="this.classList.remove('miss')"></div>
+        <div class="field-group" id="pozzLottoGrp" style="display:none"><label for="pozz_new_lotto">Lotto (dal cantiere) *</label><input type="text" id="pozz_new_lotto" readonly placeholder="scegli il cantiere"></div>
+        <div class="field-group" id="pozzClusterGrp" style="display:none"><label for="pozz_new_cluster">Cluster (dal cantiere) *</label><input type="text" id="pozz_new_cluster" readonly autocomplete="off" placeholder="scegli il cantiere" oninput="this.classList.remove('miss')"></div>
         <div class="field-group"><label for="pozz_new_tipo">Tipo *</label><select id="pozz_new_tipo" onchange="this.classList.remove('miss')"><option value="">— scegli —</option><option value="125x80">125x80</option><option value="224x124">224x124</option></select></div>
       </div>
       <div class="field-row" id="pozzFields" style="display:none">
@@ -1150,7 +1150,6 @@ function _loadPozMeta(force) {
     .then(m => {
       document.getElementById('pozz_new_codice').value = m.codice || '';
       const opt = (v, t) => '<option value="' + esc(v).replace(/"/g, '&quot;') + '">' + esc(t) + '</option>';
-      if ((m.lotti || []).length) document.getElementById('pozz_new_lotto').innerHTML = opt('', '— scegli —') + m.lotti.map(x => opt(x, 'Lotto ' + x)).join('');
       if ((m.tipi || []).length) document.getElementById('pozz_new_tipo').innerHTML = opt('', '— scegli —') + m.tipi.map(x => opt(x, x)).join('');
     })
     .catch(e => { console.warn('Meta pozzetti non disponibile:', e.message); _pozMetaP = null; document.getElementById('pozz_new_codice').value = ''; });
@@ -1162,8 +1161,10 @@ function _pozSyncCluster() {
   const lotto = document.getElementById('lotto').value, key = document.getElementById('n_cantiere').value;
   const c = key ? ((typeof _lottiData !== 'undefined' && _lottiData[lotto]) || []).find(x => x.value === key) : null;
   const cl = c ? String(c.cluster || '').trim() : '';
+  const le = document.getElementById('pozz_new_lotto'); if (le) { le.value = c ? lotto : ''; le.classList.remove('miss'); }
   el.value = cl; el.classList.remove('miss');
   el.readOnly = !(c && !cl);   // editabile solo se il cantiere scelto non ha il cluster
+  const cg = document.getElementById('pozzClusterGrp'); if (cg) cg.style.display = (c && !cl) ? '' : 'none';   // campo visibile solo se manca sul cantiere
   el.placeholder = !c ? 'scegli il cantiere' : (cl ? '' : 'non presente nel cantiere: inseriscilo');
 }
 document.addEventListener('change', e => { if (e.target && (e.target.id === 'n_cantiere' || e.target.id === 'lotto')) _pozSyncCluster(); });
@@ -1252,6 +1253,7 @@ function _pozReset(revertChecklist) {
   const _cl = document.getElementById('pozCoordModLbl'); if (_cl) _cl.style.display = '';
   ['pozz_new_lotto', 'pozz_new_cluster', 'pozz_new_tipo'].forEach(i => { const e = document.getElementById(i); if (e) { e.value = ''; e.classList.remove('miss'); } });
   const _cle = document.getElementById('pozz_new_cluster'); if (_cle) { _cle.readOnly = true; _cle.placeholder = 'scegli il cantiere'; }
+  const _cg = document.getElementById('pozzClusterGrp'); if (_cg) _cg.style.display = 'none';
   const _pc = document.getElementById('pozzetto_coord'); if (_pc) _pc.placeholder = 'Si compilano scegliendo il pozzetto';
   const b = document.getElementById('pozzBanner'); if (b) b.style.display = 'none';
   if (revertChecklist && window._pozzDefaultsApplied) {
@@ -1273,7 +1275,7 @@ async function _pozValida() {
   const fail = (el, err) => { el.classList.add('miss'); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); return { err }; };
   if (_pozNuovo()) { _pozSyncCluster();   // nuovo pozzetto: codice assegnato dal server al salvataggio, qui servono lotto/cluster/tipo + coordinate
     const g = id => document.getElementById(id), nv = { lotto: g('pozz_new_lotto').value.trim(), cluster: g('pozz_new_cluster').value.trim(), tipo: g('pozz_new_tipo').value.trim() };
-    for (const [k, id] of [['lotto', 'pozz_new_lotto'], ['cluster', 'pozz_new_cluster'], ['tipo', 'pozz_new_tipo']]) if (!nv[k]) return fail(g(id), k === 'cluster' ? 'Nuovo pozzetto: seleziona il cantiere (il cluster è preso da lì)' : 'Nuovo pozzetto: compila ' + k);
+    for (const [k, id] of [['lotto', 'pozz_new_lotto'], ['cluster', 'pozz_new_cluster'], ['tipo', 'pozz_new_tipo']]) if (!nv[k]) return fail(g(id), k !== 'tipo' && !nv.lotto ? 'Nuovo pozzetto: seleziona il cantiere (lotto e cluster sono presi da lì)' : (k === 'cluster' ? 'Nuovo pozzetto: il cantiere scelto non ha il cluster, inseriscilo' : 'Nuovo pozzetto: compila ' + k));
     const c = _pozParseCoord(coordEl.value);
     if (!c) return fail(coordEl, 'Coordinate del nuovo pozzetto obbligatorie nel formato lat, lng (es. 45.123456, 9.123456)');
     return { nome: '', nuovo: nv, ...c, modificate: false, olat: null, olng: null };
