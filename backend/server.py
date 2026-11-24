@@ -3769,7 +3769,7 @@ async def get_lotti_cantieri(sess: dict = Depends(_require_staff_session)):
 
     # Cantieri da MongoDB — raggruppati per lotto
     cantieri_map: dict = {}
-    async for doc in cantieri_col.find({}, {"cantiere_key": 1, "lotto": 1, "ente": 1}):
+    async for doc in cantieri_col.find({}, {"cantiere_key": 1, "lotto": 1, "ente": 1, "cluster": 1}):
         lotto = _lotto_from_source(doc.get("lotto", ""))
         key   = str(doc.get("cantiere_key", "")).strip()
         if not lotto or not key:
@@ -3781,7 +3781,7 @@ async def get_lotti_cantieri(sess: dict = Depends(_require_staff_session)):
         if lotto not in cantieri_map:
             cantieri_map[lotto] = []
         if not any(c["value"] == key for c in cantieri_map[lotto]):
-            cantieri_map[lotto].append({"value": key, "label": label, "num": num})
+            cantieri_map[lotto].append({"value": key, "label": label, "num": num, "cluster": str(doc.get("cluster", "") or "").strip()})
 
     # Unisce: lotti dal Master + lotti dai cantieri (fallback se Master fallisce)
     tutti_lotti = sorted(set(lotti_master) | set(cantieri_map.keys()))
@@ -5183,6 +5183,99 @@ def _checklist_counts(ck: dict) -> dict:
     }
 
 
+# ── Pozzetti: nuovo pozzetto creato da un verbale (codice univoco da sistema) ──
+POZZ_CODE_PREFIX = "PZ"   # codice nel formato PZ-NNNN (quello mostrato in mappa/verbali)
+POZZ_TIPI_DEFAULT = ["125x80", "224x124"]
+_pozz_lock = asyncio.Lock()
+
+
+async def _pozz_load() -> dict:
+    """Legge la versione corrente di pozzetti_merged.geojson (GridFS, fallback disco)."""
+    cur = await _current_upload(POZZETTI_FILENAME)
+    if cur:
+        raw = await _read_gridfs(cur["gridfs_id"])
+    else:
+        path = DATA_DIR / POZZETTI_FILENAME
+        if not path.is_file():
+            raise HTTPException(404, f"{POZZETTI_FILENAME} non presente: caricalo da Admin")
+        raw = path.read_bytes()
+    gj = json.loads(raw.decode("utf-8-sig"))
+    if not isinstance(gj, dict) or not isinstance(gj.get("features"), list):
+        raise HTTPException(500, f"{POZZETTI_FILENAME} non valido")
+    return gj
+
+
+def _pozz_codes(feats: list) -> set:
+    out = set()
+    for f in feats:
+        p = f.get("properties") or {}
+        for k in ("codice", "name"):
+            if p.get(k):
+                out.add(str(p[k]).strip().upper())
+    return out
+
+
+def _pozz_next_code(feats: list) -> str:
+    """Prossimo codice libero PZ-NNNN: massimo numero PZ-* esistente + 1 (univoco su codice e name)."""
+    used = _pozz_codes(feats)
+    mx = 0
+    for c in used:
+        m = re.match(rf"^{POZZ_CODE_PREFIX}-(\d+)$", c)
+        if m:
+            mx = max(mx, int(m.group(1)))
+    n = mx + 1
+    while f"{POZZ_CODE_PREFIX}-{n:04d}" in used:
+        n += 1
+    return f"{POZZ_CODE_PREFIX}-{n:04d}"
+
+
+@app.get("/api/pozzetti/meta")
+async def pozzetti_meta(sess: dict = Depends(_require_staff_session)):
+    """Codice proposto per un nuovo pozzetto + valori esistenti di Lotto/Cluster/Tipo per il form verbali."""
+    feats = (await _pozz_load())["features"]
+    pr = [f.get("properties") or {} for f in feats]
+    uniq = lambda k: sorted({str(p[k]).strip() for p in pr if str(p.get(k, "")).strip()}, key=lambda x: (len(x), x))
+    return {"codice": _pozz_next_code(feats), "lotti": uniq("Lotto"), "cluster": uniq("Cluster"),
+            "tipi": sorted(set(uniq("Tipo")) | set(POZZ_TIPI_DEFAULT))}
+
+
+async def _pozz_append(lotto: str, cluster: str, tipo: str, lat: float, lng: float, verbale: str, actor: str) -> str:
+    """Aggiunge un Point a pozzetti_merged.geojson (nuova versione GridFS) e ritorna il codice assegnato.
+    Il file è sensibile: resta solo su Mongo, nessun push su GitHub."""
+    async with _pozz_lock:
+        gj = await _pozz_load()
+        feats = gj["features"]
+        codice = _pozz_next_code(feats)
+        props = {}
+        for f in feats:                       # stesso schema delle feature esistenti (chiavi mancanti = null)
+            for k in (f.get("properties") or {}):
+                props.setdefault(k, None)
+        if "id" in props:                     # id numerico progressivo, se il file lo usa
+            ids = [(f.get("properties") or {}).get("id") for f in feats]
+            nums = [i for i in ids if isinstance(i, (int, float)) and not isinstance(i, bool)]
+            if nums:
+                props["id"] = int(max(nums)) + 1
+        if cluster.isdigit() and any(isinstance((f.get("properties") or {}).get("Cluster"), int) for f in feats):
+            cluster_v = int(cluster)
+        else:
+            cluster_v = cluster
+        props.update({"codice": codice, "name": codice, "Lotto": lotto, "Cluster": cluster_v, "Tipo": tipo,
+                      "Inserito_da": actor, "Inserito_il": _now_iso(), "Verbale": verbale})
+        feats.append({"type": "Feature", "properties": props,
+                      "geometry": {"type": "Point", "coordinates": [lng, lat, 0.0]}})   # z=0 come le altre (EPSG:4979)
+        out_bytes = json.dumps(gj, ensure_ascii=False).encode("utf-8")
+        gid = await gridfs.upload_from_stream(
+            POZZETTI_FILENAME, io.BytesIO(out_bytes),
+            metadata={"project": "main", "uploaded_at": _now_iso()})
+        await uploads_col.insert_one({
+            "filename": POZZETTI_FILENAME, "original_name": f"{codice} da {verbale}", "size": len(out_bytes),
+            "content_type": "application/geo+json", "project": "main", "rows": len(feats),
+            "uploaded_at": _now_iso(), "gridfs_id": gid, "deleted_at": None})
+        asyncio.create_task(_prune_old_versions(POZZETTI_FILENAME))
+        await _log_admin_action(f"nuovo pozzetto {codice} (Lotto {lotto}) da {verbale}", POZZETTI_FILENAME, actor)
+        return codice
+
+
 @app.post("/api/sopralluoghi")
 async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_session)):
     """Salva un verbale di sopralluogo su MongoDB (unica fonte, nessun export CSV su GitHub).
@@ -5252,8 +5345,14 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
             print(f"[sopralluoghi] errore upload foto {i+1}: {e}")
 
     _poz_lat = _poz_lng = _poz_olat = _poz_olng = None
+    _poz_nuovo = (payload or {}).get("pozzetto_nuovo") if isinstance((payload or {}).get("pozzetto_nuovo"), dict) else None
     if str((payload or {}).get("categoria", "")).strip().lower() == "pozzetto":
-        if not str((payload or {}).get("pozzetto", "")).strip():
+        if _poz_nuovo is not None:
+            _pn = {k: str(_poz_nuovo.get(k, "")).strip()[:40] for k in ("lotto", "cluster", "tipo")}
+            _pn_man = [lab for k, lab in (("lotto", "Lotto"), ("cluster", "Cluster"), ("tipo", "Tipo")) if not _pn[k]]
+            if _pn_man:
+                raise HTTPException(422, "Nuovo pozzetto: compilare " + ", ".join(_pn_man))
+        elif not str((payload or {}).get("pozzetto", "")).strip():
             raise HTTPException(422, "Verbale pozzetto: nome del pozzetto obbligatorio")
         try:
             _poz_lat = float((payload or {}).get("pozzetto_lat")); _poz_lng = float((payload or {}).get("pozzetto_lng"))
@@ -5266,6 +5365,11 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
         except (TypeError, ValueError):
             _poz_olat = _poz_olng = None
 
+    _poz_code = str((payload or {}).get("pozzetto", "")).strip()[:80]
+    if _poz_nuovo is not None and str((payload or {}).get("categoria", "")).strip().lower() == "pozzetto":
+        _poz_code = await _pozz_append(_pn["lotto"], _pn["cluster"], _pn["tipo"], _poz_lat, _poz_lng, codice, sess.get("nome", ""))
+        _poz_olat = _poz_olng = None   # nuovo: nessuna coordinata d'archivio da confrontare
+
     record = {
         "codice_verbale":      codice,
         "data_sopralluogo":    str((payload or {}).get("data_sopralluogo", "")).strip(),
@@ -5276,9 +5380,10 @@ async def save_sopralluogo(payload: dict, sess: dict = Depends(_require_staff_se
         "referente_retelit":   str((payload or {}).get("referente_retelit", "")).strip(),
         "comune":              str((payload or {}).get("comune", "")).strip(),
         "localita":            str((payload or {}).get("localita", "")).strip(),
-        "pozzetto":            str((payload or {}).get("pozzetto", "")).strip()[:80],   # codice pozzetto (deep-link da mappa.html o scelta manuale)
+        "pozzetto":            _poz_code,   # codice pozzetto (deep-link da mappa.html, scelta manuale o nuovo assegnato dal sistema)
+        "pozzetto_nuovo":      _poz_nuovo is not None and bool(_poz_code),
         "pozzetto_lat":        _poz_lat, "pozzetto_lng": _poz_lng,
-        "pozzetto_coord_modificate": bool((payload or {}).get("pozzetto_coord_modificate")) if _poz_lat is not None else False,   # coordinate diverse da quelle in archivio (pozzetti_merged.geojson)
+        "pozzetto_coord_modificate": bool((payload or {}).get("pozzetto_coord_modificate")) and _poz_nuovo is None if _poz_lat is not None else False,   # coordinate diverse da quelle in archivio (pozzetti_merged.geojson)
         "pozzetto_lat_orig":   _poz_olat, "pozzetto_lng_orig": _poz_olng,   # coordinate del pozzetto verificato (obbligatorie se categoria pozzetto)
         "categoria":           "pozzetto" if str((payload or {}).get("categoria", "")).strip().lower() == "pozzetto" else "",   # verbale tipologia pozzetto
         "tipo_intervento":     str((payload or {}).get("tipo_intervento", "")).strip(),
