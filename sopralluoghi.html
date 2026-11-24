@@ -476,7 +476,11 @@
   .seg-nums b{font-size:22px;font-weight:800;color:var(--accent);line-height:1.1;} .seg-nums .amber b{color:var(--warn);} .seg-nums small{font-size:10.5px;color:var(--muted);font-weight:600;}
   @media(max-width:1300px){.row2{grid-template-columns:repeat(2,minmax(0,1fr));}}
   @media(max-width:760px){.row2{grid-template-columns:1fr;}}
-  .km-row.poz{grid-template-columns:auto .8fr 1.3fr 1.3fr auto;cursor:default;} .btn-poz-prev{background:none;border:1px solid var(--border);color:var(--accent);border-radius:8px;font-size:11px;font-weight:700;padding:4px 10px;cursor:pointer;} .btn-poz-prev:hover{border-color:var(--accent);background:var(--surface2);}
+  .km-row.poz{grid-template-columns:auto .8fr 1.3fr 1.15fr .8fr auto;cursor:default;}
+  .poz-imp{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:4px 11px 4px 8px;border-radius:20px;background:#E6F0F9;border:1px solid #C5DAEE;color:var(--accent);font-size:12.5px;font-weight:800;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .poz-imp svg{flex:none;opacity:.8;} .poz-imp.none{background:var(--surface2);border-color:var(--border);color:var(--muted);font-weight:600;}
+  .poz-sum{display:flex;flex-wrap:wrap;gap:6px;padding:10px 0 8px;} .poz-sum span{font-size:11px;font-weight:700;color:var(--accent);background:#E6F0F9;border-radius:20px;padding:3px 10px;} .poz-sum b{font-family:'JetBrains Mono',monospace;margin-left:4px;}
+  .km-row.poz.km-head{cursor:default;font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding-top:12px;border-bottom:2px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:1;} .km-row.poz.km-head:hover{background:var(--surface);} .btn-poz-prev{background:none;border:1px solid var(--border);color:var(--accent);border-radius:8px;font-size:11px;font-weight:700;padding:4px 10px;cursor:pointer;} .btn-poz-prev:hover{border-color:var(--accent);background:var(--surface2);}
   
   .w-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;box-shadow:var(--sh-sm);min-height:180px;}
   .w-title{font-weight:800;font-size:13px;color:var(--accent);margin-bottom:12px;}
@@ -3040,16 +3044,25 @@ function openPozzettiModal() {
   const rows = _pozVerbali().sort((a, b) => String(b.codice_verbale).localeCompare(String(a.codice_verbale)));
   document.getElementById('kpiModalTitle').innerHTML = `Verbali pozzetti<small>${rows.length} verbal${rows.length === 1 ? 'e' : 'i'}</small>`;
   document.getElementById('kpiModalActions').innerHTML = '<button class="kpi-modal-close" id="btnPozXlsx" onclick="exportPozzettiXlsx()">⬇ Excel</button>';
-  document.getElementById('kpiModalBody').innerHTML = rows.length ? rows.map(v => {
-    const st = _ckStatsOf(v);
-    return `<div class="km-row poz">
+  const impIco = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4M10 10h4M10 14h4M10 18h4"/></svg>';
+  const perImp = {};
+  rows.forEach(v => { const k = (v.impresa || '').trim() || '—'; perImp[k] = (perImp[k] || 0) + 1; });
+  const sum = Object.entries(perImp).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<span>${esc(k)}<b>${n}</b></span>`).join('');
+  document.getElementById('kpiModalBody').innerHTML = rows.length
+    ? `<div class="poz-sum">${sum}</div>
+       <div class="km-row poz km-head"><span>Verbale</span><span>Pozzetto</span><span>Comune · tratta</span><span>Impresa</span><span>Esito</span><span></span></div>`
+      + rows.map(v => {
+        const st = _ckStatsOf(v), imp = (v.impresa || '').trim();
+        return `<div class="km-row poz">
       <span class="vr-codice">${esc(v.codice_verbale)}</span>
       <span>${esc(v.pozzetto || '—')}<small>${_soprDateDisplay(v.data_sopralluogo)}</small></span>
       <span>${esc(v.comune || '—')}<small>${esc(v.tratta_id || '—')} · ${esc(v.lotto || '—')}</small></span>
-      <span>${_statoChip(v.esito)}${st.nc ? `<span class="ck-chip nc">${st.nc} NC</span>` : ''}<small>${esc(v.impresa || '—')}</small></span>
+      <span><span class="poz-imp${imp ? '' : ' none'}" title="${esc(imp || 'Impresa non indicata')}">${imp ? impIco : ''}${esc(imp || 'n/d')}</span></span>
+      <span>${_statoChip(v.esito)}${st.nc ? `<span class="ck-chip nc">${st.nc} NC</span>` : ''}</span>
       <button class="btn-poz-prev" onclick="_kpiPick('${v._id}')">Anteprima</button>
     </div>`;
-  }).join('') : '<div style="padding:22px 0;text-align:center;color:var(--muted);font-size:12px">Nessun verbale pozzetto.</div>';
+      }).join('')
+    : '<div style="padding:22px 0;text-align:center;color:var(--muted);font-size:12px">Nessun verbale pozzetto.</div>';
   document.getElementById('kpiModal').classList.add('open');
 }
 async function exportPozzettiXlsx() {
