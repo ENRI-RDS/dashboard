@@ -124,7 +124,7 @@
   .segn-esito label{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--surface2);white-space:nowrap;font-size:11.5px;}
   .segn-esito label input{width:14px;height:14px;min-height:0;padding:0;margin:0;flex:none;accent-color:var(--warn);cursor:pointer;box-shadow:none;}
   .field-group input.miss{border-color:var(--err)!important;background:#FDF3F1;}
-  .poz-chk{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;margin:2px 0 10px;} .poz-chk small{font-weight:400;color:var(--muted);} #pozzFields{margin-bottom:6px;} .poz-chk input{width:auto;flex:none;margin:0;padding:0;} .poz-chk-sm{margin:6px 0 0;font-size:12px;} #pozzetto_coord[readonly]{background:#f4f6fa;color:#555;}
+  .poz-chk{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;margin:2px 0 10px;} .poz-chk small{font-weight:400;color:var(--muted);} #pozzFields{margin-bottom:6px;} .poz-chk input{width:auto;flex:none;margin:0;padding:0;} .poz-chk-sm{margin:6px 0 0;font-size:12px;} #pozzetto_coord[readonly]{background:#f4f6fa;color:#555;} .poz-mode{display:flex;gap:16px;margin:0 0 10px;font-size:13px;font-weight:600;} .poz-mode label{display:flex;align-items:center;gap:6px;cursor:pointer;} .poz-mode input{width:auto;margin:0;} #pozzNewRow{display:none;margin-bottom:6px;} #pozz_new_codice{background:#f4f6fa;color:#043F75;font-weight:700;font-family:var(--font-mono);}
   .segn-esito.miss{outline:1.5px solid var(--err);outline-offset:3px;border-radius:8px;}
   .verif-chip{display:inline-block;margin-left:5px;padding:2px 7px;border-radius:20px;font-size:9.5px;font-weight:800;white-space:nowrap;background:#D3DEEA;color:#043F75;}
   .verif-chip.todo{background:#FFE7B8;color:#8A5A00;}
@@ -615,8 +615,18 @@
 
     <div id="pozzWrap">
       <label class="poz-chk"><input type="checkbox" id="chkPozz" onchange="onPozzToggle()"> Verbale pozzetto</label>
+      <div class="poz-mode" id="pozzMode" style="display:none">
+        <label><input type="radio" name="pozzMode" value="esistente" checked onchange="onPozzModeChange()"> Esistente</label>
+        <label><input type="radio" name="pozzMode" value="nuovo" onchange="onPozzModeChange()"> Nuovo</label>
+      </div>
+      <div class="field-row" id="pozzNewRow">
+        <div class="field-group"><label for="pozz_new_codice">Codice (assegnato dal sistema)</label><input type="text" id="pozz_new_codice" readonly placeholder="…"></div>
+        <div class="field-group"><label for="pozz_new_lotto">Lotto *</label><select id="pozz_new_lotto" onchange="this.classList.remove('miss')"></select></div>
+        <div class="field-group"><label for="pozz_new_cluster">Cluster *</label><input type="text" id="pozz_new_cluster" list="pozzClusterList" autocomplete="off" oninput="this.classList.remove('miss')"><datalist id="pozzClusterList"></datalist></div>
+        <div class="field-group"><label for="pozz_new_tipo">Tipo *</label><select id="pozz_new_tipo" onchange="this.classList.remove('miss')"></select></div>
+      </div>
       <div class="field-row" id="pozzFields" style="display:none">
-        <div class="field-group">
+        <div class="field-group" id="pozzNomeGrp">
           <label for="pozzetto_nome">Pozzetto *</label>
           <input type="text" id="pozzetto_nome" list="pozzettiList" autocomplete="off" placeholder="Scegli o scrivi il codice del pozzetto" oninput="onPozzNomeInput()">
           <datalist id="pozzettiList"></datalist>
@@ -624,7 +634,7 @@
         <div class="field-group">
           <label for="pozzetto_coord">Coordinate pozzetto verificato *</label>
           <input type="text" id="pozzetto_coord" inputmode="decimal" autocomplete="off" readonly placeholder="Si compilano scegliendo il pozzetto" oninput="this.classList.remove('miss')">
-          <label class="poz-chk poz-chk-sm"><input type="checkbox" id="chkPozCoordMod" onchange="onPozzCoordModToggle()"> Modifica coordinate <small>(diverse da quelle in archivio)</small></label>
+          <label class="poz-chk poz-chk-sm" id="pozCoordModLbl"><input type="checkbox" id="chkPozCoordMod" onchange="onPozzCoordModToggle()"> Modifica coordinate <small>(diverse da quelle in archivio)</small></label>
         </div>
       </div>
     </div>
@@ -1130,6 +1140,35 @@ function _applyPozzettoMode() {
 var _pozList, _pozListP, _pozAutoNA;   // var: l'init (deep-link) può girare prima di questo punto
 const _pozOn = () => !!document.getElementById('chkPozz')?.checked;
 const _pozNorm = s => String(s || '').trim().toUpperCase();
+const _pozNuovo = () => _pozOn() && (document.querySelector('input[name=pozzMode]:checked')?.value === 'nuovo');
+var _pozMetaP;
+function _loadPozMeta(force) {
+  if (_pozMetaP && !force) return _pozMetaP;
+  const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
+  _pozMetaP = fetch(apiBase + '/api/pozzetti/meta', { headers: { 'x-session-token': localStorage.getItem('_enri_session') || '' } })
+    .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+    .then(m => {
+      document.getElementById('pozz_new_codice').value = m.codice || '';
+      const opt = (v, t) => '<option value="' + esc(v).replace(/"/g, '&quot;') + '">' + esc(t) + '</option>';
+      document.getElementById('pozz_new_lotto').innerHTML = opt('', '— scegli —') + (m.lotti || []).map(x => opt(x, 'Lotto ' + x)).join('');
+      document.getElementById('pozz_new_tipo').innerHTML = opt('', '— scegli —') + (m.tipi || []).map(x => opt(x, x)).join('');
+      document.getElementById('pozzClusterList').innerHTML = (m.cluster || []).map(x => opt(x, '')).join('');
+    })
+    .catch(e => { console.warn('Meta pozzetti non disponibile:', e.message); _pozMetaP = null; document.getElementById('pozz_new_codice').value = ''; });
+  return _pozMetaP;
+}
+function onPozzModeChange() {
+  const nuovo = _pozNuovo(), ce = document.getElementById('pozzetto_coord');
+  document.getElementById('pozzNewRow').style.display = nuovo ? '' : 'none';
+  document.getElementById('pozzNomeGrp').style.display = nuovo ? 'none' : '';
+  document.getElementById('pozCoordModLbl').style.display = nuovo ? 'none' : '';
+  document.getElementById('pozzetto_nome').value = ''; ce.value = ''; delete ce.dataset.poz; ce.classList.remove('miss');
+  document.getElementById('chkPozCoordMod').checked = false;
+  ce.readOnly = !nuovo;
+  ce.placeholder = nuovo ? 'lat, lng (es. 45.123456, 9.123456)' : 'Si compilano scegliendo il pozzetto';
+  if (nuovo) _loadPozMeta(true);
+  _applyPozzettoMode();
+}
 function _loadPozList() {
   if (_pozListP) return _pozListP;
   const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
@@ -1156,11 +1195,13 @@ function _pozPrefill(nome) {
   c.checked = true;
   document.getElementById('pozzetto_nome').value = nome;
   document.getElementById('pozzFields').style.display = '';
+  document.getElementById('pozzMode').style.display = '';
   Promise.resolve(_loadPozList()).then(_pozSyncCoord);
 }
 function onPozzToggle() {
   const on = _pozOn();
   document.getElementById('pozzFields').style.display = on ? '' : 'none';
+  document.getElementById('pozzMode').style.display = on ? '' : 'none';
   if (on) Promise.resolve(_loadPozList()).then(_pozSyncCoord); else _pozReset(true);
   _applyPozzettoMode();
 }
@@ -1169,7 +1210,7 @@ const _pozFmt = (lat, lng) => lat.toFixed(6) + ', ' + lng.toFixed(6);
 // Precompila le coordinate dal pozzetto scelto (da elenco); modificabili solo con il flag "Modifica coordinate"
 function _pozSyncCoord() {
   const nEl = document.getElementById('pozzetto_nome'), ce = document.getElementById('pozzetto_coord'), mod = document.getElementById('chkPozCoordMod');
-  if (!nEl || !ce || !mod) return;
+  if (!nEl || !ce || !mod || _pozNuovo()) return;
   const hit = _pozList && _pozList.get(_pozNorm(nEl.value));
   if (hit) {
     if (ce.dataset.poz !== hit.lab) {   // pozzetto cambiato: ricarica le coordinate d'archivio e azzera il flag
@@ -1195,7 +1236,12 @@ function _pozReset(revertChecklist) {
   ['pozzetto_nome', 'pozzetto_coord'].forEach(i => { const el = document.getElementById(i); if (el) { el.value = ''; el.classList.remove('miss'); delete el.dataset.poz; } });
   const _cm = document.getElementById('chkPozCoordMod'); if (_cm) _cm.checked = false;
   const _ce = document.getElementById('pozzetto_coord'); if (_ce) _ce.readOnly = true;
-  const f = document.getElementById('pozzFields'); if (f) f.style.display = 'none';
+  const _r = document.querySelector('input[name=pozzMode][value=esistente]'); if (_r) _r.checked = true;
+  ['pozzNewRow', 'pozzMode', 'pozzFields'].forEach(i => { const e = document.getElementById(i); if (e) e.style.display = 'none'; });
+  const _ng = document.getElementById('pozzNomeGrp'); if (_ng) _ng.style.display = '';
+  const _cl = document.getElementById('pozCoordModLbl'); if (_cl) _cl.style.display = '';
+  ['pozz_new_lotto', 'pozz_new_cluster', 'pozz_new_tipo'].forEach(i => { const e = document.getElementById(i); if (e) { e.value = ''; e.classList.remove('miss'); } });
+  const _pc = document.getElementById('pozzetto_coord'); if (_pc) _pc.placeholder = 'Si compilano scegliendo il pozzetto';
   const b = document.getElementById('pozzBanner'); if (b) b.style.display = 'none';
   if (revertChecklist && window._pozzDefaultsApplied) {
     (_pozAutoNA || []).forEach(([k, id]) => { const st = _ckGet(k, id); if (st.e === 'NA' && !st.nota) st.e = ''; });
@@ -1214,6 +1260,13 @@ async function _pozValida() {
   if (!_pozOn() || _verificaDi) return null;
   const nomeEl = document.getElementById('pozzetto_nome'), coordEl = document.getElementById('pozzetto_coord');
   const fail = (el, err) => { el.classList.add('miss'); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); return { err }; };
+  if (_pozNuovo()) {   // nuovo pozzetto: codice assegnato dal server al salvataggio, qui servono lotto/cluster/tipo + coordinate
+    const g = id => document.getElementById(id), nv = { lotto: g('pozz_new_lotto').value.trim(), cluster: g('pozz_new_cluster').value.trim(), tipo: g('pozz_new_tipo').value.trim() };
+    for (const [k, id] of [['lotto', 'pozz_new_lotto'], ['cluster', 'pozz_new_cluster'], ['tipo', 'pozz_new_tipo']]) if (!nv[k]) return fail(g(id), 'Nuovo pozzetto: compila ' + k);
+    const c = _pozParseCoord(coordEl.value);
+    if (!c) return fail(coordEl, 'Coordinate del nuovo pozzetto obbligatorie nel formato lat, lng (es. 45.123456, 9.123456)');
+    return { nome: '', nuovo: nv, ...c, modificate: false, olat: null, olng: null };
+  }
   let nome = nomeEl.value.trim();
   if (!nome) return fail(nomeEl, 'Verbale pozzetto: scegli il pozzetto');
   await _loadPozList();
@@ -1301,6 +1354,7 @@ async function inviaVerbale(){
         verbale_origine:   f.verbale_origine,
         pozzetto:          _poz ? _poz.nome : '',
         categoria:         _poz ? 'pozzetto' : '',
+        pozzetto_nuovo:    _poz && _poz.nuovo ? _poz.nuovo : null,
         pozzetto_lat:      _poz ? _poz.lat : null,
         pozzetto_lng:      _poz ? _poz.lng : null,
         pozzetto_coord_modificate: _poz ? _poz.modificate : false,
@@ -1322,6 +1376,7 @@ async function inviaVerbale(){
     }
     const data = await res.json();
     showToast('✓ Verbale inviato — ' + data.codice_verbale);
+    if (_poz && _poz.nuovo) { _pozListP = null; _pozList = null; _pozMetaP = null; }   // il nuovo pozzetto è ora nel geojson
     await loadVerbali();
     resetVerbaleForm();
   } catch(e) {
