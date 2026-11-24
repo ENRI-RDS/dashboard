@@ -4879,6 +4879,32 @@ async def export_sopralluoghi_xlsx(categoria: str = "", sess: dict = Depends(_re
     _t_db = time.perf_counter()
     _by_code = {d.get("codice_verbale"): d for d in verbali}
 
+    # Coordinate pozzetti: quelle salvate nel verbale, altrimenti (verbali storici) quelle dell'archivio
+    # pozzetti_merged.geojson, cercate per codice pozzetto e poi per verbale d'origine.
+    _arch_code, _arch_verb = {}, {}
+    if any(d.get("categoria") == "pozzetto" for d in verbali):
+        try:
+            for _f in (await _pozz_load())["features"]:
+                _c = (_f.get("geometry") or {}).get("coordinates")
+                if not (isinstance(_c, (list, tuple)) and len(_c) >= 2 and all(isinstance(x, (int, float)) for x in _c[:2])):
+                    continue
+                _pr = _f.get("properties") or {}
+                for _k in ("codice", "name"):
+                    if _pr.get(_k):
+                        _arch_code[str(_pr[_k]).strip().upper()] = (_c[1], _c[0])
+                if _pr.get("Verbale"):
+                    _arch_verb[str(_pr["Verbale"]).strip()] = (_c[1], _c[0])
+        except Exception as _e:
+            print(f"[export sopralluoghi] archivio pozzetti non leggibile: {_e}")
+
+    def _coord_pozzetto(v):
+        """(lat, lng, fonte) oppure (None, None, '') se non reperibili da nessuna parte."""
+        la, ln = v.get("pozzetto_lat"), v.get("pozzetto_lng")
+        if isinstance(la, (int, float)) and isinstance(ln, (int, float)):
+            return la, ln, "Verbale (modificate)" if v.get("pozzetto_coord_modificate") else "Verbale"
+        hit = _arch_code.get(str(v.get("pozzetto") or "").strip().upper()) or _arch_verb.get(str(v.get("codice_verbale") or "").strip())
+        return (hit[0], hit[1], "Archivio pozzetti") if hit else (None, None, "")
+
     def _tipo_verbale(v):
         """'Sopralluogo' oppure '2° sopralluogo (verifica cliente|interna)': il tipo si
         ricava risalendo la catena di verbale_origine fino alla radice."""
@@ -4952,7 +4978,7 @@ async def export_sopralluoghi_xlsx(categoria: str = "", sess: dict = Depends(_re
         "N. foto", "Note generali checklist", "Creato il",
         "Esito segnalazione", "Tipo", "Verbale origine",
         "SubSystem", "Data invio segnalazione al System", "Metodo di invio", "Riferimento System invio",
-        "Categoria", "Pozzetto", "Coordinate pozzetto",
+        "Categoria", "Pozzetto", "Latitudine", "Longitudine", "Fonte coordinate", "Mappa",
     ]
     ws1.append(cols1)
     _r1 = 1
@@ -4960,6 +4986,7 @@ async def export_sopralluoghi_xlsx(categoria: str = "", sess: dict = Depends(_re
 
     for v in verbali:
         ck = v.get("checklist") or {}
+        _cl = _coord_pozzetto(v)
         d_obj = _sopr_date_obj(v.get("data_sopralluogo", ""))
         foto_urls = [u.strip() for u in (v.get("foto_urls") or "").split(",") if u.strip()]
         row = [
@@ -4991,7 +5018,7 @@ async def export_sopralluoghi_xlsx(categoria: str = "", sess: dict = Depends(_re
             v.get("rif_system_invio", ""),
             "Pozzetto" if v.get("categoria") == "pozzetto" else "Standard",
             v.get("pozzetto", ""),
-            (f"{v['pozzetto_lat']:.6f}, {v['pozzetto_lng']:.6f}" + (" (modificate)" if v.get("pozzetto_coord_modificate") else "") if isinstance(v.get("pozzetto_lat"), (int, float)) and isinstance(v.get("pozzetto_lng"), (int, float)) else ""),
+            _cl[0], _cl[1], _cl[2], "",
         ]
         ws1.append(row)
         _r1 += 1
@@ -5015,9 +5042,16 @@ async def export_sopralluoghi_xlsx(categoria: str = "", sess: dict = Depends(_re
         ws1.cell(row=r, column=2).number_format = "dd/mm/yyyy"
         if row[23]:
             ws1.cell(row=r, column=24).number_format = "dd/mm/yyyy"
+        if _cl[0] is not None:
+            ws1.cell(row=r, column=29).number_format = "0.000000"
+            ws1.cell(row=r, column=30).number_format = "0.000000"
+            _mc = ws1.cell(row=r, column=32)
+            _mc.value = "Apri mappa"
+            _mc.hyperlink = f"https://www.google.com/maps?q={_cl[0]:.6f},{_cl[1]:.6f}"
+            _mc.font = Font(color="043F75", underline="single")
 
     _style_body(ws1, (4, 11, 18, 26))
-    _autofit(ws1, [14, 11, 7, 24, 20, 16, 18, 16, 15, 16, 30, 10, 9, 11, 9, 20, 7, 30, 20, 16, 22, 16, 18, 16, 16, 26, 12, 14])
+    _autofit(ws1, [14, 11, 7, 24, 20, 16, 18, 16, 15, 16, 30, 10, 9, 11, 9, 20, 7, 30, 20, 16, 22, 16, 18, 16, 16, 26, 12, 14, 12, 12, 20, 12])
     if len(verbali) > 0:
         ws1.add_table(Table(
             displayName="TabVerbali",
@@ -5025,61 +5059,69 @@ async def export_sopralluoghi_xlsx(categoria: str = "", sess: dict = Depends(_re
             tableStyleInfo=TableStyleInfo(name="TableStyleMedium2", showRowStripes=True),
         ))
 
-    # ── Foglio 2: Checklist dettaglio (un item per riga) ────────────────────
+    # ── Foglio 2: Checklist dettaglio (una voce per riga, descritta per esteso) ──
     ws2 = wb.create_sheet("Checklist dettaglio")
-    cols2 = ["Codice verbale", "Data", "Categoria", "Area", "ID item", "Descrizione",
-             "Esito", "Nota", "Rilievo", "Azione correttiva",
-             "Responsabile", "Scadenza"]
+    cols2 = ["Codice verbale", "Data", "Pozzetto", "Comune", "Impresa", "Checklist", "Area",
+             "ID voce", "Voce verificata", "Esito", "Dimensione rilevata", "Note",
+             "Rilievo (NC)", "Azione correttiva", "Responsabile", "Scadenza"]
     ws2.append(cols2)
     _style_header(ws2, len(cols2))
     cat_label = {"qualita": "Qualità", "sicurezza": "Sicurezza", "collaudo": "Collaudo"}
-    def_by_cat = {}  # cache id -> {area, t} per categoria, popolata al volo dal primo verbale che la usa
+    esito_lbl = {"C": "Conforme", "NC": "Non conforme", "NA": "N.A.", "": "Da verificare"}
+    GREY_FILL = PatternFill("solid", fgColor="EDEFF2")
+    esito_fill = {"C": OK_FILL, "NC": NC_FILL, "NA": GREY_FILL, "": WARN_FILL}
+    BAND_FILL = PatternFill("solid", fgColor="EAF1F8")
+    _ck_ord = {k: i for i, k in enumerate(_CK_DEF)}
     n_rows2 = 0
+    _band = False
     for v in verbali:
         ck = v.get("checklist") or {}
         d_obj = _sopr_date_obj(v.get("data_sopralluogo", ""))
-        for cat in ("qualita", "sicurezza", "collaudo"):
-            blocco = ck.get(cat) or {}
-            for item_id, st in sorted(blocco.items()):
-                if not isinstance(st, dict):
-                    continue
-                if not (st.get("e") or st.get("nota") or st.get("dim")):
+        items = []
+        for ci, cat in enumerate(("qualita", "sicurezza", "collaudo")):
+            for item_id, st in (ck.get(cat) or {}).items():
+                if not isinstance(st, dict) or not (st.get("e") or st.get("nota") or st.get("dim")):
                     continue
                 if categoria == "pozzetto" and st.get("e") == "NA" and not st.get("nota"):
                     continue
-                scad_obj = _sopr_date_obj(st.get("scad", ""))
-                row = [
-                    v.get("codice_verbale", ""), d_obj or v.get("data_sopralluogo", ""),
-                    cat_label.get(cat, cat), "", item_id, "",
-                    {"C": "Conforme", "NC": "Non conforme", "NA": "N.A.", "": "Da verificare"}.get(st.get("e", ""), st.get("e", "")),
-                    (f"Dimensione: {st['dim']}. " if st.get("dim") else "") + st.get("nota", ""),
-                    st.get("rilievo", ""), st.get("azione", ""), st.get("resp", ""),
-                    scad_obj or st.get("scad", ""),
-                ]
-                ws2.append(row)
-                n_rows2 += 1
-                r = n_rows2 + 1  # riga 1 = intestazione (ws.max_row è O(n) a ogni chiamata)
-                if st.get("e") == "NC":
-                    ws2.cell(row=r, column=7).fill = NC_FILL
-                if d_obj:
-                    ws2.cell(row=r, column=2).number_format = "dd/mm/yyyy"
-                if scad_obj:
-                    ws2.cell(row=r, column=12).number_format = "dd/mm/yyyy"
-
-    # Compila la colonna Area leggendo il prefisso dell'ID (PRE/INF/.../SIC/TST/RIP/DOC):
-    # la definizione completa (CHECKLIST_DEF) vive solo nel frontend, il backend non ne
-    # ha una copia — la colonna "Descrizione" resta vuota per lo stesso motivo.
+                items.append((ci, _ck_ord.get(item_id, 9999), item_id, cat, st))
+        if not items:
+            continue
+        items.sort(key=lambda x: x[:3])   # checklist → ordine di definizione delle voci
+        _band = not _band                 # fascia alternata per verbale: si vede dove inizia/finisce
+        for _ci, _o, item_id, cat, st in items:
+            area, testo = _CK_DEF.get(item_id, ("", ""))
+            scad_obj = _sopr_date_obj(st.get("scad", ""))
+            e = st.get("e", "")
+            ws2.append([
+                v.get("codice_verbale", ""), d_obj or v.get("data_sopralluogo", ""),
+                v.get("pozzetto", ""), v.get("comune", ""), v.get("impresa", ""),
+                cat_label.get(cat, cat), area or (item_id.split("-")[0] if "-" in item_id else ""),
+                item_id, testo, esito_lbl.get(e, e), st.get("dim", ""), st.get("nota", ""),
+                st.get("rilievo", ""), st.get("azione", ""), st.get("resp", ""),
+                scad_obj or st.get("scad", ""),
+            ])
+            n_rows2 += 1
+            r = n_rows2 + 1  # riga 1 = intestazione (ws.max_row è O(n) a ogni chiamata)
+            if _band:
+                for c in range(1, 6):
+                    ws2.cell(row=r, column=c).fill = BAND_FILL
+            if e in esito_fill:
+                ws2.cell(row=r, column=10).fill = esito_fill[e]
+            if e == "NC":
+                ws2.cell(row=r, column=10).font = Font(bold=True, color="B3261E")
+            if d_obj:
+                ws2.cell(row=r, column=2).number_format = "dd/mm/yyyy"
+            if scad_obj:
+                ws2.cell(row=r, column=16).number_format = "dd/mm/yyyy"
     if n_rows2:
-        for r in range(2, ws2.max_row + 1):
-            item_id = ws2.cell(row=r, column=5).value or ""
-            ws2.cell(row=r, column=4).value = item_id.split("-")[0] if "-" in item_id else ""
         ws2.add_table(Table(
             displayName="TabChecklist",
             ref=f"A1:{get_column_letter(len(cols2))}{ws2.max_row}",
-            tableStyleInfo=TableStyleInfo(name="TableStyleMedium2", showRowStripes=True),
+            tableStyleInfo=TableStyleInfo(name="TableStyleLight1", showRowStripes=False),
         ))
-    _style_body(ws2, (6, 8, 9, 10))
-    _autofit(ws2, [14, 11, 11, 8, 9, 8, 14, 30, 26, 26, 16, 12])
+    _style_body(ws2, (4, 9, 11, 12, 13, 14))
+    _autofit(ws2, [14, 11, 10, 22, 14, 11, 20, 9, 50, 14, 28, 32, 30, 30, 16, 12])
 
     # ── Foglio 3: Non conformità (solo gli item NC, per follow-up) ─────────
     ws3 = wb.create_sheet("Non conformità")
