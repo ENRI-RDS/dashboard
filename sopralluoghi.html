@@ -124,7 +124,7 @@
   .segn-esito label{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--surface2);white-space:nowrap;font-size:11.5px;}
   .segn-esito label input{width:14px;height:14px;min-height:0;padding:0;margin:0;flex:none;accent-color:var(--warn);cursor:pointer;box-shadow:none;}
   .field-group input.miss{border-color:var(--err)!important;background:#FDF3F1;}
-  .poz-chk{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;margin:2px 0 10px;} .poz-chk small{font-weight:400;color:var(--muted);} #pozzFields{margin-bottom:6px;} .poz-chk input{width:auto;flex:none;margin:0;padding:0;} .poz-chk-sm{margin:6px 0 0;font-size:12px;} #pozzetto_coord[readonly]{background:#f4f6fa;color:#555;} .poz-mode{display:flex;gap:16px;margin:0 0 10px;font-size:13px;font-weight:600;} .poz-mode label{display:flex;align-items:center;gap:6px;cursor:pointer;} .poz-mode input{width:auto;margin:0;} #pozzNewRow{display:none;margin-bottom:6px;} #pozz_new_codice{background:#f4f6fa;color:#043F75;font-weight:700;font-family:var(--font-mono);}
+  .poz-chk{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;margin:2px 0 10px;} .poz-chk small{font-weight:400;color:var(--muted);} #pozzFields{margin-bottom:6px;} .poz-chk input{width:auto;flex:none;margin:0;padding:0;} .poz-chk-sm{margin:6px 0 0;font-size:12px;} #pozzetto_coord[readonly]{background:#f4f6fa;color:#555;} .poz-mode{display:flex;gap:16px;margin:0 0 10px;font-size:13px;font-weight:600;} .poz-mode label{display:flex;align-items:center;gap:6px;cursor:pointer;} .poz-mode input{width:auto;margin:0;} #pozzNewRow{margin-bottom:6px;} #pozz_new_codice{background:#f4f6fa;color:#043F75;font-weight:700;font-family:var(--font-mono);}
   .segn-esito.miss{outline:1.5px solid var(--err);outline-offset:3px;border-radius:8px;}
   .verif-chip{display:inline-block;margin-left:5px;padding:2px 7px;border-radius:20px;font-size:9.5px;font-weight:800;white-space:nowrap;background:#D3DEEA;color:#043F75;}
   .verif-chip.todo{background:#FFE7B8;color:#8A5A00;}
@@ -619,11 +619,11 @@
         <label><input type="radio" name="pozzMode" value="esistente" checked onchange="onPozzModeChange()"> Esistente</label>
         <label><input type="radio" name="pozzMode" value="nuovo" onchange="onPozzModeChange()"> Nuovo</label>
       </div>
-      <div class="field-row" id="pozzNewRow">
+      <div class="field-row" id="pozzNewRow" style="display:none">
         <div class="field-group"><label for="pozz_new_codice">Codice (assegnato dal sistema)</label><input type="text" id="pozz_new_codice" readonly placeholder="…"></div>
-        <div class="field-group"><label for="pozz_new_lotto">Lotto *</label><select id="pozz_new_lotto" onchange="this.classList.remove('miss')"></select></div>
+        <div class="field-group"><label for="pozz_new_lotto">Lotto *</label><select id="pozz_new_lotto" onchange="this.classList.remove('miss')"><option value="">— scegli —</option><option value="1">Lotto 1</option><option value="1A">Lotto 1A</option><option value="1B">Lotto 1B</option><option value="2">Lotto 2</option><option value="2A">Lotto 2A</option><option value="2B">Lotto 2B</option><option value="3">Lotto 3</option><option value="4">Lotto 4</option><option value="5">Lotto 5</option><option value="6">Lotto 6</option><option value="7">Lotto 7</option><option value="8">Lotto 8</option></select></div>
         <div class="field-group"><label for="pozz_new_cluster">Cluster *</label><input type="text" id="pozz_new_cluster" list="pozzClusterList" autocomplete="off" oninput="this.classList.remove('miss')"><datalist id="pozzClusterList"></datalist></div>
-        <div class="field-group"><label for="pozz_new_tipo">Tipo *</label><select id="pozz_new_tipo" onchange="this.classList.remove('miss')"></select></div>
+        <div class="field-group"><label for="pozz_new_tipo">Tipo *</label><select id="pozz_new_tipo" onchange="this.classList.remove('miss')"><option value="">— scegli —</option><option value="125x80">125x80</option><option value="224x124">224x124</option></select></div>
       </div>
       <div class="field-row" id="pozzFields" style="display:none">
         <div class="field-group" id="pozzNomeGrp">
@@ -1150,8 +1150,8 @@ function _loadPozMeta(force) {
     .then(m => {
       document.getElementById('pozz_new_codice').value = m.codice || '';
       const opt = (v, t) => '<option value="' + esc(v).replace(/"/g, '&quot;') + '">' + esc(t) + '</option>';
-      document.getElementById('pozz_new_lotto').innerHTML = opt('', '— scegli —') + (m.lotti || []).map(x => opt(x, 'Lotto ' + x)).join('');
-      document.getElementById('pozz_new_tipo').innerHTML = opt('', '— scegli —') + (m.tipi || []).map(x => opt(x, x)).join('');
+      if ((m.lotti || []).length) document.getElementById('pozz_new_lotto').innerHTML = opt('', '— scegli —') + m.lotti.map(x => opt(x, 'Lotto ' + x)).join('');
+      if ((m.tipi || []).length) document.getElementById('pozz_new_tipo').innerHTML = opt('', '— scegli —') + m.tipi.map(x => opt(x, x)).join('');
       document.getElementById('pozzClusterList').innerHTML = (m.cluster || []).map(x => opt(x, '')).join('');
     })
     .catch(e => { console.warn('Meta pozzetti non disponibile:', e.message); _pozMetaP = null; document.getElementById('pozz_new_codice').value = ''; });
