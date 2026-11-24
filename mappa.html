@@ -2829,7 +2829,7 @@ let pozzettiLoaded = false;
 const POZZETTI_COLOR = '#043F75';
 const POZZ_TIPI = { '125x80': '#043F75', '224x124': '#B5179E' };   // colore per tipologia (legenda + marker + popup)
 const _pozzColor = tipo => POZZ_TIPI[String(tipo || '').trim()] || POZZETTI_COLOR;
-const _pozzR = () => { const z = map.getZoom(); return z < 12 ? 3 : (z < 15 ? 5 : 7); };
+const _pozzR = () => { const z = map.getZoom(); return z < 12 ? 5 : (z < 15 ? 8 : 12); };   // più grandi per facilitare la selezione (area cliccabile = raggio + tolleranza canvas)
 
 async function loadPozzetti() {
   if (pozzettiLoaded) return;
@@ -2838,7 +2838,7 @@ async function loadPozzetti() {
     const geojson = await fetchWithSWR('pozzetti_merged.geojson', { isJson: true, direct: true });
     const esc = v => String(v).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     pozzettiLayer = L.geoJSON(geojson, {
-      pointToLayer: (f, ll) => L.circleMarker(ll, { renderer: mainRenderer, radius: _pozzR(), color: '#fff', weight: 1, fillColor: _pozzColor(f.properties && f.properties.Tipo), fillOpacity: 0.9 }),
+      pointToLayer: (f, ll) => L.circleMarker(ll, { renderer: mainRenderer, radius: _pozzR(), color: '#fff', weight: 1.5, fillColor: _pozzColor(f.properties && f.properties.Tipo), fillOpacity: 0.9 }),
       onEachFeature: (f, layer) => {
         layer.bindPopup(() => _pozzPopupHtml(f, layer), { maxWidth: 300 });
         layer.on('popupopen', () => _pozzLoadVerbali(f, layer));
