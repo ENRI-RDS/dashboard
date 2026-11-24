@@ -3748,6 +3748,18 @@ async def agenda_export_ics(
 # SOPRALLUOGHI — verbali di sopralluogo
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _cl_cant(doc: dict, geo: dict) -> str:
+    """Cluster del cantiere: campo salvato, altrimenti quello della prima tratta trovata in Riepilogo."""
+    c = re.sub(r"\.0+$", "", str(doc.get("cluster", "") or "").strip())
+    if c:
+        return c
+    for t in doc.get("tratte") or []:
+        v = geo.get(str((t or {}).get("tratta_id", "")).strip())
+        if v:
+            return v
+    return ""
+
+
 @app.get("/api/lotti-cantieri")
 async def get_lotti_cantieri(sess: dict = Depends(_require_staff_session)):
     """Restituisce lotti distinti (da Master.csv) e i loro cantieri (da MongoDB)."""
@@ -3767,9 +3779,21 @@ async def get_lotti_cantieri(sess: dict = Depends(_require_staff_session)):
     except Exception as e:
         print(f"[lotti-cantieri] errore lettura Master.csv: {e}")
 
+    # Cluster per TRATTA_ID da Riepilogo_progettazione.csv: fallback quando il cantiere non ha `cluster` salvato
+    geo_cluster: dict = {}
+    try:
+        rdf = await _read_riepilogo_csv()
+        if rdf is not None and "TRATTA_ID" in rdf.columns and "CLUSTER" in rdf.columns:
+            for _, r in rdf.iterrows():
+                t, c = str(r.get("TRATTA_ID", "")).strip(), re.sub(r"\.0+$", "", str(r.get("CLUSTER", "")).strip())
+                if t and c and c.lower() != "nan":
+                    geo_cluster[t] = c
+    except Exception as e:
+        print(f"[lotti-cantieri] cluster da riepilogo non disponibile: {e}")
+
     # Cantieri da MongoDB — raggruppati per lotto
     cantieri_map: dict = {}
-    async for doc in cantieri_col.find({}, {"cantiere_key": 1, "lotto": 1, "ente": 1, "cluster": 1}):
+    async for doc in cantieri_col.find({}, {"cantiere_key": 1, "lotto": 1, "ente": 1, "cluster": 1, "tratte.tratta_id": 1}):
         lotto = _lotto_from_source(doc.get("lotto", ""))
         key   = str(doc.get("cantiere_key", "")).strip()
         if not lotto or not key:
@@ -3781,7 +3805,7 @@ async def get_lotti_cantieri(sess: dict = Depends(_require_staff_session)):
         if lotto not in cantieri_map:
             cantieri_map[lotto] = []
         if not any(c["value"] == key for c in cantieri_map[lotto]):
-            cantieri_map[lotto].append({"value": key, "label": label, "num": num, "cluster": str(doc.get("cluster", "") or "").strip()})
+            cantieri_map[lotto].append({"value": key, "label": label, "num": num, "cluster": _cl_cant(doc, geo_cluster)})
 
     # Unisce: lotti dal Master + lotti dai cantieri (fallback se Master fallisce)
     tutti_lotti = sorted(set(lotti_master) | set(cantieri_map.keys()))
