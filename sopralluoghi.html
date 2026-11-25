@@ -879,6 +879,7 @@
     </div>
     <div class="kpi-modal-body" id="editModalBody" style="padding-top:14px">
       <div class="ed-grid">
+        <div class="field-group" style="grid-column:1/-1"><label for="ed_codice">Codice verbale</label><input type="text" id="ed_codice" maxlength="14" style="font-family:'JetBrains Mono',monospace;text-transform:uppercase"><small style="color:var(--muted);font-size:10.5px">Cambiarlo solo per correggere un duplicato: formato VBS-AAAA-NNNN, deve essere libero.</small></div>
         <div class="field-group"><label for="ed_data">Data sopralluogo *</label><input type="date" id="ed_data"></div>
         <div class="field-group"><label for="ed_lotto">Lotto *</label><input type="text" id="ed_lotto" maxlength="50"></div>
         <div class="field-group" style="grid-column:1/-1"><label for="ed_tratta">N° Cantiere *</label><input type="text" id="ed_tratta" maxlength="300"></div>
@@ -2934,6 +2935,7 @@ function openEditModal(id) {
   _edId = id; _edIsVerifica = !!v.verbale_origine; _edTab = 'qualita';
   document.getElementById('editModalSub').textContent = v.codice_verbale + (_edIsVerifica ? ' · verifica di ' + v.verbale_origine : '');
   const set = (i, val) => { document.getElementById(i).value = val || ''; };
+  set('ed_codice', v.codice_verbale);
   set('ed_data', _soprDateISO(v.data_sopralluogo) || (v.data_sopralluogo || '').slice(0, 10));
   set('ed_lotto', v.lotto); set('ed_tratta', v.tratta_id); set('ed_impresa', v.impresa); set('ed_comune', v.comune);
   set('ed_redattore', v.referente_impresa); set('ed_ruolo', v.referente_retelit);   // campi Mongo storicamente invertiti
@@ -2997,6 +2999,12 @@ async function saveEditModal() {
   const g = i => (document.getElementById(i).value || '').trim();
   const body = { data_sopralluogo: g('ed_data'), lotto: g('ed_lotto'), tratta_id: g('ed_tratta'), impresa: g('ed_impresa'),
                  comune: g('ed_comune'), referente_impresa: g('ed_redattore'), referente_retelit: g('ed_ruolo') };
+  const _vEd = _verbaliAll.find(x => x._id === _edId), _cod = g('ed_codice').toUpperCase();
+  if (_vEd && _cod && _cod !== _vEd.codice_verbale) {
+    if (!/^VBS-\d{4}-\d{4}$/.test(_cod)) { showToast('✗ Codice verbale: formato VBS-AAAA-NNNN'); return; }
+    if (!confirm('Cambiare il codice da ' + _vEd.codice_verbale + ' a ' + _cod + '?')) return;
+    body.codice_verbale = _cod;
+  }
   if (!body.data_sopralluogo || !body.lotto || !body.tratta_id || !body.impresa) { showToast('✗ Data, lotto, cantiere e impresa sono obbligatori'); return; }
   if (!_edIsVerifica) {
     const on = document.getElementById('ed_segn').checked;
@@ -3024,6 +3032,7 @@ async function saveEditModal() {
     const r = await res.json();
     closeEditModal();
     showToast(r.changed ? '✓ Verbale aggiornato (' + r.changed + ' modifiche)' : 'Nessuna modifica');
+    if (r.avviso) setTimeout(() => alert(r.avviso), 300);
     await loadVerbali();
     _selectVerbale(id);
   } catch (e) { showToast('✗ ' + e.message); }
