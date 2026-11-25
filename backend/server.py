@@ -4548,7 +4548,9 @@ async def export_issues_xlsx(
 async def delete_sopralluogo(sop_id: str, cascade: bool = False, sess: dict = Depends(_require_admin_session)):
     """Elimina un verbale di sopralluogo — admin/admin2. Se esistono verifiche collegate (verbale_origine)
     risponde 409 con l'elenco, a meno di `?cascade=true` (elimina anche le verifiche, a catena).
-    Le issue nate dal verbale NON vengono toccate (si gestiscono dal registro issue); le foto su GitHub restano."""
+    Elimina anche le ISSUE nate dai verbali eliminati (origine_verbale / origine_key `codice|voce`) e i relativi
+    marcatori di `issues_skip`. Le foto su GitHub restano. Se il codice è condiviso con un altro verbale
+    (duplicato) elimina SOLO questo documento (per _id) e lascia issue e verifiche, non attribuibili con certezza."""
     try:
         oid = ObjectId(sop_id)
     except Exception:
@@ -4556,19 +4558,34 @@ async def delete_sopralluogo(sop_id: str, cascade: bool = False, sess: dict = De
     doc = await sopralluoghi_col.find_one({"_id": oid}, {"codice_verbale": 1})
     if not doc:
         raise HTTPException(404, "Verbale non trovato")
+    code0 = doc.get("codice_verbale", "")
+    shared = bool(code0) and await sopralluoghi_col.count_documents({"codice_verbale": code0, "_id": {"$ne": oid}}) > 0
+    if shared:
+        await sopralluoghi_col.delete_one({"_id": oid})
+        _schedule_sopralluoghi_csv_regen(f"eliminazione verbale: {code0} ({sess.get('nome', '')})")
+        return {"ok": True, "deleted": [code0], "issues_eliminate": 0,
+                "avviso": f"Il codice {code0} è assegnato anche a un altro verbale: eliminato solo questo; "
+                          "issue e verifiche collegate a quel codice NON sono state toccate."}
     # catena di verifiche discendenti (BFS)
-    codici, frontier = [], [doc.get("codice_verbale", "")]
+    codici, frontier = [], [code0]
     while frontier and len(codici) < 50:
         figli = [d["codice_verbale"] async for d in sopralluoghi_col.find({"verbale_origine": {"$in": frontier}}, {"codice_verbale": 1})]
         codici += figli
         frontier = figli
     if codici and not cascade:
-        raise HTTPException(409, "Il verbale ha verifiche collegate: " + ", ".join(codici) + ". Eliminare anche queste?")
-    tutti = [doc.get("codice_verbale", "")] + codici
-    await sopralluoghi_col.delete_many({"codice_verbale": {"$in": tutti}})
-    n_iss = await issues_col.count_documents({"origine_verbale": {"$in": tutti}})
+        raise HTTPException(409, "Il verbale ha verifiche collegate: " + ", ".join(codici) + ". Eliminare anche queste (e le loro issue)?")
+    tutti = [c for c in [code0] + codici if c]
+    await sopralluoghi_col.delete_one({"_id": oid})
+    if codici:
+        await sopralluoghi_col.delete_many({"codice_verbale": {"$in": codici}})
+    n_iss = 0
+    if tutti:
+        pref = "^(" + "|".join(re.escape(c) for c in tutti) + r")\|"
+        async with _issue_sync_lock:   # la sync non deve ricreare/leggere issue mentre le tolgo
+            n_iss = (await issues_col.delete_many({"$or": [{"origine_verbale": {"$in": tutti}}, {"origine_key": {"$regex": pref}}]})).deleted_count
+            await issues_skip_col.delete_many({"key": {"$regex": pref}})   # se il numero verrà riusato, niente issue "dimenticate"
     _schedule_sopralluoghi_csv_regen(f"eliminazione verbale: {', '.join(tutti)} ({sess.get('nome', '')})")
-    return {"ok": True, "deleted": tutti, "issues_collegate": n_iss}
+    return {"ok": True, "deleted": tutti, "issues_eliminate": n_iss}
 
 
 _SOPR_EDIT_TEXT = {"lotto": ("Lotto", 50), "tratta_id": ("Cantiere", 300), "impresa": ("Impresa", 200),
