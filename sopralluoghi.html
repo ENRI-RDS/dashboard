@@ -2248,7 +2248,7 @@ function _ckPreviewHtml(v) {
 }
 
 async function deleteVerbale(id, cascade) {
-  if (!cascade && !confirm('Eliminare definitivamente questo verbale?\n(Le issue già generate nel registro non vengono eliminate.)')) return;
+  if (!cascade && !confirm('Eliminare definitivamente questo verbale?\nVerranno eliminate anche le issue generate dalle sue non conformità (con il loro storico).')) return;
   try {
     const apiBase = (window.ENRI && window.ENRI.apiBase) || localStorage.getItem('enri_api_base') || '';
     const token   = localStorage.getItem('_enri_session') || '';
@@ -2265,7 +2265,8 @@ async function deleteVerbale(id, cascade) {
     _selectedVerbaleId = null;
     document.getElementById('preview-body').outerHTML = '<div id="preview-body" class="preview-empty">Seleziona un verbale dall\'archivio per vederne l\'anteprima.</div>';
     await loadVerbali();
-    showToast('✓ Eliminato' + (r.issues_collegate ? ' · ' + r.issues_collegate + ' issue collegate restano nel registro' : ''));
+    showToast('✓ Eliminato' + (r.issues_eliminate ? ' · ' + r.issues_eliminate + ' issue eliminate' : ''));
+    if (r.avviso) setTimeout(() => alert(r.avviso), 300);
   } catch(e) {
     alert('Errore eliminazione: ' + e.message);
   }
