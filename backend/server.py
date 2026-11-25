@@ -4581,7 +4581,8 @@ _CK_ESITO_LAB = {"C": "Conforme", "NC": "NC", "NA": "N.A.", "": "—"}
 async def update_sopralluogo(sop_id: str, payload: dict, sess: dict = Depends(_require_admin_session)):
     """Modifica un verbale già salvato — admin/admin2. Aggiornamento PARZIALE: solo le chiavi presenti nel body.
     Campi: data_sopralluogo, lotto, tratta_id, impresa, referente_impresa, referente_retelit, comune,
-    segnalazione_cliente (+ _note, esito_segnalazione; solo verbali radice), checklist (sostituzione completa).
+    segnalazione_cliente (+ _note, esito_segnalazione; solo verbali radice), checklist (sostituzione completa),
+    codice_verbale (rinomina: formato VBS-AAAA-NNNN, univoco; propaga a verifiche/issue se il vecchio codice non è più usato).
     I dati 'Segnalazione al System' hanno il loro endpoint (/system). Ogni modifica finisce in `storico_modifiche`."""
     try:
         oid = ObjectId(sop_id)
@@ -4610,6 +4611,17 @@ async def update_sopralluogo(sop_id: str, payload: dict, sess: dict = Depends(_r
             raise HTTPException(422, "Data sopralluogo non valida")
         if d != _sopr_date_iso(str(doc.get("data_sopralluogo", "") or "")):
             _chg("Data sopralluogo", doc.get("data_sopralluogo", ""), d); sets["data_sopralluogo"] = d
+
+    # codice verbale (rinomina: serve a correggere i duplicati da salvataggi simultanei)
+    old_code, new_code = str(doc.get("codice_verbale", "") or ""), None
+    if "codice_verbale" in p:
+        c = str(p.get("codice_verbale", "")).strip().upper()
+        if c != old_code:
+            if not re.fullmatch(r"VBS-\d{4}-\d{4}", c):
+                raise HTTPException(422, "Codice verbale: formato richiesto VBS-AAAA-NNNN")
+            if await sopralluoghi_col.find_one({"codice_verbale": c, "_id": {"$ne": oid}}, {"_id": 1}):
+                raise HTTPException(422, f"Codice verbale {c} già assegnato a un altro verbale")
+            _chg("Codice verbale", old_code, c); sets["codice_verbale"] = new_code = c
 
     # checklist (sostituzione completa)
     ck_old = doc.get("checklist") or {}
@@ -4658,8 +4670,43 @@ async def update_sopralluogo(sop_id: str, payload: dict, sess: dict = Depends(_r
     utente = sess.get("nome", "")
     sets.update({"modificato_da": utente, "modificato_il": now})
     await sopralluoghi_col.update_one({"_id": oid}, {"$set": sets, "$push": {"storico_modifiche": {"ts": now, "utente": utente, "modifiche": mods[:200]}}})
-    code = doc.get("codice_verbale", "")
+    code = new_code or doc.get("codice_verbale", "")
     _schedule_sopralluoghi_csv_regen(f"modifica verbale: {code} ({utente})")
+    avviso = ""
+    if new_code:
+        if await sopralluoghi_col.count_documents({"codice_verbale": old_code}):
+            # il vecchio codice è ancora di un altro verbale (duplicato): issue e verifiche con quel codice restano
+            # all'altro verbale (non attribuibili con certezza); le issue di questo nascono dalla sync col codice nuovo.
+            avviso = (f"Il codice {old_code} resta assegnato a un altro verbale: issue e verifiche già collegate a {old_code} "
+                      "non sono state spostate. Le foto restano nella cartella GitHub del vecchio codice.")
+        else:
+            try:
+                n_fig = (await sopralluoghi_col.update_many({"verbale_origine": old_code}, {"$set": {"verbale_origine": new_code}})).modified_count
+                n_iss = n_skip = 0
+                async with _issue_sync_lock:
+                    async for iss in issues_col.find({"$or": [{"origine_verbale": old_code}, {"origine_key": {"$regex": "^" + re.escape(old_code) + r"\|"}}]}):
+                        up = {}
+                        if iss.get("origine_verbale") == old_code:
+                            up["origine_verbale"] = new_code
+                        ok_ = str(iss.get("origine_key", "") or "")
+                        if ok_.startswith(old_code + "|"):
+                            up["origine_key"] = new_code + ok_[len(old_code):]
+                        if up:
+                            try:
+                                await issues_col.update_one({"_id": iss["_id"]}, {"$set": up})
+                                n_iss += 1
+                            except Exception as e:
+                                n_skip += 1
+                                print(f"[sopralluoghi] rinomina {old_code}→{new_code}: issue {iss.get('codice')} non aggiornata: {e}")
+                    await issues_skip_col.update_many({"key": {"$regex": "^" + re.escape(old_code) + r"\|"}},
+                                                      [{"$set": {"key": {"$concat": [new_code, {"$substrCP": ["$key", len(old_code), 200]}]}}}])
+                if n_skip:
+                    avviso = f"{n_skip} issue non aggiornate (chiave già esistente): controllare il log."
+                print(f"[sopralluoghi] rinomina {old_code}→{new_code}: {n_fig} verifiche, {n_iss} issue")
+            except Exception as e:
+                avviso = f"Codice cambiato, ma il riallineamento di issue/verifiche è fallito: {type(e).__name__}"
+                print(f"[sopralluoghi] rinomina {old_code}→{new_code} cascade fallito: {e}")
+        asyncio.create_task(_issue_sync_safe([{**doc, **sets}]))
     if any(k in sets for k in ("segnalazione_cliente", "esito_segnalazione")) and not doc.get("verbale_origine"):
         try:
             await _issue_riallinea_priority_verbale(doc, {**doc, **sets}, now)
@@ -4667,7 +4714,7 @@ async def update_sopralluogo(sop_id: str, payload: dict, sess: dict = Depends(_r
             print(f"[sopralluoghi] riallineo priority issue dopo modifica verbale fallito: {type(e).__name__}: {e}")
     if "checklist" in sets:
         asyncio.create_task(_issue_sync_safe([{**doc, **sets}]))  # NC nuove → issue; verifiche conformi → issue risolte
-    return {"ok": True, "changed": len(mods)}
+    return {"ok": True, "changed": len(mods), **({"codice_verbale": new_code} if new_code else {}), **({"avviso": avviso} if avviso else {})}
 
 
 async def _issue_riallinea_priority_verbale(old_doc: dict, root_doc: dict, now: str) -> int:
