@@ -2262,7 +2262,7 @@
     const b = ev.target.closest('[data-sopr]'); if (!b) return;
     const v = SOPR.find(x => x._id === b.dataset.id); if (!v) return;
     if (b.dataset.sopr === 'edit') return openSopr(v);
-    const ok = await showConfirm('Elimina verbale', `Eliminare definitivamente ${v.codice_verbale}? Le issue già generate nel registro e le foto su GitHub non vengono eliminate.`, 'Elimina', 'btn btn-danger');
+    const ok = await showConfirm('Elimina verbale', `Eliminare definitivamente ${v.codice_verbale}? Verranno eliminate anche le issue generate dalle sue non conformità (con il loro storico); le foto su GitHub restano.`, 'Elimina', 'btn btn-danger');
     if (!ok) return;
     try {
       let r;
@@ -2272,7 +2272,8 @@
         if (!await showConfirm('Verifiche collegate', e.message, 'Elimina tutto', 'btn btn-danger')) return;
         r = await api('/api/sopralluoghi/' + v._id + '?cascade=true', { method: 'DELETE' });
       }
-      toast('Eliminato: ' + (r.deleted || []).join(', ') + (r.issues_collegate ? ' · ' + r.issues_collegate + ' issue collegate restano nel registro' : ''));
+      toast('Eliminato: ' + (r.deleted || []).join(', ') + (r.issues_eliminate ? ' · ' + r.issues_eliminate + ' issue eliminate' : ''));
+      if (r.avviso) setTimeout(() => alert(r.avviso), 300);
       loadSopr();
     } catch (e) { toast('Errore: ' + e.message, true); }
   });
