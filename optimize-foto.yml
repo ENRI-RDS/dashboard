@@ -1,0 +1,43 @@
+name: Ottimizza foto verbali
+
+# Si avvia a mano: tab "Actions" -> "Ottimizza foto verbali" -> "Run workflow".
+# Con dry_run = true mostra solo il risparmio, senza modificare né committare nulla.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Solo simulazione (nessuna modifica)"
+        type: boolean
+        default: true
+      max_px:
+        description: "Lato lungo massimo (px)"
+        default: "1600"
+      quality:
+        description: "Qualità JPEG"
+        default: "80"
+
+permissions:
+  contents: write
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pillow
+      - name: Ottimizza foto
+        run: |
+          ARGS="--max ${{ inputs.max_px }} --quality ${{ inputs.quality }}"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          python tools/optimize_foto.py sopralluoghi/foto $ARGS | tee /tmp/report.txt
+          tail -n 2 /tmp/report.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Commit
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sopralluoghi/foto
+          git diff --cached --quiet && echo "Nessuna modifica" || (git commit -m "Ottimizzazione foto verbali (max ${{ inputs.max_px }}px, q${{ inputs.quality }})" && git push)
