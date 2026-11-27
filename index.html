@@ -2272,19 +2272,21 @@ function exportTuttiXlsx() {
 }
 
 // ── EXPORT ESTRAZIONE CLIENTE (colonne ridotte, stati tradotti, no interno) ────
-// Stati "di lavorazione interna" mai mostrati al cliente (bozza/coordinamento pre-invio).
+// Stati mai mostrati al cliente. IN REDAZIONE / IN FIRMA RDS escono come 'to be sent',
+// INVIO PRELIMINARE come 'submitted' (data = cambio stato), IN REDAZIONE INTEGRAZIONE come 'pending'.
 // NO COMPETENZA esclusa: non ha una Data Ott. valorizzata (campo dum vuoto per quello stato),
 // quindi non può comparire in una riga "approved" con colonna Approval Date coerente.
-const CLIENTE_STATI_ESCLUSI = ['IN ATTESA', 'IN REDAZIONE', 'IN FIRMA RDS', 'INVIO PRELIMINARE', 'IN REDAZIONE INTEGRAZIONE', 'NO COMPETENZA'];
+const CLIENTE_STATI_ESCLUSI = ['IN ATTESA', 'NO COMPETENZA'];
 // Mappa stato interno → stato cliente. Stati non presenti qui (e non esclusi sopra)
 // ricadono di default su 'rejected': bucket ancora da popolare (TODO Andrea).
 const CLIENTE_STATO_MAP = {
-  'INVIATO': 'submitted', 'PROTOCOLLATO': 'submitted',
+  'INVIATO': 'submitted', 'PROTOCOLLATO': 'submitted', 'INVIO PRELIMINARE': 'submitted',
   'OTTENUTO': 'approved',
-  'NECESSARIA INTEGRAZIONE': 'pending', 'PROTOCOLLATO INTEGRAZIONE': 'pending'
+  'NECESSARIA INTEGRAZIONE': 'pending', 'PROTOCOLLATO INTEGRAZIONE': 'pending', 'IN REDAZIONE INTEGRAZIONE': 'pending',
+  'IN REDAZIONE': 'to be sent', 'IN FIRMA RDS': 'to be sent'
 };
 const CLIENTE_STATO_COLORI = {
-  submitted: 'FF41BBD9', pending: 'FFD08A1A', approved: 'FF1E9E6A', rejected: 'FFC0392B'
+  submitted: 'FF41BBD9', 'to be sent': 'FF6B7685', pending: 'FFD08A1A', approved: 'FF1E9E6A', rejected: 'FFC0392B'
 };
 const CLIENTE_TIPO_EN = { 'AUTORIZZAZIONE': 'AUTHORIZATION', 'NULLA OSTA': 'Approval/SED', 'ORDINANZA': 'ORDINANCE' };
 
@@ -2324,7 +2326,10 @@ function exportClienteXlsx() {
       const cl = codiceCluster[p.codice] ? [...codiceCluster[p.codice]].sort((a,b)=>(+a)-(+b)).join(', ') : '';
       const statoClient = CLIENTE_STATO_MAP[p.stato] || 'rejected';
       const dateParts = buildDateParts(p);
-      const invioStr = dateParts.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
+      let invioStr = dateParts.find(d => d.startsWith('Invio:'))?.replace('Invio: ','') || '';
+      // INVIO PRELIMINARE: submission = data cambio stato (dum); to be sent: nessuna submission
+      if (p.stato === 'INVIO PRELIMINARE') invioStr = p.dum ? fmtDateIT(p.dum) : '';
+      else if (statoClient === 'to be sent') invioStr = '';
       const dataOttStr = p.stato === 'OTTENUTO' ? (p.dum || '') : '';
       return {
         codice: p.codice, tipo, lotto: p.lotto || '', cluster: cl, stato: statoClient,
